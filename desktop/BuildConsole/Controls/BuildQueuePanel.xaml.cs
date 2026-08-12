@@ -114,10 +114,10 @@ namespace BuildConsole.Controls
             if (signature == _lastSessionsSignature) return;
             _lastSessionsSignature = signature;
 
-            // Git #866 — tab headers carry a live count now that each former
-            // stacked section is its own tab, so the at-a-glance value of the
-            // old always-visible layout isn't lost just because a tab isn't active.
-            TabSessions.Header = $"Sessions ({sessions.Count})";
+            // Git #874 — replaces #866's tab-header count with the quiet
+            // count-badge tile's own count text (TileSessions is collapsed
+            // by default, so this is the at-a-glance value while collapsed).
+            SessionsCountText.Text = $"({sessions.Count})";
 
             ActiveSessionsList.Items.Clear();
             if (sessions.Count == 0)
@@ -180,8 +180,8 @@ namespace BuildConsole.Controls
         /// </summary>
         private void RenderInFlightGrouped(List<Services.GitHubIssueSummary> issues)
         {
-            // Git #866 — see RefreshActiveSessionsAsync's identical comment.
-            TabInFlight.Header = $"In-Flight ({issues.Count})";
+            // Git #874 — see RefreshActiveSessionsAsync's identical comment.
+            InFlightCountText.Text = $"({issues.Count})";
 
             InFlightIssuesList.Items.Clear();
             if (issues.Count == 0)
@@ -228,8 +228,12 @@ namespace BuildConsole.Controls
             if (signature == _lastWaitingOnMeSignature) return;
             _lastWaitingOnMeSignature = signature;
 
-            // Git #866 — see RefreshActiveSessionsAsync's identical comment.
-            TabToDo.Header = $"To-Do ({issues.Count})";
+            // Git #874 — the To-Do tile is the one section that should visually
+            // announce itself once there's something in it (Shane: "To-Do I
+            // reference only after a build tells me there is something for me
+            // to do"), swapping to the app's existing PeachBrush accent; at 0
+            // it stays identical to the neutral In-Flight/Sessions tiles.
+            UpdateToDoTileAppearance(issues.Count);
 
             RenderIssueList(WaitingOnMeList, issues, "Nothing waiting on you.", "🔴", "#E5A3A3");
         }
@@ -278,6 +282,10 @@ namespace BuildConsole.Controls
         // chat with no linked epic).
         private int? _activeChatEpicId;
 
+        /// <summary>Git #874 — the epic issues currently loaded, paired with their real GitHub state (null when unresolvable, e.g. no PAT configured or no linked GitHub number) so EpicFilterChip_Click can re-filter in place without a refetch.</summary>
+        private List<(IssueSummary Issue, string? RealState)> _lastEpicIssues = new();
+        private string _epicFilter = "Open";
+
         public async void SetActiveChatEpic(int? epicId, string? epicTitle)
         {
             if (epicId == _activeChatEpicId) return;
@@ -291,6 +299,7 @@ namespace BuildConsole.Controls
 
             ChatEpicIssuesHeader.Text = $"ISSUES IN {epicTitle?.ToUpperInvariant() ?? "THIS EPIC"}";
             ChatEpicIssuesSection.Visibility = Visibility.Visible;
+            _lastEpicIssues = new();
             ChatEpicIssuesList.Items.Clear();
             ChatEpicIssuesList.Items.Add(new ListBoxItem { Content = "Loading…", Foreground = (Brush)Application.Current.FindResource("Subtext1Brush") });
 
@@ -309,19 +318,82 @@ namespace BuildConsole.Controls
             // The tab may have changed again while that fetch was in flight.
             if (_activeChatEpicId != epicId) return;
 
+            // Git #874 — Shane: "three filters, All, Open, Closed"... "filtering
+            // ChatEpicIssuesList by real GitHub issue state (same real-state
+            // pattern #839 established for the Git Board - not a label)".
+            // IssueSummary.Status here is the build-tracker DB's own status,
+            // not real GitHub state, so it's ignored for filtering purposes -
+            // real state comes from a direct GitHubApiClient.GetIssueAsync per
+            // linked issue number instead (best-effort: no PAT configured, or
+            // an issue with no linked GitHub number, resolves to null/unknown
+            // and is treated as still-open rather than silently hidden).
+            var realStates = await FetchRealIssueStatesAsync(
+                issues.Where(i => i.GithubNumber.HasValue).Select(i => i.GithubNumber!.Value).ToList());
+            if (_activeChatEpicId != epicId) return;
+
+            _lastEpicIssues = issues
+                .Select(i => (Issue: i, RealState: i.GithubNumber.HasValue && realStates.TryGetValue(i.GithubNumber.Value, out var s) ? s : null))
+                .ToList();
+            RenderChatEpicIssues();
+        }
+
+        /// <summary>Git #874 — best-effort real-state lookup, one REST GET per distinct linked issue number (mirrors IssueDetailView's own GetIssueAsync usage); a missing PAT or a per-issue fetch failure just leaves that issue out of the result rather than failing the whole list.</summary>
+        private static async System.Threading.Tasks.Task<Dictionary<int, string>> FetchRealIssueStatesAsync(List<int> numbers)
+        {
+            var result = new Dictionary<int, string>();
+            if (numbers.Count == 0) return result;
+
+            var settings = BuildConsoleSettings.Load();
+            if (!settings.HasGitHubPat) return result;
+
+            var client = new GitHubApiClient(settings.GitHubPat);
+            var tasks = numbers.Distinct().Select(async n =>
+            {
+                try { var issue = await client.GetIssueAsync(n); return (Number: n, State: issue?.State); }
+                catch { return (Number: n, State: (string?)null); }
+            });
+
+            foreach (var (number, state) in await System.Threading.Tasks.Task.WhenAll(tasks))
+            {
+                if (state != null) result[number] = state;
+            }
+            return result;
+        }
+
+        private static bool IsRealClosed(string? realState) => string.Equals(realState, "closed", StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>Git #874 — re-filters the already-fetched _lastEpicIssues in place (All/Open/Closed); called both after a fresh SetActiveChatEpic load and from EpicFilterChip_Click.</summary>
+        private void RenderChatEpicIssues()
+        {
             ChatEpicIssuesList.Items.Clear();
-            if (issues.Count == 0)
+            if (_lastEpicIssues.Count == 0)
             {
                 ChatEpicIssuesList.Items.Add(new ListBoxItem { Content = "No issues under this epic yet.", Foreground = (Brush)Application.Current.FindResource("Subtext1Brush") });
                 return;
             }
-            foreach (var issue in issues)
+
+            var filtered = _epicFilter switch
             {
-                var (icon, hex) = issue.Status?.ToUpperInvariant() switch
+                "Open"   => _lastEpicIssues.Where(x => !IsRealClosed(x.RealState)).ToList(),
+                "Closed" => _lastEpicIssues.Where(x => IsRealClosed(x.RealState)).ToList(),
+                _        => _lastEpicIssues,
+            };
+
+            if (filtered.Count == 0)
+            {
+                string emptyText = _epicFilter switch
                 {
-                    "CLOSED" or "DONE" => ("✅", "#7FAE91"),
-                    _                   => ("⏳", "#8F8C88"),
+                    "Open"   => "No open issues under this epic.",
+                    "Closed" => "No closed issues under this epic.",
+                    _        => "No issues under this epic yet.",
                 };
+                ChatEpicIssuesList.Items.Add(new ListBoxItem { Content = emptyText, Foreground = (Brush)Application.Current.FindResource("Subtext1Brush") });
+                return;
+            }
+
+            foreach (var (issue, realState) in filtered)
+            {
+                var (icon, hex) = IsRealClosed(realState) ? ("✅", "#7FAE91") : ("⏳", "#8F8C88");
                 var panel = new StackPanel { Orientation = Orientation.Horizontal };
                 panel.Children.Add(new TextBlock { Text = icon + " ", FontSize = 12, Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex)), VerticalAlignment = VerticalAlignment.Center });
                 panel.Children.Add(new TextBlock
@@ -334,6 +406,18 @@ namespace BuildConsole.Controls
                 });
                 ChatEpicIssuesList.Items.Add(new ListBoxItem { Content = panel });
             }
+        }
+
+        private void EpicFilterChip_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not ToggleButton clicked) return;
+            foreach (var chip in new[] { ChipEpicAll, ChipEpicOpen, ChipEpicClosed })
+            {
+                chip.IsChecked = chip == clicked;
+            }
+            _epicFilter = clicked.Tag as string ?? "Open";
+            ActivityLog.Log("build-queue-panel.epic-filter", $"epic issues filter -> {_epicFilter}");
+            RenderChatEpicIssues();
         }
 
         // Git #821 — Shane: "stop all the flashing... every refresh the
@@ -766,6 +850,42 @@ namespace BuildConsole.Controls
             _isPinned = !_isPinned;
             PinQueueIcon.Text = _isPinned ? "📌" : "📍";
             PinToggled?.Invoke(this, _isPinned);
+        }
+
+        // Git #874 — In-Flight/Sessions/To-Do quiet tiles: collapsed by
+        // default, each ToggleButton's own IsChecked (set by the click that
+        // fired this handler) IS the expanded state, just mirrored onto its
+        // content Border's Visibility.
+        private void TileInFlight_Click(object sender, RoutedEventArgs e) =>
+            TileInFlightContent.Visibility = TileInFlight.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+
+        private void TileSessions_Click(object sender, RoutedEventArgs e) =>
+            TileSessionsContent.Visibility = TileSessions.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+
+        private void TileToDo_Click(object sender, RoutedEventArgs e) =>
+            TileToDoContent.Visibility = TileToDo.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+
+        /// <summary>Git #874 — the To-Do tile is the one section that announces itself: PeachBrush (the app's existing warning/accent brush) once count > 0, cleared back to the QuietTile style's own neutral brushes at 0.</summary>
+        private void UpdateToDoTileAppearance(int count)
+        {
+            ToDoCountText.Text = $"({count})";
+            if (count > 0)
+            {
+                var peach = (Brush)Application.Current.FindResource("PeachBrush");
+                TileToDo.BorderBrush = peach;
+                TileToDo.Foreground = peach;
+                ToDoIcon.Foreground = peach;
+                ToDoLabel.Foreground = peach;
+                ToDoCountText.Foreground = peach;
+            }
+            else
+            {
+                TileToDo.ClearValue(BorderBrushProperty);
+                TileToDo.ClearValue(ForegroundProperty);
+                ToDoIcon.ClearValue(ForegroundProperty);
+                ToDoLabel.ClearValue(ForegroundProperty);
+                ToDoCountText.ClearValue(TextBlock.ForegroundProperty);
+            }
         }
     }
 }

@@ -3,6 +3,44 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              MinWidth="220">
 
+    <UserControl.Resources>
+        <!-- Git #874 — quiet count-badge tile header (In-Flight/Sessions/To-Do rows).
+             A ToggleButton so IsChecked IS the expanded state; the chevron flips via a
+             trigger and the actual content Visibility is toggled in code-behind off the
+             same Checked/Unchecked events. Rest state deliberately matches the app's
+             ordinary Surface0/Surface1 hover language ("quiet") - ToDoTile below swaps
+             brushes in code-behind only when its count > 0, per Shane's "announce itself
+             only when something's there" ask. -->
+        <Style x:Key="QuietTile" TargetType="{x:Type ToggleButton}">
+            <Setter Property="Background"      Value="{StaticResource MantleBrush}"/>
+            <Setter Property="BorderBrush"     Value="{StaticResource Surface0Brush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Foreground"      Value="{StaticResource Subtext0Brush}"/>
+            <Setter Property="Padding"         Value="10,8"/>
+            <Setter Property="Cursor"          Value="Hand"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type ToggleButton}">
+                        <Border x:Name="Bd"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="6"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource Surface0Brush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
     <Border Background="{StaticResource MantleBrush}"
             BorderBrush="{StaticResource Surface0Brush}"
             BorderThickness="1,0,0,0">
@@ -48,118 +86,177 @@
                 </DockPanel>
             </Border>
 
-            <!-- Git #829 - Shane: "I need the right panel to have another section
-                 that shows me all the issues assigned to the chat I'm on." Only
-                 visible while the active editor tab is a chat linked to an epic
-                 (see MainWindow's EditorTabs_SelectionChanged -> SetActiveChatEpic).
-                 Kept as a contextual banner above the tabs (not a tab of its own)
-                 since it's collapsed most of the time and about the ACTIVE chat
-                 tab, not a persistent section like the four below. -->
-            <Border x:Name="ChatEpicIssuesSection"
-                    DockPanel.Dock="Top"
-                    Background="{StaticResource MantleBrush}"
-                    BorderBrush="{StaticResource Surface0Brush}"
-                    BorderThickness="0,0,0,1"
-                    Visibility="Collapsed">
+            <!-- Git #874 - Shane: "the two things out of all of I actually care about:
+                 Build Queue, Open issue current associated to this chat. In-Flight I
+                 reference only. To-Do I reference only after a build tells me there is
+                 something for me to do." Replaces #866's equal-weight RightPanelTabs
+                 TabControl with one scrollable stacked panel, ordered by that priority -
+                 Queue and Issues-in-epic get full always-expanded weight, In-Flight/
+                 Sessions/To-Do shrink to collapsed-by-default quiet tiles below. -->
+            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                 <StackPanel>
-                    <Border Padding="10,8"
-                            BorderBrush="{StaticResource Surface0Brush}"
-                            BorderThickness="0,0,0,1">
-                        <TextBlock x:Name="ChatEpicIssuesHeader"
-                                   Text="ISSUES IN THIS EPIC"
-                                   FontSize="11"
-                                   FontWeight="SemiBold"
-                                   Foreground="{StaticResource Subtext1Brush}"
-                                   TextWrapping="Wrap"/>
-                    </Border>
-                    <ListBox x:Name="ChatEpicIssuesList"
-                             Background="Transparent"
-                             BorderThickness="0"
-                             MaxHeight="200"
-                             ScrollViewer.VerticalScrollBarVisibility="Auto"/>
-                </StackPanel>
-            </Border>
 
-            <!-- Git #866 - Shane: "the Build Queue needs tabs or something. It's
-                 getting VERY stuffy." #849 stacked every section (Queue tree, All
-                 In-Session, In-Flight, Waiting On Me) into one long scroll so
-                 nothing got silently clipped - it fixed the clipping but made the
-                 panel a wall of content. Each former section is now its own tab;
-                 only one is visible at a time, and each gets the FULL panel height
-                 to scroll within instead of fighting the others for space. Tab
-                 headers carry live counts (set in code-behind after each refresh)
-                 so the at-a-glance value of the old stacked layout isn't lost. -->
-            <TabControl x:Name="RightPanelTabs">
-                <TabItem x:Name="TabQueue" Header="Queue">
-                    <DockPanel>
-                        <!-- ── Filter chips (real — see code-behind's ApplyFilter) ── -->
-                        <Border DockPanel.Dock="Top"
-                                Padding="8,6"
-                                BorderBrush="{StaticResource Surface0Brush}"
-                                BorderThickness="0,0,0,1">
-                            <StackPanel Orientation="Horizontal">
+                    <!-- ══ 1. QUEUE — primary, always expanded, full visual weight ══ -->
+                    <Border Padding="10,12" BorderBrush="{StaticResource Surface0Brush}" BorderThickness="0,0,0,1">
+                        <StackPanel>
+                            <TextBlock Text="QUEUE"
+                                       FontSize="11"
+                                       FontWeight="SemiBold"
+                                       Foreground="{StaticResource Subtext1Brush}"
+                                       Margin="0,0,0,8"/>
+
+                            <!-- ── Filter chips (real — see code-behind's ApplyFilter) ── -->
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                                 <ToggleButton x:Name="ChipAll"       Content="All"               Style="{StaticResource FilterChip}" IsChecked="True" Click="FilterChip_Click" Tag="All"/>
                                 <ToggleButton x:Name="ChipActive"    Content="Queued &amp; Running" Style="{StaticResource FilterChip}" Click="FilterChip_Click" Tag="Active"/>
                                 <ToggleButton x:Name="ChipDone"      Content="Done"              Style="{StaticResource FilterChip}" Click="FilterChip_Click" Tag="Done"/>
                                 <ToggleButton x:Name="ChipCanceled"  Content="Canceled"          Style="{StaticResource FilterChip}" Click="FilterChip_Click" Tag="Canceled"/>
                                 <ToggleButton x:Name="ChipTests"     Content="Tests"             Style="{StaticResource FilterChip}" Click="FilterChip_Click" Tag="Tests"/>
                             </StackPanel>
-                        </Border>
 
-                        <!-- ── Queue tree (populated live from GET /extension/queue — see code-behind) ── -->
-                        <Grid>
-                            <TreeView x:Name="QueueTree" BorderThickness="0" Padding="0,4" SelectedItemChanged="QueueTree_SelectedItemChanged"/>
-                            <TextBlock x:Name="QueueEmptyText"
-                                       Text="Not connected — see Settings"
+                            <!-- ── Queue tree (populated live from GET /extension/queue — see code-behind) ── -->
+                            <Grid>
+                                <TreeView x:Name="QueueTree" BorderThickness="0" Padding="0,4" SelectedItemChanged="QueueTree_SelectedItemChanged"/>
+                                <TextBlock x:Name="QueueEmptyText"
+                                           Text="Not connected — see Settings"
+                                           FontSize="11"
+                                           Foreground="{StaticResource Subtext1Brush}"
+                                           Margin="12,10"
+                                           TextWrapping="Wrap"
+                                           VerticalAlignment="Top"
+                                           Visibility="Collapsed"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- ══ 2. ISSUES IN THIS CHAT'S EPIC — second primary section ══
+                         Git #829 - Shane: "I need the right panel to have another section
+                         that shows me all the issues assigned to the chat I'm on." Only
+                         visible while the active editor tab is a chat linked to an epic
+                         (see MainWindow's EditorTabs_SelectionChanged -> SetActiveChatEpic).
+                         Git #874 adds the real All/Open/Closed filter (default Open),
+                         same real-GitHub-state pattern #839 established for the Git Board
+                         (not a label). -->
+                    <Border x:Name="ChatEpicIssuesSection"
+                            Padding="10,12"
+                            BorderBrush="{StaticResource Surface0Brush}"
+                            BorderThickness="0,0,0,1"
+                            Visibility="Collapsed">
+                        <StackPanel>
+                            <TextBlock x:Name="ChatEpicIssuesHeader"
+                                       Text="ISSUES IN THIS EPIC"
                                        FontSize="11"
+                                       FontWeight="SemiBold"
                                        Foreground="{StaticResource Subtext1Brush}"
-                                       Margin="12,10"
                                        TextWrapping="Wrap"
-                                       VerticalAlignment="Top"
-                                       Visibility="Collapsed"/>
-                        </Grid>
-                    </DockPanel>
-                </TabItem>
+                                       Margin="0,0,0,8"/>
 
-                <!-- Git #831 - Shane: "the right panel needs to have an All In session...
-                     like you are not in the queue, but you are running, and I should see
-                     the things you are working on but I cannot." Live interactive/background
-                     Claude Code sessions on this machine - NOT queue rows, the "claude
-                     agents" CLI command (json output mode) is the real source (see
-                     ClaudeAgentsService). -->
-                <TabItem x:Name="TabSessions" Header="Sessions">
-                    <ListBox x:Name="ActiveSessionsList"
-                             Background="Transparent"
-                             BorderThickness="0"/>
-                </TabItem>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                <ToggleButton x:Name="ChipEpicAll"    Content="All"    Style="{StaticResource FilterChip}" Click="EpicFilterChip_Click" Tag="All"/>
+                                <ToggleButton x:Name="ChipEpicOpen"   Content="Open"   Style="{StaticResource FilterChip}" IsChecked="True" Click="EpicFilterChip_Click" Tag="Open"/>
+                                <ToggleButton x:Name="ChipEpicClosed" Content="Closed" Style="{StaticResource FilterChip}" Click="EpicFilterChip_Click" Tag="Closed"/>
+                            </StackPanel>
 
-                <!-- Git #848 - Shane: "In Git there 10 In Flight, Still open. And none
-                     are showing in the right panel... why can't the WPF just connect
-                     directly to Git to get this stuff... no real reason for it to go
-                     through my server anymore." Real open GitHub issues carrying the
-                     in-flight label, fetched directly via the local authenticated `gh`
-                     CLI (GitHubIssuesService). Git #851 - clicking a row opens the chat
-                     associated with that issue (see MainWindow's IssueChatRequested
-                     handler). -->
-                <TabItem x:Name="TabInFlight" Header="In-Flight">
-                    <ListBox x:Name="InFlightIssuesList"
-                             Background="Transparent"
-                             BorderThickness="0"
-                             SelectionChanged="InFlightIssuesList_SelectionChanged"/>
-                </TabItem>
+                            <ListBox x:Name="ChatEpicIssuesList"
+                                     Background="Transparent"
+                                     BorderThickness="0"
+                                     MaxHeight="260"
+                                     ScrollViewer.VerticalScrollBarVisibility="Auto"/>
+                        </StackPanel>
+                    </Border>
 
-                <!-- Git #850 - Shane: "Why I need in the right panel another section that
-                     says... Waiting on me... to run SQL, Test, Etc." Exactly what
-                     CLAUDE.md's own "Shane To-Do" GitHub label already tracks (an action
-                     only Shane can take himself - run SQL, restart server, etc; Claude
-                     applies it at the DONE bookend, only Shane clears it once actually
-                     done). Same direct gh CLI pattern as In-Flight. -->
-                <TabItem x:Name="TabToDo" Header="To-Do">
-                    <ListBox x:Name="WaitingOnMeList"
-                             Background="Transparent"
-                             BorderThickness="0"/>
-                </TabItem>
-            </TabControl>
+                    <!-- ══ 3. IN-FLIGHT + SESSIONS — two quiet count-badge tiles, collapsed by default ══
+                         Git #874 - Shane: "In-Flight I reference only." Shrunk from a full
+                         equal-weight tab (#866) to a side-by-side row of small tiles; each
+                         expands in place on click to reveal its existing list, collapsed
+                         by default so it stays out of the way until wanted. -->
+                    <Grid Margin="10,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="10"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Grid.Column="0">
+                            <ToggleButton x:Name="TileInFlight" Style="{StaticResource QuietTile}" Click="TileInFlight_Click">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="⏳" FontSize="13" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                    <TextBlock Text="In-Flight" FontSize="11" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="InFlightCountText" Text="(0)" FontSize="11" Margin="4,0,0,0" VerticalAlignment="Center" Foreground="{StaticResource Subtext1Brush}"/>
+                                </StackPanel>
+                            </ToggleButton>
+                            <Border x:Name="TileInFlightContent"
+                                    Visibility="Collapsed"
+                                    Background="{StaticResource MantleBrush}"
+                                    BorderBrush="{StaticResource Surface0Brush}"
+                                    BorderThickness="1,0,1,1"
+                                    Padding="4"
+                                    CornerRadius="0,0,6,6">
+                                <ListBox x:Name="InFlightIssuesList"
+                                         Background="Transparent"
+                                         BorderThickness="0"
+                                         MaxHeight="220"
+                                         ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                         SelectionChanged="InFlightIssuesList_SelectionChanged"/>
+                            </Border>
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="2">
+                            <ToggleButton x:Name="TileSessions" Style="{StaticResource QuietTile}" Click="TileSessions_Click">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="▶" FontSize="13" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                    <TextBlock Text="Sessions" FontSize="11" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="SessionsCountText" Text="(0)" FontSize="11" Margin="4,0,0,0" VerticalAlignment="Center" Foreground="{StaticResource Subtext1Brush}"/>
+                                </StackPanel>
+                            </ToggleButton>
+                            <Border x:Name="TileSessionsContent"
+                                    Visibility="Collapsed"
+                                    Background="{StaticResource MantleBrush}"
+                                    BorderBrush="{StaticResource Surface0Brush}"
+                                    BorderThickness="1,0,1,1"
+                                    Padding="4"
+                                    CornerRadius="0,0,6,6">
+                                <ListBox x:Name="ActiveSessionsList"
+                                         Background="Transparent"
+                                         BorderThickness="0"
+                                         MaxHeight="220"
+                                         ScrollViewer.VerticalScrollBarVisibility="Auto"/>
+                            </Border>
+                        </StackPanel>
+                    </Grid>
+
+                    <!-- ══ 4. TO-DO — one quiet count-badge tile, collapsed by default ══
+                         Git #874 - Shane: "To-Do I reference only after a build tells me
+                         there is something for me to do." The ONE section that should
+                         visually announce itself: neutral/quiet at 0 (identical to
+                         In-Flight/Sessions above), swaps to the app's existing warning/
+                         accent brush (PeachBrush) when count > 0 — done in code-behind
+                         since it's data-driven, not a static style trigger. -->
+                    <StackPanel Margin="10,0,10,12">
+                        <ToggleButton x:Name="TileToDo" Style="{StaticResource QuietTile}" Click="TileToDo_Click">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock x:Name="ToDoIcon" Text="🔴" FontSize="13" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <TextBlock x:Name="ToDoLabel" Text="To-Do" FontSize="11" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="ToDoCountText" Text="(0)" FontSize="11" Margin="4,0,0,0" VerticalAlignment="Center" Foreground="{StaticResource Subtext1Brush}"/>
+                            </StackPanel>
+                        </ToggleButton>
+                        <Border x:Name="TileToDoContent"
+                                Visibility="Collapsed"
+                                Background="{StaticResource MantleBrush}"
+                                BorderBrush="{StaticResource Surface0Brush}"
+                                BorderThickness="1,0,1,1"
+                                Padding="4"
+                                CornerRadius="0,0,6,6">
+                            <ListBox x:Name="WaitingOnMeList"
+                                     Background="Transparent"
+                                     BorderThickness="0"
+                                     MaxHeight="220"
+                                     ScrollViewer.VerticalScrollBarVisibility="Auto"/>
+                        </Border>
+                    </StackPanel>
+
+                </StackPanel>
+            </ScrollViewer>
 
         </DockPanel>
     </Border>
