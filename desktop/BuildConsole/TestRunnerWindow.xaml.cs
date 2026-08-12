@@ -302,6 +302,11 @@ namespace BuildConsole
 
                 TelemetryLogContainer.Children.Add(card);
                 TelemetryScroller.ScrollToEnd();
+
+                // Git #869 — same card stream, appended as flat text into the bottom console
+                // panel instead of building a second telemetry pipeline.
+                ConsoleOutputBox.AppendText($"[{txtTime.Text}] {label} — {detail}{Environment.NewLine}");
+                ConsoleOutputBox.ScrollToEnd();
             });
         }
 
@@ -321,7 +326,16 @@ namespace BuildConsole
                 _stepCursor = 0;
                 TxtNoSteps.Visibility = Visibility.Visible;
                 SetUiStepsPresence(false);
+
+                ConsoleOutputBox.Clear();
             });
+        }
+
+        /// <summary>Git #869 — copies the full accumulated console text in one click, for pasting into a Claude Code prompt to diagnose a failure.</summary>
+        private void BtnCopyConsole_Click(object sender, RoutedEventArgs e)
+        {
+            if (string.IsNullOrEmpty(ConsoleOutputBox.Text)) return;
+            Clipboard.SetText(ConsoleOutputBox.Text);
         }
 
         private void SetStatus(string text, string brushKey)

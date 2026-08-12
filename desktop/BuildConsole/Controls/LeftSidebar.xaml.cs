@@ -431,21 +431,36 @@ namespace BuildConsole.Controls
         /// <summary>Fired after a manifest loads successfully — carries the parsed manifest so MainWindow can track it for Menu &gt; Run &gt; "Run Tests (Current Issue)".</summary>
         public event EventHandler<TestManifest>? ManifestLoaded;
 
-        private void BtnLoadManifest_Click(object sender, RoutedEventArgs e)
+        /// <summary>Git #869 — enumerates test-manifests/*.json for the in-panel list, replacing the old OpenFileDialog. Called on Automation view-load and from the refresh button.</summary>
+        private void PopulateManifestsList()
         {
             string manifestsDir = Path.Combine(RootWorkspacePath, "test-manifests");
-            var dlg = new Microsoft.Win32.OpenFileDialog
-            {
-                Title = "Load Test Manifest",
-                Filter = "Test manifest (*.json)|*.json|All files (*.*)|*.*",
-                InitialDirectory = Directory.Exists(manifestsDir) ? manifestsDir : RootWorkspacePath
-            };
-            if (dlg.ShowDialog() != true) return;
+            var fileNames = Directory.Exists(manifestsDir)
+                ? Directory.GetFiles(manifestsDir, "*.json").Select(Path.GetFileName).OrderBy(n => n).ToList()
+                : new List<string?>();
 
-            var manifest = TestManifest.LoadFromFile(dlg.FileName);
+            ManifestFilesList.ItemsSource = fileNames;
+            TxtNoManifests.Visibility = fileNames.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+
+            ActivityLog.Log("testing.manifest-list", $"listed {fileNames.Count} manifest(s) in {manifestsDir}");
+        }
+
+        private void BtnRefreshManifests_Click(object sender, RoutedEventArgs e)
+        {
+            PopulateManifestsList();
+        }
+
+        private void ManifestFilesList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (ManifestFilesList.SelectedItem is not string fileName) return;
+
+            string manifestsDir = Path.Combine(RootWorkspacePath, "test-manifests");
+            string fullPath = Path.Combine(manifestsDir, fileName);
+
+            var manifest = TestManifest.LoadFromFile(fullPath);
             if (manifest == null)
             {
-                MessageBox.Show($"Couldn't parse {dlg.FileName} as a test manifest.", "Load Manifest");
+                MessageBox.Show($"Couldn't parse {fileName} as a test manifest.", "Load Manifest");
                 return;
             }
 
@@ -461,6 +476,8 @@ namespace BuildConsole.Controls
             ApiTestsBadge.Text = $"API: {manifest.ApiTests.Count}";
             GraphTestsBadge.Text = $"Graph: {manifest.GraphTests.Count}";
             ManifestBadgesRow.Visibility = Visibility.Visible;
+
+            ActivityLog.Log("testing.manifest-list", $"loaded \"{fileName}\" ({manifest.ApiTests.Count} api, {manifest.GraphTests.Count} graph, {manifest.UiSteps.Count} ui steps)");
 
             ManifestLoaded?.Invoke(this, manifest);
         }
@@ -512,6 +529,10 @@ namespace BuildConsole.Controls
             else if (view == "Chats")
             {
                 PopulateChatsTree();
+            }
+            else if (view == "Automation")
+            {
+                PopulateManifestsList();
             }
         }
 

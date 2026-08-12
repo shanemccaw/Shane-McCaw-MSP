@@ -484,8 +484,25 @@
 
                         <Button x:Name="BtnClearSteps" Margin="0,6,0,0" Content="🗑 Clear Actions" Click="BtnClearSteps_Click"/>
 
-                        <!-- Git #806 (Epic #803 Phase 2) — loads /test-manifests/{issue}-{feature-slug}.json, maps uiSteps onto AutomationAction/AutomationStepsList below -->
-                        <Button x:Name="BtnLoadManifest" Margin="0,6,0,0" Content="📄 Load Manifest" Click="BtnLoadManifest_Click"/>
+                        <!-- Git #869 (Epic #803) — in-panel list instead of an OS OpenFileDialog; enumerates test-manifests/*.json directly, populated on view-load/refresh, selecting an item loads it immediately -->
+                        <Grid Margin="0,6,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Available Tests" FontSize="11" Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center"/>
+                            <Button x:Name="BtnRefreshManifests" Grid.Column="1" Content="⟳" Padding="6,2" Click="BtnRefreshManifests_Click" ToolTip="Refresh test list"/>
+                        </Grid>
+                        <ListBox x:Name="ManifestFilesList" Margin="0,4,0,0" MaxHeight="140"
+                                 Background="{StaticResource BaseBrush}" BorderBrush="{StaticResource Surface0Brush}"
+                                 SelectionChanged="ManifestFilesList_SelectionChanged">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding}" FontSize="11" Padding="4,3" TextTrimming="CharacterEllipsis" Foreground="{StaticResource TextBrush}"/>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                        <TextBlock x:Name="TxtNoManifests" Text="No test manifests found in test-manifests/." FontSize="10" Foreground="{StaticResource Subtext0Brush}" Margin="0,4,0,0" Visibility="Collapsed"/>
 
                         <!-- apiTests/graphTests counts from the loaded manifest — executed by #807/#808, not this phase -->
                         <Grid x:Name="ManifestBadgesRow" Margin="0,6,0,0" Visibility="Collapsed">

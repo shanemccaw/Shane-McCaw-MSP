@@ -11,6 +11,8 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
+            <RowDefinition Height="5"/>
+            <RowDefinition Height="180" MinHeight="80"/>
         </Grid.RowDefinitions>
 
         <!-- ── Status header ── -->
@@ -139,5 +141,39 @@
                 </ScrollViewer>
             </DockPanel>
         </Grid>
+
+        <GridSplitter Grid.Row="2" Height="5" HorizontalAlignment="Stretch" Background="{StaticResource Surface0Brush}"/>
+
+        <!-- ── Bottom: flat-text console log (Git #869) — accumulates the same telemetry stream feeding the right-panel result cards, for one-click Copy into a Claude Code prompt ── -->
+        <DockPanel Grid.Row="3" LastChildFill="True">
+            <Border DockPanel.Dock="Top"
+                    Background="{StaticResource MantleBrush}"
+                    BorderBrush="{StaticResource Surface0Brush}"
+                    BorderThickness="0,0,0,1"
+                    Padding="10,6">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Console Output" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center"/>
+                    <Button x:Name="BtnCopyConsole" Grid.Column="1" Content="Copy" Padding="10,2" Click="BtnCopyConsole_Click"/>
+                </Grid>
+            </Border>
+
+            <TextBox x:Name="ConsoleOutputBox"
+                     IsReadOnly="True"
+                     IsReadOnlyCaretVisible="True"
+                     FontFamily="Consolas"
+                     FontSize="11"
+                     TextWrapping="NoWrap"
+                     AcceptsReturn="True"
+                     VerticalScrollBarVisibility="Auto"
+                     HorizontalScrollBarVisibility="Auto"
+                     Background="{StaticResource BaseBrush}"
+                     Foreground="{StaticResource TextBrush}"
+                     BorderThickness="0"
+                     Padding="8,6"/>
+        </DockPanel>
     </Grid>
 </Window>
