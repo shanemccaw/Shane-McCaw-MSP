@@ -53,7 +53,7 @@
                                 <MenuItem Header="New Chat"        InputGestureText="Ctrl+N"/>
                                 <MenuItem Header="Open Session…"/>
                                 <Separator/>
-                                <MenuItem Header="Settings"/>
+                                <MenuItem Header="Settings"       Click="MenuSettings_Click"/>
                                 <Separator/>
                                 <MenuItem Header="Exit"            Click="MenuExit_Click"/>
                             </MenuItem>

@@ -166,6 +166,20 @@ namespace BuildConsole.Controls
         {
             InitializeComponent();
             LoadWorkspaceExplorer(RootWorkspacePath);
+
+            // Git #834 — pre-fill the Settings tab's PAT box from the local store
+            // (%AppData%\BuildConsole\settings.json) so it round-trips visibly.
+            var savedSettings = BuildConsole.Services.BuildConsoleSettings.Load();
+            GitHubPatBox.Password = savedSettings.GitHubPat;
+        }
+
+        // ── SETTINGS: GitHub PAT (Git #834) ──────────────────────────────────
+        private void BtnSaveGitHubPat_Click(object sender, RoutedEventArgs e)
+        {
+            var settings = BuildConsole.Services.BuildConsoleSettings.Load();
+            settings.GitHubPat = GitHubPatBox.Password.Trim();
+            settings.Save();
+            GitHubPatSavedText.Text = "Saved.";
         }
 
         private void ExplorerTree_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
@@ -667,28 +681,141 @@ namespace BuildConsole.Controls
             return tvi;
         }
 
-        private void QuickAddIssueBox_KeyDown(object sender, KeyEventArgs e)
+        // ── GIT BOARD: real GitHub issue search (Git #834) ──────────────────
+        // Shane: "I should be able to put in the Git number or title and it
+        // searches everything in Git... clearly finds even the closed ones."
+        // Replaces the old QuickAddIssueBox_KeyDown fake-add behavior
+        // entirely (local-only GitIssue with a placeholder number, never
+        // touched GitHub, nothing persisted) — this calls GitHub's real
+        // Search Issues API directly (Shane confirmed: direct call, not an
+        // api-server proxy) so CLOSED issues show up too, not just whatever
+        // GET /extension/in-progress currently has queued.
+        private System.Threading.CancellationTokenSource? _issueSearchCts;
+
+        private async void QuickAddIssueBox_KeyDown(object sender, KeyEventArgs e)
         {
-            if (e.Key == Key.Enter)
+            if (e.Key != Key.Enter) return;
+
+            string query = QuickAddIssueBox.Text.Trim();
+            if (string.IsNullOrEmpty(query)) return;
+
+            var settings = BuildConsole.Services.BuildConsoleSettings.Load();
+            if (!settings.HasGitHubPat)
             {
-                string title = QuickAddIssueBox.Text.Trim();
-                if (!string.IsNullOrEmpty(title))
+                IssuesTree.Items.Clear();
+                IssuesTree.Items.Add(new TreeViewItem { Header = "No GitHub PAT configured — set one in Settings (cog icon / File > Settings)." });
+                ActivityLog.Log("git-board.search", "blocked: no GitHub PAT configured");
+                return;
+            }
+
+            _issueSearchCts?.Cancel();
+            var cts = new System.Threading.CancellationTokenSource();
+            _issueSearchCts = cts;
+
+            IssuesTree.Items.Clear();
+            IssuesTree.Items.Add(new TreeViewItem { Header = $"Searching GitHub for \"{query}\"…" });
+
+            var client = new GitHubApiClient(settings.GitHubPat);
+            try
+            {
+                var results = await client.SearchIssuesAsync(query);
+                if (cts.IsCancellationRequested) return;
+
+                ActivityLog.Log("git-board.search", $"query=\"{query}\" -> {results.Count} result(s)");
+
+                IssuesTree.Items.Clear();
+                if (results.Count == 0)
                 {
-                    if (_milestones.Count > 0 && _milestones[0].Epics.Count > 0)
+                    IssuesTree.Items.Add(new TreeViewItem { Header = "No matching issues found." });
+                    return;
+                }
+
+                foreach (var result in results)
+                {
+                    bool blocked = false;
+                    if (!result.IsClosed)
                     {
-                        var targetEpic = _milestones[0].Epics[0];
-                        targetEpic.Issues.Add(new GitIssue
-                        {
-                            IssueNumber = 300 + targetEpic.Issues.Count + 1,
-                            Title = title,
-                            Priority = "HIGH",
-                            Status = "OPEN"
-                        });
-                        RenderIssuesTree("All");
-                        QuickAddIssueBox.Text = string.Empty;
+                        try { blocked = await client.HasOpenBlockedByAsync(result.Number); }
+                        catch { /* best-effort — worst case this one issue just doesn't show a Blocked badge */ }
                     }
+                    if (cts.IsCancellationRequested) return;
+
+                    IssuesTree.Items.Add(CreateSearchIssueHeader(result, blocked));
                 }
             }
+            catch (Exception ex)
+            {
+                if (cts.IsCancellationRequested) return;
+                IssuesTree.Items.Clear();
+                IssuesTree.Items.Add(new TreeViewItem { Header = $"GitHub search failed: {ex.Message}" });
+                ActivityLog.Log("git-board.search", $"FAILED query=\"{query}\": {ex.Message}");
+            }
+        }
+
+        /// <summary>Shane: clearing the search box goes back to the normal live Git Board view, unchanged.</summary>
+        private void QuickAddIssueBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (string.IsNullOrWhiteSpace(QuickAddIssueBox.Text))
+            {
+                _issueSearchCts?.Cancel();
+                RenderIssuesTree("All");
+            }
+        }
+
+        private TreeViewItem CreateSearchIssueHeader(GitHubIssueResult result, bool blocked)
+        {
+            string statusLabel;
+            string statusHex;
+            if (result.IsClosed) { statusLabel = "Closed"; statusHex = "#A6E3A1"; }
+            else if (result.HasInFlightLabel) { statusLabel = "In Flight"; statusHex = "#FAB387"; }
+            else if (blocked) { statusLabel = "Blocked"; statusHex = "#F38BA8"; }
+            else { statusLabel = "Open"; statusHex = "#89B4FA"; }
+
+            var p = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 1, 0, 1) };
+
+            var numBlock = new Border
+            {
+                Background = GetBrush("Surface0Brush"),
+                CornerRadius = new CornerRadius(3),
+                Padding = new Thickness(4, 1, 4, 1),
+                Margin = new Thickness(0, 0, 6, 0)
+            };
+            numBlock.Child = new TextBlock { Text = $"#{result.Number}", FontSize = 10, FontWeight = FontWeights.Bold, Foreground = GetBrush("PeachBrush") };
+
+            var statusBadge = new Border
+            {
+                Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString(statusHex)),
+                CornerRadius = new CornerRadius(3),
+                Padding = new Thickness(4, 1, 4, 1),
+                Margin = new Thickness(0, 0, 6, 0)
+            };
+            statusBadge.Child = new TextBlock { Text = statusLabel, FontSize = 9, FontWeight = FontWeights.Bold, Foreground = Brushes.Black };
+
+            var titleBlock = new TextBlock
+            {
+                Text = result.Title,
+                FontSize = 11,
+                Foreground = result.IsClosed ? GetBrush("Subtext0Brush") : GetBrush("TextBrush"),
+                TextDecorations = result.IsClosed ? TextDecorations.Strikethrough : null
+            };
+
+            p.Children.Add(numBlock);
+            p.Children.Add(statusBadge);
+            p.Children.Add(titleBlock);
+
+            var tvi = new TreeViewItem { Header = p, Tag = result };
+
+            var cm = new ContextMenu();
+            var miOpen = new MenuItem { Header = "Open on GitHub" };
+            miOpen.Click += (s, e) =>
+            {
+                try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(result.HtmlUrl) { UseShellExecute = true }); }
+                catch { }
+            };
+            cm.Items.Add(miOpen);
+            tvi.ContextMenu = cm;
+
+            return tvi;
         }
 
         private void IssueFilter_Click(object sender, RoutedEventArgs e)

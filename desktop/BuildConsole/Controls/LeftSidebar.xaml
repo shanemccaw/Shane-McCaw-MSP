@@ -371,8 +371,10 @@
                             </Border>
                         </UniformGrid>
 
-                        <!-- Quick Add Issue Box -->
-                        <TextBox x:Name="QuickAddIssueBox" Height="26" FontSize="11" Padding="6,2" Margin="0,0,0,6" KeyDown="QuickAddIssueBox_KeyDown"/>
+                        <!-- Git #834 — real GitHub issue search (number or title, all states via the
+                             Search Issues API), not the old fake local-only "Quick Add". -->
+                        <TextBox x:Name="QuickAddIssueBox" Height="26" FontSize="11" Padding="6,2" Margin="0,0,0,6"
+                                 KeyDown="QuickAddIssueBox_KeyDown" TextChanged="QuickAddIssueBox_TextChanged"/>
 
                         <!-- Filter Chips -->
                         <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" Margin="0,0,0,8">
@@ -414,11 +416,21 @@
                                Margin="0,0,0,12" TextWrapping="Wrap"/>
 
                     <TextBlock Text="Theme" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
-                    <ComboBox Height="26" FontSize="12">
+                    <ComboBox Height="26" FontSize="12" Margin="0,0,0,12">
                         <ComboBoxItem Content="Catppuccin Mocha" IsSelected="True"/>
                         <ComboBoxItem Content="Catppuccin Latte"/>
                         <ComboBoxItem Content="One Dark Pro"/>
                     </ComboBox>
+
+                    <!-- Git #834 — Shane: "Use that to hold my PAT in app settings or
+                         something." Read/write local store (%AppData%\BuildConsole\settings.json,
+                         never committed to git) — used directly by the Git Board's real GitHub
+                         issue search (QuickAddIssueBox). -->
+                    <TextBlock Text="GitHub Personal Access Token" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
+                    <PasswordBox x:Name="GitHubPatBox" Height="26" FontSize="12" Margin="0,0,0,6"/>
+                    <Button x:Name="BtnSaveGitHubPat" Content="Save" Style="{StaticResource PrimaryButton}"
+                            HorizontalAlignment="Left" Padding="16,4" Click="BtnSaveGitHubPat_Click"/>
+                    <TextBlock x:Name="GitHubPatSavedText" Text="" FontSize="10" Foreground="{StaticResource GreenBrush}" Margin="0,4,0,0"/>
                 </StackPanel>
             </Grid>
 

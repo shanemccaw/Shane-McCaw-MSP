@@ -1406,6 +1406,12 @@ namespace BuildConsole
             SetBottomPanel(true, tabIndex: 0);
         }
 
+        /// <summary>Git #834 — the File > Settings menu item was dead (no Click handler); routes through ActivityBar.SelectSettings() so it lands on the exact same SettingsView the cog icon already opens (expanding the sidebar first if it's currently collapsed).</summary>
+        private void MenuSettings_Click(object sender, RoutedEventArgs e)
+        {
+            ActivityBar.SelectSettings();
+        }
+
         // ── ActivityBar → LeftSidebar ─────────────────────────────────────────
         private void ActivityBar_ActiveViewChanged(object? sender, string view)
         {
