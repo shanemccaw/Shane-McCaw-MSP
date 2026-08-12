@@ -454,6 +454,7 @@ export function ScrollCue({ label, align = "center" }: { label: string; align?: 
 export function PreviewBadge() {
   return (
     <div
+      data-testid="preview-badge"
       style={{
         position: "fixed",
         left: "50%",
@@ -506,6 +507,7 @@ export function JourneyUnavailable({
   action,
   surface = "dark",
   eyebrow = "Not available yet",
+  testId,
 }: {
   title: string;
   detail: string;
@@ -518,10 +520,13 @@ export function JourneyUnavailable({
    */
   surface?: "dark" | "light";
   eyebrow?: string;
+  /** Optional `data-testid` for regression coverage of a specific call site. */
+  testId?: string;
 }) {
   const light = surface === "light";
   return (
     <div
+      data-testid={testId}
       style={{
         display: "flex",
         flexDirection: "column",

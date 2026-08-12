@@ -1,0 +1,31 @@
+{
+  "issue": 888,
+  "feature": "Copilot Readiness Reveal — verdict + pillar deep-dives (Scenes 1-7, money path 3/6)",
+  "baseUrl": "{{DEPLOY_URL}}",
+
+  "uiSteps": [
+    { "action": "goto", "target": "/login" },
+    { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
+    { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
+    { "action": "click", "selector": "[data-testid='login-submit']" },
+
+    { "action": "goto", "target": "/copilot-readiness" },
+
+    { "action": "expect", "selector": "[data-cj-scene='1']", "state": "visible" },
+
+    { "action": "expect", "selector": "[data-testid='preview-badge']", "state": "hidden" },
+
+    { "action": "expect", "selector": "[data-testid='verdict-score']", "state": "visible" },
+    { "action": "expect", "selector": "[data-testid='verdict-score-unavailable']", "state": "hidden" },
+
+    { "action": "expect", "selector": "[data-cj-scene='2'] [data-testid='pillar-headline']", "state": "visible" },
+    { "action": "expect", "selector": "[data-cj-scene='2'] [data-testid='pillar-headline-unavailable']", "state": "hidden" },
+    { "action": "expect", "selector": "[data-cj-scene='2'] [data-testid='pillar-score']", "state": "visible" },
+    { "action": "expect", "selector": "[data-cj-scene='2'] [data-testid='pillar-score-unavailable']", "state": "hidden" },
+
+    { "action": "expect", "selector": "[data-cj-scene='3'] [data-testid='pillar-headline']", "state": "visible" },
+    { "action": "expect", "selector": "[data-cj-scene='3'] [data-testid='pillar-headline-unavailable']", "state": "hidden" },
+    { "action": "expect", "selector": "[data-cj-scene='3'] [data-testid='pillar-score']", "state": "visible" },
+    { "action": "expect", "selector": "[data-cj-scene='3'] [data-testid='pillar-score-unavailable']", "state": "hidden" }
+  ]
+}

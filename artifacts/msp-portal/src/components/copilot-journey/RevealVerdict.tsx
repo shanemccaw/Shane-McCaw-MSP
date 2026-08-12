@@ -147,6 +147,7 @@ function VerdictScoreUnavailable({
   if (payloadState === "error") {
     return (
       <JourneyUnavailable
+        testId="verdict-score-unavailable"
         eyebrow="Could not be loaded"
         title="Your readiness score did not load"
         detail="The request for this tenant's assessment status failed. Nothing is shown here rather than a figure nobody received."
@@ -158,6 +159,7 @@ function VerdictScoreUnavailable({
   if (evaluation.status === "insufficient_data") {
     return (
       <JourneyUnavailable
+        testId="verdict-score-unavailable"
         eyebrow="Not enough scan data"
         title="No scan results to score"
         detail={
@@ -172,6 +174,7 @@ function VerdictScoreUnavailable({
 
   return (
     <JourneyUnavailable
+      testId="verdict-score-unavailable"
       title="No readiness score yet"
       detail={
         concise
@@ -548,6 +551,7 @@ export function RevealVerdict({
               ) : (
                 <>
                   <div
+                    data-testid="verdict-score"
                     style={{
                       fontSize: 210,
                       fontWeight: 800,
@@ -648,6 +652,7 @@ export function RevealVerdict({
               ) : (
                 <>
                   <div
+                    data-testid="verdict-score"
                     style={{
                       fontSize: "clamp(84px,26vw,132px)",
                       fontWeight: 800,

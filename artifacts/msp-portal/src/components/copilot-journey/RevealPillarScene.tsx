@@ -238,6 +238,7 @@ export function RevealPillarScene({
 
             {pillar.headline ? (
               <h2
+                data-testid="pillar-headline"
                 style={{
                   margin: 0,
                   fontSize: HEADLINE_SIZE,
@@ -259,6 +260,7 @@ export function RevealPillarScene({
                   <PillarPending label={`Reading your ${identity.label.toLowerCase()} findings…`} />
                 ) : payloadState === "error" ? (
                   <JourneyUnavailable
+                    testId="pillar-headline-unavailable"
                     eyebrow="Could not be loaded"
                     title="Your scan results did not load"
                     detail="The request for this tenant's findings failed, so this scene is showing nothing rather than describing a scan it never received."
@@ -267,6 +269,7 @@ export function RevealPillarScene({
                 ) : (
                   /* Only honest once the payload has actually arrived. */
                   <JourneyUnavailable
+                    testId="pillar-headline-unavailable"
                     title={`No ${identity.label.toLowerCase()} finding was recorded`}
                     detail="The last scan returned nothing quotable in this area. That is not the same as a clean result — a check that could not run leaves no finding either."
                   />
@@ -365,19 +368,21 @@ export function RevealPillarScene({
                   <PillarPending label="Reading this pillar's score…" />
                 ) : payloadState === "error" ? (
                   <JourneyUnavailable
+                    testId="pillar-score-unavailable"
                     eyebrow="Could not be loaded"
                     title="No score to show"
                     detail="This tenant's pillar scores did not load, so none is being shown. It is not a zero and it is not a pass."
                   />
                 ) : (
                   <JourneyUnavailable
+                    testId="pillar-score-unavailable"
                     title="Not scored on this run"
                     detail="No evaluable rule fed this pillar, so there is nothing to score. It appears here the moment a check in this area returns a result."
                   />
                 )
               ) : (
                 <>
-                  <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+                  <div data-testid="pillar-score" style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
                     <span
                       style={{
                         fontSize: SCORE_SIZE,
