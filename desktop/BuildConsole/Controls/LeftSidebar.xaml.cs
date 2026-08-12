@@ -129,6 +129,14 @@ namespace BuildConsole.Controls
         /// the failure sitting silently as inline tree text nobody notices).
         /// </summary>
         public event EventHandler<string?>? SyncError;
+        /// <summary>
+        /// Git #859 (Git panel Phase 1, sub-issue of Epic #803) — fired after
+        /// the debounced FileSystemWatcher refresh runs RefreshGitStatus(), on
+        /// the UI thread. Git panel Phase 2 (#860)'s commit graph hooks into
+        /// this same trigger so it refreshes together with the Changes list,
+        /// not on a separate/inconsistent schedule.
+        /// </summary>
+        public event EventHandler? WorkspaceChanged;
         private bool _isPinned = true;
 
         private void BtnPinSidebar_Click(object sender, RoutedEventArgs e)
@@ -194,6 +202,7 @@ namespace BuildConsole.Controls
         {
             InitializeComponent();
             LoadWorkspaceExplorer(RootWorkspacePath);
+            SetupGitWatcher();
 
             // Git #834 — pre-fill the Settings tab's PAT box from the local store
             // (%AppData%\BuildConsole\settings.json) so it round-trips visibly.
@@ -630,13 +639,20 @@ namespace BuildConsole.Controls
                 return;
             }
 
+            // Git #851 — cached even when the signature is unchanged below
+            // (that check only guards the TREE rebuild) so BuildQueuePanel's
+            // "open the chat for this issue" click always has the latest
+            // real chat list to search, not just whatever happened to be
+            // cached the last time the tree actually re-rendered.
+            _lastBoardChats = board.Chats;
+            _chatEpicById = board.Epics.ToDictionary(e => e.Id);
+
             var signature = System.Text.Json.JsonSerializer.Serialize(board);
             if (signature == _lastBoardSignature) return;
             _lastBoardSignature = signature;
             ChatsTree.Items.Clear();
 
-            var epicById = board.Epics.ToDictionary(e => e.Id);
-            _chatEpicById = epicById;
+            var epicById = _chatEpicById;
             var byEpic = board.Chats.Where(c => c.EpicId.HasValue).GroupBy(c => c.EpicId!.Value);
             var unlinked = board.Chats.Where(c => !c.EpicId.HasValue).ToList();
 
@@ -711,9 +727,29 @@ namespace BuildConsole.Controls
         }
 
         private Dictionary<int, BoardEpic> _chatEpicById = new();
+        private List<BoardChat> _lastBoardChats = new();
 
         /// <summary>Git #829 — MainWindow needs the real epic TITLE (not just its id) for the right panel's "Issues in this epic" header; reuses the same lookup PopulateChatsTree already built rather than a second fetch.</summary>
         public string? GetEpicTitle(int epicId) => _chatEpicById.TryGetValue(epicId, out var epic) ? epic.Title : null;
+
+        /// <summary>
+        /// Git #851 — Shane: "When clicking on an In-Flight Still Open
+        /// issue, it should open the chat that is associated to that
+        /// issue." A chat can be linked to the issue directly
+        /// (IssueGithubNumber) or via its epic (EpicId -> that epic's own
+        /// GithubNumber) - checks both, same two paths ChatsTree_
+        /// SelectedItemChanged already resolves the other direction. Null
+        /// means no chat has ever been linked to this issue/epic yet.
+        /// </summary>
+        public BoardChat? FindChatForIssue(int githubNumber)
+        {
+            var direct = _lastBoardChats.FirstOrDefault(c => c.IssueGithubNumber == githubNumber);
+            if (direct != null) return direct;
+
+            var epic = _chatEpicById.Values.FirstOrDefault(e => e.GithubNumber == githubNumber);
+            if (epic == null) return null;
+            return _lastBoardChats.FirstOrDefault(c => c.EpicId == epic.Id);
+        }
 
         private void ChatsTree_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
         {
@@ -1394,6 +1430,87 @@ namespace BuildConsole.Controls
         }
 
         // ── GIT SOURCE CONTROL ENGINE ───────────────────────────────────────
+
+        // Git #859 (Git panel Phase 1, sub-issue of Epic #803) — Shane: "It
+        // doesn't stay up to date... It should work like VS Code Source
+        // Control panel." Before this, RefreshGitStatus() only ran on
+        // view-switch to Git, the manual refresh button, or right after the
+        // app's own commit/push/pull, so a commit from anywhere else (a
+        // Claude Code session, another tool, a manual `git` command) left the
+        // panel stale until Shane happened to click over to it.
+        private FileSystemWatcher? _gitWatcher;
+        private System.Threading.Timer? _gitWatcherDebounceTimer;
+        private static readonly TimeSpan GitWatcherDebounceDelay = TimeSpan.FromMilliseconds(750);
+
+        private void SetupGitWatcher()
+        {
+            try
+            {
+                _gitWatcher = new FileSystemWatcher(RootWorkspacePath)
+                {
+                    IncludeSubdirectories = true,
+                    NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName | NotifyFilters.LastWrite | NotifyFilters.Size
+                };
+                _gitWatcher.Changed += OnWorkspaceFileSystemEvent;
+                _gitWatcher.Created += OnWorkspaceFileSystemEvent;
+                _gitWatcher.Deleted += OnWorkspaceFileSystemEvent;
+                _gitWatcher.Renamed += OnWorkspaceFileSystemEvent;
+                _gitWatcher.Error += (s, e) => ActivityLog.Log("git-panel.watcher", $"watcher error: {e.GetException().Message}");
+                _gitWatcher.EnableRaisingEvents = true;
+                ActivityLog.Log("git-panel.watcher", $"watching {RootWorkspacePath} for auto-refresh");
+            }
+            catch (Exception ex)
+            {
+                // Best-effort — the manual refresh button and the existing
+                // switch-to-Git-view/post-command refreshes still work fine
+                // without a live watcher.
+                ActivityLog.Log("git-panel.watcher", $"setup FAILED: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// FileSystemWatcher events fire on a background thread, and a single
+        /// git operation (a pull, a checkout, a large commit) touches many
+        /// files at once, so this both debounces AND marshals onto the UI
+        /// thread: each new event restarts a short timer rather than
+        /// refreshing immediately, coalescing a burst of N events into
+        /// exactly one RefreshGitStatus() call once things go quiet.
+        /// </summary>
+        private void OnWorkspaceFileSystemEvent(object sender, FileSystemEventArgs e)
+        {
+            if (IsIgnorableGitInternalPath(e.FullPath)) return;
+
+            _gitWatcherDebounceTimer?.Dispose();
+            _gitWatcherDebounceTimer = new System.Threading.Timer(_ =>
+            {
+                Dispatcher.Invoke(() =>
+                {
+                    RefreshGitStatus();
+                    WorkspaceChanged?.Invoke(this, EventArgs.Empty);
+                });
+            }, null, GitWatcherDebounceDelay, System.Threading.Timeout.InfiniteTimeSpan);
+        }
+
+        /// <summary>
+        /// git itself writes constantly under .git/objects (loose objects,
+        /// every commit/checkout/pull) and .git/logs (reflogs) as a side
+        /// effect of its own operations, not because Shane's working tree
+        /// changed — without this filter the watcher would refresh-storm on
+        /// git's own internal bookkeeping. Everything else under .git/ (HEAD,
+        /// index, refs/) is a real signal worth refreshing on.
+        /// </summary>
+        private static bool IsIgnorableGitInternalPath(string fullPath)
+        {
+            string normalized = fullPath.Replace('\\', '/');
+            int gitIdx = normalized.IndexOf("/.git/", StringComparison.OrdinalIgnoreCase);
+            if (gitIdx < 0) return false;
+
+            string insideGit = normalized.Substring(gitIdx + "/.git/".Length);
+            return insideGit.StartsWith("objects/", StringComparison.OrdinalIgnoreCase)
+                || insideGit.StartsWith("logs/", StringComparison.OrdinalIgnoreCase)
+                || insideGit.EndsWith(".lock", StringComparison.OrdinalIgnoreCase);
+        }
+
         public async void RefreshGitStatus()
         {
             GitStatusSummaryText.Text = "REFRESHING GIT STATUS...";
