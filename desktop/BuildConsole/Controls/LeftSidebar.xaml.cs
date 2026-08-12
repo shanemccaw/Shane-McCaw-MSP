@@ -1819,7 +1819,7 @@ namespace BuildConsole.Controls
                         // have 2+). Fields are \x1f-delimited because a commit
                         // subject can itself contain '|', which the old naive
                         // pipe-split mangled.
-                        Arguments = $"log --all --date-order -n {GitGraphMaxCommits} --pretty=format:%H%x1f%P%x1f%s%x1f%an%x1f%cr",
+                        Arguments = $"log --exclude=refs/stash --all --date-order -n {GitGraphMaxCommits} --pretty=format:%H%x1f%P%x1f%s%x1f%an%x1f%cr",
                         WorkingDirectory = RootWorkspacePath,
                         RedirectStandardOutput = true,
                         RedirectStandardError = true,
