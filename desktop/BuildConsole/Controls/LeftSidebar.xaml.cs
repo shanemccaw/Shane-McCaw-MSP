@@ -89,6 +89,8 @@ namespace BuildConsole.Controls
         public string Value { get; set; } = string.Empty;
         public Visibility ValueVisibility => string.IsNullOrEmpty(Value) ? Visibility.Collapsed : Visibility.Visible;
         public string Timestamp { get; set; } = DateTime.Now.ToString("HH:mm:ss");
+        /// <summary>Git #806 — raw JSON of the manifest's optional uiSteps[].captureResponse block, carried through untouched for the UI executor (#809) to parse. Null for manually-recorded steps.</summary>
+        public string? CaptureResponse { get; set; }
     }
 
     public partial class LeftSidebar : UserControl
@@ -239,6 +241,44 @@ namespace BuildConsole.Controls
         {
             RecordedSteps.Clear();
             AutomationStepsList.Items.Clear();
+        }
+
+        // ── Git #806: manifest loader (Epic #803 Phase 2) ───────────────────
+        /// <summary>Fired after a manifest loads successfully — carries the parsed manifest so MainWindow can track it for Menu &gt; Run &gt; "Run Tests (Current Issue)".</summary>
+        public event EventHandler<TestManifest>? ManifestLoaded;
+
+        private void BtnLoadManifest_Click(object sender, RoutedEventArgs e)
+        {
+            string manifestsDir = Path.Combine(RootWorkspacePath, "test-manifests");
+            var dlg = new Microsoft.Win32.OpenFileDialog
+            {
+                Title = "Load Test Manifest",
+                Filter = "Test manifest (*.json)|*.json|All files (*.*)|*.*",
+                InitialDirectory = Directory.Exists(manifestsDir) ? manifestsDir : RootWorkspacePath
+            };
+            if (dlg.ShowDialog() != true) return;
+
+            var manifest = TestManifest.LoadFromFile(dlg.FileName);
+            if (manifest == null)
+            {
+                MessageBox.Show($"Couldn't parse {dlg.FileName} as a test manifest.", "Load Manifest");
+                return;
+            }
+
+            RecordedSteps.Clear();
+            AutomationStepsList.Items.Clear();
+            for (int i = 0; i < manifest.UiSteps.Count; i++)
+            {
+                var step = manifest.UiSteps[i];
+                AddRecordedStep(step.Action, step.Selector ?? step.Target ?? string.Empty, "div", step.Value ?? step.State ?? string.Empty);
+                RecordedSteps[^1].CaptureResponse = step.CaptureResponseJson;
+            }
+
+            ApiTestsBadge.Text = $"API: {manifest.ApiTests.Count}";
+            GraphTestsBadge.Text = $"Graph: {manifest.GraphTests.Count}";
+            ManifestBadgesRow.Visibility = Visibility.Visible;
+
+            ManifestLoaded?.Invoke(this, manifest);
         }
 
         /// <summary>Returns the currently displayed view name.</summary>

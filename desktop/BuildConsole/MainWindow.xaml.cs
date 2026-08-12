@@ -67,6 +67,9 @@ namespace BuildConsole
         private DispatcherTimer? _deployStatusTimer;
         private string? _lastSeenDeployCommitHash;
 
+        // ── Git #806: test manifest runner (Epic #803 Phase 2) ───────────────────
+        private BuildConsole.Services.TestManifest? _loadedManifest;
+
         public MainWindow()
         {
             InitializeComponent();
@@ -150,6 +153,10 @@ namespace BuildConsole
                 SetBottomPanel(true, 2);
                 SqlRunnerView.LoadFromGitHub(path);
             };
+
+            // Git #806 (Epic #803 Phase 2) — tracks the manifest last loaded via the
+            // Automation sidebar's Load Manifest button for Menu > Run > "Run Tests (Current Issue)".
+            LeftSidebar.ManifestLoaded += (s, manifest) => _loadedManifest = manifest;
 
             // ActivityBar quick navigation
             ActivityBar.QuickNavRequested += ActivityBar_QuickNavRequested;
@@ -2091,6 +2098,76 @@ namespace BuildConsole
             {
                 targetPanes[i % 4].Items.Add(allItems[i]);
             }
+        }
+
+        // ── Git #806: test manifest runner (Epic #803 Phase 2 — orchestration shell) ──
+        // This phase wires the Menu > Run items, tracks the manifest last loaded via
+        // the Automation sidebar, and gives #807 (apiTests), #808 (graphTests) and
+        // #809 (uiSteps, retrofitting AutomationRunnerWindow) a single, stable entry
+        // point — RunManifestAsync — to plug their real execution into. Nothing here
+        // actually runs an apiTest/graphTest/uiStep yet.
+        private void RunTestsCurrentIssue_Click(object sender, RoutedEventArgs e)
+        {
+            if (_loadedManifest == null)
+            {
+                BuildConsole.Services.ActivityLog.Log("testing.manifest-runner",
+                    "Run Tests (Current Issue): no manifest loaded — use Load Manifest in the Automation sidebar first.");
+                MessageBox.Show("No manifest loaded — use Load Manifest in the Automation sidebar first.", "Run Tests");
+                return;
+            }
+            _ = RunManifestAsync(_loadedManifest, isRegression: false);
+        }
+
+        private async void RunRegressionSuite_Click(object sender, RoutedEventArgs e)
+        {
+            string? repoRoot = BuildConsole.Services.BuildTrackerConfig.FindRepoRoot();
+            if (repoRoot == null)
+            {
+                BuildConsole.Services.ActivityLog.Log("testing.manifest-runner",
+                    "Run Regression Suite: no repo root found (missing scripts\\build-queue-watcher.config.json).");
+                return;
+            }
+
+            string suitePath = Path.Combine(repoRoot, "test-manifests", "_regression-suite.json");
+            if (!File.Exists(suitePath))
+            {
+                BuildConsole.Services.ActivityLog.Log("testing.manifest-runner", $"Run Regression Suite: {suitePath} not found.");
+                return;
+            }
+
+            List<string> manifestFiles;
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(await File.ReadAllTextAsync(suitePath));
+                manifestFiles = doc.RootElement.TryGetProperty("manifests", out var arr)
+                    ? arr.EnumerateArray().Select(v => v.GetString() ?? "").Where(s => s.Length > 0).ToList()
+                    : new List<string>();
+            }
+            catch (Exception ex)
+            {
+                BuildConsole.Services.ActivityLog.Log("testing.manifest-runner", $"Couldn't parse {suitePath}: {ex.Message}");
+                return;
+            }
+
+            BuildConsole.Services.ActivityLog.Log("testing.manifest-runner", $"Run Regression Suite: {manifestFiles.Count} manifest(s) queued.");
+            foreach (var relPath in manifestFiles)
+            {
+                var manifest = BuildConsole.Services.TestManifest.LoadFromFile(Path.Combine(repoRoot, "test-manifests", relPath));
+                if (manifest == null)
+                {
+                    BuildConsole.Services.ActivityLog.Log("testing.manifest-runner", $"Skipping {relPath} — couldn't load/parse.");
+                    continue;
+                }
+                await RunManifestAsync(manifest, isRegression: true);
+            }
+        }
+
+        private async System.Threading.Tasks.Task RunManifestAsync(BuildConsole.Services.TestManifest manifest, bool isRegression)
+        {
+            string mode = isRegression ? "regression" : "single";
+            BuildConsole.Services.ActivityLog.Log("testing.manifest-runner",
+                $"[{mode}] Running manifest for issue #{manifest.Issue} ({manifest.Feature}) — {manifest.ApiTests.Count} apiTests, {manifest.GraphTests.Count} graphTests, {manifest.UiSteps.Count} uiSteps. Executors not wired yet (#807/#808/#809).");
+            await System.Threading.Tasks.Task.CompletedTask;
         }
     }
 

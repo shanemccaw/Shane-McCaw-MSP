@@ -93,6 +93,10 @@
                             <MenuItem Header="_Run">
                                 <MenuItem Header="Start Build"     Click="GitChip_Click" Tag="dotnet build --configuration Release"/>
                                 <MenuItem Header="Run Verification"/>
+                                <Separator/>
+                                <!-- Git #806 (Epic #803 Phase 2) - single mode runs the manifest loaded via the Automation sidebar's Load Manifest button; regression mode sweeps test-manifests/_regression-suite.json -->
+                                <MenuItem Header="Run Tests (Current Issue)" Click="RunTestsCurrentIssue_Click"/>
+                                <MenuItem Header="Run Regression Suite"      Click="RunRegressionSuite_Click"/>
                             </MenuItem>
 
                             <MenuItem Header="_Terminal" Click="OpenTerminal_Click">

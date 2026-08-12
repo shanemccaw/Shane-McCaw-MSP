@@ -444,6 +444,23 @@
 
                         <Button x:Name="BtnClearSteps" Margin="0,6,0,0" Content="🗑 Clear Actions" Click="BtnClearSteps_Click"/>
 
+                        <!-- Git #806 (Epic #803 Phase 2) — loads /test-manifests/{issue}-{feature-slug}.json, maps uiSteps onto AutomationAction/AutomationStepsList below -->
+                        <Button x:Name="BtnLoadManifest" Margin="0,6,0,0" Content="📄 Load Manifest" Click="BtnLoadManifest_Click"/>
+
+                        <!-- apiTests/graphTests counts from the loaded manifest — executed by #807/#808, not this phase -->
+                        <Grid x:Name="ManifestBadgesRow" Margin="0,6,0,0" Visibility="Collapsed">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Border Grid.Column="0" Background="{StaticResource Surface0Brush}" CornerRadius="4" Padding="6,4" Margin="0,0,3,0">
+                                <TextBlock x:Name="ApiTestsBadge" Text="API: 0" FontSize="10" FontWeight="Bold" Foreground="{StaticResource BlueBrush}" HorizontalAlignment="Center"/>
+                            </Border>
+                            <Border Grid.Column="1" Background="{StaticResource Surface0Brush}" CornerRadius="4" Padding="6,4" Margin="3,0,0,0">
+                                <TextBlock x:Name="GraphTestsBadge" Text="Graph: 0" FontSize="10" FontWeight="Bold" Foreground="{StaticResource MauveBrush}" HorizontalAlignment="Center"/>
+                            </Border>
+                        </Grid>
+
                         <Border x:Name="RecordingBadge" Background="#31F38BA8" CornerRadius="4" Padding="6,4" Margin="0,8,0,0" Visibility="Collapsed">
                             <TextBlock Text="● RECORDING IN PROGRESS..." FontSize="10" FontWeight="Bold" Foreground="{StaticResource RedBrush}" HorizontalAlignment="Center"/>
                         </Border>
