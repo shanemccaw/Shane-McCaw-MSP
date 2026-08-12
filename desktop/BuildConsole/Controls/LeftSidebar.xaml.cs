@@ -1113,6 +1113,9 @@ namespace BuildConsole.Controls
         /// <summary>Git #829 — MainWindow needs the real epic TITLE (not just its id) for the right panel's "Issues in this epic" header; reuses the same lookup PopulateChatsTree already built rather than a second fetch.</summary>
         public string? GetEpicTitle(int epicId) => _chatEpicById.TryGetValue(epicId, out var epic) ? epic.Title : null;
 
+        /// <summary>Git #910 — the epic's real GitHub issue number, so BuildQueuePanel can fetch its real sub-issues directly (GetSubIssuesAsync) instead of the disconnected internal bt_issues.epic_id table.</summary>
+        public int? GetEpicGithubNumber(int epicId) => _chatEpicById.TryGetValue(epicId, out var epic) ? epic.GithubNumber : null;
+
         /// <summary>
         /// Git #851 — Shane: "When clicking on an In-Flight Still Open
         /// issue, it should open the chat that is associated to that

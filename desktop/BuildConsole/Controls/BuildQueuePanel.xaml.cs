@@ -373,20 +373,34 @@ namespace BuildConsole.Controls
         // Git #829 — Shane: "I need the right panel to have another section
         // that shows me all the issues assigned to the chat I'm on."
         // MainWindow calls this from EditorTabs_SelectionChanged whenever
-        // the active tab changes; null/null clears it (not a chat tab, or a
-        // chat with no linked epic).
+        // the active tab changes; null/null/null clears it (not a chat tab,
+        // or a chat with no linked epic).
         private int? _activeChatEpicId;
 
-        /// <summary>Git #874 — the epic issues currently loaded, paired with their real GitHub state (null when unresolvable, e.g. no PAT configured or no linked GitHub number) so EpicFilterChip_Click can re-filter in place without a refetch.</summary>
-        private List<(IssueSummary Issue, string? RealState)> _lastEpicIssues = new();
+        /// <summary>
+        /// Git #910 — Shane: "how long does it take now when I assign an
+        /// issue to a parent for it to show up in my right side panel under
+        /// it's parent?... 906, 908, 909 should be showing." It never would
+        /// have: this used to read the internal bt_issues.epic_id table
+        /// (server-side), a completely separate system from GitHub's real
+        /// sub-issue graph that "Assign to Epic..." (#844) actually writes
+        /// to - no sync connects the two, so it wasn't a timing issue, it
+        /// would never show up. Now fetches the epic's REAL sub-issues
+        /// directly (GitHubApiClient.GetSubIssuesAsync), same real-GitHub-
+        /// state principle #839/#874 established elsewhere in this app -
+        /// each GitHubSubIssue already carries its own real State, so the
+        /// old separate FetchRealIssueStatesAsync per-issue lookup this
+        /// used to need is gone entirely, not just redirected.
+        /// </summary>
+        private List<GitHubSubIssue> _lastEpicIssues = new();
         private string _epicFilter = "Open";
 
-        public async void SetActiveChatEpic(int? epicId, string? epicTitle)
+        public async void SetActiveChatEpic(int? epicId, int? epicGithubNumber, string? epicTitle)
         {
             if (epicId == _activeChatEpicId) return;
             _activeChatEpicId = epicId;
 
-            if (epicId == null || _api == null || !_api.IsConfigured)
+            if (epicId == null)
             {
                 ChatEpicIssuesSection.Visibility = Visibility.Collapsed;
                 return;
@@ -396,12 +410,27 @@ namespace BuildConsole.Controls
             ChatEpicIssuesSection.Visibility = Visibility.Visible;
             _lastEpicIssues = new();
             ChatEpicIssuesList.Items.Clear();
+
+            if (epicGithubNumber == null)
+            {
+                ChatEpicIssuesList.Items.Add(new ListBoxItem { Content = "This epic has no linked GitHub issue.", Foreground = (Brush)Application.Current.FindResource("Subtext1Brush") });
+                return;
+            }
+
+            var settings = BuildConsoleSettings.Load();
+            if (!settings.HasGitHubPat)
+            {
+                ChatEpicIssuesList.Items.Add(new ListBoxItem { Content = "No GitHub PAT configured — set one in Settings (cog icon / File > Settings).", Foreground = (Brush)Application.Current.FindResource("Subtext1Brush") });
+                return;
+            }
+
             ChatEpicIssuesList.Items.Add(new ListBoxItem { Content = "Loading…", Foreground = (Brush)Application.Current.FindResource("Subtext1Brush") });
 
-            List<IssueSummary> issues;
+            List<GitHubSubIssue> issues;
             try
             {
-                issues = await _api.GetIssuesForEpicAsync(epicId.Value);
+                var client = new GitHubApiClient(settings.GitHubPat);
+                issues = await client.GetSubIssuesAsync(epicGithubNumber.Value);
             }
             catch (Exception ex)
             {
@@ -413,49 +442,11 @@ namespace BuildConsole.Controls
             // The tab may have changed again while that fetch was in flight.
             if (_activeChatEpicId != epicId) return;
 
-            // Git #874 — Shane: "three filters, All, Open, Closed"... "filtering
-            // ChatEpicIssuesList by real GitHub issue state (same real-state
-            // pattern #839 established for the Git Board - not a label)".
-            // IssueSummary.Status here is the build-tracker DB's own status,
-            // not real GitHub state, so it's ignored for filtering purposes -
-            // real state comes from a direct GitHubApiClient.GetIssueAsync per
-            // linked issue number instead (best-effort: no PAT configured, or
-            // an issue with no linked GitHub number, resolves to null/unknown
-            // and is treated as still-open rather than silently hidden).
-            var realStates = await FetchRealIssueStatesAsync(
-                issues.Where(i => i.GithubNumber.HasValue).Select(i => i.GithubNumber!.Value).ToList());
-            if (_activeChatEpicId != epicId) return;
-
-            _lastEpicIssues = issues
-                .Select(i => (Issue: i, RealState: i.GithubNumber.HasValue && realStates.TryGetValue(i.GithubNumber.Value, out var s) ? s : null))
-                .ToList();
+            _lastEpicIssues = issues;
             RenderChatEpicIssues();
         }
 
-        /// <summary>Git #874 — best-effort real-state lookup, one REST GET per distinct linked issue number (mirrors IssueDetailView's own GetIssueAsync usage); a missing PAT or a per-issue fetch failure just leaves that issue out of the result rather than failing the whole list.</summary>
-        private static async System.Threading.Tasks.Task<Dictionary<int, string>> FetchRealIssueStatesAsync(List<int> numbers)
-        {
-            var result = new Dictionary<int, string>();
-            if (numbers.Count == 0) return result;
-
-            var settings = BuildConsoleSettings.Load();
-            if (!settings.HasGitHubPat) return result;
-
-            var client = new GitHubApiClient(settings.GitHubPat);
-            var tasks = numbers.Distinct().Select(async n =>
-            {
-                try { var issue = await client.GetIssueAsync(n); return (Number: n, State: issue?.State); }
-                catch { return (Number: n, State: (string?)null); }
-            });
-
-            foreach (var (number, state) in await System.Threading.Tasks.Task.WhenAll(tasks))
-            {
-                if (state != null) result[number] = state;
-            }
-            return result;
-        }
-
-        private static bool IsRealClosed(string? realState) => string.Equals(realState, "closed", StringComparison.OrdinalIgnoreCase);
+        private static bool IsRealClosed(string state) => string.Equals(state, "closed", StringComparison.OrdinalIgnoreCase);
 
         /// <summary>Git #874 — re-filters the already-fetched _lastEpicIssues in place (All/Open/Closed); called both after a fresh SetActiveChatEpic load and from EpicFilterChip_Click.</summary>
         private void RenderChatEpicIssues()
@@ -463,14 +454,14 @@ namespace BuildConsole.Controls
             ChatEpicIssuesList.Items.Clear();
             if (_lastEpicIssues.Count == 0)
             {
-                ChatEpicIssuesList.Items.Add(new ListBoxItem { Content = "No issues under this epic yet.", Foreground = (Brush)Application.Current.FindResource("Subtext1Brush") });
+                ChatEpicIssuesList.Items.Add(new ListBoxItem { Content = "No sub-issues under this epic yet.", Foreground = (Brush)Application.Current.FindResource("Subtext1Brush") });
                 return;
             }
 
             var filtered = _epicFilter switch
             {
-                "Open"   => _lastEpicIssues.Where(x => !IsRealClosed(x.RealState)).ToList(),
-                "Closed" => _lastEpicIssues.Where(x => IsRealClosed(x.RealState)).ToList(),
+                "Open"   => _lastEpicIssues.Where(i => !IsRealClosed(i.State)).ToList(),
+                "Closed" => _lastEpicIssues.Where(i => IsRealClosed(i.State)).ToList(),
                 _        => _lastEpicIssues,
             };
 
@@ -486,20 +477,20 @@ namespace BuildConsole.Controls
                 return;
             }
 
-            foreach (var (issue, realState) in filtered)
+            foreach (var issue in filtered)
             {
-                var (icon, hex) = IsRealClosed(realState) ? ("✅", "#7FAE91") : ("⏳", "#8F8C88");
+                var (icon, hex) = IsRealClosed(issue.State) ? ("✅", "#7FAE91") : ("⏳", "#8F8C88");
                 var panel = new StackPanel { Orientation = Orientation.Horizontal };
                 panel.Children.Add(new TextBlock { Text = icon + " ", FontSize = 12, Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex)), VerticalAlignment = VerticalAlignment.Center });
                 panel.Children.Add(new TextBlock
                 {
-                    Text = issue.GithubNumber.HasValue ? $"#{issue.GithubNumber} — {issue.Title}" : issue.Title,
+                    Text = $"#{issue.Number} — {issue.Title}",
                     FontSize = 12,
                     Foreground = (Brush)Application.Current.FindResource("TextBrush"),
                     TextWrapping = TextWrapping.Wrap,
                     VerticalAlignment = VerticalAlignment.Center,
                 });
-                ChatEpicIssuesList.Items.Add(new ListBoxItem { Content = panel });
+                ChatEpicIssuesList.Items.Add(new ListBoxItem { Content = panel, ToolTip = issue.HtmlUrl });
             }
         }
 

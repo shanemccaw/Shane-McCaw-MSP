@@ -61,6 +61,16 @@ namespace BuildConsole.Services
         public string Login { get; set; } = "";
     }
 
+    /// <summary>Git #910 — one entry from `GET /issues/{n}/sub_issues`, the real GitHub sub-issues API (same family the existing `POST .../sub_issues` "Assign to Epic" call already uses).</summary>
+    public class GitHubSubIssue
+    {
+        public int Number { get; set; }
+        public string Title { get; set; } = "";
+        public string State { get; set; } = "";
+        [JsonPropertyName("html_url")]
+        public string HtmlUrl { get; set; } = "";
+    }
+
     /// <summary>Git #842 (Git Board Phase 4) — the fields of `POST /issues`'s response actually used: the new issue's number/url plus its numeric `id` for the `sub_issues` attach call.</summary>
     public class CreatedIssue
     {
@@ -253,6 +263,33 @@ namespace BuildConsole.Services
         private class GitHubSearchResponse
         {
             public List<GitHubIssueResult> Items { get; set; } = new();
+        }
+
+        /// <summary>
+        /// Git #910 — Shane: "how long does it take now when I assign an
+        /// issue to a parent for it to show up in my right side panel under
+        /// it's parent?... 906, 908, 909 should be showing." Root cause:
+        /// "Issues in this Epic" (BuildQueuePanel) was reading the internal
+        /// bt_issues.epic_id table server-side - a completely separate
+        /// system from GitHub's real sub-issue graph that "Assign to
+        /// Epic..." (#844) actually writes to. No sync connects the two, so
+        /// it was never a timing issue - it would never show up no matter
+        /// how long Shane waited. Fetches the epic's REAL sub-issues
+        /// directly instead, same real-GitHub-state principle #839/#874
+        /// already established elsewhere in this app.
+        /// </summary>
+        public async Task<List<GitHubSubIssue>> GetSubIssuesAsync(int parentNumber)
+        {
+            try
+            {
+                var subIssues = await _http.GetFromJsonAsync<List<GitHubSubIssue>>(
+                    $"repos/{Owner}/{Repo}/issues/{parentNumber}/sub_issues", JsonOpts);
+                return subIssues ?? new List<GitHubSubIssue>();
+            }
+            catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                return new List<GitHubSubIssue>();
+            }
         }
 
         /// <summary>Git #840 (Git Board Phase 2) — real `GET /issues/{n}`, the full current title/body for the issue detail panel.</summary>

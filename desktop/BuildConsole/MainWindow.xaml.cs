@@ -643,11 +643,16 @@ namespace BuildConsole
                 // viewer) clears the section.
                 if (EditorTabs.SelectedItem is TabItem { Tag: BuildConsole.Services.BoardChat chat })
                 {
-                    BuildQueuePanel.SetActiveChatEpic(chat.EpicId, chat.EpicId.HasValue ? LeftSidebar.GetEpicTitle(chat.EpicId.Value) : null);
+                    // Git #910 — the real GitHub epic number now goes along with the
+                    // internal epicId/title, so BuildQueuePanel can fetch real sub-issues.
+                    BuildQueuePanel.SetActiveChatEpic(
+                        chat.EpicId,
+                        chat.EpicId.HasValue ? LeftSidebar.GetEpicGithubNumber(chat.EpicId.Value) : null,
+                        chat.EpicId.HasValue ? LeftSidebar.GetEpicTitle(chat.EpicId.Value) : null);
                 }
                 else
                 {
-                    BuildQueuePanel.SetActiveChatEpic(null, null);
+                    BuildQueuePanel.SetActiveChatEpic(null, null, null);
                 }
             }
         }
