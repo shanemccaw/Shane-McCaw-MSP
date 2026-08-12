@@ -215,6 +215,36 @@ namespace BuildConsole.Services
             }
         }
 
+        /// <summary>
+        /// Git #875 — Shane: "the progress on the Milestone node isnt right...
+        /// it says 0%... I know I have things closed in all these current
+        /// epics." Root cause: the Git Board's own GraphQL fetch only ever
+        /// asks for OPEN issues (Git #839 - "done done get out of my view"),
+        /// so a milestone's completed/total counts computed from THAT list
+        /// can never see a closed issue - completed is structurally always 0.
+        /// GitHub's real milestone object already tracks open/closed counts
+        /// itself (`GET /repos/{o}/{r}/milestones`), so this reads the real
+        /// numbers directly instead of trying to derive them from a list that
+        /// was deliberately filtered down to OPEN-only.
+        /// </summary>
+        public class GitHubMilestoneInfo
+        {
+            public int Number { get; set; }
+            public string Title { get; set; } = "";
+            [JsonPropertyName("open_issues")]
+            public int OpenIssues { get; set; }
+            [JsonPropertyName("closed_issues")]
+            public int ClosedIssues { get; set; }
+        }
+
+        /// <summary>Git #875 — real open+closed counts per milestone, state=all so both open and fully-closed milestones come back.</summary>
+        public async Task<List<GitHubMilestoneInfo>> GetMilestonesAsync()
+        {
+            var milestones = await _http.GetFromJsonAsync<List<GitHubMilestoneInfo>>(
+                $"repos/{Owner}/{Repo}/milestones?state=all&per_page=100", JsonOpts);
+            return milestones ?? new List<GitHubMilestoneInfo>();
+        }
+
         private class GitHubIssueIdResult
         {
             public long Id { get; set; }

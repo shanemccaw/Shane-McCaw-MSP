@@ -33,6 +33,8 @@ namespace BuildConsole.Controls
         public string Title { get; set; } = string.Empty;
         public int CompletedCount { get; set; }
         public int TotalCount { get; set; }
+        /// <summary>Git #875 — true only for a real GitHub milestone whose open/closed counts came from GetMilestonesAsync; the synthetic "No Milestone" bucket has no real counts to report, so its progress badge is hidden entirely rather than showing a misleading "0%".</summary>
+        public bool HasRealCounts { get; set; }
         public int ProgressPercent => TotalCount == 0 ? 0 : (CompletedCount * 100 / TotalCount);
         public string ProgressStr => $"{ProgressPercent}% ({CompletedCount}/{TotalCount})";
         public List<GitEpic> Epics { get; set; } = new();
@@ -588,6 +590,7 @@ namespace BuildConsole.Controls
             }
 
             List<GitBoardIssue> issues;
+            List<GitHubApiClient.GitHubMilestoneInfo> milestoneInfos;
             try
             {
                 var client = new GitHubApiClient(settings.GitHubPat);
@@ -595,6 +598,10 @@ namespace BuildConsole.Controls
                 // view entirely ("done done get out of my view") and are
                 // reachable solely via the 🟢 Done chip (IssueFilter_Click).
                 issues = await client.ListBoardIssuesAsync(GitHubIssueState.Open);
+                // Git #875 — real open/closed counts per milestone; the issue
+                // list above is OPEN-only, so it can never supply a real
+                // "closed" count on its own (see GitMilestone.HasRealCounts).
+                milestoneInfos = await client.GetMilestonesAsync();
                 SyncError?.Invoke(this, null);
             }
             catch (Exception ex)
@@ -614,7 +621,7 @@ namespace BuildConsole.Controls
             if (signature == _lastInProgressSignature) return;
             _lastInProgressSignature = signature;
 
-            BuildBoardFromGitHub(issues);
+            BuildBoardFromGitHub(issues, milestoneInfos);
             RenderIssuesTree(_currentFilter == "Done" ? "All" : _currentFilter);
 
             // Git #845 (Git Board Phase 7) — the board's own GraphQL fetch above
@@ -719,10 +726,12 @@ namespace BuildConsole.Controls
         /// <summary>Git #844 — the last-fetched real open issues, kept around so "Assign to Epic..." can build its picker (real open issues that ARE epics) from data already in memory instead of a second GitHub round-trip.</summary>
         private List<GitBoardIssue> _lastBoardIssues = new();
 
-        private void BuildBoardFromGitHub(List<GitBoardIssue> issues)
+        private void BuildBoardFromGitHub(List<GitBoardIssue> issues, List<GitHubApiClient.GitHubMilestoneInfo> milestoneInfos)
         {
             _lastBoardIssues = issues;
             _milestones.Clear();
+
+            var milestoneInfoByNumber = milestoneInfos.ToDictionary(mi => mi.Number);
 
             static string? DeriveSqlPath(string body)
             {
@@ -766,8 +775,28 @@ namespace BuildConsole.Controls
                 if (epicsBucket.Issues.Count > 0) milestone.Epics.Add(epicsBucket);
                 if (issuesBucket.Issues.Count > 0) milestone.Epics.Add(issuesBucket);
                 if (todoBucket.Issues.Count > 0) milestone.Epics.Add(todoBucket);
-                milestone.TotalCount = list.Count;
-                milestone.CompletedCount = list.Count(i => i.IsClosed);
+
+                // Git #875 — `list` here is OPEN-only (see the fetch above), so
+                // it can never contain a closed issue to count. Real completed/
+                // total comes from GitHub's own milestone object instead, keyed
+                // by the group's real milestone number (shared by every issue in
+                // it). The synthetic "No Milestone" bucket has no such number —
+                // HasRealCounts stays false and CreateMilestoneHeader hides the
+                // badge rather than showing a fabricated total.
+                var milestoneNumber = list.FirstOrDefault()?.MilestoneNumber;
+                if (milestoneNumber.HasValue && milestoneInfoByNumber.TryGetValue(milestoneNumber.Value, out var info))
+                {
+                    milestone.TotalCount = info.OpenIssues + info.ClosedIssues;
+                    milestone.CompletedCount = info.ClosedIssues;
+                    milestone.HasRealCounts = true;
+                }
+                else
+                {
+                    milestone.TotalCount = list.Count;
+                    milestone.CompletedCount = 0;
+                    milestone.HasRealCounts = false;
+                }
+
                 if (milestone.Epics.Count > 0) _milestones.Add(milestone);
             }
         }
@@ -927,6 +956,20 @@ namespace BuildConsole.Controls
             }
         }
 
+        /// <summary>
+        /// Git #873 — Shane: "every time it refreshes it re-expands all the
+        /// tree nodes I had collapsed." RenderIssuesTree tears the whole tree
+        /// down and rebuilds it from scratch on every real data change (or
+        /// the #845 blocked-status enrichment pass, which always repaints at
+        /// its own completion), and every node was hardcoded IsExpanded=true
+        /// - any manual collapse was gone the instant either of those fired.
+        /// Keyed by milestone title / "milestone title + epic bucket title"
+        /// (stable across rebuilds since those don't change from data
+        /// updates), not by TreeViewItem instance, since the instances
+        /// themselves are thrown away and recreated every render.
+        /// </summary>
+        private readonly HashSet<string> _collapsedNodeKeys = new();
+
         private void RenderIssuesTree(string filter)
         {
             IssuesTree.Items.Clear();
@@ -945,19 +988,25 @@ namespace BuildConsole.Controls
             {
                 if (filter == "Milestones" || filter == "All" || filter == "Priority")
                 {
+                    string milestoneKey = $"m:{m.Title}";
                     var milestoneItem = new TreeViewItem
                     {
                         Header = CreateMilestoneHeader(m),
-                        IsExpanded = true
+                        IsExpanded = !_collapsedNodeKeys.Contains(milestoneKey)
                     };
+                    milestoneItem.Collapsed += (s, e) => { if (ReferenceEquals(e.OriginalSource, milestoneItem)) _collapsedNodeKeys.Add(milestoneKey); };
+                    milestoneItem.Expanded += (s, e) => { if (ReferenceEquals(e.OriginalSource, milestoneItem)) _collapsedNodeKeys.Remove(milestoneKey); };
 
                     foreach (var epic in m.Epics)
                     {
+                        string epicKey = $"e:{m.Title}/{epic.Title}";
                         var epicItem = new TreeViewItem
                         {
                             Header = CreateEpicHeader(epic),
-                            IsExpanded = true
+                            IsExpanded = !_collapsedNodeKeys.Contains(epicKey)
                         };
+                        epicItem.Collapsed += (s, e) => { if (ReferenceEquals(e.OriginalSource, epicItem)) _collapsedNodeKeys.Add(epicKey); };
+                        epicItem.Expanded += (s, e) => { if (ReferenceEquals(e.OriginalSource, epicItem)) _collapsedNodeKeys.Remove(epicKey); };
 
                         foreach (var issue in epic.Issues)
                         {
@@ -1019,22 +1068,28 @@ namespace BuildConsole.Controls
             var p = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 3, 0, 3) };
             p.Children.Add(new TextBlock { Text = "🎯 ", FontSize = 13 });
             p.Children.Add(new TextBlock { Text = m.Title, FontWeight = FontWeights.Bold, FontSize = 12, Foreground = GetBrush("TextBrush") });
-            
-            var badge = new Border
+
+            // Git #875 — only a real GitHub milestone has a real completed/
+            // total to show; the synthetic "No Milestone" bucket doesn't, so
+            // it gets no badge at all rather than a fabricated "0%".
+            if (m.HasRealCounts)
             {
-                Background = GetBrush("Surface0Brush"),
-                CornerRadius = new CornerRadius(4),
-                Padding = new Thickness(6, 1, 6, 1),
-                Margin = new Thickness(8, 0, 0, 0)
-            };
-            badge.Child = new TextBlock
-            {
-                Text = m.ProgressStr,
-                FontSize = 10,
-                FontWeight = FontWeights.Bold,
-                Foreground = GetBrush("BlueBrush")
-            };
-            p.Children.Add(badge);
+                var badge = new Border
+                {
+                    Background = GetBrush("Surface0Brush"),
+                    CornerRadius = new CornerRadius(4),
+                    Padding = new Thickness(6, 1, 6, 1),
+                    Margin = new Thickness(8, 0, 0, 0)
+                };
+                badge.Child = new TextBlock
+                {
+                    Text = m.ProgressStr,
+                    FontSize = 10,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = GetBrush("BlueBrush")
+                };
+                p.Children.Add(badge);
+            }
 
             return p;
         }
@@ -1438,8 +1493,9 @@ namespace BuildConsole.Controls
                 {
                     var client = new GitHubApiClient(settings.GitHubPat);
                     var closed = await client.ListBoardIssuesAsync(GitHubIssueState.Closed);
+                    var milestoneInfos = await client.GetMilestonesAsync();
                     ActivityLog.Log("git-board.data", $"loaded {closed.Count} closed issue(s) for the Done view");
-                    BuildBoardFromGitHub(closed);
+                    BuildBoardFromGitHub(closed, milestoneInfos);
                     _boardShowsClosed = true;
                     _lastInProgressSignature = null; // force the next poll to repaint the OPEN board
                     RenderIssuesTree("Done");
