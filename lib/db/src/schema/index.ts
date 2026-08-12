@@ -4089,8 +4089,10 @@ export const btBuildQueueTable = pgTable("bt_build_queue", {
   cwd:             text("cwd"),
   /** GitHub issue number this build is itself FOR, if any — lets the panel reuse the same epic/issue linking the rest of this file already does. */
   githubNumber:    integer("github_number"),
-  /** GitHub issue number this build can't start until closed/complete — null means ready to run as soon as a slot frees up. */
+  /** GitHub issue number this build can't start until closed/complete — null means ready to run as soon as a slot frees up. Superseded by blockedByNumbers for anything queued after Git #813 (Shane tried "--blocked-by 807,808,809" — a real multi-blocker need this single column can't express); kept for old rows and as a single-value fallback. */
   blockedByNumber: integer("blocked_by_number"),
+  /** Git #813 — real multi-blocker support: null/empty means no extra blockers beyond blockedByNumber (if set). ALL of these must clear before the item is claimable. */
+  blockedByNumbers: integer("blocked_by_numbers").array(),
   /** queued | running | done | failed | canceled */
   status:          text("status").notNull().default("queued"),
   /** Set by the watcher the moment it claims this row — the source of truth for "is this actually running right now," since a watcher can be killed/restarted without the DB ever finding out otherwise. */

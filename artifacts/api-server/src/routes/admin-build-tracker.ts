@@ -1343,11 +1343,12 @@ router.get("/admin/build-tracker/extension/in-progress", ingestAuth, async (_req
  * Shane runs on his own machine) polls GET .../queue/next below and
  * launches it for real once it's ready.
  *
- * Body: { title, prompt, model?, effort?, cwd?, githubNumber?, blockedByNumber? }
+ * Body: { title, prompt, model?, effort?, cwd?, githubNumber?, blockedByNumbers?: number[] }
+ * (blockedByNumber, singular, still accepted for old callers — folded into blockedByNumbers.)
  * Auth: admin session cookie OR Authorization: Bearer <BUILD_TRACKER_INGEST_TOKEN>
  */
 router.post("/admin/build-tracker/extension/queue", ingestAuth, async (req: Request, res: Response) => {
-  const { title, prompt, model, effort, cwd, githubNumber, blockedByNumber } = req.body as {
+  const { title, prompt, model, effort, cwd, githubNumber, blockedByNumber, blockedByNumbers } = req.body as {
     title?: string;
     prompt?: string;
     model?: string | null;
@@ -1355,11 +1356,19 @@ router.post("/admin/build-tracker/extension/queue", ingestAuth, async (req: Requ
     cwd?: string | null;
     githubNumber?: number | null;
     blockedByNumber?: number | null;
+    blockedByNumbers?: number[] | null;
   };
   if (!title?.trim() || !prompt?.trim()) {
     res.status(400).json({ error: "title and prompt are required" });
     return;
   }
+  // Git #813 — multi-blocker support. `blockedByNumbers` is the real field
+  // going forward; a lone `blockedByNumber` (old callers, or the extension's
+  // own single-value flag) is folded into it so both shapes land the same way.
+  const allBlockers = Array.from(new Set([
+    ...(Array.isArray(blockedByNumbers) ? blockedByNumbers.filter((n) => typeof n === "number") : []),
+    ...(typeof blockedByNumber === "number" ? [blockedByNumber] : []),
+  ]));
   try {
     const [row] = await db
       .insert(btBuildQueueTable)
@@ -1370,7 +1379,8 @@ router.post("/admin/build-tracker/extension/queue", ingestAuth, async (req: Requ
         effort: effort?.trim() || null,
         cwd: cwd?.trim() || null,
         githubNumber: typeof githubNumber === "number" ? githubNumber : null,
-        blockedByNumber: typeof blockedByNumber === "number" ? blockedByNumber : null,
+        blockedByNumber: allBlockers[0] ?? null,
+        blockedByNumbers: allBlockers.length > 0 ? allBlockers : null,
       })
       .returning();
     res.status(201).json(row);
@@ -1391,26 +1401,35 @@ router.post("/admin/build-tracker/extension/queue", ingestAuth, async (req: Requ
  * column only matters as a manual override for a queued prompt that isn't
  * tied to a real issue at all.
  */
-async function fetchRealBlockedByNumber(issueNumber: number): Promise<number | null> {
-  if (!process.env.GITHUB_TOKEN) return null;
+/** Git #813 — GitHub's own dependency list can hold more than one blocker; earlier code only ever read deps[0], silently dropping the rest. */
+async function fetchRealBlockedByNumbers(issueNumber: number): Promise<number[]> {
+  if (!process.env.GITHUB_TOKEN) return [];
   try {
     const depRes = await ghFetch(
       `/repos/${GITHUB_OWNER}/${GITHUB_REPO_NAME}/issues/${issueNumber}/dependencies/blocked_by`,
     );
-    if (!depRes.ok) return null;
+    if (!depRes.ok) return [];
     const deps = (await depRes.json()) as Array<{ number: number }>;
-    return deps[0]?.number ?? null;
+    return deps.map((d) => d.number);
   } catch {
-    return null;
+    return [];
   }
 }
 
-async function effectiveBlockedByNumber(item: { githubNumber: number | null; blockedByNumber: number | null }): Promise<number | null> {
+/**
+ * Git #813 — real multi-blocker support: an item can wait on several other
+ * builds/issues at once (Shane tried "--blocked-by 807,808,809" for exactly
+ * this). Real GitHub dependencies still win over the stored column(s) when
+ * the queued build IS a real tracked issue, same priority #799 established
+ * for the single-blocker case — just over the full list now instead of [0].
+ */
+async function effectiveBlockedByNumbers(item: { githubNumber: number | null; blockedByNumber: number | null; blockedByNumbers?: number[] | null }): Promise<number[]> {
   if (item.githubNumber != null) {
-    const real = await fetchRealBlockedByNumber(item.githubNumber);
-    if (real != null) return real;
+    const real = await fetchRealBlockedByNumbers(item.githubNumber);
+    if (real.length > 0) return real;
   }
-  return item.blockedByNumber;
+  if (item.blockedByNumbers && item.blockedByNumbers.length > 0) return item.blockedByNumbers;
+  return item.blockedByNumber != null ? [item.blockedByNumber] : [];
 }
 
 /**
@@ -1439,6 +1458,13 @@ async function isBlockerCleared(blockerNum: number): Promise<boolean> {
   return !blocker || blocker.state === "closed" || blocker.labels.some((l) => l.name === "complete");
 }
 
+/** Git #813 — every blocker in the list must clear, not just one. */
+async function areBlockersCleared(blockerNums: number[]): Promise<boolean> {
+  if (blockerNums.length === 0) return true;
+  const results = await Promise.all(blockerNums.map(isBlockerCleared));
+  return results.every(Boolean);
+}
+
 /**
  * GET /admin/build-tracker/extension/queue
  *
@@ -1456,10 +1482,15 @@ router.get("/admin/build-tracker/extension/queue", ingestAuth, async (_req: Requ
       .from(btBuildQueueTable)
       .where(sql`status IN ('queued','running') OR updated_at > ${cutoff}`)
       .orderBy(asc(btBuildQueueTable.createdAt));
-    // Git #799 — real GitHub dependency overrides the stored column for
-    // display too, so nesting in the panel matches what's actually true.
+    // Git #799/#813 — real GitHub dependency (or dependencies, plural)
+    // overrides the stored column(s) for display too, so nesting in the
+    // panel matches what's actually true. blockedByNumber (singular) stays
+    // for older consumers, set to the first blocker.
     const items = await Promise.all(
-      rows.map(async (row) => ({ ...row, blockedByNumber: await effectiveBlockedByNumber(row) })),
+      rows.map(async (row) => {
+        const blockers = await effectiveBlockedByNumbers(row);
+        return { ...row, blockedByNumbers: blockers, blockedByNumber: blockers[0] ?? null };
+      }),
     );
     res.json({ items });
   } catch (err) {
@@ -1493,12 +1524,13 @@ router.get("/admin/build-tracker/extension/queue/next", ingestAuth, async (req: 
     const ready: typeof queued = [];
     for (const item of queued) {
       if (ready.length >= limit) break;
-      // Git #799 — checks the item's REAL GitHub blocked-by dependency
-      // (when it's tied to a real issue), not just the stored column set
-      // from an explicit --blocked-by flag at queue time.
-      const blockerNum = await effectiveBlockedByNumber(item);
-      if (blockerNum == null) { ready.push(item); continue; }
-      if (await isBlockerCleared(blockerNum)) ready.push(item);
+      // Git #799/#813 — checks the item's REAL GitHub blocked-by
+      // dependencies (when it's tied to a real issue), not just the stored
+      // column(s) set from an explicit --blocked-by flag at queue time.
+      // ALL blockers must clear, not just one.
+      const blockerNums = await effectiveBlockedByNumbers(item);
+      if (blockerNums.length === 0) { ready.push(item); continue; }
+      if (await areBlockersCleared(blockerNums)) ready.push(item);
     }
     if (ready.length === 0) { res.json({ items: [] }); return; }
 

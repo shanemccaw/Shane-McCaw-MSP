@@ -1265,7 +1265,8 @@ function buildQueueItemRow(item) {
   const row = document.createElement("div");
   row.className = "issue-row queue-item-row queue-status-" + item.status;
   const meta = [QUEUE_STATUS_LABEL[item.status] ?? item.status];
-  if (item.blockedByNumber != null) meta.push(`waiting on #${item.blockedByNumber}`);
+  const blockerNums = item.blockedByNumbers ?? (item.blockedByNumber != null ? [item.blockedByNumber] : []);
+  if (blockerNums.length > 0) meta.push(`waiting on ${blockerNums.map((n) => `#${n}`).join(", ")}`);
   if (item.status === "failed" && item.exitCode != null) meta.push(`exit code ${item.exitCode}`);
   row.innerHTML =
     `<div class="issue-top"><span class="issue-text">${escapeHtml(item.title)}</span></div>` +
@@ -1323,14 +1324,16 @@ function buildQueueItemRow(item) {
 }
 
 /**
- * Git #798 — Shane: "if 797 is blocked by 796 it should be nested under
- * 796." Matches a queued item's `blockedByNumber` against another queue
- * item's own `githubNumber` (the issue that OTHER build is for) — when the
- * blocker is also sitting in the queue, indent the blocked one directly
- * under it instead of leaving them as two unrelated flat rows. A blocker
- * that isn't itself queued still shows via buildQueueItemRow's own
- * "waiting on #N" line, just not nested — same scoping choice
- * renderSectionWithBlocking() made for the Epics/Issues sections.
+ * Git #798/#813 — Shane: "if 797 is blocked by 796 it should be nested under
+ * 796." Then: "--blocked-by 807,808,809" — an item can wait on SEVERAL
+ * others, not just one. Matches `blockedByNumbers` (plural — #813) against
+ * other queue items' own `githubNumber`s; when at least one blocker is also
+ * sitting in the queue, indent the blocked item under the FIRST such match
+ * (an item only nests once, under one parent, even with multiple blockers —
+ * the full list still shows via buildQueueItemRow's "waiting on #N, #M"
+ * line). A blocker that isn't itself queued still shows there too, just not
+ * nested — same scoping choice renderSectionWithBlocking() made for the
+ * Epics/Issues sections.
  */
 function renderQueueSection(container, queueItems) {
   const byGithubNumber = new Map();
@@ -1340,10 +1343,11 @@ function renderQueueSection(container, queueItems) {
   const childrenOf = new Map(); // blocker githubNumber -> queue item[]
   const topLevel = [];
   for (const item of queueItems) {
-    const blockerNum = item.blockedByNumber;
-    if (blockerNum != null && blockerNum !== item.githubNumber && byGithubNumber.has(blockerNum)) {
-      if (!childrenOf.has(blockerNum)) childrenOf.set(blockerNum, []);
-      childrenOf.get(blockerNum).push(item);
+    const blockerNums = item.blockedByNumbers ?? (item.blockedByNumber != null ? [item.blockedByNumber] : []);
+    const nestUnder = blockerNums.find((n) => n !== item.githubNumber && byGithubNumber.has(n));
+    if (nestUnder != null) {
+      if (!childrenOf.has(nestUnder)) childrenOf.set(nestUnder, []);
+      childrenOf.get(nestUnder).push(item);
     } else {
       topLevel.push(item);
     }
@@ -3001,11 +3005,15 @@ async function sendToBuilder(prompt) {
 }
 
 /**
- * Git #790 — the "📋 Queue" button's handler. Same flag parsing as
+ * Git #790/#813 — the "📋 Queue" button's handler. Same flag parsing as
  * sendToBuilder() (a leading --model/--effort/--cwd line still works
- * exactly the same way), plus a new --blocked-by <number> flag specific to
- * queuing — a build launched right now can't usefully declare "wait for
- * X," but a QUEUED one can, since the watcher won't claim it until X clears.
+ * exactly the same way), plus a --blocked-by <number>[,<number>...] flag
+ * specific to queuing — a build launched right now can't usefully declare
+ * "wait for X," but a QUEUED one can, since the watcher won't claim it
+ * until every listed blocker clears. Comma-separated (Shane: "--blocked-by
+ * 807,808,809") — earlier this silently dropped to "no blocker" whenever it
+ * wasn't a single bare number; now it's parsed for real, and anything that
+ * doesn't parse as a number at all surfaces an alert instead of vanishing.
  */
 async function queueBuildFromBlock(prompt, referencedNumber, btn) {
   const { builderModel, builderEffort, builderCwd } = await chrome.storage.local.get([
@@ -3015,9 +3023,16 @@ async function queueBuildFromBlock(prompt, referencedNumber, btn) {
   const model = flags.model || builderModel || null;
   const effort = flags.effort || builderEffort || null;
   const cwd = flags.cwd || builderCwd || null;
-  const blockedByNumber = flags["blocked-by"] && /^\d+$/.test(flags["blocked-by"])
-    ? parseInt(flags["blocked-by"], 10)
-    : null;
+  let blockedByNumbers = null;
+  if (flags["blocked-by"]) {
+    const parts = flags["blocked-by"].split(",").map((s) => s.trim()).filter(Boolean);
+    const nums = parts.filter((s) => /^\d+$/.test(s)).map((s) => parseInt(s, 10));
+    if (nums.length !== parts.length) {
+      window.alert(`--blocked-by "${flags["blocked-by"]}" has a non-numeric entry — fix it and try again (comma-separate multiple issue numbers, e.g. --blocked-by 807,808,809).`);
+      return;
+    }
+    blockedByNumbers = nums;
+  }
   const title = flags.title
     ? (referencedNumber != null ? `#${referencedNumber} — ${flags.title}` : flags.title)
     : (referencedNumber != null ? `#${referencedNumber}` : rest.split("\n")[0].slice(0, 80));
@@ -3026,7 +3041,7 @@ async function queueBuildFromBlock(prompt, referencedNumber, btn) {
   const original = btn.textContent;
   const res = await sendMessageSafe({
     type: "build-tracker-queue-build",
-    item: { title, prompt: rest, model, effort, cwd, githubNumber: referencedNumber, blockedByNumber },
+    item: { title, prompt: rest, model, effort, cwd, githubNumber: referencedNumber, blockedByNumbers },
   });
   btn.disabled = false;
   if (!res?.ok) {
