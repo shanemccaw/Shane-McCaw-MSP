@@ -124,6 +124,16 @@ if ($effort) { $claudeArgs += @("--effort", $effort) }
 # specific prompt.
 $permissionMode = if ($mode) { $mode } else { "auto" }
 $claudeArgs += @("--permission-mode", $permissionMode)
+# Git #820 — defense in depth: claude.exe's commander.js-based parser
+# treats ANY positional argument starting with "--" as an attempted
+# (unrecognized) option, not plain text - a real "unknown option" failure
+# happened exactly this way when an upstream bug (content.js's
+# extractLeadingFlags, fixed separately) failed to strip a leading flags
+# line off a prompt before it ever reached here. A literal "--" is
+# commander's standard end-of-options marker: everything after it is
+# always positional, never re-parsed as a flag, regardless of what the
+# prompt text itself looks like.
+$claudeArgs += "--"
 $claudeArgs += $prompt
 
 # Overwritten every run - so if the prompt still doesn't land right, this

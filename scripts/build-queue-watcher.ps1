@@ -152,6 +152,17 @@ while ($true) {
         if ($item.effort) { $claudeArgs += @("--effort", $item.effort) }
         $claudeArgs += @("--permission-mode", "auto")
         $claudeArgs += "--print"
+        # Git #820 — defense in depth: claude.exe's commander.js-based
+        # parser treats ANY positional argument starting with "--" as an
+        # attempted (unrecognized) option, not plain text - a "806
+        # failed... exit 1" happened exactly this way when an upstream bug
+        # (content.js's extractLeadingFlags, fixed separately) failed to
+        # strip a leading flags line off the prompt before it ever reached
+        # here. A literal "--" is commander's standard end-of-options
+        # marker: everything after it is always positional, never
+        # re-parsed as a flag, regardless of what the prompt text itself
+        # looks like.
+        $claudeArgs += "--"
         $claudeArgs += $item.prompt
         $escapedArgString = ($claudeArgs | ForEach-Object { ConvertTo-Win32EscapedArgument $_ }) -join ' '
 

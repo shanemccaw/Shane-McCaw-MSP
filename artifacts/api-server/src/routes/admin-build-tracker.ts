@@ -1607,6 +1607,35 @@ router.delete("/admin/build-tracker/extension/queue/:id", ingestAuth, async (req
 });
 
 /**
+ * POST /admin/build-tracker/extension/queue/:id/force-claim
+ *
+ * Git #820 — Shane: "I need right click like. Stop. Retry. Run Now." Run
+ * Now needs to atomically claim a specific still-queued row RIGHT NOW,
+ * bypassing the normal blocker-clear check and free-slot limit (that's the
+ * whole point of overriding it) — GET /extension/queue/next above can't be
+ * reused for this since it always enforces both. The CALLER (a watcher —
+ * standalone script or the WPF app's in-process one) still does the actual
+ * launch; this route only flips the DB row to `running` so every consumer's
+ * status view stays consistent regardless of which one launched it.
+ */
+router.post("/admin/build-tracker/extension/queue/:id/force-claim", ingestAuth, async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) { res.status(400).json({ error: "invalid id" }); return; }
+  try {
+    const [row] = await db
+      .update(btBuildQueueTable)
+      .set({ status: "running", claimedAt: new Date(), updatedAt: new Date() })
+      .where(and(eq(btBuildQueueTable.id, id), eq(btBuildQueueTable.status, "queued")))
+      .returning();
+    if (!row) { res.status(409).json({ error: "Only a still-queued item can be force-claimed" }); return; }
+    res.json(row);
+  } catch (err) {
+    log.error({ err, id }, "POST /extension/queue/:id/force-claim failed");
+    res.status(500).json({ error: "Failed to force-claim queue item" });
+  }
+});
+
+/**
  * POST /admin/build-tracker/extension/toggle-label
  *
  * Git #723 follow-up — Shane: "you need to also add a quick button to the

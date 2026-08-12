@@ -2966,13 +2966,20 @@ function loadTextIntoSqlRunner(text) {
 function extractLeadingFlags(text) {
   const newlineIdx = text.indexOf("\n");
   const firstLine = newlineIdx === -1 ? text : text.slice(0, newlineIdx);
-  const flagRe = /--(\w+)\s+(\S+)/g;
+  // Git #820 — [\w-] (not \w alone) so a hyphenated flag name like
+  // --blocked-by actually matches. \w excludes "-", so "--blocked-by 805"
+  // never matched at all; the whole-line guard below then bailed out and
+  // returned the FULL unstripped text (flags line included) as the prompt.
+  // Since that starts with "--model", claude.exe's own arg parser read the
+  // positional prompt argument as an attempted (unrecognized) option and
+  // refused to run at all — Git #820, "806 failed... exit 1".
+  const flagRe = /--([\w-]+)\s+(\S+)/g;
   const flags = {};
   let matched;
   while ((matched = flagRe.exec(firstLine)) !== null) {
     flags[matched[1]] = matched[2];
   }
-  if (Object.keys(flags).length === 0 || firstLine.replace(/--(\w+)\s+(\S+)/g, "").trim() !== "") {
+  if (Object.keys(flags).length === 0 || firstLine.replace(/--([\w-]+)\s+(\S+)/g, "").trim() !== "") {
     return { flags: {}, rest: text };
   }
   const rest = (newlineIdx === -1 ? "" : text.slice(newlineIdx + 1)).replace(/^\n+/, "");
