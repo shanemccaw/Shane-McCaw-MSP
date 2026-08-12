@@ -96,6 +96,7 @@ export function ProposalSummaryRail({
       <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
         <span style={EYEBROW}>Remediation, one-off</span>
         <span
+          data-testid="proposal-summary-total"
           style={{
             fontSize: 38,
             fontWeight: 800,

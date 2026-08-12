@@ -1,0 +1,92 @@
+{
+  "issue": 890,
+  "feature": "Copilot Readiness SOW Proposal — real server-computed pricing, no invented deposit (money path 5/6)",
+  "baseUrl": "{{DEPLOY_URL}}",
+
+  "notes": [
+    "TARGET: /copilot-readiness/proposal (copilot-readiness-proposal.tsx, Screen 3 of the journey) — NOT components/copilot-assessment/screens/SowScreen.tsx, an unrelated older client-only prototype (/copilot-assessment route, checkoutClient.ts) with its own hardcoded SCOPE_MODULES pricing table. The real screen fetches GET /api/portal/assessment/sow and maps it through the shared journeyScopeFromSow(); with no stored SOW it shows an honest unavailable state rather than falling back to any fixture price.",
+    "sow/payment-options is fetched by Screen 4 (copilot-readiness-checkout.tsx / CheckoutPaymentChoice.tsx), not by this screen — the proposal page never calls it. Its apiTests below verify the endpoint's own real contract (in particular that `phased.selfServe` is genuinely false and no deposit percentage is invented anywhere on the wire, per PLATFORM_BUILD `2401cbe7`/`2571ed56`), independent of which screen reads it; UI coverage of it belongs to #891's checkout manifest.",
+    "No data-testid existed on any interactive element this manifest touches before this session — added three, scoped to exactly what is used here: `proposal-phase-card` (ProposalPhaseCard.tsx), `proposal-phase-toggle` (the ScopeToggle button on an unlocked phase only — the locked Phase 1 switch is a non-interactive `<span>` on purpose and stays untouched), `proposal-summary-total` (ProposalSummaryRail.tsx's one-off total)."
+  ],
+
+  "apiTests": [
+    {
+      "name": "sow resolves for the designated test tenant with a real `ready` flag on the wire",
+      "method": "GET",
+      "path": "/api/portal/assessment/sow",
+      "headers": { "Authorization": "Bearer {{TEST_PORTAL_BEARER}}" },
+      "expect": { "status": 200, "jsonPath": "$.ready", "exists": true }
+    },
+    {
+      "name": "sow's toggleable workstreams come off the wire as a real array, never a hardcoded fixture",
+      "method": "GET",
+      "path": "/api/portal/assessment/sow",
+      "headers": { "Authorization": "Bearer {{TEST_PORTAL_BEARER}}" },
+      "expect": { "status": 200, "jsonPath": "$.allWorkstreams", "isArray": true }
+    },
+    {
+      "name": "sow states the tenant's own stored selection, so a returning customer's real choices are read back rather than silently re-defaulted to everything-on",
+      "method": "GET",
+      "path": "/api/portal/assessment/sow",
+      "headers": { "Authorization": "Bearer {{TEST_PORTAL_BEARER}}" },
+      "expect": { "status": 200, "jsonPath": "$.selectedWorkstreamTitles", "isArray": true }
+    },
+    {
+      "name": "payment-options resolves with a real `ready` flag for the same active document",
+      "method": "GET",
+      "path": "/api/portal/assessment/sow/payment-options",
+      "headers": { "Authorization": "Bearer {{TEST_PORTAL_BEARER}}" },
+      "expect": { "status": 200, "jsonPath": "$.ready", "exists": true }
+    },
+    {
+      "name": "payment-options' phased plan states the real platform fact — milestone billing is provider-arranged, selfServe is false, never an invented deposit charge",
+      "method": "GET",
+      "path": "/api/portal/assessment/sow/payment-options",
+      "headers": { "Authorization": "Bearer {{TEST_PORTAL_BEARER}}" },
+      "expect": { "status": 200, "jsonPath": "$.phased.selfServe", "value": false }
+    },
+    {
+      "name": "payment-options carries the per-phase breakdown as a real array, the same shape CheckoutPaymentChoice's indicative schedule reads",
+      "method": "GET",
+      "path": "/api/portal/assessment/sow/payment-options",
+      "headers": { "Authorization": "Bearer {{TEST_PORTAL_BEARER}}" },
+      "expect": { "status": 200, "jsonPath": "$.phased.phases", "isArray": true }
+    }
+  ],
+
+  "uiSteps": [
+    { "action": "goto", "target": "/login" },
+    { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
+    { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
+    {
+      "action": "click",
+      "selector": "[data-testid='login-submit']",
+      "captureResponse": {
+        "urlPattern": "/api/auth/login",
+        "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true }
+      }
+    },
+
+    { "action": "goto", "target": "/copilot-readiness/proposal" },
+
+    {
+      "name": "the phase list rendered is the real, server-mapped scope, not the design's ?preview=design fixture",
+      "action": "expect",
+      "selector": "[data-testid='proposal-phase-card']",
+      "state": "visible"
+    },
+    {
+      "name": "the one-off total on the summary rail is real computeTotals()/withAdjustments() output over the fetched sow response, not an invented figure",
+      "action": "expect",
+      "selector": "[data-testid='proposal-summary-total']",
+      "state": "visible"
+    },
+
+    {
+      "name": "toggling an unlocked phase is a real scope decision — the summary rail keeps rendering a total off the updated selection rather than freezing or disappearing",
+      "action": "click",
+      "selector": "[data-testid='proposal-phase-toggle']"
+    },
+    { "action": "expect", "selector": "[data-testid='proposal-summary-total']", "state": "visible" }
+  ]
+}

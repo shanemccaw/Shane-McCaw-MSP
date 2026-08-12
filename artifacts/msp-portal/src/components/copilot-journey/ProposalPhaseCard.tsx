@@ -51,12 +51,15 @@ export function ScopeToggle({
   tone,
   label,
   onToggle,
+  testId,
 }: {
   on: boolean;
   tone: "remediation" | "optional";
   /** Accessible name — the phase or service this switch controls. */
   label: string;
   onToggle: () => void;
+  /** Test hook — set only by callers that need one, e.g. `ProposalPhaseCard`. */
+  testId?: string;
 }) {
   const activeColor = tone === "remediation" ? BRAND.blue : BRAND.teal;
   const knob = on ? (tone === "remediation" ? BRAND.white : BRAND.canvas) : "#64748b";
@@ -66,6 +69,7 @@ export function ScopeToggle({
       role="switch"
       aria-checked={on}
       aria-label={label}
+      data-testid={testId}
       onClick={onToggle}
       style={{
         width: 44,
@@ -222,6 +226,7 @@ export function ProposalPhaseCard({
 
   return (
     <div
+      data-testid="proposal-phase-card"
       style={{
         border,
         borderRadius: RADIUS.cardLarge,
@@ -325,6 +330,7 @@ export function ProposalPhaseCard({
               tone="remediation"
               label={phase.title}
               onToggle={onToggle ?? (() => undefined)}
+              testId="proposal-phase-toggle"
             />
           )}
         </div>
