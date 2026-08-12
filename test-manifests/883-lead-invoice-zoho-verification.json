@@ -1,0 +1,54 @@
+{
+  "issue": 883,
+  "feature": "Lead-to-Zoho-CRM + invoice-to-Zoho-Books verification",
+  "baseUrl": "{{DEPLOY_URL}}",
+
+  "zohoTests": [
+    {
+      "method": "POST",
+      "path": "/api/quiz/home-lead-capture",
+      "headers": { "Content-Type": "application/json" },
+      "body": {
+        "name": "Zoho Regression Probe",
+        "email": "zohotests-probe@shanemccaw.consulting",
+        "company": "Zoho Regression Test Co",
+        "score": 42,
+        "band": "Developing",
+        "pillars": [
+          { "name": "Identity", "value": 50 },
+          { "name": "Data", "value": 50 },
+          { "name": "Devices", "value": 50 },
+          { "name": "Apps", "value": 50 },
+          { "name": "Infrastructure", "value": 50 },
+          { "name": "Threat Protection", "value": 50 }
+        ]
+      },
+      "expect": { "status": 200, "jsonPath": "$.success", "value": true }
+    },
+    {
+      "method": "GET",
+      "path": "/zoho/crm/leads/lookup/by-email?email=zohotests-probe@shanemccaw.consulting",
+      "poll": { "intervalMs": 20000, "timeoutMs": 360000 },
+      "expect": { "status": 200, "jsonPath": "$.found", "value": true }
+    },
+    {
+      "method": "POST",
+      "path": "/zoho/books/invoices/test-create",
+      "headers": { "Content-Type": "application/json" },
+      "body": {
+        "referenceNumber": "ZOHOTESTS-INVOICE-PROBE",
+        "contactEmail": "zohotests-probe@shanemccaw.consulting",
+        "contactName": "Zoho Regression Probe",
+        "amount": 1,
+        "description": "zohoTests regression probe invoice"
+      },
+      "expect": { "status": 202, "jsonPath": "$.queued", "value": true }
+    },
+    {
+      "method": "GET",
+      "path": "/zoho/books/invoices/lookup/by-reference?reference=ZOHOTESTS-INVOICE-PROBE",
+      "poll": { "intervalMs": 20000, "timeoutMs": 360000 },
+      "expect": { "status": 200, "jsonPath": "$.found", "value": true }
+    }
+  ]
+}

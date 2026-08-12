@@ -16,7 +16,7 @@
 
 import { Router, type IRouter, type Request, type Response } from "express";
 import { requireAdmin } from "../middlewares/requireAuth";
-import { lookupBooksInvoiceByReference } from "../lib/zoho-books.ts";
+import { lookupBooksInvoiceByReference, enqueueZohoBooksInvoiceSync } from "../lib/zoho-books.ts";
 import { ZohoNotConnectedError, ZohoApiError } from "../lib/zoho-client.ts";
 import { logger } from "../lib/logger";
 
@@ -66,6 +66,43 @@ router.get("/zoho/books/invoices/lookup/by-reference", requireAdmin, async (req:
     res.json({ found: Boolean(invoiceId), invoiceId: invoiceId ?? null, referenceNumber: reference });
   } catch (err) {
     handleZohoError(err, res, "lookup Books invoice by reference");
+  }
+});
+
+/**
+ * Test-only invoice trigger backing Git #883's zohoTests money-path manifest. No money-path
+ * checkout manifest exists yet to reuse a real Stripe-webhook-created invoice reference from
+ * (see msp-billing-webhook.ts's enqueueZohoBooksInvoiceSync call for the real path), so this
+ * enqueues the SAME zoho_books_create_invoice job directly, with a caller-supplied (idempotent)
+ * referenceNumber — findBooksInvoiceByReference in lib/zoho-books.ts means re-running this with
+ * the same reference just matches the existing invoice rather than duplicating it. Admin-gated,
+ * queued (202 + jobId), never calls Zoho on the request path — same contract every other write
+ * node here uses.
+ */
+router.post("/zoho/books/invoices/test-create", requireAdmin, async (req: Request, res: Response) => {
+  const { referenceNumber, contactEmail, contactName, amount, description } = req.body ?? {};
+  if (typeof referenceNumber !== "string" || !referenceNumber.trim()) {
+    res.status(400).json({ error: "referenceNumber is required" });
+    return;
+  }
+  if (typeof contactEmail !== "string" || !contactEmail.trim()) {
+    res.status(400).json({ error: "contactEmail is required" });
+    return;
+  }
+
+  try {
+    const queued = await enqueueZohoBooksInvoiceSync({
+      referenceNumber: referenceNumber.trim(),
+      contactEmail: contactEmail.trim(),
+      contactName: typeof contactName === "string" ? contactName : undefined,
+      amount: Number.isFinite(Number(amount)) ? Number(amount) : 1,
+      description: typeof description === "string" && description ? description : "zohoTests probe invoice",
+      invoiceDate: new Date().toISOString().slice(0, 10),
+    });
+    log.info({ referenceNumber, jobId: queued.jobId }, "zoho-books route: test invoice enqueued");
+    res.status(202).json(queued);
+  } catch (err) {
+    handleZohoError(err, res, "enqueue test invoice");
   }
 });
 

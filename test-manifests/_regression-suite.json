@@ -1,6 +1,7 @@
 {
   "manifests": [
     "725-chat-escalation.json",
-    "656-password-reset-guard.json"
+    "656-password-reset-guard.json",
+    "883-lead-invoice-zoho-verification.json"
   ]
 }

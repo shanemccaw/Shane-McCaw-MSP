@@ -84,26 +84,56 @@ namespace BuildConsole.Services
                 string baseUrl = string.IsNullOrWhiteSpace(manifest.BaseUrl) ? config.ApiBaseUrl : manifest.BaseUrl;
                 string url = BuildUrl(baseUrl, path);
 
-                using var req = new HttpRequestMessage(new HttpMethod(method), url);
-                req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", settings.ZohoApiToken);
-                if (test.TryGetProperty("headers", out var headersEl) && headersEl.ValueKind == JsonValueKind.Object)
+                // Git #883 — an optional { "poll": { "intervalMs", "timeoutMs" } } block on a zohoTest
+                // re-runs the SAME request/expect pair until it passes or the timeout elapses, instead
+                // of firing once. Real for a reason: the thing being asserted (a lead/invoice landing in
+                // Zoho) only exists after the next zoho_batch_drain, which runs on a 5-minute cadence
+                // (zoho-batch-drain.ts), not synchronously with whatever created it.
+                int intervalMs = 15000, timeoutMs = 0;
+                bool isPoll = test.TryGetProperty("poll", out var pollEl) && pollEl.ValueKind == JsonValueKind.Object;
+                if (isPoll)
                 {
-                    foreach (var h in headersEl.EnumerateObject())
-                        req.Headers.TryAddWithoutValidation(h.Name, h.Value.GetString() ?? "");
+                    if (pollEl.TryGetProperty("intervalMs", out var ivEl) && ivEl.ValueKind == JsonValueKind.Number) intervalMs = ivEl.GetInt32();
+                    if (pollEl.TryGetProperty("timeoutMs", out var toEl) && toEl.ValueKind == JsonValueKind.Number) timeoutMs = toEl.GetInt32();
+                    else timeoutMs = 360000; // default 6 minutes — one drain cycle plus margin
                 }
-                if (test.TryGetProperty("body", out var bodyEl))
-                    req.Content = new StringContent(bodyEl.GetRawText(), Encoding.UTF8, "application/json");
-
-                ActivityLog.Log(Channel, $"[{index + 1}/{manifest.ZohoTests.Count}] {method} {url}");
-                using var resp = await Http.SendAsync(req);
-                string responseBody = await resp.Content.ReadAsStringAsync();
 
                 var expect = test.TryGetProperty("expect", out var e) ? e : default;
-                var (passed, detail, expected, actual) = HttpTestExecutor.EvaluateExpectation(expect, (int)resp.StatusCode, responseBody);
-                string context = $"{method} {url} -> {(int)resp.StatusCode}; response body: {HttpTestExecutor.Truncate(responseBody, 500)}";
+                int attempt = 0;
+                bool passed; string detail, expected, actual, context; int statusCode; string responseBody;
+
+                while (true)
+                {
+                    attempt++;
+                    using var req = new HttpRequestMessage(new HttpMethod(method), url);
+                    req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", settings.ZohoApiToken);
+                    if (test.TryGetProperty("headers", out var headersEl) && headersEl.ValueKind == JsonValueKind.Object)
+                    {
+                        foreach (var h in headersEl.EnumerateObject())
+                            req.Headers.TryAddWithoutValidation(h.Name, h.Value.GetString() ?? "");
+                    }
+                    if (test.TryGetProperty("body", out var bodyEl))
+                        req.Content = new StringContent(bodyEl.GetRawText(), Encoding.UTF8, "application/json");
+
+                    ActivityLog.Log(Channel, $"[{index + 1}/{manifest.ZohoTests.Count}]{(isPoll ? $" (poll attempt {attempt})" : "")} {method} {url}");
+                    using var resp = await Http.SendAsync(req);
+                    responseBody = await resp.Content.ReadAsStringAsync();
+                    statusCode = (int)resp.StatusCode;
+
+                    (passed, detail, expected, actual) = HttpTestExecutor.EvaluateExpectation(expect, statusCode, responseBody);
+                    context = $"{method} {url} -> {statusCode}; response body: {HttpTestExecutor.Truncate(responseBody, 500)}";
+
+                    if (passed || !isPoll) break;
+                    if (sw.ElapsedMilliseconds + intervalMs >= timeoutMs)
+                    {
+                        detail = $"{detail} (poll timed out after {attempt} attempt(s), {sw.ElapsedMilliseconds}ms)";
+                        break;
+                    }
+                    await Task.Delay(intervalMs);
+                }
 
                 sw.Stop();
-                ActivityLog.Log(Channel, (passed ? "PASS " : "FAIL ") + $"{label} ({sw.ElapsedMilliseconds}ms) — {detail}");
+                ActivityLog.Log(Channel, (passed ? "PASS " : "FAIL ") + $"{label} ({sw.ElapsedMilliseconds}ms, {attempt} attempt(s)) — {detail}");
                 return new TestStepResult
                 {
                     Kind = "zoho", Label = label, Passed = passed, Detail = detail, DurationMs = sw.ElapsedMilliseconds,
