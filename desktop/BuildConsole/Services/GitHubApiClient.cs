@@ -30,7 +30,38 @@ namespace BuildConsole.Services
         public bool HasInFlightLabel => Labels.Any(l => string.Equals(l.Name, "in-flight", StringComparison.OrdinalIgnoreCase));
     }
 
-    /// <summary>Git #842 (Git Board Phase 4) — the fields of `POST /issues`'s response actually used: the new issue's number/url plus its numeric `id` for a follow-up `sub_issues` attach call.</summary>
+    /// <summary>Git #840 (Git Board Phase 2) — the real `GET /issues/{n}` response shape for the issue detail panel (title/body/state, not the search-result subset).</summary>
+    public class GitHubIssueDetail
+    {
+        public int Number { get; set; }
+        public string Title { get; set; } = "";
+        public string Body { get; set; } = "";
+        public string State { get; set; } = "";
+        [JsonPropertyName("html_url")]
+        public string HtmlUrl { get; set; } = "";
+        [JsonPropertyName("created_at")]
+        public DateTimeOffset CreatedAt { get; set; }
+        public GitHubUser? User { get; set; }
+        public List<GitHubLabel> Labels { get; set; } = new();
+    }
+
+    /// <summary>Git #840 (Git Board Phase 2) — one entry from `GET /issues/{n}/comments`.</summary>
+    public class GitHubIssueComment
+    {
+        public string Body { get; set; } = "";
+        [JsonPropertyName("created_at")]
+        public DateTimeOffset CreatedAt { get; set; }
+        public GitHubUser? User { get; set; }
+        [JsonPropertyName("html_url")]
+        public string HtmlUrl { get; set; } = "";
+    }
+
+    public class GitHubUser
+    {
+        public string Login { get; set; } = "";
+    }
+
+    /// <summary>Git #842 (Git Board Phase 4) — the fields of `POST /issues`'s response actually used: the new issue's number/url plus its numeric `id` for the `sub_issues` attach call.</summary>
     public class CreatedIssue
     {
         public int Number { get; set; }
@@ -66,6 +97,8 @@ namespace BuildConsole.Services
         public int? MilestoneNumber { get; set; }
         /// <summary>subIssuesSummary.total straight from GraphQL — the real number of sub-issues.</summary>
         public int SubIssueCount { get; set; }
+        /// <summary>GraphQL databaseId — the numeric REST id GitHub's sub_issues endpoint wants as `sub_issue_id` (NOT the issue Number). Populated by ListBoardIssuesAsync for Git #844.</summary>
+        public long DatabaseId { get; set; }
 
         /// <summary>Any issue with at least one sub-issue IS an Epic (Git #839) — no title-text convention.</summary>
         public bool IsEpic => SubIssueCount > 0;
@@ -192,6 +225,35 @@ namespace BuildConsole.Services
             public List<GitHubIssueResult> Items { get; set; } = new();
         }
 
+        /// <summary>Git #840 (Git Board Phase 2) — real `GET /issues/{n}`, the full current title/body for the issue detail panel.</summary>
+        public async Task<GitHubIssueDetail?> GetIssueAsync(int number)
+        {
+            try
+            {
+                return await _http.GetFromJsonAsync<GitHubIssueDetail>(
+                    $"repos/{Owner}/{Repo}/issues/{number}", JsonOpts);
+            }
+            catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                return null;
+            }
+        }
+
+        /// <summary>Git #840 (Git Board Phase 2) — real `GET /issues/{n}/comments`; GitHub returns these in chronological order already, no client-side re-sort needed.</summary>
+        public async Task<List<GitHubIssueComment>> GetIssueCommentsAsync(int number)
+        {
+            try
+            {
+                var comments = await _http.GetFromJsonAsync<List<GitHubIssueComment>>(
+                    $"repos/{Owner}/{Repo}/issues/{number}/comments", JsonOpts);
+                return comments ?? new List<GitHubIssueComment>();
+            }
+            catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                return new List<GitHubIssueComment>();
+            }
+        }
+
         /// <summary>Git #843 (Git Board Phase 5) — real `PATCH /issues/{n}` via the REST API, same PAT/HttpClient as every other direct GitHub call here.</summary>
         public async Task UpdateIssueAsync(int number, string title, string body)
         {
@@ -285,7 +347,7 @@ namespace BuildConsole.Services
     issues(first: {PageSize}, after: {afterArg}, states: {statesLiteral}, orderBy: {{field: CREATED_AT, direction: DESC}}) {{
       pageInfo {{ hasNextPage endCursor }}
       nodes {{
-        number title state url body
+        number title state url body databaseId
         labels(first: 20) {{ nodes {{ name }} }}
         milestone {{ title number }}
         subIssuesSummary {{ total }}
@@ -310,6 +372,7 @@ namespace BuildConsole.Services
                             MilestoneTitle = n.Milestone?.Title,
                             MilestoneNumber = n.Milestone?.Number,
                             SubIssueCount = n.SubIssuesSummary?.Total ?? 0,
+                            DatabaseId = n.DatabaseId,
                         });
                     }
                 }
@@ -367,6 +430,7 @@ namespace BuildConsole.Services
             public string? State { get; set; }
             public string? Url { get; set; }
             public string? Body { get; set; }
+            public long DatabaseId { get; set; }
             public LabelConnection? Labels { get; set; }
             public MilestoneData? Milestone { get; set; }
             public SubIssuesSummaryData? SubIssuesSummary { get; set; }

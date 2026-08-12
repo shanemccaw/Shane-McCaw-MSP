@@ -6,13 +6,22 @@ using System.Threading.Tasks;
 
 namespace BuildConsole.Services
 {
-    /// <summary>Matches `gh issue list --json number,title,url,updatedAt`'s real row shape (confirmed via a live run).</summary>
+    /// <summary>Matches `gh issue list --json number,title,url,updatedAt,parent`'s real row shape (confirmed via a live run).</summary>
     public class GitHubIssueSummary
     {
         public int Number { get; set; }
         public string Title { get; set; } = "";
         public string Url { get; set; } = "";
+        /// <summary>GitHub always returns this in UTC (ISO 8601 "Z" suffix) — callers must ToLocalTime() before comparing against DateTime.Now/displaying, or the offset skews the result (confirmed: Shane saw "-234m ago" from exactly this mismatch).</summary>
         public DateTime UpdatedAt { get; set; }
+        /// <summary>Git #854 — null means this issue has no parent (either unlinked, or it IS an epic itself).</summary>
+        public GitHubIssueParent? Parent { get; set; }
+    }
+
+    public class GitHubIssueParent
+    {
+        public int Number { get; set; }
+        public string Title { get; set; } = "";
     }
 
     /// <summary>
@@ -51,7 +60,7 @@ namespace BuildConsole.Services
             psi.ArgumentList.Add("--label");
             psi.ArgumentList.Add(label);
             psi.ArgumentList.Add("--json");
-            psi.ArgumentList.Add("number,title,url,updatedAt");
+            psi.ArgumentList.Add("number,title,url,updatedAt,parent");
             psi.ArgumentList.Add("--limit");
             psi.ArgumentList.Add(limit.ToString());
 

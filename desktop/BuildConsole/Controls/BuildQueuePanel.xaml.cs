@@ -35,6 +35,8 @@ namespace BuildConsole.Controls
         public event EventHandler<bool>? PinToggled;
         /// <summary>Git #815 — mirrors LeftSidebar's SyncError: null on a successful poll, a message on a failed one.</summary>
         public event EventHandler<string?>? SyncError;
+        /// <summary>Git #851 — Shane: "When clicking on an In-Flight Still Open issue, it should open the chat that is associated to that issue." MainWindow resolves the actual chat (via LeftSidebar.FindChatForIssue) and opens/focuses its tab, same as clicking a chat in the Chats tree.</summary>
+        public event EventHandler<int>? IssueChatRequested;
         private bool _isPinned = true;
 
         private BuildTrackerApiClient? _api;
@@ -159,7 +161,42 @@ namespace BuildConsole.Controls
             if (signature == _lastInFlightSignature) return;
             _lastInFlightSignature = signature;
 
-            RenderIssueList(InFlightIssuesList, issues, "Nothing in-flight and still open.", "⏳", "#F2CA63");
+            RenderInFlightGrouped(issues);
+        }
+
+        /// <summary>
+        /// Git #854 — Shane: "these can be grouped by their Epic?" Uses the
+        /// real `parent` field `gh issue list --json` exposes (confirmed
+        /// live) rather than any local guess - issues sharing a parent
+        /// group under that epic's own title; issues with no parent (either
+        /// truly unlinked, or an epic itself) land in an "No Epic" bucket at
+        /// the end. Group headers carry no Tag, so InFlightIssuesList_
+        /// SelectionChanged's Tag-match naturally ignores clicks on them.
+        /// </summary>
+        private void RenderInFlightGrouped(List<Services.GitHubIssueSummary> issues)
+        {
+            InFlightIssuesList.Items.Clear();
+            if (issues.Count == 0)
+            {
+                InFlightIssuesList.Items.Add(new ListBoxItem { Content = "Nothing in-flight and still open.", Foreground = (Brush)Application.Current.FindResource("Subtext1Brush") });
+                return;
+            }
+
+            var grouped = issues.GroupBy(i => i.Parent?.Number ?? -1)
+                                 .OrderByDescending(g => g.Max(i => i.UpdatedAt));
+            foreach (var group in grouped)
+            {
+                string epicTitle = group.Key == -1 ? "No Epic" : (group.First().Parent!.Title);
+                var header = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 6, 0, 2) };
+                header.Children.Add(new TextBlock { Text = "◆ ", FontSize = 11, Foreground = (Brush)Application.Current.FindResource("Subtext0Brush"), VerticalAlignment = VerticalAlignment.Center });
+                header.Children.Add(new TextBlock { Text = epicTitle, FontSize = 11, FontWeight = FontWeights.SemiBold, Foreground = (Brush)Application.Current.FindResource("Subtext0Brush"), TextWrapping = TextWrapping.Wrap });
+                InFlightIssuesList.Items.Add(new ListBoxItem { Content = header, IsHitTestVisible = false, Focusable = false });
+
+                foreach (var issue in group.OrderByDescending(i => i.UpdatedAt))
+                {
+                    InFlightIssuesList.Items.Add(BuildIssueRow(issue, "⏳", "#F2CA63"));
+                }
+            }
         }
 
         /// <summary>
@@ -186,7 +223,7 @@ namespace BuildConsole.Controls
             RenderIssueList(WaitingOnMeList, issues, "Nothing waiting on you.", "🔴", "#E5A3A3");
         }
 
-        /// <summary>Shared by RefreshInFlightIssuesAsync/RefreshWaitingOnMeAsync — same GitHubIssueSummary shape, just a different label/empty-text/icon.</summary>
+        /// <summary>Shared by RefreshWaitingOnMeAsync (flat) and RenderInFlightGrouped (grouped, via BuildIssueRow) — same GitHubIssueSummary shape, just a different label/empty-text/icon.</summary>
         private static void RenderIssueList(ListBox listBox, List<Services.GitHubIssueSummary> issues, string emptyText, string icon, string iconColorHex)
         {
             listBox.Items.Clear();
@@ -197,17 +234,30 @@ namespace BuildConsole.Controls
             }
             foreach (var issue in issues.OrderByDescending(i => i.UpdatedAt))
             {
-                var elapsed = DateTime.Now - issue.UpdatedAt;
-                string elapsedStr = elapsed.TotalHours >= 1 ? $"{(int)elapsed.TotalHours}h ago" : $"{(int)elapsed.TotalMinutes}m ago";
-
-                var panel = new StackPanel { Orientation = Orientation.Horizontal };
-                panel.Children.Add(new TextBlock { Text = icon + " ", FontSize = 12, Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(iconColorHex)), VerticalAlignment = VerticalAlignment.Center });
-                var textStack = new StackPanel();
-                textStack.Children.Add(new TextBlock { Text = issue.Title, FontSize = 12, Foreground = (Brush)Application.Current.FindResource("TextBrush"), TextWrapping = TextWrapping.Wrap });
-                textStack.Children.Add(new TextBlock { Text = $"#{issue.Number}  ·  updated {elapsedStr}", FontSize = 10, Foreground = (Brush)Application.Current.FindResource("Subtext1Brush"), TextWrapping = TextWrapping.Wrap });
-                panel.Children.Add(textStack);
-                listBox.Items.Add(new ListBoxItem { Content = panel, ToolTip = issue.Url });
+                listBox.Items.Add(BuildIssueRow(issue, icon, iconColorHex));
             }
+        }
+
+        /// <summary>
+        /// Git #854 — Shane: "updated -234m ago... can you convert that to
+        /// real time for me?" GitHub returns UpdatedAt in UTC; the old code
+        /// subtracted it straight from DateTime.Now (LOCAL), skewing the
+        /// result by the local UTC offset - explains the negative minutes.
+        /// Shows a real local timestamp instead of a relative "Xm/h ago"
+        /// calculation, sidestepping that class of bug entirely rather than
+        /// just patching the arithmetic.
+        /// </summary>
+        private static ListBoxItem BuildIssueRow(Services.GitHubIssueSummary issue, string icon, string iconColorHex)
+        {
+            string localTime = issue.UpdatedAt.ToLocalTime().ToString("MMM d, h:mm tt");
+
+            var panel = new StackPanel { Orientation = Orientation.Horizontal };
+            panel.Children.Add(new TextBlock { Text = icon + " ", FontSize = 12, Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(iconColorHex)), VerticalAlignment = VerticalAlignment.Center });
+            var textStack = new StackPanel();
+            textStack.Children.Add(new TextBlock { Text = issue.Title, FontSize = 12, Foreground = (Brush)Application.Current.FindResource("TextBrush"), TextWrapping = TextWrapping.Wrap });
+            textStack.Children.Add(new TextBlock { Text = $"#{issue.Number}  ·  updated {localTime}", FontSize = 10, Foreground = (Brush)Application.Current.FindResource("Subtext1Brush"), TextWrapping = TextWrapping.Wrap });
+            panel.Children.Add(textStack);
+            return new ListBoxItem { Content = panel, ToolTip = issue.Url, Tag = issue.Number };
         }
 
         // Git #829 — Shane: "I need the right panel to have another section
@@ -687,6 +737,16 @@ namespace BuildConsole.Controls
                         ? $"Waiting on {string.Join(", ", blockers.Select(n => $"#{n}"))}"
                         : "",
                 });
+            }
+        }
+
+        /// <summary>Git #851 — "When clicking on an In-Flight Still Open issue, it should open the chat that is associated to that issue."</summary>
+        private void InFlightIssuesList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (InFlightIssuesList.SelectedItem is ListBoxItem { Tag: int githubNumber })
+            {
+                IssueChatRequested?.Invoke(this, githubNumber);
+                InFlightIssuesList.SelectedItem = null; // so re-clicking the same row still fires SelectionChanged
             }
         }
 

@@ -165,9 +165,12 @@
                          Open... I just want a big long list." No MaxHeight/inner scroll -
                          the outer ScrollViewer wrapping the whole panel (see above) is the
                          only scroll now, so this just grows as one continuous list. -->
+                    <!-- Git #851 - clicking a row here opens the chat associated with
+                         that issue (see MainWindow's IssueChatRequested handler). -->
                     <ListBox x:Name="InFlightIssuesList"
                              Background="Transparent"
-                             BorderThickness="0"/>
+                             BorderThickness="0"
+                             SelectionChanged="InFlightIssuesList_SelectionChanged"/>
                 </StackPanel>
             </Border>
 

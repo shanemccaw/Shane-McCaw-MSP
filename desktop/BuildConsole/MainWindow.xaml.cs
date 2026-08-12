@@ -161,6 +161,22 @@ namespace BuildConsole
             LeftSidebar.SyncError += (s, err) => ReportSyncStatus(err);
             BuildQueuePanel.SyncError += (s, err) => ReportSyncStatus(err);
 
+            // Git #851 — Shane: "When clicking on an In-Flight Still Open
+            // issue, it should open the chat that is associated to that
+            // issue." Resolves via LeftSidebar's already-fetched chat/epic
+            // data (no separate fetch) and opens/focuses it exactly like
+            // clicking the same chat in the Chats tree would.
+            BuildQueuePanel.IssueChatRequested += (s, githubNumber) =>
+            {
+                var chat = LeftSidebar.FindChatForIssue(githubNumber);
+                if (chat == null)
+                {
+                    MessageBox.Show($"No chat linked to #{githubNumber} yet.", "Open Chat");
+                    return;
+                }
+                OpenChatTab(chat, githubNumber);
+            };
+
             // Git #802 - Shane: "The Claude chats should open in their own
             // tabs. And if there is a build, that tab should split with the
             // build happening right there in that chats tab." Each chat gets
@@ -692,11 +708,22 @@ namespace BuildConsole
             wv.NavigationCompleted += WebView_NavigationCompleted;
             wv.SourceChanged       += WebView_SourceChanged;
 
+            // Git #852 — Shane: "Whenever I click on a tab that is
+            // inactive, as soon as it becomes active again it refreshes the
+            // page I'm on." WPF's TabControl detaches an inactive tab's
+            // Content from the visual tree and reattaches it on
+            // reactivation, so Loaded fires again EVERY time a tab becomes
+            // active, not just once at creation - this used to
+            // unconditionally re-Navigate every time, discarding whatever
+            // Shane had navigated to within the page. `navigated` makes the
+            // real navigation happen exactly once.
+            bool navigated = false;
             wv.Loaded += async (s, e) =>
             {
                 bool ready = await EnsureWebViewInitializedAsync(wv);
-                if (ready)
+                if (ready && !navigated)
                 {
+                    navigated = true;
                     wv.CoreWebView2.Navigate(url);
                 }
             };
@@ -913,10 +940,20 @@ namespace BuildConsole
             wv.NavigationStarting  += WebView_NavigationStarting;
             wv.NavigationCompleted += WebView_NavigationCompleted;
             wv.SourceChanged       += WebView_SourceChanged;
+            // Git #852 — see OpenWebTab's identical fix: Loaded fires again
+            // every time this tab becomes active (WPF TabControl detaches/
+            // reattaches Content on switch), not just once - `navigated`
+            // stops the chat from reloading itself back to its landing URL
+            // every time Shane switches back to it.
+            bool navigated = false;
             wv.Loaded += async (s, e) =>
             {
                 await InjectBuilderButtonsAsync(wv);
-                if (wv.CoreWebView2 != null) wv.CoreWebView2.Navigate(chat.ClaudeUrl);
+                if (!navigated && wv.CoreWebView2 != null)
+                {
+                    navigated = true;
+                    wv.CoreWebView2.Navigate(chat.ClaudeUrl);
+                }
             };
 
             // Split grid: chat WebView2 in column 0, build output pane in
@@ -1328,11 +1365,15 @@ namespace BuildConsole
 
                 string htmlContent = GenerateViewerHtml(filePath, fileText, ext);
                 var wv = new Microsoft.Web.WebView2.Wpf.WebView2();
+                // Git #852 — same fix as OpenWebTab/OpenChatTab: Loaded
+                // fires again on every tab reactivation, not just once.
+                bool navigated = false;
                 wv.Loaded += async (s, e) =>
                 {
                     bool ready = await EnsureWebViewInitializedAsync(wv);
-                    if (ready)
+                    if (ready && !navigated)
                     {
+                        navigated = true;
                         wv.CoreWebView2.NavigateToString(htmlContent);
                     }
                 };
