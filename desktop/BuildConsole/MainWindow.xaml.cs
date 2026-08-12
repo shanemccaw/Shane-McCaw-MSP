@@ -153,6 +153,17 @@ namespace BuildConsole
             // a currently-running queue item ("still go through the queue" —
             // Shane's own answer when asked whether this should bypass it).
             LeftSidebar.ChatSelected += (s, e) => OpenChatTab(e.Chat, e.GithubNumber);
+
+            // Git #840 (Git Board Phase 2) — Shane: "I need to be able to...
+            // read their descriptions, comments, etc..." Clicking an issue in
+            // the Git Board tree opens the bottom panel's Issue Detail tab
+            // (index 5 — Build Log, Terminal, SQL Runner, Output, Test
+            // Results, Issue Detail) and loads its real body/comment thread.
+            LeftSidebar.IssueSelected += (s, issue) =>
+            {
+                SetBottomPanel(true, 5);
+                IssueDetailView.LoadIssue(issue.IssueNumber);
+            };
             _buildTailTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
             _buildTailTimer.Tick += async (_, _) => await PollChatTabBuildStateAsync();
             _buildTailTimer.Start();

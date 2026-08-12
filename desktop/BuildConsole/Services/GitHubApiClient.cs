@@ -30,6 +30,15 @@ namespace BuildConsole.Services
         public bool HasInFlightLabel => Labels.Any(l => string.Equals(l.Name, "in-flight", StringComparison.OrdinalIgnoreCase));
     }
 
+    /// <summary>Git #842 (Git Board Phase 4) — the fields of `POST /issues`'s response actually used: the new issue's number/url plus its numeric `id` for a follow-up `sub_issues` attach call.</summary>
+    public class CreatedIssue
+    {
+        public int Number { get; set; }
+        public long Id { get; set; }
+        [JsonPropertyName("html_url")]
+        public string HtmlUrl { get; set; } = "";
+    }
+
     public enum GitHubIssueState { Open, Closed, All }
 
     /// <summary>
@@ -162,6 +171,41 @@ namespace BuildConsole.Services
             using var req = new HttpRequestMessage(HttpMethod.Patch, $"repos/{Owner}/{Repo}/issues/{number}")
             {
                 Content = JsonContent.Create(new { state = close ? "closed" : "open" }),
+            };
+            var res = await _http.SendAsync(req);
+            res.EnsureSuccessStatusCode();
+        }
+
+        /// <summary>
+        /// Git #842 (Git Board Phase 4) — real `POST /issues`, the same
+        /// endpoint/shape `exception-github-sync.ts`'s createGithubIssue uses.
+        /// The response's numeric `id` is what <see cref="AddSubIssueAsync"/>
+        /// wants as `sub_issue_id` to attach the new issue under an epic.
+        /// </summary>
+        public async Task<CreatedIssue> CreateIssueAsync(string title, string body)
+        {
+            var res = await _http.PostAsJsonAsync($"repos/{Owner}/{Repo}/issues", new { title, body });
+            if (!res.IsSuccessStatusCode)
+            {
+                var errBody = await res.Content.ReadAsStringAsync();
+                throw new Exception($"GitHub rejected issue creation ({(int)res.StatusCode}): {errBody}");
+            }
+            var created = await res.Content.ReadFromJsonAsync<CreatedIssue>(JsonOpts);
+            if (created == null) throw new Exception("GitHub returned an empty response for the created issue.");
+            return created;
+        }
+
+        /// <summary>
+        /// Git #842 (Git Board Phase 4) — real `POST /issues/{parent}/sub_issues`,
+        /// the same endpoint `exception-github-sync.ts`'s createGithubIssue
+        /// already uses to attach a freshly-filed issue under Epic #530.
+        /// GitHub wants the child's numeric database id here, not its number.
+        /// </summary>
+        public async Task AddSubIssueAsync(int parentNumber, long subIssueId)
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Post, $"repos/{Owner}/{Repo}/issues/{parentNumber}/sub_issues")
+            {
+                Content = JsonContent.Create(new { sub_issue_id = subIssueId }),
             };
             var res = await _http.SendAsync(req);
             res.EnsureSuccessStatusCode();

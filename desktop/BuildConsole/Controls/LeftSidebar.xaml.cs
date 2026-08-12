@@ -110,6 +110,8 @@ namespace BuildConsole.Controls
         /// show/hide that tab's build split pane - the URL alone isn't enough.
         /// </summary>
         public event EventHandler<(BoardChat Chat, int? GithubNumber)>? ChatSelected;
+        /// <summary>Git #840 (Git Board Phase 2) — fired when Shane clicks an issue node in the Git Board tree, so MainWindow can show its real description/comment thread.</summary>
+        public event EventHandler<GitIssue>? IssueSelected;
         /// <summary>Fired when Shane clicks "Load SQL" on a Shane To-Do item — MainWindow fetches the real text and hands it to SqlRunnerView.</summary>
         public event EventHandler<string>? SqlLoadRequested;
         public event EventHandler<bool>? PinToggled;
@@ -603,6 +605,15 @@ namespace BuildConsole.Controls
                 int? githubNumber = chat.IssueGithubNumber
                     ?? (chat.EpicId.HasValue && _chatEpicById.TryGetValue(chat.EpicId.Value, out var epic) ? epic.GithubNumber : null);
                 ChatSelected?.Invoke(this, (chat, githubNumber));
+            }
+        }
+
+        /// <summary>Git #840 (Git Board Phase 2) — clicking an issue node shows its real description/comments in MainWindow's detail panel.</summary>
+        private void IssuesTree_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
+        {
+            if (e.NewValue is TreeViewItem tvi && tvi.Tag is GitIssue issue)
+            {
+                IssueSelected?.Invoke(this, issue);
             }
         }
 

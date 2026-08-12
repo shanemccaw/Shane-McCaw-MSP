@@ -27,7 +27,8 @@
                         <Button x:Name="BtnNewItem"
                                 Style="{StaticResource IconButton}"
                                 ToolTip="New Chat"
-                                Padding="4">
+                                Padding="4"
+                                Click="BtnNewItem_Click">
                             <TextBlock Text="&#xE710;" FontFamily="Segoe MDL2 Assets" FontSize="13" VerticalAlignment="Center"/>
                         </Button>
                         <Button Style="{StaticResource IconButton}"

@@ -396,6 +396,11 @@
                             <ctrl:TestResultsView x:Name="TestResultsView"/>
                         </TabItem>
 
+                        <TabItem Header="Issue Detail">
+                            <!-- Git #840 (Git Board Phase 2) - real issue description + comment thread, clicked from the Git Board tree. -->
+                            <ctrl:IssueDetailView x:Name="IssueDetailView"/>
+                        </TabItem>
+
                     </TabControl>
                 </Grid>
 
