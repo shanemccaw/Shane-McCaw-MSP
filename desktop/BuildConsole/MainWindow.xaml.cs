@@ -2162,12 +2162,53 @@ namespace BuildConsole
             }
         }
 
+        // ── Git #807 (Epic #803 Phase 3): HTTP test executor (apiTests) ──
+        // Plugs into RunManifestAsync at the exact point #806 left as the stable
+        // entry point. Results feed the ONE shared ManifestRunResult -> test-results/
+        // pipeline #808 (graphTests) and #809 (uiSteps) will append their own
+        // TestStepResult entries into as well, per #803/#807 — not a separate
+        // output path per executor kind.
         private async System.Threading.Tasks.Task RunManifestAsync(BuildConsole.Services.TestManifest manifest, bool isRegression)
         {
             string mode = isRegression ? "regression" : "single";
             BuildConsole.Services.ActivityLog.Log("testing.manifest-runner",
-                $"[{mode}] Running manifest for issue #{manifest.Issue} ({manifest.Feature}) — {manifest.ApiTests.Count} apiTests, {manifest.GraphTests.Count} graphTests, {manifest.UiSteps.Count} uiSteps. Executors not wired yet (#807/#808/#809).");
-            await System.Threading.Tasks.Task.CompletedTask;
+                $"[{mode}] Running manifest for issue #{manifest.Issue} ({manifest.Feature}) — {manifest.ApiTests.Count} apiTests, {manifest.GraphTests.Count} graphTests, {manifest.UiSteps.Count} uiSteps. #808/#809 executors not wired yet.");
+
+            var runResult = new BuildConsole.Services.ManifestRunResult
+            {
+                Issue = manifest.Issue,
+                Feature = manifest.Feature,
+                Mode = mode,
+                StartedAt = DateTime.Now,
+            };
+
+            var config = BuildConsole.Services.BuildTrackerConfig.Load();
+            var apiResults = await BuildConsole.Services.HttpTestExecutor.RunAsync(manifest, config);
+            runResult.AddRange(apiResults);
+
+            if (apiResults.Count > 0)
+            {
+                int passed = apiResults.Count(r => r.Passed);
+                BuildConsole.Services.ActivityLog.Log("testing.api-executor",
+                    $"apiTests: {passed}/{apiResults.Count} passed for issue #{manifest.Issue}.");
+            }
+
+            if (runResult.Steps.Count > 0)
+            {
+                string? repoRoot = BuildConsole.Services.BuildTrackerConfig.FindRepoRoot();
+                if (repoRoot != null)
+                {
+                    try
+                    {
+                        string resultPath = runResult.WriteToFile(repoRoot);
+                        BuildConsole.Services.ActivityLog.Log("testing.manifest-runner", $"Results written: {resultPath}");
+                    }
+                    catch (Exception ex)
+                    {
+                        BuildConsole.Services.ActivityLog.Log("testing.manifest-runner", $"Couldn't write test results: {ex.Message}");
+                    }
+                }
+            }
         }
     }
 
