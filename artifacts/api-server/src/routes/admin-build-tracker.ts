@@ -1369,20 +1369,64 @@ router.post("/admin/build-tracker/extension/queue", ingestAuth, async (req: Requ
     ...(Array.isArray(blockedByNumbers) ? blockedByNumbers.filter((n) => typeof n === "number") : []),
     ...(typeof blockedByNumber === "number" ? [blockedByNumber] : []),
   ]));
+  const resolvedGithubNumber = typeof githubNumber === "number" ? githubNumber : null;
   try {
-    const [row] = await db
-      .insert(btBuildQueueTable)
-      .values({
-        title: title.trim(),
-        prompt,
-        model: model?.trim() || null,
-        effort: effort?.trim() || null,
-        cwd: cwd?.trim() || null,
-        githubNumber: typeof githubNumber === "number" ? githubNumber : null,
-        blockedByNumber: allBlockers[0] ?? null,
-        blockedByNumbers: allBlockers.length > 0 ? allBlockers : null,
-      })
-      .returning();
+    // Git #823 — Shane: "We should be going based on the ID here... 805 =
+    // playing 805 = done, not a new row for playing new row for done new
+    // row for error." Queuing (or retrying, which POSTs here the same way)
+    // an issue-linked build used to always INSERT, so every Queue/Retry
+    // click for the same issue piled up another top-level tree entry —
+    // real duplicates, not a rendering artifact (unlike #818). An
+    // issue-linked build has a natural identity (its own githubNumber);
+    // reuse whatever row already exists for that number instead of
+    // spawning a new one, so #805 stays exactly one row that transitions
+    // queued -> running -> done/failed and back to queued on retry. A
+    // build NOT tied to a real issue (githubNumber null) has no natural
+    // identity to dedupe on, so those still insert fresh every time.
+    let row;
+    if (resolvedGithubNumber != null) {
+      const [existing] = await db
+        .select({ id: btBuildQueueTable.id })
+        .from(btBuildQueueTable)
+        .where(eq(btBuildQueueTable.githubNumber, resolvedGithubNumber))
+        .orderBy(desc(btBuildQueueTable.createdAt))
+        .limit(1);
+      if (existing) {
+        [row] = await db
+          .update(btBuildQueueTable)
+          .set({
+            title: title.trim(),
+            prompt,
+            model: model?.trim() || null,
+            effort: effort?.trim() || null,
+            cwd: cwd?.trim() || null,
+            blockedByNumber: allBlockers[0] ?? null,
+            blockedByNumbers: allBlockers.length > 0 ? allBlockers : null,
+            status: "queued",
+            claimedAt: null,
+            completedAt: null,
+            exitCode: null,
+            updatedAt: new Date(),
+          })
+          .where(eq(btBuildQueueTable.id, existing.id))
+          .returning();
+      }
+    }
+    if (!row) {
+      [row] = await db
+        .insert(btBuildQueueTable)
+        .values({
+          title: title.trim(),
+          prompt,
+          model: model?.trim() || null,
+          effort: effort?.trim() || null,
+          cwd: cwd?.trim() || null,
+          githubNumber: resolvedGithubNumber,
+          blockedByNumber: allBlockers[0] ?? null,
+          blockedByNumbers: allBlockers.length > 0 ? allBlockers : null,
+        })
+        .returning();
+    }
     res.status(201).json(row);
   } catch (err) {
     log.error({ err }, "POST /extension/queue failed");
