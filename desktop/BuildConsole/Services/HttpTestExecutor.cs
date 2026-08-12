@@ -23,22 +23,33 @@ namespace BuildConsole.Services
         /// <summary>Git #810 — raised after each apiTest completes so the Test Results tab can render a telemetry card live, during the run, instead of waiting for the whole manifest to finish.</summary>
         public static event Action<TestStepResult>? StepCompleted;
 
-        public static async Task<List<TestStepResult>> RunAsync(TestManifest manifest, BuildTrackerConfig config, TestRunVariables vars)
+        public static Task<List<TestStepResult>> RunAsync(TestManifest manifest, BuildTrackerConfig config, TestRunVariables vars) =>
+            RunListAsync(manifest, manifest.ApiTests, config, vars);
+
+        /// <summary>Git #879 — runs `manifest.PostGraphApiTests`, the same apiTest shape as
+        /// `RunAsync`/`manifest.ApiTests` but called from RunManifestAsync AFTER graphTests
+        /// instead of before, for calls that depend on a value graphTests' mail-poll `extract`
+        /// (#877/#878) only captures once the poll matches — e.g. #437's verify-code call
+        /// needing the 6-digit code pulled from the delivered email.</summary>
+        public static Task<List<TestStepResult>> RunPostGraphAsync(TestManifest manifest, BuildTrackerConfig config, TestRunVariables vars) =>
+            RunListAsync(manifest, manifest.PostGraphApiTests, config, vars);
+
+        private static async Task<List<TestStepResult>> RunListAsync(TestManifest manifest, List<JsonElement> tests, BuildTrackerConfig config, TestRunVariables vars)
         {
             var results = new List<TestStepResult>();
-            if (manifest.ApiTests.Count == 0) return results;
+            if (tests.Count == 0) return results;
 
             using var http = new HttpClient();
-            for (int i = 0; i < manifest.ApiTests.Count; i++)
+            for (int i = 0; i < tests.Count; i++)
             {
-                var result = await RunOneAsync(http, manifest, config, vars, manifest.ApiTests[i], i);
+                var result = await RunOneAsync(http, manifest, config, vars, tests[i], i, tests.Count);
                 results.Add(result);
                 StepCompleted?.Invoke(result);
             }
             return results;
         }
 
-        private static async Task<TestStepResult> RunOneAsync(HttpClient http, TestManifest manifest, BuildTrackerConfig config, TestRunVariables vars, JsonElement test, int index)
+        private static async Task<TestStepResult> RunOneAsync(HttpClient http, TestManifest manifest, BuildTrackerConfig config, TestRunVariables vars, JsonElement test, int index, int total)
         {
             var sw = Stopwatch.StartNew();
             string method = test.TryGetProperty("method", out var m) ? (m.GetString() ?? "GET") : "GET";
@@ -63,7 +74,7 @@ namespace BuildConsole.Services
                 if (test.TryGetProperty("body", out var bodyEl))
                     req.Content = new StringContent(vars.Resolve(ResolvePlaceholders(bodyEl.GetRawText(), config)), Encoding.UTF8, "application/json");
 
-                ActivityLog.Log(Channel, $"[{index + 1}/{manifest.ApiTests.Count}] {method} {url}");
+                ActivityLog.Log(Channel, $"[{index + 1}/{total}] {method} {url}");
                 using var resp = await http.SendAsync(req);
                 string responseBody = await resp.Content.ReadAsStringAsync();
 

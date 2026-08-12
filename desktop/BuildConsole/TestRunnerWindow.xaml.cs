@@ -121,7 +121,7 @@ namespace BuildConsole
             RunOnUi(() => AdvanceStep(result.Passed));
         }
 
-        /// <summary>Builds the left step list from a loaded manifest — apiTests, then graphTests, then zohoTests (#881), then uiSteps, matching RunManifestAsync's real execution order. Only kinds actually present in the manifest appear.</summary>
+        /// <summary>Builds the left step list from a loaded manifest — apiTests, then graphTests, then postGraphApiTests (#879), then zohoTests (#881), then uiSteps, matching RunManifestAsync's real execution order. Only kinds actually present in the manifest appear.</summary>
         public void SetSteps(Services.TestManifest manifest)
         {
             RunOnUi(() =>
@@ -134,6 +134,11 @@ namespace BuildConsole
 
                 foreach (var test in manifest.GraphTests)
                     _steps.Add(new StepListItem { Kind = "GRAPH TESTS", Label = DescribeHttpTest(test) });
+
+                // Git #879 — postGraphApiTests render between graphTests and zohoTests, matching
+                // RunManifestAsync's real execution order (they run after the mail-poll extract).
+                foreach (var test in manifest.PostGraphApiTests)
+                    _steps.Add(new StepListItem { Kind = "API TESTS", Label = DescribeHttpTest(test) });
 
                 foreach (var test in manifest.ZohoTests)
                     _steps.Add(new StepListItem { Kind = "ZOHO TESTS", Label = DescribeHttpTest(test) });

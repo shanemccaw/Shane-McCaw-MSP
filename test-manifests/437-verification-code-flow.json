@@ -1,0 +1,58 @@
+{
+  "issue": 879,
+  "feature": "Email verification-code flow (#437) — send, deliver, extract, verify",
+  "baseUrl": "{{DEPLOY_URL}}",
+
+  "apiTests": [
+    {
+      "name": "send-verification-code issues a fresh code and emails it to the fixture session's address",
+      "method": "POST",
+      "path": "/api/public/flow/send-verification-code",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "sessionId": "43700000-0000-4000-8000-000000000001" },
+      "expect": { "status": 200, "jsonPath": "$.ok", "value": true }
+    }
+  ],
+
+  "graphTests": [
+    {
+      "name": "poll the designated test mailbox for the delivered verification-code email and extract the 6-digit code",
+      "authProfile": "ba40ca4d",
+      "mailbox": "{{TEST_MAILBOX_ID}}",
+      "matchSubject": "Your verification code",
+      "matchSince": "now",
+      "timeoutMs": 60000,
+      "pollIntervalMs": 3000,
+      "extract": { "as": "extractedCode", "regex": "\\d{6}" }
+    }
+  ],
+
+  "postGraphApiTests": [
+    {
+      "name": "verify-code rejects a deliberately wrong code with error code_incorrect (both wrong-code checks run BEFORE the real-code check — once a code is verified, a later call short-circuits to alreadyVerified rather than re-checking the submitted code)",
+      "method": "POST",
+      "path": "/api/public/flow/verify-code",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "sessionId": "43700000-0000-4000-8000-000000000001", "code": "000001" },
+      "expect": { "status": 400, "jsonPath": "$.error", "value": "code_incorrect" }
+    },
+    {
+      "name": "verify-code's wrong-code rejection includes attemptsRemaining",
+      "method": "POST",
+      "path": "/api/public/flow/verify-code",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "sessionId": "43700000-0000-4000-8000-000000000001", "code": "000002" },
+      "expect": { "status": 400, "jsonPath": "$.attemptsRemaining", "exists": true }
+    },
+    {
+      "name": "verify-code accepts the real code extracted from the delivered email",
+      "method": "POST",
+      "path": "/api/public/flow/verify-code",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "sessionId": "43700000-0000-4000-8000-000000000001", "code": "{{extractedCode}}" },
+      "expect": { "status": 200, "jsonPath": "$.ok", "value": true }
+    }
+  ],
+
+  "uiSteps": []
+}

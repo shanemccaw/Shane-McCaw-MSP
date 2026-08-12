@@ -18,6 +18,15 @@ namespace BuildConsole.Services
         public string BaseUrl { get; set; } = string.Empty;
         public List<JsonElement> ApiTests { get; set; } = new();
         public List<JsonElement> GraphTests { get; set; } = new();
+        // Git #879 (Epic #803) — apiTests-shaped entries that must run AFTER graphTests
+        // instead of before, for flows where an api call needs a value graphTests'
+        // mail-poll `extract` (#877/#878) hasn't captured yet at the time the normal
+        // apiTests phase runs (e.g. #437's verify-code call needing the 6-digit code
+        // the mail-poll step pulled out of the delivered email). Same raw-JSON
+        // { method, path, headers, body, expect, extract } shape as apiTests; executed
+        // by HttpTestExecutor.RunPostGraphAsync, called from RunManifestAsync right
+        // after graphTests and before zohoTests.
+        public List<JsonElement> PostGraphApiTests { get; set; } = new();
         // Git #881 (Epic #803) — zohoTests: same raw-JSON { method, path, expect } shape as
         // apiTests/graphTests, executed by ZohoTestExecutor against the api-server's Zoho admin
         // read routes, authenticated with the #880 Zoho API Token.
@@ -46,6 +55,9 @@ namespace BuildConsole.Services
 
                 if (root.TryGetProperty("graphTests", out var graphTestsEl) && graphTestsEl.ValueKind == JsonValueKind.Array)
                     manifest.GraphTests = graphTestsEl.EnumerateArray().Select(e => e.Clone()).ToList();
+
+                if (root.TryGetProperty("postGraphApiTests", out var postGraphEl) && postGraphEl.ValueKind == JsonValueKind.Array)
+                    manifest.PostGraphApiTests = postGraphEl.EnumerateArray().Select(e => e.Clone()).ToList();
 
                 if (root.TryGetProperty("zohoTests", out var zohoTestsEl) && zohoTestsEl.ValueKind == JsonValueKind.Array)
                     manifest.ZohoTests = zohoTestsEl.EnumerateArray().Select(e => e.Clone()).ToList();

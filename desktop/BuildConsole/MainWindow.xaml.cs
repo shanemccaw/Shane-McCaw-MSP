@@ -2638,7 +2638,7 @@ namespace BuildConsole
         {
             string mode = isRegression ? "regression" : "single";
             BuildConsole.Services.ActivityLog.Log("testing.manifest-runner",
-                $"[{mode}] Running manifest for issue #{manifest.Issue} ({manifest.Feature}) — {manifest.ApiTests.Count} apiTests, {manifest.GraphTests.Count} graphTests, {manifest.ZohoTests.Count} zohoTests, {manifest.UiSteps.Count} uiSteps.");
+                $"[{mode}] Running manifest for issue #{manifest.Issue} ({manifest.Feature}) — {manifest.ApiTests.Count} apiTests, {manifest.GraphTests.Count} graphTests, {manifest.PostGraphApiTests.Count} postGraphApiTests, {manifest.ZohoTests.Count} zohoTests, {manifest.UiSteps.Count} uiSteps.");
 
             var runResult = new BuildConsole.Services.ManifestRunResult
             {
@@ -2681,6 +2681,20 @@ namespace BuildConsole
                 int passed = graphResults.Count(r => r.Passed);
                 BuildConsole.Services.ActivityLog.Log("testing.graph-executor",
                     $"graphTests: {passed}/{graphResults.Count} passed for issue #{manifest.Issue}.");
+            }
+
+            // Git #879 — postGraphApiTests: apiTest-shaped calls that must run AFTER graphTests
+            // (e.g. #437's verify-code call needing the 6-digit code #878's mail-poll `extract`
+            // only captures during the graphTests phase above). Same shared vars store, same
+            // HttpTestExecutor evaluator apiTests use.
+            var postGraphApiResults = await BuildConsole.Services.HttpTestExecutor.RunPostGraphAsync(manifest, config, vars);
+            runResult.AddRange(postGraphApiResults);
+
+            if (postGraphApiResults.Count > 0)
+            {
+                int passed = postGraphApiResults.Count(r => r.Passed);
+                BuildConsole.Services.ActivityLog.Log("testing.api-executor",
+                    $"postGraphApiTests: {passed}/{postGraphApiResults.Count} passed for issue #{manifest.Issue}.");
             }
 
             // Git #881 — zohoTests run after graphTests, before uiSteps, matching the step-list
