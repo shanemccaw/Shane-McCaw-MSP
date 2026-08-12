@@ -13,6 +13,27 @@ const log = logger.child({ channel: "tenant.portal" });
 
 const router: IRouter = Router();
 
+// Git #415. The Copilot Readiness journey's seven "live spine" reports
+// (`JOURNEY_LIVE_DOCUMENTS` in artifacts/msp-portal/src/components/copilot-journey/journeyTokens.ts
+// — kept in sync with that list by hand, the same cross-app-duplication pattern
+// this route already uses for `SOW_DOC_TYPE` in portal-assessment.ts) render
+// live in the browser from the tenant's own scan data; they have no HTML string
+// representation on the server. A tenant can still have a STALE row for one of
+// these docTypes from before that migration, or from an admin re-running the old
+// generator (`document-engine.ts` has no guard against these keys) — such a row's
+// `htmlContent` is old content that can silently diverge from what's on screen
+// (e.g. sections since removed). Rather than ever serve that mismatch, these
+// docTypes are refused here.
+const LIVE_RENDERED_DOC_TYPES = new Set([
+  "copilot_readiness",
+  "security_posture_report",
+  "governance_maturity_report",
+  "compliance_alignment_report",
+  "license_optimization_report",
+  "adoption_report",
+  "operational_health_report",
+]);
+
 const UPLOADS_BASE = process.env.UPLOADS_DIR
   ? path.resolve(process.env.UPLOADS_DIR)
   : path.resolve("../../data/uploads");
@@ -80,6 +101,10 @@ router.get("/portal/insights-documents/:id/view", requireAuth, async (req: Reque
     if (!doc) { res.status(404).json({ error: "Document not found" }); return; }
     if (doc.customerId !== userId) { res.status(403).json({ error: "Forbidden" }); return; }
     if (doc.status !== "delivered" && doc.docType !== "scoped_sow") { res.status(403).json({ error: "Document not yet delivered" }); return; }
+    if (LIVE_RENDERED_DOC_TYPES.has(doc.docType)) {
+      res.status(409).json({ error: "This report renders live and has no stored HTML to view here" });
+      return;
+    }
     res.json({ id: doc.id, title: doc.title, htmlContent: stripStagedForReviewBanner(doc.htmlContent) });
   } catch (err) {
     req.log.error({ err }, "portal/insights-documents/:id/view failed");
@@ -101,6 +126,7 @@ router.get("/portal/insights-documents/:id/pdf", requireAuth, async (req: Reques
         title:       insightsGeneratedDocumentsTable.title,
         htmlContent: insightsGeneratedDocumentsTable.htmlContent,
         status:      insightsGeneratedDocumentsTable.status,
+        docType:     insightsGeneratedDocumentsTable.docType,
         customerId:  insightsGeneratedDocumentsTable.customerId,
       })
       .from(insightsGeneratedDocumentsTable)
@@ -110,6 +136,12 @@ router.get("/portal/insights-documents/:id/pdf", requireAuth, async (req: Reques
     if (doc.customerId !== userId) { res.status(403).json({ error: "Forbidden" }); return; }
     // Allow download for approved docs shown in the presentation portal, not just formally "delivered" ones
     if (!["approved", "delivered"].includes(doc.status ?? "")) { res.status(403).json({ error: "Document not available for download" }); return; }
+    if (LIVE_RENDERED_DOC_TYPES.has(doc.docType)) {
+      // Git #415: this docType renders live from the tenant's scan data; the row's
+      // stored htmlContent is stale and would silently mismatch what's on screen.
+      res.status(409).json({ error: "This report renders live in the browser and has no stored PDF export yet" });
+      return;
+    }
 
     // Strip staged-for-review banner (same as /view), then build full HTML doc
     const cleanHtml = stripStagedForReviewBanner(doc.htmlContent ?? "");

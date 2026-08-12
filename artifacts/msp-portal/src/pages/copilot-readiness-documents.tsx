@@ -79,6 +79,7 @@ import {
   RADIUS,
   gateLabel,
   hexAlpha,
+  isLiveRenderedDocument,
   reportAccent,
   severityColor,
 } from "@/components/copilot-journey/journeyTokens.ts";
@@ -500,9 +501,17 @@ export default function CopilotReadinessDocumentsPage() {
    * ---------------------------------------------------------------- */
 
   const [downloading, setDownloading] = useState(false);
-  const canDownload = !isPreview && activeDoc?.status === "ready" && activeDoc.id !== null;
+  // A live-rendered document's row (if it has one at all) is never PDF-eligible:
+  // it would be stale content the browser doesn't show (#415) rather than a
+  // real export. The server refuses these too — this just avoids offering a
+  // download that a click would immediately fail.
+  const canDownload =
+    !isPreview && activeDoc?.status === "ready" && activeDoc.id !== null && !isLiveRenderedDocument(activeDoc);
   const downloadable = useMemo(
-    () => (isPreview ? [] : documents.filter((d) => d.status === "ready" && d.id !== null)),
+    () =>
+      isPreview
+        ? []
+        : documents.filter((d) => d.status === "ready" && d.id !== null && !isLiveRenderedDocument(d)),
     [documents, isPreview],
   );
 
@@ -780,7 +789,13 @@ export default function CopilotReadinessDocumentsPage() {
               currentTitle={activeDoc?.title ?? "Your reports"}
               readyCount={isPreview ? view.generation.ready : downloadable.length}
               canDownloadCurrent={Boolean(canDownload)}
-              disabledReason={isPreview ? "Not available in the design preview" : null}
+              disabledReason={
+                isPreview
+                  ? "Not available in the design preview"
+                  : activeDoc && isLiveRenderedDocument(activeDoc)
+                    ? "This report renders live — PDF export isn't available for it yet"
+                    : null
+              }
               downloading={downloading}
               onDownloadCurrent={() => void handleDownload()}
               onDownloadAll={() => void handleDownloadAll()}
