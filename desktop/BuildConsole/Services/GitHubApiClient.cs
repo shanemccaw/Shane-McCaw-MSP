@@ -135,18 +135,56 @@ namespace BuildConsole.Services
         }
 
         /// <summary>Real "blocked" state — a still-OPEN blocked_by relationship, the same GitHub issue-dependency link CLAUDE.md's blocked-label workflow sets/clears.</summary>
-        public async Task<bool> HasOpenBlockedByAsync(int number)
+        public async Task<bool> HasOpenBlockedByAsync(int number) => await GetOpenBlockedByAsync(number) != null;
+
+        /// <summary>
+        /// Git #845 (Git Board Phase 7) — same GitHub issue-dependency read as
+        /// <see cref="HasOpenBlockedByAsync"/>, but returns the real still-OPEN
+        /// blocker's number/title/state instead of just a bool, so the Git
+        /// Board tree can show "Blocked by #N: Title" rather than a bare flag.
+        /// </summary>
+        public async Task<GitHubIssueResult?> GetOpenBlockedByAsync(int number)
         {
             try
             {
                 var blockers = await _http.GetFromJsonAsync<List<GitHubIssueResult>>(
                     $"repos/{Owner}/{Repo}/issues/{number}/dependencies/blocked_by", JsonOpts);
-                return blockers?.Any(b => !b.IsClosed) ?? false;
+                return blockers?.FirstOrDefault(b => !b.IsClosed);
             }
             catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
             {
-                return false;
+                return null;
             }
+        }
+
+        /// <summary>
+        /// Git #845 (Git Board Phase 7) — sets a real GitHub issue-dependency
+        /// link via the same `POST /issues/{n}/dependencies/blocked_by`
+        /// endpoint CLAUDE.md's blocked-label workflow already uses. The API
+        /// takes the blocking issue's real internal `id` (not its number), so
+        /// this fetches that first, same two-step sequence CLAUDE.md documents.
+        /// </summary>
+        public async Task SetBlockedByAsync(int issueNumber, int blockingIssueNumber)
+        {
+            var blocker = await _http.GetFromJsonAsync<GitHubIssueIdResult>(
+                $"repos/{Owner}/{Repo}/issues/{blockingIssueNumber}", JsonOpts);
+            if (blocker == null)
+                throw new Exception($"Issue #{blockingIssueNumber} not found on GitHub.");
+
+            var res = await _http.PostAsJsonAsync(
+                $"repos/{Owner}/{Repo}/issues/{issueNumber}/dependencies/blocked_by",
+                new { issue_id = blocker.Id });
+
+            if (!res.IsSuccessStatusCode)
+            {
+                var body = await res.Content.ReadAsStringAsync();
+                throw new Exception($"GitHub rejected blocked_by ({(int)res.StatusCode}): {body}");
+            }
+        }
+
+        private class GitHubIssueIdResult
+        {
+            public long Id { get; set; }
         }
 
         private class GitHubSearchResponse
