@@ -136,6 +136,14 @@ namespace BuildConsole
         // ── Git #806: test manifest runner (Epic #803 Phase 2) ───────────────────
         private BuildConsole.Services.TestManifest? _loadedManifest;
 
+        // ── Git #898: remote UI-test trigger poll (Epic #803) ────────────────────
+        // Claude Code (headless, no GUI) POSTs a run request to the api-server; THIS
+        // already-running app is the only thing with a real Windows GUI session that
+        // can drive a manifest's WebView2 uiSteps. Same DispatcherTimer poll shape as
+        // the build queue watcher (#817) and the deploy-status poll (#805).
+        private DispatcherTimer? _testTriggerTimer;
+        private bool _testTriggerBusy;
+
         // ── Git #857: dedicated Test Runner window, replacing the retired bottom
         // "Test Results" tab entirely — reused across runs for the app's lifetime
         // (a new one is only created if none exists yet or Shane closed the last one).
@@ -212,6 +220,10 @@ namespace BuildConsole
                 _queueWatcher = new BuildConsole.Services.QueueWatcherService(
                     _buildTrackerApi, btConfig.MaxConcurrent, BuildConsole.Services.BuildTrackerConfig.FindRepoRoot());
                 _queueWatcher.Start();
+
+                // Git #898 — same "app is already open for the build queue" assumption:
+                // start listening for remote UI-test run requests too.
+                StartTestTriggerPoll();
             }
 
             BuildQueuePanel.Initialize(_buildTrackerApi, _queueWatcher);
@@ -2746,7 +2758,11 @@ namespace BuildConsole
         // pipeline #808 (graphTests) and #809 (uiSteps) will append their own
         // TestStepResult entries into as well, per #803/#807 — not a separate
         // output path per executor kind.
-        private async System.Threading.Tasks.Task RunManifestAsync(BuildConsole.Services.TestManifest manifest, bool isRegression)
+        // Git #898 — returns the finished ManifestRunResult (previously void) so the
+        // #898 remote-trigger poll loop can POST the exact same result JSON back to the
+        // api-server for a waiting Claude Code session to read. The two existing callers
+        // (Run Tests / Run Regression Suite) ignore the return value, unchanged.
+        private async System.Threading.Tasks.Task<BuildConsole.Services.ManifestRunResult> RunManifestAsync(BuildConsole.Services.TestManifest manifest, bool isRegression)
         {
             string mode = isRegression ? "regression" : "single";
             BuildConsole.Services.ActivityLog.Log("testing.manifest-runner",
@@ -2868,6 +2884,113 @@ namespace BuildConsole
                         BuildConsole.Services.ActivityLog.Log("testing.manifest-runner", $"Couldn't write test results: {ex.Message}");
                     }
                 }
+            }
+
+            return runResult;
+        }
+
+        // ── Git #898 (Epic #803): remote UI-test trigger poll ────────────────────
+        // The rendezvous half that lives in this app. A headless Claude Code session
+        // POSTs /admin/deploy/test-run naming a manifest; it can't drive WebView2
+        // itself. This app already has a real GUI session (it's open for the build
+        // queue anyway), so it claims the pending run, executes the SAME
+        // RunManifestAsync pipeline the Run Tests menu uses, and POSTs the finished
+        // ManifestRunResult back for the waiting Claude Code poll to read. Poll shape
+        // mirrors the existing build-queue watcher and deploy-status timers exactly.
+        private void StartTestTriggerPoll()
+        {
+            if (_testTriggerTimer != null || _buildTrackerApi == null || !_buildTrackerApi.IsConfigured) return;
+            _testTriggerTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
+            _testTriggerTimer.Tick += async (_, _) => await TestTriggerTickAsync();
+            _testTriggerTimer.Start();
+            BuildConsole.Services.ActivityLog.Log("testing.remote-trigger",
+                "Remote UI-test trigger poll started — polling /admin/deploy/test-run/next every 5s.");
+        }
+
+        private async System.Threading.Tasks.Task TestTriggerTickAsync()
+        {
+            // One manifest run at a time: RunManifestAsync drives the single shared
+            // TestRunnerWindow/WebView2, which can't service two runs concurrently.
+            if (_testTriggerBusy || _buildTrackerApi == null) return;
+
+            BuildConsole.Services.TestRunRequest? req;
+            try { req = await _buildTrackerApi.GetNextTestRunAsync(); }
+            catch (Exception ex)
+            {
+                // Transient poll failure (server down mid-session, etc.) — note it once
+                // and let the next tick retry; never spam or throw out of a timer tick.
+                BuildConsole.Services.ActivityLog.Log("testing.remote-trigger", $"Poll failed: {ex.Message}");
+                return;
+            }
+
+            if (req?.RunId == null || string.IsNullOrWhiteSpace(req.ManifestFile)) return;
+
+            _testTriggerBusy = true;
+            string runId = req.RunId;
+            string manifestFile = req.ManifestFile;
+            try
+            {
+                BuildConsole.Services.ActivityLog.Log("testing.remote-trigger",
+                    $"Claimed remote test-run {runId} for manifest {manifestFile}.");
+
+                string? repoRoot = BuildConsole.Services.BuildTrackerConfig.FindRepoRoot();
+                if (repoRoot == null)
+                {
+                    await CompleteTestRunFailedAsync(runId,
+                        "No repo root found (missing scripts\\build-queue-watcher.config.json) — can't locate test-manifests/.");
+                    return;
+                }
+
+                string manifestPath = Path.Combine(repoRoot, "test-manifests", manifestFile);
+                var manifest = BuildConsole.Services.TestManifest.LoadFromFile(manifestPath);
+                if (manifest == null)
+                {
+                    await CompleteTestRunFailedAsync(runId, $"Manifest not found or unparseable: {manifestPath}");
+                    return;
+                }
+
+                BuildConsole.Services.ActivityLog.Log("testing.remote-trigger",
+                    $"Running manifest #{manifest.Issue} ({manifest.Feature}) for remote test-run {runId}…");
+                var result = await RunManifestAsync(manifest, isRegression: false);
+
+                // Serialize with the SAME options WriteToFile uses (default PascalCase,
+                // WriteIndented) so what Claude Code reads back over HTTP is identical in
+                // shape to the test-results/{issue}-{timestamp}.json file on disk.
+                var resultsElement = System.Text.Json.JsonSerializer.SerializeToElement(result,
+                    new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+
+                try
+                {
+                    await _buildTrackerApi.CompleteTestRunAsync(runId, "done", resultsElement, null);
+                    int passed = result.Steps.Count(s => s.Passed);
+                    BuildConsole.Services.ActivityLog.Log("testing.remote-trigger",
+                        $"Delivered results for remote test-run {runId}: {passed}/{result.Steps.Count} step(s) passed.");
+                }
+                catch (Exception ex)
+                {
+                    // Ran fine but couldn't deliver — the waiting Claude Code poll will
+                    // time out. Nothing to retry against here; log it plainly.
+                    BuildConsole.Services.ActivityLog.Log("testing.remote-trigger",
+                        $"Ran manifest but couldn't deliver results for {runId}: {ex.Message}");
+                }
+            }
+            catch (Exception ex)
+            {
+                await CompleteTestRunFailedAsync(runId, $"Run threw: {ex.Message}");
+            }
+            finally
+            {
+                _testTriggerBusy = false;
+            }
+        }
+
+        private async System.Threading.Tasks.Task CompleteTestRunFailedAsync(string runId, string reason)
+        {
+            BuildConsole.Services.ActivityLog.Log("testing.remote-trigger", $"Remote test-run {runId} failed: {reason}");
+            try { await _buildTrackerApi!.CompleteTestRunAsync(runId, "failed", null, reason); }
+            catch (Exception ex)
+            {
+                BuildConsole.Services.ActivityLog.Log("testing.remote-trigger", $"Couldn't report failure for {runId}: {ex.Message}");
             }
         }
     }

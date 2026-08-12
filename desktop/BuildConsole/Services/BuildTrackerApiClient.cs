@@ -93,6 +93,18 @@ namespace BuildConsole.Services
         public string Timestamp { get; set; } = "";
     }
 
+    /// <summary>
+    /// Git #898 — one claimed test-run request from GET /admin/deploy/test-run/next.
+    /// RunId is null when nothing is pending (the poll's "nothing to do" answer);
+    /// otherwise it's the id to report completion against, and ManifestFile is the
+    /// bare filename under test-manifests/ that Claude Code asked to run.
+    /// </summary>
+    public class TestRunRequest
+    {
+        public string? RunId { get; set; }
+        public string ManifestFile { get; set; } = "";
+    }
+
     /// <summary>SSMS-style per-statement result — matches admin-engines.ts's StatementResult exactly (POST /simulator/sql/execute, same endpoint the extension's floaty SQL Runner already uses for real).</summary>
     public class SqlStatementResult
     {
@@ -185,6 +197,32 @@ namespace BuildConsole.Services
         /// <summary>Git #805 — NOT under api/admin/build-tracker/extension/*; this hits the standalone GET /api/internal/deploy-status endpoint (version.ts), the same versionInfo the platform's own GET /api/version already serves.</summary>
         public Task<DeployStatus?> GetDeployStatusAsync() => TrackAsync("GET internal/deploy-status", () =>
             _http.GetFromJsonAsync<DeployStatus>("api/internal/deploy-status", JsonOpts));
+
+        /// <summary>
+        /// Git #898 — polls GET /admin/deploy/test-run/next to atomically claim the
+        /// oldest pending test-run request Claude Code POSTed. Deliberately NOT wrapped
+        /// in TrackAsync (unlike every call above): this fires every few seconds on the
+        /// #898 poll timer whether or not anything is pending, and an "-> / <- ok" pair
+        /// per empty poll would flood the Output log. The meaningful lifecycle events
+        /// (claimed / running / done / failed) are logged on `testing.remote-trigger`
+        /// from MainWindow's poll handler instead. Returns a request whose RunId is null
+        /// when nothing is waiting.
+        /// </summary>
+        public Task<TestRunRequest?> GetNextTestRunAsync() =>
+            _http.GetFromJsonAsync<TestRunRequest>("api/admin/deploy/test-run/next", JsonOpts);
+
+        /// <summary>
+        /// Git #898 — reports a finished test-run back to the api-server so the waiting
+        /// Claude Code poll (GET /admin/deploy/test-run/:runId) can read it. `status` is
+        /// "done" (it executed — the results JSON carries per-step pass/fail) or "failed"
+        /// (it couldn't run at all, e.g. the manifest file was missing). `results` is the
+        /// exact ManifestRunResult JSON (same shape written to test-results/), passed as a
+        /// JsonElement so its property names round-trip verbatim rather than being
+        /// re-cased; null on the failed-before-run path.
+        /// </summary>
+        public Task<HttpResponseMessage> CompleteTestRunAsync(string runId, string status, JsonElement? results, string? error) =>
+            TrackAsync($"POST deploy/test-run/{runId}/complete ({status})", () =>
+                _http.PostAsJsonAsync($"api/admin/deploy/test-run/{runId}/complete", new { status, results, error }));
 
         /// <summary>No conversationId — this app isn't tied to one specific claude.ai chat the way the browser extension is, so `currentChat` in the response is always null; `epics`/`chats` still come back full, which is all the Chats tree needs.</summary>
         public Task<BoardResponse> GetBoardAsync() => TrackAsync("GET board", async () =>
