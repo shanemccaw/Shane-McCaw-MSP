@@ -1348,7 +1348,7 @@ router.get("/admin/build-tracker/extension/in-progress", ingestAuth, async (_req
  * Auth: admin session cookie OR Authorization: Bearer <BUILD_TRACKER_INGEST_TOKEN>
  */
 router.post("/admin/build-tracker/extension/queue", ingestAuth, async (req: Request, res: Response) => {
-  const { title, prompt, model, effort, cwd, githubNumber, blockedByNumber, blockedByNumbers } = req.body as {
+  const { title, prompt, model, effort, cwd, githubNumber, blockedByNumber, blockedByNumbers, resumeSessionId } = req.body as {
     title?: string;
     prompt?: string;
     model?: string | null;
@@ -1357,6 +1357,8 @@ router.post("/admin/build-tracker/extension/queue", ingestAuth, async (req: Requ
     githubNumber?: number | null;
     blockedByNumber?: number | null;
     blockedByNumbers?: number[] | null;
+    /** Git #826 — set by a Reply action: the watcher launches this item with --resume <this> + `prompt` as the reply text, continuing that exact conversation instead of starting a stateless new one. */
+    resumeSessionId?: string | null;
   };
   if (!title?.trim() || !prompt?.trim()) {
     res.status(400).json({ error: "title and prompt are required" });
@@ -1402,6 +1404,7 @@ router.post("/admin/build-tracker/extension/queue", ingestAuth, async (req: Requ
             cwd: cwd?.trim() || null,
             blockedByNumber: allBlockers[0] ?? null,
             blockedByNumbers: allBlockers.length > 0 ? allBlockers : null,
+            resumeSessionId: resumeSessionId ?? null,
             status: "queued",
             claimedAt: null,
             completedAt: null,
@@ -1424,6 +1427,7 @@ router.post("/admin/build-tracker/extension/queue", ingestAuth, async (req: Requ
           githubNumber: resolvedGithubNumber,
           blockedByNumber: allBlockers[0] ?? null,
           blockedByNumbers: allBlockers.length > 0 ? allBlockers : null,
+          resumeSessionId: resumeSessionId ?? null,
         })
         .returning();
     }
@@ -1607,12 +1611,15 @@ router.get("/admin/build-tracker/extension/queue/next", ingestAuth, async (req: 
  * Shane can tell a queued build that silently errored apart from one that
  * actually finished, from the panel alone.
  *
- * Body: { exitCode: number }
+ * Body: { exitCode: number, sessionId?: string }
+ * Git #826 — sessionId (captured by the watcher from the run's own
+ * stream-json output) is stored here so a later Reply action can find it
+ * and resume the exact same conversation.
  */
 router.post("/admin/build-tracker/extension/queue/:id/complete", ingestAuth, async (req: Request, res: Response) => {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) { res.status(400).json({ error: "invalid id" }); return; }
-  const { exitCode } = req.body as { exitCode?: number };
+  const { exitCode, sessionId } = req.body as { exitCode?: number; sessionId?: string | null };
   try {
     const [row] = await db
       .update(btBuildQueueTable)
@@ -1621,6 +1628,7 @@ router.post("/admin/build-tracker/extension/queue/:id/complete", ingestAuth, asy
         exitCode: typeof exitCode === "number" ? exitCode : null,
         completedAt: new Date(),
         updatedAt: new Date(),
+        ...(sessionId ? { sessionId } : {}),
       })
       .where(eq(btBuildQueueTable.id, id))
       .returning();

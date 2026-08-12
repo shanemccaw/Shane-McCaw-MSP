@@ -4099,6 +4099,10 @@ export const btBuildQueueTable = pgTable("bt_build_queue", {
   claimedAt:       timestamp("claimed_at", { withTimezone: true }),
   completedAt:     timestamp("completed_at", { withTimezone: true }),
   exitCode:        integer("exit_code"),
+  /** Git #826 — Shane: "how do I respond when Code has a question... I need to be able to answer." claude.exe --print is one-shot; by the time Shane reads a question in the finished log, that process has already exited. Captured from the stream-json "system" init event's own session_id the moment a launch's output reveals it (persistence is on by default, --print sessions ARE resumable) so a later Reply can continue the EXACT same conversation via --resume, not start a stateless new one. */
+  sessionId:       text("session_id"),
+  /** Git #826 — set at queue time by a Reply action: tells the watcher to launch this item with `--resume <resumeSessionId>` instead of a fresh session, with `prompt` as the reply text continuing that conversation. */
+  resumeSessionId: text("resume_session_id"),
   createdAt:       timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt:       timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
