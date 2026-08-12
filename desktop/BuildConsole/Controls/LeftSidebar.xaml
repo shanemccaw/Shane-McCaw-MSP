@@ -435,6 +435,16 @@
                             HorizontalAlignment="Left" Padding="16,4" Click="BtnSaveGitHubPat_Click"/>
                     <TextBlock x:Name="GitHubPatSavedText" Text="" FontSize="10" Foreground="{StaticResource GreenBrush}" Margin="0,4,0,0"/>
 
+                    <!-- Git #880 — Shane: same pattern as #834's GitHub PAT field - a masked
+                         input in the existing SettingsView, persisted in the local
+                         BuildConsoleSettings store, so zohoTests can authenticate real Zoho
+                         API calls. -->
+                    <TextBlock Text="Zoho API Token" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
+                    <PasswordBox x:Name="ZohoApiTokenBox" Height="26" FontSize="12" Margin="0,0,0,6"/>
+                    <Button x:Name="BtnSaveZohoApiToken" Content="Save" Style="{StaticResource PrimaryButton}"
+                            HorizontalAlignment="Left" Padding="16,4" Click="BtnSaveZohoApiToken_Click"/>
+                    <TextBlock x:Name="ZohoApiTokenSavedText" Text="" FontSize="10" Foreground="{StaticResource GreenBrush}" Margin="0,4,0,0"/>
+
                     <!-- Git #864 — Shane: "a configuration in the settings might actually be
                          better" for the ActivityBar's Web Tools popout. Same local store as the
                          PAT above (%AppData%\BuildConsole\settings.json), extended with a

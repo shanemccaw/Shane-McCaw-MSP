@@ -228,6 +228,7 @@ namespace BuildConsole.Controls
             // (%AppData%\BuildConsole\settings.json) so it round-trips visibly.
             var savedSettings = BuildConsole.Services.BuildConsoleSettings.Load();
             GitHubPatBox.Password = savedSettings.GitHubPat;
+            ZohoApiTokenBox.Password = savedSettings.ZohoApiToken;
 
             // Git #864
             RenderWebToolsSettingsList();
@@ -240,6 +241,15 @@ namespace BuildConsole.Controls
             settings.GitHubPat = GitHubPatBox.Password.Trim();
             settings.Save();
             GitHubPatSavedText.Text = "Saved.";
+        }
+
+        // ── SETTINGS: Zoho API Token (Git #880) ──────────────────────────────
+        private void BtnSaveZohoApiToken_Click(object sender, RoutedEventArgs e)
+        {
+            var settings = BuildConsole.Services.BuildConsoleSettings.Load();
+            settings.ZohoApiToken = ZohoApiTokenBox.Password.Trim();
+            settings.Save();
+            ZohoApiTokenSavedText.Text = "Saved.";
         }
 
         // ── SETTINGS: Web Tools (Git #864) ───────────────────────────────────

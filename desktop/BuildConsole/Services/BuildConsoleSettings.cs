@@ -27,6 +27,11 @@ namespace BuildConsole.Services
 
         public bool HasGitHubPat => !string.IsNullOrWhiteSpace(GitHubPat);
 
+        /// <summary>Git #880 — Zoho API Token for the zohoTests runner to authenticate real Zoho API calls. Same store, same pattern as GitHubPat.</summary>
+        public string ZohoApiToken { get; set; } = "";
+
+        public bool HasZohoApiToken => !string.IsNullOrWhiteSpace(ZohoApiToken);
+
         // Git #864 — Shane: "I need you to design me a icon based popout panel
         // with web site tools like: LinkedIn, Google Analytics, Microsoft
         // Clarity... a configuration in the settings might actually be
