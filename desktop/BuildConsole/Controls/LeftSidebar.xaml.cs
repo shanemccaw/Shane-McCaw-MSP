@@ -1615,6 +1615,12 @@ namespace BuildConsole.Controls
 
             GitChangesTree.Items.Add(stagedTreeItem);
             GitChangesTree.Items.Add(unstagedTreeItem);
+
+            // Git #860 (Git panel Phase 2) — the rendered commit graph lives in
+            // the same scrollable panel below Changes; refresh it from the same
+            // trigger so both sections stay in sync (view-switch, manual
+            // refresh, own commit/push/pull, and #859's FileSystemWatcher).
+            PopulateGitGraph();
         }
 
         private UIElement CreateGitCategoryHeader(string title, int count, string hexColor)
@@ -1718,41 +1724,81 @@ namespace BuildConsole.Controls
         private void BtnGitPush_Click(object sender, RoutedEventArgs e) => RunGitCommand("push");
         private void BtnGitPull_Click(object sender, RoutedEventArgs e) => RunGitCommand("pull");
 
-        private void BtnGitSection_Click(object sender, RoutedEventArgs e)
+        // ── GIT #860 (Git panel Phase 2): real rendered commit graph ────────
+        // Replaces the old PopulateGitHistoryGraph(), which parsed
+        // `git log --graph`'s ASCII art line-by-line and SILENTLY DROPPED any
+        // connector-only line lacking a '|' (the `if (pipeIdx > 0)` guard),
+        // throwing away all branch/merge topology. This builds the REAL commit
+        // DAG from each commit's actual parent hashes (`git log --all
+        // --pretty=%H|%P|...`), computes lane/column assignment itself (a
+        // standard swimlane layout), and renders a Canvas of colored dots +
+        // curved/straight connectors, GitLens/SourceTree-style. It refreshes
+        // together with the Changes list off #859's FileSystemWatcher (called
+        // at the tail of RefreshGitStatus), never on a separate schedule.
+
+        private const int GitGraphMaxCommits = 40;
+        private const double GitGraphLaneWidth = 16;
+        private const double GitGraphRowHeight = 24;
+        private const double GitGraphDotRadius = 4.5;
+        private const double GitGraphLeftPad = 11;
+
+        // Lane colors — reuse the app's existing Catppuccin palette (the same
+        // hexes GitChangesTree's status badges / _fallbackBrushes use), cycled
+        // by column index so each branch lane reads as its own color.
+        private static readonly string[] GitGraphLaneColors =
         {
-            if (sender is Button btn && btn.Tag is string section)
-            {
-                if (section == "Changes")
-                {
-                    GitChangesTree.Visibility = Visibility.Visible;
-                    GitHistoryTree.Visibility = Visibility.Collapsed;
-                    BtnShowGitChanges.Style = (Style)FindResource("PrimaryButton");
-                    BtnShowGitGraph.Style = (Style)FindResource("SecondaryButton");
-                }
-                else
-                {
-                    GitChangesTree.Visibility = Visibility.Collapsed;
-                    GitHistoryTree.Visibility = Visibility.Visible;
-                    BtnShowGitChanges.Style = (Style)FindResource("SecondaryButton");
-                    BtnShowGitGraph.Style = (Style)FindResource("PrimaryButton");
-                    PopulateGitHistoryGraph();
-                }
-            }
+            "#89B4FA", // blue
+            "#A6E3A1", // green
+            "#FAB387", // peach
+            "#CBA6F7", // mauve
+            "#F5C2E7", // pink
+            "#94E2D5", // teal
+            "#F38BA8", // red
+            "#F9E2AF", // yellow
+        };
+
+        /// <summary>One commit row in the rendered DAG, with its self-computed lane column.</summary>
+        private sealed class GitGraphCommit
+        {
+            public string Hash = "";
+            public string ShortHash = "";
+            public string[] Parents = Array.Empty<string>();
+            public string Message = "";
+            public string Author = "";
+            public string Date = "";
+            public int Row;
+            public int Column;                 // lane this commit's dot sits in
+            public bool IsMerge => Parents.Length > 1;
         }
 
-        private async void PopulateGitHistoryGraph()
-        {
-            GitStatusSummaryText.Text = "LOADING GIT HISTORY GRAPH...";
+        private static SolidColorBrush GitLaneBrush(int column) =>
+            new SolidColorBrush((Color)ColorConverter.ConvertFromString(
+                GitGraphLaneColors[((column % GitGraphLaneColors.Length) + GitGraphLaneColors.Length) % GitGraphLaneColors.Length]));
 
-            var historyItems = await System.Threading.Tasks.Task.Run(() =>
+        private static double GitLaneX(int column) => GitGraphLeftPad + column * GitGraphLaneWidth;
+        private static double GitRowY(int row) => row * GitGraphRowHeight + GitGraphRowHeight / 2;
+
+        /// <summary>
+        /// Fetches the real commit DAG and renders it into GitGraphHost. Runs
+        /// the (blocking) git call on a worker thread, then builds the WPF
+        /// visuals on the UI thread. Called from RefreshGitStatus so the graph
+        /// and the Changes list always refresh from the same trigger (#859).
+        /// </summary>
+        public async void PopulateGitGraph()
+        {
+            var (commits, maxLanes) = await System.Threading.Tasks.Task.Run(() =>
             {
-                var list = new List<(string hash, string msg, string author, string date, string graphSymbol, string hexColor)>();
+                var parsed = new List<GitGraphCommit>();
                 try
                 {
                     var psi = new System.Diagnostics.ProcessStartInfo
                     {
                         FileName = "git",
-                        Arguments = "log -n 25 --oneline --graph --pretty=format:\"%h|%s|%an|%cr\"",
+                        // %P = full parent hashes (space-separated; merge commits
+                        // have 2+). Fields are \x1f-delimited because a commit
+                        // subject can itself contain '|', which the old naive
+                        // pipe-split mangled.
+                        Arguments = $"log --all --date-order -n {GitGraphMaxCommits} --pretty=format:%H%x1f%P%x1f%s%x1f%an%x1f%cr",
                         WorkingDirectory = RootWorkspacePath,
                         RedirectStandardOutput = true,
                         RedirectStandardError = true,
@@ -1766,59 +1812,188 @@ namespace BuildConsole.Controls
                         string output = proc.StandardOutput.ReadToEnd();
                         proc.WaitForExit();
 
-                        string[] lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-                        string[] colors = new[] { "#89B4FA", "#A6E3A1", "#FAB387", "#F5C2E7", "#94E2D5" };
-                        int colorIdx = 0;
-
-                        foreach (var line in lines)
+                        foreach (var line in output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
                         {
-                            int pipeIdx = line.IndexOf('|');
-                            if (pipeIdx > 0)
+                            var parts = line.Split('\u001f');
+                            if (parts.Length < 5) continue;
+                            string hash = parts[0].Trim();
+                            if (hash.Length == 0) continue;
+                            parsed.Add(new GitGraphCommit
                             {
-                                string graphSymbol = line.Substring(0, pipeIdx).Trim();
-                                string rest = line.Substring(pipeIdx + 1);
-                                string[] parts = rest.Split('|');
-
-                                string hash = parts.Length > 0 ? parts[0] : "";
-                                string msg = parts.Length > 1 ? parts[1] : "";
-                                string author = parts.Length > 2 ? parts[2] : "";
-                                string date = parts.Length > 3 ? parts[3] : "";
-
-                                string hexColor = colors[colorIdx % colors.Length];
-                                if (graphSymbol.Contains("*") || graphSymbol.Contains("●")) colorIdx++;
-
-                                list.Add((hash, msg, author, date, string.IsNullOrEmpty(graphSymbol) ? "●" : graphSymbol, hexColor));
-                            }
+                                Hash = hash,
+                                ShortHash = hash.Length >= 7 ? hash.Substring(0, 7) : hash,
+                                Parents = parts[1].Length == 0
+                                    ? Array.Empty<string>()
+                                    : parts[1].Split(' ', StringSplitOptions.RemoveEmptyEntries),
+                                Message = parts[2],
+                                Author = parts[3],
+                                Date = parts[4],
+                            });
                         }
                     }
                 }
                 catch { }
 
-                return list;
+                // Swimlane layout. `lanes[c]` = the hash that lane c is currently
+                // routing toward (a parent some already-drawn child is waiting on),
+                // or null if the lane is free. Newest commit is processed first.
+                var lanes = new List<string?>();
+                int maxLaneCount = 0;
+                for (int i = 0; i < parsed.Count; i++)
+                {
+                    var c = parsed[i];
+                    c.Row = i;
+
+                    // This commit takes the leftmost lane already awaiting it; if
+                    // none is (it's a branch tip), it opens a fresh lane.
+                    int col = lanes.FindIndex(h => h == c.Hash);
+                    if (col < 0)
+                    {
+                        col = lanes.FindIndex(h => h == null);
+                        if (col < 0) { lanes.Add(null); col = lanes.Count - 1; }
+                    }
+                    c.Column = col;
+
+                    // The first parent continues this lane; extra children that
+                    // were also awaiting this commit (merge-in) close their lanes.
+                    lanes[col] = c.Parents.Length > 0 ? c.Parents[0] : null;
+                    for (int j = 0; j < lanes.Count; j++)
+                        if (j != col && lanes[j] == c.Hash) lanes[j] = null;
+
+                    // Each additional parent (a merge's other side) needs a lane —
+                    // reuse one already awaiting that parent, else open a new one.
+                    for (int pi = 1; pi < c.Parents.Length; pi++)
+                    {
+                        string p = c.Parents[pi];
+                        if (lanes.FindIndex(h => h == p) >= 0) continue;
+                        int free = lanes.FindIndex(h => h == null);
+                        if (free < 0) lanes.Add(p); else lanes[free] = p;
+                    }
+
+                    // Keep width tight — trailing free lanes don't need columns.
+                    while (lanes.Count > 0 && lanes[lanes.Count - 1] == null) lanes.RemoveAt(lanes.Count - 1);
+                    maxLaneCount = Math.Max(maxLaneCount, Math.Max(lanes.Count, col + 1));
+                }
+
+                return (parsed, Math.Max(maxLaneCount, 1));
             });
 
-            GitHistoryTree.Items.Clear();
-            GitStatusSummaryText.Text = $"GIT COMMIT HISTORY ({historyItems.Count} COMMITS)";
+            GitGraphHost.Children.Clear();
+            GitGraphHeaderText.Text = $"COMMIT GRAPH ({commits.Count})";
+            ActivityLog.Log("git-panel.graph", $"rendered {commits.Count} commit(s) across {maxLanes} lane(s)");
 
-            foreach (var item in historyItems)
+            if (commits.Count == 0)
             {
-                var panel = new DockPanel { HorizontalAlignment = HorizontalAlignment.Stretch, Margin = new Thickness(0, 2, 0, 2) };
-
-                // Graph Line Symbol e.g. "│  *  "
-                var graphTxt = new TextBlock
+                GitGraphHost.Children.Add(new TextBlock
                 {
-                    Text = item.graphSymbol + " ",
-                    FontFamily = new FontFamily("Consolas"),
+                    Text = "No commit history.",
                     FontSize = 11,
-                    FontWeight = FontWeights.Bold,
-                    Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(item.hexColor)),
-                    VerticalAlignment = VerticalAlignment.Center
+                    Foreground = GetBrush("Subtext0Brush"),
+                    Margin = new Thickness(2, 4, 0, 0)
+                });
+                return;
+            }
+
+            var byHash = commits.ToDictionary(c => c.Hash);
+            double graphWidth = GitGraphLeftPad + maxLanes * GitGraphLaneWidth;
+            double totalHeight = commits.Count * GitGraphRowHeight;
+
+            // Two aligned columns sharing the same per-row height: the rendered
+            // lane graph on the left, the commit hash/message text on the right.
+            var grid = new Grid();
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(graphWidth) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+            var canvas = new Canvas { Width = graphWidth, Height = totalHeight };
+            var crust = GetBrush("CrustBrush");
+            var mantle = GetBrush("MantleBrush");
+
+            // Draw connectors first (dots sit on top). Each edge runs from a
+            // commit down to each of its real parents' positions; a parent
+            // outside the fetched window gets a short downward stub instead.
+            foreach (var c in commits)
+            {
+                double cx = GitLaneX(c.Column), cy = GitRowY(c.Row);
+                for (int pi = 0; pi < c.Parents.Length; pi++)
+                {
+                    if (byHash.TryGetValue(c.Parents[pi], out var parent))
+                    {
+                        double px = GitLaneX(parent.Column), py = GitRowY(parent.Row);
+                        var brush = GitLaneBrush(pi == 0 ? c.Column : parent.Column);
+                        if (Math.Abs(px - cx) < 0.1)
+                        {
+                            canvas.Children.Add(new System.Windows.Shapes.Line
+                            {
+                                X1 = cx, Y1 = cy, X2 = px, Y2 = py,
+                                Stroke = brush, StrokeThickness = 2
+                            });
+                        }
+                        else
+                        {
+                            double midY = (cy + py) / 2;
+                            var fig = new PathFigure { StartPoint = new Point(cx, cy) };
+                            fig.Segments.Add(new BezierSegment(new Point(cx, midY), new Point(px, midY), new Point(px, py), true));
+                            var geo = new PathGeometry();
+                            geo.Figures.Add(fig);
+                            canvas.Children.Add(new System.Windows.Shapes.Path
+                            {
+                                Data = geo, Stroke = brush, StrokeThickness = 2
+                            });
+                        }
+                    }
+                    else
+                    {
+                        // Parent beyond the fetched window — stub downward so the
+                        // lane visibly continues off the bottom rather than dead-ending.
+                        canvas.Children.Add(new System.Windows.Shapes.Line
+                        {
+                            X1 = cx, Y1 = cy, X2 = cx, Y2 = cy + GitGraphRowHeight / 2,
+                            Stroke = GitLaneBrush(c.Column), StrokeThickness = 2
+                        });
+                    }
+                }
+            }
+
+            // Commit dots on top of the connectors. Merge commits render as a
+            // hollow ring so they're distinguishable at a glance.
+            foreach (var c in commits)
+            {
+                double cx = GitLaneX(c.Column), cy = GitRowY(c.Row);
+                var laneBrush = GitLaneBrush(c.Column);
+                var dot = new System.Windows.Shapes.Ellipse
+                {
+                    Width = GitGraphDotRadius * 2,
+                    Height = GitGraphDotRadius * 2,
+                    Fill = c.IsMerge ? mantle : laneBrush,
+                    Stroke = c.IsMerge ? laneBrush : crust,
+                    StrokeThickness = c.IsMerge ? 2.5 : 1.5,
+                    ToolTip = $"{c.ShortHash}  {c.Message}\n{c.Author} · {c.Date}"
+                };
+                Canvas.SetLeft(dot, cx - GitGraphDotRadius);
+                Canvas.SetTop(dot, cy - GitGraphDotRadius);
+                canvas.Children.Add(dot);
+            }
+
+            Grid.SetColumn(canvas, 0);
+            grid.Children.Add(canvas);
+
+            // Right column: one fixed-height text row per commit, aligned to the
+            // canvas rows (same GitGraphRowHeight), so hash/message line up with
+            // their dots.
+            var textStack = new StackPanel();
+            foreach (var c in commits)
+            {
+                var row = new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Height = GitGraphRowHeight,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(6, 0, 0, 0)
                 };
 
-                // Hash Badge
                 var hashBorder = new Border
                 {
-                    Background = (Brush)FindResource("Surface0Brush"),
+                    Background = GetBrush("Surface0Brush"),
                     CornerRadius = new CornerRadius(3),
                     Padding = new Thickness(4, 1, 4, 1),
                     Margin = new Thickness(0, 0, 6, 0),
@@ -1826,34 +2001,32 @@ namespace BuildConsole.Controls
                 };
                 hashBorder.Child = new TextBlock
                 {
-                    Text = item.hash,
+                    Text = c.ShortHash,
                     FontFamily = new FontFamily("Consolas"),
                     FontSize = 10,
                     FontWeight = FontWeights.Bold,
-                    Foreground = (Brush)FindResource("PeachBrush")
+                    Foreground = GetBrush("PeachBrush")
                 };
 
-                // Commit Message
                 var msgTxt = new TextBlock
                 {
-                    Text = item.msg,
+                    Text = c.Message,
                     FontSize = 11,
-                    Foreground = (Brush)FindResource("TextBrush"),
+                    Foreground = GetBrush("TextBrush"),
                     TextTrimming = TextTrimming.CharacterEllipsis,
                     VerticalAlignment = VerticalAlignment.Center,
-                    ToolTip = $"{item.msg}\nAuthor: {item.author} ({item.date})"
+                    ToolTip = $"{c.ShortHash}  {c.Message}\n{c.Author} · {c.Date}"
                 };
 
-                panel.Children.Add(graphTxt);
-                panel.Children.Add(hashBorder);
-                panel.Children.Add(msgTxt);
-
-                var tvi = new TreeViewItem
-                {
-                    Header = panel
-                };
-                GitHistoryTree.Items.Add(tvi);
+                row.Children.Add(hashBorder);
+                row.Children.Add(msgTxt);
+                textStack.Children.Add(row);
             }
+
+            Grid.SetColumn(textStack, 1);
+            grid.Children.Add(textStack);
+
+            GitGraphHost.Children.Add(grid);
         }
 
         private void BtnGitCommit_Click(object sender, RoutedEventArgs e)

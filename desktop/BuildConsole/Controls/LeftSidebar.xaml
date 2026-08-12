@@ -283,46 +283,39 @@
 
                         <Button x:Name="BtnGitCommit" Content="✓ Commit" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Stretch" Margin="0,0,0,8" Click="BtnGitCommit_Click"/>
 
-                        <!-- Section Header Tabs: [ Changes ] | [ Commit Graph ] -->
-                        <Grid Margin="0,0,0,6">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <Button x:Name="BtnShowGitChanges" Content="File Changes" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Stretch" Margin="0,0,2,0" Click="BtnGitSection_Click" Tag="Changes"/>
-                            <Button x:Name="BtnShowGitGraph" Content="Git Graph" Style="{StaticResource SecondaryButton}" HorizontalAlignment="Stretch" Margin="2,0,0,0" Click="BtnGitSection_Click" Tag="Graph"/>
-                        </Grid>
-
                         <Border Background="{StaticResource Surface0Brush}" CornerRadius="4" Padding="6,4" Margin="0,0,0,6">
                             <TextBlock x:Name="GitStatusSummaryText" Text="SOURCE CONTROL" FontSize="11" Foreground="{StaticResource Subtext1Brush}" HorizontalAlignment="Center"/>
                         </Border>
                     </StackPanel>
 
-                    <!-- Git Changes Tree -->
-                    <TreeView x:Name="GitChangesTree"
-                              BorderThickness="0"
-                              Background="Transparent"
-                              HorizontalContentAlignment="Stretch"
-                              SelectedItemChanged="GitChangesTree_SelectedItemChanged">
-                        <TreeView.Resources>
-                            <Style TargetType="{x:Type TreeViewItem}" BasedOn="{StaticResource {x:Type TreeViewItem}}">
-                                <Setter Property="IsExpanded" Value="True"/>
-                            </Style>
-                        </TreeView.Resources>
-                    </TreeView>
+                    <!-- Git #860 (Git panel Phase 2) — ONE scrollable panel: Changes on top,
+                         rendered commit Graph below, both always visible together (replaced the
+                         old Changes/Graph tab-toggle). Both refresh together off #859's watcher. -->
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel>
+                            <!-- ── CHANGES section ── -->
+                            <TextBlock Text="CHANGES" FontSize="10" FontWeight="Bold"
+                                       Foreground="{StaticResource Subtext0Brush}" Margin="2,0,0,4"/>
+                            <TreeView x:Name="GitChangesTree"
+                                      BorderThickness="0"
+                                      Background="Transparent"
+                                      HorizontalContentAlignment="Stretch"
+                                      ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                                      SelectedItemChanged="GitChangesTree_SelectedItemChanged">
+                                <TreeView.Resources>
+                                    <Style TargetType="{x:Type TreeViewItem}" BasedOn="{StaticResource {x:Type TreeViewItem}}">
+                                        <Setter Property="IsExpanded" Value="True"/>
+                                    </Style>
+                                </TreeView.Resources>
+                            </TreeView>
 
-                    <!-- Git History Branch Graph Tree -->
-                    <TreeView x:Name="GitHistoryTree"
-                              BorderThickness="0"
-                              Background="Transparent"
-                              Visibility="Collapsed"
-                              HorizontalContentAlignment="Stretch">
-                        <TreeView.Resources>
-                            <Style TargetType="{x:Type TreeViewItem}" BasedOn="{StaticResource {x:Type TreeViewItem}}">
-                                <Setter Property="IsExpanded" Value="True"/>
-                            </Style>
-                        </TreeView.Resources>
-                    </TreeView>
+                            <!-- ── GRAPH section (real rendered commit DAG — see PopulateGitGraph) ── -->
+                            <Border Background="{StaticResource Surface0Brush}" Height="1" Margin="0,8,0,8"/>
+                            <TextBlock x:Name="GitGraphHeaderText" Text="COMMIT GRAPH" FontSize="10" FontWeight="Bold"
+                                       Foreground="{StaticResource Subtext0Brush}" Margin="2,0,0,4"/>
+                            <StackPanel x:Name="GitGraphHost"/>
+                        </StackPanel>
+                    </ScrollViewer>
                 </DockPanel>
             </Grid>
 
