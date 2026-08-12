@@ -106,10 +106,12 @@ namespace BuildConsole
             // would leave a stale handler still firing into a disposed WebView2/collection.
             Services.HttpTestExecutor.StepCompleted += OnStepCompleted;
             Services.GraphTestExecutor.StepCompleted += OnStepCompleted;
+            Services.ZohoTestExecutor.StepCompleted += OnStepCompleted;
             Closed += (_, _) =>
             {
                 Services.HttpTestExecutor.StepCompleted -= OnStepCompleted;
                 Services.GraphTestExecutor.StepCompleted -= OnStepCompleted;
+                Services.ZohoTestExecutor.StepCompleted -= OnStepCompleted;
             };
         }
 
@@ -119,7 +121,7 @@ namespace BuildConsole
             RunOnUi(() => AdvanceStep(result.Passed));
         }
 
-        /// <summary>Builds the left step list from a loaded manifest — apiTests, then graphTests, then uiSteps, matching RunManifestAsync's real execution order. Only kinds actually present in the manifest appear.</summary>
+        /// <summary>Builds the left step list from a loaded manifest — apiTests, then graphTests, then zohoTests (#881), then uiSteps, matching RunManifestAsync's real execution order. Only kinds actually present in the manifest appear.</summary>
         public void SetSteps(Services.TestManifest manifest)
         {
             RunOnUi(() =>
@@ -132,6 +134,9 @@ namespace BuildConsole
 
                 foreach (var test in manifest.GraphTests)
                     _steps.Add(new StepListItem { Kind = "GRAPH TESTS", Label = DescribeHttpTest(test) });
+
+                foreach (var test in manifest.ZohoTests)
+                    _steps.Add(new StepListItem { Kind = "ZOHO TESTS", Label = DescribeHttpTest(test) });
 
                 foreach (var step in manifest.UiSteps)
                     _steps.Add(new StepListItem { Kind = "UI STEPS", Label = $"{step.Action} {step.Selector ?? step.Target ?? string.Empty}" });
@@ -176,7 +181,7 @@ namespace BuildConsole
             return $"{method} {path}";
         }
 
-        /// <summary>Marks the step at the current cursor pass/fail, then advances to the next pending step (if any) and marks it running — one shared cursor across api/graph/ui since they execute strictly in that order.</summary>
+        /// <summary>Marks the step at the current cursor pass/fail, then advances to the next pending step (if any) and marks it running — one shared cursor across api/graph/zoho/ui since they execute strictly in that order.</summary>
         private void AdvanceStep(bool passed)
         {
             if (_stepCursor >= _steps.Count) return;

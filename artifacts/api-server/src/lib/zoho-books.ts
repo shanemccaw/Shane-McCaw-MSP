@@ -156,6 +156,23 @@ async function findBooksInvoiceByReference(referenceNumber: string, orgId: strin
   return first?.invoice_id != null ? String(first.invoice_id) : null;
 }
 
+/**
+ * Read-side lookup of an invoice by its reference number, resolving the org id
+ * first. Deliberately reuses the exact same findBooksInvoiceByReference query
+ * that createBooksInvoice's idempotency guard already relies on rather than
+ * duplicating it — Git #881's zohoTests invoice-lookup admin route
+ * (GET /zoho/books/invoices/lookup/by-reference) is the only reader, and it
+ * must ask Zoho the identical question the write path asks. Returns the Zoho
+ * invoice_id when one exists for this reference, or null when none does.
+ */
+export async function lookupBooksInvoiceByReference(
+  referenceNumber: string,
+  mspId: number = ZOHO_DEFAULT_MSP_ID,
+): Promise<string | null> {
+  const orgId = await resolveZohoBooksOrgId(mspId);
+  return findBooksInvoiceByReference(referenceNumber, orgId, mspId);
+}
+
 interface CreateInvoiceInput {
   referenceNumber: string;
   contactId: string;

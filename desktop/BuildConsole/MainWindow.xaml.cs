@@ -2473,7 +2473,7 @@ namespace BuildConsole
         {
             string mode = isRegression ? "regression" : "single";
             BuildConsole.Services.ActivityLog.Log("testing.manifest-runner",
-                $"[{mode}] Running manifest for issue #{manifest.Issue} ({manifest.Feature}) — {manifest.ApiTests.Count} apiTests, {manifest.GraphTests.Count} graphTests, {manifest.UiSteps.Count} uiSteps.");
+                $"[{mode}] Running manifest for issue #{manifest.Issue} ({manifest.Feature}) — {manifest.ApiTests.Count} apiTests, {manifest.GraphTests.Count} graphTests, {manifest.ZohoTests.Count} zohoTests, {manifest.UiSteps.Count} uiSteps.");
 
             var runResult = new BuildConsole.Services.ManifestRunResult
             {
@@ -2516,6 +2516,19 @@ namespace BuildConsole
                 int passed = graphResults.Count(r => r.Passed);
                 BuildConsole.Services.ActivityLog.Log("testing.graph-executor",
                     $"graphTests: {passed}/{graphResults.Count} passed for issue #{manifest.Issue}.");
+            }
+
+            // Git #881 — zohoTests run after graphTests, before uiSteps, matching the step-list
+            // order TestRunnerWindow.SetSteps renders. Same shared ManifestRunResult, same live
+            // StepCompleted card stream, authenticated with the #880 Zoho API Token internally.
+            var zohoResults = await BuildConsole.Services.ZohoTestExecutor.RunAsync(manifest, config);
+            runResult.AddRange(zohoResults);
+
+            if (zohoResults.Count > 0)
+            {
+                int passed = zohoResults.Count(r => r.Passed);
+                BuildConsole.Services.ActivityLog.Log("testing.zoho",
+                    $"zohoTests: {passed}/{zohoResults.Count} passed for issue #{manifest.Issue}.");
             }
 
             // Git #810 — uiSteps run directly through TestRunnerWindow.RunUiTestAsync (the

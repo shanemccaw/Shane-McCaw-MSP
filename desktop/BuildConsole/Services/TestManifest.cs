@@ -18,6 +18,10 @@ namespace BuildConsole.Services
         public string BaseUrl { get; set; } = string.Empty;
         public List<JsonElement> ApiTests { get; set; } = new();
         public List<JsonElement> GraphTests { get; set; } = new();
+        // Git #881 (Epic #803) — zohoTests: same raw-JSON { method, path, expect } shape as
+        // apiTests/graphTests, executed by ZohoTestExecutor against the api-server's Zoho admin
+        // read routes, authenticated with the #880 Zoho API Token.
+        public List<JsonElement> ZohoTests { get; set; } = new();
         public List<ManifestUiStep> UiSteps { get; set; } = new();
         public string SourcePath { get; set; } = string.Empty;
 
@@ -42,6 +46,9 @@ namespace BuildConsole.Services
 
                 if (root.TryGetProperty("graphTests", out var graphTestsEl) && graphTestsEl.ValueKind == JsonValueKind.Array)
                     manifest.GraphTests = graphTestsEl.EnumerateArray().Select(e => e.Clone()).ToList();
+
+                if (root.TryGetProperty("zohoTests", out var zohoTestsEl) && zohoTestsEl.ValueKind == JsonValueKind.Array)
+                    manifest.ZohoTests = zohoTestsEl.EnumerateArray().Select(e => e.Clone()).ToList();
 
                 if (root.TryGetProperty("uiSteps", out var uiStepsEl) && uiStepsEl.ValueKind == JsonValueKind.Array)
                 {
