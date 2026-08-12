@@ -1457,15 +1457,40 @@ router.post("/admin/build-tracker/extension/queue", ingestAuth, async (req: Requ
  * tied to a real issue at all.
  */
 /** Git #813 — GitHub's own dependency list can hold more than one blocker; earlier code only ever read deps[0], silently dropping the rest. */
+/**
+ * Git #904 — Shane: "The Build Queue is giving me a Couldn't reach the API
+ * error." Real cause: `ghFetch` (below) uses plain `fetch()` with no
+ * timeout at all. `GET /extension/queue` calls this once per active
+ * (queued/running) row via `effectiveBlockedByNumbers`, all in parallel via
+ * `Promise.all` — if GitHub is slow to answer even ONE of those calls (very
+ * plausible right now: #876/#899 both exist because this exact token has
+ * been hammering GitHub's API all day, and a token under rate-limit
+ * pressure is exactly when GitHub itself starts responding slowly rather
+ * than outright rejecting), that one hung call blocks the ENTIRE queue
+ * response indefinitely, since `Promise.all` waits for every row before
+ * `res.json()` ever runs — easily outlasting BuildConsole's 20s
+ * `HttpClient.Timeout`, which is the literal exception Shane saw. A 5s
+ * AbortController timeout bounds the worst case: one slow blocked-by check
+ * degrades to "fall back to the stored column(s)" (the existing catch
+ * already does this for any other error) instead of stalling the whole
+ * queue panel.
+ */
 async function fetchRealBlockedByNumbers(issueNumber: number): Promise<number[]> {
   if (!process.env.GITHUB_TOKEN) return [];
   try {
-    const depRes = await ghFetch(
-      `/repos/${GITHUB_OWNER}/${GITHUB_REPO_NAME}/issues/${issueNumber}/dependencies/blocked_by`,
-    );
-    if (!depRes.ok) return [];
-    const deps = (await depRes.json()) as Array<{ number: number }>;
-    return deps.map((d) => d.number);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    try {
+      const depRes = await ghFetch(
+        `/repos/${GITHUB_OWNER}/${GITHUB_REPO_NAME}/issues/${issueNumber}/dependencies/blocked_by`,
+        { signal: controller.signal },
+      );
+      if (!depRes.ok) return [];
+      const deps = (await depRes.json()) as Array<{ number: number }>;
+      return deps.map((d) => d.number);
+    } finally {
+      clearTimeout(timeout);
+    }
   } catch {
     return [];
   }
