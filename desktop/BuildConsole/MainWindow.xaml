@@ -391,11 +391,6 @@
                                      HorizontalScrollBarVisibility="Auto"/>
                         </TabItem>
 
-                        <TabItem Header="Test Results">
-                            <!-- Git #810 (Epic #803 Phase 6) - live telemetry cards consolidated across the UI/API/Graph test executors; retires the standalone AutomationRunnerWindow popup. -->
-                            <ctrl:TestResultsView x:Name="TestResultsView"/>
-                        </TabItem>
-
                         <TabItem Header="Issue Detail">
                             <!-- Git #840 (Git Board Phase 2) - real issue description + comment thread, clicked from the Git Board tree. -->
                             <ctrl:IssueDetailView x:Name="IssueDetailView"/>
