@@ -64,19 +64,30 @@ namespace BuildConsole.Services
                 string responseBody = await resp.Content.ReadAsStringAsync();
 
                 var expect = test.TryGetProperty("expect", out var e) ? e : default;
-                var (passed, detail) = EvaluateExpectation(expect, (int)resp.StatusCode, responseBody);
+                var (passed, detail, expected, actual) = EvaluateExpectation(expect, (int)resp.StatusCode, responseBody);
+                string context = $"{method} {url} -> {(int)resp.StatusCode}; response body: {Truncate(responseBody, 500)}";
 
                 sw.Stop();
                 ActivityLog.Log(Channel, (passed ? "PASS " : "FAIL ") + $"{label} ({sw.ElapsedMilliseconds}ms) — {detail}");
-                return new TestStepResult { Kind = "api", Label = label, Passed = passed, Detail = detail, DurationMs = sw.ElapsedMilliseconds };
+                return new TestStepResult
+                {
+                    Kind = "api", Label = label, Passed = passed, Detail = detail, DurationMs = sw.ElapsedMilliseconds,
+                    Expected = expected, Actual = actual, Context = context,
+                };
             }
             catch (Exception ex)
             {
                 sw.Stop();
                 ActivityLog.Log(Channel, $"ERROR {label}: {ex.Message}");
-                return new TestStepResult { Kind = "api", Label = label, Passed = false, Detail = ex.Message, DurationMs = sw.ElapsedMilliseconds };
+                return new TestStepResult
+                {
+                    Kind = "api", Label = label, Passed = false, Detail = ex.Message, DurationMs = sw.ElapsedMilliseconds,
+                    Actual = $"{ex.GetType().Name}: {ex.Message}", Context = $"{method} {path}",
+                };
             }
         }
+
+        internal static string Truncate(string s, int max) => s.Length > max ? s.Substring(0, max) + "..." : s;
 
         /// <summary>{{DEPLOY_URL}} -> the configured api base url (scripts/build-queue-watcher.config.json), {{SECRET_KEY}} -> its IngestToken — same "Shane's existing secret-key mechanism" #803's Auth section defers to, not a new credential store.</summary>
         private static string ResolvePlaceholders(string input, BuildTrackerConfig config) =>
@@ -89,15 +100,20 @@ namespace BuildConsole.Services
             return baseUrl.TrimEnd('/') + "/" + path.TrimStart('/');
         }
 
-        internal static (bool passed, string detail) EvaluateExpectation(JsonElement expect, int actualStatus, string responseBody)
+        /// <summary>Git #812 — Expected/Actual are built from every declared assertion (not just the failing ones), so a passing step's JSON still records what was checked — useful context for diagnosing a DIFFERENT step's regression later without re-running.</summary>
+        internal static (bool passed, string detail, string expected, string actual) EvaluateExpectation(JsonElement expect, int actualStatus, string responseBody)
         {
-            if (expect.ValueKind != JsonValueKind.Object) return (true, "no expectations declared");
+            if (expect.ValueKind != JsonValueKind.Object) return (true, "no expectations declared", "", "");
 
             var problems = new List<string>();
+            var expectedParts = new List<string>();
+            var actualParts = new List<string>();
 
             if (expect.TryGetProperty("status", out var statusEl))
             {
                 int expectedStatus = statusEl.GetInt32();
+                expectedParts.Add($"status={expectedStatus}");
+                actualParts.Add($"status={actualStatus}");
                 if (actualStatus != expectedStatus)
                     problems.Add($"status {actualStatus} != expected {expectedStatus}");
             }
@@ -122,6 +138,8 @@ namespace BuildConsole.Services
                 if (expect.TryGetProperty("exists", out var existsEl))
                 {
                     bool expectedExists = existsEl.GetBoolean();
+                    expectedParts.Add($"{jsonPath} exists={expectedExists}");
+                    actualParts.Add($"{jsonPath} exists={resolved}");
                     if (resolved != expectedExists)
                         problems.Add($"jsonPath {jsonPath} exists={resolved}, expected {expectedExists}");
                 }
@@ -130,12 +148,16 @@ namespace BuildConsole.Services
                 {
                     bool expectedIsArray = isArrayEl.GetBoolean();
                     bool actualIsArray = resolved && found.ValueKind == JsonValueKind.Array;
+                    expectedParts.Add($"{jsonPath} isArray={expectedIsArray}");
+                    actualParts.Add($"{jsonPath} isArray={actualIsArray}");
                     if (actualIsArray != expectedIsArray)
                         problems.Add($"jsonPath {jsonPath} isArray={actualIsArray}, expected {expectedIsArray}");
                 }
 
                 if (expect.TryGetProperty("value", out var valueEl))
                 {
+                    expectedParts.Add($"{jsonPath} = {valueEl.GetRawText()}");
+                    actualParts.Add(resolved ? $"{jsonPath} = {found.GetRawText()}" : $"{jsonPath} did not resolve");
                     if (!resolved)
                         problems.Add($"jsonPath {jsonPath} did not resolve, expected value {valueEl.GetRawText()}");
                     else if (!JsonElementValuesEqual(found, valueEl))
@@ -143,7 +165,9 @@ namespace BuildConsole.Services
                 }
             }
 
-            return (problems.Count == 0, problems.Count == 0 ? "ok" : string.Join("; ", problems));
+            string expected = string.Join("; ", expectedParts);
+            string actual = string.Join("; ", actualParts);
+            return (problems.Count == 0, problems.Count == 0 ? "ok" : string.Join("; ", problems), expected, actual);
         }
 
         private static readonly Regex JsonPathTokenPattern = new(@"\.([A-Za-z0-9_]+)|\[(\d+)\]", RegexOptions.Compiled);

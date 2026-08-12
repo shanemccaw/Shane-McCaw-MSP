@@ -24,6 +24,10 @@ namespace BuildConsole.Services
         public int? Status { get; set; }
         public bool Passed { get; set; }
         public string Detail { get; set; } = string.Empty;
+        /// <summary>Git #812 — the captureResponse `expect` block, rendered human-readable (e.g. "status=200; $.ticketId exists=true").</summary>
+        public string Expected { get; set; } = string.Empty;
+        /// <summary>Git #812 — what was actually observed (status + resolved jsonPath values), same shape as Expected.</summary>
+        public string Actual { get; set; } = string.Empty;
     }
 
     public class UiStepResult
@@ -38,6 +42,10 @@ namespace BuildConsole.Services
         public string Detail { get; set; } = string.Empty;
         public long DurationMs { get; set; }
         public UiCaptureResponseResult? CaptureResponse { get; set; }
+        /// <summary>Git #812 — expected DOM/action outcome (e.g. an `expect` step's target state), threaded into TestStepResult.Expected via ToTestStepResults().</summary>
+        public string Expected { get; set; } = string.Empty;
+        /// <summary>Git #812 — what the DOM/action actually produced (found/visible booleans, or the raw JS execution result on failure).</summary>
+        public string Actual { get; set; } = string.Empty;
     }
 
     /// <summary>The structured outcome of a run — this, not the popup, is the reusable artifact #810 will consume once it exists.</summary>
@@ -72,6 +80,9 @@ namespace BuildConsole.Services
                         Label = $"capture {step.CaptureResponse.UrlPattern}",
                         Passed = step.CaptureResponse.Passed,
                         Detail = step.CaptureResponse.Detail,
+                        Expected = step.CaptureResponse.Expected,
+                        Actual = step.CaptureResponse.Actual,
+                        Context = $"triggered by step {step.Index} ({step.ActionType} {step.Selector}); status={(step.CaptureResponse.Status?.ToString() ?? "none")}",
                     });
                 }
 
@@ -82,6 +93,9 @@ namespace BuildConsole.Services
                     Passed = step.ActionPassed,
                     Detail = step.Detail,
                     DurationMs = step.DurationMs,
+                    Expected = step.Expected,
+                    Actual = step.Actual,
+                    Context = $"step {step.Index}: {step.ActionType} on selector '{step.Selector}'",
                 });
             }
 
@@ -197,21 +211,28 @@ namespace BuildConsole.Services
 
             bool actionPassed;
             string actionDetail;
+            string actionExpected = "";
+            string actionActual = "";
 
             if (actionType == "goto")
             {
                 string target = ResolveGotoTarget(selector);
                 actionPassed = await NavigateAsync(target);
                 actionDetail = actionPassed ? $"Navigated to {target}" : $"Navigation to {target} failed";
+                actionExpected = $"navigation to {target} succeeds";
+                actionActual = actionPassed ? "succeeded" : "failed (no NavigationCompleted success)";
             }
             else if (actionType == "expect")
             {
                 string expectedState = string.IsNullOrWhiteSpace(val) ? "visible" : val;
-                (actionPassed, actionDetail) = await EvaluateExpectAsync(selector, expectedState);
+                (actionPassed, actionDetail, actionActual) = await EvaluateExpectAsync(selector, expectedState);
+                actionExpected = $"{selector} state == '{expectedState}'";
             }
             else
             {
                 (actionPassed, actionDetail) = await ExecuteClickOrInputAsync(actionType, selector, step.TagName, val);
+                actionExpected = $"{actionType} on '{selector}' executes without a DOM error";
+                actionActual = actionPassed ? "executed" : actionDetail;
             }
 
             UiCaptureResponseResult? captureResult = null;
@@ -240,7 +261,9 @@ namespace BuildConsole.Services
                 Passed = overallPassed,
                 Detail = actionDetail,
                 DurationMs = sw.ElapsedMilliseconds,
-                CaptureResponse = captureResult
+                CaptureResponse = captureResult,
+                Expected = actionExpected,
+                Actual = actionActual,
             };
         }
 
@@ -305,7 +328,7 @@ namespace BuildConsole.Services
             return (passed, detail);
         }
 
-        private async Task<(bool passed, string detail)> EvaluateExpectAsync(string selector, string expectedState)
+        private async Task<(bool passed, string detail, string actual)> EvaluateExpectAsync(string selector, string expectedState)
         {
             string script = $@"
 (function() {{
@@ -333,7 +356,8 @@ namespace BuildConsole.Services
             string detail = passed
                 ? $"{selector} matched expected state '{expectedState}'"
                 : $"{selector} did not match expected state '{expectedState}' (found={found}, visible={visible})";
-            return (passed, detail);
+            string actual = $"found={found}, visible={visible}";
+            return (passed, detail, actual);
         }
 
         private static string Escape(string s) => (s ?? string.Empty).Replace("'", "\\'");
@@ -382,17 +406,25 @@ namespace BuildConsole.Services
         private static async Task<UiCaptureResponseResult> BuildCaptureResultAsync(CaptureResponseSpec spec, CoreWebView2WebResourceResponseReceivedEventArgs? args)
         {
             var result = new UiCaptureResponseResult { UrlPattern = spec.UrlPattern };
+            var expectedParts = new List<string>();
+            var actualParts = new List<string>();
+            if (spec.ExpectStatus.HasValue) expectedParts.Add($"status={spec.ExpectStatus.Value}");
+            if (spec.ExpectExists.HasValue) expectedParts.Add($"{spec.ExpectJsonPath} exists={spec.ExpectExists.Value}");
+            if (spec.ExpectIsArray.HasValue) expectedParts.Add($"{spec.ExpectJsonPath} isArray={spec.ExpectIsArray.Value}");
+            result.Expected = string.Join("; ", expectedParts);
 
             if (args == null)
             {
                 result.Captured = false;
                 result.Passed = false;
                 result.Detail = $"No response matching '{spec.UrlPattern}' observed within {CaptureResponseTimeoutMs}ms.";
+                result.Actual = "no matching response observed";
                 return result;
             }
 
             result.Captured = true;
             result.Status = (int)args.Response.StatusCode;
+            actualParts.Add($"status={result.Status}");
 
             bool passed = true;
             var details = new List<string>();
@@ -432,6 +464,7 @@ namespace BuildConsole.Services
                             bool existsOk = found == spec.ExpectExists.Value;
                             passed &= existsOk;
                             details.Add(existsOk ? $"{spec.ExpectJsonPath} exists={found}" : $"{spec.ExpectJsonPath} exists={found} (expected {spec.ExpectExists.Value})");
+                            actualParts.Add($"{spec.ExpectJsonPath} exists={found}");
                         }
 
                         if (spec.ExpectIsArray.HasValue)
@@ -440,6 +473,7 @@ namespace BuildConsole.Services
                             bool arrayOk = isArray == spec.ExpectIsArray.Value;
                             passed &= arrayOk;
                             details.Add(arrayOk ? $"{spec.ExpectJsonPath} isArray={isArray}" : $"{spec.ExpectJsonPath} isArray={isArray} (expected {spec.ExpectIsArray.Value})");
+                            actualParts.Add($"{spec.ExpectJsonPath} isArray={isArray}");
                         }
                     }
                     catch (Exception ex)
@@ -454,6 +488,7 @@ namespace BuildConsole.Services
             result.Detail = details.Count > 0
                 ? $"{spec.UrlPattern} — {string.Join(", ", details)}"
                 : $"{spec.UrlPattern} — captured (status {result.Status})";
+            result.Actual = string.Join("; ", actualParts);
             return result;
         }
 

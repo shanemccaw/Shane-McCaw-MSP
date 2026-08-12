@@ -82,7 +82,9 @@ namespace BuildConsole.Services
                 {
                     return Finish(Channel, "graph", label, sw,
                         passed: false,
-                        detail: "GRAPH_TEST_TENANT_ID not configured — refusing to run any graphTests without a designated test tenant.");
+                        detail: "GRAPH_TEST_TENANT_ID not configured — refusing to run any graphTests without a designated test tenant.",
+                        expected: "GRAPH_TEST_TENANT_ID env var set", actual: "unset",
+                        context: $"authProfile={authProfile}, manifest tenant={manifestTenant}");
                 }
 
                 string resolvedTenant = manifestTenant == TenantPlaceholder ? testTenantId : manifestTenant;
@@ -91,7 +93,9 @@ namespace BuildConsole.Services
                     ActivityLog.Log(Channel, $"REFUSED [{index + 1}/{total}] {label}: tenant '{manifestTenant}' != configured test tenant — no Graph call made.");
                     return Finish(Channel, "graph", label, sw,
                         passed: false,
-                        detail: $"tenant guard: manifest tenant '{manifestTenant}' does not resolve to the configured TEST tenant. Refusing to call Graph — this dev/regression tool never targets a real customer tenant.");
+                        detail: $"tenant guard: manifest tenant '{manifestTenant}' does not resolve to the configured TEST tenant. Refusing to call Graph — this dev/regression tool never targets a real customer tenant.",
+                        expected: $"tenant == {testTenantId}", actual: $"tenant == {resolvedTenant}",
+                        context: $"authProfile={authProfile}");
                 }
 
                 var (clientId, clientSecret, fixedTenantId) = ResolveAuthProfile(authProfile);
@@ -99,7 +103,9 @@ namespace BuildConsole.Services
                 {
                     return Finish(Channel, "graph", label, sw,
                         passed: false,
-                        detail: $"authProfile '{authProfile}' not recognized, or its credentials are not configured in environment variables.");
+                        detail: $"authProfile '{authProfile}' not recognized, or its credentials are not configured in environment variables.",
+                        expected: "clientId/clientSecret resolved for authProfile", actual: "null",
+                        context: $"authProfile={authProfile}");
                 }
 
                 // "ba40ca4d" (internal single-tenant app) has its own fixed tenant; still only
@@ -118,13 +124,15 @@ namespace BuildConsole.Services
                 string responseBody = await res.Content.ReadAsStringAsync();
 
                 var expect = test.TryGetProperty("expect", out var e) ? e : default;
-                var (passed, detail) = HttpTestExecutor.EvaluateExpectation(expect, (int)res.StatusCode, responseBody);
+                var (passed, detail, expected, actual) = HttpTestExecutor.EvaluateExpectation(expect, (int)res.StatusCode, responseBody);
+                string context = $"{method} {path} (authProfile={authProfile}, tenant={resolvedTenant}) -> {(int)res.StatusCode}; response body: {Truncate(responseBody)}";
 
-                return Finish(Channel, "graph", label, sw, passed, detail);
+                return Finish(Channel, "graph", label, sw, passed, detail, expected, actual, context);
             }
             catch (Exception ex)
             {
-                return Finish(Channel, "graph", label, sw, passed: false, detail: ex.Message);
+                return Finish(Channel, "graph", label, sw, passed: false, detail: ex.Message,
+                    actual: $"{ex.GetType().Name}: {ex.Message}", context: $"{method} {path} (authProfile={authProfile}, tenant={manifestTenant})");
             }
         }
 
@@ -182,11 +190,16 @@ namespace BuildConsole.Services
 
         private static string Truncate(string s) => s.Length > 300 ? s.Substring(0, 300) + "..." : s;
 
-        private static TestStepResult Finish(string channel, string kind, string label, Stopwatch sw, bool passed, string detail)
+        private static TestStepResult Finish(string channel, string kind, string label, Stopwatch sw, bool passed, string detail,
+            string expected = "", string actual = "", string context = "")
         {
             sw.Stop();
             ActivityLog.Log(channel, (passed ? "PASS " : "FAIL ") + $"{label} ({sw.ElapsedMilliseconds}ms) - {detail}");
-            return new TestStepResult { Kind = kind, Label = label, Passed = passed, Detail = detail, DurationMs = sw.ElapsedMilliseconds };
+            return new TestStepResult
+            {
+                Kind = kind, Label = label, Passed = passed, Detail = detail, DurationMs = sw.ElapsedMilliseconds,
+                Expected = expected, Actual = actual, Context = context,
+            };
         }
     }
 }

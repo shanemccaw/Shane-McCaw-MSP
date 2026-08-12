@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
@@ -65,7 +66,11 @@ namespace BuildConsole.Controls
             try
             {
                 _lastItems = await _api.GetQueueAsync();
-                RenderQueue(ApplyFilter(_lastItems));
+                if (_filter != "Tests") RenderQueue(ApplyFilter(_lastItems));
+                // Git #812 — the Tests tree reads test-results/*.json off disk, not the queue
+                // API, so a poll refreshes it every tick (a new test run can land results
+                // without the queue itself changing at all).
+                if (_filter == "Tests") RenderTestsTree();
                 SyncError?.Invoke(this, null);
             }
             catch (Exception ex)
@@ -89,12 +94,13 @@ namespace BuildConsole.Controls
         private void FilterChip_Click(object sender, RoutedEventArgs e)
         {
             if (sender is not ToggleButton clicked) return;
-            foreach (var chip in new[] { ChipAll, ChipActive, ChipDone, ChipCanceled })
+            foreach (var chip in new[] { ChipAll, ChipActive, ChipDone, ChipCanceled, ChipTests })
             {
                 chip.IsChecked = chip == clicked;
             }
             _filter = clicked.Tag as string ?? "All";
-            RenderQueue(ApplyFilter(_lastItems));
+            if (_filter == "Tests") RenderTestsTree();
+            else RenderQueue(ApplyFilter(_lastItems));
         }
 
         private void RenderQueue(List<QueueItem> items)
@@ -162,6 +168,115 @@ namespace BuildConsole.Controls
             ["failed"]   = ("✕", "#E57A7A"),
             ["canceled"] = ("—", "#5A5856"),
         };
+
+        /// <summary>Git #812 (Phase 7 of Epic #803) — Tests chip's status-dot palette, matching StatusStyle's shape/naming above (icon + hex pair keyed by state).</summary>
+        private static readonly Dictionary<string, (string Icon, string Hex)> TestStatusStyle = new()
+        {
+            ["passed"] = ("✅", "#7FAE91"),
+            ["failed"] = ("✕", "#E57A7A"),
+            ["none"]   = ("•", "#8F8C88"),
+        };
+
+        /// <summary>
+        /// Git #812 (Phase 7 of Epic #803) — Tests filter chip: reuses this same panel/TreeView
+        /// but populates it from the local test-manifests/test-results file tree instead of the
+        /// live queue API, since test results are written straight to disk by RunManifestAsync ->
+        /// ManifestRunResult.WriteToFile (test-results/{issue}-{timestamp}.json per #803's Repo
+        /// Structure section) rather than tracked by the build-tracker DB. Shows the most recent
+        /// run's pass/fail per manifest using the same status-dot pattern BuildQueueTreeItem uses.
+        /// </summary>
+        private void RenderTestsTree()
+        {
+            QueueTree.Items.Clear();
+
+            string? repoRoot = BuildTrackerConfig.FindRepoRoot();
+            if (repoRoot == null)
+            {
+                QueueTree.Visibility = Visibility.Collapsed;
+                QueueEmptyText.Text = "No repo root found — can't locate test-manifests/test-results (Settings tab has the config path).";
+                QueueEmptyText.Visibility = Visibility.Visible;
+                return;
+            }
+
+            string manifestsDir = Path.Combine(repoRoot, "test-manifests");
+            string resultsDir = Path.Combine(repoRoot, "test-results");
+
+            var manifestFiles = Directory.Exists(manifestsDir)
+                ? Directory.GetFiles(manifestsDir, "*.json")
+                    .Where(f => !string.Equals(Path.GetFileName(f), "_regression-suite.json", StringComparison.OrdinalIgnoreCase))
+                    .OrderBy(f => f)
+                    .ToList()
+                : new List<string>();
+
+            QueueTree.Visibility = Visibility.Visible;
+            QueueEmptyText.Visibility = manifestFiles.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+            QueueEmptyText.Text = "No test manifests found in test-manifests/.";
+
+            // Latest test-results/{issue}-{timestamp}.json per issue — filenames sort
+            // chronologically since the timestamp segment is yyyyMMddHHmmss.
+            var latestResultFileByIssue = new Dictionary<int, string>();
+            if (Directory.Exists(resultsDir))
+            {
+                foreach (var file in Directory.GetFiles(resultsDir, "*.json"))
+                {
+                    string name = Path.GetFileNameWithoutExtension(file);
+                    int dash = name.IndexOf('-');
+                    if (dash <= 0 || !int.TryParse(name.Substring(0, dash), out int issueNum)) continue;
+                    if (!latestResultFileByIssue.TryGetValue(issueNum, out var existing) || string.CompareOrdinal(file, existing) > 0)
+                        latestResultFileByIssue[issueNum] = file;
+                }
+            }
+
+            foreach (var manifestPath in manifestFiles)
+            {
+                var manifest = TestManifest.LoadFromFile(manifestPath);
+                if (manifest == null) continue;
+
+                string status = "none";
+                string subtitle = "no runs yet";
+
+                if (latestResultFileByIssue.TryGetValue(manifest.Issue, out var resultPath))
+                {
+                    try
+                    {
+                        var runResult = System.Text.Json.JsonSerializer.Deserialize<ManifestRunResult>(File.ReadAllText(resultPath));
+                        if (runResult != null && runResult.Steps.Count > 0)
+                        {
+                            int passed = runResult.Steps.Count(s => s.Passed);
+                            status = runResult.AllPassed ? "passed" : "failed";
+                            subtitle = $"{passed}/{runResult.Steps.Count} passed — {runResult.StartedAt:MM/dd HH:mm} ({runResult.Mode})";
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        subtitle = $"couldn't read last result: {ex.Message}";
+                    }
+                }
+
+                var (icon, hex) = TestStatusStyle[status];
+                var brush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex));
+
+                var panel = new StackPanel { Orientation = Orientation.Horizontal };
+                panel.Children.Add(new TextBlock { Text = icon + " ", FontSize = 12, Foreground = brush, VerticalAlignment = VerticalAlignment.Center });
+                panel.Children.Add(new TextBlock
+                {
+                    Text = $"#{manifest.Issue} — {manifest.Feature}",
+                    FontSize = 12,
+                    Foreground = (Brush)Application.Current.FindResource("TextBrush"),
+                    VerticalAlignment = VerticalAlignment.Center,
+                });
+                panel.Children.Add(new TextBlock
+                {
+                    Text = "  " + subtitle,
+                    FontSize = 10,
+                    FontStyle = FontStyles.Italic,
+                    Foreground = (Brush)Application.Current.FindResource("Subtext1Brush"),
+                    VerticalAlignment = VerticalAlignment.Center,
+                });
+
+                QueueTree.Items.Add(new TreeViewItem { Header = panel, Tag = manifestPath });
+            }
+        }
 
         private TreeViewItem BuildQueueTreeItem(QueueItem item)
         {

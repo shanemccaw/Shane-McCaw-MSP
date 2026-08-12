@@ -58,6 +58,7 @@
                     <ToggleButton x:Name="ChipActive"    Content="Queued &amp; Running" Style="{StaticResource FilterChip}" Click="FilterChip_Click" Tag="Active"/>
                     <ToggleButton x:Name="ChipDone"      Content="Done"              Style="{StaticResource FilterChip}" Click="FilterChip_Click" Tag="Done"/>
                     <ToggleButton x:Name="ChipCanceled"  Content="Canceled"          Style="{StaticResource FilterChip}" Click="FilterChip_Click" Tag="Canceled"/>
+                    <ToggleButton x:Name="ChipTests"     Content="Tests"             Style="{StaticResource FilterChip}" Click="FilterChip_Click" Tag="Tests"/>
                 </StackPanel>
             </Border>
 

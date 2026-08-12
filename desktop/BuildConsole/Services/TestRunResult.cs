@@ -12,6 +12,15 @@ namespace BuildConsole.Services
     /// (#810) that will read this back. One pipeline, per #803/#807's framing — not a
     /// separate output file per executor kind. Written to test-results/{issue}-{timestamp}.json
     /// per #803's Repo Structure section.
+    ///
+    /// Git #812 (Phase 7) — Expected/Actual/Context split out of the free-text Detail
+    /// string so Claude Code can diagnose a failure straight from the JSON file without
+    /// re-running anything: Detail stays the short human-readable summary (unchanged
+    /// shape for #810's telemetry cards), Expected/Actual hold the specific assertion
+    /// values that were compared, and Context carries request/response or DOM detail
+    /// (method+url+status+truncated body for api/graph, selector+action for ui) that
+    /// wasn't part of the pass/fail comparison itself but is what you'd want on hand
+    /// while diagnosing.
     /// </summary>
     public class TestStepResult
     {
@@ -20,6 +29,9 @@ namespace BuildConsole.Services
         public bool Passed { get; set; }
         public string Detail { get; set; } = "";
         public long DurationMs { get; set; }
+        public string Expected { get; set; } = "";
+        public string Actual { get; set; } = "";
+        public string Context { get; set; } = "";
     }
 
     public class ManifestRunResult
@@ -34,12 +46,19 @@ namespace BuildConsole.Services
 
         public void AddRange(IEnumerable<TestStepResult> steps) => Steps.AddRange(steps);
 
+        /// <summary>Git #812 — this app's module-level logger.child({channel}) equivalent (ActivityLog.Log(channel, ...); no Node logger exists in this WPF process — see the sibling "testing.api-executor"/"testing.graph-executor"/"testing.ui-executor"/"testing.results-panel" channels).</summary>
+        private const string Channel = "testing.results-writer";
+
         public string WriteToFile(string repoRoot)
         {
             var dir = Path.Combine(repoRoot, "test-results");
             Directory.CreateDirectory(dir);
             var path = Path.Combine(dir, $"{Issue}-{StartedAt:yyyyMMddHHmmss}.json");
             File.WriteAllText(path, JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }));
+
+            int passed = Steps.Count(s => s.Passed);
+            ActivityLog.Log(Channel,
+                $"Wrote {Steps.Count} step result(s) for issue #{Issue} ({passed}/{Steps.Count} passed) to {path}.");
             return path;
         }
     }
