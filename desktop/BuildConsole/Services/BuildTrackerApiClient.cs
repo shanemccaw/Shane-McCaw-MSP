@@ -27,6 +27,8 @@ namespace BuildConsole.Services
         public string? SessionId { get; set; }
         /// <summary>Git #826 — set by a Reply action: tells the watcher to launch this item with --resume &lt;this&gt; instead of a fresh session.</summary>
         public string? ResumeSessionId { get; set; }
+        /// <summary>Git #905 — the server's own `updatedAt` was already in the response (`GET /extension/queue` spreads the whole row), just never captured client-side; used to show "done {time}" on the new Completed tile.</summary>
+        public DateTimeOffset? UpdatedAt { get; set; }
     }
 
     public class BlockedByInfo

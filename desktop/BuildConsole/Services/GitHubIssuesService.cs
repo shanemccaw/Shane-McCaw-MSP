@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 
@@ -94,6 +95,74 @@ namespace BuildConsole.Services
                 ActivityLog.Log("github", $"Couldn't parse gh issue list output: {ex.Message}");
                 return new List<GitHubIssueSummary>();
             }
+        }
+
+        /// <summary>
+        /// Git #905 — Shane: "I ran a fix on an item in the 400s, it went to
+        /// done... I don't know what it was... Maybe I need like a last
+        /// complete list that stays there until the actual issue is closed
+        /// in Git." One `gh` call for every currently-open issue NUMBER
+        /// (no label filter, unlike ListOpenByLabelAsync above) - the
+        /// BuildQueuePanel Completed tile cross-references this against
+        /// done queue rows to know which finished builds still have their
+        /// real GitHub issue open, i.e. still need Shane's review/close.
+        /// </summary>
+        public static async Task<HashSet<int>> GetOpenIssueNumbersAsync(int limit = 500)
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = "gh",
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true,
+            };
+            psi.ArgumentList.Add("issue");
+            psi.ArgumentList.Add("list");
+            psi.ArgumentList.Add("--repo");
+            psi.ArgumentList.Add(Repo);
+            psi.ArgumentList.Add("--state");
+            psi.ArgumentList.Add("open");
+            psi.ArgumentList.Add("--json");
+            psi.ArgumentList.Add("number");
+            psi.ArgumentList.Add("--limit");
+            psi.ArgumentList.Add(limit.ToString());
+
+            using var proc = new Process { StartInfo = psi };
+            try
+            {
+                proc.Start();
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("github", $"Couldn't start gh CLI (is it installed/on PATH?): {ex.Message}");
+                return new HashSet<int>();
+            }
+            string stdout = await proc.StandardOutput.ReadToEndAsync();
+            string stderr = await proc.StandardError.ReadToEndAsync();
+            await proc.WaitForExitAsync();
+            if (proc.ExitCode != 0)
+            {
+                ActivityLog.Log("github", $"gh issue list (open numbers) failed (exit {proc.ExitCode}): {stderr.Trim()}");
+                return new HashSet<int>();
+            }
+
+            try
+            {
+                var rows = System.Text.Json.JsonSerializer.Deserialize<List<OpenIssueNumberRow>>(
+                    stdout, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                return rows == null ? new HashSet<int>() : new HashSet<int>(rows.Select(r => r.Number));
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("github", $"Couldn't parse gh issue list (open numbers) output: {ex.Message}");
+                return new HashSet<int>();
+            }
+        }
+
+        private class OpenIssueNumberRow
+        {
+            public int Number { get; set; }
         }
     }
 }

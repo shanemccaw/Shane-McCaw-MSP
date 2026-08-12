@@ -87,6 +87,13 @@ namespace BuildConsole.Controls
             _waitingOnMePollTimer.Start();
             _ = RefreshWaitingOnMeAsync();
 
+            // Git #905 — same direct-gh-CLI reasoning as In-Flight/To-Do above,
+            // just "which issue numbers are open" instead of a label filter.
+            _completedPollTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(60) };
+            _completedPollTimer.Tick += async (_, _) => await RefreshCompletedAsync();
+            _completedPollTimer.Start();
+            _ = RefreshCompletedAsync();
+
             if (!api.IsConfigured)
             {
                 QueueTree.Visibility = Visibility.Collapsed;
@@ -287,6 +294,82 @@ namespace BuildConsole.Controls
             return new ListBoxItem { Content = panel, ToolTip = issue.Url, Tag = issue.Number };
         }
 
+        /// <summary>
+        /// Git #905 — Shane: "I ran a fix on an item in the 400s, it went to
+        /// done... I don't know what it was... Maybe I need like a last
+        /// complete list that stays there until the actual issue is closed
+        /// in Git." Two independently-cadenced inputs: `_lastItems` (the
+        /// real queue, refreshed every 15s by RefreshAsync) and
+        /// `_lastOpenIssueNumbers` (which GitHub issue numbers are
+        /// currently OPEN, refreshed every 60s here via `gh` CLI, same
+        /// reasoning as In-Flight/To-Do's own 60s cadence per #876). The
+        /// render itself (RenderCompletedFromCache) is pure and cheap, so
+        /// it's called from BOTH refresh paths - RefreshAsync's own success
+        /// path calls it too, so a newly-done queue item shows up promptly
+        /// against whatever open-numbers snapshot is currently cached,
+        /// without needing its own `gh` call every 15s.
+        /// </summary>
+        private DispatcherTimer? _completedPollTimer;
+        private HashSet<int> _lastOpenIssueNumbers = new();
+        private string? _lastCompletedSignature;
+
+        private async System.Threading.Tasks.Task RefreshCompletedAsync()
+        {
+            try { _lastOpenIssueNumbers = await Services.GitHubIssuesService.GetOpenIssueNumbersAsync(); }
+            catch { return; } // best-effort - a gh CLI hiccup shouldn't blank out what's already shown
+
+            RenderCompletedFromCache();
+        }
+
+        private void RenderCompletedFromCache()
+        {
+            var completed = _lastItems
+                .Where(i => i.Status == "done" && i.GithubNumber.HasValue && _lastOpenIssueNumbers.Contains(i.GithubNumber.Value))
+                .OrderByDescending(i => i.UpdatedAt)
+                .ToList();
+
+            var signature = System.Text.Json.JsonSerializer.Serialize(completed.Select(i => new { i.Id, i.GithubNumber, i.UpdatedAt }));
+            if (signature == _lastCompletedSignature) return;
+            _lastCompletedSignature = signature;
+
+            UpdateCompletedTileAppearance(completed.Count);
+
+            CompletedIssuesList.Items.Clear();
+            if (completed.Count == 0)
+            {
+                CompletedIssuesList.Items.Add(new ListBoxItem { Content = "Nothing done with an open issue.", Foreground = (Brush)Application.Current.FindResource("Subtext1Brush") });
+                return;
+            }
+            foreach (var item in completed)
+            {
+                CompletedIssuesList.Items.Add(BuildCompletedRow(item));
+            }
+        }
+
+        /// <summary>Git #905 — Tag carries the real GitHub issue number so CompletedIssuesList_SelectionChanged can open it directly (the queue row itself has no Url field to reuse, unlike GitHubIssueSummary's rows elsewhere in this panel).</summary>
+        private static ListBoxItem BuildCompletedRow(QueueItem item)
+        {
+            var panel = new StackPanel { Orientation = Orientation.Horizontal };
+            panel.Children.Add(new TextBlock { Text = "✅ ", FontSize = 12, Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#7FAE91")), VerticalAlignment = VerticalAlignment.Center });
+            var textStack = new StackPanel();
+            textStack.Children.Add(new TextBlock { Text = item.Title, FontSize = 12, Foreground = (Brush)Application.Current.FindResource("TextBrush"), TextWrapping = TextWrapping.Wrap });
+            string doneWhen = item.UpdatedAt.HasValue ? item.UpdatedAt.Value.ToLocalTime().ToString("MMM d, h:mm tt") : "unknown time";
+            textStack.Children.Add(new TextBlock { Text = $"#{item.GithubNumber}  ·  done {doneWhen}  ·  click to close on GitHub", FontSize = 10, Foreground = (Brush)Application.Current.FindResource("Subtext1Brush"), TextWrapping = TextWrapping.Wrap });
+            panel.Children.Add(textStack);
+            return new ListBoxItem { Content = panel, Tag = item.GithubNumber };
+        }
+
+        /// <summary>Git #905 — clicking a row opens the real GitHub issue directly (the whole point: close it there to make the row disappear from this list on the next 60s refresh).</summary>
+        private void CompletedIssuesList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (CompletedIssuesList.SelectedItem is ListBoxItem { Tag: int githubNumber })
+            {
+                try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo($"https://github.com/shanemccaw/Shane-McCaw-MSP/issues/{githubNumber}") { UseShellExecute = true }); }
+                catch { /* best-effort - worst case Shane just navigates there himself */ }
+                CompletedIssuesList.SelectedItem = null; // so re-clicking the same row still fires SelectionChanged
+            }
+        }
+
         // Git #829 — Shane: "I need the right panel to have another section
         // that shows me all the issues assigned to the chat I'm on."
         // MainWindow calls this from EditorTabs_SelectionChanged whenever
@@ -454,6 +537,9 @@ namespace BuildConsole.Controls
                 // API, so a poll refreshes it regardless of whether the queue signature changed
                 // (a new test run can land results without the queue itself changing at all).
                 if (_filter == "Tests") RenderTestsTree();
+                // Git #905 — a freshly-done item should show up on the Completed tile
+                // promptly, not wait for that tile's own slower 60s gh CLI poll.
+                RenderCompletedFromCache();
                 SyncError?.Invoke(this, null);
             }
             catch (Exception ex)
@@ -877,6 +963,9 @@ namespace BuildConsole.Controls
         private void TileToDo_Click(object sender, RoutedEventArgs e) =>
             TileToDoContent.Visibility = TileToDo.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
 
+        private void TileCompleted_Click(object sender, RoutedEventArgs e) =>
+            TileCompletedContent.Visibility = TileCompleted.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+
         /// <summary>Git #874 — the To-Do tile is the one section that announces itself: PeachBrush (the app's existing warning/accent brush) once count > 0, cleared back to the QuietTile style's own neutral brushes at 0.</summary>
         private void UpdateToDoTileAppearance(int count)
         {
@@ -897,6 +986,29 @@ namespace BuildConsole.Controls
                 ToDoIcon.ClearValue(ForegroundProperty);
                 ToDoLabel.ClearValue(ForegroundProperty);
                 ToDoCountText.ClearValue(TextBlock.ForegroundProperty);
+            }
+        }
+
+        /// <summary>Git #905 — same "announce itself" pattern as UpdateToDoTileAppearance above; a done build with its issue still open is just as much an action item as a Shane To-Do label.</summary>
+        private void UpdateCompletedTileAppearance(int count)
+        {
+            CompletedCountText.Text = $"({count})";
+            if (count > 0)
+            {
+                var peach = (Brush)Application.Current.FindResource("PeachBrush");
+                TileCompleted.BorderBrush = peach;
+                TileCompleted.Foreground = peach;
+                CompletedIcon.Foreground = peach;
+                CompletedLabel.Foreground = peach;
+                CompletedCountText.Foreground = peach;
+            }
+            else
+            {
+                TileCompleted.ClearValue(BorderBrushProperty);
+                TileCompleted.ClearValue(ForegroundProperty);
+                CompletedIcon.ClearValue(ForegroundProperty);
+                CompletedLabel.ClearValue(ForegroundProperty);
+                CompletedCountText.ClearValue(TextBlock.ForegroundProperty);
             }
         }
     }

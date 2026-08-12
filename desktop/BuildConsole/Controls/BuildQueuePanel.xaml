@@ -225,6 +225,42 @@
                         </StackPanel>
                     </Grid>
 
+                    <!-- ══ 3b. COMPLETED — done builds whose real GitHub issue is still
+                         open, one quiet count-badge tile, collapsed by default ══
+                         Git #905 - Shane: "I ran a fix on an item in the 400s, it went
+                         to done... I don't know what it was... Maybe I need like a last
+                         complete list that stays there until the actual issue is closed
+                         in Git." Unlike the Queue tab's own "Done" filter chip (which
+                         shows EVERY done row, growing forever per #865), this list only
+                         ever holds done rows whose linked GitHub issue is STILL OPEN -
+                         closing the issue on GitHub is what removes a row from here, not
+                         the passage of time or how deep it's buried in queue history.
+                         Same "announce itself" accent behavior as To-Do below, since this
+                         too is something Shane still needs to act on (review + close). -->
+                    <StackPanel Margin="10,0,10,12">
+                        <ToggleButton x:Name="TileCompleted" Style="{StaticResource QuietTile}" Click="TileCompleted_Click">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock x:Name="CompletedIcon" Text="✅" FontSize="13" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <TextBlock x:Name="CompletedLabel" Text="Completed" FontSize="11" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="CompletedCountText" Text="(0)" FontSize="11" Margin="4,0,0,0" VerticalAlignment="Center" Foreground="{StaticResource Subtext1Brush}"/>
+                            </StackPanel>
+                        </ToggleButton>
+                        <Border x:Name="TileCompletedContent"
+                                Visibility="Collapsed"
+                                Background="{StaticResource MantleBrush}"
+                                BorderBrush="{StaticResource Surface0Brush}"
+                                BorderThickness="1,0,1,1"
+                                Padding="4"
+                                CornerRadius="0,0,6,6">
+                            <ListBox x:Name="CompletedIssuesList"
+                                     Background="Transparent"
+                                     BorderThickness="0"
+                                     MaxHeight="220"
+                                     ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                     SelectionChanged="CompletedIssuesList_SelectionChanged"/>
+                        </Border>
+                    </StackPanel>
+
                     <!-- ══ 4. TO-DO — one quiet count-badge tile, collapsed by default ══
                          Git #874 - Shane: "To-Do I reference only after a build tells me
                          there is something for me to do." The ONE section that should
