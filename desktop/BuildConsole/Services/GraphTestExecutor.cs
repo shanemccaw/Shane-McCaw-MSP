@@ -47,21 +47,21 @@ namespace BuildConsole.Services
         /// <summary>Git #810 — raised after each graphTest completes so the Test Results tab can render a telemetry card live, during the run, instead of waiting for the whole manifest to finish.</summary>
         public static event Action<TestStepResult>? StepCompleted;
 
-        public static async Task<List<TestStepResult>> RunAsync(TestManifest manifest)
+        public static async Task<List<TestStepResult>> RunAsync(TestManifest manifest, TestRunVariables vars)
         {
             var results = new List<TestStepResult>();
             if (manifest.GraphTests.Count == 0) return results;
 
             for (int i = 0; i < manifest.GraphTests.Count; i++)
             {
-                var result = await RunOneAsync(manifest.GraphTests[i], i, manifest.GraphTests.Count);
+                var result = await RunOneAsync(vars, manifest.GraphTests[i], i, manifest.GraphTests.Count);
                 results.Add(result);
                 StepCompleted?.Invoke(result);
             }
             return results;
         }
 
-        private static async Task<TestStepResult> RunOneAsync(JsonElement test, int index, int total)
+        private static async Task<TestStepResult> RunOneAsync(TestRunVariables vars, JsonElement test, int index, int total)
         {
             var sw = Stopwatch.StartNew();
             string method = GetString(test, "method") ?? "GET";
@@ -113,19 +113,36 @@ namespace BuildConsole.Services
                 string tokenTenant = fixedTenantId ?? resolvedTenant;
                 string token = await GetTokenAsync(authProfile, tokenTenant, clientId, clientSecret);
 
-                ActivityLog.Log(Channel, $"[{index + 1}/{total}] {method} {path} (authProfile={authProfile}, tenant={resolvedTenant})");
+                // #877 — cross-step {{variable}} interpolation against values earlier steps
+                // extracted. An unresolved {{name}} throws (caught below) rather than sending the
+                // literal placeholder. The tenant guard above already ran against the manifest's
+                // own `tenant` field, so interpolation here only touches the request url/body.
+                string resolvedPath = vars.Resolve(path);
+                ActivityLog.Log(Channel, $"[{index + 1}/{total}] {method} {resolvedPath} (authProfile={authProfile}, tenant={resolvedTenant})");
 
-                using var req = new HttpRequestMessage(new HttpMethod(method), path);
+                using var req = new HttpRequestMessage(new HttpMethod(method), resolvedPath);
                 req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
                 if (test.TryGetProperty("body", out var bodyEl))
-                    req.Content = new StringContent(bodyEl.GetRawText(), Encoding.UTF8, "application/json");
+                    req.Content = new StringContent(vars.Resolve(bodyEl.GetRawText()), Encoding.UTF8, "application/json");
 
                 using var res = await Http.SendAsync(req);
                 string responseBody = await res.Content.ReadAsStringAsync();
 
                 var expect = test.TryGetProperty("expect", out var e) ? e : default;
                 var (passed, detail, expected, actual) = HttpTestExecutor.EvaluateExpectation(expect, (int)res.StatusCode, responseBody);
-                string context = $"{method} {path} (authProfile={authProfile}, tenant={resolvedTenant}) -> {(int)res.StatusCode}; response body: {Truncate(responseBody)}";
+
+                // #877 — extract a value out of this step's own response body for later steps to use.
+                if (test.TryGetProperty("extract", out var extractEl) && extractEl.ValueKind == JsonValueKind.Object)
+                {
+                    string? extractError = vars.Extract(extractEl, responseBody);
+                    if (extractError != null)
+                    {
+                        passed = false;
+                        detail = string.IsNullOrEmpty(detail) || detail == "ok" ? extractError : $"{detail}; {extractError}";
+                    }
+                }
+
+                string context = $"{method} {resolvedPath} (authProfile={authProfile}, tenant={resolvedTenant}) -> {(int)res.StatusCode}; response body: {Truncate(responseBody)}";
 
                 return Finish(Channel, "graph", label, sw, passed, detail, expected, actual, context);
             }

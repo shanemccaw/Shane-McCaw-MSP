@@ -53,6 +53,7 @@ namespace BuildConsole.Services
                         Value = step.TryGetProperty("value", out var v) ? v.GetString() : null,
                         State = step.TryGetProperty("state", out var st) ? st.GetString() : null,
                         CaptureResponseJson = step.TryGetProperty("captureResponse", out var cr) ? cr.GetRawText() : null,
+                        ExtractJson = step.TryGetProperty("extract", out var ex) && ex.ValueKind == JsonValueKind.Object ? ex.GetRawText() : null,
                     }).ToList();
                 }
 
@@ -74,5 +75,7 @@ namespace BuildConsole.Services
         public string? Value { get; set; }
         public string? State { get; set; }
         public string? CaptureResponseJson { get; set; }
+        /// <summary>Git #877 — raw JSON of this uiStep's optional `extract` block ({ as, regex } / { as, jsonPath }), carried through untouched for UiTestExecutor to apply against the step's captured response body. Null when the step declares no extraction.</summary>
+        public string? ExtractJson { get; set; }
     }
 }

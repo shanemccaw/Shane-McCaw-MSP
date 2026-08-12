@@ -103,6 +103,8 @@ namespace BuildConsole.Controls
         public string Timestamp { get; set; } = DateTime.Now.ToString("HH:mm:ss");
         /// <summary>Git #806 — raw JSON of the manifest's optional uiSteps[].captureResponse block, carried through untouched for the UI executor (#809) to parse. Null for manually-recorded steps.</summary>
         public string? CaptureResponse { get; set; }
+        /// <summary>Git #877 — raw JSON of the manifest's optional uiSteps[].extract block ({ as, regex } / { as, jsonPath }), carried through untouched for the UI executor to apply against the step's captured response body. Null for manually-recorded steps.</summary>
+        public string? Extract { get; set; }
     }
 
     public partial class LeftSidebar : UserControl

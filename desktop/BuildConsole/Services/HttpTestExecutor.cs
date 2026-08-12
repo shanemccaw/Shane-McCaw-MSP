@@ -23,7 +23,7 @@ namespace BuildConsole.Services
         /// <summary>Git #810 — raised after each apiTest completes so the Test Results tab can render a telemetry card live, during the run, instead of waiting for the whole manifest to finish.</summary>
         public static event Action<TestStepResult>? StepCompleted;
 
-        public static async Task<List<TestStepResult>> RunAsync(TestManifest manifest, BuildTrackerConfig config)
+        public static async Task<List<TestStepResult>> RunAsync(TestManifest manifest, BuildTrackerConfig config, TestRunVariables vars)
         {
             var results = new List<TestStepResult>();
             if (manifest.ApiTests.Count == 0) return results;
@@ -31,14 +31,14 @@ namespace BuildConsole.Services
             using var http = new HttpClient();
             for (int i = 0; i < manifest.ApiTests.Count; i++)
             {
-                var result = await RunOneAsync(http, manifest, config, manifest.ApiTests[i], i);
+                var result = await RunOneAsync(http, manifest, config, vars, manifest.ApiTests[i], i);
                 results.Add(result);
                 StepCompleted?.Invoke(result);
             }
             return results;
         }
 
-        private static async Task<TestStepResult> RunOneAsync(HttpClient http, TestManifest manifest, BuildTrackerConfig config, JsonElement test, int index)
+        private static async Task<TestStepResult> RunOneAsync(HttpClient http, TestManifest manifest, BuildTrackerConfig config, TestRunVariables vars, JsonElement test, int index)
         {
             var sw = Stopwatch.StartNew();
             string method = test.TryGetProperty("method", out var m) ? (m.GetString() ?? "GET") : "GET";
@@ -47,17 +47,21 @@ namespace BuildConsole.Services
 
             try
             {
-                string baseUrl = ResolvePlaceholders(string.IsNullOrWhiteSpace(manifest.BaseUrl) ? config.ApiBaseUrl : manifest.BaseUrl, config);
-                string url = BuildUrl(baseUrl, ResolvePlaceholders(path, config));
+                // Config placeholders ({{DEPLOY_URL}}/{{SECRET_KEY}}) first, then cross-step
+                // {{variable}} interpolation (#877) against values earlier steps extracted — so any
+                // {{...}} still present after config resolution is genuinely an extracted variable,
+                // and an unresolved one throws (caught below) rather than shipping literal text.
+                string baseUrl = vars.Resolve(ResolvePlaceholders(string.IsNullOrWhiteSpace(manifest.BaseUrl) ? config.ApiBaseUrl : manifest.BaseUrl, config));
+                string url = BuildUrl(baseUrl, vars.Resolve(ResolvePlaceholders(path, config)));
 
                 using var req = new HttpRequestMessage(new HttpMethod(method), url);
                 if (test.TryGetProperty("headers", out var headersEl) && headersEl.ValueKind == JsonValueKind.Object)
                 {
                     foreach (var h in headersEl.EnumerateObject())
-                        req.Headers.TryAddWithoutValidation(h.Name, ResolvePlaceholders(h.Value.GetString() ?? "", config));
+                        req.Headers.TryAddWithoutValidation(h.Name, vars.Resolve(ResolvePlaceholders(h.Value.GetString() ?? "", config)));
                 }
                 if (test.TryGetProperty("body", out var bodyEl))
-                    req.Content = new StringContent(bodyEl.GetRawText(), Encoding.UTF8, "application/json");
+                    req.Content = new StringContent(vars.Resolve(ResolvePlaceholders(bodyEl.GetRawText(), config)), Encoding.UTF8, "application/json");
 
                 ActivityLog.Log(Channel, $"[{index + 1}/{manifest.ApiTests.Count}] {method} {url}");
                 using var resp = await http.SendAsync(req);
@@ -65,6 +69,18 @@ namespace BuildConsole.Services
 
                 var expect = test.TryGetProperty("expect", out var e) ? e : default;
                 var (passed, detail, expected, actual) = EvaluateExpectation(expect, (int)resp.StatusCode, responseBody);
+
+                // #877 — extract a value out of this step's own response body for later steps to use.
+                if (test.TryGetProperty("extract", out var extractEl) && extractEl.ValueKind == JsonValueKind.Object)
+                {
+                    string? extractError = vars.Extract(extractEl, responseBody);
+                    if (extractError != null)
+                    {
+                        passed = false;
+                        detail = string.IsNullOrEmpty(detail) || detail == "ok" ? extractError : $"{detail}; {extractError}";
+                    }
+                }
+
                 string context = $"{method} {url} -> {(int)resp.StatusCode}; response body: {Truncate(responseBody, 500)}";
 
                 sw.Stop();

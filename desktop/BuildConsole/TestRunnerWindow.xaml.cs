@@ -211,7 +211,7 @@ namespace BuildConsole
         }
 
         /// <summary>Runs a manifest's uiSteps directly through UiTestExecutor against this window's own WebView2 — used by both the Automation sidebar's manual Play button and RunManifestAsync.</summary>
-        public async Task<Services.UiTestRunResult> RunUiTestAsync(string targetUrl, List<BuildConsole.Controls.AutomationAction> steps)
+        public async Task<Services.UiTestRunResult> RunUiTestAsync(string targetUrl, List<BuildConsole.Controls.AutomationAction> steps, Services.TestRunVariables? vars = null)
         {
             var executor = new Services.UiTestExecutor(RunnerWebView);
             EventHandler<Services.UiTelemetryEvent> onTelemetry = (s, e) =>
@@ -225,7 +225,9 @@ namespace BuildConsole
             executor.Telemetry += onTelemetry;
             try
             {
-                var result = await executor.RunAsync(targetUrl, steps);
+                // Git #877 — thread the per-run variable store so uiSteps can resolve {{name}}
+                // placeholders and extract into the same dictionary the api/graph executors share.
+                var result = await executor.RunAsync(targetUrl, steps, vars);
                 return result;
             }
             finally

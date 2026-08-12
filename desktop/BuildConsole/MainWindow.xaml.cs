@@ -2492,8 +2492,13 @@ namespace BuildConsole
             runner.SetSteps(manifest);
             runner.BeginRun(manifest.Issue, manifest.Feature, mode);
 
+            // Git #877 (Epic #803) — one per-run variable store, shared across all three executors
+            // so a value an apiTest extracts (regex/jsonPath over its own response body) can be
+            // interpolated via {{name}} into a later graphTest/uiStep in this same run.
+            var vars = new BuildConsole.Services.TestRunVariables();
+
             var config = BuildConsole.Services.BuildTrackerConfig.Load();
-            var apiResults = await BuildConsole.Services.HttpTestExecutor.RunAsync(manifest, config);
+            var apiResults = await BuildConsole.Services.HttpTestExecutor.RunAsync(manifest, config, vars);
             runResult.AddRange(apiResults);
 
             if (apiResults.Count > 0)
@@ -2503,7 +2508,7 @@ namespace BuildConsole
                     $"apiTests: {passed}/{apiResults.Count} passed for issue #{manifest.Issue}.");
             }
 
-            var graphResults = await BuildConsole.Services.GraphTestExecutor.RunAsync(manifest);
+            var graphResults = await BuildConsole.Services.GraphTestExecutor.RunAsync(manifest, vars);
             runResult.AddRange(graphResults);
 
             if (graphResults.Count > 0)
@@ -2528,9 +2533,13 @@ namespace BuildConsole
                     TagName = "div",
                     Value = step.Value ?? step.State ?? string.Empty,
                     CaptureResponse = step.CaptureResponseJson,
+                    Extract = step.ExtractJson,
                 }).ToList();
 
-                var uiResult = await runner.RunUiTestAsync(manifest.BaseUrl, uiActions);
+                // Git #877 — the same per-run variable store the api/graph executors used, so a
+                // {{name}} extracted earlier resolves in a uiStep's selector/value, and a uiStep's
+                // own extract feeds any later step.
+                var uiResult = await runner.RunUiTestAsync(manifest.BaseUrl, uiActions, vars);
                 var uiStepResults = uiResult.ToTestStepResults();
                 runResult.AddRange(uiStepResults);
 

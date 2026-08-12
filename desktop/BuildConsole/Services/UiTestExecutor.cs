@@ -126,6 +126,13 @@ namespace BuildConsole.Services
 
         private readonly WebView2 _webView;
 
+        /// <summary>Git #877 — the per-run cross-step variable store, shared with the api/graph
+        /// executors for this manifest run. Steps resolve {{name}} placeholders in their
+        /// selector/value against it before executing, and extract new values from their captured
+        /// response body into it. Defaults to an empty store for the manual "Play" path, which has
+        /// no manifest run to share.</summary>
+        private TestRunVariables _vars = new();
+
         public event EventHandler<UiTelemetryEvent>? Telemetry;
 
         public UiTestExecutor(WebView2 webView)
@@ -133,8 +140,9 @@ namespace BuildConsole.Services
             _webView = webView;
         }
 
-        public async Task<UiTestRunResult> RunAsync(string targetUrl, IReadOnlyList<Controls.AutomationAction> steps)
+        public async Task<UiTestRunResult> RunAsync(string targetUrl, IReadOnlyList<Controls.AutomationAction> steps, TestRunVariables? vars = null)
         {
+            _vars = vars ?? new TestRunVariables();
             var result = new UiTestRunResult { TargetUrl = targetUrl, TotalSteps = steps.Count };
 
             Emit("START", $"Navigating to {targetUrl}", "INFO", "#89B4FA");
@@ -188,8 +196,34 @@ namespace BuildConsole.Services
         {
             var sw = System.Diagnostics.Stopwatch.StartNew();
             string actionType = step.ActionType.ToLowerInvariant();
-            string selector = step.Selector;
-            string val = step.Value;
+            string selector;
+            string val;
+            try
+            {
+                // #877 — resolve {{name}} placeholders in the step's target/selector and value
+                // against earlier steps' extracted values BEFORE executing, so the DOM action
+                // operates on the real value and never the literal "{{name}}" text.
+                selector = _vars.Resolve(step.Selector);
+                val = _vars.Resolve(step.Value);
+            }
+            catch (VariableNotResolvedException ex)
+            {
+                sw.Stop();
+                Emit($"STEP {stepNumber} WARN", ex.Message, "WARN", "#FAB387");
+                ActivityLog.Log(Channel, $"Step {stepNumber} ({actionType}): unresolved variable — {ex.Message}");
+                return new UiStepResult
+                {
+                    Index = stepNumber,
+                    ActionType = actionType,
+                    Selector = step.Selector,
+                    ActionPassed = false,
+                    Passed = false,
+                    Detail = ex.Message,
+                    DurationMs = sw.ElapsedMilliseconds,
+                    Expected = "all {{variable}} placeholders resolve to an earlier step's extracted value",
+                    Actual = ex.Message,
+                };
+            }
 
             Emit($"STEP {stepNumber}", $"{step.ActionTypeUpper}: {selector} {(string.IsNullOrEmpty(val) ? "" : "=> " + val)}", "RUNNING", "#89DCEB");
 
@@ -236,21 +270,53 @@ namespace BuildConsole.Services
                 actionActual = actionPassed ? "executed" : actionDetail;
             }
 
+            bool hasExtract = !string.IsNullOrWhiteSpace(step.Extract);
             UiCaptureResponseResult? captureResult = null;
+            string? extractError = null;
             if (captureSpec != null && captureTcs != null && captureHandler != null)
             {
                 var completed = await Task.WhenAny(captureTcs.Task, Task.Delay(CaptureResponseTimeoutMs));
                 _webView.CoreWebView2.WebResourceResponseReceived -= captureHandler;
+                var capturedArgs = completed == captureTcs.Task ? captureTcs.Task.Result : null;
 
-                captureResult = await BuildCaptureResultAsync(captureSpec, completed == captureTcs.Task ? captureTcs.Task.Result : null);
+                // Read the matched response body at most once — reused for both the captureResponse
+                // assertions and #877's extract, so the WebView2 content stream is never consumed twice.
+                string? capturedBody = null;
+                string? bodyReadError = null;
+                if (capturedArgs != null && (CaptureNeedsBody(captureSpec) || hasExtract))
+                    (capturedBody, bodyReadError) = await ReadResponseBodyAsync(capturedArgs);
+
+                captureResult = BuildCaptureResult(captureSpec, capturedArgs, capturedBody, bodyReadError);
                 Emit($"STEP {stepNumber} CAPTURE", captureResult.Detail, captureResult.Passed ? "PASS" : "WARN", captureResult.Passed ? "#A6E3A1" : "#FAB387");
                 ActivityLog.Log(Channel, $"Step {stepNumber} captureResponse [{captureSpec.UrlPattern}]: {(captureResult.Passed ? "PASS" : "WARN")} — {captureResult.Detail}");
+
+                // #877 — extract a value out of the captured response body for later steps to use.
+                if (hasExtract)
+                {
+                    if (capturedArgs == null)
+                        extractError = "extract: no response matching the captureResponse urlPattern was observed — nothing to extract from.";
+                    else if (bodyReadError != null)
+                        extractError = $"extract: couldn't read the captured response body — {bodyReadError}";
+                    else
+                        extractError = ApplyUiExtract(step.Extract!, capturedBody ?? string.Empty);
+                    if (extractError != null)
+                        ActivityLog.Log(TestRunVariables.Channel, $"Step {stepNumber} {extractError}");
+                }
+            }
+            else if (hasExtract)
+            {
+                // A pure DOM step has no response body — a {{name}} declared against it can't resolve.
+                extractError = "extract declared but this uiStep has no captureResponse — there is no response body to extract from.";
+                ActivityLog.Log(TestRunVariables.Channel, $"Step {stepNumber}: {extractError}");
             }
 
             // captureResponse is asserted separately (above) from the step's own UI assertion (below), per #809.
-            bool overallPassed = actionPassed && (captureResult == null || captureResult.Passed);
-            Emit(overallPassed ? $"STEP {stepNumber} PASS" : $"STEP {stepNumber} WARN", actionDetail, overallPassed ? "PASS" : "WARN", overallPassed ? "#A6E3A1" : "#FAB387");
-            ActivityLog.Log(Channel, $"Step {stepNumber} ({actionType} {selector}): {(overallPassed ? "PASS" : "WARN")} — {actionDetail}");
+            // #877 — a declared-but-failed extract also fails the step, so a downstream {{name}} reference
+            // surfaces the real problem at its source rather than mysteriously later.
+            bool overallPassed = actionPassed && (captureResult == null || captureResult.Passed) && extractError == null;
+            string stepDetail = extractError == null ? actionDetail : $"{actionDetail} | {extractError}";
+            Emit(overallPassed ? $"STEP {stepNumber} PASS" : $"STEP {stepNumber} WARN", stepDetail, overallPassed ? "PASS" : "WARN", overallPassed ? "#A6E3A1" : "#FAB387");
+            ActivityLog.Log(Channel, $"Step {stepNumber} ({actionType} {selector}): {(overallPassed ? "PASS" : "WARN")} — {stepDetail}");
 
             sw.Stop();
             return new UiStepResult
@@ -260,12 +326,28 @@ namespace BuildConsole.Services
                 Selector = selector,
                 ActionPassed = actionPassed,
                 Passed = overallPassed,
-                Detail = actionDetail,
+                Detail = stepDetail,
                 DurationMs = sw.ElapsedMilliseconds,
                 CaptureResponse = captureResult,
                 Expected = actionExpected,
                 Actual = actionActual,
             };
+        }
+
+        /// <summary>Git #877 — parse a uiStep's raw `extract` block JSON and apply it against the
+        /// captured response body via the shared run store. Returns null on success, or an error
+        /// string (malformed JSON, non-matching regex, unresolved jsonPath, …) that fails the step.</summary>
+        private string? ApplyUiExtract(string extractJson, string responseBody)
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(extractJson);
+                return _vars.Extract(doc.RootElement, responseBody);
+            }
+            catch (JsonException ex)
+            {
+                return $"extract: malformed extract block JSON — {ex.Message}";
+            }
         }
 
         /// <summary>Git #832 — must call CoreWebView2.Navigate(url), NOT set _webView.Source. Source is a WPF
@@ -455,7 +537,33 @@ namespace BuildConsole.Services
             }
         }
 
-        private static async Task<UiCaptureResponseResult> BuildCaptureResultAsync(CaptureResponseSpec spec, CoreWebView2WebResourceResponseReceivedEventArgs? args)
+        /// <summary>True when the captureResponse spec's assertions require reading the response body
+        /// (a jsonPath exists/isArray check) rather than just the status line.</summary>
+        private static bool CaptureNeedsBody(CaptureResponseSpec spec) =>
+            !string.IsNullOrEmpty(spec.ExpectJsonPath) && (spec.ExpectExists.HasValue || spec.ExpectIsArray.HasValue);
+
+        /// <summary>Read a matched response's body exactly once — the WebView2 content stream can't be
+        /// re-read, so the caller reads it here and hands the string to both the captureResponse
+        /// assertions and #877's extract. Returns (body, null) on success or (null, error) on failure.</summary>
+        private static async Task<(string? body, string? error)> ReadResponseBodyAsync(CoreWebView2WebResourceResponseReceivedEventArgs args)
+        {
+            try
+            {
+                using var stream = await args.Response.GetContentAsync();
+                if (stream == null) return (string.Empty, null);
+                using var reader = new StreamReader(stream);
+                return (await reader.ReadToEndAsync(), null);
+            }
+            catch (Exception ex)
+            {
+                return (null, ex.Message);
+            }
+        }
+
+        /// <summary>Git #877 — now takes an already-read response body (see <see cref="ReadResponseBodyAsync"/>)
+        /// instead of reading the stream itself, so the same body can feed both these assertions and the
+        /// step's extract without consuming the WebView2 content stream twice.</summary>
+        private static UiCaptureResponseResult BuildCaptureResult(CaptureResponseSpec spec, CoreWebView2WebResourceResponseReceivedEventArgs? args, string? preReadBody, string? bodyReadError)
         {
             var result = new UiCaptureResponseResult { UrlPattern = spec.UrlPattern };
             var expectedParts = new List<string>();
@@ -488,27 +596,18 @@ namespace BuildConsole.Services
                 details.Add(statusOk ? $"status={result.Status}" : $"status={result.Status} (expected {spec.ExpectStatus.Value})");
             }
 
-            bool needsBody = !string.IsNullOrEmpty(spec.ExpectJsonPath) && (spec.ExpectExists.HasValue || spec.ExpectIsArray.HasValue);
-            if (needsBody)
+            if (CaptureNeedsBody(spec))
             {
-                string body = string.Empty;
-                try
-                {
-                    using var stream = await args.Response.GetContentAsync();
-                    using var reader = new StreamReader(stream);
-                    body = await reader.ReadToEndAsync();
-                }
-                catch (Exception ex)
+                if (bodyReadError != null)
                 {
                     passed = false;
-                    details.Add($"couldn't read response body: {ex.Message}");
+                    details.Add($"couldn't read response body: {bodyReadError}");
                 }
-
-                if (!string.IsNullOrEmpty(body))
+                else if (!string.IsNullOrEmpty(preReadBody))
                 {
                     try
                     {
-                        using var bodyDoc = JsonDocument.Parse(body);
+                        using var bodyDoc = JsonDocument.Parse(preReadBody);
                         bool found = TryResolveJsonPath(bodyDoc.RootElement, spec.ExpectJsonPath!, out var resolved);
 
                         if (spec.ExpectExists.HasValue)
