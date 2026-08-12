@@ -913,20 +913,72 @@ namespace BuildConsole.Controls
             var byEpic = board.Chats.Where(c => c.EpicId.HasValue).GroupBy(c => c.EpicId!.Value);
             var unlinked = board.Chats.Where(c => !c.EpicId.HasValue).ToList();
 
+            // Git #885 (sub-issue of Epic #803, ADHD cleanup) — Shane: "all the
+            // text is a bright white with a scroll to the right and it all
+            // blends together... ADHD style organization." Epic header and
+            // chat leaf titles previously both fell through to the same
+            // inherited (bright-white) Foreground, giving no real color
+            // hierarchy between them. Epic headers now use BlueBrush (the
+            // same brush already used for the header's dot) as the brighter/
+            // primary color; chat leaf titles use the muted Subtext1Brush,
+            // same pattern BuildQueuePanel.xaml.cs already uses for its own
+            // secondary row text. Both titles also switch from a plain
+            // StackPanel to a Grid with a Star-width title column (with
+            // HorizontalContentAlignment="Stretch" on the TreeViewItem so the
+            // header content actually stretches to fill it) plus
+            // TextTrimming="CharacterEllipsis" — the containing ScrollViewer
+            // has HorizontalScrollBarVisibility="Disabled", so an overlong
+            // title used to just clip/overflow instead of truncating.
             TreeViewItem BuildEpicHeader(string title)
             {
-                var p = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 4, 0, 0) };
-                p.Children.Add(new System.Windows.Shapes.Ellipse { Width = 7, Height = 7, Fill = GetBrush("BlueBrush"), Margin = new Thickness(0, 0, 7, 0), VerticalAlignment = VerticalAlignment.Center });
-                p.Children.Add(new TextBlock { Text = title, FontSize = 13, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center });
-                return new TreeViewItem { Header = p, IsExpanded = true };
+                var p = new Grid { Margin = new Thickness(0, 6, 0, 2) };
+                p.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                p.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+                var dot = new System.Windows.Shapes.Ellipse { Width = 7, Height = 7, Fill = GetBrush("BlueBrush"), Margin = new Thickness(0, 0, 7, 0), VerticalAlignment = VerticalAlignment.Center };
+                Grid.SetColumn(dot, 0);
+                p.Children.Add(dot);
+
+                var titleBlock = new TextBlock
+                {
+                    Text = title,
+                    FontSize = 13,
+                    FontWeight = FontWeights.SemiBold,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Foreground = GetBrush("BlueBrush"),
+                    TextTrimming = TextTrimming.CharacterEllipsis
+                };
+                Grid.SetColumn(titleBlock, 1);
+                p.Children.Add(titleBlock);
+
+                // Git #885 — epic groups start collapsed (was IsExpanded = true)
+                // so the tree reads shorter and calmer at a glance; Shane
+                // expands the ones he actually wants to look at.
+                return new TreeViewItem { Header = p, IsExpanded = false, HorizontalContentAlignment = HorizontalAlignment.Stretch, Margin = new Thickness(0, 4, 0, 4) };
             }
 
             TreeViewItem BuildChatLeaf(BoardChat chat)
             {
-                var p = new StackPanel { Orientation = Orientation.Horizontal };
-                p.Children.Add(new TextBlock { Text = "", FontFamily = new FontFamily("Segoe MDL2 Assets"), FontSize = 13, Foreground = GetBrush("BlueBrush"), Margin = new Thickness(0, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center });
-                p.Children.Add(new TextBlock { Text = chat.Title, FontSize = 13, VerticalAlignment = VerticalAlignment.Center });
-                var tvi = new TreeViewItem { Header = p, Tag = chat };
+                var p = new Grid { Margin = new Thickness(0, 3, 0, 3) };
+                p.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                p.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+                var icon = new TextBlock { Text = "", FontFamily = new FontFamily("Segoe MDL2 Assets"), FontSize = 13, Foreground = GetBrush("BlueBrush"), Margin = new Thickness(0, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center };
+                Grid.SetColumn(icon, 0);
+                p.Children.Add(icon);
+
+                var titleBlock = new TextBlock
+                {
+                    Text = chat.Title,
+                    FontSize = 13,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Foreground = GetBrush("Subtext1Brush"),
+                    TextTrimming = TextTrimming.CharacterEllipsis
+                };
+                Grid.SetColumn(titleBlock, 1);
+                p.Children.Add(titleBlock);
+
+                var tvi = new TreeViewItem { Header = p, Tag = chat, HorizontalContentAlignment = HorizontalAlignment.Stretch, Margin = new Thickness(0, 1, 0, 2) };
 
                 // Git #828 - Shane: "I need a way to assign a chat to an
                 // epic in the WPF app." Same POST /chats/ingest the
