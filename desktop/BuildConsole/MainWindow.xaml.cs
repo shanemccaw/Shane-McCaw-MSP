@@ -517,10 +517,15 @@ namespace BuildConsole
             }
         }
 
+        // Git #810 — the manual "Play" button (Automation sidebar) used to open the standalone
+        // AutomationRunnerWindow popup; it now drives the same UiTestExecutor directly through
+        // the Test Results tab's own WebView2, so both manual and manifest-driven UI runs share
+        // one telemetry stream and the popup is retired entirely.
         private void LeftSidebar_PlayTestRequested(object? sender, (string url, List<Controls.AutomationAction> steps) e)
         {
-            var runner = new AutomationRunnerWindow(e.url, e.steps);
-            runner.Show();
+            SetBottomPanel(true, 4);
+            TestResultsView.Clear();
+            _ = TestResultsView.RunUiTestAsync(e.url, e.steps);
         }
 
         private void Wv_WebMessageReceived(object? sender, Microsoft.Web.WebView2.Core.CoreWebView2WebMessageReceivedEventArgs e)
@@ -2182,6 +2187,14 @@ namespace BuildConsole
                 StartedAt = DateTime.Now,
             };
 
+            // Git #810 (Epic #803 Phase 6) — surface this run in the bottom "Test Results" tab.
+            // apiTests/graphTests cards stream in live via HttpTestExecutor/GraphTestExecutor's
+            // own StepCompleted events (subscribed once in TestResultsView itself), not pushed
+            // from here.
+            SetBottomPanel(true, 4);
+            TestResultsView.Clear();
+            TestResultsView.BeginRun(manifest.Issue, manifest.Feature, mode);
+
             var config = BuildConsole.Services.BuildTrackerConfig.Load();
             var apiResults = await BuildConsole.Services.HttpTestExecutor.RunAsync(manifest, config);
             runResult.AddRange(apiResults);
@@ -2207,13 +2220,11 @@ namespace BuildConsole
                     $"graphTests: {graphPassed}/{graphResults.Count} passed for issue #{manifest.Issue}.");
             }
 
-            // Git #809 (Epic #803 Phase 5) — uiSteps now actually run, via the same
-            // WebView2 + JS-injection engine (UiTestExecutor) the Automation sidebar's
-            // manual Play button uses. Still surfaced through the AutomationRunnerWindow
-            // popup for now (per #809 - "keep the popup working ... #810 will retire
-            // it") but the popup is only a thin shell over UiTestExecutor now, and its
-            // RunCompleted result folds into this same shared runResult/TestStepResult
-            // pipeline #807 established, not a separate uiSteps-only output.
+            // Git #810 — uiSteps now run directly through TestResultsView.RunUiTestAsync (the
+            // same UiTestExecutor #809 built), driving that tab's own WebView2 instead of opening
+            // the standalone AutomationRunnerWindow popup — retired entirely, per #810's own
+            // instruction. Telemetry cards stream live via UiTestExecutor.Telemetry, subscribed
+            // for the duration of this call inside RunUiTestAsync itself.
             if (manifest.UiSteps.Count > 0)
             {
                 var uiActions = manifest.UiSteps.Select((step, i) => new Controls.AutomationAction
@@ -2226,18 +2237,15 @@ namespace BuildConsole
                     CaptureResponse = step.CaptureResponseJson,
                 }).ToList();
 
-                var uiTcs = new System.Threading.Tasks.TaskCompletionSource<BuildConsole.Services.UiTestRunResult>();
-                var runner = new AutomationRunnerWindow(manifest.BaseUrl, uiActions);
-                runner.RunCompleted += (s, r) => uiTcs.TrySetResult(r);
-                runner.Show();
-
-                var uiResult = await uiTcs.Task;
+                var uiResult = await TestResultsView.RunUiTestAsync(manifest.BaseUrl, uiActions);
                 var uiStepResults = uiResult.ToTestStepResults();
                 runResult.AddRange(uiStepResults);
 
                 BuildConsole.Services.ActivityLog.Log("testing.ui-executor",
                     $"[{mode}] Issue #{manifest.Issue} uiSteps: {uiResult.PassedSteps}/{uiResult.TotalSteps} passed.");
             }
+
+            TestResultsView.CompleteRun(runResult);
 
             if (runResult.Steps.Count > 0)
             {

@@ -44,6 +44,9 @@ namespace BuildConsole.Services
         private static readonly HttpClient Http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
         private static readonly Dictionary<string, (string token, DateTime expiresAtUtc)> TokenCache = new();
 
+        /// <summary>Git #810 — raised after each graphTest completes so the Test Results tab can render a telemetry card live, during the run, instead of waiting for the whole manifest to finish.</summary>
+        public static event Action<TestStepResult>? StepCompleted;
+
         public static async Task<List<TestStepResult>> RunAsync(TestManifest manifest)
         {
             var results = new List<TestStepResult>();
@@ -51,7 +54,9 @@ namespace BuildConsole.Services
 
             for (int i = 0; i < manifest.GraphTests.Count; i++)
             {
-                results.Add(await RunOneAsync(manifest.GraphTests[i], i, manifest.GraphTests.Count));
+                var result = await RunOneAsync(manifest.GraphTests[i], i, manifest.GraphTests.Count);
+                results.Add(result);
+                StepCompleted?.Invoke(result);
             }
             return results;
         }

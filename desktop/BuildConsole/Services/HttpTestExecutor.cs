@@ -20,6 +20,9 @@ namespace BuildConsole.Services
     {
         private const string Channel = "testing.api-executor";
 
+        /// <summary>Git #810 — raised after each apiTest completes so the Test Results tab can render a telemetry card live, during the run, instead of waiting for the whole manifest to finish.</summary>
+        public static event Action<TestStepResult>? StepCompleted;
+
         public static async Task<List<TestStepResult>> RunAsync(TestManifest manifest, BuildTrackerConfig config)
         {
             var results = new List<TestStepResult>();
@@ -28,7 +31,9 @@ namespace BuildConsole.Services
             using var http = new HttpClient();
             for (int i = 0; i < manifest.ApiTests.Count; i++)
             {
-                results.Add(await RunOneAsync(http, manifest, config, manifest.ApiTests[i], i));
+                var result = await RunOneAsync(http, manifest, config, manifest.ApiTests[i], i);
+                results.Add(result);
+                StepCompleted?.Invoke(result);
             }
             return results;
         }
