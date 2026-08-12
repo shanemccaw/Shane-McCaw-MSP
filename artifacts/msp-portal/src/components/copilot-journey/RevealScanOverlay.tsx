@@ -234,6 +234,7 @@ export function RevealScanOverlay({
 
   return (
     <div
+      data-testid="cj-scan-overlay"
       style={{
         position: "fixed",
         inset: 0,
@@ -479,6 +480,7 @@ export function RevealScanOverlay({
             }}
           >
             <span
+              data-testid="cj-scan-checks-done"
               style={{
                 fontSize: 52,
                 fontWeight: 800,
@@ -646,6 +648,7 @@ export function RevealScanOverlay({
             }}
           />
           <span
+            data-testid="cj-scan-streaming-label"
             style={{
               fontSize: 15,
               fontWeight: 500,
