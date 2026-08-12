@@ -1,0 +1,6 @@
+{
+  "manifests": [
+    "725-chat-escalation.json",
+    "656-password-reset-guard.json"
+  ]
+}
