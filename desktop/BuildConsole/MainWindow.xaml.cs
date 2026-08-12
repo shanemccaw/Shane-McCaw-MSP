@@ -2172,7 +2172,7 @@ namespace BuildConsole
         {
             string mode = isRegression ? "regression" : "single";
             BuildConsole.Services.ActivityLog.Log("testing.manifest-runner",
-                $"[{mode}] Running manifest for issue #{manifest.Issue} ({manifest.Feature}) — {manifest.ApiTests.Count} apiTests, {manifest.GraphTests.Count} graphTests, {manifest.UiSteps.Count} uiSteps. #808/#809 executors not wired yet.");
+                $"[{mode}] Running manifest for issue #{manifest.Issue} ({manifest.Feature}) — {manifest.ApiTests.Count} apiTests, {manifest.GraphTests.Count} graphTests, {manifest.UiSteps.Count} uiSteps. #809 uiSteps executor not wired yet.");
 
             var runResult = new BuildConsole.Services.ManifestRunResult
             {
@@ -2191,6 +2191,20 @@ namespace BuildConsole
                 int passed = apiResults.Count(r => r.Passed);
                 BuildConsole.Services.ActivityLog.Log("testing.api-executor",
                     $"apiTests: {passed}/{apiResults.Count} passed for issue #{manifest.Issue}.");
+            }
+
+            // ── Git #808 (Epic #803 Phase 4): Graph test executor (graphTests) ──
+            // Folds into the same runResult/ManifestRunResult #807 established —
+            // not a separate output path. GraphTestExecutor itself enforces the
+            // hard "test tenant only" guard before ever calling Graph.
+            var graphResults = await BuildConsole.Services.GraphTestExecutor.RunAsync(manifest);
+            runResult.AddRange(graphResults);
+
+            if (graphResults.Count > 0)
+            {
+                int graphPassed = graphResults.Count(r => r.Passed);
+                BuildConsole.Services.ActivityLog.Log("testing.graph-executor",
+                    $"graphTests: {graphPassed}/{graphResults.Count} passed for issue #{manifest.Issue}.");
             }
 
             if (runResult.Steps.Count > 0)
