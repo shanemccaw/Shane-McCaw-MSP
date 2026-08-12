@@ -122,6 +122,7 @@ namespace BuildConsole.Services
         private const int CaptureResponseTimeoutMs = 5000;
         private const int PostNavigationSettleMs = 1200;
         private const int PostStepSettleMs = 1000;
+        private const int NavigationTimeoutMs = 15000;
 
         private readonly WebView2 _webView;
 
@@ -267,6 +268,12 @@ namespace BuildConsole.Services
             };
         }
 
+        /// <summary>Git #832 — must call CoreWebView2.Navigate(url), NOT set _webView.Source. Source is a WPF
+        /// DependencyProperty, and WPF skips the property-changed callback (so never triggers navigation) when
+        /// the new value equals the current one — a goto step resolving to the already-loaded URL (e.g. a
+        /// manifest's opening "goto /" right after this method's own initial navigation to that same URL) left
+        /// NavigationCompleted never firing and the whole run deadlocked forever with no error. Navigate() is a
+        /// direct native call that always performs a real navigation regardless of URL equality.</summary>
         private async Task<bool> NavigateAsync(string url)
         {
             var tcs = new TaskCompletionSource<bool>();
@@ -277,7 +284,16 @@ namespace BuildConsole.Services
             }
 
             _webView.NavigationCompleted += NavHandler;
-            _webView.Source = new Uri(url);
+            _webView.CoreWebView2.Navigate(url);
+
+            var completed = await Task.WhenAny(tcs.Task, Task.Delay(NavigationTimeoutMs));
+            if (completed != tcs.Task)
+            {
+                _webView.NavigationCompleted -= NavHandler;
+                ActivityLog.Log(Channel, $"Navigation to {url} timed out after {NavigationTimeoutMs}ms (NavigationCompleted never fired).");
+                return false;
+            }
+
             return await tcs.Task;
         }
 
