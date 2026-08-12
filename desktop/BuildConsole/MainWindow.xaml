@@ -414,7 +414,7 @@
                                         Grid.Row="0" Grid.Column="0"
                                         BorderThickness="0"
                                         SelectionChanged="EditorTabs_SelectionChanged"
-                                        AllowDrop="True" Drop="EditorTabsPane_Drop">
+                                        AllowDrop="True" Drop="EditorTabsPane_Drop" DragOver="TabDragOver">
                                 <!-- Claude.ai tab -->
                                 <TabItem Tag="https://claude.ai">
                                     <TabItem.Header>
@@ -435,13 +435,13 @@
                             <GridSplitter x:Name="PaneGridSplitterV" Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3" Height="4" VerticalAlignment="Stretch" Visibility="Collapsed"/>
 
                             <!-- Pane 2 (Top Right / Right Column) -->
-                            <TabControl x:Name="EditorTabs2" Grid.Row="0" Grid.Column="2" BorderThickness="0" Visibility="Collapsed" SelectionChanged="EditorTabs_SelectionChanged" AllowDrop="True" Drop="EditorTabsPane_Drop"/>
+                            <TabControl x:Name="EditorTabs2" Grid.Row="0" Grid.Column="2" BorderThickness="0" Visibility="Collapsed" SelectionChanged="EditorTabs_SelectionChanged" AllowDrop="True" Drop="EditorTabsPane_Drop" DragOver="TabDragOver"/>
 
                             <!-- Pane 3 (Bottom Left / Bottom Row) -->
-                            <TabControl x:Name="EditorTabs3" Grid.Row="2" Grid.Column="0" BorderThickness="0" Visibility="Collapsed" SelectionChanged="EditorTabs_SelectionChanged" AllowDrop="True" Drop="EditorTabsPane_Drop"/>
+                            <TabControl x:Name="EditorTabs3" Grid.Row="2" Grid.Column="0" BorderThickness="0" Visibility="Collapsed" SelectionChanged="EditorTabs_SelectionChanged" AllowDrop="True" Drop="EditorTabsPane_Drop" DragOver="TabDragOver"/>
 
                             <!-- Pane 4 (Bottom Right / Quadrant 4) -->
-                            <TabControl x:Name="EditorTabs4" Grid.Row="2" Grid.Column="2" BorderThickness="0" Visibility="Collapsed" SelectionChanged="EditorTabs_SelectionChanged" AllowDrop="True" Drop="EditorTabsPane_Drop"/>
+                            <TabControl x:Name="EditorTabs4" Grid.Row="2" Grid.Column="2" BorderThickness="0" Visibility="Collapsed" SelectionChanged="EditorTabs_SelectionChanged" AllowDrop="True" Drop="EditorTabsPane_Drop" DragOver="TabDragOver"/>
                         </Grid>
                     </DockPanel>
 
@@ -755,7 +755,7 @@
                         </Grid.RowDefinitions>
 
                         <!-- Left Dock Target -->
-                        <Button x:Name="BtnDockLeft" Grid.Row="0" Grid.Column="0" Grid.RowSpan="2" Margin="4" Click="DockTarget_Click" AllowDrop="True" Drop="DockTarget_Drop" Tag="SplitH">
+                        <Button x:Name="BtnDockLeft" Grid.Row="0" Grid.Column="0" Grid.RowSpan="2" Margin="4" Click="DockTarget_Click" AllowDrop="True" Drop="DockTarget_Drop" DragOver="TabDragOver" Tag="SplitH">
                             <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
                                 <TextBlock Text="◧" FontSize="28" Foreground="{StaticResource BlueBrush}" HorizontalAlignment="Center"/>
                                 <TextBlock Text="Split Left" FontSize="10" Foreground="{StaticResource TextBrush}" HorizontalAlignment="Center"/>
@@ -763,7 +763,7 @@
                         </Button>
 
                         <!-- Top Dock Target -->
-                        <Button x:Name="BtnDockTop" Grid.Row="0" Grid.Column="1" Margin="4" Click="DockTarget_Click" AllowDrop="True" Drop="DockTarget_Drop" Tag="SplitV">
+                        <Button x:Name="BtnDockTop" Grid.Row="0" Grid.Column="1" Margin="4" Click="DockTarget_Click" AllowDrop="True" Drop="DockTarget_Drop" DragOver="TabDragOver" Tag="SplitV">
                             <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
                                 <TextBlock Text="⬒" FontSize="20" Foreground="{StaticResource PeachBrush}" HorizontalAlignment="Center"/>
                                 <TextBlock Text="Top" FontSize="10" Foreground="{StaticResource TextBrush}" HorizontalAlignment="Center"/>
@@ -771,7 +771,7 @@
                         </Button>
 
                         <!-- 4 Squares Target -->
-                        <Button x:Name="BtnDockGrid4" Grid.Row="1" Grid.Column="1" Margin="4" Click="DockTarget_Click" AllowDrop="True" Drop="DockTarget_Drop" Tag="Grid4">
+                        <Button x:Name="BtnDockGrid4" Grid.Row="1" Grid.Column="1" Margin="4" Click="DockTarget_Click" AllowDrop="True" Drop="DockTarget_Drop" DragOver="TabDragOver" Tag="Grid4">
                             <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
                                 <TextBlock Text="⊞" FontSize="20" Foreground="{StaticResource GreenBrush}" HorizontalAlignment="Center"/>
                                 <TextBlock Text="4 Squares" FontSize="10" Foreground="{StaticResource TextBrush}" HorizontalAlignment="Center"/>
@@ -779,7 +779,7 @@
                         </Button>
 
                         <!-- Right Dock Target -->
-                        <Button x:Name="BtnDockRight" Grid.Row="0" Grid.Column="2" Grid.RowSpan="2" Margin="4" Click="DockTarget_Click" AllowDrop="True" Drop="DockTarget_Drop" Tag="SplitH_Right">
+                        <Button x:Name="BtnDockRight" Grid.Row="0" Grid.Column="2" Grid.RowSpan="2" Margin="4" Click="DockTarget_Click" AllowDrop="True" Drop="DockTarget_Drop" DragOver="TabDragOver" Tag="SplitH_Right">
                             <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
                                 <TextBlock Text="◨" FontSize="28" Foreground="{StaticResource BlueBrush}" HorizontalAlignment="Center"/>
                                 <TextBlock Text="Split Right" FontSize="10" Foreground="{StaticResource TextBrush}" HorizontalAlignment="Center"/>

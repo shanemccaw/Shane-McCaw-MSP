@@ -2554,6 +2554,27 @@ namespace BuildConsole
             };
         }
 
+        /// <summary>
+        /// Git #895 — Shane: "Drag and drop tabs are not working" - reported
+        /// as the screen dimming (the DockGuideOverlay showing, correctly)
+        /// but the cursor staying a permanent "no drop" circle-slash the
+        /// whole time, even over a real target. Root cause: WPF does NOT
+        /// compute drag-allowed cursor feedback from AllowDrop="True" alone -
+        /// without an explicit DragOver handler setting e.Effects, it
+        /// defaults to DragDropEffects.None (the blocked cursor) everywhere,
+        /// forever, regardless of what's actually under the mouse. Only Drop
+        /// was wired (fires on release) - DragOver (fires continuously while
+        /// hovering, drives the cursor) never was. Shared by every drop
+        /// target below (both the four editor panes and the four dock
+        /// overlay buttons) - same accept/reject logic everywhere: valid iff
+        /// the drag actually carries our tab payload.
+        /// </summary>
+        private void TabDragOver(object sender, DragEventArgs e)
+        {
+            e.Effects = e.Data.GetDataPresent(TabDragFormat) ? DragDropEffects.Move : DragDropEffects.None;
+            e.Handled = true;
+        }
+
         /// <summary>Git #893 — shared Drop handler for all four editor panes: dropping on the SAME pane it came from reorders it there; dropping on a DIFFERENT (already-visible) pane moves it there.</summary>
         private void EditorTabsPane_Drop(object sender, DragEventArgs e)
         {
