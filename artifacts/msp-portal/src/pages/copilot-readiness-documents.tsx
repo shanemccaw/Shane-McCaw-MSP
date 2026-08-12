@@ -736,6 +736,7 @@ export default function CopilotReadinessDocumentsPage() {
                 Copilot readiness assessment
               </span>
               <span
+                data-testid="active-document-title"
                 style={{
                   fontSize: 15,
                   fontWeight: 700,
@@ -866,6 +867,7 @@ export default function CopilotReadinessDocumentsPage() {
           ref={scrollRef}
           onScroll={handleScroll}
           className="cj-doc-scroll"
+          data-testid="document-reading-pane"
           style={{
             position: "relative",
             zIndex: 2,

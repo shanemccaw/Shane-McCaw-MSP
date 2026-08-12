@@ -603,6 +603,7 @@ export default function LoginPage() {
                 type="submit"
                 className="w-full"
                 disabled={isSubmitting}
+                data-testid="login-submit"
               >
                 {isSubmitting && <Loader2 className="mr-2 size-4 animate-spin" />}
                 {isSubmitting ? "Signing in…" : "Sign in"}

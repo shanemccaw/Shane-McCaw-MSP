@@ -200,6 +200,7 @@ function SwitcherRow({
   return (
     <button
       type="button"
+      data-testid={`document-row-${index}`}
       onClick={() => onSelect(index)}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
@@ -425,6 +426,7 @@ function ReadyCounter({
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10 }}>
         <span style={navy ? EYEBROW : { ...EYEBROW, color: INK.micro }}>Your findings</span>
         <span
+          data-testid="documents-ready-counter"
           style={{
             fontSize: 11.5,
             fontWeight: 700,
