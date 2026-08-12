@@ -13,10 +13,12 @@ namespace BuildConsole.Controls
 {
     public class TaskSelectedEventArgs : EventArgs
     {
+        public int QueueItemId { get; set; }
         public string Epic { get; set; } = string.Empty;
         public string Task { get; set; } = string.Empty;
         public string Status { get; set; } = string.Empty;
         public string StatusDetails { get; set; } = string.Empty;
+        public int? ExitCode { get; set; }
     }
 
     /// <summary>
@@ -36,16 +38,41 @@ namespace BuildConsole.Controls
         private bool _isPinned = true;
 
         private BuildTrackerApiClient? _api;
+        private Services.QueueWatcherService? _watcher;
         private DispatcherTimer? _pollTimer;
         private List<QueueItem> _lastItems = new();
         private string _filter = "All";
 
         public BuildQueuePanel() => InitializeComponent();
 
-        /// <summary>Called once from MainWindow with the shared API client — starts polling immediately.</summary>
-        public void Initialize(BuildTrackerApiClient api)
+        /// <summary>Called once from MainWindow with the shared API client — starts polling immediately. `watcher` (Git #820) may be null (e.g. claude.exe not found) - Stop/Run Now degrade gracefully when it is, since those need a real local process handle/launcher.</summary>
+        public void Initialize(BuildTrackerApiClient api, Services.QueueWatcherService? watcher = null)
         {
             _api = api;
+            _watcher = watcher;
+
+            // Git #831 — purely local machine state (claude agents --json),
+            // not a bt_build_queue thing at all, so it polls regardless of
+            // whether the API itself is configured/reachable.
+            _sessionsPollTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(10) };
+            _sessionsPollTimer.Tick += async (_, _) => await RefreshActiveSessionsAsync();
+            _sessionsPollTimer.Start();
+            _ = RefreshActiveSessionsAsync();
+
+            // Git #848 — same reasoning: real GitHub state via the local
+            // `gh` CLI directly, not bt_build_queue/the server at all, so it
+            // polls unconditionally too.
+            _inFlightPollTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(20) };
+            _inFlightPollTimer.Tick += async (_, _) => await RefreshInFlightIssuesAsync();
+            _inFlightPollTimer.Start();
+            _ = RefreshInFlightIssuesAsync();
+
+            // Git #850 — same direct-gh-CLI reasoning, "Shane To-Do" label.
+            _waitingOnMePollTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(20) };
+            _waitingOnMePollTimer.Tick += async (_, _) => await RefreshWaitingOnMeAsync();
+            _waitingOnMePollTimer.Start();
+            _ = RefreshWaitingOnMeAsync();
+
             if (!api.IsConfigured)
             {
                 QueueTree.Visibility = Visibility.Collapsed;
@@ -60,16 +87,215 @@ namespace BuildConsole.Controls
             _ = RefreshAsync();
         }
 
+        // Git #831 — Shane: "the right panel needs to have an All In
+        // session... I should see the things you are working on but I
+        // cannot." Real presence data (name/cwd/kind/elapsed) via `claude
+        // agents --json` - not activity DETAIL (no live transcript tail),
+        // but a real improvement over zero visibility into a session that
+        // never touches the queue at all.
+        private DispatcherTimer? _sessionsPollTimer;
+        private string? _lastSessionsSignature;
+
+        private async System.Threading.Tasks.Task RefreshActiveSessionsAsync()
+        {
+            List<Services.ClaudeAgentSession> sessions;
+            try
+            {
+                sessions = await Services.ClaudeAgentsService.ListActiveSessionsAsync();
+            }
+            catch
+            {
+                return; // best-effort - a shell-out hiccup shouldn't blank out what's already shown
+            }
+
+            var signature = System.Text.Json.JsonSerializer.Serialize(sessions);
+            if (signature == _lastSessionsSignature) return;
+            _lastSessionsSignature = signature;
+
+            ActiveSessionsList.Items.Clear();
+            if (sessions.Count == 0)
+            {
+                ActiveSessionsList.Items.Add(new ListBoxItem { Content = "No active sessions.", Foreground = (Brush)Application.Current.FindResource("Subtext1Brush") });
+                return;
+            }
+            foreach (var s in sessions.OrderByDescending(s => s.StartedAt))
+            {
+                var elapsed = DateTime.Now - s.StartedAt;
+                string elapsedStr = elapsed.TotalHours >= 1 ? $"{(int)elapsed.TotalHours}h {elapsed.Minutes}m" : $"{(int)elapsed.TotalMinutes}m";
+                var icon = s.Kind == "background" ? "⚙" : "▶";
+                var iconColor = s.Kind == "background" ? "#8F8C88" : "#F2CA63";
+
+                var panel = new StackPanel { Orientation = Orientation.Horizontal };
+                panel.Children.Add(new TextBlock { Text = icon + " ", FontSize = 12, Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(iconColor)), VerticalAlignment = VerticalAlignment.Center });
+                var textStack = new StackPanel();
+                textStack.Children.Add(new TextBlock { Text = string.IsNullOrWhiteSpace(s.Name) ? s.SessionId[..8] : s.Name, FontSize = 12, Foreground = (Brush)Application.Current.FindResource("TextBrush"), TextWrapping = TextWrapping.Wrap });
+                textStack.Children.Add(new TextBlock { Text = $"{s.Cwd}  ·  {elapsedStr} ago", FontSize = 10, Foreground = (Brush)Application.Current.FindResource("Subtext1Brush"), TextWrapping = TextWrapping.Wrap });
+                panel.Children.Add(textStack);
+                ActiveSessionsList.Items.Add(new ListBoxItem { Content = panel, ToolTip = $"PID {s.Pid} · {s.Kind} · session {s.SessionId}" });
+            }
+        }
+
+        /// <summary>
+        /// Git #848 — Shane: "In Git there 10 In Flight, Still open. And
+        /// none are showing in the right panel... why can't the WPF just
+        /// connect directly to Git to get this stuff... no real reason for
+        /// it to go through my server anymore." Replaces #835's chat-tab-
+        /// scoped version entirely: real open GitHub issues carrying the
+        /// in-flight label, fetched directly via the local `gh` CLI
+        /// (GitHubIssuesService) - no bt_build_queue involvement, no server
+        /// round-trip, same self-contained polling shape as
+        /// RefreshActiveSessionsAsync above.
+        /// </summary>
+        private DispatcherTimer? _inFlightPollTimer;
+        private string? _lastInFlightSignature;
+
+        private async System.Threading.Tasks.Task RefreshInFlightIssuesAsync()
+        {
+            List<Services.GitHubIssueSummary> issues;
+            try { issues = await Services.GitHubIssuesService.ListOpenByLabelAsync("in-flight"); }
+            catch { return; } // best-effort - a gh CLI hiccup shouldn't blank out what's already shown
+
+            var signature = System.Text.Json.JsonSerializer.Serialize(issues);
+            if (signature == _lastInFlightSignature) return;
+            _lastInFlightSignature = signature;
+
+            RenderIssueList(InFlightIssuesList, issues, "Nothing in-flight and still open.", "⏳", "#F2CA63");
+        }
+
+        /// <summary>
+        /// Git #850 — Shane: "Why I need in the right panel another section
+        /// that says... Waiting on me... to run SQL, Test, Etc." Exactly
+        /// what CLAUDE.md's own "Shane To-Do" GitHub label already tracks -
+        /// an action only Shane can take himself (run SQL, restart server,
+        /// etc), applied by Claude at the DONE bookend and cleared only by
+        /// Shane once actually done. Same direct-gh-CLI shape as In-Flight.
+        /// </summary>
+        private DispatcherTimer? _waitingOnMePollTimer;
+        private string? _lastWaitingOnMeSignature;
+
+        private async System.Threading.Tasks.Task RefreshWaitingOnMeAsync()
+        {
+            List<Services.GitHubIssueSummary> issues;
+            try { issues = await Services.GitHubIssuesService.ListOpenByLabelAsync("Shane To-Do"); }
+            catch { return; }
+
+            var signature = System.Text.Json.JsonSerializer.Serialize(issues);
+            if (signature == _lastWaitingOnMeSignature) return;
+            _lastWaitingOnMeSignature = signature;
+
+            RenderIssueList(WaitingOnMeList, issues, "Nothing waiting on you.", "🔴", "#E5A3A3");
+        }
+
+        /// <summary>Shared by RefreshInFlightIssuesAsync/RefreshWaitingOnMeAsync — same GitHubIssueSummary shape, just a different label/empty-text/icon.</summary>
+        private static void RenderIssueList(ListBox listBox, List<Services.GitHubIssueSummary> issues, string emptyText, string icon, string iconColorHex)
+        {
+            listBox.Items.Clear();
+            if (issues.Count == 0)
+            {
+                listBox.Items.Add(new ListBoxItem { Content = emptyText, Foreground = (Brush)Application.Current.FindResource("Subtext1Brush") });
+                return;
+            }
+            foreach (var issue in issues.OrderByDescending(i => i.UpdatedAt))
+            {
+                var elapsed = DateTime.Now - issue.UpdatedAt;
+                string elapsedStr = elapsed.TotalHours >= 1 ? $"{(int)elapsed.TotalHours}h ago" : $"{(int)elapsed.TotalMinutes}m ago";
+
+                var panel = new StackPanel { Orientation = Orientation.Horizontal };
+                panel.Children.Add(new TextBlock { Text = icon + " ", FontSize = 12, Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(iconColorHex)), VerticalAlignment = VerticalAlignment.Center });
+                var textStack = new StackPanel();
+                textStack.Children.Add(new TextBlock { Text = issue.Title, FontSize = 12, Foreground = (Brush)Application.Current.FindResource("TextBrush"), TextWrapping = TextWrapping.Wrap });
+                textStack.Children.Add(new TextBlock { Text = $"#{issue.Number}  ·  updated {elapsedStr}", FontSize = 10, Foreground = (Brush)Application.Current.FindResource("Subtext1Brush"), TextWrapping = TextWrapping.Wrap });
+                panel.Children.Add(textStack);
+                listBox.Items.Add(new ListBoxItem { Content = panel, ToolTip = issue.Url });
+            }
+        }
+
+        // Git #829 — Shane: "I need the right panel to have another section
+        // that shows me all the issues assigned to the chat I'm on."
+        // MainWindow calls this from EditorTabs_SelectionChanged whenever
+        // the active tab changes; null/null clears it (not a chat tab, or a
+        // chat with no linked epic).
+        private int? _activeChatEpicId;
+
+        public async void SetActiveChatEpic(int? epicId, string? epicTitle)
+        {
+            if (epicId == _activeChatEpicId) return;
+            _activeChatEpicId = epicId;
+
+            if (epicId == null || _api == null || !_api.IsConfigured)
+            {
+                ChatEpicIssuesSection.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            ChatEpicIssuesHeader.Text = $"ISSUES IN {epicTitle?.ToUpperInvariant() ?? "THIS EPIC"}";
+            ChatEpicIssuesSection.Visibility = Visibility.Visible;
+            ChatEpicIssuesList.Items.Clear();
+            ChatEpicIssuesList.Items.Add(new ListBoxItem { Content = "Loading…", Foreground = (Brush)Application.Current.FindResource("Subtext1Brush") });
+
+            List<IssueSummary> issues;
+            try
+            {
+                issues = await _api.GetIssuesForEpicAsync(epicId.Value);
+            }
+            catch (Exception ex)
+            {
+                ChatEpicIssuesList.Items.Clear();
+                ChatEpicIssuesList.Items.Add(new ListBoxItem { Content = $"Couldn't load issues: {ex.Message}" });
+                return;
+            }
+
+            // The tab may have changed again while that fetch was in flight.
+            if (_activeChatEpicId != epicId) return;
+
+            ChatEpicIssuesList.Items.Clear();
+            if (issues.Count == 0)
+            {
+                ChatEpicIssuesList.Items.Add(new ListBoxItem { Content = "No issues under this epic yet.", Foreground = (Brush)Application.Current.FindResource("Subtext1Brush") });
+                return;
+            }
+            foreach (var issue in issues)
+            {
+                var (icon, hex) = issue.Status?.ToUpperInvariant() switch
+                {
+                    "CLOSED" or "DONE" => ("✅", "#7FAE91"),
+                    _                   => ("⏳", "#8F8C88"),
+                };
+                var panel = new StackPanel { Orientation = Orientation.Horizontal };
+                panel.Children.Add(new TextBlock { Text = icon + " ", FontSize = 12, Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex)), VerticalAlignment = VerticalAlignment.Center });
+                panel.Children.Add(new TextBlock
+                {
+                    Text = issue.GithubNumber.HasValue ? $"#{issue.GithubNumber} — {issue.Title}" : issue.Title,
+                    FontSize = 12,
+                    Foreground = (Brush)Application.Current.FindResource("TextBrush"),
+                    TextWrapping = TextWrapping.Wrap,
+                    VerticalAlignment = VerticalAlignment.Center,
+                });
+                ChatEpicIssuesList.Items.Add(new ListBoxItem { Content = panel });
+            }
+        }
+
+        // Git #821 — Shane: "stop all the flashing... every refresh the
+        // left panel clears and rebuilds." Same fix as LeftSidebar: skip
+        // the rebuild entirely on a poll whose data is identical to what's
+        // already rendered.
+        private string? _lastQueueSignature;
+
         public async System.Threading.Tasks.Task RefreshAsync()
         {
             if (_api == null || !_api.IsConfigured) return;
             try
             {
                 _lastItems = await _api.GetQueueAsync();
-                if (_filter != "Tests") RenderQueue(ApplyFilter(_lastItems));
+                var signature = System.Text.Json.JsonSerializer.Serialize(_lastItems);
+                if (signature != _lastQueueSignature)
+                {
+                    _lastQueueSignature = signature;
+                    if (_filter != "Tests") RenderQueue(ApplyFilter(_lastItems));
+                }
                 // Git #812 — the Tests tree reads test-results/*.json off disk, not the queue
-                // API, so a poll refreshes it every tick (a new test run can land results
-                // without the queue itself changing at all).
+                // API, so a poll refreshes it regardless of whether the queue signature changed
+                // (a new test run can land results without the queue itself changing at all).
                 if (_filter == "Tests") RenderTestsTree();
                 SyncError?.Invoke(this, null);
             }
@@ -147,8 +373,24 @@ namespace BuildConsole.Controls
                 }
             }
 
+            // Git #818 — Shane: "whoa" (screenshot: the same #806-#812 chain
+            // rendered 2-4x over, nested inside itself). Root cause:
+            // childrenOf is keyed by githubNumber, not by a specific row's
+            // id — if two SEPARATE queue rows share a githubNumber (Shane
+            // queued the same issue more than once while testing today),
+            // EVERY row with that number independently pulls and renders
+            // the FULL childrenOf[number] list again, so the whole subtree
+            // fans out once per duplicate. A visited-by-id guard renders
+            // each real row at most once regardless of how many other rows
+            // share its githubNumber — also a real latent safety net
+            // against a genuine blocker cycle (A blocked by B blocked by A)
+            // causing infinite recursion, which nothing here guarded
+            // against before.
+            var renderedIds = new HashSet<int>();
+
             void RenderOne(QueueItem item, ItemsControl parent)
             {
+                if (!renderedIds.Add(item.Id)) return;
                 var tvi = BuildQueueTreeItem(item);
                 parent.Items.Add(tvi);
                 if (item.GithubNumber.HasValue && childrenOf.TryGetValue(item.GithubNumber.Value, out var kids))
@@ -308,7 +550,7 @@ namespace BuildConsole.Controls
             {
                 panel.Children.Add(new TextBlock
                 {
-                    Text = $"  exit {item.ExitCode}",
+                    Text = item.ExitCode == -2 ? "  orphaned by app restart — nothing was tracking it, use Retry" : $"  exit {item.ExitCode}",
                     FontSize = 10,
                     Foreground = (Brush)Application.Current.FindResource("Subtext1Brush"),
                     VerticalAlignment = VerticalAlignment.Center,
@@ -317,21 +559,113 @@ namespace BuildConsole.Controls
 
             var tvi = new TreeViewItem { Header = panel, IsExpanded = true, Tag = item };
 
-            // Git #801 — same manual escape hatch content.js's panel has: if the
-            // watcher's own in-memory tracking loses a running item (e.g. a
-            // restart), there'd otherwise be no way to unstick it from here.
+            // Git #801/#820 — Shane: "I need right click like. Stop. Retry.
+            // Run Now." Mark Done was the original manual escape hatch (a
+            // watcher restart orphans its in-memory tracking of anything
+            // already running); Stop tries an actual kill first (only works
+            // if THIS app's own in-process watcher launched it - it holds
+            // the real Process handle, a different watcher's launches can't
+            // be reached this way) then falls back to the same DB-only
+            // unstick Mark Done already did. Run Now force-claims a queued
+            // item (bypassing its blocker/free-slot wait) and launches it
+            // immediately via the local watcher. Retry re-queues a
+            // finished/failed/canceled item as a brand new row with the
+            // same fields - queue rows aren't reset in place.
             var cm = new ContextMenu();
             if (item.Status == "running")
             {
+                var miStop = new MenuItem { Header = "⏹ Stop" };
+                miStop.Click += async (_, _) =>
+                {
+                    if (_api == null) return;
+                    bool killed = _watcher?.TryStop(item.Id) ?? false;
+                    await _api.MarkQueueItemCompleteAsync(item.Id, -1);
+                    if (!killed)
+                    {
+                        MessageBox.Show(
+                            "Marked stopped in the queue, but couldn't confirm the real process was killed — it may have been launched by a different watcher (the standalone script, or another machine) that this app can't reach directly.",
+                            "Stop");
+                    }
+                    await RefreshAsync();
+                };
+                cm.Items.Add(miStop);
+
                 var miDone = new MenuItem { Header = "✓ Mark Done" };
                 miDone.Click += async (_, _) => { if (_api != null) { await _api.MarkQueueItemCompleteAsync(item.Id, 0); await RefreshAsync(); } };
                 cm.Items.Add(miDone);
             }
             if (item.Status == "queued")
             {
+                var miRunNow = new MenuItem { Header = "▶ Run Now" };
+                miRunNow.Click += async (_, _) =>
+                {
+                    if (_api == null) return;
+                    if (_watcher == null)
+                    {
+                        MessageBox.Show("No local watcher available in this app instance (claude.exe not found, or config not set) — can't launch directly.", "Run Now");
+                        return;
+                    }
+                    try
+                    {
+                        var claimed = await _api.ForceClaimQueueItemAsync(item.Id);
+                        _watcher.ForceLaunch(claimed);
+                        await RefreshAsync();
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show($"Couldn't run now: {ex.Message}", "Run Now");
+                    }
+                };
+                cm.Items.Add(miRunNow);
+
                 var miCancel = new MenuItem { Header = "✕ Cancel" };
                 miCancel.Click += async (_, _) => { if (_api != null) { await _api.CancelQueueItemAsync(item.Id); await RefreshAsync(); } };
                 cm.Items.Add(miCancel);
+            }
+            if (item.Status is "failed" or "canceled" or "done")
+            {
+                var miRetry = new MenuItem { Header = "🔁 Retry" };
+                miRetry.Click += async (_, _) =>
+                {
+                    if (_api == null) return;
+                    var res = await _api.QueueBuildAsync(item.Title, item.Prompt, item.Model, item.Effort, item.Cwd, item.GithubNumber, item.BlockedByNumbers);
+                    if (!res.IsSuccessStatusCode)
+                    {
+                        var body = await res.Content.ReadAsStringAsync();
+                        MessageBox.Show($"Couldn't retry: {body}", "Retry");
+                    }
+                    await RefreshAsync();
+                };
+                cm.Items.Add(miRetry);
+
+                // Git #826 — Shane: "how do I respond when Code has a
+                // question... I need to be able to answer." claude.exe
+                // --print is one-shot; by the time a question shows up in
+                // the finished log, that process is gone. Only offered when
+                // a real session_id was captured (older rows from before
+                // this feature, or a run that crashed before its first
+                // output line, won't have one) - resumes that EXACT
+                // conversation via --resume instead of starting fresh.
+                if (!string.IsNullOrWhiteSpace(item.SessionId))
+                {
+                    var miReply = new MenuItem { Header = "💬 Reply" };
+                    miReply.Click += async (_, _) =>
+                    {
+                        if (_api == null) return;
+                        var dialog = new ReplyDialog(item.Title);
+                        if (dialog.ShowDialog() != true || string.IsNullOrWhiteSpace(dialog.ReplyText)) return;
+                        var res = await _api.QueueBuildAsync(
+                            $"Reply: {item.Title}", dialog.ReplyText, item.Model, item.Effort, item.Cwd,
+                            item.GithubNumber, item.BlockedByNumbers, resumeSessionId: item.SessionId);
+                        if (!res.IsSuccessStatusCode)
+                        {
+                            var body = await res.Content.ReadAsStringAsync();
+                            MessageBox.Show($"Couldn't send reply: {body}", "Reply");
+                        }
+                        await RefreshAsync();
+                    };
+                    cm.Items.Add(miReply);
+                }
             }
             if (cm.Items.Count > 0) tvi.ContextMenu = cm;
 
@@ -344,6 +678,8 @@ namespace BuildConsole.Controls
             {
                 TaskSelected?.Invoke(this, new TaskSelectedEventArgs
                 {
+                    QueueItemId = item.Id,
+                    ExitCode = item.ExitCode,
                     Epic = item.GithubNumber.HasValue ? $"#{item.GithubNumber}" : "",
                     Task = item.Title,
                     Status = item.Status,

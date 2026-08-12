@@ -33,6 +33,14 @@ namespace BuildConsole.Services
             return null;
         }
 
+        /// <summary>Git #817 — QueueWatcherService needs the repo root as claude.exe's default working directory (same as build-queue-watcher.ps1's `$repoRoot = Split-Path $PSScriptRoot -Parent`); derived from the same config file's location rather than a second hardcoded path.</summary>
+        public static string? FindRepoRoot()
+        {
+            var configPath = FindConfigPath();
+            if (configPath == null) return null;
+            return Directory.GetParent(Path.GetDirectoryName(configPath)!)?.FullName;
+        }
+
         public static BuildTrackerConfig Load()
         {
             var path = FindConfigPath();

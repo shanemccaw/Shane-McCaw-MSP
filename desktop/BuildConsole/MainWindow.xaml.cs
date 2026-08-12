@@ -5,6 +5,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -48,6 +49,7 @@ namespace BuildConsole
 
         // ── Build Tracker API (shared by BuildQueuePanel + LeftSidebar's Issues board) ──
         private BuildConsole.Services.BuildTrackerApiClient? _buildTrackerApi;
+        private BuildConsole.Services.QueueWatcherService? _queueWatcher;
 
         // ── Git #802: chat tabs + their build split panes ───────────────────────
         private class ChatTabState
@@ -114,7 +116,24 @@ namespace BuildConsole
                 ? $"Config loaded: {btConfig.ApiBaseUrl}"
                 : $"Config NOT found/incomplete (checked {BuildConsole.Services.BuildTrackerConfig.FindConfigPath() ?? "scripts\\build-queue-watcher.config.json"}) — panels will show 'Not connected'.");
             _buildTrackerApi = new BuildConsole.Services.BuildTrackerApiClient(btConfig);
-            BuildQueuePanel.Initialize(_buildTrackerApi);
+
+            // Git #817 — Shane: "Ohh I thought you build that into the WPF
+            // app." He was right to assume that - a queue with nothing
+            // claiming it isn't useful, and requiring a SEPARATE PowerShell
+            // window running scripts/build-queue-watcher.ps1 defeated the
+            // whole "everything in one window" point of this app. Same
+            // logic, now running in-process; see QueueWatcherService's own
+            // doc comment for the one real caveat (don't run both at once).
+            // Created BEFORE BuildQueuePanel.Initialize so Stop/Run Now
+            // (#820) have a real watcher to call into from the start.
+            if (_buildTrackerApi.IsConfigured)
+            {
+                _queueWatcher = new BuildConsole.Services.QueueWatcherService(
+                    _buildTrackerApi, btConfig.MaxConcurrent, BuildConsole.Services.BuildTrackerConfig.FindRepoRoot());
+                _queueWatcher.Start();
+            }
+
+            BuildQueuePanel.Initialize(_buildTrackerApi, _queueWatcher);
             LeftSidebar.Initialize(_buildTrackerApi);
             SqlRunnerView.Initialize(_buildTrackerApi);
 
@@ -411,11 +430,17 @@ namespace BuildConsole
         {
             var (title, glyph) = url switch
             {
-                var u when u.Contains("/admin-panel/") => ("Admin Center", "\uE7EF"),
-                var u when u.Contains("/portal/")      => ("Customer Portal", "\uE77B"),
-                _                                      => ("Marketing Site", "\uE774")
+                var u when u.Contains("/admin-panel/")   => ("Admin Center", "\uE7EF"),
+                var u when u.Contains("/portal/")        => ("Customer Portal", "\uE77B"),
+                var u when u.Contains("replit.com")      => ("Replit Workspace", "\uE7B8"),
+                _                                        => ("Marketing Site", "\uE774")
             };
-            OpenWebTab(url, title, glyph);
+            // Git #821 \u2014 Shane: "I want a play/pause button and when play
+            // is on... this page stays alive refreshing every 5 or 10
+            // minutes." Replit puts a workspace to sleep after a period of
+            // inactivity; a periodic reload keeps it awake. Only the Replit
+            // tab gets the toggle - it's the one use case asked for.
+            OpenWebTab(url, title, glyph, offerKeepAlive: url.Contains("replit.com"));
         }
 
         private void EditorTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -429,6 +454,20 @@ namespace BuildConsole
                     UpdateZoomDisplay();
                 }
                 catch { }
+
+                // Git #829 — Shane: "I need the right panel to have another
+                // section that shows me all the issues assigned to the chat
+                // I'm on." Only chat tabs carry a BoardChat as their Tag
+                // (OpenChatTab); anything else (a browser tab, a file
+                // viewer) clears the section.
+                if (EditorTabs.SelectedItem is TabItem { Tag: BuildConsole.Services.BoardChat chat })
+                {
+                    BuildQueuePanel.SetActiveChatEpic(chat.EpicId, chat.EpicId.HasValue ? LeftSidebar.GetEpicTitle(chat.EpicId.Value) : null);
+                }
+                else
+                {
+                    BuildQueuePanel.SetActiveChatEpic(null, null);
+                }
             }
         }
 
@@ -560,7 +599,7 @@ namespace BuildConsole
             catch { }
         }
 
-        public void OpenWebTab(string url, string title, string glyph)
+        public void OpenWebTab(string url, string title, string glyph, bool offerKeepAlive = false)
         {
             // Deduplicate if already open
             foreach (TabItem item in EditorTabs.Items)
@@ -639,6 +678,7 @@ namespace BuildConsole
             navBar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // Refresh
             navBar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); // URL Address Box
             navBar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // Go
+            navBar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // Keep-alive play/pause (only if offerKeepAlive)
 
             var btnBack = new Button
             {
@@ -711,6 +751,59 @@ namespace BuildConsole
             navBar.Children.Add(urlBox);
             navBar.Children.Add(btnGo);
 
+            // Git #821 — Shane: "I want a play/pause button and when play
+            // is on... this page stays alive refreshing every 5 or 10
+            // minutes." Reload (not just navigate) every 10 min while
+            // toggled on — Replit puts an idle workspace to sleep, this
+            // just keeps traffic hitting it. Timer is per-tab and stops
+            // itself when the tab closes so it can't leak/keep running
+            // against a WebView2 that no longer exists.
+            DispatcherTimer? keepAliveTimer = null;
+            if (offerKeepAlive)
+            {
+                const string playGlyph = "\uE768";
+                const string pauseGlyph = "\uE769";
+                // Git #833 — "IconButton" is TargetType="Button"; applying it
+                // to this ToggleButton threw System.InvalidOperationException
+                // ("'Button' TargetType does not match type of element
+                // 'ToggleButton'") the instant this tab was opened. Styled
+                // inline instead (matching IconButton's own look) rather than
+                // a shared Style, since nothing else in the app needs a
+                // ToggleButton-flavored icon button yet.
+                var btnKeepAlive = new ToggleButton
+                {
+                    Content = new TextBlock { Text = playGlyph, FontFamily = new FontFamily("Segoe MDL2 Assets"), FontSize = 12 },
+                    Background = Brushes.Transparent,
+                    BorderThickness = new Thickness(0),
+                    Foreground = (Brush)FindResource("Subtext1Brush"),
+                    Width = 28, Height = 28, Margin = new Thickness(0, 4, 4, 4),
+                    ToolTip = "Keep alive - auto-reload every 10 minutes while on"
+                };
+                btnKeepAlive.Checked += (s, e) =>
+                {
+                    ((TextBlock)btnKeepAlive.Content).Text = pauseGlyph;
+                    btnKeepAlive.Background = (Brush)FindResource("Surface0Brush");
+                    keepAliveTimer ??= new DispatcherTimer { Interval = TimeSpan.FromMinutes(10) };
+                    keepAliveTimer.Tick -= KeepAliveTick;
+                    keepAliveTimer.Tick += KeepAliveTick;
+                    keepAliveTimer.Start();
+                    void KeepAliveTick(object? s2, EventArgs e2)
+                    {
+                        try { wv.Reload(); } catch { }
+                        BuildConsole.Services.ActivityLog.Log("keep-alive", $"Reloaded {url}");
+                    }
+                };
+                btnKeepAlive.Unchecked += (s, e) =>
+                {
+                    ((TextBlock)btnKeepAlive.Content).Text = playGlyph;
+                    btnKeepAlive.Background = Brushes.Transparent;
+                    keepAliveTimer?.Stop();
+                };
+                Grid.SetColumn(btnKeepAlive, 5);
+                navBar.Children.Add(btnKeepAlive);
+            }
+
+
             wv.SourceChanged += (s, e) =>
             {
                 urlBox.Text = wv.Source?.ToString() ?? string.Empty;
@@ -735,6 +828,7 @@ namespace BuildConsole
 
             closeBtn.Click += (s, e) =>
             {
+                keepAliveTimer?.Stop();
                 EditorTabs.Items.Remove(newTab);
                 if (EditorTabs.Items.Count > 0)
                     EditorTabs.SelectedIndex = Math.Max(0, EditorTabs.Items.Count - 1);
@@ -1402,7 +1496,7 @@ namespace BuildConsole
 
         private void BuildQueuePanel_TaskSelected(object? sender, Controls.TaskSelectedEventArgs e)
         {
-            BuildLogView.LoadTaskLog(e.Epic, e.Task, e.Status, e.StatusDetails);
+            BuildLogView.LoadQueueItem(e.QueueItemId, e.Epic, e.Task, e.Status, e.ExitCode);
             SetBottomPanel(true, tabIndex: 0);
         }
 
@@ -1599,7 +1693,7 @@ namespace BuildConsole
         private void OpenSql_Click(object sender, RoutedEventArgs e)
             => SetBottomPanel(true, tabIndex: 2);
 
-        // Git #817 — Shane: "the very first browser that opens is hard
+        // Git #816 — Shane: "the very first browser that opens is hard
         // stuck... that Claude works I'm logged in every time" (others
         // don't). Root cause: this was `if (_sharedWv2Env == null) {
         // _sharedWv2Env = await CreateAsync(...); }` — a check-then-assign
@@ -1635,6 +1729,16 @@ namespace BuildConsole
             return env;
         }
 
+        /// <summary>Git #830 — auto-grants Notification permission requests so claude.ai's real push notifications can actually display as Windows toasts, without Shane having to click an infobar prompt he'd otherwise have no way to get back to later. Anything else falls through to WebView2's own default prompt.</summary>
+        private static void WebView_PermissionRequested(object? sender, Microsoft.Web.WebView2.Core.CoreWebView2PermissionRequestedEventArgs e)
+        {
+            if (e.PermissionKind == Microsoft.Web.WebView2.Core.CoreWebView2PermissionKind.Notifications)
+            {
+                e.State = Microsoft.Web.WebView2.Core.CoreWebView2PermissionState.Allow;
+                e.Handled = true;
+            }
+        }
+
         private static async System.Threading.Tasks.Task<bool> EnsureWebViewInitializedAsync(Microsoft.Web.WebView2.Wpf.WebView2 wv)
         {
             try
@@ -1646,6 +1750,17 @@ namespace BuildConsole
                 if (wv.CoreWebView2 != null)
                 {
                     wv.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true;
+                    // Git #830 — Shane: "Is there a way to make push
+                    // notifications from Claude.ai work in this WebView2
+                    // browser?" Without this, WebView2 shows its own
+                    // permission-prompt UI (an infobar) the first time
+                    // claude.ai calls Notification.requestPermission(), and
+                    // if that's ever dismissed/denied there's no browser
+                    // chrome to go re-grant it from later, unlike a real
+                    // browser's site-settings page. Auto-allow so it just
+                    // works, same as a user clicking "Allow" once.
+                    wv.CoreWebView2.PermissionRequested -= WebView_PermissionRequested;
+                    wv.CoreWebView2.PermissionRequested += WebView_PermissionRequested;
                     return true;
                 }
             }
@@ -1672,7 +1787,7 @@ namespace BuildConsole
             {
                 bool ready = await EnsureWebViewInitializedAsync(wv);
                 if (!ready) return false;
-                // Git #817 - MUST happen before the WebView2 navigates anywhere
+                // Git #816 - MUST happen before the WebView2 navigates anywhere
                 // (that's the whole reason ClaudeWebView's XAML Source binding
                 // got removed - see the wv2:WebView2 declaration) - a script
                 // added after navigation starts only applies to the NEXT one.
@@ -1684,7 +1799,7 @@ namespace BuildConsole
             catch { return false; }
         }
 
-        /// <summary>Git #817 — injects the builder buttons into ClaudeWebView BEFORE navigating it to claude.ai for the first time (the XAML Source binding that used to do this navigated too early).</summary>
+        /// <summary>Git #816 — injects the builder buttons into ClaudeWebView BEFORE navigating it to claude.ai for the first time (the XAML Source binding that used to do this navigated too early).</summary>
         private async System.Threading.Tasks.Task InitializeClaudeTabAsync()
         {
             await InjectBuilderButtonsAsync(ClaudeWebView);
@@ -1763,6 +1878,84 @@ namespace BuildConsole
         // ── Menu: Help ────────────────────────────────────────────────────────
         private void OpenDevTools_Click(object sender, RoutedEventArgs e)
             => GetActiveWebView().CoreWebView2?.OpenDevToolsWindow();
+
+        // ── Git #821: Release build button ───────────────────────────────────
+        private System.Diagnostics.Process? _releaseBuildProcess;
+
+        /// <summary>
+        /// Shane: "a play button someplace that lets me click it, that kicks
+        /// off a build of the BuildConsole in Production mode so I can use it
+        /// to build stuff while we work on building this out more." Runs
+        /// `dotnet build --configuration Release` for THIS project as a real
+        /// background process (redirected output streamed to ActivityLog /
+        /// the Output tab, same place #815's activity log already lives) -
+        /// never blocks the UI thread. Deliberately a separate `bin\Release`
+        /// output from the `bin\Debug` this dev instance runs from, so a
+        /// Release build can finish and be launched separately while this
+        /// Debug instance keeps running for further work.
+        /// </summary>
+        private void BuildRelease_Click(object sender, RoutedEventArgs e)
+        {
+            if (_releaseBuildProcess != null && !_releaseBuildProcess.HasExited)
+            {
+                BuildConsole.Services.ActivityLog.Log("release-build", "Already running - ignoring click.");
+                return;
+            }
+
+            string? repoRoot = BuildConsole.Services.BuildTrackerConfig.FindRepoRoot();
+            string projectDir = repoRoot != null
+                ? Path.Combine(repoRoot, "desktop", "BuildConsole")
+                : Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..")); // bin\Debug\net7.0-windows -> project dir
+
+            BtnBuildRelease.IsEnabled = false;
+            BtnBuildReleaseIcon.Text = "\uE72C"; // hourglass while running
+            BuildConsole.Services.ActivityLog.Log("release-build", $"Starting: dotnet build --configuration Release ({projectDir})");
+            SetBottomPanel(true, tabIndex: 3); // Output tab
+
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "dotnet",
+                WorkingDirectory = projectDir,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true,
+            };
+            psi.ArgumentList.Add("build");
+            psi.ArgumentList.Add("--configuration");
+            psi.ArgumentList.Add("Release");
+
+            var proc = new System.Diagnostics.Process { StartInfo = psi, EnableRaisingEvents = true };
+            proc.OutputDataReceived += (_, args) => { if (args.Data != null) BuildConsole.Services.ActivityLog.Log("release-build", args.Data); };
+            proc.ErrorDataReceived += (_, args) => { if (args.Data != null) BuildConsole.Services.ActivityLog.Log("release-build", args.Data); };
+            proc.Exited += (_, _) =>
+            {
+                Dispatcher.BeginInvoke(() =>
+                {
+                    bool ok = proc.ExitCode == 0;
+                    BuildConsole.Services.ActivityLog.Log("release-build", ok
+                        ? $"Succeeded (exit 0) - bin\\Release\\net7.0-windows\\BuildConsole.exe"
+                        : $"FAILED (exit {proc.ExitCode}) - see output above.");
+                    BtnBuildReleaseIcon.Text = "\uE768"; // back to play glyph
+                    BtnBuildReleaseIcon.Foreground = ok ? DotReady : DotError;
+                    BtnBuildRelease.IsEnabled = true;
+                });
+            };
+
+            _releaseBuildProcess = proc;
+            try
+            {
+                proc.Start();
+                proc.BeginOutputReadLine();
+                proc.BeginErrorReadLine();
+            }
+            catch (Exception ex)
+            {
+                BuildConsole.Services.ActivityLog.Log("release-build", $"Couldn't start: {ex.Message}");
+                BtnBuildReleaseIcon.Text = "\uE768";
+                BtnBuildRelease.IsEnabled = true;
+            }
+        }
 
         // ── Command Palette (Ctrl+K) logic ──────────────────────────────────
         private readonly List<PaletteItem> _allPaletteItems = new();
@@ -2219,18 +2412,14 @@ namespace BuildConsole
                     $"apiTests: {passed}/{apiResults.Count} passed for issue #{manifest.Issue}.");
             }
 
-            // ── Git #808 (Epic #803 Phase 4): Graph test executor (graphTests) ──
-            // Folds into the same runResult/ManifestRunResult #807 established —
-            // not a separate output path. GraphTestExecutor itself enforces the
-            // hard "test tenant only" guard before ever calling Graph.
             var graphResults = await BuildConsole.Services.GraphTestExecutor.RunAsync(manifest);
             runResult.AddRange(graphResults);
 
             if (graphResults.Count > 0)
             {
-                int graphPassed = graphResults.Count(r => r.Passed);
+                int passed = graphResults.Count(r => r.Passed);
                 BuildConsole.Services.ActivityLog.Log("testing.graph-executor",
-                    $"graphTests: {graphPassed}/{graphResults.Count} passed for issue #{manifest.Issue}.");
+                    $"graphTests: {passed}/{graphResults.Count} passed for issue #{manifest.Issue}.");
             }
 
             // Git #810 — uiSteps now run directly through TestResultsView.RunUiTestAsync (the

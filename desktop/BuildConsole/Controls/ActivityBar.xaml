@@ -88,6 +88,18 @@
                     <TextBlock Text="&#xE774;" FontFamily="Segoe MDL2 Assets" FontSize="18" Foreground="{StaticResource GreenBrush}"/>
                 </Button>
 
+                <!-- Separator -->
+                <Border Height="1" Background="{StaticResource Surface0Brush}" Margin="8,6"/>
+
+                <!-- Git #821 - Shane: opens the Replit workspace dashboard; that tab gets a Play/Pause "keep alive" toggle (see OpenWebTab). -->
+                <Button Style="{StaticResource IconButton}"
+                        Width="48" Height="44"
+                        ToolTip="Replit Workspace"
+                        Click="QuickNav_Click"
+                        Tag="https://replit.com/@shanemccaw/Shane-McCaw-Consulting">
+                    <TextBlock Text="&#xE7B8;" FontFamily="Segoe MDL2 Assets" FontSize="18" Foreground="{StaticResource PeachBrush}"/>
+                </Button>
+
             </StackPanel>
 
             <!-- ── Bottom icon: Settings ── -->

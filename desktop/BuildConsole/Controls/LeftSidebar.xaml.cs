@@ -355,12 +355,23 @@ namespace BuildConsole.Controls
         // structural changes.
         private readonly List<GitMilestone> _milestones = new();
 
+        // Git #821 — Shane: "can you stop all the flashing... every refresh
+        // the left panel clears and rebuilds... so it flashes and sucks."
+        // Both boards used to Items.Clear() + fully rebuild on EVERY 20s
+        // poll regardless of whether anything actually changed - a
+        // content-signature guard (cheap JSON serialize + string compare)
+        // skips the rebuild entirely when the fetched data is identical to
+        // what's already on screen, which is the overwhelming majority of
+        // polls. Also preserves scroll position/expanded state on those
+        // no-op polls, which a blind rebuild always threw away anyway.
+        private string? _lastInProgressSignature;
+        private string? _lastBoardSignature;
+
         public async void PopulateGitTrackerBoard()
         {
-            IssuesTree.Items.Clear();
-
             if (_api == null || !_api.IsConfigured)
             {
+                IssuesTree.Items.Clear();
                 IssueStatMilestones.Text = "0 Active";
                 IssueStatEpics.Text = "0 Active";
                 IssueStatOpen.Text = "0 Pending";
@@ -377,10 +388,16 @@ namespace BuildConsole.Controls
             }
             catch (Exception ex)
             {
+                IssuesTree.Items.Clear();
                 IssuesTree.Items.Add(new TreeViewItem { Header = $"Couldn't reach the API: {ex.Message}" });
                 SyncError?.Invoke(this, $"Issues board: {ex.Message}");
                 return;
             }
+
+            var signature = System.Text.Json.JsonSerializer.Serialize(items);
+            if (signature == _lastInProgressSignature) return;
+            _lastInProgressSignature = signature;
+            IssuesTree.Items.Clear();
 
             GitEpic MapBucket(string title, string colorHex, IEnumerable<InProgressItem> src)
             {
@@ -421,10 +438,9 @@ namespace BuildConsole.Controls
         // ── CHATS (real GET /extension/board — grouped by linked epic) ──────
         public async void PopulateChatsTree()
         {
-            ChatsTree.Items.Clear();
-
             if (_api == null || !_api.IsConfigured)
             {
+                ChatsTree.Items.Clear();
                 ChatsTree.Items.Add(new TreeViewItem { Header = "Not connected — see Settings" });
                 return;
             }
@@ -437,10 +453,16 @@ namespace BuildConsole.Controls
             }
             catch (Exception ex)
             {
+                ChatsTree.Items.Clear();
                 ChatsTree.Items.Add(new TreeViewItem { Header = $"Couldn't reach the API: {ex.Message}" });
                 SyncError?.Invoke(this, $"Chats: {ex.Message}");
                 return;
             }
+
+            var signature = System.Text.Json.JsonSerializer.Serialize(board);
+            if (signature == _lastBoardSignature) return;
+            _lastBoardSignature = signature;
+            ChatsTree.Items.Clear();
 
             var epicById = board.Epics.ToDictionary(e => e.Id);
             _chatEpicById = epicById;
@@ -460,7 +482,40 @@ namespace BuildConsole.Controls
                 var p = new StackPanel { Orientation = Orientation.Horizontal };
                 p.Children.Add(new TextBlock { Text = "", FontFamily = new FontFamily("Segoe MDL2 Assets"), FontSize = 13, Foreground = GetBrush("BlueBrush"), Margin = new Thickness(0, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center });
                 p.Children.Add(new TextBlock { Text = chat.Title, FontSize = 13, VerticalAlignment = VerticalAlignment.Center });
-                return new TreeViewItem { Header = p, Tag = chat };
+                var tvi = new TreeViewItem { Header = p, Tag = chat };
+
+                // Git #828 - Shane: "I need a way to assign a chat to an
+                // epic in the WPF app." Same POST /chats/ingest the
+                // extensions own "link this chat to that epic" click
+                // already uses (Git #781), just reached from here instead.
+                var cm = new ContextMenu();
+                var miAssign = new MenuItem { Header = "Assign to Epic..." };
+                miAssign.Click += async (_, _) =>
+                {
+                    if (_api == null) return;
+                    var dialog = new AssignEpicDialog(chat.Title, board.Epics);
+                    if (dialog.ShowDialog() != true || dialog.SelectedEpicId == null) return;
+                    try
+                    {
+                        var res = await _api.LinkChatToEpicAsync(chat.ConversationId, dialog.SelectedEpicId.Value);
+                        if (!res.IsSuccessStatusCode)
+                        {
+                            var body = await res.Content.ReadAsStringAsync();
+                            MessageBox.Show($"Couldn't assign: {body}", "Assign to Epic");
+                            return;
+                        }
+                        _lastBoardSignature = null;
+                        PopulateChatsTree();
+                    }
+                    catch (System.Exception ex)
+                    {
+                        MessageBox.Show($"Couldn't assign: {ex.Message}", "Assign to Epic");
+                    }
+                };
+                cm.Items.Add(miAssign);
+                tvi.ContextMenu = cm;
+
+                return tvi;
             }
 
             foreach (var grp in byEpic)
@@ -485,6 +540,9 @@ namespace BuildConsole.Controls
         }
 
         private Dictionary<int, BoardEpic> _chatEpicById = new();
+
+        /// <summary>Git #829 — MainWindow needs the real epic TITLE (not just its id) for the right panel's "Issues in this epic" header; reuses the same lookup PopulateChatsTree already built rather than a second fetch.</summary>
+        public string? GetEpicTitle(int epicId) => _chatEpicById.TryGetValue(epicId, out var epic) ? epic.Title : null;
 
         private void ChatsTree_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
         {

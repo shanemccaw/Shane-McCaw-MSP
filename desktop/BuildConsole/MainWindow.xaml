@@ -169,6 +169,15 @@
                                 Margin="4,0,0,0">
                             <TextBlock Text="&#xE7BE;" FontFamily="Segoe MDL2 Assets" FontSize="12" Foreground="{StaticResource MauveBrush}"/>
                         </Button>
+                        <!-- Git #821 - Shane: "a play button someplace that kicks off a build of the BuildConsole in Production mode" -->
+                        <Button x:Name="BtnBuildRelease"
+                                Style="{StaticResource IconButton}"
+                                ToolTip="Build Release (dotnet build --configuration Release) - see Output tab"
+                                Click="BuildRelease_Click"
+                                Padding="6,4"
+                                Margin="4,0,0,0">
+                            <TextBlock x:Name="BtnBuildReleaseIcon" Text="&#xE768;" FontFamily="Segoe MDL2 Assets" FontSize="12" Foreground="{StaticResource GreenBrush}"/>
+                        </Button>
                     </StackPanel>
 
                 </Grid>
@@ -326,7 +335,7 @@
                                             <Ellipse Width="6" Height="6" Fill="{StaticResource BlueBrush}" VerticalAlignment="Center"/>
                                         </StackPanel>
                                     </TabItem.Header>
-                                    <!-- Git #817 - Source is set from code-behind AFTER the builder-button script is injected, not here; a XAML-bound Source navigates the instant CoreWebView2 is ready, which can race ahead of AddScriptToExecuteOnDocumentCreatedAsync and mean the very first load never gets the injected buttons. -->
+                                    <!-- Git #816 - Source is set from code-behind AFTER the builder-button script is injected, not here; a XAML-bound Source navigates the instant CoreWebView2 is ready, which can race ahead of AddScriptToExecuteOnDocumentCreatedAsync and mean the very first load never gets the injected buttons. -->
                                     <wv2:WebView2 x:Name="ClaudeWebView"/>
                                 </TabItem>
                             </TabControl>

@@ -1,0 +1,77 @@
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
+using System.Text.Json.Serialization;
+using System.Threading.Tasks;
+
+namespace BuildConsole.Services
+{
+    /// <summary>Git #831 — matches `claude agents --json`'s real row shape (confirmed via a live run).</summary>
+    public class ClaudeAgentSession
+    {
+        public int Pid { get; set; }
+        public string Cwd { get; set; } = "";
+        /// <summary>"interactive" | "background"</summary>
+        public string Kind { get; set; } = "";
+        /// <summary>Unix epoch milliseconds.</summary>
+        [JsonPropertyName("startedAt")]
+        public long StartedAtMs { get; set; }
+        public string SessionId { get; set; } = "";
+        public string Name { get; set; } = "";
+
+        public DateTime StartedAt => DateTimeOffset.FromUnixTimeMilliseconds(StartedAtMs).LocalDateTime;
+    }
+
+    /// <summary>
+    /// Git #831 — Shane: "the right panel needs to have an All In session...
+    /// like you are not in the queue, but you are running, and I should see
+    /// the things you are working on but I cannot." A live interactive
+    /// Claude Code session (like the one Shane is talking to right now) is
+    /// NOT a queue row - it never goes through bt_build_queue at all, so
+    /// nothing in the Build Queue panel could ever show it. `claude agents
+    /// --json` is a real, documented, scriptable command (confirmed via a
+    /// live run) that lists every active session on this machine -
+    /// interactive and background both - with no TTY required. This shells
+    /// out to it directly; there's no server round-trip since this is
+    /// purely local machine state, not anything bt_build_queue tracks.
+    /// </summary>
+    public static class ClaudeAgentsService
+    {
+        private static readonly string ClaudeExe = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "bin", "claude.exe");
+
+        public static async Task<List<ClaudeAgentSession>> ListActiveSessionsAsync()
+        {
+            if (!File.Exists(ClaudeExe)) return new List<ClaudeAgentSession>();
+
+            var psi = new ProcessStartInfo
+            {
+                FileName = ClaudeExe,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true,
+            };
+            psi.ArgumentList.Add("agents");
+            psi.ArgumentList.Add("--json");
+
+            using var proc = new Process { StartInfo = psi };
+            proc.Start();
+            string stdout = await proc.StandardOutput.ReadToEndAsync();
+            await proc.WaitForExitAsync();
+            if (proc.ExitCode != 0 || string.IsNullOrWhiteSpace(stdout)) return new List<ClaudeAgentSession>();
+
+            try
+            {
+                var sessions = System.Text.Json.JsonSerializer.Deserialize<List<ClaudeAgentSession>>(
+                    stdout, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                return sessions ?? new List<ClaudeAgentSession>();
+            }
+            catch
+            {
+                return new List<ClaudeAgentSession>();
+            }
+        }
+    }
+}

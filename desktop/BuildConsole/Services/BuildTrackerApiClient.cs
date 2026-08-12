@@ -23,6 +23,10 @@ namespace BuildConsole.Services
         public List<int>? BlockedByNumbers { get; set; }
         public string Status { get; set; } = "queued";
         public int? ExitCode { get; set; }
+        /// <summary>Git #826 — the real Claude Code session id this run's own stream-json output revealed, captured at completion so a later Reply can resume this exact conversation.</summary>
+        public string? SessionId { get; set; }
+        /// <summary>Git #826 — set by a Reply action: tells the watcher to launch this item with --resume &lt;this&gt; instead of a fresh session.</summary>
+        public string? ResumeSessionId { get; set; }
     }
 
     public class BlockedByInfo
@@ -68,6 +72,18 @@ namespace BuildConsole.Services
     {
         public List<BoardEpic> Epics { get; set; } = new();
         public List<BoardChat> Chats { get; set; } = new();
+    }
+
+    /// <summary>Git #829 — matches GET /admin/build-tracker/issues's real row shape.</summary>
+    public class IssueSummary
+    {
+        public int Id { get; set; }
+        public int? EpicId { get; set; }
+        public string Title { get; set; } = "";
+        public string Status { get; set; } = "";
+        public int? GithubNumber { get; set; }
+        public string? GithubUrl { get; set; }
+        public int ChatCount { get; set; }
     }
 
     /// <summary>Git #805 — matches GET /api/internal/deploy-status's `{ commitHash, timestamp }` shape.</summary>
@@ -153,6 +169,13 @@ namespace BuildConsole.Services
             return res?.Items ?? new List<QueueItem>();
         });
 
+        /// <summary>Git #817 — the same endpoint scripts/build-queue-watcher.ps1 polls (atomically claims up to `limit` ready rows, marks them running). Used by QueueWatcherService so the app can do this itself instead of requiring that separate script.</summary>
+        public Task<List<QueueItem>> GetNextQueueItemsAsync(int limit) => TrackAsync($"GET queue/next?limit={limit}", async () =>
+        {
+            var res = await _http.GetFromJsonAsync<QueueResponse>($"api/admin/build-tracker/extension/queue/next?limit={limit}", JsonOpts);
+            return res?.Items ?? new List<QueueItem>();
+        });
+
         public Task<List<InProgressItem>> GetInProgressAsync() => TrackAsync("GET in-progress", async () =>
         {
             var res = await _http.GetFromJsonAsync<InProgressResponse>("api/admin/build-tracker/extension/in-progress", JsonOpts);
@@ -169,6 +192,29 @@ namespace BuildConsole.Services
             var res = await _http.GetFromJsonAsync<BoardResponse>("api/admin/build-tracker/extension/board", JsonOpts);
             return res ?? new BoardResponse();
         });
+
+        /// <summary>Git #829 — Shane: "I need the right panel to have another section that shows me all the issues assigned to the chat I'm on." Real GET /admin/build-tracker/issues?epicId=N, same route the admin-panel's own issue tracker UI uses.</summary>
+        public Task<List<IssueSummary>> GetIssuesForEpicAsync(int epicId) => TrackAsync($"GET issues?epicId={epicId}", async () =>
+        {
+            var res = await _http.GetFromJsonAsync<List<IssueSummary>>($"api/admin/build-tracker/issues?epicId={epicId}", JsonOpts);
+            return res ?? new List<IssueSummary>();
+        });
+
+        /// <summary>
+        /// Git #828 — Shane: "I need a way to assign a chat to an epic in
+        /// the WPF app." Same POST /chats/ingest the extension's own "link
+        /// this chat to that epic" click already uses (Git #781 — force:
+        /// true is what makes an explicit assignment win over the
+        /// non-clobbering passive title-sync rule; issueId is always null
+        /// here since this app only assigns by epic, matching the ask).
+        /// </summary>
+        public Task<HttpResponseMessage> LinkChatToEpicAsync(string conversationId, int epicId) =>
+            TrackAsync($"POST chats/ingest (chat -> epic {epicId})", () => _http.PostAsJsonAsync("api/admin/build-tracker/chats/ingest", new
+            {
+                conversation_id = conversationId,
+                epicId,
+                force = true,
+            }));
 
         /// <summary>Same file-content endpoint the extension's Shane-To-Do 🗄 button uses — reads a real migration file's text straight from GitHub, no local filesystem assumption.</summary>
         public Task<string> GetFileContentAsync(string path) => TrackAsync($"GET file-content {path}", async () =>
@@ -202,8 +248,8 @@ namespace BuildConsole.Services
 
         private class SqlExecuteResponse { public List<SqlStatementResult> Statements { get; set; } = new(); }
 
-        /// <summary>Git #814 — same POST the extension's "📋 Queue" button and background.js's queueBuild() already use, now called directly from the WPF app's own injected chat buttons.</summary>
-        public Task<HttpResponseMessage> QueueBuildAsync(string title, string prompt, string? model, string? effort, string? cwd, int? githubNumber, List<int>? blockedByNumbers) =>
+        /// <summary>Git #814 — same POST the extension's "📋 Queue" button and background.js's queueBuild() already use, now called directly from the WPF app's own injected chat buttons. Git #826 added resumeSessionId — set by a Reply action so the watcher launches with --resume instead of a fresh session.</summary>
+        public Task<HttpResponseMessage> QueueBuildAsync(string title, string prompt, string? model, string? effort, string? cwd, int? githubNumber, List<int>? blockedByNumbers, string? resumeSessionId = null) =>
             TrackAsync($"POST queue \"{title}\"", () => _http.PostAsJsonAsync("api/admin/build-tracker/extension/queue", new
             {
                 title,
@@ -213,13 +259,27 @@ namespace BuildConsole.Services
                 cwd,
                 githubNumber,
                 blockedByNumbers,
+                resumeSessionId,
             }));
 
-        public Task<HttpResponseMessage> MarkQueueItemCompleteAsync(int id, int exitCode) =>
-            TrackAsync($"POST queue/{id}/complete", () => _http.PostAsJsonAsync($"api/admin/build-tracker/extension/queue/{id}/complete", new { exitCode }));
+        /// <summary>Git #826 — sessionId (captured from this run's own stream-json output) is stored so a later Reply can resume this exact conversation.</summary>
+        public Task<HttpResponseMessage> MarkQueueItemCompleteAsync(int id, int exitCode, string? sessionId = null) =>
+            TrackAsync($"POST queue/{id}/complete", () => _http.PostAsJsonAsync($"api/admin/build-tracker/extension/queue/{id}/complete", new { exitCode, sessionId }));
 
         public Task<HttpResponseMessage> CancelQueueItemAsync(int id) =>
             TrackAsync($"DELETE queue/{id}", () => _http.DeleteAsync($"api/admin/build-tracker/extension/queue/{id}"));
+
+        /// <summary>Git #820 — "Run Now": atomically claims a still-queued row right now, bypassing the normal blocker/free-slot check. Returns the claimed row (caller still has to actually launch it) or throws on a 409 (already claimed/no longer queued).</summary>
+        public Task<QueueItem> ForceClaimQueueItemAsync(int id) => TrackAsync($"POST queue/{id}/force-claim", async () =>
+        {
+            var res = await _http.PostAsync($"api/admin/build-tracker/extension/queue/{id}/force-claim", null);
+            if (!res.IsSuccessStatusCode)
+            {
+                var body = await res.Content.ReadAsStringAsync();
+                throw new HttpRequestException($"HTTP {(int)res.StatusCode}: {body}");
+            }
+            return await res.Content.ReadFromJsonAsync<QueueItem>(JsonOpts) ?? throw new HttpRequestException("Empty response");
+        });
 
         public Task<HttpResponseMessage> ToggleLabelAsync(int number, string label, bool add) =>
             TrackAsync($"POST toggle-label #{number} {label}={add}", () => _http.PostAsJsonAsync("api/admin/build-tracker/extension/toggle-label", new { number, label, add }));

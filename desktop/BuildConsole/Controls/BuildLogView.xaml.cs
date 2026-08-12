@@ -1,29 +1,27 @@
 using System;
-using System.Collections.ObjectModel;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Threading;
 
 namespace BuildConsole.Controls
 {
-    public class LogEntry
-    {
-        public string Icon { get; set; } = "•";
-        public Brush IconColor { get; set; } = Brushes.Gray;
-        public string Time { get; set; } = string.Empty;
-        public string Description { get; set; } = string.Empty;
-        public Brush DescColor { get; set; } = Brushes.White;
-    }
-
+    /// <summary>
+    /// Git #819 — Shane: "How do I see the status of one running? And then
+    /// one fail exit 1 #806" — this was 100% Shane's own hardcoded demo
+    /// data (fabricated "18:04:01" timestamps, fake tool calls) that never
+    /// reflected anything real, so there was genuinely no way to answer
+    /// that question from here before. Now reads the SAME per-item log file
+    /// scripts/build-queue-watcher.ps1 and Services/QueueWatcherService.cs
+    /// both write to (Services/BuildLogPaths), tailing it live while the
+    /// item is running.
+    /// </summary>
     public partial class BuildLogView : UserControl
     {
-        private readonly ObservableCollection<LogEntry> _logEntries = new();
-
         private static readonly SolidColorBrush BlueBrush  = Frozen(0x89, 0xB4, 0xFA);
         private static readonly SolidColorBrush GreenBrush = Frozen(0xA6, 0xE3, 0xA1);
         private static readonly SolidColorBrush RedBrush   = Frozen(0xF3, 0x8B, 0xA8);
-        private static readonly SolidColorBrush MauveBrush = Frozen(0xC0, 0xA0, 0xF8);
-        private static readonly SolidColorBrush TextBrush  = Frozen(0xCD, 0xD6, 0xF4);
         private static readonly SolidColorBrush Subtext    = Frozen(0xBA, 0xC2, 0xDE);
 
         private static SolidColorBrush Frozen(byte r, byte g, byte b)
@@ -33,78 +31,72 @@ namespace BuildConsole.Controls
             return b2;
         }
 
+        private DispatcherTimer? _tailTimer;
+        private int _currentId;
+        private long _tailedLength;
+
         public BuildLogView()
         {
             InitializeComponent();
-            LogList.ItemsSource = _logEntries;
         }
 
-        public void LoadTaskLog(string epic, string task, string status, string statusDetails)
+        public void LoadQueueItem(int id, string epic, string task, string status, int? exitCode)
         {
             EmptyState.Visibility = Visibility.Collapsed;
-            _logEntries.Clear();
-
             EpicLabel.Text = epic;
             TaskLabel.Text = task;
-            StatusBadgeText.Text = status;
-            ElapsedLabel.Text = "00:02:14";
+            StatusBadgeText.Text = exitCode == -2 ? $"{status} (orphaned by app restart)" : exitCode.HasValue ? $"{status} (exit {exitCode})" : status;
+            ElapsedLabel.Text = "";
 
-            if (status.Equals("In Progress", StringComparison.OrdinalIgnoreCase))
+            var (dot, verb, badgeColor) = status.ToLowerInvariant() switch
             {
-                HeaderDot.Fill = BlueBrush;
-                HeaderVerb.Text = "BUILDING TASK";
-                StatusBadgeText.Foreground = BlueBrush;
+                "running" => (BlueBrush, "BUILDING", BlueBrush),
+                "queued"  => (Subtext, "QUEUED", Subtext),
+                "done"    => (GreenBrush, "DONE", GreenBrush),
+                "failed"  => (RedBrush, "FAILED", RedBrush),
+                _         => (Subtext, status.ToUpperInvariant(), Subtext),
+            };
+            HeaderDot.Fill = dot;
+            HeaderVerb.Text = verb;
+            StatusBadgeText.Foreground = badgeColor;
 
-                AddEntry("▶", BlueBrush, "18:04:01", $"Started task '{task}' in epic [{epic}]", TextBrush);
-                AddEntry("⚡", MauveBrush, "18:04:02", "Invoking tool: git_status()", Subtext);
-                AddEntry("✓", GreenBrush, "18:04:03", "Tool git_status returned clean working directory", Subtext);
-                AddEntry("⚡", MauveBrush, "18:04:05", "Invoking tool: replace_file_content(MainWindow.xaml)", Subtext);
-                AddEntry("✓", GreenBrush, "18:04:06", "Successfully updated layout controls", Subtext);
-                AddEntry("⚡", MauveBrush, "18:04:10", "Running command: dotnet build --configuration Release", Subtext);
-                AddEntry("⚙", BlueBrush, "18:04:12", "Build in progress... compiling WPF project components...", TextBrush);
-            }
-            else if (status.Equals("Blocked", StringComparison.OrdinalIgnoreCase))
+            _currentId = id;
+            _tailedLength = 0;
+            RawLogBox.Clear();
+            LoadNow();
+
+            _tailTimer?.Stop();
+            if (status.Equals("running", StringComparison.OrdinalIgnoreCase))
             {
-                HeaderDot.Fill = RedBrush;
-                HeaderVerb.Text = "TASK BLOCKED";
-                StatusBadgeText.Foreground = RedBrush;
-
-                AddEntry("▶", BlueBrush, "18:00:10", $"Started task '{task}' in epic [{epic}]", TextBrush);
-                AddEntry("⚡", MauveBrush, "18:00:11", "Invoking tool: check_dependencies()", Subtext);
-                AddEntry("⚠️", RedBrush, "18:00:12", $"DEPENDENCY BLOCKER: {statusDetails}", RedBrush);
-                AddEntry("✖", RedBrush, "18:00:13", "Execution paused. Waiting for blocker resolution before retry.", RedBrush);
-            }
-            else if (status.Equals("Done", StringComparison.OrdinalIgnoreCase))
-            {
-                HeaderDot.Fill = GreenBrush;
-                HeaderVerb.Text = "TASK COMPLETED";
-                StatusBadgeText.Foreground = GreenBrush;
-
-                AddEntry("▶", BlueBrush, "17:30:00", $"Started task '{task}' in epic [{epic}]", TextBrush);
-                AddEntry("⚡", MauveBrush, "17:30:15", "Running verification suite...", Subtext);
-                AddEntry("✓", GreenBrush, "17:30:45", "All 14 unit & UI tests passed cleanly.", GreenBrush);
-                AddEntry("✓", GreenBrush, "17:30:46", "Task finished with status SUCCESS (0 warnings, 0 errors).", GreenBrush);
-            }
-            else
-            {
-                HeaderDot.Fill = Subtext;
-                HeaderVerb.Text = "PENDING TASK";
-                StatusBadgeText.Foreground = Subtext;
-
-                AddEntry("⌛", Subtext, "18:05:00", $"Task '{task}' is queued for execution.", Subtext);
+                _tailTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1.5) };
+                _tailTimer.Tick += (_, _) => LoadNow();
+                _tailTimer.Start();
             }
         }
 
-        private void AddEntry(string icon, Brush iconColor, string time, string desc, Brush descColor)
+        private void LoadNow()
         {
-            _logEntries.Add(new LogEntry
+            var path = Services.BuildLogPaths.ForQueueItem(_currentId);
+            try
             {
-                Icon = icon,
-                IconColor = iconColor,
-                Time = time,
-                Description = desc,
-                DescColor = descColor
-            });
+                if (!File.Exists(path))
+                {
+                    if (RawLogBox.Text.Length == 0) RawLogBox.Text = "(no log file yet — the watcher hasn't claimed this item, or it predates the log-file convention)";
+                    return;
+                }
+                using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                if (fs.Length < _tailedLength) { RawLogBox.Clear(); _tailedLength = 0; } // file got truncated/reused
+                if (fs.Length <= _tailedLength) return;
+                fs.Seek(_tailedLength, SeekOrigin.Begin);
+                using var reader = new StreamReader(fs);
+                RawLogBox.AppendText(reader.ReadToEnd());
+                _tailedLength = fs.Length;
+                RawLogBox.ScrollToEnd();
+            }
+            catch (Exception ex)
+            {
+                if (RawLogBox.Text.Length == 0) RawLogBox.Text = $"(couldn't read log: {ex.Message})";
+            }
         }
     }
 }

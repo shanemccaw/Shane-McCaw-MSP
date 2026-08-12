@@ -62,22 +62,144 @@
                 </StackPanel>
             </Border>
 
-            <!-- ── Queue tree (populated live from GET /extension/queue — see code-behind) ── -->
-            <ScrollViewer DockPanel.Dock="Top"
-                          VerticalScrollBarVisibility="Auto"
-                          HorizontalScrollBarVisibility="Disabled"
-                          Padding="0,4">
-                <TreeView x:Name="QueueTree" BorderThickness="0" SelectedItemChanged="QueueTree_SelectedItemChanged"/>
-            </ScrollViewer>
+            <!-- Git #849 - Shane: "Did you cap it at only showing 5 in-flight?"
+                 It wasn't a cap - the queue tree above had no height limit of its
+                 own, so with enough rows it could consume most of the panel's
+                 vertical space, squeezing everything docked after it (Epic
+                 Issues / All In-Session / In-Flight) below the window's bottom
+                 edge before their OWN internal scroll ever got a chance to
+                 matter. One outer ScrollViewer around all of it (queue tree
+                 included) means the whole right panel scrolls as a unit instead
+                 of silently clipping whatever didn't fit. -->
+            <ScrollViewer VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled">
+                <StackPanel>
 
-            <TextBlock x:Name="QueueEmptyText"
-                       DockPanel.Dock="Top"
-                       Text="Not connected — see Settings"
-                       FontSize="11"
-                       Foreground="{StaticResource Subtext1Brush}"
-                       Margin="12,10"
-                       TextWrapping="Wrap"
-                       Visibility="Collapsed"/>
+                    <!-- ── Queue tree (populated live from GET /extension/queue — see code-behind) ── -->
+                    <TreeView x:Name="QueueTree" BorderThickness="0" Padding="0,4" SelectedItemChanged="QueueTree_SelectedItemChanged"/>
+
+                    <TextBlock x:Name="QueueEmptyText"
+                               Text="Not connected — see Settings"
+                               FontSize="11"
+                               Foreground="{StaticResource Subtext1Brush}"
+                               Margin="12,10"
+                               TextWrapping="Wrap"
+                               Visibility="Collapsed"/>
+
+            <!-- Git #829 - Shane: "I need the right panel to have another section
+                 that shows me all the issues assigned to the chat I'm on." Only
+                 visible while the active editor tab is a chat linked to an epic
+                 (see MainWindow's EditorTabs_SelectionChanged -> SetActiveChatEpic). -->
+            <Border x:Name="ChatEpicIssuesSection"
+                    Background="{StaticResource MantleBrush}"
+                    BorderBrush="{StaticResource Surface0Brush}"
+                    BorderThickness="0,1,0,0"
+                    Visibility="Collapsed">
+                <StackPanel>
+                    <Border Padding="10,8"
+                            BorderBrush="{StaticResource Surface0Brush}"
+                            BorderThickness="0,0,0,1">
+                        <TextBlock x:Name="ChatEpicIssuesHeader"
+                                   Text="ISSUES IN THIS EPIC"
+                                   FontSize="11"
+                                   FontWeight="SemiBold"
+                                   Foreground="{StaticResource Subtext1Brush}"
+                                   TextWrapping="Wrap"/>
+                    </Border>
+                    <ListBox x:Name="ChatEpicIssuesList"
+                             Background="Transparent"
+                             BorderThickness="0"
+                             MaxHeight="260"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Git #831 - Shane: "the right panel needs to have an All In session...
+                 like you are not in the queue, but you are running, and I should see
+                 the things you are working on but I cannot." Live interactive/background
+                 Claude Code sessions on this machine - NOT queue rows, the "claude
+                 agents" CLI command (json output mode) is the real source (see
+                 ClaudeAgentsService). Always visible (unlike the epic-issues section
+                 above, this isn't tied to a chat tab). -->
+            <Border Background="{StaticResource MantleBrush}"
+                    BorderBrush="{StaticResource Surface0Brush}"
+                    BorderThickness="0,1,0,0">
+                <StackPanel>
+                    <Border Padding="10,8"
+                            BorderBrush="{StaticResource Surface0Brush}"
+                            BorderThickness="0,0,0,1">
+                        <TextBlock Text="ALL IN-SESSION"
+                                   FontSize="11"
+                                   FontWeight="SemiBold"
+                                   Foreground="{StaticResource Subtext1Brush}"/>
+                    </Border>
+                    <ListBox x:Name="ActiveSessionsList"
+                             Background="Transparent"
+                             BorderThickness="0"
+                             MaxHeight="220"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Git #848 - Shane: "In Git there 10 In Flight, Still open. And none
+                 are showing in the right panel... why can't the WPF just connect
+                 directly to Git to get this stuff... no real reason for it to go
+                 through my server anymore." Replaces the #835 chat-tab-scoped
+                 version entirely - real open GitHub issues carrying the in-flight
+                 label, fetched directly via the local authenticated `gh` CLI
+                 (GitHubIssuesService), same self-contained polling pattern as the
+                 ALL IN-SESSION section above, no server round-trip. -->
+            <Border Background="{StaticResource MantleBrush}"
+                    BorderBrush="{StaticResource Surface0Brush}"
+                    BorderThickness="0,1,0,0">
+                <StackPanel>
+                    <Border Padding="10,8"
+                            BorderBrush="{StaticResource Surface0Brush}"
+                            BorderThickness="0,0,0,1">
+                        <TextBlock Text="IN-FLIGHT — STILL OPEN"
+                                   FontSize="11"
+                                   FontWeight="SemiBold"
+                                   Foreground="{StaticResource Subtext1Brush}"/>
+                    </Border>
+                    <!-- Git #850 - Shane: "remove the scroll bar for the In-Flight Still
+                         Open... I just want a big long list." No MaxHeight/inner scroll -
+                         the outer ScrollViewer wrapping the whole panel (see above) is the
+                         only scroll now, so this just grows as one continuous list. -->
+                    <ListBox x:Name="InFlightIssuesList"
+                             Background="Transparent"
+                             BorderThickness="0"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Git #850 - Shane: "Why I need in the right panel another section that
+                 says... Waiting on me... to run SQL, Test, Etc." Exactly what
+                 CLAUDE.md's own "Shane To-Do" GitHub label already tracks (an action
+                 only Shane can take himself - run SQL, restart server, etc; Claude
+                 applies it at the DONE bookend, only Shane clears it once actually
+                 done). Same direct gh CLI pattern as IN-FLIGHT above, just a
+                 different label - confirmed live (#826/#813/#808/#792 currently). -->
+            <Border Background="{StaticResource MantleBrush}"
+                    BorderBrush="{StaticResource Surface0Brush}"
+                    BorderThickness="0,1,0,0">
+                <StackPanel>
+                    <Border Padding="10,8"
+                            BorderBrush="{StaticResource Surface0Brush}"
+                            BorderThickness="0,0,0,1">
+                        <TextBlock Text="WAITING ON ME"
+                                   FontSize="11"
+                                   FontWeight="SemiBold"
+                                   Foreground="{StaticResource Subtext1Brush}"/>
+                    </Border>
+                    <ListBox x:Name="WaitingOnMeList"
+                             Background="Transparent"
+                             BorderThickness="0"
+                             MaxHeight="220"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto"/>
+                </StackPanel>
+            </Border>
+
+                </StackPanel>
+            </ScrollViewer>
 
         </DockPanel>
     </Border>

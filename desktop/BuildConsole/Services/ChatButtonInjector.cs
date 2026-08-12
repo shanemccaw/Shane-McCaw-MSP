@@ -28,11 +28,16 @@ namespace BuildConsole.Services
   function extractLeadingFlags(text) {
     const newlineIdx = text.indexOf("\n");
     const firstLine = newlineIdx === -1 ? text : text.slice(0, newlineIdx);
-    const flagRe = /--(\w+)\s+(\S+)/g;
+    // Git #820 — [\w-] not \w alone, so a hyphenated flag name like
+    // --blocked-by actually matches (see content.js's same fix for the
+    // full story: this bug sent claude.exe an unstripped prompt starting
+    // with "--model", which its own arg parser rejected as an unknown
+    // option — "806 failed... exit 1").
+    const flagRe = /--([\w-]+)\s+(\S+)/g;
     const flags = {};
     let matched;
     while ((matched = flagRe.exec(firstLine)) !== null) flags[matched[1]] = matched[2];
-    if (Object.keys(flags).length === 0 || firstLine.replace(/--(\w+)\s+(\S+)/g, "").trim() !== "") {
+    if (Object.keys(flags).length === 0 || firstLine.replace(/--([\w-]+)\s+(\S+)/g, "").trim() !== "") {
       return { flags: {}, rest: text };
     }
     const rest = (newlineIdx === -1 ? "" : text.slice(newlineIdx + 1)).replace(/^\n+/, "");
