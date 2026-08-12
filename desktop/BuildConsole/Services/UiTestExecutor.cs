@@ -328,7 +328,9 @@ namespace BuildConsole.Services
         if ('{actionType}' === 'click') {{
             el.click();
         }} else if ('{actionType}' === 'input') {{
-            el.value = '{Escape(val)}';
+            let proto = el.tagName === 'TEXTAREA' ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
+            let nativeSetter = Object.getOwnPropertyDescriptor(proto, 'value').set;
+            nativeSetter.call(el, '{Escape(val)}');
             el.dispatchEvent(new Event('input', {{ bubbles: true }}));
             el.dispatchEvent(new Event('change', {{ bubbles: true }}));
         }}
