@@ -162,6 +162,17 @@ namespace BuildConsole.Controls
             }
         }
 
+        /// <summary>
+        /// Git #863 — Shane: "how do I refresh the Git list in the Git Board?
+        /// Because it's not up to date." No manual refresh existed on the Git
+        /// Board toolbar (only view-switch or post-CRUD refreshed it).
+        /// </summary>
+        private void BtnRefreshGitBoard_Click(object sender, RoutedEventArgs e)
+        {
+            ActivityLog.Log("git-board.refresh", "manual refresh clicked");
+            PopulateGitTrackerBoard();
+        }
+
         public void ExpandPanel()
         {
             _isPinned = true;
@@ -191,7 +202,14 @@ namespace BuildConsole.Controls
                 _pollTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(20) };
                 _pollTimer.Tick += (_, _) =>
                 {
-                    PopulateGitTrackerBoard();
+                    // Git #863 — only hit the GitHub API in the background while
+                    // the Git Board is actually the visible view; avoids
+                    // unnecessary calls (and rate-limit pressure) while Shane is
+                    // looking at Chats/Explorer/etc.
+                    if (_currentView == "Issues")
+                    {
+                        PopulateGitTrackerBoard();
+                    }
                     PopulateChatsTree();
                 };
                 _pollTimer.Start();
@@ -360,6 +378,9 @@ namespace BuildConsole.Controls
                 "Automation" => "New Test",
                 _            => "New"
             };
+
+            // Git #863 — refresh icon only makes sense on the Git Board.
+            BtnRefreshGitBoard.Visibility = view == "Issues" ? Visibility.Visible : Visibility.Collapsed;
 
             if (view == "Explorer" && ExplorerTree.Items.Count == 0)
             {

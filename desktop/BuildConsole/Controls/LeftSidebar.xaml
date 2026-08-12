@@ -31,6 +31,14 @@
                                 Click="BtnNewItem_Click">
                             <TextBlock Text="&#xE710;" FontFamily="Segoe MDL2 Assets" FontSize="13" VerticalAlignment="Center"/>
                         </Button>
+                        <Button x:Name="BtnRefreshGitBoard"
+                                Style="{StaticResource IconButton}"
+                                ToolTip="Refresh Git Board"
+                                Padding="4"
+                                Visibility="Collapsed"
+                                Click="BtnRefreshGitBoard_Click">
+                            <TextBlock Text="&#xE72C;" FontFamily="Segoe MDL2 Assets" FontSize="13" VerticalAlignment="Center"/>
+                        </Button>
                         <Button Style="{StaticResource IconButton}"
                                 ToolTip="Collapse All"
                                 Padding="4"
