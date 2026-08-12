@@ -468,6 +468,39 @@
                                     HorizontalAlignment="Left" Padding="16,4" Click="BtnAddWebTool_Click"/>
                         </StackPanel>
                     </Border>
+
+                    <!-- Git #902 (sub-issue of Epic #803) — Shane: "Replit shuts its dev
+                         mode down after ~10 min of inactivity... watch the site... when it
+                         sees the services off it waits 20 seconds then turns them back on."
+                         Same local %AppData%\BuildConsole\settings.json store as the fields
+                         above. The Run-button selector is editable because its real value
+                         only exists in Shane's live authenticated Replit IDE and must be
+                         calibrated there — it cannot be hardcoded from a sandbox. -->
+                    <Border Height="1" Background="{StaticResource Surface0Brush}" Margin="0,16,0,12"/>
+                    <TextBlock Text="Replit Idle Watcher" FontSize="12" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                    <TextBlock Text="Watches the deployed app in the background and clicks Run on the Replit dashboard when it goes to sleep. Requires you to be logged into Replit in the app, and the Run-button selector calibrated to your live IDE."
+                               FontSize="10" Foreground="{StaticResource Subtext0Brush}" TextWrapping="Wrap" Margin="0,0,0,8"/>
+
+                    <CheckBox x:Name="ReplitWatcherEnabledCheck" Content="Enable watcher"
+                              FontSize="12" Foreground="{StaticResource TextBrush}" Margin="0,0,0,8"/>
+
+                    <TextBlock Text="Check interval (minutes)" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
+                    <TextBox x:Name="ReplitWatcherIntervalBox" Height="26" FontSize="12" Margin="0,0,0,8"/>
+
+                    <TextBlock Text="Replit Run Button Selector" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
+                    <TextBox x:Name="ReplitRunSelectorBox" Height="26" FontSize="12" Margin="0,0,0,2"/>
+                    <TextBlock Text="CSS selector for Replit's Run button. Best-guess default — calibrate against your live dashboard. Falls back to any button whose text is exactly &quot;Run&quot;."
+                               FontSize="10" Foreground="{StaticResource Subtext0Brush}" TextWrapping="Wrap" Margin="0,0,0,8"/>
+
+                    <TextBlock Text="Deployed App URL (polled for up/down)" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
+                    <TextBox x:Name="ReplitAppUrlBox" Height="26" FontSize="12" Margin="0,0,0,8"/>
+
+                    <TextBlock Text="Replit Workspace URL (dashboard to click Run)" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
+                    <TextBox x:Name="ReplitWorkspaceUrlBox" Height="26" FontSize="12" Margin="0,0,0,8"/>
+
+                    <Button x:Name="BtnSaveReplitWatcher" Content="Save" Style="{StaticResource PrimaryButton}"
+                            HorizontalAlignment="Left" Padding="16,4" Click="BtnSaveReplitWatcher_Click"/>
+                    <TextBlock x:Name="ReplitWatcherSavedText" Text="" FontSize="10" Foreground="{StaticResource GreenBrush}" Margin="0,4,0,0"/>
                 </StackPanel>
                 </ScrollViewer>
             </Grid>

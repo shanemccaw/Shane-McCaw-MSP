@@ -39,6 +39,20 @@
     </WindowChrome.WindowChrome>
 
     <Grid>
+        <!-- Git #902 — hidden background WebView2 the Replit idle watcher drives.
+             Must live in the visual tree AND stay visible-with-a-nonzero-size so
+             CoreWebView2 actually initialises (a WebView2 is an HwndHost: Opacity is
+             read-only and Visibility=Hidden/Collapsed would stop the controller from
+             ever being created). So it's a single 1x1 pixel tucked in the corner and
+             non-interactive — negligible on screen. It shares the app's WebView2
+             environment (cookies/session) via MainWindow.EnsureWebViewInitializedAsync,
+             which is what lets it click Run inside Shane's authenticated Replit session. -->
+        <wv2:WebView2 x:Name="ReplitWatcherWebView"
+                      Width="1" Height="1"
+                      IsHitTestVisible="False"
+                      HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                      Panel.ZIndex="-1"/>
+
         <DockPanel LastChildFill="True">
 
             <!-- ══════════════════════════════════════════════════════════════
@@ -290,6 +304,8 @@
                                 <ColumnDefinition Width="Auto"/>  <!-- sep -->
                                 <ColumnDefinition Width="Auto"/>  <!-- deploy -->
                                 <ColumnDefinition Width="Auto"/>  <!-- sep -->
+                                <ColumnDefinition Width="Auto"/>  <!-- replit watcher (Git #902) -->
+                                <ColumnDefinition Width="Auto"/>  <!-- sep -->
                                 <ColumnDefinition Width="Auto"/>  <!-- clock -->
                             </Grid.ColumnDefinitions>
                         </Grid>
@@ -335,7 +351,20 @@
                     </StackPanel>
                 </StatusBarItem>
                 <Separator Grid.Column="9"/>
-                <StatusBarItem Grid.Column="10" Padding="6,0,10,0">
+                <!-- Git #902 — Replit idle watcher status: unobtrusive dot + text, same
+                     pattern as the Queue/Deploy indicators. Grey=off, green=watching/app up,
+                     orange=checking/grace/waking, red=error. Tooltip carries last check &
+                     last intervention times. -->
+                <StatusBarItem Grid.Column="10">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Ellipse x:Name="ReplitDot" Width="8" Height="8"
+                                 Fill="{StaticResource Surface2Brush}"
+                                 Margin="0,0,6,0" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="ReplitStatusText" Text="Replit: off" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </StatusBarItem>
+                <Separator Grid.Column="11"/>
+                <StatusBarItem Grid.Column="12" Padding="6,0,10,0">
                     <TextBlock x:Name="ClockText" Text="00:00:00" VerticalAlignment="Center"/>
                 </StatusBarItem>
             </StatusBar>

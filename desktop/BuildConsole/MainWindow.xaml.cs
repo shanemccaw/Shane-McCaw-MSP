@@ -115,6 +115,9 @@ namespace BuildConsole
         private BuildConsole.Services.BuildTrackerApiClient? _buildTrackerApi;
         private BuildConsole.Services.QueueWatcherService? _queueWatcher;
 
+        // ── Git #902: Replit idle watcher (background WebView2 + status indicator) ──
+        private BuildConsole.Services.ReplitWatcherService? _replitWatcher;
+
         // ── Git #802: chat tabs + their build split panes ───────────────────────
         private class ChatTabState
         {
@@ -229,6 +232,19 @@ namespace BuildConsole
             BuildQueuePanel.Initialize(_buildTrackerApi, _queueWatcher);
             LeftSidebar.Initialize(_buildTrackerApi);
             SqlRunnerView.Initialize(_buildTrackerApi);
+
+            // Git #902 — Shane: "Replit shuts its dev mode down after ~10 min of
+            // inactivity... Can we use WebView2 to watch the site. When it sees the
+            // services off it waits 20 seconds then turns them back on." The watcher
+            // drives the hidden ReplitWatcherWebView through the SAME shared WebView2
+            // environment as every visible tab (EnsureWebViewInitializedAsync), so it
+            // clicks Run inside Shane's authenticated Replit session. ApplyConfig()
+            // starts/stops it per Settings; it re-reads Settings whenever Shane saves.
+            _replitWatcher = new BuildConsole.Services.ReplitWatcherService(
+                ReplitWatcherWebView, EnsureWebViewInitializedAsync);
+            _replitWatcher.StatusChanged += ReplitWatcher_StatusChanged;
+            LeftSidebar.ReplitWatcherSettingsChanged += (s, e) => _replitWatcher?.ApplyConfig();
+            _replitWatcher.ApplyConfig();
 
             // Git #815 — surfaces a failed poll as a real, visible signal
             // (status-bar QueueDot/QueueStatusText, previously unused
@@ -1242,6 +1258,34 @@ namespace BuildConsole
             DeployDot.Fill = DotError;
             DeployStatusText.Text = $"Deploy sync error: {error}";
             BuildConsole.Services.ActivityLog.Log("deploy", $"FAILED: {error}");
+        }
+
+        /// <summary>Git #902 — renders the Replit idle watcher's live state in the status bar (dot + short text), with last-check / last-intervention times on the tooltip. Runs on the UI thread; the service raises this from UI-thread continuations already, but guard anyway.</summary>
+        private void ReplitWatcher_StatusChanged(BuildConsole.Services.ReplitWatcherStatus status)
+        {
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.BeginInvoke(new Action(() => ReplitWatcher_StatusChanged(status)));
+                return;
+            }
+
+            ReplitDot.Fill = status.State switch
+            {
+                BuildConsole.Services.ReplitWatcherState.Monitoring => DotReady,
+                BuildConsole.Services.ReplitWatcherState.Checking => DotLoading,
+                BuildConsole.Services.ReplitWatcherState.GracePeriod => DotLoading,
+                BuildConsole.Services.ReplitWatcherState.Waking => DotLoading,
+                BuildConsole.Services.ReplitWatcherState.Error => DotError,
+                _ => (Brush)FindResource("Surface2Brush"), // Disabled
+            };
+
+            ReplitStatusText.Text = $"Replit: {status.Message}";
+
+            var tip = new System.Text.StringBuilder();
+            tip.Append("Replit idle watcher");
+            tip.Append(status.LastCheck.HasValue ? $"\nLast check: {status.LastCheck:HH:mm:ss}" : "\nLast check: —");
+            tip.Append(status.LastIntervention.HasValue ? $"\nLast wake: {status.LastIntervention:yyyy-MM-dd HH:mm:ss}" : "\nLast wake: never");
+            ReplitStatusText.ToolTip = tip.ToString();
         }
 
         private static void TailBuildLog(ChatTabState state)

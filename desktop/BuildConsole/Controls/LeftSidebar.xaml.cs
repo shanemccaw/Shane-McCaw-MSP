@@ -125,6 +125,8 @@ namespace BuildConsole.Controls
         /// <summary>Fired when Shane clicks "Load SQL" on a Shane To-Do item — MainWindow fetches the real text and hands it to SqlRunnerView.</summary>
         public event EventHandler<string>? SqlLoadRequested;
         public event EventHandler<bool>? PinToggled;
+        /// <summary>Git #902 — raised when the Replit idle watcher's Settings are saved, so MainWindow can re-apply them (start/stop, new interval) live without a restart.</summary>
+        public event EventHandler? ReplitWatcherSettingsChanged;
         /// <summary>
         /// Git #815 — Shane: "I don't want to have to click the refresh
         /// button all the time... or an error alert when it fails." Fired
@@ -232,6 +234,13 @@ namespace BuildConsole.Controls
             GitHubPatBox.Password = savedSettings.GitHubPat;
             ZohoApiTokenBox.Password = savedSettings.ZohoApiToken;
 
+            // Git #902 — pre-fill the Replit idle watcher fields from the same store.
+            ReplitWatcherEnabledCheck.IsChecked = savedSettings.ReplitWatcherEnabled;
+            ReplitWatcherIntervalBox.Text = savedSettings.ReplitWatcherIntervalMinutes.ToString();
+            ReplitRunSelectorBox.Text = savedSettings.ReplitRunButtonSelector;
+            ReplitAppUrlBox.Text = savedSettings.ReplitAppUrl;
+            ReplitWorkspaceUrlBox.Text = savedSettings.ReplitWorkspaceUrl;
+
             // Git #864
             RenderWebToolsSettingsList();
         }
@@ -252,6 +261,33 @@ namespace BuildConsole.Controls
             settings.ZohoApiToken = ZohoApiTokenBox.Password.Trim();
             settings.Save();
             ZohoApiTokenSavedText.Text = "Saved.";
+        }
+
+        // ── SETTINGS: Replit Idle Watcher (Git #902) ─────────────────────────
+        private void BtnSaveReplitWatcher_Click(object sender, RoutedEventArgs e)
+        {
+            var settings = BuildConsole.Services.BuildConsoleSettings.Load();
+
+            settings.ReplitWatcherEnabled = ReplitWatcherEnabledCheck.IsChecked == true;
+
+            if (int.TryParse(ReplitWatcherIntervalBox.Text.Trim(), out var mins) && mins >= 1)
+                settings.ReplitWatcherIntervalMinutes = mins;
+
+            settings.ReplitRunButtonSelector = ReplitRunSelectorBox.Text.Trim();
+
+            var app = ReplitAppUrlBox.Text.Trim();
+            if (!string.IsNullOrWhiteSpace(app)) settings.ReplitAppUrl = app;
+
+            var ws = ReplitWorkspaceUrlBox.Text.Trim();
+            if (!string.IsNullOrWhiteSpace(ws)) settings.ReplitWorkspaceUrl = ws;
+
+            settings.Save();
+            ReplitWatcherSavedText.Text = "Saved.";
+            BuildConsole.Services.ActivityLog.Log("replit-watcher",
+                $"Settings saved — enabled={settings.ReplitWatcherEnabled}, every {settings.ReplitWatcherIntervalMinutes} min, selector='{settings.ReplitRunButtonSelector}'.");
+
+            // Let MainWindow re-apply live (start/stop, new interval) without a restart.
+            ReplitWatcherSettingsChanged?.Invoke(this, EventArgs.Empty);
         }
 
         // ── SETTINGS: Web Tools (Git #864) ───────────────────────────────────

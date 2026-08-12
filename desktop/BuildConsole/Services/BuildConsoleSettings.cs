@@ -32,6 +32,31 @@ namespace BuildConsole.Services
 
         public bool HasZohoApiToken => !string.IsNullOrWhiteSpace(ZohoApiToken);
 
+        // ── Git #902 — Replit idle watcher (sub-issue of Epic #803) ──────────
+        // Shane: "Replit shuts its dev mode down after like 10 minutes of
+        // inactivity. So I always have to turn it back on after a build."
+        // Same local store / same round-trip pattern as GitHubPat/ZohoApiToken
+        // above; the field initializers double as sensible defaults for a
+        // pre-#902 settings.json (a JSON with no "replit*" keys still
+        // deserializes with these intact).
+
+        /// <summary>Off by default: waking the Repl clicks Run on the Replit dashboard, which only works inside an authenticated Replit WebView2 session AND after Shane calibrates the Run-button selector for his live IDE — see ReplitRunButtonSelector. Shane flips this on once he's logged into the Replit tab and confirmed the selector.</summary>
+        public bool ReplitWatcherEnabled { get; set; } = false;
+
+        /// <summary>How often the background watcher polls the deployed app URL, in minutes. Task default is 3–5 min; 4 is the midpoint.</summary>
+        public int ReplitWatcherIntervalMinutes { get; set; } = 4;
+
+        /// <summary>The deployed app URL the watcher polls to decide up/down. Defaults to the same picard.replit.dev dev URL used throughout the app (ActivityBar QuickNav / Automation targets).</summary>
+        public string ReplitAppUrl { get; set; } =
+            "https://ba888680-2595-412d-84fe-4e9aefc2688b-00-22rhgh0krunr4.picard.replit.dev/";
+
+        /// <summary>The real Replit Workspace dashboard/IDE URL the watcher opens to click Run — same URL as ActivityBar.xaml's "Replit Workspace" QuickNav entry. Re-hitting the app URL alone does NOT wake a sleeping Repl (confirmed with Shane); you must land on the dashboard and click Run.</summary>
+        public string ReplitWorkspaceUrl { get; set; } =
+            "https://replit.com/@shanemccaw/Shane-McCaw-Consulting";
+
+        /// <summary>CSS selector for the Replit "Run" button. This is a BEST-GUESS default — the real selector only exists inside Shane's authenticated Replit IDE session and cannot be determined from a sandboxed build, so it MUST be editable here without a rebuild. The watcher also falls back to any button/anchor whose visible text is exactly "Run", but Shane should calibrate this once he's landed on the live dashboard.</summary>
+        public string ReplitRunButtonSelector { get; set; } = "[data-cy=\"ws-run-btn\"]";
+
         // Git #864 — Shane: "I need you to design me a icon based popout panel
         // with web site tools like: LinkedIn, Google Analytics, Microsoft
         // Clarity... a configuration in the settings might actually be
