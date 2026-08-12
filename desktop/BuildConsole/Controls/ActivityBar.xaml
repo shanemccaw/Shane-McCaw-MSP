@@ -41,7 +41,11 @@
                              Style="{StaticResource ActivityBarButton}"
                              Checked="Btn_Checked" Tag="Git"
                              ToolTip="Source Control">
-                    <TextBlock Text="&#xE869;" FontFamily="Segoe MDL2 Assets" FontSize="18"/>
+                    <!-- Git #867 — Segoe MDL2/Fluent has no clear branch/git glyph;
+                         falling back to the app's existing emoji-icon pattern
+                         (Issues 🎯, Epics ⚡) with the universally-recognized
+                         git-branch emoji. -->
+                    <TextBlock Text="🔀" FontSize="16"/>
                 </RadioButton>
 
                 <RadioButton x:Name="BtnIssues"

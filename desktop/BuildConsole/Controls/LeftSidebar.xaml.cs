@@ -1532,9 +1532,26 @@ namespace BuildConsole.Controls
                 || insideGit.EndsWith(".lock", StringComparison.OrdinalIgnoreCase);
         }
 
+        // Git #867 — Shane: "That should update without changing status
+        // text.... unless its taking say 30 seconds... then display the
+        // loading... text. Otherwise that should just change number no
+        // flashing." Previously GitStatusSummaryText was unconditionally
+        // set to "REFRESHING GIT STATUS..." on every call, including every
+        // #859 debounced FileSystemWatcher auto-refresh (can fire every few
+        // seconds during active work), producing a visible flash on every
+        // cycle. Now the fetch starts immediately and this delayed timer
+        // only shows the loading text if it's still running after 30s; it's
+        // disposed the moment the fetch completes, so the fast path goes
+        // straight from the old counts to the new ones.
+        private System.Threading.Timer? _gitStatusLoadingTimer;
+
         public async void RefreshGitStatus()
         {
-            GitStatusSummaryText.Text = "REFRESHING GIT STATUS...";
+            _gitStatusLoadingTimer?.Dispose();
+            _gitStatusLoadingTimer = new System.Threading.Timer(_ =>
+            {
+                Dispatcher.Invoke(() => GitStatusSummaryText.Text = "REFRESHING GIT STATUS...");
+            }, null, TimeSpan.FromSeconds(30), System.Threading.Timeout.InfiniteTimeSpan);
 
             var (branch, stagedItems, unstagedItems) = await System.Threading.Tasks.Task.Run(() =>
             {
@@ -1606,6 +1623,9 @@ namespace BuildConsole.Controls
 
                 return (b, staged, unstaged);
             });
+
+            _gitStatusLoadingTimer?.Dispose();
+            _gitStatusLoadingTimer = null;
 
             GitBranchText.Text = branch;
             GitStatusSummaryText.Text = $"STAGED ({stagedItems.Count})  •  CHANGES ({unstagedItems.Count})";
