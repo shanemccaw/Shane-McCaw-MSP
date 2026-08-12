@@ -319,8 +319,15 @@ router.delete("/admin/build-tracker/milestones/:id", requireAdmin, async (req: R
 // ISSUES
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** GET /admin/build-tracker/issues — all issues, optionally ?epicId= filtered */
-router.get("/admin/build-tracker/issues", requireAdmin, async (req: Request, res: Response) => {
+/**
+ * GET /admin/build-tracker/issues — all issues, optionally ?epicId= filtered.
+ * Git #829 — switched from requireAdmin (session cookie only) to ingestAuth
+ * (Bearer token OR session cookie) so BuildConsole's "issues in this chat's
+ * epic" panel can call it too, same as every other extension/app-facing
+ * route in this file already does. Still works unchanged for the
+ * admin-panel's own session-cookie callers.
+ */
+router.get("/admin/build-tracker/issues", ingestAuth, async (req: Request, res: Response) => {
   try {
     const epicId = req.query.epicId ? parseInt(req.query.epicId as string, 10) : undefined;
     const issues = await db

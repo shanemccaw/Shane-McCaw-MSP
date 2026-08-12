@@ -158,6 +158,13 @@ namespace BuildConsole
             // Automation sidebar's Load Manifest button for Menu > Run > "Run Tests (Current Issue)".
             LeftSidebar.ManifestLoaded += (s, manifest) => _loadedManifest = manifest;
 
+            // Git #827 — LeftSidebar's Automation sidebar raises these three events, and
+            // MainWindow already had correct handlers for all of them, but none were ever
+            // subscribed: the Play button (and Start/Stop Recording) did nothing.
+            LeftSidebar.PlayTestRequested += LeftSidebar_PlayTestRequested;
+            LeftSidebar.StartRecordingRequested += LeftSidebar_StartRecordingRequested;
+            LeftSidebar.StopRecordingRequested += LeftSidebar_StopRecordingRequested;
+
             // ActivityBar quick navigation
             ActivityBar.QuickNavRequested += ActivityBar_QuickNavRequested;
 
