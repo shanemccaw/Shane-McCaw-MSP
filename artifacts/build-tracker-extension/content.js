@@ -1352,7 +1352,17 @@ function renderQueueSection(container, queueItems) {
       topLevel.push(item);
     }
   }
+  // Git #818 — childrenOf is keyed by githubNumber, not a specific row's
+  // id: two SEPARATE queue rows sharing a githubNumber (e.g. the same issue
+  // queued twice) each independently pull and render the FULL
+  // childrenOf[number] list, fanning the whole subtree out once per
+  // duplicate. A visited-by-id guard renders each real row at most once no
+  // matter how many other rows share its githubNumber — also guards
+  // against a genuine blocker cycle causing infinite recursion.
+  const renderedIds = new Set();
   const renderOne = (item, nested) => {
+    if (renderedIds.has(item.id)) return;
+    renderedIds.add(item.id);
     const row = buildQueueItemRow(item);
     if (nested) row.classList.add("nested-queue-item");
     container.appendChild(row);
