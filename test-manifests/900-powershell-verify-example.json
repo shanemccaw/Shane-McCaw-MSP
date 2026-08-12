@@ -1,0 +1,40 @@
+{
+  "issue": 900,
+  "feature": "powerShellVerify example — independent delegated-PowerShell tenant verification",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "notes": [
+    "EXAMPLE / TEMPLATE — deliberately NOT registered in _regression-suite.json.",
+    "Demonstrates Git #900's powerShellVerify: after the app reads or writes something, confirm the",
+    "REAL tenant state with a Get-* cmdlet run as Shane's OWN delegated identity (Connect-MgGraph,",
+    "NOT the app's app-only client-credentials), so verification is independent of whatever identity",
+    "performed the original action.",
+    "",
+    "To use: replace the literal user object id below with a real TESTBED user, and set the graphTest",
+    "authProfile/tenant to your configured GRAPH_TEST_* values. The graphTest here is the 'app-reported'",
+    "side (what the app's own Graph integration sees); the powerShellVerify step is the independent",
+    "ground truth. They must agree.",
+    "",
+    "First concrete target (Shane's ask): the 10 baseline_action_templates WRITE actions. Model that as an",
+    "apiTest that runs the write — POST /admin/baseline-templates/:templateId/test with",
+    "{ customerId, variables } — extracting the value it claims to have written, then diff it here with a",
+    "Get-* cmdlet. Prereq: run `Connect-MgGraph` interactively once in a pwsh 7 window signed in as",
+    "yourself; automated runs reuse that cached token and never block on the device-code prompt."
+  ],
+  "graphTests": [
+    {
+      "authProfile": "MT_APP_CLIENT_ID",
+      "tenant": "{{TEST_TENANT_ID}}",
+      "method": "GET",
+      "path": "https://graph.microsoft.com/v1.0/users/11111111-1111-1111-1111-111111111111?$select=accountEnabled",
+      "expect": { "status": 200, "jsonPath": "$.accountEnabled", "exists": true },
+      "extract": { "as": "appAccountEnabled", "jsonPath": "$.accountEnabled" }
+    }
+  ],
+  "powerShellVerify": [
+    {
+      "afterStep": "appAccountEnabled",
+      "cmdlet": "Get-MgUser -UserId 11111111-1111-1111-1111-111111111111 -Property AccountEnabled | Select-Object -ExpandProperty AccountEnabled",
+      "compareField": { "matchType": "exact" }
+    }
+  ]
+}

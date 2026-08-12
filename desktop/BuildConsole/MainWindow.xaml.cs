@@ -2810,7 +2810,7 @@ namespace BuildConsole
         {
             string mode = isRegression ? "regression" : "single";
             BuildConsole.Services.ActivityLog.Log("testing.manifest-runner",
-                $"[{mode}] Running manifest for issue #{manifest.Issue} ({manifest.Feature}) — {manifest.ApiTests.Count} apiTests, {manifest.GraphTests.Count} graphTests, {manifest.PostGraphApiTests.Count} postGraphApiTests, {manifest.ZohoTests.Count} zohoTests, {manifest.UiSteps.Count} uiSteps.");
+                $"[{mode}] Running manifest for issue #{manifest.Issue} ({manifest.Feature}) — {manifest.ApiTests.Count} apiTests, {manifest.GraphTests.Count} graphTests, {manifest.PostGraphApiTests.Count} postGraphApiTests, {manifest.ZohoTests.Count} zohoTests, {manifest.UiSteps.Count} uiSteps, {manifest.PowerShellVerify.Count} powerShellVerify.");
 
             var runResult = new BuildConsole.Services.ManifestRunResult
             {
@@ -2909,6 +2909,24 @@ namespace BuildConsole
 
                 BuildConsole.Services.ActivityLog.Log("testing.ui-executor",
                     $"[{mode}] Issue #{manifest.Issue} uiSteps: {uiResult.PassedSteps}/{uiResult.TotalSteps} passed.");
+            }
+
+            // Git #900 — powerShellVerify runs LAST, after every HTTP/Graph/Zoho/UI step has
+            // populated the shared #877 variable store, so any value those steps captured is
+            // available to diff against. Each step shells out to pwsh 7 signed in as Shane himself
+            // (delegated, NOT app-only), reads the Get-* ground truth, and compares it to the
+            // app-reported value. Same shared ManifestRunResult, same live StepCompleted card
+            // stream, same test-results/ file — no separate output path. Because the #898 remote
+            // trigger runs this exact RunManifestAsync, a Claude-Code-triggered run includes and
+            // reports powerShellVerify with no special casing.
+            var powerShellResults = await BuildConsole.Services.PowerShellTestExecutor.RunAsync(manifest, vars);
+            runResult.AddRange(powerShellResults);
+
+            if (powerShellResults.Count > 0)
+            {
+                int passed = powerShellResults.Count(r => r.Passed);
+                BuildConsole.Services.ActivityLog.Log("testing.powershell-verify",
+                    $"powerShellVerify: {passed}/{powerShellResults.Count} passed for issue #{manifest.Issue}.");
             }
 
             runner.CompleteRun(runResult);

@@ -107,11 +107,13 @@ namespace BuildConsole
             Services.HttpTestExecutor.StepCompleted += OnStepCompleted;
             Services.GraphTestExecutor.StepCompleted += OnStepCompleted;
             Services.ZohoTestExecutor.StepCompleted += OnStepCompleted;
+            Services.PowerShellTestExecutor.StepCompleted += OnStepCompleted;
             Closed += (_, _) =>
             {
                 Services.HttpTestExecutor.StepCompleted -= OnStepCompleted;
                 Services.GraphTestExecutor.StepCompleted -= OnStepCompleted;
                 Services.ZohoTestExecutor.StepCompleted -= OnStepCompleted;
+                Services.PowerShellTestExecutor.StepCompleted -= OnStepCompleted;
             };
         }
 
@@ -145,6 +147,11 @@ namespace BuildConsole
 
                 foreach (var step in manifest.UiSteps)
                     _steps.Add(new StepListItem { Kind = "UI STEPS", Label = $"{step.Action} {step.Selector ?? step.Target ?? string.Empty}" });
+
+                // Git #900 — powerShellVerify rows render LAST, matching RunManifestAsync's real
+                // execution order (they run after every other step has captured its values).
+                foreach (var step in manifest.PowerShellVerify)
+                    _steps.Add(new StepListItem { Kind = "POWERSHELL VERIFY", Label = DescribePowerShellVerify(step) });
 
                 TxtNoSteps.Visibility = _steps.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
                 SetUiStepsPresence(manifest.UiSteps.Count > 0);
@@ -184,6 +191,15 @@ namespace BuildConsole
             string method = test.TryGetProperty("method", out var m) ? (m.GetString() ?? "GET") : "GET";
             string path = test.TryGetProperty("path", out var p) ? (p.GetString() ?? "") : "";
             return $"{method} {path}";
+        }
+
+        /// <summary>Git #900 — one powerShellVerify row's label: the captured variable it verifies plus a short cmdlet preview.</summary>
+        private static string DescribePowerShellVerify(JsonElement step)
+        {
+            string afterStep = step.TryGetProperty("afterStep", out var a) ? (a.GetString() ?? "?") : "?";
+            string cmdlet = step.TryGetProperty("cmdlet", out var c) ? (c.GetString() ?? "") : "";
+            if (cmdlet.Length > 48) cmdlet = cmdlet.Substring(0, 48) + "...";
+            return $"verify {afterStep} <- {cmdlet}";
         }
 
         /// <summary>Marks the step at the current cursor pass/fail, then advances to the next pending step (if any) and marks it running — one shared cursor across api/graph/zoho/ui since they execute strictly in that order.</summary>

@@ -31,6 +31,13 @@ namespace BuildConsole.Services
         // apiTests/graphTests, executed by ZohoTestExecutor against the api-server's Zoho admin
         // read routes, authenticated with the #880 Zoho API Token.
         public List<JsonElement> ZohoTests { get; set; } = new();
+        // Git #900 (Epic #803) — powerShellVerify: independent tenant verification via a real
+        // delegated-identity PowerShell (pwsh 7) cmdlet, run as Shane himself (NOT the app's
+        // app-only identity), diffing the Get-* ground truth against a value an earlier
+        // apiTests/graphTests step captured (#877). Same raw-JSON shape as graphTests/zohoTests
+        // ({ afterStep, cmdlet, compareField:{matchType}, timeoutMs? }), executed LAST by
+        // PowerShellTestExecutor.RunAsync so every captured value is available to diff against.
+        public List<JsonElement> PowerShellVerify { get; set; } = new();
         public List<ManifestUiStep> UiSteps { get; set; } = new();
         public string SourcePath { get; set; } = string.Empty;
 
@@ -61,6 +68,9 @@ namespace BuildConsole.Services
 
                 if (root.TryGetProperty("zohoTests", out var zohoTestsEl) && zohoTestsEl.ValueKind == JsonValueKind.Array)
                     manifest.ZohoTests = zohoTestsEl.EnumerateArray().Select(e => e.Clone()).ToList();
+
+                if (root.TryGetProperty("powerShellVerify", out var psVerifyEl) && psVerifyEl.ValueKind == JsonValueKind.Array)
+                    manifest.PowerShellVerify = psVerifyEl.EnumerateArray().Select(e => e.Clone()).ToList();
 
                 if (root.TryGetProperty("uiSteps", out var uiStepsEl) && uiStepsEl.ValueKind == JsonValueKind.Array)
                 {
