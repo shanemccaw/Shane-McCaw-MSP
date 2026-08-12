@@ -1,0 +1,43 @@
+{
+  "issue": 725,
+  "feature": "PersistentChatBubble Zoho escalation",
+  "baseUrl": "{{DEPLOY_URL}}",
+
+  "apiTests": [
+    {
+      "method": "POST",
+      "path": "/api/public-chat",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "sessionId": "{{TEST_SESSION_ID}}", "messages": [] },
+      "expect": { "status": 200, "jsonPath": "$.reply", "exists": true }
+    },
+    {
+      "method": "POST",
+      "path": "/api/public-chat",
+      "headers": { "Content-Type": "application/json" },
+      "body": {
+        "sessionId": "{{TEST_SESSION_ID}}",
+        "messages": [
+          { "role": "user", "content": "I'd like to talk to Shane about a security assessment for my company." }
+        ]
+      },
+      "expect": { "status": 200, "jsonPath": "$.sessionId", "exists": true }
+    }
+  ],
+
+  "uiSteps": [
+    { "action": "goto", "target": "/" },
+    { "action": "click", "selector": "[data-testid='chat-bubble-toggle']" },
+    { "action": "expect", "selector": "[data-testid='chat-input']", "state": "visible" },
+    { "action": "input", "selector": "[data-testid='chat-input']", "value": "What services do you offer?" },
+    {
+      "action": "click",
+      "selector": "[data-testid='chat-send']",
+      "captureResponse": {
+        "urlPattern": "/api/public-chat",
+        "expect": { "status": 200, "jsonPath": "$.reply", "exists": true }
+      }
+    },
+    { "action": "expect", "selector": "[data-testid='chat-input']", "state": "visible" }
+  ]
+}
