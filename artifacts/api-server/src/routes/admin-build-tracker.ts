@@ -1478,8 +1478,23 @@ async function fetchRealBlockedByNumbers(issueNumber: number): Promise<number[]>
  * the queued build IS a real tracked issue, same priority #799 established
  * for the single-blocker case — just over the full list now instead of [0].
  */
-async function effectiveBlockedByNumbers(item: { githubNumber: number | null; blockedByNumber: number | null; blockedByNumbers?: number[] | null }): Promise<number[]> {
-  if (item.githubNumber != null) {
+async function effectiveBlockedByNumbers(item: { githubNumber: number | null; blockedByNumber: number | null; blockedByNumbers?: number[] | null; status?: string }): Promise<number[]> {
+  // Git #899 — Shane: "I am still getting rate limited quickly. Is there an
+  // API call this thing is making to our API that is then calling git?"
+  // Yes: GET /extension/queue (below) calls this once per row, and this
+  // function calls the real GitHub API per row when it has a githubNumber -
+  // with NO cap on row count after #865 removed the old 30-minute
+  // visibility cutoff, that's now one real GitHub REST call per HISTORICAL
+  // queue row, every single poll (BuildQueuePanel's _pollTimer, 15s,
+  // unconditional - no view-gating like the Git Board's own timer has).
+  // A finished (done/failed/canceled) row's live blocked-by status is
+  // meaningless anyway - BuildQueuePanel's own UI only ever shows the
+  // "waiting on #N" badge for status === "queued" - so only active
+  // (queued/running) rows are worth a real API call; terminal rows fall
+  // straight back to the stored column(s), same as when GitHub returns
+  // nothing.
+  const isActive = item.status === "queued" || item.status === "running";
+  if (isActive && item.githubNumber != null) {
     const real = await fetchRealBlockedByNumbers(item.githubNumber);
     if (real.length > 0) return real;
   }
