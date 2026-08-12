@@ -301,6 +301,26 @@ export const ENGINE_DEFS: EngineDef[] = [
   },
 ];
 
+/**
+ * Some engines return a non-scalar `score` object (pricing: totalPricingImpact,
+ * crm: total, scope_creep: compositeScore) rather than a plain number. This is
+ * the single place that unpacks those shapes into one representative scalar —
+ * used both when recording history snapshots and when building the display
+ * block below, so the two paths can't drift apart again (Git #612).
+ */
+function extractEngineScalarScore(result: unknown): number {
+  if (!result || typeof result !== "object") return 0;
+  const score = (result as { score?: unknown }).score;
+  if (typeof score === "number") return score;
+  if (score && typeof score === "object") {
+    const s = score as Record<string, unknown>;
+    if (typeof s.totalPricingImpact === "number") return s.totalPricingImpact;
+    if (typeof s.total === "number") return s.total;
+    if (typeof s.compositeScore === "number") return s.compositeScore;
+  }
+  return 0;
+}
+
 async function writeEngineSnapshot(
   engineKey: string,
   customerId: number,
@@ -329,8 +349,8 @@ async function writeEngineSnapshot(
       .limit(1);
     const currentRuleVersion = auditRow?.id ?? null;
 
-    const r = result as { score?: number; breakdown?: unknown } | null | undefined;
-    const score = typeof r?.score === "number" ? r.score : 0;
+    const r = result as { score?: unknown; breakdown?: unknown } | null | undefined;
+    const score = extractEngineScalarScore(result);
     const breakdown = Array.isArray(r?.breakdown) ? r.breakdown : (r?.breakdown ? [r.breakdown] : []);
 
     const rr = result as { rawSignals?: unknown; firedSignals?: unknown } | null | undefined;
@@ -486,16 +506,7 @@ for (const def of ENGINE_DEFS) {
       }
     }
 
-    let scoreVal = 0;
-    if (result && typeof result === "object") {
-      if ("score" in result) {
-        if (typeof (result as any).score === "number") {
-          scoreVal = (result as any).score;
-        } else if (typeof (result as any).score === "object" && (result as any).score !== null && "totalPricingImpact" in (result as any).score) {
-          scoreVal = (result as any).score.totalPricingImpact;
-        }
-      }
-    }
+    const scoreVal = extractEngineScalarScore(result);
 
     let display = {
       title: def.label,
