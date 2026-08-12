@@ -63,6 +63,10 @@ namespace BuildConsole
         private readonly Dictionary<TabItem, ChatTabState> _chatTabs = new();
         private DispatcherTimer? _buildTailTimer;
 
+        // ── Git #805: deploy-status poll (Epic #803 Phase 1) ─────────────────────
+        private DispatcherTimer? _deployStatusTimer;
+        private string? _lastSeenDeployCommitHash;
+
         public MainWindow()
         {
             InitializeComponent();
@@ -130,6 +134,15 @@ namespace BuildConsole
             _buildTailTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
             _buildTailTimer.Tick += async (_, _) => await PollChatTabBuildStateAsync();
             _buildTailTimer.Start();
+
+            // Git #805 — Epic #803 Phase 1: "polling, not webhook/SSE... follow
+            // the existing pattern." Same 3s DispatcherTimer shape as
+            // _buildTailTimer above, hitting the new GET /api/internal/deploy-status
+            // endpoint. A changed commitHash from the last-seen value IS the
+            // "deploy complete" signal - no separate push mechanism needed.
+            _deployStatusTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+            _deployStatusTimer.Tick += async (_, _) => await PollDeployStatusAsync();
+            _deployStatusTimer.Start();
 
             // Shane To-Do "Load SQL" -> real GitHub file content into the SQL Runner tab (index 2 in BottomTabs — Build Log, Terminal, SQL Runner, Output).
             LeftSidebar.SqlLoadRequested += (s, path) =>
@@ -872,6 +885,58 @@ namespace BuildConsole
 
                 TailBuildLog(state);
             }
+        }
+
+        /// <summary>
+        /// Git #805 — polls GET /api/internal/deploy-status every 3s (same
+        /// interval as PollChatTabBuildStateAsync above) and treats a changed
+        /// commitHash from the last one this app has seen as "deploy complete".
+        /// The first successful poll after startup only seeds the baseline -
+        /// it deliberately does NOT fire a "deploy complete" line, since there
+        /// was no prior deploy this app watched to compare against.
+        /// </summary>
+        private async System.Threading.Tasks.Task PollDeployStatusAsync()
+        {
+            if (_buildTrackerApi == null || !_buildTrackerApi.IsConfigured) return;
+
+            BuildConsole.Services.DeployStatus? status;
+            try
+            {
+                status = await _buildTrackerApi.GetDeployStatusAsync();
+            }
+            catch (Exception ex)
+            {
+                ReportDeployStatus(ex.Message);
+                return;
+            }
+
+            if (status == null || string.IsNullOrWhiteSpace(status.CommitHash))
+            {
+                ReportDeployStatus("empty deploy-status response");
+                return;
+            }
+
+            if (_lastSeenDeployCommitHash != null && _lastSeenDeployCommitHash != status.CommitHash)
+            {
+                BuildConsole.Services.ActivityLog.Log("deploy",
+                    $"Deploy complete: {_lastSeenDeployCommitHash} -> {status.CommitHash} ({status.Timestamp})");
+                DeployStatusText.Text = $"Deploy: {status.CommitHash} (complete)";
+            }
+            else
+            {
+                DeployStatusText.Text = $"Deploy: {status.CommitHash}";
+            }
+
+            _lastSeenDeployCommitHash = status.CommitHash;
+            DeployDot.Fill = DotReady;
+        }
+
+        /// <summary>Git #805 — same visible-indicator pattern as Git #815's ReportSyncStatus: a failed poll turns the status-bar dot red with the error inline, PLUS the full text goes to the Output log, instead of failing silently.</summary>
+        private void ReportDeployStatus(string error)
+        {
+            DeployDot.Fill = DotError;
+            DeployStatusText.Text = $"Deploy sync error: {error}";
+            BuildConsole.Services.ActivityLog.Log("deploy", $"FAILED: {error}");
         }
 
         private static void TailBuildLog(ChatTabState state)

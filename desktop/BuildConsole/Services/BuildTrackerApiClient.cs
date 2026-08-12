@@ -70,6 +70,13 @@ namespace BuildConsole.Services
         public List<BoardChat> Chats { get; set; } = new();
     }
 
+    /// <summary>Git #805 — matches GET /api/internal/deploy-status's `{ commitHash, timestamp }` shape.</summary>
+    public class DeployStatus
+    {
+        public string CommitHash { get; set; } = "";
+        public string Timestamp { get; set; } = "";
+    }
+
     /// <summary>SSMS-style per-statement result — matches admin-engines.ts's StatementResult exactly (POST /simulator/sql/execute, same endpoint the extension's floaty SQL Runner already uses for real).</summary>
     public class SqlStatementResult
     {
@@ -151,6 +158,10 @@ namespace BuildConsole.Services
             var res = await _http.GetFromJsonAsync<InProgressResponse>("api/admin/build-tracker/extension/in-progress", JsonOpts);
             return res?.Issues ?? new List<InProgressItem>();
         });
+
+        /// <summary>Git #805 — NOT under api/admin/build-tracker/extension/*; this hits the standalone GET /api/internal/deploy-status endpoint (version.ts), the same versionInfo the platform's own GET /api/version already serves.</summary>
+        public Task<DeployStatus?> GetDeployStatusAsync() => TrackAsync("GET internal/deploy-status", () =>
+            _http.GetFromJsonAsync<DeployStatus>("api/internal/deploy-status", JsonOpts));
 
         /// <summary>No conversationId — this app isn't tied to one specific claude.ai chat the way the browser extension is, so `currentChat` in the response is always null; `epics`/`chats` still come back full, which is all the Chats tree needs.</summary>
         public Task<BoardResponse> GetBoardAsync() => TrackAsync("GET board", async () =>

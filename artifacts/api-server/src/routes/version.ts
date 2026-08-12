@@ -10,6 +10,11 @@ import { logger } from "../lib/logger";
 
 const log = logger.child({ channel: "admin.deploy" });
 
+// Git #805 — separate channel from the rest of this file: this endpoint
+// exists purely for BuildConsole's own DispatcherTimer poll (Epic #803,
+// "testing" area), not for the platform's own deploy/version tooling above.
+const deployPollLog = logger.child({ channel: "testing.deploy-poll" });
+
 // Internal build/version stamp — distinct from the external partner
 // health check at /api/msp/v1/health, which stays unmodified.
 //
@@ -106,6 +111,19 @@ const router: IRouter = Router();
 
 router.get("/version", (_req, res) => {
   res.json(versionInfo);
+});
+
+// Git #805 — lightweight poll target for BuildConsole's DispatcherTimer
+// (reuses the existing 3s-interval pattern already used for
+// _buildTailTimer/BuildQueuePanel, not a webhook/SSE). Reads the SAME
+// versionInfo the platform's own /version already computes/refreshes
+// (module-level, resolved once at startup with the deployed_version_stamp
+// fallback above) rather than recomputing anything — the WPF app just
+// diffs commitHash against the last value it saw to detect "deploy
+// complete".
+router.get("/internal/deploy-status", (_req, res) => {
+  deployPollLog.debug({ commitHash: versionInfo.hash }, "deploy-status polled");
+  res.json({ commitHash: versionInfo.hash, timestamp: versionInfo.startedAt });
 });
 
 function timingSafeEqualStrings(a: string, b: string): boolean {

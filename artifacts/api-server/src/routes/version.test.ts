@@ -108,6 +108,27 @@ describe("GET /version — Git #666 deployed_version_stamp fallback", () => {
   });
 });
 
+describe("GET /internal/deploy-status — Git #805 BuildConsole poll target", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    queued.length = 0;
+  });
+
+  it("serves { commitHash, timestamp } from the same versionInfo /version uses, unauthenticated", async () => {
+    stub([{ id: 3, commitHash: "abc1234", commitMessage: "Real deploy commit", deployedAt: new Date() }]);
+
+    const { default: versionRouter } = await import("./version");
+    await flushMicrotasks();
+
+    const app = buildApp(versionRouter);
+    const res = await request(app).get("/internal/deploy-status");
+
+    expect(res.status).toBe(200);
+    expect(res.body.commitHash).toBe("abc1234");
+    expect(typeof res.body.timestamp).toBe("string");
+  });
+});
+
 describe("POST /admin/version-stamp", () => {
   const originalDeployToken = process.env.DEPLOY_STAMP_TOKEN;
 

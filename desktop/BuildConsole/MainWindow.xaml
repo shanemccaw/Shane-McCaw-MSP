@@ -186,6 +186,8 @@
                                 <ColumnDefinition Width="Auto"/>  <!-- sep -->
                                 <ColumnDefinition Width="Auto"/>  <!-- queue -->
                                 <ColumnDefinition Width="Auto"/>  <!-- sep -->
+                                <ColumnDefinition Width="Auto"/>  <!-- deploy -->
+                                <ColumnDefinition Width="Auto"/>  <!-- sep -->
                                 <ColumnDefinition Width="Auto"/>  <!-- clock -->
                             </Grid.ColumnDefinitions>
                         </Grid>
@@ -222,7 +224,16 @@
                     </StackPanel>
                 </StatusBarItem>
                 <Separator Grid.Column="7"/>
-                <StatusBarItem Grid.Column="8" Padding="6,0,10,0">
+                <StatusBarItem Grid.Column="8">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Ellipse x:Name="DeployDot" Width="8" Height="8"
+                                 Fill="{StaticResource Surface2Brush}"
+                                 Margin="0,0,6,0" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="DeployStatusText" Text="Deploy: —" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </StatusBarItem>
+                <Separator Grid.Column="9"/>
+                <StatusBarItem Grid.Column="10" Padding="6,0,10,0">
                     <TextBlock x:Name="ClockText" Text="00:00:00" VerticalAlignment="Center"/>
                 </StatusBarItem>
             </StatusBar>
