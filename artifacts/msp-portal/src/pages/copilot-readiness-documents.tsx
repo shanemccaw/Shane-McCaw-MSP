@@ -79,7 +79,6 @@ import {
   RADIUS,
   gateLabel,
   hexAlpha,
-  isLiveRenderedDocument,
   reportAccent,
   severityColor,
 } from "@/components/copilot-journey/journeyTokens.ts";
@@ -93,9 +92,15 @@ const CHECKOUT_PATH = "/copilot-readiness/checkout";
 const REVEAL_PATH = "/copilot-readiness";
 
 /**
- * The PDF is the platform's existing branded export, not a second renderer:
- * `GET /portal/insights-documents/:id/pdf` runs the same `buildHtmlDoc` +
- * `htmlToPdf` pipeline every other document download in the portal uses.
+ * One endpoint, two pipelines server-side (#415): a document with stored
+ * `htmlContent` still runs the platform's existing `buildHtmlDoc` +
+ * `htmlToPdf` branded export; a live-rendered document (this screen's seven
+ * "live spine" reports) has the server navigate the real, authenticated
+ * Document Viewer URL with a single-use print token and print the actual
+ * rendered page instead — see portal-documents.ts's
+ * `GET /portal/insights-documents/:id/pdf` and insight-pdf.ts's
+ * `renderLiveDocumentToPdf`. Nothing on this screen needs to know which
+ * branch ran; both return the same `application/pdf` blob.
  */
 const PDF_URL = "/api/portal/insights-documents";
 
@@ -501,17 +506,16 @@ export default function CopilotReadinessDocumentsPage() {
    * ---------------------------------------------------------------- */
 
   const [downloading, setDownloading] = useState(false);
-  // A live-rendered document's row (if it has one at all) is never PDF-eligible:
-  // it would be stale content the browser doesn't show (#415) rather than a
-  // real export. The server refuses these too — this just avoids offering a
-  // download that a click would immediately fail.
-  const canDownload =
-    !isPreview && activeDoc?.status === "ready" && activeDoc.id !== null && !isLiveRenderedDocument(activeDoc);
+  // A live-rendered document is PDF-eligible exactly like any other ready
+  // document (#415): the server mints a single-use print token, navigates the
+  // real Document Viewer route with it, and prints the actual rendered page —
+  // so the same `status === "ready"` gate the old htmlContent pipeline used
+  // is still the right (and only) gate. `isLiveRenderedDocument` no longer
+  // narrows this at all; it is what SELECTS the live pipeline server-side,
+  // not a reason to withhold the download.
+  const canDownload = !isPreview && activeDoc?.status === "ready" && activeDoc.id !== null;
   const downloadable = useMemo(
-    () =>
-      isPreview
-        ? []
-        : documents.filter((d) => d.status === "ready" && d.id !== null && !isLiveRenderedDocument(d)),
+    () => (isPreview ? [] : documents.filter((d) => d.status === "ready" && d.id !== null)),
     [documents, isPreview],
   );
 
@@ -620,11 +624,13 @@ export default function CopilotReadinessDocumentsPage() {
         />
       )}
 
-      <div style={{ position: "relative", flex: "1 1 auto", minWidth: 0, display: "flex", flexDirection: "column" }}>
+      <div className="cj-doc-column" style={{ position: "relative", flex: "1 1 auto", minWidth: 0, display: "flex", flexDirection: "column" }}>
         {/* Ambient light behind the reading pane, tinted by the open report.
             Pointer-events off and below everything — it is the only thing on
-            this screen that moves at all, and only when the report changes. */}
-        <div aria-hidden="true" style={{ position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none", zIndex: 0 }}>
+            this screen that moves at all, and only when the report changes.
+            Print (Git #415): dropped rather than repositioned — it is pure
+            decoration, not report content. */}
+        <div aria-hidden="true" data-print-hide style={{ position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none", zIndex: 0 }}>
           <div
             style={{
               position: "absolute",
@@ -656,6 +662,7 @@ export default function CopilotReadinessDocumentsPage() {
         </div>
 
         <header
+          data-print-hide
           style={{
             position: "relative",
             zIndex: 60,
@@ -790,13 +797,7 @@ export default function CopilotReadinessDocumentsPage() {
               currentTitle={activeDoc?.title ?? "Your reports"}
               readyCount={isPreview ? view.generation.ready : downloadable.length}
               canDownloadCurrent={Boolean(canDownload)}
-              disabledReason={
-                isPreview
-                  ? "Not available in the design preview"
-                  : activeDoc && isLiveRenderedDocument(activeDoc)
-                    ? "This report renders live — PDF export isn't available for it yet"
-                    : null
-              }
+              disabledReason={isPreview ? "Not available in the design preview" : null}
               downloading={downloading}
               onDownloadCurrent={() => void handleDownload()}
               onDownloadAll={() => void handleDownloadAll()}
@@ -851,6 +852,7 @@ export default function CopilotReadinessDocumentsPage() {
             move while somebody is reading. */}
         <div
           aria-hidden="true"
+          data-print-hide
           style={{ position: "relative", zIndex: 3, flex: "none", height: 2, background: INK.hairlineDark }}
         >
           <div
@@ -868,6 +870,11 @@ export default function CopilotReadinessDocumentsPage() {
           onScroll={handleScroll}
           className="cj-doc-scroll"
           data-testid="document-reading-pane"
+          // Git #415: the print pipeline's readiness signal — headless
+          // Chromium waits on this flipping to "true" (belt-and-braces with
+          // its own network-idle wait) before it is allowed to print, so a
+          // still-loading pane can never be captured as a "finished" PDF.
+          data-print-ready={loaded ? "true" : "false"}
           style={{
             position: "relative",
             zIndex: 2,
@@ -908,7 +915,7 @@ export default function CopilotReadinessDocumentsPage() {
             atEnd={activeIndex === documents.length - 1 && activeDoc?.title !== JOURNEY_SOW_DOCUMENT}
           />
 
-          <div style={{ textAlign: "center", padding: "18px 0 4px" }}>
+          <div data-print-hide style={{ textAlign: "center", padding: "18px 0 4px" }}>
             <span style={{ fontSize: 10, fontWeight: 500, color: INK.micro }}>
               v{versionInfo.display}
             </span>

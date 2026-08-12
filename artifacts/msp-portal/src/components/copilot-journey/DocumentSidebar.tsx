@@ -503,6 +503,7 @@ export function DocumentSidebar({
   return (
     <nav
       aria-label="Your assessment reports"
+      data-print-hide
       style={{
         width: clampNavWidth(width),
         flex: "none",
@@ -595,6 +596,7 @@ export function DocumentSheet({
     <div
       onClick={onDismiss}
       role="presentation"
+      data-print-hide
       style={{
         position: "fixed",
         inset: 0,

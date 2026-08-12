@@ -3,7 +3,7 @@ import rateLimit from "express-rate-limit";
 import bcrypt from "bcryptjs";
 import crypto, { randomUUID } from "crypto";
 import jwt from "jsonwebtoken";
-import { db, usersTable, mspsTable, mspRefreshTokensTable, passwordResetTokensTable, impersonationTokensTable, accountSetupTokensTable, mspAuditLogsTable, mspServiceAccountsTable, clientServicesTable, servicesTable, type MspRole } from "@workspace/db";
+import { db, usersTable, mspsTable, mspRefreshTokensTable, passwordResetTokensTable, impersonationTokensTable, accountSetupTokensTable, printTokensTable, mspAuditLogsTable, mspServiceAccountsTable, clientServicesTable, servicesTable, type MspRole } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
 import type { CookieOptions } from "express";
 import { sendEmailFromTemplate, passwordResetEmail } from "../lib/mailer.ts";
@@ -1018,6 +1018,89 @@ router.post("/auth/impersonate-exchange", async (req: Request, res: Response) =>
       role: targetUser.role,
       impersonatedBy: record.adminUserId,
       ...(impersonatedMspId !== undefined ? { impersonatedMspId } : {}),
+      ...(mspClaims.mspRole !== null ? { mspRole: mspClaims.mspRole } : {}),
+      ...(mspClaims.mspId !== null ? { mspId: mspClaims.mspId } : {}),
+      ...(mspClaims.customerId !== null ? { customerId: mspClaims.customerId } : {}),
+    },
+  });
+});
+
+// Git #415. Headless Chromium print-to-pdf pipeline: exchanges a short-lived,
+// single-use `printToken` (minted by GET /portal/insights-documents/:id/pdf,
+// see portal-documents.ts) for a real, short-lived JWT for the SAME user the
+// token was minted for — never a different target, so this grants no
+// privilege the user's own normal session would not already have. What it
+// buys is a real interactive session's worth of access with no interactive
+// login, so headless Chromium can navigate the live Document Viewer route and
+// print exactly what the tenant would see on screen.
+//
+// Deliberately narrower than /auth/impersonate-exchange in every dimension:
+// the token is scoped to one document, the resulting JWT expires in 5
+// minutes (vs. impersonation's 30), and no session row / audit log entry is
+// written — this is a machine reading one document the user already has
+// standing access to, not a person acting as someone else.
+router.post("/auth/print-exchange", async (req: Request, res: Response) => {
+  const { token } = req.body as { token?: string };
+  if (!token) {
+    res.status(400).json({ error: "token is required" });
+    return;
+  }
+
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    res.status(500).json({ error: "Server misconfiguration" });
+    return;
+  }
+
+  const [record] = await db.select().from(printTokensTable)
+    .where(eq(printTokensTable.token, token))
+    .limit(1);
+
+  const printNow = new Date();
+
+  if (!record || record.usedAt || record.expiresAt < printNow) {
+    res.status(401).json({ error: "Invalid, expired, or already-used print token" });
+    return;
+  }
+
+  // Consume the token atomically — marks it as used so it cannot be replayed
+  await db.update(printTokensTable)
+    .set({ usedAt: printNow })
+    .where(eq(printTokensTable.id, record.id));
+
+  const [targetUser] = await db.select().from(usersTable)
+    .where(eq(usersTable.id, record.userId))
+    .limit(1);
+  if (!targetUser) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+
+  const mspClaims = await getMspClaims(targetUser.id);
+
+  const printJwtPayload = {
+    id: targetUser.id,
+    email: targetUser.email,
+    role: targetUser.role,
+    ...(mspClaims.mspRole !== null ? { mspRole: mspClaims.mspRole } : {}),
+    ...(mspClaims.mspId !== null ? { mspId: mspClaims.mspId } : {}),
+    ...(mspClaims.customerId !== null ? { customerId: mspClaims.customerId } : {}),
+  };
+
+  const printSessionToken = jwt.sign(printJwtPayload, secret, { expiresIn: "5m" });
+
+  log.info(
+    { userId: targetUser.id, documentId: record.documentId },
+    "print-exchange: token consumed, short-lived JWT issued",
+  );
+
+  res.json({
+    accessToken: printSessionToken,
+    documentId: record.documentId,
+    user: {
+      id: targetUser.id,
+      email: targetUser.email,
+      role: targetUser.role,
       ...(mspClaims.mspRole !== null ? { mspRole: mspClaims.mspRole } : {}),
       ...(mspClaims.mspId !== null ? { mspId: mspClaims.mspId } : {}),
       ...(mspClaims.customerId !== null ? { customerId: mspClaims.customerId } : {}),

@@ -106,6 +106,7 @@ export function DocumentPager({
 
   return (
     <div
+      data-print-hide
       style={{
         maxWidth: 748,
         margin: "22px auto 0",

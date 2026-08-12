@@ -124,3 +124,48 @@
     transition-duration: 1ms !important;
   }
 }
+
+/* --------------------------------------------------------------------------
+ * Print (Git #415) — headless Chromium navigates the live, authenticated
+ * Document Viewer route and prints the real rendered page, so this is the
+ * ONLY thing standing between the on-screen reader and the PDF a customer
+ * downloads. `[data-print-hide]` marks every piece of chrome that is
+ * orientation rather than report content (nav rail, header, "Ready to fix
+ * this?" CTA, Share & export menu, read-progress hairline, pager, version
+ * footer, ambient glow) — see copilot-readiness-documents.tsx and
+ * DocumentSidebar.tsx/DocumentPager.tsx for where each is marked.
+ *
+ * `.cj-dark`'s `position:fixed;inset:0` and `.cj-doc-scroll`'s
+ * `overflow-y:auto` exist to make the on-screen reader a single-viewport app
+ * shell — both must be neutralised here or Chromium's print pagination only
+ * ever captures one screen's worth of the report and silently truncates
+ * everything after it.
+ * ------------------------------------------------------------------------ */
+@media print {
+  [data-print-hide] {
+    display: none !important;
+  }
+
+  .cj-dark {
+    position: static !important;
+    inset: auto !important;
+    display: block !important;
+    height: auto !important;
+    overflow: visible !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .cj-doc-column {
+    display: block !important;
+    position: static !important;
+    overflow: visible !important;
+  }
+
+  .cj-doc-scroll {
+    position: static !important;
+    height: auto !important;
+    overflow: visible !important;
+    padding: 0 !important;
+  }
+}

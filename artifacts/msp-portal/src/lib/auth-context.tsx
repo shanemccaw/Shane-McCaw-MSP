@@ -154,6 +154,31 @@ async function exchangeImpersonationToken(
   }
 }
 
+/**
+ * Git #415 — the print pipeline's own token exchange. Headless Chromium has
+ * no interactive session of its own; it navigates the live Document Viewer
+ * route with `?printToken=...` in the URL, and the boot effect below trades
+ * it here for a real, short-lived JWT for the SAME user the token was minted
+ * for (never a different target — this is not impersonation). Mirrors
+ * exchangeImpersonationToken's shape exactly; kept separate because the two
+ * exchange endpoints, and what a caller does with the result, are unrelated.
+ */
+async function exchangePrintToken(
+  token: string,
+): Promise<{ accessToken: string; user: AuthUser } | null> {
+  try {
+    const res = await fetch("/api/auth/print-exchange", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token }),
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as { accessToken: string; user: AuthUser };
+  } catch {
+    return null;
+  }
+}
+
 // ── Context ───────────────────────────────────────────────────────────────────
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -368,6 +393,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             url.searchParams.delete("target_slug");
             window.history.replaceState({}, "", url.toString());
           }
+        } else {
+          setState((s) => ({ ...s, isLoading: false }));
+        }
+      });
+      return;
+    }
+
+    // Print entry point (Git #415): headless Chromium's own tab, carrying
+    // ?printToken=... instead of a password. Unlike impersonation, this is
+    // the real user's own identity and the tab is already on the exact
+    // document route it needs to print — no isImpersonating flag, no
+    // target-slug landing redirect, just enough of a session for the page's
+    // own API calls (fetchWithAuth) to succeed.
+    const printToken = params.get("printToken");
+    if (printToken) {
+      sessionStorage.removeItem(REFRESH_TOKEN_KEY);
+      sessionStorage.removeItem(REFRESH_EXPIRES_AT_KEY);
+
+      exchangePrintToken(printToken).then((data) => {
+        if (data) {
+          setState({
+            user: data.user,
+            accessToken: data.accessToken,
+            isLoading: false,
+            isRefreshing: false,
+            isExpiringSoon: false,
+            isImpersonating: false,
+          });
+          // Single-use and already consumed — strip it so it is never
+          // visible/bookmarkable/retried.
+          const url = new URL(window.location.href);
+          url.searchParams.delete("printToken");
+          window.history.replaceState({}, "", url.toString());
         } else {
           setState((s) => ({ ...s, isLoading: false }));
         }

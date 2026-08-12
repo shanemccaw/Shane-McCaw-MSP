@@ -1,10 +1,11 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, reportsTable, insightsGeneratedDocumentsTable, projectsTable, quickWinResultSharesTable, presentationDocViewsTable } from "@workspace/db";
+import { db, reportsTable, insightsGeneratedDocumentsTable, projectsTable, quickWinResultSharesTable, presentationDocViewsTable, usersTable, mspsTable, printTokensTable } from "@workspace/db";
 import { eq, and, or, desc } from "drizzle-orm";
+import { randomBytes } from "crypto";
 import { requireAuth } from "../middlewares/requireAuth.ts";
 import { stripStagedForReviewBanner } from "../lib/sow-pricing.ts";
-import { getMspPortalBaseUrl } from "../lib/portal-url.ts";
-import { buildHtmlDoc, htmlToPdf } from "../lib/insight-pdf.ts";
+import { getMspPortalBaseUrl, buildPrintDocumentUrl } from "../lib/portal-url.ts";
+import { buildHtmlDoc, htmlToPdf, renderLiveDocumentToPdf } from "../lib/insight-pdf.ts";
 import { logger } from "../lib/logger.ts";
 import path from "path";
 import fs from "fs";
@@ -137,9 +138,53 @@ router.get("/portal/insights-documents/:id/pdf", requireAuth, async (req: Reques
     // Allow download for approved docs shown in the presentation portal, not just formally "delivered" ones
     if (!["approved", "delivered"].includes(doc.status ?? "")) { res.status(403).json({ error: "Document not available for download" }); return; }
     if (LIVE_RENDERED_DOC_TYPES.has(doc.docType)) {
-      // Git #415: this docType renders live from the tenant's scan data; the row's
-      // stored htmlContent is stale and would silently mismatch what's on screen.
-      res.status(409).json({ error: "This report renders live in the browser and has no stored PDF export yet" });
+      // Git #415: this docType renders live from the tenant's own scan data —
+      // the row's stored htmlContent is stale (or absent) and would silently
+      // mismatch what's on screen, so buildHtmlDoc/htmlToPdf below is never
+      // used for it. Instead: mint a single-use print token scoped to this
+      // one document, navigate the real live Document Viewer route with it,
+      // and print the actual rendered page (renderLiveDocumentToPdf).
+      const [userRow] = await db.select({ mspId: usersTable.mspId }).from(usersTable)
+        .where(eq(usersTable.id, userId)).limit(1);
+      const [mspRow] = userRow?.mspId
+        ? await db.select({ slug: mspsTable.slug }).from(mspsTable).where(eq(mspsTable.id, userRow.mspId)).limit(1)
+        : [];
+      if (!mspRow?.slug) {
+        log.error({ userId, documentId: doc.id }, "live document pdf: could not resolve MSP slug for user");
+        res.status(500).json({ error: "Could not resolve your account for PDF export" });
+        return;
+      }
+
+      const printToken = randomBytes(32).toString("hex");
+      await db.insert(printTokensTable).values({
+        token: printToken,
+        userId,
+        documentId: doc.id,
+        // Comfortably longer than a headless print run, far shorter than any
+        // real session — this token exists only to get one Chromium tab from
+        // "just navigated" to "already printed".
+        expiresAt: new Date(Date.now() + 2 * 60 * 1000),
+      });
+
+      const printUrl = buildPrintDocumentUrl(mspRow.slug, doc.id, printToken);
+      let livePdfBuffer: Buffer;
+      try {
+        livePdfBuffer = await renderLiveDocumentToPdf(printUrl);
+      } catch (err) {
+        log.error({ err, userId, documentId: doc.id }, "live document pdf: renderLiveDocumentToPdf failed");
+        res.status(502).json({ error: "Could not render this report to PDF right now — please try again" });
+        return;
+      }
+
+      const safeLiveTitle = (doc.title ?? "document")
+        .replace(/[^a-zA-Z0-9 _-]/g, "")
+        .replace(/\s+/g, "-")
+        .slice(0, 80);
+
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="${safeLiveTitle}.pdf"`);
+      res.setHeader("Content-Length", String(livePdfBuffer.length));
+      res.end(livePdfBuffer);
       return;
     }
 

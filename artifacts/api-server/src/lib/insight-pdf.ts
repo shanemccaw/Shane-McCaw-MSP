@@ -12,6 +12,9 @@ import { mkdtemp, writeFile, readFile, rm } from "fs/promises";
 import { tmpdir } from "os";
 import path from "path";
 import { execSync } from "child_process";
+import { logger } from "./logger.ts";
+
+const log = logger.child({ channel: "engine.dashboard" });
 
 // ── Chromium path discovery ────────────────────────────────────────────────────
 
@@ -217,5 +220,73 @@ export async function htmlToPdf(htmlContent: string): Promise<Buffer> {
     return await readFile(pdfFile);
   } finally {
     await rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+// ── Live document → branded PDF (Git #415) ──────────────────────────────────
+
+/**
+ * Render a LIVE, browser-rendered document to PDF by navigating the real,
+ * authenticated document URL and printing the actual rendered page — not a
+ * second HTML-string renderer. This is deliberate: the seven "live spine"
+ * reports (see LIVE_RENDERED_DOC_TYPES in portal-documents.ts) render
+ * client-side from the tenant's own scan data with no server-side HTML
+ * representation at all, so `htmlToPdf` above cannot reach them — this
+ * guarantees PDF/screen parity by construction instead of building and
+ * maintaining a parallel renderer that could silently drift from
+ * DocumentBody.tsx.
+ *
+ * Uses playwright-core (already a workspace dependency — see
+ * workflow-executor.ts's `generate_pdf` node) rather than the raw
+ * `child_process` spawn `htmlToPdf` uses: printing a live page needs to WAIT
+ * for the SPA to fetch and render its data (the document API call, and for
+ * the readiness/posture reports, a real metered narrative call) before
+ * printing, which needs real page-lifecycle control `--print-to-pdf` alone
+ * does not give.
+ *
+ * Two readiness signals, belt-and-braces: `networkidle` (no in-flight
+ * requests for 500ms — covers the document/narrative fetches) AND
+ * `[data-print-ready="true"]` (copilot-readiness-documents.tsx's own signal
+ * that real content, not a loading state, is on screen). Either alone can
+ * lie — `networkidle` fires between two fetches in a multi-request load;
+ * the marker alone says nothing about images/fonts still in flight.
+ */
+export async function renderLiveDocumentToPdf(url: string): Promise<Buffer> {
+  const chromiumPath = getChromiumPath();
+  const { chromium } = await import("playwright-core");
+
+  const browser = await chromium.launch({
+    executablePath: chromiumPath,
+    args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
+  });
+
+  try {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 1600 } });
+    await page.emulateMedia({ media: "print" });
+
+    const response = await page.goto(url, { waitUntil: "networkidle", timeout: 45_000 });
+    if (!response || !response.ok()) {
+      throw new Error(`Document route responded ${response?.status() ?? "with no response"}`);
+    }
+
+    await page.waitForSelector('[data-print-ready="true"]', { timeout: 20_000 });
+    // Settle buffer: the marker flips true in the same render pass the report
+    // body mounts in, but web fonts and the accent-band paint can trail the
+    // DOM update by a frame or two.
+    await page.waitForTimeout(600);
+
+    const pdfBytes = await page.pdf({
+      format: "A4",
+      printBackground: true,
+      displayHeaderFooter: false,
+      margin: { top: "0mm", bottom: "0mm", left: "0mm", right: "0mm" },
+    });
+
+    return Buffer.from(pdfBytes);
+  } catch (err) {
+    log.error({ err, url }, "renderLiveDocumentToPdf failed");
+    throw err;
+  } finally {
+    await browser.close();
   }
 }

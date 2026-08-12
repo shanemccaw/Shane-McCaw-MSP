@@ -95,3 +95,15 @@ export function getMspPortalLandingUrl(): string {
 export function buildAccountSetupUrl(token: string): string {
   return `${getMspPortalBaseUrl()}/account-setup?setup_token=${token}`;
 }
+
+/**
+ * Git #415 — the live, authenticated Document Viewer URL headless Chromium
+ * navigates for the real PDF export pipeline (see insight-pdf.ts's
+ * `renderLiveDocumentToPdf`). `printToken` is single-use and consumed by
+ * `AuthProvider`'s boot effect (msp-portal's auth-context.tsx) the same way
+ * `?impersonation_token=...` is — there is no cookie-based session here to
+ * bypass server-side, so the token must reach the SPA itself.
+ */
+export function buildPrintDocumentUrl(slug: string, documentId: number, printToken: string): string {
+  return `${getMspPortalBaseUrl()}/${slug}/copilot-readiness/documents/${documentId}?printToken=${encodeURIComponent(printToken)}`;
+}

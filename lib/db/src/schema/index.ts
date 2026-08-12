@@ -894,6 +894,27 @@ export const accountSetupTokensTable = pgTable("account_setup_tokens", {
 export type InsertAccountSetupToken = typeof accountSetupTokensTable.$inferInsert;
 export type AccountSetupToken = typeof accountSetupTokensTable.$inferSelect;
 
+// Git #415. Same shape as impersonationTokensTable/accountSetupTokensTable —
+// a short-lived, single-use bearer token headless Chromium exchanges (via
+// POST /auth/print-exchange) for a real short-lived JWT for the SAME user who
+// requested the PDF, so it can navigate the live, authenticated Document
+// Viewer route with no interactive session of its own. Scoped to exactly one
+// document per token (documentId, not nullable) — a batch "download all"
+// mints one token per document rather than one wide-scoped token, so a leaked
+// token can never reach further than the single PDF it was minted for.
+export const printTokensTable = pgTable("print_tokens", {
+  id: serial("id").primaryKey(),
+  token: text("token").notNull().unique(),
+  userId: integer("user_id").notNull().references(() => usersTable.id),
+  documentId: integer("document_id").notNull().references(() => insightsGeneratedDocumentsTable.id),
+  expiresAt: timestamp("expires_at").notNull(),
+  usedAt: timestamp("used_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type InsertPrintToken = typeof printTokensTable.$inferInsert;
+export type PrintToken = typeof printTokensTable.$inferSelect;
+
 // Engagement Project Types (shown on Pricing page Track 02, used for SOW generation)
 export const engagementProjectsTable = pgTable("engagement_projects", {
   id: serial("id").primaryKey(),

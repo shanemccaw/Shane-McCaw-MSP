@@ -5,9 +5,14 @@
  * ---------------------------------
  * Two of the design's four items are wired to endpoints that exist:
  *
- *   • "This report as PDF" → `GET /portal/insights-documents/:id/pdf`, the
- *     platform's existing branded export — the same `buildHtmlDoc` + `htmlToPdf`
- *     pipeline every other document download in the portal uses.
+ *   • "This report as PDF" → `GET /portal/insights-documents/:id/pdf`. For a
+ *     document with stored HTML, the platform's existing branded export (the
+ *     same `buildHtmlDoc` + `htmlToPdf` pipeline every other document
+ *     download in the portal uses); for one of this screen's live-rendered
+ *     reports, the server instead navigates the real Document Viewer URL
+ *     with a single-use print token and prints the actual rendered page
+ *     (#415) — both branches return the same PDF blob, so this menu does not
+ *     need to know which one ran.
  *   • "Every ready report" → the same endpoint, once per ready report.
  *
  * The design's other two items hand a stranger a login-free link to the whole
