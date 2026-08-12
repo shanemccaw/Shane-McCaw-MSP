@@ -422,7 +422,7 @@ export default function Home() {
         <header style={{ position: "sticky", top: 0, zIndex: 50, height: 80, background: "rgba(2,6,23,.95)", backdropFilter: "blur(12px)", borderBottom: "1px solid rgba(30,41,59,.8)" }}>
           <div style={{ maxWidth: 1280, margin: "0 auto", padding: "0 clamp(16px,4vw,32px)", height: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
             <Logo tagline="M365 Architect" onDark />
-            <Button as="a" href="#assessment">
+            <Button as="a" href="#assessment" data-testid="get-real-score-cta">
               Get Your Real Score
             </Button>
           </div>
@@ -471,6 +471,7 @@ export default function Home() {
                     <button
                       key={label}
                       type="button"
+                      data-testid={`quiz-option-${LETTERS[i]}`}
                       onClick={() => pick(i)}
                       style={{
                         display: "flex",
@@ -516,7 +517,7 @@ export default function Home() {
             )}
 
             {done && (
-              <div style={{ background: "linear-gradient(160deg,rgba(23,37,84,.42),#0f172a 62%)", border: "1px solid rgba(37,99,235,.28)", borderRadius: 16, padding: "clamp(20px,4vw,28px)", maxWidth: 520 }}>
+              <div data-testid="quiz-result" style={{ background: "linear-gradient(160deg,rgba(23,37,84,.42),#0f172a 62%)", border: "1px solid rgba(37,99,235,.28)", borderRadius: 16, padding: "clamp(20px,4vw,28px)", maxWidth: 520 }}>
                 <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".16em", textTransform: "uppercase", color: "#60a5fa" }}>Estimated Copilot Readiness</span>
                 <div style={{ display: "flex", alignItems: "baseline", gap: 10, margin: "12px 0 6px" }}>
                   <span style={{ fontSize: "clamp(54px,13vw,82px)", fontWeight: 800, letterSpacing: "-.04em", lineHeight: 0.9, color: "#f8fafc" }}>{score}</span>

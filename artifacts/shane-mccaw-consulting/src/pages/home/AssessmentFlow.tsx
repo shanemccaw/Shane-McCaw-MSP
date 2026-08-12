@@ -1340,7 +1340,7 @@ export function AssessmentFlow({ fee, productSlug, includes }: AssessmentFlowPro
 
       {/* ── Step 1 — Details ───────────────────────────────────────────────── */}
       {step === "details" && (
-        <div style={TWO_COL}>
+        <div data-testid="assessment-flow-details-step" style={TWO_COL}>
           <div>
             <span style={EYEBROW}>One flat fee</span>
             <div style={{ display: "flex", alignItems: "baseline", gap: 12, margin: "14px 0 10px" }}>
