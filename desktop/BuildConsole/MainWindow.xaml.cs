@@ -233,6 +233,9 @@ namespace BuildConsole
             // ActivityBar quick navigation
             ActivityBar.QuickNavRequested += ActivityBar_QuickNavRequested;
 
+            // Git #864 — Web Tools popout entry clicked
+            ActivityBar.WebToolRequested += ActivityBar_WebToolRequested;
+
             // LeftSidebar file clicks -> Open Viewer tabs
             LeftSidebar.FileSelected += LeftSidebar_FileSelected;
 
@@ -487,6 +490,18 @@ namespace BuildConsole
             // inactivity; a periodic reload keeps it awake. Only the Replit
             // tab gets the toggle - it's the one use case asked for.
             OpenWebTab(url, title, glyph, offerKeepAlive: url.Contains("replit.com"));
+        }
+
+        /// <summary>Git #864 — a Web Tools popout entry was clicked; opens exactly like a QuickNav icon.</summary>
+        private void ActivityBar_WebToolRequested(object? sender, (string Name, string Url) tool)
+        {
+            var url = tool.Url;
+            if (!url.StartsWith("http://") && !url.StartsWith("https://"))
+            {
+                url = "https://" + url;
+            }
+            BuildConsole.Services.ActivityLog.Log("web-tools.open", $"{tool.Name} -> {url}");
+            OpenWebTab(url, tool.Name, "");
         }
 
         private void EditorTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)

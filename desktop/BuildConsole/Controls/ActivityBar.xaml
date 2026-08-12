@@ -104,6 +104,38 @@
                     <TextBlock Text="&#xE7B8;" FontFamily="Segoe MDL2 Assets" FontSize="18" Foreground="{StaticResource PeachBrush}"/>
                 </Button>
 
+                <!-- Separator -->
+                <Border Height="1" Background="{StaticResource Surface0Brush}" Margin="8,6"/>
+
+                <!-- Git #864 - Shane: "a icon based popout panel with web site tools like:
+                     LinkedIn, Google Analytics, Microsoft Clarity... a configuration in the
+                     settings might actually be better." ONE icon (not another hardcoded
+                     QuickNav button per tool) that opens a small anchored Popup listing
+                     whatever's configured in Settings > Web Tools. -->
+                <Button x:Name="BtnWebTools"
+                        Style="{StaticResource IconButton}"
+                        Width="48" Height="44"
+                        ToolTip="Web Tools"
+                        Click="BtnWebTools_Click">
+                    <TextBlock Text="&#xE71B;" FontFamily="Segoe MDL2 Assets" FontSize="18" Foreground="{StaticResource BlueBrush}"/>
+                </Button>
+
+                <Popup x:Name="WebToolsPopup"
+                       PlacementTarget="{Binding ElementName=BtnWebTools}"
+                       Placement="Right"
+                       StaysOpen="False"
+                       AllowsTransparency="True"
+                       PopupAnimation="Fade">
+                    <Border Background="{StaticResource MantleBrush}"
+                            BorderBrush="{StaticResource Surface0Brush}"
+                            BorderThickness="1"
+                            CornerRadius="4"
+                            Padding="4"
+                            MinWidth="180">
+                        <StackPanel x:Name="WebToolsList"/>
+                    </Border>
+                </Popup>
+
             </StackPanel>
 
             <!-- ── Bottom icon: Settings ── -->

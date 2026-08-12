@@ -226,6 +226,9 @@ namespace BuildConsole.Controls
             // (%AppData%\BuildConsole\settings.json) so it round-trips visibly.
             var savedSettings = BuildConsole.Services.BuildConsoleSettings.Load();
             GitHubPatBox.Password = savedSettings.GitHubPat;
+
+            // Git #864
+            RenderWebToolsSettingsList();
         }
 
         // ── SETTINGS: GitHub PAT (Git #834) ──────────────────────────────────
@@ -235,6 +238,118 @@ namespace BuildConsole.Controls
             settings.GitHubPat = GitHubPatBox.Password.Trim();
             settings.Save();
             GitHubPatSavedText.Text = "Saved.";
+        }
+
+        // ── SETTINGS: Web Tools (Git #864) ───────────────────────────────────
+        private int _editingWebToolIndex = -1;
+
+        private void RenderWebToolsSettingsList()
+        {
+            var settings = BuildConsole.Services.BuildConsoleSettings.Load();
+            WebToolsSettingsList.Children.Clear();
+
+            for (int i = 0; i < settings.WebTools.Count; i++)
+            {
+                var tool = settings.WebTools[i];
+                var row = new Grid { Margin = new Thickness(0, 0, 0, 4) };
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+                var label = new TextBlock
+                {
+                    Text = string.IsNullOrWhiteSpace(tool.Icon) ? $"{tool.Name} — {tool.Url}" : $"{tool.Icon} {tool.Name} — {tool.Url}",
+                    FontSize = 11,
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Foreground = (Brush)FindResource("TextBrush")
+                };
+                Grid.SetColumn(label, 0);
+                row.Children.Add(label);
+
+                var editBtn = new Button
+                {
+                    Content = "✏", FontSize = 10, Style = (Style)FindResource("IconButton"),
+                    Padding = new Thickness(4, 1, 4, 1), Margin = new Thickness(4, 0, 0, 0), Tag = i
+                };
+                editBtn.Click += BtnEditWebTool_Click;
+                Grid.SetColumn(editBtn, 1);
+                row.Children.Add(editBtn);
+
+                var removeBtn = new Button
+                {
+                    Content = "✕", FontSize = 10, Style = (Style)FindResource("IconButton"),
+                    Padding = new Thickness(4, 1, 4, 1), Margin = new Thickness(4, 0, 0, 0), Tag = i
+                };
+                removeBtn.Click += BtnRemoveWebTool_Click;
+                Grid.SetColumn(removeBtn, 2);
+                row.Children.Add(removeBtn);
+
+                WebToolsSettingsList.Children.Add(row);
+            }
+        }
+
+        private void BtnEditWebTool_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not Button btn || btn.Tag is not int index) return;
+            var settings = BuildConsole.Services.BuildConsoleSettings.Load();
+            if (index < 0 || index >= settings.WebTools.Count) return;
+
+            var tool = settings.WebTools[index];
+            WebToolNameBox.Text = tool.Name;
+            WebToolUrlBox.Text = tool.Url;
+            WebToolIconBox.Text = tool.Icon;
+            _editingWebToolIndex = index;
+            BtnAddWebTool.Content = "Save Changes";
+        }
+
+        private void BtnRemoveWebTool_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not Button btn || btn.Tag is not int index) return;
+            var settings = BuildConsole.Services.BuildConsoleSettings.Load();
+            if (index < 0 || index >= settings.WebTools.Count) return;
+
+            var removed = settings.WebTools[index];
+            settings.WebTools.RemoveAt(index);
+            settings.Save();
+            BuildConsole.Services.ActivityLog.Log("web-tools.settings", $"removed \"{removed.Name}\"");
+
+            _editingWebToolIndex = -1;
+            BtnAddWebTool.Content = "Add Web Tool";
+            RenderWebToolsSettingsList();
+        }
+
+        private void BtnAddWebTool_Click(object sender, RoutedEventArgs e)
+        {
+            var name = WebToolNameBox.Text.Trim();
+            var url = WebToolUrlBox.Text.Trim();
+            var icon = WebToolIconBox.Text.Trim();
+            if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(url)) return;
+
+            var settings = BuildConsole.Services.BuildConsoleSettings.Load();
+
+            if (_editingWebToolIndex >= 0 && _editingWebToolIndex < settings.WebTools.Count)
+            {
+                var tool = settings.WebTools[_editingWebToolIndex];
+                tool.Name = name;
+                tool.Url = url;
+                tool.Icon = icon;
+                BuildConsole.Services.ActivityLog.Log("web-tools.settings", $"edited \"{name}\"");
+            }
+            else
+            {
+                settings.WebTools.Add(new BuildConsole.Services.WebToolEntry { Name = name, Url = url, Icon = icon });
+                BuildConsole.Services.ActivityLog.Log("web-tools.settings", $"added \"{name}\"");
+            }
+
+            settings.Save();
+
+            _editingWebToolIndex = -1;
+            BtnAddWebTool.Content = "Add Web Tool";
+            WebToolNameBox.Text = "";
+            WebToolUrlBox.Text = "";
+            WebToolIconBox.Text = "";
+            RenderWebToolsSettingsList();
         }
 
         private void ExplorerTree_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)

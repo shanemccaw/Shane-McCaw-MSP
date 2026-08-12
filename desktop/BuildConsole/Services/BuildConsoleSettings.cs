@@ -1,9 +1,18 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 
 namespace BuildConsole.Services
 {
+    /// <summary>Git #864 — one entry in the ActivityBar's "Web Tools" popout / Settings list.</summary>
+    public class WebToolEntry
+    {
+        public string Name { get; set; } = "";
+        public string Url { get; set; } = "";
+        public string Icon { get; set; } = "";
+    }
+
     /// <summary>
     /// Git #834 — Shane: "There is a settings menu item, and a settings cog
     /// bottom left corner. Use that to hold my PAT in app settings or
@@ -17,6 +26,21 @@ namespace BuildConsole.Services
         public string GitHubPat { get; set; } = "";
 
         public bool HasGitHubPat => !string.IsNullOrWhiteSpace(GitHubPat);
+
+        // Git #864 — Shane: "I need you to design me a icon based popout panel
+        // with web site tools like: LinkedIn, Google Analytics, Microsoft
+        // Clarity... a configuration in the settings might actually be
+        // better." Field initializer (not a ctor assignment) so a
+        // pre-#864 settings.json — one with no "webTools" key at all —
+        // still deserializes with these three defaults intact; only a
+        // settings.json that HAS since been saved with an explicit (possibly
+        // empty) list overrides it.
+        public List<WebToolEntry> WebTools { get; set; } = new()
+        {
+            new WebToolEntry { Name = "LinkedIn", Url = "https://www.linkedin.com", Icon = "" },
+            new WebToolEntry { Name = "Google Analytics", Url = "https://analytics.google.com", Icon = "" },
+            new WebToolEntry { Name = "Microsoft Clarity", Url = "https://clarity.microsoft.com", Icon = "" },
+        };
 
         private static string SettingsDir =>
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "BuildConsole");

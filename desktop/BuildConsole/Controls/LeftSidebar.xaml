@@ -403,6 +403,7 @@
                 </DockPanel>
             </Grid>
             <Grid x:Name="SettingsView" Visibility="Collapsed">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
                 <StackPanel Margin="12">
                     <TextBlock Text="Settings" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,12"/>
                     <TextBlock Text="Claude endpoint" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
@@ -433,7 +434,32 @@
                     <Button x:Name="BtnSaveGitHubPat" Content="Save" Style="{StaticResource PrimaryButton}"
                             HorizontalAlignment="Left" Padding="16,4" Click="BtnSaveGitHubPat_Click"/>
                     <TextBlock x:Name="GitHubPatSavedText" Text="" FontSize="10" Foreground="{StaticResource GreenBrush}" Margin="0,4,0,0"/>
+
+                    <!-- Git #864 — Shane: "a configuration in the settings might actually be
+                         better" for the ActivityBar's Web Tools popout. Same local store as the
+                         PAT above (%AppData%\BuildConsole\settings.json), extended with a
+                         WebTools list instead of a second settings mechanism. -->
+                    <Border Height="1" Background="{StaticResource Surface0Brush}" Margin="0,16,0,12"/>
+                    <TextBlock Text="Web Tools" FontSize="12" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                    <TextBlock Text="Shown in the ActivityBar's Web Tools popout — click to open in a new tab."
+                               FontSize="10" Foreground="{StaticResource Subtext0Brush}" TextWrapping="Wrap" Margin="0,0,0,8"/>
+
+                    <StackPanel x:Name="WebToolsSettingsList" Margin="0,0,0,8"/>
+
+                    <Border Background="{StaticResource Surface0Brush}" CornerRadius="4" Padding="8" Margin="0,0,0,4">
+                        <StackPanel>
+                            <TextBlock Text="Name" FontSize="10" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,2"/>
+                            <TextBox x:Name="WebToolNameBox" Height="24" FontSize="12" Margin="0,0,0,6"/>
+                            <TextBlock Text="URL" FontSize="10" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,2"/>
+                            <TextBox x:Name="WebToolUrlBox" Height="24" FontSize="12" Margin="0,0,0,6"/>
+                            <TextBlock Text="Icon (optional emoji)" FontSize="10" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,2"/>
+                            <TextBox x:Name="WebToolIconBox" Height="24" FontSize="12" Margin="0,0,0,8"/>
+                            <Button x:Name="BtnAddWebTool" Content="Add Web Tool" Style="{StaticResource PrimaryButton}"
+                                    HorizontalAlignment="Left" Padding="16,4" Click="BtnAddWebTool_Click"/>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
+                </ScrollViewer>
             </Grid>
 
             <!-- ══════════════════════════════════
