@@ -152,6 +152,18 @@ while ($true) {
         if ($item.effort) { $claudeArgs += @("--effort", $item.effort) }
         $claudeArgs += @("--permission-mode", "auto")
         $claudeArgs += "--print"
+        # Git #825 — Shane: "the build log is NOT giving me any kind of live
+        # feedback." Default --output-format text is fully buffered when
+        # stdout isn't a real console, so nothing incremental ever landed in
+        # the log no matter how often it was re-read. stream-json emits one
+        # real event per line as work happens. NOTE: unlike
+        # QueueWatcherService.cs's C# launcher, this script's simple
+        # Start-Process file redirect can't parse/prettify each line as it
+        # writes it (that needs a line-by-line stream reader loop, a bigger
+        # rewrite) - the log file will show raw JSON lines here, not the
+        # readable text the in-app watcher produces. Still genuinely live
+        # (grows incrementally) even though it's not pretty.
+        $claudeArgs += @("--output-format", "stream-json", "--verbose")
         # Git #820 — defense in depth: claude.exe's commander.js-based
         # parser treats ANY positional argument starting with "--" as an
         # attempted (unrecognized) option, not plain text - a "806

@@ -1477,7 +1477,7 @@ async function effectiveBlockedByNumbers(item: { githubNumber: number | null; bl
 }
 
 /**
- * Git #800 — Shane: "when a build is done, and its blocking something
+ * Git #800/#824 — Shane: "when a build is done, and its blocking something
  * else, the build under it should just go... I will clean Git after."
  * Closing the real GitHub issue is a manual step he's slow to get to, and
  * requiring it would stall the whole queue behind his own cleanup backlog.
@@ -1486,18 +1486,24 @@ async function effectiveBlockedByNumbers(item: { githubNumber: number | null; bl
  * signal that the work actually happened — checked FIRST, before ever
  * asking GitHub. GitHub's real closed/complete state still clears it too,
  * for a blocker that was never run through this queue at all.
+ *
+ * Git #824 fix — Shane: "this time it looks like its running them out of
+ * order" (#805/#806/#807/#808/#809 all showing running simultaneously).
+ * This used to check whether ANY row for blockerNum had EVER succeeded,
+ * so an old historical success permanently satisfied the check even while
+ * a brand-new retry of that same issue (#823's upsert model — one row per
+ * issue, reused across retries) was still in progress, letting dependents
+ * jump the queue. Now checks the MOST RECENT row for that number only —
+ * "is the blocker's current attempt done", not "did it ever succeed."
  */
 async function isBlockerCleared(blockerNum: number): Promise<boolean> {
-  const [doneRow] = await db
-    .select({ id: btBuildQueueTable.id })
+  const [latestRow] = await db
+    .select({ status: btBuildQueueTable.status, exitCode: btBuildQueueTable.exitCode })
     .from(btBuildQueueTable)
-    .where(and(
-      eq(btBuildQueueTable.githubNumber, blockerNum),
-      eq(btBuildQueueTable.status, "done"),
-      eq(btBuildQueueTable.exitCode, 0),
-    ))
+    .where(eq(btBuildQueueTable.githubNumber, blockerNum))
+    .orderBy(desc(btBuildQueueTable.createdAt))
     .limit(1);
-  if (doneRow) return true;
+  if (latestRow) return latestRow.status === "done" && latestRow.exitCode === 0;
   const blocker = process.env.GITHUB_TOKEN ? await ghFetchIssue(blockerNum) : null;
   return !blocker || blocker.state === "closed" || blocker.labels.some((l) => l.name === "complete");
 }
