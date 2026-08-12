@@ -50,10 +50,14 @@ namespace BuildConsole.Controls
         public int IssueNumber { get; set; }
         public string NumberStr => $"#{IssueNumber}";
         public string Title { get; set; } = string.Empty;
+        /// <summary>Git #843 — the real GitHub title with no display suffix (e.g. the epic tree's " (N sub)"), for the Edit dialog to pre-fill correctly.</summary>
+        public string RawTitle { get; set; } = string.Empty;
         public string Priority { get; set; } = "HIGH";
         public string Status { get; set; } = "OPEN";
         /// <summary>lib/db/migrations/manual/*.sql path referenced in the real GitHub issue body, if any — Shane To-Do items only. See CreateIssueHeader's "Load SQL" context menu item.</summary>
         public string? SqlPath { get; set; }
+        /// <summary>Git #843 — the real GitHub issue body, carried through from <see cref="GitBoardIssue.Body"/> so the Edit dialog can pre-fill it without a second fetch.</summary>
+        public string Body { get; set; } = string.Empty;
         public string PriorityBadge => Priority switch
         {
             "HIGH" => "🔥",
@@ -452,9 +456,11 @@ namespace BuildConsole.Controls
                     {
                         IssueNumber = it.Number,
                         Title = it.IsEpic ? $"{it.Title}  ({it.SubIssueCount} sub)" : it.Title,
+                        RawTitle = it.Title,
                         Priority = it.IsTodo ? "HIGH" : "MED",
                         Status = it.IsClosed ? "CLOSED" : "OPEN",
                         SqlPath = DeriveSqlPath(it.Body),
+                        Body = it.Body,
                     });
                 }
                 return epic;
@@ -802,6 +808,36 @@ namespace BuildConsole.Controls
                 PopulateGitTrackerBoard();
             };
             cm.Items.Add(miState);
+
+            // Git #843 (Git Board Phase 5) — dialog pre-filled with the real
+            // current title/body (already carried on GitIssue.RawTitle/Body
+            // from #839's ListBoardIssuesAsync, no second fetch needed). Save
+            // does the real PATCH /issues/{n} via GitHubApiClient.
+            var miEdit = new MenuItem { Header = "✎ Edit..." };
+            miEdit.Click += async (s, e) =>
+            {
+                var settings = BuildConsole.Services.BuildConsoleSettings.Load();
+                if (!settings.HasGitHubPat) return;
+
+                var dialog = new EditIssueDialog(issue.IssueNumber, issue.RawTitle, issue.Body);
+                if (dialog.ShowDialog() != true) return;
+
+                try
+                {
+                    var client = new GitHubApiClient(settings.GitHubPat);
+                    await client.UpdateIssueAsync(issue.IssueNumber, dialog.ResultTitle, dialog.ResultBody);
+                    ActivityLog.Log("git-board.edit", $"#{issue.IssueNumber} title/body updated");
+                }
+                catch (Exception ex)
+                {
+                    ActivityLog.Log("git-board.edit", $"#{issue.IssueNumber} update FAILED: {ex.Message}");
+                    MessageBox.Show($"Couldn't save #{issue.IssueNumber}: {ex.Message}", "Edit Issue");
+                    return;
+                }
+                _lastInProgressSignature = null;
+                PopulateGitTrackerBoard();
+            };
+            cm.Items.Add(miEdit);
 
             // Same real capability as the extension's Shane To-Do 🗄 button —
             // only shown when the real GitHub issue body actually references

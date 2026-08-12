@@ -145,6 +145,17 @@ namespace BuildConsole.Services
             public List<GitHubIssueResult> Items { get; set; } = new();
         }
 
+        /// <summary>Git #843 (Git Board Phase 5) — real `PATCH /issues/{n}` via the REST API, same PAT/HttpClient as every other direct GitHub call here.</summary>
+        public async Task UpdateIssueAsync(int number, string title, string body)
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Patch, $"repos/{Owner}/{Repo}/issues/{number}")
+            {
+                Content = JsonContent.Create(new { title, body }),
+            };
+            var res = await _http.SendAsync(req);
+            res.EnsureSuccessStatusCode();
+        }
+
         /// <summary>Git #841 (Git Board Phase 3) — real `PATCH /issues/{n}` with `state`, so Close/Reopen flips GitHub's actual issue state rather than the `complete` label.</summary>
         public async Task SetIssueStateAsync(int number, bool close)
         {

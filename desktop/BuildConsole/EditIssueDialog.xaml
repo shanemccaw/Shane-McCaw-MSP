@@ -1,0 +1,70 @@
+<Window x:Class="BuildConsole.EditIssueDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Edit Issue" Height="520" Width="560"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource BaseBrush}"
+        ResizeMode="CanResizeWithGrip">
+
+    <Grid Margin="14">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock x:Name="HeaderText"
+                   Grid.Row="0"
+                   Text="Edit issue #0"
+                   FontSize="13"
+                   FontWeight="SemiBold"
+                   Foreground="{StaticResource TextBrush}"
+                   Margin="0,0,0,10"/>
+
+        <TextBlock Grid.Row="1" Text="Title" FontSize="11" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,4"/>
+        <TextBox x:Name="TitleBox"
+                 Grid.Row="2"
+                 Background="{StaticResource MantleBrush}"
+                 BorderBrush="{StaticResource Surface0Brush}"
+                 BorderThickness="1"
+                 Foreground="{StaticResource TextBrush}"
+                 Padding="6,4"
+                 Margin="0,0,0,10"/>
+
+        <Grid Grid.Row="3">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+            <TextBlock Grid.Row="0" Text="Body" FontSize="11" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,4"/>
+            <TextBox x:Name="BodyBox"
+                     Grid.Row="1"
+                     Background="{StaticResource MantleBrush}"
+                     BorderBrush="{StaticResource Surface0Brush}"
+                     BorderThickness="1"
+                     Foreground="{StaticResource TextBrush}"
+                     Padding="6,4"
+                     AcceptsReturn="True"
+                     AcceptsTab="True"
+                     TextWrapping="Wrap"
+                     VerticalScrollBarVisibility="Auto"
+                     FontFamily="Consolas"/>
+        </Grid>
+
+        <StackPanel Grid.Row="4"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    Margin="0,10,0,0">
+            <Button Content="Cancel"
+                    Padding="14,6"
+                    Margin="0,0,8,0"
+                    Click="Cancel_Click"/>
+            <Button Content="Save"
+                    Style="{StaticResource PrimaryButton}"
+                    Padding="14,6"
+                    Click="Save_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>
