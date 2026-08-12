@@ -688,9 +688,32 @@ namespace BuildConsole.Controls
             PopulateGitTrackerBoard();
         }
 
-        /// <summary>Git #845 (Git Board Phase 7) — see PopulateGitTrackerBoard's call site.</summary>
+        /// <summary>
+        /// Git #876 — Shane: "Something is causing a git refresh a lot and I
+        /// am being rate limited quickly." This is that something: one real
+        /// REST call PER open issue (GetOpenBlockedByAsync), not one call
+        /// total, re-run in full on EVERY PopulateGitTrackerBoard() whose
+        /// GraphQL signature changed - and that signature changes on ANY
+        /// open issue's number/title/state/subIssueCount/milestone across a
+        /// repo with dozens of concurrent sessions actively filing/editing/
+        /// labeling issues (this repo, today). A board with 40-80 open
+        /// issues could burst 40-80 REST calls every ~20s, on top of every
+        /// other tool (gh CLI, other sessions) sharing the same account's
+        /// hourly rate limit. Throttled to at most once per
+        /// BlockedEnrichMinInterval regardless of how often the caller asks
+        /// - the badge can be up to that stale, which is a fair trade for
+        /// not burning the shared rate limit on redundant re-checks of
+        /// issues whose blocked state almost never actually changes minute
+        /// to minute.
+        /// </summary>
+        private DateTime _lastBlockedEnrichUtc = DateTime.MinValue;
+        private static readonly TimeSpan BlockedEnrichMinInterval = TimeSpan.FromMinutes(3);
+
         private async System.Threading.Tasks.Task EnrichBlockedStatusAsync(string pat)
         {
+            if (DateTime.UtcNow - _lastBlockedEnrichUtc < BlockedEnrichMinInterval) return;
+            _lastBlockedEnrichUtc = DateTime.UtcNow;
+
             var openIssues = _milestones.SelectMany(m => m.Epics).SelectMany(e => e.Issues)
                 .Where(i => i.Status != "CLOSED").ToList();
             if (openIssues.Count == 0) return;
