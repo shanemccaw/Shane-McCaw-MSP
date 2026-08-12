@@ -6,12 +6,37 @@
         xmlns:local="clr-namespace:BuildConsole"
         xmlns:ctrl="clr-namespace:BuildConsole.Controls"
         xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         mc:Ignorable="d"
         Title="BuildConsole" Height="960" Width="1680"
         WindowStartupLocation="CenterScreen"
         Background="{StaticResource BaseBrush}"
+        WindowStyle="None"
+        ResizeMode="CanResize"
         PreviewKeyDown="Window_PreviewKeyDown"
-        PreviewKeyUp="Window_PreviewKeyUp">
+        PreviewKeyUp="Window_PreviewKeyUp"
+        StateChanged="Window_StateChanged">
+
+    <!-- Git #894 - Shane: "change the title bar from the default Windows
+         title bar to one like in VS Code." The custom "Antigravity" bar
+         below (File/Edit/Selection/View/Go/Run/Terminal/Help) already
+         existed and already matches VS Code's menu row - it was just
+         rendering UNDER the native OS title bar (still visible in the
+         screenshot's own native "Close" tooltip/X button) rather than
+         replacing it. WindowChrome keeps real OS behavior (drag-to-move,
+         edge resize, Aero snap, double-click-to-maximize, Alt+Space system
+         menu) on a WindowStyle="None" window - CaptionHeight matches the
+         bar's own 36px height below, and every interactive element inside
+         that height (menu, toolbar buttons, the new caption buttons) is
+         marked IsHitTestVisibleInChrome so WindowChrome treats them as
+         real clicks instead of window-drag gestures. -->
+    <WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="36"
+                             ResizeBorderThickness="6"
+                             GlassFrameThickness="0"
+                             CornerRadius="0"
+                             UseAeroCaptionButtons="False"/>
+    </WindowChrome.WindowChrome>
 
     <Grid>
         <DockPanel LastChildFill="True">
@@ -29,6 +54,7 @@
                         <ColumnDefinition Width="Auto"/> <!-- Logo + Menus -->
                         <ColumnDefinition Width="*"/>    <!-- Centered Document / Project Title -->
                         <ColumnDefinition Width="Auto"/> <!-- Quick Action Buttons -->
+                        <ColumnDefinition Width="Auto"/> <!-- Git #894 - Minimize/Maximize/Close -->
                     </Grid.ColumnDefinitions>
 
                     <!-- Left: Logo + Menu Bar -->
@@ -48,7 +74,7 @@
                                        VerticalAlignment="Center"/>
                         </Border>
 
-                        <Menu Background="Transparent" BorderThickness="0" VerticalAlignment="Center">
+                        <Menu Background="Transparent" BorderThickness="0" VerticalAlignment="Center" WindowChrome.IsHitTestVisibleInChrome="True">
                             <MenuItem Header="_File">
                                 <MenuItem Header="New Chat"        InputGestureText="Ctrl+N"/>
                                 <MenuItem Header="Open Session…"/>
@@ -143,7 +169,8 @@
                     <StackPanel Grid.Column="2"
                                 Orientation="Horizontal"
                                 VerticalAlignment="Center"
-                                Margin="0,0,8,0">
+                                Margin="0,0,8,0"
+                                WindowChrome.IsHitTestVisibleInChrome="True">
                         <Button Style="{StaticResource IconButton}"
                                 ToolTip="Toggle Primary Side Bar (Ctrl+B)"
                                 Click="ToggleSidebar_Click"
@@ -177,6 +204,68 @@
                                 Padding="6,4"
                                 Margin="4,0,0,0">
                             <TextBlock x:Name="BtnBuildReleaseIcon" Text="&#xE768;" FontFamily="Segoe MDL2 Assets" FontSize="12" Foreground="{StaticResource GreenBrush}"/>
+                        </Button>
+                    </StackPanel>
+
+                    <!-- Git #894 - real minimize/maximize-restore/close, since WindowStyle="None"
+                         removes the OS's own caption buttons entirely. Flush against the true
+                         window edge (no rounded corners, full CaptionHeight tall) to read as
+                         genuine system buttons rather than more toolbar icons - close gets the
+                         standard Windows red hover, the other two get the standard light-gray
+                         hover. KNOWN LIMITATION: these are plain WPF buttons, not real DWM
+                         caption-button hit regions, so Windows 11's hover-to-show-Snap-Layouts
+                         flyout over the maximize button won't appear (that needs a WM_NCHITTEST
+                         HTMAXBUTTON hook, a materially bigger change) - double-click/drag-to-edge
+                         snap still works fine via WindowChrome, only the hover flyout is missing. -->
+                    <StackPanel Grid.Column="3" Orientation="Horizontal" WindowChrome.IsHitTestVisibleInChrome="True">
+                        <StackPanel.Resources>
+                            <Style x:Key="CaptionButton" TargetType="Button">
+                                <Setter Property="Width" Value="46"/>
+                                <Setter Property="Height" Value="36"/>
+                                <Setter Property="Background" Value="Transparent"/>
+                                <Setter Property="BorderThickness" Value="0"/>
+                                <Setter Property="Foreground" Value="{StaticResource Subtext1Brush}"/>
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border x:Name="Bd" Background="{TemplateBinding Background}">
+                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="Bd" Property="Background" Value="{StaticResource Surface0Brush}"/>
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                            <Style x:Key="CaptionButtonClose" TargetType="Button" BasedOn="{StaticResource CaptionButton}">
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border x:Name="Bd" Background="{TemplateBinding Background}">
+                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="Bd" Property="Background" Value="#E81123"/>
+                                                    <Setter Property="Foreground" Value="White"/>
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </StackPanel.Resources>
+                        <Button x:Name="BtnMinimize" Style="{StaticResource CaptionButton}" ToolTip="Minimize" Click="BtnMinimize_Click">
+                            <TextBlock Text="&#xE921;" FontFamily="Segoe MDL2 Assets" FontSize="10"/>
+                        </Button>
+                        <Button x:Name="BtnMaximizeRestore" Style="{StaticResource CaptionButton}" ToolTip="Maximize" Click="BtnMaximizeRestore_Click">
+                            <TextBlock x:Name="BtnMaximizeRestoreIcon" Text="&#xE922;" FontFamily="Segoe MDL2 Assets" FontSize="10"/>
+                        </Button>
+                        <Button x:Name="BtnCloseWindow" Style="{StaticResource CaptionButtonClose}" ToolTip="Close" Click="BtnCloseWindow_Click">
+                            <TextBlock Text="&#xE8BB;" FontFamily="Segoe MDL2 Assets" FontSize="10"/>
                         </Button>
                     </StackPanel>
 
