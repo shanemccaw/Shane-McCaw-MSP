@@ -58,6 +58,12 @@ namespace BuildConsole.Controls
         public string? SqlPath { get; set; }
         /// <summary>Git #843 — the real GitHub issue body, carried through from <see cref="GitBoardIssue.Body"/> so the Edit dialog can pre-fill it without a second fetch.</summary>
         public string Body { get; set; } = string.Empty;
+        /// <summary>Git #844 — GraphQL databaseId carried through from <see cref="GitBoardIssue.DatabaseId"/>, the id GitHub's sub_issues endpoint wants as `sub_issue_id` (not the issue number).</summary>
+        public long DatabaseId { get; set; }
+        /// <summary>Git #845 (Git Board Phase 7) — real still-OPEN blocked_by dependency, populated lazily by EnrichBlockedStatusAsync (the board's own GraphQL fetch doesn't carry issue-dependency data).</summary>
+        public bool IsBlocked { get; set; }
+        public int? BlockedByNumber { get; set; }
+        public string? BlockedByTitle { get; set; }
         public string PriorityBadge => Priority switch
         {
             "HIGH" => "🔥",
@@ -130,6 +136,22 @@ namespace BuildConsole.Controls
             _isPinned = !_isPinned;
             PinSidebarIcon.Text = _isPinned ? "📌" : "📍";
             PinToggled?.Invoke(this, _isPinned);
+        }
+
+        /// <summary>
+        /// Git #842 (Git Board Phase 4) — Shane: confirmed by code audit that
+        /// this "+" button had no click handler at all. Only wired for the
+        /// Issues view (SwitchView already sets its tooltip to "New Issue"
+        /// there) — the other views' tooltips ("New Chat", "New File", etc.)
+        /// aren't in this task's scope, so BtnNewItem stays a no-op for them,
+        /// same as before this change.
+        /// </summary>
+        private async void BtnNewItem_Click(object sender, RoutedEventArgs e)
+        {
+            if (_currentView == "Issues")
+            {
+                await CreateNewIssueAsync();
+            }
         }
 
         public void ExpandPanel()
@@ -428,6 +450,96 @@ namespace BuildConsole.Controls
 
             BuildBoardFromGitHub(issues);
             RenderIssuesTree(_currentFilter == "Done" ? "All" : _currentFilter);
+
+            // Git #845 (Git Board Phase 7) — the board's own GraphQL fetch above
+            // has no issue-dependency data, so blocked state is enriched in a
+            // second pass via the real REST blocked_by endpoint (bounded
+            // concurrency so a board full of open issues doesn't hammer GitHub
+            // all at once), then the tree repaints once with the real result.
+            _ = EnrichBlockedStatusAsync(settings.GitHubPat);
+        }
+
+        /// <summary>
+        /// Git #842 (Git Board Phase 4) — Shane: wire the dead "+" button to a
+        /// real "New Issue" dialog. Creates the issue via `POST /issues`, then
+        /// (optionally) attaches it under the chosen epic via the same real
+        /// `POST /issues/{parent}/sub_issues` endpoint #844's "Assign to
+        /// Epic..." and exception-github-sync.ts both already use, and
+        /// refreshes the board on success. Epic candidates come from
+        /// <see cref="_lastBoardIssues"/> — the board's own last GraphQL fetch
+        /// — same as #844/#845's pickers, no second GitHub round-trip.
+        /// </summary>
+        private async System.Threading.Tasks.Task CreateNewIssueAsync()
+        {
+            var settings = BuildConsole.Services.BuildConsoleSettings.Load();
+            if (!settings.HasGitHubPat)
+            {
+                MessageBox.Show("No GitHub PAT configured — set one in Settings (cog icon / File > Settings) first.", "New Issue");
+                return;
+            }
+
+            var epicCandidates = _lastBoardIssues.Where(i => i.IsEpic).OrderByDescending(i => i.Number).ToList();
+            var dialog = new NewIssueDialog(epicCandidates);
+            if (dialog.ShowDialog() != true) return;
+
+            var client = new GitHubApiClient(settings.GitHubPat);
+            CreatedIssue created;
+            try
+            {
+                created = await client.CreateIssueAsync(dialog.IssueTitle, dialog.IssueBody);
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("git-board.create", $"issue creation FAILED: {ex.Message}");
+                MessageBox.Show($"Couldn't create the issue: {ex.Message}", "New Issue");
+                return;
+            }
+
+            ActivityLog.Log("git-board.create", $"created #{created.Number} \"{dialog.IssueTitle}\"");
+
+            if (dialog.SelectedEpicNumber.HasValue)
+            {
+                try
+                {
+                    await client.AddSubIssueAsync(dialog.SelectedEpicNumber.Value, created.Id);
+                    ActivityLog.Log("git-board.create", $"#{created.Number} assigned under epic #{dialog.SelectedEpicNumber}");
+                }
+                catch (Exception ex)
+                {
+                    ActivityLog.Log("git-board.create", $"#{created.Number} -> epic #{dialog.SelectedEpicNumber} attach FAILED: {ex.Message}");
+                    MessageBox.Show($"Issue #{created.Number} was created, but couldn't be attached under epic #{dialog.SelectedEpicNumber}: {ex.Message}", "New Issue");
+                }
+            }
+
+            _lastInProgressSignature = null;
+            PopulateGitTrackerBoard();
+        }
+
+        /// <summary>Git #845 (Git Board Phase 7) — see PopulateGitTrackerBoard's call site.</summary>
+        private async System.Threading.Tasks.Task EnrichBlockedStatusAsync(string pat)
+        {
+            var openIssues = _milestones.SelectMany(m => m.Epics).SelectMany(e => e.Issues)
+                .Where(i => i.Status != "CLOSED").ToList();
+            if (openIssues.Count == 0) return;
+
+            var client = new GitHubApiClient(pat);
+            using var gate = new System.Threading.SemaphoreSlim(6);
+
+            await System.Threading.Tasks.Task.WhenAll(openIssues.Select(async issue =>
+            {
+                await gate.WaitAsync();
+                try
+                {
+                    var blocker = await client.GetOpenBlockedByAsync(issue.IssueNumber);
+                    issue.IsBlocked = blocker != null;
+                    issue.BlockedByNumber = blocker?.Number;
+                    issue.BlockedByTitle = blocker?.Title;
+                }
+                catch { /* best-effort — worst case this one issue just doesn't show a Blocked badge */ }
+                finally { gate.Release(); }
+            }));
+
+            RenderIssuesTree(_currentFilter == "Done" ? "All" : _currentFilter);
         }
 
         /// <summary>
@@ -438,8 +550,12 @@ namespace BuildConsole.Controls
         /// Shane To-Do (the label). Status carried through is the real issue
         /// state, never a label.
         /// </summary>
+        /// <summary>Git #844 — the last-fetched real open issues, kept around so "Assign to Epic..." can build its picker (real open issues that ARE epics) from data already in memory instead of a second GitHub round-trip.</summary>
+        private List<GitBoardIssue> _lastBoardIssues = new();
+
         private void BuildBoardFromGitHub(List<GitBoardIssue> issues)
         {
+            _lastBoardIssues = issues;
             _milestones.Clear();
 
             static string? DeriveSqlPath(string body)
@@ -463,6 +579,7 @@ namespace BuildConsole.Controls
                         Status = it.IsClosed ? "CLOSED" : "OPEN",
                         SqlPath = DeriveSqlPath(it.Body),
                         Body = it.Body,
+                        DatabaseId = it.DatabaseId,
                     });
                 }
                 return epic;
@@ -762,6 +879,24 @@ namespace BuildConsole.Controls
 
             p.Children.Add(prioBlock);
             p.Children.Add(numBlock);
+
+            // Git #845 (Git Board Phase 7) — real still-OPEN blocked_by
+            // dependency (EnrichBlockedStatusAsync), same red "Blocked" badge
+            // styling as the search view's CreateSearchIssueHeader (#F38BA8).
+            if (issue.Status != "CLOSED" && issue.IsBlocked)
+            {
+                var blockedBadge = new Border
+                {
+                    Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F38BA8")),
+                    CornerRadius = new CornerRadius(3),
+                    Padding = new Thickness(4, 1, 4, 1),
+                    Margin = new Thickness(0, 0, 6, 0),
+                    ToolTip = issue.BlockedByNumber.HasValue ? $"Blocked by #{issue.BlockedByNumber}: {issue.BlockedByTitle}" : "Blocked"
+                };
+                blockedBadge.Child = new TextBlock { Text = "🔴 Blocked", FontSize = 9, FontWeight = FontWeights.Bold, Foreground = Brushes.Black };
+                p.Children.Add(blockedBadge);
+            }
+
             p.Children.Add(titleBlock);
 
             var tvi = new TreeViewItem
@@ -849,6 +984,81 @@ namespace BuildConsole.Controls
                 PopulateGitTrackerBoard();
             };
             cm.Items.Add(miEdit);
+
+            // Git #844 (Git Board Phase 6) — picker over the real open issues
+            // that ARE epics (already in memory from #839's ListBoardIssuesAsync,
+            // no second fetch), links via the same real
+            // POST /issues/{parent}/sub_issues endpoint exception-github-sync.ts
+            // already uses to attach a filed issue under Epic #530.
+            var miAssignEpic = new MenuItem { Header = "🔗 Assign to Epic..." };
+            miAssignEpic.Click += async (s, e) =>
+            {
+                var settings = BuildConsole.Services.BuildConsoleSettings.Load();
+                if (!settings.HasGitHubPat) return;
+
+                var epicCandidates = _lastBoardIssues
+                    .Where(i => i.IsEpic && i.Number != issue.IssueNumber)
+                    .OrderByDescending(i => i.Number)
+                    .ToList();
+
+                var dialog = new AssignIssueEpicDialog(issue.RawTitle, epicCandidates);
+                if (dialog.ShowDialog() != true || dialog.SelectedEpic == null) return;
+                var targetEpic = dialog.SelectedEpic;
+
+                try
+                {
+                    var client = new GitHubApiClient(settings.GitHubPat);
+                    await client.AddSubIssueAsync(targetEpic.Number, issue.DatabaseId);
+                    ActivityLog.Log("git-board.assign-epic", $"#{issue.IssueNumber} assigned under epic #{targetEpic.Number}");
+                }
+                catch (Exception ex)
+                {
+                    ActivityLog.Log("git-board.assign-epic", $"#{issue.IssueNumber} -> #{targetEpic.Number} FAILED: {ex.Message}");
+                    MessageBox.Show($"Couldn't assign #{issue.IssueNumber} to epic #{targetEpic.Number}: {ex.Message}", "Assign to Epic");
+                    return;
+                }
+                _lastInProgressSignature = null;
+                PopulateGitTrackerBoard();
+            };
+            cm.Items.Add(miAssignEpic);
+
+            // Git #845 (Git Board Phase 7) — same picker pattern as #844's
+            // "Assign to Epic..." (real open issues already in memory from
+            // _lastBoardIssues, no second fetch), sets a real GitHub
+            // issue-dependency link via the same POST
+            // /issues/{n}/dependencies/blocked_by endpoint CLAUDE.md's
+            // blocked-label workflow already uses.
+            var miSetBlockedBy = new MenuItem { Header = issue.IsBlocked ? "🚫 Change Blocked By..." : "🚫 Set Blocked By..." };
+            miSetBlockedBy.Click += async (s, e) =>
+            {
+                var settings = BuildConsole.Services.BuildConsoleSettings.Load();
+                if (!settings.HasGitHubPat) return;
+
+                var blockerCandidates = _lastBoardIssues
+                    .Where(i => i.Number != issue.IssueNumber)
+                    .OrderByDescending(i => i.Number)
+                    .ToList();
+
+                var dialog = new SetBlockedByDialog(issue.RawTitle, blockerCandidates);
+                if (dialog.ShowDialog() != true || dialog.SelectedBlocker == null) return;
+                var blocker = dialog.SelectedBlocker;
+
+                try
+                {
+                    var client = new GitHubApiClient(settings.GitHubPat);
+                    await client.SetBlockedByAsync(issue.IssueNumber, blocker.Number);
+                    ActivityLog.Log("git-board.set-blocked-by", $"#{issue.IssueNumber} set blocked by #{blocker.Number}");
+                }
+                catch (Exception ex)
+                {
+                    ActivityLog.Log("git-board.set-blocked-by", $"#{issue.IssueNumber} -> #{blocker.Number} FAILED: {ex.Message}");
+                    MessageBox.Show($"Couldn't set #{issue.IssueNumber} blocked by #{blocker.Number}: {ex.Message}", "Set Blocked By");
+                    return;
+                }
+                _lastInProgressSignature = null;
+                PopulateGitTrackerBoard();
+            };
+            cm.Items.Add(miSetBlockedBy);
 
             // Same real capability as the extension's Shane To-Do 🗄 button —
             // only shown when the real GitHub issue body actually references
