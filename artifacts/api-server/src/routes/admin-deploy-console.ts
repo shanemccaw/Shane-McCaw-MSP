@@ -1,5 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import { requireAdminOrIngestToken } from "../middlewares/requireAuth";
+import { pool } from "@workspace/db";
+import { splitSqlStatements } from "../lib/sql-statement-splitter";
 
 // Git #702 — Shane's Build Tracker browser extension floats a Deploy Console
 // over claude.ai, reusing this exact route (not a new backend) with the same
@@ -175,6 +177,151 @@ router.post("/admin/simulator/deploy/console", requireDeployAccess, async (req: 
   });
 
   res.json({ ok: result.ok, command, output: result.output });
+});
+
+// POST /admin/deploy/sql-test — runs one Shane/agent-supplied read-only SQL
+// verification query against the real DB and returns the rows directly, so a
+// build's own automation can check its work without a manual copy-paste
+// through Shane. READ-ONLY ONLY, enforced here, not just documented: rejected
+// (400, never executed) unless the query is a single statement that is
+// unambiguously a SELECT, with a belt-and-suspenders keyword scan on top in
+// case a SELECT-shaped string smuggles a write in a subquery/CTE. This must
+// never grow into a general SQL-execution endpoint — that's the deploy
+// console's free-text `/admin/simulator/deploy/console` route above, which is
+// deliberately unrestricted and gated the same way.
+const SQL_TEST_ROW_CAP = 1000;
+const SQL_TEST_TIMEOUT_MS = 15_000;
+
+// Multiple statements separated by `;` are rejected outright below; this
+// only needs to catch write/DDL keywords appearing anywhere in the single
+// remaining statement (e.g. inside a CTE or subquery a naive SELECT-prefix
+// check would miss).
+const SQL_TEST_FORBIDDEN_KEYWORDS =
+  /\b(insert|update|delete|drop|alter|create|truncate|grant|revoke|call|merge|vacuum|copy|execute|lock)\b/i;
+
+interface SqlTestExpect {
+  rowCount?: number;
+  columns?: string[];
+}
+
+// Leading `-- comment` / `/* comment */` noise ahead of the real SELECT
+// keyword, stripped so a commented query isn't wrongly rejected as "not a
+// SELECT". Reuses the same comment grammar `splitSqlStatements` already
+// understands, just walked from the front instead of scanned end-to-end.
+function stripLeadingComments(text: string): string {
+  let s = text;
+  for (;;) {
+    const trimmed = s.replace(/^\s+/, "");
+    if (trimmed.startsWith("--")) {
+      const newline = trimmed.indexOf("\n");
+      s = newline === -1 ? "" : trimmed.slice(newline + 1);
+      continue;
+    }
+    if (trimmed.startsWith("/*")) {
+      const end = trimmed.indexOf("*/");
+      s = end === -1 ? "" : trimmed.slice(end + 2);
+      continue;
+    }
+    return trimmed;
+  }
+}
+
+function validateSqlTestQuery(rawQuery: unknown): { ok: true; query: string } | { ok: false; error: string } {
+  if (typeof rawQuery !== "string" || !rawQuery.trim()) {
+    return { ok: false, error: "No query given" };
+  }
+
+  // SQL-aware split (respects string literals, dollar-quoting, comments —
+  // see sql-statement-splitter.ts) rather than a naive semicolon count, so a
+  // literal like 'a;b' inside a genuine single statement isn't mistaken for
+  // two statements.
+  const statements = splitSqlStatements(rawQuery);
+  if (statements.length !== 1) {
+    return { ok: false, error: "Only a single SQL statement is allowed — no semicolon-separated statements" };
+  }
+
+  const statement = statements[0]!.trim();
+  const withoutTrailingSemicolon = statement.endsWith(";") ? statement.slice(0, -1).trim() : statement;
+
+  if (!/^select\b/i.test(stripLeadingComments(withoutTrailingSemicolon))) {
+    return { ok: false, error: "Only SELECT statements are allowed" };
+  }
+
+  if (SQL_TEST_FORBIDDEN_KEYWORDS.test(withoutTrailingSemicolon)) {
+    return { ok: false, error: "Query contains a forbidden write/DDL keyword" };
+  }
+
+  return { ok: true, query: withoutTrailingSemicolon };
+}
+
+function evaluateSqlTestExpectation(
+  rows: Record<string, unknown>[],
+  expect: SqlTestExpect | undefined,
+): { pass: boolean; reasons: string[] } | null {
+  if (!expect) return null;
+  const reasons: string[] = [];
+
+  if (typeof expect.rowCount === "number" && rows.length !== expect.rowCount) {
+    reasons.push(`Expected rowCount ${expect.rowCount}, got ${rows.length}`);
+  }
+
+  if (Array.isArray(expect.columns)) {
+    const actualColumns = new Set(rows.length > 0 ? Object.keys(rows[0]) : []);
+    for (const col of expect.columns) {
+      if (!actualColumns.has(col)) {
+        reasons.push(`Expected column '${col}' not present in result`);
+      }
+    }
+  }
+
+  return { pass: reasons.length === 0, reasons };
+}
+
+router.post("/admin/deploy/sql-test", requireDeployAccess, async (req: Request, res: Response) => {
+  const rawQuery = req.body?.query;
+  const expect = req.body?.expect as SqlTestExpect | undefined;
+  const userId = req.user?.id;
+
+  const validated = validateSqlTestQuery(rawQuery);
+  if (!validated.ok) {
+    log.warn({ query: rawQuery, userId, error: validated.error }, "SQL test-runner query rejected");
+    res.status(400).json({ ok: false, error: validated.error });
+    return;
+  }
+
+  const { query } = validated;
+  log.info({ query, userId }, "SQL test-runner query starting");
+
+  const capped = `SELECT * FROM (${query}) AS sql_test_subquery LIMIT ${SQL_TEST_ROW_CAP}`;
+
+  // A dedicated connection (not db.execute's shared pool helper) so
+  // `SET statement_timeout` lands on the SAME connection the query itself
+  // runs on — that's what makes Postgres actually cancel a runaway query
+  // server-side, instead of the app merely giving up on awaiting it while
+  // the query keeps burning a connection in the background.
+  const client = await pool.connect();
+  try {
+    await client.query(`SET statement_timeout = ${SQL_TEST_TIMEOUT_MS}`);
+    const result = await client.query(capped);
+    const rows = (result.rows ?? []) as Record<string, unknown>[];
+    const evaluation = evaluateSqlTestExpectation(rows, expect);
+
+    log.info({ query, userId, rowCount: rows.length, pass: evaluation?.pass ?? null }, "SQL test-runner query completed");
+
+    res.json({
+      ok: true,
+      rowCount: rows.length,
+      rows,
+      truncated: rows.length >= SQL_TEST_ROW_CAP,
+      expectation: evaluation,
+    });
+  } catch (err) {
+    const error = err instanceof Error ? err.message : String(err);
+    log.error({ query, userId, error }, "SQL test-runner query failed");
+    res.status(500).json({ ok: false, error });
+  } finally {
+    client.release();
+  }
 });
 
 // POST /admin/simulator/deploy/:operation — runs one whitelisted operation.
