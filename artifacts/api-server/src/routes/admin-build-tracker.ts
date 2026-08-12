@@ -1529,19 +1529,20 @@ async function areBlockersCleared(blockerNums: number[]): Promise<boolean> {
 /**
  * GET /admin/build-tracker/extension/queue
  *
- * Every non-terminal-for-long queue row, for the extension's own panel
- * display — done/failed/canceled ones roll off after
- * QUEUE_TERMINAL_VISIBLE_MS so the list doesn't grow forever, but stay long
- * enough for Shane to actually see a build finished before it disappears.
+ * Git #865 — every queue row, terminal or not. Shane: "it should still stay around,
+ * just be marked done and filtered out... there are filters at the top of
+ * the Build Queue, use those." Used to drop done/failed/canceled rows from
+ * the response 30 minutes after they finished (QUEUE_TERMINAL_VISIBLE_MS) so
+ * the panel's own All/Done/Canceled filter chips never had a chance to show
+ * them — the chips filter what's already in memory, they can't filter data
+ * that was never sent. Returns every row now; the existing client-side chips
+ * (BuildQueuePanel.ApplyFilter) are the real filtering mechanism.
  */
-const QUEUE_TERMINAL_VISIBLE_MS = 30 * 60 * 1000;
 router.get("/admin/build-tracker/extension/queue", ingestAuth, async (_req: Request, res: Response) => {
   try {
-    const cutoff = new Date(Date.now() - QUEUE_TERMINAL_VISIBLE_MS);
     const rows = await db
       .select()
       .from(btBuildQueueTable)
-      .where(sql`status IN ('queued','running') OR updated_at > ${cutoff}`)
       .orderBy(asc(btBuildQueueTable.createdAt));
     // Git #799/#813 — real GitHub dependency (or dependencies, plural)
     // overrides the stored column(s) for display too, so nesting in the

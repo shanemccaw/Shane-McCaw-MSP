@@ -114,6 +114,11 @@ namespace BuildConsole.Controls
             if (signature == _lastSessionsSignature) return;
             _lastSessionsSignature = signature;
 
+            // Git #866 — tab headers carry a live count now that each former
+            // stacked section is its own tab, so the at-a-glance value of the
+            // old always-visible layout isn't lost just because a tab isn't active.
+            TabSessions.Header = $"Sessions ({sessions.Count})";
+
             ActiveSessionsList.Items.Clear();
             if (sessions.Count == 0)
             {
@@ -175,6 +180,9 @@ namespace BuildConsole.Controls
         /// </summary>
         private void RenderInFlightGrouped(List<Services.GitHubIssueSummary> issues)
         {
+            // Git #866 — see RefreshActiveSessionsAsync's identical comment.
+            TabInFlight.Header = $"In-Flight ({issues.Count})";
+
             InFlightIssuesList.Items.Clear();
             if (issues.Count == 0)
             {
@@ -219,6 +227,9 @@ namespace BuildConsole.Controls
             var signature = System.Text.Json.JsonSerializer.Serialize(issues);
             if (signature == _lastWaitingOnMeSignature) return;
             _lastWaitingOnMeSignature = signature;
+
+            // Git #866 — see RefreshActiveSessionsAsync's identical comment.
+            TabToDo.Header = $"To-Do ({issues.Count})";
 
             RenderIssueList(WaitingOnMeList, issues, "Nothing waiting on you.", "🔴", "#E5A3A3");
         }
