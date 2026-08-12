@@ -775,6 +775,34 @@ namespace BuildConsole.Controls
             };
             cm.Items.Add(miToggle);
 
+            // Git #841 (Git Board Phase 3) — real GitHub issue state, not the
+            // `complete` label. Shane emphasized reopening specifically: this
+            // is the way a closed issue that shouldn't have been comes back
+            // into view (default board only shows real OPEN issues per #839).
+            var miState = new MenuItem { Header = issue.Status == "CLOSED" ? "↩ Reopen Issue" : "✕ Close Issue" };
+            miState.Click += async (s, e) =>
+            {
+                var settings = BuildConsole.Services.BuildConsoleSettings.Load();
+                if (!settings.HasGitHubPat) return;
+                bool closing = issue.Status != "CLOSED";
+                try
+                {
+                    var client = new GitHubApiClient(settings.GitHubPat);
+                    await client.SetIssueStateAsync(issue.IssueNumber, closing);
+                    ActivityLog.Log("git-board.state-change", $"#{issue.IssueNumber} -> {(closing ? "closed" : "reopened")}");
+                }
+                catch (Exception ex)
+                {
+                    ActivityLog.Log("git-board.state-change", $"#{issue.IssueNumber} state change FAILED: {ex.Message}");
+                    MessageBox.Show($"Couldn't {(closing ? "close" : "reopen")} #{issue.IssueNumber}: {ex.Message}", "Git Board");
+                    return;
+                }
+                _lastInProgressSignature = null;
+                _boardShowsClosed = false;
+                PopulateGitTrackerBoard();
+            };
+            cm.Items.Add(miState);
+
             // Same real capability as the extension's Shane To-Do 🗄 button —
             // only shown when the real GitHub issue body actually references
             // a lib/db/migrations/manual/*.sql file.

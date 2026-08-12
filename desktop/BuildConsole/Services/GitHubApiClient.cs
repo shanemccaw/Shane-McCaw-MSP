@@ -145,6 +145,17 @@ namespace BuildConsole.Services
             public List<GitHubIssueResult> Items { get; set; } = new();
         }
 
+        /// <summary>Git #841 (Git Board Phase 3) — real `PATCH /issues/{n}` with `state`, so Close/Reopen flips GitHub's actual issue state rather than the `complete` label.</summary>
+        public async Task SetIssueStateAsync(int number, bool close)
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Patch, $"repos/{Owner}/{Repo}/issues/{number}")
+            {
+                Content = JsonContent.Create(new { state = close ? "closed" : "open" }),
+            };
+            var res = await _http.SendAsync(req);
+            res.EnsureSuccessStatusCode();
+        }
+
         // ── Git #839: real Git Board data via GraphQL ───────────────────────
         private const int PageSize = 100;
         private const int MaxPages = 10; // runaway guard (up to 1000 issues per state)
