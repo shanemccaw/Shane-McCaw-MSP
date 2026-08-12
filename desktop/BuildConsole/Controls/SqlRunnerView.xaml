@@ -116,19 +116,12 @@
                                    HorizontalAlignment="Right"/>
                     </DockPanel>
                 </Border>
+                <!-- Columns generated at runtime from the real result set's own fields (SqlRunnerView.xaml.cs's RenderResults) — a query can return anything, not a fixed shape. -->
                 <DataGrid x:Name="ResultsGrid"
                           Grid.Row="1"
                           IsReadOnly="True"
-                          AutoGenerateColumns="False"
-                          BorderThickness="0">
-                    <!-- Sample columns — populated at runtime -->
-                    <DataGrid.Columns>
-                        <DataGridTextColumn Header="id"         Width="60"  Binding="{Binding Id}"/>
-                        <DataGridTextColumn Header="email"      Width="200" Binding="{Binding Email}"/>
-                        <DataGridTextColumn Header="created_at" Width="160" Binding="{Binding CreatedAt}"/>
-                        <DataGridTextColumn Header="status"     Width="100" Binding="{Binding Status}"/>
-                    </DataGrid.Columns>
-                </DataGrid>
+                          AutoGenerateColumns="True"
+                          BorderThickness="0"/>
             </Grid>
         </Grid>
 

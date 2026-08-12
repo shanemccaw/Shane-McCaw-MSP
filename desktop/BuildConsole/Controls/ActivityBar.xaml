@@ -44,6 +44,14 @@
                     <TextBlock Text="&#xE869;" FontFamily="Segoe MDL2 Assets" FontSize="18"/>
                 </RadioButton>
 
+                <RadioButton x:Name="BtnIssues"
+                             GroupName="ActivityBar"
+                             Style="{StaticResource ActivityBarButton}"
+                             Checked="Btn_Checked" Tag="Issues"
+                             ToolTip="Git Milestones, Epics &amp; Issues Tracker">
+                    <TextBlock Text="🎯" FontSize="16"/>
+                </RadioButton>
+
                 <RadioButton x:Name="BtnAutomation"
                              GroupName="ActivityBar"
                              Style="{StaticResource ActivityBarButton}"

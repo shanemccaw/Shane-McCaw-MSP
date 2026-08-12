@@ -1,0 +1,219 @@
+using System;
+using System.Collections.Generic;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Threading.Tasks;
+
+namespace BuildConsole.Services
+{
+    public class QueueItem
+    {
+        public int Id { get; set; }
+        public string Title { get; set; } = "";
+        public string Prompt { get; set; } = "";
+        public string? Model { get; set; }
+        public string? Effort { get; set; }
+        public string? Cwd { get; set; }
+        public int? GithubNumber { get; set; }
+        public int? BlockedByNumber { get; set; }
+        /// <summary>Git #813 — the real field going forward; BlockedByNumber (singular) stays for back-compat, set to the first entry.</summary>
+        public List<int>? BlockedByNumbers { get; set; }
+        public string Status { get; set; } = "queued";
+        public int? ExitCode { get; set; }
+    }
+
+    public class BlockedByInfo
+    {
+        public int Number { get; set; }
+        public string Title { get; set; } = "";
+        public string State { get; set; } = "";
+        public bool Complete { get; set; }
+    }
+
+    public class InProgressItem
+    {
+        public int GithubNumber { get; set; }
+        public string Title { get; set; } = "";
+        public List<string> Labels { get; set; } = new();
+        public string GithubUrl { get; set; } = "";
+        public bool IsEpic { get; set; }
+        public bool IsTodo { get; set; }
+        public bool IsBlocked { get; set; }
+        public BlockedByInfo? BlockedBy { get; set; }
+        public string? SqlPath { get; set; }
+    }
+
+    public class BoardEpic
+    {
+        public int Id { get; set; }
+        public string Title { get; set; } = "";
+        public string Status { get; set; } = "";
+        public int? GithubNumber { get; set; }
+    }
+
+    public class BoardChat
+    {
+        public string ConversationId { get; set; } = "";
+        public string Title { get; set; } = "";
+        public int? EpicId { get; set; }
+        public int? IssueGithubNumber { get; set; }
+        public string ClaudeUrl { get; set; } = "";
+        public DateTime? UpdatedAt { get; set; }
+    }
+
+    public class BoardResponse
+    {
+        public List<BoardEpic> Epics { get; set; } = new();
+        public List<BoardChat> Chats { get; set; } = new();
+    }
+
+    /// <summary>SSMS-style per-statement result — matches admin-engines.ts's StatementResult exactly (POST /simulator/sql/execute, same endpoint the extension's floaty SQL Runner already uses for real).</summary>
+    public class SqlStatementResult
+    {
+        public int StatementIndex { get; set; }
+        public string StatementText { get; set; } = "";
+        public bool Success { get; set; }
+        public List<Dictionary<string, JsonElement>> Rows { get; set; } = new();
+        public int RowCount { get; set; }
+        public List<string> Fields { get; set; } = new();
+        public int ExecutionMs { get; set; }
+        public string? Error { get; set; }
+    }
+
+    /// <summary>
+    /// Talks to the SAME /api/admin/build-tracker/extension/* endpoints the browser
+    /// extension and scripts/build-queue-watcher.ps1 already use - one real backend,
+    /// three different front ends, so behavior (nesting, blocked state, label sync)
+    /// never has to be reinvented or drift between them.
+    /// </summary>
+    public class BuildTrackerApiClient
+    {
+        private static readonly JsonSerializerOptions JsonOpts = new()
+        {
+            PropertyNameCaseInsensitive = true,
+        };
+
+        private readonly HttpClient _http;
+
+        public bool IsConfigured { get; }
+        public string ConfiguredApiBaseUrl { get; }
+        public string? ConfigPath { get; }
+
+        public BuildTrackerApiClient(BuildTrackerConfig config)
+        {
+            IsConfigured = config.IsConfigured;
+            ConfiguredApiBaseUrl = config.ApiBaseUrl;
+            ConfigPath = BuildTrackerConfig.FindConfigPath();
+            var baseUrl = string.IsNullOrWhiteSpace(config.ApiBaseUrl) ? "http://localhost" : config.ApiBaseUrl.TrimEnd('/') + "/";
+            _http = new HttpClient { BaseAddress = new Uri(baseUrl), Timeout = TimeSpan.FromSeconds(20) };
+            if (!string.IsNullOrWhiteSpace(config.IngestToken))
+            {
+                _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", config.IngestToken);
+            }
+        }
+
+        /// <summary>
+        /// Git #815 — Shane: "put the startup SSE and api calls in there...
+        /// so we can just look and see whats happening as its happening in
+        /// the background." Wraps every real HTTP call with a start/end (or
+        /// failure) line into ActivityLog; ActivityLog.Log() itself never
+        /// blocks the caller (fire-and-forget onto the UI thread), so this
+        /// adds visibility without adding any risk of the app hanging on it.
+        /// </summary>
+        private static async Task<T> TrackAsync<T>(string label, Func<Task<T>> fn)
+        {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            ActivityLog.Log("api", $"-> {label}");
+            try
+            {
+                var result = await fn();
+                ActivityLog.Log("api", $"<- {label} ok ({sw.ElapsedMilliseconds}ms)");
+                return result;
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("api", $"x {label} FAILED ({sw.ElapsedMilliseconds}ms): {ex.Message}");
+                throw;
+            }
+        }
+
+        public Task<List<QueueItem>> GetQueueAsync() => TrackAsync("GET queue", async () =>
+        {
+            var res = await _http.GetFromJsonAsync<QueueResponse>("api/admin/build-tracker/extension/queue", JsonOpts);
+            return res?.Items ?? new List<QueueItem>();
+        });
+
+        public Task<List<InProgressItem>> GetInProgressAsync() => TrackAsync("GET in-progress", async () =>
+        {
+            var res = await _http.GetFromJsonAsync<InProgressResponse>("api/admin/build-tracker/extension/in-progress", JsonOpts);
+            return res?.Issues ?? new List<InProgressItem>();
+        });
+
+        /// <summary>No conversationId — this app isn't tied to one specific claude.ai chat the way the browser extension is, so `currentChat` in the response is always null; `epics`/`chats` still come back full, which is all the Chats tree needs.</summary>
+        public Task<BoardResponse> GetBoardAsync() => TrackAsync("GET board", async () =>
+        {
+            var res = await _http.GetFromJsonAsync<BoardResponse>("api/admin/build-tracker/extension/board", JsonOpts);
+            return res ?? new BoardResponse();
+        });
+
+        /// <summary>Same file-content endpoint the extension's Shane-To-Do 🗄 button uses — reads a real migration file's text straight from GitHub, no local filesystem assumption.</summary>
+        public Task<string> GetFileContentAsync(string path) => TrackAsync($"GET file-content {path}", async () =>
+        {
+            var res = await _http.GetFromJsonAsync<FileContentResponse>(
+                $"api/admin/build-tracker/extension/file-content?path={Uri.EscapeDataString(path)}", JsonOpts);
+            return res?.Content ?? "";
+        });
+
+        private class FileContentResponse { public string Content { get; set; } = ""; }
+
+        /// <summary>
+        /// Real execute — POST /api/simulator/sql/execute, the SAME endpoint the
+        /// browser extension's floaty SQL Runner already uses. Not a Claude Code
+        /// session (CLAUDE.md's "no direct database access" rule is specifically
+        /// about those) — this is Shane's own local app talking to the real
+        /// dev api-server, which does have DB access, the exact same path he
+        /// already explicitly approved for the extension.
+        /// </summary>
+        public Task<List<SqlStatementResult>> ExecuteSqlAsync(string query) => TrackAsync("POST sql/execute", async () =>
+        {
+            var res = await _http.PostAsJsonAsync("api/simulator/sql/execute", new { query });
+            if (!res.IsSuccessStatusCode)
+            {
+                var body = await res.Content.ReadAsStringAsync();
+                throw new HttpRequestException($"HTTP {(int)res.StatusCode}: {body}");
+            }
+            var parsed = await res.Content.ReadFromJsonAsync<SqlExecuteResponse>(JsonOpts);
+            return parsed?.Statements ?? new List<SqlStatementResult>();
+        });
+
+        private class SqlExecuteResponse { public List<SqlStatementResult> Statements { get; set; } = new(); }
+
+        /// <summary>Git #814 — same POST the extension's "📋 Queue" button and background.js's queueBuild() already use, now called directly from the WPF app's own injected chat buttons.</summary>
+        public Task<HttpResponseMessage> QueueBuildAsync(string title, string prompt, string? model, string? effort, string? cwd, int? githubNumber, List<int>? blockedByNumbers) =>
+            TrackAsync($"POST queue \"{title}\"", () => _http.PostAsJsonAsync("api/admin/build-tracker/extension/queue", new
+            {
+                title,
+                prompt,
+                model,
+                effort,
+                cwd,
+                githubNumber,
+                blockedByNumbers,
+            }));
+
+        public Task<HttpResponseMessage> MarkQueueItemCompleteAsync(int id, int exitCode) =>
+            TrackAsync($"POST queue/{id}/complete", () => _http.PostAsJsonAsync($"api/admin/build-tracker/extension/queue/{id}/complete", new { exitCode }));
+
+        public Task<HttpResponseMessage> CancelQueueItemAsync(int id) =>
+            TrackAsync($"DELETE queue/{id}", () => _http.DeleteAsync($"api/admin/build-tracker/extension/queue/{id}"));
+
+        public Task<HttpResponseMessage> ToggleLabelAsync(int number, string label, bool add) =>
+            TrackAsync($"POST toggle-label #{number} {label}={add}", () => _http.PostAsJsonAsync("api/admin/build-tracker/extension/toggle-label", new { number, label, add }));
+
+        private class QueueResponse { public List<QueueItem> Items { get; set; } = new(); }
+        private class InProgressResponse { [JsonPropertyName("issues")] public List<InProgressItem> Issues { get; set; } = new(); }
+    }
+}

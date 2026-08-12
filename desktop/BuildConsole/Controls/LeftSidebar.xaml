@@ -36,6 +36,14 @@
                                 Click="CollapseAll_Click">
                             <TextBlock Text="&#xE74B;" FontFamily="Segoe MDL2 Assets" FontSize="13" VerticalAlignment="Center"/>
                         </Button>
+                        <Button x:Name="BtnPinSidebar"
+                                Style="{StaticResource IconButton}"
+                                ToolTip="Pin / Collapse Panel"
+                                Padding="4"
+                                Margin="2,0,0,0"
+                                Click="BtnPinSidebar_Click">
+                            <TextBlock x:Name="PinSidebarIcon" Text="📌" FontSize="11" VerticalAlignment="Center"/>
+                        </Button>
                     </StackPanel>
                 </DockPanel>
             </Border>
@@ -62,140 +70,12 @@
                         </TextBox>
                     </Border>
 
-                    <!-- Chat tree -->
+                    <!-- Chat tree (populated live from GET /extension/board — see code-behind) -->
                     <ScrollViewer DockPanel.Dock="Top"
                                   VerticalScrollBarVisibility="Auto"
                                   HorizontalScrollBarVisibility="Disabled"
                                   Padding="0,4">
-                        <TreeView x:Name="ChatsTree" BorderThickness="0">
-
-                            <!-- ══ EPIC: Platform Build ══ In Progress -->
-                            <TreeViewItem IsExpanded="True">
-                                <TreeViewItem.Header>
-                                    <DockPanel>
-                                        <Ellipse Width="7" Height="7" Fill="{StaticResource BlueBrush}"
-                                                 VerticalAlignment="Center" Margin="0,0,7,0"/>
-                                        <Border DockPanel.Dock="Right" Background="#1A89B4FA" CornerRadius="3"
-                                                Padding="4,1" Margin="6,0,0,0" VerticalAlignment="Center">
-                                            <TextBlock Text="In Progress" FontSize="10" Foreground="{StaticResource BlueBrush}"/>
-                                        </Border>
-                                        <TextBlock Text="Platform Build" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                                    </DockPanel>
-                                </TreeViewItem.Header>
-                                <TreeViewItem>
-                                    <TreeViewItem.Header>
-                                        <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="&#xE8BD;" FontFamily="Segoe MDL2 Assets" FontSize="13"
-                                                       Foreground="{StaticResource BlueBrush}" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                            <TextBlock Text="IDE-style layout for BuildConsole" FontSize="13" VerticalAlignment="Center"/>
-                                        </StackPanel>
-                                    </TreeViewItem.Header>
-                                </TreeViewItem>
-                            </TreeViewItem>
-
-                            <!-- ══ EPIC: MSP Platform ══ In Progress -->
-                            <TreeViewItem IsExpanded="True" Margin="0,4,0,0">
-                                <TreeViewItem.Header>
-                                    <DockPanel>
-                                        <Ellipse Width="7" Height="7" Fill="{StaticResource MauveBrush}"
-                                                 VerticalAlignment="Center" Margin="0,0,7,0"/>
-                                        <Border DockPanel.Dock="Right" Background="#1ACBA6F7" CornerRadius="3"
-                                                Padding="4,1" Margin="6,0,0,0" VerticalAlignment="Center">
-                                            <TextBlock Text="In Progress" FontSize="10" Foreground="{StaticResource MauveBrush}"/>
-                                        </Border>
-                                        <TextBlock Text="MSP Platform" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                                    </DockPanel>
-                                </TreeViewItem.Header>
-                                <TreeViewItem>
-                                    <TreeViewItem.Header>
-                                        <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="&#xE8BD;" FontFamily="Segoe MDL2 Assets" FontSize="13"
-                                                       Foreground="{StaticResource MauveBrush}" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                            <TextBlock Text="Stripe integration for resellers" FontSize="13" VerticalAlignment="Center"/>
-                                        </StackPanel>
-                                    </TreeViewItem.Header>
-                                </TreeViewItem>
-                            </TreeViewItem>
-
-                            <!-- ══ EPIC: Alert Engine ══ Blocked -->
-                            <TreeViewItem IsExpanded="True" Margin="0,4,0,0">
-                                <TreeViewItem.Header>
-                                    <DockPanel>
-                                        <Ellipse Width="7" Height="7" Fill="{StaticResource RedBrush}"
-                                                 VerticalAlignment="Center" Margin="0,0,7,0"/>
-                                        <Border DockPanel.Dock="Right" Background="#1AF38BA8" CornerRadius="3"
-                                                Padding="4,1" Margin="6,0,0,0" VerticalAlignment="Center">
-                                            <TextBlock Text="Blocked" FontSize="10" Foreground="{StaticResource RedBrush}"/>
-                                        </Border>
-                                        <TextBlock Text="Alert Engine" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                                    </DockPanel>
-                                </TreeViewItem.Header>
-                                <TreeViewItem>
-                                    <TreeViewItem.Header>
-                                        <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="&#xE8BD;" FontFamily="Segoe MDL2 Assets" FontSize="13"
-                                                       Foreground="{StaticResource RedBrush}" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                            <TextBlock Text="Alert engine migration planning" FontSize="13" VerticalAlignment="Center"/>
-                                        </StackPanel>
-                                    </TreeViewItem.Header>
-                                </TreeViewItem>
-                            </TreeViewItem>
-
-                            <!-- ══ EPIC: Eyecons Admin ══ Pending -->
-                            <TreeViewItem IsExpanded="False" Margin="0,4,0,0">
-                                <TreeViewItem.Header>
-                                    <DockPanel>
-                                        <Ellipse Width="7" Height="7" Fill="{StaticResource Subtext1Brush}"
-                                                 VerticalAlignment="Center" Margin="0,0,7,0"/>
-                                        <Border DockPanel.Dock="Right" Background="#15585B70" CornerRadius="3"
-                                                Padding="4,1" Margin="6,0,0,0" VerticalAlignment="Center">
-                                            <TextBlock Text="Pending" FontSize="10" Foreground="{StaticResource Subtext1Brush}"/>
-                                        </Border>
-                                        <TextBlock Text="Eyecons Admin" FontSize="13" FontWeight="SemiBold"
-                                                   Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center"/>
-                                    </DockPanel>
-                                </TreeViewItem.Header>
-                                <TreeViewItem>
-                                    <TreeViewItem.Header>
-                                        <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="&#xE8BD;" FontFamily="Segoe MDL2 Assets" FontSize="13"
-                                                       Foreground="{StaticResource Subtext1Brush}" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                            <TextBlock Text="Admin panel layout fixes" FontSize="13"
-                                                       Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center"/>
-                                        </StackPanel>
-                                    </TreeViewItem.Header>
-                                </TreeViewItem>
-                            </TreeViewItem>
-
-                            <!-- ══ EPIC: MSP Database Schema ══ Done -->
-                            <TreeViewItem IsExpanded="False" Margin="0,4,0,0">
-                                <TreeViewItem.Header>
-                                    <DockPanel>
-                                        <Ellipse Width="7" Height="7" Fill="{StaticResource GreenBrush}"
-                                                 VerticalAlignment="Center" Margin="0,0,7,0"/>
-                                        <Border DockPanel.Dock="Right" Background="#15A6E3A1" CornerRadius="3"
-                                                Padding="4,1" Margin="6,0,0,0" VerticalAlignment="Center">
-                                            <TextBlock Text="Done" FontSize="10" Foreground="{StaticResource GreenBrush}"/>
-                                        </Border>
-                                        <TextBlock Text="MSP Database Schema" FontSize="13" FontWeight="SemiBold"
-                                                   Foreground="{StaticResource Subtext1Brush}"
-                                                   TextDecorations="Strikethrough" VerticalAlignment="Center"/>
-                                    </DockPanel>
-                                </TreeViewItem.Header>
-                                <TreeViewItem>
-                                    <TreeViewItem.Header>
-                                        <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="&#xE8BD;" FontFamily="Segoe MDL2 Assets" FontSize="13"
-                                                       Foreground="{StaticResource GreenBrush}" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                            <TextBlock Text="MSP Platform database schema" FontSize="13"
-                                                       Foreground="{StaticResource Subtext1Brush}"
-                                                       TextDecorations="Strikethrough" VerticalAlignment="Center"/>
-                                        </StackPanel>
-                                    </TreeViewItem.Header>
-                                </TreeViewItem>
-                            </TreeViewItem>
-
-                        </TreeView>
+                        <TreeView x:Name="ChatsTree" BorderThickness="0" SelectedItemChanged="ChatsTree_SelectedItemChanged"/>
                     </ScrollViewer>
                 </DockPanel>
             </Grid>
@@ -248,56 +128,291 @@
             </Grid>
 
             <!-- ══════════════════════════════════
-                 SEARCH VIEW
+                 SEARCH VIEW (Full-Text File Content Search)
                  ══════════════════════════════════ -->
             <Grid x:Name="SearchView" Visibility="Collapsed">
-                <DockPanel>
-                    <Border DockPanel.Dock="Top" Padding="8,8">
-                        <TextBox Height="26" Padding="6,4" FontSize="12"
-                                 VerticalContentAlignment="Center"/>
-                    </Border>
-                    <TextBlock DockPanel.Dock="Top"
-                               Text="Type to search chats…"
-                               Foreground="{StaticResource Subtext1Brush}"
-                               FontSize="12"
-                               HorizontalAlignment="Center"
-                               Margin="0,24,0,0"/>
+                <DockPanel Margin="10,8">
+                    <StackPanel DockPanel.Dock="Top">
+
+                        <!-- Main Search Input Box with Embedded Icon & Clean Dark Toggle -->
+                        <Border Background="{StaticResource MantleBrush}" BorderBrush="{StaticResource Surface0Brush}" BorderThickness="1" CornerRadius="6" Padding="6,4" Margin="0,0,0,6">
+                            <DockPanel HorizontalAlignment="Stretch">
+                                <ToggleButton x:Name="BtnMatchCase" DockPanel.Dock="Right" Content="Aa" ToolTip="Match Case" Width="28" Height="24"
+                                              Background="Transparent" BorderThickness="0" Foreground="{StaticResource Subtext0Brush}"
+                                              FontWeight="Bold" FontSize="11" Margin="4,0,0,0" Cursor="Hand">
+                                    <ToggleButton.Style>
+                                        <Style TargetType="{x:Type ToggleButton}">
+                                            <Setter Property="Background" Value="Transparent"/>
+                                            <Style.Triggers>
+                                                <Trigger Property="IsChecked" Value="True">
+                                                    <Setter Property="Background" Value="{StaticResource Surface1Brush}"/>
+                                                    <Setter Property="Foreground" Value="{StaticResource BlueBrush}"/>
+                                                </Trigger>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter Property="Background" Value="{StaticResource Surface0Brush}"/>
+                                                </Trigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </ToggleButton.Style>
+                                </ToggleButton>
+                                <Grid HorizontalAlignment="Stretch">
+                                    <TextBlock Text="Search (e.g. function, class, TODO)..." FontSize="12" Foreground="{StaticResource OverlayBrush}"
+                                               VerticalAlignment="Center" Margin="28,0,0,0" IsHitTestVisible="False">
+                                        <TextBlock.Style>
+                                            <Style TargetType="{x:Type TextBlock}">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Text, ElementName=SearchInputBox}" Value="">
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <TextBlock Text="🔍" FontSize="11" Margin="4,0,6,0" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center"/>
+                                        <TextBox x:Name="SearchInputBox" Height="24" FontSize="12" Padding="2,2" HorizontalAlignment="Stretch" MinWidth="140"
+                                                 VerticalContentAlignment="Center" Background="Transparent" BorderThickness="0"
+                                                 Foreground="{StaticResource TextBrush}" KeyDown="SearchInputBox_KeyDown"/>
+                                    </StackPanel>
+                                </Grid>
+                            </DockPanel>
+                        </Border>
+
+                        <!-- Files to Include Filter Box with Watermark -->
+                        <Border Background="{StaticResource MantleBrush}" BorderBrush="{StaticResource Surface0Brush}" BorderThickness="1" CornerRadius="6" Padding="6,4" Margin="0,0,0,8">
+                            <Grid HorizontalAlignment="Stretch">
+                                <TextBlock Text="files to include (e.g. *.cs, *.ts)" FontSize="11" Foreground="{StaticResource OverlayBrush}"
+                                           VerticalAlignment="Center" Margin="22,0,0,0" IsHitTestVisible="False">
+                                    <TextBlock.Style>
+                                        <Style TargetType="{x:Type TextBlock}">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Text, ElementName=SearchIncludesBox}" Value="">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="📂" FontSize="10" Margin="4,0,6,0" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center"/>
+                                    <TextBox x:Name="SearchIncludesBox" Height="22" FontSize="11" Padding="2,1" HorizontalAlignment="Stretch" MinWidth="140"
+                                             VerticalContentAlignment="Center" Background="Transparent" BorderThickness="0" Foreground="{StaticResource TextBrush}"/>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+
+                        <!-- Search & Clear Action Buttons -->
+                        <Grid Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Button x:Name="BtnExecuteSearch" Grid.Column="0" Content="🔍 Search" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Stretch" Margin="0,0,3,0" Height="28" Click="BtnExecuteSearch_Click"/>
+                            <Button x:Name="BtnClearSearch" Grid.Column="1" Content="🗑 Clear" Style="{StaticResource SecondaryButton}" HorizontalAlignment="Stretch" Margin="3,0,0,0" Height="28" Click="BtnClearSearch_Click"/>
+                        </Grid>
+
+                        <!-- Live Results Summary Badge -->
+                        <Border Background="{StaticResource Surface0Brush}" CornerRadius="4" Padding="8,4" Margin="0,0,0,8">
+                            <TextBlock x:Name="SearchSummaryText" Text="Enter search query &amp; press Enter" FontSize="11" Foreground="{StaticResource Subtext0Brush}" HorizontalAlignment="Center"/>
+                        </Border>
+                    </StackPanel>
+
+                    <!-- Full Width High Contrast Results Tree -->
+                    <TreeView x:Name="SearchResultsTree"
+                              BorderThickness="0"
+                              Background="Transparent"
+                              HorizontalContentAlignment="Stretch"
+                              SelectedItemChanged="SearchResultsTree_SelectedItemChanged">
+                        <TreeView.ItemTemplate>
+                            <HierarchicalDataTemplate ItemsSource="{Binding Matches}">
+                                <DockPanel HorizontalAlignment="Stretch" Margin="0,3">
+                                    <Border DockPanel.Dock="Right" Background="{StaticResource Surface0Brush}" CornerRadius="3" Padding="6,1" Margin="6,0,0,0">
+                                        <TextBlock Text="{Binding MatchCountStr}" FontSize="10" FontWeight="Bold" Foreground="{StaticResource BlueBrush}"/>
+                                    </Border>
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <TextBlock Text="📄 " FontSize="12" VerticalAlignment="Center"/>
+                                        <TextBlock Text="{Binding FileName}" FontWeight="Bold" FontSize="12" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </DockPanel>
+                                <HierarchicalDataTemplate.ItemTemplate>
+                                    <DataTemplate>
+                                        <DockPanel HorizontalAlignment="Stretch" Margin="0,2">
+                                            <Border DockPanel.Dock="Left" Background="{StaticResource Surface0Brush}" CornerRadius="3" Padding="4,1" Margin="0,0,6,0">
+                                                <TextBlock Text="{Binding LineNumberStr}" FontSize="10" FontWeight="Bold" Foreground="{StaticResource PeachBrush}"/>
+                                            </Border>
+                                            <TextBlock Text="{Binding Snippet}" FontSize="11" Foreground="{StaticResource Subtext0Brush}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                                        </DockPanel>
+                                    </DataTemplate>
+                                </HierarchicalDataTemplate.ItemTemplate>
+                            </HierarchicalDataTemplate>
+                        </TreeView.ItemTemplate>
+                    </TreeView>
                 </DockPanel>
             </Grid>
 
             <!-- ══════════════════════════════════
-                 GIT VIEW
+                 GIT SOURCE CONTROL & GRAPH VIEW
                  ══════════════════════════════════ -->
             <Grid x:Name="GitView" Visibility="Collapsed">
-                <DockPanel>
-                    <!-- Branch badge -->
-                    <Border DockPanel.Dock="Top"
-                            Background="{StaticResource Surface0Brush}"
-                            CornerRadius="4"
-                            Padding="10,6"
-                            Margin="8,8">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="&#xE869;" FontFamily="Segoe MDL2 Assets"
-                                       FontSize="14" Foreground="{StaticResource BlueBrush}" Margin="0,0,8,0"/>
-                            <TextBlock Text="main" FontSize="13" Foreground="{StaticResource TextBrush}"/>
-                        </StackPanel>
-                    </Border>
-                    <!-- Staged changes placeholder -->
-                    <TreeViewItem DockPanel.Dock="Top" Header="STAGED (0)" IsExpanded="True"/>
-                    <TreeViewItem DockPanel.Dock="Top" Header="CHANGES (0)" IsExpanded="True"/>
+                <DockPanel Margin="8,6">
+                    <StackPanel DockPanel.Dock="Top">
+                        <!-- Active Branch Badge & Sync Status -->
+                        <Border Background="{StaticResource Surface0Brush}" CornerRadius="6" Padding="8,6" Margin="0,0,0,6">
+                            <DockPanel HorizontalAlignment="Stretch">
+                                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                    <Button Style="{StaticResource IconButton}" Content="↻" ToolTip="Refresh Git Status" Click="BtnGitRefresh_Click" Margin="2,0"/>
+                                    <Button Style="{StaticResource IconButton}" Content="⬇" ToolTip="Git Pull" Click="BtnGitPull_Click" Margin="2,0"/>
+                                    <Button Style="{StaticResource IconButton}" Content="⬆" ToolTip="Git Push" Click="BtnGitPush_Click" Margin="2,0"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="🔀 " FontSize="13" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="GitBranchText" Text="main" FontSize="12" FontWeight="Bold" Foreground="{StaticResource BlueBrush}" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </DockPanel>
+                        </Border>
+
+                        <!-- Commit Message Container -->
+                        <Border Background="{StaticResource Surface0Brush}" CornerRadius="6" Padding="4" Margin="0,0,0,6">
+                            <TextBox x:Name="GitCommitMsgBox" Height="44" FontSize="11" Padding="6,4" AcceptsReturn="True" TextWrapping="Wrap"
+                                     Background="Transparent" BorderThickness="0" Foreground="{StaticResource TextBrush}"
+                                     VerticalContentAlignment="Top" KeyDown="GitCommitMsgBox_KeyDown"/>
+                        </Border>
+
+                        <Button x:Name="BtnGitCommit" Content="✓ Commit" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Stretch" Margin="0,0,0,8" Click="BtnGitCommit_Click"/>
+
+                        <!-- Section Header Tabs: [ Changes ] | [ Commit Graph ] -->
+                        <Grid Margin="0,0,0,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Button x:Name="BtnShowGitChanges" Content="File Changes" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Stretch" Margin="0,0,2,0" Click="BtnGitSection_Click" Tag="Changes"/>
+                            <Button x:Name="BtnShowGitGraph" Content="Git Graph" Style="{StaticResource SecondaryButton}" HorizontalAlignment="Stretch" Margin="2,0,0,0" Click="BtnGitSection_Click" Tag="Graph"/>
+                        </Grid>
+
+                        <Border Background="{StaticResource Surface0Brush}" CornerRadius="4" Padding="6,4" Margin="0,0,0,6">
+                            <TextBlock x:Name="GitStatusSummaryText" Text="SOURCE CONTROL" FontSize="11" Foreground="{StaticResource Subtext1Brush}" HorizontalAlignment="Center"/>
+                        </Border>
+                    </StackPanel>
+
+                    <!-- Git Changes Tree -->
+                    <TreeView x:Name="GitChangesTree"
+                              BorderThickness="0"
+                              Background="Transparent"
+                              HorizontalContentAlignment="Stretch"
+                              SelectedItemChanged="GitChangesTree_SelectedItemChanged">
+                        <TreeView.Resources>
+                            <Style TargetType="{x:Type TreeViewItem}" BasedOn="{StaticResource {x:Type TreeViewItem}}">
+                                <Setter Property="IsExpanded" Value="True"/>
+                            </Style>
+                        </TreeView.Resources>
+                    </TreeView>
+
+                    <!-- Git History Branch Graph Tree -->
+                    <TreeView x:Name="GitHistoryTree"
+                              BorderThickness="0"
+                              Background="Transparent"
+                              Visibility="Collapsed"
+                              HorizontalContentAlignment="Stretch">
+                        <TreeView.Resources>
+                            <Style TargetType="{x:Type TreeViewItem}" BasedOn="{StaticResource {x:Type TreeViewItem}}">
+                                <Setter Property="IsExpanded" Value="True"/>
+                            </Style>
+                        </TreeView.Resources>
+                    </TreeView>
                 </DockPanel>
             </Grid>
 
             <!-- ══════════════════════════════════
-                 SETTINGS VIEW
+                 GIT MILESTONES, EPICS & ISSUES (ADHD TRACKER)
                  ══════════════════════════════════ -->
+            <Grid x:Name="IssuesView" Visibility="Collapsed">
+                <DockPanel Margin="8,6">
+                    <StackPanel DockPanel.Dock="Top">
+                        <!-- ADHD Visual Stats Chips -->
+                        <UniformGrid Columns="2" Margin="0,0,0,8">
+                            <Border Background="{StaticResource Surface0Brush}" CornerRadius="6" Padding="8,6" Margin="0,0,3,3">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="🎯" FontSize="14" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                    <StackPanel>
+                                        <TextBlock Text="MILESTONES" FontSize="9" FontWeight="Bold" Foreground="{StaticResource Subtext0Brush}"/>
+                                        <TextBlock x:Name="IssueStatMilestones" Text="3 Active" FontSize="11" FontWeight="Bold" Foreground="{StaticResource BlueBrush}"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+                            <Border Background="{StaticResource Surface0Brush}" CornerRadius="6" Padding="8,6" Margin="3,0,0,3">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="⚡" FontSize="14" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                    <StackPanel>
+                                        <TextBlock Text="EPICS" FontSize="9" FontWeight="Bold" Foreground="{StaticResource Subtext0Brush}"/>
+                                        <TextBlock x:Name="IssueStatEpics" Text="8 Active" FontSize="11" FontWeight="Bold" Foreground="{StaticResource MauveBrush}"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+                            <Border Background="{StaticResource Surface0Brush}" CornerRadius="6" Padding="8,6" Margin="0,3,3,0">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="🔥" FontSize="14" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                    <StackPanel>
+                                        <TextBlock Text="OPEN ISSUES" FontSize="9" FontWeight="Bold" Foreground="{StaticResource Subtext0Brush}"/>
+                                        <TextBlock x:Name="IssueStatOpen" Text="12 Pending" FontSize="11" FontWeight="Bold" Foreground="{StaticResource PeachBrush}"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+                            <Border Background="{StaticResource Surface0Brush}" CornerRadius="6" Padding="8,6" Margin="3,3,0,0">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="✓" FontSize="14" Margin="0,0,6,0" Foreground="{StaticResource GreenBrush}" VerticalAlignment="Center"/>
+                                    <StackPanel>
+                                        <TextBlock Text="CLOSED" FontSize="9" FontWeight="Bold" Foreground="{StaticResource Subtext0Brush}"/>
+                                        <TextBlock x:Name="IssueStatClosed" Text="28 Done" FontSize="11" FontWeight="Bold" Foreground="{StaticResource GreenBrush}"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+                        </UniformGrid>
+
+                        <!-- Quick Add Issue Box -->
+                        <TextBox x:Name="QuickAddIssueBox" Height="26" FontSize="11" Padding="6,2" Margin="0,0,0,6" KeyDown="QuickAddIssueBox_KeyDown"/>
+
+                        <!-- Filter Chips -->
+                        <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" Margin="0,0,0,8">
+                            <StackPanel Orientation="Horizontal">
+                                <Button Content="All" Style="{StaticResource SecondaryButton}" Padding="8,2" Margin="0,0,4,0" Click="IssueFilter_Click" Tag="All"/>
+                                <Button Content="🔥 Priority" Style="{StaticResource SecondaryButton}" Padding="8,2" Margin="0,0,4,0" Click="IssueFilter_Click" Tag="Priority"/>
+                                <Button Content="🎯 Milestones" Style="{StaticResource SecondaryButton}" Padding="8,2" Margin="0,0,4,0" Click="IssueFilter_Click" Tag="Milestones"/>
+                                <Button Content="⚡ Epics" Style="{StaticResource SecondaryButton}" Padding="8,2" Margin="0,0,4,0" Click="IssueFilter_Click" Tag="Epics"/>
+                                <Button Content="🟢 Done" Style="{StaticResource SecondaryButton}" Padding="8,2" Click="IssueFilter_Click" Tag="Done"/>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </StackPanel>
+
+                    <!-- Milestones / Epics / Issues Tree -->
+                    <TreeView x:Name="IssuesTree"
+                              BorderThickness="0"
+                              Background="Transparent">
+                        <TreeView.Resources>
+                            <Style TargetType="{x:Type TreeViewItem}" BasedOn="{StaticResource {x:Type TreeViewItem}}">
+                                <Setter Property="IsExpanded" Value="True"/>
+                            </Style>
+                        </TreeView.Resources>
+                    </TreeView>
+                </DockPanel>
+            </Grid>
             <Grid x:Name="SettingsView" Visibility="Collapsed">
                 <StackPanel Margin="12">
                     <TextBlock Text="Settings" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,12"/>
                     <TextBlock Text="Claude endpoint" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
-                    <TextBox Text="https://claude.ai" Height="26" FontSize="12" Margin="0,0,0,12"/>
-                    <TextBlock Text="API base URL" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
-                    <TextBox Text="http://localhost:3000" Height="26" FontSize="12" Margin="0,0,0,12"/>
+                    <TextBox Text="https://claude.ai" Height="26" FontSize="12" Margin="0,0,0,12" IsReadOnly="True"/>
+
+                    <!-- Read-only — the real value lives in scripts/build-queue-watcher.config.json,
+                         the SAME config the extension's watcher script uses. Edit it there, not here,
+                         so there's one source of truth instead of two configs drifting apart. -->
+                    <TextBlock Text="Build Tracker API (from scripts\build-queue-watcher.config.json)"
+                               FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
+                    <TextBox x:Name="ApiBaseUrlDisplay" Text="(not connected)" Height="26" FontSize="12" Margin="0,0,0,4" IsReadOnly="True"/>
+                    <TextBlock x:Name="ConfigPathText" Text="" FontSize="10" Foreground="{StaticResource Subtext0Brush}"
+                               Margin="0,0,0,12" TextWrapping="Wrap"/>
+
                     <TextBlock Text="Theme" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
                     <ComboBox Height="26" FontSize="12">
                         <ComboBoxItem Content="Catppuccin Mocha" IsSelected="True"/>

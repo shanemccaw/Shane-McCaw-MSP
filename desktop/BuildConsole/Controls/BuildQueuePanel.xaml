@@ -36,183 +36,47 @@
                                 Padding="4">
                             <TextBlock Text="&#xE710;" FontFamily="Segoe MDL2 Assets" FontSize="13" VerticalAlignment="Center"/>
                         </Button>
+                        <Button x:Name="BtnPinQueue"
+                                Style="{StaticResource IconButton}"
+                                ToolTip="Pin / Collapse Panel"
+                                Padding="4"
+                                Margin="2,0,0,0"
+                                Click="BtnPinQueue_Click">
+                            <TextBlock x:Name="PinQueueIcon" Text="📌" FontSize="11" VerticalAlignment="Center"/>
+                        </Button>
                     </StackPanel>
                 </DockPanel>
             </Border>
 
-            <!-- ── Filter chips ── -->
+            <!-- ── Filter chips (real — see code-behind's ApplyFilter) ── -->
             <Border DockPanel.Dock="Top"
                     Padding="8,6"
                     BorderBrush="{StaticResource Surface0Brush}"
                     BorderThickness="0,0,0,1">
                 <StackPanel Orientation="Horizontal">
-                    <ToggleButton Content="All"     Style="{StaticResource FilterChip}" IsChecked="True"/>
-                    <ToggleButton Content="Active"  Style="{StaticResource FilterChip}"/>
-                    <ToggleButton Content="Blocked" Style="{StaticResource FilterChip}"/>
+                    <ToggleButton x:Name="ChipAll"       Content="All"               Style="{StaticResource FilterChip}" IsChecked="True" Click="FilterChip_Click" Tag="All"/>
+                    <ToggleButton x:Name="ChipActive"    Content="Queued &amp; Running" Style="{StaticResource FilterChip}" Click="FilterChip_Click" Tag="Active"/>
+                    <ToggleButton x:Name="ChipDone"      Content="Done"              Style="{StaticResource FilterChip}" Click="FilterChip_Click" Tag="Done"/>
+                    <ToggleButton x:Name="ChipCanceled"  Content="Canceled"          Style="{StaticResource FilterChip}" Click="FilterChip_Click" Tag="Canceled"/>
                 </StackPanel>
             </Border>
 
-            <!-- ── Queue tree ── -->
+            <!-- ── Queue tree (populated live from GET /extension/queue — see code-behind) ── -->
             <ScrollViewer DockPanel.Dock="Top"
                           VerticalScrollBarVisibility="Auto"
                           HorizontalScrollBarVisibility="Disabled"
                           Padding="0,4">
-                <TreeView x:Name="QueueTree" BorderThickness="0" SelectedItemChanged="QueueTree_SelectedItemChanged">
-
-                    <!-- ═══ EPIC: Platform Build ═══ -->
-                    <TreeViewItem IsExpanded="True">
-                        <TreeViewItem.Header>
-                            <DockPanel>
-                                <Ellipse Width="8" Height="8" Fill="{StaticResource BlueBrush}"
-                                         Margin="0,0,8,0" VerticalAlignment="Center"/>
-                                <TextBlock Text="Platform Build" FontWeight="SemiBold" FontSize="13"/>
-                                <TextBlock DockPanel.Dock="Right" Text="●" Foreground="{StaticResource BlueBrush}"
-                                           FontSize="8" VerticalAlignment="Center" Margin="4,0,0,0"
-                                           ToolTip="In Progress"/>
-                            </DockPanel>
-                        </TreeViewItem.Header>
-
-                        <!-- Done items -->
-                        <TreeViewItem Tag="Platform Build|Create WPF skeleton|Done">
-                            <TreeViewItem.Header>
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="✅" FontSize="12" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                    <TextBlock Text="Create WPF skeleton" FontSize="12"
-                                               Foreground="{StaticResource Subtext1Brush}" TextDecorations="Strikethrough"/>
-                                </StackPanel>
-                            </TreeViewItem.Header>
-                        </TreeViewItem>
-                        <TreeViewItem Tag="Platform Build|Add WebView2 + Ribbon|Done">
-                            <TreeViewItem.Header>
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="✅" FontSize="12" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                    <TextBlock Text="Add WebView2 + Ribbon" FontSize="12"
-                                               Foreground="{StaticResource Subtext1Brush}" TextDecorations="Strikethrough"/>
-                                </StackPanel>
-                            </TreeViewItem.Header>
-                        </TreeViewItem>
-                        <TreeViewItem Tag="Platform Build|Dark mode + status bar|Done">
-                            <TreeViewItem.Header>
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="✅" FontSize="12" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                    <TextBlock Text="Dark mode + status bar" FontSize="12"
-                                               Foreground="{StaticResource Subtext1Brush}" TextDecorations="Strikethrough"/>
-                                </StackPanel>
-                            </TreeViewItem.Header>
-                        </TreeViewItem>
-
-                        <!-- In progress -->
-                        <TreeViewItem Tag="Platform Build|IDE-style layout|In Progress">
-                            <TreeViewItem.Header>
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="🔄" FontSize="12" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                    <TextBlock Text="IDE-style layout" FontSize="12" Foreground="{StaticResource BlueBrush}"/>
-                                </StackPanel>
-                            </TreeViewItem.Header>
-                        </TreeViewItem>
-
-                        <!-- Pending — blocked -->
-                        <TreeViewItem IsExpanded="True" Tag="Platform Build|Wire left panel — Claude API|Blocked|API key config missing">
-                            <TreeViewItem.Header>
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="⬜" FontSize="12" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                    <TextBlock Text="Wire left panel — Claude API" FontSize="12"/>
-                                </StackPanel>
-                            </TreeViewItem.Header>
-                            <TreeViewItem Tag="Platform Build|Wire left panel — Claude API|Blocked|API key config missing">
-                                <TreeViewItem.Header>
-                                    <StackPanel Orientation="Horizontal">
-                                        <TextBlock Text="⛓" FontSize="11" Margin="0,0,6,0" VerticalAlignment="Center"
-                                                   Foreground="{StaticResource RedBrush}"/>
-                                        <TextBlock Text="Blocked by: API key config" FontSize="11"
-                                                   Foreground="{StaticResource RedBrush}" FontStyle="Italic"/>
-                                    </StackPanel>
-                                </TreeViewItem.Header>
-                            </TreeViewItem>
-                        </TreeViewItem>
-
-                        <TreeViewItem IsExpanded="True" Tag="Platform Build|Wire build queue panel|Blocked|Backend API endpoint unreachable">
-                            <TreeViewItem.Header>
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="⬜" FontSize="12" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                    <TextBlock Text="Wire build queue panel" FontSize="12"/>
-                                </StackPanel>
-                            </TreeViewItem.Header>
-                            <TreeViewItem Tag="Platform Build|Wire build queue panel|Blocked|Backend API endpoint unreachable">
-                                <TreeViewItem.Header>
-                                    <StackPanel Orientation="Horizontal">
-                                        <TextBlock Text="⛓" FontSize="11" Margin="0,0,6,0" VerticalAlignment="Center"
-                                                   Foreground="{StaticResource RedBrush}"/>
-                                        <TextBlock Text="Blocked by: Backend API endpoint" FontSize="11"
-                                                   Foreground="{StaticResource RedBrush}" FontStyle="Italic"/>
-                                    </StackPanel>
-                                </TreeViewItem.Header>
-                            </TreeViewItem>
-                        </TreeViewItem>
-
-                    </TreeViewItem>
-
-                    <!-- ═══ EPIC: MSP Platform ═══ -->
-                    <TreeViewItem IsExpanded="True" Margin="0,8,0,0">
-                        <TreeViewItem.Header>
-                            <DockPanel>
-                                <Ellipse Width="8" Height="8" Fill="{StaticResource MauveBrush}"
-                                         Margin="0,0,8,0" VerticalAlignment="Center"/>
-                                <TextBlock Text="MSP Platform" FontWeight="SemiBold" FontSize="13"/>
-                            </DockPanel>
-                        </TreeViewItem.Header>
-
-                        <TreeViewItem Tag="MSP Platform|Database schema design|Done">
-                            <TreeViewItem.Header>
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="✅" FontSize="12" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                    <TextBlock Text="Database schema design" FontSize="12"
-                                               Foreground="{StaticResource Subtext1Brush}" TextDecorations="Strikethrough"/>
-                                </StackPanel>
-                            </TreeViewItem.Header>
-                        </TreeViewItem>
-
-                        <TreeViewItem Tag="MSP Platform|Stripe integration|In Progress">
-                            <TreeViewItem.Header>
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="🔄" FontSize="12" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                    <TextBlock Text="Stripe integration" FontSize="12" Foreground="{StaticResource BlueBrush}"/>
-                                </StackPanel>
-                            </TreeViewItem.Header>
-                        </TreeViewItem>
-
-                        <TreeViewItem IsExpanded="True" Tag="MSP Platform|Alert engine|Blocked|Stripe integration unfinished">
-                            <TreeViewItem.Header>
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="⬜" FontSize="12" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                    <TextBlock Text="Alert engine" FontSize="12"/>
-                                </StackPanel>
-                            </TreeViewItem.Header>
-                            <TreeViewItem Tag="MSP Platform|Alert engine|Blocked|Stripe integration unfinished">
-                                <TreeViewItem.Header>
-                                    <StackPanel Orientation="Horizontal">
-                                        <TextBlock Text="⛓" FontSize="11" Margin="0,0,6,0" VerticalAlignment="Center"
-                                                   Foreground="{StaticResource RedBrush}"/>
-                                        <TextBlock Text="Blocked by: Stripe integration" FontSize="11"
-                                                   Foreground="{StaticResource RedBrush}" FontStyle="Italic"/>
-                                    </StackPanel>
-                                </TreeViewItem.Header>
-                            </TreeViewItem>
-                        </TreeViewItem>
-
-                        <TreeViewItem Tag="MSP Platform|Reseller onboarding portal|Pending">
-                            <TreeViewItem.Header>
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="⬜" FontSize="12" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                    <TextBlock Text="Reseller onboarding portal" FontSize="12"/>
-                                </StackPanel>
-                            </TreeViewItem.Header>
-                        </TreeViewItem>
-
-                    </TreeViewItem>
-
-                </TreeView>
+                <TreeView x:Name="QueueTree" BorderThickness="0" SelectedItemChanged="QueueTree_SelectedItemChanged"/>
             </ScrollViewer>
+
+            <TextBlock x:Name="QueueEmptyText"
+                       DockPanel.Dock="Top"
+                       Text="Not connected — see Settings"
+                       FontSize="11"
+                       Foreground="{StaticResource Subtext1Brush}"
+                       Margin="12,10"
+                       TextWrapping="Wrap"
+                       Visibility="Collapsed"/>
 
         </DockPanel>
     </Border>

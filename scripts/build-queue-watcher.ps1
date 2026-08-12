@@ -86,6 +86,18 @@ if (-not (Test-Path $claudeExe)) {
 }
 $repoRoot = Split-Path $PSScriptRoot -Parent
 
+# Git #802 - Shane wants queued builds to show up live inside BuildConsole
+# (WPF) chat tabs instead of only a separate console window. A separate
+# window has no way for anything else to read what's inside it, so each
+# build's output is now ALSO teed to a per-item log file the app can poll
+# and tail. Path convention is shared with BuildConsole's own
+# Services/BuildLogPaths.cs - both sides compute the same path from the
+# queue item's id alone, no extra plumbing needed.
+$buildLogDir = Join-Path $env:TEMP "bt-build-queue-logs"
+if (-not (Test-Path $buildLogDir)) {
+  New-Item -ItemType Directory -Path $buildLogDir | Out-Null
+}
+
 $headers = @{ Authorization = "Bearer $ingestToken" }
 
 # id -> @{ Process = <System.Diagnostics.Process>; Title = <string> }
@@ -102,6 +114,15 @@ while ($true) {
     if ($entry.Process.HasExited) {
       $exitCode = $entry.Process.ExitCode
       Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Finished: $($entry.Title) (exit $exitCode)" -ForegroundColor $(if ($exitCode -eq 0) { "Green" } else { "Red" })
+      # Fold stderr into the same log the app tails, so a failure's error
+      # text shows up in-tab too instead of only in a second file no one's
+      # looking at.
+      $errPath = "$($entry.LogPath).err"
+      if ((Test-Path $errPath) -and (Get-Item $errPath).Length -gt 0) {
+        Add-Content -Path $entry.LogPath -Value "`n--- stderr ---`n"
+        Add-Content -Path $entry.LogPath -Value (Get-Content $errPath -Raw)
+      }
+      if (Test-Path $errPath) { Remove-Item $errPath -Force -ErrorAction SilentlyContinue }
       try {
         Invoke-RestMethod -Method Post -Uri "$apiBaseUrl/api/admin/build-tracker/extension/queue/$id/complete" `
           -Headers $headers -ContentType "application/json" -Body (@{ exitCode = $exitCode } | ConvertTo-Json)
@@ -135,14 +156,24 @@ while ($true) {
         $escapedArgString = ($claudeArgs | ForEach-Object { ConvertTo-Win32EscapedArgument $_ }) -join ' '
 
         $effectiveCwd = if ($item.cwd -and (Test-Path $item.cwd)) { $item.cwd } else { $repoRoot }
+        $logPath = Join-Path $buildLogDir "queue-$($item.id).log"
+        # Truncate any stale log from a previous item that reused this id
+        # (ids aren't reused in practice, but cheap insurance).
+        Set-Content -Path $logPath -Value "" -NoNewline
 
-        # Each queued build gets its OWN visible window (unlike run-claude.ps1's
-        # -NoNewWindow) - with up to $MaxConcurrent running at once, sharing
-        # this watcher's own console would make them unreadable and
-        # impossible to tell apart.
+        # --print mode (Git #800) just prints text and exits - it doesn't
+        # need a real interactive console to render into, so redirecting
+        # stdout/stderr straight to a file (like run-claude.ps1's original
+        # single-build design) is safe and loses nothing. This REPLACES the
+        # old "each build gets its own visible window" behavior: with
+        # BuildConsole (Git #802) now able to tail this file live inside the
+        # chat tab it belongs to, a separate floating window per build is
+        # redundant for anything opened there - and for anything not open in
+        # a tab, the log file is still there to open later.
         $proc = Start-Process -FilePath $claudeExe -ArgumentList $escapedArgString `
-          -WorkingDirectory $effectiveCwd -PassThru
-        $running[$item.id] = @{ Process = $proc; Title = $item.title }
+          -WorkingDirectory $effectiveCwd -NoNewWindow -PassThru `
+          -RedirectStandardOutput $logPath -RedirectStandardError "$logPath.err"
+        $running[$item.id] = @{ Process = $proc; Title = $item.title; LogPath = $logPath }
         Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Started: $($item.title)" -ForegroundColor Cyan
       }
     } catch {

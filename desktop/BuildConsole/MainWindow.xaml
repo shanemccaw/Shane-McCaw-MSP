@@ -255,7 +255,8 @@
                 <ctrl:LeftSidebar x:Name="LeftSidebar" Grid.Column="1"/>
 
                 <!-- Splitter: sidebar ↔ center -->
-                <GridSplitter Grid.Column="2"
+                <GridSplitter x:Name="SidebarSplitter"
+                              Grid.Column="2"
                               HorizontalAlignment="Stretch"
                               VerticalAlignment="Stretch"
                               ShowsPreview="False"/>
@@ -268,32 +269,67 @@
                         <RowDefinition x:Name="RowBottom" Height="0" MinHeight="0"/>  <!-- bottom panel -->
                     </Grid.RowDefinitions>
 
-                    <!-- ── Editor tab control ── -->
-                    <TabControl x:Name="EditorTabs"
-                                Grid.Row="0"
-                                BorderThickness="0"
-                                SelectionChanged="EditorTabs_SelectionChanged">
-
-                        <!-- Claude.ai tab -->
-                        <TabItem Tag="https://claude.ai">
-                            <TabItem.Header>
-                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                    <TextBlock Text="&#xE8BD;" FontFamily="Segoe MDL2 Assets" FontSize="12"
-                                               Foreground="{StaticResource BlueBrush}" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                    <TextBlock Text="Claude.ai"
-                                               FontSize="13"
-                                               VerticalAlignment="Center"
-                                               Margin="0,0,8,0"/>
-                                    <Ellipse Width="6" Height="6"
-                                             Fill="{StaticResource BlueBrush}"
-                                             VerticalAlignment="Center"/>
+                    <!-- ── Editor Header Layout Selector Toolbar & Multi-Pane Container ── -->
+                    <DockPanel Grid.Row="0">
+                        <Border DockPanel.Dock="Top" Background="{StaticResource Surface0Brush}" Height="28" Padding="8,2" BorderBrush="{StaticResource Surface1Brush}" BorderThickness="0,0,0,1">
+                            <DockPanel>
+                                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                    <Button x:Name="BtnLayoutSingle" Style="{StaticResource IconButton}" Content="⏹ Single" ToolTip="Single Pane View" Click="BtnLayout_Click" Tag="Single" Margin="0,0,4,0"/>
+                                    <Button x:Name="BtnLayoutSplitH" Style="{StaticResource IconButton}" Content="◧ Side-by-Side" ToolTip="Split Left/Right (2 Columns)" Click="BtnLayout_Click" Tag="SplitH" Margin="0,0,4,0"/>
+                                    <Button x:Name="BtnLayoutSplitV" Style="{StaticResource IconButton}" Content="⬒ Top/Bottom" ToolTip="Split Top/Bottom (2 Rows)" Click="BtnLayout_Click" Tag="SplitV" Margin="0,0,4,0"/>
+                                    <Button x:Name="BtnLayoutGrid4" Style="{StaticResource IconButton}" Content="⊞ 4 Squares" ToolTip="2x2 Grid View" Click="BtnLayout_Click" Tag="Grid4"/>
                                 </StackPanel>
-                            </TabItem.Header>
-                            <wv2:WebView2 x:Name="ClaudeWebView"
-                                          Source="https://claude.ai"/>
-                        </TabItem>
+                                <TextBlock Text="EDITOR PANES" FontSize="10" FontWeight="Bold" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center"/>
+                            </DockPanel>
+                        </Border>
 
-                    </TabControl>
+                        <!-- Multi-Pane Grid Container -->
+                        <Grid x:Name="EditorGridContainer">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition x:Name="PaneCol0" Width="*"/>
+                                <ColumnDefinition x:Name="PaneColSplitter" Width="0"/>
+                                <ColumnDefinition x:Name="PaneCol1" Width="0"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition x:Name="PaneRow0" Height="*"/>
+                                <RowDefinition x:Name="PaneRowSplitter" Height="0"/>
+                                <RowDefinition x:Name="PaneRow1" Height="0"/>
+                            </Grid.RowDefinitions>
+
+                            <!-- Pane 1 (Top Left / Primary) -->
+                            <TabControl x:Name="EditorTabs"
+                                        Grid.Row="0" Grid.Column="0"
+                                        BorderThickness="0"
+                                        SelectionChanged="EditorTabs_SelectionChanged">
+                                <!-- Claude.ai tab -->
+                                <TabItem Tag="https://claude.ai">
+                                    <TabItem.Header>
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <TextBlock Text="&#xE8BD;" FontFamily="Segoe MDL2 Assets" FontSize="12"
+                                                       Foreground="{StaticResource BlueBrush}" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                            <TextBlock Text="Claude.ai" FontSize="13" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                            <Ellipse Width="6" Height="6" Fill="{StaticResource BlueBrush}" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </TabItem.Header>
+                                    <!-- Git #817 - Source is set from code-behind AFTER the builder-button script is injected, not here; a XAML-bound Source navigates the instant CoreWebView2 is ready, which can race ahead of AddScriptToExecuteOnDocumentCreatedAsync and mean the very first load never gets the injected buttons. -->
+                                    <wv2:WebView2 x:Name="ClaudeWebView"/>
+                                </TabItem>
+                            </TabControl>
+
+                            <!-- GridSplitters -->
+                            <GridSplitter x:Name="PaneGridSplitterH" Grid.Row="0" Grid.Column="1" Grid.RowSpan="3" Width="4" HorizontalAlignment="Stretch" Visibility="Collapsed"/>
+                            <GridSplitter x:Name="PaneGridSplitterV" Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3" Height="4" VerticalAlignment="Stretch" Visibility="Collapsed"/>
+
+                            <!-- Pane 2 (Top Right / Right Column) -->
+                            <TabControl x:Name="EditorTabs2" Grid.Row="0" Grid.Column="2" BorderThickness="0" Visibility="Collapsed" SelectionChanged="EditorTabs_SelectionChanged"/>
+
+                            <!-- Pane 3 (Bottom Left / Bottom Row) -->
+                            <TabControl x:Name="EditorTabs3" Grid.Row="2" Grid.Column="0" BorderThickness="0" Visibility="Collapsed" SelectionChanged="EditorTabs_SelectionChanged"/>
+
+                            <!-- Pane 4 (Bottom Right / Quadrant 4) -->
+                            <TabControl x:Name="EditorTabs4" Grid.Row="2" Grid.Column="2" BorderThickness="0" Visibility="Collapsed" SelectionChanged="EditorTabs_SelectionChanged"/>
+                        </Grid>
+                    </DockPanel>
 
                     <!-- Bottom panel splitter (hidden when panel is collapsed) -->
                     <GridSplitter x:Name="BottomSplitter"
@@ -322,10 +358,13 @@
                         </TabItem>
 
                         <TabItem Header="Output">
-                            <TextBox IsReadOnly="True"
+                            <!-- Git #815 - live activity log (startup sequence, every API call in/out) fed by Services/ActivityLog.cs, never the calling thread itself (BeginInvoke marshal onto the UI thread). -->
+                            <TextBox x:Name="OutputLogBox"
+                                     IsReadOnly="True"
                                      Style="{StaticResource TerminalOutputBox}"
-                                     Text="[Output] Build console output appears here."
-                                     VerticalScrollBarVisibility="Auto"/>
+                                     Text="[Output] Waiting for activity…"
+                                     VerticalScrollBarVisibility="Auto"
+                                     HorizontalScrollBarVisibility="Auto"/>
                         </TabItem>
 
                     </TabControl>
@@ -561,6 +600,73 @@
                             <TextBlock Text="CTRL+K" FontSize="11" FontWeight="Bold" Foreground="{StaticResource PeachBrush}" HorizontalAlignment="Right"/>
                         </DockPanel>
                     </Border>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- ══════════════════════════════════════════════════════════════
+             DOCKING GUIDE OVERLAY FOR TAB DRAG & SPLIT LAYOUTS
+             ══════════════════════════════════════════════════════════════ -->
+        <Grid x:Name="DockGuideOverlay"
+              Visibility="Collapsed"
+              Background="#40000000"
+              Panel.ZIndex="10000">
+            <Border Width="340" Height="230"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Background="{StaticResource CrustBrush}"
+                    BorderBrush="{StaticResource BlueBrush}"
+                    BorderThickness="2" CornerRadius="12" Padding="16">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Text="DROP TAB TO DOCK VIEW" FontSize="11" FontWeight="Bold" Foreground="{StaticResource BlueBrush}" HorizontalAlignment="Center" Margin="0,0,0,12"/>
+
+                    <Grid Grid.Row="1">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- Left Dock Target -->
+                        <Button x:Name="BtnDockLeft" Grid.Row="0" Grid.Column="0" Grid.RowSpan="2" Margin="4" Click="DockTarget_Click" Tag="SplitH">
+                            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <TextBlock Text="◧" FontSize="28" Foreground="{StaticResource BlueBrush}" HorizontalAlignment="Center"/>
+                                <TextBlock Text="Split Left" FontSize="10" Foreground="{StaticResource TextBrush}" HorizontalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+
+                        <!-- Top Dock Target -->
+                        <Button x:Name="BtnDockTop" Grid.Row="0" Grid.Column="1" Margin="4" Click="DockTarget_Click" Tag="SplitV">
+                            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <TextBlock Text="⬒" FontSize="20" Foreground="{StaticResource PeachBrush}" HorizontalAlignment="Center"/>
+                                <TextBlock Text="Top" FontSize="10" Foreground="{StaticResource TextBrush}" HorizontalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+
+                        <!-- 4 Squares Target -->
+                        <Button x:Name="BtnDockGrid4" Grid.Row="1" Grid.Column="1" Margin="4" Click="DockTarget_Click" Tag="Grid4">
+                            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <TextBlock Text="⊞" FontSize="20" Foreground="{StaticResource GreenBrush}" HorizontalAlignment="Center"/>
+                                <TextBlock Text="4 Squares" FontSize="10" Foreground="{StaticResource TextBrush}" HorizontalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+
+                        <!-- Right Dock Target -->
+                        <Button x:Name="BtnDockRight" Grid.Row="0" Grid.Column="2" Grid.RowSpan="2" Margin="4" Click="DockTarget_Click" Tag="SplitH_Right">
+                            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <TextBlock Text="◨" FontSize="28" Foreground="{StaticResource BlueBrush}" HorizontalAlignment="Center"/>
+                                <TextBlock Text="Split Right" FontSize="10" Foreground="{StaticResource TextBrush}" HorizontalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                    </Grid>
                 </Grid>
             </Border>
         </Grid>

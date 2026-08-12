@@ -46,9 +46,37 @@ namespace BuildConsole
         // ── Clock ─────────────────────────────────────────────────────────────
         private readonly DispatcherTimer _clockTimer;
 
+        // ── Build Tracker API (shared by BuildQueuePanel + LeftSidebar's Issues board) ──
+        private BuildConsole.Services.BuildTrackerApiClient? _buildTrackerApi;
+
+        // ── Git #802: chat tabs + their build split panes ───────────────────────
+        private class ChatTabState
+        {
+            public int? GithubNumber;
+            public Grid SplitGrid = null!;
+            public ColumnDefinition BuildColumn = null!;
+            public TextBox BuildOutputBox = null!;
+            public TextBlock BuildStatusText = null!;
+            public int? TailingQueueItemId;
+            public long TailedLength;
+        }
+        private readonly Dictionary<TabItem, ChatTabState> _chatTabs = new();
+        private DispatcherTimer? _buildTailTimer;
+
         public MainWindow()
         {
             InitializeComponent();
+
+            // Git #815 — Shane: "put the startup SSE and api calls in
+            // there... so we can just look and see whats happening as its
+            // happening in the background. This should be multi-threaded so
+            // my app doesnt hang." ActivityLog.Log() never blocks its caller
+            // (BeginInvoke onto the UI thread) - safe to call from any
+            // background await continuation, which is exactly where every
+            // real API call in this app runs.
+            BuildConsole.Services.ActivityLog.Attach(Dispatcher);
+            BuildConsole.Services.ActivityLog.LineLogged += AppendOutputLog;
+            BuildConsole.Services.ActivityLog.Log("startup", "BuildConsole starting…");
 
             // Clock
             _clockTimer = new DispatcherTimer(DispatcherPriority.Background)
@@ -64,16 +92,74 @@ namespace BuildConsole
             ClaudeWebView.NavigationCompleted += WebView_NavigationCompleted;
             ClaudeWebView.SourceChanged       += WebView_SourceChanged;
 
-            InitializeClaudeWebView();
+            _ = InitializeClaudeTabAsync();
 
             // Build Queue selection -> Build Log
             BuildQueuePanel.TaskSelected += BuildQueuePanel_TaskSelected;
+
+            // Shane: "Feel free to change anything to patch how I actually work
+            // based on the Add-In." One shared API client, reading the SAME
+            // config scripts/build-queue-watcher.ps1 already uses (no separate
+            // setup step) - both the queue panel and the left sidebar's real
+            // Issues board are driven by it, same backend the extension talks to.
+            var btConfig = BuildConsole.Services.BuildTrackerConfig.Load();
+            BuildConsole.Services.ActivityLog.Log("startup", btConfig.IsConfigured
+                ? $"Config loaded: {btConfig.ApiBaseUrl}"
+                : $"Config NOT found/incomplete (checked {BuildConsole.Services.BuildTrackerConfig.FindConfigPath() ?? "scripts\\build-queue-watcher.config.json"}) — panels will show 'Not connected'.");
+            _buildTrackerApi = new BuildConsole.Services.BuildTrackerApiClient(btConfig);
+            BuildQueuePanel.Initialize(_buildTrackerApi);
+            LeftSidebar.Initialize(_buildTrackerApi);
+            SqlRunnerView.Initialize(_buildTrackerApi);
+
+            // Git #815 — surfaces a failed poll as a real, visible signal
+            // (status-bar QueueDot/QueueStatusText, previously unused
+            // hardcoded XAML) instead of silent inline tree text nobody
+            // notices, PLUS every poll's outcome goes to the Output log too.
+            LeftSidebar.SyncError += (s, err) => ReportSyncStatus(err);
+            BuildQueuePanel.SyncError += (s, err) => ReportSyncStatus(err);
+
+            // Git #802 - Shane: "The Claude chats should open in their own
+            // tabs. And if there is a build, that tab should split with the
+            // build happening right there in that chats tab." Each chat gets
+            // its own WebView2 tab (not the single shared ClaudeWebView
+            // anymore); a shared timer watches the queue and splits/unsplits
+            // each open chat tab based on whether ITS linked GitHub number has
+            // a currently-running queue item ("still go through the queue" —
+            // Shane's own answer when asked whether this should bypass it).
+            LeftSidebar.ChatSelected += (s, e) => OpenChatTab(e.Chat, e.GithubNumber);
+            _buildTailTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+            _buildTailTimer.Tick += async (_, _) => await PollChatTabBuildStateAsync();
+            _buildTailTimer.Start();
+
+            // Shane To-Do "Load SQL" -> real GitHub file content into the SQL Runner tab (index 2 in BottomTabs — Build Log, Terminal, SQL Runner, Output).
+            LeftSidebar.SqlLoadRequested += (s, path) =>
+            {
+                SetBottomPanel(true, 2);
+                SqlRunnerView.LoadFromGitHub(path);
+            };
 
             // ActivityBar quick navigation
             ActivityBar.QuickNavRequested += ActivityBar_QuickNavRequested;
 
             // LeftSidebar file clicks -> Open Viewer tabs
             LeftSidebar.FileSelected += LeftSidebar_FileSelected;
+
+            // Panel Pin / Unpin handlers
+            LeftSidebar.PinToggled += (s, isPinned) =>
+            {
+                ColSidebar.Width = isPinned ? new GridLength(260) : new GridLength(0);
+                SidebarSplitter.Visibility = isPinned ? Visibility.Visible : Visibility.Collapsed;
+            };
+
+            BuildQueuePanel.PinToggled += (s, isPinned) =>
+            {
+                ColQueue.Width = isPinned ? new GridLength(300) : new GridLength(0);
+            };
+
+            if (EditorTabs.Items.Count > 0 && EditorTabs.Items[0] is TabItem claudeTab)
+            {
+                AttachTabContextMenu(claudeTab, EditorTabs);
+            }
 
             UpdateZoomDisplay();
         }
@@ -180,6 +266,10 @@ namespace BuildConsole
             int currentIdx = Math.Max(0, EditorTabs.SelectedIndex);
             int nextIdx = (currentIdx + (isReverse ? -1 : 1) + count) % count;
 
+            // Hide active WebView2 HWND to fix WPF Airspace overlap
+            var activeWv = GetActiveWebView();
+            if (activeWv != null) activeWv.Visibility = Visibility.Hidden;
+
             TabSwitcherOverlay.Visibility = Visibility.Visible;
             TabSwitcherList.SelectedIndex = nextIdx;
 
@@ -213,6 +303,10 @@ namespace BuildConsole
             }
 
             TabSwitcherOverlay.Visibility = Visibility.Collapsed;
+
+            // Restore active WebView2 HWND visibility
+            var activeWv = GetActiveWebView();
+            if (activeWv != null) activeWv.Visibility = Visibility.Visible;
 
             // Return focus to active WebView2
             Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
@@ -311,6 +405,89 @@ namespace BuildConsole
             }
         }
 
+        private void LeftSidebar_StartRecordingRequested(object? sender, string targetUrl)
+        {
+            if (string.IsNullOrWhiteSpace(targetUrl))
+            {
+                targetUrl = "https://ba888680-2595-412d-84fe-4e9aefc2688b-00-22rhgh0krunr4.picard.replit.dev/";
+            }
+
+            if (!targetUrl.StartsWith("http://") && !targetUrl.StartsWith("https://"))
+            {
+                targetUrl = "https://" + targetUrl;
+            }
+
+            // Automatically open live web browser tab in editor area
+            OpenWebTab(targetUrl, "Recorder Browser", "\uE774");
+
+            var wv = GetActiveWebView();
+            if (wv != null)
+            {
+                wv.Loaded += (s, e) => InjectRecorderScript(wv);
+                if (wv.CoreWebView2 != null)
+                {
+                    InjectRecorderScript(wv);
+                }
+            }
+        }
+
+        private void InjectRecorderScript(Microsoft.Web.WebView2.Wpf.WebView2 wv)
+        {
+            if (wv.CoreWebView2 == null) return;
+
+            wv.WebMessageReceived -= Wv_WebMessageReceived;
+            wv.WebMessageReceived += Wv_WebMessageReceived;
+
+            string recorderJs = @"
+(function() {
+    if (window.__uiRecorderInjected) {
+        window.__isRecordingUI = true;
+        return;
+    }
+    window.__uiRecorderInjected = true;
+    window.__isRecordingUI = true;
+
+    function getSelector(el) {
+        if (!el) return '';
+        if (el.id) return '#' + el.id;
+        if (el.getAttribute('name')) return el.tagName.toLowerCase() + '[name=""' + el.getAttribute('name') + '""]';
+        if (el.className && typeof el.className === 'string') {
+            let cls = el.className.trim().split(/\s+/).join('.');
+            if (cls) return el.tagName.toLowerCase() + '.' + cls;
+        }
+        return el.tagName.toLowerCase();
+    }
+
+    document.addEventListener('click', function(e) {
+        if (!window.__isRecordingUI) return;
+        let el = e.target;
+        let sel = getSelector(el);
+        let txt = (el.innerText || el.value || '').trim().substring(0, 40);
+        window.chrome.webview.postMessage(JSON.stringify({
+            type: 'RECORD_ACTION',
+            action: 'click',
+            selector: sel,
+            tagName: el.tagName.toLowerCase(),
+            value: txt
+        }));
+    }, true);
+
+    document.addEventListener('change', function(e) {
+        if (!window.__isRecordingUI) return;
+        let el = e.target;
+        let sel = getSelector(el);
+        window.chrome.webview.postMessage(JSON.stringify({
+            type: 'RECORD_ACTION',
+            action: 'input',
+            selector: sel,
+            tagName: el.tagName.toLowerCase(),
+            value: el.value
+        }));
+    }, true);
+})();";
+            wv.ExecuteScriptAsync(recorderJs);
+        }
+
         private void LeftSidebar_StopRecordingRequested(object? sender, EventArgs e)
         {
             var wv = GetActiveWebView();
@@ -324,6 +501,31 @@ namespace BuildConsole
         {
             var runner = new AutomationRunnerWindow(e.url, e.steps);
             runner.Show();
+        }
+
+        private void Wv_WebMessageReceived(object? sender, Microsoft.Web.WebView2.Core.CoreWebView2WebMessageReceivedEventArgs e)
+        {
+            try
+            {
+                string json = e.TryGetWebMessageAsString();
+                if (string.IsNullOrEmpty(json)) return;
+
+                using var doc = System.Text.Json.JsonDocument.Parse(json);
+                var root = doc.RootElement;
+                if (root.TryGetProperty("type", out var typeProp) && typeProp.GetString() == "RECORD_ACTION")
+                {
+                    string action = root.GetProperty("action").GetString() ?? "click";
+                    string selector = root.GetProperty("selector").GetString() ?? "";
+                    string tagName = root.GetProperty("tagName").GetString() ?? "div";
+                    string val = root.TryGetProperty("value", out var vProp) ? (vProp.GetString() ?? "") : "";
+
+                    Dispatcher.Invoke(() =>
+                    {
+                        LeftSidebar.RecordAction(action, selector, tagName, val);
+                    });
+                }
+            }
+            catch { }
         }
 
         public void OpenWebTab(string url, string title, string glyph)
@@ -506,8 +708,303 @@ namespace BuildConsole
                     EditorTabs.SelectedIndex = Math.Max(0, EditorTabs.Items.Count - 1);
             };
 
+            AttachTabContextMenu(newTab, EditorTabs);
+
             EditorTabs.Items.Add(newTab);
             EditorTabs.SelectedItem = newTab;
+        }
+
+        // ── Git #802: chat tabs (own WebView2 per chat) + build split pane ──────
+        public void OpenChatTab(BuildConsole.Services.BoardChat chat, int? githubNumber)
+        {
+            // Dedupe on the chat's own id, not the URL - a chat's ClaudeUrl
+            // doesn't change, so this is equivalent, but keeps the intent clear.
+            foreach (var kvp in _chatTabs)
+            {
+                if (kvp.Key.Tag is BuildConsole.Services.BoardChat existing &&
+                    existing.ConversationId == chat.ConversationId)
+                {
+                    EditorTabs.SelectedItem = kvp.Key;
+                    return;
+                }
+            }
+
+            var headerPanel = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+            headerPanel.Children.Add(new TextBlock
+            {
+                Text = "", FontFamily = new FontFamily("Segoe MDL2 Assets"), FontSize = 12,
+                Margin = new Thickness(0, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center,
+                Foreground = (Brush)FindResource("BlueBrush")
+            });
+            headerPanel.Children.Add(new TextBlock
+            {
+                Text = chat.Title, FontSize = 13, Margin = new Thickness(0, 0, 8, 0),
+                VerticalAlignment = VerticalAlignment.Center, Foreground = (Brush)FindResource("TextBrush")
+            });
+            var closeBtn = new Button
+            {
+                Content = "✕", Style = (Style)FindResource("IconButton"), FontSize = 10,
+                Padding = new Thickness(3, 1, 3, 1), Margin = new Thickness(4, 0, 0, 0),
+                ToolTip = "Close Tab", VerticalAlignment = VerticalAlignment.Center
+            };
+            headerPanel.Children.Add(closeBtn);
+
+            var wv = new Microsoft.Web.WebView2.Wpf.WebView2();
+            wv.NavigationStarting  += WebView_NavigationStarting;
+            wv.NavigationCompleted += WebView_NavigationCompleted;
+            wv.SourceChanged       += WebView_SourceChanged;
+            wv.Loaded += async (s, e) =>
+            {
+                await InjectBuilderButtonsAsync(wv);
+                if (wv.CoreWebView2 != null) wv.CoreWebView2.Navigate(chat.ClaudeUrl);
+            };
+
+            // Split grid: chat WebView2 in column 0, build output pane in
+            // column 1 (starts collapsed - PollChatTabBuildStateAsync opens it
+            // the moment a matching queue item goes 'running', closes it again
+            // once that item finishes).
+            var splitGrid = new Grid();
+            var col0 = new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) };
+            var buildCol = new ColumnDefinition { Width = new GridLength(0) };
+            splitGrid.ColumnDefinitions.Add(col0);
+            splitGrid.ColumnDefinitions.Add(buildCol);
+            Grid.SetColumn(wv, 0);
+            splitGrid.Children.Add(wv);
+
+            var buildPane = new Grid { Background = (Brush)FindResource("MantleBrush") };
+            buildPane.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            buildPane.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            var buildHeader = new Border
+            {
+                Background = (Brush)FindResource("CrustBrush"), Padding = new Thickness(8, 5, 8, 5),
+                BorderBrush = (Brush)FindResource("Surface0Brush"), BorderThickness = new Thickness(0, 0, 0, 1)
+            };
+            var buildStatusText = new TextBlock
+            {
+                Text = "Build running…", FontSize = 11, FontWeight = FontWeights.SemiBold,
+                Foreground = (Brush)FindResource("PeachBrush")
+            };
+            buildHeader.Child = buildStatusText;
+            var buildOutputBox = new TextBox
+            {
+                IsReadOnly = true, Style = (Style)TryFindResource("TerminalOutputBox"),
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Auto
+            };
+            Grid.SetRow(buildHeader, 0);
+            Grid.SetRow(buildOutputBox, 1);
+            buildPane.Children.Add(buildHeader);
+            buildPane.Children.Add(buildOutputBox);
+
+            var buildPaneSplitter = new GridSplitter { Width = 4, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Stretch };
+            Grid.SetColumn(buildPane, 1);
+            Grid.SetColumn(buildPaneSplitter, 1);
+            splitGrid.Children.Add(buildPaneSplitter);
+            splitGrid.Children.Add(buildPane);
+
+            var newTab = new TabItem { Tag = chat, Header = headerPanel, Content = splitGrid };
+            var state = new ChatTabState
+            {
+                GithubNumber = githubNumber,
+                SplitGrid = splitGrid,
+                BuildColumn = buildCol,
+                BuildOutputBox = buildOutputBox,
+                BuildStatusText = buildStatusText
+            };
+            _chatTabs[newTab] = state;
+
+            closeBtn.Click += (s, e) =>
+            {
+                _chatTabs.Remove(newTab);
+                EditorTabs.Items.Remove(newTab);
+                if (EditorTabs.Items.Count > 0)
+                    EditorTabs.SelectedIndex = Math.Max(0, EditorTabs.Items.Count - 1);
+            };
+
+            AttachTabContextMenu(newTab, EditorTabs);
+            EditorTabs.Items.Add(newTab);
+            EditorTabs.SelectedItem = newTab;
+        }
+
+        /// <summary>
+        /// Git #802 - polls the real queue (same endpoint BuildQueuePanel
+        /// already polls) and, for every open chat tab, opens/updates/closes
+        /// its build split pane based on whether a queue item with a matching
+        /// githubNumber is running. Tails scripts/build-queue-watcher.ps1's
+        /// per-item log file (BuildLogPaths.ForQueueItem) rather than spawning
+        /// anything itself - the build stays entirely the queue/watcher's.
+        /// </summary>
+        private async System.Threading.Tasks.Task PollChatTabBuildStateAsync()
+        {
+            if (_buildTrackerApi == null || !_buildTrackerApi.IsConfigured || _chatTabs.Count == 0) return;
+
+            List<BuildConsole.Services.QueueItem> queue;
+            try { queue = await _buildTrackerApi.GetQueueAsync(); }
+            catch { return; }
+
+            foreach (var (tab, state) in _chatTabs.ToList())
+            {
+                if (state.GithubNumber == null) continue;
+
+                var match = queue.FirstOrDefault(q => q.GithubNumber == state.GithubNumber && q.Status == "running");
+                if (match == null)
+                {
+                    if (state.BuildColumn.Width.Value > 0)
+                    {
+                        state.BuildColumn.Width = new GridLength(0);
+                        state.TailingQueueItemId = null;
+                        state.TailedLength = 0;
+                    }
+                    continue;
+                }
+
+                if (state.BuildColumn.Width.Value == 0)
+                {
+                    state.BuildColumn.Width = new GridLength(420);
+                }
+                if (state.TailingQueueItemId != match.Id)
+                {
+                    state.TailingQueueItemId = match.Id;
+                    state.TailedLength = 0;
+                    state.BuildOutputBox.Text = "";
+                    state.BuildStatusText.Text = $"▶ Building: {match.Title}";
+                }
+
+                TailBuildLog(state);
+            }
+        }
+
+        private static void TailBuildLog(ChatTabState state)
+        {
+            if (state.TailingQueueItemId == null) return;
+            var path = BuildConsole.Services.BuildLogPaths.ForQueueItem(state.TailingQueueItemId.Value);
+            try
+            {
+                if (!File.Exists(path)) return;
+                using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                if (fs.Length <= state.TailedLength) return;
+                fs.Seek(state.TailedLength, SeekOrigin.Begin);
+                using var reader = new StreamReader(fs);
+                string newText = reader.ReadToEnd();
+                state.TailedLength = fs.Length;
+                state.BuildOutputBox.AppendText(newText);
+                state.BuildOutputBox.ScrollToEnd();
+            }
+            catch { /* file locked mid-write by the watcher - just retry next tick */ }
+        }
+
+        private void AttachTabContextMenu(TabItem tabItem, TabControl ownerTabControl)
+        {
+            var cm = new ContextMenu();
+
+            // 1. Close
+            var miClose = new MenuItem { Header = "Close", InputGestureText = "Ctrl+W" };
+            miClose.Click += (s, e) => CloseTab(tabItem, ownerTabControl);
+            cm.Items.Add(miClose);
+
+            // 2. Close Others
+            var miCloseOthers = new MenuItem { Header = "Close Others" };
+            miCloseOthers.Click += (s, e) =>
+            {
+                var others = ownerTabControl.Items.OfType<TabItem>().Where(t => t != tabItem).ToList();
+                foreach (var t in others)
+                {
+                    ownerTabControl.Items.Remove(t);
+                }
+            };
+            cm.Items.Add(miCloseOthers);
+
+            // 3. Close to the Right
+            var miCloseRight = new MenuItem { Header = "Close to the Right" };
+            miCloseRight.Click += (s, e) =>
+            {
+                int idx = ownerTabControl.Items.IndexOf(tabItem);
+                if (idx >= 0)
+                {
+                    var itemsRight = ownerTabControl.Items.OfType<TabItem>().Skip(idx + 1).ToList();
+                    foreach (var t in itemsRight)
+                    {
+                        ownerTabControl.Items.Remove(t);
+                    }
+                }
+            };
+            cm.Items.Add(miCloseRight);
+
+            // 4. Close Saved
+            var miCloseSaved = new MenuItem { Header = "Close Saved" };
+            miCloseSaved.Click += (s, e) =>
+            {
+                var savedTabs = ownerTabControl.Items.OfType<TabItem>().Where(t => !(t.Tag?.ToString()?.EndsWith("*") ?? false)).ToList();
+                foreach (var t in savedTabs)
+                {
+                    ownerTabControl.Items.Remove(t);
+                }
+            };
+            cm.Items.Add(miCloseSaved);
+
+            // 5. Close All
+            var miCloseAll = new MenuItem { Header = "Close All" };
+            miCloseAll.Click += (s, e) =>
+            {
+                ownerTabControl.Items.Clear();
+            };
+            cm.Items.Add(miCloseAll);
+
+            cm.Items.Add(new Separator());
+
+            // 6. Copy Path
+            var miCopyPath = new MenuItem { Header = "Copy Path" };
+            miCopyPath.Click += (s, e) =>
+            {
+                string path = tabItem.Tag?.ToString() ?? string.Empty;
+                if (!string.IsNullOrEmpty(path))
+                {
+                    try { Clipboard.SetText(path); } catch { }
+                }
+            };
+            cm.Items.Add(miCopyPath);
+
+            // 7. Open in Explorer
+            var miOpenExplorer = new MenuItem { Header = "Open in Explorer" };
+            miOpenExplorer.Click += (s, e) =>
+            {
+                string path = tabItem.Tag?.ToString() ?? string.Empty;
+                if (!string.IsNullOrEmpty(path))
+                {
+                    try
+                    {
+                        if (File.Exists(path))
+                        {
+                            System.Diagnostics.Process.Start("explorer.exe", $"/select,\"{path}\"");
+                        }
+                        else if (Directory.Exists(path))
+                        {
+                            System.Diagnostics.Process.Start("explorer.exe", $"\"{path}\"");
+                        }
+                        else if (Uri.TryCreate(path, UriKind.Absolute, out var uri))
+                        {
+                            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true });
+                        }
+                    }
+                    catch { }
+                }
+            };
+            cm.Items.Add(miOpenExplorer);
+
+            tabItem.ContextMenu = cm;
+            if (tabItem.Header is FrameworkElement feHeader)
+            {
+                feHeader.ContextMenu = cm;
+            }
+        }
+
+        private void CloseTab(TabItem tabItem, TabControl ownerTabControl)
+        {
+            ownerTabControl.Items.Remove(tabItem);
+            if (ownerTabControl.Items.Count > 0)
+            {
+                ownerTabControl.SelectedIndex = Math.Max(0, ownerTabControl.Items.Count - 1);
+            }
         }
 
         private void LeftSidebar_FileSelected(object? sender, string filePath)
@@ -584,47 +1081,6 @@ namespace BuildConsole
                 VerticalAlignment = VerticalAlignment.Center
             };
 
-            // Right-click context menu on tab header
-            var tabContextMenu = new ContextMenu();
-            var miCloseThis = new MenuItem { Header = "Close Tab" };
-            miCloseThis.Click += (s, e) =>
-            {
-                if (headerPanel.Parent is TabItem ti)
-                {
-                    EditorTabs.Items.Remove(ti);
-                    if (EditorTabs.Items.Count > 0)
-                        EditorTabs.SelectedIndex = Math.Max(0, EditorTabs.Items.Count - 1);
-                }
-            };
-
-            var miCloseOthers = new MenuItem { Header = "Close Other Tabs" };
-            miCloseOthers.Click += (s, e) =>
-            {
-                if (headerPanel.Parent is TabItem ti)
-                {
-                    var toRemove = System.Linq.Enumerable.ToList(System.Linq.Enumerable.Where(EditorTabs.Items.OfType<TabItem>(), t => t != ti && t != ClaudeWebView.Parent));
-                    foreach (var t in toRemove) EditorTabs.Items.Remove(t);
-                }
-            };
-
-            var miCloseAll = new MenuItem { Header = "Close All Tabs" };
-            miCloseAll.Click += (s, e) =>
-            {
-                var toRemove = System.Linq.Enumerable.ToList(System.Linq.Enumerable.Where(EditorTabs.Items.OfType<TabItem>(), t => t != ClaudeWebView.Parent));
-                foreach (var t in toRemove) EditorTabs.Items.Remove(t);
-            };
-
-            var miCopyTabPath = new MenuItem { Header = "Copy File Path" };
-            miCopyTabPath.Click += (s, e) => Clipboard.SetText(filePath);
-
-            tabContextMenu.Items.Add(miCloseThis);
-            tabContextMenu.Items.Add(miCloseOthers);
-            tabContextMenu.Items.Add(miCloseAll);
-            tabContextMenu.Items.Add(new Separator());
-            tabContextMenu.Items.Add(miCopyTabPath);
-
-            headerPanel.ContextMenu = tabContextMenu;
-
             headerPanel.Children.Add(iconBlock);
             headerPanel.Children.Add(titleBlock);
             headerPanel.Children.Add(closeBtn);
@@ -678,6 +1134,8 @@ namespace BuildConsole
                 Header = headerPanel,
                 Content = tabContent
             };
+
+            AttachTabContextMenu(newTab, EditorTabs);
 
             closeBtn.Click += (s, e) =>
             {
@@ -867,15 +1325,20 @@ namespace BuildConsole
         // ── ActivityBar → LeftSidebar ─────────────────────────────────────────
         private void ActivityBar_ActiveViewChanged(object? sender, string view)
         {
-            // VS Code behaviour: clicking the already-active icon collapses the sidebar
+            // VS Code behavior: clicking the already-active icon collapses the sidebar
             if (ColSidebar.Width.Value > 0 && LeftSidebar.GetCurrentView() == view)
             {
                 ColSidebar.Width = new GridLength(0);
+                SidebarSplitter.Visibility = Visibility.Collapsed;
             }
             else
             {
                 if (ColSidebar.Width.Value == 0)
+                {
                     ColSidebar.Width = new GridLength(DefaultSidebarWidth);
+                    SidebarSplitter.Visibility = Visibility.Visible;
+                    LeftSidebar.ExpandPanel();
+                }
                 LeftSidebar.SwitchView(view);
             }
         }
@@ -953,6 +1416,36 @@ namespace BuildConsole
             }
         }
 
+        // ── Git #815: live Output log + sync status indicator ──────────────────
+        private const int MaxOutputLogChars = 200_000;
+
+        private void AppendOutputLog(string line)
+        {
+            if (OutputLogBox.Text == "[Output] Waiting for activity…") OutputLogBox.Clear();
+            OutputLogBox.AppendText(line + Environment.NewLine);
+            if (OutputLogBox.Text.Length > MaxOutputLogChars)
+            {
+                OutputLogBox.Text = OutputLogBox.Text.Substring(OutputLogBox.Text.Length - MaxOutputLogChars);
+            }
+            OutputLogBox.ScrollToEnd();
+        }
+
+        /// <summary>null = last poll succeeded (green "live"); a message = last poll failed (red, message shown + full text in the Output log).</summary>
+        private void ReportSyncStatus(string? error)
+        {
+            if (error == null)
+            {
+                QueueDot.Fill = DotReady;
+                QueueStatusText.Text = "Sync: live";
+            }
+            else
+            {
+                QueueDot.Fill = DotError;
+                QueueStatusText.Text = $"Sync error: {error}";
+                BuildConsole.Services.ActivityLog.Log("sync", $"FAILED: {error}");
+            }
+        }
+
         private void ResetLayout_Click(object sender, RoutedEventArgs e)
         {
             ColSidebar.Width = new GridLength(DefaultSidebarWidth);
@@ -1016,7 +1509,41 @@ namespace BuildConsole
         private void OpenSql_Click(object sender, RoutedEventArgs e)
             => SetBottomPanel(true, tabIndex: 2);
 
-        private static Microsoft.Web.WebView2.Core.CoreWebView2Environment? _sharedWv2Env;
+        // Git #817 — Shane: "the very first browser that opens is hard
+        // stuck... that Claude works I'm logged in every time" (others
+        // don't). Root cause: this was `if (_sharedWv2Env == null) {
+        // _sharedWv2Env = await CreateAsync(...); }` — a check-then-assign
+        // that is NOT safe against a second call arriving while the first
+        // `await CreateAsync` is still pending (which happens routinely:
+        // ClaudeWebView initializes at startup, then Shane opens a chat tab
+        // seconds later before that first await has resolved). A second
+        // concurrent CoreWebView2Environment.CreateAsync() against the SAME
+        // user data folder while the first is still opening it does NOT
+        // reliably hand back the same live session — cookies then don't
+        // sync in real time between "whichever one won the race" and
+        // everything after it, and AddScriptToExecuteOnDocumentCreatedAsync
+        // on a WebView2 whose environment call got stuck behind that race
+        // can also lose its window to run before the first navigation.
+        // Caching the in-flight Task itself (not the eventual result) closes
+        // the window: every caller awaits the exact same task, so there is
+        // only ever one CreateAsync call for the app's whole lifetime.
+        private static System.Threading.Tasks.Task<Microsoft.Web.WebView2.Core.CoreWebView2Environment>? _sharedWv2EnvTask;
+
+        private static System.Threading.Tasks.Task<Microsoft.Web.WebView2.Core.CoreWebView2Environment> GetSharedWebView2EnvironmentAsync()
+        {
+            _sharedWv2EnvTask ??= CreateSharedWebView2EnvironmentAsync();
+            return _sharedWv2EnvTask;
+        }
+
+        private static async System.Threading.Tasks.Task<Microsoft.Web.WebView2.Core.CoreWebView2Environment> CreateSharedWebView2EnvironmentAsync()
+        {
+            string userDataDir = Path.Combine(Path.GetTempPath(), "BuildConsole_WebView2");
+            Directory.CreateDirectory(userDataDir);
+            BuildConsole.Services.ActivityLog.Log("startup", $"Creating shared WebView2 environment ({userDataDir})…");
+            var env = await Microsoft.Web.WebView2.Core.CoreWebView2Environment.CreateAsync(null, userDataDir);
+            BuildConsole.Services.ActivityLog.Log("startup", "Shared WebView2 environment ready.");
+            return env;
+        }
 
         private static async System.Threading.Tasks.Task<bool> EnsureWebViewInitializedAsync(Microsoft.Web.WebView2.Wpf.WebView2 wv)
         {
@@ -1024,14 +1551,8 @@ namespace BuildConsole
             {
                 if (wv.CoreWebView2 != null) return true;
 
-                if (_sharedWv2Env == null)
-                {
-                    string userDataDir = Path.Combine(Path.GetTempPath(), "BuildConsole_WebView2");
-                    Directory.CreateDirectory(userDataDir);
-                    _sharedWv2Env = await Microsoft.Web.WebView2.Core.CoreWebView2Environment.CreateAsync(null, userDataDir);
-                }
-
-                await wv.EnsureCoreWebView2Async(_sharedWv2Env);
+                var env = await GetSharedWebView2EnvironmentAsync();
+                await wv.EnsureCoreWebView2Async(env);
                 if (wv.CoreWebView2 != null)
                 {
                     wv.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true;
@@ -1041,15 +1562,110 @@ namespace BuildConsole
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"WebView2 init error: {ex.Message}");
+                BuildConsole.Services.ActivityLog.Log("startup", $"WebView2 init error: {ex.Message}");
             }
             return false;
         }
 
-        private async void InitializeClaudeWebView()
+        /// <summary>
+        /// Git #814 — Shane: "can I use it like the addon? with the UI
+        /// elements in the Chat?" Injects content.js's "Send to Builder" /
+        /// "Queue" button bar into a claude.ai WebView2 via
+        /// AddScriptToExecuteOnDocumentCreatedAsync (WPF's equivalent of a
+        /// browser content script) - only meaningful on claude.ai itself, so
+        /// callers should only use this for the Claude tab and per-chat tabs,
+        /// not the generic OpenWebTab/OpenFileTab viewers.
+        /// </summary>
+        private async System.Threading.Tasks.Task<bool> InjectBuilderButtonsAsync(Microsoft.Web.WebView2.Wpf.WebView2 wv)
         {
             try
             {
-                await EnsureWebViewInitializedAsync(ClaudeWebView);
+                bool ready = await EnsureWebViewInitializedAsync(wv);
+                if (!ready) return false;
+                // Git #817 - MUST happen before the WebView2 navigates anywhere
+                // (that's the whole reason ClaudeWebView's XAML Source binding
+                // got removed - see the wv2:WebView2 declaration) - a script
+                // added after navigation starts only applies to the NEXT one.
+                await wv.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(BuildConsole.Services.ChatButtonInjector.Script);
+                wv.WebMessageReceived -= ChatWv_WebMessageReceived;
+                wv.WebMessageReceived += ChatWv_WebMessageReceived;
+                return true;
+            }
+            catch { return false; }
+        }
+
+        /// <summary>Git #817 — injects the builder buttons into ClaudeWebView BEFORE navigating it to claude.ai for the first time (the XAML Source binding that used to do this navigated too early).</summary>
+        private async System.Threading.Tasks.Task InitializeClaudeTabAsync()
+        {
+            await InjectBuilderButtonsAsync(ClaudeWebView);
+            if (ClaudeWebView.CoreWebView2 != null) ClaudeWebView.CoreWebView2.Navigate("https://claude.ai");
+            else ClaudeWebView.Source = new Uri("https://claude.ai");
+        }
+
+        /// <summary>
+        /// Git #814 — the injected script's bridge back to the app (it can't
+        /// reach chrome.runtime/chrome.storage since it isn't a browser
+        /// extension). BT_SEND_TO_BUILDER reuses the exact same mybuilder://
+        /// URI + OS-registered handler the browser extension already
+        /// launches through, so behavior stays identical either way.
+        /// BT_QUEUE_BUILD calls the real queue API directly (the app already
+        /// holds the same client BuildQueuePanel/LeftSidebar use).
+        /// </summary>
+        private async void ChatWv_WebMessageReceived(object? sender, Microsoft.Web.WebView2.Core.CoreWebView2WebMessageReceivedEventArgs e)
+        {
+            try
+            {
+                string json = e.TryGetWebMessageAsString();
+                if (string.IsNullOrEmpty(json)) return;
+                using var doc = System.Text.Json.JsonDocument.Parse(json);
+                var root = doc.RootElement;
+                string type = root.TryGetProperty("type", out var t) ? (t.GetString() ?? "") : "";
+
+                string? Str(string prop) => root.TryGetProperty(prop, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.String ? v.GetString() : null;
+                int? Int(string prop) => root.TryGetProperty(prop, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.Number ? v.GetInt32() : null;
+
+                if (type == "BT_SEND_TO_BUILDER")
+                {
+                    var q = new List<string>();
+                    void Add(string key, string? val) { if (!string.IsNullOrEmpty(val)) q.Add($"{key}={Uri.EscapeDataString(val)}"); }
+                    Add("q", Str("prompt"));
+                    Add("title", Str("title"));
+                    Add("model", Str("model"));
+                    Add("effort", Str("effort"));
+                    Add("cwd", Str("cwd"));
+                    Add("mode", Str("mode"));
+                    var uri = $"mybuilder://open?{string.Join("&", q)}";
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(uri) { UseShellExecute = true });
+                }
+                else if (type == "BT_QUEUE_BUILD")
+                {
+                    if (_buildTrackerApi == null || !_buildTrackerApi.IsConfigured)
+                    {
+                        MessageBox.Show("Not connected — see Settings.", "Queue Build");
+                        return;
+                    }
+                    List<int>? blockedByNumbers = null;
+                    if (root.TryGetProperty("blockedByNumbers", out var arr) && arr.ValueKind == System.Text.Json.JsonValueKind.Array)
+                    {
+                        blockedByNumbers = arr.EnumerateArray().Select(x => x.GetInt32()).ToList();
+                    }
+                    var res = await _buildTrackerApi.QueueBuildAsync(
+                        Str("title") ?? "Untitled", Str("prompt") ?? "", Str("model"), Str("effort"), Str("cwd"), Int("githubNumber"), blockedByNumbers);
+                    if (!res.IsSuccessStatusCode)
+                    {
+                        var body = await res.Content.ReadAsStringAsync();
+                        MessageBox.Show($"Couldn't queue build: {body}", "Queue Build");
+                    }
+                    else
+                    {
+                        await BuildQueuePanel.RefreshAsync();
+                    }
+                }
+                else if (type == "BT_LOAD_SQL")
+                {
+                    SetBottomPanel(true, tabIndex: 2);
+                    SqlRunnerView.SetSqlQuery(Str("sql") ?? "");
+                }
             }
             catch { }
         }
@@ -1065,27 +1681,47 @@ namespace BuildConsole
         {
             if (CommandPaletteOverlay.Visibility == Visibility.Visible)
             {
-                CommandPaletteOverlay.Visibility = Visibility.Collapsed;
+                HideCommandPalette();
             }
             else
             {
-                BuildPaletteItems();
-                CommandPaletteOverlay.Visibility = Visibility.Visible;
-                PaletteSearchBox.Text = string.Empty;
-                PerformPaletteSearch();
-
-                Dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(() =>
-                {
-                    PaletteSearchBox.Focus();
-                }));
+                ShowCommandPalette();
             }
+        }
+
+        private void ShowCommandPalette()
+        {
+            BuildPaletteItems();
+
+            // Hide active WebView2 HWND to fix WPF Airspace overlap
+            var activeWv = GetActiveWebView();
+            if (activeWv != null) activeWv.Visibility = Visibility.Hidden;
+
+            CommandPaletteOverlay.Visibility = Visibility.Visible;
+            PaletteSearchBox.Text = string.Empty;
+            PerformPaletteSearch();
+
+            Dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(() =>
+            {
+                PaletteSearchBox.Focus();
+                Keyboard.Focus(PaletteSearchBox);
+            }));
+        }
+
+        private void HideCommandPalette()
+        {
+            CommandPaletteOverlay.Visibility = Visibility.Collapsed;
+
+            // Restore active WebView2 HWND visibility
+            var activeWv = GetActiveWebView();
+            if (activeWv != null) activeWv.Visibility = Visibility.Visible;
         }
 
         private void CommandPaletteOverlay_MouseDown(object sender, MouseButtonEventArgs e)
         {
             if (e.OriginalSource == CommandPaletteOverlay)
             {
-                CommandPaletteOverlay.Visibility = Visibility.Collapsed;
+                HideCommandPalette();
             }
         }
 
@@ -1223,7 +1859,7 @@ namespace BuildConsole
             else if (e.Key == Key.Escape)
             {
                 e.Handled = true;
-                CommandPaletteOverlay.Visibility = Visibility.Collapsed;
+                HideCommandPalette();
             }
         }
 
@@ -1236,8 +1872,159 @@ namespace BuildConsole
         {
             if (PaletteResultsList.SelectedItem is PaletteItem item)
             {
-                CommandPaletteOverlay.Visibility = Visibility.Collapsed;
+                HideCommandPalette();
                 item.ExecuteAction?.Invoke();
+            }
+        }
+
+        // ── SPLIT SCREEN GRID LAYOUT ENGINE ────────────────────────────────
+        private string _currentLayoutMode = "Single";
+
+        private void BtnLayout_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn && btn.Tag is string mode)
+            {
+                SetLayoutMode(mode);
+            }
+        }
+
+        private void DockTarget_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn && btn.Tag is string mode)
+            {
+                SetLayoutMode(mode.StartsWith("SplitH") ? "SplitH" : mode);
+                DockGuideOverlay.Visibility = Visibility.Collapsed;
+            }
+        }
+
+        public void SetLayoutMode(string mode)
+        {
+            _currentLayoutMode = mode;
+
+            switch (mode)
+            {
+                case "Single":
+                    PaneCol0.Width = new GridLength(1, GridUnitType.Star);
+                    PaneColSplitter.Width = new GridLength(0);
+                    PaneCol1.Width = new GridLength(0);
+
+                    PaneRow0.Height = new GridLength(1, GridUnitType.Star);
+                    PaneRowSplitter.Height = new GridLength(0);
+                    PaneRow1.Height = new GridLength(0);
+
+                    PaneGridSplitterH.Visibility = Visibility.Collapsed;
+                    PaneGridSplitterV.Visibility = Visibility.Collapsed;
+
+                    EditorTabs2.Visibility = Visibility.Collapsed;
+                    EditorTabs3.Visibility = Visibility.Collapsed;
+                    EditorTabs4.Visibility = Visibility.Collapsed;
+
+                    // Move all items back to EditorTabs
+                    MoveAllTabsToTarget(EditorTabs2, EditorTabs);
+                    MoveAllTabsToTarget(EditorTabs3, EditorTabs);
+                    MoveAllTabsToTarget(EditorTabs4, EditorTabs);
+                    break;
+
+                case "SplitH": // 2 Columns (Side by Side)
+                    PaneCol0.Width = new GridLength(1, GridUnitType.Star);
+                    PaneColSplitter.Width = new GridLength(4);
+                    PaneCol1.Width = new GridLength(1, GridUnitType.Star);
+
+                    PaneRow0.Height = new GridLength(1, GridUnitType.Star);
+                    PaneRowSplitter.Height = new GridLength(0);
+                    PaneRow1.Height = new GridLength(0);
+
+                    PaneGridSplitterH.Visibility = Visibility.Visible;
+                    PaneGridSplitterV.Visibility = Visibility.Collapsed;
+
+                    EditorTabs2.Visibility = Visibility.Visible;
+                    EditorTabs3.Visibility = Visibility.Collapsed;
+                    EditorTabs4.Visibility = Visibility.Collapsed;
+
+                    DistributeTabsBetweenPanes(EditorTabs, EditorTabs2);
+                    break;
+
+                case "SplitV": // 2 Rows (Top / Bottom)
+                    PaneCol0.Width = new GridLength(1, GridUnitType.Star);
+                    PaneColSplitter.Width = new GridLength(0);
+                    PaneCol1.Width = new GridLength(0);
+
+                    PaneRow0.Height = new GridLength(1, GridUnitType.Star);
+                    PaneRowSplitter.Height = new GridLength(4);
+                    PaneRow1.Height = new GridLength(1, GridUnitType.Star);
+
+                    PaneGridSplitterH.Visibility = Visibility.Collapsed;
+                    PaneGridSplitterV.Visibility = Visibility.Visible;
+
+                    EditorTabs2.Visibility = Visibility.Collapsed;
+                    EditorTabs3.Visibility = Visibility.Visible;
+                    EditorTabs4.Visibility = Visibility.Collapsed;
+
+                    DistributeTabsBetweenPanes(EditorTabs, EditorTabs3);
+                    break;
+
+                case "Grid4": // 4 Squares Layout
+                    PaneCol0.Width = new GridLength(1, GridUnitType.Star);
+                    PaneColSplitter.Width = new GridLength(4);
+                    PaneCol1.Width = new GridLength(1, GridUnitType.Star);
+
+                    PaneRow0.Height = new GridLength(1, GridUnitType.Star);
+                    PaneRowSplitter.Height = new GridLength(4);
+                    PaneRow1.Height = new GridLength(1, GridUnitType.Star);
+
+                    PaneGridSplitterH.Visibility = Visibility.Visible;
+                    PaneGridSplitterV.Visibility = Visibility.Visible;
+
+                    EditorTabs2.Visibility = Visibility.Visible;
+                    EditorTabs3.Visibility = Visibility.Visible;
+                    EditorTabs4.Visibility = Visibility.Visible;
+
+                    DistributeTabsTo4Grid(EditorTabs, EditorTabs2, EditorTabs3, EditorTabs4);
+                    break;
+            }
+        }
+
+        private void MoveAllTabsToTarget(TabControl source, TabControl target)
+        {
+            var items = source.Items.OfType<TabItem>().ToList();
+            foreach (var item in items)
+            {
+                source.Items.Remove(item);
+                target.Items.Add(item);
+            }
+        }
+
+        private void DistributeTabsBetweenPanes(TabControl source, TabControl target)
+        {
+            if (source.Items.Count > 1 && target.Items.Count == 0)
+            {
+                int half = source.Items.Count / 2;
+                var itemsToMove = source.Items.OfType<TabItem>().Skip(half).ToList();
+                foreach (var item in itemsToMove)
+                {
+                    source.Items.Remove(item);
+                    target.Items.Add(item);
+                }
+            }
+        }
+
+        private void DistributeTabsTo4Grid(TabControl t1, TabControl t2, TabControl t3, TabControl t4)
+        {
+            var allItems = t1.Items.OfType<TabItem>()
+                .Concat(t2.Items.OfType<TabItem>())
+                .Concat(t3.Items.OfType<TabItem>())
+                .Concat(t4.Items.OfType<TabItem>())
+                .Distinct().ToList();
+
+            t1.Items.Clear();
+            t2.Items.Clear();
+            t3.Items.Clear();
+            t4.Items.Clear();
+
+            TabControl[] targetPanes = new[] { t1, t2, t3, t4 };
+            for (int i = 0; i < allItems.Count; i++)
+            {
+                targetPanes[i % 4].Items.Add(allItems[i]);
             }
         }
     }

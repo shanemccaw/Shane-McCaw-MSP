@@ -319,6 +319,19 @@
         </Style.Triggers>
     </Style>
 
+    <!-- Secondary / outline button -->
+    <Style x:Key="SecondaryButton" TargetType="{x:Type Button}" BasedOn="{StaticResource {x:Type Button}}">
+        <Setter Property="Background"  Value="{StaticResource Surface0Brush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource Surface1Brush}"/>
+        <Setter Property="Foreground"  Value="{StaticResource TextBrush}"/>
+        <Setter Property="Padding"     Value="10,5"/>
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="{StaticResource Surface1Brush}"/>
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
     <!-- Small command chip (terminal quick actions) -->
     <Style x:Key="ChipButton" TargetType="{x:Type Button}" BasedOn="{StaticResource {x:Type Button}}">
         <Setter Property="Background"  Value="{StaticResource Surface0Brush}"/>
