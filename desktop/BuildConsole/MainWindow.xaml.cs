@@ -254,6 +254,7 @@ namespace BuildConsole
             if (EditorTabs.Items.Count > 0 && EditorTabs.Items[0] is TabItem claudeTab)
             {
                 AttachTabContextMenu(claudeTab, EditorTabs);
+                AttachTabDragHandlers(claudeTab);
             }
 
             UpdateZoomDisplay();
@@ -911,6 +912,7 @@ namespace BuildConsole
             };
 
             AttachTabContextMenu(newTab, EditorTabs);
+            AttachTabDragHandlers(newTab);
 
             EditorTabs.Items.Add(newTab);
             EditorTabs.SelectedItem = newTab;
@@ -1034,6 +1036,7 @@ namespace BuildConsole
             };
 
             AttachTabContextMenu(newTab, EditorTabs);
+            AttachTabDragHandlers(newTab);
             EditorTabs.Items.Add(newTab);
             EditorTabs.SelectedItem = newTab;
         }
@@ -1161,19 +1164,29 @@ namespace BuildConsole
         {
             var cm = new ContextMenu();
 
+            // Git #893 — a tab can now be dragged into a DIFFERENT pane than
+            // the one it was created in, so `ownerTabControl` captured here
+            // at attach-time can go stale the moment that happens. Every
+            // action below resolves the tab's REAL current owner at click
+            // time instead (falling back to the captured one only for the
+            // - impossible in practice, but harmless - case its Parent isn't
+            // set at all).
+            TabControl CurrentOwner() => tabItem.Parent as TabControl ?? ownerTabControl;
+
             // 1. Close
             var miClose = new MenuItem { Header = "Close", InputGestureText = "Ctrl+W" };
-            miClose.Click += (s, e) => CloseTab(tabItem, ownerTabControl);
+            miClose.Click += (s, e) => CloseTab(tabItem, CurrentOwner());
             cm.Items.Add(miClose);
 
             // 2. Close Others
             var miCloseOthers = new MenuItem { Header = "Close Others" };
             miCloseOthers.Click += (s, e) =>
             {
-                var others = ownerTabControl.Items.OfType<TabItem>().Where(t => t != tabItem).ToList();
+                var owner = CurrentOwner();
+                var others = owner.Items.OfType<TabItem>().Where(t => t != tabItem).ToList();
                 foreach (var t in others)
                 {
-                    ownerTabControl.Items.Remove(t);
+                    owner.Items.Remove(t);
                 }
             };
             cm.Items.Add(miCloseOthers);
@@ -1182,13 +1195,14 @@ namespace BuildConsole
             var miCloseRight = new MenuItem { Header = "Close to the Right" };
             miCloseRight.Click += (s, e) =>
             {
-                int idx = ownerTabControl.Items.IndexOf(tabItem);
+                var owner = CurrentOwner();
+                int idx = owner.Items.IndexOf(tabItem);
                 if (idx >= 0)
                 {
-                    var itemsRight = ownerTabControl.Items.OfType<TabItem>().Skip(idx + 1).ToList();
+                    var itemsRight = owner.Items.OfType<TabItem>().Skip(idx + 1).ToList();
                     foreach (var t in itemsRight)
                     {
-                        ownerTabControl.Items.Remove(t);
+                        owner.Items.Remove(t);
                     }
                 }
             };
@@ -1198,10 +1212,11 @@ namespace BuildConsole
             var miCloseSaved = new MenuItem { Header = "Close Saved" };
             miCloseSaved.Click += (s, e) =>
             {
-                var savedTabs = ownerTabControl.Items.OfType<TabItem>().Where(t => !(t.Tag?.ToString()?.EndsWith("*") ?? false)).ToList();
+                var owner = CurrentOwner();
+                var savedTabs = owner.Items.OfType<TabItem>().Where(t => !(t.Tag?.ToString()?.EndsWith("*") ?? false)).ToList();
                 foreach (var t in savedTabs)
                 {
-                    ownerTabControl.Items.Remove(t);
+                    owner.Items.Remove(t);
                 }
             };
             cm.Items.Add(miCloseSaved);
@@ -1210,7 +1225,7 @@ namespace BuildConsole
             var miCloseAll = new MenuItem { Header = "Close All" };
             miCloseAll.Click += (s, e) =>
             {
-                ownerTabControl.Items.Clear();
+                CurrentOwner().Items.Clear();
             };
             cm.Items.Add(miCloseAll);
 
@@ -1404,6 +1419,7 @@ namespace BuildConsole
             };
 
             AttachTabContextMenu(newTab, EditorTabs);
+            AttachTabDragHandlers(newTab);
 
             closeBtn.Click += (s, e) =>
             {
@@ -2272,6 +2288,43 @@ namespace BuildConsole
 
         public void SetLayoutMode(string mode)
         {
+            ApplyGridForMode(mode);
+
+            switch (mode)
+            {
+                case "Single":
+                    // Move all items back to EditorTabs
+                    MoveAllTabsToTarget(EditorTabs2, EditorTabs);
+                    MoveAllTabsToTarget(EditorTabs3, EditorTabs);
+                    MoveAllTabsToTarget(EditorTabs4, EditorTabs);
+                    break;
+
+                case "SplitH": // 2 Columns (Side by Side)
+                    DistributeTabsBetweenPanes(EditorTabs, EditorTabs2);
+                    break;
+
+                case "SplitV": // 2 Rows (Top / Bottom)
+                    DistributeTabsBetweenPanes(EditorTabs, EditorTabs3);
+                    break;
+
+                case "Grid4": // 4 Squares Layout
+                    DistributeTabsTo4Grid(EditorTabs, EditorTabs2, EditorTabs3, EditorTabs4);
+                    break;
+            }
+        }
+
+        /// <summary>
+        /// Git #893 — Shane: "I need to be able to drag and drop tabs into
+        /// different layouts." Extracted from SetLayoutMode's original body:
+        /// just the grid row/column/splitter/pane-visibility math, with NO
+        /// tab redistribution. SetLayoutMode (the toolbar buttons) still does
+        /// both together, unchanged behavior; the drag-and-drop path below
+        /// calls ONLY this - it wants to reveal a pane and move the ONE
+        /// dragged tab into it, not scramble every other open tab's
+        /// placement the way the toolbar buttons intentionally do.
+        /// </summary>
+        private void ApplyGridForMode(string mode)
+        {
             _currentLayoutMode = mode;
 
             switch (mode)
@@ -2291,11 +2344,6 @@ namespace BuildConsole
                     EditorTabs2.Visibility = Visibility.Collapsed;
                     EditorTabs3.Visibility = Visibility.Collapsed;
                     EditorTabs4.Visibility = Visibility.Collapsed;
-
-                    // Move all items back to EditorTabs
-                    MoveAllTabsToTarget(EditorTabs2, EditorTabs);
-                    MoveAllTabsToTarget(EditorTabs3, EditorTabs);
-                    MoveAllTabsToTarget(EditorTabs4, EditorTabs);
                     break;
 
                 case "SplitH": // 2 Columns (Side by Side)
@@ -2313,8 +2361,6 @@ namespace BuildConsole
                     EditorTabs2.Visibility = Visibility.Visible;
                     EditorTabs3.Visibility = Visibility.Collapsed;
                     EditorTabs4.Visibility = Visibility.Collapsed;
-
-                    DistributeTabsBetweenPanes(EditorTabs, EditorTabs2);
                     break;
 
                 case "SplitV": // 2 Rows (Top / Bottom)
@@ -2332,8 +2378,6 @@ namespace BuildConsole
                     EditorTabs2.Visibility = Visibility.Collapsed;
                     EditorTabs3.Visibility = Visibility.Visible;
                     EditorTabs4.Visibility = Visibility.Collapsed;
-
-                    DistributeTabsBetweenPanes(EditorTabs, EditorTabs3);
                     break;
 
                 case "Grid4": // 4 Squares Layout
@@ -2351,8 +2395,6 @@ namespace BuildConsole
                     EditorTabs2.Visibility = Visibility.Visible;
                     EditorTabs3.Visibility = Visibility.Visible;
                     EditorTabs4.Visibility = Visibility.Visible;
-
-                    DistributeTabsTo4Grid(EditorTabs, EditorTabs2, EditorTabs3, EditorTabs4);
                     break;
             }
         }
@@ -2365,6 +2407,129 @@ namespace BuildConsole
                 source.Items.Remove(item);
                 target.Items.Add(item);
             }
+        }
+
+        // ── Git #893: drag-and-drop tabs between panes / reorder within a pane ──
+        private const string TabDragFormat = "BuildConsoleTabItem";
+        private Point _tabDragStartPoint;
+        private TabItem? _tabDragCandidate;
+
+        /// <summary>
+        /// Git #893 — wired alongside every AttachTabContextMenu call site.
+        /// PreviewMouseMove only starts a REAL drag once the mouse has moved
+        /// past the OS's own click/drag threshold (SystemParameters), so a
+        /// plain click (select the tab, or hit the close button) is
+        /// untouched - this never marks the initiating MouseDown as Handled.
+        /// </summary>
+        private void AttachTabDragHandlers(TabItem tab)
+        {
+            tab.PreviewMouseLeftButtonDown += (s, e) =>
+            {
+                _tabDragStartPoint = e.GetPosition(null);
+                _tabDragCandidate = tab;
+            };
+
+            tab.PreviewMouseMove += (s, e) =>
+            {
+                if (e.LeftButton != MouseButtonState.Pressed || !ReferenceEquals(_tabDragCandidate, tab)) return;
+
+                var pos = e.GetPosition(null);
+                if (Math.Abs(pos.X - _tabDragStartPoint.X) < SystemParameters.MinimumHorizontalDragDistance &&
+                    Math.Abs(pos.Y - _tabDragStartPoint.Y) < SystemParameters.MinimumVerticalDragDistance)
+                {
+                    return;
+                }
+
+                _tabDragCandidate = null;
+
+                // Nowhere else visible to drop this tab (still in Single-pane
+                // mode) - show the dock-target overlay so dragging can reveal
+                // a NEW pane to place it in. Already split? Skip the overlay
+                // entirely; the visible panes themselves are real drop
+                // targets (EditorTabsPane_Drop below) and showing a
+                // screen-covering overlay on top of them would only block
+                // dropping directly onto a pane that's already right there.
+                bool anyOtherPaneVisible = EditorTabs2.Visibility == Visibility.Visible
+                    || EditorTabs3.Visibility == Visibility.Visible
+                    || EditorTabs4.Visibility == Visibility.Visible;
+                if (!anyOtherPaneVisible)
+                {
+                    DockGuideOverlay.Visibility = Visibility.Visible;
+                }
+
+                DragDrop.DoDragDrop(tab, new DataObject(TabDragFormat, tab), DragDropEffects.Move);
+
+                DockGuideOverlay.Visibility = Visibility.Collapsed;
+            };
+        }
+
+        /// <summary>Git #893 — shared Drop handler for all four editor panes: dropping on the SAME pane it came from reorders it there; dropping on a DIFFERENT (already-visible) pane moves it there.</summary>
+        private void EditorTabsPane_Drop(object sender, DragEventArgs e)
+        {
+            if (sender is not TabControl targetTabs) return;
+            if (e.Data.GetData(TabDragFormat) is not TabItem draggedTab) return;
+            if (draggedTab.Parent is not TabControl sourceTabs) return;
+
+            if (sourceTabs == targetTabs)
+            {
+                int currentIndex = targetTabs.Items.IndexOf(draggedTab);
+                int dropIndex = ComputeTabDropIndex(targetTabs, e.GetPosition(targetTabs));
+                if (dropIndex == currentIndex || dropIndex == currentIndex + 1) return; // no real move
+
+                targetTabs.Items.Remove(draggedTab);
+                targetTabs.Items.Insert(dropIndex > currentIndex ? dropIndex - 1 : dropIndex, draggedTab);
+            }
+            else
+            {
+                sourceTabs.Items.Remove(draggedTab);
+                targetTabs.Items.Add(draggedTab);
+            }
+
+            targetTabs.SelectedItem = draggedTab;
+            e.Handled = true;
+        }
+
+        /// <summary>Git #893 — where among a pane's existing tab headers a drop point falls, by comparing against each header's horizontal center (already-realized TabItems, since they're populated directly rather than via a bound ItemsSource).</summary>
+        private static int ComputeTabDropIndex(TabControl tabs, Point dropPointRelativeToTabs)
+        {
+            var items = tabs.Items.OfType<TabItem>().ToList();
+            for (int i = 0; i < items.Count; i++)
+            {
+                Point topLeft;
+                try { topLeft = items[i].TranslatePoint(new Point(0, 0), tabs); }
+                catch { continue; } // not yet in the visual tree - shouldn't happen for an existing visible tab, but don't crash a drop over it
+                double center = topLeft.X + items[i].ActualWidth / 2;
+                if (dropPointRelativeToTabs.X < center) return i;
+            }
+            return items.Count;
+        }
+
+        /// <summary>Git #893 — the four DockGuideOverlay buttons (Left/Top/4-Squares/Right) as real drop targets, alongside their existing Click handlers (which only fire for a plain click, never during an active DragDrop.DoDragDrop - the two never conflict).</summary>
+        private void DockTarget_Drop(object sender, DragEventArgs e)
+        {
+            if (sender is not Button btn || btn.Tag is not string tag) return;
+            if (e.Data.GetData(TabDragFormat) is not TabItem draggedTab) return;
+
+            string mode = tag.StartsWith("SplitH") ? "SplitH" : tag;
+            ApplyGridForMode(mode); // reveal the pane only - do NOT redistribute every other open tab
+
+            TabControl target = tag switch
+            {
+                "SplitH_Right" => EditorTabs2,
+                "SplitV" => EditorTabs,
+                "Grid4" => EditorTabs,
+                _ => EditorTabs, // "SplitH" (Left)
+            };
+
+            if (draggedTab.Parent is TabControl source && source != target)
+            {
+                source.Items.Remove(draggedTab);
+            }
+            if (!target.Items.Contains(draggedTab)) target.Items.Add(draggedTab);
+            target.SelectedItem = draggedTab;
+
+            DockGuideOverlay.Visibility = Visibility.Collapsed;
+            e.Handled = true;
         }
 
         private void DistributeTabsBetweenPanes(TabControl source, TabControl target)
