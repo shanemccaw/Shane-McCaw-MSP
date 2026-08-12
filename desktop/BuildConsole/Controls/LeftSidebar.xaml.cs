@@ -355,6 +355,14 @@ namespace BuildConsole.Controls
         // structural changes.
         private readonly List<GitMilestone> _milestones = new();
 
+        // Git #839 (Git Board Phase 1) — _currentFilter tracks the active chip
+        // so a 20s poll re-renders the same view; _boardShowsClosed marks when
+        // the tree is holding the 🟢 Done (CLOSED) snapshot so leaving it for
+        // any other chip reloads the default OPEN set. The board's own no-flash
+        // content guard reuses the existing _lastInProgressSignature below.
+        private string _currentFilter = "All";
+        private bool _boardShowsClosed;
+
         // Git #821 — Shane: "can you stop all the flashing... every refresh
         // the left panel clears and rebuilds... so it flashes and sucks."
         // Both boards used to Items.Clear() + fully rebuild on EVERY 20s
@@ -369,70 +377,108 @@ namespace BuildConsole.Controls
 
         public async void PopulateGitTrackerBoard()
         {
-            if (_api == null || !_api.IsConfigured)
+            // Git #839 — the 🟢 Done view is a manual CLOSED snapshot; let a
+            // background poll leave it be rather than repaint OPEN over it.
+            if (_boardShowsClosed && _currentFilter == "Done") return;
+
+            var settings = BuildConsole.Services.BuildConsoleSettings.Load();
+            if (!settings.HasGitHubPat)
             {
                 IssuesTree.Items.Clear();
                 IssueStatMilestones.Text = "0 Active";
                 IssueStatEpics.Text = "0 Active";
                 IssueStatOpen.Text = "0 Pending";
                 IssueStatClosed.Text = "0 Done";
-                IssuesTree.Items.Add(new TreeViewItem { Header = "Not connected — set apiBaseUrl/ingestToken in scripts\\build-queue-watcher.config.json (Settings tab has the path)." });
+                IssuesTree.Items.Add(new TreeViewItem { Header = "No GitHub PAT configured — set one in Settings (cog icon / File > Settings)." });
                 return;
             }
 
-            List<InProgressItem> items;
+            List<GitBoardIssue> issues;
             try
             {
-                items = await _api.GetInProgressAsync();
+                var client = new GitHubApiClient(settings.GitHubPat);
+                // Default Git Board = real OPEN issues only. Closed drop out of
+                // view entirely ("done done get out of my view") and are
+                // reachable solely via the 🟢 Done chip (IssueFilter_Click).
+                issues = await client.ListBoardIssuesAsync(GitHubIssueState.Open);
                 SyncError?.Invoke(this, null);
             }
             catch (Exception ex)
             {
                 IssuesTree.Items.Clear();
-                IssuesTree.Items.Add(new TreeViewItem { Header = $"Couldn't reach the API: {ex.Message}" });
-                SyncError?.Invoke(this, $"Issues board: {ex.Message}");
+                IssuesTree.Items.Add(new TreeViewItem { Header = $"Couldn't reach GitHub: {ex.Message}" });
+                SyncError?.Invoke(this, $"Git Board: {ex.Message}");
+                ActivityLog.Log("git-board.data", $"open-issue fetch FAILED: {ex.Message}");
                 return;
             }
 
-            var signature = System.Text.Json.JsonSerializer.Serialize(items);
+            ActivityLog.Log("git-board.data", $"loaded {issues.Count} open issue(s), {issues.Count(i => i.IsEpic)} epic(s)");
+
+            _boardShowsClosed = false;
+            var signature = System.Text.Json.JsonSerializer.Serialize(
+                issues.Select(i => new { i.Number, i.Title, i.State, i.SubIssueCount, i.MilestoneTitle }));
             if (signature == _lastInProgressSignature) return;
             _lastInProgressSignature = signature;
-            IssuesTree.Items.Clear();
 
-            GitEpic MapBucket(string title, string colorHex, IEnumerable<InProgressItem> src)
+            BuildBoardFromGitHub(issues);
+            RenderIssuesTree(_currentFilter == "Done" ? "All" : _currentFilter);
+        }
+
+        /// <summary>
+        /// Git #839 — turns the real GitHub issue list into the existing
+        /// milestone → bucket → issue tree model. Grouped by the real GitHub
+        /// Milestone (issues with none fall under "No Milestone"); within each,
+        /// split into Epics (any issue with sub-issues), plain Issues, and
+        /// Shane To-Do (the label). Status carried through is the real issue
+        /// state, never a label.
+        /// </summary>
+        private void BuildBoardFromGitHub(List<GitBoardIssue> issues)
+        {
+            _milestones.Clear();
+
+            static string? DeriveSqlPath(string body)
+            {
+                if (string.IsNullOrEmpty(body)) return null;
+                var m = System.Text.RegularExpressions.Regex.Match(body, @"lib/db/migrations/manual/[^\s""'`)\]]+\.sql");
+                return m.Success ? m.Value : null;
+            }
+
+            GitEpic MapBucket(string title, string colorHex, IEnumerable<GitBoardIssue> src)
             {
                 var epic = new GitEpic { Title = title, ColorHex = colorHex };
-                foreach (var it in src)
+                foreach (var it in src.OrderByDescending(i => i.Number))
                 {
-                    var title2 = it.IsBlocked && it.BlockedBy != null
-                        ? $"{it.Title} (blocked by #{it.BlockedBy.Number})"
-                        : it.Title;
                     epic.Issues.Add(new GitIssue
                     {
-                        IssueNumber = it.GithubNumber,
-                        Title = title2,
-                        Priority = it.IsBlocked ? "HIGH" : "MED",
-                        Status = it.Labels.Contains("complete") ? "CLOSED" : "OPEN",
-                        SqlPath = it.SqlPath,
+                        IssueNumber = it.Number,
+                        Title = it.IsEpic ? $"{it.Title}  ({it.SubIssueCount} sub)" : it.Title,
+                        Priority = it.IsTodo ? "HIGH" : "MED",
+                        Status = it.IsClosed ? "CLOSED" : "OPEN",
+                        SqlPath = DeriveSqlPath(it.Body),
                     });
                 }
                 return epic;
             }
 
-            var milestone = new GitMilestone { Title = "Live — GitHub in-flight" };
-            var epicsBucket = MapBucket("⚡ Epics", "#89B4FA", items.Where(i => i.IsEpic && !i.IsTodo));
-            var issuesBucket = MapBucket("⚡ Issues", "#A6E3A1", items.Where(i => !i.IsEpic && !i.IsTodo));
-            var todoBucket = MapBucket("⚡ Shane To-Do", "#F5C2E7", items.Where(i => i.IsTodo));
-            if (epicsBucket.Issues.Count > 0) milestone.Epics.Add(epicsBucket);
-            if (issuesBucket.Issues.Count > 0) milestone.Epics.Add(issuesBucket);
-            if (todoBucket.Issues.Count > 0) milestone.Epics.Add(todoBucket);
-            milestone.TotalCount = items.Count;
-            milestone.CompletedCount = items.Count(i => i.Labels.Contains("complete"));
+            var groups = issues
+                .GroupBy(i => i.MilestoneTitle)
+                .OrderBy(g => g.Key == null ? 1 : 0)
+                .ThenBy(g => g.Key);
 
-            _milestones.Clear();
-            if (milestone.Epics.Count > 0) _milestones.Add(milestone);
-
-            RenderIssuesTree("All");
+            foreach (var g in groups)
+            {
+                var list = g.ToList();
+                var milestone = new GitMilestone { Title = g.Key ?? "No Milestone" };
+                var epicsBucket = MapBucket("⚡ Epics", "#89B4FA", list.Where(i => i.IsEpic && !i.IsTodo));
+                var issuesBucket = MapBucket("⚡ Issues", "#A6E3A1", list.Where(i => !i.IsEpic && !i.IsTodo));
+                var todoBucket = MapBucket("⚡ Shane To-Do", "#F5C2E7", list.Where(i => i.IsTodo));
+                if (epicsBucket.Issues.Count > 0) milestone.Epics.Add(epicsBucket);
+                if (issuesBucket.Issues.Count > 0) milestone.Epics.Add(issuesBucket);
+                if (todoBucket.Issues.Count > 0) milestone.Epics.Add(todoBucket);
+                milestone.TotalCount = list.Count;
+                milestone.CompletedCount = list.Count(i => i.IsClosed);
+                if (milestone.Epics.Count > 0) _milestones.Add(milestone);
+            }
         }
 
         // ── CHATS (real GET /extension/board — grouped by linked epic) ──────
@@ -588,8 +634,12 @@ namespace BuildConsole.Controls
 
                         foreach (var issue in epic.Issues)
                         {
-                            if (filter == "Priority" && issue.Priority != "HIGH") continue;
+                            // Git #839 — default views show real OPEN issues only;
+                            // CLOSED are reachable solely through the 🟢 Done chip,
+                            // gated on the real issue state, never a "complete" label.
+                            if (filter != "Done" && issue.Status == "CLOSED") continue;
                             if (filter == "Done" && issue.Status != "CLOSED") continue;
+                            if (filter == "Priority" && issue.Priority != "HIGH") continue;
 
                             epicItem.Items.Add(CreateIssueHeader(issue));
                         }
@@ -816,7 +866,18 @@ namespace BuildConsole.Controls
             if (string.IsNullOrWhiteSpace(QuickAddIssueBox.Text))
             {
                 _issueSearchCts?.Cancel();
-                RenderIssuesTree("All");
+                _currentFilter = "All";
+                // Git #839 — if the board was showing the CLOSED Done snapshot,
+                // reload the real OPEN set rather than filtering it to empty.
+                if (_boardShowsClosed)
+                {
+                    _lastInProgressSignature = null;
+                    PopulateGitTrackerBoard();
+                }
+                else
+                {
+                    RenderIssuesTree("All");
+                }
             }
         }
 
@@ -876,12 +937,53 @@ namespace BuildConsole.Controls
             return tvi;
         }
 
-        private void IssueFilter_Click(object sender, RoutedEventArgs e)
+        private async void IssueFilter_Click(object sender, RoutedEventArgs e)
         {
-            if (sender is Button btn && btn.Tag is string filter)
+            if (sender is not Button btn || btn.Tag is not string filter) return;
+            _currentFilter = filter;
+
+            if (filter == "Done")
             {
-                RenderIssuesTree(filter);
+                // Git #839 — the 🟢 Done chip pulls the real CLOSED set on
+                // demand, since closed issues are dropped from the default view.
+                var settings = BuildConsole.Services.BuildConsoleSettings.Load();
+                if (!settings.HasGitHubPat)
+                {
+                    IssuesTree.Items.Clear();
+                    IssuesTree.Items.Add(new TreeViewItem { Header = "No GitHub PAT configured — set one in Settings (cog icon / File > Settings)." });
+                    return;
+                }
+
+                IssuesTree.Items.Clear();
+                IssuesTree.Items.Add(new TreeViewItem { Header = "Loading closed issues…" });
+                try
+                {
+                    var client = new GitHubApiClient(settings.GitHubPat);
+                    var closed = await client.ListBoardIssuesAsync(GitHubIssueState.Closed);
+                    ActivityLog.Log("git-board.data", $"loaded {closed.Count} closed issue(s) for the Done view");
+                    BuildBoardFromGitHub(closed);
+                    _boardShowsClosed = true;
+                    _lastInProgressSignature = null; // force the next poll to repaint the OPEN board
+                    RenderIssuesTree("Done");
+                }
+                catch (Exception ex)
+                {
+                    IssuesTree.Items.Clear();
+                    IssuesTree.Items.Add(new TreeViewItem { Header = $"Couldn't load closed issues: {ex.Message}" });
+                    ActivityLog.Log("git-board.data", $"closed-issue fetch FAILED: {ex.Message}");
+                }
+                return;
             }
+
+            // Leaving the Done snapshot for any other chip: reload the real OPEN
+            // board so we're not filtering an empty CLOSED-only set.
+            if (_boardShowsClosed)
+            {
+                PopulateGitTrackerBoard();
+                return;
+            }
+
+            RenderIssuesTree(filter);
         }
 
         // ── SEARCH VIEW (Full-Text File Content Search) ──────────────────────
