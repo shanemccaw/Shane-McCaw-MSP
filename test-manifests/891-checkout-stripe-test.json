@@ -1,0 +1,40 @@
+{
+  "issue": 891,
+  "feature": "Copilot Readiness checkout — honesty guardrail + real Stripe test-card completion (money path 6/6)",
+  "baseUrl": "{{DEPLOY_URL}}",
+
+  "notes": [
+    "TARGET: /copilot-readiness/checkout (copilot-readiness-checkout.tsx, the journey checkout — NOT the marketing-site Checkout.tsx). The card frame on this screen is inert divs; real card entry happens on Stripe's own hosted page after the redirect POST /api/portal/assessment/sow/checkout returns { outcome: 'checkout', url }.",
+    "STRIPE IS IN TEST MODE HERE: artifacts/api-server/src/lib/stripe.ts getStripeKey() selects sk_test_… for any .replit.dev domain (the WPF runner's target), so 4242 4242 4242 4242 genuinely completes and can never touch a live key. Confirmed with Shane on the issue.",
+    "SUCCESS LANDING: the checkout route's success_url is `${portalBase}/assessment?payment=success` (portalBase ends in /portal), i.e. /portal/assessment?payment=success → AssessmentTestPage (data-testid='assessment-landing'). The payment is CONFIRMED server-side by the Stripe checkout.session.completed webhook, not by a ?payment=success URL banner — no msp-portal page reads that param. Landing on that page off checkout.stripe.com is the observable success state.",
+    "NEGATIVE case (steps 1–3) requires a FRESH session with no `cj_signed_scope` in sessionStorage — it proves checkout refuses to render a pay form for a scope nobody signed (the #2401cbe7 honesty guardrail).",
+    "HAPPY path (steps 4+) requires the runner to reach checkout ALREADY authenticated as an Assessment-role user AND with a signed scope (`cj_signed_scope`) in sessionStorage. The UI executor (WebView2 + JS injection) cannot itself sign (Screen 3's signature is a drawn-canvas PNG) or seed sessionStorage, and auth is out of scope per Epic #803 ('auth already handled via existing secret-key mechanism'). Supply that precondition in the runner session before running the happy half.",
+    "MUTUAL EXCLUSIVITY: the negative case needs NO signed scope and the happy case needs one, and there is no clear-storage/new-context step between uiSteps in a single WebView2 run — so a single linear run PASSES one half and WARNs the other. Run steps 1–3 against a fresh session and steps 4–14 against a signed+authenticated session.",
+    "STRIPE-PAGE FRAGILITY: step 6's `window.location.href = url` redirect is a client-side navigation the executor does not await (only `goto` waits), so step 7's `expect #cardNumber` can fire before checkout.stripe.com finishes loading; Stripe's hosted-page input ids (#cardNumber/#cardExpiry/#cardCvc/#billingName/#billingPostalCode) and .SubmitButton, and whether a billing postal/country is required (billing_address_collection:'required'), are Stripe's own DOM and can change. Treat steps 7–14 as a precise, human-runnable spec of the money path where a wait-for-navigation primitive is absent."
+  ],
+
+  "uiSteps": [
+    { "action": "goto", "target": "/copilot-readiness/checkout" },
+    { "action": "expect", "selector": "[data-testid='cj-checkout-no-signed-scope']", "state": "visible" },
+    { "action": "expect", "selector": "[data-testid='cj-checkout-pay']", "state": "absent" },
+
+    { "action": "goto", "target": "/copilot-readiness/checkout" },
+    { "action": "expect", "selector": "[data-testid='cj-checkout-pay']", "state": "visible" },
+    {
+      "action": "click",
+      "selector": "[data-testid='cj-checkout-pay']",
+      "captureResponse": {
+        "urlPattern": "/api/portal/assessment/sow/checkout",
+        "expect": { "status": 200 }
+      }
+    },
+    { "action": "expect", "selector": "#cardNumber", "state": "visible" },
+    { "action": "input", "selector": "#cardNumber", "value": "4242424242424242" },
+    { "action": "input", "selector": "#cardExpiry", "value": "12 / 34" },
+    { "action": "input", "selector": "#cardCvc", "value": "123" },
+    { "action": "input", "selector": "#billingName", "value": "Regression Probe" },
+    { "action": "input", "selector": "#billingPostalCode", "value": "10001" },
+    { "action": "click", "selector": ".SubmitButton" },
+    { "action": "expect", "selector": "[data-testid='assessment-landing']", "state": "visible" }
+  ]
+}

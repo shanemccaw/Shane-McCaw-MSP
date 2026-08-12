@@ -1280,6 +1280,7 @@ export default function CopilotReadinessCheckoutPage() {
     return shell(
       <div style={{ maxWidth: 1140, margin: "0 auto", padding: "38px 24px 0" }}>
         <JourneyUnavailable
+          testId="cj-checkout-no-signed-scope"
           title="There is no signed scope to pay for yet."
           detail="Checkout confirms a statement of work you have already signed. Open your proposal, choose the phases you want and sign it — this screen will have something to confirm the moment you do."
           action={
@@ -1567,6 +1568,7 @@ export default function CopilotReadinessCheckoutPage() {
               ) : null}
               <Button
                 size="lg"
+                data-testid="cj-checkout-pay"
                 onClick={() => void submit()}
                 disabled={submitting || (!isPreview && !captchaToken)}
                 style={{

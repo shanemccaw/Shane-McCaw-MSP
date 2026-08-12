@@ -226,7 +226,7 @@ export default function AssessmentTestPage() {
 
   return (
     <AppShell title="Assessment Test">
-    <div className="min-h-screen flex flex-col bg-[#101419] text-[#e0e2ea] antialiased">
+    <div data-testid="assessment-landing" className="min-h-screen flex flex-col bg-[#101419] text-[#e0e2ea] antialiased">
 
       {/* Main Content Layout */}
       <main className="flex-grow pb-12 px-4 md:px-8 w-full max-w-[1440px] mx-auto py-6">
