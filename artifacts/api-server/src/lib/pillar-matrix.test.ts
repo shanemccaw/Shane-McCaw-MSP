@@ -3,8 +3,10 @@
  *
  * Regression tests for the Simulator Studio Pillar Matrix (cross-signal
  * per-pillar impact tuning). Covers the three behaviors the spec calls out:
- *   1. The matrix filters to ONLY the selected pillar's non-zero rules, sorted
- *      highest-impact first.
+ *   1. The matrix returns EVERY rule (including a genuine 0 impact for the
+ *      selected pillar — Git #515: a zeroed-out rule must stay visible/
+ *      findable, not vanish as if it were "no data"), sorted highest-impact
+ *      first.
  *   2. The fed / structurally-inert indicator matches the REAL producible-key
  *      logic (pillar-coverage's buildProducibleProfileKeys + ruleIsFedByPackage),
  *      not a hand-rolled reimplementation.
@@ -56,11 +58,11 @@ function group(partial: Partial<SignalRuleGroup>): SignalRuleGroup {
 const FIELD = "governanceImpact";
 
 describe("buildPillarMatrix — filtering & sort", () => {
-  it("returns only rows with a non-zero value for the selected pillar, highest first", () => {
+  it("includes rows with a zero value for the selected pillar (Git #515), sorted highest first", () => {
     const rules = [
       rule({ signalKey: "sigA", sourceKey: "kA", governanceImpact: 5 } as Partial<SignalDerivationRule>),
       rule({ signalKey: "sigB", sourceKey: "kB", governanceImpact: 40 } as Partial<SignalDerivationRule>),
-      // Non-zero for a DIFFERENT pillar only — must be excluded from governance.
+      // Zero for governance (genuine zero OR never configured for this pillar) — must still appear.
       rule({ signalKey: "sigC", sourceKey: "kC", governanceImpact: 0, securityImpact: 99 } as Partial<SignalDerivationRule>),
       rule({ signalKey: "sigD", sourceKey: "kD", governanceImpact: 12 } as Partial<SignalDerivationRule>),
     ];
@@ -69,9 +71,10 @@ describe("buildPillarMatrix — filtering & sort", () => {
 
     const { rows } = buildPillarMatrix(rules, [], FIELD, fed, evaluable);
 
-    expect(rows.map((r) => r.signalKey)).toEqual(["sigB", "sigD", "sigA"]); // 40, 12, 5
-    expect(rows.every((r) => r.ruleImpact > 0)).toBe(true);
-    expect(rows.find((r) => r.signalKey === "sigC")).toBeUndefined();
+    expect(rows.map((r) => r.signalKey)).toEqual(["sigB", "sigD", "sigA", "sigC"]); // 40, 12, 5, 0
+    const sigC = rows.find((r) => r.signalKey === "sigC");
+    expect(sigC).toBeDefined();
+    expect(sigC?.ruleImpact).toBe(0);
   });
 });
 

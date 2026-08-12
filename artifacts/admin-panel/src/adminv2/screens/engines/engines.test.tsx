@@ -134,15 +134,18 @@ describe("traceRowsOf", () => {
     expect(rows[0]).toMatchObject({ band: "security", name: "mfa_gap", impact: 9 });
   });
 
-  it("leaves impact null when a row carries no single contribution, and shows the figures it does carry", () => {
+  it("leaves impact null when a row carries no single contribution, and shows the figures it does carry — including genuine zeros (Git #515)", () => {
     // CRM: five independent dimensions. Picking one and calling it "the"
-    // contribution would be inventing the engine's answer.
+    // contribution would be inventing the engine's answer. maturity/urgency
+    // are genuinely 0 here, not absent — they must still show, not vanish.
     const rows = traceRowsOf([{ signalKey: "budget_signal", fit: 3, pain: 5, maturity: 0, intent: 2, urgency: 0 }]);
     expect(rows[0]!.impact).toBeNull();
     expect(rows[0]!.detail).toEqual([
       ["fit", "3"],
       ["pain", "5"],
+      ["maturity", "0"],
       ["intent", "2"],
+      ["urgency", "0"],
     ]);
     expect(traceTotal(rows)).toBeNull();
   });

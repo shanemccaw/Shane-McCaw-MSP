@@ -59,9 +59,12 @@ export interface PillarMatrixResult {
  * `fedByRuleId` / `evaluableSignalKeys` come from pillar-coverage's
  * `computeRuleFedStatus` (the producible-key logic).
  *
- * Rows: every rule whose OWN `field` value is > 0, sorted by that value
- * descending (highest-impact first — the retuning default), ties broken by
- * signalKey for stable ordering.
+ * Rows: every rule, sorted by its OWN `field` value descending (highest-impact
+ * first — the retuning default), ties broken by signalKey for stable ordering.
+ * A rule with a genuine 0 impact for this pillar still gets a row — hiding it
+ * would be indistinguishable from a rule that was never configured for this
+ * pillar at all, and an admin who deliberately zeroes a rule out needs to be
+ * able to find it again to re-tune it (Git #515).
  */
 export function buildPillarMatrix(
   rules: SignalDerivationRule[],
@@ -92,7 +95,7 @@ export function buildPillarMatrix(
 
   const rows: PillarMatrixRow[] = rules
     .map((r) => ({ r, ruleImpact: Number((r as unknown as Record<string, unknown>)[field] ?? 0) }))
-    .filter(({ ruleImpact }) => ruleImpact > 0)
+    .filter(({ ruleImpact }) => ruleImpact >= 0)
     .map(({ r, ruleImpact }) => {
       const effectiveSignalImpact =
         (impacts.get(r.signalKey) as unknown as Record<string, number> | undefined)?.[field] ?? 0;

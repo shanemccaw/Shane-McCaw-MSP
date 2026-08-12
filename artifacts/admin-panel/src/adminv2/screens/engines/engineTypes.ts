@@ -254,7 +254,8 @@ function measuresOf(row: Record<string, unknown>): Array<[string, string]> {
   const out: Array<[string, string]> = [];
   for (const [k, v] of Object.entries(row)) {
     if (NON_MEASURE_KEYS.has(k) || k === "contribution" || k === "value") continue;
-    if (typeof v === "number" && Number.isFinite(v) && v !== 0) out.push([humanise(k), String(v)]);
+    // A genuine 0 is a real measured value (Git #515) — only drop non-numbers/NaN/Infinity.
+    if (typeof v === "number" && Number.isFinite(v)) out.push([humanise(k), String(v)]);
   }
   return out;
 }

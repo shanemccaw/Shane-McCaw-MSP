@@ -564,8 +564,10 @@ router.get("/admin/signal-rules", requireAdmin, async (_req: Request, res: Respo
 
 // ── GET /api/admin/signal-rules/pillar-matrix ──────────────────────────────────
 // Cross-signal tuning view for the Simulator Studio Pillar Matrix. For ONE
-// selected pillar, returns every platform rule (msp_id IS NULL) whose OWN impact
-// value for that pillar is non-zero, each annotated with:
+// selected pillar, returns every platform rule (msp_id IS NULL) — including
+// rules whose OWN impact value for that pillar is a genuine 0 (Git #515: a
+// rule zeroed out to remove its impact must stay findable/editable here) —
+// each annotated with:
 //   • the per-rule fed / structurally-inert status (same producible-key logic as
 //     the pillar-coverage trace — `computeRuleFedStatus`), and
 //   • the dual-source reality the health engine actually scores: the signal's
