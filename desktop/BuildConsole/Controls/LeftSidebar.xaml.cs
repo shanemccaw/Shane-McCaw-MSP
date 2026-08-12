@@ -798,6 +798,16 @@ namespace BuildConsole.Controls
                 .OrderBy(g => g.Key == null ? 1 : 0)
                 .ThenBy(g => g.Key);
 
+            // Git #884 — Shane: "The Git Board is not showing me all the
+            // milestones.... even empty ones need to appear." `groups` above
+            // is built entirely from the OPEN-only issue fetch, so a
+            // milestone with zero open issues under it (everything closed,
+            // or genuinely nothing assigned yet) never gets a group at all —
+            // it was invisible regardless of how real/active it is on
+            // GitHub. Tracked here so the pass below can add the ones that
+            // never showed up in `groups`.
+            var seenMilestoneNumbers = new HashSet<int>();
+
             foreach (var g in groups)
             {
                 var list = g.ToList();
@@ -822,6 +832,7 @@ namespace BuildConsole.Controls
                     milestone.TotalCount = info.OpenIssues + info.ClosedIssues;
                     milestone.CompletedCount = info.ClosedIssues;
                     milestone.HasRealCounts = true;
+                    seenMilestoneNumbers.Add(milestoneNumber.Value);
                 }
                 else
                 {
@@ -832,6 +843,33 @@ namespace BuildConsole.Controls
 
                 if (milestone.Epics.Count > 0) _milestones.Add(milestone);
             }
+
+            // Git #884 — every real GitHub milestone that had no open issues
+            // to form a group above still gets a node: empty (no epic/issue
+            // buckets under it — there's nothing OPEN to show), but visible,
+            // with its real closed/total count so a fully-completed milestone
+            // reads as "100% (12/12)" rather than not existing at all.
+            foreach (var mi in milestoneInfos)
+            {
+                if (seenMilestoneNumbers.Contains(mi.Number)) continue;
+                _milestones.Add(new GitMilestone
+                {
+                    Title = mi.Title,
+                    TotalCount = mi.OpenIssues + mi.ClosedIssues,
+                    CompletedCount = mi.ClosedIssues,
+                    HasRealCounts = true,
+                });
+            }
+
+            // Re-sort now that #884's pass may have appended milestones out
+            // of order — same ordering `groups` used above (alphabetical,
+            // "No Milestone" pinned last).
+            _milestones.Sort((a, b) =>
+            {
+                bool aNone = a.Title == "No Milestone", bNone = b.Title == "No Milestone";
+                if (aNone != bNone) return aNone ? 1 : -1;
+                return string.Compare(a.Title, b.Title, StringComparison.OrdinalIgnoreCase);
+            });
         }
 
         // ── CHATS (real GET /extension/board — grouped by linked epic) ──────
