@@ -2172,7 +2172,7 @@ namespace BuildConsole
         {
             string mode = isRegression ? "regression" : "single";
             BuildConsole.Services.ActivityLog.Log("testing.manifest-runner",
-                $"[{mode}] Running manifest for issue #{manifest.Issue} ({manifest.Feature}) — {manifest.ApiTests.Count} apiTests, {manifest.GraphTests.Count} graphTests, {manifest.UiSteps.Count} uiSteps. #809 uiSteps executor not wired yet.");
+                $"[{mode}] Running manifest for issue #{manifest.Issue} ({manifest.Feature}) — {manifest.ApiTests.Count} apiTests, {manifest.GraphTests.Count} graphTests, {manifest.UiSteps.Count} uiSteps.");
 
             var runResult = new BuildConsole.Services.ManifestRunResult
             {
@@ -2205,6 +2205,38 @@ namespace BuildConsole
                 int graphPassed = graphResults.Count(r => r.Passed);
                 BuildConsole.Services.ActivityLog.Log("testing.graph-executor",
                     $"graphTests: {graphPassed}/{graphResults.Count} passed for issue #{manifest.Issue}.");
+            }
+
+            // Git #809 (Epic #803 Phase 5) — uiSteps now actually run, via the same
+            // WebView2 + JS-injection engine (UiTestExecutor) the Automation sidebar's
+            // manual Play button uses. Still surfaced through the AutomationRunnerWindow
+            // popup for now (per #809 - "keep the popup working ... #810 will retire
+            // it") but the popup is only a thin shell over UiTestExecutor now, and its
+            // RunCompleted result folds into this same shared runResult/TestStepResult
+            // pipeline #807 established, not a separate uiSteps-only output.
+            if (manifest.UiSteps.Count > 0)
+            {
+                var uiActions = manifest.UiSteps.Select((step, i) => new Controls.AutomationAction
+                {
+                    Index = i + 1,
+                    ActionType = step.Action,
+                    Selector = step.Selector ?? step.Target ?? string.Empty,
+                    TagName = "div",
+                    Value = step.Value ?? step.State ?? string.Empty,
+                    CaptureResponse = step.CaptureResponseJson,
+                }).ToList();
+
+                var uiTcs = new System.Threading.Tasks.TaskCompletionSource<BuildConsole.Services.UiTestRunResult>();
+                var runner = new AutomationRunnerWindow(manifest.BaseUrl, uiActions);
+                runner.RunCompleted += (s, r) => uiTcs.TrySetResult(r);
+                runner.Show();
+
+                var uiResult = await uiTcs.Task;
+                var uiStepResults = uiResult.ToTestStepResults();
+                runResult.AddRange(uiStepResults);
+
+                BuildConsole.Services.ActivityLog.Log("testing.ui-executor",
+                    $"[{mode}] Issue #{manifest.Issue} uiSteps: {uiResult.PassedSteps}/{uiResult.TotalSteps} passed.");
             }
 
             if (runResult.Steps.Count > 0)

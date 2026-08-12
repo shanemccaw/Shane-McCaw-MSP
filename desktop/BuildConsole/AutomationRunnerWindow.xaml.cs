@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using BuildConsole.Services;
 
 namespace BuildConsole
 {
@@ -11,12 +12,22 @@ namespace BuildConsole
     {
         private readonly string _targetUrl;
         private readonly List<Controls.AutomationAction> _steps;
+        private readonly UiTestExecutor _executor;
+
+        /// <summary>Git #809 — the popup is now a thin UI shell over UiTestExecutor. #810's Test Results
+        /// tab drives the same executor directly once it lands and retires this window; until then,
+        /// this event lets manifest-driven runs (MainWindow.RunManifestAsync) observe the structured
+        /// result without the output being hard-wired to the popup.</summary>
+        public event EventHandler<UiTestRunResult>? RunCompleted;
 
         public AutomationRunnerWindow(string targetUrl, List<Controls.AutomationAction> steps)
         {
             InitializeComponent();
             _targetUrl = string.IsNullOrWhiteSpace(targetUrl) ? "https://ba888680-2595-412d-84fe-4e9aefc2688b-00-22rhgh0krunr4.picard.replit.dev/" : targetUrl;
             _steps = new List<Controls.AutomationAction>(steps);
+
+            _executor = new UiTestExecutor(TestRunnerWebView);
+            _executor.Telemetry += (s, e) => AddTelemetryCard(e.Label, e.Detail, e.Level, e.ColorHex);
 
             TxtTargetUrl.Text = _targetUrl;
             Loaded += AutomationRunnerWindow_Loaded;
@@ -33,104 +44,11 @@ namespace BuildConsole
             TxtStatusBadge.Foreground = (Brush)FindResource("PeachBrush");
             TelemetryLogContainer.Children.Clear();
 
-            AddTelemetryCard("START", $"Navigating to {_targetUrl}", "INFO", "#89B4FA");
+            var result = await _executor.RunAsync(_targetUrl, _steps);
 
-            try
-            {
-                await TestRunnerWebView.EnsureCoreWebView2Async();
-                TestRunnerWebView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true;
-
-                var tcs = new TaskCompletionSource<bool>();
-                void NavHandler(object? s, Microsoft.Web.WebView2.Core.CoreWebView2NavigationCompletedEventArgs args)
-                {
-                    TestRunnerWebView.NavigationCompleted -= NavHandler;
-                    tcs.TrySetResult(args.IsSuccess);
-                }
-
-                TestRunnerWebView.NavigationCompleted += NavHandler;
-                TestRunnerWebView.Source = new Uri(_targetUrl);
-
-                bool navSuccess = await tcs.Task;
-                if (!navSuccess)
-                {
-                    AddTelemetryCard("NAV FAIL", "Page failed to load or encountered HTTP error.", "ERROR", "#F38BA8");
-                    TxtStatusBadge.Text = "❌ TEST FAILED (Navigation Error)";
-                    TxtStatusBadge.Foreground = (Brush)FindResource("RedBrush");
-                    return;
-                }
-
-                AddTelemetryCard("NAV OK", "Page loaded successfully.", "SUCCESS", "#A6E3A1");
-                await Task.Delay(1200);
-
-                int stepNumber = 0;
-                int passedSteps = 0;
-
-                foreach (var step in _steps)
-                {
-                    stepNumber++;
-                    string actionType = step.ActionType.ToLowerInvariant();
-                    string selector = step.Selector;
-                    string val = step.Value;
-
-                    AddTelemetryCard($"STEP {stepNumber}", $"{step.ActionTypeUpper}: {selector} {(string.IsNullOrEmpty(val) ? "" : "=> " + val)}", "RUNNING", "#89DCEB");
-
-                    // Execute JS element check & trigger
-                    string script = $@"
-(function() {{
-    try {{
-        let el = document.querySelector('{selector.Replace("'", "\\'")}');
-        if (!el) {{
-            // Try fallback text match if selector is tag
-            let tags = document.querySelectorAll('{step.TagName.Replace("'", "\\'")}');
-            for (let t of tags) {{
-                if ((t.innerText || t.value || '').trim().includes('{val.Replace("'", "\\'")}')) {{
-                    el = t; break;
-                }}
-            }}
-        }}
-        if (!el) return JSON.stringify({{ success: false, error: 'Element not found in DOM' }});
-
-        // Flash visual highlight for runner view
-        let origOutline = el.style.outline;
-        el.style.outline = '3px solid #89B4FA';
-        setTimeout(() => {{ el.style.outline = origOutline; }}, 600);
-
-        if ('{actionType}' === 'click') {{
-            el.click();
-        }} else if ('{actionType}' === 'input') {{
-            el.value = '{val.Replace("'", "\\'")}';
-            el.dispatchEvent(new Event('input', {{ bubbles: true }}));
-            el.dispatchEvent(new Event('change', {{ bubbles: true }}));
-        }}
-        return JSON.stringify({{ success: true }});
-    }} catch(ex) {{
-        return JSON.stringify({{ success: false, error: ex.message }});
-    }}
-}})();";
-
-                    string resJson = await TestRunnerWebView.ExecuteScriptAsync(script);
-                    await Task.Delay(1000);
-
-                    if (resJson != null && resJson.Contains("\"success\":true"))
-                    {
-                        passedSteps++;
-                        AddTelemetryCard($"STEP {stepNumber} PASS", $"Executed {actionType} on {selector}", "PASS", "#A6E3A1");
-                    }
-                    else
-                    {
-                        AddTelemetryCard($"STEP {stepNumber} WARN", $"Element execution warning: {resJson}", "WARN", "#FAB387");
-                    }
-                }
-
-                TxtStatusBadge.Text = $"✔ TEST PASSED ({passedSteps}/{_steps.Count} Steps)";
-                TxtStatusBadge.Foreground = (Brush)FindResource("GreenBrush");
-            }
-            catch (Exception ex)
-            {
-                AddTelemetryCard("CRASH", $"Execution error: {ex.Message}", "CRASH", "#F38BA8");
-                TxtStatusBadge.Text = "❌ TEST FAILED (Exception)";
-                TxtStatusBadge.Foreground = (Brush)FindResource("RedBrush");
-            }
+            TxtStatusBadge.Text = result.StatusText;
+            TxtStatusBadge.Foreground = (Brush)FindResource(result.Success ? "GreenBrush" : "RedBrush");
+            RunCompleted?.Invoke(this, result);
         }
 
         private void AddTelemetryCard(string label, string detail, string level, string colorHex)
