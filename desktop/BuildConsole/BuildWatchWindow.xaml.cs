@@ -2,10 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Shapes;
 using System.Windows.Threading;
 using BuildConsole.Services;
@@ -64,8 +66,26 @@ namespace BuildConsole
             public TextBlock HeaderText = null!;
             public Border BadgeChip = null!;
             public TextBlock BadgeText = null!;
-            public TextBox OutputBox = null!;
             public Button DismissButton = null!;
+
+            // #1004 display redesign — the raw streaming TextBox is replaced by a
+            // scrolling list of per-event chat cards plus a live "thinking" row.
+            /// <summary>Scrolls the event-card stack; pinned to the bottom as new cards land.</summary>
+            public ScrollViewer EventsScroll = null!;
+            /// <summary>Holds one colour-coded Border card per real event (assistant text, tool call, result, error).</summary>
+            public StackPanel EventsPanel = null!;
+            /// <summary>The animated "thinking" row (spinning arc + activity text) shown only while the build is live.</summary>
+            public Border ThinkingIndicator = null!;
+            public TextBlock ThinkingText = null!;
+            /// <summary>The rotating arc; its Angle is animated forever while running and cleared on a terminal state.</summary>
+            public RotateTransform SpinnerTransform = null!;
+            public Ellipse SpinnerRing = null!;
+            /// <summary>Carries a partial trailing line between byte-delta tail reads so a card is only emitted on a full line.</summary>
+            public string LineBuffer = "";
+            /// <summary>Last time a real event card landed — drives "longer-running wait" idle detection for the easter egg.</summary>
+            public DateTime LastOutputUtc;
+            /// <summary>While now &lt; this, a rolled easter-egg phrase is left on screen instead of being overwritten each poll.</summary>
+            public DateTime EasterEggUntilUtc;
 
             // Live state
             public bool Occupied;
@@ -73,6 +93,8 @@ namespace BuildConsole
             public int? GithubNumber;
             public string Title = "";
             public SlotState State = SlotState.Empty;
+            /// <summary>True while a Running slot is actually the #943 "VERIFYING…" hold (queue said failed with the -2 sentinel). Drives the spinner colour and activity text.</summary>
+            public bool Verifying;
             /// <summary>Set when the slot goes terminal (Done/Failed) — drives "oldest completed" eviction ordering. Null while Running/Stale (Stale is deliberately not a confirmed completion).</summary>
             public DateTime? CompletedAtUtc;
             public long TailedLength;
@@ -93,10 +115,31 @@ namespace BuildConsole
         private readonly Brush _blue;
         private readonly Brush _yellow;
         private readonly Brush _peach;
+        private readonly Brush _mauve;
+        private readonly Brush _cardBg;      // Surface0 — the shared card fill
+        private readonly Brush _cardText;    // TextBrush — primary readable text
+        private readonly Brush _cardSubtext; // Subtext1 — muted meta text
         private readonly Brush _emptyBorder;
         private readonly Brush _runningBorder;
         private readonly Brush _badgeText;
         private bool _loaded;
+
+        /// <summary>#1004 easter egg — during a longer-running quiet stretch, the activity line occasionally reads
+        /// "Reticulating splines…" (Shane's nod to The Sims) instead of the plain "thinking…", plus a few sibling
+        /// whimsies for variety. Weighted so the Sims classic is the one that surfaces most.</summary>
+        private static readonly string[] EasterEggPhrases =
+        {
+            "Reticulating splines…",
+            "Reticulating splines…",
+            "Reticulating splines…",
+            "Herding llamas…",
+            "Generating witty dialog…",
+            "Warming up the flux capacitor…",
+            "Adjusting bell curves…",
+            "Composing epic poem about your build…",
+        };
+        /// <summary>Cheap per-window RNG for the easter-egg roll. (Not Math.random — this is C#; System.Random is fine.)</summary>
+        private readonly Random _rng = new();
 
         public BuildWatchWindow(BuildTrackerApiClient? api)
         {
@@ -108,6 +151,10 @@ namespace BuildConsole
             _blue = (Brush)FindResource("BlueBrush");
             _yellow = (Brush)FindResource("YellowBrush");
             _peach = (Brush)FindResource("PeachBrush");
+            _mauve = (Brush)FindResource("MauveBrush");
+            _cardBg = (Brush)FindResource("Surface0Brush");
+            _cardText = (Brush)FindResource("TextBrush");
+            _cardSubtext = (Brush)FindResource("Subtext1Brush");
             _emptyBorder = (Brush)FindResource("Surface0Brush");
             _runningBorder = (Brush)FindResource("Surface2Brush");
             _badgeText = (Brush)FindResource("CrustBrush");
@@ -218,24 +265,30 @@ namespace BuildConsole
             Grid.SetRow(header, 0);
             slot.ContentGrid.Children.Add(header);
 
-            // Streaming output (reuses the same per-item log tail as the main
-            // window's chat-tab build pane — see TailSlotLog).
-            slot.OutputBox = new TextBox
+            // Streaming output — #1004 redesign. The raw byte tail (still the same
+            // per-item log the main window's chat-tab pane uses, see TailSlotLog) is
+            // now parsed into one colour-coded chat card per real event, stacked in a
+            // ScrollViewer, with a live animated "thinking" row pinned underneath.
+            var body = new Grid { Background = (Brush)FindResource("BaseBrush") };
+            body.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            body.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+            slot.EventsPanel = new StackPanel { Margin = new Thickness(8, 8, 8, 4) };
+            slot.EventsScroll = new ScrollViewer
             {
-                IsReadOnly = true,
-                IsReadOnlyCaretVisible = false,
-                BorderThickness = new Thickness(0),
-                Background = (Brush)FindResource("BaseBrush"),
-                Foreground = (Brush)FindResource("Subtext1Brush"),
-                FontFamily = new FontFamily("Consolas"),
-                FontSize = 10.5,
-                TextWrapping = TextWrapping.Wrap,
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-                VerticalContentAlignment = VerticalAlignment.Top,
-                Padding = new Thickness(6, 4, 6, 4),
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                Content = slot.EventsPanel,
             };
-            Grid.SetRow(slot.OutputBox, 1);
-            slot.ContentGrid.Children.Add(slot.OutputBox);
+            Grid.SetRow(slot.EventsScroll, 0);
+            body.Children.Add(slot.EventsScroll);
+
+            slot.ThinkingIndicator = BuildThinkingIndicator(slot);
+            Grid.SetRow(slot.ThinkingIndicator, 1);
+            body.Children.Add(slot.ThinkingIndicator);
+
+            Grid.SetRow(body, 1);
+            slot.ContentGrid.Children.Add(body);
 
             // Footer: the "yep cool" dismiss button (only shown on a terminal slot)
             slot.DismissButton = new Button
@@ -262,6 +315,227 @@ namespace BuildConsole
 
             grid.Children.Add(slot.ContentGrid);
             slot.Container.Child = grid;
+        }
+
+        // ── #1004 "thinking" indicator (genuinely animated) ─────────────────
+
+        /// <summary>
+        /// Builds the live activity row shown while a build is running: a continuously
+        /// spinning arc (a 3/4 stroked ring rotated forever — real motion, not a static
+        /// glyph) beside an activity text line. The spinner's rotation is started/stopped
+        /// and its colour set by StartSpinner/StopSpinner as the slot changes state.
+        /// </summary>
+        private Border BuildThinkingIndicator(BuildWatchSlot slot)
+        {
+            // A stroked ellipse with a dashed outline that leaves ~1/4 of the ring
+            // open, rotated forever, reads as the classic "working" spinner. Dash
+            // units are multiples of StrokeThickness; circumference ≈ π·16/2.6 ≈ 19.3
+            // of those, so a ~14.5/4.8 dash/gap leaves roughly a quarter open.
+            slot.SpinnerTransform = new RotateTransform(0, 8, 8);
+            slot.SpinnerRing = new Ellipse
+            {
+                Width = 16,
+                Height = 16,
+                Stroke = _blue,
+                StrokeThickness = 2.6,
+                StrokeDashCap = PenLineCap.Round,
+                StrokeDashArray = new DoubleCollection { 14.5, 4.8 },
+                RenderTransform = slot.SpinnerTransform,
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+
+            slot.ThinkingText = new TextBlock
+            {
+                Text = "starting…",
+                FontSize = 13.5,
+                Foreground = _cardSubtext,
+                FontStyle = FontStyles.Italic,
+                Margin = new Thickness(9, 0, 0, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+            };
+
+            var row = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+            row.Children.Add(slot.SpinnerRing);
+            row.Children.Add(slot.ThinkingText);
+
+            return new Border
+            {
+                Background = _cardBg,
+                CornerRadius = new CornerRadius(12),
+                Padding = new Thickness(10, 6, 12, 6),
+                Margin = new Thickness(8, 2, 8, 8),
+                HorizontalAlignment = HorizontalAlignment.Left,
+                Visibility = Visibility.Collapsed,
+                Child = row,
+            };
+        }
+
+        /// <summary>Shows the thinking row and starts the arc spinning (blue = running, yellow = #943 verifying).</summary>
+        private void StartSpinner(BuildWatchSlot slot, bool verifying)
+        {
+            slot.SpinnerRing.Stroke = verifying ? _yellow : _blue;
+            slot.ThinkingIndicator.Visibility = Visibility.Visible;
+            var anim = new DoubleAnimation(0, 360, new Duration(TimeSpan.FromSeconds(0.9)))
+            {
+                RepeatBehavior = RepeatBehavior.Forever,
+            };
+            slot.SpinnerTransform.BeginAnimation(RotateTransform.AngleProperty, anim);
+        }
+
+        /// <summary>Stops the arc and hides the thinking row (used on every terminal / stale / cleared state).</summary>
+        private static void StopSpinner(BuildWatchSlot slot)
+        {
+            slot.SpinnerTransform.BeginAnimation(RotateTransform.AngleProperty, null);
+            slot.ThinkingIndicator.Visibility = Visibility.Collapsed;
+        }
+
+        /// <summary>
+        /// Refreshes the activity line while a slot is running. Normally alternates between
+        /// "working…" (output landed recently) and "thinking…" (a quiet stretch). During a
+        /// longer quiet stretch it occasionally — rarely, by a low-probability roll — swaps in
+        /// an easter-egg phrase ("Reticulating splines…" and friends) and pins it briefly so it
+        /// doesn't flicker away on the very next poll. Called once per poll tick per running slot.
+        /// </summary>
+        private void UpdateThinkingText(BuildWatchSlot slot, bool verifying)
+        {
+            if (verifying)
+            {
+                slot.ThinkingText.Text = "verifying…";
+                return;
+            }
+
+            var now = DateTime.UtcNow;
+            if (now < slot.EasterEggUntilUtc) return; // let a rolled easter egg linger
+
+            var idle = now - slot.LastOutputUtc;
+            if (idle < TimeSpan.FromSeconds(6))
+            {
+                slot.ThinkingText.Text = "working…";
+                return;
+            }
+
+            // A genuinely longer-running wait — the rare, surprising moment.
+            if (_rng.NextDouble() < 0.12)
+            {
+                slot.ThinkingText.Text = EasterEggPhrases[_rng.Next(EasterEggPhrases.Length)];
+                slot.EasterEggUntilUtc = now + TimeSpan.FromSeconds(9);
+            }
+            else
+            {
+                slot.ThinkingText.Text = "thinking…";
+            }
+        }
+
+        // ── #1004 event-card rendering ──────────────────────────────────────
+
+        private static readonly Regex ToolTokenRegex = new(@"\[tool:\s*([^\]]+)\]", RegexOptions.Compiled);
+
+        /// <summary>Distinguishes obvious stderr / error lines (folded in raw by the watcher) so they get a red card,
+        /// while staying tight enough not to redden ordinary assistant prose that merely mentions the word "error".</summary>
+        private static bool LooksLikeError(string line)
+        {
+            return Regex.IsMatch(line,
+                @"^\s*(error\b|error:|exception\b|fatal:|panic:|traceback|npm ERR!|unhandled|\bat\s+\S+\(|\w+Error:|\w+Exception:)",
+                RegexOptions.IgnoreCase);
+        }
+
+        /// <summary>
+        /// Classifies one completed log line into an event and appends the matching card:
+        ///   • "--- done … ---"  → green result card
+        ///   • obvious stderr    → red error card
+        ///   • text with [tool:] → the prose becomes an assistant card and each tool marker its own mauve tool chip
+        ///   • anything else     → a blue-accented assistant text card
+        /// Distinct accent + text colour per type satisfies the colour-coding requirement, all from the existing palette.
+        /// </summary>
+        private void AppendEventCard(BuildWatchSlot slot, string rawLine)
+        {
+            var line = rawLine.TrimEnd();
+            if (line.Length == 0) return;
+
+            if (line.StartsWith("--- done", StringComparison.Ordinal))
+            {
+                var label = line.Trim('-', ' ');
+                AddEventBubble(slot, string.IsNullOrWhiteSpace(label) ? "done" : label, _green, _green, mono: false, glyph: "✓");
+                return;
+            }
+
+            if (LooksLikeError(line))
+            {
+                AddEventBubble(slot, line, _red, _red, mono: true, glyph: "⚠");
+                return;
+            }
+
+            var matches = ToolTokenRegex.Matches(line);
+            if (matches.Count == 0)
+            {
+                AddEventBubble(slot, line, _blue, _cardText, mono: false, glyph: null);
+                return;
+            }
+
+            // Split "text [tool: X] more text" into prose card(s) + tool chip(s) in order.
+            int cursor = 0;
+            foreach (Match m in matches)
+            {
+                var before = line.Substring(cursor, m.Index - cursor).Trim();
+                if (before.Length > 0)
+                    AddEventBubble(slot, before, _blue, _cardText, mono: false, glyph: null);
+
+                var toolName = m.Groups[1].Value.Trim();
+                AddEventBubble(slot, toolName, _mauve, _mauve, mono: false, glyph: "⚙");
+                // A tool call is fresh activity, and worth reflecting live in the spinner row.
+                slot.LastOutputUtc = DateTime.UtcNow;
+                if (slot.State == SlotState.Running)
+                    slot.ThinkingText.Text = $"running {toolName}…";
+
+                cursor = m.Index + m.Length;
+            }
+            var after = line.Substring(cursor).Trim();
+            if (after.Length > 0)
+                AddEventBubble(slot, after, _blue, _cardText, mono: false, glyph: null);
+        }
+
+        /// <summary>The maximum number of event cards kept per slot — older cards fall off the top so a very long
+        /// build can't grow the visual tree without bound (the old TextBox had the same effect via its own buffer).</summary>
+        private const int MaxCardsPerSlot = 200;
+
+        /// <summary>
+        /// Builds one chat card: a rounded Border (reusing the app's Surface0 card fill and CornerRadius idiom) with a
+        /// coloured left accent bar and a wrapping TextBlock at a readable 14.5px, then appends it and pins the scroll.
+        /// </summary>
+        private void AddEventBubble(BuildWatchSlot slot, string text, Brush accent, Brush textBrush, bool mono, string? glyph)
+        {
+            var body = new TextBlock
+            {
+                Text = glyph == null ? text : $"{glyph}  {text}",
+                Foreground = textBrush,
+                FontSize = 14.5,
+                TextWrapping = TextWrapping.Wrap,
+                LineHeight = 19,
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            if (mono) body.FontFamily = new FontFamily("Cascadia Mono, Consolas");
+            if (ReferenceEquals(accent, _mauve) || ReferenceEquals(accent, _green))
+                body.FontWeight = FontWeights.SemiBold;
+
+            var card = new Border
+            {
+                Background = _cardBg,
+                CornerRadius = new CornerRadius(4, 10, 10, 10),
+                BorderBrush = accent,
+                BorderThickness = new Thickness(3, 0, 0, 0), // coloured left accent bar = event type
+                Padding = new Thickness(10, 7, 10, 7),
+                Margin = new Thickness(0, 0, 0, 6),
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                Child = body,
+            };
+
+            slot.EventsPanel.Children.Add(card);
+            while (slot.EventsPanel.Children.Count > MaxCardsPerSlot)
+                slot.EventsPanel.Children.RemoveAt(0);
+
+            slot.LastOutputUtc = DateTime.UtcNow;
+            slot.EventsScroll.ScrollToEnd();
         }
 
         // ── Poll / reconcile ────────────────────────────────────────────────
@@ -296,6 +570,8 @@ namespace BuildConsole
                         if (slot.State != SlotState.Stale) SetSlotState(slot, SlotState.Stale, null);
                     }
                     TailSlotLog(slot);
+                    if (slot.State == SlotState.Running)
+                        UpdateThinkingText(slot, slot.Verifying); // refresh activity line / roll the easter egg
                 }
 
                 // 2) Admit newly-running builds into free / oldest-completed slots.
@@ -353,6 +629,7 @@ namespace BuildConsole
             switch (newState)
             {
                 case SlotState.Running:
+                    slot.Verifying = verifying;
                     slot.Container.BorderBrush = _runningBorder;
                     slot.Container.BorderThickness = new Thickness(1);
                     slot.BadgeChip.Background = verifying ? _yellow : _blue;
@@ -362,9 +639,12 @@ namespace BuildConsole
                         : null;
                     slot.DismissButton.Visibility = Visibility.Collapsed;
                     slot.CompletedAtUtc = null;
+                    StartSpinner(slot, verifying); // genuinely alive while the build runs
+                    if (changed) UpdateThinkingText(slot, verifying);
                     break;
 
                 case SlotState.Done:
+                    slot.Verifying = false;
                     slot.Container.BorderBrush = _green;
                     slot.Container.BorderThickness = new Thickness(3); // the "green overlay around the completed one"
                     slot.BadgeChip.Background = _green;
@@ -372,9 +652,11 @@ namespace BuildConsole
                     slot.BadgeText.Text = exitCode.HasValue ? $"DONE ✓ (exit {exitCode})" : "DONE ✓";
                     slot.DismissButton.Visibility = Visibility.Visible;
                     slot.CompletedAtUtc ??= DateTime.UtcNow;
+                    StopSpinner(slot);
                     break;
 
                 case SlotState.Failed:
+                    slot.Verifying = false;
                     slot.Container.BorderBrush = _red;
                     slot.Container.BorderThickness = new Thickness(3);
                     slot.BadgeChip.Background = _red;
@@ -382,9 +664,11 @@ namespace BuildConsole
                     slot.BadgeText.Text = exitCode.HasValue ? $"FAILED (exit {exitCode})" : "FAILED";
                     slot.DismissButton.Visibility = Visibility.Visible;
                     slot.CompletedAtUtc ??= DateTime.UtcNow;
+                    StopSpinner(slot);
                     break;
 
                 case SlotState.Stale:
+                    slot.Verifying = false;
                     slot.Container.BorderBrush = _peach;
                     slot.Container.BorderThickness = new Thickness(2);
                     slot.BadgeChip.Background = _peach;
@@ -392,6 +676,7 @@ namespace BuildConsole
                     slot.BadgeText.Text = "NOT IN QUEUE";
                     slot.DismissButton.Visibility = Visibility.Visible;
                     slot.CompletedAtUtc = null; // deliberately not a confirmed completion
+                    StopSpinner(slot);
                     break;
             }
 
@@ -465,7 +750,12 @@ namespace BuildConsole
             slot.Title = SafeTitle(item);
             slot.CompletedAtUtc = null;
             slot.TailedLength = 0;
-            slot.OutputBox.Clear();
+            slot.Verifying = false;
+            slot.LineBuffer = "";
+            slot.LastOutputUtc = DateTime.UtcNow;
+            slot.EasterEggUntilUtc = DateTime.MinValue;
+            slot.EventsPanel.Children.Clear();
+            slot.ThinkingText.Text = "starting…";
             slot.EmptyText.Visibility = Visibility.Collapsed;
             slot.ContentGrid.Visibility = Visibility.Visible;
             slot.HeaderText.Text = slot.GithubNumber.HasValue ? $"#{slot.GithubNumber}  {slot.Title}" : slot.Title;
@@ -488,7 +778,10 @@ namespace BuildConsole
             slot.State = SlotState.Empty;
             slot.CompletedAtUtc = null;
             slot.TailedLength = 0;
-            slot.OutputBox.Clear();
+            slot.Verifying = false;
+            slot.LineBuffer = "";
+            StopSpinner(slot);
+            slot.EventsPanel.Children.Clear();
             slot.HeaderText.ToolTip = null;
             slot.BadgeChip.ToolTip = null;
             slot.ContentGrid.Visibility = Visibility.Collapsed;
@@ -572,7 +865,7 @@ namespace BuildConsole
         /// tailing too — a #943-style "vanished but still running" build keeps
         /// streaming.
         /// </summary>
-        private static void TailSlotLog(BuildWatchSlot slot)
+        private void TailSlotLog(BuildWatchSlot slot)
         {
             if (!slot.Occupied) return;
             var path = BuildLogPaths.ForQueueItem(slot.QueueItemId);
@@ -580,13 +873,30 @@ namespace BuildConsole
             {
                 if (!File.Exists(path)) return;
                 using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                if (fs.Length < slot.TailedLength)
+                {
+                    // File truncated/reused — reset and re-tail from the top.
+                    slot.TailedLength = 0;
+                    slot.LineBuffer = "";
+                    slot.EventsPanel.Children.Clear();
+                }
                 if (fs.Length <= slot.TailedLength) return;
                 fs.Seek(slot.TailedLength, SeekOrigin.Begin);
                 using var reader = new StreamReader(fs);
                 string newText = reader.ReadToEnd();
                 slot.TailedLength = fs.Length;
-                slot.OutputBox.AppendText(newText);
-                slot.OutputBox.ScrollToEnd();
+
+                // Accumulate and emit one card per COMPLETE line — the watcher writes
+                // each event as `summary + NewLine`, so a card only forms on a newline;
+                // any trailing partial stays buffered until the rest of the line lands.
+                slot.LineBuffer += newText;
+                int nl;
+                while ((nl = slot.LineBuffer.IndexOf('\n')) >= 0)
+                {
+                    var line = slot.LineBuffer.Substring(0, nl);
+                    slot.LineBuffer = slot.LineBuffer.Substring(nl + 1);
+                    AppendEventCard(slot, line);
+                }
             }
             catch { /* file locked mid-write by the watcher — retry next tick */ }
         }
