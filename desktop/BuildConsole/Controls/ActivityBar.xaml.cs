@@ -16,6 +16,9 @@ namespace BuildConsole.Controls
         /// <summary>Git #864 — raised when the user picks an entry from the Web Tools popout. (name, url)</summary>
         public event EventHandler<(string Name, string Url)>? WebToolRequested;
 
+        /// <summary>Git #937 — raised when the Sticky Notes icon is clicked; MainWindow toggles the always-on-top floaty open/closed.</summary>
+        public event EventHandler? StickyNotesToggleRequested;
+
         public ActivityBar() => InitializeComponent();
 
         /// <summary>Git #834 — File > Settings menu item routes here so it lands on the SAME SettingsView the cog icon already opens, instead of being a second, divergent path.</summary>
@@ -26,6 +29,10 @@ namespace BuildConsole.Controls
             if (sender is RadioButton rb)
                 ActiveViewChanged?.Invoke(this, rb.Tag?.ToString() ?? "Chats");
         }
+
+        /// <summary>Git #937 — toggles the always-on-top Sticky Notes floaty.</summary>
+        private void BtnStickyNotes_Click(object sender, RoutedEventArgs e) =>
+            StickyNotesToggleRequested?.Invoke(this, EventArgs.Empty);
 
         private void QuickNav_Click(object sender, RoutedEventArgs e)
         {

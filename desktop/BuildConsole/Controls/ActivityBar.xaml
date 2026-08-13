@@ -136,6 +136,21 @@
                     </Border>
                 </Popup>
 
+                <!-- Separator -->
+                <Border Height="1" Background="{StaticResource Surface0Brush}" Margin="8,6"/>
+
+                <!-- Git #937 — Shane: "a floaty sticky notes." Toggles the
+                     always-on-top Sticky Notes window open/closed. A plain
+                     Button (not a workspace RadioButton) since it opens a
+                     separate top-level window, not a LeftSidebar view. -->
+                <Button x:Name="BtnStickyNotes"
+                        Style="{StaticResource IconButton}"
+                        Width="48" Height="44"
+                        ToolTip="Sticky Notes (always-on-top floaty)"
+                        Click="BtnStickyNotes_Click">
+                    <TextBlock Text="&#x1F5D2;" FontSize="16"/>
+                </Button>
+
             </StackPanel>
 
             <!-- ── Bottom icon: Settings ── -->

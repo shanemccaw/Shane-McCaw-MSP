@@ -49,6 +49,32 @@ namespace BuildConsole.Services
 
         public bool HasEpicChatProjectUrl => !string.IsNullOrWhiteSpace(EpicChatProjectUrl);
 
+        // ── Git #937 (Epic #803) — always-on-top Sticky Notes floaty ──────────
+        // Shane: "a floaty sticky notes... take notes for... Then I should be
+        // able to send what I note down into a Claude chat that I'm typing into
+        // now." Same local store / round-trip pattern as GitHubPat above. The
+        // note text is auto-saved (debounced) as Shane types so an accidental
+        // close never loses anything; the window's last position/size are
+        // remembered so it reopens exactly where he left it. Left/Top default to
+        // -1 as a "never positioned yet" sentinel (System.Text.Json can't round-
+        // trip double.NaN by default, so -1 stands in for "center on first
+        // open"); Width/Height carry real defaults.
+
+        /// <summary>The Sticky Notes floaty's current text, auto-saved (debounced) as Shane types so a stray close can't lose it.</summary>
+        public string StickyNotesText { get; set; } = "";
+
+        /// <summary>Last on-screen X of the Sticky Notes floaty. -1 = never positioned yet (center on first open).</summary>
+        public double StickyNotesLeft { get; set; } = -1;
+
+        /// <summary>Last on-screen Y of the Sticky Notes floaty. -1 = never positioned yet (center on first open).</summary>
+        public double StickyNotesTop { get; set; } = -1;
+
+        /// <summary>Last width of the Sticky Notes floaty.</summary>
+        public double StickyNotesWidth { get; set; } = 300;
+
+        /// <summary>Last height of the Sticky Notes floaty.</summary>
+        public double StickyNotesHeight { get; set; } = 340;
+
         // ── Git #902 — Replit idle watcher (sub-issue of Epic #803) ──────────
         // Shane: "Replit shuts its dev mode down after like 10 minutes of
         // inactivity. So I always have to turn it back on after a build."

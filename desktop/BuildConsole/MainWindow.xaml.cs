@@ -132,6 +132,14 @@ namespace BuildConsole
         private readonly Dictionary<TabItem, ChatTabState> _chatTabs = new();
         private DispatcherTimer? _buildTailTimer;
 
+        // ── Git #937: always-on-top Sticky Notes floaty ─────────────────────────
+        private StickyNotesWindow? _stickyNotes;
+        // The editor pane (of the four from #893) the user last interacted with —
+        // Send targets whatever Claude chat is active THERE. Updated both on tab
+        // selection and on keyboard focus entering a pane (clicking into a
+        // WebView2 to type doesn't change WPF selection, but it does move focus).
+        private TabControl? _activeEditorPane;
+
         // ── Git #805: deploy-status poll (Epic #803 Phase 1) ─────────────────────
         private DispatcherTimer? _deployStatusTimer;
         private string? _lastSeenDeployCommitHash;
@@ -354,6 +362,15 @@ namespace BuildConsole
 
             // Git #864 — Web Tools popout entry clicked
             ActivityBar.WebToolRequested += ActivityBar_WebToolRequested;
+
+            // Git #937 — Sticky Notes floaty toggle + active-pane focus tracking.
+            ActivityBar.StickyNotesToggleRequested += (s, e) => ToggleStickyNotes();
+            _activeEditorPane = EditorTabs;
+            // Clicking into any pane's WebView2 to type moves WPF keyboard focus
+            // there without changing tab selection — walk up from the newly
+            // focused element to whichever of the four panes contains it, so
+            // Send knows which pane Shane is actually working in.
+            PreviewGotKeyboardFocus += (s, e) => UpdateActivePaneFromFocus(e.NewFocus as DependencyObject);
 
             // LeftSidebar file clicks -> Open Viewer tabs
             LeftSidebar.FileSelected += LeftSidebar_FileSelected;
@@ -622,6 +639,176 @@ namespace BuildConsole
             return ClaudeWebView;
         }
 
+        // ── Git #937: Sticky Notes floaty — toggle, active-pane resolution, Send ──
+
+        private bool IsEditorPane(TabControl tc) =>
+            tc == EditorTabs || tc == EditorTabs2 || tc == EditorTabs3 || tc == EditorTabs4;
+
+        /// <summary>Git #937 — keyboard focus just entered some element; if it's inside one of the four editor panes (#893), mark that pane active so Send targets the right one.</summary>
+        private void UpdateActivePaneFromFocus(DependencyObject? focused)
+        {
+            while (focused != null)
+            {
+                if (focused is TabControl tc && IsEditorPane(tc))
+                {
+                    _activeEditorPane = tc;
+                    return;
+                }
+                DependencyObject? parent = null;
+                if (focused is Visual || focused is System.Windows.Media.Media3D.Visual3D)
+                    parent = VisualTreeHelper.GetParent(focused);
+                focused = parent ?? LogicalTreeHelper.GetParent(focused);
+            }
+        }
+
+        private static Microsoft.Web.WebView2.Wpf.WebView2? WebViewOf(TabItem ti)
+        {
+            if (ti.Content is Microsoft.Web.WebView2.Wpf.WebView2 direct) return direct;
+            if (ti.Content is Panel panel)
+            {
+                foreach (var child in panel.Children)
+                    if (child is Microsoft.Web.WebView2.Wpf.WebView2 wv) return wv;
+            }
+            return null;
+        }
+
+        /// <summary>Git #937 — the WebView2 (and its TabItem) of the currently active pane's selected tab, across all four #893 panes. Falls back to the primary pane if the tracked one was collapsed by a layout change.</summary>
+        private (Microsoft.Web.WebView2.Wpf.WebView2? Wv, TabItem? Tab) GetActiveEditorTabWebView()
+        {
+            var pane = _activeEditorPane;
+            if (pane == null || pane.Visibility != Visibility.Visible)
+                pane = EditorTabs;
+            if (pane.SelectedItem is TabItem ti)
+                return (WebViewOf(ti), ti);
+            return (null, null);
+        }
+
+        /// <summary>Git #937 — opens the always-on-top Sticky Notes floaty, or closes it if already open.</summary>
+        private void ToggleStickyNotes()
+        {
+            if (_stickyNotes != null)
+            {
+                _stickyNotes.Close(); // Closed handler nulls the ref and logs "close"
+                return;
+            }
+
+            _stickyNotes = new StickyNotesWindow { Owner = this };
+            _stickyNotes.SendRequested += StickyNotes_SendRequested;
+            _stickyNotes.Closed += (s, e) =>
+            {
+                _stickyNotes = null;
+                BuildConsole.Services.ActivityLog.Log("sticky-notes", "close");
+            };
+            _stickyNotes.Show();
+            BuildConsole.Services.ActivityLog.Log("sticky-notes", "open");
+        }
+
+        /// <summary>
+        /// Git #937 — Send clicked. Finds the active editor tab across the four
+        /// panes, confirms it's a Claude.ai chat (a BoardChat tab, or any tab
+        /// currently on a claude.ai URL), and injects the note into its real
+        /// composer via the #871/#922 technique. Never presses Enter — Shane
+        /// reviews and sends himself. Clears the note only on a confirmed insert.
+        /// </summary>
+        private async void StickyNotes_SendRequested(object? sender, string text)
+        {
+            var win = _stickyNotes;
+            if (win == null) return;
+
+            var (wv, tab) = GetActiveEditorTabWebView();
+            if (wv?.CoreWebView2 == null)
+            {
+                win.ShowInlineMessage("No active editor tab to send into — open a Claude.ai chat tab first.", isError: true);
+                BuildConsole.Services.ActivityLog.Log("sticky-notes", "send-failed-no-active-chat: no active editor tab");
+                return;
+            }
+
+            string url = "";
+            try { url = wv.Source?.ToString() ?? ""; } catch { }
+
+            bool isClaudeChat = tab?.Tag is BuildConsole.Services.BoardChat
+                                || url.Contains("claude.ai", StringComparison.OrdinalIgnoreCase);
+            if (!isClaudeChat)
+            {
+                win.ShowInlineMessage("The active tab isn't a Claude.ai chat — click into a Claude chat tab, then Send.", isError: true);
+                BuildConsole.Services.ActivityLog.Log("sticky-notes", $"send-failed-no-active-chat: active tab is not a Claude chat ({url})");
+                return;
+            }
+
+            string status;
+            try
+            {
+                string raw = await wv.ExecuteScriptAsync(StickyNotesComposerInsertScript(text)) ?? "";
+                status = System.Text.Json.JsonSerializer.Deserialize<string>(raw) ?? "";
+            }
+            catch (Exception ex)
+            {
+                status = "error: " + ex.Message;
+            }
+
+            if (status == "inserted")
+            {
+                win.ClearNoteText();
+                win.ShowInlineMessage("Sent — review it in the chat and press Enter yourself.", isError: false);
+                BuildConsole.Services.ActivityLog.Log("sticky-notes", $"send: inserted note into active Claude chat ({url})");
+            }
+            else if (status == "no-composer")
+            {
+                win.ShowInlineMessage("Couldn't find the Claude chat composer on the active tab — is a conversation open?", isError: true);
+                BuildConsole.Services.ActivityLog.Log("sticky-notes", $"send-failed-no-active-chat: composer not found ({url})");
+            }
+            else
+            {
+                win.ShowInlineMessage("Send failed while inserting into the chat.", isError: true);
+                BuildConsole.Services.ActivityLog.Log("sticky-notes", $"send-failed-no-active-chat: {status} ({url})");
+            }
+        }
+
+        /// <summary>
+        /// Git #937 — replicates #922's EpicChatPrefillPollScript composer insert
+        /// for an ALREADY-active tab (so no ~15s SPA-boot poll needed). Claude.ai's
+        /// composer is a contenteditable ProseMirror div, so the proven write is
+        /// execCommand('insertText') + a dispatched InputEvent fallback — the same
+        /// technique #871/#922 established (the native value-setter trick from #871
+        /// is for &lt;input&gt;/&lt;textarea&gt;; a contenteditable takes this
+        /// execCommand path). The note is JSON-encoded into a safe JS string
+        /// literal. Appends at the end of whatever's already typed; never presses
+        /// Enter. Returns 'inserted' | 'no-composer' | 'error: ...'.
+        /// </summary>
+        private static string StickyNotesComposerInsertScript(string text)
+        {
+            string js = System.Text.Json.JsonSerializer.Serialize(text);
+            return $@"
+(function () {{
+  try {{
+    var text = {js};
+    function findComposer() {{
+      var c = Array.prototype.slice.call(document.querySelectorAll('div[contenteditable=""true""]'))
+        .filter(function (el) {{ return el.offsetParent !== null; }});
+      c.sort(function (a, b) {{ return b.offsetWidth * b.offsetHeight - a.offsetWidth * a.offsetHeight; }});
+      return c[0] || null;
+    }}
+    var composer = findComposer();
+    if (!composer) return 'no-composer';
+    composer.focus();
+    var sel = window.getSelection();
+    var range = document.createRange();
+    range.selectNodeContents(composer);
+    range.collapse(false);
+    sel.removeAllRanges();
+    sel.addRange(range);
+    var inserted = document.execCommand('insertText', false, text);
+    if (!inserted) {{
+      range.insertNode(document.createTextNode(text));
+      composer.dispatchEvent(new InputEvent('input', {{ bubbles: true, inputType: 'insertText', data: text }}));
+    }}
+    return 'inserted';
+  }} catch (ex) {{
+    return 'error: ' + ex.message;
+  }}
+}})();";
+        }
+
         private void ActivityBar_QuickNavRequested(object? sender, string url)
         {
             var (title, glyph) = url switch
@@ -653,6 +840,11 @@ namespace BuildConsole
 
         private void EditorTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
+            // Git #937 — whichever pane's selection just changed is the one Shane
+            // is working in; remember it so Sticky Notes' Send targets it.
+            if (e.Source is TabControl changedPane && IsEditorPane(changedPane))
+                _activeEditorPane = changedPane;
+
             if (e.Source == EditorTabs)
             {
                 try
