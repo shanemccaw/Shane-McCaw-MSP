@@ -228,6 +228,16 @@ namespace BuildConsole
             if (_index < _items.Count - 1) { _index++; Render(); }
         }
 
+        // ── Git #1017 — right-click "Copy Image" (Baseline + This run) ──────
+        private void CopyBaselineImage_Click(object sender, RoutedEventArgs e) => CopyImageToClipboard(BaselineImage.Source);
+
+        private void CopyCurrentImage_Click(object sender, RoutedEventArgs e) => CopyImageToClipboard(CurrentImage.Source);
+
+        private static void CopyImageToClipboard(ImageSource source)
+        {
+            if (source is BitmapSource bitmap) Clipboard.SetImage(bitmap);
+        }
+
         private async void ReportButton_Click(object sender, RoutedEventArgs e)
         {
             string text = ComposeBox.Text?.Trim() ?? "";

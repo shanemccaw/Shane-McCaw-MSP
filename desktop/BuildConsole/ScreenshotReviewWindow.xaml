@@ -105,7 +105,14 @@
                     </Border>
                     <Grid>
                         <Image x:Name="BaselineImage" Stretch="Uniform" Margin="8"
-                               RenderOptions.BitmapScalingMode="HighQuality"/>
+                               RenderOptions.BitmapScalingMode="HighQuality">
+                            <!-- Git #1017 — heavy-mouse-user right-click menu, same pattern as #945. -->
+                            <Image.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="Copy Image" Click="CopyBaselineImage_Click"/>
+                                </ContextMenu>
+                            </Image.ContextMenu>
+                        </Image>
                         <TextBlock x:Name="BaselineEmptyText" TextWrapping="Wrap" TextAlignment="Center"
                                    HorizontalAlignment="Center" VerticalAlignment="Center" Margin="16"
                                    Foreground="{StaticResource PeachBrush}"
@@ -124,7 +131,14 @@
                     </Border>
                     <Grid>
                         <Image x:Name="CurrentImage" Stretch="Uniform" Margin="8"
-                               RenderOptions.BitmapScalingMode="HighQuality"/>
+                               RenderOptions.BitmapScalingMode="HighQuality">
+                            <!-- Git #1017 — heavy-mouse-user right-click menu, same pattern as #945. -->
+                            <Image.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="Copy Image" Click="CopyCurrentImage_Click"/>
+                                </ContextMenu>
+                            </Image.ContextMenu>
+                        </Image>
                         <TextBlock x:Name="CurrentEmptyText" TextWrapping="Wrap" TextAlignment="Center"
                                    HorizontalAlignment="Center" VerticalAlignment="Center" Margin="16"
                                    Foreground="{StaticResource RedBrush}" Visibility="Collapsed" Text=""/>
