@@ -1,1 +1,0 @@
-ALTER TABLE email_templates ADD COLUMN IF NOT EXISTS is_customized BOOLEAN NOT NULL DEFAULT false;
