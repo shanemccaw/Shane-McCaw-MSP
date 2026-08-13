@@ -326,6 +326,16 @@ namespace BuildConsole
                 SetBottomPanel(true, 4);
                 IssueDetailView.LoadIssue(issue.IssueNumber);
             };
+
+            // Git #921 (Epic #803) — Shane: "When I click a milestone, it should
+            // open a new Tab and show me all the Epics, Issues, and Shane To-Do
+            // in an ADHD friendly way... When I click on an epic... same thing...
+            // Clicking on an issue - same thing... but with Epic linked."
+            // Additive to the #840 side panel above (which still fires): these
+            // open (or focus) the native GitDetailView tab, reusing the same
+            // #893/#894 multi-pane editor tab infra every other tab uses.
+            LeftSidebar.MilestoneTabRequested += (s, m) => OpenMilestoneDetailTab(m);
+            LeftSidebar.GitDetailTabRequested += (s, issue) => OpenGitIssueDetailTab(issue);
             _buildTailTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
             _buildTailTimer.Tick += async (_, _) => await PollChatTabBuildStateAsync();
             _buildTailTimer.Start();

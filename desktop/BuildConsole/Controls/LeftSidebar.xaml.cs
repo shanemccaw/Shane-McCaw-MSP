@@ -35,6 +35,11 @@ namespace BuildConsole.Controls
         public int TotalCount { get; set; }
         /// <summary>Git #875 — true only for a real GitHub milestone whose open/closed counts came from GetMilestonesAsync; the synthetic "No Milestone" bucket has no real counts to report, so its progress badge is hidden entirely rather than showing a misleading "0%".</summary>
         public bool HasRealCounts { get; set; }
+        /// <summary>Git #921 — the real GitHub milestone number, or null for the synthetic "No Milestone" bucket. Carried so the milestone detail tab (and its clickable TreeViewItem data object) has a real handle, not just a decorative header.</summary>
+        public int? GithubNumber { get; set; }
+        /// <summary>Git #921 — real open/closed issue counts straight from GetMilestonesAsync (GitHub's own milestone open_issues/closed_issues), shown as separate glanceable pills in the milestone tab. Both zero when <see cref="HasRealCounts"/> is false.</summary>
+        public int OpenIssues { get; set; }
+        public int ClosedIssues { get; set; }
         public int ProgressPercent => TotalCount == 0 ? 0 : (CompletedCount * 100 / TotalCount);
         public string ProgressStr => $"{ProgressPercent}% ({CompletedCount}/{TotalCount})";
         public List<GitEpic> Epics { get; set; } = new();
@@ -140,6 +145,10 @@ namespace BuildConsole.Controls
 
         /// <summary>Git #840 (Git Board Phase 2) — fired when Shane clicks an issue node in the Git Board tree, so MainWindow can show its real description/comment thread.</summary>
         public event EventHandler<GitIssue>? IssueSelected;
+        /// <summary>Git #921 (Epic #803) — fired when Shane clicks a milestone header in the Git Board tree, so MainWindow opens (or focuses) its native ADHD-friendly milestone detail tab. Additive to the tree; milestones have no side-panel behaviour of their own.</summary>
+        public event EventHandler<GitMilestone>? MilestoneTabRequested;
+        /// <summary>Git #921 (Epic #803) — fired alongside <see cref="IssueSelected"/> when Shane clicks an issue/epic node, so MainWindow opens (or focuses) its native detail tab (epic vs issue routed by <see cref="GitIssue.IsEpic"/>). Deliberately additive: <see cref="IssueSelected"/> still drives the quick-glance side panel.</summary>
+        public event EventHandler<GitIssue>? GitDetailTabRequested;
         /// <summary>Fired when Shane clicks "Load SQL" on a Shane To-Do item — MainWindow fetches the real text and hands it to SqlRunnerView.</summary>
         public event EventHandler<string>? SqlLoadRequested;
         public event EventHandler<bool>? PinToggled;
@@ -891,6 +900,27 @@ namespace BuildConsole.Controls
         /// <summary>Git #844 — the last-fetched real open issues, kept around so "Assign to Epic..." can build its picker (real open issues that ARE epics) from data already in memory instead of a second GitHub round-trip.</summary>
         private List<GitBoardIssue> _lastBoardIssues = new();
 
+        /// <summary>Git #921 (Epic #803) — the board's own last real open-issue fetch, so a detail tab can resolve a clicked/linked issue number (its title, epic-ness, To-Do status, linked epic) without a second GitHub round-trip. Read-only view; mutation stays inside BuildBoardFromGitHub.</summary>
+        public IReadOnlyList<GitBoardIssue> CurrentBoardIssues => _lastBoardIssues;
+
+        /// <summary>Git #921 (Epic #803) — map a real board issue number to the same <see cref="GitIssue"/> display shape the tree nodes carry (identical mapping to MapBucket), so MainWindow's tab-to-tab navigation resolves numbers to detail tabs from cached data. Null when the number isn't on the current OPEN board (MainWindow then falls back to a live GetIssueAsync fetch).</summary>
+        public GitIssue? BuildDetailIssue(int number)
+        {
+            var it = _lastBoardIssues.FirstOrDefault(i => i.Number == number);
+            if (it == null) return null;
+            return new GitIssue
+            {
+                IssueNumber = it.Number,
+                Title = it.IsEpic ? $"{it.Title}  ({it.SubIssueCount} sub)" : it.Title,
+                RawTitle = it.Title,
+                Priority = it.IsTodo ? "HIGH" : "MED",
+                Status = it.IsClosed ? "CLOSED" : "OPEN",
+                Body = it.Body,
+                DatabaseId = it.DatabaseId,
+                IsEpic = it.IsEpic,
+            };
+        }
+
         private void BuildBoardFromGitHub(List<GitBoardIssue> issues, List<GitHubApiClient.GitHubMilestoneInfo> milestoneInfos)
         {
             _lastBoardIssues = issues;
@@ -965,6 +995,10 @@ namespace BuildConsole.Controls
                     milestone.TotalCount = info.OpenIssues + info.ClosedIssues;
                     milestone.CompletedCount = info.ClosedIssues;
                     milestone.HasRealCounts = true;
+                    // Git #921 — carry the real number + raw open/closed counts so the milestone detail tab shows them as separate pills.
+                    milestone.GithubNumber = milestoneNumber.Value;
+                    milestone.OpenIssues = info.OpenIssues;
+                    milestone.ClosedIssues = info.ClosedIssues;
                     seenMilestoneNumbers.Add(milestoneNumber.Value);
                 }
                 else
@@ -991,6 +1025,10 @@ namespace BuildConsole.Controls
                     TotalCount = mi.OpenIssues + mi.ClosedIssues,
                     CompletedCount = mi.ClosedIssues,
                     HasRealCounts = true,
+                    // Git #921 — same real number + raw counts for milestones with no open issues (they still get a clickable tab).
+                    GithubNumber = mi.Number,
+                    OpenIssues = mi.OpenIssues,
+                    ClosedIssues = mi.ClosedIssues,
                 });
             }
 
@@ -1304,12 +1342,28 @@ namespace BuildConsole.Controls
             }
         }
 
-        /// <summary>Git #840 (Git Board Phase 2) — clicking an issue node shows its real description/comments in MainWindow's detail panel.</summary>
+        /// <summary>
+        /// Git #840 (Git Board Phase 2) — clicking an issue node shows its real
+        /// description/comments in MainWindow's detail panel.
+        /// Git #921 (Epic #803) — additively, clicking a milestone/epic/issue now
+        /// also opens (or focuses) its native ADHD-friendly detail tab. The
+        /// milestone header was untagged before #921 (a click did nothing); the
+        /// epic/issue side-panel behaviour is deliberately preserved — the tab is
+        /// on top of it, not instead of it.
+        /// </summary>
         private void IssuesTree_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
         {
-            if (e.NewValue is TreeViewItem tvi && tvi.Tag is GitIssue issue)
+            if (e.NewValue is not TreeViewItem tvi) return;
+
+            if (tvi.Tag is GitMilestone milestone)
             {
+                MilestoneTabRequested?.Invoke(this, milestone);
+            }
+            else if (tvi.Tag is GitIssue issue)
+            {
+                // Quick-glance side panel (#840) stays; the detail tab (#921) is additive.
                 IssueSelected?.Invoke(this, issue);
+                GitDetailTabRequested?.Invoke(this, issue);
             }
         }
 
@@ -1349,7 +1403,13 @@ namespace BuildConsole.Controls
                     var milestoneItem = new TreeViewItem
                     {
                         Header = CreateMilestoneHeader(m),
-                        IsExpanded = !_collapsedNodeKeys.Contains(milestoneKey)
+                        IsExpanded = !_collapsedNodeKeys.Contains(milestoneKey),
+                        // Git #921 (Epic #803) — tag the milestone node with its
+                        // real data object so IssuesTree_SelectedItemChanged can
+                        // route a click to its detail tab. Was untagged (a purely
+                        // decorative header) before this — the whole "make the
+                        // milestone clickable" ask.
+                        Tag = m
                     };
                     milestoneItem.Collapsed += (s, e) => { if (ReferenceEquals(e.OriginalSource, milestoneItem)) _collapsedNodeKeys.Add(milestoneKey); };
                     milestoneItem.Expanded += (s, e) => { if (ReferenceEquals(e.OriginalSource, milestoneItem)) _collapsedNodeKeys.Remove(milestoneKey); };
