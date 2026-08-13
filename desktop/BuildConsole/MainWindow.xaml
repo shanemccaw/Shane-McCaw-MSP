@@ -53,6 +53,20 @@
                       HorizontalAlignment="Left" VerticalAlignment="Bottom"
                       Panel.ZIndex="-1"/>
 
+        <!-- Claude usage meter — its own dedicated hidden background WebView2 (a
+             SECOND one, so it never fights the Replit watcher above over the same
+             control's navigation). Same 1x1 HwndHost-alive trick: a WebView2's
+             Opacity is read-only and Visibility=Hidden/Collapsed would stop the
+             CoreWebView2 controller from ever being created, so it's a single
+             non-interactive pixel tucked in the corner. Shares the app's WebView2
+             environment (cookies/session) via EnsureWebViewInitializedAsync, which
+             is what lets it read claude.ai/settings/usage inside Shane's login. -->
+        <wv2:WebView2 x:Name="UsageMeterWebView"
+                      Width="1" Height="1"
+                      IsHitTestVisible="False"
+                      HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                      Panel.ZIndex="-1"/>
+
         <DockPanel LastChildFill="True">
 
             <!-- ══════════════════════════════════════════════════════════════
@@ -320,6 +334,8 @@
                                 <ColumnDefinition Width="Auto"/>  <!-- sep -->
                                 <ColumnDefinition Width="Auto"/>  <!-- replit watcher (Git #902) -->
                                 <ColumnDefinition Width="Auto"/>  <!-- sep -->
+                                <ColumnDefinition Width="Auto"/>  <!-- Claude usage meter -->
+                                <ColumnDefinition Width="Auto"/>  <!-- sep -->
                                 <ColumnDefinition Width="Auto"/>  <!-- clock -->
                             </Grid.ColumnDefinitions>
                         </Grid>
@@ -378,7 +394,21 @@
                     </StackPanel>
                 </StatusBarItem>
                 <Separator Grid.Column="11"/>
-                <StatusBarItem Grid.Column="12" Padding="6,0,10,0">
+                <!-- Claude usage meter: always-visible percent used, with a smoothly-ticking
+                     "resets in Xd Xh Xm" countdown appended only at 85%+. Shows a muted
+                     placeholder when the meter can't be read (not logged in / page
+                     changed). Green=fresh read, orange=polling, grey=unavailable,
+                     red=error. Tooltip carries reset time + last-checked. -->
+                <StatusBarItem Grid.Column="12">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Ellipse x:Name="UsageDot" Width="8" Height="8"
+                                 Fill="{StaticResource Surface2Brush}"
+                                 Margin="0,0,6,0" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="UsageStatusText" Text="Claude: --" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </StatusBarItem>
+                <Separator Grid.Column="13"/>
+                <StatusBarItem Grid.Column="14" Padding="6,0,10,0">
                     <TextBlock x:Name="ClockText" Text="00:00:00" VerticalAlignment="Center"/>
                 </StatusBarItem>
             </StatusBar>

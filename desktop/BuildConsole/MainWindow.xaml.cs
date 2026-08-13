@@ -118,6 +118,9 @@ namespace BuildConsole
         // ── Git #902: Replit idle watcher (background WebView2 + status indicator) ──
         private BuildConsole.Services.ReplitWatcherService? _replitWatcher;
 
+        // ── Claude usage meter (background WebView2 poll of claude.ai/settings/usage) ──
+        private BuildConsole.Services.ClaudeUsageMeterService? _usageMeter;
+
         // ── Git #967: background scheduled regression-suite runs + on-failure push alert ──
         private BuildConsole.Services.RegressionScheduleService? _regressionScheduler;
 
@@ -305,6 +308,17 @@ namespace BuildConsole
             // Settings tab (SettingsTabView.ReplitWatcherSettingsChanged), wired per
             // tab instance in OpenSettingsTab; the sidebar no longer owns it.
             _replitWatcher.ApplyConfig();
+
+            // Claude usage meter — a background poll (same DispatcherTimer + hidden
+            // WebView2 shape as the Replit watcher) of claude.ai/settings/usage,
+            // driving its own dedicated UsageMeterWebView through the SAME shared
+            // WebView2 environment so it reads the meter inside Shane's login. Start()
+            // arms the poll + a fast display timer that ticks the ≥85% countdown
+            // smoothly between polls; the status bar just renders what it emits.
+            _usageMeter = new BuildConsole.Services.ClaudeUsageMeterService(
+                UsageMeterWebView, EnsureWebViewInitializedAsync);
+            _usageMeter.StatusChanged += UsageMeter_StatusChanged;
+            _usageMeter.Start();
 
             // Git #967 (Epic #803) — background scheduler for unattended full-suite runs.
             // Reuses the same DispatcherTimer/ApplyConfig pattern as the Replit watcher,
@@ -1789,6 +1803,27 @@ namespace BuildConsole
             tip.Append(status.LastCheck.HasValue ? $"\nLast check: {status.LastCheck:HH:mm:ss}" : "\nLast check: —");
             tip.Append(status.LastIntervention.HasValue ? $"\nLast wake: {status.LastIntervention:yyyy-MM-dd HH:mm:ss}" : "\nLast wake: never");
             ReplitStatusText.ToolTip = tip.ToString();
+        }
+
+        /// <summary>Renders the Claude usage meter's live state in the status bar (dot + text + tooltip). The service computes DisplayText/ToolTip fully, so this just paints them and maps the state to a dot colour. Runs on the UI thread; the service raises this from UI-thread timer continuations already, but guard anyway.</summary>
+        private void UsageMeter_StatusChanged(BuildConsole.Services.ClaudeUsageStatus status)
+        {
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.BeginInvoke(new Action(() => UsageMeter_StatusChanged(status)));
+                return;
+            }
+
+            UsageDot.Fill = status.State switch
+            {
+                BuildConsole.Services.ClaudeUsageMeterState.Ok => DotReady,
+                BuildConsole.Services.ClaudeUsageMeterState.Polling => DotLoading,
+                BuildConsole.Services.ClaudeUsageMeterState.Error => DotError,
+                _ => (Brush)FindResource("Surface2Brush"), // Unavailable — muted
+            };
+
+            UsageStatusText.Text = status.DisplayText;
+            UsageStatusText.ToolTip = status.ToolTip;
         }
 
         private static void TailBuildLog(ChatTabState state)
