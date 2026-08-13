@@ -124,6 +124,10 @@ namespace BuildConsole.Controls
         public string? Viewport { get; set; }
         /// <summary>Git #969 — the manifest's optional uiSteps[].maxDurationMs, carried through for UiTestExecutor to assert this step's elapsed time against. Null for manually-recorded steps (no threshold).</summary>
         public long? MaxDurationMs { get; set; }
+        /// <summary>The manifest's optional uiSteps[].timeoutMs — the bounded window (ms) an `expect` step polls
+        /// the DOM for its state/textContains condition before failing, overriding UiTestExecutor's default
+        /// ExpectPollTimeoutMs. Null for manually-recorded steps and steps that accept the default window.</summary>
+        public long? TimeoutMs { get; set; }
         /// <summary>Git #966 — the manifest uiStep's optional `"screenshot": true` flag: when set, UiTestExecutor
         /// always captures a WebView2 screenshot after this step, not only on failure. False for manually-recorded steps.</summary>
         public bool Screenshot { get; set; }

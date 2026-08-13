@@ -212,6 +212,19 @@ namespace BuildConsole.Services
         /// Same Task.WhenAny(work, Task.Delay(timeout)) shape captureResponse (5s)/navigation (15s)/screenshot (8s)
         /// use; scaled to captureResponse's 5s since it reads that same captured response.</summary>
         private const int ResponseBodyReadTimeoutMs = 5000;
+        /// <summary>Default bounded window an `expect` step polls the DOM for its condition (state and/or #1016
+        /// textContains) before failing, when the step declares no `timeoutMs` of its own. A few seconds, in
+        /// line with CaptureResponseTimeoutMs/ResponseBodyReadTimeoutMs — long enough to absorb the async
+        /// render/hydration that follows the prior action (the DOM the prior step touched often isn't settled
+        /// the instant that step returns), short enough that a genuinely-failing assertion still fails promptly.
+        /// Before this, `expect` checked the DOM exactly once (#1016) and a not-yet-rendered element/text failed
+        /// spuriously on a timing race the app would otherwise have won a few hundred ms later. Overridable per
+        /// step via the manifest's uiSteps[].timeoutMs.</summary>
+        private const int ExpectPollTimeoutMs = 5000;
+        /// <summary>Interval between DOM re-checks inside the `expect` poll loop (see <see cref="ExpectPollTimeoutMs"/>).
+        /// ~250ms keeps the loop responsive — it succeeds within a poll of the condition genuinely becoming true —
+        /// without hammering ExecuteScriptAsync.</summary>
+        private const int ExpectPollIntervalMs = 250;
 
         private readonly WebView2 _webView;
 
@@ -455,7 +468,12 @@ namespace BuildConsole.Services
             else if (actionType == "expect")
             {
                 string expectedState = string.IsNullOrWhiteSpace(val) ? "visible" : val;
-                (actionPassed, actionDetail, actionActual) = await EvaluateExpectAsync(selector, expectedState, textPhrases);
+                // Retry/polling — an `expect` re-checks the live DOM every ExpectPollIntervalMs across a bounded
+                // window (the step's own timeoutMs override, else ExpectPollTimeoutMs) and passes the instant the
+                // condition is genuinely observed, instead of #1016's single one-shot check that lost async
+                // render/hydration timing races. A non-positive override falls back to the default window.
+                int expectTimeoutMs = step.TimeoutMs is > 0 ? (int)step.TimeoutMs.Value : ExpectPollTimeoutMs;
+                (actionPassed, actionDetail, actionActual) = await EvaluateExpectAsync(selector, expectedState, textPhrases, expectTimeoutMs, stepNumber);
                 actionExpected = $"{selector} state == '{expectedState}'";
                 // Git #1016 — when the step also asserts rendered text, record that in Expected too so the
                 // results JSON shows the full contract that was checked, not just the state half.
@@ -772,7 +790,48 @@ namespace BuildConsole.Services
             return (passed, detail);
         }
 
-        /// <summary>Evaluates an `expect` uiStep. Asserts the element's <paramref name="expectedState"/>
+        /// <summary>Retry/polling wrapper around <see cref="EvaluateExpectOnceAsync"/>. Re-checks the live DOM
+        /// every <see cref="ExpectPollIntervalMs"/> for up to <paramref name="timeoutMs"/> and returns the moment
+        /// the condition is genuinely observed (both the state half AND, when declared, #1016's textContains half),
+        /// rather than checking exactly once. This is what lets an `expect` survive the async render/hydration that
+        /// commonly follows the prior action — the DOM the previous step touched is often not settled the instant
+        /// that step returns, so a single one-shot check raced it and failed spuriously. On the passing path it logs
+        /// how long the poll actually took (and how many attempts); on exhaustion it logs that the whole window
+        /// elapsed without the condition ever being observed, and returns the last (failing) evaluation, annotated
+        /// with the poll duration/attempt count so the results JSON says plainly it was polled, not glanced at once.</summary>
+        private async Task<(bool passed, string detail, string actual)> EvaluateExpectAsync(
+            string selector, string expectedState, IReadOnlyList<string>? textContains, int timeoutMs, int stepNumber)
+        {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            int attempts = 0;
+            (bool passed, string detail, string actual) last = (false, string.Empty, string.Empty);
+            while (true)
+            {
+                attempts++;
+                last = await EvaluateExpectOnceAsync(selector, expectedState, textContains);
+                if (last.passed)
+                {
+                    sw.Stop();
+                    ActivityLog.Log(Channel, $"Step {stepNumber} expect [{selector}]: condition met after {sw.ElapsedMilliseconds}ms " +
+                        $"({attempts} attempt{(attempts == 1 ? "" : "s")}, polling every {ExpectPollIntervalMs}ms, {timeoutMs}ms budget) — {last.detail}");
+                    return last;
+                }
+
+                long remaining = timeoutMs - sw.ElapsedMilliseconds;
+                if (remaining <= 0)
+                {
+                    sw.Stop();
+                    ActivityLog.Log(Channel, $"Step {stepNumber} expect [{selector}]: EXHAUSTED {timeoutMs}ms window after {sw.ElapsedMilliseconds}ms " +
+                        $"({attempts} attempt{(attempts == 1 ? "" : "s")}) — condition never observed. Last: {last.detail}");
+                    string polledNote = $" [polled {sw.ElapsedMilliseconds}ms / {attempts} attempt{(attempts == 1 ? "" : "s")}, {timeoutMs}ms budget exhausted]";
+                    return (false, last.detail + polledNote, last.actual);
+                }
+                await Task.Delay((int)Math.Min(ExpectPollIntervalMs, remaining));
+            }
+        }
+
+        /// <summary>Evaluates an `expect` uiStep ONCE against the current DOM (the poll loop in
+        /// <see cref="EvaluateExpectAsync"/> calls this repeatedly). Asserts the element's <paramref name="expectedState"/>
         /// (visible/hidden/present/absent), and — Git #1016 — when <paramref name="textContains"/> is
         /// non-empty, ALSO asserts the element's REAL rendered text (el.innerText ?? el.textContent) contains
         /// at least one of the phrases (case-insensitive substring, any-of). Both halves must pass. Before
@@ -780,7 +839,7 @@ namespace BuildConsole.Services
         /// in test-manifests/copilot-readiness/remediation-tracker-e2e.json), so a manifest could never assert
         /// that the DOM genuinely DISPLAYS a value — only that some element exists. The text is pulled straight
         /// out of the live DOM via the same JS-injection path the state check already uses.</summary>
-        private async Task<(bool passed, string detail, string actual)> EvaluateExpectAsync(string selector, string expectedState, IReadOnlyList<string>? textContains)
+        private async Task<(bool passed, string detail, string actual)> EvaluateExpectOnceAsync(string selector, string expectedState, IReadOnlyList<string>? textContains)
         {
             string script = $@"
 (function() {{

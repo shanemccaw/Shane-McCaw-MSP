@@ -3738,6 +3738,8 @@ namespace BuildConsole
                     TextContains = step.TextContainsJson,
                     Viewport = step.ViewportJson,
                     MaxDurationMs = step.MaxDurationMs,
+                    // Per-step override for the `expect` DOM poll window; null falls back to ExpectPollTimeoutMs.
+                    TimeoutMs = step.TimeoutMs,
                     // Git #966 — carry the uiStep's `"screenshot": true` opt-in so UiTestExecutor captures a
                     // WebView2 screenshot after this step, not only on failure.
                     Screenshot = step.Screenshot,
