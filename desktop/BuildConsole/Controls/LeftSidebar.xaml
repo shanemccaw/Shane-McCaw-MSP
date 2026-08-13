@@ -592,14 +592,20 @@
                 <!-- Git #952 — steps flyout (WPF Popup, same pattern as #864's Web Tools popout).
                      Opens when a manifest is clicked in ManifestFilesTree (#984) and lists that manifest's
                      apiTests / graphTests / postGraphApiTests / zohoTests / powerShellVerify / uiSteps.
-                     Placement=Right flies it out beside the sidebar; StaysOpen=False closes on outside-click.
-                     Separate from "Recorded Test Actions", which is untouched by manifest selection. -->
+                     Placement=Right flies it out beside the sidebar.
+                     Separate from "Recorded Test Actions", which is untouched by manifest selection.
+                     Git #988 — StaysOpen="False" caused a show-then-instant-close race: the same click that
+                     selects a tree item and opens the popup was itself being read as an "outside click" by
+                     WPF's automatic StaysOpen=False detection. Now StaysOpen="True" with explicit dismissal
+                     (Opened/Closed below) instead of relying on that automatic mechanism. -->
                 <Popup x:Name="ManifestStepsPopup"
                        PlacementTarget="{Binding ElementName=ManifestFilesTree}"
                        Placement="Right"
-                       StaysOpen="False"
+                       StaysOpen="True"
                        AllowsTransparency="True"
-                       PopupAnimation="Fade">
+                       PopupAnimation="Fade"
+                       Opened="ManifestStepsPopup_Opened"
+                       Closed="ManifestStepsPopup_Closed">
                     <Border Background="{StaticResource MantleBrush}"
                             BorderBrush="{StaticResource Surface0Brush}"
                             BorderThickness="1"

@@ -577,6 +577,45 @@ namespace BuildConsole.Controls
         // ── Git #952: manifest steps flyout ─────────────────────────────────
         private void BtnCloseStepsFlyout_Click(object sender, RoutedEventArgs e) => ManifestStepsPopup.IsOpen = false;
 
+        /// <summary>Git #988 — the same click that opens the popup (tree SelectionChanged, itself fired from a
+        /// mouse-up) was being read as an "outside click" under the old StaysOpen="False", closing it the instant
+        /// it opened. Now StaysOpen="True" and dismissal is explicit: hook the owning Window's PreviewMouseDown
+        /// once this click has fully settled (deferred via Dispatcher.BeginInvoke at Input priority, so we attach
+        /// AFTER the current mouse-up finishes dispatching rather than mid-event) plus Escape. Because this Popup
+        /// has AllowsTransparency="True" it renders in its own top-level layered window, so clicks anywhere inside
+        /// it (including the close button) never reach the owning Window's handlers at all — every PreviewMouseDown
+        /// that DOES reach the Window is by definition outside the popup, no additional hit-testing needed.</summary>
+        private void ManifestStepsPopup_Opened(object sender, EventArgs e)
+        {
+            var window = Window.GetWindow(this);
+            if (window == null) return;
+
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (!ManifestStepsPopup.IsOpen) return; // already closed again before this ran
+                window.PreviewMouseDown += CloseStepsFlyoutOnWindowClick;
+                window.PreviewKeyDown += CloseStepsFlyoutOnEscape;
+            }), DispatcherPriority.Input);
+        }
+
+        private void ManifestStepsPopup_Closed(object sender, EventArgs e)
+        {
+            var window = Window.GetWindow(this);
+            if (window == null) return;
+
+            window.PreviewMouseDown -= CloseStepsFlyoutOnWindowClick;
+            window.PreviewKeyDown -= CloseStepsFlyoutOnEscape;
+        }
+
+        private void CloseStepsFlyoutOnWindowClick(object sender, MouseButtonEventArgs e) => ManifestStepsPopup.IsOpen = false;
+
+        private void CloseStepsFlyoutOnEscape(object sender, KeyEventArgs e)
+        {
+            if (e.Key != Key.Escape) return;
+            ManifestStepsPopup.IsOpen = false;
+            e.Handled = true;
+        }
+
         /// <summary>Git #952 — renders the selected manifest's steps into the flyout Popup: one section per
         /// apiTests / graphTests / postGraphApiTests / zohoTests / powerShellVerify / uiSteps group, each entry on
         /// a readable line. Purely a read-only view — never touches RecordedSteps/AutomationStepsList.</summary>
