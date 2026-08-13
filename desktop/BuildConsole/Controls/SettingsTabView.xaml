@@ -91,7 +91,20 @@
                     <TextBlock Text="🧪  TEST ENVIRONMENT" FontSize="13" FontWeight="Bold"
                                Foreground="{StaticResource PeachBrush}" Margin="0,0,0,2"/>
                     <TextBlock Text="NAME=value pairs a manifest run resolves for {{NAME}} placeholders (e.g. TEST_PORTAL_PASSWORD, GRAPH_TEST_TENANT_ID). Checked before any value an earlier step extracted."
-                               FontSize="11" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,10" TextWrapping="Wrap"/>
+                               FontSize="11" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,8" TextWrapping="Wrap"/>
+
+                    <!-- Git #961 (Epic #803) — the manifest scanner runs automatically when this
+                         section opens; this button re-runs it on demand after a batch of new
+                         manifests lands. Discovered {{NAME}} placeholders not already stored are
+                         auto-added with an &lt;unset&gt; default and an orange NEEDS REVIEW tag below. -->
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                        <Button x:Name="BtnRescanManifests" Content="🔄  Rescan Manifests"
+                                Style="{StaticResource IconButton}" Padding="10,4" FontSize="12"
+                                Click="BtnRescanManifests_Click"/>
+                        <TextBlock x:Name="TestEnvScanStatusText" Text="" FontSize="11"
+                                   Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center"
+                                   Margin="10,0,0,0" TextWrapping="Wrap"/>
+                    </StackPanel>
 
                     <!-- Git #953 (Epic #803) — a general add/edit/remove NAME=value store
                          (same local %AppData%\BuildConsole\settings.json, same round-trip

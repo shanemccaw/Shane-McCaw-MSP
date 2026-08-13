@@ -46,8 +46,10 @@ namespace BuildConsole.Controls
             // Git #864
             RenderWebToolsSettingsList();
 
-            // Git #953
-            RenderTestEnvVarsSettingsList();
+            // Git #953 / #961 — auto-discover manifest {{NAME}} placeholders and fill any
+            // gaps before rendering, so opening Settings (which shows the Test Environment
+            // section) always reflects the current manifests. RunManifestVariableScan re-renders.
+            RunManifestVariableScan(showStatus: false);
         }
 
         /// <summary>Fills the read-only Build Tracker API display from the shared
@@ -80,6 +82,11 @@ namespace BuildConsole.Controls
                 "ReplitWatcher"   => SectionReplitWatcher,
                 _                 => null,
             };
+            // Git #961 — opening the Test Environment section re-runs the manifest scan so a
+            // manifest added since the tab opened (existing-tab navigation) still gets picked up.
+            if (category == "TestEnvironment")
+                RunManifestVariableScan(showStatus: false);
+
             if (target != null)
                 target.BringIntoView();
             else
@@ -261,6 +268,39 @@ namespace BuildConsole.Controls
 
         private const string TestEnvVarsChannel = "testing.config-vars";
 
+        /// <summary>Git #961 — run the manifest scanner (auto-fills any newly-discovered
+        /// {{NAME}} placeholder with a &lt;unset&gt; default + needsReview flag, never touching
+        /// values Shane already set), then re-render the list. Called from the constructor,
+        /// from ScrollToSection when the Test Environment section opens, and from the "Rescan
+        /// Manifests" button. When <paramref name="showStatus"/>, writes a one-line result to
+        /// the status label next to the button.</summary>
+        private void RunManifestVariableScan(bool showStatus)
+        {
+            var settings = BuildConsoleSettings.Load();
+            ManifestVariableScanResult result;
+            try
+            {
+                result = TestManifestVariableScanner.Scan(settings);
+            }
+            catch (Exception ex)
+            {
+                // A scan failure must never take the Settings tab down — log and carry on
+                // showing whatever is already stored.
+                ActivityLog.Log(TestEnvVarsChannel, $"manifest scan failed: {ex.Message}");
+                if (showStatus && TestEnvScanStatusText != null)
+                    TestEnvScanStatusText.Text = "Scan failed — see Activity log.";
+                RenderTestEnvVarsSettingsList();
+                return;
+            }
+
+            RenderTestEnvVarsSettingsList();
+            if (showStatus && TestEnvScanStatusText != null)
+                TestEnvScanStatusText.Text = result.SummaryLine;
+        }
+
+        private void BtnRescanManifests_Click(object sender, RoutedEventArgs e)
+            => RunManifestVariableScan(showStatus: true);
+
         private void RenderTestEnvVarsSettingsList()
         {
             var settings = BuildConsoleSettings.Load();
@@ -274,16 +314,62 @@ namespace BuildConsole.Controls
                 row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
                 row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-                var label = new TextBlock
+                // Git #961 — an unreviewed (auto-added) row announces itself: the value is shown
+                // in full (it's the harmless <unset> default, not a secret) alongside an orange
+                // "NEEDS REVIEW" tag and a plain-language "set X properly - current default is Y"
+                // line, matching #874's PeachBrush warning-color convention. Reviewed rows keep
+                // the masked NAME = •••••• single-line label (values there are often secrets).
+                var labelStack = new StackPanel { Orientation = Orientation.Vertical, VerticalAlignment = VerticalAlignment.Center };
+                Grid.SetColumn(labelStack, 0);
+
+                if (v.NeedsReview)
                 {
-                    Text = $"{v.Name} = {MaskValue(v.Value)}",
-                    FontSize = 11,
-                    TextTrimming = TextTrimming.CharacterEllipsis,
-                    VerticalAlignment = VerticalAlignment.Center,
-                    Foreground = (Brush)FindResource("TextBrush")
-                };
-                Grid.SetColumn(label, 0);
-                row.Children.Add(label);
+                    var header = new StackPanel { Orientation = Orientation.Horizontal };
+                    header.Children.Add(new TextBlock
+                    {
+                        Text = $"{v.Name} = {v.Value}",
+                        FontSize = 11,
+                        TextTrimming = TextTrimming.CharacterEllipsis,
+                        VerticalAlignment = VerticalAlignment.Center,
+                        Foreground = (Brush)FindResource("TextBrush")
+                    });
+                    header.Children.Add(new Border
+                    {
+                        Background = (Brush)FindResource("PeachBrush"),
+                        CornerRadius = new CornerRadius(3),
+                        Padding = new Thickness(5, 1, 5, 1),
+                        Margin = new Thickness(8, 0, 0, 0),
+                        VerticalAlignment = VerticalAlignment.Center,
+                        Child = new TextBlock
+                        {
+                            Text = "NEEDS REVIEW",
+                            FontSize = 9,
+                            FontWeight = FontWeights.Bold,
+                            Foreground = (Brush)FindResource("CrustBrush")
+                        }
+                    });
+                    labelStack.Children.Add(header);
+                    labelStack.Children.Add(new TextBlock
+                    {
+                        Text = $"set {v.Name} properly — current default is {v.Value}",
+                        FontSize = 10,
+                        TextWrapping = TextWrapping.Wrap,
+                        Margin = new Thickness(0, 1, 0, 0),
+                        Foreground = (Brush)FindResource("PeachBrush")
+                    });
+                }
+                else
+                {
+                    labelStack.Children.Add(new TextBlock
+                    {
+                        Text = $"{v.Name} = {MaskValue(v.Value)}",
+                        FontSize = 11,
+                        TextTrimming = TextTrimming.CharacterEllipsis,
+                        VerticalAlignment = VerticalAlignment.Center,
+                        Foreground = (Brush)FindResource("TextBrush")
+                    });
+                }
+                row.Children.Add(labelStack);
 
                 var editBtn = new Button
                 {
@@ -359,6 +445,10 @@ namespace BuildConsole.Controls
                 var v = settings.TestEnvironmentVariables[_editingTestEnvVarIndex];
                 v.Name = name;
                 v.Value = value;
+                // Git #961 — editing the value away from the auto-generated <unset> default
+                // clears the needs-review flag automatically.
+                if (!string.Equals(value, TestManifestVariableScanner.AutoDefaultValue, StringComparison.Ordinal))
+                    v.NeedsReview = false;
                 ActivityLog.Log(TestEnvVarsChannel, $"edited \"{name}\"");
             }
             else
@@ -370,6 +460,9 @@ namespace BuildConsole.Controls
                 if (existing != null)
                 {
                     existing.Value = value;
+                    // Git #961 — same auto-clear as the edit path above.
+                    if (!string.Equals(value, TestManifestVariableScanner.AutoDefaultValue, StringComparison.Ordinal))
+                        existing.NeedsReview = false;
                     ActivityLog.Log(TestEnvVarsChannel, $"updated \"{name}\"");
                 }
                 else

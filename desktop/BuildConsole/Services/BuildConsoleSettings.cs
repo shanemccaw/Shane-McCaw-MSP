@@ -25,6 +25,19 @@ namespace BuildConsole.Services
     {
         public string Name { get; set; } = "";
         public string Value { get; set; } = "";
+
+        /// <summary>
+        /// Git #961 (Epic #803) — true when this pair was auto-added by the manifest
+        /// scanner (<see cref="TestManifestVariableScanner"/>) with a placeholder
+        /// default, not set by Shane. Surfaced as an orange "NEEDS REVIEW" tag in
+        /// Settings so he can fix the value in place instead of hunting through
+        /// manifest files. Cleared automatically the moment he edits the value away
+        /// from the auto-generated default (<see cref="TestManifestVariableScanner.AutoDefaultValue"/>).
+        /// Field default is <c>false</c> so a pre-#961 settings.json (whose entries
+        /// have no "needsReview" key) round-trips as "already reviewed", never
+        /// spuriously flagging values Shane set before this existed.
+        /// </summary>
+        public bool NeedsReview { get; set; } = false;
     }
 
     /// <summary>
