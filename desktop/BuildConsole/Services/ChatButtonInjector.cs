@@ -55,6 +55,54 @@ namespace BuildConsole.Services
     window.chrome.webview.postMessage(JSON.stringify(Object.assign({ type: type }, payload)));
   }
 
+  // Git #942 — the app's bridge back onto ONE specific injected button. Right
+  // after a Queue click the button carries data-bt-correlation (a token the
+  // app echoes back so it can find the exact element that was clicked); once
+  // the app has the real queue item id from the POST it swaps that for
+  // data-bt-queue-id, and every later live-status push finds its target by
+  // that id. All three look the element up by attribute so they keep working
+  // even after the original click handler's closure is long gone.
+  var __btCorrSeq = 0;
+  window.__btTagQueued = function (correlation, queueId) {
+    var el = document.querySelector('[data-bt-correlation="' + correlation + '"]');
+    if (!el) return;
+    el.dataset.btQueueId = String(queueId);
+    delete el.dataset.btCorrelation;
+    delete el.dataset.btFailed;
+    el.disabled = true;
+    el.textContent = "In Progress...";
+  };
+  window.__btApplyStatus = function (queueId, label, mode) {
+    // querySelectorAll, not querySelector: an issue-linked build dedupes to one
+    // queue id server-side, so if both the top and bottom button bars for the
+    // same block were queued they share a data-bt-queue-id — update them all.
+    var els = document.querySelectorAll('[data-bt-queue-id="' + queueId + '"]');
+    for (var i = 0; i < els.length; i++) {
+      var el = els[i];
+      el.textContent = label;
+      if (mode === "failed") {
+        // Stays clickable on purpose: its existing click handler re-runs
+        // queueBuild(), which IS the retry (a brand new correlation -> new id).
+        el.dataset.btFailed = "1";
+        el.disabled = false;
+      } else {
+        // "In Progress..." and "Done" are both non-interactive terminal-ish states.
+        delete el.dataset.btFailed;
+        el.disabled = true;
+      }
+    }
+  };
+  window.__btQueueFailed = function (correlation) {
+    // The queue POST itself failed (or the app isn't connected) — nothing was
+    // ever queued, so restore the button to its original clickable label
+    // rather than leaving it stuck disabled on "In Progress...".
+    var el = document.querySelector('[data-bt-correlation="' + correlation + '"]');
+    if (!el) return;
+    delete el.dataset.btCorrelation;
+    el.disabled = false;
+    el.textContent = el.dataset.btOrigLabel || "📋 Queue";
+  };
+
   function sendToBuilder(prompt) {
     const { flags, rest } = extractLeadingFlags(prompt);
     post("BT_SEND_TO_BUILDER", {
@@ -82,7 +130,18 @@ namespace BuildConsole.Services
     const title = flags.title
       ? (referencedNumber != null ? "#" + referencedNumber + " — " + flags.title : flags.title)
       : (referencedNumber != null ? "#" + referencedNumber : rest.split("\n")[0].slice(0, 80));
+    // Git #942 — tag THIS exact button with a unique correlation token so the
+    // app can push the real queue id back onto it (via __btTagQueued) once the
+    // POST returns, then push live status onto that same element by id. It
+    // stays disabled on "In Progress..." until the app answers: __btTagQueued
+    // on success, or __btQueueFailed if the queue call failed. This same
+    // function is also the retry path — a "Failed: Retry" click re-enters here
+    // and re-queues under a fresh correlation/id (btFailed cleared below).
+    const correlation = "btq-" + (++__btCorrSeq) + "-" + Date.now();
+    btn.dataset.btCorrelation = correlation;
+    delete btn.dataset.btFailed;
     btn.disabled = true;
+    btn.textContent = "In Progress...";
     post("BT_QUEUE_BUILD", {
       title: title,
       prompt: rest,
@@ -91,8 +150,8 @@ namespace BuildConsole.Services
       cwd: flags.cwd || null,
       githubNumber: referencedNumber,
       blockedByNumbers: blockedByNumbers,
+      correlation: correlation,
     });
-    setTimeout(function () { btn.disabled = false; btn.textContent = "📋 Queued"; }, 400);
   }
 
   function loadIntoSqlRunner(text) {
@@ -116,6 +175,9 @@ namespace BuildConsole.Services
       const queueBtn = document.createElement("button");
       queueBtn.type = "button";
       queueBtn.textContent = "📋 Queue";
+      // Git #942 — remembered so __btQueueFailed can restore it verbatim if the
+      // queue POST fails after the click already flipped it to "In Progress...".
+      queueBtn.dataset.btOrigLabel = "📋 Queue";
       queueBtn.title = "Add to the build queue instead of launching now";
       queueBtn.style.cssText = btn.style.cssText;
       queueBtn.addEventListener("mouseenter", function () { queueBtn.style.background = "#2e2e2e"; });

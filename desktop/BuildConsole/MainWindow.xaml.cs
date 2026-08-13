@@ -128,8 +128,12 @@ namespace BuildConsole
             public TextBlock BuildStatusText = null!;
             public int? TailingQueueItemId;
             public long TailedLength;
+            /// <summary>Git #942 — the tab's own claude.ai WebView2 (ChatButtonInjector's script was injected into it); needed so a live button-status push can reach the exact view holding the button.</summary>
+            public Microsoft.Web.WebView2.Wpf.WebView2 WebView = null!;
         }
         private readonly Dictionary<TabItem, ChatTabState> _chatTabs = new();
+        /// <summary>Git #942 — queue item id -> last label pushed to that item's injected chat button ("In Progress..."/"Done"/"Failed: Retry"). Populated when BT_QUEUE_BUILD captures a real id; drained by PushChatButtonStatuses the moment an item hits a terminal state (done/failed/canceled) or leaves the queue, so nothing is polled forever. UI-thread only (event handler + DispatcherTimer), so no locking needed.</summary>
+        private readonly Dictionary<int, string> _chatButtonStatus = new();
         private DispatcherTimer? _buildTailTimer;
 
         // ── Git #937: always-on-top Sticky Notes floaty ─────────────────────────
@@ -1505,7 +1509,8 @@ namespace BuildConsole
                 SplitGrid = splitGrid,
                 BuildColumn = buildCol,
                 BuildOutputBox = buildOutputBox,
-                BuildStatusText = buildStatusText
+                BuildStatusText = buildStatusText,
+                WebView = wv // Git #942 — target for live chat-button status pushes
             };
             _chatTabs[newTab] = state;
 
@@ -1533,7 +1538,11 @@ namespace BuildConsole
         /// </summary>
         private async System.Threading.Tasks.Task PollChatTabBuildStateAsync()
         {
-            if (_buildTrackerApi == null || !_buildTrackerApi.IsConfigured || _chatTabs.Count == 0) return;
+            if (_buildTrackerApi == null || !_buildTrackerApi.IsConfigured) return;
+            // Git #942 — also run when there are no chat tabs but injected
+            // buttons in the main Claude tab are still being tracked, so their
+            // live status keeps updating; nothing to poll if BOTH are empty.
+            if (_chatTabs.Count == 0 && _chatButtonStatus.Count == 0) return;
 
             List<BuildConsole.Services.QueueItem> queue;
             try { queue = await _buildTrackerApi.GetQueueAsync(); }
@@ -1569,7 +1578,81 @@ namespace BuildConsole
 
                 TailBuildLog(state);
             }
+
+            // Git #942 — reuse this same poll's queue snapshot (no second
+            // poller) to drive the injected chat buttons' live labels.
+            PushChatButtonStatuses(queue);
         }
+
+        /// <summary>
+        /// Git #942 — for every currently-tracked button-to-queue-id mapping,
+        /// maps the real queue item's status to a label and, only on an actual
+        /// transition, logs it on chat-button.status and pushes it into that
+        /// specific injected DOM button (found by its data-bt-queue-id).
+        /// Tracking is dropped the instant an item reaches a terminal state
+        /// (done/failed/canceled) or vanishes from the queue, so nothing is
+        /// polled forever: a "Failed: Retry" button keeps its clickable label
+        /// in the DOM (its own click handler re-queues), and that retry re-adds
+        /// tracking under the new id back in ChatWv_WebMessageReceived.
+        /// </summary>
+        private void PushChatButtonStatuses(List<BuildConsole.Services.QueueItem> queue)
+        {
+            if (_chatButtonStatus.Count == 0) return;
+            foreach (var id in _chatButtonStatus.Keys.ToList())
+            {
+                var item = queue.FirstOrDefault(q => q.Id == id);
+                if (item == null)
+                {
+                    // Row is gone (e.g. canceled + deleted) — stop tracking and
+                    // leave the button's last rendered label untouched.
+                    _chatButtonStatus.Remove(id);
+                    continue;
+                }
+
+                string label, mode;
+                bool terminal;
+                switch (item.Status)
+                {
+                    case "done":     label = "Done";           mode = "done";     terminal = true;  break;
+                    case "failed":
+                    case "canceled": label = "Failed: Retry";  mode = "failed";   terminal = true;  break;
+                    case "queued":
+                    case "running":
+                    default:         label = "In Progress..."; mode = "progress"; terminal = false; break;
+                }
+
+                if (_chatButtonStatus[id] != label)
+                {
+                    BuildConsole.Services.ActivityLog.Log("chat-button.status",
+                        $"queue #{id} ({item.Title}): {_chatButtonStatus[id]} -> {label} (status={item.Status})");
+                    _chatButtonStatus[id] = label;
+                    _ = PushChatButtonLabelAsync(id, label, mode);
+                }
+
+                if (terminal) _chatButtonStatus.Remove(id);
+            }
+        }
+
+        /// <summary>Git #942 — pushes one button's new label into every injected claude.ai WebView (the main Claude tab + each open chat tab). __btApplyStatus finds the specific element by data-bt-queue-id and no-ops where it isn't present, so broadcasting is safe and saves having to track which tab holds the button.</summary>
+        private System.Threading.Tasks.Task PushChatButtonLabelAsync(int queueId, string label, string mode)
+            => RunScriptInAllChatWebViewsAsync($"window.__btApplyStatus && window.__btApplyStatus({queueId}, {JsLiteral(label)}, {JsLiteral(mode)});");
+
+        /// <summary>Git #942 — runs a snippet in ClaudeWebView and every open chat tab's WebView (all the views ChatButtonInjector's script was injected into). Each is guarded independently so one view mid-navigation/teardown can't stop the rest.</summary>
+        private async System.Threading.Tasks.Task RunScriptInAllChatWebViewsAsync(string js)
+        {
+            var views = new List<Microsoft.Web.WebView2.Wpf.WebView2>();
+            if (ClaudeWebView?.CoreWebView2 != null) views.Add(ClaudeWebView);
+            foreach (var st in _chatTabs.Values)
+                if (st.WebView?.CoreWebView2 != null) views.Add(st.WebView);
+            foreach (var wv in views)
+            {
+                try { await wv.CoreWebView2.ExecuteScriptAsync(js); }
+                catch { /* a view mid-navigation/teardown just isn't a valid target this tick */ }
+            }
+        }
+
+        /// <summary>Git #942 — a JS string literal safe to interpolate into ExecuteScriptAsync; JSON string encoding covers quotes/backslashes/newlines.</summary>
+        private static string JsLiteral(string s) => System.Text.Json.JsonSerializer.Serialize(s);
 
         /// <summary>
         /// Git #805 — polls GET /api/internal/deploy-status every 3s (same
@@ -2461,9 +2544,15 @@ namespace BuildConsole
                 }
                 else if (type == "BT_QUEUE_BUILD")
                 {
+                    // Git #942 — the token the injected button tagged itself with
+                    // so we can find that exact element again to tag it with the
+                    // real queue id (or reset it if the queue call fails).
+                    string? correlation = Str("correlation");
                     if (_buildTrackerApi == null || !_buildTrackerApi.IsConfigured)
                     {
                         MessageBox.Show("Not connected — see Settings.", "Queue Build");
+                        if (correlation != null)
+                            await RunScriptInAllChatWebViewsAsync($"window.__btQueueFailed && window.__btQueueFailed({JsLiteral(correlation)});");
                         return;
                     }
                     List<int>? blockedByNumbers = null;
@@ -2477,9 +2566,34 @@ namespace BuildConsole
                     {
                         var body = await res.Content.ReadAsStringAsync();
                         MessageBox.Show($"Couldn't queue build: {body}", "Queue Build");
+                        if (correlation != null)
+                            await RunScriptInAllChatWebViewsAsync($"window.__btQueueFailed && window.__btQueueFailed({JsLiteral(correlation)});");
                     }
                     else
                     {
+                        // Git #942 — the 201 body IS the queue row; capture its
+                        // real id, tag the exact button with it, and start
+                        // tracking so the existing chat-tab queue poll
+                        // (PollChatTabBuildStateAsync) pushes live status onto it.
+                        int? queueId = null;
+                        try
+                        {
+                            var bodyJson = await res.Content.ReadAsStringAsync();
+                            using var rdoc = System.Text.Json.JsonDocument.Parse(bodyJson);
+                            if (rdoc.RootElement.TryGetProperty("id", out var idEl) && idEl.ValueKind == System.Text.Json.JsonValueKind.Number)
+                                queueId = idEl.GetInt32();
+                        }
+                        catch { }
+
+                        if (queueId is int qid && qid > 0)
+                        {
+                            string title = Str("title") ?? "Untitled";
+                            _chatButtonStatus[qid] = "In Progress...";
+                            BuildConsole.Services.ActivityLog.Log("chat-button.status",
+                                $"queue #{qid} ({title}): queued -> In Progress... (now tracking)");
+                            if (correlation != null)
+                                await RunScriptInAllChatWebViewsAsync($"window.__btTagQueued && window.__btTagQueued({JsLiteral(correlation)}, {qid});");
+                        }
                         await BuildQueuePanel.RefreshAsync();
                     }
                 }
