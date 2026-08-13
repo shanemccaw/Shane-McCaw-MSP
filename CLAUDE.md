@@ -150,7 +150,34 @@ directories (a new API endpoint, a UI flow, an integration read/write
 action), write or update a test manifest for it as part of that same build
 phase - not only when explicitly asked.
 
-- Manifest location: test-manifests/{issue}-{feature-slug}.json
+- **Discover before you create.** Before writing any test manifest, search
+  test-manifests/ for one that already covers the same route/feature -
+  search by route path or component name, not by issue number (issue
+  numbers are historical provenance, not a reliable lookup key). For
+  example, before adding coverage for a checkout flow under
+  `artifacts/shane-mccaw-consulting/`, run something like:
+
+  ```
+  grep -rl "checkout" test-manifests/ --include=*.json
+  grep -rl "/api/portal/checkout" test-manifests/ --include=*.json
+  ```
+
+  If a match covers the same route/feature, update that file in place and
+  keep its existing filename - do not create a duplicate. If nothing
+  matches, create a new one under the naming convention below.
+- Manifest location: test-manifests/{area}/{feature-slug}.json, where
+  {area} is a coarse site section (e.g. copilot-readiness, admin, chat,
+  auth) and {feature-slug} is a clear, readable feature name (e.g.
+  checkout, home-quiz, verification-code-flow) - no leading issue number.
+  This replaces the old flat test-manifests/{issue}-{feature-slug}.json
+  convention going forward; existing files under the old convention are
+  not required to be renamed, but any manifest touched under the
+  discover-before-create rule should be moved to the new convention as
+  part of that same edit.
+- Every manifest carries a top-level `lastVerifiedAgainstCommit` field,
+  set to the commit hash of the session that confirmed or edited it -
+  update it every time a session touches the manifest, even if the only
+  change is re-confirming it still matches current code.
 - Schema sections as appropriate: apiTests / graphTests / zohoTests / uiSteps
   - see test-manifests/725-chat-escalation.json for a real example covering
   extraction/interpolation, captureResponse, and containsAny/containsNone.
