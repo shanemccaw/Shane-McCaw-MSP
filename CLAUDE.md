@@ -6,9 +6,11 @@ Instructions for Claude Code sessions working in this repository.
 
 This project tracks every work session in [PLATFORM_BUILD.md](PLATFORM_BUILD.md), so that even a session that crashes or gets abandoned mid-way leaves proof an attempt was made.
 
+**Which file to bookend in:** a session whose work is entirely within `desktop/BuildConsole/` (Shane's own WPF tool, not customer-facing product) bookends in [desktop/BuildConsole/BUILD_LOG.md](desktop/BuildConsole/BUILD_LOG.md) instead of the root file. A session touching the actual product — anything outside `desktop/BuildConsole/` — continues bookending in the root PLATFORM_BUILD.md as today. A session touching both bookends in both files, one row per file for its respective piece of work. Everything below (row format, timing, Shared File Write Discipline) applies identically to whichever file a given piece of work targets.
+
 ### Step 1 — first thing the session does, before any other work
 
-Append a new row to the table in PLATFORM_BUILD.md for the step you're about to do, with status:
+Append a new row to the table in the applicable file (PLATFORM_BUILD.md and/or desktop/BuildConsole/BUILD_LOG.md, per above) for the step you're about to do, with status:
 
 ```
 ⏳ IN FLIGHT — {step name}
@@ -193,10 +195,10 @@ phase - not only when explicitly asked.
 
 ## Shared File Write Discipline
 
-PLATFORM_BUILD.md (and any other shared, frequently-appended-to file) is
-written to by many independent Claude Code sessions. Before your FINAL
-commit to such a file (e.g. flipping your bookend row from IN FLIGHT to
-DONE), always:
+PLATFORM_BUILD.md, desktop/BuildConsole/BUILD_LOG.md (and any other shared,
+frequently-appended-to file) are written to by many independent Claude Code
+sessions. Before your FINAL commit to such a file (e.g. flipping your
+bookend row from IN FLIGHT to DONE), always:
 
 1. `git pull --rebase origin main` to get the current remote state.
 2. Re-apply/re-append your own change against that now-current content -
