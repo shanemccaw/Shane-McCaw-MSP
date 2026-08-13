@@ -279,6 +279,15 @@ namespace BuildConsole
             // Shane's own answer when asked whether this should bypass it).
             LeftSidebar.ChatSelected += (s, e) => OpenChatTab(e.Chat, e.GithubNumber);
 
+            // Git #922 (Epic #803) — right-click an epic → open its linked Claude
+            // chat (InjectPrefill=false, an existing BoardChat.ClaudeUrl) or, if
+            // none is linked yet, open the configured New Chat Project URL
+            // prefilled with "{PAT}\r\nEpic #N" (InjectPrefill=true) and replicate
+            // the extension's composer poll+insert in this WebView2 tab. Uses the
+            // same OpenWebTab every other web tab already goes through.
+            LeftSidebar.EpicChatRequested += (s, e) =>
+                OpenWebTab(e.Url, e.Title, "", injectPrefillPoll: e.InjectPrefill);
+
             // Git #840 (Git Board Phase 2) — Shane: "I need to be able to...
             // read their descriptions, comments, etc..." Clicking an issue in
             // the Git Board tree opens the bottom panel's Issue Detail tab
@@ -789,7 +798,74 @@ namespace BuildConsole
             catch { }
         }
 
-        public void OpenWebTab(string url, string title, string glyph, bool offerKeepAlive = false)
+        /// <summary>
+        /// Git #922 (Epic #803) — the browser extension's own
+        /// tryInsertPrefillFromUrl() content script (content.js), replicated for
+        /// injection into BuildConsole's OWN WebView2 tabs, where that extension
+        /// isn't installed and never runs. Reads the <c>bt_prefill</c> param
+        /// straight off the tab's URL, polls up to ~15s for the real claude.ai
+        /// composer (a fresh tab's SPA needs to boot first), inserts the text via
+        /// the same execCommand('insertText') the extension's
+        /// insertTextIntoComposer() uses (the only write ProseMirror/React
+        /// editors actually pick up), then strips the param so a reload/back
+        /// doesn't re-insert. Deliberately does NOT replicate the extension's
+        /// renameCurrentChat step — Shane presses Enter himself (#922).
+        /// </summary>
+        private const string EpicChatPrefillPollScript = @"
+(function () {
+  try {
+    var PARAM = 'bt_prefill';
+    var text = new URLSearchParams(window.location.search).get(PARAM);
+    if (!text) return 'no-param';
+    if (window.__btEpicPrefillRunning) return 'already-running';
+    window.__btEpicPrefillRunning = true;
+    function findComposer() {
+      var c = Array.prototype.slice.call(document.querySelectorAll('div[contenteditable=""true""]'))
+        .filter(function (el) { return el.offsetParent !== null; });
+      c.sort(function (a, b) { return b.offsetWidth * b.offsetHeight - a.offsetWidth * a.offsetHeight; });
+      return c[0] || null;
+    }
+    function insertTextIntoComposer(t) {
+      var composer = findComposer();
+      if (!composer) return false;
+      composer.focus();
+      var sel = window.getSelection();
+      var range = document.createRange();
+      range.selectNodeContents(composer);
+      range.collapse(false);
+      sel.removeAllRanges();
+      sel.addRange(range);
+      var inserted = document.execCommand('insertText', false, t);
+      if (!inserted) {
+        range.insertNode(document.createTextNode(t));
+        composer.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: t }));
+      }
+      return true;
+    }
+    var attempts = 0;
+    var maxAttempts = 30; // ~15s at 500ms — a fresh tab's SPA boot is slower than an already-open one
+    function tryInsert() {
+      attempts++;
+      if (findComposer()) {
+        insertTextIntoComposer(text);
+        var u = new URL(window.location.href);
+        u.searchParams.delete(PARAM);
+        history.replaceState(null, '', u.toString());
+        window.__btEpicPrefillRunning = false;
+        return;
+      }
+      if (attempts < maxAttempts) setTimeout(tryInsert, 500);
+      else window.__btEpicPrefillRunning = false;
+    }
+    tryInsert();
+    return 'started';
+  } catch (ex) {
+    window.__btEpicPrefillRunning = false;
+    return 'error: ' + ex.message;
+  }
+})();";
+
+        public void OpenWebTab(string url, string title, string glyph, bool offerKeepAlive = false, bool injectPrefillPoll = false)
         {
             // Deduplicate if already open
             foreach (TabItem item in EditorTabs.Items)
@@ -847,6 +923,24 @@ namespace BuildConsole
             wv.NavigationStarting  += WebView_NavigationStarting;
             wv.NavigationCompleted += WebView_NavigationCompleted;
             wv.SourceChanged       += WebView_SourceChanged;
+
+            // Git #922 (Epic #803) — this tab is BuildConsole's own WebView2, not
+            // real Chrome with the build-tracker extension, so the extension's
+            // tryInsertPrefillFromUrl() never runs here. Replicate it: after each
+            // navigation completes, inject the same composer-poll + insert logic
+            // (EpicChatPrefillPollScript) via ExecuteScriptAsync — the exact
+            // pattern UiTestExecutor.cs already uses to drive elements. The script
+            // is idempotent (it strips the bt_prefill param once inserted), so
+            // re-firing on a later navigation harmlessly no-ops.
+            if (injectPrefillPoll)
+            {
+                wv.NavigationCompleted += async (s, e) =>
+                {
+                    if (!e.IsSuccess) return;
+                    try { await wv.ExecuteScriptAsync(EpicChatPrefillPollScript); }
+                    catch { /* best-effort — a fresh SPA tab may have no composer yet; the injected script itself polls up to ~15s */ }
+                };
+            }
 
             // Git #852 — Shane: "Whenever I click on a tab that is
             // inactive, as soon as it becomes active again it refreshes the

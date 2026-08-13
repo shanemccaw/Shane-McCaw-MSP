@@ -32,6 +32,23 @@ namespace BuildConsole.Services
 
         public bool HasZohoApiToken => !string.IsNullOrWhiteSpace(ZohoApiToken);
 
+        /// <summary>
+        /// Git #922 (Epic #803) — the Claude "New chat project URL" a fresh
+        /// epic chat is opened against when Shane right-clicks an epic that has
+        /// no linked BoardChat yet. This is BuildConsole's OWN copy of the
+        /// browser extension's <c>epicChatProjectUrl</c> (which lives in that
+        /// extension's <c>chrome.storage.local</c>) — different storage system,
+        /// same concept: BuildConsole's WebView2 tabs aren't real Chrome with
+        /// the extension installed, so it can't read that value and Shane sets
+        /// it once here too. Empty by default; the right-click "New Epic Chat"
+        /// item opens this URL carrying the <c>{PAT}\r\nEpic #N</c> prefill as a
+        /// <c>?bt_prefill=</c> query param. Same local store / round-trip
+        /// pattern as GitHubPat/ZohoApiToken above.
+        /// </summary>
+        public string EpicChatProjectUrl { get; set; } = "";
+
+        public bool HasEpicChatProjectUrl => !string.IsNullOrWhiteSpace(EpicChatProjectUrl);
+
         // ── Git #902 — Replit idle watcher (sub-issue of Epic #803) ──────────
         // Shane: "Replit shuts its dev mode down after like 10 minutes of
         // inactivity. So I always have to turn it back on after a build."

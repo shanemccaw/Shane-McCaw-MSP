@@ -445,6 +445,18 @@
                             HorizontalAlignment="Left" Padding="16,4" Click="BtnSaveZohoApiToken_Click"/>
                     <TextBlock x:Name="ZohoApiTokenSavedText" Text="" FontSize="10" Foreground="{StaticResource GreenBrush}" Margin="0,4,0,0"/>
 
+                    <!-- Git #922 (Epic #803) — Shane: right-click an epic with NO linked chat →
+                         "New Epic Chat" opens THIS URL in a new tab, prefilled with the GitHub PAT
+                         then "Epic #N". BuildConsole's own copy of the browser extension's
+                         "New chat project URL" (that lives in chrome.storage.local; this in the same
+                         %AppData%\BuildConsole\settings.json store — separate storage, same concept,
+                         since BuildConsole's WebView2 isn't real Chrome with the extension). -->
+                    <TextBlock Text="New Chat Project URL (epic right-click → New Chat)" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
+                    <TextBox x:Name="EpicChatProjectUrlBox" Height="26" FontSize="12" Margin="0,0,0,6"/>
+                    <Button x:Name="BtnSaveEpicChatProjectUrl" Content="Save" Style="{StaticResource PrimaryButton}"
+                            HorizontalAlignment="Left" Padding="16,4" Click="BtnSaveEpicChatProjectUrl_Click"/>
+                    <TextBlock x:Name="EpicChatProjectUrlSavedText" Text="" FontSize="10" Foreground="{StaticResource GreenBrush}" Margin="0,4,0,0"/>
+
                     <!-- Git #864 — Shane: "a configuration in the settings might actually be
                          better" for the ActivityBar's Web Tools popout. Same local store as the
                          PAT above (%AppData%\BuildConsole\settings.json), extended with a

@@ -62,6 +62,8 @@ namespace BuildConsole.Controls
         public string Body { get; set; } = string.Empty;
         /// <summary>Git #844 — GraphQL databaseId carried through from <see cref="GitBoardIssue.DatabaseId"/>, the id GitHub's sub_issues endpoint wants as `sub_issue_id` (not the issue number).</summary>
         public long DatabaseId { get; set; }
+        /// <summary>Git #922 (Epic #803) — carried through from <see cref="GitBoardIssue.IsEpic"/> so the right-click menu can offer the "Open/New Epic Chat" item only on epic nodes (an issue with real sub-issues).</summary>
+        public bool IsEpic { get; set; }
         /// <summary>Git #845 (Git Board Phase 7) — real still-OPEN blocked_by dependency, populated lazily by EnrichBlockedStatusAsync (the board's own GraphQL fetch doesn't carry issue-dependency data).</summary>
         public bool IsBlocked { get; set; }
         public int? BlockedByNumber { get; set; }
@@ -120,6 +122,22 @@ namespace BuildConsole.Controls
         /// show/hide that tab's build split pane - the URL alone isn't enough.
         /// </summary>
         public event EventHandler<(BoardChat Chat, int? GithubNumber)>? ChatSelected;
+
+        /// <summary>
+        /// Git #922 (Epic #803) — raised when a right-click on an epic wants to
+        /// open a Claude chat tab. <c>InjectPrefill == false</c> just opens
+        /// <c>Url</c> (an existing linked chat's ClaudeUrl — task 1, "open that
+        /// Epic's chat"). <c>InjectPrefill == true</c> opens a fresh
+        /// "New chat project URL" carrying a <c>?bt_prefill=</c> param that
+        /// MainWindow's OpenWebTab replicates the browser extension's
+        /// composer-poll+insert against (task 2, "create new chat"), since
+        /// BuildConsole's WebView2 isn't real Chrome with the extension running.
+        /// </summary>
+        public event EventHandler<(string Url, string Title, bool InjectPrefill)>? EpicChatRequested;
+
+        /// <summary>Git #922 — the SAME query-param name (<c>EPIC_CHAT_PREFILL_PARAM</c>) the browser extension's openNewEpicChat/tryInsertPrefillFromUrl already use, so a URL BuildConsole opens is one the extension itself would also recognize if Shane ever opens it in real Chrome.</summary>
+        private const string EpicChatPrefillParam = "bt_prefill";
+
         /// <summary>Git #840 (Git Board Phase 2) — fired when Shane clicks an issue node in the Git Board tree, so MainWindow can show its real description/comment thread.</summary>
         public event EventHandler<GitIssue>? IssueSelected;
         /// <summary>Fired when Shane clicks "Load SQL" on a Shane To-Do item — MainWindow fetches the real text and hands it to SqlRunnerView.</summary>
@@ -238,6 +256,9 @@ namespace BuildConsole.Controls
             GitHubPatBox.Password = savedSettings.GitHubPat;
             ZohoApiTokenBox.Password = savedSettings.ZohoApiToken;
 
+            // Git #922 — pre-fill the epic-chat "New chat project URL" from the same store.
+            EpicChatProjectUrlBox.Text = savedSettings.EpicChatProjectUrl;
+
             // Git #902 — pre-fill the Replit idle watcher fields from the same store.
             ReplitWatcherEnabledCheck.IsChecked = savedSettings.ReplitWatcherEnabled;
             ReplitWatcherIntervalBox.Text = savedSettings.ReplitWatcherIntervalMinutes.ToString();
@@ -265,6 +286,15 @@ namespace BuildConsole.Controls
             settings.ZohoApiToken = ZohoApiTokenBox.Password.Trim();
             settings.Save();
             ZohoApiTokenSavedText.Text = "Saved.";
+        }
+
+        // ── SETTINGS: New Chat Project URL for epic right-click (Git #922) ────
+        private void BtnSaveEpicChatProjectUrl_Click(object sender, RoutedEventArgs e)
+        {
+            var settings = BuildConsole.Services.BuildConsoleSettings.Load();
+            settings.EpicChatProjectUrl = EpicChatProjectUrlBox.Text.Trim();
+            settings.Save();
+            EpicChatProjectUrlSavedText.Text = "Saved.";
         }
 
         // ── SETTINGS: Replit Idle Watcher (Git #902) ─────────────────────────
@@ -890,6 +920,7 @@ namespace BuildConsole.Controls
                         SqlPath = DeriveSqlPath(it.Body),
                         Body = it.Body,
                         DatabaseId = it.DatabaseId,
+                        IsEpic = it.IsEpic,
                     });
                 }
                 return epic;
@@ -1535,6 +1566,68 @@ namespace BuildConsole.Controls
                 PopulateGitTrackerBoard();
             };
             cm.Items.Add(miSetBlockedBy);
+
+            // Git #922 (Epic #803) — Shane: "Right clicking on an epic that
+            // does NOT have a chat associated should allow me to create a new
+            // chat and associate it to that Epic. Right clicking on an Epic
+            // with a chat should allow me to open that Epic's chat." This
+            // replicates the browser extension's openNewEpicChat /
+            // tryInsertPrefillFromUrl (content.js) into BuildConsole's own
+            // WebView2 tabs — the extension isn't installed there. Only epics
+            // get this menu item; a plain issue's chat is already reached by the
+            // existing In-Flight-click / ChatsTree paths (FindChatForIssue).
+            if (issue.IsEpic)
+            {
+                var linkedChat = FindChatForIssue(issue.IssueNumber);
+                if (linkedChat != null && !string.IsNullOrEmpty(linkedChat.ClaudeUrl))
+                {
+                    // Task 1 — open the epic's existing linked chat via the same
+                    // OpenWebTab every other web tab already uses. No prefill.
+                    var chatUrl = linkedChat.ClaudeUrl;
+                    var miOpenChat = new MenuItem { Header = "💬 Open Epic Chat" };
+                    miOpenChat.Click += (s, e) =>
+                    {
+                        ActivityLog.Log("git-board.epic-chat", $"open linked chat for epic #{issue.IssueNumber} -> {chatUrl}");
+                        EpicChatRequested?.Invoke(this, (chatUrl, $"Epic #{issue.IssueNumber} Chat", false));
+                    };
+                    cm.Items.Add(miOpenChat);
+                }
+                else
+                {
+                    // Task 2 — no linked chat yet: open the configured
+                    // "New chat project URL" prefilled with, in Shane's explicit
+                    // order, the GitHub PAT first and THEN "Epic #N" (the reverse
+                    // of the extension's own openNewEpicChat label-then-token —
+                    // kept as Shane specified). Shane presses Enter himself; we do
+                    // NOT auto-rename or auto-associate beyond the message text.
+                    var miNewChat = new MenuItem { Header = "➕ New Epic Chat" };
+                    miNewChat.Click += (s, e) =>
+                    {
+                        var settings = BuildConsole.Services.BuildConsoleSettings.Load();
+                        if (!settings.HasEpicChatProjectUrl)
+                        {
+                            ActivityLog.Log("git-board.epic-chat", $"new chat for epic #{issue.IssueNumber} aborted — no New Chat Project URL configured");
+                            MessageBox.Show("Set a \"New Chat Project URL\" in the Settings tab first.", "New Epic Chat");
+                            return;
+                        }
+                        var baseUrl = settings.EpicChatProjectUrl.Trim();
+                        if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out _))
+                        {
+                            ActivityLog.Log("git-board.epic-chat", $"new chat for epic #{issue.IssueNumber} aborted — invalid New Chat Project URL '{baseUrl}'");
+                            MessageBox.Show("The configured New Chat Project URL isn't a valid URL.", "New Epic Chat");
+                            return;
+                        }
+                        var pat = settings.GitHubPat?.Trim() ?? "";
+                        var label = $"Epic #{issue.IssueNumber}";
+                        var prefill = string.IsNullOrEmpty(pat) ? label : $"{pat}\r\n{label}";
+                        var sep = baseUrl.Contains('?') ? "&" : "?";
+                        var fullUrl = $"{baseUrl}{sep}{EpicChatPrefillParam}={Uri.EscapeDataString(prefill)}";
+                        ActivityLog.Log("git-board.epic-chat", $"new chat for epic #{issue.IssueNumber} -> {baseUrl} (prefill 'Epic #{issue.IssueNumber}', PAT {(string.IsNullOrEmpty(pat) ? "absent" : "present")})");
+                        EpicChatRequested?.Invoke(this, (fullUrl, $"Epic #{issue.IssueNumber} New Chat", true));
+                    };
+                    cm.Items.Add(miNewChat);
+                }
+            }
 
             // Same real capability as the extension's Shane To-Do 🗄 button —
             // only shown when the real GitHub issue body actually references
