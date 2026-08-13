@@ -1,0 +1,1417 @@
+/**
+ * MSP Portal routes — scoped to authenticated MSP users.
+ *
+ * Identity:
+ *   GET  /api/msp/resolve-slug/:slug — resolve a tenant slug to its numeric mspId
+ *
+ * Dashboard:
+ *   GET  /api/msp/dashboard          — KPIs: signals fired, offer acceptance, revenue
+ *
+ * Offboarding state machine (null → cancellation_requested → export_ready → archival_flagged):
+ *   POST /api/msp/offboarding/request   — MSPAdmin requests cancellation
+ *   POST /api/msp/offboarding/export    — MSPAdmin generates/downloads customer data export
+ *   POST /api/msp/offboarding/archive   — PlatformAdmin confirms archival_flagged
+ */
+
+import { Router, type IRouter, type Request, type Response } from "express";
+import { db, mspsTable, tenantsTable, mspEventStoreTable, mspAuditLogsTable, salesOffersTable, mspSalesBundlesTable, usersTable, mspSalesBundleAssignmentsTable } from "@workspace/db";
+import { eq, and, count, sql, gte, like, sum, or, desc, ilike, inArray } from "drizzle-orm";
+import { z } from "zod";
+import { hashBody, checkIdempotency, recordIdempotency } from "../lib/idempotency.ts";
+import { requireAuth, requireRole, resolveStaffScopedCustomerIds, isCustomerBlockedByStaffScope } from "../middlewares/requireAuth.ts";
+import { randomUUID } from "crypto";
+import { getRequestContext } from "../lib/request-context.ts";
+import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
+import { getAiBalance } from "../lib/ai-billing.ts";
+import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
+import { calculateMspPortfolioRisk } from "../lib/msp-engine.ts";
+import { aggregateMspTelemetry } from "../lib/msp-financial-aggregator.ts";
+import { logger } from "../lib/logger.ts";
+
+const log = logger.child({ channel: "tenant.portal" });
+
+const router: IRouter = Router();
+
+router.use((req, res, next) => {
+  if (!req.log) {
+    req.log = {
+      info: () => {},
+      warn: () => {},
+      error: () => {},
+      child: () => req.log,
+    } as any;
+  }
+  next();
+});
+
+// ── Helpers ────────────────────────────────────────────────────────────────────
+
+function startOfMonth(): Date {
+  const d = new Date();
+  d.setUTCDate(1);
+  d.setUTCHours(0, 0, 0, 0);
+  return d;
+}
+
+/** Returns the mspId to use for the request — throws if none available. */
+
+// ── GET /api/msp/resolve-slug/:slug ────────────────────────────────────────────
+// Resolves a tenant slug to its numeric mspId. Used by the frontend SlugProvider
+// so slug-scoped pages can call the numeric /msps/:mspId/... + requireMspScope
+// convention instead of leaking the slug into query params.
+// PlatformAdmin may resolve any slug (cross-tenant); every other role may only
+// resolve a slug that belongs to their own session mspId. This mirrors the
+// tenant-isolation enforced by requireMspScope on the downstream numeric routes.
+
+router.get(
+  "/msp/resolve-slug/:slug",
+  requireAuth,
+  async (req: Request, res: Response) => {
+    try {
+      const slug = String(req.params.slug ?? "").trim();
+      if (!slug) { apiError(res, 400, ApiErrorCode.VALIDATION, "slug is required"); return; }
+
+      const [row] = await db
+        .select({ id: mspsTable.id })
+        .from(mspsTable)
+        .where(eq(mspsTable.slug, slug))
+        .limit(1);
+
+      if (!row) { apiError(res, 404, ApiErrorCode.NOT_FOUND, "Tenant not found"); return; }
+
+      // Tenant isolation: PlatformAdmin (legacy role === "admin" or mspRole ===
+      // "PlatformAdmin") may resolve any slug; everyone else may only resolve a
+      // slug whose mspId matches their own session mspId.
+      const user = req.user!;
+      const isPlatformAdmin = user.role === "admin" || user.mspRole === "PlatformAdmin";
+      if (!isPlatformAdmin && row.id !== user.mspId) {
+        apiError(res, 403, ApiErrorCode.FORBIDDEN, "Access to this tenant is not permitted");
+        return;
+      }
+
+      res.json({ mspId: row.id });
+    } catch (err: unknown) {
+      log.error({ err }, "GET /api/msp/resolve-slug/:slug failed");
+      const msg = err instanceof Error ? err.message : String(err);
+      apiError(res, 500, ApiErrorCode.INTERNAL, msg);
+    }
+  },
+);
+
+// ── GET /api/msp/portfolio-risk ────────────────────────────────────────────────
+
+router.get(
+  "/msp/portfolio-risk",
+  requireRole("MSPAdmin"),
+  async (req: Request, res: Response) => {
+    try {
+      const mspId = resolveMspIdStrict(req);
+      if (!mspId) {
+        apiError(res, 404, ApiErrorCode.NOT_FOUND, "No active MSP found");
+        return;
+      }
+      // Per-staff customer scoping: a scoped MSPAdmin only sees portfolio-risk
+      // data for customers in their assigned set. null = unrestricted (historical default).
+      const scopedCustomerIds = await resolveStaffScopedCustomerIds(req.user!);
+      const output = await calculateMspPortfolioRisk(mspId, undefined, scopedCustomerIds);
+      res.json(output);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      apiError(res, 500, ApiErrorCode.INTERNAL, msg);
+    }
+  },
+);
+
+// ── GET /api/msp/dashboard ─────────────────────────────────────────────────────
+
+router.get(
+  "/msp/dashboard",
+  requireRole("MSPOperator"),
+  async (req: Request, res: Response) => {
+    try {
+      const mspId = resolveMspIdStrict(req);
+      if (mspId === null) {
+        res.status(403).json({ error: "MSP context required" });
+        return;
+      }
+
+      const monthStart = startOfMonth();
+
+      // Run all queries in parallel
+      const [
+        customerRows,
+        signalRows,
+        offerSentRows,
+        offerAcceptedRows,
+        revenueResult,
+        mspRow,
+        unacceptedOffersResult,
+        idleBundlesResult,
+        aiBalance,
+      ] = await Promise.all([
+        // Customer breakdown: total + by status
+        mspId
+          ? db
+              .select({
+                status: tenantsTable.status,
+                n: count(),
+              })
+              .from(tenantsTable)
+              .where(eq(tenantsTable.mspId, mspId))
+              .groupBy(tenantsTable.status)
+          : Promise.resolve([]),
+
+        // Signals fired this month
+        mspId
+          ? db
+              .select({ n: count() })
+              .from(mspEventStoreTable)
+              .where(
+                and(
+                  eq(mspEventStoreTable.mspId, mspId),
+                  like(mspEventStoreTable.eventType, "signal.%"),
+                  gte(mspEventStoreTable.occurredAt, monthStart),
+                ),
+              )
+          : Promise.resolve([{ n: 0 }]),
+
+        // Offer sent events this month
+        mspId
+          ? db
+              .select({ n: count() })
+              .from(mspEventStoreTable)
+              .where(
+                and(
+                  eq(mspEventStoreTable.mspId, mspId),
+                  eq(mspEventStoreTable.eventType, "offer.sent"),
+                  gte(mspEventStoreTable.occurredAt, monthStart),
+                ),
+              )
+          : Promise.resolve([{ n: 0 }]),
+
+        // Offer accepted events this month
+        mspId
+          ? db
+              .select({ n: count() })
+              .from(mspEventStoreTable)
+              .where(
+                and(
+                  eq(mspEventStoreTable.mspId, mspId),
+                  eq(mspEventStoreTable.eventType, "offer.accepted"),
+                  gte(mspEventStoreTable.occurredAt, monthStart),
+                ),
+              )
+          : Promise.resolve([{ n: 0 }]),
+
+        // Revenue this month — sum payload.amountCents from payment.completed events
+        mspId
+          ? db.execute(
+              sql`
+                SELECT COALESCE(
+                  SUM((payload->>'amountCents')::bigint), 0
+                ) AS total_cents
+                FROM msp_event_store
+                WHERE msp_id = ${mspId}
+                  AND event_type = 'payment.completed'
+                  AND occurred_at >= ${monthStart}
+              `,
+            )
+          : Promise.resolve({ rows: [{ total_cents: 0 }] }),
+
+        // MSP record for offboarding state
+        mspId
+          ? db
+              .select({
+                id: mspsTable.id,
+                name: mspsTable.name,
+                status: mspsTable.status,
+                offboardingState: mspsTable.offboardingState,
+                offboardingRequestedAt: mspsTable.offboardingRequestedAt,
+                exportReadyAt: mspsTable.exportReadyAt,
+              })
+              .from(mspsTable)
+              .where(eq(mspsTable.id, mspId))
+              .limit(1)
+          : Promise.resolve([]),
+
+        // ── Growth widget #1: unaccepted offers value ─────────────────────────
+        // Sum of adjustedPriceCents for sent (unaccepted) offers for this MSP
+        mspId
+          ? db
+              .select({
+                totalCents: sum(salesOffersTable.adjustedPriceCents),
+                offerCount: count(),
+              })
+              .from(salesOffersTable)
+              .where(
+                and(
+                  eq(salesOffersTable.mspId, mspId),
+                  eq(salesOffersTable.state, "sent"),
+                ),
+              )
+          : Promise.resolve([{ totalCents: null, offerCount: 0 }]),
+
+        // ── Growth widget #2: idle bundles (no active assignment in 30 days) ─
+        mspId
+          ? db.execute(
+              sql`
+                SELECT b.bundle_id AS "bundleId", b.name,
+                  FLOOR(
+                    EXTRACT(EPOCH FROM (NOW() - COALESCE(MAX(a.assigned_at), b.created_at)))
+                    / 86400
+                  )::int AS "daysIdle"
+                FROM msp_sales_bundles b
+                LEFT JOIN msp_sales_bundle_assignments a
+                  ON a.bundle_id = b.bundle_id AND a.status != 'revoked'
+                WHERE b.msp_id = ${mspId} AND b.status = 'active'
+                GROUP BY b.bundle_id, b.name, b.created_at
+                HAVING COALESCE(MAX(a.assigned_at), b.created_at) < NOW() - INTERVAL '30 days'
+                ORDER BY "daysIdle" DESC
+                LIMIT 5
+              `,
+            )
+          : Promise.resolve({ rows: [] }),
+
+        // ── Growth widget #3: AI balance (momentum framing) ──────────────────
+        // Silently suppress errors — this widget is optional
+        mspId ? getAiBalance(mspId).catch(() => null) : Promise.resolve(null),
+      ]);
+
+      // Aggregate customer counts
+      const customerCounts = { total: 0, active: 0, inactive: 0, onboarding: 0 };
+      for (const row of customerRows) {
+        const n = Number(row.n);
+        customerCounts.total += n;
+        if (row.status === "active") customerCounts.active = n;
+        else if (row.status === "inactive") customerCounts.inactive = n;
+        else if (row.status === "onboarding") customerCounts.onboarding = n;
+      }
+
+      const signalsFiredThisMonth = Number(signalRows[0]?.n ?? 0);
+      const offersSent = Number(offerSentRows[0]?.n ?? 0);
+      const offersAccepted = Number(offerAcceptedRows[0]?.n ?? 0);
+
+      // Offer acceptance rate: accepted / sent (percentage, 0–100)
+      // Fall back to active customer % of total as a proxy when no offer events exist yet
+      let offerAcceptanceRate = 0;
+      if (offersSent > 0) {
+        offerAcceptanceRate = Math.round((offersAccepted / offersSent) * 100);
+      } else if (customerCounts.total > 0) {
+        offerAcceptanceRate = Math.round(
+          (customerCounts.active / customerCounts.total) * 100,
+        );
+      }
+
+      const revenueRows = (
+        revenueResult && "rows" in revenueResult
+          ? (revenueResult as { rows: Array<{ total_cents: unknown }> }).rows
+          : []
+      );
+      const revenueCentsThisMonth = Number(revenueRows[0]?.total_cents ?? 0);
+
+      const msp = (mspRow as Array<{ id: number; name: string; status: string; offboardingState: string | null; offboardingRequestedAt: Date | null; exportReadyAt: Date | null }>)[0] ?? null;
+
+      // ── Growth widget data ──────────────────────────────────────────────────
+
+      // Widget 1: unaccepted offers
+      type UnacceptedRow = { totalCents: string | null; offerCount: number };
+      const unacceptedRow = (unacceptedOffersResult as UnacceptedRow[])[0] ?? { totalCents: null, offerCount: 0 };
+      const unacceptedOffersCents = Number(unacceptedRow.totalCents ?? 0);
+      const unacceptedOffersCount = Number(unacceptedRow.offerCount ?? 0);
+
+      // Widget 2: idle bundles
+      type IdleBundleRow = { bundleId: string; name: string; daysIdle: number };
+      const idleBundles = (
+        idleBundlesResult && "rows" in idleBundlesResult
+          ? (idleBundlesResult as { rows: IdleBundleRow[] }).rows
+          : []
+      );
+
+      // Widget 3: AI balance/momentum
+      const aiAlertThreshold = (aiBalance as { alertThreshold?: number | null } | null)?.alertThreshold ?? null;
+      const aiPeriodUsagePct = (aiBalance as { periodUsagePct?: number | null } | null)?.periodUsagePct ?? null;
+
+      const telemetry = mspId
+        ? await aggregateMspTelemetry(mspId, monthStart)
+        : {
+            financials: {
+              monitoringMrr: { grossRevenueUsd: "0.00", wholesaleCostUsd: "0.00", mspMarginUsd: "0.00", mspMarginPct: "0.0%" },
+              projectRevenue: { grossRevenueUsd: "0.00", wholesaleCostUsd: "0.00", mspMarginUsd: "0.00", mspMarginPct: "0.0%" },
+              remediationRevenue: { grossRevenueUsd: "0.00", wholesaleCostUsd: "0.00", mspMarginUsd: "0.00", mspMarginPct: "0.0%" },
+              offerRevenue: { grossRevenueUsd: "0.00", wholesaleCostUsd: "0.00", mspMarginUsd: "0.00", mspMarginPct: "0.0%" },
+              total: { grossRevenueUsd: "0.00", wholesaleCostUsd: "0.00", mspMarginUsd: "0.00", mspMarginPct: "0.0%" }
+            },
+            metrics: {
+              activeSignalsCount: 0,
+              offerAcceptanceRate: 0,
+              openFulfillmentTasksCount: 0
+            }
+          };
+
+      res.json({
+        msp,
+        customers: customerCounts,
+        signalsFiredThisMonth,
+        offerAcceptanceRate,
+        offersSent,
+        offersAccepted,
+        revenueCentsThisMonth,
+        revenueUsdThisMonth: (revenueCentsThisMonth / 100).toFixed(2),
+        periodStart: monthStart.toISOString(),
+        unacceptedOffersCents,
+        unacceptedOffersCount,
+        idleBundles,
+        aiAlertThreshold,
+        aiPeriodUsagePct,
+        telemetry,
+      });
+    } catch (err) {
+      req.log.error({ err }, "msp-portal: dashboard query failed");
+      res.status(500).json({ error: "Dashboard query failed" });
+    }
+  },
+);
+
+// ── POST /api/msp/offboarding/request ─────────────────────────────────────────
+// MSPAdmin initiates the cancellation request.  State: null → cancellation_requested.
+
+router.post(
+  "/msp/offboarding/request",
+  requireRole("MSPAdmin"),
+  async (req: Request, res: Response) => {
+    try {
+      const mspId = resolveMspIdStrict(req);
+      if (!mspId) {
+        res.status(400).json({ error: "mspId required" });
+        return;
+      }
+
+      const [msp] = await db
+        .select({ id: mspsTable.id, offboardingState: mspsTable.offboardingState })
+        .from(mspsTable)
+        .where(eq(mspsTable.id, mspId))
+        .limit(1);
+
+      if (!msp) {
+        res.status(404).json({ error: "MSP not found" });
+        return;
+      }
+
+      if (msp.offboardingState) {
+        res.status(409).json({
+          error: `Offboarding already in progress (state: ${msp.offboardingState})`,
+          offboardingState: msp.offboardingState,
+        });
+        return;
+      }
+
+      const now = new Date();
+      await db
+        .update(mspsTable)
+        .set({
+          offboardingState: "cancellation_requested",
+          offboardingRequestedAt: now,
+          updatedAt: now,
+        })
+        .where(eq(mspsTable.id, mspId));
+
+      // Record in event store
+      await db.insert(mspEventStoreTable).values({
+        eventType: "msp.cancellation_requested",
+        source: "msp-portal",
+        actor: {
+          id: req.user!.id,
+          role: req.user!.mspRole ?? "MSPAdmin",
+          type: "user",
+        },
+        meta: { tenant: { mspId, customerId: null } },
+        mspId,
+        ownerType: "msp",
+      });
+
+      // Audit log
+      await db.insert(mspAuditLogsTable).values({
+        actorUserId: req.user!.id,
+        actorRole: req.user!.mspRole ?? "MSPAdmin",
+        mspId,
+        actionType: "msp.offboarding.request",
+        entityType: "msp",
+        entityId: String(mspId),
+        correlationId: getRequestContext()?.traceId ?? randomUUID(),
+        outcome: "success",
+        metadata: { requestedAt: now.toISOString() },
+      });
+
+      req.log.info({ mspId, actorId: req.user!.id }, "msp-portal: cancellation requested");
+      res.json({ ok: true, offboardingState: "cancellation_requested", requestedAt: now.toISOString() });
+    } catch (err) {
+      req.log.error({ err }, "msp-portal: offboarding request failed");
+      res.status(500).json({ error: "Offboarding request failed" });
+    }
+  },
+);
+
+// ── POST /api/msp/offboarding/export ──────────────────────────────────────────
+// MSPAdmin generates and downloads the customer data export package.
+// State: cancellation_requested → export_ready.
+// Customer owns their data — export contains full customer + event history.
+
+router.post(
+  "/msp/offboarding/export",
+  requireRole("MSPAdmin"),
+  async (req: Request, res: Response) => {
+    try {
+      const mspId = resolveMspIdStrict(req);
+      if (!mspId) {
+        res.status(400).json({ error: "mspId required" });
+        return;
+      }
+
+      const [msp] = await db
+        .select()
+        .from(mspsTable)
+        .where(eq(mspsTable.id, mspId))
+        .limit(1);
+
+      if (!msp) {
+        res.status(404).json({ error: "MSP not found" });
+        return;
+      }
+
+      if (msp.offboardingState === "archival_flagged") {
+        res.status(409).json({ error: "MSP is already archived" });
+        return;
+      }
+
+      // Gather customer data
+      const customers = await db
+        .select({
+          id: tenantsTable.id,
+          name: tenantsTable.customerName,
+          domain: tenantsTable.domain,
+          industry: tenantsTable.industry,
+          tenantId: tenantsTable.tenantId,
+          status: tenantsTable.status,
+          // ownerType has no successor on `tenants` — msp_customers carried an
+          // owner_type enum and every tenants row IS a customer, so the field is
+          // dropped from this export rather than synthesised (same call Phase 3
+          // made for the admin-panel Customer Object pane). tenantUrl takes the
+          // slot as the one genuinely new per-customer field.
+          tenantUrl: tenantsTable.tenantUrl,
+          createdAt: tenantsTable.createdAt,
+        })
+        .from(tenantsTable)
+        .where(eq(tenantsTable.mspId, mspId));
+
+      // Event counts per customer
+      const eventCountRows = await db
+        .select({
+          customerId: mspEventStoreTable.customerId,
+          n: count(),
+        })
+        .from(mspEventStoreTable)
+        .where(eq(mspEventStoreTable.mspId, mspId))
+        .groupBy(mspEventStoreTable.customerId);
+
+      const eventCountMap: Record<number, number> = {};
+      for (const row of eventCountRows) {
+        if (row.customerId != null) {
+          eventCountMap[row.customerId] = Number(row.n);
+        }
+      }
+
+      const exportPackage = {
+        exportedAt: new Date().toISOString(),
+        exportVersion: "1.0",
+        msp: {
+          id: msp.id,
+          name: msp.name,
+          slug: msp.slug,
+          domain: msp.domain,
+          status: msp.status,
+          createdAt: msp.createdAt,
+        },
+        customers: customers.map((c) => ({
+          ...c,
+          eventCount: eventCountMap[c.id] ?? 0,
+        })),
+        summary: {
+          totalCustomers: customers.length,
+          activeCustomers: customers.filter((c) => c.status === "active").length,
+          totalEvents: Object.values(eventCountMap).reduce((s, n) => s + n, 0),
+        },
+        notice:
+          "Customer data export — the customer organisation owns this data. " +
+          "Re-onboard under a new MSP by registering with the new MSP's portal. " +
+          "Direct MSP-to-MSP transfer is not supported in v1.",
+      };
+
+      // Advance state to export_ready (idempotent — ok if already export_ready)
+      if (msp.offboardingState !== "export_ready") {
+        const now = new Date();
+        await db
+          .update(mspsTable)
+          .set({
+            offboardingState: "export_ready",
+            exportReadyAt: now,
+            updatedAt: now,
+          })
+          .where(eq(mspsTable.id, mspId));
+
+        await db.insert(mspEventStoreTable).values({
+          eventType: "msp.export_ready",
+          source: "msp-portal",
+          actor: {
+            id: req.user!.id,
+            role: req.user!.mspRole ?? "MSPAdmin",
+            type: "user",
+          },
+          meta: { tenant: { mspId, customerId: null } },
+          payload: { customerCount: customers.length },
+          mspId,
+          ownerType: "msp",
+        });
+
+        await db.insert(mspAuditLogsTable).values({
+          actorUserId: req.user!.id,
+          actorRole: req.user!.mspRole ?? "MSPAdmin",
+          mspId,
+          actionType: "msp.offboarding.export",
+          entityType: "msp",
+          entityId: String(mspId),
+          correlationId: getRequestContext()?.traceId ?? randomUUID(),
+          outcome: "success",
+          metadata: { customerCount: customers.length, exportedAt: exportPackage.exportedAt },
+        });
+      }
+
+      req.log.info({ mspId, customerCount: customers.length }, "msp-portal: export generated");
+      res.json({ ok: true, offboardingState: "export_ready", export: exportPackage });
+    } catch (err) {
+      req.log.error({ err }, "msp-portal: export failed");
+      res.status(500).json({ error: "Export generation failed" });
+    }
+  },
+);
+
+// ── POST /api/msp/offboarding/archive ─────────────────────────────────────────
+// PlatformAdmin confirms archival.  State: export_ready → archival_flagged.
+// This is a terminal state — the MSP record is retained (never silently deleted).
+
+router.post(
+  "/msp/offboarding/archive",
+  requireRole("PlatformAdmin"),
+  async (req: Request, res: Response) => {
+    try {
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const targetMspId = parseInt(String(body.mspId ?? ""), 10);
+      if (isNaN(targetMspId)) {
+        res.status(400).json({ error: "mspId required in request body" });
+        return;
+      }
+
+      const [msp] = await db
+        .select({ id: mspsTable.id, name: mspsTable.name, offboardingState: mspsTable.offboardingState })
+        .from(mspsTable)
+        .where(eq(mspsTable.id, targetMspId))
+        .limit(1);
+
+      if (!msp) {
+        res.status(404).json({ error: "MSP not found" });
+        return;
+      }
+
+      if (msp.offboardingState === "archival_flagged") {
+        res.json({ ok: true, offboardingState: "archival_flagged", alreadyArchived: true });
+        return;
+      }
+
+      if (msp.offboardingState !== "export_ready") {
+        res.status(409).json({
+          error: `Cannot archive — expected state export_ready, got: ${msp.offboardingState ?? "null"}`,
+          offboardingState: msp.offboardingState,
+        });
+        return;
+      }
+
+      const now = new Date();
+      await db
+        .update(mspsTable)
+        .set({
+          offboardingState: "archival_flagged",
+          status: "suspended",
+          suspendedAt: now,
+          updatedAt: now,
+        })
+        .where(eq(mspsTable.id, targetMspId));
+
+      await db.insert(mspEventStoreTable).values({
+        eventType: "msp.archival_flagged",
+        source: "msp-portal",
+        actor: {
+          id: req.user!.id,
+          role: "PlatformAdmin",
+          type: "user",
+        },
+        meta: { tenant: { mspId: targetMspId, customerId: null } },
+        mspId: targetMspId,
+        ownerType: "platform",
+      });
+
+      await db.insert(mspAuditLogsTable).values({
+        actorUserId: req.user!.id,
+        actorRole: "PlatformAdmin",
+        mspId: targetMspId,
+        actionType: "msp.offboarding.archive",
+        entityType: "msp",
+        entityId: String(targetMspId),
+        entityLabel: msp.name,
+        correlationId: getRequestContext()?.traceId ?? randomUUID(),
+        outcome: "success",
+        metadata: { archivedAt: now.toISOString() },
+      });
+
+      req.log.info({ mspId: targetMspId, actorId: req.user!.id }, "msp-portal: MSP archived");
+      res.json({ ok: true, offboardingState: "archival_flagged", archivedAt: now.toISOString() });
+    } catch (err) {
+      req.log.error({ err }, "msp-portal: archive failed");
+      res.status(500).json({ error: "Archive operation failed" });
+    }
+  },
+);
+
+// ── GET /api/msp/events ────────────────────────────────────────────────────────
+// Recent events scoped to the authenticated MSP, ordered newest first.
+// Query params: limit (default 50, max 200)
+
+router.get(
+  "/msp/events",
+  requireRole("MSPOperator"),
+  async (req: Request, res: Response) => {
+    try {
+      const mspId = resolveMspIdStrict(req);
+      if (mspId === null) {
+        res.status(403).json({ error: "MSP context required" });
+        return;
+      }
+      const limit = Math.min(200, Math.max(1, parseInt(String((req.query as Record<string, unknown>).limit ?? "50"), 10) || 50));
+
+      // Base query — always scoped to the caller's own MSP
+      const baseConditions = [eq(mspEventStoreTable.mspId, mspId)];
+
+      // Per-staff customer scoping: this feed names individual customers, so a
+      // scoped operator only sees events for customers in their assigned set.
+      const scopedEventIds = await resolveStaffScopedCustomerIds(req.user!);
+      if (scopedEventIds !== null) {
+        baseConditions.push(inArray(mspEventStoreTable.customerId, scopedEventIds));
+      }
+
+      const rows = await db
+        .select({
+          id: mspEventStoreTable.id,
+          eventType: mspEventStoreTable.eventType,
+          customerId: mspEventStoreTable.customerId,
+          occurredAt: mspEventStoreTable.occurredAt,
+          payload: mspEventStoreTable.payload,
+          customerName: tenantsTable.customerName,
+        })
+        .from(mspEventStoreTable)
+        .leftJoin(tenantsTable, eq(mspEventStoreTable.customerId, tenantsTable.id))
+        .where(baseConditions.length > 0 ? and(...(baseConditions as [ReturnType<typeof eq>])) : undefined)
+        .orderBy(desc(mspEventStoreTable.occurredAt))
+        .limit(limit);
+
+      const events = rows.map((r) => {
+        // Derive severity from event type prefix
+        let severity: "info" | "warning" | "critical" = "info";
+        if (r.eventType.startsWith("error.") || r.eventType.startsWith("msp.cancellation")) {
+          severity = "critical";
+        } else if (r.eventType.startsWith("signal.") || r.eventType.startsWith("msp.offboarding")) {
+          severity = "warning";
+        }
+
+        // Human-readable description: prefer payload.description, then humanise the eventType
+        const payloadDesc = typeof (r.payload as Record<string, unknown>)?.description === "string"
+          ? String((r.payload as Record<string, unknown>).description)
+          : null;
+        const description = payloadDesc ?? r.eventType.replace(/[._]/g, " ");
+
+        return {
+          id: r.id,
+          type: r.eventType,
+          customerName: r.customerName ?? "—",
+          description,
+          severity,
+          occurredAt: r.occurredAt,
+        };
+      });
+
+      res.json({ events, total: events.length, limit });
+    } catch (err) {
+      req.log.error({ err }, "msp-portal: events query failed");
+      res.status(500).json({ error: "Failed to fetch events" });
+    }
+  },
+);
+
+// ── POST /api/msp/customers/bulk ───────────────────────────────────────────────
+// Bulk actions on a set of customers owned by the authenticated MSP.
+// Actions: assign_bundle, tag, export, archive
+// Each action is applied per-customer; assign_bundle uses per-customer idempotency.
+
+router.post(
+  "/msp/customers/bulk",
+  requireRole("MSPAdmin"),
+  async (req: Request, res: Response) => {
+    try {
+      const mspId = resolveMspIdStrict(req);
+      if (!mspId) {
+        res.status(400).json({ error: "mspId required" });
+        return;
+      }
+
+      const body = req.body as {
+        customerIds?: unknown;
+        action?: unknown;
+        payload?: Record<string, unknown>;
+      };
+
+      const customerIds = body.customerIds;
+      const action = typeof body.action === "string" ? body.action : null;
+      const payload = body.payload ?? {};
+
+      if (!Array.isArray(customerIds) || customerIds.length === 0) {
+        res.status(400).json({ error: "customerIds must be a non-empty array" });
+        return;
+      }
+      if (customerIds.length > 500) {
+        res.status(400).json({ error: "Cannot bulk-act on more than 500 customers at once" });
+        return;
+      }
+
+      const ids = customerIds.map((x) => Number(x)).filter((n) => !isNaN(n) && n > 0);
+      if (ids.length === 0) {
+        res.status(400).json({ error: "customerIds must be numeric" });
+        return;
+      }
+
+      // Verify all supplied IDs belong to this MSP
+      const ownedRows = await db
+        .select({
+          id: tenantsTable.id,
+          tenantId: tenantsTable.tenantId,
+          name: tenantsTable.customerName,
+          domain: tenantsTable.domain,
+          status: tenantsTable.status,
+          industry: tenantsTable.industry,
+          createdAt: tenantsTable.createdAt,
+        })
+        .from(tenantsTable)
+        .where(and(inArray(tenantsTable.id, ids), eq(tenantsTable.mspId, mspId)));
+
+      const ownedIdSet = new Set(ownedRows.map((r) => r.id));
+      const unauthorized = ids.filter((id) => !ownedIdSet.has(id));
+      if (unauthorized.length > 0) {
+        res.status(403).json({ error: "Some customerIds do not belong to this MSP", unauthorized });
+        return;
+      }
+
+      // ── assign_bundle ──────────────────────────────────────────────────────────
+      if (action === "assign_bundle") {
+        const bundleId = typeof payload.bundleId === "string" ? payload.bundleId : null;
+        if (!bundleId) {
+          res.status(400).json({ error: "payload.bundleId required for assign_bundle" });
+          return;
+        }
+
+        const [bundle] = await db
+          .select()
+          .from(mspSalesBundlesTable)
+          .where(and(eq(mspSalesBundlesTable.bundleId, bundleId), eq(mspSalesBundlesTable.mspId, mspId)));
+
+        if (!bundle) {
+          res.status(404).json({ error: "Bundle not found" });
+          return;
+        }
+        if (bundle.status !== "active") {
+          res.status(409).json({ error: "Only active bundles can be assigned. Activate the bundle first." });
+          return;
+        }
+
+        const actorId = req.user!.id;
+        const results: Array<{ customerId: number; status: "assigned" | "skipped"; assignmentId?: string }> = [];
+
+        for (const cust of ownedRows) {
+          // Per-customer idempotency key — replay-safe across retries and duplicate submissions
+          const iKey = `bulk:assign_bundle:${bundleId}:${cust.id}:${actorId}`;
+          const bodyHash = hashBody({ bundleId, customerId: cust.id, actorId });
+          const cached = await checkIdempotency(iKey, mspId, bodyHash);
+          if (cached) {
+            const cachedAssignmentId =
+              typeof cached.responseBody.assignmentId === "string"
+                ? cached.responseBody.assignmentId
+                : undefined;
+            results.push({ customerId: cust.id, status: "skipped", assignmentId: cachedAssignmentId });
+            continue;
+          }
+
+          const now = new Date();
+          const trialExpiresAt =
+            typeof bundle.trialDays === "number" && bundle.trialDays > 0
+              ? new Date(Date.now() + bundle.trialDays * 24 * 60 * 60 * 1000)
+              : null;
+
+          const [assignment] = await db
+            .insert(mspSalesBundleAssignmentsTable)
+            .values({
+              bundleId,
+              mspId,
+              customerId: cust.id,
+              tenantId: cust.tenantId ?? undefined,
+              status: "active",
+              activatedAt: now,
+              trialExpiresAt: trialExpiresAt ?? undefined,
+              assignedByUserId: actorId,
+              assignedAt: now,
+            })
+            .returning();
+
+          // One event per monitoring package per customer (mixed-frequency fan-out)
+          const pkgKeys: string[] = Array.isArray(bundle.monitoringPackageKeys)
+            ? (bundle.monitoringPackageKeys as string[])
+            : [];
+
+          if (pkgKeys.length > 0) {
+            await db.insert(mspEventStoreTable).values(
+              pkgKeys.map((packageKey) => ({
+                mspId,
+                customerId: cust.id,
+                eventType: "bundle.package.activated",
+                source: "msp-customers-bulk",
+                actor: { id: actorId, role: "MSPAdmin" as const, type: "user" as const },
+                meta: { tenant: { mspId, customerId: cust.id } },
+                payload: {
+                  bundleId,
+                  packageKey,
+                  activatedAt: now.toISOString(),
+                  bulkAssignment: true,
+                } as Record<string, unknown>,
+                correlationId: assignment.assignmentId,
+                ownerType: "msp" as const,
+              })),
+            );
+          }
+
+          await recordIdempotency(iKey, mspId, bodyHash, 201, { assignmentId: assignment.assignmentId });
+          results.push({ customerId: cust.id, status: "assigned", assignmentId: assignment.assignmentId });
+        }
+
+        const assignedCount = results.filter((r) => r.status === "assigned").length;
+        const skippedCount = results.filter((r) => r.status === "skipped").length;
+        req.log.info({ mspId, bundleId, assignedCount, skippedCount }, "msp-portal: bulk assign_bundle complete");
+        res.json({ action: "assign_bundle", results, assignedCount, skippedCount });
+        return;
+      }
+
+      // ── tag ────────────────────────────────────────────────────────────────────
+      if (action === "tag") {
+        const rawTags = payload.tags;
+        const tags: string[] = Array.isArray(rawTags)
+          ? rawTags.filter((t): t is string => typeof t === "string" && t.trim().length > 0).map((t) => t.trim())
+          : [];
+
+        if (tags.length === 0) {
+          res.status(400).json({ error: "payload.tags must be a non-empty string array" });
+          return;
+        }
+
+        // Merge new tags into each customer's existing tags array (deduplicating via SQL)
+        await db.execute(
+          sql`UPDATE msp_customers
+              SET tags = (
+                SELECT array_agg(DISTINCT t ORDER BY t)
+                FROM unnest(tags || ${tags}::text[]) AS t
+              ),
+              updated_at = now()
+              WHERE id IN ${ids}
+              AND msp_id = ${mspId}`,
+        );
+
+        res.json({ action: "tag", updated: ids.length, tags });
+        return;
+      }
+
+      // ── export ─────────────────────────────────────────────────────────────────
+      if (action === "export") {
+        const csvHeader = "id,name,domain,status,industry,tenantId,tags,createdAt\n";
+        const csvRows = ownedRows
+          .map((r) => {
+            // Always empty now: msp_customers.tags has no successor column on
+            // `tenants`, so there is nothing left to "fetch separately" as the
+            // old note here suggested. The column is kept in the header so the
+            // CSV shape stays stable for anything already parsing it.
+            const tagsValue = "";
+            const row = [
+              r.id,
+              `"${(r.name ?? "").replace(/"/g, '""')}"`,
+              `"${(r.domain ?? "").replace(/"/g, '""')}"`,
+              r.status,
+              `"${(r.industry ?? "").replace(/"/g, '""')}"`,
+              r.tenantId ?? "",
+              tagsValue,
+              r.createdAt instanceof Date ? r.createdAt.toISOString() : String(r.createdAt),
+            ].join(",");
+            return row;
+          })
+          .join("\n");
+
+        res.setHeader("Content-Type", "text/csv");
+        res.setHeader("Content-Disposition", 'attachment; filename="customers-export.csv"');
+        res.send(csvHeader + csvRows);
+        return;
+      }
+
+      // ── archive ────────────────────────────────────────────────────────────────
+      if (action === "archive") {
+        await db
+          .update(tenantsTable)
+          .set({ status: "archived" as "active" | "inactive" | "onboarding" | "archived", updatedAt: new Date() })
+          .where(and(inArray(tenantsTable.id, ids), eq(tenantsTable.mspId, mspId)));
+
+        req.log.info({ mspId, count: ids.length }, "msp-portal: bulk archive complete");
+        res.json({ action: "archive", updated: ids.length });
+        return;
+      }
+
+      res.status(400).json({ error: `Unknown action: ${String(action)}` });
+    } catch (err) {
+      req.log.error({ err }, "msp-portal: bulk action failed");
+      res.status(500).json({ error: "Bulk action failed" });
+    }
+  },
+);
+
+// ── POST /api/msp/customers ────────────────────────────────────────────────────
+// Manually create a customer under the authenticated MSP.
+// PlatformAdmin may pass ?slug= to target a specific MSP.
+
+// tenantId is REQUIRED, unlike the pre-refactor msp_customers version of this
+// schema where it was optional. `tenants.tenant_id` is NOT NULL UNIQUE (#92) —
+// the M365 tenant GUID is the row's real identity, not a loose optional string.
+// Keeping it optional here would just move the failure from a 400 with a usable
+// message to a 500 out of a Postgres not-null violation. Nothing is synthesised
+// to fill it: a fabricated GUID would both be wrong and burn the unique index.
+const createCustomerSchema = z.object({
+  name: z.string().min(2, "Name must be at least 2 characters").max(200),
+  domain: z.string().max(253).optional(),
+  industry: z.string().max(120).optional(),
+  tenantId: z.string().min(1, "Microsoft 365 tenant ID is required").max(36),
+  status: z.enum(["active", "onboarding", "inactive"]).default("onboarding"),
+});
+
+router.post(
+  "/msp/customers",
+  requireRole("MSPAdmin"),
+  async (req: Request, res: Response) => {
+    try {
+      const mspId = resolveMspIdStrict(req);
+      if (!mspId) {
+        res.status(400).json({ error: "mspId required" });
+        return;
+      }
+
+      const parsed = createCustomerSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ error: parsed.error.issues.map((i) => i.message).join("; ") });
+        return;
+      }
+      const data = parsed.data;
+
+      // Explicit `returning` projection so the 201 body keeps its `name` field
+      // (tenants calls the column customerName) and does NOT start echoing the
+      // consent jsonb, which a bare .returning() would now include.
+      const [customer] = await db
+        .insert(tenantsTable)
+        .values({
+          mspId,
+          customerName: data.name,
+          domain: data.domain ?? undefined,
+          industry: data.industry ?? undefined,
+          tenantId: data.tenantId,
+          status: data.status,
+        })
+        .returning({
+          id: tenantsTable.id,
+          mspId: tenantsTable.mspId,
+          name: tenantsTable.customerName,
+          domain: tenantsTable.domain,
+          industry: tenantsTable.industry,
+          tenantId: tenantsTable.tenantId,
+          tenantUrl: tenantsTable.tenantUrl,
+          status: tenantsTable.status,
+          isTestbed: tenantsTable.isTestbed,
+          createdAt: tenantsTable.createdAt,
+          updatedAt: tenantsTable.updatedAt,
+        });
+
+      await db.insert(mspAuditLogsTable).values({
+        actorUserId: req.user!.id,
+        actorRole: req.user!.mspRole ?? "MSPAdmin",
+        mspId,
+        actionType: "customer.create",
+        entityType: "customer",
+        entityId: String(customer!.id),
+        entityLabel: customer!.name,
+        correlationId: getRequestContext()?.traceId ?? randomUUID(),
+        outcome: "success",
+        metadata: { domain: data.domain, industry: data.industry, status: data.status },
+      });
+
+      req.log.info({ mspId, customerId: customer!.id }, "msp-portal: customer created");
+      res.status(201).json(customer);
+    } catch (err) {
+      req.log.error({ err }, "msp-portal: customer create failed");
+      res.status(500).json({ error: "Failed to create customer" });
+    }
+  },
+);
+
+// ── GET /api/msp/customers ─────────────────────────────────────────────────────
+// Paginated customer list scoped to the authenticated MSP.
+// Query params: page (1-based), limit, search (name/domain), status
+
+router.get(
+  "/msp/customers",
+  requireRole("MSPOperator"),
+  async (req: Request, res: Response) => {
+    try {
+      const mspId = resolveMspIdStrict(req);
+      if (mspId === null) {
+        res.status(403).json({ error: "MSP context required" });
+        return;
+      }
+
+      const page = Math.max(1, parseInt(String((req.query as Record<string, unknown>).page ?? "1"), 10) || 1);
+      const limit = Math.min(100, Math.max(1, parseInt(String((req.query as Record<string, unknown>).limit ?? "20"), 10) || 20));
+      const offset = (page - 1) * limit;
+      const search = String((req.query as Record<string, unknown>).search ?? "").trim();
+      const statusFilter = String((req.query as Record<string, unknown>).status ?? "").trim();
+
+      // Always scoped to the caller's own MSP
+      const conditions = [];
+      conditions.push(eq(tenantsTable.mspId, mspId));
+
+      // Per-staff customer scoping: a scoped operator/admin only sees the
+      // customers in their assigned set (null = unrestricted, historical default).
+      const scopedIds = await resolveStaffScopedCustomerIds(req.user!);
+      if (scopedIds !== null) {
+        conditions.push(inArray(tenantsTable.id, scopedIds));
+      }
+
+      if (search) {
+        conditions.push(
+          or(
+            ilike(tenantsTable.customerName, `%${search}%`),
+            ilike(tenantsTable.domain, `%${search}%`),
+          ),
+        );
+      }
+
+      if (statusFilter && statusFilter !== "all") {
+        conditions.push(
+          eq(tenantsTable.status, statusFilter as "active" | "inactive" | "onboarding"),
+        );
+      }
+
+      const whereClause = conditions.length > 0 ? and(...(conditions as [ReturnType<typeof eq>, ...ReturnType<typeof eq>[]])) : undefined;
+
+      const [[{ total }], customers] = await Promise.all([
+        db.select({ total: count() }).from(tenantsTable).where(whereClause),
+        db
+          .select({
+            id: tenantsTable.id,
+            name: tenantsTable.customerName,
+            domain: tenantsTable.domain,
+            status: tenantsTable.status,
+            tenantId: tenantsTable.tenantId,
+            mspId: tenantsTable.mspId,
+            createdAt: tenantsTable.createdAt,
+          })
+          .from(tenantsTable)
+          .where(whereClause)
+          .orderBy(desc(tenantsTable.createdAt))
+          .limit(limit)
+          .offset(offset),
+      ]);
+
+      res.json({
+        customers,
+        total: Number(total),
+        page,
+        pageSize: limit,
+      });
+    } catch (err) {
+      req.log.error({ err }, "msp-portal: customer list failed");
+      res.status(500).json({ error: "Failed to fetch customers" });
+    }
+  },
+);
+
+// ── GET /api/msp/customers/:id ────────────────────────────────────────────────
+// Returns full detail for a single customer scoped to the authenticated MSP.
+
+router.get(
+  "/msp/customers/:id",
+  requireRole("MSPOperator"),
+  async (req: Request, res: Response) => {
+    try {
+      const customerId = parseInt(String(req.params.id ?? ""), 10);
+      if (isNaN(customerId)) {
+        res.status(400).json({ error: "Invalid customer id" });
+        return;
+      }
+      const mspId = resolveMspIdStrict(req);
+      if (mspId === null) {
+        res.status(403).json({ error: "MSP context required" });
+        return;
+      }
+      // Per-staff customer scoping: 404 (not 403) so a scoped operator can't even
+      // confirm an out-of-scope customer exists.
+      if (await isCustomerBlockedByStaffScope(req.user!, customerId)) {
+        res.status(404).json({ error: "Customer not found" });
+        return;
+      }
+
+      const rows = await db
+        .select({
+          id: tenantsTable.id,
+          name: tenantsTable.customerName,
+          domain: tenantsTable.domain,
+          status: tenantsTable.status,
+          tenantId: tenantsTable.tenantId,
+          // `tenants` genuinely knows the tenant's URL; msp_customers did not.
+          tenantUrl: tenantsTable.tenantUrl,
+          industry: tenantsTable.industry,
+          isTestbed: tenantsTable.isTestbed,
+          // ownerType and tags are dropped, not synthesised: neither has a
+          // successor column on `tenants` (every tenants row IS a customer, and
+          // there is no tag array). Both were already unrendered by the
+          // customer-detail page — ownerType is an optional field on its TS type
+          // with no reader, tags had none at all — so no UI loses information.
+          mspId: tenantsTable.mspId,
+          mspName: mspsTable.name,
+          createdAt: tenantsTable.createdAt,
+          updatedAt: tenantsTable.updatedAt,
+        })
+        .from(tenantsTable)
+        .innerJoin(mspsTable, eq(mspsTable.id, tenantsTable.mspId))
+        .where(
+          and(
+            eq(tenantsTable.id, customerId),
+            eq(tenantsTable.mspId, mspId),
+          ),
+        )
+        .limit(1);
+
+      if (rows.length === 0) {
+        res.status(404).json({ error: "Customer not found" });
+        return;
+      }
+
+      res.json(rows[0]);
+    } catch (err) {
+      req.log.error({ err }, "msp-portal: customer detail failed");
+      res.status(500).json({ error: "Failed to fetch customer" });
+    }
+  },
+);
+
+// ── PATCH /api/msp/customers/:id ──────────────────────────────────────────────
+// Edit an existing customer. Strictly scoped to the authenticated MSP.
+// ownerType is gone from the editable set — `tenants` has no owner_type column
+// to write it to. Accepting the field and silently discarding it would report a
+// successful edit that changed nothing, so it is rejected as an unknown key
+// instead (zod strips it; nothing else read it).
+const editCustomerSchema = z.object({
+  name: z.string().min(2, "Name must be at least 2 characters").max(200).optional(),
+  domain: z.string().max(253).nullable().optional(),
+  industry: z.string().max(120).nullable().optional(),
+  status: z.enum(["active", "inactive", "onboarding", "archived"]).optional(),
+});
+
+router.patch(
+  "/msp/customers/:id",
+  requireRole("MSPAdmin"),
+  async (req: Request, res: Response) => {
+    try {
+      const customerId = parseInt(String(req.params.id ?? ""), 10);
+      if (isNaN(customerId)) {
+        res.status(400).json({ error: "Invalid customer id" });
+        return;
+      }
+      const mspId = resolveMspIdStrict(req);
+      if (mspId === null) {
+        res.status(403).json({ error: "MSP context required" });
+        return;
+      }
+
+      const parsed = editCustomerSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ error: parsed.error.issues.map((i) => i.message).join("; ") });
+        return;
+      }
+      const data = parsed.data;
+
+      // Per-staff customer scoping: a scoped admin cannot edit a customer outside
+      // their assigned set (404, consistent with the read path above).
+      if (await isCustomerBlockedByStaffScope(req.user!, customerId)) {
+        res.status(404).json({ error: "Customer not found" });
+        return;
+      }
+
+      // Ensure customer exists and belongs to this MSP
+      const [existing] = await db
+        .select({ id: tenantsTable.id, mspId: tenantsTable.mspId })
+        .from(tenantsTable)
+        .where(
+          and(
+            eq(tenantsTable.id, customerId),
+            eq(tenantsTable.mspId, mspId),
+          ),
+        )
+        .limit(1);
+
+      if (!existing) {
+        res.status(404).json({ error: "Customer not found" });
+        return;
+      }
+
+      const updateData: Partial<typeof tenantsTable.$inferInsert> = {
+        updatedAt: new Date(),
+      };
+      if (data.name !== undefined) updateData.customerName = data.name;
+      if (data.domain !== undefined) updateData.domain = data.domain;
+      if (data.industry !== undefined) updateData.industry = data.industry;
+      if (data.status !== undefined) updateData.status = data.status;
+
+      // Same explicit projection as the create route: freeze the `name` field
+      // name and keep the consent jsonb out of the response body.
+      const [updated] = await db
+        .update(tenantsTable)
+        .set(updateData)
+        .where(eq(tenantsTable.id, customerId))
+        .returning({
+          id: tenantsTable.id,
+          mspId: tenantsTable.mspId,
+          name: tenantsTable.customerName,
+          domain: tenantsTable.domain,
+          industry: tenantsTable.industry,
+          tenantId: tenantsTable.tenantId,
+          tenantUrl: tenantsTable.tenantUrl,
+          status: tenantsTable.status,
+          isTestbed: tenantsTable.isTestbed,
+          createdAt: tenantsTable.createdAt,
+          updatedAt: tenantsTable.updatedAt,
+        });
+
+      // Audit log
+      try {
+        await db.insert(mspAuditLogsTable).values({
+          actorUserId: req.user!.id,
+          actorRole: req.user!.mspRole ?? "MSPAdmin",
+          mspId: existing.mspId,
+          actionType: "customer.update",
+          entityType: "customer",
+          entityId: String(customerId),
+          entityLabel: updated.name,
+          correlationId: getRequestContext()?.traceId ?? randomUUID(),
+          outcome: "success",
+          metadata: updateData,
+        });
+      } catch {
+        // non-fatal
+      }
+
+      res.json(updated);
+    } catch (err) {
+      req.log.error({ err }, "msp-portal: customer update failed");
+      res.status(500).json({ error: "Failed to update customer" });
+    }
+  },
+);
+
+// ── GET /api/portal/msp-suspension ────────────────────────────────────────────
+// Customer-facing endpoint: returns whether the customer's parent MSP has been
+// suspended for 7+ days. Deliberately omits billing/payment specifics — only
+// exposes the computed day count so the frontend can decide whether to show the
+// informational banner.
+//
+// Accessible by CustomerUser and above (MSP staff can call it for testing).
+
+router.get(
+  "/portal/msp-suspension",
+  requireRole("CustomerUser"),
+  async (req: Request, res: Response) => {
+    try {
+      const userId = req.user!.id;
+
+      // Resolve the MSP this user belongs to.
+      // For CustomerUser, mspId is on the JWT claim; fall back to a DB lookup.
+      let mspId: number | null = req.user!.mspId ?? null;
+
+      if (!mspId) {
+        // Resolved through the user's TENANT, not users.mspId. A CustomerUser is
+        // tenant-scoped: users_role_scope_check (#92) requires it to carry
+        // tenantId, and it is NOT required to carry an mspId of its own — the
+        // owning MSP is a property of the tenant. Reading users.mspId here would
+        // return null for essentially every real customer and this endpoint
+        // would answer "not suspended" unconditionally, silently disabling the
+        // suspension banner for the exact population it exists to warn.
+        const [tenantRow] = await db
+          .select({ mspId: tenantsTable.mspId })
+          .from(usersTable)
+          .innerJoin(tenantsTable, eq(usersTable.tenantId, tenantsTable.id))
+          .where(eq(usersTable.id, userId))
+          .limit(1);
+        mspId = tenantRow?.mspId ?? null;
+      }
+
+      if (!mspId) {
+        res.json({ suspended: false, daysSuspended: null });
+        return;
+      }
+
+      const [msp] = await db
+        .select({
+          status: mspsTable.status,
+          suspendedAt: mspsTable.suspendedAt,
+        })
+        .from(mspsTable)
+        .where(eq(mspsTable.id, mspId))
+        .limit(1);
+
+      if (!msp || msp.status !== "suspended" || !msp.suspendedAt) {
+        res.json({ suspended: false, daysSuspended: null });
+        return;
+      }
+
+      const daysSuspended = Math.floor(
+        (Date.now() - new Date(msp.suspendedAt).getTime()) / 86_400_000,
+      );
+
+      // Only surface the banner once the 7-day threshold has been reached.
+      // Days 1–6 are treated as not-yet-visible to customers.
+      if (daysSuspended < 7) {
+        res.json({ suspended: false, daysSuspended: null });
+        return;
+      }
+
+      res.json({ suspended: true, daysSuspended });
+    } catch (err) {
+      req.log.error({ err }, "msp-portal: msp-suspension query failed");
+      res.status(500).json({ error: "Failed to fetch MSP suspension status" });
+    }
+  },
+);
+
+export default router;

@@ -1,0 +1,4 @@
+-- No DDL required: campaign_assets.asset_type is a plain TEXT column.
+-- This migration entry exists to keep the Drizzle journal in sync with the
+-- schema.ts enum expansion that added ad_google, ad_linkedin, ad_retargeting,
+-- ad_creative, and landing_page as new asset type values.

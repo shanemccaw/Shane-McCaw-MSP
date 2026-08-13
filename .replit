@@ -1,0 +1,251 @@
+modules = ["nodejs-20", "nodejs-24", "postgresql-16", "python-3.11"]
+
+[deployment]
+router = "application"
+deploymentTarget = "autoscale"
+
+[deployment.postBuild]
+args = [
+  "sh",
+  "-c",
+  "pnpm --filter @workspace/scripts run deploy-stamp-version"
+]
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "check-drift"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "pnpm --filter @workspace/scripts run check-drift"
+
+[workflows.workflow.metadata]
+isValidation = true
+
+[[workflows.workflow]]
+name = "typecheck"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "pnpm run typecheck"
+
+[workflows.workflow.metadata]
+isValidation = true
+
+[[workflows.workflow]]
+name = "artifacts/msp-portal: web"
+author = "agent"
+mode = "sequential"
+
+[workflows.workflow.metadata]
+outputType = "webview"
+artifactId = "artifacts/msp-portal"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "pnpm --filter @workspace/msp-portal run dev"
+cwd = "./artifacts/msp-portal"
+waitForPort = 26059
+ensurePreviewReachable = "/"
+router = "path"
+
+[workflows.workflow.tasks.env]
+PORT = "26059"
+BASE_PATH = "/portal/"
+
+[[workflows.workflow]]
+name = "artifacts/admin-panel: web"
+author = "agent"
+mode = "sequential"
+
+[workflows.workflow.metadata]
+outputType = "webview"
+artifactId = "artifacts/admin-panel"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "pnpm --filter @workspace/admin-panel run dev"
+cwd = "./artifacts/admin-panel"
+waitForPort = 20130
+ensurePreviewReachable = "/"
+router = "path"
+
+[workflows.workflow.tasks.env]
+PORT = "20130"
+BASE_PATH = "/admin-panel/"
+
+[[workflows.workflow]]
+name = "artifacts/shane-mccaw-consulting: web"
+author = "agent"
+mode = "sequential"
+
+[workflows.workflow.metadata]
+outputType = "webview"
+artifactId = "artifacts/shane-mccaw-consulting"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "pnpm --filter @workspace/shane-mccaw-consulting run dev"
+cwd = "./artifacts/shane-mccaw-consulting"
+waitForPort = 20446
+ensurePreviewReachable = "/"
+router = "path"
+
+[workflows.workflow.tasks.env]
+PORT = "20446"
+BASE_PATH = "/"
+
+[[workflows.workflow]]
+name = "artifacts/api-server: API Server"
+author = "agent"
+mode = "sequential"
+
+[workflows.workflow.metadata]
+outputType = "webview"
+artifactId = "3B4_FFSkEVBkAeYMFRJ2e"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "pnpm --filter @workspace/api-server run dev"
+cwd = "./artifacts/api-server"
+waitForPort = 8080
+ensurePreviewReachable = "/"
+router = "path"
+
+[workflows.workflow.tasks.env]
+PORT = "8080"
+
+[[workflows.workflow]]
+name = "artifacts/mockup-sandbox: Component Preview Server"
+author = "agent"
+mode = "sequential"
+
+[workflows.workflow.metadata]
+outputType = "webview"
+artifactId = "XegfDyZt7HqfW2Bb8Ghoy"
+isCanvasWorkflow = true
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "pnpm --filter @workspace/mockup-sandbox run dev"
+cwd = "./artifacts/mockup-sandbox"
+waitForPort = 8081
+ensurePreviewReachable = "/"
+router = "path"
+
+[workflows.workflow.tasks.env]
+PORT = "8081"
+BASE_PATH = "/__mockup"
+
+[[workflows.workflow]]
+name = "artifacts/msp-website: web"
+author = "agent"
+mode = "sequential"
+
+[workflows.workflow.metadata]
+outputType = "webview"
+artifactId = "artifacts/msp-website"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "pnpm --filter @workspace/msp-website run dev"
+cwd = "./artifacts/msp-website"
+waitForPort = 23333
+ensurePreviewReachable = "/"
+router = "path"
+
+[workflows.workflow.tasks.env]
+PORT = "23333"
+BASE_PATH = "/msp/"
+
+[[workflows.workflow]]
+name = "Git  pull"
+mode = "sequential"
+author = 60842278
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "git pull"
+
+[[workflows.workflow]]
+name = "Start Projects"
+mode = "parallel"
+author = 60842278
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "artifacts/api-server: API Server"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "artifacts/msp-portal: web"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "artifacts/admin-panel: web"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "artifacts/shane-mccaw-consulting: web"
+
+[[workflows.workflow]]
+name = "Run!"
+mode = "sequential"
+author = 60842278
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Git  pull"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Start Projects"
+
+[agent]
+stack = "PNPM_WORKSPACE"
+expertMode = true
+integrations = ["resend:1.0.0", "stripe:1.0.0"]
+
+[postMerge]
+path = "scripts/post-merge.sh"
+timeoutMs = 600000
+
+[nix]
+channel = "stable-25_05"
+
+[userenv]
+
+[userenv.shared]
+RESEND_FROM = "Shane McCaw Consulting <onboarding@resend.dev>"
+
+[[ports]]
+localPort = 8080
+externalPort = 8080
+
+[[ports]]
+localPort = 8081
+externalPort = 8081
+
+[[ports]]
+localPort = 8082
+externalPort = 3001
+
+[[ports]]
+localPort = 20130
+externalPort = 3003
+
+[[ports]]
+localPort = 20446
+externalPort = 3002
+
+[[ports]]
+localPort = 22444
+externalPort = 3000
+
+[[ports]]
+localPort = 26059
+externalPort = 5000

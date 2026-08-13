@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Governance Posture Report — Shane McCaw Consulting</title>
+<style>
+@media print {
+  body { background: #FFFFFF !important; color: #1A1D23 !important; }
+  .dg-bg { background: #FFFFFF !important; }
+  .dg-surface { background: #F4F5F7 !important; }
+  .dg-text-primary { color: #1A1D23 !important; }
+  .dg-text-secondary { color: #565D6D !important; }
+  .dg-text-blue { color: #1D6FBF !important; }
+  .dg-status-pass { color: #1E9A63 !important; }
+  .dg-status-warn { color: #B5720F !important; }
+  .dg-status-fail { color: #C53030 !important; }
+  .dg-status-pass-bg { background: #1E9A63 !important; }
+  .dg-status-warn-bg { background: #B5720F !important; }
+  .dg-status-fail-bg { background: #C53030 !important; }
+  .dg-border { border-color: #DADCE0 !important; }
+  .dg-divider { border-color: #DADCE0 !important; }
+  .dg-pill-fail { background: rgba(197,48,48,0.15) !important; color: #C53030 !important; border-color: #C53030 !important; }
+  .dg-pill-warn { background: rgba(181,114,15,0.15) !important; color: #B5720F !important; border-color: #B5720F !important; }
+  .dg-pill-pass { background: rgba(30,154,99,0.15) !important; color: #1E9A63 !important; border-color: #1E9A63 !important; }
+  .dg-header-band { background: #F4F5F7 !important; border-color: #DADCE0 !important; }
+  .dg-metric-tile { background: #F4F5F7 !important; border-color: #DADCE0 !important; }
+  .dg-finding-entry { background: #F4F5F7 !important; border-color: #DADCE0 !important; }
+  .dg-table-row-alt { background: rgba(0,0,0,0.03) !important; }
+}
+</style>
+</head>
+<body class="dg-bg" style="background:#0B0E14; color:#E8EAED; font-family:'Inter',-apple-system,sans-serif; margin:0; padding:0; min-height:100vh;">
+
+<!-- ═══════════════════════════════════════════════════════════
+     INSTRUMENT PANEL HEADER
+═══════════════════════════════════════════════════════════ -->
+<div class="dg-header-band" style="background:#131822; border-bottom:1px solid #232938; padding:48px 56px 40px 56px;">
+  <div style="display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:32px;">
+    <div>
+      <div class="dg-text-secondary" style="color:#8B92A5; font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:11px; letter-spacing:0.12em; text-transform:uppercase; margin-bottom:10px;">Shane McCaw Consulting · Governance Posture Report</div>
+      <div class="dg-text-primary" style="color:#E8EAED; font-size:28px; font-weight:700; letter-spacing:-0.5px; margin-bottom:6px;">Tenant Governance Posture</div>
+      <div class="dg-text-secondary" style="color:#8B92A5; font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:12px;">mccawsoft2.sharepoint.com</div>
+    </div>
+    <div style="text-align:right;">
+      <div class="dg-status-warn" style="color:#F5A623; font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:48px; font-weight:800; line-height:1; letter-spacing:-1px;">CONDITIONAL</div>
+      <div class="dg-text-secondary" style="color:#8B92A5; font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:11px; letter-spacing:0.10em; text-transform:uppercase; margin-top:6px;">Overall Governance Gate</div>
+    </div>
+  </div>
+
+  <!-- Metric strip -->
+  <div style="display:flex; flex-wrap:wrap; gap:16px; margin-top:40px;">
+
+    <div class="dg-metric-tile dg-border" style="background:#0B0E14; border:1px solid #232938; border-radius:6px; padding:18px 24px; min-width:140px;">
+      <div class="dg-status-fail" style="color:#E5484D; font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:32px; font-weight:700; line-height:1;">26</div>
+      <div class="dg-text-secondary" style="color:#8B92A5; font-size:12px; margin-top:4px;">Ownerless groups<br><span style="font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:10px;">of 104 total</span></div>
+    </div>
+
+    <div class="dg-metric-tile dg-border" style="background:#0B0E14; border:1px solid #232938; border-radius:6px; padding:18px 24px; min-width:140px;">
+      <div class="dg-status-fail" style="color:#E5484D; font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:32px; font-weight:700; line-height:1;">18 / 18</div>
+      <div class="dg-text-secondary" style="color:#8B92A5; font-size:12px; margin-top:4px;">Teams with no owner<br><span style="font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:10px;">all 18 teams affected</span></div>
+    </div>
+
+    <div class="dg-metric-tile dg-border" style="background:#0B0E14; border:1px solid #232938; border-radius:6px; padding:18px 24px; min-width:140px;">
+      <div class="dg-status-fail" style="color:#E5484D; font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:32px; font-weight:700; line-height:1;">0</div>
+      <div class="dg-text-secondary" style="color:#8B92A5; font-size:12px; margin-top:4px;">Group expiry policy<br><span style="font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:10px;">not configured</span></div>
+    </div>
+
+    <div class="dg-metric-tile dg-border" style="background:#0B0E14; border:1px solid #232938; border-radius:6px; padding:18px 24px; min-width:140px;">
+      <div class="dg-status-fail" style="color:#E5484D; font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:32px; font-weight:700; line-height:1;">0</div>
+      <div class="dg-text-secondary" style="color:#8B92A5; font-size:12px; margin-top:4px;">Guest access reviews<br><span style="font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:10px;">none scheduled</span></div>
+    </div>
+
+    <div class="dg-metric-tile dg-border" style="background:#0B0E14; border:1px solid #232938; border-radius:6px; padding:18px 24px; min-width:140px;">
+      <div class="dg-status-warn" style="color:#F5A623; font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:32px; font-weight:700; line-height:1;">24</div>
+      <div class="dg-text-secondary" style="color:#8B92A5; font-size:12px; margin-top:4px;">Guest accounts<br><span style="font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:10px;">unreviewed</span></div>
+    </div>
+
+    <div class="dg-metric-tile dg-border" style="background:#0B0E14; border:1px solid #232938; border-radius:6px; padding:18px 24px; min-width:140px;">
+      <div class="dg-status-warn" style="color:#F5A623; font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:32px; font-weight:700; line-height:1;">108</div>
+      <div class="dg-text-secondary" style="color:#8B92A5; font-size:12px; margin-top:4px;">Major service changes<br><span style="font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:10px;">pending review</span></div>
+    </div>
+
+    <div class="dg-metric-tile dg-border" style="background:#0B0E14; border:1px solid #232938; border-radius:6px; padding:18px 24px; min-width:140px;">
+      <div class="dg-status-pass" style="color:#3ECF8E; font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:32px; font-weight:700; line-height:1;">99 / 99</div>
+      <div class="dg-text-secondary" style="color:#8B92A5; font-size:12px; margin-top:4px;">Sites with sensitivity label<br><span style="font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:10px;">full coverage</span></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     EXECUTIVE SUMMARY
+═══════════════════════════════════════════════════════════ -->
+<div style="max-width:1080px; margin:0 auto; padding:56px 56px 0 56px;">
+
+  <div class="dg-surface dg-border" style="background:#131822; border:1px solid #232938; border-radius:8px; padding:32px 36px; margin-bottom:48px;">
+    <div class="dg-text-blue" style="color:#4A90D9; font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:11px; letter-spacing:0.12em; text-transform:uppercase; margin-bottom:14px;">Current State</div>
+    <p class="dg-text-primary" style="color:#E8EAED; font-size:15px; line-height:1.75; margin:0 0 16px 0;">
+      Every one of the tenant's 18 Teams has no designated owner. Twenty-six of 104 Microsoft 365 groups are also ownerless, leaving a quarter of all collaborative workspaces with no accountable administrator. There is no group expiry policy in place — groups and Teams accumulate indefinitely with no automated review trigger. Guest invitations are open to all licensed users in the tenant, 24 guest accounts are present with no access review scheduled, and cross-tenant access is configured but not paired with any recurring review. On the positive side, all 99 SharePoint sites carry a sensitivity label, no stale accounts were detected, no OneDrive transfers are pending for departed users, and all 18 Teams have meeting and messaging policies assigned.
+    </p>
+    <p class="dg-text-primary" style="color:#E8EAED; font-size:15px; line-height:1.75; margin:0;">
+      The dominant risk is ownership: when nobody is accountable for a workspace, there is no one to approve guest additions, notice channel sprawl, or act on a policy violation. The fixes below address that structural gap first, then the lifecycle and external-access controls that depend on it.
+    </p>
+  </div>
+
+  <!-- ─────────────────────────────────────────────
+       DOMAIN 1 — OWNERSHIP & ACCOUNTABILITY
+  ───────────────────────────────────────────── -->
+  <div style="margin-bottom:48px;">
+    <div class="dg-text-blue dg-divider" style="color:#4A90D9; font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:11px; letter-spacing:0.14em; text-transform:uppercase; border-bottom:1px solid #232938; padding-bottom:10px; margin-bottom:28px;">Ownership &amp; Accountability</div>
+
+    <!-- Finding: All Teams ownerless -->
+    <div class="dg-finding-entry dg-border" style="background:#131822; border:1px solid #232938; border-radius:8px; padding:24px 28px; margin-bottom:16px; display:flex; gap:24px; align-items:flex-start;">
+      <div style="flex-shrink:0; padding-top:2px;">
+        <span class="dg-pill-fail" style="display:inline-block; font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:10px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; background:rgba(229,72,77,0.12); color:#E5484D; border:1px solid #E5484D; border-radius:4px; padding:3px 8px; white-space:nowrap;">NO-GO</span>
+      </div>
+      <div style="flex:1;">
+        <div class="dg-text-primary" style="color:#E8EAED; font-weight:600; font-size:14px; margin-bottom:6px;">All 18 Teams have no owner assigned</div>
+        <p class="dg-text-secondary" style="color:#8B92A5; font-size:13px; line-height:1.7; margin:0;">
+          Every Team in the tenant — ATRIO, Small Parts Manufacturing, Roofing CRM, Netropole, TARR, Terminal Transfer, TCMS, Template, LifeWorksNW, Hunter Davisson, Vigilant, Sales, Columbia River Carbonates, Barricade MSP, NASA, Test NASA, Finance, and Shane McCaw Consulting - Templates — returns zero owners. With no owner, there is no one to approve or remove members, gate guest additions, archive the team when it becomes inactive, or act when Microsoft notifies of a required policy change. Every governance control that depends on owner-driven approval is inoperative for the entire Teams estate.
+        </p>
+      </div>
+    </div>
+
+    <!-- Finding: 26 ownerless groups -->
+    <div class="dg-finding-entry dg-border" style="background:#131822; border:1px solid #232938; border-radius:8px; padding:24px 28px; margin-bottom:16px; display:flex; gap:24px; align-items:flex-start;">
+      <div style="flex-shrink:0; padding-top:2px;">
+        <span class="dg-pill-fail" style="display:inline-block; font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:10px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; background:rgba(229,72,77,0.12); color:#E5484D; border:1px solid #E5484D; border-radius:4px; padding:3px 8px; white-space:nowrap;">NO-GO</span>
+      </div>
+      <div style="flex:1;">
+        <div class="dg-text-primary" style="color:#E8EAED; font-weight:600; font-size:14px; margin-bottom:6px;">26 of 104 Microsoft 365 groups have no owner</div>
+        <p class="dg-text-secondary" style="color:#8B92A5; font-size:13px; line-height:1.7; margin:0 0 10px 0;">
+          One in four groups in the tenant is ownerless. The 26 affected groups include Finance, CRM, Bills, Payroll, Billing, Orders, Sales, Legal, Tax, Resumes, Support, Projects, and others. An ownerless group has no one to authorise membership changes, respond to expiry notifications, or manage the group's associated SharePoint site or shared mailbox. If an expiry policy were enabled today — which it is not — ownerless groups would be deleted automatically because there is no owner to receive and act on the renewal prompt.
+        </p>
+        <p class="dg-text-secondary" style="color:#8B92A5; font-size:13px; line-height:1.7; margin:0;">
+          The remaining 78 groups do have at least one owner on record. No further breakdown of owner counts per group was available in the scan data.
+        </p>
+      </div>
+    </div>
+
+    <!-- Finding: No dynamic membership -->
+    <div class="dg-finding-entry dg-border" style="background:#131822; border:1px solid #232938; border-radius:8px; padding:24px 28px; margin-bottom:0; display:flex; gap:24px; align-items:flex-start;">
+      <div style="flex-shrink:0; padding-top:2px;">
+        <span class="dg-pill-warn" style="display:inline-block; font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:10px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; background:rgba(245,166,35,0.12); color:#F5A623; border:1px solid #F5A623; border-radius:4px; padding:3px 8px; white-space:nowrap;">CONDITIONAL</span>
+      </div>
+      <div style="flex:1;">
+        <div class="dg-text-primary" style="color:#E8EAED; font-weight:600; font-size:14px; margin-bottom:6px;">All 104 groups are maintained by hand — no dynamic membership rules exist</div>
+        <p class="dg-text-secondary" style="color:#8B92A5; font-size:13px; line-height:1.7; margin:0;">
+          Not one of the 104 groups uses a dynamic membership rule tied to user attributes such as department or job title. Every group is managed manually. For a tenant of this size, manual management is not inherently wrong, but it means membership accuracy depends entirely on administrators remembering to add and remove members when roles change. Combined with the ownership gaps above, there is no automated backstop to catch stale memberships.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────────────────────
+       DOMAIN 2 — LIFECYCLE, SPRAWL & RETIREMENT
+  ───────────────────────────────────────────── -->
+  <div style="margin-bottom:48px;">
+    <div class="dg-text-blue dg-divider" style="color:#4A90D9; font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:11px; letter-spacing:0.14em; text-transform:uppercase; border-bottom:1px solid #232938; padding-bottom:10px; margin-bottom:28px;">Lifecycle, Sprawl &amp; Retirement</div>
+
+    <!-- Finding: No group expiry -->
+    <div class="dg-finding-entry dg-border" style="background:#131822; border:1px solid #232938; border-radius:8px; padding:24px 28px; margin-bottom:16px; display:flex; gap:24px; align-items:flex-start;">
+      <div style="flex-shrink:0; padding-top:2px;">
+        <span class="dg-pill-fail" style="display:inline-block; font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:10px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; background:rgba(229,72,77,0.12); color:#E5484D; border:1px solid #E5484D; border-radius:4px; padding:3px 8px; white-space:nowrap;">NO-GO</span>
+      </div>
+      <div style="flex:1;">
+        <div class="dg-text-primary" style="color:#E8EAED; font-weight:600; font-size:14px; margin-bottom:6px;">No group expiry policy is configured</div>
+        <p class="dg-text-secondary" style="color:#8B92A5; font-size:13px; line-height:1.7; margin:0;">
+          The tenant has no group expiry policy of any kind. Groups and Teams, once created, persist indefinitely unless an administrator manually deletes them. There is no automated renewal prompt, no expiry notification sent to owners, and no system-driven retirement path. This is how the tenant arrives at 104 groups — many of which, given the naming patterns visible (test12345, Trial, Test NASA, and multiple duplicated names such as two entries each for "TARR," "Break-Glass Accounts - CA Exclusion," "All Company," "SMC — Shane McCaw," and others), appear to include abandoned or duplicated workspaces that have simply never been cleaned up.
+        </p>
+      </div>
+    </div>
+
+    <!-- Finding: Channel sprawl -->
+    <div class="dg-finding-entry dg-border" style="background:#131822; border:1px solid #232938; border-radius:8px; padding:24px 28px; margin-bottom:16px; display:flex; gap:24px; align-items:flex-start;">
+      <div style="flex-shrink:0; padding-top:2px;">
+        <span class="dg-pill-warn" style="display:inline-block; font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:10px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; background:rgba(245,166,35,0.12); color:#F5A623; border:1px solid #F5A623; border-radius:4px; padding:3px 8px; white-space:nowrap;">CONDITIONAL</span>
+      </div>
+      <div style="flex:1;">
+        <div class="dg-text-primary" style="color:#E8EAED; font-weight:600; font-size:14px; margin-bottom:6px;">27 channels across the Teams estate include test and throwaway channels</div>
+        <p class="dg-text-secondary" style="color:#8B92A5; font-size:13px; line-height:1.7; margin:0;">
+          The tenant's 18 Teams have a combined total of 27 channels. Several of these carry names that indicate they were created for testing and never removed: "Test," "Test 123," "Test 12345," and "Test" appear as distinct channels. Others — "SharePoint Upgrade," "SharePoint Advanced Search," "Lookup System," "CFS System," "Storage," and "Intranet - HR Compliance" — describe specific projects or systems that may no longer be active. With no owners assigned to any Team and no expiry mechanism, these channels accumulate without review.
+        </p>
+      </div>
+    </div>
+
+    <!-- Finding: 1 public team -->
+    <div class="dg-finding-entry dg-border" style="background:#131822; border:1px solid #232938; border-radius:8px; padding:24px 28px; margin-bottom:0; display:flex; gap:24px; align-items:flex-start;">
+      <div style="flex-shrink:0; padding-top:2px;">
+        <span class="dg-pill-warn" style="display:inline-block; font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:10px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; background:rgba(245,166,35,0.12); color:#F5A623; border:1px solid #F5A623; border-radius:4px; padding:3px 8px; white-space:nowrap;">CONDITIONAL</span>
+      </div>
+      <div style="flex:1;">
+        <div class="dg-text-primary" style="color:#E8EAED; font-weight:600; font-size:14px; margin-bottom:6px;">One of 18 Teams is set to Public visibility — "Test NASA"</div>
+        <p class="dg-text-secondary" style="color:#8B92A5; font-size:13px; line-height:1.7; margin:0;">
+          "Test NASA" is the only Team with public visibility, meaning any user in the tenant can join it without approval. Its name identifies it as a test workspace. It has no owner. A public team with a test-phase name and no owner to manage it or its contents is a governance gap — any tenant user can join and access whatever is stored there.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────────────────────
+       DOMAIN 3 — SHARING & EXTERNAL ACCESS
+  ───────────────────────────────────────────── -->
+  <div style="margin-bottom:48px;">
+    <div class="dg-text-blue dg-divider" style="color:#4A90D9; font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:11px; letter-spacing:0.14em; text-transform:uppercase; border-bottom:1px solid #232938; padding-bottom:10px; margin-bottom:28px;">Sharing &amp; External Access</div>
+
+    <!-- Finding: Guest invites unrestricted -->
+    <div class="dg-finding-entry dg-border" style="background:#131822; border:1px solid #232938; border-radius:8px; padding:24px 28px; margin-bottom:16px; display:flex; gap:24px; align-items:flex-start;">
+      <div style="flex-shrink:0; padding-top:2px;">
+        <span class="dg-pill-fail" style="display:inline-block; font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:10px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; background:rgba(229,72,77,0.12); color:#E5484D; border:1px solid #E5484D; border-radius:4px; padding:3px 8px; white-space:nowrap;">NO-GO</span>
+      </div>
+      <div style="flex:1;">
+        <div class="dg-text-primary" style="color:#E8EAED; font-weight:600; font-size:14px; margin-bottom:6px;">Guest invitations are open to everyone — any licensed user can invite external guests</div>
+        <p class="dg-text-secondary" style="color:#8B92A5; font-size:13px; line-height:1.7; margin:0;">
+          Both the invitation permission and the guest invite restriction are set to "Everyone." Any licensed user in the tenant can invite an external guest with no administrator approval required. Given that 18 Teams have guests and no team has an owner to govern those guests, the combination means external users can be added to workspaces with no internal accountable party. This is a structural external-access risk, not a theoretical one.
+        </p>
+      </div>
+    </div>
+
+    <!-- Finding: 24 guests, no review -->
+    <div class="dg-finding-entry dg-border" style="background:#131822; border:1px solid #232938; border-radius:8px; padding:24px 28px; margin-bottom:16px; display:flex; gap:24px; align-items:flex-start;">
+      <div style="flex-shrink:0; padding-top:2px;">
+        <span class="dg-pill-fail" style="display:inline-block; font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:10px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; background:rgba(229,72,77,0.12); color:#E5484D; border:1px solid #E5484D; border-radius:4px; padding:3px 8px; white-space:nowrap;">NO-GO</span>
+      </div>
+      <div style="flex:1;">
+        <div class="dg-text-primary" style="color:#E8EAED; font-weight:600; font-size:14px; margin-bottom:6px;">24 guest accounts in the tenant with no access review scheduled</div>
+        <p class="dg-text-secondary" style="color:#8B92A5; font-size:13px; line-height:1.7; margin:0 0 10px 0;">
+          The tenant holds 24 guest accounts. No recurring guest access review has been configured — not a single review definition exists. There is therefore no periodic check to confirm that these external users still need access, that their organisations still hold valid contracts, or that they have not been added in error. All 18 Teams that have guests are in this unreviewed state.
+        </p>
+        <p class="dg-text-secondary" style="color:#8B92A5; font-size:13px; line-height:1.7; margin:0;">
+          Sign-in activity data was not available for the 24 guest accounts, so it is not possible to determine from the scan how recently any guest last accessed the tenant. The absence of a review schedule means this gap will persist and grow as new guests are invited.
+        </p>
+      </div>
+    </div>
+
+    <!-- Finding: Cross-tenant access configured -->
+    <div class="dg-finding-entry dg-border" style="background:#131822; border:1px solid #232938; border-radius:8px; padding:24px 28px; margin-bottom:0; display:flex; gap:24px; align-items:flex-start;">
+      <div style="flex-shrink:0; padding-top:2px;">
+        <span class="dg-pill-pass" style="display:inline-block; font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:10px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; background:rgba(62,207,142,0.12); color:#3ECF8E; border:1px solid #3ECF8E; border-radius:4px; padding:3px 8px; white-space:nowrap;">PASS</span>
+      </div>
+      <div style="flex:1;">
+        <div class="dg-text-primary" style="color:#E8EAED; font-weight:600; font-size:14px; margin-bottom:6px;">Cross-tenant access policy is configured</div>
+        <p class="dg-text-secondary" style="color:#8B92A5; font-size:13px; line-height:1.7; margin:0;">
+          A cross-tenant access policy is in place. This is a structural control that governs how identities from other Entra tenants can authenticate into this one, and its presence is a positive signal. The scan confirmed the policy definition exists; it does not report on the specific rules within it. Maintaining and periodically reviewing this policy is important as guest-access patterns change.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────────────────────
+       DOMAIN 4 — ACCESS REVIEWS & HYGIENE
+  ───────────────────────────────────────────── -->
+  <div style="margin-bottom:48px;">
+    <div class="dg-text-blue dg-divider" style="color:#4A90D9; font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:11px; letter-spacing:0.14em; text-transform:uppercase; border-bottom:1px solid #232938; padding-bottom:10px; margin-bottom:28px;">Access Reviews &amp; Account Hygiene</div>
+
+    <!-- Finding: No guest access reviews -->
+    <div class="dg-finding-entry dg-border" style="background:#131822; border:1px solid #232938; border-radius:8px; padding:24px 28px; margin-bottom:16px; display:flex; gap:24px; align-items:flex-start;">
+      <div style="flex-shrink:0; padding-top:2px;">
+        <span class="dg-pill-fail" style="display:inline-block; font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:10px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; background:rgba(229,72,77,0.12); color:#E5484D; border:1px solid #E5484D; border-radius:4px; padding:3px 8px; white-space:nowrap;">NO-GO</span>
+      </div>
+      <div style="flex:1;">
+        <div class="dg-text-primary" style="color:#E8EAED; font-weight:600; font-size:14px; margin-bottom:6px;">No guest access review is defined in the tenant</div>
+        <p class="dg-text-secondary" style="color:#8B92A5; font-size:13px; line-height:1.7; margin:0;">
+          Microsoft Entra ID Governance access reviews for guest accounts are not configured. Zero review definitions were found. The 24 guest accounts in the tenant have never been subjected to a structured review cycle, and there is no mechanism to trigger one automatically. This finding, combined with unrestricted guest invitation permissions, means external access accumulates without any formal attestation process.
+        </p>
+      </div>
+    </div>
+
+    <!-- Finding: No overdue access reviews -->
+    <div class="dg-finding-entry dg-border" style="background:#131822; border:1px solid #232938; border-radius:8px; padding:24px 28px; margin-bottom:16px; display:flex; gap:24px; align-items:flex-start;">
+      <div style="flex-shrink:0; padding-top:2px;">
+        <span class="dg-pill-pass" style="display:inline-block; font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:10px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; background:rgba(62,207,142,0.12); color:#3ECF8E; border:1px solid #3ECF8E; border-radius:4px; padding:3px 8px; white-space:nowrap;">PASS</span>
+      </div>
+      <div style="flex:1;">
+        <div class="dg-text-primary" style="color:#E8EAED; font-weight:600; font-size:14px; margin-bottom:6px;">No access reviews are currently overdue</div>
+        <p class="dg-text-secondary" style="color:#8B92A5; font-size:13px; line-height:1.7; margin:0;">
+          Zero overdue access reviews were found. This is a consequence of having no reviews defined at all — it is not evidence that the tenant's access posture is healthy. Nothing can be overdue if nothing has been scheduled.
+        </p>
+      </div>
+    </div>
+
+    <!-- Finding: No stale accounts -->
+    <div class="dg-finding-entry dg-border" style="background:#131822; border:1px solid #232938; border-radius:8px; padding:24px 28px; margin-bottom:16px; display:flex; gap:24px; align-items:flex-start;">
+      <div style="flex-shrink:0; padding-top:2px;">
+        <span class="dg-pill-pass" style="display:inline-block; font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:10px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; background:rgba(62,207,142,0.12); color:#3ECF8E; border:1px solid #3ECF8E; border-radius:4px; padding:3px 8px; white-space:nowrap;">PASS</span>
+      </div>
+      <div style="flex:1;">
+        <div class="dg-text-primary" style="color:#E8EAED; font-weight:600; font-size:14px; margin-bottom:6px;">No stale internal accounts detected</div>
+        <p class="dg-text-secondary" style="color:#8B92A5; font-size:13px; line-height:1.7; margin:0;">
+          The scan evaluated 24 accounts for stale sign-in activity and returned zero stale accounts. Internal account hygiene is clean based on the available data. Sign-in activity timestamps were not returned for those accounts, so the conclusion rests on the platform's own staleness classification.
+        </p>
+      </div>
+    </div>
+
+    <!-- Finding: OneDrive departed users -->
+    <div class="dg-finding-entry dg-border" style="background:#131822; border:1px solid #232938; border-radius:8px; padding:24px 28px; margin-bottom:0; display:flex; gap:24px; align-items:flex-start;">
+      <div style="flex-shrink:0; padding-top:2px;">
+        <span class="dg-pill-pass" style="display:inline-block; font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:10px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; background:rgba(62,207,142,0.12); color:#3ECF8E; border:1px solid #3ECF8E; border-radius:4px; padding:3px 8px; white-space:nowrap;">PASS</span>
+      </div>
+      <div style="flex:1;">
+        <div class="dg-text-primary" style="color:#E8EAED; font-weight:600; font-size:14px; margin-bottom:6px;">No OneDrive transfers are pending for departed users</div>
+        <p class="dg-text-secondary" style="color:#8B92A5; font-size:13px; line-height:1.7; margin:0;">
+          Of the 24 accounts evaluated, none has a OneDrive content transfer pending. Departed user content is not accumulating in unowned drives awaiting reassignment.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────────────────────
+       DOMAIN 5 — SENSITIVITY LABELS & SITE COVERAGE
+  ───────────────────────────────────────────── -->
+  <div style="margin-bottom:48px;">
+    <div class="dg-text-blue dg-divider" style="color:#4A90D9; font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:11px; letter-spacing:0.14em; text-transform:uppercase; border-bottom:1px solid #232938; padding-bottom:10px; margin-bottom:28px;">Sensitivity Label Adoption &amp; Site Coverage</div>
+
+    <!-- Finding: Full site label coverage -->
+    <div class="dg-finding-entry dg-border" style="background:#131822; border:1px solid #232938; border-radius:8px; padding:24px 28px; margin-bottom:0; display:flex; gap:24px; align-items:flex-start;">
+      <div style="flex-shrink:0; padding-top:2px;">
+        <span class="dg-pill-pass" style="display:inline-block; font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:10px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; background:rgba(62,207,142,0.12); color:#3ECF8E; border:1px solid #3ECF8E; border-radius:4px; padding:3px 8px; white-space:nowrap;">PASS</span>
+      </div>
+      <div style="flex:1;">
+        <div class="dg-text-primary" style="color:#E8EAED; font-weight:600; font-size:14px; margin-bottom:6px;">All 99 SharePoint sites carry a sensitivity label</div>
+        <p class="dg-text-secondary" style="color:#8B92A5; font-size:13px; line-height:1.7; margin:0;">
+          Every site in the evaluated SharePoint estate — 99 sites — has a sensitivity label applied. This is complete coverage and is a strong governance signal: each site has been classified, which is the prerequisite for label-driven access controls and data-protection policies to operate correctly. This result stands in contrast to the ownership gaps; the classification layer is in place even where accountable owners are not.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────────────────────
+       DOMAIN 6 — TEAMS POLICY ENFORCEMENT
+  ───────────────────────────────────────────── -->
+  <div style="margin-bottom:48px;">
+    <div class="dg-text-blue dg-divider" style="color:#4A90D9; font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:11px; letter-spacing:0.14em; text-transform:uppercase; border-bottom:1px solid #232938; padding-bottom:10px; margin-bottom:28px;">Teams Policy Enforcement</div>
+
+    <!-- Finding: Full meeting and messaging policy coverage -->
+    <div class="dg-finding-entry dg-border" style="background:#131822; border:1px solid #232938; border-radius:8px; padding:24px 28px; margin-bottom:0; display:flex; gap:24px; align-items:flex-start;">
+      <div style="flex-shrink:0; padding-top:2px;">
+        <span class="dg-pill-pass" style="display:inline-block; font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:10px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; background:rgba(62,207,142,0.12); color:#3ECF8E; border:1px solid #3ECF8E; border-radius:4px; padding:3px 8px; white-space:nowrap;">PASS</span>
+      </div>
+      <div style="flex:1;">
+        <div class="dg-text-primary" style="color:#E8EAED; font-weight:600; font-size:14px; margin-bottom:6px;">All 18 Teams have both a meeting policy and a messaging policy assigned</div>
+        <p class="dg-text-secondary" style="color:#8B92A5; font-size:13px; line-height:1.7; margin:0;">
+          Meeting policy coverage is 18 of 18; messaging policy coverage is 18 of 18. The administrative policy layer is fully applied across the Teams estate. This means tenant-wide controls for meetings and messaging are active on every Team, regardless of owner assignment. Policy enforcement at the administrative level is intact even where workspace-level accountability is absent.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────────────────────
+       DOMAIN 7 — SERVICE CHANGE AWARENESS
+  ───────────────────────────────────────────── -->
+  <div style="margin-bottom:48px;">
+    <div class="dg-text-blue dg-divider" style="color:#4A90D9; font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:11px; letter-spacing:0.14em; text-transform:uppercase; border-bottom:1px solid #232938; padding-bottom:10px; margin-bottom:28px;">Service Change Awareness</div>
+
+    <!-- Finding: Message Center backlog -->
+    <div class="dg-finding-entry dg-border" style="background:#131822; border:1px solid #232938; border-radius:8px; padding:24px 28px; margin-bottom:0; display:flex; gap:24px; align-items:flex-start;">
+      <div style="flex-shrink:0; padding-top:2px;">
+        <span class="dg-pill-warn" style="display:inline-block; font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:10px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; background:rgba(245,166,35,0.12); color:#F5A623; border:1px solid #F5A623; border-radius:4px; padding:3px 8px; white-space:nowrap;">CONDITIONAL</span>
+      </div>
+      <div style="flex:1;">
+        <div class="dg-text-primary" style="color:#E8EAED; font-weight:600; font-size:14px; margin-bottom:6px;">440 Message Center items include 108 flagged as major changes requiring review</div>
+        <p class="dg-text-secondary" style="color:#8B92A5; font-size:13px; line-height:1.7; margin:0 0 10px 0;">
+          The Message Center holds 440 items in total. Of these, 108 are categorised as "Plan for change" — Microsoft's designation for announcements that require the tenant to take deliberate action or prepare before a deadline. A further set are categorised as "Prevent or fix issue," which Microsoft uses for items where inaction causes a service problem or compliance gap. The remainder are "Stay informed" notifications.
+        </p>
+        <p class="dg-text-secondary" style="color:#8B92A5; font-size:13px; line-height:1.7; margin:0;">
+          108 "Plan for change" items represent a substantial backlog. Among the most operationally significant are the retirement of Exchange Web Services (multiple notices), retirement of legacy whiteboard content moving to OneDrive-backed storage, retirement of SharePoint Designer 2013, retirement of Remote Event Receivers in SharePoint Online, required EWS allow-list updates for calendar access, enforcement of Entra Self-Service Password Reset registered-method requirements from November 2026, and the requirement to update Teams Rooms apps to maintain PowerPoint Live functionality. Each "Plan for change" item carries its own deadline; the scan does not record whether any of these have been acknowledged or actioned by the tenant.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────────────────────
+       REQUIRED & RECOMMENDED ACTIONS
+  ───────────────────────────────────────────── -->
+  <div style="margin-bottom:48px;">
+    <div class="dg-text-blue dg-divider" style="color:#4A90D9; font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:11px; letter-spacing:0.14em; text-transform:uppercase; border-bottom:1px solid #232938; padding-bottom:10px; margin-bottom:28px;">Required &amp; Recommended Actions</div>
+    <p class="dg-text-secondary" style="color:#8B92A5; font-size:13px; line-height:1.7; margin:0 0 24px 0;">Ordered by what each action actually fixes, not by effort or preference.</p>
+
+    <div class="dg-surface dg-border" style="background:#131822; border:1px solid #232938; border-radius:8px; overflow:hidden;">
+      <table style="width:100%; border-collapse:collapse;">
+        <thead>
+          <tr style="border-bottom:1px solid #232938;">
+            <th class="dg-text-blue" style="color:#4A90D9; font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:10px; letter-spacing:0.10em; text-transform:uppercase; text-align:left; padding:14px 20px; font-weight:600; width:4%;">#</th>
+            <th class="dg-text-blue" style="color:#4A90D9; font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:10px; letter-spacing:0.10em; text-transform:uppercase; text-align:left; padding:14px 20px; font-weight:600; width:46%;">Action</th>
+            <th class="dg-text-blue" style="color:#4A90D9; font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:10px; letter-spacing:0.10em; text-transform:uppercase; text-align:left; padding:14px 20px; font-weight:600; width:30%;">What it fixes</th>
+            <th class="dg-text-blue" style="color:#4A90D9; font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:10px; letter-spacing:0.10em; text-transform:uppercase; text-align:left; padding:14px 20px; font-weight:600; width:20%;">Severity</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr style="border-bottom:1px solid #232938;">
+            <td class="dg-text-secondary" style="color:#8B92A5; font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:12px; padding:16px 20px; vertical-align:top;">1</td>
+            <td class="dg-text-primary" style="color:#E8EAED; font-size:13px; padding:16px 20px; vertical-align:top; line-height:1.65;">Assign at least one owner to every Team. All 18 Teams — including ATRIO, Roofing CRM, Finance, Sales, NASA, and the remaining 13 — currently have zero owners.</td>
+            <td class="dg-text-secondary" style="color:#8B92A5; font-size:13px; padding:16px 20px; vertical-align:top; line-height:1.65;">Establishes accountability required for every downstream governance control: guest approval, archive decisions, policy notifications.</td>
+            <td style="padding:16px 20px; vertical-align:top;"><span class="dg-pill-fail" style="display:inline-block; font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:10px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; background:rgba(229,72,77,0.12); color:#E5484D; border:1px solid #E5484D; border-radius:4px; padding:3px 8px; white-space:nowrap;">Critical</span></td>
+          </tr>
+          <tr class="dg-table-row-alt" style="background:rgba(255,255,255,0.02); border-bottom:1px solid #232938;">
+            <td class="dg-text-secondary" style="color:#8B92A5; font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:12px; padding:16px 20px; vertical-align:top;">2</td>
+            <td class="dg-text-primary" style="color:#E8EAED; font-size:13px; padding:16px 20px; vertical-align:top; line-height:1.65;">Assign owners to the 26 ownerless Microsoft 365 groups. Prioritise groups with active SharePoint sites or shared mailboxes: Finance, CRM, Payroll, Billing, Orders, Sales, Legal, Tax, Support.</td>
+            <td class="dg-text-secondary" style="color:#8B92A5; font-size:13px; padding:16px 20px; vertical-align:top; line-height:1.65;">Prevents these groups from being auto-deleted if an expiry policy is later enabled, and gives each group an accountable manager.</td>
+            <td style="padding:16px 20px; vertical-align:top;"><span class="dg-pill-fail" style="display:inline-block; font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:10px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; background:rgba(229,72,77,0.12); color:#E5484D; border:1px solid #E5484D; border-radius:4px; padding:3px 8px; white-space:nowrap;">Critical</span></td>
+          </tr>
+          <tr style="border-bottom:1px solid #232938;">
+            <td class="dg-text-secondary" style="color:#8B92A5; font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:12px; padding:16px 20px; vertical-align:top;">3</td>
+            <td class="dg-text-primary" style="color:#E8EAED; font-size:13px; padding:16px 20px; vertical-align:top; line-height:1.65;">Configure a recurring guest access review in Microsoft Entra ID Governance covering all 24 guest accounts, with a review frequency of at least every 90 days and auto-removal of guests who are not approved.</td>
+            <td class="dg-text-secondary" style="color:#8B92A5; font-size:13px; padding:16px 20px; vertical-align:top; line-height:1.65;">Closes the complete absence of any formal attestation cycle for external users. Without this, guest accounts accumulate indefinitely with no accountability check.</td>
+            <td style="padding:16px 20px; vertical-align:top;"><span class="dg-pill-fail" style="display:inline-block; font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:10px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; background:rgba(229,72,77,0.12); color:#E5484D; border:1px solid #E5484D; border-radius:4px; padding:3px 8px; white-space:nowrap;">Critical</span></td>
+          </tr>
+          <tr class="dg-table-row-alt" style="background:rgba(255,255,255,0.02); border-bottom:1px solid #232938;">
+            <td class="dg-text-secondary" style="color:#8B92A5; font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:12px; padding:16px 20px; vertical-align:top;">4</td>
+            <td class="dg-text-primary" style="color:#E8EAED; font-size:13px; padding:16px 20px; vertical-align:top; line-height:1.65;">Restrict guest invitation permissions from "Everyone" to "Admins and users in specific guest inviter roles." Remove the ability for all licensed users to invite external guests without approval.</td>
+            <td class="dg-text-secondary" style="color:#8B92A5; font-size:13px; padding:16px 20px; vertical-align:top; line-height:1.65;">Stops ungoverned external invitations. Currently any licensed user can add a guest to any workspace, including the 18 Teams that have no owner to manage those guests.</td>
+            <td style="padding:16px 20px; vertical-align:top;"><span class="dg-pill-fail" style="display:inline-block; font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:10px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; background:rgba(229,72,77,0.12); color:#E5484D; border:1px solid #E5484D; border-radius:4px; padding:3px 8px; white-space:nowrap;">Critical</span></td>
+          </tr>
+          <tr style="border-bottom:1px solid #232938;">
+            <td class="dg-text-secondary" style="color:#8B92A5; font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:12px; padding:16px 20px; vertical-align:top;">5</td>
+            <td class="dg-text-primary" style="color:#E8EAED; font-size:13px; padding:16px 20px; vertical-align:top; line-height:1.65;">Enable a group expiry policy. Set a renewal interval — 180 or 365 days is common — and ensure every group has an owner before the policy is activated, so renewal notifications have a recipient.</td>
+            <td class="dg-text-secondary" style="color:#8B92A5; font-size:13px; padding:16px 20px; vertical-align:top; line-height:1.65;">Creates a systematic retirement path for inactive or abandoned groups and Teams. Currently groups accumulate forever with no automated review trigger.</td>
+            <td style="padding:16px 20px; vertical-align:top;"><span class="dg-pill-warn" style="display:inline-block; font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:10px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; background:rgba(245,166,35,0.12); color:#F5A623; border:1px solid #F5A623; border-radius:4px; padding:3px 8px; white-space:nowrap;">High</span></td>
+          </tr>
+          <tr class="dg-table-row-alt" style="background:rgba(255,255,255,0.02); border-bottom:1px solid #232938;">
+            <td class="dg-text-secondary" style="color:#8B92A5; font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:12px; padding:16px 20px; vertical-align:top;">6</td>
+            <td class="dg-text-primary" style="color:#E8EAED; font-size:13px; padding:16px 20px; vertical-align:top; line-height:1.65;">Review and either archive or delete the public "Test NASA" Team. If retained, convert its visibility to Private and assign an owner.</td>
+            <td class="dg-text-secondary" style="color:#8B92A5; font-size:13px; padding:16px 20px; vertical-align:top; line-height:1.65;">Removes open-join access for all tenant users to an ownerless, purpose-unknown workspace.</td>
+            <td style="padding:16px 20px; vertical-align:top;"><span class="dg-pill-warn" style="display:inline-block; font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:10px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; background:rgba(245,166,35,0.12); color:#F5A623; border:1px solid #F5A623; border-radius:4px; padding:3px 8px; white-space:nowrap;">High</span></td>
+          </tr>
+          <tr style="border-bottom:1px solid #232938;">
+            <td class="dg-text-secondary" style="color:#8B92A5; font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:12px; padding:16px 20px; vertical-align:top;">7</td>
+            <td class="dg-text-primary" style="color:#E8EAED; font-size:13px; padding:16px 20px; vertical-align:top; line-height:1.65;">Triage the 108 "Plan for change" items in the Message Center. Identify each item that carries a hard Microsoft deadline, assign an owner to act on it, and confirm which of the retirement notices (Exchange Web Services, SharePoint Designer 2013, Remote Event Receivers, legacy whiteboards) affect active integrations or workflows in this tenant.</td>
+            <td class="dg-text-secondary" style="color:#8B92A5; font-size:13px; padding:16px 20px; vertical-align:top; line-height:1.65;">Prevents service disruptions from missed Microsoft-imposed retirement deadlines. Several items have already been issued as reminders, indicating their original deadlines have passed or are approaching.</td>
+            <td style="padding:16px 20px; vertical-align:top;"><span class="dg-pill-warn" style="display:inline-block; font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:10px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; background:rgba(245,166,35,0.12); color:#F5A623; border:1px solid #F5A623; border-radius:4px; padding:3px 8px; white-space:nowrap;">High</span></td>
+          </tr>
+          <tr class="dg-table-row-alt" style="background:rgba(255,255,255,0.02);">
+            <td class="dg-text-secondary" style="color:#8B92A5; font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:12px; padding:16px 20px; vertical-align:top;">8</td>
+            <td class="dg-text-primary" style="color:#E8EAED; font-size:13px; padding:16px 20px; vertical-align:top; line-height:1.65;">Remove or archive test and throwaway channels: "Test," "Test 123," "Test 12345" within their respective Teams, and confirm whether project-specific channels ("SharePoint Upgrade," "CFS System," "Lookup System") are still active.</td>
+            <td class="dg-text-secondary" style="color:#8B92A5; font-size:13px; padding:16px 20px; vertical-align:top; line-height:1.65;">Reduces channel sprawl and eliminates dead-end workspaces that add noise for members and dilute discoverability of active collaboration.</td>
+            <td style="padding:16px 20px; vertical-align:top;"><span class="dg-pill-warn" style="display:inline-block; font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:10px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; background:rgba(245,166,35,0.12); color:#F5A623; border:1px solid #F5A623; border-radius:4px; padding:3px 8px; white-space:nowrap;">Medium</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div style="border-top:1px solid #232938; padding:32px 0 48px 0; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px;">
+    <div class="dg-text-secondary" style="color:#8B92A5; font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:11px;">Shane McCaw Consulting · Governance Posture Report</div>
+    <div class="dg-text-secondary" style="color:#8B92A5; font-family:'JetBrains Mono','SF Mono',Consolas,monospace; font-size:11px;">mccawsoft2.sharepoint.com · 104 groups · 18 Teams · 99 sites · 24 guests</div>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,1081 @@
+import React, { useState } from 'react';
+import {
+  Rocket, HeartPulse, Landmark, Factory, GraduationCap, Building2, Scale,
+  ShoppingBag, Code, Zap, Truck, Sprout, Heart, Sparkles, Atom, Compass,
+  Radio, Cpu, FileText, Briefcase, Stethoscope, Microscope, ShieldCheck,
+  BarChart, TrendingUp, ShieldAlert, FileCheck, Wrench, CheckCircle2, Shield,
+  Boxes, BookOpen, Building, Layers, FileSpreadsheet, FolderKanban, Search,
+  HardDrive, Target, Palette, LifeBuoy, Gavel, Tag, Store, PenTool, LineChart,
+  CheckSquare, MessageSquare, Megaphone, FileCode, ListTodo, BarChart2, Lock,
+  EyeOff, Globe, Network, Users, Share2, Smile, Meh, AlertTriangle, Activity,
+  Clock, Crown, Check, ChevronLeft, ChevronRight, ArrowRight, Info, HelpCircle,
+  HelpCircle as QuestionIcon, File, Settings, User, Presentation, Mail, NotebookPen
+} from 'lucide-react';
+
+import {
+  QUIZ_NAV_ITEMS,
+  INDUSTRY_OPTIONS,
+  ADAPTIVE_DATA_SENSITIVITY,
+  ADAPTIVE_COLLABORATION,
+  UNIVERSAL_AI_COMFORT,
+  UNIVERSAL_WORKFLOW_STRUCTURE,
+  UNIVERSAL_ADOPTION_SPEED,
+  UNIVERSAL_CHANGE_MGMT,
+  UNIVERSAL_TOOL_USAGE,
+  QuizOptionTile
+} from '../quizCatalog';
+import { useAuth } from '@/lib/auth-context';
+import { useQuizCatalog } from '../useQuizCatalog';
+import {
+  fetchQuizCatalog,
+  resolveQuizCatalog,
+  filterPersonasByClusters,
+  filterUseCasesByPersonas,
+  filterOutcomesByPersonas,
+} from '../quizCatalogClient';
+import { ScoringPanel } from '../quiz/ScoringPanel';
+import { inferWorkloadMix } from '../workloadInference';
+import {
+  QuizProfile, CollaborationPattern, WorkflowStyle, AiComfortLevel,
+  AdoptionSpeed, ChangeManagementNeed
+} from '../types';
+
+interface QuizScreenProps {
+  answers?: Record<string, string>;
+  onSelectOption?: (stepId: string, optionId: string) => void;
+  onCompleteQuiz: (profile: QuizProfile) => void;
+  onHelpClick?: () => void;
+  onExitClick?: () => void;
+  // The authenticated account's display name, for a personalized greeting on
+  // About You -- we already know who's taking the quiz, no need to ask again.
+  userName?: string;
+  // Passed when navigating back to the quiz after it was already completed
+  // once (state.quizProfile in the page). Role/department/company/phone are
+  // safely reversible into per-step state; industry/sensitivity/collaboration/
+  // etc were converted from option IDs to display titles in buildQuizProfile(),
+  // and reversing that requires exact title matching against the (possibly
+  // industry-dependent) catalogs, which is lossy/fragile. Not implemented --
+  // returning to the quiz after completion currently re-starts Industry
+  // onward blank rather than fully restoring prior selections. Real gap,
+  // flagged rather than silently half-fixed.
+  initialProfile?: QuizProfile;
+  // ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️
+  // Server-resolved real tenants.isTestbed flag (#231), gating the [DEBUG]
+  // auto-fill button below. Defaults false so the button stays absent if the
+  // parent's fetch hasn't resolved yet, not just visually hidden.
+  isTestbed?: boolean;
+}
+
+// Icon Resolver Component
+const DynamicIcon: React.FC<{ name: string; className?: string }> = ({ name, className = "w-5 h-5" }) => {
+  const iconMap: Record<string, React.ElementType> = {
+    Rocket, HeartPulse, Landmark, Factory, GraduationCap, Building2, Scale,
+    ShoppingBag, Code, Zap, Truck, Sprout, Heart, Sparkles, Atom, Compass,
+    Radio, Cpu, FileText, Briefcase, Stethoscope, Microscope, ShieldCheck,
+    BarChart, TrendingUp, ShieldAlert, FileCheck, Wrench, CheckCircle2, Shield,
+    Boxes, BookOpen, Building, Layers, FileSpreadsheet, FolderKanban, Search,
+    HardDrive, Target, Palette, LifeBuoy, Gavel, Tag, Store, PenTool, LineChart,
+    CheckSquare, MessageSquare, Megaphone, FileCode, ListTodo, BarChart2, Lock,
+    EyeOff, Globe, Network, Users, Share2, Smile, Meh, AlertTriangle, Activity,
+    Clock, Crown, Check, ChevronLeft, ChevronRight, ArrowRight, Info, HelpCircle,
+    File, Settings, User, Presentation, Mail, NotebookPen
+  };
+
+  const IconComponent = iconMap[name] || Sparkles;
+  return <IconComponent className={className} />;
+};
+
+// --- Mapping tables: original quiz's industry-specific option IDs -> real QuizProfile enum values ---
+const COLLABORATION_MAP: Record<string, CollaborationPattern> = {
+  cross_mission: 'cross-team',
+  cross_agency: 'external',
+  internal_only: 'internal',
+  care_team: 'internal',
+  department: 'internal',
+  multi_facility: 'cross-team',
+  desk_level: 'internal',
+  firm_wide: 'cross-team',
+  client_facing: 'external',
+  cross_functional: 'cross-team',
+  enterprise_wide: 'cross-team',
+  external_partners: 'external',
+  // #216 -- full 14-industry ADAPTIVE_COLLABORATION coverage
+  plant_floor_mfg: 'internal',
+  cross_plant_mfg: 'cross-team',
+  supplier_facing_mfg: 'external',
+  classroom_dept_edu: 'internal',
+  institution_wide_edu: 'cross-team',
+  external_edu: 'external',
+  agency_internal_gov: 'internal',
+  interagency_gov: 'cross-team',
+  public_facing_gov: 'external',
+  matter_team_legal: 'internal',
+  firm_wide_legal: 'cross-team',
+  client_facing_legal: 'external',
+  store_team_retail: 'internal',
+  regional_retail: 'cross-team',
+  vendor_customer_retail: 'external',
+  team_squad_tech: 'internal',
+  cross_org_tech: 'cross-team',
+  customer_partner_tech: 'external',
+  field_crew_energy: 'internal',
+  enterprise_energy: 'cross-team',
+  regulator_partner_energy: 'external',
+  dispatch_team_transport: 'internal',
+  network_wide_transport: 'cross-team',
+  carrier_customer_transport: 'external',
+  farm_ops_ag: 'internal',
+  cooperative_ag: 'cross-team',
+  supply_chain_ag: 'external',
+  program_team_np: 'internal',
+  org_wide_np: 'cross-team',
+  donor_partner_np: 'external',
+  team_level_other: 'internal',
+  org_wide_other: 'cross-team',
+  external_other: 'external',
+};
+
+const WORKFLOW_MAP: Record<string, WorkflowStyle> = {
+  highly_structured: 'structured',
+  moderately_structured: 'structured',
+  unstructured: 'unstructured',
+};
+
+const AI_COMFORT_MAP: Record<string, AiComfortLevel> = {
+  very_comfortable: 'high',
+  somewhat_comfortable: 'high',
+  neutral: 'medium',
+  cautious: 'low',
+  not_comfortable: 'low',
+};
+
+// #270 -- both catalogs already use exactly these ids, so these are identity
+// maps rather than translations. They exist so an unrecognised stored answer
+// resolves to undefined (the field is simply absent) instead of being written
+// through as an invalid enum value.
+const ADOPTION_SPEED_MAP: Record<string, AdoptionSpeed> = {
+  early_adopter: 'early_adopter',
+  fast_follower: 'fast_follower',
+  average_adopter: 'average_adopter',
+  slow_adopter: 'slow_adopter',
+};
+
+const CHANGE_MGMT_MAP: Record<string, ChangeManagementNeed> = {
+  minimal: 'minimal',
+  moderate: 'moderate',
+  significant: 'significant',
+};
+
+export const QuizScreen: React.FC<QuizScreenProps> = ({
+  answers: externalAnswers,
+  onSelectOption: externalOnSelect,
+  onCompleteQuiz,
+  onHelpClick,
+  onExitClick,
+  userName,
+  initialProfile,
+  isTestbed
+}) => {
+  const [localAnswers, setLocalAnswers] = useState<Record<string, string>>(externalAnswers || {});
+  const [activeStepIndex, setActiveStepIndex] = useState<number>(0);
+  const [role, setRole] = useState<string>(initialProfile?.role || '');
+  const [department, setDepartment] = useState<string>(initialProfile?.department || '');
+  const [company, setCompany] = useState<string>(initialProfile?.company || '');
+  const [phone, setPhone] = useState<string>(initialProfile?.phone || '');
+
+  // Same first/last-name split zoho-lead-sync.ts uses for real Zoho pushes --
+  // first word is the first name, single-word names have no first name to
+  // greet with (falls back to the full name, still better than nothing).
+  const firstName = userName?.trim() ? userName.trim().split(/\s+/)[0] : '';
+
+  const answers = externalAnswers || localAnswers;
+
+  const currentNav = QUIZ_NAV_ITEMS[activeStepIndex];
+  const stepId = currentNav.id;
+  const isMultiSelect = currentNav.isMultiSelect;
+  const currentIndustry = answers['industry'] || 'space';
+
+  // Real DB-backed persona clusters / personas / use cases / outcomes (#271).
+  // Data sensitivity and collaboration are deliberately NOT part of this — they
+  // stay in quizCatalog.ts, which is what #271 scopes.
+  //
+  // Always populated: the hook falls back per level to the built-in content
+  // while the fetch is in flight, if it fails, or before Shane has run the
+  // catalog SQL, so no step can render an empty tile grid.
+  const { fetchWithAuth } = useAuth();
+  const catalog = useQuizCatalog(currentIndustry);
+
+  // Helper for multi-select handling stored as comma-separated string
+  const getSelectedArray = (id: string): string[] => {
+    const raw = answers[id];
+    if (!raw) return [];
+    return raw.split(',').filter(Boolean);
+  };
+
+  const handleTileClick = (optionId: string) => {
+    if (isMultiSelect) {
+      const currentArr = getSelectedArray(stepId);
+      let updatedArr: string[];
+      if (currentArr.includes(optionId)) {
+        updatedArr = currentArr.filter(i => i !== optionId);
+      } else {
+        updatedArr = [...currentArr, optionId];
+      }
+      const valStr = updatedArr.join(',');
+      setLocalAnswers(prev => ({ ...prev, [stepId]: valStr }));
+      if (externalOnSelect) {
+        externalOnSelect(stepId, valStr);
+      }
+    } else {
+      setLocalAnswers(prev => ({ ...prev, [stepId]: optionId }));
+      if (externalOnSelect) {
+        externalOnSelect(stepId, optionId);
+      }
+    }
+  };
+
+  // Resolve options & step definition based on stepId & active industry
+  const getStepOptions = (): { title: string; description: string; options: QuizOptionTile[]; hint: string } => {
+    switch (stepId) {
+      case 'industry':
+        return {
+          title: 'Select Your Industry',
+          description: 'Industry determines persona clusters, personas, use cases, and governance model.',
+          options: INDUSTRY_OPTIONS,
+          hint: 'Industry determines persona clusters, personas, and use cases.'
+        };
+
+      case 'clusters':
+        return {
+          title: 'Select All Persona Clusters You Support',
+          description: 'Persona clusters organize functional teams into structured Copilot enablement tracks.',
+          options: catalog.clusters,
+          hint: 'Clusters organize personas into logical groups.'
+        };
+
+      case 'personas':
+        return {
+          title: 'Select All Personas You Support',
+          description: 'Copilot deployments support multi-role workflows and specialized job descriptions.',
+          options: filterPersonasByClusters(catalog.personas, getSelectedArray('clusters')),
+          hint: 'Copilot deployments support multiple personas.'
+        };
+
+      case 'use-cases':
+        return {
+          title: 'Select All Relevant Copilot Use Cases',
+          description: 'High-value use-case scenarios calculate initial feasibility, Graph grounding requirements, and ROI.',
+          options: filterUseCasesByPersonas(catalog.useCases, getSelectedArray('personas')),
+          hint: 'Use cases determine feasibility and ROI.'
+        };
+
+      case 'sensitivity': {
+        const catalog = ADAPTIVE_DATA_SENSITIVITY[currentIndustry] || ADAPTIVE_DATA_SENSITIVITY['default'];
+        return {
+          title: 'Select All Applicable Data Sensitivity Levels',
+          description: 'Data sensitivity dictates Microsoft Purview auto-labeling, DLP rules, and conditional access policies.',
+          options: catalog,
+          hint: 'Select all data sensitivity classifications present in your organization.'
+        };
+      }
+
+      case 'collaboration': {
+        const catalog = ADAPTIVE_COLLABORATION[currentIndustry] || ADAPTIVE_COLLABORATION['default'];
+        return {
+          title: 'Select All Applicable Collaboration Patterns',
+          description: 'Collaboration patterns define site inheritance boundaries, guest access, and oversharing risk.',
+          options: catalog,
+          hint: 'Select all collaboration patterns present across your teams and departments.'
+        };
+      }
+
+      case 'tools':
+        return {
+          title: 'Select All Microsoft 365 Apps You Work In Daily',
+          description: 'Copilot is embedded per-app — the surfaces you actually live in determine which Copilot experiences deliver value first.',
+          options: UNIVERSAL_TOOL_USAGE,
+          hint: 'Select every app your teams use day to day.'
+        };
+
+      case 'ai-comfort':
+        return {
+          title: 'How comfortable are you with AI-generated content?',
+          description: 'User trust dictates human-in-the-loop validation, prompt engineering training, and review cadence.',
+          options: UNIVERSAL_AI_COMFORT,
+          hint: 'This influences governance tolerance.'
+        };
+
+      case 'workflow':
+        return {
+          title: 'How structured is your daily workflow?',
+          description: 'Workflow predictability determines how quickly declarative agents and Copilot Studio extensions integrate.',
+          options: UNIVERSAL_WORKFLOW_STRUCTURE,
+          hint: 'This affects use-case feasibility.'
+        };
+
+      case 'adoption-speed':
+        return {
+          title: 'How quickly do you adopt new technology?',
+          description: 'Adoption velocity informs pilot group sizing, champion network density, and Wave 1 rollout speed.',
+          options: UNIVERSAL_ADOPTION_SPEED,
+          hint: 'This shapes rollout strategy.'
+        };
+
+      // Outcomes are persona-scoped from #271 on — previously they were
+      // industry-scoped with no persona linkage at all, which broke the
+      // cluster -> persona -> use cases -> outcomes chain the downstream AI
+      // persona generation needs. Content that carries no persona (everything
+      // migrated from the old hardcoded catalog) still shows for any selection,
+      // so this narrows only where Shane has loaded real persona-specific rows.
+      case 'outcomes':
+        return {
+          title: 'Select All Outcomes That Matter Most',
+          description: 'Targeted business metrics drive value calculations, ROI modeling, and C-suite reporting.',
+          options: filterOutcomesByPersonas(catalog.outcomes, getSelectedArray('personas')),
+          hint: 'This determines value levers.'
+        };
+
+      case 'change-mgmt':
+        return {
+          title: 'How much change management support do you need?',
+          description: 'Enablement needs determine champion training, executive sponsorship, and enablement playbook scope.',
+          options: UNIVERSAL_CHANGE_MGMT,
+          hint: 'This affects adoption planning.'
+        };
+
+      case 'about-you':
+      case 'review':
+        return {
+          title: '',
+          description: '',
+          options: [],
+          hint: ''
+        };
+
+      default:
+        return {
+          title: 'Assessment Question',
+          description: '',
+          options: [],
+          hint: 'Select an option to proceed.'
+        };
+    }
+  };
+
+  const stepData = getStepOptions();
+  const selectedArr = getSelectedArray(stepId);
+  const singleSelectedId = answers[stepId];
+
+  const isStepAnswered = (idx: number) => {
+    const id = QUIZ_NAV_ITEMS[idx].id;
+    if (id === 'review') return false;
+    if (id === 'about-you') return role.trim().length > 0 && department.trim().length > 0;
+    const val = answers[id];
+    return !!val && val.trim().length > 0;
+  };
+
+  const canNavigateToStep = (idx: number) => {
+    if (idx === 0) return true;
+    for (let i = 0; i < idx; i++) {
+      if (!isStepAnswered(i)) return false;
+    }
+    return true;
+  };
+
+  const isNextDisabled = () => {
+    if (stepId === 'review') return false;
+    if (stepId === 'about-you') return role.trim().length === 0 || department.trim().length === 0;
+    if (isMultiSelect) {
+      return selectedArr.length === 0;
+    }
+    return !singleSelectedId;
+  };
+
+  const handleNext = () => {
+    if (activeStepIndex < QUIZ_NAV_ITEMS.length - 1) {
+      setActiveStepIndex(prev => prev + 1);
+    }
+  };
+
+  const handleBack = () => {
+    if (activeStepIndex > 0) {
+      setActiveStepIndex(prev => prev - 1);
+    }
+  };
+
+  // Helper for multi-select titles display on review screen
+  const getReviewTitles = (key: string) => {
+    const raw = answers[key];
+    if (!raw) return 'Not Selected';
+
+    const arr = raw.split(',').filter(Boolean);
+    if (arr.length === 0) return 'Not Selected';
+
+    if (key === 'industry') {
+      const found = INDUSTRY_OPTIONS.find(o => o.id === arr[0]);
+      return found ? found.title : arr[0];
+    }
+
+    if (key === 'clusters') {
+      return arr.map(id => catalog.clusters.find(o => o.id === id)?.title || id).join(', ');
+    }
+
+    if (key === 'personas') {
+      return arr.map(id => catalog.personas.find(o => o.id === id)?.title || id).join(', ');
+    }
+
+    if (key === 'use-cases') {
+      return arr.map(id => catalog.useCases.find(o => o.id === id)?.title || id).join(', ');
+    }
+
+    if (key === 'sensitivity') {
+      const catalog = ADAPTIVE_DATA_SENSITIVITY[currentIndustry] || ADAPTIVE_DATA_SENSITIVITY['default'];
+      return arr.map(id => {
+        const f = catalog.find(o => o.id === id);
+        return f ? f.title : id;
+      }).join(', ');
+    }
+
+    if (key === 'collaboration') {
+      const catalog = ADAPTIVE_COLLABORATION[currentIndustry] || ADAPTIVE_COLLABORATION['default'];
+      return arr.map(id => {
+        const f = catalog.find(o => o.id === id);
+        return f ? f.title : id;
+      }).join(', ');
+    }
+
+    if (key === 'tools') {
+      return arr.map(id => UNIVERSAL_TOOL_USAGE.find(o => o.id === id)?.title || id).join(', ');
+    }
+
+    if (key === 'ai-comfort') {
+      const f = UNIVERSAL_AI_COMFORT.find(o => o.id === arr[0]);
+      return f ? f.title : arr[0];
+    }
+
+    if (key === 'workflow') {
+      const f = UNIVERSAL_WORKFLOW_STRUCTURE.find(o => o.id === arr[0]);
+      return f ? f.title : arr[0];
+    }
+
+    if (key === 'adoption-speed') {
+      const f = UNIVERSAL_ADOPTION_SPEED.find(o => o.id === arr[0]);
+      return f ? f.title : arr[0];
+    }
+
+    if (key === 'outcomes') {
+      return arr.map(id => catalog.outcomes.find(o => o.id === id)?.title || id).join(', ');
+    }
+
+    if (key === 'change-mgmt') {
+      const f = UNIVERSAL_CHANGE_MGMT.find(o => o.id === arr[0]);
+      return f ? f.title : arr[0];
+    }
+
+    return arr.join(', ');
+  };
+
+  // Build the real QuizProfile the rest of the platform (#186/#187 AI generation,
+  // #190 ROI scoring) actually consumes.
+  //
+  // #270 closed three real gaps here: the clusters/personas/use-cases/
+  // adoption-speed/change-mgmt answers were collected and then silently dropped
+  // rather than returned; the four workload weights were hardcoded to 0.5 for
+  // every customer; and toolUsage was an always-empty array despite three AI
+  // generators reading it. All three now carry real answers.
+  const buildQuizProfile = (): QuizProfile => {
+    // Clusters/personas/use-cases/outcomes resolve against the DB-backed
+    // catalog (#271) so a title Shane loaded by SQL is the one that reaches the
+    // AI generators; sensitivity stays on the static catalog, which #271 does
+    // not move.
+    const clustersCatalog = catalog.clusters;
+    const personasCatalog = catalog.personas;
+    const useCasesCatalog = catalog.useCases;
+    const outcomesCatalog = catalog.outcomes;
+    const sensitivityCatalog = ADAPTIVE_DATA_SENSITIVITY[currentIndustry] || ADAPTIVE_DATA_SENSITIVITY['default'];
+    const collaborationIds = getSelectedArray('collaboration');
+    const collaborationPatterns = Array.from(
+      new Set(collaborationIds.map(id => COLLABORATION_MAP[id]).filter((v): v is CollaborationPattern => !!v))
+    );
+
+    // Kept as option ids for the inference below (it resolves them against the
+    // same catalogs), and converted to display titles for the profile itself --
+    // same convention sensitivity/outcomePriorities already follow, so the AI
+    // generators read product-quality names rather than slugs.
+    const personaClusterIds = getSelectedArray('clusters');
+    const personaIds = getSelectedArray('personas');
+    const useCaseIds = getSelectedArray('use-cases');
+
+    const workflowStyle: WorkflowStyle = WORKFLOW_MAP[answers['workflow']] || 'structured';
+
+    // Real inference from the answers already given -- see workloadInference.ts
+    // for the documented scoring decision. Replaces the flat 0.5 that made
+    // every customer's ROI score identical.
+    const workload = inferWorkloadMix({
+      industry: currentIndustry,
+      useCaseIds,
+      personaIds,
+      role: role.trim(),
+      department: department.trim(),
+      workflowStyle,
+    });
+
+    return {
+      role: role.trim(),
+      department: department.trim(),
+      company: company.trim() || undefined,
+      phone: phone.trim() || undefined,
+      industry: currentIndustry,
+      collaboration: collaborationPatterns.length > 0 ? collaborationPatterns : ['internal'],
+      sensitivity: getSelectedArray('sensitivity').map(id => sensitivityCatalog.find(o => o.id === id)?.title || id),
+      workflowStyle,
+      outcomePriorities: getSelectedArray('outcomes').map(id => outcomesCatalog.find(o => o.id === id)?.title || id),
+      draftingLoad: workload.draftingLoad,
+      researchLoad: workload.researchLoad,
+      communicationLoad: workload.communicationLoad,
+      repetitiveLoad: workload.repetitiveLoad,
+      toolUsage: getSelectedArray('tools').map(id => UNIVERSAL_TOOL_USAGE.find(o => o.id === id)?.title || id),
+      aiComfort: AI_COMFORT_MAP[answers['ai-comfort']] || 'medium',
+      personaClusters: personaClusterIds.map(id => clustersCatalog.find(o => o.id === id)?.title || id),
+      targetPersonas: personaIds.map(id => personasCatalog.find(o => o.id === id)?.title || id),
+      useCaseClusters: useCaseIds.map(id => useCasesCatalog.find(o => o.id === id)?.title || id),
+      adoptionSpeed: ADOPTION_SPEED_MAP[answers['adoption-speed']],
+      changeManagement: CHANGE_MGMT_MAP[answers['change-mgmt']],
+    };
+  };
+
+  const handleCompleteQuiz = () => {
+    onCompleteQuiz(buildQuizProfile());
+  };
+
+  // ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️
+  // Fills one deterministic default answer per QUIZ_NAV_ITEMS step (#231) so
+  // a testbed account can iterate on the flow without a full re-click on
+  // every refresh (quiz answers have no persistence layer yet -- separate,
+  // bigger issue, out of scope here). Same fixed industry/cluster/persona
+  // chain the rest of the quiz's own filtering logic above depends on, so the
+  // filtered persona/use-case picks are always valid for the fixed industry --
+  // not randomized, always the same answer set.
+  //
+  // #271: this now resolves its picks against the REAL catalog for the fixed
+  // industry rather than the hardcoded objects. It has to — auto-filling ids
+  // that no longer exist in the DB would produce a profile whose clusters,
+  // personas, use cases and outcomes fall through to raw slugs, and a debug
+  // tool that quietly stops matching real content is worse than none. Fetched
+  // directly (not via the hook, which is bound to whatever industry is answered
+  // at click time), falling back to the built-in content exactly as the hook
+  // does.
+  const handleDebugAutoFill = async () => {
+    const industry = 'space';
+
+    const debugCatalog = resolveQuizCatalog(await fetchQuizCatalog(fetchWithAuth, industry), industry);
+
+    const clusterId = debugCatalog.clusters[0]?.id;
+    if (!clusterId) return;
+
+    const personaCatalog = filterPersonasByClusters(debugCatalog.personas, [clusterId]);
+    const personaId = (personaCatalog[0] ?? debugCatalog.personas[0])?.id;
+    if (!personaId) return;
+
+    const useCaseCatalog = filterUseCasesByPersonas(debugCatalog.useCases, [personaId]);
+    const useCaseId = (useCaseCatalog[0] ?? debugCatalog.useCases[0])?.id;
+
+    const outcomeCatalog = filterOutcomesByPersonas(debugCatalog.outcomes, [personaId]);
+    const outcomeId = (outcomeCatalog[0] ?? debugCatalog.outcomes[0])?.id;
+
+    const sensitivityCatalog = ADAPTIVE_DATA_SENSITIVITY[industry] || ADAPTIVE_DATA_SENSITIVITY['default'];
+    const collaborationCatalog = ADAPTIVE_COLLABORATION[industry] || ADAPTIVE_COLLABORATION['default'];
+
+    setRole('QA Test Engineer');
+    setDepartment('IT');
+    setCompany('Debug Test Co');
+    setPhone('555-000-1234');
+
+    setLocalAnswers({
+      industry,
+      clusters: clusterId,
+      personas: personaId,
+      'use-cases': useCaseId ?? '',
+      sensitivity: sensitivityCatalog[0].id,
+      collaboration: collaborationCatalog[0].id,
+      // Two tools, not one -- toolUsage is a real multi-select now (#270) and a
+      // single-value auto-fill would never exercise the join in the profile.
+      tools: `${UNIVERSAL_TOOL_USAGE[0].id},${UNIVERSAL_TOOL_USAGE[4].id}`,
+      'ai-comfort': UNIVERSAL_AI_COMFORT[0].id,
+      workflow: UNIVERSAL_WORKFLOW_STRUCTURE[0].id,
+      'adoption-speed': UNIVERSAL_ADOPTION_SPEED[0].id,
+      outcomes: outcomeId ?? '',
+      'change-mgmt': UNIVERSAL_CHANGE_MGMT[0].id,
+    });
+  };
+
+  return (
+    <div className="flex flex-col h-full bg-background text-foreground select-none">
+      {/* TOP TOOLBAR */}
+      <header className="h-12 border-b border-border bg-sidebar flex items-center justify-between px-4 sm:px-6 shrink-0 z-30">
+        <div className="flex items-center gap-3">
+          <div className="w-5 h-5 bg-primary rounded-sm flex items-center justify-center shrink-0">
+            <Sparkles className="w-3.5 h-3.5 text-primary-foreground" />
+          </div>
+          <span className="text-sm font-semibold tracking-tight text-foreground">Copilot Assessment — Quiz</span>
+        </div>
+
+        {/* Center: Step Indicator */}
+        <div className="flex items-center gap-2 font-mono text-xs text-muted-foreground">
+          <span>Step</span>
+          <span className="px-2 py-0.5 bg-primary text-primary-foreground font-bold rounded text-[11px]">
+            {activeStepIndex + 1} of {QUIZ_NAV_ITEMS.length}
+          </span>
+        </div>
+
+        {/* Right: Help & Exit */}
+        <div className="flex items-center gap-3">
+          {/* ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️
+              Testbed-only auto-fill trigger (#231). isTestbed is the real
+              server-resolved tenants.isTestbed flag, not a client heuristic --
+              this button is absent (not just hidden) for every other account. */}
+          {isTestbed && (
+            <button
+              onClick={() => { void handleDebugAutoFill(); }}
+              className="px-3 py-1 bg-status-amber/20 text-status-amber border border-status-amber/50 text-xs font-mono font-bold rounded hover:bg-status-amber/30 transition-colors cursor-pointer"
+              title="Testbed only -- fills all quiz steps with deterministic default answers"
+            >
+              [DEBUG] Auto-Fill
+            </button>
+          )}
+          <button
+            onClick={onHelpClick}
+            className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-secondary rounded transition-colors cursor-pointer"
+            title="Help & Framework Info"
+          >
+            <HelpCircle className="w-4 h-4" />
+          </button>
+          <button
+            onClick={onExitClick}
+            className="px-3 py-1 bg-secondary text-foreground text-xs font-semibold rounded hover:bg-secondary/80 transition-colors cursor-pointer"
+          >
+            Exit
+          </button>
+        </div>
+      </header>
+
+      {/* MAIN 3-PANEL CONTAINER */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* LEFT PANEL (Fixed Navigation) */}
+        <aside className="w-60 bg-sidebar border-r border-border flex flex-col shrink-0">
+          <div className="h-10 border-b border-border flex items-center px-4 shrink-0">
+            <span className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">
+              Quiz Sections
+            </span>
+          </div>
+
+          <div className="flex-1 p-3 space-y-1 overflow-y-auto scrollbar-thin">
+            {QUIZ_NAV_ITEMS.map((item, idx) => {
+              const isActive = activeStepIndex === idx;
+              const isDone = isStepAnswered(idx);
+              const canClick = canNavigateToStep(idx);
+
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => canClick && setActiveStepIndex(idx)}
+                  disabled={!canClick}
+                  className={`w-full flex items-center justify-between p-2 rounded-md text-xs transition-all ${
+                    isActive
+                      ? 'bg-secondary text-foreground font-semibold border-l-2 border-primary'
+                      : canClick
+                      ? 'text-muted-foreground hover:bg-secondary/60 hover:text-foreground cursor-pointer'
+                      : 'text-muted-foreground/50 cursor-not-allowed opacity-60'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 truncate">
+                    {/* Completion Indicator */}
+                    <div className="shrink-0 flex items-center justify-center w-4 h-4 rounded-full border border-border">
+                      {isDone ? (
+                        <Check className="w-3 h-3 text-primary stroke-[3]" />
+                      ) : isActive ? (
+                        <div className="w-2 h-2 rounded-full bg-primary" />
+                      ) : (
+                        <div className="w-1.5 h-1.5 rounded-full bg-border" />
+                      )}
+                    </div>
+                    <span className="truncate text-[11px]">{item.label}</span>
+                  </div>
+
+                  <span className="text-[10px] font-mono text-muted-foreground/70">
+                    {String(item.stepNumber).padStart(2, '0')}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="p-3 border-t border-border bg-background text-[10px] text-muted-foreground font-mono">
+            Progress: {QUIZ_NAV_ITEMS.filter((_, idx) => isStepAnswered(idx)).length}/{QUIZ_NAV_ITEMS.length - 1} Answered
+          </div>
+        </aside>
+
+        {/* CENTER PANEL (Primary Content Stage) */}
+        <main className="flex-1 flex flex-col overflow-hidden bg-background">
+          <div className="flex-1 overflow-y-auto p-6 sm:p-8 scrollbar-thin">
+          <div className="max-w-4xl mx-auto w-full space-y-6">
+            {/* Screen Header */}
+            {stepId !== 'about-you' && stepId !== 'review' && (
+              <div>
+                <div className="inline-flex items-center gap-2 px-2.5 py-1 bg-card border border-border rounded text-[11px] font-mono text-primary mb-3">
+                  <QuestionIcon className="w-3.5 h-3.5 text-primary" />
+                  <span>
+                    Screen {activeStepIndex + 1} of {QUIZ_NAV_ITEMS.length} — {currentNav.label}
+                    {isMultiSelect && (
+                      <span className="ml-2 font-bold text-status-green">
+                        (Multi-Select)
+                      </span>
+                    )}
+                  </span>
+                </div>
+                <h1 className="text-2xl sm:text-3xl font-bold text-foreground tracking-tight">
+                  {stepData.title}
+                </h1>
+                {stepData.description && (
+                  <p className="text-sm text-muted-foreground mt-2 leading-relaxed max-w-2xl">
+                    {stepData.description}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Answer Options Tiles Grid */}
+            {stepId !== 'review' && stepId !== 'about-you' && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-4 pt-2">
+                {stepData.options.map((option) => {
+                  const isSelected = isMultiSelect
+                    ? selectedArr.includes(option.id)
+                    : singleSelectedId === option.id;
+
+                  return (
+                    <button
+                      key={option.id}
+                      onClick={() => handleTileClick(option.id)}
+                      className={`group relative p-5 rounded-lg border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                        isSelected
+                          ? 'bg-primary/10 border-primary ring-1 ring-primary shadow-lg shadow-primary/10'
+                          : 'bg-card border-border hover:border-primary/60 hover:bg-secondary/40'
+                      }`}
+                    >
+                      <div>
+                        <div className="flex items-start justify-between gap-3 mb-3">
+                          <div className={`p-2.5 rounded-md border transition-colors ${
+                            isSelected
+                              ? 'bg-primary border-primary text-primary-foreground'
+                              : 'bg-secondary border-border text-primary group-hover:border-primary/40'
+                          }`}>
+                            <DynamicIcon name={option.iconName} className="w-5 h-5" />
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            {option.badge && (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-primary/20 text-primary border border-primary/40 uppercase">
+                                {option.badge}
+                              </span>
+                            )}
+                            <div className={`w-5 h-5 rounded flex items-center justify-center shrink-0 border transition-all ${
+                              isSelected
+                                ? 'bg-primary border-primary text-primary-foreground'
+                                : 'border-border bg-background group-hover:border-primary/60'
+                            }`}>
+                              {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                            </div>
+                          </div>
+                        </div>
+
+                        <h3 className={`text-sm font-bold transition-colors ${
+                          isSelected ? 'text-foreground' : 'text-foreground/90 group-hover:text-foreground'
+                        }`}>
+                          {option.title}
+                        </h3>
+
+                        <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
+                          {option.description}
+                        </p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* NEW SCREEN: ABOUT YOU */}
+            {stepId === 'about-you' && (
+              <div className="relative space-y-8 pt-2">
+                {/* Decorative background treatment -- dot-grid + soft glow orbs, same idiom as PersonasScreen */}
+                <div className="absolute inset-0 -z-10 overflow-hidden pointer-events-none rounded-2xl">
+                  <div className="absolute inset-0 bg-[radial-gradient(hsl(var(--primary))_1px,transparent_1px)] [background-size:22px_22px] opacity-[0.08]" />
+                  <div className="absolute -top-16 -left-10 w-72 h-72 rounded-full bg-primary/15 blur-3xl animate-pulse" />
+                  <div className="absolute -bottom-10 right-0 w-64 h-64 rounded-full bg-accent/15 blur-3xl animate-pulse" />
+                </div>
+
+                <div className="flex items-start gap-4">
+                  <div className="w-14 h-14 rounded-2xl bg-secondary/90 border border-primary/50 flex items-center justify-center shadow-[0_0_20px_rgba(0,120,212,0.35)] animate-pulse shrink-0">
+                    <User className="w-6 h-6 text-primary" />
+                  </div>
+                  <div>
+                    <h1 className="text-2xl sm:text-3xl font-bold text-foreground tracking-tight">
+                      {firstName ? `Hey, ${firstName}!` : 'About You'}
+                    </h1>
+                    <p className="text-sm text-muted-foreground mt-2 leading-relaxed max-w-2xl">
+                      A quick bit of context before we get into your organization's profile.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl">
+                  <div className="group relative p-5 rounded-lg border border-border bg-card space-y-2.5 overflow-hidden transition-colors hover:border-primary/50 focus-within:border-primary">
+                    <div className="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-transparent via-primary/60 to-transparent opacity-0 group-focus-within:opacity-100 transition-opacity" />
+                    <label className="flex items-center gap-2 text-xs font-bold text-foreground uppercase tracking-wide">
+                      <div className="p-1.5 rounded-md bg-secondary border border-border text-primary shrink-0">
+                        <User className="w-3.5 h-3.5" />
+                      </div>
+                      Your Role
+                    </label>
+                    <input
+                      type="text"
+                      value={role}
+                      onChange={(e) => setRole(e.target.value)}
+                      placeholder="e.g. M365 Architect"
+                      className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary"
+                    />
+                  </div>
+                  <div className="group relative p-5 rounded-lg border border-border bg-card space-y-2.5 overflow-hidden transition-colors hover:border-primary/50 focus-within:border-primary">
+                    <div className="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-transparent via-primary/60 to-transparent opacity-0 group-focus-within:opacity-100 transition-opacity" />
+                    <label className="flex items-center gap-2 text-xs font-bold text-foreground uppercase tracking-wide">
+                      <div className="p-1.5 rounded-md bg-secondary border border-border text-primary shrink-0">
+                        <Building2 className="w-3.5 h-3.5" />
+                      </div>
+                      Your Department
+                    </label>
+                    <input
+                      type="text"
+                      value={department}
+                      onChange={(e) => setDepartment(e.target.value)}
+                      placeholder="e.g. CIO"
+                      className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary"
+                    />
+                  </div>
+                  <div className="group relative p-5 rounded-lg border border-border bg-card space-y-2.5 overflow-hidden transition-colors hover:border-primary/50 focus-within:border-primary">
+                    <div className="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-transparent via-primary/60 to-transparent opacity-0 group-focus-within:opacity-100 transition-opacity" />
+                    <label className="flex items-center gap-2 text-xs font-bold text-foreground uppercase tracking-wide">
+                      <div className="p-1.5 rounded-md bg-secondary border border-border text-primary shrink-0">
+                        <Briefcase className="w-3.5 h-3.5" />
+                      </div>
+                      Company
+                    </label>
+                    <input
+                      type="text"
+                      value={company}
+                      onChange={(e) => setCompany(e.target.value)}
+                      placeholder="e.g. Acme Corporation"
+                      className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary"
+                    />
+                  </div>
+                  <div className="group relative p-5 rounded-lg border border-border bg-card space-y-2.5 overflow-hidden transition-colors hover:border-primary/50 focus-within:border-primary">
+                    <div className="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-transparent via-primary/60 to-transparent opacity-0 group-focus-within:opacity-100 transition-opacity" />
+                    <label className="flex items-center gap-2 text-xs font-bold text-foreground uppercase tracking-wide">
+                      <div className="p-1.5 rounded-md bg-secondary border border-border text-primary shrink-0">
+                        <Radio className="w-3.5 h-3.5" />
+                      </div>
+                      Phone
+                    </label>
+                    <input
+                      type="tel"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      placeholder="e.g. (555) 123-4567"
+                      className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* SCREEN: QUIZ COMPLETION SUMMARY */}
+            {stepId === 'review' && (
+              <div className="space-y-6 pt-2">
+                <div>
+                  <h1 className="text-2xl sm:text-3xl font-bold text-foreground tracking-tight">Quiz Complete</h1>
+                  <p className="text-sm text-muted-foreground mt-2 leading-relaxed max-w-2xl">
+                    Review your adaptive baseline inputs before running real-time tenant telemetry analysis.
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <div className="p-4 bg-card border border-border rounded-lg">
+                    <span className="text-[10px] uppercase font-mono text-muted-foreground block">Role / Department</span>
+                    <div className="text-sm font-bold text-foreground mt-1">
+                      {role || 'Not Provided'} / {department || 'Not Provided'}
+                    </div>
+                  </div>
+
+                  <div className="p-4 bg-card border border-border rounded-lg">
+                    <span className="text-[10px] uppercase font-mono text-muted-foreground block">Company / Phone</span>
+                    <div className="text-sm font-bold text-foreground mt-1">
+                      {company || 'Not Provided'} / {phone || 'Not Provided'}
+                    </div>
+                  </div>
+
+                  <div className="p-4 bg-card border border-border rounded-lg">
+                    <span className="text-[10px] uppercase font-mono text-muted-foreground block">Selected Industry</span>
+                    <div className="text-sm font-bold text-foreground mt-1 flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-primary"></span>
+                      {getReviewTitles('industry')}
+                    </div>
+                  </div>
+
+                  <div className="p-4 bg-card border border-border rounded-lg">
+                    <span className="text-[10px] uppercase font-mono text-muted-foreground block">Persona Clusters (Multi)</span>
+                    <div className="text-sm font-bold text-status-green mt-1">
+                      {getReviewTitles('clusters')}
+                    </div>
+                  </div>
+
+                  <div className="p-4 bg-card border border-border rounded-lg">
+                    <span className="text-[10px] uppercase font-mono text-muted-foreground block">Target Personas (Multi)</span>
+                    <div className="text-sm font-bold text-foreground mt-1">
+                      {getReviewTitles('personas')}
+                    </div>
+                  </div>
+
+                  <div className="p-4 bg-card border border-border rounded-lg">
+                    <span className="text-[10px] uppercase font-mono text-muted-foreground block">Use Case Clusters (Multi)</span>
+                    <div className="text-sm font-bold text-primary mt-1">
+                      {getReviewTitles('use-cases')}
+                    </div>
+                  </div>
+
+                  <div className="p-4 bg-card border border-border rounded-lg">
+                    <span className="text-[10px] uppercase font-mono text-muted-foreground block">Data Sensitivity / Risk Posture</span>
+                    <div className="text-sm font-bold text-status-amber mt-1">
+                      {getReviewTitles('sensitivity')}
+                    </div>
+                  </div>
+
+                  <div className="p-4 bg-card border border-border rounded-lg">
+                    <span className="text-[10px] uppercase font-mono text-muted-foreground block">Collaboration Pattern</span>
+                    <div className="text-sm font-bold text-foreground mt-1">
+                      {getReviewTitles('collaboration')}
+                    </div>
+                  </div>
+
+                  <div className="p-4 bg-card border border-border rounded-lg">
+                    <span className="text-[10px] uppercase font-mono text-muted-foreground block">Tool Usage (Multi)</span>
+                    <div className="text-sm font-bold text-primary mt-1">
+                      {getReviewTitles('tools')}
+                    </div>
+                  </div>
+
+                  <div className="p-4 bg-card border border-border rounded-lg">
+                    <span className="text-[10px] uppercase font-mono text-muted-foreground block">AI Comfort & Governance</span>
+                    <div className="text-sm font-bold text-status-green mt-1">
+                      {getReviewTitles('ai-comfort')}
+                    </div>
+                  </div>
+
+                  <div className="p-4 bg-card border border-border rounded-lg">
+                    <span className="text-[10px] uppercase font-mono text-muted-foreground block">Workflow Structure</span>
+                    <div className="text-sm font-bold text-foreground mt-1">
+                      {getReviewTitles('workflow')}
+                    </div>
+                  </div>
+
+                  <div className="p-4 bg-card border border-border rounded-lg">
+                    <span className="text-[10px] uppercase font-mono text-muted-foreground block">Adoption Friction & Speed</span>
+                    <div className="text-sm font-bold text-foreground mt-1">
+                      {getReviewTitles('adoption-speed')}
+                    </div>
+                  </div>
+
+                  <div className="p-4 bg-card border border-border rounded-lg">
+                    <span className="text-[10px] uppercase font-mono text-muted-foreground block">Outcome Priorities</span>
+                    <div className="text-sm font-bold text-foreground mt-1">
+                      {getReviewTitles('outcomes')}
+                    </div>
+                  </div>
+
+                  <div className="p-4 bg-card border border-border rounded-lg">
+                    <span className="text-[10px] uppercase font-mono text-muted-foreground block">Change Management</span>
+                    <div className="text-sm font-bold text-foreground mt-1">
+                      {getReviewTitles('change-mgmt')}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-5 bg-card border border-primary/40 rounded-lg flex flex-col sm:flex-row items-center justify-between gap-4">
+                  <div>
+                    <h3 className="text-sm font-bold text-foreground">Quiz Completed — Baseline Set</h3>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      All assessment parameters registered. Proceed to execute real-time tenant telemetry analysis.
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleCompleteQuiz}
+                    className="px-6 py-3 bg-primary hover:bg-primary/90 text-primary-foreground font-bold text-xs rounded-md shadow-lg shadow-primary/20 transition-all shrink-0 cursor-pointer flex items-center gap-2"
+                  >
+                    <span>Continue to Telemetry Analysis</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+          </div>
+
+          {/* Bottom Navigation Row -- docked footer bar, outside the scrolling
+              content region above so Back/Next stay visible on long steps. */}
+          <div className="shrink-0 border-t border-border bg-sidebar px-6 sm:px-8 py-4">
+            <div className="max-w-4xl mx-auto w-full flex items-center justify-between">
+              <button
+                onClick={handleBack}
+                disabled={activeStepIndex === 0}
+                className={`flex items-center space-x-2 px-4 py-2 rounded-md text-xs font-semibold transition-all ${
+                  activeStepIndex === 0
+                    ? 'opacity-40 cursor-not-allowed text-muted-foreground bg-background'
+                    : 'text-foreground bg-secondary hover:bg-secondary/80 border border-border cursor-pointer'
+                }`}
+              >
+                <ChevronLeft className="w-4 h-4" />
+                <span>Back</span>
+              </button>
+
+              {stepId !== 'review' ? (
+                <button
+                  onClick={handleNext}
+                  disabled={isNextDisabled()}
+                  className={`flex items-center space-x-2 px-6 py-2.5 rounded-md text-xs font-bold transition-all ${
+                    !isNextDisabled()
+                      ? 'bg-primary hover:bg-primary/90 text-primary-foreground shadow-md cursor-pointer'
+                      : 'opacity-50 cursor-not-allowed bg-secondary text-muted-foreground'
+                  }`}
+                >
+                  <span>{activeStepIndex === QUIZ_NAV_ITEMS.length - 2 ? 'Review Baseline' : 'Next'}</span>
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              ) : (
+                <button
+                  onClick={handleCompleteQuiz}
+                  className="flex items-center space-x-2 px-6 py-2.5 rounded-md text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground shadow-md cursor-pointer"
+                >
+                  <span>Continue to Telemetry Analysis</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          </div>
+        </main>
+
+        {/* RIGHT PANEL (Real-Time Context Scoring Panel) */}
+        {/* catalog passed through (#271) so the panel resolves the SAME titles
+            the tiles rendered — otherwise a use case Shane loaded by SQL would
+            show as a raw slug in the summary while reading correctly in the grid. */}
+        <ScoringPanel answers={answers} activeStepId={stepId} isReviewScreen={stepId === 'review'} role={role} department={department} company={company} phone={phone} catalog={catalog} />
+      </div>
+    </div>
+  );
+};

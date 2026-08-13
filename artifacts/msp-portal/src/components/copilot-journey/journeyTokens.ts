@@ -1,0 +1,604 @@
+/**
+ * journeyTokens.ts — the fixed colour, type and motion vocabulary for the
+ * Copilot Readiness journey (Reveal → Documents → SOW → Checkout).
+ *
+ * WHY LITERALS AND NOT CSS CUSTOM PROPERTIES
+ * ------------------------------------------
+ * The `Design/_ds` export ships a `tokens/colors.css` that declares the *same*
+ * token names this app already declares (`--background`, `--primary`, `--accent`,
+ * `--destructive`, …) but with the navy/Electric-Blue marketing values, on bare
+ * `:root`. Importing it would land those at equal specificity and later source
+ * order and silently repaint the entire portal navy — and it omits every
+ * `--status-*` token this app's components actually consume. So `_ds` is treated
+ * as reference documentation, not an importable stylesheet, and the values it
+ * resolves to are recorded here as literals instead.
+ *
+ * The second reason is that these four screens are full-bleed and theme-fixed by
+ * design: the Reveal, the SOW and the Checkout are dark on `#020617`; the
+ * Document Viewer is light on `#F7F9FC`. Reading ambient `hsl(var(--card-border))`
+ * would make each screen flip with the user's portal light/dark toggle, which is
+ * exactly what the handoff does not want — the Document Viewer is *deliberately*
+ * light against a navy sidebar whichever way the portal is set.
+ *
+ * This mirrors the precedent already set by the War Room port, which scopes its
+ * page-level rules onto `.wr-root` and writes its palette inline.
+ */
+
+/* ------------------------------------------------------------------ *
+ * Brand core — the values `Design/_ds/tokens/colors.css` resolves to.
+ * ------------------------------------------------------------------ */
+export const BRAND = {
+  navy: "#0A2540",
+  blue: "#0078D4",
+  blueStrong: "#005A9E",
+  teal: "#00B4D8",
+  offWhite: "#F7F9FC",
+  white: "#FFFFFF",
+  /** slate-950 — the dark canvas Screens 1, 3 and 4 sit on. */
+  canvas: "#020617",
+} as const;
+
+/**
+ * The delta treatment. Every projected/after value in the journey uses this
+ * gradient, and every delta figure uses `teal` — never a severity colour, because
+ * an improvement is not a severity.
+ */
+export const DELTA_GRADIENT = `linear-gradient(90deg,${BRAND.blue},${BRAND.teal})`;
+
+/* ------------------------------------------------------------------ *
+ * Pillar identity colours — FIXED. Never severity-driven.
+ *
+ * These say *what a finding is*. A Compliance score of 29 is red and a
+ * Compliance score of 90 is green; Compliance's own `#F3F4F6` plays no part in
+ * that. Keeping the two axes separate is the whole colour language of the
+ * handoff, and it is why `severityColor()` below takes a score and not a pillar.
+ *
+ * The keys match `WAR_ROOM_PILLAR_KEYS` (minus `copilot`, which is the centre of
+ * the composition rather than one of the six satellites), so a payload from
+ * `GET /api/portal/assessment/war-room-pillars` indexes straight into this map.
+ * ------------------------------------------------------------------ */
+export const PILLAR_KEYS = [
+  "governance",
+  "security",
+  "compliance",
+  "licensing",
+  "adoption",
+  "health",
+] as const;
+
+export type PillarKey = (typeof PILLAR_KEYS)[number];
+
+export interface PillarIdentity {
+  readonly key: PillarKey;
+  readonly label: string;
+  /** Identity colour — eyebrows, swatches, wedge fills, sparkline stroke. */
+  readonly primary: string;
+  /** Lighter partner, used where the primary would not hold on a light surface. */
+  readonly accent: string;
+}
+
+export const PILLARS: Readonly<Record<PillarKey, PillarIdentity>> = {
+  governance: { key: "governance", label: "Governance", primary: "#3B82F6", accent: "#60A5FA" },
+  security: { key: "security", label: "Security", primary: "#8B5CF6", accent: "#A78BFA" },
+  compliance: { key: "compliance", label: "Compliance", primary: "#F3F4F6", accent: "#D1D5DB" },
+  licensing: { key: "licensing", label: "Licensing", primary: "#14B8A6", accent: "#2DD4BF" },
+  adoption: { key: "adoption", label: "Adoption", primary: "#F97316", accent: "#FB923C" },
+  health: { key: "health", label: "Health", primary: "#22C55E", accent: "#4ADE80" },
+};
+
+/** Ordered identity list — the satellite order, clockwise from 12 o'clock. */
+export const PILLAR_ORDER: readonly PillarIdentity[] = PILLAR_KEYS.map((k) => PILLARS[k]);
+
+/**
+ * Single-path glyphs for each pillar, plus the Copilot sparkle that stands for
+ * the roll-up report. Verbatim from the design project's own `scraps/
+ * pillar-icons.json`, which is where the prototype keeps them — so the header
+ * strip, the switcher rows and the report eyebrows all draw the same mark.
+ *
+ * One `<path d>` each, sized for a 24×24 viewBox with round caps and joins.
+ */
+export const PILLAR_ICON_PATHS: Readonly<Record<PillarKey | "copilot", string>> = {
+  governance:
+    "M16 16l3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1zM2 16l3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1zM12 3v18M7 21h5M9 6h6M3 10h4M17 10h4",
+  security:
+    "M20 13c0 5-3.5 7.5-7.7 9a1 1 0 0 1-.6 0C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.2-2.7a1 1 0 0 1 1.3 0C14.3 3.8 16.8 5 18.8 5a1 1 0 0 1 1 1z",
+  compliance:
+    "M16 16l3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1zM2 16l3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1zM7 21h10M12 3v18M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2",
+  licensing:
+    "M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76zM16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8M12 18V6",
+  adoption: "M18 21a8 8 0 0 0-16 0M10 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10M22 20c0-3.37-2-6.5-4-8a5 5 0 0 0-.45-8.3",
+  health:
+    "M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2",
+  copilot:
+    "M12 3l1.7 4.4L18 9l-4.3 1.6L12 15l-1.7-4.4L6 9l4.3-1.6zM18.5 15.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z",
+};
+
+/**
+ * The per-report accent: what tints the reading pane's ambient glow, the 3px
+ * band across the top of the reading card, and the eyebrow's icon.
+ *
+ * `null` is the roll-up Copilot Readiness report — it belongs to no single
+ * pillar, so it takes the journey's own blue→teal rather than borrowing one
+ * pillar's identity and implying the report is about that pillar.
+ */
+export interface ReportAccent {
+  readonly colour: string;
+  readonly band: string;
+  readonly glow: string;
+  readonly icon: string;
+}
+
+/**
+ * The full-spectrum treatment the three multi-pillar documents share — the
+ * roll-up report, the remediation guide and the statement of work. The design is
+ * explicit about why: they span all six pillars, so they take the Copilot
+ * identity "rather than a seventh invented colour".
+ */
+const SPECTRUM_BAND = "linear-gradient(90deg,#3B82F6,#8B5CF6,#22D3EE,#F3F4F6)";
+
+/**
+ * Per-document ambient glow, verbatim from the design's own `GLOWS` table rather
+ * than computed from the pillar colour at a fixed alpha.
+ *
+ * They are hand-tuned and not interchangeable: Compliance's near-white gets a
+ * cooler, lower-opacity two-stop mix so it reads as light rather than as a
+ * washed-out grey, and Adoption's orange is pulled down to .26 where the others
+ * sit at .28–.30. A derived `colour @ 16%` looked plausible and was wrong on
+ * every one of them.
+ */
+const PILLAR_GLOWS: Readonly<Record<PillarKey, string>> = {
+  governance: "radial-gradient(closest-side, rgba(59,130,246,.30), rgba(2,6,23,0) 100%)",
+  security: "radial-gradient(closest-side, rgba(139,92,246,.30), rgba(2,6,23,0) 100%)",
+  compliance:
+    "radial-gradient(closest-side, rgba(226,232,240,.22), rgba(148,163,184,.12) 58%, rgba(2,6,23,0) 100%)",
+  licensing: "radial-gradient(closest-side, rgba(20,184,166,.30), rgba(2,6,23,0) 100%)",
+  adoption: "radial-gradient(closest-side, rgba(249,115,22,.26), rgba(2,6,23,0) 100%)",
+  health: "radial-gradient(closest-side, rgba(34,197,94,.28), rgba(2,6,23,0) 100%)",
+};
+
+const SPECTRUM_GLOW =
+  "radial-gradient(closest-side, rgba(59,130,246,.30), rgba(139,92,246,.20) 46%, rgba(34,211,238,.14) 70%, rgba(2,6,23,0) 100%)";
+
+export function reportAccent(pillar: PillarKey | null): ReportAccent {
+  if (pillar === null) {
+    return {
+      // Teal for the icon stroke, because a gradient cannot stroke an SVG path —
+      // the design's own `ICON_COLORS` makes the same substitution.
+      colour: BRAND.teal,
+      band: SPECTRUM_BAND,
+      glow: SPECTRUM_GLOW,
+      icon: PILLAR_ICON_PATHS.copilot,
+    };
+  }
+  const identity = PILLARS[pillar];
+  return {
+    colour: identity.primary,
+    band: `linear-gradient(90deg,${identity.primary},${identity.accent})`,
+    glow: PILLAR_GLOWS[pillar],
+    icon: PILLAR_ICON_PATHS[pillar],
+  };
+}
+
+/** `#RRGGBB` + alpha → `rgba(...)`. The identity colours are all six-digit hex. */
+export function hexAlpha(hex: string, alpha: number): string {
+  const n = Number.parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
+}
+
+/**
+ * The Copilot identity mark at the centre. A constant blue → violet → cyan →
+ * white spectrum: it never changes with the score, because identity is constant
+ * and severity is what tells the truth.
+ */
+export const COPILOT_ORB_CONIC =
+  "conic-gradient(from 0deg,#3B82F6,#8B5CF6,#22D3EE,#F3F4F6,#8B5CF6,#3B82F6)";
+
+/* ------------------------------------------------------------------ *
+ * Severity — UNIVERSAL. Never pillar-driven.
+ * ------------------------------------------------------------------ */
+export type Severity = "critical" | "attention" | "healthy";
+
+export const SEVERITY_ON_DARK: Readonly<Record<Severity, string>> = {
+  critical: "#f87171",
+  attention: "#fbbf24",
+  healthy: "#34d399",
+};
+
+export const SEVERITY_ON_LIGHT: Readonly<Record<Severity, string>> = {
+  critical: "#dc2626",
+  attention: "#d97706",
+  healthy: "#15803d",
+};
+
+export const SEVERITY_LABEL: Readonly<Record<Severity, string>> = {
+  critical: "Critical",
+  attention: "Attention required",
+  healthy: "Healthy",
+};
+
+/**
+ * Score → severity band. The thresholds are the summary rail's own
+ * (`green >= 60`, `amber >= 50`, red below), applied everywhere so a pillar
+ * scoring 57 is amber on the Reveal, amber in the report and amber in the SOW
+ * rather than three different colours for one number.
+ *
+ * `null` (a pillar with no evaluable rule feeding it) is deliberately NOT mapped
+ * onto a severity — callers must render an unavailable state instead, never
+ * a red 0.
+ */
+export function severityForScore(score: number): Severity {
+  if (score >= 60) return "healthy";
+  if (score >= 50) return "attention";
+  return "critical";
+}
+
+export function severityColor(score: number, surface: "dark" | "light" = "dark"): string {
+  const band = severityForScore(score);
+  return surface === "dark" ? SEVERITY_ON_DARK[band] : SEVERITY_ON_LIGHT[band];
+}
+
+/* ------------------------------------------------------------------ *
+ * The Copilot Gate
+ * ------------------------------------------------------------------ */
+
+/**
+ * The score a tenant has to reach before Copilot is safe to turn on — the real
+ * Copilot Gate, confirmed by Shane (#359). At or above 82 = Go. Below 82 =
+ * No-Go. The boundary case was raised explicitly and answered explicitly: 82
+ * itself is a Go.
+ *
+ * THIS IS THE ONLY GATE NUMBER IN THE JOURNEY. It was 60 until #359, for a
+ * reason that has now been resolved rather than abandoned: the chrome could not
+ * be allowed to compute a gate at 82 while `verdictLabel()` called the same
+ * score "cleared for rollout" at 60 — two verdicts on one number. The fix is
+ * that both now read this constant, so the Reveal's verdict, the Document
+ * Viewer's gate chip and rail, and the SOW's projected-score line state one
+ * thing about one tenant. `StatementOfWorkBody`'s own `SOW_GATE_TARGET` — the
+ * one place already carrying 82 — was folded into this too.
+ *
+ * Distinct from `severityForScore` on purpose, and the two are NOT in conflict:
+ * severity is the design's colour banding for any score (green >= 60, amber
+ * >= 50, red below), applied to pillar scores and projections alike; the Gate is
+ * a single Go/No-Go on the Copilot pillar. A tenant at 70 is legitimately a
+ * green number that has not cleared the Gate, and the copy says exactly that.
+ *
+ * Server-side mirror: `copilot-gate.ts`'s `COPILOT_GATE_THRESHOLD`. The two apps
+ * cannot import across each other, so each side asserts the value in its own
+ * test.
+ */
+export const COPILOT_GATE_TARGET = 82;
+
+/** "Not safe yet" / "Safe to deploy" — the revised design's wording for the gate. */
+export function gateLabel(score: number): string {
+  return score >= COPILOT_GATE_TARGET ? "Safe to deploy" : "Not safe yet";
+}
+
+/* ------------------------------------------------------------------ *
+ * Neutrals
+ * ------------------------------------------------------------------ */
+export const INK = {
+  /** Headings on dark. */
+  headingDark: "#f8fafc",
+  /** Body on dark. */
+  bodyDark: "#94a3b8",
+  /** Slightly brighter body, used for the verdict line and scan status. */
+  bodyDarkStrong: "#cbd5e1",
+  /** Micro-labels / eyebrows. */
+  micro: "#64748b",
+  /** De-emphasised numerals — the "before" half of a before → after pair. */
+  deemphasised: "#475569",
+  /** Hairline borders on dark. */
+  hairlineDark: "rgba(30,41,59,.9)",
+  /** Borders on light. */
+  borderLight: "#e7ebf0",
+  /** Body on light. */
+  bodyLight: "#3d5875",
+  /** Link blue, both surfaces. */
+  link: "#60a5fa",
+  linkHover: "#93c5fd",
+} as const;
+
+/**
+ * Text on the navy chrome — the Document Viewer's sidebar.
+ *
+ * The design writes these as `color-mix(in oklab, hsl(var(--sidebar-foreground))
+ * N%, var(--brand-navy))` at five percentages. Those are resolved to sRGB
+ * literals here for the same reason the rest of this module is literal: the
+ * `--sidebar-foreground` those expressions read is the `_ds` export's value,
+ * not this app's, so evaluating them live against the portal's own token would
+ * mix toward the wrong colour entirely.
+ */
+export const INK_ON_NAVY = {
+  /** 48% — the de-emphasised "/ 100" beside the rail's gate score. */
+  faint: "#5b7186",
+  /** 58% — eyebrows, metadata, the credibility line. */
+  muted: "#6b8096",
+  /** 70% — body copy on navy. */
+  body: "#8496a8",
+  /** 84% — inactive switcher rows. */
+  strong: "#a3b1bf",
+  /** 88% — the "Asking about" context line. */
+  strongest: "#adbac6",
+} as const;
+
+/* ------------------------------------------------------------------ *
+ * Radii — 6px inputs/buttons · 10–14px cards · 16px emphasis panels ·
+ * 999px pills · 11px icon tiles.
+ * ------------------------------------------------------------------ */
+export const RADIUS = {
+  control: 6,
+  card: 10,
+  cardLarge: 14,
+  panel: 16,
+  pill: 999,
+  iconTile: 11,
+} as const;
+
+/* ------------------------------------------------------------------ *
+ * Motion. 150–260ms for state transitions; no bounces anywhere except the
+ * deliberate weighted landing on a critical pillar's count-up.
+ * ------------------------------------------------------------------ */
+export const MOTION = {
+  /** Scene-0 radar sheen sweep. */
+  radarSheenMs: 9000,
+  /** Scene-1 verdict count-up + ring settle. */
+  verdictMs: 2600,
+  /* The design's ShaneBot expand timings (220ms opacity / 260ms transform on
+     `cubic-bezier(.2,.8,.2,1)`) lived here. ShaneBot is removed for this
+     release and they had no other consumer. */
+  /** Generic state transition band. */
+  stateMinMs: 150,
+  stateMaxMs: 260,
+  /** Checkout kickoff rise. */
+  kickoffMs: 520,
+  /** Document-switcher "still generating" pulse. */
+  genPulseMs: 1600,
+} as const;
+
+/**
+ * Numerals are tabular everywhere in this journey — a count-up that reflows its
+ * own width reads as broken.
+ */
+export const TABULAR = { fontVariantNumeric: "tabular-nums" } as const;
+
+/**
+ * The nine documents **as the design names them**, in generation order.
+ *
+ * This is the prototype's own list, NOT the platform's document catalogue —
+ * the design's earlier 9-title revision was checked against `document_types`
+ * and found 3 titles with no seeded type behind them; this revised 8-title
+ * list has not been re-checked against the live catalogue (no DB access in
+ * this environment), so the same caveat applies until it is. So this is
+ * reference copy for the design preview only.
+ *
+ * #643: this list — the titles, not this constant itself — is now also what
+ * the LIVE nav's `buildGeneration()` (`journeyModel.ts`'s
+ * `JOURNEY_LIVE_DOCUMENT_SPINE`) renders from, real docTypes attached. That
+ * used to be forbidden here on the strength of a caveat that no longer holds:
+ * every one of these nine now genuinely renders, live, from the tenant's own
+ * scan data — none of them is a name the platform cannot produce. See
+ * `buildGeneration`'s own comment for the confirmed bug this closed.
+ */
+export const JOURNEY_DESIGN_DOCUMENTS = [
+  "Copilot Readiness, Safety & Enablement Report",
+  "Microsoft 365 Security Posture & Blast Radius Report",
+  "Microsoft 365 Governance Posture Report",
+  "Microsoft 365 Compliance & Regulatory Alignment Report",
+  "Copilot Licensing Alignment Report",
+  "Copilot Adoption & Workflow Readiness Report",
+  "Microsoft 365 Operational Health & Service Integrity Report",
+  "Full Remediation Guide — Copilot Gate Clearance Plan",
+  "Statement of Work — Copilot Gate Clearance",
+] as const;
+
+/**
+ * The two documents that are not reports. They render their own bodies rather
+ * than a `ReportSection[]`, and the customer acts on both: the guide's steps get
+ * ticked off, the SOW's phases get switched in and out of scope before signing.
+ */
+export const JOURNEY_REMEDIATION_DOCUMENT = "Full Remediation Guide — Copilot Gate Clearance Plan";
+export const JOURNEY_SOW_DOCUMENT = "Statement of Work — Copilot Gate Clearance";
+
+/**
+ * `document_types.key` for the Remediation Guide — the real seeded catalogue
+ * key (`lib/db/migrations/manual/2026-07-20-document-types.sql`, label
+ * "Remediation Plan"). Lives beside `JOURNEY_REMEDIATION_DOCUMENT` rather than
+ * in `JOURNEY_LIVE_DOCUMENTS` for the same reason `SOW_DOC_TYPE` lives in
+ * `sowLiveScope.ts` rather than that registry: the guide is interactive
+ * (tickable steps, `onOpenSow`), not a `(props: { view }) => ReactElement`
+ * the registry's `LIVE_BODY` shape can hold — see `DocumentBody`'s own
+ * title-matched branch for it (#472). #643's hardcoded spine
+ * (`journeyModel.ts`'s `JOURNEY_LIVE_DOCUMENT_SPINE`) is what actually uses
+ * this key.
+ */
+export const JOURNEY_REMEDIATION_DOC_TYPE = "remediation_plan";
+
+/* ------------------------------------------------------------------ *
+ * The live-rendered documents — the "new pattern" registry (#343)
+ * ------------------------------------------------------------------ */
+
+/**
+ * One document the viewer renders from the tenant's own live scan data rather
+ * than from the platform's generated HTML (#409).
+ *
+ * MATCHED ON `docType`, NOT TITLE. `document_types` is the real catalogue and
+ * each `docType` below is a real seeded key (see
+ * `lib/db/migrations/manual/2026-07-20-document-types.sql`). A title alone is
+ * admin-editable free text on the service's `associated_documents` in the
+ * surfaces that still read that column, so matching on it would silently stop
+ * working the first time somebody renames a deliverable there — `docType` is
+ * the stable key `journeyModel.ts`'s `JOURNEY_LIVE_DOCUMENT_SPINE` (#643) is
+ * built from too, for the same reason.
+ *
+ * The design's own title is accepted as a SECOND key purely so a document set
+ * that names a report the design's way still resolves. It is deliberately an
+ * exact match, not a substring one: a loose match here would hijack the live
+ * rendering of some other report that happens to share a word.
+ *
+ * `key` is this journey's OWN stable discriminator, not a catalogue column. It
+ * is what a renderer switches on to pick a body component, so a `docType`
+ * rename in the catalogue is a one-line change to the entry below rather than a
+ * change to every consumer.
+ */
+export interface JourneyLiveDocument {
+  readonly key: JourneyLiveDocumentKey;
+  /** `document_types.key` — the real catalogue key, and the primary match. */
+  readonly docType: string;
+  /** The design's own title, accepted as an exact-match second key. */
+  readonly title: string;
+}
+
+export type JourneyLiveDocumentKey =
+  | "copilotReadiness"
+  | "securityPosture"
+  | "governancePosture"
+  | "complianceAlignment"
+  | "licensingAlignment"
+  | "adoption"
+  | "operationalHealth";
+
+/**
+ * Every document on the new pattern, in the order they lead a document set.
+ *
+ * ── WHY THIS IS A REGISTRY AND NOT A PREDICATE PER DOCUMENT (#343) ───────────
+ * The gate this backs — "is this document rendered live, so the old async
+ * generation pipeline's expected/generated bookkeeping is not a question about
+ * it" — was a hardcoded `isCopilotReadinessReport(doc)` at three real call
+ * sites. That was correct while exactly one document was on the pattern and
+ * silently wrong the moment a second one arrived: every one of those sites
+ * would have kept gating the new document on a generation run that does not
+ * exist for it, showing a spinner or a "not available yet" over a report that
+ * is complete.
+ *
+ * Registering a document here is therefore the ONLY thing a port has to do to
+ * the gate. `DocumentBody`, `RevealFullPicture` and `withLiveDocuments` read
+ * this list rather than naming any document, so they behave identically with
+ * one entry or five.
+ */
+export const JOURNEY_LIVE_DOCUMENTS: readonly JourneyLiveDocument[] = [
+  {
+    key: "copilotReadiness",
+    docType: "copilot_readiness",
+    title: "Copilot Readiness, Safety & Enablement Report",
+  },
+  // #343. `security_posture_report` is the real seeded `document_types` key
+  // (label "Security Posture Report", sort_order 30, in the same manual
+  // migration as `copilot_readiness`); the title is the design's own.
+  {
+    key: "securityPosture",
+    docType: "security_posture_report",
+    title: "Microsoft 365 Security Posture & Blast Radius Report",
+  },
+  // ── #292, the four pillar reports ──────────────────────────────────────────
+  //
+  // TWO OF THESE REUSE A SEEDED KEY AND TWO MINT ONE, and which is which was a
+  // lookup rather than a preference. `2026-07-20-document-types.sql` seeds six
+  // report types; `governance_maturity_report` (label "Governance Maturity
+  // Report", sort_order 40) and `license_optimization_report` ("License
+  // Optimization Report", sort_order 60) are the same deliverable as the
+  // design's Governance Posture and Copilot Licensing Alignment reports under
+  // the catalogue's own names, so they are reused exactly as #343 reused
+  // `security_posture_report` rather than minting a duplicate beside them.
+  //
+  // The catalogue has NO compliance or operational-health report type. Those two
+  // keys are new and are seeded by
+  // `lib/db/migrations/manual/2026-08-06-document-types-live-reports-292.sql`,
+  // for Shane to run. Registering them here does not depend on that SQL having
+  // run: `liveDocumentFor` matches `docType` OR the design's exact title, so a
+  // document set that names either report the design's way resolves today, and
+  // the seeded key is what keeps it resolving after an admin renames the title.
+  {
+    key: "governancePosture",
+    docType: "governance_maturity_report",
+    title: "Microsoft 365 Governance Posture Report",
+  },
+  {
+    key: "complianceAlignment",
+    docType: "compliance_alignment_report",
+    title: "Microsoft 365 Compliance & Regulatory Alignment Report",
+  },
+  {
+    key: "licensingAlignment",
+    docType: "license_optimization_report",
+    title: "Copilot Licensing Alignment Report",
+  },
+  // The Adoption report. Placed HERE rather than appended, because this list is
+  // ordered "as they lead a document set" and `JOURNEY_DESIGN_DOCUMENTS` puts
+  // Adoption between Licensing and Operational Health — appending it would have
+  // reordered a customer's document spine to match the order the reports
+  // happened to be built in.
+  //
+  // It was deliberately absent while every live report was assumed to need a
+  // stat table, because the adoption pillar carries ZERO real stats —
+  // `WAR_ROOM_PILLAR_STAT_SPECS.adoption` is an empty array, and its own note
+  // says why: the four figures it used to claim named `usage:*` keys that #441
+  // established are not a check-key domain in this catalog at all, and the
+  // nearest real checks are per-user and per-site Graph detail endpoints that
+  // would render the licensed roster under a caption reading "active users".
+  //
+  // That gap has not closed and is not worked around. What changed is the
+  // reading of it: a report with a real score, real findings from six real
+  // `adoption:*` checks, a real Gate row and three gaps declared to the reader
+  // in words is a SHORTER report, not a fabricated one — the same trade every
+  // report in this set already makes for its own missing figures. The empty
+  // stat array is now stated to the customer rather than used as a reason to
+  // withhold the findings the platform genuinely holds. See `pillarAdoption.ts`
+  // for what it drops from the design and why.
+  //
+  // `adoption_report` is a NEW catalogue key, seeded by
+  // `lib/db/migrations/manual/2026-08-08-document-types-adoption-report.sql`,
+  // for Shane to run. Registering it here does not depend on that SQL having
+  // run: `liveDocumentFor` matches `docType` OR the design's exact title.
+  {
+    key: "adoption",
+    docType: "adoption_report",
+    title: "Copilot Adoption & Workflow Readiness Report",
+  },
+  {
+    key: "operationalHealth",
+    docType: "operational_health_report",
+    title: "Microsoft 365 Operational Health & Service Integrity Report",
+  },
+];
+
+/**
+ * The registry entry for a document, or null when it is still on the old
+ * generated-HTML pattern.
+ *
+ * Returns the ENTRY rather than a boolean so a renderer gets the discriminator
+ * it needs from the same lookup that answered the gate — two separate calls
+ * could disagree about the same document.
+ */
+export function liveDocumentFor(
+  doc: { readonly title: string; readonly docType: string } | null | undefined,
+): JourneyLiveDocument | null {
+  if (!doc) return null;
+  return (
+    JOURNEY_LIVE_DOCUMENTS.find((d) => d.docType === doc.docType || d.title === doc.title) ?? null
+  );
+}
+
+/** True when this document renders from the tenant's own scan data (#409, #343). */
+export function isLiveRenderedDocument(
+  doc: { readonly title: string; readonly docType: string } | null | undefined,
+): boolean {
+  return liveDocumentFor(doc) !== null;
+}
+
+/**
+ * The roll-up readiness report's own catalogue key and design title.
+ *
+ * Read off the registry rather than declared beside it, so there is exactly one
+ * place either string is written down and a future rename cannot leave the two
+ * disagreeing.
+ */
+const READINESS_ENTRY = JOURNEY_LIVE_DOCUMENTS.find((d) => d.key === "copilotReadiness")!;
+export const JOURNEY_READINESS_DOC_TYPE = READINESS_ENTRY.docType;
+export const JOURNEY_READINESS_DOCUMENT = READINESS_ENTRY.title;
+
+/** The Security Posture & Blast Radius report's catalogue key and design title (#343). */
+const SECURITY_POSTURE_ENTRY = JOURNEY_LIVE_DOCUMENTS.find((d) => d.key === "securityPosture")!;
+export const JOURNEY_SECURITY_POSTURE_DOC_TYPE = SECURITY_POSTURE_ENTRY.docType;
+export const JOURNEY_SECURITY_POSTURE_DOCUMENT = SECURITY_POSTURE_ENTRY.title;
+
+export const JOURNEY_DESIGN_DOCUMENT_COUNT = JOURNEY_DESIGN_DOCUMENTS.length;

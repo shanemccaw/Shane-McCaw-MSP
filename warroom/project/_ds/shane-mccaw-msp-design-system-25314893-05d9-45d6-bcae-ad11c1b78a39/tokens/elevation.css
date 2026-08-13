@@ -1,0 +1,26 @@
+/* ============================================================
+   ELEVATION TOKENS — Shane McCaw MSP
+   Two shadow families:
+   1. Neutral navy-tinted shadows (portal/app light surfaces).
+   2. Colored blue "glow" shadows for marketing CTAs on dark.
+   ============================================================ */
+:root {
+  /* Neutral navy-tinted (light surfaces) */
+  --shadow-2xs: 0px 1px 2px 0px rgba(10,37,64,.06);
+  --shadow-xs:  0px 1px 3px 0px rgba(10,37,64,.08);
+  --shadow-sm:  0px 1px 2px 0px rgba(10,37,64,.05), 0px 2px 4px -1px rgba(10,37,64,.05);
+  --shadow:     0px 1px 3px 0px rgba(10,37,64,.08), 0px 4px 6px -2px rgba(10,37,64,.05);
+  --shadow-md:  0px 4px 6px -1px rgba(10,37,64,.08), 0px 2px 4px -2px rgba(10,37,64,.05);
+  --shadow-lg:  0px 10px 15px -3px rgba(10,37,64,.08), 0px 4px 6px -4px rgba(10,37,64,.05);
+  --shadow-xl:  0px 20px 25px -5px rgba(10,37,64,.10), 0px 8px 10px -6px rgba(10,37,64,.05);
+  --shadow-2xl: 0px 25px 50px -12px rgba(10,37,64,.20);
+
+  /* Dark-surface shadows (dashboards, marketing cards) */
+  --shadow-dark-md: 0px 4px 6px -1px rgba(0,0,0,.35), 0px 2px 4px -2px rgba(0,0,0,.25);
+  --shadow-dark-lg: 0px 10px 15px -3px rgba(0,0,0,.35), 0px 4px 6px -4px rgba(0,0,0,.25);
+
+  /* Colored "glow" — primary-blue CTA emphasis */
+  --glow-blue: 0px 8px 24px -6px rgba(37,99,235,.40);
+  --glow-blue-sm: 0px 4px 12px -4px rgba(37,99,235,.30);
+  --glow-teal: 0px 8px 24px -6px rgba(0,180,216,.35);
+}

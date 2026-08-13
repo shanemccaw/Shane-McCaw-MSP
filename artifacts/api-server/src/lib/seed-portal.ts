@@ -1,0 +1,803 @@
+import bcrypt from "bcryptjs";
+import {
+  db, usersTable, servicesTable, projectsTable, clientServicesTable,
+  workflowStepsTable, kanbanTasksTable, invoicesTable, notificationsTable, projectUpdatesTable,
+  workflowTemplatesTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable,
+} from "@workspace/db";
+import { eq, isNull, and } from "drizzle-orm";
+
+/**
+ * Seeds the "M365 Onboarding Workflow" template and the "M365 Health Check Project"
+ * project template (linked to the M365 Health Check service).
+ *
+ * These templates power the auto-project generation hook in portal.ts:
+ * when an admin activates the M365 Health Check service for a client,
+ * a project is automatically created and 7 workflow steps are seeded
+ * from these template tasks.
+ *
+ * Idempotent — no-op if the workflow template already exists.
+ */
+export async function seedServiceTemplates(): Promise<void> {
+  const [existing] = await db
+    .select()
+    .from(workflowTemplatesTable)
+    .where(eq(workflowTemplatesTable.name, "M365 Onboarding Workflow"))
+    .limit(1);
+  if (existing) return;
+
+  // Look up the M365 Health Check service
+  const [m365Service] = await db
+    .select()
+    .from(servicesTable)
+    .where(eq(servicesTable.slug, "m365-health-check"))
+    .limit(1);
+
+  if (!m365Service) return;
+
+  // 1. Create the workflow template
+  const [wfTemplate] = await db
+    .insert(workflowTemplatesTable)
+    .values({
+      name: "M365 Onboarding Workflow",
+      description: "Standard onboarding workflow for Microsoft 365 consulting engagements",
+      serviceId: m365Service.id,
+    })
+    .returning();
+
+  // 2. Seed the workflow steps
+  const wfSteps = await db.insert(workflowTemplateStepsTable).values([
+    { workflowTemplateId: wfTemplate.id, title: "Discovery & Kickoff Call", description: "Align on scope, goals, and success criteria. Gather access credentials and key stakeholder contacts.", order: 0 },
+    { workflowTemplateId: wfTemplate.id, title: "Environment Assessment", description: "Audit current M365 tenant configuration, license assignments, security posture, and usage patterns.", order: 1 },
+    { workflowTemplateId: wfTemplate.id, title: "Findings & Gap Analysis", description: "Document identified gaps, risks, and opportunities. Prepare a prioritised findings report.", order: 2 },
+    { workflowTemplateId: wfTemplate.id, title: "Recommendations Review", description: "Walk through findings with the client team. Agree on priority areas and implementation roadmap.", order: 3 },
+    { workflowTemplateId: wfTemplate.id, title: "Implementation & Delivery", description: "Execute agreed-upon changes and configurations in the M365 environment.", order: 4 },
+    { workflowTemplateId: wfTemplate.id, title: "Handoff & Documentation", description: "Deliver final documentation, admin guides, and training resources. Sign off on deliverables.", order: 5 },
+  ]).returning();
+
+  // 3. Seed step tasks for the first step (Discovery & Kickoff Call)
+  const firstStep = wfSteps[0];
+  if (firstStep) {
+    await db.insert(workflowTemplateStepTasksTable).values([
+      { workflowTemplateStepId: firstStep.id, title: "Discovery & Kickoff Call", description: "Align on scope, goals, and key contacts. Confirm access requirements and define success criteria.", order: 0, groupName: "Engineer Tasks" },
+      { workflowTemplateStepId: firstStep.id, title: "M365 Tenant Access & Setup", description: "Grant Shane read-only admin access. Configure audit logging and export settings for the review.", order: 1, groupName: "Client Deliverables" },
+    ]);
+  }
+
+}
+
+export async function seedMarketingServices(): Promise<void> {
+  const { sql: sqlTag, inArray } = await import("drizzle-orm");
+
+  // Fix stale records that were mis-categorised as "service_area" in an earlier seed
+  // run but don't have dedicated /services/* sub-pages. Reclassify them as "retainer"
+  // and point their pageHref at the pricing page where they actually live.
+  // This is a safe UPDATE — it only touches existing rows, never inserts.
+  const staleSlugs = ["architect-essentials", "architect-growth", "architect-enterprise", "fractional-m365-architect-retainer"];
+  await db
+    .update(servicesTable)
+    .set({ serviceType: "retainer", pageHref: "/pricing" })
+    .where(and(inArray(servicesTable.slug, staleSlugs), isNull(servicesTable.pageHref)));
+
+  // Guard: if any of our canonical seed slugs already exist, this environment was
+  // previously seeded. Respect admin deletions — never re-insert a service that
+  // was deliberately removed. Only insert on a completely fresh environment.
+  const sentinelSlugs = [
+    "m365-tenant-health-audit", "service-area-m365", "architect-essentials",
+  ];
+  const existingRows = await db
+    .select({ slug: servicesTable.slug })
+    .from(servicesTable)
+    .where(inArray(servicesTable.slug, sentinelSlugs));
+  const alreadySeeded = existingRows.length > 0;
+
+  if (alreadySeeded) {
+    // Only run the safe pageHref/pageSlug sync — no new rows created.
+    // Jump straight to the sync block below.
+    const microOfferPageHrefs: Array<{ slug: string; pageHref: string; pageSlug: string }> = [
+      { slug: "m365-tenant-health-audit",              pageHref: "/quick-wins/tenant-health-audit",            pageSlug: "tenant-health-audit" },
+      { slug: "migration-readiness-assessment",         pageHref: "/quick-wins/migration-readiness-assessment", pageSlug: "migration-readiness-assessment" },
+      { slug: "power-platform-quickstart",              pageHref: "/quick-wins/power-platform-quick-start",     pageSlug: "power-platform-quick-start" },
+      { slug: "copilot-for-m365-readiness-assessment",  pageHref: "/quick-wins/copilot-readiness-assessment",  pageSlug: "copilot-readiness-assessment" },
+      { slug: "governance-foundations-package",          pageHref: "/quick-wins/governance-foundations",        pageSlug: "governance-foundations" },
+      { slug: "microsoft-365-training--enablement",     pageHref: "/quick-wins/m365-training-enablement",      pageSlug: "m365-training-enablement" },
+    ];
+    for (const { slug, pageHref, pageSlug } of microOfferPageHrefs) {
+      await db.update(servicesTable).set({ pageHref, pageSlug }).where(and(eq(servicesTable.slug, slug), isNull(servicesTable.pageHref)));
+    }
+
+    // Backfill fulfillmentTypeKey on any retainer rows that are missing it.
+    // Safe to run repeatedly — only touches rows with a null fulfillmentTypeKey.
+    await db
+      .update(servicesTable)
+      .set({ fulfillmentTypeKey: "retainer" })
+      .where(and(eq(servicesTable.serviceType, "retainer"), isNull(servicesTable.fulfillmentTypeKey)));
+
+    // Backfill fulfillmentTypeKey on any MSP platform tier rows that are missing it.
+    await db
+      .update(servicesTable)
+      .set({ fulfillmentTypeKey: "msp_monthly_subscription" })
+      .where(and(eq(servicesTable.fulfillmentType, "msp_monthly_subscription"), isNull(servicesTable.fulfillmentTypeKey)));
+
+    // Backfill fulfillmentTypeKey on any monitoring tier rows that are missing it.
+    await db
+      .update(servicesTable)
+      .set({ fulfillmentTypeKey: "monitoring_subscription" })
+      .where(and(eq(servicesTable.serviceType, "monitoring_tier"), isNull(servicesTable.fulfillmentTypeKey)));
+
+    void sqlTag;
+    return;
+  }
+
+  // ── First-time setup only: seed the canonical service catalogue ──────────────
+  // Ensure the 6 primary micro-offer services exist in every environment.
+  // These were originally created via the admin panel in dev; production never
+  // ran seedPortalDemo so they were missing there.
+  // Uses ON CONFLICT DO NOTHING so admin-panel edits to price/description are preserved.
+  const primaryMicroOffers: Array<typeof servicesTable.$inferInsert> = [
+    {
+      slug: "m365-tenant-health-audit",
+      name: "M365 Tenant Health Audit",
+      serviceType: "micro_offer",
+      billingType: "one_time",
+      basePrice: "4500.00",
+      maxPrice: "7500.00",
+      tagline: "Know exactly what's wrong — and what it will cost if you don't fix it.",
+      description: "A comprehensive NASA‑methodology assessment of your Microsoft 365 tenant, covering configuration, identity, access, licensing, security posture, compliance gaps, Teams/SharePoint architecture, and governance maturity.",
+      category: "Microsoft 365",
+      badge: "High Impact",
+      highlighted: true,
+      turnaround: "2 weeks",
+      targetAudience: "Mid‑market organizations (200–1,500 employees) with organic M365 growth.",
+      inclusions: ["Full tenant analysis", "Executive briefing", "Remediation roadmap", "Licensing optimization review"],
+      features: ["NASA‑grade assessment", "Fast turnaround", "Clear prioritization", "Compliance-focused"],
+      deliverables: ["20–30 page written assessment", "60‑minute executive briefing", "Full configuration review", "IAM & licensing analysis", "Security & compliance review", "Governance maturity scoring", "Prioritized remediation roadmap"],
+      pageHref: "/quick-wins/tenant-health-audit",
+      pageSlug: "tenant-health-audit",
+      sortOrder: 0,
+      isPublic: true,
+    },
+    {
+      slug: "migration-readiness-assessment",
+      name: "Migration Readiness Assessment",
+      serviceType: "micro_offer",
+      billingType: "one_time",
+      basePrice: "3500.00",
+      maxPrice: "5000.00",
+      tagline: "Discover every migration risk before your project starts.",
+      description: "A rapid, expert-led assessment of your readiness for an M365, Exchange, SharePoint, or cross‑tenant migration.",
+      category: "Migration",
+      badge: "Quick Win",
+      highlighted: false,
+      turnaround: "1 week",
+      targetAudience: "Organizations planning a migration needing clarity before committing.",
+      inclusions: ["Risk analysis", "Migration planning", "Remediation roadmap", "Executive summary"],
+      features: ["Fast assessment", "Vendor-neutral", "Clear risk visibility", "Actionable plan"],
+      deliverables: ["Migration risk report", "Remediation roadmap", "Go/no‑go recommendation", "Phased migration plan"],
+      pageHref: "/quick-wins/migration-readiness-assessment",
+      pageSlug: "migration-readiness-assessment",
+      sortOrder: 3,
+      isPublic: true,
+    },
+    {
+      slug: "power-platform-quickstart",
+      name: "Power Platform Quick‑Start",
+      serviceType: "micro_offer",
+      billingType: "one_time",
+      basePrice: "6000.00",
+      maxPrice: "10000.00",
+      tagline: "Turn your unused Power Platform license into a working business tool in 30 days.",
+      description: "A focused 30‑day sprint to design, build, and deploy one production‑ready Power App or Power Automate flow with documentation and training.",
+      category: "Power Platform",
+      badge: "Most Popular",
+      highlighted: false,
+      turnaround: "4 weeks",
+      targetAudience: "Teams with unused Power Platform licensing needing a quick win.",
+      inclusions: ["App/flow build", "Documentation", "Deployment", "Training session"],
+      features: ["Rapid delivery", "Business automation", "Low-risk starter project", "High ROI"],
+      deliverables: ["One production-ready Power App or flow", "Technical documentation", "Testing & deployment", "90‑minute knowledge transfer session"],
+      pageHref: "/quick-wins/power-platform-quick-start",
+      pageSlug: "power-platform-quick-start",
+      sortOrder: 2,
+      isPublic: true,
+    },
+    {
+      slug: "copilot-for-m365-readiness-assessment",
+      name: "Copilot for M365 Readiness Assessment",
+      serviceType: "micro_offer",
+      billingType: "one_time",
+      basePrice: "5000.00",
+      maxPrice: "8000.00",
+      tagline: "Don't light up Copilot on a dirty tenant.",
+      description: "A complete readiness evaluation to ensure your Microsoft 365 environment is secure, governed, and prepared for Copilot deployment.",
+      category: "Copilot",
+      badge: "High Demand",
+      highlighted: false,
+      turnaround: "2 weeks",
+      targetAudience: "Organizations evaluating or deploying Copilot for M365.",
+      inclusions: ["Data governance review", "Permissions analysis", "Licensing readiness", "Rollout roadmap"],
+      features: ["High-demand service", "Security-first", "Fast turnaround", "Clear deployment path"],
+      deliverables: ["Copilot readiness report", "Prioritized rollout plan", "Quick-win recommendations", "Pilot group design + success metrics"],
+      pageHref: "/quick-wins/copilot-readiness-assessment",
+      pageSlug: "copilot-readiness-assessment",
+      sortOrder: 5,
+      isPublic: true,
+    },
+    {
+      slug: "governance-foundations-package",
+      name: "Governance Foundations Package",
+      serviceType: "micro_offer",
+      billingType: "one_time",
+      basePrice: "12000.00",
+      maxPrice: "18000.00",
+      tagline: "Stop managing M365 by accident.",
+      description: "A complete Microsoft 365 governance framework built to enterprise and regulated‑industry standards, including policies, templates, and training.",
+      category: "Governance",
+      badge: "Enterprise Grade",
+      highlighted: false,
+      turnaround: "6 weeks",
+      targetAudience: "Organizations preparing for audits or experiencing Teams/SharePoint chaos.",
+      inclusions: ["Governance design", "Policy templates", "Training session", "Maturity scoring"],
+      features: ["Audit-ready", "Enterprise-grade", "Compliance-focused", "Scalable governance"],
+      deliverables: ["Governance maturity assessment", "Full governance framework", "Policy template suite", "90‑minute governance training"],
+      pageHref: "/quick-wins/governance-foundations",
+      pageSlug: "governance-foundations",
+      sortOrder: 2,
+      isPublic: true,
+    },
+    {
+      slug: "microsoft-365-training--enablement",
+      name: "Microsoft 365 Training & Enablement",
+      serviceType: "micro_offer",
+      billingType: "one_time",
+      basePrice: "3000.00",
+      maxPrice: "7500.00",
+      tagline: "Empower your team with real‑world Microsoft 365 skills — taught by NASA's Lead Architect.",
+      description: "Live, instructor‑led Microsoft 365 training tailored to your organization's needs. Covers Outlook, Exchange, Teams, SharePoint, OneDrive, Copilot for M365, and Power Platform fundamentals.",
+      category: "Training",
+      badge: "High Value",
+      highlighted: false,
+      turnaround: "1-5 days",
+      targetAudience: "Organizations needing user adoption, Copilot readiness, or productivity improvements across Microsoft 365.",
+      inclusions: ["Outlook productivity training", "Teams collaboration training", "SharePoint & OneDrive usage best practices", "Exchange fundamentals", "Copilot for M365 user training", "Power Platform basics"],
+      features: ["Live instructor-led sessions", "Customizable curriculum", "Practical, real‑world examples", "Boosts adoption & reduces support load"],
+      deliverables: ["Customized training agenda", "Live virtual or on‑site training sessions", "Hands‑on demonstrations", "Q&A and troubleshooting", "Recording (if virtual)", "Post-training resource pack"],
+      pageHref: "/quick-wins/m365-training-enablement",
+      pageSlug: "m365-training-enablement",
+      sortOrder: 8,
+      isPublic: true,
+    },
+  ];
+  for (const record of primaryMicroOffers) {
+    await db
+      .insert(servicesTable)
+      .values(record)
+      .onConflictDoNothing({ target: servicesTable.slug });
+  }
+
+  // Always keep pageHref / pageSlug in sync regardless of how the row was created.
+  const microOfferPageHrefs: Array<{ slug: string; pageHref: string; pageSlug: string }> = [
+    { slug: "m365-tenant-health-audit",              pageHref: "/quick-wins/tenant-health-audit",            pageSlug: "tenant-health-audit" },
+    { slug: "migration-readiness-assessment",         pageHref: "/quick-wins/migration-readiness-assessment", pageSlug: "migration-readiness-assessment" },
+    { slug: "power-platform-quickstart",              pageHref: "/quick-wins/power-platform-quick-start",     pageSlug: "power-platform-quick-start" },
+    { slug: "copilot-for-m365-readiness-assessment",  pageHref: "/quick-wins/copilot-readiness-assessment",  pageSlug: "copilot-readiness-assessment" },
+    { slug: "governance-foundations-package",          pageHref: "/quick-wins/governance-foundations",        pageSlug: "governance-foundations" },
+    { slug: "microsoft-365-training--enablement",     pageHref: "/quick-wins/m365-training-enablement",      pageSlug: "m365-training-enablement" },
+  ];
+  for (const { slug, pageHref, pageSlug } of microOfferPageHrefs) {
+    await db
+      .update(servicesTable)
+      .set({ pageHref, pageSlug })
+      .where(and(eq(servicesTable.slug, slug), isNull(servicesTable.pageHref)));
+  }
+  const retainers = [
+    {
+      slug: "architect-essentials",
+      name: "Architect Essentials",
+      serviceType: "retainer",
+      billingType: "recurring_monthly" as const,
+      price: "1500.00",
+      hoursPerMonth: "10 hours",
+      tagline: "Right for organizations that need a senior M365 resource on call — without the overhead of a full-time hire.",
+      features: [
+        "10 hours of consulting per month",
+        "Email and Teams support",
+        "Monthly strategy call (60 min)",
+        "Standard response within 1 business day",
+        "Access to all M365 service areas",
+        "Monthly written summary",
+      ],
+      highlighted: false,
+      sortOrder: 0,
+      isPublic: true,
+      fulfillmentTypeKey: "retainer",
+    },
+    {
+      slug: "architect-growth",
+      name: "Architect Growth",
+      serviceType: "retainer",
+      billingType: "recurring_monthly" as const,
+      price: "3000.00",
+      hoursPerMonth: "25 hours",
+      tagline: "Right for organizations actively modernizing their M365 environment or planning a Copilot deployment.",
+      features: [
+        "25 hours of consulting per month",
+        "Priority email and Teams support",
+        "Two strategy calls per month (60 min each)",
+        "Priority response within 4 business hours",
+        "Access to all M365 service areas",
+        "Monthly written progress report",
+        "Proactive tenant health monitoring",
+      ],
+      highlighted: true,
+      badge: "Most Popular",
+      sortOrder: 1,
+      isPublic: true,
+      fulfillmentTypeKey: "retainer",
+    },
+    {
+      slug: "architect-enterprise",
+      name: "Architect Enterprise",
+      serviceType: "retainer",
+      billingType: "recurring_monthly" as const,
+      price: "5500.00",
+      hoursPerMonth: "50 hours",
+      tagline: "Right for organizations that need a dedicated senior architect embedded in their operations every week.",
+      features: [
+        "50 hours of consulting per month",
+        "Dedicated Teams support channel",
+        "Weekly strategy calls (60 min)",
+        "Same-day emergency response",
+        "Access to all M365 service areas",
+        "Monthly written progress report",
+        "Custom technology roadmap",
+        "Quarterly strategic review",
+      ],
+      highlighted: false,
+      sortOrder: 2,
+      isPublic: true,
+      fulfillmentTypeKey: "retainer",
+    },
+  ];
+
+  // ── MSP Platform Subscription Tiers ──────────────────────────────────────────
+  // These tiers are discoverable via both /api/services?type=msp (public checkout)
+  // and /api/msp/signup/tiers (MSP self-service signup). They require:
+  //   - serviceType: "msp"               → useCatalog fetchServices("msp") finds them
+  //   - fulfillmentType: "msp_monthly_subscription" → msp-signup.ts finds them
+  //   - fulfillmentTypeKey: "msp_monthly_subscription" → checkout can proceed past "unavailable"
+  const mspTiers = [
+    {
+      slug: "msp-platform-starter",
+      name: "MSP Platform — Starter",
+      serviceType: "msp",
+      billingType: "recurring_monthly" as const,
+      fulfillmentType: "msp_monthly_subscription" as const,
+      fulfillmentTypeKey: "msp_monthly_subscription",
+      price: "0.00",
+      allowFreeCheckout: true,
+      tagline: "Get started with the Shane McCaw Consulting partner platform at no cost.",
+      description: "Free tier for MSP partners — includes access to the partner portal, up to 5 managed tenants, and standard reporting.",
+      category: "Platform",
+      badge: "Free",
+      highlighted: false,
+      sortOrder: 0,
+      isPublic: true,
+      visibility: "public" as const,
+      features: [
+        "Up to 5 managed tenants",
+        "Partner portal access",
+        "Standard tenant health reporting",
+        "Email support",
+      ],
+      inclusions: ["Partner portal access", "Onboarding session"],
+      typeAttributes: {
+        tenantAllowance: 5,
+        aiCreditAllowancePlatformValue: 100,
+        aiCreditAllowanceMspValue: 50,
+        aiCreditOverageRateCents: 10,
+        overageRateCents: 2000,
+        tierCapabilities: {
+          advanced_signals: false,
+          custom_workflows: false,
+          sla_scope_creep_custom_rules: false,
+          sales_offers: false,
+          custom_bundle_composition: false,
+        },
+      },
+    },
+    {
+      slug: "msp-platform-pro",
+      name: "MSP Platform — Pro",
+      serviceType: "msp",
+      billingType: "recurring_monthly" as const,
+      fulfillmentType: "msp_monthly_subscription" as const,
+      fulfillmentTypeKey: "msp_monthly_subscription",
+      price: "499.00",
+      tagline: "Grow your MSP practice with advanced signals, custom workflows, and expanded tenant capacity.",
+      description: "Pro tier for growing MSP partners — includes advanced tenant signals, custom workflow automation, and up to 50 managed tenants.",
+      category: "Platform",
+      badge: "Most Popular",
+      highlighted: true,
+      sortOrder: 1,
+      isPublic: true,
+      visibility: "public" as const,
+      features: [
+        "Up to 50 managed tenants",
+        "Advanced tenant signals",
+        "Custom workflow automation",
+        "Priority support",
+        "SOW generation",
+        "AI credit allowance",
+      ],
+      inclusions: ["All Starter features", "Advanced signals", "Workflow builder", "Priority onboarding"],
+      typeAttributes: {
+        tenantAllowance: 50,
+        aiCreditAllowancePlatformValue: 1000,
+        aiCreditAllowanceMspValue: 500,
+        aiCreditOverageRateCents: 5,
+        overageRateCents: 1500,
+        tierCapabilities: {
+          advanced_signals: true,
+          custom_workflows: true,
+          sla_scope_creep_custom_rules: false,
+          sales_offers: false,
+          custom_bundle_composition: false,
+        },
+      },
+    },
+    {
+      slug: "msp-platform-enterprise",
+      name: "MSP Platform — Enterprise",
+      serviceType: "msp",
+      billingType: "recurring_monthly" as const,
+      fulfillmentType: "msp_monthly_subscription" as const,
+      fulfillmentTypeKey: "msp_monthly_subscription",
+      price: "1499.00",
+      tagline: "Full platform access for high-volume MSPs with custom rules, sales offers, and unlimited capacity.",
+      description: "Enterprise tier — unlimited tenants, full AI credit allocation, custom bundle composition, and dedicated account management.",
+      category: "Platform",
+      badge: "Enterprise",
+      highlighted: false,
+      sortOrder: 2,
+      isPublic: true,
+      visibility: "public" as const,
+      features: [
+        "Unlimited managed tenants",
+        "Full AI credit allocation",
+        "Custom bundle composition",
+        "Sales offer engine",
+        "SLA + scope-creep custom rules",
+        "Dedicated account management",
+        "White-label reporting",
+      ],
+      inclusions: ["All Pro features", "Custom rules engine", "Sales offers", "White-label reports", "Dedicated onboarding"],
+      typeAttributes: {
+        tenantAllowance: 999,
+        aiCreditAllowancePlatformValue: 5000,
+        aiCreditAllowanceMspValue: 2500,
+        aiCreditOverageRateCents: 3,
+        overageRateCents: 1000,
+        tierCapabilities: {
+          advanced_signals: true,
+          custom_workflows: true,
+          sla_scope_creep_custom_rules: true,
+          sales_offers: true,
+          custom_bundle_composition: true,
+        },
+      },
+    },
+  ];
+
+  const serviceAreas = [
+    {
+      slug: "service-area-m365",
+      name: "Microsoft 365 Setup & Optimization",
+      serviceType: "service_area",
+      billingType: "one_time" as const,
+      description: "Whether starting fresh or fixing a misconfigured tenant, I architect M365 environments that are secure, scalable, and built for your team.",
+      iconName: "Cloud",
+      pageHref: "/services/microsoft-365",
+      sortOrder: 0,
+      isPublic: true,
+    },
+    {
+      slug: "service-area-copilot-ai",
+      name: "Copilot AI Readiness & Deployment",
+      serviceType: "service_area",
+      billingType: "one_time" as const,
+      description: "I assess readiness, govern your data, configure your environment, and coach your team so your Copilot investment pays off from day one.",
+      iconName: "Bot",
+      pageHref: "/services/copilot-ai",
+      sortOrder: 1,
+      isPublic: true,
+    },
+    {
+      slug: "service-area-sharepoint",
+      name: "SharePoint Architecture & Intranets",
+      serviceType: "service_area",
+      billingType: "one_time" as const,
+      description: "Modern intranets employees actually use — built with expert information architecture, navigation, and taxonomy design.",
+      iconName: "Layout",
+      pageHref: "/services/sharepoint",
+      sortOrder: 2,
+      isPublic: true,
+    },
+    {
+      slug: "service-area-power-platform",
+      name: "Power Platform & Automation",
+      serviceType: "service_area",
+      billingType: "one_time" as const,
+      description: "Replace manual processes with Power Automate workflows and custom Power Apps at a fraction of traditional development cost.",
+      iconName: "Zap",
+      pageHref: "/services/power-platform",
+      sortOrder: 3,
+      isPublic: true,
+    },
+    {
+      slug: "service-area-governance",
+      name: "Governance, Compliance & Security",
+      serviceType: "service_area",
+      billingType: "one_time" as const,
+      description: "DLP policies, sensitivity labels, retention, Purview, and permissions built to NASA-grade standards.",
+      iconName: "Shield",
+      pageHref: "/services/governance",
+      sortOrder: 4,
+      isPublic: true,
+    },
+    {
+      slug: "service-area-cloud-migration",
+      name: "Cloud Migration Services",
+      serviceType: "service_area",
+      billingType: "one_time" as const,
+      description: "Exchange, SharePoint, and M365 migrations executed with zero-drama precision and zero data loss.",
+      iconName: "Server",
+      pageHref: "/services/cloud-migration",
+      sortOrder: 5,
+      isPublic: true,
+    },
+  ];
+
+  for (const record of [...retainers, ...mspTiers, ...serviceAreas]) {
+    const { slug, ...rest } = record as Record<string, unknown> & { slug: string };
+    await db
+      .insert(servicesTable)
+      .values({ slug, ...(rest as typeof servicesTable.$inferInsert) })
+      .onConflictDoNothing({ target: servicesTable.slug });
+  }
+
+  // Always backfill fulfillmentTypeKey for existing rows even on a fresh seed run,
+  // in case rows were pre-populated by an admin import without the key.
+  await db
+    .update(servicesTable)
+    .set({ fulfillmentTypeKey: "retainer" })
+    .where(and(eq(servicesTable.serviceType, "retainer"), isNull(servicesTable.fulfillmentTypeKey)));
+
+  await db
+    .update(servicesTable)
+    .set({ fulfillmentTypeKey: "msp_monthly_subscription" })
+    .where(and(eq(servicesTable.fulfillmentType, "msp_monthly_subscription"), isNull(servicesTable.fulfillmentTypeKey)));
+
+  await db
+    .update(servicesTable)
+    .set({ fulfillmentTypeKey: "monitoring_subscription" })
+    .where(and(eq(servicesTable.serviceType, "monitoring_tier"), isNull(servicesTable.fulfillmentTypeKey)));
+
+  void sqlTag;
+}
+
+export async function seedPortalDemo(): Promise<void> {
+  // Check if demo client already exists
+  const [existing] = await db.select().from(usersTable).where(eq(usersTable.email, "demo@shanemccaw.com")).limit(1);
+  if (existing) return;
+
+  // Create demo client — password from env var (dev-only; seeder is skipped in production)
+  const demoPassword = process.env.PORTAL_DEMO_PASSWORD;
+  if (!demoPassword) {
+    console.warn("[seed-portal] PORTAL_DEMO_PASSWORD env var not set — skipping demo data seed. Set it to create the demo client account.");
+    return;
+  }
+  const passwordHash = await bcrypt.hash(demoPassword, 12);
+  const [client] = await db.insert(usersTable).values({
+    email: "demo@shanemccaw.com",
+    passwordHash,
+    role: "client",
+    name: "Contoso Corp",
+    company: "Contoso Corporation",
+    phone: "+1 (555) 012-3456",
+  }).returning();
+
+  // Create services
+  const [svc1] = await db.insert(servicesTable).values({
+    name: "Microsoft 365 Copilot Deployment",
+    description: "Full Copilot rollout including readiness assessment, pilot, training, and go-live.",
+    category: "Copilot AI",
+    deliverables: ["Readiness Report", "Deployment Plan", "Training Materials", "Go-Live Support"],
+    price: "9500.00",
+    durationDays: 45,
+  }).returning();
+
+  const [svc2] = await db.insert(servicesTable).values({
+    name: "SharePoint Intranet Redesign",
+    description: "Modern SharePoint intranet design and migration from legacy platform.",
+    category: "SharePoint",
+    deliverables: ["Information Architecture", "Page Templates", "Migration Script", "User Guide"],
+    price: "7200.00",
+    durationDays: 30,
+  }).returning();
+
+  const [svc3] = await db.insert(servicesTable).values({
+    name: "M365 Governance Quick-Start",
+    description: "Governance framework, DLP policies, and sensitivity labels configured in 5 days.",
+    category: "Governance",
+    deliverables: ["Governance Policy Doc", "DLP Config", "Sensitivity Label Schema"],
+    price: "3500.00",
+    durationDays: 5,
+  }).returning();
+
+  // Create project
+  const [project] = await db.insert(projectsTable).values({
+    title: "Contoso M365 Copilot Deployment",
+    description: "Full Microsoft 365 Copilot rollout for Contoso Corporation — 500 seat enterprise.",
+    status: "active",
+    phase: "Pilot Phase",
+    progress: 45,
+    clientUserId: client.id,
+    startDate: new Date("2026-05-01"),
+    endDate: new Date("2026-07-15"),
+  }).returning();
+
+  // Assign services to client
+  const [cs1] = await db.insert(clientServicesTable).values({
+    clientUserId: client.id,
+    serviceId: svc1.id,
+    projectId: project.id,
+    status: "active",
+    progress: 45,
+    startDate: new Date("2026-05-01"),
+    nextMilestone: "Pilot go-live with 50 users",
+    nextMilestoneDate: new Date("2026-06-30"),
+  }).returning();
+
+  const [cs2] = await db.insert(clientServicesTable).values({
+    clientUserId: client.id,
+    serviceId: svc2.id,
+    projectId: project.id,
+    status: "active",
+    progress: 20,
+    startDate: new Date("2026-05-15"),
+    nextMilestone: "IA review sign-off",
+    nextMilestoneDate: new Date("2026-06-20"),
+  }).returning();
+
+  await db.insert(clientServicesTable).values({
+    clientUserId: client.id,
+    serviceId: svc3.id,
+    projectId: null,
+    status: "completed",
+    progress: 100,
+    startDate: new Date("2026-04-07"),
+    nextMilestone: null,
+    nextMilestoneDate: null,
+  }).returning();
+
+  // Workflow steps for service 1
+  await db.insert(workflowStepsTable).values([
+    { clientServiceId: cs1.id, title: "Readiness Assessment", description: "Survey 50 stakeholders and assess M365 tenant health.", status: "completed", order: 1, completedAt: new Date("2026-05-15") },
+    { clientServiceId: cs1.id, title: "Pilot User Selection", description: "Identify and onboard 50 pilot users across departments.", status: "completed", order: 2, completedAt: new Date("2026-05-28") },
+    { clientServiceId: cs1.id, title: "Training Delivery", description: "Run 3 live training sessions + async video modules.", status: "in_progress", order: 3 },
+    { clientServiceId: cs1.id, title: "Pilot Go-Live", description: "Enable Copilot licences for pilot cohort, monitor adoption.", status: "pending", order: 4 },
+    { clientServiceId: cs1.id, title: "Broader Rollout", description: "Expand to all 500 seats with support runway.", status: "pending", order: 5 },
+  ]);
+
+  // Workflow steps for service 2
+  await db.insert(workflowStepsTable).values([
+    { clientServiceId: cs2.id, title: "Information Architecture", description: "Design site map and navigation structure.", status: "completed", order: 1, completedAt: new Date("2026-05-22") },
+    { clientServiceId: cs2.id, title: "Design Review", description: "Stakeholder review of wireframes and brand alignment.", status: "in_progress", order: 2 },
+    { clientServiceId: cs2.id, title: "Content Migration", description: "Migrate pages from legacy SharePoint 2016.", status: "pending", order: 3 },
+    { clientServiceId: cs2.id, title: "User Acceptance Testing", description: "UAT with department leads.", status: "pending", order: 4 },
+    { clientServiceId: cs2.id, title: "Go-Live", description: "Publish new intranet and decommission old site.", status: "pending", order: 5 },
+  ]);
+
+  // Workflow steps for project
+  await db.insert(workflowStepsTable).values([
+    { projectId: project.id, title: "Kick-off Meeting", status: "completed", order: 1, completedAt: new Date("2026-05-02") },
+    { projectId: project.id, title: "Tenant Assessment", status: "completed", order: 2, completedAt: new Date("2026-05-12") },
+    { projectId: project.id, title: "Pilot Deployment", status: "in_progress", order: 3 },
+    { projectId: project.id, title: "Training Programme", status: "in_progress", order: 4 },
+    { projectId: project.id, title: "Full Rollout", status: "pending", order: 5 },
+    { projectId: project.id, title: "Handover & Documentation", status: "pending", order: 6 },
+  ]);
+
+  // Kanban tasks
+  await db.insert(kanbanTasksTable).values([
+    { projectId: project.id, title: "Configure Copilot policies in M365 admin", column: "completed", order: 1, assignedTo: "Shane" },
+    { projectId: project.id, title: "Complete readiness survey analysis", column: "completed", order: 2, assignedTo: "Shane" },
+    { projectId: project.id, title: "Run training session for Finance dept", column: "in_progress", order: 1, assignedTo: "Shane", dueDate: new Date("2026-06-25") },
+    { projectId: project.id, title: "Review Teams meeting room standards", column: "in_progress", order: 2, assignedTo: "Client IT", dueDate: new Date("2026-06-28") },
+    { projectId: project.id, title: "Enable Copilot for pilot cohort (50 users)", column: "waiting_on_customer", order: 1, assignedTo: "Client IT", dueDate: new Date("2026-06-30") },
+    { projectId: project.id, title: "Approve final governance policy document", column: "waiting_on_customer", order: 2, dueDate: new Date("2026-07-05") },
+    { projectId: project.id, title: "Build SharePoint IA wireframes", column: "backlog", order: 1, assignedTo: "Shane" },
+    { projectId: project.id, title: "Conduct UAT for intranet redesign", column: "backlog", order: 2 },
+    { projectId: project.id, title: "Draft full-rollout change management plan", column: "backlog", order: 3, assignedTo: "Shane", dueDate: new Date("2026-07-10") },
+  ]);
+
+  // Project updates (communication log)
+  await db.insert(projectUpdatesTable).values([
+    { projectId: project.id, authorUserId: null, content: "Project kicked off. Kick-off call completed with IT and HR stakeholders.", type: "milestone", createdAt: new Date("2026-05-02") },
+    { projectId: project.id, authorUserId: null, content: "Tenant health assessment completed. 3 licensing gaps identified and flagged to IT.", type: "update", createdAt: new Date("2026-05-12") },
+    { projectId: project.id, authorUserId: null, content: "Readiness survey closed — 47 of 50 responses received. Full report shared in Documents.", type: "update", createdAt: new Date("2026-05-20") },
+    { projectId: project.id, authorUserId: null, content: "Pilot user list finalised: 50 users across Finance, HR, and IT confirmed.", type: "milestone", createdAt: new Date("2026-05-28") },
+    { projectId: project.id, authorUserId: null, content: "Training session 1 (Finance) delivered via Teams. Recording uploaded to SharePoint.", type: "update", createdAt: new Date("2026-06-10") },
+  ]);
+
+  // Invoices
+  await db.insert(invoicesTable).values([
+    {
+      clientUserId: client.id,
+      projectId: project.id,
+      invoiceNumber: "INV-2026-001",
+      description: "M365 Copilot Deployment — Milestone 1: Readiness & Setup",
+      amount: "4750.00",
+      currency: "usd",
+      status: "paid",
+      dueDate: new Date("2026-05-15"),
+      paidAt: new Date("2026-05-14"),
+    },
+    {
+      clientUserId: client.id,
+      projectId: project.id,
+      invoiceNumber: "INV-2026-002",
+      description: "M365 Copilot Deployment — Milestone 2: Pilot & Training",
+      amount: "4750.00",
+      currency: "usd",
+      status: "due",
+      dueDate: new Date("2026-07-01"),
+    },
+    {
+      clientUserId: client.id,
+      projectId: project.id,
+      invoiceNumber: "INV-2026-003",
+      description: "SharePoint Intranet Redesign — Milestone 1",
+      amount: "3600.00",
+      currency: "usd",
+      status: "overdue",
+      dueDate: new Date("2026-06-01"),
+    },
+  ]);
+
+  // Notifications
+  await db.insert(notificationsTable).values([
+    {
+      userId: client.id,
+      title: "Training session 1 completed",
+      body: "Finance department training session recorded and uploaded.",
+      type: "project_update",
+      read: true,
+      linkPath: `/portal/projects/${project.id}`,
+    },
+    {
+      userId: client.id,
+      title: "Invoice INV-2026-002 due 1 July",
+      body: "Your invoice for $4,750 is due on July 1, 2026.",
+      type: "invoice",
+      read: false,
+      linkPath: "/portal/billing",
+    },
+    {
+      userId: client.id,
+      title: "Invoice INV-2026-003 is overdue",
+      body: "Invoice for $3,600 was due June 1. Please arrange payment.",
+      type: "invoice",
+      read: false,
+      linkPath: "/portal/billing",
+    },
+    {
+      userId: client.id,
+      title: "Action required: Enable Copilot licences",
+      body: "Please enable Copilot licences for the 50 pilot users in M365 Admin.",
+      type: "project_update",
+      read: false,
+      linkPath: `/portal/projects/${project.id}`,
+    },
+  ]);
+}

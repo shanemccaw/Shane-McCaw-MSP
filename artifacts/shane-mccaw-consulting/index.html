@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
+    <title>Enterprise Microsoft 365 & Copilot AI Consulting | Shane McCaw Consulting</title>
+    <meta name="description" content="Shane McCaw is NASA's Lead Microsoft 365 Architect — 30 years of Microsoft expertise, delivering M365 tenant audits, Copilot AI readiness, SharePoint, and governance. Fixed-price packages, senior-level delivery." />
+    <meta name="robots" content="index, follow" />
+    <meta property="og:site_name" content="Shane McCaw Consulting" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Enterprise Microsoft 365 & Copilot AI Consulting | Shane McCaw Consulting" />
+    <meta property="og:description" content="Shane McCaw is NASA's Lead Microsoft 365 Architect — 30 years of Microsoft expertise, delivering M365 tenant audits, Copilot AI readiness, SharePoint, and governance. Fixed-price packages, senior-level delivery." />
+    <meta property="og:url" content="https://shanemccaw.com" />
+    <meta property="og:image" content="https://shanemccaw.com/opengraph.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Enterprise Microsoft 365 & Copilot AI Consulting | Shane McCaw Consulting" />
+    <meta name="twitter:description" content="Shane McCaw is NASA's Lead Microsoft 365 Architect — 30 years of Microsoft expertise, delivering M365 tenant audits, Copilot AI readiness, SharePoint, and governance. Fixed-price packages, senior-level delivery." />
+    <meta name="twitter:image" content="https://shanemccaw.com/opengraph.png" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Person",
+      "name": "Shane McCaw",
+      "jobTitle": "Lead Microsoft 365 Architect & Copilot SME",
+      "worksFor": {
+        "@type": "Organization",
+        "name": "NASA"
+      },
+      "url": "https://shanemccaw.com",
+      "email": "info@shanemccaw.com",
+      "sameAs": [
+        "https://www.linkedin.com/in/shanemccaw"
+      ],
+      "description": "30-year Microsoft ecosystem veteran and NASA's Lead Microsoft 365 Architect. Independent consultant specializing in M365, Copilot AI, SharePoint, Power Platform, and enterprise governance."
+    }
+    </script>
+
+    <!--
+      GA4 (gtag.js) + Microsoft Clarity — env-gated the same way analytics.ts's isEnabled()
+      gates the first-party tracker: on in production, opt-in in dev via VITE_ANALYTICS_ENABLED=true.
+      Real IDs land in VITE_GA4_MEASUREMENT_ID / VITE_CLARITY_PROJECT_ID (Replit secrets) once
+      Shane has a GA4 property + Clarity project; until then Vite leaves the %...% tokens below
+      un-substituted and the guards below skip loading either script.
+    -->
+    <script>
+      (function () {
+        var analyticsEnabled = %PROD% || "%VITE_ANALYTICS_ENABLED%" === "true";
+        if (!analyticsEnabled) return;
+
+        var ga4Id = "%VITE_GA4_MEASUREMENT_ID%";
+        if (ga4Id.charAt(0) !== "%") {
+          var gtagScript = document.createElement("script");
+          gtagScript.async = true;
+          gtagScript.src = "https://www.googletagmanager.com/gtag/js?id=" + ga4Id;
+          document.head.appendChild(gtagScript);
+          window.dataLayer = window.dataLayer || [];
+          window.gtag = function () { window.dataLayer.push(arguments); };
+          window.gtag("js", new Date());
+          window.gtag("config", ga4Id);
+        }
+
+        var clarityId = "%VITE_CLARITY_PROJECT_ID%";
+        if (clarityId.charAt(0) !== "%") {
+          (function (c, l, a, r, i, t, y) {
+            c[a] = c[a] || function () { (c[a].q = c[a].q || []).push(arguments); };
+            t = l.createElement(r);
+            t.async = 1;
+            t.src = "https://www.clarity.ms/tag/" + i;
+            y = l.getElementsByTagName(r)[0];
+            y.parentNode.insertBefore(t, y);
+          })(window, document, "clarity", "script", clarityId);
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

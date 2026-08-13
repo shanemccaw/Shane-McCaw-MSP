@@ -1,0 +1,1759 @@
+/**
+ * ⚠️ DEAD — DO NOT USE, DO NOT EXTEND, DO NOT "FIX"
+ *
+ * Superseded by Document Generator (document-engine.ts / document-engine-sow.ts
+ * + document_types table). This file is legacy inline document generation —
+ * hardcoded prompts, no scoping, not database-driven. It is unreachable from
+ * the nav on purpose. Nobody uses it. It is not coming back.
+ *
+ * If you're here because something references this file: that reference is
+ * also dead and should be deleted, not fixed.
+ */
+
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useAuth } from "@/contexts/AuthContext";
+import {
+  BarChart2, FileText, Users, Settings, RefreshCw, X, ChevronRight, ChevronDown,
+  Download, Send, CheckCircle, Archive, AlertTriangle, Plus, Pencil,
+  Trash2, Eye, Zap, Shield, Globe, Cpu, BookOpen, Clock, Play, Loader2, Layers,
+  SlidersHorizontal, Copy, RotateCcw, Search, FileCog,
+} from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { InsightsPayloadDialog, type PayloadPreview } from "@/components/InsightsPayloadDialog";
+import DocumentTypesManager from "@/components/DocumentTypesManager";
+import PromptEditDialog from "@/components/PromptEditDialog";
+
+const API = "/api";
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+interface InsightsDoc {
+  id: number; customerId: number | null; projectId: number | null;
+  category: "report" | "consulting"; docType: string; title: string;
+  pdfUrl: string | null;
+  status: "draft" | "approved" | "delivered" | "archived" | "generating" | "failed";
+  errorMessage: string | null;
+  approvedAt: string | null; deliveredAt: string | null; createdAt: string;
+  sowTotalPrice?: string | null;
+  projectTitle?: string | null;
+}
+
+interface SignalFilterMeta {
+  clean: boolean;
+  conflictCount: number;
+  conflicts?: Array<{ ruleIds: number[]; description: string }>;
+}
+
+interface InsightsDocFull extends InsightsDoc {
+  htmlContent: string;
+  signalFilterMeta?: SignalFilterMeta | null;
+}
+
+interface RunLogEntry {
+  ts: string;
+  level: "info" | "warn" | "error";
+  message: string;
+}
+
+interface Automation {
+  id: number; name: string; customerId: number | null; projectId: number | null;
+  automationType: string; cronExpression: string; cronLabel: string; enabled: boolean; runningAt: string | null;
+  linkedRunbookScriptId: string | null; generateDocument: boolean;
+  lastRunAt: string | null; nextRunAt: string | null; createdAt: string;
+  lastRunLog: RunLogEntry[] | null;
+}
+
+interface Customer { id: number; name: string; email: string; company: string; }
+interface Project  { id: number; title: string; status: string; phase: string | null; }
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+const REPORT_TYPES = [
+  { key: "executive_summary",          label: "Executive Summary",          icon: FileText,       desc: "High-level M365 health overview for executives and stakeholders" },
+  { key: "full_readiness_report",      label: "Full Readiness Report",      icon: BarChart2,      desc: "Comprehensive M365 readiness assessment across all domains" },
+  { key: "security_posture_report",    label: "Security Posture Report",    icon: Shield,         desc: "Detailed security configuration, gaps, and hardening recommendations" },
+  { key: "governance_maturity_report", label: "Governance Maturity Report", icon: Globe,          desc: "Governance framework maturity analysis and improvement roadmap" },
+  { key: "data_exposure_risk_report",  label: "Data Exposure Risk Report",  icon: AlertTriangle,  desc: "SharePoint, OneDrive, and Exchange data exposure assessment" },
+  { key: "license_optimization_report",label: "License Optimization Report",icon: Cpu,            desc: "License utilisation analysis with cost reduction opportunities" },
+] as const;
+
+const CONSULTING_TYPES = [
+  { key: "scoped_sow",                  label: "Scoped SOW",                 icon: Layers,        desc: "Presentation-generated SOW with scoped phases and pricing — view only" },
+  { key: "consolidated_sow",            label: "Consolidated SOW",           icon: Layers,        desc: "Aggregates all generated docs + project pricing into one comprehensive SOW" },
+  { key: "sow",                         label: "Statement of Work",          icon: FileText,      desc: "Formal SOW with scope, timeline, pricing placeholders" },
+  { key: "task_execution_guide",        label: "SOW Task Execution Guide",   icon: BookOpen,      desc: "Step-by-step execution guide derived from the SOW tasks and deliverables" },
+  { key: "remediation_plan",            label: "Remediation Plan",           icon: AlertTriangle, desc: "Prioritised steps for identified security and governance gaps" },
+  { key: "deployment_plan",             label: "Deployment Plan",            icon: Settings,      desc: "Phased rollout with pre-checks, milestones, rollback procedures" },
+  { key: "governance_framework",        label: "Governance Framework",       icon: Globe,         desc: "Tailored governance policies, roles, and enforcement mechanisms" },
+  { key: "security_hardening_plan",     label: "Security Hardening Plan",    icon: Shield,        desc: "Identity, CA, Defender, and MFA hardening roadmap" },
+  { key: "copilot_enablement_plan",     label: "Copilot Enablement Plan",    icon: Zap,           desc: "Readiness, data governance, pilot, and adoption strategy" },
+  { key: "identity_modernization_plan", label: "Identity Modernization Plan",icon: Users,         desc: "Entra ID modernisation, MFA, PIM, and legacy decommission" },
+  { key: "copilot_readiness",           label: "Copilot Readiness Assessment",icon: CheckCircle,  desc: "Tenant readiness for M365 Copilot — identity, licensing, governance, and security blockers" },
+] as const;
+
+const AUTOMATION_TYPES = [
+  { key: "monthly_tenant_health_report",       label: "Monthly Tenant Health Report",  defaultCron: "0 9 1 * *",  desc: "Executive Summary on the 1st of every month at 9am" },
+  { key: "quarterly_governance_review",        label: "Quarterly Governance Review",   defaultCron: "0 9 1 */3 *",desc: "Governance Maturity Report every quarter" },
+  { key: "weekly_security_drift_alerts",       label: "Weekly Security Drift Alerts",  defaultCron: "0 9 * * 1",  desc: "Security Posture Report every Monday at 9am" },
+  { key: "license_waste_monitoring",           label: "License Waste Monitoring",      defaultCron: "0 0 * * 0",  desc: "License Optimization Report every Sunday at midnight" },
+  { key: "conditional_access_drift_detection", label: "CA Drift Detection",            defaultCron: "0 6 * * *",  desc: "Security check every day at 6am" },
+] as const;
+
+const STATUS_COLORS: Record<string, string> = {
+  draft:      "bg-yellow-500/20 text-yellow-300 border-yellow-500/30",
+  approved:   "bg-green-500/20 text-green-300 border-green-500/30",
+  delivered:  "bg-blue-500/20 text-blue-300 border-blue-500/30",
+  archived:   "bg-gray-500/20 text-gray-400 border-gray-500/30",
+  generating: "bg-indigo-500/20 text-indigo-300 border-indigo-500/30",
+  failed:     "bg-red-500/20 text-red-300 border-red-500/30",
+};
+
+// ── Shared UI helpers ──────────────────────────────────────────────────────────
+
+function StatusPill({ status }: { status: string }) {
+  if (status === "generating") {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium rounded-full border bg-indigo-500/20 text-indigo-300 border-indigo-500/30">
+        <Loader2 className="w-2.5 h-2.5 animate-spin" />
+        Generating…
+      </span>
+    );
+  }
+  if (status === "failed") {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium rounded-full border bg-red-500/20 text-red-300 border-red-500/30">
+        <AlertTriangle className="w-2.5 h-2.5" />
+        Failed
+      </span>
+    );
+  }
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 text-[10px] font-medium rounded-full border ${STATUS_COLORS[status] ?? "bg-gray-700 text-gray-300 border-gray-600"}`}>
+      {status}
+    </span>
+  );
+}
+
+function SlideOver({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: string; children: React.ReactNode }) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end">
+      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+      <div className="relative w-full max-w-2xl h-full bg-background border-l border-gray-700/50 flex flex-col shadow-2xl">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-700/50">
+          <h3 className="text-white font-semibold">{title}</h3>
+          <button onClick={onClose} className="p-1 rounded text-gray-400 hover:text-white hover:bg-gray-700"><X className="w-4 h-4" /></button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-5">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function Modal({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: string; children: React.ReactNode }) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/70" onClick={onClose} />
+      <div className="relative w-full max-w-lg bg-card border border-gray-700/50 rounded-xl shadow-2xl">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-700/50">
+          <h3 className="text-white font-semibold">{title}</h3>
+          <button onClick={onClose} className="p-1 rounded text-gray-400 hover:text-white hover:bg-gray-700"><X className="w-4 h-4" /></button>
+        </div>
+        <div className="p-5">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+// ── Documents Tab ──────────────────────────────────────────────────────────────
+
+type WizardStep = "confirm" | "generating" | "done";
+
+function DocumentsTab({
+  customerId, projectId, fetchWithAuth, customers, refreshKey,
+}: {
+  customerId: number | null; projectId: number | null;
+  fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response>;
+  customers: Customer[];
+  refreshKey?: number;
+}) {
+  const { toast } = useToast();
+  const [docs, setDocs] = useState<InsightsDoc[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [selectedDoc, setSelectedDoc] = useState<InsightsDocFull | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizardType, setWizardType] = useState<string>("");
+  const [wizardStep, setWizardStep] = useState<WizardStep>("confirm");
+  const [wizardTitle, setWizardTitle] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [sendOpen, setSendOpen] = useState(false);
+  const [sendDoc, setSendDoc] = useState<InsightsDoc | null>(null);
+  const [sendEmail, setSendEmail] = useState("");
+  const [sendSubject, setSendSubject] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sendResult, setSendResult] = useState<string | null>(null);
+
+  const [dialogCustomerId, setDialogCustomerId] = useState<number | null>(null);
+  const [dialogProjectId,  setDialogProjectId]  = useState<number | null>(null);
+  const [dialogProjects,   setDialogProjects]   = useState<Project[]>([]);
+  const [promptDialogKey,  setPromptDialogKey]  = useState<string>("");
+  const [promptDialogOpen, setPromptDialogOpen] = useState(false);
+  const [wizardMode, setWizardMode] = useState<"generate" | "preview">("generate");
+  const [payloadOpen, setPayloadOpen] = useState(false);
+  const [payloadData, setPayloadData] = useState<PayloadPreview | null>(null);
+  const [payloadLoading, setPayloadLoading] = useState(false);
+
+  useEffect(() => {
+    if (!dialogCustomerId) { setDialogProjects([]); return; }
+    fetchWithAuth(`${API}/admin/insights/projects?customerId=${dialogCustomerId}`)
+      .then(r => r.json())
+      .then((d: unknown) => setDialogProjects((d as { projects: Project[] }).projects ?? []))
+      .catch(() => setDialogProjects([]));
+  }, [dialogCustomerId, fetchWithAuth]);
+
+  const buildQs = useCallback(() => {
+    const p = new URLSearchParams({ category: "report" });
+    if (customerId) p.set("customerId", String(customerId));
+    if (projectId)  p.set("projectId",  String(projectId));
+    return `?${p}`;
+  }, [customerId, projectId]);
+
+  const loadDocs = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await fetchWithAuth(`${API}/admin/insights/documents${buildQs()}`);
+      setDocs(((await r.json()) as { documents: InsightsDoc[] }).documents ?? []);
+    } catch { /* empty */ } finally { setLoading(false); }
+  }, [fetchWithAuth, buildQs]);
+
+  useEffect(() => { void loadDocs(); }, [loadDocs]);
+  useEffect(() => { if (refreshKey) void loadDocs(); }, [refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fast auto-poll (3 s) while any doc is already known to be generating
+  useEffect(() => {
+    const hasGenerating = docs.some(d => d.status === "generating");
+    if (!hasGenerating) return;
+    const t = setTimeout(() => { void loadDocs(); }, 3000);
+    return () => clearTimeout(t);
+  }, [docs, loadDocs]);
+
+  // Background poll (15 s) regardless of current doc state so that rows created
+  // externally during a diagnostic run (server-side) appear without requiring a
+  // manual refresh — catches the case where docs list doesn't yet contain the
+  // generating row and the fast poll above never fires.
+  useEffect(() => {
+    const t = setInterval(() => { void loadDocs(); }, 15_000);
+    return () => clearInterval(t);
+  }, [loadDocs]);
+
+  // Auto-dismiss failed rows after 60 seconds
+  const scheduledReportDismissals = useRef<Set<number>>(new Set());
+  useEffect(() => {
+    docs.filter(d => d.status === "failed").forEach(doc => {
+      if (scheduledReportDismissals.current.has(doc.id)) return;
+      scheduledReportDismissals.current.add(doc.id);
+      setTimeout(() => {
+        scheduledReportDismissals.current.delete(doc.id);
+        void fetchWithAuth(`${API}/admin/insights/documents/${doc.id}`, { method: "DELETE" }).then(() => void loadDocs());
+      }, 60_000);
+    });
+  }, [docs, fetchWithAuth, loadDocs]);
+
+  const openWizard = (type: string, mode: "generate" | "preview" = "generate") => {
+    const t = REPORT_TYPES.find(r => r.key === type);
+    setWizardType(type);
+    setWizardTitle(`${t?.label ?? type} — ${new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" })}`);
+    setWizardStep("confirm"); setError(null);
+    setDialogCustomerId(customerId);
+    setDialogProjectId(projectId);
+    setWizardMode(mode);
+    setWizardOpen(true);
+  };
+
+  const previewPayload = async () => {
+    if (!dialogCustomerId || !dialogProjectId) return;
+    setPayloadLoading(true); setError(null);
+    try {
+      const r = await fetchWithAuth(`${API}/admin/insights/documents/payload-preview`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customerId: dialogCustomerId, projectId: dialogProjectId, docType: wizardType, title: wizardTitle }),
+      });
+      const d = await r.json() as PayloadPreview & { error?: string };
+      if (!r.ok) throw new Error(d.error ?? "Failed to fetch payload");
+      setPayloadData(d);
+      setWizardOpen(false);
+      setPayloadOpen(true);
+    } catch (e) {
+      toast({ title: "Payload preview failed", description: String(e), variant: "destructive" });
+    } finally { setPayloadLoading(false); }
+  };
+
+  const generate = async () => {
+    if (!dialogCustomerId || !dialogProjectId) return;
+    setWizardStep("generating"); setError(null);
+    // Server returns { id, status: "generating" } immediately (fire-and-forget).
+    // Close the wizard right away — the table auto-polls every 3 s and will show
+    // the row flip from "generating" → "approved" naturally.
+    try {
+      const r = await fetchWithAuth(`${API}/admin/insights/documents/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customerId: dialogCustomerId,
+          projectId:  dialogProjectId,
+          docType: wizardType, title: wizardTitle,
+        }),
+      });
+      const d = await r.json() as { id?: number; status?: string; error?: string };
+      if (!r.ok) throw new Error(d.error ?? "Generation failed");
+      setWizardOpen(false);
+      void loadDocs();
+    } catch (e) { setError(String(e)); setWizardStep("confirm"); }
+  };
+
+  const openPreview = async (doc: InsightsDoc) => {
+    const r = await fetchWithAuth(`${API}/admin/insights/documents/${doc.id}`);
+    setSelectedDoc(((await r.json()) as { document: InsightsDocFull }).document);
+    setPreviewOpen(true);
+  };
+
+  const updateStatus = async (id: number, status: string) => {
+    await fetchWithAuth(`${API}/admin/insights/documents/${id}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
+    void loadDocs();
+  };
+
+  const deleteDoc = async (id: number) => {
+    if (!confirm("Delete this document?")) return;
+    await fetchWithAuth(`${API}/admin/insights/documents/${id}`, { method: "DELETE" });
+    void loadDocs();
+    if (selectedDoc?.id === id) setSelectedDoc(null);
+  };
+
+  const retryDoc = async (doc: InsightsDoc) => {
+    await fetchWithAuth(`${API}/admin/insights/documents/${doc.id}`, { method: "DELETE" });
+    void fetchWithAuth(`${API}/admin/insights/documents/generate`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ customerId: doc.customerId, projectId: doc.projectId, docType: doc.docType, title: doc.title }),
+    });
+    void loadDocs();
+  };
+
+  const dismissDoc = async (id: number) => {
+    await fetchWithAuth(`${API}/admin/insights/documents/${id}`, { method: "DELETE" });
+    void loadDocs();
+    if (selectedDoc?.id === id) setSelectedDoc(null);
+  };
+
+  const downloadPdf = async (doc: InsightsDoc) => {
+    try {
+      const res = await fetchWithAuth(`${API}/admin/insights/documents/${doc.id}/download`);
+      if (!res.ok) { toast({ title: "Download failed", description: "Could not retrieve the document.", variant: "destructive" }); return; }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const safeTitle = (doc.title ?? "document").replace(/[^a-z0-9_\- ]/gi, "_").slice(0, 80);
+      a.href = url; a.download = `${safeTitle}.pdf`; a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast({ title: "Download failed", description: "An unexpected error occurred.", variant: "destructive" });
+    }
+  };
+
+  const openSend = (doc: InsightsDoc) => {
+    const customerEmail = doc.customerId
+      ? (customers.find(c => c.id === doc.customerId)?.email ?? "")
+      : "";
+    setSendDoc(doc); setSendEmail(customerEmail); setSendSubject(doc.title); setSendResult(null); setSendOpen(true);
+  };
+
+  const sendDocument = async () => {
+    if (!sendDoc) return;
+    setSending(true); setSendResult(null);
+    try {
+      const r = await fetchWithAuth(`${API}/admin/insights/documents/${sendDoc.id}/send`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ recipientEmail: sendEmail || undefined, subject: sendSubject }),
+      });
+      const d = await r.json() as { ok?: boolean; sentTo?: string; sharepointUrl?: string; error?: string };
+      if (!r.ok) throw new Error(d.error ?? "Send failed");
+      let msg = `✓ Sent to ${d.sentTo}`;
+      if (d.sharepointUrl) msg += ` · Uploaded to SharePoint`;
+      setSendResult(msg);
+      void loadDocs();
+      if (selectedDoc && selectedDoc.id === sendDoc.id) {
+        setSelectedDoc(prev => prev ? { ...prev, status: "delivered", deliveredAt: new Date().toISOString() } : prev);
+      }
+    } catch (e) { setSendResult(`Error: ${String(e)}`); } finally { setSending(false); }
+  };
+
+  return (
+    <div className="flex gap-5">
+      {/* Left: type cards + list */}
+      <div className="flex-1 flex flex-col gap-5 min-w-0">
+        <div className="grid grid-cols-3 gap-3">
+          {REPORT_TYPES.map(rt => {
+            const Icon = rt.icon;
+            const count = docs.filter(d => d.docType === rt.key).length;
+            return (
+              <div key={rt.key} className="bg-card border border-gray-700/50 rounded-xl p-4 flex flex-col gap-3">
+                <div className="flex items-start gap-3">
+                  <div className="p-2 bg-blue-500/10 rounded-lg shrink-0"><Icon className="w-4 h-4 text-blue-400" /></div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-white text-sm font-medium">{rt.label}</div>
+                    <div className="text-gray-400 text-xs mt-0.5">{rt.desc}</div>
+                  </div>
+                  <button
+                    onClick={() => { setPromptDialogKey(`insights-report-${rt.key}`); setPromptDialogOpen(true); }}
+                    title="Edit prompt"
+                    className="p-1 rounded text-gray-500 hover:text-blue-400 hover:bg-blue-500/10 transition-colors shrink-0"
+                  >
+                    <SlidersHorizontal className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <div className="flex items-center justify-between mt-auto gap-2">
+                  {count > 0 && <span className="text-xs text-gray-500 shrink-0">{count} generated</span>}
+                  <div className="flex gap-1.5 ml-auto">
+                    <button
+                      onClick={() => openWizard(rt.key, "preview")}
+                      title="Preview the AI payload before generating"
+                      className="flex items-center gap-1 text-gray-400 hover:text-blue-300 border border-gray-600/50 hover:border-blue-500/50 text-xs font-medium px-2.5 py-1.5 rounded-lg transition-colors"
+                    >
+                      <Search className="w-3 h-3" /> View Payload
+                    </button>
+                    <button onClick={() => openWizard(rt.key)} className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium px-3 py-1.5 rounded-lg transition-colors">
+                      <Plus className="w-3 h-3" /> Generate
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="bg-card border border-gray-700/50 rounded-xl">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700/50">
+            <h3 className="text-white font-medium text-sm">Generated Reports ({docs.length})</h3>
+            <button onClick={() => void loadDocs()} className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-gray-700"><RefreshCw className="w-3 h-3" /></button>
+          </div>
+          {loading && docs.length === 0 ? (
+            <div className="p-8 text-center text-gray-500 text-sm">Loading…</div>
+          ) : docs.length === 0 ? (
+            <div className="p-8 text-center text-gray-500 text-sm">No reports generated yet. Use the cards above to generate your first one.</div>
+          ) : (
+            <div className="divide-y divide-gray-700/30">
+              {docs.map(doc => (
+                <div key={doc.id} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-700/20 transition-colors group">
+                  <FileText className={`w-4 h-4 shrink-0 ${doc.status === "generating" ? "text-indigo-400" : doc.status === "failed" ? "text-red-400" : "text-gray-500"}`} />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-white text-sm truncate min-w-0 flex-1">{doc.title}</span>
+                      <span className="shrink-0 font-mono text-[10px] text-gray-500 bg-gray-800 border border-gray-700 rounded px-1 py-0.5">#{doc.id}</span>
+                    </div>
+                    {doc.status === "failed" && doc.errorMessage ? (
+                      <div className="text-red-400/80 text-xs truncate" title={doc.errorMessage}>{doc.errorMessage}</div>
+                    ) : (
+                      <div className="text-gray-500 text-xs">{new Date(doc.createdAt).toLocaleDateString()}</div>
+                    )}
+                  </div>
+                  <StatusPill status={doc.status} />
+                  {doc.status === "failed" && (
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => void retryDoc(doc)} title="Retry generation" className="flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium rounded bg-red-500/10 text-red-300 hover:bg-red-500/20 border border-red-500/30 transition-colors">
+                        <RefreshCw className="w-2.5 h-2.5" /> Retry
+                      </button>
+                      <button onClick={() => void dismissDoc(doc.id)} title="Dismiss" className="p-1 rounded text-gray-500 hover:text-gray-300 hover:bg-gray-700"><X className="w-3 h-3" /></button>
+                    </div>
+                  )}
+                  {doc.status !== "generating" && doc.status !== "failed" && (
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button onClick={() => void openPreview(doc)} title="Preview" className="p-1 rounded text-gray-400 hover:text-white hover:bg-gray-700"><Eye className="w-3.5 h-3.5" /></button>
+                      <button onClick={() => downloadPdf(doc)} title="Download PDF" className="p-1 rounded text-gray-400 hover:text-white hover:bg-gray-700"><Download className="w-3.5 h-3.5" /></button>
+                      {(doc.status === "approved" || doc.status === "draft") && (
+                        <button onClick={() => openSend(doc)} title="Send to Client" className="p-1 rounded text-gray-400 hover:text-blue-400 hover:bg-gray-700"><Send className="w-3.5 h-3.5" /></button>
+                      )}
+                      <button onClick={() => void updateStatus(doc.id, "archived")} title="Archive" className="p-1 rounded text-gray-400 hover:text-gray-300 hover:bg-gray-700"><Archive className="w-3.5 h-3.5" /></button>
+                      <button onClick={() => void deleteDoc(doc.id)} title="Delete" className="p-1 rounded text-gray-400 hover:text-red-400 hover:bg-gray-700"><Trash2 className="w-3.5 h-3.5" /></button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Right: preview */}
+      {selectedDoc && (
+        <div className="w-[480px] shrink-0 bg-card border border-gray-700/50 rounded-xl flex flex-col">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700/50">
+            <div><div className="text-white text-sm font-medium truncate max-w-[260px]">{selectedDoc.title}</div><StatusPill status={selectedDoc.status} /></div>
+            <div className="flex gap-1">
+              <button onClick={() => downloadPdf(selectedDoc)} className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-gray-700" title="Download PDF"><Download className="w-3.5 h-3.5" /></button>
+              {(selectedDoc.status === "approved" || selectedDoc.status === "draft") && (
+                <button
+                  onClick={() => { const d = docs.find(x => x.id === selectedDoc.id); if (d) openSend(d); }}
+                  className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded-lg"
+                  title="Send to Client"
+                >
+                  <Send className="w-3 h-3" /> Send
+                </button>
+              )}
+              <button onClick={() => setSelectedDoc(null)} className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-gray-700"><X className="w-3.5 h-3.5" /></button>
+            </div>
+          </div>
+          {selectedDoc.docType === "consolidated_sow" && selectedDoc.signalFilterMeta && !selectedDoc.signalFilterMeta.clean && (
+            <div className="mx-3 mt-2 mb-0 px-3 py-2 bg-yellow-500/10 border border-yellow-500/30 rounded-lg flex items-start gap-2 text-xs text-yellow-300">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+              <div>
+                <span className="font-semibold">Signal rule conflict detected</span> — {selectedDoc.signalFilterMeta.conflictCount} conflict{selectedDoc.signalFilterMeta.conflictCount !== 1 ? "s" : ""} existed when this SOW was generated. The project list may be incorrect. Resolve conflicts in Signal Rules settings and regenerate.
+              </div>
+            </div>
+          )}
+          <iframe srcDoc={selectedDoc.htmlContent} className="flex-1 w-full rounded-b-xl min-h-96" sandbox="allow-same-origin" title="Document Preview" />
+        </div>
+      )}
+
+      {/* Wizard */}
+      <Modal open={wizardOpen} onClose={() => setWizardOpen(false)} title="Generate Report">
+        {wizardStep === "confirm" && (
+          <div className="flex flex-col gap-4">
+            <div>
+              <label className="text-gray-400 text-xs mb-1.5 block">Customer <span className="text-red-400">*</span></label>
+              <select
+                value={dialogCustomerId ?? ""}
+                onChange={e => { setDialogCustomerId(e.target.value ? parseInt(e.target.value, 10) : null); setDialogProjectId(null); }}
+                className="w-full bg-background border border-gray-700/50 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              >
+                <option value="">Select a customer…</option>
+                {customers.map(c => (
+                  <option key={c.id} value={c.id}>{c.name ?? c.email}{c.company ? ` — ${c.company}` : ""}</option>
+                ))}
+              </select>
+            </div>
+            {dialogCustomerId && (
+              <div>
+                <label className="text-gray-400 text-xs mb-1.5 block">Project <span className="text-red-400">*</span></label>
+                <select
+                  value={dialogProjectId ?? ""}
+                  onChange={e => setDialogProjectId(e.target.value ? parseInt(e.target.value, 10) : null)}
+                  className="w-full bg-background border border-gray-700/50 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                >
+                  <option value="">Select a project…</option>
+                  {dialogProjects.map(p => (
+                    <option key={p.id} value={p.id}>{p.title}{p.phase ? ` (${p.phase})` : ""}</option>
+                  ))}
+                </select>
+                {dialogProjects.length === 0 && (
+                  <p className="text-yellow-400 text-xs mt-1">No projects found for this customer.</p>
+                )}
+              </div>
+            )}
+            <div>
+              <label className="text-gray-400 text-xs mb-1.5 block">Report Title</label>
+              <input value={wizardTitle} onChange={e => setWizardTitle(e.target.value)}
+                className="w-full bg-background border border-gray-700/50 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+            </div>
+            {error && <p className="text-red-400 text-xs">{error}</p>}
+            <div className="bg-background rounded-lg p-3 text-xs text-gray-400">
+              <div className="text-gray-300 font-medium mb-1">This will:</div>
+              <ul className="list-disc list-inside flex flex-col gap-1">
+                <li>Fetch telemetry from script_run_results scoped to the selected customer and project</li>
+                <li>Generate AI narrative using Claude with structured profileUpdates context</li>
+                <li>Auto-approve the document — Send button is available immediately</li>
+                <li>Provide a downloadable <strong className="text-blue-400">PDF</strong> via pdf-lib</li>
+              </ul>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setWizardOpen(false)} className="px-4 py-2 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-gray-700 transition-colors">Cancel</button>
+              <button
+                onClick={() => void previewPayload()}
+                disabled={payloadLoading || !wizardTitle.trim() || !dialogCustomerId || !dialogProjectId}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm border border-gray-600 hover:border-blue-500/60 text-gray-300 hover:text-blue-300 disabled:opacity-40 transition-colors"
+              >
+                {payloadLoading ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading…</> : <><Search className="w-3.5 h-3.5" /> Preview Payload</>}
+              </button>
+              {wizardMode === "generate" && (
+                <button onClick={() => void generate()} disabled={!wizardTitle.trim() || !dialogCustomerId || !dialogProjectId} className="px-4 py-2 rounded-lg text-sm bg-blue-600 hover:bg-blue-700 text-white font-medium disabled:opacity-40 transition-colors">Generate Report</button>
+              )}
+            </div>
+          </div>
+        )}
+        {wizardStep === "generating" && (
+          <div className="flex flex-col items-center gap-4 py-6">
+            <RefreshCw className="w-8 h-8 text-blue-400 animate-spin" />
+            <p className="text-white font-medium">Generating report…</p>
+            <p className="text-gray-400 text-sm text-center">Fetching telemetry, analysing findings, and writing narrative with Claude AI. This takes 10–30 seconds.</p>
+          </div>
+        )}
+        {wizardStep === "done" && selectedDoc && (
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center gap-3 p-3 bg-green-500/10 border border-green-500/20 rounded-lg">
+              <CheckCircle className="w-5 h-5 text-green-400 shrink-0" />
+              <div><div className="text-white font-medium text-sm">Report generated</div><div className="text-gray-400 text-xs">Ready to send — click Send to deliver it to the client.</div></div>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setWizardOpen(false)} className="px-4 py-2 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-gray-700">Close</button>
+              <button onClick={() => { setWizardOpen(false); void openPreview(selectedDoc); }} className="px-4 py-2 rounded-lg text-sm bg-blue-600 hover:bg-blue-700 text-white font-medium">Preview</button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <PromptEditDialog
+        open={promptDialogOpen}
+        onClose={() => setPromptDialogOpen(false)}
+        promptKey={promptDialogKey}
+        fetchWithAuth={fetchWithAuth}
+      />
+
+      <SlideOver open={previewOpen} onClose={() => setPreviewOpen(false)} title={selectedDoc?.title ?? "Preview"}>
+        {selectedDoc && (
+          <iframe srcDoc={selectedDoc.htmlContent} className="w-full h-full min-h-[600px] rounded-lg" sandbox="allow-same-origin" title="Full Preview" />
+        )}
+      </SlideOver>
+
+      {payloadData && (
+        <InsightsPayloadDialog
+          open={payloadOpen}
+          onClose={() => setPayloadOpen(false)}
+          payload={payloadData}
+          docTypeLabel={REPORT_TYPES.find(r => r.key === wizardType)?.label ?? wizardType}
+        />
+      )}
+
+      <Modal open={sendOpen} onClose={() => setSendOpen(false)} title="Send to Client">
+        <div className="flex flex-col gap-4">
+          <div className="p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg text-yellow-300 text-xs flex gap-2 items-start">
+            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+            This will email the report via Exchange Online and upload a PDF to the client's SharePoint site (if configured). This action cannot be undone.
+          </div>
+          <div>
+            <label className="text-gray-400 text-xs mb-1.5 block">Recipient Email (optional — uses customer email if blank)</label>
+            <input value={sendEmail} onChange={e => setSendEmail(e.target.value)} type="email" placeholder="client@company.com"
+              className="w-full bg-background border border-gray-700/50 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+          </div>
+          <div>
+            <label className="text-gray-400 text-xs mb-1.5 block">Email Subject</label>
+            <input value={sendSubject} onChange={e => setSendSubject(e.target.value)}
+              className="w-full bg-background border border-gray-700/50 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+          </div>
+          {sendResult && <p className={`text-xs ${sendResult.startsWith("Error") ? "text-red-400" : "text-green-400"}`}>{sendResult}</p>}
+          <div className="flex gap-2 justify-end">
+            <button onClick={() => setSendOpen(false)} className="px-4 py-2 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-gray-700">Cancel</button>
+            <button onClick={() => void sendDocument()} disabled={sending}
+              className="px-4 py-2 rounded-lg text-sm bg-blue-600 hover:bg-blue-700 text-white font-medium disabled:opacity-40 flex items-center gap-2">
+              {sending ? <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Sending…</> : <><Send className="w-3.5 h-3.5" /> Send Now</>}
+            </button>
+          </div>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+// ── Consulting Tab ─────────────────────────────────────────────────────────────
+
+function ConsultingTab({
+  customerId, projectId, fetchWithAuth, customers,
+}: {
+  customerId: number | null; projectId: number | null;
+  fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response>;
+  customers: Customer[];
+}) {
+  const { toast } = useToast();
+  const [docs, setDocs] = useState<InsightsDoc[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [selectedDoc, setSelectedDoc] = useState<InsightsDocFull | null>(null);
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizardType, setWizardType] = useState<string>("");
+  const [wizardTitle, setWizardTitle] = useState("");
+  const [wizardStep, setWizardStep] = useState<WizardStep>("confirm");
+  const [sendOpen, setSendOpen] = useState(false);
+  const [sendDoc, setSendDoc] = useState<InsightsDoc | null>(null);
+  const [sendEmail, setSendEmail] = useState("");
+  const [sendSubject, setSendSubject] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sendResult, setSendResult] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const [dialogCustomerId, setDialogCustomerId] = useState<number | null>(null);
+  const [dialogProjectId,  setDialogProjectId]  = useState<number | null>(null);
+  const [dialogProjects,   setDialogProjects]   = useState<Project[]>([]);
+  const [promptDialogKey,  setPromptDialogKey]  = useState<string>("");
+  const [promptDialogOpen, setPromptDialogOpen] = useState(false);
+  const [wizardSowDocumentId, setWizardSowDocumentId] = useState<number | null>(null);
+  const [sowDocs, setSowDocs] = useState<{ id: number; title: string; docType: string }[]>([]);
+  const [wizardMode, setWizardMode] = useState<"generate" | "preview">("generate");
+  const [payloadOpen, setPayloadOpen] = useState(false);
+  const [payloadData, setPayloadData] = useState<PayloadPreview | null>(null);
+  const [payloadLoading, setPayloadLoading] = useState(false);
+
+  const [workstreamWarnings, setWorkstreamWarnings] = useState<string[]>([]);
+
+  useEffect(() => {
+    fetchWithAuth(`${API}/admin/insights/consulting/workstream-check`)
+      .then(r => r.json())
+      .then((d: unknown) => {
+        const data = d as { unresolvedTitles?: string[] };
+        setWorkstreamWarnings(data.unresolvedTitles ?? []);
+      })
+      .catch(() => { /* non-fatal */ });
+  }, [fetchWithAuth]);
+
+  useEffect(() => {
+    if (!dialogCustomerId) { setDialogProjects([]); return; }
+    fetchWithAuth(`${API}/admin/insights/projects?customerId=${dialogCustomerId}`)
+      .then(r => r.json())
+      .then((d: unknown) => setDialogProjects((d as { projects: Project[] }).projects ?? []))
+      .catch(() => setDialogProjects([]));
+  }, [dialogCustomerId, fetchWithAuth]);
+
+  // Load available SOW documents when generating a task_execution_guide
+  useEffect(() => {
+    if (wizardType !== "task_execution_guide" || !dialogCustomerId) { setSowDocs([]); return; }
+    const qs = new URLSearchParams({ category: "consulting" });
+    qs.set("customerId", String(dialogCustomerId));
+    if (dialogProjectId) qs.set("projectId", String(dialogProjectId));
+    fetchWithAuth(`${API}/admin/insights/documents?${qs}`)
+      .then(r => r.json())
+      .then((d: unknown) => {
+        const all = (d as { documents: InsightsDoc[] }).documents ?? [];
+        setSowDocs(all.filter(doc =>
+          ["consolidated_sow", "sow", "scoped_sow"].includes(doc.docType) &&
+          ["draft", "approved", "delivered"].includes(doc.status)
+        ).map(doc => ({ id: doc.id, title: doc.title, docType: doc.docType })));
+      })
+      .catch(() => setSowDocs([]));
+  }, [wizardType, dialogCustomerId, dialogProjectId, fetchWithAuth]);
+
+  const buildQs = useCallback(() => {
+    const p = new URLSearchParams({ category: "consulting" });
+    if (customerId) p.set("customerId", String(customerId));
+    if (projectId)  p.set("projectId",  String(projectId));
+    return `?${p}`;
+  }, [customerId, projectId]);
+
+  const loadDocs = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await fetchWithAuth(`${API}/admin/insights/documents${buildQs()}`);
+      setDocs(((await r.json()) as { documents: InsightsDoc[] }).documents ?? []);
+    } catch { /* empty */ } finally { setLoading(false); }
+  }, [fetchWithAuth, buildQs]);
+
+  useEffect(() => { void loadDocs(); }, [loadDocs]);
+
+  // Fast auto-poll (3 s) while any doc is already known to be generating
+  useEffect(() => {
+    const hasGenerating = docs.some(d => d.status === "generating");
+    if (!hasGenerating) return;
+    const t = setTimeout(() => { void loadDocs(); }, 3000);
+    return () => clearTimeout(t);
+  }, [docs, loadDocs]);
+
+  // Background poll (15 s) to surface rows created externally (e.g. during
+  // a diagnostic run) that never appear via the fast poll above.
+  useEffect(() => {
+    const t = setInterval(() => { void loadDocs(); }, 15_000);
+    return () => clearInterval(t);
+  }, [loadDocs]);
+
+  // Auto-dismiss failed rows after 60 seconds
+  const scheduledConsultingDismissals = useRef<Set<number>>(new Set());
+  useEffect(() => {
+    docs.filter(d => d.status === "failed").forEach(doc => {
+      if (scheduledConsultingDismissals.current.has(doc.id)) return;
+      scheduledConsultingDismissals.current.add(doc.id);
+      setTimeout(() => {
+        scheduledConsultingDismissals.current.delete(doc.id);
+        void fetchWithAuth(`${API}/admin/insights/documents/${doc.id}`, { method: "DELETE" }).then(() => void loadDocs());
+      }, 60_000);
+    });
+  }, [docs, fetchWithAuth, loadDocs]);
+
+  const openWizard = (type: string, mode: "generate" | "preview" = "generate") => {
+    const t = CONSULTING_TYPES.find(c => c.key === type);
+    setWizardType(type);
+    setWizardTitle(`${t?.label ?? type} — ${new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" })}`);
+    setWizardStep("confirm"); setError(null);
+    setDialogCustomerId(customerId);
+    setDialogProjectId(projectId);
+    setWizardSowDocumentId(null);
+    setWizardMode(mode);
+    setWizardOpen(true);
+  };
+
+  const previewPayload = async () => {
+    if (!dialogCustomerId || !dialogProjectId) return;
+    setPayloadLoading(true); setError(null);
+    try {
+      const r = await fetchWithAuth(`${API}/admin/insights/consulting/payload-preview`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customerId: dialogCustomerId, projectId: dialogProjectId, deliverableType: wizardType, title: wizardTitle }),
+      });
+      const d = await r.json() as PayloadPreview & { error?: string };
+      if (!r.ok) throw new Error(d.error ?? "Failed to fetch payload");
+      setPayloadData(d);
+      setWizardOpen(false);
+      setPayloadOpen(true);
+    } catch (e) {
+      toast({ title: "Payload preview failed", description: String(e), variant: "destructive" });
+    } finally { setPayloadLoading(false); }
+  };
+
+  const generate = async () => {
+    if (!dialogCustomerId || !dialogProjectId) return;
+    if (wizardType === "task_execution_guide" && !wizardSowDocumentId) {
+      setError("Please select a SOW document to generate from."); return;
+    }
+    setWizardStep("generating"); setError(null);
+    // consolidated_sow → server queues a workflow run and returns { runId, status: "queued" }.
+    //   The workflow creates the "generating" doc row asynchronously, so we poll after a short
+    //   delay to pick it up; the existing 3 s fast-poll then takes over until completion.
+    // All other types → server returns { id, status: "generating" } immediately (fire-and-forget).
+    // In both cases we close the wizard and let polling surface the final state.
+    try {
+      const body: Record<string, unknown> = {
+        customerId: dialogCustomerId, projectId: dialogProjectId,
+        deliverableType: wizardType, title: wizardTitle,
+      };
+      if (wizardType === "task_execution_guide" && wizardSowDocumentId) {
+        body.sowDocumentId = wizardSowDocumentId;
+      }
+      const r = await fetchWithAuth(`${API}/admin/insights/consulting/generate`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const d = await r.json() as { id?: number; runId?: number; status?: string; error?: string };
+      if (!r.ok) throw new Error(d.error ?? "Generation failed");
+      setWizardOpen(false);
+      if (d.status === "queued") {
+        // Workflow engine creates the doc row asynchronously — give it 1.5 s then poll.
+        // The 3 s fast-poll will continue once the "generating" row appears in the list.
+        setTimeout(() => { void loadDocs(); }, 1500);
+      } else {
+        void loadDocs();
+      }
+    } catch (e) { setError(String(e)); setWizardStep("confirm"); }
+  };
+
+  const openPreview = async (doc: InsightsDoc) => {
+    const r = await fetchWithAuth(`${API}/admin/insights/documents/${doc.id}`);
+    setSelectedDoc(((await r.json()) as { document: InsightsDocFull }).document);
+  };
+
+  const openSend = (doc: InsightsDoc) => {
+    setSendDoc(doc); setSendEmail(""); setSendSubject(doc.title); setSendResult(null); setSendOpen(true);
+  };
+
+  const sendDeliverable = async () => {
+    if (!sendDoc) return;
+    setSending(true); setSendResult(null);
+    try {
+      const r = await fetchWithAuth(`${API}/admin/insights/consulting/${sendDoc.id}/send`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ recipientEmail: sendEmail || undefined, subject: sendSubject }),
+      });
+      const d = await r.json() as { ok?: boolean; sentTo?: string; sharepointUrl?: string; error?: string };
+      if (!r.ok) throw new Error(d.error ?? "Send failed");
+      let msg = `✓ Sent to ${d.sentTo}`;
+      if (d.sharepointUrl) msg += ` · Uploaded to SharePoint`;
+      setSendResult(msg);
+      void loadDocs();
+    } catch (e) { setSendResult(`Error: ${String(e)}`); } finally { setSending(false); }
+  };
+
+  const deleteDoc = async (id: number) => {
+    if (!confirm("Delete this deliverable?")) return;
+    await fetchWithAuth(`${API}/admin/insights/documents/${id}`, { method: "DELETE" });
+    void loadDocs();
+    if (selectedDoc?.id === id) setSelectedDoc(null);
+  };
+
+  const retryDoc = async (doc: InsightsDoc) => {
+    await fetchWithAuth(`${API}/admin/insights/documents/${doc.id}`, { method: "DELETE" });
+    void fetchWithAuth(`${API}/admin/insights/consulting/generate`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ customerId: doc.customerId, projectId: doc.projectId, deliverableType: doc.docType, title: doc.title }),
+    });
+    void loadDocs();
+  };
+
+  const dismissDoc = async (id: number) => {
+    await fetchWithAuth(`${API}/admin/insights/documents/${id}`, { method: "DELETE" });
+    void loadDocs();
+    if (selectedDoc?.id === id) setSelectedDoc(null);
+  };
+
+  const downloadPdf = async (doc: InsightsDoc) => {
+    try {
+      const res = await fetchWithAuth(`${API}/admin/insights/documents/${doc.id}/download`);
+      if (!res.ok) { toast({ title: "Download failed", description: "Could not retrieve the document.", variant: "destructive" }); return; }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const safeTitle = (doc.title ?? "document").replace(/[^a-z0-9_\- ]/gi, "_").slice(0, 80);
+      a.href = url; a.download = `${safeTitle}.pdf`; a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast({ title: "Download failed", description: "An unexpected error occurred.", variant: "destructive" });
+    }
+  };
+
+  return (
+    <div className="flex gap-5">
+      {/* Left: type cards + list */}
+      <div className="flex-1 flex flex-col gap-5 min-w-0">
+        {workstreamWarnings.length > 0 && (
+          <div className="flex items-start gap-3 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-xl">
+            <AlertTriangle className="w-4 h-4 text-yellow-400 shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="text-yellow-300 text-xs font-medium">
+                {workstreamWarnings.length === 1
+                  ? "1 engagement project title doesn't match a known workstream"
+                  : `${workstreamWarnings.length} engagement project titles don't match any known workstream`}
+                {" — SOW adjustments may be incomplete."}
+              </p>
+              <ul className="mt-1 space-y-0.5">
+                {workstreamWarnings.map(t => (
+                  <li key={t} className="text-yellow-400/80 text-xs font-mono">"{t}"</li>
+                ))}
+              </ul>
+              <a
+                href="/admin-panel/#/delivery/engagement-projects"
+                className="inline-flex items-center gap-1 mt-1.5 text-yellow-300 hover:text-yellow-100 text-xs underline underline-offset-2"
+              >
+                Fix project titles in Engagement Projects →
+              </a>
+            </div>
+          </div>
+        )}
+        <div className="grid grid-cols-2 gap-3">
+          {CONSULTING_TYPES.map(ct => {
+            const Icon = ct.icon;
+            const count = docs.filter(d => d.docType === ct.key).length;
+            const isViewOnly = ct.key === "scoped_sow";
+            const showWarningBadge = workstreamWarnings.length > 0 && !isViewOnly && (ct.key === "sow" || ct.key === "consolidated_sow");
+            return (
+              <div key={ct.key} className={`bg-card border rounded-xl p-4 flex flex-col gap-3 ${showWarningBadge ? "border-yellow-500/40" : "border-gray-700/50"}`}>
+                <div className="flex items-start gap-3">
+                  <div className="p-2 bg-purple-500/10 rounded-lg shrink-0"><Icon className="w-4 h-4 text-purple-400" /></div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-white text-sm font-medium">{ct.label}</div>
+                    <div className="text-gray-400 text-xs mt-0.5">{ct.desc}</div>
+                  </div>
+                  {!isViewOnly && (
+                    <button
+                      onClick={() => { setPromptDialogKey(`insights-consulting-${ct.key}`); setPromptDialogOpen(true); }}
+                      title="Edit prompt"
+                      className="p-1 rounded text-gray-500 hover:text-purple-400 hover:bg-purple-500/10 transition-colors shrink-0"
+                    >
+                      <SlidersHorizontal className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  {count > 0 && <span className="text-xs text-gray-500 shrink-0">{count} {isViewOnly ? "generated" : "staged"}</span>}
+                  {!isViewOnly && (
+                    <div className="flex gap-1.5 ml-auto items-center">
+                      {showWarningBadge && (
+                        <a
+                          href="/admin-panel/#/delivery/engagement-projects"
+                          title={`Unresolved workstream titles: ${workstreamWarnings.join(", ")}`}
+                          className="flex items-center gap-1 px-2 py-1 rounded-md bg-yellow-500/10 border border-yellow-500/30 text-yellow-400 text-[10px] font-medium hover:bg-yellow-500/20 transition-colors"
+                          onClick={e => e.stopPropagation()}
+                        >
+                          <AlertTriangle className="w-3 h-3" />
+                          {workstreamWarnings.length} unresolved
+                        </a>
+                      )}
+                      <button
+                        onClick={() => openWizard(ct.key, "preview")}
+                        title="Preview the AI payload before generating"
+                        className="flex items-center gap-1 text-gray-400 hover:text-purple-300 border border-gray-600/50 hover:border-purple-500/50 text-xs font-medium px-2.5 py-1.5 rounded-lg transition-colors"
+                      >
+                        <Search className="w-3 h-3" /> View Payload
+                      </button>
+                      <button onClick={() => openWizard(ct.key)} className="flex items-center gap-1.5 bg-purple-700 hover:bg-purple-600 text-white text-xs font-medium px-3 py-1.5 rounded-lg transition-colors">
+                        <Plus className="w-3 h-3" /> Generate
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="bg-card border border-gray-700/50 rounded-xl">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700/50">
+            <h3 className="text-white font-medium text-sm">Consulting Deliverables ({docs.length})</h3>
+            <button onClick={() => void loadDocs()} className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-gray-700"><RefreshCw className="w-3 h-3" /></button>
+          </div>
+          {loading && docs.length === 0 ? <div className="p-6 text-center text-gray-500 text-sm">Loading…</div>
+          : docs.length === 0 ? <div className="p-6 text-center text-gray-500 text-sm">No deliverables yet. Use the cards above to generate one.</div>
+          : (
+            <div className="divide-y divide-gray-700/30">
+              {docs.map(doc => (
+                <div key={doc.id}
+                  onClick={() => doc.status !== "generating" && doc.status !== "failed" && void openPreview(doc)}
+                  className={`flex items-center gap-3 px-4 py-3 hover:bg-gray-700/20 transition-colors group ${doc.status !== "generating" && doc.status !== "failed" ? "cursor-pointer" : ""} ${selectedDoc?.id === doc.id ? "bg-gray-700/30" : ""}`}>
+                  <BookOpen className={`w-4 h-4 shrink-0 ${doc.status === "generating" ? "text-indigo-400" : doc.status === "failed" ? "text-red-400" : "text-gray-500"}`} />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-white text-sm truncate min-w-0 flex-1">{doc.title}</span>
+                      <span className="shrink-0 font-mono text-[10px] text-gray-500 bg-gray-800 border border-gray-700 rounded px-1 py-0.5">#{doc.id}</span>
+                    </div>
+                    {doc.status === "failed" && doc.errorMessage ? (
+                      <div className="text-red-400/80 text-xs truncate" title={doc.errorMessage}>{doc.errorMessage}</div>
+                    ) : (
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-gray-500 text-xs">{new Date(doc.createdAt).toLocaleDateString()}</span>
+                        {doc.projectTitle && <span className="text-blue-400/70 text-xs truncate max-w-[120px]" title={doc.projectTitle}>· {doc.projectTitle}</span>}
+                        {doc.sowTotalPrice && <span className="text-green-400/80 text-xs font-medium">${parseFloat(doc.sowTotalPrice).toLocaleString()}</span>}
+                      </div>
+                    )}
+                  </div>
+                  <StatusPill status={doc.status} />
+                  {doc.status === "failed" && (
+                    <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                      <button onClick={() => void retryDoc(doc)} title="Retry generation" className="flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium rounded bg-red-500/10 text-red-300 hover:bg-red-500/20 border border-red-500/30 transition-colors">
+                        <RefreshCw className="w-2.5 h-2.5" /> Retry
+                      </button>
+                      <button onClick={() => void dismissDoc(doc.id)} title="Dismiss" className="p-1 rounded text-gray-500 hover:text-gray-300 hover:bg-gray-700"><X className="w-3 h-3" /></button>
+                    </div>
+                  )}
+                  {doc.status !== "generating" && doc.status !== "failed" && (
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
+                      <button onClick={() => downloadPdf(doc)} title="Download PDF" className="p-1 rounded text-gray-400 hover:text-white hover:bg-gray-700"><Download className="w-3.5 h-3.5" /></button>
+                      {(doc.status === "approved" || doc.status === "draft") && (
+                        <button onClick={() => openSend(doc)} title="Send to Customer" className="p-1 rounded text-gray-400 hover:text-blue-400 hover:bg-gray-700"><Send className="w-3.5 h-3.5" /></button>
+                      )}
+                      <button onClick={() => void deleteDoc(doc.id)} title="Delete" className="p-1 rounded text-gray-400 hover:text-red-400 hover:bg-gray-700"><Trash2 className="w-3.5 h-3.5" /></button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Right inspector */}
+      <div className="w-[480px] shrink-0 bg-card border border-gray-700/50 rounded-xl flex flex-col">
+        {selectedDoc ? (
+          <>
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700/50">
+              <div><div className="text-white text-sm font-medium truncate max-w-[280px]">{selectedDoc.title}</div><StatusPill status={selectedDoc.status} /></div>
+              <div className="flex gap-1">
+                <button onClick={() => downloadPdf(selectedDoc)} className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-gray-700" title="Download PDF"><Download className="w-3.5 h-3.5" /></button>
+                {(selectedDoc.status === "approved" || selectedDoc.status === "draft") && (
+                  <button onClick={() => { const d = docs.find(x => x.id === selectedDoc.id); if (d) openSend(d); }}
+                    className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded-lg">
+                    <Send className="w-3 h-3" /> Send
+                  </button>
+                )}
+                <button onClick={() => setSelectedDoc(null)} className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-gray-700"><X className="w-3.5 h-3.5" /></button>
+              </div>
+            </div>
+            {selectedDoc.docType === "consolidated_sow" && selectedDoc.signalFilterMeta && !selectedDoc.signalFilterMeta.clean && (
+              <div className="mx-3 mt-2 mb-0 px-3 py-2 bg-yellow-500/10 border border-yellow-500/30 rounded-lg flex items-start gap-2 text-xs text-yellow-300">
+                <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-semibold">Signal rule conflict detected</span> — {selectedDoc.signalFilterMeta.conflictCount} conflict{selectedDoc.signalFilterMeta.conflictCount !== 1 ? "s" : ""} existed when this SOW was generated. The project list may be incorrect. Resolve conflicts in Signal Rules settings and regenerate.
+                </div>
+              </div>
+            )}
+            <iframe srcDoc={selectedDoc.htmlContent} className="flex-1 w-full rounded-b-xl min-h-96" sandbox="allow-same-origin" title="Deliverable Preview" />
+          </>
+        ) : (
+          <div className="flex-1 flex items-center justify-center flex-col gap-3 text-gray-500">
+            <ChevronRight className="w-8 h-8" />
+            <p className="text-sm">Select a deliverable to preview</p>
+          </div>
+        )}
+      </div>
+
+      {/* Wizard */}
+      <Modal open={wizardOpen} onClose={() => setWizardOpen(false)} title="Generate Consulting Deliverable">
+        {wizardStep === "confirm" && (
+          <div className="flex flex-col gap-4">
+            <div>
+              <label className="text-gray-400 text-xs mb-1.5 block">Customer <span className="text-red-400">*</span></label>
+              <select
+                value={dialogCustomerId ?? ""}
+                onChange={e => { setDialogCustomerId(e.target.value ? parseInt(e.target.value, 10) : null); setDialogProjectId(null); }}
+                className="w-full bg-background border border-gray-700/50 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-purple-500"
+              >
+                <option value="">Select a customer…</option>
+                {customers.map(c => (
+                  <option key={c.id} value={c.id}>{c.name ?? c.email}{c.company ? ` — ${c.company}` : ""}</option>
+                ))}
+              </select>
+            </div>
+            {dialogCustomerId && (
+              <div>
+                <label className="text-gray-400 text-xs mb-1.5 block">Project <span className="text-red-400">*</span></label>
+                <select
+                  value={dialogProjectId ?? ""}
+                  onChange={e => setDialogProjectId(e.target.value ? parseInt(e.target.value, 10) : null)}
+                  className="w-full bg-background border border-gray-700/50 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                >
+                  <option value="">Select a project…</option>
+                  {dialogProjects.map(p => (
+                    <option key={p.id} value={p.id}>{p.title}{p.phase ? ` (${p.phase})` : ""}</option>
+                  ))}
+                </select>
+                {dialogProjects.length === 0 && (
+                  <p className="text-yellow-400 text-xs mt-1">No projects found for this customer.</p>
+                )}
+              </div>
+            )}
+            {wizardType === "task_execution_guide" && (
+              <div>
+                <label className="text-gray-400 text-xs mb-1.5 block">SOW to generate from <span className="text-red-400">*</span></label>
+                <select
+                  value={wizardSowDocumentId ?? ""}
+                  onChange={e => setWizardSowDocumentId(e.target.value ? parseInt(e.target.value, 10) : null)}
+                  className="w-full bg-background border border-amber-700/50 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                >
+                  <option value="">Select a SOW document…</option>
+                  {sowDocs.map(d => (
+                    <option key={d.id} value={d.id}>{d.title}</option>
+                  ))}
+                </select>
+                {sowDocs.length === 0 && (
+                  <p className="text-amber-400/80 text-xs mt-1">No SOW documents found for this customer. Generate a Consolidated SOW first.</p>
+                )}
+              </div>
+            )}
+            <div>
+              <label className="text-gray-400 text-xs mb-1.5 block">Deliverable Title</label>
+              <input value={wizardTitle} onChange={e => setWizardTitle(e.target.value)}
+                className="w-full bg-background border border-gray-700/50 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-purple-500" />
+            </div>
+            {error && <p className="text-red-400 text-xs">{error}</p>}
+            <div className="bg-background rounded-lg p-3 text-xs text-gray-400">
+              Generates a professional {CONSULTING_TYPES.find(c => c.key === wizardType)?.label ?? wizardType} using real script telemetry scoped to the selected customer and project. Auto-approved on generation — Send is available immediately. SharePoint upload occurs automatically on delivery if the client site is configured.
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setWizardOpen(false)} className="px-4 py-2 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-gray-700">Cancel</button>
+              <button
+                onClick={() => void previewPayload()}
+                disabled={payloadLoading || !wizardTitle.trim() || !dialogCustomerId || !dialogProjectId}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm border border-gray-600 hover:border-purple-500/60 text-gray-300 hover:text-purple-300 disabled:opacity-40 transition-colors"
+              >
+                {payloadLoading ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading…</> : <><Search className="w-3.5 h-3.5" /> Preview Payload</>}
+              </button>
+              {wizardMode === "generate" && (
+                <button onClick={() => void generate()} disabled={!wizardTitle.trim() || !dialogCustomerId || !dialogProjectId} className="px-4 py-2 rounded-lg text-sm bg-purple-700 hover:bg-purple-600 text-white font-medium disabled:opacity-40">Generate</button>
+              )}
+            </div>
+          </div>
+        )}
+        {wizardStep === "generating" && (
+          <div className="flex flex-col items-center gap-4 py-6">
+            <RefreshCw className="w-8 h-8 text-purple-400 animate-spin" />
+            <p className="text-white font-medium">Generating deliverable…</p>
+            <p className="text-gray-400 text-sm text-center">This takes 15–40 seconds for consulting documents.</p>
+          </div>
+        )}
+        {wizardStep === "done" && (
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center gap-3 p-3 bg-green-500/10 border border-green-500/20 rounded-lg">
+              <CheckCircle className="w-5 h-5 text-green-400 shrink-0" />
+              <div><div className="text-white font-medium text-sm">Deliverable generated</div><div className="text-gray-400 text-xs">Ready to send — click Send to deliver it to the customer.</div></div>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setWizardOpen(false)} className="px-4 py-2 rounded-lg text-sm bg-blue-600 hover:bg-blue-700 text-white font-medium">Done</button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal open={sendOpen} onClose={() => setSendOpen(false)} title="Send to Customer">
+        <div className="flex flex-col gap-4">
+          <div className="p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg text-yellow-300 text-xs flex gap-2 items-start">
+            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+            This will email the deliverable via Exchange Online and upload a PDF to the client's SharePoint site (if configured). This action cannot be undone.
+          </div>
+          <div>
+            <label className="text-gray-400 text-xs mb-1.5 block">Recipient Email (optional — uses customer email if blank)</label>
+            <input value={sendEmail} onChange={e => setSendEmail(e.target.value)} type="email" placeholder="client@company.com"
+              className="w-full bg-background border border-gray-700/50 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+          </div>
+          <div>
+            <label className="text-gray-400 text-xs mb-1.5 block">Email Subject</label>
+            <input value={sendSubject} onChange={e => setSendSubject(e.target.value)}
+              className="w-full bg-background border border-gray-700/50 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+          </div>
+          {sendResult && <p className={`text-xs ${sendResult.startsWith("Error") ? "text-red-400" : "text-green-400"}`}>{sendResult}</p>}
+          <div className="flex gap-2 justify-end">
+            <button onClick={() => setSendOpen(false)} className="px-4 py-2 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-gray-700">Cancel</button>
+            <button onClick={() => void sendDeliverable()} disabled={sending}
+              className="px-4 py-2 rounded-lg text-sm bg-blue-600 hover:bg-blue-700 text-white font-medium disabled:opacity-40 flex items-center gap-2">
+              {sending ? <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Sending…</> : <><Send className="w-3.5 h-3.5" /> Send Now</>}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      <PromptEditDialog
+        open={promptDialogOpen}
+        onClose={() => setPromptDialogOpen(false)}
+        promptKey={promptDialogKey}
+        fetchWithAuth={fetchWithAuth}
+      />
+
+      {payloadData && (
+        <InsightsPayloadDialog
+          open={payloadOpen}
+          onClose={() => setPayloadOpen(false)}
+          payload={payloadData}
+          docTypeLabel={CONSULTING_TYPES.find(c => c.key === wizardType)?.label ?? wizardType}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Automation Tab ─────────────────────────────────────────────────────────────
+
+function AutomationTab({
+  customerId, projectId, fetchWithAuth,
+}: {
+  customerId: number | null; projectId: number | null;
+  fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response>;
+}) {
+  const [automations, setAutomations] = useState<Automation[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<Automation | null>(null);
+
+  const [wType, setWType]             = useState<string>("monthly_tenant_health_report");
+  const [wName, setWName]             = useState("");
+  const [wCron, setWCron]             = useState("0 9 1 * *");
+  const [wGenerate, setWGenerate]     = useState(true);
+  const [wEnabled, setWEnabled]       = useState(true);
+  const [wLinkedScript, setWLinkedScript] = useState("");
+  const [saving, setSaving]           = useState(false);
+  const [error, setError]             = useState<string | null>(null);
+  const [runningId, setRunningId]         = useState<number | null>(null);
+  const [expandedLogId, setExpandedLogId] = useState<number | null>(null);
+  const [liveLog, setLiveLog]             = useState<RunLogEntry[]>([]);
+  const { toast } = useToast();
+
+  const loadAutomations = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await fetchWithAuth(`${API}/admin/insights/automations`);
+      setAutomations(((await r.json()) as { automations: Automation[] }).automations ?? []);
+    } catch { /* empty */ } finally { setLoading(false); }
+  }, [fetchWithAuth]);
+
+  useEffect(() => { void loadAutomations(); }, [loadAutomations]);
+
+  const openWizard = (preset?: typeof AUTOMATION_TYPES[number]) => {
+    setWType(preset?.key ?? "monthly_tenant_health_report");
+    setWName(preset?.label ?? ""); setWCron(preset?.defaultCron ?? "0 9 1 * *");
+    setWGenerate(true); setWEnabled(true); setWLinkedScript("");
+    setError(null); setWizardOpen(true);
+  };
+
+  const openEdit = (a: Automation) => {
+    setEditTarget(a); setWType(a.automationType); setWName(a.name); setWCron(a.cronExpression);
+    setWGenerate(a.generateDocument); setWEnabled(a.enabled); setWLinkedScript(a.linkedRunbookScriptId ?? "");
+    setError(null); setEditOpen(true);
+  };
+
+  const saveNew = async () => {
+    setSaving(true); setError(null);
+    try {
+      const r = await fetchWithAuth(`${API}/admin/insights/automations`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: wName, automationType: wType, cronExpression: wCron,
+          enabled: wEnabled, generateDocument: wGenerate,
+          linkedRunbookScriptId: wLinkedScript || undefined,
+          customerId: customerId ?? undefined, projectId: projectId ?? undefined,
+        }),
+      });
+      if (!r.ok) throw new Error(((await r.json()) as { error: string }).error);
+      setWizardOpen(false); void loadAutomations();
+    } catch (e) { setError(String(e)); } finally { setSaving(false); }
+  };
+
+  const saveEdit = async () => {
+    if (!editTarget) return;
+    setSaving(true); setError(null);
+    try {
+      const r = await fetchWithAuth(`${API}/admin/insights/automations/${editTarget.id}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: wName, cronExpression: wCron, enabled: wEnabled,
+          generateDocument: wGenerate, linkedRunbookScriptId: wLinkedScript || null,
+        }),
+      });
+      if (!r.ok) throw new Error(((await r.json()) as { error: string }).error);
+      setEditOpen(false); void loadAutomations();
+    } catch (e) { setError(String(e)); } finally { setSaving(false); }
+  };
+
+  const toggleEnabled = async (a: Automation) => {
+    await fetchWithAuth(`${API}/admin/insights/automations/${a.id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: !a.enabled }),
+    });
+    void loadAutomations();
+  };
+
+  const deleteAutomation = async (id: number) => {
+    if (!confirm("Delete this automation?")) return;
+    await fetchWithAuth(`${API}/admin/insights/automations/${id}`, { method: "DELETE" });
+    void loadAutomations();
+  };
+
+  const runNow = async (a: Automation) => {
+    setRunningId(a.id);
+    setLiveLog([]);
+    setExpandedLogId(a.id);
+    try {
+      const r = await fetchWithAuth(`${API}/admin/insights/automations/${a.id}/run`, { method: "POST" });
+      if (!r.ok || !r.body) {
+        const body = await r.json() as { error?: string };
+        toast({ title: "Run failed", description: body.error ?? "Unknown error", variant: "destructive" });
+        return;
+      }
+
+      const reader = r.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      const parseSseChunk = (chunk: string) => {
+        const blocks = chunk.split("\n\n");
+        for (const block of blocks) {
+          if (!block.trim()) continue;
+          const lines = block.split("\n");
+          let event = "message";
+          let data = "";
+          for (const line of lines) {
+            if (line.startsWith("event: ")) event = line.slice(7).trim();
+            else if (line.startsWith("data: ")) data = line.slice(6).trim();
+          }
+          if (!data) continue;
+          try {
+            const parsed = JSON.parse(data) as Record<string, unknown>;
+            if (event === "log") {
+              setLiveLog(prev => [...prev, parsed as unknown as RunLogEntry]);
+            } else if (event === "complete") {
+              const updated = (parsed as { automation?: Automation }).automation;
+              if (updated) {
+                setAutomations(prev => prev.map(x => x.id === a.id ? { ...x, ...updated } : x));
+              }
+              toast({ title: `"${a.name}" ran successfully` });
+            } else if (event === "error") {
+              toast({ title: "Run failed", description: String(parsed["error"] ?? "Unknown error"), variant: "destructive" });
+            }
+          } catch { /* malformed SSE block — skip */ }
+        }
+      };
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const boundary = buffer.lastIndexOf("\n\n");
+        if (boundary !== -1) {
+          parseSseChunk(buffer.slice(0, boundary + 2));
+          buffer = buffer.slice(boundary + 2);
+        }
+      }
+    } catch {
+      toast({ title: "Run failed", description: "Network error", variant: "destructive" });
+    } finally {
+      setRunningId(null);
+    }
+  };
+
+  const AutomationForm = () => (
+    <div className="flex flex-col gap-4">
+      <div>
+        <label className="text-gray-400 text-xs mb-1.5 block">Automation Type</label>
+        <select value={wType} onChange={e => {
+          const at = AUTOMATION_TYPES.find(t => t.key === e.target.value);
+          setWType(e.target.value);
+          if (at) { setWCron(at.defaultCron); if (!wName || AUTOMATION_TYPES.some(t => t.label === wName)) setWName(at.label); }
+        }} className="w-full bg-background border border-gray-700/50 text-white text-sm rounded-lg px-3 py-2">
+          {AUTOMATION_TYPES.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
+        </select>
+        <p className="text-gray-500 text-xs mt-1">{AUTOMATION_TYPES.find(t => t.key === wType)?.desc}</p>
+      </div>
+      <div>
+        <label className="text-gray-400 text-xs mb-1.5 block">Name</label>
+        <input value={wName} onChange={e => setWName(e.target.value)}
+          className="w-full bg-background border border-gray-700/50 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="Automation name…" />
+      </div>
+      <div>
+        <label className="text-gray-400 text-xs mb-1.5 block">Cron Schedule</label>
+        <input value={wCron} onChange={e => setWCron(e.target.value)}
+          className="w-full bg-background border border-gray-700/50 text-white text-sm rounded-lg px-3 py-2 font-mono focus:outline-none focus:ring-1 focus:ring-blue-500" />
+        <p className="text-gray-500 text-xs mt-1">Format: minute hour day month weekday — e.g. <code>0 9 1 * *</code> = 9am on 1st of month</p>
+      </div>
+      <div>
+        <label className="text-gray-400 text-xs mb-1.5 block">Linked Script ID (optional — triggers Azure script execution on fire)</label>
+        <input value={wLinkedScript} onChange={e => setWLinkedScript(e.target.value)}
+          className="w-full bg-background border border-gray-700/50 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="UUID of PowerShell script…" />
+      </div>
+      <div className="flex items-center gap-6">
+        <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
+          <input type="checkbox" checked={wGenerate} onChange={e => setWGenerate(e.target.checked)} className="rounded" />
+          Generate report document when fired
+        </label>
+        <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
+          <input type="checkbox" checked={wEnabled} onChange={e => setWEnabled(e.target.checked)} className="rounded" />
+          Enabled
+        </label>
+      </div>
+      {error && <p className="text-red-400 text-xs">{error}</p>}
+    </div>
+  );
+
+  return (
+    <div className="flex flex-col gap-5">
+      <div className="grid grid-cols-3 gap-3">
+        {AUTOMATION_TYPES.map(at => {
+          const existing = automations.find(a => a.automationType === at.key);
+          return (
+            <div key={at.key} className="bg-card border border-gray-700/50 rounded-xl p-4">
+              <div className="flex items-start justify-between gap-2 mb-2">
+                <div className="text-white text-sm font-medium">{at.label}</div>
+                <span className={`text-[10px] px-2 py-0.5 rounded-full border font-medium shrink-0 ${
+                  existing
+                    ? existing.enabled ? "bg-green-500/20 text-green-300 border-green-500/30" : "bg-gray-500/20 text-gray-400 border-gray-500/30"
+                    : "bg-gray-700/30 text-gray-500 border-gray-600/30"
+                }`}>
+                  {existing ? (existing.enabled ? "Active" : "Paused") : "Not set up"}
+                </span>
+              </div>
+              <p className="text-gray-400 text-xs mb-3">{at.desc}</p>
+              {existing ? (
+                <div className="flex items-center gap-2 text-xs text-gray-500">
+                  <Clock className="w-3 h-3" />
+                  <span className="text-gray-300">{existing.cronLabel || existing.cronExpression}</span>
+                  {existing.nextRunAt && <span>· {new Date(existing.nextRunAt).toLocaleDateString()}</span>}
+                </div>
+              ) : (
+                <button onClick={() => openWizard(at)} className="flex items-center gap-1.5 text-xs bg-gray-700 hover:bg-gray-600 text-gray-300 px-3 py-1.5 rounded-lg transition-colors">
+                  <Plus className="w-3 h-3" /> Set up
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="bg-card border border-gray-700/50 rounded-xl">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700/50">
+          <h3 className="text-white font-medium text-sm">All Automations ({automations.length})</h3>
+          <div className="flex gap-2">
+            <button onClick={() => void loadAutomations()} className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-gray-700"><RefreshCw className="w-3 h-3" /></button>
+            <button onClick={() => openWizard()} className="flex items-center gap-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg font-medium">
+              <Plus className="w-3 h-3" /> New Automation
+            </button>
+          </div>
+        </div>
+        {loading ? <div className="p-6 text-center text-gray-500 text-sm">Loading…</div>
+        : automations.length === 0 ? <div className="p-6 text-center text-gray-500 text-sm">No automations configured. Use the cards above or "New Automation" to create one.</div>
+        : (
+          <div className="divide-y divide-gray-700/30">
+            {automations.map(a => (
+              <div key={a.id}>
+                <div className="flex items-center gap-3 px-4 py-3 hover:bg-gray-700/20 transition-colors group">
+                  <button onClick={() => void toggleEnabled(a)}
+                    className={`w-9 h-5 rounded-full transition-colors shrink-0 relative ${a.enabled ? "bg-blue-600" : "bg-gray-600"}`}>
+                    <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${a.enabled ? "translate-x-4" : "translate-x-0.5"}`} />
+                  </button>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-white text-sm">{a.name}</div>
+                    <div className="flex items-center gap-2 text-xs text-gray-500 mt-0.5 flex-wrap">
+                      <Clock className="w-3 h-3" />
+                      <span className="text-gray-300">{a.cronLabel || a.cronExpression}</span>
+                      <code className="text-gray-600 text-[10px]">({a.cronExpression})</code>
+                      {a.nextRunAt && <span>· next {new Date(a.nextRunAt).toLocaleDateString()}</span>}
+                      {a.lastRunAt && <span>· last ran {new Date(a.lastRunAt).toLocaleDateString()}</span>}
+                      {a.linkedRunbookScriptId && <span className="text-purple-400">· runbook linked</span>}
+                    </div>
+                  </div>
+                  {a.generateDocument && <span className="text-[10px] text-gray-500 bg-gray-700/50 px-2 py-0.5 rounded shrink-0">Generates Doc</span>}
+                  {(runningId === a.id || (a.lastRunLog && a.lastRunLog.length > 0)) && (
+                    <button
+                      onClick={() => setExpandedLogId(expandedLogId === a.id ? null : a.id)}
+                      title={expandedLogId === a.id ? "Hide run log" : runningId === a.id ? "Show live log" : "Show last run log"}
+                      className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded transition-colors shrink-0 ${
+                        runningId === a.id
+                          ? "text-blue-300 bg-blue-500/20 hover:bg-blue-500/30"
+                          : "text-gray-400 hover:text-blue-300 bg-gray-700/40 hover:bg-gray-700"
+                      }`}
+                    >
+                      <ChevronDown className={`w-3 h-3 transition-transform ${expandedLogId === a.id ? "rotate-180" : ""}`} />
+                      {runningId === a.id ? "Live log" : "Last run log"}
+                    </button>
+                  )}
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      onClick={() => void runNow(a)}
+                      disabled={runningId === a.id || !!a.runningAt}
+                      title={a.runningAt ? "Already running…" : "Run now"}
+                      className="p-1 rounded text-gray-400 hover:text-green-400 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {(runningId === a.id || !!a.runningAt)
+                        ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        : <Play className="w-3.5 h-3.5" />}
+                    </button>
+                    <button onClick={() => openEdit(a)} className="p-1 rounded text-gray-400 hover:text-white hover:bg-gray-700"><Pencil className="w-3.5 h-3.5" /></button>
+                    <button onClick={() => void deleteAutomation(a.id)} className="p-1 rounded text-gray-400 hover:text-red-400 hover:bg-gray-700"><Trash2 className="w-3.5 h-3.5" /></button>
+                  </div>
+                </div>
+                {expandedLogId === a.id && (() => {
+                  const isLive = runningId === a.id;
+                  const entries = isLive ? liveLog : (a.lastRunLog ?? []);
+                  if (!isLive && entries.length === 0) return null;
+                  return (
+                    <div className={`mx-4 mb-3 rounded-lg overflow-hidden border ${isLive ? "border-blue-500/40 bg-[#0A1628]" : "border-gray-700/50 bg-background"}`}>
+                      <div className="flex items-center justify-between px-3 py-2 border-b border-gray-700/30">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-medium uppercase tracking-wider text-gray-400">
+                            {isLive ? "Live log" : "Last run log"}
+                          </span>
+                          {isLive && <Loader2 className="w-2.5 h-2.5 animate-spin text-blue-400" />}
+                        </div>
+                        <span className="text-[10px] text-gray-600">
+                          {isLive ? `${entries.length} step${entries.length !== 1 ? "s" : ""}…` : (a.lastRunAt ? new Date(a.lastRunAt).toLocaleString() : "")}
+                        </span>
+                      </div>
+                      <div className="p-3 flex flex-col gap-1 max-h-64 overflow-y-auto font-mono text-xs">
+                        {entries.length === 0 && isLive && (
+                          <span className="text-gray-600 italic">Waiting for first step…</span>
+                        )}
+                        {entries.map((entry, i) => (
+                          <div key={i} className="flex items-start gap-2">
+                            <span className="text-gray-600 shrink-0 tabular-nums">
+                              {new Date(entry.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                            </span>
+                            <span className={`shrink-0 font-semibold uppercase text-[10px] mt-px ${
+                              entry.level === "error" ? "text-red-400" :
+                              entry.level === "warn"  ? "text-yellow-400" :
+                                                        "text-blue-400"
+                            }`}>
+                              {entry.level}
+                            </span>
+                            <span className={
+                              entry.level === "error" ? "text-red-300" :
+                              entry.level === "warn"  ? "text-yellow-300" :
+                                                        "text-gray-300"
+                            }>
+                              {entry.message}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <Modal open={wizardOpen} onClose={() => setWizardOpen(false)} title="New Automation">
+        <div className="flex flex-col gap-4">
+          <AutomationForm />
+          <div className="flex gap-2 justify-end">
+            <button onClick={() => setWizardOpen(false)} className="px-4 py-2 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-gray-700">Cancel</button>
+            <button onClick={() => void saveNew()} disabled={saving || !wName.trim()} className="px-4 py-2 rounded-lg text-sm bg-blue-600 hover:bg-blue-700 text-white font-medium disabled:opacity-40">
+              {saving ? "Saving…" : "Create Automation"}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      <SlideOver open={editOpen} onClose={() => setEditOpen(false)} title={`Edit: ${editTarget?.name ?? ""}`}>
+        <div className="flex flex-col gap-4">
+          <AutomationForm />
+          <div className="flex gap-2 justify-end">
+            <button onClick={() => setEditOpen(false)} className="px-4 py-2 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-gray-700">Cancel</button>
+            <button onClick={() => void saveEdit()} disabled={saving || !wName.trim()} className="px-4 py-2 rounded-lg text-sm bg-blue-600 hover:bg-blue-700 text-white font-medium disabled:opacity-40">
+              {saving ? "Saving…" : "Save Changes"}
+            </button>
+          </div>
+        </div>
+      </SlideOver>
+    </div>
+  );
+}
+
+// ── Selectors ─────────────────────────────────────────────────────────────────
+
+function Selectors({
+  customers, projects, selectedCustomer, selectedProject,
+  onSelectCustomer, onSelectProject,
+}: {
+  customers: Customer[]; projects: Project[];
+  selectedCustomer: number | null; selectedProject: number | null;
+  onSelectCustomer: (id: number | null) => void;
+  onSelectProject:  (id: number | null) => void;
+}) {
+  return (
+    <div className="flex items-center gap-3">
+      <span className="text-xs text-gray-400 whitespace-nowrap">Viewing:</span>
+      <select
+        value={selectedCustomer ?? ""}
+        onChange={e => { onSelectCustomer(e.target.value ? parseInt(e.target.value, 10) : null); onSelectProject(null); }}
+        className="bg-card border border-gray-700/50 text-white text-sm rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
+      >
+        <option value="">All Customers</option>
+        {customers.map(c => (
+          <option key={c.id} value={c.id}>{c.name ?? c.email}{c.company ? ` — ${c.company}` : ""}</option>
+        ))}
+      </select>
+      {selectedCustomer && projects.length > 0 && (
+        <select
+          value={selectedProject ?? ""}
+          onChange={e => onSelectProject(e.target.value ? parseInt(e.target.value, 10) : null)}
+          className="bg-card border border-gray-700/50 text-white text-sm rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
+        >
+          <option value="">All Projects</option>
+          {projects.map(p => (
+            <option key={p.id} value={p.id}>{p.title}{p.phase ? ` (${p.phase})` : ""}</option>
+          ))}
+        </select>
+      )}
+    </div>
+  );
+}
+
+// ── Root component ─────────────────────────────────────────────────────────────
+
+type Tab = "document_types" | "documents" | "consulting" | "automation";
+
+const TABS: { key: Tab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
+  { key: "document_types", label: "Document Types", icon: FileCog },
+  { key: "documents",  label: "Documents",  icon: FileText   },
+  { key: "consulting", label: "Consulting", icon: Users      },
+  { key: "automation", label: "Automation", icon: Settings   },
+];
+
+export default function InsightsOutputs() {
+  const { fetchWithAuth } = useAuth();
+  const { toast } = useToast();
+
+  const initialTab = useMemo<Tab>(() => {
+    try {
+      const param = new URLSearchParams(window.location.search).get("tab");
+      const valid: Tab[] = ["document_types", "documents", "consulting", "automation"];
+      return (valid.includes(param as Tab) ? param : "documents") as Tab;
+    } catch {
+      return "documents";
+    }
+  }, []);
+
+  const [tab, setTab]                         = useState<Tab>(initialTab);
+  const [customers, setCustomers]             = useState<Customer[]>([]);
+  const [projects, setProjects]               = useState<Project[]>([]);
+  const [selectedCustomer, setSelectedCustomer] = useState<number | null>(null);
+  const [selectedProject,  setSelectedProject]  = useState<number | null>(null);
+  const [docsRefreshKey, setDocsRefreshKey]   = useState(0);
+
+  // Listen for new automation-generated report notifications and sync the Documents tab
+  useEffect(() => {
+    const handler = () => {
+      setDocsRefreshKey(k => k + 1);
+      if (tab !== "documents") {
+        toast({
+          title: "New report ready",
+          description: "An automation just generated a new report.",
+          action: (
+            <button
+              onClick={() => setTab("documents")}
+              className="text-blue-400 hover:text-blue-300 text-xs font-medium underline"
+            >
+              View Documents
+            </button>
+          ),
+        } as Parameters<typeof toast>[0]);
+      }
+    };
+    window.addEventListener("insights:new-document", handler);
+    return () => window.removeEventListener("insights:new-document", handler);
+  }, [tab, toast]);
+
+  // Load customers on mount
+  useEffect(() => {
+    fetchWithAuth(`${API}/admin/insights/customers`)
+      .then(r => r.json())
+      .then((d: unknown) => { setCustomers((d as { customers: Customer[] }).customers ?? []); })
+      .catch(() => { /* non-fatal */ });
+  }, [fetchWithAuth]);
+
+  // Load projects when customer changes
+  useEffect(() => {
+    if (!selectedCustomer) { setProjects([]); return; }
+    fetchWithAuth(`${API}/admin/insights/projects?customerId=${selectedCustomer}`)
+      .then(r => r.json())
+      .then((d: unknown) => { setProjects((d as { projects: Project[] }).projects ?? []); })
+      .catch(() => { setProjects([]); });
+  }, [selectedCustomer, fetchWithAuth]);
+
+  const tabProps = { customerId: selectedCustomer, projectId: selectedProject, fetchWithAuth, customers };
+
+  return (
+    <div className="flex flex-col h-full bg-background text-white">
+      {/* Header */}
+      <div className="px-6 py-4 border-b border-gray-700/50 flex items-center justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-bold text-white">Insights & Outputs</h1>
+          <p className="text-gray-400 text-sm mt-0.5">AI-generated reports and deliverables powered by real M365 telemetry</p>
+        </div>
+        <Selectors
+          customers={customers} projects={projects}
+          selectedCustomer={selectedCustomer} selectedProject={selectedProject}
+          onSelectCustomer={setSelectedCustomer} onSelectProject={setSelectedProject}
+        />
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-1 px-6 pt-4 border-b border-gray-700/50">
+        {TABS.map(t => {
+          const Icon = t.icon;
+          return (
+            <button key={t.key} onClick={() => setTab(t.key)}
+              className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-colors ${
+                tab === t.key
+                  ? "text-blue-400 border-blue-500 bg-blue-500/5"
+                  : "text-gray-400 border-transparent hover:text-gray-200 hover:bg-gray-700/30"
+              }`}>
+              <Icon className="w-4 h-4" />{t.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Tab content */}
+      <div className="flex-1 overflow-y-auto p-6">
+        {tab === "document_types" && <DocumentTypesManager />}
+        {tab === "documents"  && <DocumentsTab  {...tabProps} refreshKey={docsRefreshKey} />}
+        {tab === "consulting" && <ConsultingTab {...tabProps} />}
+        {tab === "automation" && <AutomationTab {...tabProps} />}
+      </div>
+    </div>
+  );
+}

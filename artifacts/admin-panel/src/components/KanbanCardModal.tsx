@@ -1,0 +1,1592 @@
+import { useState, useEffect, useRef } from "react";
+import { useLocation } from "wouter";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  TypedModalSection,
+  getTypedStatusBanner,
+  TASK_TYPE_CONFIG,
+  type TaskType,
+} from "@/components/kanban/TypedCardContent";
+import ChecklistClosureDialog from "@/components/kanban/ChecklistClosureDialog";
+import type { ClosureField } from "@/components/kanban/ChecklistClosureForm";
+import RunLibraryScriptDialog from "@/components/RunLibraryScriptDialog";
+import RunScriptConfirmDialog from "@/components/RunScriptConfirmDialog";
+import { isActiveForTask, subscribeToChanges, resumePollForTask } from "@/lib/scriptPoller";
+import { useToast } from "@/hooks/use-toast";
+
+export interface KanbanCardModalTask {
+  id: number;
+  title: string;
+  description?: string | null;
+  column: string;
+  groupName?: string | null;
+  assignedTo?: string | null;
+  dueDate?: string | null;
+  workflowStepId?: number | null;
+  waitingReason?: string | null;
+  completionStatus?: string | null;
+  completionNotes?: string | null;
+  priority?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  taskType?: string | null;
+  taskMetadata?: Record<string, unknown> | null;
+}
+
+interface Props {
+  task: KanbanCardModalTask | null;
+  stepTitle?: string | null;
+  open: boolean;
+  onClose: () => void;
+  mode?: "client" | "admin";
+  fetchWithAuth?: (url: string, options?: RequestInit) => Promise<Response>;
+  onUpdate?: (updated: KanbanCardModalTask) => void;
+  clientId?: number | null;
+  clientName?: string | null;
+  boardTasks?: KanbanCardModalTask[];
+  onSiblingUpdate?: (updated: KanbanCardModalTask) => void;
+}
+
+const COLUMN_CONFIG: Record<string, { label: string; cls: string }> = {
+  backlog:              { label: "Backlog",              cls: "bg-border text-muted-foreground border border-border" },
+  in_progress:         { label: "In Progress",          cls: "bg-blue-500/15 text-blue-400 border border-blue-500/20" },
+  waiting_on_customer: { label: "Waiting on Customer",  cls: "bg-amber-500/15 text-amber-400 border border-amber-500/20" },
+  completed:           { label: "Completed",            cls: "bg-green-500/15 text-green-400 border border-green-500/20" },
+};
+
+const PRIORITY_CONFIG: Record<string, { label: string; cls: string; dot: string }> = {
+  critical: { label: "Critical", cls: "bg-red-500/15 text-red-400 border border-red-500/20",      dot: "bg-red-500" },
+  high:     { label: "High",     cls: "bg-orange-500/15 text-orange-400 border border-orange-500/20", dot: "bg-orange-500" },
+  medium:   { label: "Medium",   cls: "bg-blue-500/15 text-blue-400 border border-blue-500/20",   dot: "bg-blue-500" },
+  low:      { label: "Low",      cls: "bg-border text-muted-foreground border border-border",   dot: "bg-gray-400" },
+};
+
+interface EditForm {
+  title: string;
+  description: string;
+  priority: string;
+  assignedTo: string;
+  dueDate: string;
+}
+
+interface ChecklistItem {
+  id: string;
+  label: string;
+}
+
+interface StoredClosureData {
+  schema: ClosureField[];
+  answers: Record<string, string | string[]>;
+  capturedAt: string;
+}
+
+function ChecklistClosureDataView({ data }: { data: StoredClosureData }) {
+  return (
+    <div className="mt-2 bg-accent border border-primary/20 rounded-lg p-3 space-y-2.5">
+      <p className="text-[9px] font-bold uppercase tracking-wider text-primary mb-1.5">
+        Captured details · {new Date(data.capturedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+      </p>
+      {data.schema.map((field) => {
+        const answer = data.answers[field.id];
+        if (!answer || (Array.isArray(answer) && answer.length === 0)) return null;
+        return (
+          <div key={field.id}>
+            <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground mb-0.5">{field.label}</p>
+            {Array.isArray(answer) ? (
+              <ul className="space-y-0.5">
+                {answer.map((row, i) => (
+                  <li key={i} className="text-xs text-foreground flex items-start gap-1">
+                    <span className="text-primary flex-shrink-0 mt-0.5">·</span>
+                    {field.type === "url" ? (
+                      <a href={row} target="_blank" rel="noreferrer" className="underline text-primary break-all">{row}</a>
+                    ) : (
+                      <span>{row}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            ) : field.type === "url" ? (
+              <a href={answer} target="_blank" rel="noreferrer" className="text-xs text-primary underline break-all">{answer}</a>
+            ) : (
+              <p className="text-xs text-foreground whitespace-pre-wrap leading-snug">{answer}</p>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+interface LastRunResult {
+  savedAt: string;
+  jobRef: string;
+  scriptTitle?: string;
+  findings: string[];
+  recommendations: string[];
+  scoreImpact?: Record<string, number>;
+}
+
+interface AutoSavedAiAnalysis {
+  summary?: string;
+  risks?: string[];
+  recommendations?: string[];
+  nextSteps?: string[];
+}
+
+function AutoSavedScriptResultsSection({
+  scriptOutput,
+  aiAnalysis,
+  completedAt,
+  failedAt,
+  lastJobStatus,
+}: {
+  scriptOutput?: string;
+  aiAnalysis?: AutoSavedAiAnalysis;
+  completedAt?: string;
+  failedAt?: string;
+  lastJobStatus?: string;
+}) {
+  const [open, setOpen] = useState(true);
+  const [showOutput, setShowOutput] = useState(true);
+
+  const timestamp = completedAt ?? failedAt;
+  const isFailure = !!failedAt && !completedAt;
+  const statusLabel = lastJobStatus ?? (isFailure ? "Failed" : "Completed");
+  const formattedDate = timestamp
+    ? new Date(timestamp).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })
+    : null;
+
+  const hasAi = !!(aiAnalysis?.summary || (aiAnalysis?.risks?.length ?? 0) > 0 || (aiAnalysis?.recommendations?.length ?? 0) > 0);
+  const hasOutput = !!scriptOutput?.trim();
+
+  if (!hasAi && !hasOutput) return null;
+
+  return (
+    <div className={`border rounded-lg overflow-hidden ${isFailure ? "border-red-500/20" : "border-emerald-500/20"}`}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        className={`w-full flex items-center justify-between px-4 py-2.5 text-left transition-colors ${isFailure ? "bg-red-500/8 hover:bg-red-500/12" : "bg-emerald-500/8 hover:bg-emerald-500/12"}`}
+      >
+        <div className="flex items-center gap-2">
+          <svg className={`w-3.5 h-3.5 flex-shrink-0 ${isFailure ? "text-red-400" : "text-emerald-400"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18" />
+          </svg>
+          <p className={`text-[10px] font-bold uppercase tracking-wider ${isFailure ? "text-red-400" : "text-emerald-400"}`}>
+            Auto-Run Results · {statusLabel}
+          </p>
+          {formattedDate && <span className="text-[9px] text-muted-foreground/60">{formattedDate}</span>}
+        </div>
+        <span className="material-symbols-outlined text-muted-foreground flex-shrink-0" style={{ fontSize: "16px" }}>
+          {open ? "expand_less" : "expand_more"}
+        </span>
+      </button>
+
+      {open && (
+        <div className="px-4 py-3 border-t border-border/60 space-y-3 bg-background/40">
+          {aiAnalysis?.summary && (
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Summary</p>
+              <p className="text-xs text-foreground/90 leading-relaxed">{aiAnalysis.summary}</p>
+            </div>
+          )}
+
+          {(aiAnalysis?.risks?.length ?? 0) > 0 && (
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-red-400 mb-1.5">Risks</p>
+              <ul className="space-y-1">
+                {aiAnalysis!.risks!.map((r, i) => (
+                  <li key={i} className="flex items-start gap-2 text-xs text-foreground/90">
+                    <span className="text-red-400 mt-0.5 flex-shrink-0">⚠</span>
+                    <span className="leading-relaxed">{r}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {(aiAnalysis?.recommendations?.length ?? 0) > 0 && (
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Recommendations</p>
+              <ol className="space-y-1">
+                {aiAnalysis!.recommendations!.map((rec, i) => (
+                  <li key={i} className="flex items-start gap-2 text-xs text-foreground/90">
+                    <span className="text-emerald-400 mt-0.5 flex-shrink-0 font-semibold">{i + 1}.</span>
+                    <span className="leading-relaxed">{rec}</span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
+
+          {(aiAnalysis?.nextSteps?.length ?? 0) > 0 && (
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Next Steps</p>
+              <ol className="space-y-1">
+                {aiAnalysis!.nextSteps!.map((step, i) => (
+                  <li key={i} className="flex items-start gap-2 text-xs text-foreground/90">
+                    <span className="text-blue-400 mt-0.5 flex-shrink-0">→</span>
+                    <span className="leading-relaxed">{step}</span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
+
+          {hasOutput && (
+            <div>
+              <button
+                onClick={() => setShowOutput(o => !o)}
+                className="text-[10px] font-semibold text-primary hover:text-primary/80 transition-colors flex items-center gap-1"
+              >
+                <svg className={`w-3 h-3 transition-transform ${showOutput ? "rotate-90" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                </svg>
+                {showOutput ? "Hide" : "Show"} raw output
+              </button>
+              {showOutput && (
+                <pre className="mt-2 text-[10px] text-muted-foreground bg-background border border-border rounded-lg px-3 py-2.5 whitespace-pre-wrap font-mono leading-relaxed">
+                  {scriptOutput}
+                </pre>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LastRunResultsSection({ result }: { result: LastRunResult }) {
+  const [open, setOpen] = useState(true);
+  const [showAllFindings, setShowAllFindings] = useState(false);
+  const [showAllRecs, setShowAllRecs] = useState(false);
+
+  const visibleFindings = showAllFindings ? result.findings : result.findings.slice(0, 5);
+  const visibleRecs = showAllRecs ? result.recommendations : result.recommendations.slice(0, 5);
+  const hasFindings = result.findings.length > 0;
+  const hasRecs = result.recommendations.length > 0;
+
+  const savedDate = new Date(result.savedAt).toLocaleDateString("en-US", {
+    month: "short", day: "numeric", year: "numeric",
+    hour: "2-digit", minute: "2-digit",
+  });
+
+  return (
+    <div className="border border-primary/20 rounded-lg overflow-hidden">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-4 py-2.5 text-left bg-primary/8 hover:bg-primary/12 transition-colors"
+      >
+        <div className="flex items-center gap-2">
+          <svg className="w-3.5 h-3.5 text-primary flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+          </svg>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-primary">Last Run Results</p>
+          <span className="text-[9px] text-muted-foreground/60">{savedDate}</span>
+        </div>
+        <span className="material-symbols-outlined text-primary flex-shrink-0" style={{ fontSize: "16px" }}>
+          {open ? "expand_less" : "expand_more"}
+        </span>
+      </button>
+
+      {open && (
+        <div className="px-4 py-3 border-t border-primary/15 space-y-3 bg-background/40">
+          {!hasFindings && !hasRecs && (
+            <p className="text-xs text-muted-foreground/60 italic">No findings or recommendations were recorded.</p>
+          )}
+
+          {hasFindings && (
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Findings</p>
+              <ul className="space-y-1.5">
+                {visibleFindings.map((f, i) => (
+                  <li key={i} className="flex items-start gap-2 text-xs text-foreground/90">
+                    <span className="text-blue-400 mt-0.5 flex-shrink-0">•</span>
+                    <span className="leading-relaxed">{f}</span>
+                  </li>
+                ))}
+              </ul>
+              {result.findings.length > 5 && (
+                <button
+                  onClick={() => setShowAllFindings(v => !v)}
+                  className="mt-1.5 text-[10px] font-semibold text-primary hover:text-primary/80 transition-colors"
+                >
+                  {showAllFindings ? "Show less" : `Show ${result.findings.length - 5} more`}
+                </button>
+              )}
+            </div>
+          )}
+
+          {hasRecs && (
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Recommendations</p>
+              <ol className="space-y-1.5">
+                {visibleRecs.map((r, i) => (
+                  <li key={i} className="flex items-start gap-2 text-xs text-foreground/90">
+                    <span className="text-green-400 mt-0.5 flex-shrink-0 font-semibold">{i + 1}.</span>
+                    <span className="leading-relaxed">{r}</span>
+                  </li>
+                ))}
+              </ol>
+              {result.recommendations.length > 5 && (
+                <button
+                  onClick={() => setShowAllRecs(v => !v)}
+                  className="mt-1.5 text-[10px] font-semibold text-primary hover:text-primary/80 transition-colors"
+                >
+                  {showAllRecs ? "Show less" : `Show ${result.recommendations.length - 5} more`}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CustomerDownloadSection({
+  task,
+  fetchWithAuth,
+  onMetadataUpdate,
+}: {
+  task: KanbanCardModalTask;
+  fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>;
+  onMetadataUpdate: (meta: Record<string, unknown>) => void;
+}) {
+  const meta = (task.taskMetadata ?? {}) as Record<string, unknown>;
+  const linked = meta.customerDownload as { scriptId: string; scriptTitle: string } | null | undefined;
+
+  const [enabled, setEnabled] = useState(!!linked?.scriptId);
+  const [scripts, setScripts] = useState<Array<{ id: string; title: string; category: string }>>([]);
+  const [loading, setLoading] = useState(false);
+  const [query, setQuery] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    const m = (task.taskMetadata ?? {}) as Record<string, unknown>;
+    const cd = m.customerDownload as { scriptId?: string } | null | undefined;
+    setEnabled(!!cd?.scriptId);
+  }, [task.id]);
+
+  const loadScripts = async () => {
+    if (scripts.length > 0) return;
+    setLoading(true);
+    try {
+      const res = await fetchWithAuth("/api/admin/ps-scripts");
+      if (res.ok) {
+        const data = await res.json() as Array<{ id: string; title: string; category: string }>;
+        setScripts(data);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const save = async (scriptInfo: { scriptId: string; scriptTitle: string } | null): Promise<boolean> => {
+    setSaving(true);
+    try {
+      const currentMeta = (task.taskMetadata ?? {}) as Record<string, unknown>;
+      const updatedMeta = { ...currentMeta };
+      if (scriptInfo) {
+        updatedMeta.customerDownload = scriptInfo;
+      } else {
+        delete updatedMeta.customerDownload;
+      }
+      const res = await fetchWithAuth(`/api/admin/kanban-tasks/${task.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ taskMetadata: updatedMeta }),
+      });
+      if (res.ok) {
+        const updated = await res.json() as { taskMetadata: Record<string, unknown> };
+        onMetadataUpdate(updated.taskMetadata);
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleToggle = async (on: boolean) => {
+    if (on) {
+      setEnabled(true);
+      void loadScripts();
+    } else {
+      const ok = await save(null);
+      if (ok) setEnabled(false);
+    }
+  };
+
+  const filteredScripts = query.trim()
+    ? scripts.filter(s =>
+        s.title.toLowerCase().includes(query.toLowerCase()) ||
+        s.category.toLowerCase().includes(query.toLowerCase())
+      )
+    : scripts;
+
+  const currentLinked = (task.taskMetadata as Record<string, unknown> | null | undefined)?.customerDownload as { scriptId: string; scriptTitle: string } | null | undefined;
+
+  return (
+    <div className="bg-accent border border-border rounded-lg p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <svg className="w-3.5 h-3.5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+          </svg>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-foreground">Customer Download</p>
+        </div>
+        <button
+          type="button"
+          disabled={saving}
+          onClick={() => void handleToggle(!enabled)}
+          className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none disabled:opacity-50 ${enabled ? "bg-primary" : "bg-border"}`}
+          role="switch"
+          aria-checked={enabled}
+        >
+          <span
+            aria-hidden="true"
+            className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${enabled ? "translate-x-4" : "translate-x-0"}`}
+          />
+        </button>
+      </div>
+
+      {!enabled && (
+        <p className="text-[10px] text-muted-foreground/60 italic">
+          Enable to let the customer download a pre-packaged .ps1 script from this task's card.
+        </p>
+      )}
+
+      {enabled && (
+        <>
+          {currentLinked?.scriptId && (
+            <div className="flex items-center gap-2 bg-primary/10 border border-primary/20 rounded-lg px-3 py-2">
+              <svg className="w-3.5 h-3.5 text-primary flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18" />
+              </svg>
+              <span className="text-xs text-foreground flex-1 truncate font-medium">{currentLinked.scriptTitle}</span>
+              <button
+                type="button"
+                disabled={saving}
+                onClick={async () => {
+                  const ok = await save(null);
+                  if (ok) setEnabled(false);
+                }}
+                className="text-[10px] text-muted-foreground/60 hover:text-red-400 transition-colors disabled:opacity-50"
+              >
+                Remove
+              </button>
+            </div>
+          )}
+
+          <div>
+            <p className="text-[10px] font-semibold text-muted-foreground mb-1.5">
+              {currentLinked?.scriptId ? "Change script:" : "Select a script from the library:"}
+            </p>
+            <input
+              type="text"
+              value={query}
+              onChange={e => { setQuery(e.target.value); void loadScripts(); }}
+              onFocus={() => void loadScripts()}
+              placeholder="Search scripts…"
+              className="w-full border border-border rounded-lg px-3 py-1.5 text-xs text-foreground bg-card focus:outline-none focus:ring-2 focus:ring-primary/40 placeholder:text-muted-foreground/60 mb-2"
+            />
+
+            {loading && (
+              <div className="flex items-center gap-2 py-1.5">
+                <div className="w-3 h-3 border border-primary/40 border-t-primary rounded-full animate-spin" />
+                <span className="text-[10px] text-muted-foreground/60">Loading scripts…</span>
+              </div>
+            )}
+
+            {!loading && filteredScripts.length > 0 && (
+              <div className="max-h-44 overflow-y-auto space-y-0.5 rounded-lg">
+                {filteredScripts.map(script => (
+                  <button
+                    key={script.id}
+                    type="button"
+                    disabled={saving}
+                    onClick={() => void save({ scriptId: script.id, scriptTitle: script.title })}
+                    className={`w-full text-left flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs transition-colors disabled:opacity-50 ${
+                      currentLinked?.scriptId === script.id
+                        ? "bg-primary/20 text-primary border border-primary/30"
+                        : "text-foreground hover:bg-border"
+                    }`}
+                  >
+                    <svg className="w-3 h-3 flex-shrink-0 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18" />
+                    </svg>
+                    <span className="flex-1 truncate">{script.title}</span>
+                    <span className="flex-shrink-0 text-[9px] text-muted-foreground/60 bg-border px-1.5 py-0.5 rounded">{script.category}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {!loading && scripts.length > 0 && filteredScripts.length === 0 && (
+              <p className="text-[10px] text-muted-foreground/60 italic">No scripts match your search.</p>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function EngineerDetailSection({
+  task,
+  fetchWithAuth,
+  onMetadataUpdate,
+}: {
+  task: KanbanCardModalTask;
+  fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>;
+  onMetadataUpdate: (meta: Record<string, unknown>) => void;
+}) {
+  const meta = (task.taskMetadata ?? {}) as Record<string, unknown>;
+  const instructions = (meta.instructions ?? []) as string[];
+  const checklist = (meta.checklist ?? []) as ChecklistItem[];
+  const artifactsProduced = (meta.artifactsProduced ?? []) as string[];
+  const clientDeliverables = (meta.clientDeliverables ?? []) as string[];
+  const checklistState = (meta.checklistState ?? {}) as Record<string, boolean>;
+  const checklistItemData = (meta.checklistItemData ?? {}) as Record<string, StoredClosureData>;
+  const uploadedArtifacts = (meta.uploadedArtifacts ?? []) as string[];
+
+  const [toggling, setToggling] = useState<string | null>(null);
+  const [uploadedLocal, setUploadedLocal] = useState<string[]>(uploadedArtifacts);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [closureDialog, setClosureDialog] = useState<{ itemId: string; itemLabel: string } | null>(null);
+  const [expandedCaptured, setExpandedCaptured] = useState<Record<string, boolean>>({});
+
+  const checkedCount = checklist.filter(item => checklistState[item.id]).length;
+
+  const directUncheck = async (itemId: string) => {
+    setToggling(itemId);
+    try {
+      const res = await fetchWithAuth(`/api/admin/kanban-tasks/${task.id}/checklist/${itemId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ checked: false }),
+      });
+      if (res.ok) {
+        const data = await res.json() as { taskMetadata: Record<string, unknown> };
+        onMetadataUpdate(data.taskMetadata);
+      }
+    } finally {
+      setToggling(null);
+    }
+  };
+
+  const handleCheckboxChange = (itemId: string, itemLabel: string, checked: boolean) => {
+    if (checked) {
+      setClosureDialog({ itemId, itemLabel });
+    } else {
+      void directUncheck(itemId);
+    }
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    // TODO: Replace this stub with a real SharePoint write call once the
+    // SharePoint site ↔ project association task is complete. For now, we
+    // store the filename locally in uploadedArtifacts inside taskMetadata.
+    const newUploaded = [...uploadedLocal, file.name];
+    setUploadedLocal(newUploaded);
+    const updatedMeta = { ...meta, uploadedArtifacts: newUploaded };
+    void fetchWithAuth(`/api/admin/kanban-tasks/${task.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ taskMetadata: updatedMeta }),
+    }).then(async res => {
+      if (res.ok) {
+        const updated = await res.json() as { taskMetadata: Record<string, unknown> };
+        onMetadataUpdate(updated.taskMetadata);
+      }
+    });
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const hasAny = instructions.length > 0 || checklist.length > 0 || artifactsProduced.length > 0 || clientDeliverables.length > 0;
+
+  if (!hasAny && uploadedLocal.length === 0) {
+    return (
+      <div className="bg-accent border border-border rounded-lg p-4">
+        <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Engineer Detail</p>
+        <p className="text-xs text-muted-foreground italic">No engineer detail has been added to this task's template yet.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-accent border border-border rounded-lg p-4 space-y-4">
+      <p className="text-[10px] font-bold uppercase tracking-wider text-foreground">Engineer Detail</p>
+
+      {/* Instructions */}
+      {instructions.length > 0 && (
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Instructions</p>
+          <ol className="space-y-1.5">
+            {instructions.map((inst, i) => (
+              <li key={i} className="flex items-start gap-2">
+                <span className="flex-shrink-0 w-4 h-4 rounded-full bg-primary/10 text-primary text-[9px] font-bold flex items-center justify-center mt-0.5">
+                  {i + 1}
+                </span>
+                <span className="text-xs text-foreground leading-relaxed">{inst}</span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+
+      {/* Checklist */}
+      {checklist.length > 0 && (
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Checklist</p>
+            <span className="text-[9px] font-semibold text-muted-foreground bg-accent border border-border rounded-full px-2 py-0.5">
+              {checkedCount}/{checklist.length} done
+            </span>
+          </div>
+          <div className="space-y-1.5">
+            {checklist.map(item => {
+              const isChecked = !!checklistState[item.id];
+              const isToggling = toggling === item.id;
+              const capturedData = checklistItemData[item.id];
+              const isCapturedExpanded = !!expandedCaptured[item.id];
+              return (
+                <div key={item.id}>
+                  <div
+                    className={`flex items-center gap-2.5 rounded-lg px-2 py-1.5 transition-colors ${isChecked ? "bg-green-500/10" : "bg-card hover:bg-accent"} border ${isChecked ? "border-green-500/20" : "border-border"}`}
+                  >
+                    <button
+                      type="button"
+                      disabled={isToggling}
+                      onClick={() => handleCheckboxChange(item.id, item.label, !isChecked)}
+                      className="relative flex-shrink-0 focus:outline-none"
+                      aria-label={isChecked ? "Uncheck" : "Check"}
+                    >
+                      <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${isChecked ? "bg-green-500 border-green-500" : "border-border bg-accent hover:border-primary"}`}>
+                        {isToggling ? (
+                          <div className="w-2 h-2 border border-white/60 border-t-white rounded-full animate-spin" />
+                        ) : isChecked ? (
+                          <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                          </svg>
+                        ) : null}
+                      </div>
+                    </button>
+                    <span className={`text-xs leading-snug flex-1 transition-colors ${isChecked ? "line-through text-muted-foreground" : "text-foreground"}`}>
+                      {item.label}
+                    </span>
+                    {capturedData && (
+                      <button
+                        type="button"
+                        onClick={() => setExpandedCaptured(e => ({ ...e, [item.id]: !e[item.id] }))}
+                        className="flex-shrink-0 inline-flex items-center gap-0.5 text-[9px] font-semibold text-primary bg-primary/10 border border-primary/20 hover:bg-primary/20 rounded px-1.5 py-0.5 transition-colors"
+                        title="View captured details"
+                      >
+                        <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                        </svg>
+                        Details captured
+                      </button>
+                    )}
+                  </div>
+                  {capturedData && isCapturedExpanded && (
+                    <ChecklistClosureDataView data={capturedData} />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Artifacts Produced */}
+      {(artifactsProduced.length > 0 || uploadedLocal.length > 0) && (
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Artifacts Produced</p>
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {artifactsProduced.map((artifact, i) => (
+              <span key={i} className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                {artifact}
+              </span>
+            ))}
+          </div>
+          {/* Uploaded files */}
+          {uploadedLocal.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {uploadedLocal.map((fname, i) => (
+                <span key={i} className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-green-500/10 text-green-400 border border-green-500/20">
+                  <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                  </svg>
+                  {fname}
+                </span>
+              ))}
+            </div>
+          )}
+          {/* Upload button stub */}
+          <input ref={fileInputRef} type="file" className="sr-only" onChange={handleFileUpload} />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary border border-primary/30 hover:border-primary hover:bg-primary/10 rounded-lg px-3 py-1.5 transition-colors"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+            </svg>
+            Upload artifact
+          </button>
+        </div>
+      )}
+
+      {/* Client Deliverables */}
+      {clientDeliverables.length > 0 && (
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Client Deliverables</p>
+          <div className="flex flex-wrap gap-1.5">
+            {clientDeliverables.map((deliverable, i) => (
+              <span key={i} className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                </svg>
+                {deliverable}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* AI Closure Dialog */}
+      {closureDialog && (
+        <ChecklistClosureDialog
+          open={!!closureDialog}
+          taskId={task.id}
+          taskTitle={task.title}
+          taskDescription={task.description}
+          itemId={closureDialog.itemId}
+          itemLabel={closureDialog.itemLabel}
+          fetchWithAuth={fetchWithAuth}
+          onSubmitted={(updatedMeta) => {
+            setClosureDialog(null);
+            onMetadataUpdate(updatedMeta);
+          }}
+          onCancel={() => setClosureDialog(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+export function KanbanCardModal(props: Props) {
+  return <GenericKanbanCardModal {...props} />;
+}
+
+function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client", fetchWithAuth, onUpdate, clientId, clientName, boardTasks, onSiblingUpdate }: Props) {
+  const { toast } = useToast();
+  const [, setLocation] = useLocation();
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState<EditForm>({ title: "", description: "", priority: "", assignedTo: "", dueDate: "" });
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [localTask, setLocalTask] = useState<KanbanCardModalTask | null>(null);
+  const [taskDetailsOpen, setTaskDetailsOpen] = useState(false);
+  const [runDialogOpen, setRunDialogOpen] = useState(false);
+  const [confirmRunOpen, setConfirmRunOpen] = useState(false);
+  const [movingToInProgress, setMovingToInProgress] = useState(false);
+  const [scriptRunning, setScriptRunning] = useState(false);
+  const [confirmedAppRegId, setConfirmedAppRegId] = useState<number | null>(null);
+
+  const [aiSuggestLoading, setAiSuggestLoading] = useState(false);
+  const [aiSuggestions, setAiSuggestions] = useState<{
+    analysis: string;
+    risks: string[];
+    remediationSteps: string[];
+    nextActions: string[];
+  } | null>(null);
+  const [aiSuggestError, setAiSuggestError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!task) return;
+    const unsubscribe = subscribeToChanges(() => {
+      setScriptRunning(isActiveForTask(task.id));
+    });
+    return unsubscribe;
+  }, [task?.id]);
+
+  useEffect(() => {
+    if (task) {
+      setForm({
+        title: task.title ?? "",
+        description: task.description ?? "",
+        priority: task.priority ?? "",
+        assignedTo: task.assignedTo ?? "",
+        dueDate: task.dueDate ? task.dueDate.slice(0, 10) : "",
+      });
+      setLocalTask(task);
+      const alreadyActive = isActiveForTask(task.id);
+      setScriptRunning(alreadyActive);
+      if (!alreadyActive && fetchWithAuth) {
+        const meta = (task.taskMetadata ?? {}) as Record<string, unknown>;
+        const runningJobRef = meta.runningJobRef as string | null | undefined;
+        if (runningJobRef) {
+          resumePollForTask(task.id, runningJobRef, fetchWithAuth);
+        }
+      }
+    }
+    setEditing(false);
+    setSaveError(null);
+    setAiSuggestions(null);
+    setAiSuggestError(null);
+  }, [task]);
+
+  if (!task || !localTask) return null;
+
+  const colCfg = COLUMN_CONFIG[localTask.column] ?? { label: localTask.column, cls: "bg-border text-muted-foreground border border-border" };
+  const priorityCfg = localTask.priority ? PRIORITY_CONFIG[localTask.priority] : null;
+
+  const handleSave = async () => {
+    if (!fetchWithAuth || !onUpdate) return;
+    if (!form.title.trim()) { setSaveError("Title is required"); return; }
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const body: Record<string, unknown> = {
+        title: form.title.trim(),
+        description: form.description.trim() || null,
+        priority: form.priority || null,
+        assignedTo: form.assignedTo.trim() || null,
+        dueDate: form.dueDate || null,
+      };
+      const res = await fetchWithAuth(`/api/admin/kanban-tasks/${localTask.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const d = await res.json() as { error?: string };
+        setSaveError(d.error ?? "Failed to save");
+        return;
+      }
+      const updated = await res.json() as KanbanCardModalTask;
+      const merged = { ...localTask, ...updated };
+      setLocalTask(merged);
+      onUpdate(merged);
+      setEditing(false);
+    } catch {
+      setSaveError("Network error — please try again");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleMetadataUpdate = (meta: Record<string, unknown>) => {
+    const merged = { ...localTask, taskMetadata: meta };
+    setLocalTask(merged);
+    onUpdate?.(merged);
+  };
+
+  const handleAiSuggest = async (outputText: string) => {
+    if (!fetchWithAuth) return;
+    setAiSuggestLoading(true);
+    setAiSuggestions(null);
+    setAiSuggestError(null);
+    try {
+      const res = await fetchWithAuth("/api/admin/ai/suggest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          output: outputText,
+          taskTitle: localTask?.title,
+          taskType: localTask?.taskType ?? undefined,
+        }),
+      });
+      if (!res.ok) {
+        const d = await res.json() as { error?: string };
+        setAiSuggestError(d.error ?? "AI analysis failed");
+        return;
+      }
+      const data = await res.json() as {
+        analysis: string;
+        risks: string[];
+        remediationSteps: string[];
+        nextActions: string[];
+      };
+      setAiSuggestions(data);
+    } catch {
+      setAiSuggestError("Network error — please try again");
+    } finally {
+      setAiSuggestLoading(false);
+    }
+  };
+
+  const handleConfirmRun = async () => {
+    if (isActiveForTask(localTask.id)) return;
+    setConfirmRunOpen(false);
+
+    // Pre-flight: clientId must be set and the client must have an App Registration
+    if (clientId == null) {
+      toast({
+        title: "No client identified",
+        description: "This card has no linked client. Assign a client in CRM before running a script.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (fetchWithAuth) {
+      try {
+        const r = await fetchWithAuth("/api/admin/clients/with-azure-credentials");
+        if (r.ok) {
+          const list = await r.json() as Array<{ id: number; appRegistration: { id: number } | null }>;
+          const entry = list.find(c => c.id === clientId);
+          if (!entry || !entry.appRegistration) {
+            toast({
+              title: "No App Registration",
+              description: "This client has no App Registration. Add one in CRM before running a script.",
+              variant: "destructive",
+            });
+            return;
+          }
+          setConfirmedAppRegId(entry.appRegistration.id);
+        }
+      } catch { /* non-fatal — proceed, run dialog will surface the error */ }
+    }
+
+    setScriptRunning(true);
+
+    // Move triggering card to In Progress immediately
+    if (fetchWithAuth && localTask && localTask.column !== "in_progress") {
+      setMovingToInProgress(true);
+      try {
+        const res = await fetchWithAuth(`/api/admin/kanban-tasks/${localTask.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ column: "in_progress" }),
+        });
+        if (res.ok) {
+          const updated = await res.json() as KanbanCardModalTask;
+          const merged = { ...localTask, ...updated };
+          setLocalTask(merged);
+          onUpdate?.(merged);
+        }
+      } catch { /* silent — script will still run */ }
+      setMovingToInProgress(false);
+    }
+
+    // Optimistically move sibling cards (same scriptId) to In Progress
+    if (onSiblingUpdate && boardTasks && linkedRunbook?.scriptId) {
+      for (const bt of boardTasks) {
+        if (bt.id === localTask.id) continue;
+        const btMeta = (bt.taskMetadata ?? {}) as Record<string, unknown>;
+        const btRunbook = btMeta.linkedRunbook as { scriptId?: string } | null | undefined;
+        if (btRunbook?.scriptId === linkedRunbook.scriptId && bt.column !== "in_progress") {
+          onSiblingUpdate({ ...bt, column: "in_progress" });
+        }
+      }
+    }
+
+    setRunDialogOpen(true);
+  };
+
+  const handleRunComplete = (status: "completed" | "failed", title: string) => {
+    setScriptRunning(false);
+    toast({
+      title: status === "completed" ? `Script completed: ${title}` : `Script failed: ${title}`,
+      description: status === "completed"
+        ? "The runbook finished successfully. The card has been moved to Done."
+        : "The runbook encountered an error. The card remains In Progress.",
+      variant: status === "failed" ? "destructive" : "default",
+    });
+  };
+
+  const inputCls = "w-full border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 bg-accent";
+  const labelCls = "block text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1";
+
+  const meta = (localTask.taskMetadata ?? {}) as Record<string, unknown>;
+  const checklist = (meta.checklist ?? []) as Array<{ id: string; label: string }>;
+  const checklistState = (meta.checklistState ?? {}) as Record<string, boolean>;
+  const checkedCount = checklist.filter(item => checklistState[item.id]).length;
+  const banner = getTypedStatusBanner(localTask.taskType, localTask.taskMetadata);
+  const typeCfg = localTask.taskType ? TASK_TYPE_CONFIG[localTask.taskType as TaskType] : null;
+  const linkedRunbook = meta.linkedRunbook as { scriptId: string; scriptTitle: string } | null | undefined;
+
+  // Build a single consolidated output string from all output sources.
+  const _scriptOutput = meta.scriptOutput as string | undefined;
+  const _aiAnalysis = meta.aiAnalysis as AutoSavedAiAnalysis | undefined;
+  const _lastRunResult = meta.lastRunResult as LastRunResult | undefined;
+  const _consolidatedParts: string[] = [];
+  if (localTask.completionNotes) _consolidatedParts.push(localTask.completionNotes);
+  if (_scriptOutput?.trim()) _consolidatedParts.push(`--- Script Output ---\n${_scriptOutput.trim()}`);
+  if (_aiAnalysis?.summary) _consolidatedParts.push(`--- AI Summary ---\n${_aiAnalysis.summary}`);
+  if (_aiAnalysis?.risks?.length) _consolidatedParts.push(`--- Risks ---\n${_aiAnalysis.risks.join('\n')}`);
+  if (_aiAnalysis?.recommendations?.length) _consolidatedParts.push(`--- Recommendations ---\n${_aiAnalysis.recommendations.join('\n')}`);
+  if (_aiAnalysis?.nextSteps?.length) _consolidatedParts.push(`--- Next Steps ---\n${_aiAnalysis.nextSteps.join('\n')}`);
+  if (_lastRunResult?.findings?.length) _consolidatedParts.push(`--- Findings ---\n${(_lastRunResult.findings as string[]).join('\n')}`);
+  if (_lastRunResult?.recommendations?.length) _consolidatedParts.push(`--- Recommendations ---\n${(_lastRunResult.recommendations as string[]).join('\n')}`);
+  const consolidatedOutput = _consolidatedParts.join('\n\n');
+
+  return (
+    <>
+    <Dialog open={open} onOpenChange={o => { if (!o) { setEditing(false); onClose(); } }}>
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <div className="flex items-start gap-3 pr-2">
+            <div className="flex-1 min-w-0">
+              {localTask.groupName && mode !== "admin" && (
+                <span className="inline-block text-[10px] font-semibold px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-400 mb-2">
+                  {localTask.groupName}
+                </span>
+              )}
+              {editing ? (
+                <input
+                  className={inputCls + " text-base font-bold"}
+                  value={form.title}
+                  onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
+                  placeholder="Task title"
+                  autoFocus
+                />
+              ) : (
+                <DialogTitle className="text-base font-bold text-foreground leading-snug">
+                  {localTask.title}
+                </DialogTitle>
+              )}
+            </div>
+
+            {/* Run Script button (when linked script present) */}
+            {!editing && linkedRunbook?.scriptId && (
+              <button
+                onClick={() => { if (!scriptRunning) setConfirmRunOpen(true); }}
+                disabled={movingToInProgress || scriptRunning}
+                className="flex-shrink-0 flex items-center gap-1.5 text-xs font-semibold text-emerald-400 hover:text-emerald-300 border border-emerald-500/30 hover:border-emerald-400 rounded-lg px-2.5 py-1.5 transition-colors mt-0.5 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {movingToInProgress || scriptRunning ? (
+                  <div className="w-3.5 h-3.5 border border-emerald-400/40 border-t-emerald-400 rounded-full animate-spin" />
+                ) : (
+                  <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
+                  </svg>
+                )}
+                {scriptRunning ? "Running in background…" : "Run Script"}
+              </button>
+            )}
+
+            {/* Edit / Cancel toggle (admin only) */}
+            {mode === "admin" && fetchWithAuth && onUpdate && !editing && (
+              <button
+                onClick={() => setEditing(true)}
+                className="flex-shrink-0 flex items-center gap-1.5 text-xs font-semibold text-primary hover:text-primary/80 border border-primary/30 hover:border-primary rounded-lg px-2.5 py-1.5 transition-colors mt-0.5"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+                Edit
+              </button>
+            )}
+          </div>
+        </DialogHeader>
+
+        <div className="space-y-4 mt-1">
+
+          {/* ── EDIT MODE ─────────────────────────────────────────────────── */}
+          {editing ? (
+            <>
+              <div>
+                <label className={labelCls}>Description</label>
+                <textarea
+                  className={inputCls + " resize-none"}
+                  rows={3}
+                  value={form.description}
+                  onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+                  placeholder="Optional description…"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={labelCls}>Priority</label>
+                  <select
+                    className={inputCls}
+                    value={form.priority}
+                    onChange={e => setForm(f => ({ ...f, priority: e.target.value }))}
+                  >
+                    <option value="">No priority</option>
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                    <option value="critical">Critical</option>
+                  </select>
+                </div>
+                <div>
+                  <label className={labelCls}>Due Date</label>
+                  <input
+                    type="date"
+                    className={inputCls}
+                    value={form.dueDate}
+                    onChange={e => setForm(f => ({ ...f, dueDate: e.target.value }))}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className={labelCls}>Assigned To</label>
+                <input
+                  className={inputCls}
+                  value={form.assignedTo}
+                  onChange={e => setForm(f => ({ ...f, assignedTo: e.target.value }))}
+                  placeholder="Name or email"
+                />
+              </div>
+
+              {saveError && (
+                <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{saveError}</p>
+              )}
+
+              <div className="flex items-center gap-2 pt-1">
+                <button
+                  onClick={() => void handleSave()}
+                  disabled={saving}
+                  className="flex items-center gap-1.5 bg-[#0A2540] text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-[#0A2540]/90 disabled:opacity-50 transition-colors"
+                >
+                  {saving && <div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />}
+                  {saving ? "Saving…" : "Save changes"}
+                </button>
+                <button
+                  onClick={() => { setEditing(false); setSaveError(null); }}
+                  disabled={saving}
+                  className="text-sm font-semibold text-muted-foreground hover:text-foreground px-3 py-2 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </>
+          ) : localTask.taskType ? (
+            /* ── TYPED VIEW MODE ──────────────────────────────────────────── */
+            <>
+              {typeCfg && <div className={`h-0.5 w-full rounded-full opacity-60 ${typeCfg.bar}`} />}
+
+              {mode !== "admin" && (
+                <TypedModalSection
+                  taskType={localTask.taskType}
+                  taskStatus={localTask.column}
+                  metadata={localTask.taskMetadata}
+                  mode={mode}
+                  taskId={localTask.id}
+                  fetchWithAuth={fetchWithAuth}
+                  onMetadataUpdate={handleMetadataUpdate}
+                  onRunScript={linkedRunbook?.scriptId ? () => setConfirmRunOpen(true) : undefined}
+                  onOpenScript={() => setLocation("/command/scripts")}
+                />
+              )}
+
+              <div className="border border-border rounded-lg overflow-hidden">
+                <button
+                  onClick={() => setTaskDetailsOpen(o => !o)}
+                  className="w-full flex items-center justify-between px-4 py-2.5 text-left bg-accent hover:bg-border transition-colors"
+                >
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Task Details</p>
+                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${colCfg.cls}`}>{colCfg.label}</span>
+                    {priorityCfg && (
+                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded flex items-center gap-1 ${priorityCfg.cls}`}>
+                        <span className={`w-1 h-1 rounded-full ${priorityCfg.dot}`} />{priorityCfg.label}
+                      </span>
+                    )}
+                    {checklist.length > 0 && (
+                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${checkedCount === checklist.length ? "bg-green-500/15 text-green-400" : "bg-border text-muted-foreground"}`}>
+                        {checkedCount}/{checklist.length} done
+                      </span>
+                    )}
+                  </div>
+                  <span className="material-symbols-outlined text-muted-foreground flex-shrink-0" style={{ fontSize: "18px" }}>
+                    {taskDetailsOpen ? "expand_less" : "expand_more"}
+                  </span>
+                </button>
+                {taskDetailsOpen && (
+                  <div className="px-4 py-3 border-t border-border space-y-3">
+                    {localTask.assignedTo && (
+                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                        </svg>
+                        <span>Assigned to {localTask.assignedTo}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {consolidatedOutput && (
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Output / Notes</p>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => void navigator.clipboard.writeText(consolidatedOutput)}
+                        className="inline-flex items-center gap-1 text-[9px] font-semibold text-muted-foreground hover:text-foreground border border-border hover:border-muted-foreground rounded px-1.5 py-0.5 transition-colors"
+                        title="Copy to clipboard"
+                      >
+                        <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        </svg>
+                        Copy
+                      </button>
+                      {fetchWithAuth && (
+                        <button
+                          onClick={() => void handleAiSuggest(consolidatedOutput)}
+                          disabled={aiSuggestLoading}
+                          className="inline-flex items-center gap-1 text-[9px] font-semibold text-primary hover:text-white bg-primary/10 hover:bg-primary border border-primary/30 hover:border-primary rounded px-1.5 py-0.5 transition-colors disabled:opacity-50"
+                        >
+                          {aiSuggestLoading
+                            ? <div className="w-2 h-2 border border-primary/40 border-t-primary rounded-full animate-spin" />
+                            : <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
+                          }
+                          AI Suggestions
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <pre className="text-xs text-foreground bg-accent border border-border rounded-lg px-3 py-2.5 whitespace-pre-wrap font-mono leading-relaxed max-h-64 overflow-y-auto">
+                    {consolidatedOutput}
+                  </pre>
+                  {(aiSuggestLoading || aiSuggestions || aiSuggestError) && (
+                    <div className="mt-2 border border-primary/20 rounded-lg overflow-hidden">
+                      <div className="flex items-center gap-2 px-3 py-2 bg-primary/8">
+                        {aiSuggestLoading && <div className="w-3 h-3 border border-primary/40 border-t-primary rounded-full animate-spin flex-shrink-0" />}
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-primary">AI Suggestions</p>
+                        {!aiSuggestLoading && (
+                          <button
+                            onClick={() => { setAiSuggestions(null); setAiSuggestError(null); }}
+                            className="ml-auto text-[9px] text-muted-foreground/60 hover:text-muted-foreground transition-colors"
+                          >
+                            Dismiss
+                          </button>
+                        )}
+                      </div>
+                      {aiSuggestLoading && (
+                        <div className="px-3 py-3 text-xs text-muted-foreground">Analysing output…</div>
+                      )}
+                      {!aiSuggestLoading && aiSuggestError && (
+                        <div className="px-3 py-2 flex items-center gap-2">
+                          <span className="text-xs text-red-400">{aiSuggestError}</span>
+                          <button onClick={() => void handleAiSuggest(consolidatedOutput)} className="text-[10px] font-semibold text-primary hover:underline">Retry</button>
+                        </div>
+                      )}
+                      {!aiSuggestLoading && aiSuggestions && (
+                        <div className="px-3 py-3 space-y-3">
+                          {aiSuggestions.analysis && (
+                            <p className="text-xs text-foreground/90 leading-relaxed">{aiSuggestions.analysis}</p>
+                          )}
+                          {aiSuggestions.risks.length > 0 && (
+                            <div>
+                              <p className="text-[10px] font-bold uppercase tracking-wider text-red-400 mb-1.5">Identified Risks</p>
+                              <ul className="space-y-1">
+                                {aiSuggestions.risks.map((r, i) => (
+                                  <li key={i} className="flex items-start gap-2 text-xs text-foreground/90">
+                                    <span className="text-red-400 mt-0.5 flex-shrink-0">⚠</span>
+                                    <span className="leading-relaxed">{r}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                          {aiSuggestions.remediationSteps.length > 0 && (
+                            <div>
+                              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Remediation Steps</p>
+                              <ol className="space-y-1">
+                                {aiSuggestions.remediationSteps.map((s, i) => (
+                                  <li key={i} className="flex items-start gap-2 text-xs text-foreground/90">
+                                    <span className="text-emerald-400 mt-0.5 flex-shrink-0 font-semibold">{i + 1}.</span>
+                                    <span className="leading-relaxed">{s}</span>
+                                  </li>
+                                ))}
+                              </ol>
+                            </div>
+                          )}
+                          {aiSuggestions.nextActions.length > 0 && (
+                            <div>
+                              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Recommended Next Actions</p>
+                              <ul className="space-y-1">
+                                {aiSuggestions.nextActions.map((a, i) => (
+                                  <li key={i} className="flex items-start gap-2 text-xs text-foreground/90">
+                                    <span className="text-blue-400 mt-0.5 flex-shrink-0">→</span>
+                                    <span className="leading-relaxed">{a}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {meta.lastRunResult && (
+                <LastRunResultsSection result={meta.lastRunResult as LastRunResult} />
+              )}
+
+              {(meta.scriptOutput || meta.aiAnalysis) && (
+                <AutoSavedScriptResultsSection
+                  scriptOutput={meta.scriptOutput as string | undefined}
+                  aiAnalysis={meta.aiAnalysis as AutoSavedAiAnalysis | undefined}
+                  completedAt={meta.completedAt as string | undefined}
+                  failedAt={meta.failedAt as string | undefined}
+                  lastJobStatus={meta.lastJobStatus as string | undefined}
+                />
+              )}
+
+              {mode === "admin" && fetchWithAuth && !["automationBuild", "environmentHealthCheck"].includes(localTask.taskType ?? "") && (
+                <EngineerDetailSection
+                  task={localTask}
+                  fetchWithAuth={fetchWithAuth}
+                  onMetadataUpdate={handleMetadataUpdate}
+                />
+              )}
+
+              {mode === "admin" && fetchWithAuth && (
+                <CustomerDownloadSection
+                  task={localTask}
+                  fetchWithAuth={fetchWithAuth}
+                  onMetadataUpdate={handleMetadataUpdate}
+                />
+              )}
+
+              {(localTask.createdAt || localTask.updatedAt) && (
+                <div className="flex flex-wrap gap-4 text-[10px] text-muted-foreground pt-2 border-t border-border">
+                  {localTask.createdAt && (
+                    <span>Created {new Date(localTask.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
+                  )}
+                  {localTask.updatedAt && localTask.updatedAt !== localTask.createdAt && (
+                    <span>Updated {new Date(localTask.updatedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
+                  )}
+                </div>
+              )}
+            </>
+          ) : (
+            /* ── GENERIC VIEW MODE ────────────────────────────────────────── */
+            <>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className={`inline-flex items-center text-xs font-semibold px-2.5 py-1 rounded-full ${colCfg.cls}`}>
+                  {colCfg.label}
+                </span>
+                {priorityCfg && (
+                  <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full ${priorityCfg.cls}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${priorityCfg.dot}`} />
+                    {priorityCfg.label}
+                  </span>
+                )}
+                {checklist.length > 0 && (
+                  <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full ${checkedCount === checklist.length ? "bg-green-500/15 text-green-400 border border-green-500/20" : "bg-border text-muted-foreground border border-border"}`}>
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                    </svg>
+                    {checkedCount}/{checklist.length} done
+                  </span>
+                )}
+              </div>
+
+              {localTask.assignedTo && (
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                  <span>Assigned to {localTask.assignedTo}</span>
+                </div>
+              )}
+
+              {consolidatedOutput && (
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Output / Notes</p>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => void navigator.clipboard.writeText(consolidatedOutput)}
+                        className="inline-flex items-center gap-1 text-[9px] font-semibold text-muted-foreground hover:text-foreground border border-border hover:border-muted-foreground rounded px-1.5 py-0.5 transition-colors"
+                        title="Copy to clipboard"
+                      >
+                        <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        </svg>
+                        Copy
+                      </button>
+                      {fetchWithAuth && (
+                        <button
+                          onClick={() => void handleAiSuggest(consolidatedOutput)}
+                          disabled={aiSuggestLoading}
+                          className="inline-flex items-center gap-1 text-[9px] font-semibold text-primary hover:text-white bg-primary/10 hover:bg-primary border border-primary/30 hover:border-primary rounded px-1.5 py-0.5 transition-colors disabled:opacity-50"
+                        >
+                          {aiSuggestLoading
+                            ? <div className="w-2 h-2 border border-primary/40 border-t-primary rounded-full animate-spin" />
+                            : <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
+                          }
+                          AI Suggestions
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <pre className="text-xs text-foreground bg-accent border border-border rounded-lg px-3 py-2.5 whitespace-pre-wrap font-mono leading-relaxed max-h-64 overflow-y-auto">
+                    {consolidatedOutput}
+                  </pre>
+                  {(aiSuggestLoading || aiSuggestions || aiSuggestError) && (
+                    <div className="mt-2 border border-primary/20 rounded-lg overflow-hidden">
+                      <div className="flex items-center gap-2 px-3 py-2 bg-primary/8">
+                        {aiSuggestLoading && <div className="w-3 h-3 border border-primary/40 border-t-primary rounded-full animate-spin flex-shrink-0" />}
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-primary">AI Suggestions</p>
+                        {!aiSuggestLoading && (
+                          <button
+                            onClick={() => { setAiSuggestions(null); setAiSuggestError(null); }}
+                            className="ml-auto text-[9px] text-muted-foreground/60 hover:text-muted-foreground transition-colors"
+                          >
+                            Dismiss
+                          </button>
+                        )}
+                      </div>
+                      {aiSuggestLoading && (
+                        <div className="px-3 py-3 text-xs text-muted-foreground">Analysing output…</div>
+                      )}
+                      {!aiSuggestLoading && aiSuggestError && (
+                        <div className="px-3 py-2 flex items-center gap-2">
+                          <span className="text-xs text-red-400">{aiSuggestError}</span>
+                          <button onClick={() => void handleAiSuggest(consolidatedOutput)} className="text-[10px] font-semibold text-primary hover:underline">Retry</button>
+                        </div>
+                      )}
+                      {!aiSuggestLoading && aiSuggestions && (
+                        <div className="px-3 py-3 space-y-3">
+                          {aiSuggestions.analysis && (
+                            <p className="text-xs text-foreground/90 leading-relaxed">{aiSuggestions.analysis}</p>
+                          )}
+                          {aiSuggestions.risks.length > 0 && (
+                            <div>
+                              <p className="text-[10px] font-bold uppercase tracking-wider text-red-400 mb-1.5">Identified Risks</p>
+                              <ul className="space-y-1">
+                                {aiSuggestions.risks.map((r, i) => (
+                                  <li key={i} className="flex items-start gap-2 text-xs text-foreground/90">
+                                    <span className="text-red-400 mt-0.5 flex-shrink-0">⚠</span>
+                                    <span className="leading-relaxed">{r}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                          {aiSuggestions.remediationSteps.length > 0 && (
+                            <div>
+                              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Remediation Steps</p>
+                              <ol className="space-y-1">
+                                {aiSuggestions.remediationSteps.map((s, i) => (
+                                  <li key={i} className="flex items-start gap-2 text-xs text-foreground/90">
+                                    <span className="text-emerald-400 mt-0.5 flex-shrink-0 font-semibold">{i + 1}.</span>
+                                    <span className="leading-relaxed">{s}</span>
+                                  </li>
+                                ))}
+                              </ol>
+                            </div>
+                          )}
+                          {aiSuggestions.nextActions.length > 0 && (
+                            <div>
+                              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Recommended Next Actions</p>
+                              <ul className="space-y-1">
+                                {aiSuggestions.nextActions.map((a, i) => (
+                                  <li key={i} className="flex items-start gap-2 text-xs text-foreground/90">
+                                    <span className="text-blue-400 mt-0.5 flex-shrink-0">→</span>
+                                    <span className="leading-relaxed">{a}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {meta.lastRunResult && (
+                <LastRunResultsSection result={meta.lastRunResult as LastRunResult} />
+              )}
+
+              {(meta.scriptOutput || meta.aiAnalysis) && (
+                <AutoSavedScriptResultsSection
+                  scriptOutput={meta.scriptOutput as string | undefined}
+                  aiAnalysis={meta.aiAnalysis as AutoSavedAiAnalysis | undefined}
+                  completedAt={meta.completedAt as string | undefined}
+                  failedAt={meta.failedAt as string | undefined}
+                  lastJobStatus={meta.lastJobStatus as string | undefined}
+                />
+              )}
+
+              {mode === "admin" && fetchWithAuth && !["automationBuild", "environmentHealthCheck"].includes(localTask.taskType ?? "") && (
+                <EngineerDetailSection
+                  task={localTask}
+                  fetchWithAuth={fetchWithAuth}
+                  onMetadataUpdate={handleMetadataUpdate}
+                />
+              )}
+
+              {mode === "admin" && fetchWithAuth && (
+                <CustomerDownloadSection
+                  task={localTask}
+                  fetchWithAuth={fetchWithAuth}
+                  onMetadataUpdate={handleMetadataUpdate}
+                />
+              )}
+
+              {(localTask.createdAt || localTask.updatedAt) && (
+                <div className="flex flex-wrap gap-4 text-[10px] text-muted-foreground pt-2 border-t border-border">
+                  {localTask.createdAt && (
+                    <span>Created {new Date(localTask.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
+                  )}
+                  {localTask.updatedAt && localTask.updatedAt !== localTask.createdAt && (
+                    <span>Updated {new Date(localTask.updatedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+
+    {/* Run Script confirm dialog */}
+    {confirmRunOpen && linkedRunbook?.scriptId && (
+      <RunScriptConfirmDialog
+        scriptTitle={linkedRunbook.scriptTitle}
+        clientName={clientName ?? null}
+        onConfirm={() => void handleConfirmRun()}
+        onCancel={() => setConfirmRunOpen(false)}
+        disabled={scriptRunning}
+      />
+    )}
+
+    {runDialogOpen && linkedRunbook?.scriptId && (
+      <RunLibraryScriptDialog
+        scriptId={linkedRunbook.scriptId}
+        scriptTitle={linkedRunbook.scriptTitle}
+        initialClientId={clientId}
+        initialAppRegistrationId={confirmedAppRegId}
+        kanbanTaskId={localTask.id}
+        autoRun
+        onClose={() => {
+          setRunDialogOpen(false);
+          setConfirmedAppRegId(null);
+          if (isActiveForTask(localTask.id)) setScriptRunning(true);
+        }}
+        onRunComplete={handleRunComplete}
+      />
+    )}
+  </>
+  );
+}

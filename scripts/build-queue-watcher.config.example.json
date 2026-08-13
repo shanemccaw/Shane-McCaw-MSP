@@ -1,0 +1,5 @@
+{
+  "apiBaseUrl": "https://your-app-domain.example.com",
+  "ingestToken": "BUILD_TRACKER_INGEST_TOKEN value — same one you put in the extension's Options page",
+  "maxConcurrent": 8
+}

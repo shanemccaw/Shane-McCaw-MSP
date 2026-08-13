@@ -1,0 +1,557 @@
+diff --git a/artifacts/admin-panel/src/components/SimulatorCenterCanvas.tsx b/artifacts/admin-panel/src/components/SimulatorCenterCanvas.tsx
+index b0f04cc..5250961 100644
+--- a/artifacts/admin-panel/src/components/SimulatorCenterCanvas.tsx
++++ b/artifacts/admin-panel/src/components/SimulatorCenterCanvas.tsx
+@@ -32,6 +32,7 @@ import {
+ } from "@/components/ui/table";
+ import { Badge } from "@/components/ui/badge";
+ import { SimulatorOverridesPanel } from "./SimulatorOverridesPanel";
++import { SimulatorEnginesPanel } from "./SimulatorEnginesPanel";
+ 
+ interface Msp {
+   id: number;
+@@ -47,7 +48,7 @@ export function SimulatorCenterCanvas() {
+   const { fetchWithAuth } = useAuth();
+   const { openModal } = useModal();
+ 
+-  const [activeTab, setActiveTab] = useState<"sql" | "testbeds" | "overrides">("sql");
++  const [activeTab, setActiveTab] = useState<"sql" | "testbeds" | "overrides" | "engines">("sql");
+ 
+   // SQL Editor state
+   const [query, setQuery] = useState("SELECT * FROM msps;\n-- Try running any SQL command here!");
+@@ -263,6 +264,16 @@ export function SimulatorCenterCanvas() {
+           >
+             Overrides Engine
+           </button>
++          <button
++            onClick={() => setActiveTab("engines")}
++            className={`px-3 py-1.5 rounded-md text-xs font-mono font-medium transition-all ${
++              activeTab === "engines"
++                ? "bg-slate-900 text-indigo-400 border border-slate-800"
++                : "text-slate-400 hover:text-slate-200"
++            }`}
++          >
++            Run Engines
++          </button>
+         </div>
+       </div>
+ 
+@@ -592,6 +603,10 @@ export function SimulatorCenterCanvas() {
+         {activeTab === "overrides" && (
+           <SimulatorOverridesPanel />
+         )}
++        {/* Tab 4: Run Engines Panel */}
++        {activeTab === "engines" && (
++          <SimulatorEnginesPanel />
++        )}
+       </div>
+     </div>
+   );
+diff --git a/artifacts/admin-panel/src/components/SimulatorEnginesPanel.tsx b/artifacts/admin-panel/src/components/SimulatorEnginesPanel.tsx
+new file mode 100644
+index 0000000..dfc798c
+--- /dev/null
++++ b/artifacts/admin-panel/src/components/SimulatorEnginesPanel.tsx
+@@ -0,0 +1,179 @@
++import React, { useState, useEffect } from "react";
++import { useAuth } from "@/contexts/AuthContext";
++import { toast } from "sonner";
++import { Button } from "@/components/ui/button";
++import { Play, Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
++import { Badge } from "@/components/ui/badge";
++
++interface Testbed {
++  id: number;
++  name: string;
++  domain?: string;
++}
++
++interface EngineDefSummary {
++  key: string;
++  label: string;
++  description: string;
++  categoryPrefix: string;
++  tenantScoped: boolean;
++}
++
++interface EngineRunResult {
++  mode: "tenant";
++  tenantId: number;
++  output: unknown;
++}
++
++// This panel deliberately has exactly one execution path: POST
++// /api/admin/engines/:key/test with a real testbed customer id as tenantId.
++// The fake-payload path (runForPayload / free-text sample JSON) has been
++// retired platform-wide — there is no fallback here, and none should ever
++// be re-added. If tenantId is missing the backend hard-errors.
++export function SimulatorEnginesPanel() {
++  const { fetchWithAuth } = useAuth();
++  const [testbeds, setTestbeds] = useState<Testbed[]>([]);
++  const [selectedTestbedId, setSelectedTestbedId] = useState<number | "">("");
++
++  const [engines, setEngines] = useState<EngineDefSummary[]>([]);
++  const [loadingEngines, setLoadingEngines] = useState(false);
++
++  const [runningKey, setRunningKey] = useState<string | null>(null);
++  const [results, setResults] = useState<Record<string, EngineRunResult | { error: string }>>({});
++
++  useEffect(() => {
++    fetchWithAuth("/api/admin/testbeds")
++      .then(r => r.json())
++      .then(d => setTestbeds(d.testbeds ?? []))
++      .catch(() => toast.error("Failed to load testbeds"));
++
++    setLoadingEngines(true);
++    fetchWithAuth("/api/admin/engines")
++      .then(r => r.json())
++      .then(d => setEngines(d.engines ?? []))
++      .catch(() => toast.error("Failed to load engine registry"))
++      .finally(() => setLoadingEngines(false));
++  }, [fetchWithAuth]);
++
++  const handleRunEngine = async (key: string) => {
++    if (selectedTestbedId === "") {
++      toast.error("Select a testbed customer first");
++      return;
++    }
++    setRunningKey(key);
++    try {
++      const res = await fetchWithAuth(`/api/admin/engines/${key}/test`, {
++        method: "POST",
++        headers: { "Content-Type": "application/json" },
++        body: JSON.stringify({ tenantId: Number(selectedTestbedId), debug: true }),
++      });
++      const data = await res.json();
++      if (res.ok) {
++        setResults(prev => ({ ...prev, [key]: data as EngineRunResult }));
++        toast.success(`${key} ran against real tenant data`);
++      } else {
++        setResults(prev => ({ ...prev, [key]: { error: data.error ?? "Engine run failed" } }));
++        toast.error(data.error ?? "Engine run failed");
++      }
++    } catch (err: any) {
++      setResults(prev => ({ ...prev, [key]: { error: err.message ?? "Network error" } }));
++      toast.error(err.message ?? "Network error");
++    } finally {
++      setRunningKey(null);
++    }
++  };
++
++  return (
++    <div className="p-6 space-y-6 overflow-y-auto h-full">
++      <div className="flex items-center justify-between">
++        <div>
++          <h2 className="text-sm font-semibold text-slate-200">Run Engines</h2>
++          <p className="text-xs text-slate-500 mt-1">
++            Every run below calls the real production path — <code className="text-indigo-400">runForTenant()</code> against
++            the testbed customer selected here. There is no sample-payload mode.
++          </p>
++        </div>
++        <div className="w-72">
++          <select
++            value={selectedTestbedId}
++            onChange={e => setSelectedTestbedId(e.target.value === "" ? "" : Number(e.target.value))}
++            className="w-full bg-slate-950 border border-slate-800 rounded-md px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500"
++          >
++            <option value="">-- Select Testbed Customer --</option>
++            {testbeds.map(tb => (
++              <option key={tb.id} value={tb.id}>{tb.name} {tb.domain ? `(${tb.domain})` : ""}</option>
++            ))}
++          </select>
++        </div>
++      </div>
++
++      {selectedTestbedId === "" ? (
++        <div className="border border-dashed border-slate-800 rounded-xl p-10 text-center text-sm text-slate-500">
++          Select a testbed customer above — the same one you inject overrides against in the Overrides tab —
++          to enable engine runs.
++        </div>
++      ) : loadingEngines ? (
++        <div className="flex justify-center py-10">
++          <Loader2 className="w-5 h-5 animate-spin text-indigo-500" />
++        </div>
++      ) : (
++        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
++          {engines.map(engine => {
++            const result = results[engine.key];
++            const isRunning = runningKey === engine.key;
++            const isError = result && "error" in result;
++            return (
++              <div
++                key={engine.key}
++                className="bg-slate-900/50 border border-slate-800 rounded-xl p-4 space-y-3"
++              >
++                <div className="flex items-start justify-between">
++                  <div>
++                    <div className="text-sm font-semibold text-slate-200">{engine.label}</div>
++                    <div className="text-[11px] text-slate-500 mt-0.5">{engine.key}</div>
++                  </div>
++                  <Button
++                    size="sm"
++                    variant="outline"
++                    onClick={() => handleRunEngine(engine.key)}
++                    disabled={isRunning}
++                    className="h-8 px-3 border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 shrink-0"
++                  >
++                    {isRunning ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
++                  </Button>
++                </div>
++                <p className="text-xs text-slate-500">{engine.description}</p>
++
++                {result && (
++                  <div
++                    className={`p-3 rounded border text-xs ${
++                      isError
++                        ? "bg-rose-950/20 border-rose-900/50 text-rose-300"
++                        : "bg-slate-950 border-slate-800 text-slate-300"
++                    }`}
++                  >
++                    {isError ? (
++                      <div className="flex items-center gap-2">
++                        <AlertCircle className="w-4 h-4 shrink-0" /> {(result as { error: string }).error}
++                      </div>
++                    ) : (
++                      <div className="space-y-1">
++                        <div className="flex items-center gap-2 text-emerald-400 font-semibold">
++                          <CheckCircle2 className="w-3.5 h-3.5" />
++                          Real run — tenant #{(result as EngineRunResult).tenantId}
++                        </div>
++                        <pre className="whitespace-pre-wrap font-mono text-[10px] text-slate-400 max-h-48 overflow-y-auto">
++                          {JSON.stringify((result as EngineRunResult).output, null, 2)}
++                        </pre>
++                      </div>
++                    )}
++                  </div>
++                )}
++              </div>
++            );
++          })}
++        </div>
++      )}
++    </div>
++  );
++}
+diff --git a/artifacts/api-server/src/lib/engine-registry.ts b/artifacts/api-server/src/lib/engine-registry.ts
+index 23ab931..c3e2ea1 100644
+--- a/artifacts/api-server/src/lib/engine-registry.ts
++++ b/artifacts/api-server/src/lib/engine-registry.ts
+@@ -22,29 +22,22 @@ import {
+   type SignalDerivationRule,
+   type SignalRuleGroup,
+ } from "./tenant-signals.ts";
+-import { runSlaEngineForTenant, computeSlaEngine, type SlaTimer, type SlaPolicy } from "./sla-engine.ts";
+-import { runScopeCreepEngineForTenant, computeScopeCreepEngine } from "./scope-creep-engine.ts";
+-import { computeMonitoringEngine, computeMonitoringEngineForPayload } from "./monitor-executor.ts";
+-import {
+-  runSalesOfferEngineForTenant,
+-  computeSalesOfferEngine,
+-  loadSalesOfferRuleGroups,
+-  loadSalesOfferConfig,
+-} from "./sales-offer-engine.ts";
++import { runSlaEngineForTenant } from "./sla-engine.ts";
++import { runScopeCreepEngineForTenant } from "./scope-creep-engine.ts";
++import { computeMonitoringEngine } from "./monitor-executor.ts";
++import { runSalesOfferEngineForTenant } from "./sales-offer-engine.ts";
+ import {
+   fetchSignalRulesAndGroups,
+   buildTenantProfileAndFindings,
+   getSignalWeights,
+-  rankFiredSignals,
+-  sumPriorityScore,
+   calculatePriorityScore,
+   getFiredSignalKeysForTenant,
+ } from "./priority-engine.ts";
+-import { computeHealthEngine, calculateArchitectureHealthScore } from "./health-engine.ts";
+-import { computeSecurityEngine, runSecurityEngineForTenant } from "./security-engine.ts";
++import { calculateArchitectureHealthScore } from "./health-engine.ts";
++import { runSecurityEngineForTenant } from "./security-engine.ts";
+ import { computeDriftEngine } from "./drift-engine.ts";
+ import { computeForecastingEngine } from "./forecasting-engine.ts";
+-import { getCrmSignalWeights, filterCrmSignals, sumCrmScore, calculateCrmScore } from "./crm-engine.ts";
++import { getCrmSignalWeights, calculateCrmScore } from "./crm-engine.ts";
+ import { computeTenantEngineScores, calculateMspPortfolioRisk } from "./msp-engine.ts";
+ 
+ export interface EngineTestInput {
+@@ -67,10 +60,11 @@ export interface EngineDef {
+   categoryPrefix: string;
+   /** Keys of other ENGINE_DEFS entries that must complete before this one runs. Empty array = no dependencies beyond get_tenant_signals. */
+   dependsOn: string[];
+-  /** Runs the engine for a real tenant. */
++  /** Runs the engine for a real tenant. This is the ONLY execution path —
++   *  fake-payload/parallel-simulation testing (runForPayload) was retired
++   *  platform-wide; every test/preview call must go through a real
++   *  (testbed-flagged, where applicable) tenant. */
+   runForTenant(tenantId: number, ctx?: EngineContext): Promise<unknown>;
+-  /** Runs the engine for a supplied sample payload (test-against-payload). */
+-  runForPayload(input: EngineTestInput, ctx?: EngineContext): unknown;
+   /** true for engines that operate per-tenant (all but MSP, which is portfolio-wide). */
+   tenantScoped: boolean;
+   /**
+@@ -183,13 +177,6 @@ async function calculateMspForTenant(tenantId: number, ctx?: EngineContext) {
+   return computeTenantEngineScores(tenantId, null, mergedProfile, findings, rules, groups, disabledSignalKeys, ctx);
+ }
+ 
+-function crmForPayload(input: EngineTestInput, weights: Array<{ signalKey: string; category: string; crmFitContribution: number; crmPainContribution: number; crmMaturityContribution: number; crmIntentContribution: number; crmUrgencyContribution: number }>, ctx?: EngineContext) {
+-  const { firedSignals } = computeTenantSignals(input.mergedProfile, input.parsedFindings, input.rules, input.groups, input.disabledSignalKeys);
+-  const breakdown = filterCrmSignals([...firedSignals], weights);
+-  const score = sumCrmScore(breakdown);
+-  return { engine: "crm" as const, score, breakdown, rawSignals: [...firedSignals], timestamp: (ctx?.evaluationTimestamp || new Date()).toISOString() };
+-}
+-
+ export const ENGINE_DEFS: EngineDef[] = [
+   {
+     key: "priority",
+@@ -200,21 +187,6 @@ export const ENGINE_DEFS: EngineDef[] = [
+     tenantScoped: true,
+     ruleOwnership: "platform",
+     runForTenant: (tenantId, ctx) => calculatePriorityScore(tenantId, ctx),
+-    runForPayload: (input, ctx) => {
+-      const { firedSignals } = computeTenantSignals(input.mergedProfile, input.parsedFindings, input.rules, input.groups, input.disabledSignalKeys);
+-      // getSignalWeights() is async and DB-backed; for payload tests we derive
+-      // weights directly from the supplied rules/groups instead, so a sample
+-      // payload can be tested without depending on live DB rule weights.
+-      const weights = [...input.groups, ...input.rules].map(r => ({
+-        signalKey: r.signalKey,
+-        weight: r.weight ?? 0,
+-        priority: r.priority ?? 0,
+-        priorityScoreContribution: r.priorityScoreContribution ?? 0,
+-      }));
+-      const ranked = rankFiredSignals([...firedSignals], weights);
+-      const { score, breakdown } = sumPriorityScore(ranked);
+-      return { engine: "priority", score, breakdown, rawSignals: [...firedSignals], timestamp: (ctx?.evaluationTimestamp || new Date()).toISOString() };
+-    },
+   },
+   {
+     key: "pricing",
+@@ -225,7 +197,6 @@ export const ENGINE_DEFS: EngineDef[] = [
+     tenantScoped: true,
+     ruleOwnership: "platform",
+     runForTenant: (tenantId, ctx) => calculatePricingImpact(tenantId, ctx),
+-    runForPayload: (input, ctx) => computePricingEngine(input.mergedProfile, input.parsedFindings, input.rules, input.groups, input.disabledSignalKeys, ctx),
+   },
+   {
+     key: "health",
+@@ -236,7 +207,6 @@ export const ENGINE_DEFS: EngineDef[] = [
+     tenantScoped: true,
+     ruleOwnership: "platform",
+     runForTenant: (tenantId, ctx) => calculateArchitectureHealthScore(tenantId, ctx),
+-    runForPayload: (input, ctx) => computeHealthEngine(input.mergedProfile, input.parsedFindings, input.rules, input.groups, input.disabledSignalKeys, ctx),
+   },
+   {
+     key: "security",
+@@ -247,7 +217,6 @@ export const ENGINE_DEFS: EngineDef[] = [
+     tenantScoped: true,
+     ruleOwnership: "platform",
+     runForTenant: (tenantId, ctx) => runSecurityEngineForTenant(tenantId, ctx),
+-    runForPayload: (input, ctx) => computeSecurityEngine(input.mergedProfile, input.parsedFindings, input.rules, input.groups, input.disabledSignalKeys, ctx),
+   },
+   {
+     key: "drift",
+@@ -258,7 +227,6 @@ export const ENGINE_DEFS: EngineDef[] = [
+     tenantScoped: true,
+     ruleOwnership: "platform",
+     runForTenant: (tenantId, ctx) => calculateDriftForTenant(tenantId, ctx),
+-    runForPayload: (input, ctx) => computeDriftEngine(input.mergedProfile, input.parsedFindings, input.rules, input.groups, input.disabledSignalKeys, ctx),
+   },
+   {
+     key: "forecasting",
+@@ -269,7 +237,6 @@ export const ENGINE_DEFS: EngineDef[] = [
+     tenantScoped: true,
+     ruleOwnership: "platform",
+     runForTenant: (tenantId, ctx) => calculateForecastForTenant(tenantId, ctx),
+-    runForPayload: (input, ctx) => computeForecastingEngine(input.mergedProfile, input.parsedFindings, input.rules, input.groups, input.disabledSignalKeys, ctx),
+   },
+   {
+     key: "crm",
+@@ -280,18 +247,6 @@ export const ENGINE_DEFS: EngineDef[] = [
+     tenantScoped: true,
+     ruleOwnership: "platform",
+     runForTenant: (tenantId, ctx) => calculateCrmScore(tenantId, ctx),
+-    runForPayload: (input, ctx) => {
+-      const weights = [...input.groups, ...input.rules].map(r => ({
+-        signalKey: r.signalKey,
+-        category: r.category ?? "",
+-        crmFitContribution: r.crmFitContribution ?? 0,
+-        crmPainContribution: r.crmPainContribution ?? 0,
+-        crmMaturityContribution: r.crmMaturityContribution ?? 0,
+-        crmIntentContribution: r.crmIntentContribution ?? 0,
+-        crmUrgencyContribution: r.crmUrgencyContribution ?? 0,
+-      }));
+-      return crmForPayload(input, weights, ctx);
+-    },
+   },
+   {
+     key: "msp",
+@@ -302,10 +257,6 @@ export const ENGINE_DEFS: EngineDef[] = [
+     tenantScoped: false,
+     ruleOwnership: "platform",
+     runForTenant: (tenantId, ctx) => calculateMspForTenant(tenantId, ctx),
+-    runForPayload: (input, ctx) => {
+-      const { mergedProfile, parsedFindings, rules, groups, disabledSignalKeys } = input;
+-      return computeTenantEngineScores(0, "Sample Payload", mergedProfile, parsedFindings, rules, groups, disabledSignalKeys, ctx);
+-    },
+   },
+   {
+     key: "sla",
+@@ -316,11 +267,6 @@ export const ENGINE_DEFS: EngineDef[] = [
+     tenantScoped: true,
+     ruleOwnership: "msp",
+     runForTenant: (tenantId, ctx) => runSlaEngineForTenant(tenantId, ctx),
+-    runForPayload: (_input, ctx) => {
+-      const sampleTimers: SlaTimer[] = [];
+-      const samplePolicies: SlaPolicy[] = [];
+-      return computeSlaEngine(sampleTimers, samplePolicies, ctx?.evaluationTimestamp || new Date());
+-    },
+   },
+   {
+     key: "scope_creep",
+@@ -331,9 +277,6 @@ export const ENGINE_DEFS: EngineDef[] = [
+     tenantScoped: true,
+     ruleOwnership: "msp",
+     runForTenant: (tenantId, ctx) => runScopeCreepEngineForTenant(tenantId, ctx),
+-    runForPayload: (_input, ctx) => {
+-      return computeScopeCreepEngine([], [], 0, ctx?.evaluationTimestamp);
+-    },
+   },
+   {
+     key: "monitoring",
+@@ -344,7 +287,6 @@ export const ENGINE_DEFS: EngineDef[] = [
+     tenantScoped: true,
+     ruleOwnership: "platform",
+     runForTenant: (tenantId, ctx) => computeMonitoringEngine(tenantId),
+-    runForPayload: (_input, ctx) => computeMonitoringEngineForPayload(),
+   },
+   {
+     key: "sales_offer",
+@@ -355,19 +297,6 @@ export const ENGINE_DEFS: EngineDef[] = [
+     tenantScoped: true,
+     ruleOwnership: "msp",
+     runForTenant: (tenantId, ctx) => runSalesOfferEngineForTenant(tenantId, null, ctx),
+-    runForPayload: async (input, ctx) => {
+-      const { firedSignals } = computeTenantSignals(input.mergedProfile, input.parsedFindings, input.rules, input.groups, input.disabledSignalKeys);
+-      const [ruleGroups, services, config] = await Promise.all([
+-        loadSalesOfferRuleGroups(),
+-        (async () => {
+-          const { db: soDb } = await import("@workspace/db");
+-          const { servicesTable: soSvcTable } = await import("@workspace/db");
+-          return soDb.select({ id: soSvcTable.id, name: soSvcTable.name, price: soSvcTable.price, basePrice: soSvcTable.basePrice }).from(soSvcTable);
+-        })(),
+-        loadSalesOfferConfig(null),
+-      ]);
+-      return computeSalesOfferEngine(null, firedSignals, ruleGroups, services, config, ctx);
+-    },
+   },
+ ];
+ 
+@@ -624,15 +553,4 @@ export async function buildEngineTestInputForTenant(tenantId: number): Promise<E
+   return { mergedProfile, parsedFindings: findings, rules, groups, disabledSignalKeys };
+ }
+ 
+-export async function buildEngineTestInputForPayload(
+-  profileUpdates: Record<string, unknown>,
+-  parsedFindings: string[],
+-): Promise<EngineTestInput> {
+-  const [{ rules, groups }, disabledSignalKeys] = await Promise.all([
+-    fetchSignalRulesAndGroups(),
+-    getDisabledSignalKeys(),
+-  ]);
+-  return { mergedProfile: profileUpdates, parsedFindings, rules, groups, disabledSignalKeys };
+-}
+-
+ export { getFiredSignalKeysForTenant, getSignalWeights, getCrmSignalWeights, calculateMspPortfolioRisk };
+diff --git a/artifacts/api-server/src/routes/admin-engines.ts b/artifacts/api-server/src/routes/admin-engines.ts
+index 7f9834b..e98418e 100644
+--- a/artifacts/api-server/src/routes/admin-engines.ts
++++ b/artifacts/api-server/src/routes/admin-engines.ts
+@@ -12,7 +12,6 @@ import {
+   ENGINE_DEFS,
+   getEngineDef,
+   buildEngineTestInputForTenant,
+-  buildEngineTestInputForPayload,
+ } from "../lib/engine-registry";
+ import { getEngineHistoryMerged, getBaselineEvents, getSignalDeltasForRange } from "../lib/engine-history";
+ import { PLAN_FEATURE_DEFS } from "../lib/msp-entitlement";
+@@ -31,32 +30,25 @@ import { calculatePlatformPortfolioRisk, calculateMspPortfolioRisk } from "../li
+ 
+ const router: IRouter = Router();
+ 
+-// ── Shared helpers ──────────────────────────────────────────────────────────
+-
+-function parsePayloadBody(body: Record<string, unknown>): { profileUpdates: Record<string, unknown>; parsedFindings: string[] } {
+-  const payload = (body.payload ?? {}) as Record<string, unknown>;
+-  const profileUpdates = (payload.profileUpdates ?? {}) as Record<string, unknown>;
+-  const parsedFindings = Array.isArray(payload.parsedFindings) ? (payload.parsedFindings as string[]) : [];
+-  return { profileUpdates, parsedFindings };
+-}
+-
+ async function runEngine(
+   engineKey: string,
+   body: Record<string, unknown>,
+-): Promise<{ mode: "tenant" | "payload"; tenantId?: number; output: unknown }> {
++): Promise<{ mode: "tenant"; tenantId: number; output: unknown }> {
+   const def = getEngineDef(engineKey);
+   if (!def) throw new Error(`Unknown engine: ${engineKey}`);
+ 
+   const tenantId = body.tenantId != null ? Number(body.tenantId) : undefined;
+-  if (tenantId != null && !isNaN(tenantId)) {
+-    const output = await def.runForTenant(tenantId);
+-    return { mode: "tenant", tenantId, output };
++  if (tenantId == null || isNaN(tenantId)) {
++    // Fake-payload testing (runForPayload) is retired platform-wide. Every
++    // engine test/preview call must exercise the real runForTenant() path
++    // against a real (testbed-flagged) customer — no parallel/simulated
++    // evaluation is permitted, even for ad hoc admin testing.
++    throw new Error(
++      "A real tenantId is required. Select a testbed customer — free-text sample payload testing has been retired.",
++    );
+   }
+-
+-  const { profileUpdates, parsedFindings } = parsePayloadBody(body);
+-  const input = await buildEngineTestInputForPayload(profileUpdates, parsedFindings);
+-  const output = def.runForPayload(input);
+-  return { mode: "payload", output };
++  const output = await def.runForTenant(tenantId);
++  return { mode: "tenant", tenantId, output };
+ }
+ 
+ // ── GET /api/admin/portfolio-risk ──────────────────────────────────────────
+@@ -741,13 +733,12 @@ router.post("/admin/engines/rule-groups/:groupId/test", requireAdmin, async (req
+ 
+     const body = (req.body ?? {}) as Record<string, unknown>;
+     const tenantId = body.tenantId != null ? Number(body.tenantId) : undefined;
+-    const payload = (body.payload ?? {}) as Record<string, unknown>;
+-    const input = tenantId != null && !isNaN(tenantId)
+-      ? await buildEngineTestInputForTenant(tenantId)
+-      : await buildEngineTestInputForPayload(
+-          (payload.profileUpdates as Record<string, unknown>) ?? {},
+-          (payload.parsedFindings as string[]) ?? [],
+-        );
++    if (tenantId == null || isNaN(tenantId)) {
++      // Fake-payload testing is retired platform-wide — real tenantId only.
++      res.status(400).json({ error: "A real tenantId is required. Select a testbed customer." });
++      return;
++    }
++    const input = await buildEngineTestInputForTenant(tenantId);
+ 
+     const groupRules = rules.filter(r => r.groupId === groupId);
+     const traces = groupRules.map(r => ({ ruleId: r.id, ...evaluateRule(r, input.mergedProfile, input.parsedFindings) }));
+@@ -807,12 +798,12 @@ router.post("/admin/engines/signals/:signalKey/test", requireAdmin, async (req:
+   const signalKey = String(req.params.signalKey);
+   try {
+     const tenantId = (req.body as Record<string, unknown>)?.tenantId != null ? Number((req.body as Record<string, unknown>).tenantId) : undefined;
+-    const input = tenantId != null && !isNaN(tenantId)
+-      ? await buildEngineTestInputForTenant(tenantId)
+-      : await buildEngineTestInputForPayload(
+-          ((req.body as Record<string, unknown>)?.payload as Record<string, unknown> | undefined)?.profileUpdates as Record<string, unknown> ?? {},
+-          ((req.body as Record<string, unknown>)?.payload as Record<string, unknown> | undefined)?.parsedFindings as string[] ?? [],
+-        );
++    if (tenantId == null || isNaN(tenantId)) {
++      // Fake-payload testing is retired platform-wide — real tenantId only.
++      res.status(400).json({ error: "A real tenantId is required. Select a testbed customer." });
++      return;
++    }
++    const input = await buildEngineTestInputForTenant(tenantId);
+ 
+     const scopedRules = input.rules.filter(r => r.signalKey === signalKey);
+     const scopedGroups = input.groups.filter(g => g.signalKey === signalKey);

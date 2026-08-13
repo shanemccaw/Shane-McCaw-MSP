@@ -1,0 +1,176 @@
+/* ============================================================================
+ * M365 War Room - animation keyframes and scoped base styles.
+ *
+ * Ported verbatim from the Claude Design source "M365 War Room.dc.html"
+ * (<style> block, source lines 20-98). The keyframe bodies below are byte-for-byte
+ * the design's own; only the page-level base rules were rescoped from html/body
+ * onto .wr-root so this full-bleed experience cannot leak styles into the rest of
+ * the portal.
+ * ========================================================================== */
+
+.wr-root {
+  margin: 0;
+  padding: 0;
+  background: #020617;
+  overflow-x: hidden;
+}
+
+.wr-root a { color: #60a5fa; text-decoration: none; }
+.wr-root a:hover { color: #93c5fd; }
+
+.wr-root ::-webkit-scrollbar { width: 8px; height: 8px; }
+.wr-root ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 99px; }
+.wr-root ::-webkit-scrollbar-track { background: transparent; }
+
+/* --------------------------------------------------------------------------
+ * Keyframes (54 total). Names are wr-* prefixed, so these are safe
+ * to register globally - nothing else in the portal uses that namespace.
+ * ------------------------------------------------------------------------ */
+
+@keyframes wr-pulse { 0%,100% { opacity:.4; transform:scale(1); } 50% { opacity:.8; transform:scale(1.22); } }
+
+@keyframes wr-boardglow { 0%,100% { box-shadow:0 0 0 1px rgba(52,211,153,.18),0 18px 60px rgba(2,6,23,.7),0 0 46px rgba(16,185,129,.28),inset 0 0 44px rgba(16,185,129,.08); } 50% { box-shadow:0 0 0 1px rgba(52,211,153,.3),0 18px 60px rgba(2,6,23,.7),0 0 78px rgba(16,185,129,.5),inset 0 0 54px rgba(16,185,129,.14); } }
+
+@keyframes wr-roompulse { 0%,100% { opacity:.55; } 50% { opacity:1; } }
+
+@keyframes wr-wmdrift { 0%,100% { transform:rotate(-4deg) translateX(-1.5%) scale(1); } 50% { transform:rotate(-4deg) translateX(1.5%) scale(1.03); } }
+
+@keyframes wr-divefall {
+    0% { opacity:1; transform:translateY(0) scale(1); filter:blur(0); }
+    35% { opacity:.85; transform:translateY(-6px) scale(1.012); filter:blur(0); }
+    100% { opacity:0; transform:translateY(26px) scale(.955); filter:blur(7px); }
+  }
+
+@keyframes wr-sectionpulse { 0%,100% { filter:brightness(1); } 50% { filter:brightness(1.14); } }
+
+@keyframes wr-speakgesture {
+    0%,100% { transform:translateY(0) rotate(0deg) scale(1); }
+    12% { transform:translateY(-2.5px) rotate(-1.4deg) scale(1.028); }
+    26% { transform:translateY(.6px) rotate(.9deg) scale(1.006); }
+    41% { transform:translateY(-1.8px) rotate(-.7deg) scale(1.02); }
+    58% { transform:translateY(.4px) rotate(1.1deg) scale(1.004); }
+    74% { transform:translateY(-1.2px) rotate(-.5deg) scale(1.014); }
+  }
+
+@keyframes wr-speakglow {
+    0%,100% { box-shadow:0 0 40px rgba(59,130,246,.55),inset 0 0 22px rgba(139,92,246,.38); }
+    18% { box-shadow:0 0 72px rgba(103,232,249,.85),inset 0 0 26px rgba(139,92,246,.5); }
+    44% { box-shadow:0 0 48px rgba(59,130,246,.6),inset 0 0 22px rgba(139,92,246,.4); }
+    66% { box-shadow:0 0 66px rgba(103,232,249,.78),inset 0 0 26px rgba(139,92,246,.48); }
+  }
+
+@keyframes wr-voicebar {
+    0%,100% { transform:scaleY(.28); opacity:.5; }
+    50% { transform:scaleY(1); opacity:1; }
+  }
+
+@keyframes wr-scanbeat { 0%,100% { box-shadow:0 0 34px rgba(103,232,249,.16); } 50% { box-shadow:0 0 62px rgba(103,232,249,.34); } }
+
+@keyframes wr-spin { to { transform:rotate(360deg); } }
+
+@keyframes wr-feedin { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
+
+@keyframes wr-statin { from { opacity:0; transform:translateX(-14px) scale(.94); } to { opacity:1; transform:none; } }
+
+@keyframes wr-statslide { 0% { opacity:0; transform:translateX(-38px) scale(.9); filter:blur(5px); } 60% { opacity:1; filter:blur(0); } 100% { opacity:1; transform:none; filter:blur(0); } }
+
+@keyframes wr-preludeout { 0% { opacity:1; filter:blur(0); transform:scale(1); } 100% { opacity:0; filter:blur(14px); transform:scale(1.06); } }
+
+@keyframes wr-roomin { 0% { opacity:0; filter:blur(10px); transform:scale(1.03); } 100% { opacity:1; filter:blur(0); transform:none; } }
+
+@keyframes wr-heroin { from { opacity:0; transform:translateY(5px); } to { opacity:1; transform:none; } }
+
+@keyframes wr-labeldrift { 0%,100% { letter-spacing:.06em; opacity:.24; } 50% { letter-spacing:.13em; opacity:.36; } }
+
+@keyframes wr-sheen { 0% { background-position:-60% 0; } 100% { background-position:160% 0; } }
+
+@keyframes wr-tilelock { 0% { opacity:0; transform:translateY(26px) scale(.94); filter:blur(6px); } 60% { opacity:1; filter:blur(0); } 100% { opacity:1; transform:translateY(0) scale(1); } }
+
+@keyframes wr-flowdash { to { background-position:0 -44px; } }
+
+@keyframes wr-nodering { 0% { transform:scale(.7); opacity:.85; } 100% { transform:scale(1.9); opacity:0; } }
+
+@keyframes wr-nodeglow { 0%,100% { box-shadow:0 0 12px rgba(103,232,249,.4),inset 0 0 10px rgba(103,232,249,.16); } 50% { box-shadow:0 0 26px rgba(103,232,249,.85),inset 0 0 16px rgba(103,232,249,.32); } }
+
+@keyframes wr-packet { 0% { top:-6%; opacity:0; } 12% { opacity:1; } 88% { opacity:1; } 100% { top:104%; opacity:0; } }
+
+@keyframes wr-slotsweep { 0% { transform:translateX(-120%); } 100% { transform:translateX(320%); } }
+
+@keyframes wr-twinkle { 0% { transform:translateY(0) scale(.6) rotate(0deg); opacity:0; } 10% { opacity:.9; } 45% { opacity:.35; } 70% { opacity:.85; } 100% { transform:translateY(-102vh) scale(.45) rotate(28deg); opacity:0; } }
+
+@keyframes wr-dust { 0% { transform:translateY(0) scale(1); opacity:0; } 12% { opacity:.55; } 100% { transform:translateY(-260px) scale(.5); opacity:0; } }
+
+@keyframes wr-beamsweep { 0%,100% { opacity:.22; transform:translateX(-6%) skewX(-7deg); } 50% { opacity:.5; transform:translateX(6%) skewX(-7deg); } }
+
+@keyframes wr-floorpulse { 0% { transform:translate(-50%,0) scale(.55); opacity:.55; } 100% { transform:translate(-50%,0) scale(1.7); opacity:0; } }
+
+@keyframes wr-ringpulse { 0% { transform:scale(.5); opacity:.6; } 100% { transform:scale(1.55); opacity:0; } }
+
+@keyframes wr-holobreath { 0%,100% { opacity:.7; transform:scale(1); } 50% { opacity:1; transform:scale(1.07); } }
+
+@keyframes wr-holoscan { 0% { transform:translateY(-120%); } 100% { transform:translateY(560%); } }
+
+@keyframes wr-floorburst { 0% { transform:translate(-50%,0) perspective(700px) rotateX(74deg) scale(1); opacity:1; } 100% { transform:translate(-50%,0) perspective(700px) rotateX(74deg) scale(4.2); opacity:0; } }
+
+@keyframes wr-holoflicker { 0%,100% { opacity:.92; } 47% { opacity:1; } 52% { opacity:.86; } }
+
+@keyframes wr-heroring { 0% { transform:scale(.92); opacity:.7; } 70% { opacity:0; } 100% { transform:scale(1.35); opacity:0; } }
+
+@keyframes wr-heropulse { 0%,100% { box-shadow:0 0 42px rgba(103,232,249,.45); } 50% { box-shadow:0 0 62px rgba(103,232,249,.75); } }
+
+@keyframes wr-tipsheen { 0% { background-position:0% 0; } 100% { background-position:200% 0; } }
+
+@keyframes wr-typedot { 0%,60%,100% { opacity:.28; transform:translateY(0); } 30% { opacity:1; transform:translateY(-3px); } }
+
+@keyframes wr-ghost { 0%,100% { opacity:.82; } 50% { opacity:.95; } }
+
+@keyframes wr-idle { 0%,100% { transform:translateY(0); } 50% { transform:translateY(-3px); } }
+
+@keyframes wr-rise { from { opacity:0; transform:translateY(10px) scale(.97); } to { opacity:1; transform:translateY(0) scale(1); } }
+
+@keyframes wr-slide-right { from { opacity:0; transform:translateX(28px); } to { opacity:1; transform:translateX(0); } }
+
+@keyframes wr-scan { 0% { transform:translateY(-40%); opacity:0; } 15% { opacity:.5; } 100% { transform:translateY(140%); opacity:0; } }
+
+@keyframes wr-ring { 0% { opacity:.55; transform:scale(1); } 100% { opacity:0; transform:scale(1.7); } }
+
+@keyframes wr-blink { 0%,100% { opacity:1; } 50% { opacity:.4; } }
+
+@keyframes wr-drift { 0% { transform:translate3d(-3%,0,0) scale(1); opacity:.55; } 50% { transform:translate3d(3%,-1.5%,0) scale(1.05); opacity:.78; } 100% { transform:translate3d(-3%,0,0) scale(1); opacity:.55; } }
+
+@keyframes wr-progress-a { from { width:0%; } to { width:100%; } }
+
+@keyframes wr-progress-b { from { width:0%; } to { width:100%; } }
+
+@keyframes wr-blast { from { opacity:0; transform:scale(.6); } to { opacity:1; transform:scale(1); } }
+
+@keyframes wr-fall { from { opacity:1; transform:translateY(0) scale(1); } to { opacity:0; transform:translateY(10px) scale(.98); } }
+
+@keyframes wr-shimmer { 0% { transform:translateX(-120%); } 100% { transform:translateX(220%); } }
+
+@keyframes wr-float { 0%,100% { transform:perspective(1500px) rotateY(var(--wr-ry)) translateY(0); } 50% { transform:perspective(1500px) rotateY(var(--wr-ry)) translateY(-5px); } }
+
+@keyframes wr-breathe { 0%,100% { opacity:.45; } 50% { opacity:.75; } }
+
+@keyframes wr-sweep { 0% { transform:translateX(-120%) skewX(-14deg); } 100% { transform:translateX(320%) skewX(-14deg); } }
+
+
+/* --------------------------------------------------------------------------
+ * Topology centre-piece keyframes, from Canvas-2.dc.html.
+ * ------------------------------------------------------------------------ */
+
+@keyframes flowDash { 0% { stroke-dashoffset:40; } 100% { stroke-dashoffset:0; } }
+
+@keyframes tcPulse { 0%,100% { opacity:.4; } 50% { opacity:1; } }
+
+@keyframes tcCorePulse { 0%,100% { box-shadow:0 0 46px rgba(16,185,129,.3); border-color:rgba(16,185,129,.55); } 50% { box-shadow:0 0 96px rgba(16,185,129,.62); border-color:rgba(16,185,129,.9); } }
+
+@keyframes tcSpin { to { transform:rotate(360deg); } }
+
+@keyframes tcPop { from { opacity:0; transform:translate(-50%,-50%) scale(.3); } to { opacity:1; } }
+
+@keyframes tcPinIn { from { opacity:0; transform:translate(-50%,-50%) scale(.2); } to { opacity:1; transform:translate(-50%,-50%) scale(1); } }
+
+@keyframes tcSweepFade { 0% { opacity:.75; } 100% { opacity:.75; } }
+
+@keyframes tcBlast { from { opacity:0; transform:translate(-50%,-50%) scale(.4); } to { opacity:1; transform:translate(-50%,-50%) scale(1); } }

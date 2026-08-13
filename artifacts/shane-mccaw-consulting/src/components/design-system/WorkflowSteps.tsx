@@ -1,0 +1,65 @@
+interface WorkflowStep {
+  title: string;
+  description: string;
+}
+
+interface WorkflowStepsProps {
+  steps: WorkflowStep[];
+  /**
+   * Optional showcase sync (flagship How It Works, HowItWorksShowcase.tsx):
+   * highlights the active step's number circle and reports hover/click
+   * selection — `deliberate` is true for a click/tap (a committed choice the
+   * showcase uses to stop its auto-advance) and false for a passing hover.
+   * When absent, renders exactly as before — every other caller is a plain
+   * static list.
+   */
+  activeIndex?: number;
+  onStepSelect?: (index: number, deliberate?: boolean) => void;
+}
+
+const GRADIENT_BG = { background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" };
+const CONNECTOR_BG = { background: "linear-gradient(180deg, var(--accent-blue), rgba(255,255,255,0.08))" };
+/** Soft halo on the active step's number circle — the data color at low alpha,
+ *  additive only (no dimming of inactive steps' real copy). */
+const ACTIVE_HALO = "0 0 0 5px color-mix(in srgb, var(--accent-blue) 28%, transparent)";
+
+/**
+ * Process/pipeline content ("How This Product Works" style) — numbered steps joined by a
+ * visible vertical connector, so it reads as a sequence rather than a numbered list that
+ * happens to be about a process.
+ */
+export function WorkflowSteps({ steps, activeIndex, onStepSelect }: WorkflowStepsProps) {
+  const interactive = onStepSelect !== undefined;
+  return (
+    <ol className="relative">
+      {steps.map((step, i) => (
+        <li
+          key={step.title}
+          className={`relative flex gap-4 pb-8 last:pb-0 ${interactive ? "cursor-pointer" : ""}`}
+          onMouseEnter={interactive ? () => onStepSelect(i) : undefined}
+          onClick={interactive ? () => onStepSelect(i, true) : undefined}
+        >
+          {i < steps.length - 1 && (
+            <span
+              className="absolute left-5 top-10 bottom-0 w-px"
+              style={CONNECTOR_BG}
+              aria-hidden="true"
+            />
+          )}
+          <span
+            className={`relative z-10 shrink-0 w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-semibold font-numeric ${
+              interactive ? "transition-[transform,box-shadow] duration-300" : ""
+            } ${activeIndex === i ? "scale-110" : ""}`}
+            style={{ ...GRADIENT_BG, boxShadow: activeIndex === i ? ACTIVE_HALO : undefined }}
+          >
+            {i + 1}
+          </span>
+          <div className="pt-1.5">
+            <p className="text-text-primary font-semibold mb-1">{step.title}</p>
+            <p className="text-text-secondary leading-relaxed">{step.description}</p>
+          </div>
+        </li>
+      ))}
+    </ol>
+  );
+}

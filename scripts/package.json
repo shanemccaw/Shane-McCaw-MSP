@@ -1,0 +1,43 @@
+{
+  "name": "@workspace/scripts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "hello": "tsx ./src/hello.ts",
+    "diagnose-sharepoint-cert": "tsx ./src/diagnose-sharepoint-cert.ts",
+    "generate:og": "node ../scripts/generate-og-image.mjs",
+    "sync-webhooks": "tsx ./src/sync-stripe-webhooks.ts",
+    "migrate-prod": "tsx ./src/migrate-prod.ts",
+    "migrate-dev": "tsx ./src/migrate-dev.ts",
+    "check-drift": "tsx ./src/check-migration-drift.ts",
+    "update-schema-hash": "tsx ./src/update-schema-hash.ts",
+    "sync-services": "tsx ./src/sync-services-to-prod.ts",
+    "seed-prod": "tsx ./src/seed-prod.ts",
+    "remove-default-services": "tsx ./src/remove-default-services.ts",
+    "assign-task-types": "tsx ./src/assign-task-types.ts",
+    "seed-icon-names": "tsx ./src/seed-icon-names.ts",
+    "migration-status": "tsx ./src/migration-status.ts",
+    "migrate-runbook-ids": "tsx ./src/migrate-runbook-ids.ts",
+    "patch-consolidated-sow-prompt": "tsx ./src/patch-consolidated-sow-prompt.ts",
+    "patch-sow-adjustment-rules": "tsx ./src/patch-sow-adjustment-rules.ts",
+    "seed-signal-rules": "tsx ./src/seed-signal-rules.ts",
+    "seed-engagement-project-triggers": "tsx ./src/seed-engagement-project-triggers.ts",
+    "deploy-stamp-version": "tsx ./src/deploy-stamp-version.ts",
+    "validate-manifest": "tsx ./src/validate-test-manifest.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test:stripe": "pnpm --filter @workspace/api-server run test"
+  },
+  "dependencies": {
+    "@workspace/db": "workspace:*",
+    "@workspace/integrations-anthropic-ai": "workspace:*",
+    "drizzle-orm": "catalog:",
+    "pg": "^8.20.0"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@types/pg": "^8.20.0",
+    "stripe": "catalog:",
+    "tsx": "catalog:"
+  }
+}

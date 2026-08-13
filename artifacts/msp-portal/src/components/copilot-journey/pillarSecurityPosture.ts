@@ -1,0 +1,529 @@
+/**
+ * pillarSecurityPosture.ts — the real Microsoft 365 Security Posture & Blast
+ * Radius Report, as data (#343).
+ *
+ * The live counterpart to `previewDocumentBodies.ts`'s `SECURITY_POSTURE`: the
+ * same ordered-block structure the design approved, built from one real
+ * tenant's own `war-room-pillars` payload plus
+ * `/portal/assessment/security-posture-narrative` — three AI-written sections
+ * and the one metric the War Room payload does not carry — instead of from
+ * Halden Materials' worked example.
+ *
+ * A pure `.ts` and not inlined into the renderer for the same two reasons its
+ * sibling is: `node --test` cannot load `.tsx`, so the rules below are testable;
+ * and the platform's no-hardcoding rule keeps counts and figures out of `.tsx`.
+ * Every number here arrives from the wire; none is written down.
+ *
+ * The honesty machinery — what may be quoted, how an absence is declared, which
+ * absences are our own wiring fault and must never reach the reader, and the
+ * Upgrade Opportunity category — is `liveReportBlocks.ts`, shared verbatim with
+ * the Copilot Readiness Report. Nothing about it is re-decided here.
+ *
+ * ── WHAT THIS REPORT DROPS FROM THE DESIGN, AND WHY ──────────────────────────
+ *   1. "Security Drift & Violations" is DROPPED entirely, and so is the
+ *      "Security drift" row inside the Summary. Same reasoning as the Copilot
+ *      Readiness Report's dropped "Copilot Drift & Violations": drift is a diff
+ *      against a recorded baseline and there is none on a first scan. The
+ *      design's copy for that section is explicit about it — "6 signals raised
+ *      over 90 days · none triaged · no baseline to compare against" — and its
+ *      other rows name a policy ("CA01"), a date ("14 June") and a decision
+ *      ("a 2024 decommission decision") that no check produces. The registry's
+ *      drift metrics (`drift:ca-policy`, `security.secureScoreDriftCount`) are
+ *      not among the stats this report resolves. There is nothing real to put
+ *      there, so it is absent rather than approximated.
+ *   2. "Self-Resolution Actions" is DROPPED. Its six bullets are remediation
+ *      instructions keyed to Halden's specific numbers ("reduce 11 standing
+ *      Global Administrators to 2"), and remediation is the Full Remediation
+ *      Guide's job in this journey, not this report's.
+ *
+ * ── THE ONE HONEST GAP THIS REPORT DECLARES IN WORDS ─────────────────────────
+ * "Conditional Access scoped to privileged roles" is a row the design asks for
+ * that has NO check behind it — see `CA_PRIVILEGED_ROLES_GAP` for the full
+ * reasoning and for why it is stated in prose rather than as a named check key.
+ *
+ * ── MAIL SECURITY AND APP CONSENT / WORKLOAD IDENTITY ────────────────────────
+ * Neither is one of `WAR_ROOM_PILLAR_STAT_SPECS`' 28 stats, so both sections
+ * are findings-only — the same `severity_rules` path Identity & Access Risks
+ * already renders, scoped to a smaller check-key set via
+ * `pillarFilteredByChecks`, with those same keys excluded from Identity &
+ * Access Risks so nothing is reported twice. `appgov:unreviewed-consents` is
+ * deliberately absent from the app-consent set: its real definition is still
+ * pending Git #551, and using it now would surface the already-known-wrong
+ * count.
+ *
+ * Device & Endpoint Compliance is narrowed the same way, to exactly two
+ * checks — `devices:enrollment-status` and `devices:update-rings-config` —
+ * per Shane's direction that per-device compliance/encryption/patch/autopilot
+ * detail belongs to Operational Health, not here.
+ */
+
+import type { JourneyPillarView, JourneyView, WirePillarStat } from "./journeyModel.ts";
+import { blastRadiusRows } from "./copilotReadinessReport.ts";
+import {
+  UPGRADE_OPPORTUNITY_DETAIL,
+  UPGRADE_OPPORTUNITY_HEADING,
+  buildProvenance,
+  buildRows,
+  buildRowsFromStats,
+  declaredGapBlock,
+  findingsBlocks,
+  gateRow,
+  keyValuesBlock,
+  narrativeBlocks,
+  pillarTone,
+  pillarVerdictSeverity,
+  unavailableBlock,
+  upgradeOpportunities,
+  upgradeOpportunityCallToAction,
+  verdictEyebrow,
+  type LiveReportBlock,
+  type LiveReportSection,
+  type LiveReportVerdict,
+  type StatPick,
+  type UnavailableCheck,
+  type WireNarrativePayload,
+  type WireNarrativeSection,
+} from "./liveReportBlocks.ts";
+
+/**
+ * `findingRows` and `findingsBlocks` were written here for #343 and now live in
+ * `liveReportBlocks.ts`, shared with the four pillar reports #292 added. They
+ * are re-exported unchanged so this module's contract with its renderer and its
+ * tests is exactly what it was — the same treatment the honesty machinery got
+ * when #343 extracted it out of `copilotReadinessReport.ts`.
+ */
+export { findingRows, findingsBlocks } from "./liveReportBlocks.ts";
+
+/* ------------------------------------------------------------------ *
+ * The wire shape — mirrors the api-server route's response
+ * ------------------------------------------------------------------ */
+
+/** This report's own three prose sections, in render order. */
+export type SecurityPostureSectionKey = "summary" | "blastRadius" | "copilotImpact";
+
+/**
+ * The Security Posture narrative payload: the shared narrative shape plus the
+ * extra real stats this route resolves that `war-room-pillars` does not carry.
+ *
+ * `stats` arrive in the SAME shape as a pillar card's, deliberately, so they go
+ * through `buildRowsFromStats` — the same never-fabricate rule as every other
+ * row — rather than through a second path that could classify an unavailable
+ * value differently. Today that is exactly one stat: Microsoft Secure Score.
+ */
+export interface WireSecurityPosturePayload extends WireNarrativePayload {
+  readonly stats?: readonly WirePillarStat[];
+}
+
+export type SecurityPostureSection = LiveReportSection;
+export type SecurityPostureBlock = LiveReportBlock;
+
+export interface SecurityPostureReport {
+  readonly kicker: string;
+  readonly headline: string;
+  readonly standfirst: string;
+  readonly verdict: LiveReportVerdict;
+  readonly sections: readonly SecurityPostureSection[];
+  readonly closing: readonly string[];
+  readonly provenance: string;
+}
+
+/* ------------------------------------------------------------------ *
+ * Section 1 — Security Posture Summary
+ * ------------------------------------------------------------------ */
+
+/**
+ * Microsoft Secure Score, from the narrative route's own `stats`.
+ *
+ * Not a `StatPick` because it belongs to no pillar card: `security.secureScore`
+ * is a real registry metric over the real `security:secure-score` check, but it
+ * is NOT one of `WAR_ROOM_PILLAR_STAT_SPECS`' 28 stats, so nothing puts it on
+ * the `war-room-pillars` wire. `security-posture-narrative-generator.ts`
+ * resolves it through the same `resolveMetric` path those stats use and sends
+ * it down here — see that file's header for why it is not simply added to the
+ * spec list (it would silently change the Copilot Readiness Report's own prose).
+ */
+const SUMMARY_EXTRA_PICKS: readonly { statId: string; label: string; caption: string }[] = [
+  { statId: "security.secureScore", label: "Security maturity", caption: "Microsoft Secure Score" },
+];
+
+/**
+ * The Summary's real metric rows, in the design's own order.
+ *
+ * Every one has a real check behind it and a real `WAR_ROOM_PILLAR_STAT_SPECS`
+ * entry, so a tenant that ran the check gets a number and one that did not gets
+ * a named gap. The design's fifth row, "Security drift", is deliberately absent
+ * — see the header.
+ */
+const SUMMARY_PICKS: readonly StatPick[] = [
+  { statId: "security.globalAdmins", pillar: "security", label: "Privileged accounts", caption: "global administrators" },
+  { statId: "security.mfaRegistered", pillar: "security", label: "MFA registration", caption: "users registered for multi-factor authentication" },
+  { statId: "security.legacyAuth", pillar: "security", label: "Legacy authentication", caption: "legacy protocol sign-ins" },
+  { statId: "health.nonCompliantDevices", pillar: "health", label: "Device compliance", caption: "devices failing the compliance baseline" },
+];
+
+/**
+ * The one row the design asks for that this platform cannot answer, declared in
+ * words rather than fabricated or silently dropped.
+ *
+ * ── WHY IT IS PROSE AND NAMES NO CHECK KEY ───────────────────────────────────
+ * The obvious move is an `unavailable` block naming a check. There is no honest
+ * key to name. Three candidates exist and none of them answers the question:
+ *
+ *   identity:ca-policy-count            counts policies. A count says nothing
+ *                                       about what any of them is scoped to,
+ *                                       and it has no DASHBOARD_METRICS entry
+ *                                       either — #441 is the record of what
+ *                                       happens when that key reaches a reader:
+ *                                       it printed as "not wired to a check in
+ *                                       the catalogue" in a section about gaps
+ *                                       in THEIR assessment, which is both
+ *                                       wrong on its face and not their concern.
+ *   security:conditional-access-failures counts failures, not scopes.
+ *   drift:ca-policy                     counts changes, not scopes.
+ *
+ * So the gap is genuinely "no check this platform runs reads a policy's role
+ * scope" — a fact about our coverage, not about this tenant's scan, and not one
+ * that varies by customer. #441's rule is that a fault of OURS must not be
+ * dressed up as a gap in the customer's data; stating it plainly, in its own
+ * words, is what is left once you take that seriously.
+ *
+ * It renders unconditionally for exactly that reason: it is not a function of
+ * what the scan returned, so there is no tenant for whom it becomes untrue.
+ */
+export const CA_PRIVILEGED_ROLES_GAP =
+  "One line the security review would normally carry is deliberately not here: whether any Conditional Access policy is scoped specifically to your privileged roles. No check this assessment runs reads a policy's role scope — the checks behind this report count Conditional Access policies and count their failures, and neither answers that question. Its absence is a gap in what this platform measures today, and nothing here should be read as saying such a policy does or does not exist.";
+
+/* ------------------------------------------------------------------ *
+ * Mail security, and app consent / workload identity (findings-only)
+ * ------------------------------------------------------------------ */
+
+/**
+ * The real checks behind "Mail Security" and "App Consent & Workload
+ * Identity". Neither is one of `WAR_ROOM_PILLAR_STAT_SPECS`' 28 stats, so
+ * there is no `statId` to pick — these surface only as findings, on the same
+ * `severity_rules` path `findingsBlocks` already renders for Identity &
+ * Access Risks.
+ *
+ * `appgov:unreviewed-consents` is deliberately NOT in `APP_CONSENT_CHECK_KEYS`
+ * — its real definition is still pending Git #551; using it now would surface
+ * the already-known-wrong count.
+ */
+const MAIL_SECURITY_CHECK_KEYS: readonly string[] = [
+  "security:antiphishing-coverage",
+  "security:safe-links-coverage",
+  "security:safe-attachments-coverage",
+  "security:dlp-violations",
+];
+
+const APP_CONSENT_CHECK_KEYS: readonly string[] = [
+  "appgov:consent-policy-status",
+  "appgov:workload-identity-risk",
+];
+
+/**
+ * Narrowed to two facts per Shane's direction: whether Intune/MDM is in use
+ * at all, and which update channel is configured, if any. Per-device
+ * compliance/encryption/patch/autopilot detail belongs to Operational
+ * Health, not here.
+ */
+const DEVICE_ENDPOINT_CHECK_KEYS: readonly string[] = [
+  "devices:enrollment-status",
+  "devices:update-rings-config",
+];
+
+/**
+ * A narrowed view of `pillar` carrying only the findings whose check is one
+ * of `checkKeys` (or, with `exclude: true`, every OTHER finding), so
+ * `findingsBlocks` can render a check-scoped section without a second
+ * finding-to-row function. `score` and everything else pass through
+ * unchanged — the #399 clean/unevaluated distinction is a fact about the
+ * whole pillar's evaluation, not about this subset of its checks.
+ */
+function pillarFilteredByChecks(
+  pillar: JourneyPillarView | undefined,
+  checkKeys: readonly string[],
+  options: { readonly exclude?: boolean } = {},
+): JourneyPillarView | undefined {
+  if (!pillar) return pillar;
+  const inSet = (checkKey: string) => checkKeys.includes(checkKey);
+  return {
+    ...pillar,
+    findings: pillar.findings.filter((f) => (options.exclude ? !inSet(f.checkKey) : inSet(f.checkKey))),
+  };
+}
+
+/* ------------------------------------------------------------------ *
+ * Section 5 — Copilot Readiness Impact
+ * ------------------------------------------------------------------ */
+
+/**
+ * This section has ONE real row, and it is the Gate itself.
+ *
+ * WHY NOT THE COPILOT CARD'S OWN STATS. `war-room-pillars` does carry a
+ * `copilot` card (`copilot.exposure`, `copilot.riskyUsers`, …), but this
+ * journey's `PILLAR_KEYS` are the six the Reveal draws — governance, security,
+ * compliance, licensing, adoption, health — and `buildPillarViews` maps over
+ * exactly those. The copilot card's stats therefore never reach `JourneyView`
+ * at all, so picking them here would produce not a row and not even an honest
+ * gap, but silence with no explanation.
+ *
+ * `copilot.exposure` is in any case the SAME metric as `security.blastRadius`
+ * (`copilot.overshareExposureCount`), already stated in full one section up —
+ * so the only figure genuinely lost is the risky-user count, which this report
+ * does not claim. The section carries its real prose, the real Gate row below,
+ * and nothing it cannot source.
+ */
+const COPILOT_IMPACT_PICKS: readonly StatPick[] = [];
+
+/* ------------------------------------------------------------------ *
+ * The verdict
+ * ------------------------------------------------------------------ */
+
+/**
+ * The verdict card, from the security pillar's own real headline and score.
+ *
+ * The design's version states a specific worst finding ("4 unprotected Global
+ * Administrator accounts") and its consequence. The real version states the
+ * pillar's real lead finding — which is either a real `severity_rules` label, or
+ * `CLEAN_PILLAR_HEADLINE` for a pillar genuinely evaluated clean (#399), or
+ * null for a pillar nothing scored. It never asserts a worst finding for a
+ * pillar that was not evaluated, and never writes the consequence sentence,
+ * which on the design's card is a claim about Halden specifically.
+ */
+export function buildVerdict(security: JourneyPillarView | undefined): SecurityPostureReport["verdict"] {
+  const score = security?.score ?? null;
+  if (score === null) {
+    return {
+      eyebrow: "Security posture",
+      headline: "No security score yet",
+      sub: "This tenant's scan has not yet evaluated a rule that feeds the Security pillar, so there is no posture score and no worst finding to lead with. What follows is what the scan did measure.",
+      severity: "unmeasured",
+    };
+  }
+  const headline = security?.headline;
+  return {
+    eyebrow: verdictEyebrow("Security posture", headline),
+    headline: headline ?? `Security scores ${score} of 100`,
+    sub: `The Security pillar scores ${score} of 100 on this tenant's last scan. Every figure below is read directly from your own tenant; nothing here is a benchmark or an estimate.`,
+    severity: pillarVerdictSeverity(security),
+  };
+}
+
+/* ------------------------------------------------------------------ *
+ * The report
+ * ------------------------------------------------------------------ */
+
+const SECTION_HEADINGS: Record<SecurityPostureSectionKey, string> = {
+  summary: "Security Posture Summary",
+  blastRadius: "Data Exposure & Blast Radius",
+  copilotImpact: "Copilot Readiness Impact",
+};
+
+/**
+ * Build the whole report from real data.
+ *
+ * `narrative` is optional and separately fetched: the pure-data sections must
+ * render the moment the pillar payload lands, without waiting on up to three
+ * Anthropic calls. A null narrative means "still loading"; a narrative whose
+ * section carries `html: null` means "resolved, and honestly empty".
+ *
+ * The Secure Score row therefore only appears once the narrative payload has
+ * landed — it rides that route. Until then the Summary shows the four rows it
+ * has, which is the same honest degradation every other absent figure gets.
+ */
+export function buildSecurityPostureReport(input: {
+  readonly view: JourneyView;
+  readonly narrative: WireSecurityPosturePayload | null;
+  /** True once the narrative fetch has settled, success or failure. */
+  readonly narrativeSettled: boolean;
+  /** Real curated check count behind the provenance line. */
+  readonly scannedCheckCount: number;
+}): SecurityPostureReport {
+  const { view, narrative, narrativeSettled, scannedCheckCount } = input;
+  const pillars = view.pillars;
+  const security = pillars.find((p) => p.key === "security");
+  const health = pillars.find((p) => p.key === "health");
+
+  const narrativeByKey = new Map<string, WireNarrativeSection>(
+    (narrative?.sections ?? []).map((s) => [s.key, s]),
+  );
+  const prose = (key: SecurityPostureSectionKey): SecurityPostureBlock[] =>
+    narrativeBlocks(narrativeByKey.get(key), narrativeSettled);
+
+  const sections: SecurityPostureSection[] = [];
+
+  // ── Security Posture Summary ───────────────────────────────────────────────
+  //
+  // Secure Score leads, because it is Microsoft's own read on the tenant and the
+  // one figure here that is not ours. It takes the Security pillar's band for
+  // the same reason every other row takes its pillar's — see liveReportBlocks.
+  const secureScore = buildRowsFromStats(
+    narrative?.stats ?? [],
+    SUMMARY_EXTRA_PICKS,
+    pillarTone(security),
+  );
+  const summary = buildRows(pillars, SUMMARY_PICKS);
+  sections.push({
+    heading: SECTION_HEADINGS.summary,
+    blocks: [
+      ...prose("summary"),
+      ...keyValuesBlock([...secureScore.rows, ...summary.rows]),
+      ...unavailableBlock(
+        "Figures behind this summary that this tenant's scan does not carry:",
+        [...secureScore.missing, ...summary.missing],
+      ),
+      ...declaredGapBlock(CA_PRIVILEGED_ROLES_GAP),
+    ],
+  });
+
+  // ── Identity & Access Risks (real findings) ────────────────────────────────
+  //
+  // Excludes the checks the two sections below now own, so a mail-security or
+  // app-consent finding is reported once, under its own heading, rather than
+  // here as well.
+  const identityAndAccessChecks = [...MAIL_SECURITY_CHECK_KEYS, ...APP_CONSENT_CHECK_KEYS];
+  sections.push({
+    heading: "Identity & Access Risks",
+    blocks: findingsBlocks(
+      pillarFilteredByChecks(security, identityAndAccessChecks, { exclude: true }),
+      "The Security pillar was evaluated on this tenant's last scan and returned no critical or warning finding. That is a real result, not an empty section.",
+      "No rule that feeds the Security pillar was evaluated on this tenant's last scan, so no identity or access finding can be reported either way.",
+    ),
+  });
+
+  // ── Mail Security (real findings) ──────────────────────────────────────────
+  sections.push({
+    heading: "Mail Security",
+    blocks: findingsBlocks(
+      pillarFilteredByChecks(security, MAIL_SECURITY_CHECK_KEYS),
+      "The Security pillar was evaluated on this tenant's last scan and returned no critical or warning finding against anti-phishing, Safe Links, Safe Attachments or DLP coverage. That is a real result, not an empty section.",
+      "No rule that feeds the Security pillar was evaluated on this tenant's last scan, so no mail security finding can be reported either way.",
+    ),
+  });
+
+  // ── App Consent & Workload Identity (real findings) ────────────────────────
+  sections.push({
+    heading: "App Consent & Workload Identity",
+    blocks: findingsBlocks(
+      pillarFilteredByChecks(security, APP_CONSENT_CHECK_KEYS),
+      "The Security pillar was evaluated on this tenant's last scan and returned no critical or warning finding against app consent policy or workload identity risk. That is a real result, not an empty section.",
+      "No rule that feeds the Security pillar was evaluated on this tenant's last scan, so no app consent or workload identity finding can be reported either way.",
+    ),
+  });
+
+  // ── Data Exposure & Blast Radius ───────────────────────────────────────────
+  //
+  // The rows come from `blastRadiusRows` — the Copilot Readiness Report's own
+  // function, called rather than copied, so the two reports cannot quote
+  // different blast radii for the same tenant on the same day. It is already the
+  // real `copilot.overshareExposureCount` the Reveal's Security pillar shows.
+  const blast = blastRadiusRows(pillars);
+  sections.push({
+    heading: SECTION_HEADINGS.blastRadius,
+    blocks: [
+      ...prose("blastRadius"),
+      ...keyValuesBlock(blast.rows),
+      ...unavailableBlock(
+        "The exposure figures behind the blast-radius line are not available for this tenant:",
+        blast.missing,
+      ),
+    ],
+  });
+
+  // ── Device & Endpoint Compliance ───────────────────────────────────────────
+  //
+  // Narrowed to two facts (per Shane's direction): whether Intune/MDM is in
+  // use at all, and which update channel is configured, if any. Per-device
+  // compliance/encryption/patch/autopilot detail belongs to Operational
+  // Health, not here.
+  sections.push({
+    heading: "Device & Endpoint Compliance",
+    blocks: findingsBlocks(
+      pillarFilteredByChecks(health, DEVICE_ENDPOINT_CHECK_KEYS),
+      "The Health pillar was evaluated on this tenant's last scan and returned no critical or warning finding on whether Intune/MDM is in use or which update channel is configured.",
+      "No rule that feeds the Health pillar was evaluated on this tenant's last scan, so no device enrollment or update-ring finding can be reported either way.",
+    ),
+  });
+
+  // ── Upgrade Opportunities (#451) ───────────────────────────────────────────
+  //
+  // ONE section for the whole document, on the same reasoning as its sibling
+  // report's: several checks are quoted by both a pure-data section and the
+  // narrative's grounding, so per-section blocks would repeat one licence fact
+  // in several places, and a category the reader is meant to tell apart from
+  // the severity ladder is easier to tell apart when it is one place.
+  const copilotImpact = buildRows(pillars, COPILOT_IMPACT_PICKS);
+  const licenceGaps = upgradeOpportunities([
+    ...secureScore.missing,
+    ...summary.missing,
+    ...blast.missing,
+    ...copilotImpact.missing,
+    ...(narrative?.sections ?? []).flatMap((s) => s.missingChecks ?? []),
+  ] as readonly UnavailableCheck[], view.licenseGapPurchase);
+  if (licenceGaps.length) {
+    sections.push({
+      heading: UPGRADE_OPPORTUNITY_HEADING,
+      blocks: [
+        {
+          kind: "upgradeOpportunity",
+          detail: UPGRADE_OPPORTUNITY_DETAIL,
+          items: licenceGaps,
+          callToAction: upgradeOpportunityCallToAction(view.licenseGapPurchase),
+        },
+      ],
+    });
+  }
+
+  // ── Copilot Readiness Impact ───────────────────────────────────────────────
+  sections.push({
+    heading: SECTION_HEADINGS.copilotImpact,
+    blocks: [
+      ...prose("copilotImpact"),
+      ...keyValuesBlock([...gateRow(view), ...copilotImpact.rows]),
+      ...unavailableBlock(
+        "Copilot-facing figures this tenant's scan does not carry:",
+        copilotImpact.missing,
+      ),
+    ],
+  });
+
+  // ── Closing ────────────────────────────────────────────────────────────────
+  //
+  // Two sentences at most, and the second only when there is a real score to
+  // write it from. Neither predicts a post-remediation figure: this journey
+  // quotes none on this path, so any gain stated here would be invented.
+  const closing: string[] = [
+    "Copilot inherits your identity model rather than replacing it. Every permission, every standing admin and every over-shared item is something Copilot can reach on a user's behalf, which is why security posture is a Copilot question and not only a security one.",
+  ];
+  if (typeof security?.score === "number") {
+    closing.push(
+      `${view.tenant.name}'s Security pillar scores ${security.score} of 100 on this scan. Each finding above is a specific, named result from a specific check — there is nothing in this report that is not read from your own tenant.`,
+    );
+  }
+
+  return {
+    kicker: "Security posture & blast radius",
+    headline:
+      typeof security?.score === "number"
+        ? `Identity is the first thing Copilot inherits at ${view.tenant.name}`
+        : `Security posture for ${view.tenant.name}`,
+    standfirst:
+      "This report evaluates your tenant's security posture across identity, access, data exposure and device compliance. Every finding traces to security telemetry surfaced in your own assessment, and every one of them affects what Microsoft Copilot would be able to reach.",
+    verdict: buildVerdict(security),
+    sections,
+    closing,
+    provenance: buildProvenance(view.tenant.scannedOn, scannedCheckCount),
+  };
+}
+
+/** Exported for tests — the picks are the contract with `war-room-pillar-stats.ts`. */
+export const __testables = {
+  SUMMARY_PICKS,
+  SUMMARY_EXTRA_PICKS,
+  COPILOT_IMPACT_PICKS,
+  MAIL_SECURITY_CHECK_KEYS,
+  APP_CONSENT_CHECK_KEYS,
+  DEVICE_ENDPOINT_CHECK_KEYS,
+  SECTION_HEADINGS,
+  gateRow,
+};

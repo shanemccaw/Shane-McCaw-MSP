@@ -1,0 +1,1182 @@
+diff --git a/artifacts/admin-panel/src/components/SimulatorCenterCanvas.tsx b/artifacts/admin-panel/src/components/SimulatorCenterCanvas.tsx
+index b0f04cc..5de40d6 100644
+--- a/artifacts/admin-panel/src/components/SimulatorCenterCanvas.tsx
++++ b/artifacts/admin-panel/src/components/SimulatorCenterCanvas.tsx
+@@ -32,6 +32,8 @@ import {
+ } from "@/components/ui/table";
+ import { Badge } from "@/components/ui/badge";
+ import { SimulatorOverridesPanel } from "./SimulatorOverridesPanel";
++import { SimulatorEnginesPanel } from "./SimulatorEnginesPanel";
++import { LiveDbSchemaTree } from "./LiveDbSchemaTree";
+ 
+ interface Msp {
+   id: number;
+@@ -47,7 +49,7 @@ export function SimulatorCenterCanvas() {
+   const { fetchWithAuth } = useAuth();
+   const { openModal } = useModal();
+ 
+-  const [activeTab, setActiveTab] = useState<"sql" | "testbeds" | "overrides">("sql");
++  const [activeTab, setActiveTab] = useState<"sql" | "testbeds" | "overrides" | "engines" | "schema">("sql");
+ 
+   // SQL Editor state
+   const [query, setQuery] = useState("SELECT * FROM msps;\n-- Try running any SQL command here!");
+@@ -263,6 +265,26 @@ export function SimulatorCenterCanvas() {
+           >
+             Overrides Engine
+           </button>
++          <button
++            onClick={() => setActiveTab("engines")}
++            className={`px-3 py-1.5 rounded-md text-xs font-mono font-medium transition-all ${
++              activeTab === "engines"
++                ? "bg-slate-900 text-indigo-400 border border-slate-800"
++                : "text-slate-400 hover:text-slate-200"
++            }`}
++          >
++            Run Engines
++          </button>
++          <button
++            onClick={() => setActiveTab("schema")}
++            className={`px-3 py-1.5 rounded-md text-xs font-mono font-medium transition-all ${
++              activeTab === "schema"
++                ? "bg-slate-900 text-indigo-400 border border-slate-800"
++                : "text-slate-400 hover:text-slate-200"
++            }`}
++          >
++            Live DB Schema
++          </button>
+         </div>
+       </div>
+ 
+@@ -592,6 +614,16 @@ export function SimulatorCenterCanvas() {
+         {activeTab === "overrides" && (
+           <SimulatorOverridesPanel />
+         )}
++        {/* Tab 4: Run Engines Panel */}
++        {activeTab === "engines" && (
++          <SimulatorEnginesPanel />
++        )}
++        {/* Tab 5: Live DB Schema (relocated here from the standalone right panel, which is now the Customer Portal Mirror) */}
++        {activeTab === "schema" && (
++          <div className="flex-1 min-h-0 overflow-hidden">
++            <LiveDbSchemaTree />
++          </div>
++        )}
+       </div>
+     </div>
+   );
+diff --git a/artifacts/admin-panel/src/components/SimulatorEnginesPanel.tsx b/artifacts/admin-panel/src/components/SimulatorEnginesPanel.tsx
+new file mode 100644
+index 0000000..dfc798c
+--- /dev/null
++++ b/artifacts/admin-panel/src/components/SimulatorEnginesPanel.tsx
+@@ -0,0 +1,179 @@
++import React, { useState, useEffect } from "react";
++import { useAuth } from "@/contexts/AuthContext";
++import { toast } from "sonner";
++import { Button } from "@/components/ui/button";
++import { Play, Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
++import { Badge } from "@/components/ui/badge";
++
++interface Testbed {
++  id: number;
++  name: string;
++  domain?: string;
++}
++
++interface EngineDefSummary {
++  key: string;
++  label: string;
++  description: string;
++  categoryPrefix: string;
++  tenantScoped: boolean;
++}
++
++interface EngineRunResult {
++  mode: "tenant";
++  tenantId: number;
++  output: unknown;
++}
++
++// This panel deliberately has exactly one execution path: POST
++// /api/admin/engines/:key/test with a real testbed customer id as tenantId.
++// The fake-payload path (runForPayload / free-text sample JSON) has been
++// retired platform-wide — there is no fallback here, and none should ever
++// be re-added. If tenantId is missing the backend hard-errors.
++export function SimulatorEnginesPanel() {
++  const { fetchWithAuth } = useAuth();
++  const [testbeds, setTestbeds] = useState<Testbed[]>([]);
++  const [selectedTestbedId, setSelectedTestbedId] = useState<number | "">("");
++
++  const [engines, setEngines] = useState<EngineDefSummary[]>([]);
++  const [loadingEngines, setLoadingEngines] = useState(false);
++
++  const [runningKey, setRunningKey] = useState<string | null>(null);
++  const [results, setResults] = useState<Record<string, EngineRunResult | { error: string }>>({});
++
++  useEffect(() => {
++    fetchWithAuth("/api/admin/testbeds")
++      .then(r => r.json())
++      .then(d => setTestbeds(d.testbeds ?? []))
++      .catch(() => toast.error("Failed to load testbeds"));
++
++    setLoadingEngines(true);
++    fetchWithAuth("/api/admin/engines")
++      .then(r => r.json())
++      .then(d => setEngines(d.engines ?? []))
++      .catch(() => toast.error("Failed to load engine registry"))
++      .finally(() => setLoadingEngines(false));
++  }, [fetchWithAuth]);
++
++  const handleRunEngine = async (key: string) => {
++    if (selectedTestbedId === "") {
++      toast.error("Select a testbed customer first");
++      return;
++    }
++    setRunningKey(key);
++    try {
++      const res = await fetchWithAuth(`/api/admin/engines/${key}/test`, {
++        method: "POST",
++        headers: { "Content-Type": "application/json" },
++        body: JSON.stringify({ tenantId: Number(selectedTestbedId), debug: true }),
++      });
++      const data = await res.json();
++      if (res.ok) {
++        setResults(prev => ({ ...prev, [key]: data as EngineRunResult }));
++        toast.success(`${key} ran against real tenant data`);
++      } else {
++        setResults(prev => ({ ...prev, [key]: { error: data.error ?? "Engine run failed" } }));
++        toast.error(data.error ?? "Engine run failed");
++      }
++    } catch (err: any) {
++      setResults(prev => ({ ...prev, [key]: { error: err.message ?? "Network error" } }));
++      toast.error(err.message ?? "Network error");
++    } finally {
++      setRunningKey(null);
++    }
++  };
++
++  return (
++    <div className="p-6 space-y-6 overflow-y-auto h-full">
++      <div className="flex items-center justify-between">
++        <div>
++          <h2 className="text-sm font-semibold text-slate-200">Run Engines</h2>
++          <p className="text-xs text-slate-500 mt-1">
++            Every run below calls the real production path — <code className="text-indigo-400">runForTenant()</code> against
++            the testbed customer selected here. There is no sample-payload mode.
++          </p>
++        </div>
++        <div className="w-72">
++          <select
++            value={selectedTestbedId}
++            onChange={e => setSelectedTestbedId(e.target.value === "" ? "" : Number(e.target.value))}
++            className="w-full bg-slate-950 border border-slate-800 rounded-md px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500"
++          >
++            <option value="">-- Select Testbed Customer --</option>
++            {testbeds.map(tb => (
++              <option key={tb.id} value={tb.id}>{tb.name} {tb.domain ? `(${tb.domain})` : ""}</option>
++            ))}
++          </select>
++        </div>
++      </div>
++
++      {selectedTestbedId === "" ? (
++        <div className="border border-dashed border-slate-800 rounded-xl p-10 text-center text-sm text-slate-500">
++          Select a testbed customer above — the same one you inject overrides against in the Overrides tab —
++          to enable engine runs.
++        </div>
++      ) : loadingEngines ? (
++        <div className="flex justify-center py-10">
++          <Loader2 className="w-5 h-5 animate-spin text-indigo-500" />
++        </div>
++      ) : (
++        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
++          {engines.map(engine => {
++            const result = results[engine.key];
++            const isRunning = runningKey === engine.key;
++            const isError = result && "error" in result;
++            return (
++              <div
++                key={engine.key}
++                className="bg-slate-900/50 border border-slate-800 rounded-xl p-4 space-y-3"
++              >
++                <div className="flex items-start justify-between">
++                  <div>
++                    <div className="text-sm font-semibold text-slate-200">{engine.label}</div>
++                    <div className="text-[11px] text-slate-500 mt-0.5">{engine.key}</div>
++                  </div>
++                  <Button
++                    size="sm"
++                    variant="outline"
++                    onClick={() => handleRunEngine(engine.key)}
++                    disabled={isRunning}
++                    className="h-8 px-3 border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 shrink-0"
++                  >
++                    {isRunning ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
++                  </Button>
++                </div>
++                <p className="text-xs text-slate-500">{engine.description}</p>
++
++                {result && (
++                  <div
++                    className={`p-3 rounded border text-xs ${
++                      isError
++                        ? "bg-rose-950/20 border-rose-900/50 text-rose-300"
++                        : "bg-slate-950 border-slate-800 text-slate-300"
++                    }`}
++                  >
++                    {isError ? (
++                      <div className="flex items-center gap-2">
++                        <AlertCircle className="w-4 h-4 shrink-0" /> {(result as { error: string }).error}
++                      </div>
++                    ) : (
++                      <div className="space-y-1">
++                        <div className="flex items-center gap-2 text-emerald-400 font-semibold">
++                          <CheckCircle2 className="w-3.5 h-3.5" />
++                          Real run — tenant #{(result as EngineRunResult).tenantId}
++                        </div>
++                        <pre className="whitespace-pre-wrap font-mono text-[10px] text-slate-400 max-h-48 overflow-y-auto">
++                          {JSON.stringify((result as EngineRunResult).output, null, 2)}
++                        </pre>
++                      </div>
++                    )}
++                  </div>
++                )}
++              </div>
++            );
++          })}
++        </div>
++      )}
++    </div>
++  );
++}
+diff --git a/artifacts/admin-panel/src/components/SimulatorPortalMirror.tsx b/artifacts/admin-panel/src/components/SimulatorPortalMirror.tsx
+new file mode 100644
+index 0000000..827f92e
+--- /dev/null
++++ b/artifacts/admin-panel/src/components/SimulatorPortalMirror.tsx
+@@ -0,0 +1,127 @@
++import React, { useState, useEffect } from "react";
++import { useAuth } from "@/contexts/AuthContext";
++import { toast } from "sonner";
++import { Button } from "@/components/ui/button";
++import { Input } from "@/components/ui/input";
++import { RefreshCw, ExternalLink, Loader2, MonitorSmartphone } from "lucide-react";
++
++interface Testbed {
++  id: number;
++  name: string;
++  domain?: string;
++}
++
++const PORTAL_URL_STORAGE_KEY = "simulator-portal-mirror-base-url";
++
++export function SimulatorPortalMirror() {
++  const { fetchWithAuth } = useAuth();
++  const [testbeds, setTestbeds] = useState<Testbed[]>([]);
++  const [selectedTestbedId, setSelectedTestbedId] = useState<number | "">("");
++  const [portalBaseUrl, setPortalBaseUrl] = useState(
++    () => localStorage.getItem(PORTAL_URL_STORAGE_KEY) ?? ""
++  );
++  const [loading, setLoading] = useState(false);
++  const [iframeSrc, setIframeSrc] = useState<string | null>(null);
++  const [iframeKey, setIframeKey] = useState(0);
++
++  useEffect(() => {
++    fetchWithAuth("/api/admin/testbeds")
++      .then(r => r.json())
++      .then(d => setTestbeds(d.testbeds ?? []))
++      .catch(() => toast.error("Failed to load testbeds"));
++  }, [fetchWithAuth]);
++
++  useEffect(() => {
++    localStorage.setItem(PORTAL_URL_STORAGE_KEY, portalBaseUrl);
++  }, [portalBaseUrl]);
++
++  const loadMirror = async () => {
++    if (selectedTestbedId === "") {
++      toast.error("Select a testbed customer first");
++      return;
++    }
++    if (!portalBaseUrl.trim()) {
++      toast.error("Enter the msp-portal base URL first — admin-panel and msp-portal are separate deployments and this isn't auto-detectable.");
++      return;
++    }
++    setLoading(true);
++    try {
++      const res = await fetchWithAuth(`/api/admin/simulator/testbeds/${selectedTestbedId}/portal-mirror-token`, {
++        method: "POST",
++      });
++      const data = await res.json();
++      if (!res.ok) throw new Error(data.error ?? "Failed to issue portal mirror token");
++      const base = portalBaseUrl.replace(/\/$/, "");
++      setIframeSrc(`${base}/?impersonation_token=${encodeURIComponent(data.token)}`);
++      setIframeKey(k => k + 1);
++    } catch (err: any) {
++      toast.error(err.message ?? "Failed to load portal mirror");
++      setIframeSrc(null);
++    } finally {
++      setLoading(false);
++    }
++  };
++
++  return (
++    <div className="flex flex-col h-full bg-slate-950 overflow-hidden">
++      <div className="shrink-0 border-b border-slate-900 p-3 space-y-2">
++        <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-300">
++          <MonitorSmartphone className="w-3.5 h-3.5 text-indigo-400" />
++          Customer Portal Mirror
++        </div>
++        <select
++          value={selectedTestbedId}
++          onChange={e => setSelectedTestbedId(e.target.value === "" ? "" : Number(e.target.value))}
++          className="w-full bg-slate-900 border border-slate-800 rounded-md px-2 py-1.5 text-[11px] text-slate-200 focus:outline-none focus:border-indigo-500"
++        >
++          <option value="">-- Testbed Customer --</option>
++          {testbeds.map(tb => (
++            <option key={tb.id} value={tb.id}>{tb.name}</option>
++          ))}
++        </select>
++        <Input
++          value={portalBaseUrl}
++          onChange={e => setPortalBaseUrl(e.target.value)}
++          placeholder="https://your-msp-portal-deployment.example"
++          className="h-7 bg-slate-900 border-slate-800 text-slate-200 text-[10px] font-mono"
++        />
++        <div className="flex gap-1.5">
++          <Button size="sm" onClick={loadMirror} disabled={loading} className="h-7 flex-1 bg-indigo-600 hover:bg-indigo-500 text-white text-[11px]">
++            {loading ? <Loader2 className="w-3 h-3 animate-spin mr-1.5" /> : null}
++            Load Mirror
++          </Button>
++          {iframeSrc && (
++            <Button size="sm" variant="outline" onClick={() => setIframeKey(k => k + 1)} className="h-7 px-2 border-slate-700 bg-slate-800 hover:bg-slate-700" title="Refresh (re-render current token — for a live re-read, click Load Mirror again to issue a fresh token)">
++              <RefreshCw className="w-3.5 h-3.5" />
++            </Button>
++          )}
++          {iframeSrc && (
++            <Button size="sm" variant="outline" onClick={() => window.open(iframeSrc, "_blank")} className="h-7 px-2 border-slate-700 bg-slate-800 hover:bg-slate-700" title="Open in new tab">
++              <ExternalLink className="w-3.5 h-3.5" />
++            </Button>
++          )}
++        </div>
++        <p className="text-[9px] text-slate-600 leading-tight">
++          Uses the same single-use impersonation token flow as the existing "view as customer" feature.
++          The token expires after 30 minutes or first navigation — click Load Mirror again for a fresh session.
++        </p>
++      </div>
++
++      <div className="flex-1 min-h-0 bg-slate-900">
++        {iframeSrc ? (
++          <iframe
++            key={iframeKey}
++            src={iframeSrc}
++            title="Customer Portal Mirror"
++            className="w-full h-full border-0"
++          />
++        ) : (
++          <div className="h-full flex items-center justify-center p-6 text-center text-xs text-slate-600">
++            Select a testbed customer, confirm the portal base URL, and click Load Mirror to embed
++            the real customer-facing portal here.
++          </div>
++        )}
++      </div>
++    </div>
++  );
++}
+diff --git a/artifacts/admin-panel/src/components/SimulatorReplayCanvas.tsx b/artifacts/admin-panel/src/components/SimulatorReplayCanvas.tsx
+new file mode 100644
+index 0000000..6df4c89
+--- /dev/null
++++ b/artifacts/admin-panel/src/components/SimulatorReplayCanvas.tsx
+@@ -0,0 +1,282 @@
++import React, { useState, useEffect, useRef, useCallback } from "react";
++import { useAuth } from "@/contexts/AuthContext";
++import { toast } from "sonner";
++import { Button } from "@/components/ui/button";
++import { Input } from "@/components/ui/input";
++import { Play, Pause, SkipForward, RotateCcw, Loader2 } from "lucide-react";
++
++interface Testbed {
++  id: number;
++  name: string;
++  domain?: string;
++}
++
++interface EngineDefSummary {
++  key: string;
++  label: string;
++  description: string;
++}
++
++interface ReplayStep {
++  timestamp: string;
++  engines: Record<string, any>;
++}
++
++// Every score ring in this matrix is fed exclusively by real
++// POST /api/admin/simulator/replay-all output — each step is a real
++// runForTenant() call against the selected testbed customer. There is no
++// synthetic/animated score data; only the on-screen playback speed is
++// artificial (a setInterval walking through already-computed real steps).
++function extractScore(output: any): number | null {
++  if (!output || typeof output !== "object") return null;
++  if ("error" in output) return null;
++  const s = output.score;
++  if (typeof s === "number") return s;
++  if (s && typeof s === "object") {
++    const firstNum = Object.values(s).find(v => typeof v === "number");
++    if (typeof firstNum === "number") return firstNum;
++  }
++  return null;
++}
++
++function extractFiredSignals(output: any): string[] {
++  if (!output || typeof output !== "object" || "error" in output) return [];
++  if (Array.isArray(output.rawSignals)) return output.rawSignals;
++  if (Array.isArray(output.firedSignals)) return output.firedSignals;
++  return [];
++}
++
++function ScoreRing({ label, score, hasError }: { label: string; score: number | null; hasError: boolean }) {
++  const pct = score == null ? 0 : Math.max(0, Math.min(100, score));
++  const circumference = 2 * Math.PI * 26;
++  const offset = circumference - (pct / 100) * circumference;
++  return (
++    <div className="flex flex-col items-center gap-1.5 p-2">
++      <div className="relative w-16 h-16">
++        <svg viewBox="0 0 60 60" className="w-16 h-16 -rotate-90">
++          <circle cx="30" cy="30" r="26" fill="none" stroke="#1e293b" strokeWidth="5" />
++          <circle
++            cx="30" cy="30" r="26" fill="none"
++            stroke={hasError ? "#f43f5e" : score == null ? "#475569" : "#6366f1"}
++            strokeWidth="5"
++            strokeDasharray={circumference}
++            strokeDashoffset={offset}
++            strokeLinecap="round"
++            className="transition-all duration-500"
++          />
++        </svg>
++        <div className="absolute inset-0 flex items-center justify-center text-xs font-mono font-semibold text-slate-200">
++          {hasError ? "!" : score == null ? "-" : Math.round(score)}
++        </div>
++      </div>
++      <div className="text-[10px] text-slate-400 text-center leading-tight">{label}</div>
++    </div>
++  );
++}
++
++export function SimulatorReplayCanvas() {
++  const { fetchWithAuth } = useAuth();
++  const [testbeds, setTestbeds] = useState<Testbed[]>([]);
++  const [selectedTestbedId, setSelectedTestbedId] = useState<number | "">("");
++  const [engines, setEngines] = useState<EngineDefSummary[]>([]);
++
++  const [startDate, setStartDate] = useState(() => {
++    const d = new Date();
++    d.setDate(d.getDate() - 90);
++    return d.toISOString().slice(0, 10);
++  });
++  const [endDate, setEndDate] = useState(() => new Date().toISOString().slice(0, 10));
++  const [stepDays, setStepDays] = useState(3);
++  const [speedMs, setSpeedMs] = useState(600);
++
++  const [loadingReplay, setLoadingReplay] = useState(false);
++  const [steps, setSteps] = useState<ReplayStep[]>([]);
++  const [currentStepIdx, setCurrentStepIdx] = useState(0);
++  const [playing, setPlaying] = useState(false);
++  const [trace, setTrace] = useState<Array<{ step: number; timestamp: string; newSignals: string[] }>>([]);
++
++  const playRef = useRef<ReturnType<typeof setInterval> | null>(null);
++
++  useEffect(() => {
++    fetchWithAuth("/api/admin/testbeds").then(r => r.json()).then(d => setTestbeds(d.testbeds ?? [])).catch(() => toast.error("Failed to load testbeds"));
++    fetchWithAuth("/api/admin/engines").then(r => r.json()).then(d => setEngines(d.engines ?? [])).catch(() => toast.error("Failed to load engine registry"));
++  }, [fetchWithAuth]);
++
++  const runReplay = async () => {
++    if (selectedTestbedId === "") {
++      toast.error("Select a testbed customer first");
++      return;
++    }
++    setLoadingReplay(true);
++    setPlaying(false);
++    if (playRef.current) clearInterval(playRef.current);
++    setSteps([]);
++    setTrace([]);
++    setCurrentStepIdx(0);
++    try {
++      const res = await fetchWithAuth("/api/admin/simulator/replay-all", {
++        method: "POST",
++        headers: { "Content-Type": "application/json" },
++        body: JSON.stringify({
++          testbedCustomerId: Number(selectedTestbedId),
++          startDate: new Date(startDate).toISOString(),
++          endDate: new Date(endDate).toISOString(),
++          stepDays: Number(stepDays),
++        }),
++      });
++      const data = await res.json();
++      if (!res.ok) throw new Error(data.error ?? "Replay failed");
++      setSteps(data.steps ?? []);
++      toast.success(`Loaded ${data.steps?.length ?? 0} real compressed-clock steps across ${data.engineKeys?.length ?? 0} engines`);
++    } catch (err: any) {
++      toast.error(err.message ?? "Replay failed");
++    } finally {
++      setLoadingReplay(false);
++    }
++  };
++
++  const advanceStep = useCallback(() => {
++    setCurrentStepIdx(prev => {
++      const next = prev + 1;
++      if (next >= steps.length) {
++        setPlaying(false);
++        return prev;
++      }
++      const prevStep = steps[prev];
++      const nextStep = steps[next];
++      const prevFired = new Set<string>();
++      if (prevStep) {
++        for (const key of Object.keys(prevStep.engines)) {
++          for (const s of extractFiredSignals(prevStep.engines[key])) prevFired.add(s);
++        }
++      }
++      const newSignals: string[] = [];
++      for (const key of Object.keys(nextStep.engines)) {
++        for (const s of extractFiredSignals(nextStep.engines[key])) {
++          if (!prevFired.has(s)) newSignals.push(`${key}: ${s}`);
++        }
++      }
++      setTrace(t => [...t, { step: next, timestamp: nextStep.timestamp, newSignals }]);
++      return next;
++    });
++  }, [steps]);
++
++  useEffect(() => {
++    if (playing && steps.length > 0) {
++      playRef.current = setInterval(advanceStep, speedMs);
++    }
++    return () => {
++      if (playRef.current) clearInterval(playRef.current);
++    };
++  }, [playing, speedMs, advanceStep, steps.length]);
++
++  const currentStep = steps[currentStepIdx];
++  const progressPct = steps.length > 1 ? (currentStepIdx / (steps.length - 1)) * 100 : 0;
++
++  return (
++    <div className="flex flex-col h-full bg-slate-950 overflow-hidden">
++      {/* Controls */}
++      <div className="shrink-0 border-b border-slate-900 p-4 space-y-3">
++        <div className="flex items-center gap-3 flex-wrap">
++          <select
++            value={selectedTestbedId}
++            onChange={e => setSelectedTestbedId(e.target.value === "" ? "" : Number(e.target.value))}
++            className="bg-slate-900 border border-slate-800 rounded-md px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
++          >
++            <option value="">-- Testbed Customer --</option>
++            {testbeds.map(tb => (
++              <option key={tb.id} value={tb.id}>{tb.name} {tb.domain ? `(${tb.domain})` : ""}</option>
++            ))}
++          </select>
++          <Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-36 h-8 bg-slate-900 border-slate-800 text-slate-200 text-xs [color-scheme:dark]" />
++          <span className="text-slate-600 text-xs">to</span>
++          <Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-36 h-8 bg-slate-900 border-slate-800 text-slate-200 text-xs [color-scheme:dark]" />
++          <Input type="number" min={1} value={stepDays} onChange={e => setStepDays(Number(e.target.value))} className="w-20 h-8 bg-slate-900 border-slate-800 text-slate-200 text-xs" title="Step days" />
++          <span className="text-[10px] text-slate-500">days/step</span>
++          <Button size="sm" onClick={runReplay} disabled={loadingReplay} className="h-8 bg-indigo-600 hover:bg-indigo-500 text-white text-xs">
++            {loadingReplay ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : null}
++            Load Replay
++          </Button>
++        </div>
++
++        {steps.length > 0 && (
++          <div className="flex items-center gap-2">
++            <Button size="sm" variant="outline" onClick={() => setPlaying(p => !p)} className="h-7 px-2 border-slate-700 bg-slate-800 hover:bg-slate-700">
++              {playing ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
++            </Button>
++            <Button size="sm" variant="outline" onClick={advanceStep} disabled={currentStepIdx >= steps.length - 1} className="h-7 px-2 border-slate-700 bg-slate-800 hover:bg-slate-700">
++              <SkipForward className="w-3.5 h-3.5" />
++            </Button>
++            <Button size="sm" variant="outline" onClick={() => { setCurrentStepIdx(0); setTrace([]); setPlaying(false); }} className="h-7 px-2 border-slate-700 bg-slate-800 hover:bg-slate-700">
++              <RotateCcw className="w-3.5 h-3.5" />
++            </Button>
++            <div className="flex-1 flex items-center gap-2 ml-2">
++              <div className="flex-1 h-1.5 bg-slate-900 rounded-full overflow-hidden">
++                <div className="h-full bg-indigo-500 transition-all duration-300" style={{ width: `${progressPct}%` }} />
++              </div>
++              <span className="text-[10px] font-mono text-slate-500 shrink-0">
++                Step {currentStepIdx + 1}/{steps.length} — {currentStep ? new Date(currentStep.timestamp).toLocaleDateString() : ""}
++              </span>
++            </div>
++            <select value={speedMs} onChange={e => setSpeedMs(Number(e.target.value))} className="bg-slate-900 border border-slate-800 rounded-md px-2 py-1 text-[10px] text-slate-300">
++              <option value={1200}>0.5x</option>
++              <option value={600}>1x</option>
++              <option value={250}>2x</option>
++              <option value={100}>4x</option>
++            </select>
++          </div>
++        )}
++      </div>
++
++      {/* Score Ring Matrix */}
++      <div className="flex-1 overflow-y-auto p-4 space-y-4">
++        {steps.length === 0 ? (
++          <div className="border border-dashed border-slate-800 rounded-xl p-10 text-center text-sm text-slate-500">
++            Select a testbed customer and load a replay to see engine scores evolve across the compressed timeline.
++          </div>
++        ) : (
++          <>
++            <div className="bg-slate-900/40 border border-slate-800 rounded-xl p-3">
++              <div className="flex flex-wrap justify-center">
++                {engines.map(engine => {
++                  const output = currentStep?.engines[engine.key];
++                  const hasError = !!(output && typeof output === "object" && "error" in output);
++                  return (
++                    <ScoreRing key={engine.key} label={engine.label.replace(" Engine", "")} score={extractScore(output)} hasError={hasError} />
++                  );
++                })}
++              </div>
++            </div>
++
++            {/* Derivation Trace Stream */}
++            <div>
++              <h3 className="text-xs font-semibold text-slate-300 mb-2">Derivation Trace Stream</h3>
++              <div className="border border-slate-900 rounded-xl bg-slate-950 max-h-64 overflow-y-auto divide-y divide-slate-900">
++                {trace.length === 0 ? (
++                  <div className="p-4 text-center text-xs text-slate-600">
++                    Play the replay to watch newly-fired signals accumulate step by step.
++                  </div>
++                ) : (
++                  [...trace].reverse().map(t => (
++                    <div key={t.step} className="p-2.5 text-[11px] font-mono">
++                      <div className="text-slate-500 mb-1">
++                        Step {t.step + 1} — {new Date(t.timestamp).toLocaleDateString()}
++                      </div>
++                      {t.newSignals.length === 0 ? (
++                        <div className="text-slate-700">No newly-fired signals this step</div>
++                      ) : (
++                        t.newSignals.map((s, i) => (
++                          <div key={i} className="text-emerald-400">→ {s}</div>
++                        ))
++                      )}
++                    </div>
++                  ))
++                )}
++              </div>
++            </div>
++          </>
++        )}
++      </div>
++    </div>
++  );
++}
+diff --git a/artifacts/admin-panel/src/pages/SimulatorStudioPage.tsx b/artifacts/admin-panel/src/pages/SimulatorStudioPage.tsx
+index ed2b94a..a5029f8 100644
+--- a/artifacts/admin-panel/src/pages/SimulatorStudioPage.tsx
++++ b/artifacts/admin-panel/src/pages/SimulatorStudioPage.tsx
+@@ -3,9 +3,9 @@ import { ModalProvider } from "../contexts/ModalContext";
+ import { SimulatorActivityProvider, useSimulatorActivity } from "../contexts/SimulatorActivityContext";
+ import { SimulatorLeftTree } from "../components/SimulatorLeftTree";
+ import { SimulatorCenterCanvas } from "../components/SimulatorCenterCanvas";
++import { SimulatorReplayCanvas } from "../components/SimulatorReplayCanvas";
++import { SimulatorPortalMirror } from "../components/SimulatorPortalMirror";
+ import { SimulatorRightRail } from "../components/SimulatorRightRail";
+-import { SqlTerminalPanel } from "../components/SqlTerminalPanel";
+-import { LiveDbSchemaTree } from "../components/LiveDbSchemaTree";
+ 
+ function SimulationProgressBar() {
+   const { isBusy } = useSimulatorActivity();
+@@ -20,25 +20,25 @@ export function SimulatorStudioPage() {
+         <div className="flex flex-col h-full bg-slate-950 overflow-hidden">
+           <SimulationProgressBar />
+           <div className="flex flex-1 min-h-0 text-slate-300 font-sans">
+-            {/* Left Tree Explorer */}
++            {/* Left Panel: Testbed Explorer, Overrides & Simulation Scenarios */}
+             <div className="w-64 border-r border-slate-900 flex flex-col bg-slate-950 shrink-0">
+               <SimulatorLeftTree />
+             </div>
+ 
+-            {/* Center Main Work Area */}
++            {/* Center: Live Replay Canvas (top) + Bottom Drawer (SQL Terminal,
++                Testbeds, Overrides, ad-hoc Engine runs, Live DB Schema) */}
+             <div className="flex-1 flex flex-col min-w-0 bg-slate-950">
+-              <div className="flex-1 flex flex-col min-h-0">
+-                <SimulatorCenterCanvas />
++              <div className="flex-[3] min-h-0 border-b border-slate-900">
++                <SimulatorReplayCanvas />
+               </div>
+-              {/* Bottom Panel Drawer (Log Stream & SQL Terminal) */}
+-              <div className="h-64 border-t border-slate-900 bg-slate-950">
+-                <SqlTerminalPanel />
++              <div className="flex-[2] min-h-0 border-t border-slate-900">
++                <SimulatorCenterCanvas />
+               </div>
+             </div>
+ 
+-            {/* Right Panel: Live DB Schema Table Explorer */}
+-            <div className="w-80 border-l border-slate-900 flex flex-col bg-slate-950 shrink-0 min-h-0 overflow-hidden">
+-              <LiveDbSchemaTree />
++            {/* Right Panel: Customer Portal View Mirror */}
++            <div className="w-96 border-l border-slate-900 flex flex-col bg-slate-950 shrink-0 min-h-0 overflow-hidden">
++              <SimulatorPortalMirror />
+             </div>
+ 
+             {/* Far Right Activity Bar */}
+diff --git a/artifacts/api-server/src/lib/engine-registry.ts b/artifacts/api-server/src/lib/engine-registry.ts
+index 23ab931..c3e2ea1 100644
+--- a/artifacts/api-server/src/lib/engine-registry.ts
++++ b/artifacts/api-server/src/lib/engine-registry.ts
+@@ -22,29 +22,22 @@ import {
+   type SignalDerivationRule,
+   type SignalRuleGroup,
+ } from "./tenant-signals.ts";
+-import { runSlaEngineForTenant, computeSlaEngine, type SlaTimer, type SlaPolicy } from "./sla-engine.ts";
+-import { runScopeCreepEngineForTenant, computeScopeCreepEngine } from "./scope-creep-engine.ts";
+-import { computeMonitoringEngine, computeMonitoringEngineForPayload } from "./monitor-executor.ts";
+-import {
+-  runSalesOfferEngineForTenant,
+-  computeSalesOfferEngine,
+-  loadSalesOfferRuleGroups,
+-  loadSalesOfferConfig,
+-} from "./sales-offer-engine.ts";
++import { runSlaEngineForTenant } from "./sla-engine.ts";
++import { runScopeCreepEngineForTenant } from "./scope-creep-engine.ts";
++import { computeMonitoringEngine } from "./monitor-executor.ts";
++import { runSalesOfferEngineForTenant } from "./sales-offer-engine.ts";
+ import {
+   fetchSignalRulesAndGroups,
+   buildTenantProfileAndFindings,
+   getSignalWeights,
+-  rankFiredSignals,
+-  sumPriorityScore,
+   calculatePriorityScore,
+   getFiredSignalKeysForTenant,
+ } from "./priority-engine.ts";
+-import { computeHealthEngine, calculateArchitectureHealthScore } from "./health-engine.ts";
+-import { computeSecurityEngine, runSecurityEngineForTenant } from "./security-engine.ts";
++import { calculateArchitectureHealthScore } from "./health-engine.ts";
++import { runSecurityEngineForTenant } from "./security-engine.ts";
+ import { computeDriftEngine } from "./drift-engine.ts";
+ import { computeForecastingEngine } from "./forecasting-engine.ts";
+-import { getCrmSignalWeights, filterCrmSignals, sumCrmScore, calculateCrmScore } from "./crm-engine.ts";
++import { getCrmSignalWeights, calculateCrmScore } from "./crm-engine.ts";
+ import { computeTenantEngineScores, calculateMspPortfolioRisk } from "./msp-engine.ts";
+ 
+ export interface EngineTestInput {
+@@ -67,10 +60,11 @@ export interface EngineDef {
+   categoryPrefix: string;
+   /** Keys of other ENGINE_DEFS entries that must complete before this one runs. Empty array = no dependencies beyond get_tenant_signals. */
+   dependsOn: string[];
+-  /** Runs the engine for a real tenant. */
++  /** Runs the engine for a real tenant. This is the ONLY execution path —
++   *  fake-payload/parallel-simulation testing (runForPayload) was retired
++   *  platform-wide; every test/preview call must go through a real
++   *  (testbed-flagged, where applicable) tenant. */
+   runForTenant(tenantId: number, ctx?: EngineContext): Promise<unknown>;
+-  /** Runs the engine for a supplied sample payload (test-against-payload). */
+-  runForPayload(input: EngineTestInput, ctx?: EngineContext): unknown;
+   /** true for engines that operate per-tenant (all but MSP, which is portfolio-wide). */
+   tenantScoped: boolean;
+   /**
+@@ -183,13 +177,6 @@ async function calculateMspForTenant(tenantId: number, ctx?: EngineContext) {
+   return computeTenantEngineScores(tenantId, null, mergedProfile, findings, rules, groups, disabledSignalKeys, ctx);
+ }
+ 
+-function crmForPayload(input: EngineTestInput, weights: Array<{ signalKey: string; category: string; crmFitContribution: number; crmPainContribution: number; crmMaturityContribution: number; crmIntentContribution: number; crmUrgencyContribution: number }>, ctx?: EngineContext) {
+-  const { firedSignals } = computeTenantSignals(input.mergedProfile, input.parsedFindings, input.rules, input.groups, input.disabledSignalKeys);
+-  const breakdown = filterCrmSignals([...firedSignals], weights);
+-  const score = sumCrmScore(breakdown);
+-  return { engine: "crm" as const, score, breakdown, rawSignals: [...firedSignals], timestamp: (ctx?.evaluationTimestamp || new Date()).toISOString() };
+-}
+-
+ export const ENGINE_DEFS: EngineDef[] = [
+   {
+     key: "priority",
+@@ -200,21 +187,6 @@ export const ENGINE_DEFS: EngineDef[] = [
+     tenantScoped: true,
+     ruleOwnership: "platform",
+     runForTenant: (tenantId, ctx) => calculatePriorityScore(tenantId, ctx),
+-    runForPayload: (input, ctx) => {
+-      const { firedSignals } = computeTenantSignals(input.mergedProfile, input.parsedFindings, input.rules, input.groups, input.disabledSignalKeys);
+-      // getSignalWeights() is async and DB-backed; for payload tests we derive
+-      // weights directly from the supplied rules/groups instead, so a sample
+-      // payload can be tested without depending on live DB rule weights.
+-      const weights = [...input.groups, ...input.rules].map(r => ({
+-        signalKey: r.signalKey,
+-        weight: r.weight ?? 0,
+-        priority: r.priority ?? 0,
+-        priorityScoreContribution: r.priorityScoreContribution ?? 0,
+-      }));
+-      const ranked = rankFiredSignals([...firedSignals], weights);
+-      const { score, breakdown } = sumPriorityScore(ranked);
+-      return { engine: "priority", score, breakdown, rawSignals: [...firedSignals], timestamp: (ctx?.evaluationTimestamp || new Date()).toISOString() };
+-    },
+   },
+   {
+     key: "pricing",
+@@ -225,7 +197,6 @@ export const ENGINE_DEFS: EngineDef[] = [
+     tenantScoped: true,
+     ruleOwnership: "platform",
+     runForTenant: (tenantId, ctx) => calculatePricingImpact(tenantId, ctx),
+-    runForPayload: (input, ctx) => computePricingEngine(input.mergedProfile, input.parsedFindings, input.rules, input.groups, input.disabledSignalKeys, ctx),
+   },
+   {
+     key: "health",
+@@ -236,7 +207,6 @@ export const ENGINE_DEFS: EngineDef[] = [
+     tenantScoped: true,
+     ruleOwnership: "platform",
+     runForTenant: (tenantId, ctx) => calculateArchitectureHealthScore(tenantId, ctx),
+-    runForPayload: (input, ctx) => computeHealthEngine(input.mergedProfile, input.parsedFindings, input.rules, input.groups, input.disabledSignalKeys, ctx),
+   },
+   {
+     key: "security",
+@@ -247,7 +217,6 @@ export const ENGINE_DEFS: EngineDef[] = [
+     tenantScoped: true,
+     ruleOwnership: "platform",
+     runForTenant: (tenantId, ctx) => runSecurityEngineForTenant(tenantId, ctx),
+-    runForPayload: (input, ctx) => computeSecurityEngine(input.mergedProfile, input.parsedFindings, input.rules, input.groups, input.disabledSignalKeys, ctx),
+   },
+   {
+     key: "drift",
+@@ -258,7 +227,6 @@ export const ENGINE_DEFS: EngineDef[] = [
+     tenantScoped: true,
+     ruleOwnership: "platform",
+     runForTenant: (tenantId, ctx) => calculateDriftForTenant(tenantId, ctx),
+-    runForPayload: (input, ctx) => computeDriftEngine(input.mergedProfile, input.parsedFindings, input.rules, input.groups, input.disabledSignalKeys, ctx),
+   },
+   {
+     key: "forecasting",
+@@ -269,7 +237,6 @@ export const ENGINE_DEFS: EngineDef[] = [
+     tenantScoped: true,
+     ruleOwnership: "platform",
+     runForTenant: (tenantId, ctx) => calculateForecastForTenant(tenantId, ctx),
+-    runForPayload: (input, ctx) => computeForecastingEngine(input.mergedProfile, input.parsedFindings, input.rules, input.groups, input.disabledSignalKeys, ctx),
+   },
+   {
+     key: "crm",
+@@ -280,18 +247,6 @@ export const ENGINE_DEFS: EngineDef[] = [
+     tenantScoped: true,
+     ruleOwnership: "platform",
+     runForTenant: (tenantId, ctx) => calculateCrmScore(tenantId, ctx),
+-    runForPayload: (input, ctx) => {
+-      const weights = [...input.groups, ...input.rules].map(r => ({
+-        signalKey: r.signalKey,
+-        category: r.category ?? "",
+-        crmFitContribution: r.crmFitContribution ?? 0,
+-        crmPainContribution: r.crmPainContribution ?? 0,
+-        crmMaturityContribution: r.crmMaturityContribution ?? 0,
+-        crmIntentContribution: r.crmIntentContribution ?? 0,
+-        crmUrgencyContribution: r.crmUrgencyContribution ?? 0,
+-      }));
+-      return crmForPayload(input, weights, ctx);
+-    },
+   },
+   {
+     key: "msp",
+@@ -302,10 +257,6 @@ export const ENGINE_DEFS: EngineDef[] = [
+     tenantScoped: false,
+     ruleOwnership: "platform",
+     runForTenant: (tenantId, ctx) => calculateMspForTenant(tenantId, ctx),
+-    runForPayload: (input, ctx) => {
+-      const { mergedProfile, parsedFindings, rules, groups, disabledSignalKeys } = input;
+-      return computeTenantEngineScores(0, "Sample Payload", mergedProfile, parsedFindings, rules, groups, disabledSignalKeys, ctx);
+-    },
+   },
+   {
+     key: "sla",
+@@ -316,11 +267,6 @@ export const ENGINE_DEFS: EngineDef[] = [
+     tenantScoped: true,
+     ruleOwnership: "msp",
+     runForTenant: (tenantId, ctx) => runSlaEngineForTenant(tenantId, ctx),
+-    runForPayload: (_input, ctx) => {
+-      const sampleTimers: SlaTimer[] = [];
+-      const samplePolicies: SlaPolicy[] = [];
+-      return computeSlaEngine(sampleTimers, samplePolicies, ctx?.evaluationTimestamp || new Date());
+-    },
+   },
+   {
+     key: "scope_creep",
+@@ -331,9 +277,6 @@ export const ENGINE_DEFS: EngineDef[] = [
+     tenantScoped: true,
+     ruleOwnership: "msp",
+     runForTenant: (tenantId, ctx) => runScopeCreepEngineForTenant(tenantId, ctx),
+-    runForPayload: (_input, ctx) => {
+-      return computeScopeCreepEngine([], [], 0, ctx?.evaluationTimestamp);
+-    },
+   },
+   {
+     key: "monitoring",
+@@ -344,7 +287,6 @@ export const ENGINE_DEFS: EngineDef[] = [
+     tenantScoped: true,
+     ruleOwnership: "platform",
+     runForTenant: (tenantId, ctx) => computeMonitoringEngine(tenantId),
+-    runForPayload: (_input, ctx) => computeMonitoringEngineForPayload(),
+   },
+   {
+     key: "sales_offer",
+@@ -355,19 +297,6 @@ export const ENGINE_DEFS: EngineDef[] = [
+     tenantScoped: true,
+     ruleOwnership: "msp",
+     runForTenant: (tenantId, ctx) => runSalesOfferEngineForTenant(tenantId, null, ctx),
+-    runForPayload: async (input, ctx) => {
+-      const { firedSignals } = computeTenantSignals(input.mergedProfile, input.parsedFindings, input.rules, input.groups, input.disabledSignalKeys);
+-      const [ruleGroups, services, config] = await Promise.all([
+-        loadSalesOfferRuleGroups(),
+-        (async () => {
+-          const { db: soDb } = await import("@workspace/db");
+-          const { servicesTable: soSvcTable } = await import("@workspace/db");
+-          return soDb.select({ id: soSvcTable.id, name: soSvcTable.name, price: soSvcTable.price, basePrice: soSvcTable.basePrice }).from(soSvcTable);
+-        })(),
+-        loadSalesOfferConfig(null),
+-      ]);
+-      return computeSalesOfferEngine(null, firedSignals, ruleGroups, services, config, ctx);
+-    },
+   },
+ ];
+ 
+@@ -624,15 +553,4 @@ export async function buildEngineTestInputForTenant(tenantId: number): Promise<E
+   return { mergedProfile, parsedFindings: findings, rules, groups, disabledSignalKeys };
+ }
+ 
+-export async function buildEngineTestInputForPayload(
+-  profileUpdates: Record<string, unknown>,
+-  parsedFindings: string[],
+-): Promise<EngineTestInput> {
+-  const [{ rules, groups }, disabledSignalKeys] = await Promise.all([
+-    fetchSignalRulesAndGroups(),
+-    getDisabledSignalKeys(),
+-  ]);
+-  return { mergedProfile: profileUpdates, parsedFindings, rules, groups, disabledSignalKeys };
+-}
+-
+ export { getFiredSignalKeysForTenant, getSignalWeights, getCrmSignalWeights, calculateMspPortfolioRisk };
+diff --git a/artifacts/api-server/src/routes/admin-engines.ts b/artifacts/api-server/src/routes/admin-engines.ts
+index 7f9834b..5b64e68 100644
+--- a/artifacts/api-server/src/routes/admin-engines.ts
++++ b/artifacts/api-server/src/routes/admin-engines.ts
+@@ -1,7 +1,7 @@
+ 
+ import { Router, type IRouter, type Request, type Response } from "express";
+ import { randomUUID } from "node:crypto";
+-import { db, usersTable, engagementProjectsTable, mspCustomersTable, mspsTable, mspUsersTable, savedSqlScripts, tenantEngineOverridesTable, insertTenantEngineOverrideSchema, monitorChecksTable, tenantEngineSnapshotsTable } from "@workspace/db";
++import { db, usersTable, engagementProjectsTable, mspCustomersTable, mspsTable, mspUsersTable, savedSqlScripts, tenantEngineOverridesTable, insertTenantEngineOverrideSchema, monitorChecksTable, tenantEngineSnapshotsTable, impersonationTokensTable } from "@workspace/db";
+ import { createNotification } from "../lib/notification-center";
+ import { eq, desc, sql, and } from "drizzle-orm";
+ import { requireAdmin } from "../middlewares/requireAuth";
+@@ -12,7 +12,6 @@ import {
+   ENGINE_DEFS,
+   getEngineDef,
+   buildEngineTestInputForTenant,
+-  buildEngineTestInputForPayload,
+ } from "../lib/engine-registry";
+ import { getEngineHistoryMerged, getBaselineEvents, getSignalDeltasForRange } from "../lib/engine-history";
+ import { PLAN_FEATURE_DEFS } from "../lib/msp-entitlement";
+@@ -31,32 +30,25 @@ import { calculatePlatformPortfolioRisk, calculateMspPortfolioRisk } from "../li
+ 
+ const router: IRouter = Router();
+ 
+-// ── Shared helpers ──────────────────────────────────────────────────────────
+-
+-function parsePayloadBody(body: Record<string, unknown>): { profileUpdates: Record<string, unknown>; parsedFindings: string[] } {
+-  const payload = (body.payload ?? {}) as Record<string, unknown>;
+-  const profileUpdates = (payload.profileUpdates ?? {}) as Record<string, unknown>;
+-  const parsedFindings = Array.isArray(payload.parsedFindings) ? (payload.parsedFindings as string[]) : [];
+-  return { profileUpdates, parsedFindings };
+-}
+-
+ async function runEngine(
+   engineKey: string,
+   body: Record<string, unknown>,
+-): Promise<{ mode: "tenant" | "payload"; tenantId?: number; output: unknown }> {
++): Promise<{ mode: "tenant"; tenantId: number; output: unknown }> {
+   const def = getEngineDef(engineKey);
+   if (!def) throw new Error(`Unknown engine: ${engineKey}`);
+ 
+   const tenantId = body.tenantId != null ? Number(body.tenantId) : undefined;
+-  if (tenantId != null && !isNaN(tenantId)) {
+-    const output = await def.runForTenant(tenantId);
+-    return { mode: "tenant", tenantId, output };
++  if (tenantId == null || isNaN(tenantId)) {
++    // Fake-payload testing (runForPayload) is retired platform-wide. Every
++    // engine test/preview call must exercise the real runForTenant() path
++    // against a real (testbed-flagged) customer — no parallel/simulated
++    // evaluation is permitted, even for ad hoc admin testing.
++    throw new Error(
++      "A real tenantId is required. Select a testbed customer — free-text sample payload testing has been retired.",
++    );
+   }
+-
+-  const { profileUpdates, parsedFindings } = parsePayloadBody(body);
+-  const input = await buildEngineTestInputForPayload(profileUpdates, parsedFindings);
+-  const output = def.runForPayload(input);
+-  return { mode: "payload", output };
++  const output = await def.runForTenant(tenantId);
++  return { mode: "tenant", tenantId, output };
+ }
+ 
+ // ── GET /api/admin/portfolio-risk ──────────────────────────────────────────
+@@ -317,6 +309,125 @@ router.post("/admin/simulator/run", requireAdmin, async (req: Request, res: Resp
+   }
+ });
+ 
++// ── POST /api/admin/simulator/replay-all ────────────────────────────────────
++// Compressed-clock replay across ALL registered engines (or a provided
++// subset) for a single testbed customer. Same real runForTenant() path as
++// /admin/simulator/run above — this just fans it out across every engine at
++// each step instead of one engine at a time, which is what the Simulator
++// Studio's score-ring matrix and derivation trace stream need. Capped at
++// MAX_REPLAY_STEPS to prevent an accidental multi-thousand-call request.
++const MAX_REPLAY_STEPS = 200;
++
++router.post("/admin/simulator/replay-all", requireAdmin, async (req: Request, res: Response) => {
++  const { testbedCustomerId, startDate, endDate, stepDays, engineKeys } = req.body ?? {};
++  if (!testbedCustomerId) {
++    return res.status(400).json({ error: "Missing testbedCustomerId" });
++  }
++  const start = new Date(startDate);
++  const end = new Date(endDate);
++  const step = Number(stepDays);
++  if (isNaN(start.getTime()) || isNaN(end.getTime()) || isNaN(step) || step <= 0) {
++    return res.status(400).json({ error: "Invalid date or stepDays parameters" });
++  }
++
++  const stepCount = Math.floor((end.getTime() - start.getTime()) / (step * 24 * 60 * 60 * 1000)) + 1;
++  if (stepCount > MAX_REPLAY_STEPS) {
++    return res.status(400).json({
++      error: `Requested range produces ${stepCount} steps, which exceeds the ${MAX_REPLAY_STEPS}-step cap. Widen stepDays or narrow the date range.`,
++    });
++  }
++
++  const targetDefs = Array.isArray(engineKeys) && engineKeys.length > 0
++    ? ENGINE_DEFS.filter(d => engineKeys.includes(d.key))
++    : ENGINE_DEFS;
++  if (targetDefs.length === 0) {
++    return res.status(400).json({ error: "No matching engines found for the given engineKeys" });
++  }
++
++  try {
++    const [testbedCustomer] = await db
++      .select()
++      .from(mspCustomersTable)
++      .where(and(eq(mspCustomersTable.id, Number(testbedCustomerId)), eq(mspCustomersTable.isTestbed, true)))
++      .limit(1);
++    if (!testbedCustomer) {
++      return res.status(400).json({ error: "Customer not found or is not a testbed customer" });
++    }
++
++    const steps: Array<{ timestamp: string; engines: Record<string, unknown> }> = [];
++    const current = new Date(start);
++    while (current <= end) {
++      const timestamp = new Date(current);
++      const engineResults: Record<string, unknown> = {};
++      for (const def of targetDefs) {
++        try {
++          engineResults[def.key] = await def.runForTenant(testbedCustomer.id, { evaluationTimestamp: timestamp });
++        } catch (err) {
++          logger.warn({ err, engineKey: def.key, timestamp }, "admin-engines: replay-all step failed for one engine — continuing with remaining engines");
++          engineResults[def.key] = { error: err instanceof Error ? err.message : "Engine run failed" };
++        }
++      }
++      steps.push({ timestamp: timestamp.toISOString(), engines: engineResults });
++      current.setDate(current.getDate() + step);
++    }
++
++    return res.json({ steps, engineKeys: targetDefs.map(d => d.key) });
++  } catch (err) {
++    logger.error({ err }, "admin-engines: replay-all failed");
++    return res.status(500).json({ error: err instanceof Error ? err.message : "Replay failed" });
++  }
++});
++
++// ── POST /api/admin/simulator/testbeds/:customerId/portal-mirror-token ──────
++// Issues a single-use impersonation token for the real client-portal user
++// mapped to this testbed customer, so Simulator Studio's Customer Portal
++// Mirror panel can embed the actual customer-facing portal (not a mock).
++// Reuses the same impersonation_tokens table and consumption flow as the
++// existing admin "view as customer" feature (POST /admin/impersonate/:userId,
++// consumed by POST /auth/impersonate-exchange) — no new auth mechanism.
++
++router.post("/admin/simulator/testbeds/:customerId/portal-mirror-token", requireAdmin, async (req: Request, res: Response) => {
++  const customerId = Number(req.params.customerId);
++  if (isNaN(customerId)) {
++    return res.status(400).json({ error: "Invalid customer id" });
++  }
++  try {
++    const [customer] = await db
++      .select()
++      .from(mspCustomersTable)
++      .where(and(eq(mspCustomersTable.id, customerId), eq(mspCustomersTable.isTestbed, true)))
++      .limit(1);
++    if (!customer) {
++      return res.status(400).json({ error: "Customer not found or is not a testbed customer" });
++    }
++
++    const [portalUser] = await db
++      .select({ userId: mspUsersTable.userId })
++      .from(mspUsersTable)
++      .where(and(eq(mspUsersTable.customerId, customerId), eq(mspUsersTable.isActive, true)))
++      .limit(1);
++    if (!portalUser) {
++      return res.status(400).json({ error: "This testbed customer has no active portal user to mirror. Create one first, the same way you would for a real customer." });
++    }
++
++    const { randomBytes } = await import("node:crypto");
++    const token = randomBytes(32).toString("hex");
++    const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
++
++    await db.insert(impersonationTokensTable).values({
++      token,
++      clientUserId: portalUser.userId,
++      adminUserId: req.user!.id,
++      expiresAt,
++    });
++
++    return res.json({ token });
++  } catch (err) {
++    logger.error({ err, customerId }, "admin-engines: portal-mirror-token failed");
++    return res.status(500).json({ error: err instanceof Error ? err.message : "Failed to issue portal mirror token" });
++  }
++});
++
+ // ── POST /api/admin/engines/:key/test ───────────────────────────────────────
+ // Test against a real tenant ({ tenantId }) or a sample payload
+ // ({ payload: { profileUpdates, parsedFindings } }). Every run is logged to
+@@ -741,13 +852,12 @@ router.post("/admin/engines/rule-groups/:groupId/test", requireAdmin, async (req
+ 
+     const body = (req.body ?? {}) as Record<string, unknown>;
+     const tenantId = body.tenantId != null ? Number(body.tenantId) : undefined;
+-    const payload = (body.payload ?? {}) as Record<string, unknown>;
+-    const input = tenantId != null && !isNaN(tenantId)
+-      ? await buildEngineTestInputForTenant(tenantId)
+-      : await buildEngineTestInputForPayload(
+-          (payload.profileUpdates as Record<string, unknown>) ?? {},
+-          (payload.parsedFindings as string[]) ?? [],
+-        );
++    if (tenantId == null || isNaN(tenantId)) {
++      // Fake-payload testing is retired platform-wide — real tenantId only.
++      res.status(400).json({ error: "A real tenantId is required. Select a testbed customer." });
++      return;
++    }
++    const input = await buildEngineTestInputForTenant(tenantId);
+ 
+     const groupRules = rules.filter(r => r.groupId === groupId);
+     const traces = groupRules.map(r => ({ ruleId: r.id, ...evaluateRule(r, input.mergedProfile, input.parsedFindings) }));
+@@ -807,12 +917,12 @@ router.post("/admin/engines/signals/:signalKey/test", requireAdmin, async (req:
+   const signalKey = String(req.params.signalKey);
+   try {
+     const tenantId = (req.body as Record<string, unknown>)?.tenantId != null ? Number((req.body as Record<string, unknown>).tenantId) : undefined;
+-    const input = tenantId != null && !isNaN(tenantId)
+-      ? await buildEngineTestInputForTenant(tenantId)
+-      : await buildEngineTestInputForPayload(
+-          ((req.body as Record<string, unknown>)?.payload as Record<string, unknown> | undefined)?.profileUpdates as Record<string, unknown> ?? {},
+-          ((req.body as Record<string, unknown>)?.payload as Record<string, unknown> | undefined)?.parsedFindings as string[] ?? [],
+-        );
++    if (tenantId == null || isNaN(tenantId)) {
++      // Fake-payload testing is retired platform-wide — real tenantId only.
++      res.status(400).json({ error: "A real tenantId is required. Select a testbed customer." });
++      return;
++    }
++    const input = await buildEngineTestInputForTenant(tenantId);
+ 
+     const scopedRules = input.rules.filter(r => r.signalKey === signalKey);
+     const scopedGroups = input.groups.filter(g => g.signalKey === signalKey);

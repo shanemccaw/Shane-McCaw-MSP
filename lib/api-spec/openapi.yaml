@@ -1,0 +1,2682 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: API specification
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: auth
+    description: Authentication operations
+  - name: leads
+    description: Lead management operations
+  - name: services
+    description: Public service catalog operations
+  - name: insights
+    description: Insights document generation operations
+  - name: signal-rules
+    description: Tenant signal rule engine (admin only)
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /auth/login:
+    post:
+      operationId: authLogin
+      tags: [auth]
+      summary: Log in with email and password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginInput"
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/refresh:
+    post:
+      operationId: authRefresh
+      tags: [auth]
+      summary: Refresh access token using httpOnly cookie
+      responses:
+        "200":
+          description: Token refreshed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "401":
+          description: Invalid or expired refresh token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/logout:
+    post:
+      operationId: authLogout
+      tags: [auth]
+      summary: Log out and clear refresh token cookie
+      responses:
+        "200":
+          description: Logged out
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /admin/asset-library/categories:
+    get:
+      operationId: listAssetLibraryCategories
+      tags: [asset-library]
+      summary: List asset library categories
+      responses:
+        "200":
+          description: List of categories
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AssetLibraryCategory"
+    post:
+      operationId: createAssetLibraryCategory
+      tags: [asset-library]
+      summary: Create a category
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssetLibraryCategoryInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssetLibraryCategory"
+
+  /admin/asset-library/categories/{id}:
+    put:
+      operationId: updateAssetLibraryCategory
+      tags: [asset-library]
+      summary: Rename a category (propagates to all assets)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssetLibraryCategoryInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssetLibraryCategory"
+    delete:
+      operationId: deleteAssetLibraryCategory
+      tags: [asset-library]
+      summary: Delete a category (only if no assets use it)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /admin/asset-library/instruction-sets:
+    get:
+      operationId: listInstructionSets
+      tags: [asset-library]
+      summary: List instruction sets
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+        - name: category
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of instruction sets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/InstructionSet"
+    post:
+      operationId: createInstructionSet
+      tags: [asset-library]
+      summary: Create instruction set
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InstructionSetInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InstructionSet"
+
+  /admin/asset-library/instruction-sets/{id}:
+    get:
+      operationId: getInstructionSet
+      tags: [asset-library]
+      summary: Get instruction set by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Instruction set
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InstructionSet"
+    put:
+      operationId: updateInstructionSet
+      tags: [asset-library]
+      summary: Update instruction set
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InstructionSetInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InstructionSet"
+    delete:
+      operationId: deleteInstructionSet
+      tags: [asset-library]
+      summary: Delete instruction set
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /admin/asset-library/checklists:
+    get:
+      operationId: listChecklists
+      tags: [asset-library]
+      summary: List checklists
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+        - name: category
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of checklists
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Checklist"
+    post:
+      operationId: createChecklist
+      tags: [asset-library]
+      summary: Create checklist
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChecklistInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Checklist"
+
+  /admin/asset-library/checklists/{id}:
+    get:
+      operationId: getChecklist
+      tags: [asset-library]
+      summary: Get checklist by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Checklist
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Checklist"
+    put:
+      operationId: updateChecklist
+      tags: [asset-library]
+      summary: Update checklist
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChecklistInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Checklist"
+    delete:
+      operationId: deleteChecklist
+      tags: [asset-library]
+      summary: Delete checklist
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /admin/asset-library/artifact-sets:
+    get:
+      operationId: listArtifactSets
+      tags: [asset-library]
+      summary: List artifact sets
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+        - name: category
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of artifact sets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ArtifactSet"
+    post:
+      operationId: createArtifactSet
+      tags: [asset-library]
+      summary: Create artifact set
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ArtifactSetInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArtifactSet"
+
+  /admin/asset-library/artifact-sets/{id}:
+    get:
+      operationId: getArtifactSet
+      tags: [asset-library]
+      summary: Get artifact set by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Artifact set
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArtifactSet"
+    put:
+      operationId: updateArtifactSet
+      tags: [asset-library]
+      summary: Update artifact set
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ArtifactSetInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArtifactSet"
+    delete:
+      operationId: deleteArtifactSet
+      tags: [asset-library]
+      summary: Delete artifact set
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /admin/asset-library/deliverable-sets:
+    get:
+      operationId: listDeliverableSets
+      tags: [asset-library]
+      summary: List deliverable sets
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+        - name: category
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of deliverable sets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DeliverableSet"
+    post:
+      operationId: createDeliverableSet
+      tags: [asset-library]
+      summary: Create deliverable set
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeliverableSetInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeliverableSet"
+
+  /admin/asset-library/deliverable-sets/{id}:
+    get:
+      operationId: getDeliverableSet
+      tags: [asset-library]
+      summary: Get deliverable set by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deliverable set
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeliverableSet"
+    put:
+      operationId: updateDeliverableSet
+      tags: [asset-library]
+      summary: Update deliverable set
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeliverableSetInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeliverableSet"
+    delete:
+      operationId: deleteDeliverableSet
+      tags: [asset-library]
+      summary: Delete deliverable set
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /services:
+    get:
+      operationId: listPublicServices
+      tags: [services]
+      summary: List public service offerings
+      parameters:
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [micro_offer, retainer, service_area]
+      responses:
+        "200":
+          description: List of public services
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PublicService"
+
+  /leads:
+    post:
+      operationId: createLead
+      tags: [leads]
+      summary: Submit a lead (public)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LeadInput"
+      responses:
+        "201":
+          description: Lead created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Lead"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    get:
+      operationId: listLeads
+      tags: [leads]
+      summary: List leads (admin only)
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: source
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Paginated lead list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LeadList"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /leads/stats:
+    get:
+      operationId: getLeadStats
+      tags: [leads]
+      summary: Get lead statistics (admin only)
+      responses:
+        "200":
+          description: Lead stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LeadStats"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /leads/{id}:
+    patch:
+      operationId: updateLead
+      tags: [leads]
+      summary: Update lead status (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LeadUpdate"
+      responses:
+        "200":
+          description: Lead updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Lead"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Lead not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/emails:
+    get:
+      operationId: listAdminEmails
+      tags: [admin]
+      summary: List ingested emails (admin only)
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: userId
+          in: query
+          schema:
+            type: integer
+        - name: linked
+          in: query
+          schema:
+            type: boolean
+        - name: unlinked
+          in: query
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: Paginated email list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestedEmailList"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/emails/{id}:
+    patch:
+      operationId: assignAdminEmail
+      tags: [admin]
+      summary: Manually assign an email to a client (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssignEmailInput"
+      responses:
+        "200":
+          description: Email updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestedEmail"
+        "404":
+          description: Email not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/emails/{id}/rematch:
+    post:
+      operationId: rematchAdminEmail
+      tags: [admin]
+      summary: Re-run domain matching for a single email (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Email re-matched
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestedEmail"
+        "404":
+          description: Email not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/email-domain-rules:
+    get:
+      operationId: listEmailDomainRules
+      tags: [admin]
+      summary: List domain→client mapping rules (admin only)
+      responses:
+        "200":
+          description: List of domain rules
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/EmailDomainRuleRow"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createEmailDomainRule
+      tags: [admin]
+      summary: Create a domain→client mapping rule (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDomainRuleInput"
+      responses:
+        "201":
+          description: Rule created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailDomainRule"
+        "409":
+          description: Domain rule already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/email-domain-rules/{id}:
+    delete:
+      operationId: deleteEmailDomainRule
+      tags: [admin]
+      summary: Delete a domain→client mapping rule (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Rule deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "404":
+          description: Rule not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/clients/{id}/m365-profile:
+    get:
+      operationId: getClientM365Profile
+      tags: [admin]
+      summary: Get M365 environment profile for a client (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: M365 profile data (profile is null if not yet saved)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientM365ProfileResponse"
+        "400":
+          description: Invalid client ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      operationId: putClientM365Profile
+      tags: [admin]
+      summary: Upsert M365 environment profile for a client (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClientM365ProfileInput"
+      responses:
+        "200":
+          description: Profile saved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/azure-credentials:
+    get:
+      operationId: listAzureCredentials
+      tags: [admin]
+      summary: List Azure tenant credentials
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of Azure tenant credentials
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AzureCredential"
+    post:
+      operationId: createAzureCredential
+      tags: [admin]
+      summary: Create Azure tenant credential
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AzureCredentialInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AzureCredential"
+
+  /admin/azure-credentials/{id}:
+    put:
+      operationId: updateAzureCredential
+      tags: [admin]
+      summary: Update Azure tenant credential
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AzureCredentialInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AzureCredential"
+    delete:
+      operationId: deleteAzureCredential
+      tags: [admin]
+      summary: Delete Azure tenant credential
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /admin/runbooks:
+    get:
+      operationId: listRunbooks
+      tags: [admin]
+      summary: List Azure Automation Runbooks
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of runbooks
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunbooksResult"
+        "503":
+          description: Azure Automation secrets not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AzureNotConfiguredResponse"
+
+  /admin/runbook-jobs:
+    post:
+      operationId: createRunbookJob
+      tags: [admin]
+      summary: Create and trigger a runbook job
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRunbookJobInput"
+      responses:
+        "201":
+          description: Job created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunbookJobCreated"
+
+  /admin/runbook-jobs/output:
+    get:
+      operationId: getRunbookJobOutput
+      tags: [admin]
+      summary: Poll runbook job output (use since=N for incremental fetch)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: jobId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Azure Automation job ID to poll
+        - name: since
+          in: query
+          schema:
+            type: integer
+          description: Return only lines with sequence > since
+        - name: kanbanTaskId
+          in: query
+          schema:
+            type: integer
+          description: If set, updates kanban task metadata on terminal status
+      responses:
+        "200":
+          description: Current job status and output lines
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunbookJobOutput"
+
+  /admin/quiz-leads/{id}:
+    delete:
+      operationId: deleteQuizLead
+      tags: [admin]
+      summary: Permanently delete a quiz lead and all associated records
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Quiz lead ID
+      responses:
+        "204":
+          description: Deleted successfully
+        "404":
+          description: Quiz lead not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/insights/documents/payload-preview:
+    post:
+      operationId: insightsDocumentsPayloadPreview
+      tags: [insights]
+      summary: Preview assembled AI payload for a report document (read-only)
+      description: Assembles the full Claude prompt and gathers all associated data for the given document type without generating a document or calling the AI API. Returns the exact model settings, style prefix, prompt, and supporting data that would be sent to Claude.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InsightsPayloadPreviewInput"
+      responses:
+        "200":
+          description: Assembled payload returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InsightsPayloadPreviewResponse"
+        "400":
+          description: Missing required fields
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error assembling payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/insights/consulting/payload-preview:
+    post:
+      operationId: insightsConsultingPayloadPreview
+      tags: [insights]
+      summary: Preview assembled AI payload for a consulting deliverable (read-only)
+      description: Assembles the full Claude prompt and gathers all associated data for the given consulting deliverable type without generating a document or calling the AI API. SOW types include additional tenantFacts and pricingFormula fields.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InsightsConsultingPayloadPreviewInput"
+      responses:
+        "200":
+          description: Assembled payload returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InsightsPayloadPreviewResponse"
+        "400":
+          description: Missing required fields
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error assembling payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/signal-rules:
+    get:
+      operationId: listSignalRules
+      tags: [signal-rules]
+      summary: List all signal derivation rules and groups (admin only)
+      responses:
+        "200":
+          description: Rules and groups keyed by signal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignalRuleListResponse"
+    post:
+      operationId: createSignalRule
+      tags: [signal-rules]
+      summary: Create a signal derivation rule (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSignalRuleInput"
+      responses:
+        "201":
+          description: Created rule
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignalDerivationRule"
+
+  /admin/signal-rules/{id}:
+    patch:
+      operationId: updateSignalRule
+      tags: [signal-rules]
+      summary: Update a signal derivation rule (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSignalRuleInput"
+      responses:
+        "200":
+          description: Updated rule
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignalDerivationRule"
+    delete:
+      operationId: deleteSignalRule
+      tags: [signal-rules]
+      summary: Delete a signal derivation rule (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /admin/signal-rules/conflicts:
+    get:
+      operationId: getSignalRuleConflicts
+      tags: [signal-rules]
+      summary: Detect logic conflicts in current signal rules (admin only)
+      responses:
+        "200":
+          description: Conflict report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignalConflictReport"
+
+  /admin/signal-rules/script-fields:
+    get:
+      operationId: listSignalScriptFields
+      tags: [signal-rules]
+      summary: List available script output fields for building rules (admin only)
+      responses:
+        "200":
+          description: Available field keys grouped by script
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /admin/signal-rules/preview-projects:
+    post:
+      operationId: previewSignalProjects
+      tags: [signal-rules]
+      summary: Preview which projects would be included for a given signal set (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PreviewSignalProjectsInput"
+      responses:
+        "200":
+          description: Included and excluded project lists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignalProjectsPreviewPayload"
+
+  /admin/signal-rules/dry-run-sow:
+    post:
+      operationId: dryRunSow
+      tags: [signal-rules]
+      summary: Simulate SOW project selection for a client without generating a document (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DryRunSowInput"
+      responses:
+        "200":
+          description: Dry-run result showing which projects would be included
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SowDryRunPayload"
+
+  /admin/signal-rules/import:
+    post:
+      operationId: importSignalRules
+      tags: [signal-rules]
+      summary: Replace all signal rules atomically from an export payload (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SignalRuleImportInput"
+      responses:
+        "200":
+          description: Import summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  imported:
+                    type: integer
+                  snapshotId:
+                    type: integer
+
+  /admin/signal-rules/versions:
+    get:
+      operationId: listSignalRuleVersions
+      tags: [signal-rules]
+      summary: List saved signal rule version snapshots (admin only)
+      responses:
+        "200":
+          description: List of saved versions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SignalRuleVersion"
+    post:
+      operationId: saveSignalRuleVersion
+      tags: [signal-rules]
+      summary: Save current rules as a named version snapshot (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SignalVersionSaveInput"
+      responses:
+        "201":
+          description: Saved version
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+
+  /admin/signal-rules/versions/{id}/restore:
+    post:
+      operationId: restoreSignalRuleVersion
+      tags: [signal-rules]
+      summary: Atomically restore rules from a saved version (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Restore summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  restored:
+                    type: integer
+                  backupSnapshotId:
+                    type: integer
+
+  /admin/signal-rules/audit-log:
+    get:
+      operationId: getSignalRuleAuditLog
+      tags: [signal-rules]
+      summary: Fetch paginated audit log of signal rule changes (admin only)
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          schema:
+            type: integer
+        - name: signalKey
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Audit log entries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignalRuleAuditLogResponse"
+
+  /admin/signal-rules/simulation-profiles:
+    get:
+      operationId: listSignalSimulationProfiles
+      tags: [signal-rules]
+      summary: List simulation profiles (admin only)
+      responses:
+        "200":
+          description: List of profiles
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SignalSimulationProfile"
+    post:
+      operationId: createSignalSimulationProfile
+      tags: [signal-rules]
+      summary: Create a simulation profile (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSignalSimulationProfileInput"
+      responses:
+        "201":
+          description: Created profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignalSimulationProfile"
+
+  /admin/signal-rules/simulation-profiles/{id}:
+    patch:
+      operationId: updateSignalSimulationProfile
+      tags: [signal-rules]
+      summary: Update a simulation profile (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSignalSimulationProfileInput"
+      responses:
+        "200":
+          description: Updated profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignalSimulationProfile"
+    delete:
+      operationId: deleteSignalSimulationProfile
+      tags: [signal-rules]
+      summary: Delete a simulation profile (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /admin/signal-rules/simulation-profiles/{id}/run:
+    post:
+      operationId: runSignalSimulationProfile
+      tags: [signal-rules]
+      summary: Evaluate signals for a simulation profile (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Simulation result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignalSimulationRunResult"
+
+  /admin/engagement-projects/signals:
+    get:
+      operationId: listEngagementProjectSignals
+      tags: [signal-rules]
+      summary: List engagement projects with their signal trigger assignments (admin only)
+      responses:
+        "200":
+          description: Projects with signal keys and meaning
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/EngagementProjectWithSignals"
+
+  /admin/engagement-projects/{id}/triggers:
+    patch:
+      operationId: updateEngagementProjectTriggers
+      tags: [signal-rules]
+      summary: Update triggeredBy signal keys and meaning for an engagement project (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectTriggersUpdateInput"
+      responses:
+        "200":
+          description: Updated project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EngagementProjectWithSignals"
+
+components:
+  schemas:
+    InsightsPayloadPreviewInput:
+      type: object
+      required: [customerId, projectId, docType, title]
+      properties:
+        customerId:
+          type: integer
+        projectId:
+          type: integer
+        docType:
+          type: string
+        title:
+          type: string
+
+    InsightsConsultingPayloadPreviewInput:
+      type: object
+      required: [customerId, projectId, deliverableType, title]
+      properties:
+        customerId:
+          type: integer
+        projectId:
+          type: integer
+        deliverableType:
+          type: string
+        title:
+          type: string
+
+    InsightsPayloadScores:
+      type: object
+      required: [security, compliance, copilot, governance, productivity, composite]
+      properties:
+        security:
+          type: integer
+        compliance:
+          type: integer
+        copilot:
+          type: integer
+        governance:
+          type: integer
+        productivity:
+          type: integer
+        composite:
+          type: integer
+
+    InsightsPayloadPreviewResponse:
+      type: object
+      required: [model, maxTokens, stylePrefix, assembledPrompt, scores, findings, recommendations, profileSample]
+      properties:
+        model:
+          type: string
+        maxTokens:
+          type: integer
+        stylePrefix:
+          type: string
+        assembledPrompt:
+          type: string
+        scores:
+          $ref: "#/components/schemas/InsightsPayloadScores"
+        findings:
+          type: array
+          items:
+            type: string
+        recommendations:
+          type: array
+          items:
+            type: string
+        profileSample:
+          type: array
+          items:
+            type: array
+            items:
+              type: string
+        tenantFacts:
+          type: string
+        pricingFormula:
+          type: string
+
+    ClientM365ProfileResponse:
+      type: object
+      required: [profile]
+      properties:
+        profile:
+          nullable: true
+          type: object
+          additionalProperties: true
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    ClientM365ProfileInput:
+      type: object
+      required: [profile]
+      properties:
+        profile:
+          type: object
+          additionalProperties: true
+
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+
+    LoginInput:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 1
+
+    AuthResponse:
+      type: object
+      required: [accessToken, user]
+      properties:
+        accessToken:
+          type: string
+        user:
+          $ref: "#/components/schemas/AuthUser"
+
+    AuthUser:
+      type: object
+      required: [id, email, role]
+      properties:
+        id:
+          type: integer
+        email:
+          type: string
+        role:
+          type: string
+
+    SuccessResponse:
+      type: object
+      required: [success]
+      properties:
+        success:
+          type: boolean
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+
+    LeadInput:
+      type: object
+      required: [name, email, source]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        email:
+          type: string
+          format: email
+        company:
+          type: ["string", "null"]
+        companySize:
+          type: ["string", "null"]
+        serviceArea:
+          type: ["string", "null"]
+        message:
+          type: ["string", "null"]
+        source:
+          type: string
+          enum: [contact_form, lead_magnet]
+        howFound:
+          type: ["string", "null"]
+
+    PublicService:
+      type: object
+      required: [id, name, slug, billingType, isPublic, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        slug:
+          type: string
+        description:
+          type: ["string", "null"]
+        category:
+          type: ["string", "null"]
+        serviceType:
+          type: ["string", "null"]
+          enum: [micro_offer, retainer, service_area, null]
+        tagline:
+          type: ["string", "null"]
+        targetAudience:
+          type: ["string", "null"]
+        price:
+          type: ["string", "null"]
+        basePrice:
+          type: ["string", "null"]
+        maxPrice:
+          type: ["string", "null"]
+        durationDays:
+          type: ["integer", "null"]
+        turnaround:
+          type: ["string", "null"]
+        billingType:
+          type: string
+          enum: [one_time, recurring_monthly]
+        isPublic:
+          type: boolean
+        badge:
+          type: ["string", "null"]
+        highlighted:
+          type: boolean
+        hoursPerMonth:
+          type: ["string", "null"]
+        iconName:
+          type: ["string", "null"]
+        sortOrder:
+          type: ["integer", "null"]
+        stripeProductId:
+          type: ["string", "null"]
+        stripePriceId:
+          type: ["string", "null"]
+        deliverables:
+          type: ["array", "null"]
+          items:
+            type: string
+        inclusions:
+          type: ["array", "null"]
+          items:
+            type: string
+        features:
+          type: ["array", "null"]
+          items:
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Lead:
+      type: object
+      required: [id, name, email, source, status, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: string
+        company:
+          type: ["string", "null"]
+        companySize:
+          type: ["string", "null"]
+        serviceArea:
+          type: ["string", "null"]
+        message:
+          type: ["string", "null"]
+        source:
+          type: string
+        status:
+          type: string
+        howFound:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    LeadUpdate:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [new, contacted, qualified, converted, archived]
+        message:
+          type: ["string", "null"]
+        company:
+          type: ["string", "null"]
+
+    LeadList:
+      type: object
+      required: [leads, total, page, limit]
+      properties:
+        leads:
+          type: array
+          items:
+            $ref: "#/components/schemas/Lead"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+
+    LeadStats:
+      type: object
+      required: [total, newThisWeek, fromContactForm, fromLeadMagnet]
+      properties:
+        total:
+          type: integer
+        newThisWeek:
+          type: integer
+        fromContactForm:
+          type: integer
+        fromLeadMagnet:
+          type: integer
+
+    IngestedEmail:
+      type: object
+      required: [id, messageId, senderAddress, senderDomain, receivedAt, ingestedAt]
+      properties:
+        id:
+          type: integer
+        messageId:
+          type: string
+        subject:
+          type: ["string", "null"]
+        senderAddress:
+          type: string
+        senderDomain:
+          type: string
+        bodyPreview:
+          type: ["string", "null"]
+        receivedAt:
+          type: string
+          format: date-time
+        rawFrom:
+          type: ["string", "null"]
+        linkedUserId:
+          type: ["integer", "null"]
+        ingestedAt:
+          type: string
+          format: date-time
+
+    IngestedEmailRow:
+      type: object
+      required: [email]
+      properties:
+        email:
+          $ref: "#/components/schemas/IngestedEmail"
+        clientName:
+          type: ["string", "null"]
+        clientEmail:
+          type: ["string", "null"]
+        clientCompany:
+          type: ["string", "null"]
+
+    IngestedEmailList:
+      type: object
+      required: [emails, total, page, limit]
+      properties:
+        emails:
+          type: array
+          items:
+            $ref: "#/components/schemas/IngestedEmailRow"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+
+    EmailDomainRule:
+      type: object
+      required: [id, domain, linkedUserId, createdAt]
+      properties:
+        id:
+          type: integer
+        domain:
+          type: string
+        linkedUserId:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+
+    EmailDomainRuleRow:
+      type: object
+      required: [rule]
+      properties:
+        rule:
+          $ref: "#/components/schemas/EmailDomainRule"
+        clientName:
+          type: ["string", "null"]
+        clientEmail:
+          type: ["string", "null"]
+
+    AssignEmailInput:
+      type: object
+      properties:
+        userId:
+          type: ["integer", "null"]
+
+    CreateDomainRuleInput:
+      type: object
+      required: [domain, userId]
+      properties:
+        domain:
+          type: string
+        userId:
+          type: integer
+
+    AssetLibraryCategory:
+      type: object
+      required: [id, name, createdAt]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    AssetLibraryCategoryInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+
+    InstructionSet:
+      type: object
+      required: [id, title, instructions, category, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        description:
+          type: ["string", "null"]
+        instructions:
+          type: array
+          items:
+            type: string
+        category:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    InstructionSetInput:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        instructions:
+          type: array
+          items:
+            type: string
+        category:
+          type: string
+
+    ChecklistItem:
+      type: object
+      required: [id, label]
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+
+    Checklist:
+      type: object
+      required: [id, title, items, category, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChecklistItem"
+        category:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ChecklistInput:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChecklistItem"
+        category:
+          type: string
+
+    ArtifactSet:
+      type: object
+      required: [id, title, artifacts, category, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        artifacts:
+          type: array
+          items:
+            type: string
+        category:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ArtifactSetInput:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+        artifacts:
+          type: array
+          items:
+            type: string
+        category:
+          type: string
+
+    DeliverableSet:
+      type: object
+      required: [id, title, deliverables, category, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        deliverables:
+          type: array
+          items:
+            type: string
+        category:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    DeliverableSetInput:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+        deliverables:
+          type: array
+          items:
+            type: string
+        category:
+          type: string
+
+    AzureCredential:
+      type: object
+      required: [id, displayName, tenantId, clientId, credentialType, keyVaultSecretName]
+      properties:
+        id:
+          type: integer
+        displayName:
+          type: string
+        tenantId:
+          type: string
+        clientId:
+          type: string
+        credentialType:
+          type: string
+          enum: [secret, certificate]
+        keyVaultSecretName:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    AzureCredentialInput:
+      type: object
+      required: [displayName, tenantId, clientId, credentialType, keyVaultSecretName]
+      properties:
+        displayName:
+          type: string
+        tenantId:
+          type: string
+        clientId:
+          type: string
+        credentialType:
+          type: string
+          enum: [secret, certificate]
+        keyVaultSecretName:
+          type: string
+
+    RunbooksResult:
+      type: object
+      required: [configured, runbooks]
+      properties:
+        configured:
+          type: boolean
+        runbooks:
+          type: array
+          items:
+            $ref: "#/components/schemas/RunbookSummary"
+
+    AzureNotConfiguredResponse:
+      type: object
+      required: [configured, error]
+      properties:
+        configured:
+          type: boolean
+          enum: [false]
+        error:
+          type: string
+        message:
+          type: string
+
+    RunbookSummary:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        state:
+          type: string
+
+    CreateRunbookJobInput:
+      type: object
+      required: [credentialId, runbookName]
+      properties:
+        credentialId:
+          type: integer
+        runbookName:
+          type: string
+        kanbanTaskId:
+          type: integer
+        governanceAreas:
+          type: array
+          items:
+            type: string
+          description: >
+            Microsoft product areas to scope the Runbook to. When absent or empty,
+            the GovernanceAreas parameter is omitted from the Runbook call (meaning ALL).
+
+    RunbookJobCreated:
+      type: object
+      required: [jobId, status]
+      properties:
+        jobId:
+          type: string
+        status:
+          type: string
+
+    RunbookOutputLine:
+      type: object
+      required: [sequence, text]
+      properties:
+        sequence:
+          type: integer
+        streamType:
+          type: string
+        text:
+          type: string
+
+    RunbookJobOutput:
+      type: object
+      required: [status, terminal, lines]
+      properties:
+        status:
+          type: string
+        statusDetails:
+          type: string
+        terminal:
+          type: boolean
+        lines:
+          type: array
+          items:
+            $ref: "#/components/schemas/RunbookOutputLine"
+        kanbanMetaUpdated:
+          type: boolean
+
+    SignalDerivationRule:
+      type: object
+      required: [id, signalKey, ruleType, sourceKey, sortOrder]
+      properties:
+        id:
+          type: integer
+        signalKey:
+          type: string
+        groupId:
+          type: integer
+          nullable: true
+        ruleType:
+          type: string
+        sourceKey:
+          type: string
+        compareValue:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        sortOrder:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    SignalRuleGroup:
+      type: object
+      required: [id, signalKey, logic, sortOrder]
+      properties:
+        id:
+          type: integer
+        signalKey:
+          type: string
+        logic:
+          type: string
+          enum: [AND, OR]
+        label:
+          type: string
+          nullable: true
+        sortOrder:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+
+    SignalRuleListResponse:
+      type: object
+      properties:
+        bySignal:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              rules:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SignalDerivationRule"
+              groups:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SignalRuleGroup"
+        rules:
+          type: array
+          items:
+            $ref: "#/components/schemas/SignalDerivationRule"
+        groups:
+          type: array
+          items:
+            $ref: "#/components/schemas/SignalRuleGroup"
+
+    CreateSignalRuleInput:
+      type: object
+      required: [signalKey, ruleType, sourceKey]
+      properties:
+        signalKey:
+          type: string
+        groupId:
+          type: integer
+          nullable: true
+        ruleType:
+          type: string
+        sourceKey:
+          type: string
+        compareValue:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        sortOrder:
+          type: integer
+
+    UpdateSignalRuleInput:
+      type: object
+      properties:
+        ruleType:
+          type: string
+        sourceKey:
+          type: string
+        compareValue:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        sortOrder:
+          type: integer
+        groupId:
+          type: integer
+          nullable: true
+
+    SignalConflictReport:
+      type: object
+      properties:
+        conflicts:
+          type: array
+          items:
+            type: object
+            properties:
+              signalKey:
+                type: string
+              type:
+                type: string
+              description:
+                type: string
+              ruleIds:
+                type: array
+                items:
+                  type: integer
+        hasConflicts:
+          type: boolean
+
+    PreviewSignalProjectsInput:
+      type: object
+      properties:
+        firedSignals:
+          type: array
+          items:
+            type: string
+          description: Explicit list of fired signal keys (overrides evaluation)
+        profileUpdates:
+          type: object
+          additionalProperties: true
+          description: Script profile data to evaluate rules against
+        parsedFindings:
+          type: array
+          items:
+            type: string
+
+    SignalProjectsPreviewPayload:
+      type: object
+      properties:
+        firedSignals:
+          type: array
+          items:
+            type: object
+            properties:
+              key:
+                type: string
+              label:
+                type: string
+              expectedImpact:
+                type: string
+        included:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        excluded:
+          type: array
+          items:
+            type: object
+            properties:
+              project:
+                type: object
+                additionalProperties: true
+              reason:
+                type: string
+              legacyFallback:
+                type: boolean
+
+    DryRunSowInput:
+      type: object
+      required: [clientUserId]
+      properties:
+        clientUserId:
+          type: integer
+
+    SowDryRunPayload:
+      type: object
+      properties:
+        firedSignals:
+          type: array
+          items:
+            type: object
+            properties:
+              key:
+                type: string
+              label:
+                type: string
+              expectedImpact:
+                type: string
+        ruleTrace:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        includedProjects:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        excludedProjects:
+          type: array
+          items:
+            type: object
+            properties:
+              project:
+                type: object
+                additionalProperties: true
+              reason:
+                type: string
+              legacyFallback:
+                type: boolean
+        note:
+          type: string
+
+    SignalVersionSaveInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+
+    ProjectTriggersUpdateInput:
+      type: object
+      properties:
+        triggeredBy:
+          type: array
+          items:
+            type: string
+        meaning:
+          type: string
+
+    SignalRuleImportInput:
+      type: object
+      required: [rules]
+      properties:
+        rules:
+          type: array
+          items:
+            $ref: "#/components/schemas/CreateSignalRuleInput"
+        groups:
+          type: array
+          items:
+            type: object
+            properties:
+              signalKey:
+                type: string
+              logic:
+                type: string
+                enum: [AND, OR]
+              label:
+                type: string
+              sortOrder:
+                type: integer
+
+    SignalRuleVersion:
+      type: object
+      required: [id, name, ruleCount, createdAt]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        ruleCount:
+          type: integer
+        createdByAdminId:
+          type: integer
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    SignalRuleAuditLogResponse:
+      type: object
+      properties:
+        rows:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    SignalSimulationProfile:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        profileUpdates:
+          type: object
+          additionalProperties: true
+        parsedFindings:
+          type: array
+          items:
+            type: string
+        tags:
+          type: array
+          items:
+            type: string
+        lastRunAt:
+          type: string
+          format: date-time
+          nullable: true
+        lastRunResult:
+          type: object
+          nullable: true
+          additionalProperties: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateSignalSimulationProfileInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        profileUpdates:
+          type: object
+          additionalProperties: true
+        parsedFindings:
+          type: array
+          items:
+            type: string
+        tags:
+          type: array
+          items:
+            type: string
+
+    SignalSimulationRunResult:
+      type: object
+      properties:
+        firedSignals:
+          type: array
+          items:
+            type: object
+            properties:
+              key:
+                type: string
+              label:
+                type: string
+              expectedImpact:
+                type: string
+        ruleTrace:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        includedProjects:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        excludedProjects:
+          type: array
+          items:
+            type: object
+            properties:
+              project:
+                type: object
+                additionalProperties: true
+              reason:
+                type: string
+              legacyFallback:
+                type: boolean
+
+    EngagementProjectWithSignals:
+      type: object
+      required: [id, title, priceRange, triggeredBy]
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        priceRange:
+          type: string
+        description:
+          type: string
+          nullable: true
+        meaning:
+          type: string
+          nullable: true
+        triggeredBy:
+          type: array
+          items:
+            type: string
+        sortOrder:
+          type: integer
+        isVisible:
+          type: boolean
