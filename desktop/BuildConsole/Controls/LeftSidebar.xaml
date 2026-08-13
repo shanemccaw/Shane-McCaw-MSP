@@ -583,7 +583,8 @@
                             <TreeView x:Name="ManifestFilesTree"
                                       BorderThickness="0" Padding="0,2"
                                       Background="{StaticResource BaseBrush}"
-                                      SelectedItemChanged="ManifestFilesTree_SelectedItemChanged"/>
+                                      SelectedItemChanged="ManifestFilesTree_SelectedItemChanged"
+                                      MouseDoubleClick="ManifestFilesTree_MouseDoubleClick"/>
                             <TextBlock x:Name="TxtNoManifests" Text="No test manifests found in test-manifests/." FontSize="10" Foreground="{StaticResource Subtext0Brush}" Margin="4,6,0,0" VerticalAlignment="Top" Visibility="Collapsed"/>
                         </Grid>
                     </DockPanel>

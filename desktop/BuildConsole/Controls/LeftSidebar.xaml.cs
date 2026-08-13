@@ -556,7 +556,11 @@ namespace BuildConsole.Controls
         private void ManifestFilesTree_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
         {
             if (e.NewValue is not TreeViewItem tvi || tvi.Tag is not string fileName) return;
+            LoadManifestLeaf(tvi, fileName);
+        }
 
+        private TestManifest? LoadManifestLeaf(TreeViewItem tvi, string fileName)
+        {
             string manifestsDir = Path.Combine(RootWorkspacePath, "test-manifests");
             string fullPath = Path.Combine(manifestsDir, fileName);
 
@@ -564,7 +568,7 @@ namespace BuildConsole.Controls
             if (manifest == null)
             {
                 MessageBox.Show($"Couldn't parse {fileName} as a test manifest.", "Load Manifest");
-                return;
+                return null;
             }
 
             _lastLoadedManifest = manifest;
@@ -583,6 +587,36 @@ namespace BuildConsole.Controls
 
             // MainWindow still tracks this as the loaded manifest for Menu > Run > "Run Tests (Current Issue)".
             ManifestLoaded?.Invoke(this, manifest);
+
+            return manifest;
+        }
+
+        /// <summary>Git #1017 — double-clicking a leaf feels like "select + Play Test" in one action: loads it
+        /// through the exact same path a single click already uses, then immediately fires the same real run
+        /// path <see cref="BtnPlayTest_Click"/> uses. Walks up from the click's real hit-test target rather than
+        /// trusting SelectedItem, so an area-group header (no Tag — see <see cref="RenderManifestTree"/>) just
+        /// expands/collapses on double-click like any TreeView, and never triggers a run.</summary>
+        private void ManifestFilesTree_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+        {
+            var tvi = FindAncestorTreeViewItem(e.OriginalSource as DependencyObject);
+            if (tvi == null || tvi.Tag is not string fileName) return;
+
+            var manifest = LoadManifestLeaf(tvi, fileName);
+            if (manifest == null) return;
+
+            PlayTestRequested?.Invoke(this, manifest);
+            e.Handled = true;
+        }
+
+        private static TreeViewItem? FindAncestorTreeViewItem(DependencyObject? source)
+        {
+            while (source != null && source is not TreeViewItem)
+            {
+                source = source is Visual or System.Windows.Media.Media3D.Visual3D
+                    ? VisualTreeHelper.GetParent(source)
+                    : LogicalTreeHelper.GetParent(source);
+            }
+            return source as TreeViewItem;
         }
 
         // ── Git #952: manifest steps flyout ─────────────────────────────────
