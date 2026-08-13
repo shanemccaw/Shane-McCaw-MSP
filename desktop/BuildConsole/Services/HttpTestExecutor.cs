@@ -71,6 +71,12 @@ namespace BuildConsole.Services
                 string baseUrl = vars.Resolve(ResolvePlaceholders(string.IsNullOrWhiteSpace(manifest.BaseUrl) ? config.ApiBaseUrl : manifest.BaseUrl, config));
                 url = BuildUrl(baseUrl, vars.Resolve(ResolvePlaceholders(path, config)));
 
+                // Git #803 follow-up — app.ts mounts the whole router at app.use("/api", router),
+                // so a manifest path starting "/admin/" instead of "/api/admin/" always 404s. Warn
+                // loudly the moment it's about to be requested, not after a confusing FAIL.
+                if (path.StartsWith("/admin/", StringComparison.OrdinalIgnoreCase))
+                    ActivityLog.Log(Channel, $"WARN [{index + 1}/{total}] manifest path \"{path}\" is missing the \"/api\" prefix — the real route is \"/api{path}\"");
+
                 using var req = new HttpRequestMessage(new HttpMethod(method), url);
                 if (test.TryGetProperty("headers", out var headersEl) && headersEl.ValueKind == JsonValueKind.Object)
                 {

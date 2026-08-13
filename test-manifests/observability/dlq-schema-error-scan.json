@@ -33,7 +33,7 @@
   "apiTests": [
     {
       "method": "POST",
-      "path": "/admin/deploy/sql-test",
+      "path": "/api/admin/deploy/sql-test",
       "headers": { "Content-Type": "application/json" },
       "body": {
         "query": "SELECT dlq_id, event_type, to_char(created_at, 'YYYY-MM-DD HH24:MI:SSOF') AS created_at, coalesce(substring(error_message from '\"([^\"]+)\"'), '(no-quoted-identifier)') AS bad_identifier, left(error_message, 240) AS error_excerpt FROM msp_dlq_store WHERE created_at >= now() - interval '48 hours' AND (error_message ~* '(column|relation|type|function) \"[^\"]*\" does not exist' OR error_message ~* 'column \"[^\"]*\" of relation \"[^\"]*\" does not exist' OR error_message ILIKE '%does not exist%' OR error_message ILIKE '%undefined column%' OR error_message ILIKE '%undefined table%') ORDER BY created_at DESC LIMIT 25",

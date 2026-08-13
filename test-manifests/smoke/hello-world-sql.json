@@ -16,7 +16,7 @@
   "apiTests": [
     {
       "method": "POST",
-      "path": "/admin/deploy/sql-test",
+      "path": "/api/admin/deploy/sql-test",
       "headers": { "Content-Type": "application/json" },
       "body": { "query": "SELECT 1 AS ping" },
       "expect": { "status": 200, "jsonPath": "$.rows[0].ping", "value": 1 }
