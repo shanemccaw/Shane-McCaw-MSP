@@ -112,6 +112,11 @@ namespace BuildConsole.Controls
         public string? CaptureResponse { get; set; }
         /// <summary>Git #877 — raw JSON of the manifest's optional uiSteps[].extract block ({ as, regex } / { as, jsonPath }), carried through untouched for the UI executor to apply against the step's captured response body. Null for manually-recorded steps.</summary>
         public string? Extract { get; set; }
+        /// <summary>Git #970 — raw JSON of the manifest's optional uiSteps[].viewport field (preset name
+        /// string or { width, height } object), carried through untouched for the UI executor's
+        /// UiTestExecutor.ViewportSpec.Parse to resolve. Null for manually-recorded steps and steps that
+        /// don't override the manifest-level default viewport.</summary>
+        public string? Viewport { get; set; }
     }
 
     public partial class LeftSidebar : UserControl

@@ -39,6 +39,11 @@ namespace BuildConsole.Services
         // PowerShellTestExecutor.RunAsync so every captured value is available to diff against.
         public List<JsonElement> PowerShellVerify { get; set; } = new();
         public List<ManifestUiStep> UiSteps { get; set; } = new();
+        /// <summary>Git #970 — raw JSON of the manifest's optional top-level `viewport` field (either
+        /// a preset name string like "mobile"/"tablet", or a `{ width, height }` object), applied as
+        /// the default viewport for every uiStep that doesn't declare its own. Parsed by
+        /// UiTestExecutor.ViewportSpec. Null when the manifest declares no viewport.</summary>
+        public string? ViewportJson { get; set; }
         public string SourcePath { get; set; } = string.Empty;
 
         public static TestManifest? LoadFromFile(string path)
@@ -56,6 +61,10 @@ namespace BuildConsole.Services
                     BaseUrl = root.TryGetProperty("baseUrl", out var baseUrlEl) ? baseUrlEl.GetString() ?? "" : "",
                     SourcePath = path,
                 };
+
+                if (root.TryGetProperty("viewport", out var viewportEl) &&
+                    (viewportEl.ValueKind == JsonValueKind.Object || viewportEl.ValueKind == JsonValueKind.String))
+                    manifest.ViewportJson = viewportEl.GetRawText();
 
                 if (root.TryGetProperty("apiTests", out var apiTestsEl) && apiTestsEl.ValueKind == JsonValueKind.Array)
                     manifest.ApiTests = apiTestsEl.EnumerateArray().Select(e => e.Clone()).ToList();
@@ -83,6 +92,8 @@ namespace BuildConsole.Services
                         State = step.TryGetProperty("state", out var st) ? st.GetString() : null,
                         CaptureResponseJson = step.TryGetProperty("captureResponse", out var cr) ? cr.GetRawText() : null,
                         ExtractJson = step.TryGetProperty("extract", out var ex) && ex.ValueKind == JsonValueKind.Object ? ex.GetRawText() : null,
+                        ViewportJson = step.TryGetProperty("viewport", out var vp) &&
+                            (vp.ValueKind == JsonValueKind.Object || vp.ValueKind == JsonValueKind.String) ? vp.GetRawText() : null,
                     }).ToList();
                 }
 
@@ -106,5 +117,9 @@ namespace BuildConsole.Services
         public string? CaptureResponseJson { get; set; }
         /// <summary>Git #877 — raw JSON of this uiStep's optional `extract` block ({ as, regex } / { as, jsonPath }), carried through untouched for UiTestExecutor to apply against the step's captured response body. Null when the step declares no extraction.</summary>
         public string? ExtractJson { get; set; }
+        /// <summary>Git #970 — raw JSON of this uiStep's optional `viewport` field (preset name string or
+        /// `{ width, height }` object), overriding the manifest-level default for just this step. Null when
+        /// the step declares no viewport of its own.</summary>
+        public string? ViewportJson { get; set; }
     }
 }

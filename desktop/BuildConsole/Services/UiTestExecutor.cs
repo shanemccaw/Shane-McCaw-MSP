@@ -17,6 +17,61 @@ namespace BuildConsole.Services
         public string ColorHex { get; set; } = "#89B4FA";
     }
 
+    /// <summary>Git #970 — a resolved `{ width, height }` viewport, parsed from either a manifest/uiStep's
+    /// raw `viewport` JSON (an object) or a named preset string ("mobile"/"tablet"). Infrastructure only —
+    /// no existing manifest declares one yet.</summary>
+    public class ViewportSpec
+    {
+        public int Width { get; set; }
+        public int Height { get; set; }
+
+        private static readonly Dictionary<string, (int Width, int Height)> Presets = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["mobile"] = (375, 667),
+            ["tablet"] = (768, 1024),
+        };
+
+        public static ViewportSpec? Parse(string? json)
+        {
+            if (string.IsNullOrWhiteSpace(json)) return null;
+            try
+            {
+                using var doc = JsonDocument.Parse(json);
+                var root = doc.RootElement;
+
+                if (root.ValueKind == JsonValueKind.String)
+                {
+                    return Presets.TryGetValue(root.GetString() ?? string.Empty, out var preset)
+                        ? new ViewportSpec { Width = preset.Width, Height = preset.Height }
+                        : null;
+                }
+
+                if (root.ValueKind == JsonValueKind.Object)
+                {
+                    int width = root.TryGetProperty("width", out var w) && w.ValueKind == JsonValueKind.Number ? w.GetInt32() : 0;
+                    int height = root.TryGetProperty("height", out var h) && h.ValueKind == JsonValueKind.Number ? h.GetInt32() : 0;
+
+                    if ((width <= 0 || height <= 0) && root.TryGetProperty("preset", out var p) && p.ValueKind == JsonValueKind.String
+                        && Presets.TryGetValue(p.GetString() ?? string.Empty, out var preset))
+                    {
+                        if (width <= 0) width = preset.Width;
+                        if (height <= 0) height = preset.Height;
+                    }
+
+                    return (width > 0 && height > 0) ? new ViewportSpec { Width = width, Height = height } : null;
+                }
+            }
+            catch (JsonException)
+            {
+                // Malformed viewport JSON — treated the same as "no viewport declared".
+            }
+            return null;
+        }
+
+        public bool Matches(ViewportSpec? other) => other != null && Width == other.Width && Height == other.Height;
+        public override string ToString() => $"{Width}x{Height}";
+    }
+
     public class UiCaptureResponseResult
     {
         public string UrlPattern { get; set; } = string.Empty;
@@ -133,6 +188,12 @@ namespace BuildConsole.Services
         /// no manifest run to share.</summary>
         private TestRunVariables _vars = new();
 
+        /// <summary>Git #970 — the viewport currently applied to _webView (an explicit WPF Width/Height
+        /// override), or null when the control is at its default desktop size (auto-stretch). Tracked so
+        /// consecutive steps at the same viewport don't redundantly resize, and so the run can restore
+        /// the default afterward only when it actually left it.</summary>
+        private ViewportSpec? _appliedViewport;
+
         public event EventHandler<UiTelemetryEvent>? Telemetry;
 
         public UiTestExecutor(WebView2 webView)
@@ -140,7 +201,7 @@ namespace BuildConsole.Services
             _webView = webView;
         }
 
-        public async Task<UiTestRunResult> RunAsync(string targetUrl, IReadOnlyList<Controls.AutomationAction> steps, TestRunVariables? vars = null)
+        public async Task<UiTestRunResult> RunAsync(string targetUrl, IReadOnlyList<Controls.AutomationAction> steps, TestRunVariables? vars = null, ViewportSpec? defaultViewport = null)
         {
             _vars = vars ?? new TestRunVariables();
             var result = new UiTestRunResult { TargetUrl = targetUrl, TotalSteps = steps.Count };
@@ -168,6 +229,10 @@ namespace BuildConsole.Services
                 int passed = 0;
                 for (int i = 0; i < steps.Count; i++)
                 {
+                    // Git #970 — resize before the step, not after: a step's viewport override falls back
+                    // to the manifest-wide default, and either way the resize must land before the step's
+                    // own action runs so it observes the target layout.
+                    ApplyViewport(ViewportSpec.Parse(steps[i].Viewport) ?? defaultViewport);
                     var stepResult = await ExecuteStepAsync(i + 1, steps[i]);
                     result.Steps.Add(stepResult);
                     if (stepResult.Passed) passed++;
@@ -189,6 +254,13 @@ namespace BuildConsole.Services
                 result.Success = false;
                 result.StatusText = "❌ TEST FAILED (Exception)";
                 return result;
+            }
+            finally
+            {
+                // Git #970 — leave the control back at its default desktop size no matter how the run
+                // ended (pass, incomplete, nav failure, or crash), so a later run or the manual "Play"
+                // path sharing this same WebView2 never inherits a stale resize.
+                ApplyViewport(null);
             }
         }
 
@@ -726,6 +798,33 @@ namespace BuildConsole.Services
 
             value = current;
             return true;
+        }
+
+        /// <summary>Git #970 — resizes _webView's WPF Width/Height to simulate a mobile/tablet viewport
+        /// (null restores the control to its default auto-stretch desktop size). No-ops when already at
+        /// the requested size. Runs synchronously on the calling thread, which is always the UI thread
+        /// here — RunAsync's whole await chain is kicked off from a UI-thread event handler, same as
+        /// every other WebView2 call in this class.</summary>
+        private void ApplyViewport(ViewportSpec? spec)
+        {
+            if (spec == null)
+            {
+                if (_appliedViewport == null) return;
+                _webView.Width = double.NaN;
+                _webView.Height = double.NaN;
+                Emit("VIEWPORT", $"Restored default desktop viewport (was {_appliedViewport}).", "INFO", "#89B4FA");
+                ActivityLog.Log("testing.viewport", $"Restored default desktop viewport (was {_appliedViewport}).");
+                _appliedViewport = null;
+                return;
+            }
+
+            if (spec.Matches(_appliedViewport)) return;
+
+            _webView.Width = spec.Width;
+            _webView.Height = spec.Height;
+            Emit("VIEWPORT", $"Resized WebView2 to {spec}.", "INFO", "#89B4FA");
+            ActivityLog.Log("testing.viewport", $"Resized WebView2 to {spec}.");
+            _appliedViewport = spec;
         }
 
         private void Emit(string label, string detail, string level, string colorHex)

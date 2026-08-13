@@ -3401,6 +3401,7 @@ namespace BuildConsole
                     Value = step.Value ?? step.State ?? string.Empty,
                     CaptureResponse = step.CaptureResponseJson,
                     Extract = step.ExtractJson,
+                    Viewport = step.ViewportJson,
                 }).ToList();
 
                 // Git #877 — the same per-run variable store the api/graph executors used, so a
@@ -3411,7 +3412,10 @@ namespace BuildConsole
                 // previously this handed UiTestExecutor the raw unresolved literal, which
                 // CoreWebView2.Navigate() throws on, failing every uiSteps manifest's very first step.
                 string uiTargetUrl = BuildConsole.Services.HttpTestExecutor.ResolvePlaceholders(manifest.BaseUrl, config);
-                var uiResult = await runner.RunUiTestAsync(uiTargetUrl, uiActions, vars);
+                // Git #970 — manifest-level default viewport applied to every uiStep that doesn't
+                // declare its own override (see AutomationAction.Viewport / ViewportSpec.Parse).
+                var uiDefaultViewport = BuildConsole.Services.ViewportSpec.Parse(manifest.ViewportJson);
+                var uiResult = await runner.RunUiTestAsync(uiTargetUrl, uiActions, vars, uiDefaultViewport);
                 var uiStepResults = uiResult.ToTestStepResults();
                 runResult.AddRange(uiStepResults);
 
