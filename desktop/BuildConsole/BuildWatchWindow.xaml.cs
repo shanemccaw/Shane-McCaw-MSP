@@ -1472,11 +1472,11 @@ namespace BuildConsole
                 string dirPart = "", namePart = rel;
                 int slash = rel.LastIndexOf('/');
                 if (slash >= 0) { dirPart = rel.Substring(0, slash); namePart = rel.Substring(slash + 1); }
-                string baseDir = string.IsNullOrEmpty(dirPart) ? cwd : Path.Combine(cwd, dirPart);
+                string baseDir = string.IsNullOrEmpty(dirPart) ? cwd : System.IO.Path.Combine(cwd, dirPart);
                 if (!Directory.Exists(baseDir)) return results;
                 foreach (var entry in Directory.EnumerateFileSystemEntries(baseDir))
                 {
-                    var name = Path.GetFileName(entry);
+                    var name = System.IO.Path.GetFileName(entry);
                     if (name.StartsWith(".", StringComparison.Ordinal)) continue; // skip dotfiles / .git
                     if (namePart.Length > 0 && !name.StartsWith(namePart, StringComparison.OrdinalIgnoreCase)) continue;
                     bool isDir = Directory.Exists(entry);
