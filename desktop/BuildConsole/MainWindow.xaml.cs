@@ -176,6 +176,29 @@ namespace BuildConsole
             return _testRunnerWindow;
         }
 
+        // Git #968 (Epic #803): same reused-across-the-app's-lifetime pattern as
+        // EnsureTestRunnerWindow — a new one is only created if none exists yet or Shane
+        // closed the last one.
+        private TestHistoryWindow? _testHistoryWindow;
+
+        private TestHistoryWindow EnsureTestHistoryWindow()
+        {
+            if (_testHistoryWindow == null)
+            {
+                _testHistoryWindow = new TestHistoryWindow();
+                _testHistoryWindow.Closed += (_, _) => _testHistoryWindow = null;
+                _testHistoryWindow.Show();
+            }
+            _testHistoryWindow.Activate();
+            _testHistoryWindow.Refresh();
+            return _testHistoryWindow;
+        }
+
+        private void OpenTestHistory_Click(object sender, RoutedEventArgs e)
+        {
+            EnsureTestHistoryWindow();
+        }
+
         public MainWindow()
         {
             InitializeComponent();

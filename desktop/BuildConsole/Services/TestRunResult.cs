@@ -59,6 +59,13 @@ namespace BuildConsole.Services
             int passed = Steps.Count(s => s.Passed);
             ActivityLog.Log(Channel,
                 $"Wrote {Steps.Count} step result(s) for issue #{Issue} ({passed}/{Steps.Count} passed) to {path}.");
+
+            // Git #968 — every WriteToFile call (menu Run, regression sweep, and the #898
+            // remote-trigger poll all funnel through this single method) also appends one
+            // summary row to test-results/_history.jsonl, so trend tracking covers every
+            // trigger path with no separate wiring per caller.
+            TestHistoryStore.Append(repoRoot, this, path);
+
             return path;
         }
     }
