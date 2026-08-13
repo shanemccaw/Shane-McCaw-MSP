@@ -2,6 +2,7 @@
   "manifests": [
     "smoke/hello-world-sql.json",
     "smoke/hello-world-ui.json",
+    "smoke/hello-world-powershell.json",
     "auth/verification-code-flow.json",
     "auth/password-reset-guard.json",
     "chat/escalation.json",

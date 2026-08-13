@@ -3511,11 +3511,22 @@ namespace BuildConsole
                     return;
                 }
 
-                string manifestPath = Path.Combine(repoRoot, "test-manifests", manifestFile);
-                var manifest = BuildConsole.Services.TestManifest.LoadFromFile(manifestPath);
+                // Git #964: manifestFile arrives as a bare filename (admin-test-trigger.ts's
+                // MANIFEST_FILE_RE deliberately rejects anything containing a path separator,
+                // so the {area}/ subdir a #960-migrated manifest actually lives under is never
+                // part of the wire payload). A flat Path.Combine here 404'd every manifest once
+                // #960 moved them all into test-manifests/{area}/{feature-slug}.json — search
+                // the tree for that exact filename instead, still safely scoped under
+                // test-manifests/ since manifestFile itself was already validated path-traversal-free.
+                string testManifestsRoot = Path.Combine(repoRoot, "test-manifests");
+                string? manifestPath = Directory.Exists(testManifestsRoot)
+                    ? Directory.EnumerateFiles(testManifestsRoot, manifestFile, SearchOption.AllDirectories).FirstOrDefault()
+                    : null;
+                var manifest = manifestPath != null ? BuildConsole.Services.TestManifest.LoadFromFile(manifestPath) : null;
                 if (manifest == null)
                 {
-                    await CompleteTestRunFailedAsync(runId, $"Manifest not found or unparseable: {manifestPath}");
+                    await CompleteTestRunFailedAsync(runId,
+                        $"Manifest not found or unparseable: {manifestFile} (searched recursively under {testManifestsRoot})");
                     return;
                 }
 

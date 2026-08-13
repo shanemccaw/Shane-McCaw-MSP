@@ -1,0 +1,52 @@
+{
+  "issue": 964,
+  "feature": "PowerShell \"hello world\" — proves the tenant connection itself (Connect-MgGraph + correct TenantId) works, independent of any specific write-action verification",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "06db067a",
+  "notes": [
+    "Part of Epic #803, third hello-world sibling of #957 (SQL) and #958 (UI) — same purpose:",
+    "prove a specific piece of the automation pipeline genuinely works before trusting anything",
+    "built on top of it. #900/#901 ASSUME the delegated PowerShell-to-tenant connection already",
+    "works; this manifest is the thing that proves that assumption is safe.",
+    "",
+    "Single powerShellVerify step, deliberately with no apiTests/graphTests before it. `afterStep`",
+    "names \"GRAPH_TEST_TENANT_ID\" directly (no {{...}} needed — PowerShellTestExecutor wraps a",
+    "bare name in {{}} before calling TestRunVariables.Resolve), which resolves through #953/#961's",
+    "config-variable layer — checked BEFORE per-run extracted values — so this is the real",
+    "GRAPH_TEST_TENANT_ID Shane has set in Settings > Test Environment, not a value any step in",
+    "THIS manifest captured.",
+    "",
+    "Ground truth cmdlet is (Get-MgContext).TenantId — Get-MgContext over Get-MgOrganization",
+    "because it's the cheapest possible real signal (local SDK context, no Graph round-trip) and",
+    "still gives a concrete GUID to diff, per #964's own \"Get-MgContext (or Get-MgOrganization if",
+    "that gives a more concrete real value)\" — TenantId on the context IS that concrete value.",
+    "compareField.matchType 'exact', case-insensitive GUID compare (PowerShellTestExecutor.Matches).",
+    "",
+    "This single step covers both of #964's asks without any special-casing:",
+    "1. Connection succeeds via Shane's cached delegated identity — PowerShellTestExecutor's own",
+    "   BuildScript always runs `Connect-MgGraph -UseDeviceCode -NoWelcome` before the cmdlet and",
+    "   hard-checks $ctx.AuthType -eq 'Delegated'; if no valid cached token exists it detects the",
+    "   device-code prompt on the child process's output and aborts within timeoutMs, failing this",
+    "   step with the 'run Connect-MgGraph interactively once' message — never hangs. Nothing in",
+    "   this manifest needs to re-implement that; it's already the executor's own behavior for",
+    "   every powerShellVerify step, verified by reading PowerShellTestExecutor.cs directly.",
+    "2. Correct tenant, not just 'connected to something' — the exact-match diff against the real",
+    "   GRAPH_TEST_TENANT_ID catches a stale cached session from a different engagement: if",
+    "   (Get-MgContext).TenantId doesn't equal the configured testbed tenant, this step FAILS even",
+    "   though the connection itself succeeded.",
+    "",
+    "Shane To-Do precondition (documented, not verifiable from this headless environment): run",
+    "`Connect-MgGraph` interactively once in a pwsh 7 window signed in as himself (per #900), and",
+    "set the real GRAPH_TEST_TENANT_ID value in Settings > Test Environment Variables (per #953/",
+    "#961) — the #961 auto-discovery scan will pick up this manifest's GRAPH_TEST_TENANT_ID",
+    "reference and flag it needsReview with an <unset> default if it isn't already set."
+  ],
+  "powerShellVerify": [
+    {
+      "name": "tenant connection ground truth — Connect-MgGraph delegated identity resolves to the configured GRAPH_TEST_TENANT_ID",
+      "afterStep": "GRAPH_TEST_TENANT_ID",
+      "cmdlet": "(Get-MgContext).TenantId",
+      "compareField": { "matchType": "exact" }
+    }
+  ]
+}
