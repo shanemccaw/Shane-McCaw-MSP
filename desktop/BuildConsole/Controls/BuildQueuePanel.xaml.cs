@@ -46,6 +46,39 @@ namespace BuildConsole.Controls
         /// <summary>Git #933 — Shane: "make Queued &amp; Running first and Default." Matches QueueFilterCombo's own SelectedIndex="0" in XAML; kept in sync here too so the very first RefreshAsync (which can render before the ComboBox's own SelectionChanged has necessarily fired) filters correctly from the start.</summary>
         private string _filter = "Active";
 
+        // Git #941 — Shane: "do the same '...' thing to the Completed and
+        // To-Do fields." Same #932 lesson: CharacterEllipsis never engages
+        // without an explicit numeric MaxWidth, so each title block built for
+        // these two lists is registered here and given one computed from its
+        // own ListBox's ActualWidth. Reserve = ListBoxItem's own 8,5 padding
+        // (16px) + the row's leading icon column (~20px for a 12px emoji +
+        // trailing space) + the tile content Border's own 4px padding (8px) +
+        // a small safety buffer — over-reserving only trims a few px early
+        // (safe), under-reserving re-introduces the overflow.
+        private const double IssueRowTitleReserve = 50;
+        private const double MinIssueRowTitleWidth = 24;
+        private readonly List<TextBlock> _completedTitleBlocks = new();
+        private readonly List<TextBlock> _toDoTitleBlocks = new();
+
+        private void ApplyTitleMaxWidths(ListBox listBox, List<TextBlock> registry)
+        {
+            var available = listBox.ActualWidth;
+            foreach (var block in registry)
+            {
+                block.MaxWidth = Math.Max(MinIssueRowTitleWidth, available - IssueRowTitleReserve);
+            }
+        }
+
+        private void CompletedIssuesList_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            if (e.WidthChanged) ApplyTitleMaxWidths(CompletedIssuesList, _completedTitleBlocks);
+        }
+
+        private void WaitingOnMeList_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            if (e.WidthChanged) ApplyTitleMaxWidths(WaitingOnMeList, _toDoTitleBlocks);
+        }
+
         public BuildQueuePanel() => InitializeComponent();
 
         /// <summary>Called once from MainWindow with the shared API client — starts polling immediately. `watcher` (Git #820) may be null (e.g. claude.exe not found) - Stop/Run Now degrade gracefully when it is, since those need a real local process handle/launcher.</summary>
@@ -255,11 +288,13 @@ namespace BuildConsole.Controls
             // it stays identical to the neutral In-Flight/Sessions tiles.
             UpdateToDoTileAppearance(issues.Count);
 
-            RenderIssueList(WaitingOnMeList, issues, "Nothing waiting on you.", "🔴", "#E5A3A3");
+            _toDoTitleBlocks.Clear();
+            RenderIssueList(WaitingOnMeList, issues, "Nothing waiting on you.", "🔴", "#E5A3A3", _toDoTitleBlocks);
+            ApplyTitleMaxWidths(WaitingOnMeList, _toDoTitleBlocks);
         }
 
-        /// <summary>Shared by RefreshWaitingOnMeAsync (flat) and RenderInFlightGrouped (grouped, via BuildIssueRow) — same GitHubIssueSummary shape, just a different label/empty-text/icon.</summary>
-        private static void RenderIssueList(ListBox listBox, List<Services.GitHubIssueSummary> issues, string emptyText, string icon, string iconColorHex)
+        /// <summary>Shared by RefreshWaitingOnMeAsync (flat) and RenderInFlightGrouped (grouped, via BuildIssueRow) — same GitHubIssueSummary shape, just a different label/empty-text/icon. `titleRegistry` (Git #941) is only passed by the To-Do caller — In-Flight keeps its original wrapping titles, untouched.</summary>
+        private static void RenderIssueList(ListBox listBox, List<Services.GitHubIssueSummary> issues, string emptyText, string icon, string iconColorHex, List<TextBlock>? titleRegistry = null)
         {
             listBox.Items.Clear();
             if (issues.Count == 0)
@@ -269,7 +304,7 @@ namespace BuildConsole.Controls
             }
             foreach (var issue in issues.OrderByDescending(i => i.UpdatedAt))
             {
-                listBox.Items.Add(BuildIssueRow(issue, icon, iconColorHex));
+                listBox.Items.Add(BuildIssueRow(issue, icon, iconColorHex, titleRegistry));
             }
         }
 
@@ -282,14 +317,27 @@ namespace BuildConsole.Controls
         /// calculation, sidestepping that class of bug entirely rather than
         /// just patching the arithmetic.
         /// </summary>
-        private static ListBoxItem BuildIssueRow(Services.GitHubIssueSummary issue, string icon, string iconColorHex)
+        private static ListBoxItem BuildIssueRow(Services.GitHubIssueSummary issue, string icon, string iconColorHex, List<TextBlock>? titleRegistry = null)
         {
             string localTime = issue.UpdatedAt.ToLocalTime().ToString("MMM d, h:mm tt");
 
             var panel = new StackPanel { Orientation = Orientation.Horizontal };
             panel.Children.Add(new TextBlock { Text = icon + " ", FontSize = 12, Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(iconColorHex)), VerticalAlignment = VerticalAlignment.Center });
             var textStack = new StackPanel();
-            textStack.Children.Add(new TextBlock { Text = issue.Title, FontSize = 12, Foreground = (Brush)Application.Current.FindResource("TextBrush"), TextWrapping = TextWrapping.Wrap });
+            var titleBlock = new TextBlock { Text = issue.Title, FontSize = 12, Foreground = (Brush)Application.Current.FindResource("TextBrush") };
+            if (titleRegistry != null)
+            {
+                // Git #941 — single-line + CharacterEllipsis (needs a real MaxWidth
+                // to actually engage; see ApplyTitleMaxWidths) instead of wrapping.
+                titleBlock.TextWrapping = TextWrapping.NoWrap;
+                titleBlock.TextTrimming = TextTrimming.CharacterEllipsis;
+                titleRegistry.Add(titleBlock);
+            }
+            else
+            {
+                titleBlock.TextWrapping = TextWrapping.Wrap;
+            }
+            textStack.Children.Add(titleBlock);
             textStack.Children.Add(new TextBlock { Text = $"#{issue.Number}  ·  updated {localTime}", FontSize = 10, Foreground = (Brush)Application.Current.FindResource("Subtext1Brush"), TextWrapping = TextWrapping.Wrap });
             panel.Children.Add(textStack);
             return new ListBoxItem { Content = panel, ToolTip = issue.Url, Tag = issue.Number };
@@ -335,6 +383,7 @@ namespace BuildConsole.Controls
 
             UpdateCompletedTileAppearance(completed.Count);
 
+            _completedTitleBlocks.Clear();
             CompletedIssuesList.Items.Clear();
             if (completed.Count == 0)
             {
@@ -343,17 +392,22 @@ namespace BuildConsole.Controls
             }
             foreach (var item in completed)
             {
-                CompletedIssuesList.Items.Add(BuildCompletedRow(item));
+                CompletedIssuesList.Items.Add(BuildCompletedRow(item, _completedTitleBlocks));
             }
+            ApplyTitleMaxWidths(CompletedIssuesList, _completedTitleBlocks);
         }
 
         /// <summary>Git #905 — Tag carries the real GitHub issue number so CompletedIssuesList_SelectionChanged can open it directly (the queue row itself has no Url field to reuse, unlike GitHubIssueSummary's rows elsewhere in this panel).</summary>
-        private static ListBoxItem BuildCompletedRow(QueueItem item)
+        private static ListBoxItem BuildCompletedRow(QueueItem item, List<TextBlock> titleRegistry)
         {
             var panel = new StackPanel { Orientation = Orientation.Horizontal };
             panel.Children.Add(new TextBlock { Text = "✅ ", FontSize = 12, Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#7FAE91")), VerticalAlignment = VerticalAlignment.Center });
             var textStack = new StackPanel();
-            textStack.Children.Add(new TextBlock { Text = item.Title, FontSize = 12, Foreground = (Brush)Application.Current.FindResource("TextBrush"), TextWrapping = TextWrapping.Wrap });
+            // Git #941 — single-line + CharacterEllipsis, same as BuildIssueRow's
+            // registered path; see ApplyTitleMaxWidths for why MaxWidth is required.
+            var titleBlock = new TextBlock { Text = item.Title, FontSize = 12, Foreground = (Brush)Application.Current.FindResource("TextBrush"), TextWrapping = TextWrapping.NoWrap, TextTrimming = TextTrimming.CharacterEllipsis };
+            titleRegistry.Add(titleBlock);
+            textStack.Children.Add(titleBlock);
             string doneWhen = item.UpdatedAt.HasValue ? item.UpdatedAt.Value.ToLocalTime().ToString("MMM d, h:mm tt") : "unknown time";
             textStack.Children.Add(new TextBlock { Text = $"#{item.GithubNumber}  ·  done {doneWhen}  ·  click to close on GitHub", FontSize = 10, Foreground = (Brush)Application.Current.FindResource("Subtext1Brush"), TextWrapping = TextWrapping.Wrap });
             panel.Children.Add(textStack);
@@ -998,11 +1052,40 @@ namespace BuildConsole.Controls
         private void TileSessions_Click(object sender, RoutedEventArgs e) =>
             TileSessionsContent.Visibility = TileSessions.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
 
-        private void TileToDo_Click(object sender, RoutedEventArgs e) =>
-            TileToDoContent.Visibility = TileToDo.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        // Git #941 — Shane: "collapse To-Do if I click To-Do collapse
+        // Completed and expand To-Do the rest of the length" — Completed and
+        // To-Do are mutually exclusive: expanding one force-collapses the
+        // other rather than letting both sit open at once, since removing
+        // their old MaxHeight="220" cap (see the XAML) means an open list
+        // now grows to its full natural height, using up "the rest of the
+        // length" of the panel — two open at once would just push each
+        // other off-screen instead of actually saving Shane any scrolling.
+        // Re-applying MaxWidths after expanding covers the case where the
+        // list's SizeChanged fires before the registered title blocks exist
+        // yet (first-ever expand of a freshly-rendered list).
+        private void TileToDo_Click(object sender, RoutedEventArgs e)
+        {
+            bool expand = TileToDo.IsChecked == true;
+            TileToDoContent.Visibility = expand ? Visibility.Visible : Visibility.Collapsed;
+            if (expand)
+            {
+                TileCompleted.IsChecked = false;
+                TileCompletedContent.Visibility = Visibility.Collapsed;
+                ApplyTitleMaxWidths(WaitingOnMeList, _toDoTitleBlocks);
+            }
+        }
 
-        private void TileCompleted_Click(object sender, RoutedEventArgs e) =>
-            TileCompletedContent.Visibility = TileCompleted.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        private void TileCompleted_Click(object sender, RoutedEventArgs e)
+        {
+            bool expand = TileCompleted.IsChecked == true;
+            TileCompletedContent.Visibility = expand ? Visibility.Visible : Visibility.Collapsed;
+            if (expand)
+            {
+                TileToDo.IsChecked = false;
+                TileToDoContent.Visibility = Visibility.Collapsed;
+                ApplyTitleMaxWidths(CompletedIssuesList, _completedTitleBlocks);
+            }
+        }
 
         /// <summary>Git #874 — the To-Do tile is the one section that announces itself: PeachBrush (the app's existing warning/accent brush) once count > 0, cleared back to the QuietTile style's own neutral brushes at 0.</summary>
         private void UpdateToDoTileAppearance(int count)

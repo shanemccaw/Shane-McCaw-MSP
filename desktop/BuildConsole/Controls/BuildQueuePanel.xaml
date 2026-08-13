@@ -265,9 +265,8 @@
                             <ListBox x:Name="CompletedIssuesList"
                                      Background="Transparent"
                                      BorderThickness="0"
-                                     MaxHeight="220"
-                                     ScrollViewer.VerticalScrollBarVisibility="Auto"
-                                     SelectionChanged="CompletedIssuesList_SelectionChanged"/>
+                                     SelectionChanged="CompletedIssuesList_SelectionChanged"
+                                     SizeChanged="CompletedIssuesList_SizeChanged"/>
                         </Border>
                     </StackPanel>
 
@@ -296,8 +295,7 @@
                             <ListBox x:Name="WaitingOnMeList"
                                      Background="Transparent"
                                      BorderThickness="0"
-                                     MaxHeight="220"
-                                     ScrollViewer.VerticalScrollBarVisibility="Auto"/>
+                                     SizeChanged="WaitingOnMeList_SizeChanged"/>
                         </Border>
                     </StackPanel>
 
