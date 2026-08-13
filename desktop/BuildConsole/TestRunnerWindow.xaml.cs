@@ -93,10 +93,11 @@ namespace BuildConsole
         private readonly ICollectionView _stepsView;
         private int _stepCursor;
 
-        // Git #966 — screenshot review gallery state: the last run's captured screenshots and the
-        // currently-displayed index. Human review only — no automated diffing.
+        // Git #966 — the last run's captured screenshots, handed to the on-demand review gallery
+        // (ScreenshotGalleryWindow) when Shane clicks "📷 Screenshots". Kept here only to enable/disable
+        // the button and show the count; the click-through UI lives in that separate real Window now (so
+        // it renders above the Live UI Test View WebView2, not behind it — the WPF airspace problem).
         private readonly List<Services.UiScreenshotCapture> _galleryShots = new();
-        private int _galleryIndex;
 
         public TestRunnerWindow()
         {
@@ -377,19 +378,25 @@ namespace BuildConsole
 
                 // Git #966 — a fresh run resets the review gallery (screenshots get re-populated once the
                 // run captures any). Note SetGalleryScreenshots is called at run END with the new set, so
-                // clearing here only affects the pre-run/idle state.
-                GalleryOverlay.Visibility = Visibility.Collapsed;
+                // clearing here only affects the pre-run/idle state. Any open ScreenshotGalleryWindow is a
+                // separate Window and stays as-is — this only disables the button until the next run.
                 _galleryShots.Clear();
-                _galleryIndex = 0;
                 BtnScreenshots.IsEnabled = false;
                 BtnScreenshots.Content = "📷 Screenshots";
             });
         }
 
         // ── Git #966: screenshot review gallery ──────────────────────────────────
-        // A simple click-through of the last run's captured WebView2 screenshots (failures + explicit
-        // "screenshot": true steps). Deliberately capture + human review only — no automated pixel-diffing,
-        // which is fragile against font rendering / anti-aliasing / live dates & data.
+        // A simple on-demand click-through of the last run's captured WebView2 screenshots (with #977
+        // always-on capture, one per uiStep). Deliberately capture + human review only — no automated
+        // pixel-diffing (fragile against font rendering / anti-aliasing / live dates & data). That is a
+        // separate concern owned by #975's ScreenshotReviewWindow, a CONDITIONAL baseline-diff approval
+        // gate (auto-shown only on a missing baseline / real diff, with Approve→set-baseline+close-issue).
+        // This gallery is the always-available browse for ANY run, incl. a clean one that matches baseline
+        // (which the review gate deliberately shows nothing for) — so the two are kept distinct, not fused.
+        // The click-through UI is now a real top-level Window (ScreenshotGalleryWindow) rather than an
+        // in-window overlay Grid, so it renders ABOVE the Live UI Test View's hosted WebView2 instead of
+        // behind it (the WPF+WebView2 airspace problem, which no Z-order on a hosted control can beat).
 
         /// <summary>Replaces the gallery's contents with a completed run's captured screenshots and enables the
         /// "📷 Screenshots" button (showing the count) when there's at least one. Safe to call from any thread.</summary>
@@ -399,7 +406,6 @@ namespace BuildConsole
             {
                 _galleryShots.Clear();
                 _galleryShots.AddRange(shots);
-                _galleryIndex = 0;
 
                 bool any = _galleryShots.Count > 0;
                 BtnScreenshots.IsEnabled = any;
@@ -412,76 +418,11 @@ namespace BuildConsole
         private void BtnScreenshots_Click(object sender, RoutedEventArgs e)
         {
             if (_galleryShots.Count == 0) return;
-            _galleryIndex = 0;
-            GalleryOverlay.Visibility = Visibility.Visible;
-            ShowGalleryImage();
-        }
-
-        private void BtnGalleryClose_Click(object sender, RoutedEventArgs e) => GalleryOverlay.Visibility = Visibility.Collapsed;
-
-        private void BtnGalleryPrev_Click(object sender, RoutedEventArgs e)
-        {
-            if (_galleryShots.Count == 0) return;
-            _galleryIndex = (_galleryIndex - 1 + _galleryShots.Count) % _galleryShots.Count;
-            ShowGalleryImage();
-        }
-
-        private void BtnGalleryNext_Click(object sender, RoutedEventArgs e)
-        {
-            if (_galleryShots.Count == 0) return;
-            _galleryIndex = (_galleryIndex + 1) % _galleryShots.Count;
-            ShowGalleryImage();
-        }
-
-        /// <summary>Loads the current screenshot into the gallery Image and updates the counter/caption/path.
-        /// Reads the PNG with OnLoad caching so the file handle is released immediately (never locks the file
-        /// the executor just wrote). A missing/unreadable file shows a message rather than throwing.</summary>
-        private void ShowGalleryImage()
-        {
-            if (_galleryShots.Count == 0)
-            {
-                GalleryImage.Source = null;
-                TxtGalleryEmpty.Visibility = Visibility.Visible;
-                TxtGalleryCounter.Text = "0 / 0";
-                TxtGalleryCaption.Text = "";
-                TxtGalleryFile.Text = "";
-                return;
-            }
-
-            if (_galleryIndex < 0 || _galleryIndex >= _galleryShots.Count) _galleryIndex = 0;
-            var shot = _galleryShots[_galleryIndex];
-
-            TxtGalleryCounter.Text = $"{_galleryIndex + 1} / {_galleryShots.Count}";
-            TxtGalleryCaption.Text = $"Step {shot.StepIndex}: {shot.StepLabel}  —  {shot.Reason}";
-            TxtGalleryFile.Text = shot.FilePath;
-
-            try
-            {
-                if (!System.IO.File.Exists(shot.FilePath))
-                {
-                    GalleryImage.Source = null;
-                    TxtGalleryEmpty.Text = $"Screenshot file not found:\n{shot.FilePath}";
-                    TxtGalleryEmpty.Visibility = Visibility.Visible;
-                    return;
-                }
-
-                var bmp = new BitmapImage();
-                bmp.BeginInit();
-                bmp.CacheOption = BitmapCacheOption.OnLoad;
-                bmp.CreateOptions = BitmapCreateOptions.IgnoreImageCache;
-                bmp.UriSource = new Uri(shot.FilePath, UriKind.Absolute);
-                bmp.EndInit();
-                bmp.Freeze();
-
-                GalleryImage.Source = bmp;
-                TxtGalleryEmpty.Visibility = Visibility.Collapsed;
-            }
-            catch (Exception ex)
-            {
-                GalleryImage.Source = null;
-                TxtGalleryEmpty.Text = $"Couldn't load screenshot:\n{ex.Message}";
-                TxtGalleryEmpty.Visibility = Visibility.Visible;
-            }
+            // A separate real Window (not ShowDialog) so Shane can keep clicking through the last run's
+            // screenshots while the Test Runner stays live behind it — and, being its own HWND, it renders
+            // above the center WebView2 that the old overlay Grid was stuck behind.
+            var gallery = new ScreenshotGalleryWindow(_galleryShots) { Owner = this };
+            gallery.Show();
         }
 
         /// <summary>Git #869 — copies the full accumulated console text in one click, for pasting into a Claude Code prompt to diagnose a failure.</summary>

@@ -178,83 +178,9 @@
                      Padding="8,6"/>
         </DockPanel>
 
-        <!-- ── Git #966: screenshot review gallery ── click-through the last run's captured screenshots.
-             Deliberately capture + human review only, no automated pixel-diffing. Full-window overlay,
-             collapsed until BtnScreenshots opens it. ── -->
-        <Grid x:Name="GalleryOverlay"
-              Grid.Row="0" Grid.RowSpan="4"
-              Panel.ZIndex="100"
-              Visibility="Collapsed"
-              Background="#CC11111B">
-            <Border Background="{StaticResource BaseBrush}"
-                    BorderBrush="{StaticResource Surface0Brush}"
-                    BorderThickness="1"
-                    CornerRadius="6"
-                    MaxWidth="1280" MaxHeight="960"
-                    Margin="40">
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="*"/>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
-                    </Grid.RowDefinitions>
-
-                    <!-- header -->
-                    <Border Grid.Row="0"
-                            Background="{StaticResource CrustBrush}"
-                            BorderBrush="{StaticResource Surface0Brush}"
-                            BorderThickness="0,0,0,1"
-                            Padding="14,10">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                                <TextBlock Text="SCREENSHOT REVIEW" FontSize="12" FontWeight="Bold" Foreground="{StaticResource BlueBrush}" VerticalAlignment="Center"/>
-                                <TextBlock x:Name="TxtGalleryCounter" Text="0 / 0" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="12,0,0,0" VerticalAlignment="Center"/>
-                            </StackPanel>
-                            <Button Grid.Column="1" x:Name="BtnGalleryClose" Content="✕ Close" Click="BtnGalleryClose_Click"/>
-                        </Grid>
-                    </Border>
-
-                    <!-- current screenshot -->
-                    <Border Grid.Row="1" Background="{StaticResource CrustBrush}" Padding="10">
-                        <Grid>
-                            <Image x:Name="GalleryImage" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality"/>
-                            <TextBlock x:Name="TxtGalleryEmpty"
-                                       Text="No screenshots captured for the last run."
-                                       FontSize="12"
-                                       Foreground="{StaticResource Subtext0Brush}"
-                                       HorizontalAlignment="Center"
-                                       VerticalAlignment="Center"
-                                       Visibility="Collapsed"/>
-                        </Grid>
-                    </Border>
-
-                    <!-- caption -->
-                    <TextBlock Grid.Row="2" x:Name="TxtGalleryCaption" Text="" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" TextWrapping="Wrap" Margin="14,8,14,0"/>
-
-                    <!-- nav footer -->
-                    <Border Grid.Row="3"
-                            Background="{StaticResource MantleBrush}"
-                            BorderBrush="{StaticResource Surface0Brush}"
-                            BorderThickness="0,1,0,0"
-                            Padding="14,8">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <Button Grid.Column="0" x:Name="BtnGalleryPrev" Content="◀ Prev" Padding="16,4" Click="BtnGalleryPrev_Click"/>
-                            <TextBlock Grid.Column="1" x:Name="TxtGalleryFile" Text="" FontSize="10" FontFamily="Consolas" Foreground="{StaticResource Subtext0Brush}" HorizontalAlignment="Center" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-                            <Button Grid.Column="2" x:Name="BtnGalleryNext" Content="Next ▶" Padding="16,4" Click="BtnGalleryNext_Click"/>
-                        </Grid>
-                    </Border>
-                </Grid>
-            </Border>
-        </Grid>
+        <!-- ── Git #966: screenshot review gallery ── the click-through of the last run's captured
+             screenshots opened by BtnScreenshots now lives in its own real top-level Window
+             (ScreenshotGalleryWindow), not an overlay Grid here, so it renders ABOVE the Live UI Test
+             View WebView2 above instead of behind it (the WPF+WebView2 airspace problem). ── -->
     </Grid>
 </Window>
