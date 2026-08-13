@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows;
@@ -9,6 +10,13 @@ namespace BuildConsole
 {
     public partial class App : Application
     {
+        /// <summary>
+        /// Set when THIS process is a cold start triggered by a shaneapp:// launch
+        /// (no already-running instance answered the pipe to forward to). MainWindow
+        /// drains it once its listener + api client are up. Only ever touched on the
+        /// UI thread (OnStartup writes it, MainWindow's ctor reads+clears it).
+        /// </summary>
+        internal static string? PendingProtocolUri;
         /// <summary>
         /// Git #830 — Shane: "Is there a way to make push notifications from
         /// Claude.ai work in this WebView2 browser?" An unpackaged (non-MSIX)
@@ -25,6 +33,29 @@ namespace BuildConsole
 
         protected override void OnStartup(StartupEventArgs e)
         {
+            // ── shaneapp:// protocol launch handling (executeSql local trigger) ──
+            // Windows hands a registered shaneapp:// URI to this exe as an arg. What
+            // this process does with it depends on whether an instance is already up:
+            //   • already running → forward the URI over the named pipe and exit
+            //     WITHOUT ever creating a window (clear StartupUri so DoStartup skips
+            //     the MainWindow, then Shutdown). This process was only a courier.
+            //   • nothing running → we are the cold start; stash the URI and fall
+            //     through to normal startup, MainWindow drains it once it's ready.
+            // Guarded on the arg being present, so a normal (no-arg) launch — the
+            // always-open build-queue instance — is completely unaffected.
+            string? protocolUri = e.Args?.FirstOrDefault(a =>
+                a != null && a.StartsWith(Services.ShaneAppProtocol.Scheme + "://", StringComparison.OrdinalIgnoreCase));
+            if (protocolUri != null)
+            {
+                if (Services.ShaneAppProtocol.TryForwardToRunningInstance(protocolUri))
+                {
+                    StartupUri = null; // DoStartup checks this AFTER OnStartup returns — no window is built
+                    Shutdown(0);
+                    return;            // deliberately skip base.OnStartup + the rest: this courier is done
+                }
+                PendingProtocolUri = protocolUri; // cold start — MainWindow handles it
+            }
+
             base.OnStartup(e);
 
             try { SetCurrentProcessExplicitAppUserModelID("ShaneMcCaw.BuildConsole"); } catch { }

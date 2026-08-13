@@ -153,9 +153,36 @@ namespace BuildConsole.Services
       }
       blockedByNumbers = nums;
     }
+    // Git #1034 — Shane: "I'm doing a lot of builds that dont need git... it's
+    // just noise. But I want to use the same queue... can we create our own
+    // customer numbering as a fallback? --notGit 2 --block-by 1 same type of
+    // thing." --notGit N declares this build as a LOCAL pseudo-issue N (Shane's
+    // own small per-session numbering, not a real GitHub issue) — encoded as
+    // githubNumber = -N so it can never collide with a real GitHub issue number
+    // (those are always positive), while still flowing through every existing
+    // githubNumber-keyed mechanism (queue grouping/nesting, chat-tab
+    // correlation, retry-upsert) unmodified. --block-by N[,N...] is the same
+    // idea for blockedByNumbers — a local-numbering-only sibling of the real
+    // --blocked-by flag above, negated the same way, so "--notGit 2 --block-by 1"
+    // queues local #2 blocked on local #1, entirely independent of any real
+    // GitHub issue.
+    let effectiveNumber = referencedNumber;
+    if (flags.notGit && /^\d+$/.test(flags.notGit)) {
+      effectiveNumber = -parseInt(flags.notGit, 10);
+    }
+    if (flags["block-by"]) {
+      const parts = flags["block-by"].split(",").map((s) => s.trim()).filter(Boolean);
+      const nums = parts.filter((s) => /^\d+$/.test(s)).map((s) => -parseInt(s, 10));
+      if (nums.length !== parts.length) {
+        window.alert('--block-by "' + flags["block-by"] + '" has a non-numeric entry - fix it and try again (comma-separate multiple LOCAL --notGit numbers).');
+        return;
+      }
+      blockedByNumbers = (blockedByNumbers || []).concat(nums);
+    }
+    const numberLabel = effectiveNumber != null ? (effectiveNumber < 0 ? "local #" + (-effectiveNumber) : "#" + effectiveNumber) : null;
     const title = flags.title
-      ? (referencedNumber != null ? "#" + referencedNumber + " — " + flags.title : flags.title)
-      : (referencedNumber != null ? "#" + referencedNumber : rest.split("\n")[0].slice(0, 80));
+      ? (numberLabel != null ? numberLabel + " — " + flags.title : flags.title)
+      : (numberLabel != null ? numberLabel : rest.split("\n")[0].slice(0, 80));
     // Git #942 — tag THIS exact button with a unique correlation token so the
     // app can push the real queue id back onto it (via __btTagQueued) once the
     // POST returns, then push live status onto that same element by id. It
@@ -174,7 +201,7 @@ namespace BuildConsole.Services
       model: flags.model || null,
       effort: flags.effort || null,
       cwd: flags.cwd || null,
-      githubNumber: referencedNumber,
+      githubNumber: effectiveNumber,
       blockedByNumbers: blockedByNumbers,
       correlation: correlation,
     });

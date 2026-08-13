@@ -947,6 +947,12 @@ namespace BuildConsole.Controls
             foreach (var item in SortForDisplay(topLevel)) RenderOne(item, QueueTree);
         }
 
+        /// <summary>Git #1034 — a negative number is one of Shane's own local
+        /// --notGit pseudo-issue numbers (never a real GitHub issue, which are
+        /// always positive), so it's displayed as "local #N" instead of the raw
+        /// "#-N" to read clearly as not-a-real-issue at a glance.</summary>
+        private static string FormatIssueRef(int n) => n < 0 ? $"local #{-n}" : $"#{n}";
+
         private static readonly Dictionary<string, (string Icon, string Hex)> StatusStyle = new()
         {
             ["queued"]   = ("⏳", "#8F8C88"),
@@ -1127,7 +1133,7 @@ namespace BuildConsole.Controls
             {
                 panel.Children.Add(new TextBlock
                 {
-                    Text = $"  waiting on {string.Join(", ", blockerList.Select(n => $"#{n}"))}",
+                    Text = $"  waiting on {string.Join(", ", blockerList.Select(FormatIssueRef))}",
                     FontSize = 10,
                     FontStyle = FontStyles.Italic,
                     Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E5A3A3")),
@@ -1271,11 +1277,11 @@ namespace BuildConsole.Controls
                 {
                     QueueItemId = item.Id,
                     ExitCode = item.ExitCode,
-                    Epic = item.GithubNumber.HasValue ? $"#{item.GithubNumber}" : "",
+                    Epic = item.GithubNumber.HasValue ? FormatIssueRef(item.GithubNumber.Value) : "",
                     Task = item.Title,
                     Status = item.Status,
                     StatusDetails = (item.BlockedByNumbers ?? (item.BlockedByNumber.HasValue ? new List<int> { item.BlockedByNumber.Value } : new List<int>())) is { Count: > 0 } blockers
-                        ? $"Waiting on {string.Join(", ", blockers.Select(n => $"#{n}"))}"
+                        ? $"Waiting on {string.Join(", ", blockers.Select(FormatIssueRef))}"
                         : "",
                 });
             }

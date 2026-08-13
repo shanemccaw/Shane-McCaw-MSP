@@ -114,6 +114,14 @@ namespace BuildConsole
         private DispatcherTimer? _testTriggerTimer;
         private bool _testTriggerBusy;
 
+        // ── shaneapp://executeSql local protocol listener (SQL trigger) ──────────
+        // The counterpart to #898's HTTP test-trigger, but a LOCAL-machine handoff
+        // (named pipe) rather than HTTP — SQL runs through this app's own configured
+        // dev-DB path, which a caller lacking BuildConsole's local config can't reach.
+        private BuildConsole.Services.ShaneAppProtocol? _shaneAppListener;
+        /// <summary>Refuse pathologically large payload files (SQL scripts are tiny — this is a sanity ceiling, not a real limit).</summary>
+        private const long ShaneAppMaxPayloadBytes = 2L * 1024 * 1024;
+
         // ── Git #857: dedicated Test Runner window, replacing the retired bottom
         // "Test Results" tab entirely — reused across runs for the app's lifetime
         // (a new one is only created if none exists yet or Shane closed the last one).
@@ -242,6 +250,12 @@ namespace BuildConsole
                 // start listening for remote UI-test run requests too.
                 StartTestTriggerPoll();
             }
+
+            // shaneapp://executeSql — the LOCAL protocol trigger (deliberately NOT
+            // over HTTP like #898; SQL runs through this app's own configured dev-DB
+            // path). Started unconditionally, even when unconfigured, so an invocation
+            // is always logged and gets a clear error result rather than silence.
+            StartShaneAppProtocolListener();
 
             BuildQueuePanel.Initialize(_buildTrackerApi, _queueWatcher);
             LeftSidebar.Initialize(_buildTrackerApi);
@@ -4028,6 +4042,172 @@ namespace BuildConsole
             catch (Exception ex)
             {
                 BuildConsole.Services.ActivityLog.Log("testing.remote-trigger", $"Couldn't report failure for {runId}: {ex.Message}");
+            }
+        }
+
+        // ── shaneapp://executeSql local protocol handler ─────────────────────────
+
+        /// <summary>
+        /// Starts the named-pipe listener that receives shaneapp:// URIs from a
+        /// (transient) protocol launch — see <see cref="BuildConsole.Services.ShaneAppProtocol"/>.
+        /// The callback only POSTS onto the UI thread (so the accept loop never
+        /// blocks on a running query), where <see cref="HandleShaneAppUriAsync"/>
+        /// does the real work. Also drains a cold-start URI (this instance having
+        /// been launched BY the protocol because nothing else was running).
+        /// </summary>
+        private void StartShaneAppProtocolListener()
+        {
+            if (_shaneAppListener != null) return;
+            _shaneAppListener = new BuildConsole.Services.ShaneAppProtocol();
+            _shaneAppListener.Start(uri =>
+                Dispatcher.BeginInvoke(new Action(async () => await HandleShaneAppUriAsync(uri))));
+            BuildConsole.Services.ActivityLog.Log(BuildConsole.Services.ShaneAppProtocol.LogChannel,
+                $"shaneapp:// listener started (pipe '{BuildConsole.Services.ShaneAppProtocol.PipeName}').");
+
+            var pending = App.PendingProtocolUri;
+            App.PendingProtocolUri = null;
+            if (!string.IsNullOrEmpty(pending))
+            {
+                BuildConsole.Services.ActivityLog.Log(BuildConsole.Services.ShaneAppProtocol.LogChannel,
+                    "Handling cold-start shaneapp:// URI (no prior instance was running to forward to).");
+                _ = Dispatcher.BeginInvoke(new Action(async () => await HandleShaneAppUriAsync(pending!)));
+            }
+        }
+
+        /// <summary>
+        /// Handles one shaneapp:// invocation on the UI thread: logs it (source,
+        /// action, real outcome), reads the payload from the temp file the URI
+        /// pointed at (never inline in the URL), runs the SQL through THIS app's own
+        /// configured api client, and writes a JSON result envelope back for the
+        /// caller. Wrapped end-to-end so nothing escapes to crash the app; every
+        /// branch logs on <see cref="BuildConsole.Services.ShaneAppProtocol.LogChannel"/>.
+        /// </summary>
+        private async System.Threading.Tasks.Task HandleShaneAppUriAsync(string uri)
+        {
+            const string ch = BuildConsole.Services.ShaneAppProtocol.LogChannel;
+            try
+            {
+                if (!BuildConsole.Services.ShaneAppProtocol.TryParse(uri, out var req, out var parseError))
+                {
+                    BuildConsole.Services.ActivityLog.Log(ch, $"Ignored malformed shaneapp:// URI: {parseError}");
+                    return;
+                }
+
+                string src = string.IsNullOrWhiteSpace(req.Source) ? "unknown" : req.Source!;
+                BuildConsole.Services.ActivityLog.Log(ch,
+                    $"Invoked: action='{req.Action}' src='{src}' ref='{req.Ref ?? "(none)"}'.");
+
+                if (!string.Equals(req.Action, "executeSql", StringComparison.OrdinalIgnoreCase))
+                {
+                    BuildConsole.Services.ActivityLog.Log(ch,
+                        $"Unsupported action '{req.Action}' — only executeSql is handled (test execution goes over #898 HTTP, not this protocol). Ignoring.");
+                    return;
+                }
+
+                // Design: the payload NEVER rides in the URL — the URI carries only a
+                // short ref to a temp file the caller wrote the real SQL into.
+                if (string.IsNullOrWhiteSpace(req.Ref))
+                {
+                    BuildConsole.Services.ActivityLog.Log(ch, "executeSql called with no ref= payload file — nothing to run.");
+                    WriteShaneAppResult(req, ok: false, error: "no ref= payload file supplied", statements: null);
+                    return;
+                }
+
+                string sql;
+                try
+                {
+                    var fi = new System.IO.FileInfo(req.Ref!);
+                    if (!fi.Exists)
+                    {
+                        BuildConsole.Services.ActivityLog.Log(ch, $"executeSql payload file not found: {req.Ref}");
+                        WriteShaneAppResult(req, ok: false, error: $"payload file not found: {req.Ref}", statements: null);
+                        return;
+                    }
+                    if (fi.Length > ShaneAppMaxPayloadBytes)
+                    {
+                        BuildConsole.Services.ActivityLog.Log(ch, $"executeSql payload file too large ({fi.Length} bytes > {ShaneAppMaxPayloadBytes}). Refusing.");
+                        WriteShaneAppResult(req, ok: false, error: $"payload file too large ({fi.Length} bytes)", statements: null);
+                        return;
+                    }
+                    sql = await System.IO.File.ReadAllTextAsync(req.Ref!);
+                }
+                catch (Exception ex)
+                {
+                    BuildConsole.Services.ActivityLog.Log(ch, $"executeSql couldn't read payload {req.Ref}: {ex.Message}");
+                    WriteShaneAppResult(req, ok: false, error: $"couldn't read payload: {ex.Message}", statements: null);
+                    return;
+                }
+
+                if (string.IsNullOrWhiteSpace(sql))
+                {
+                    BuildConsole.Services.ActivityLog.Log(ch, $"executeSql payload {req.Ref} was empty — nothing to run.");
+                    WriteShaneAppResult(req, ok: false, error: "payload was empty", statements: null);
+                    return;
+                }
+
+                if (_buildTrackerApi == null || !_buildTrackerApi.IsConfigured)
+                {
+                    BuildConsole.Services.ActivityLog.Log(ch, "executeSql requested but Build Tracker API isn't configured — can't run. See Settings.");
+                    WriteShaneAppResult(req, ok: false, error: "BuildConsole not connected (no Build Tracker API config)", statements: null);
+                    return;
+                }
+
+                BuildConsole.Services.ActivityLog.Log(ch,
+                    $"executeSql running {sql.Length} char(s) of SQL from {req.Ref} (src='{src}')…");
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                try
+                {
+                    var statements = await _buildTrackerApi.ExecuteSqlAsync(sql);
+                    int failed = statements.Count(s => !s.Success);
+                    int ok = statements.Count - failed;
+                    string? firstError = failed > 0 ? statements.First(s => !s.Success).Error : null;
+                    WriteShaneAppResult(req, ok: failed == 0, error: firstError, statements: statements);
+                    BuildConsole.Services.ActivityLog.Log(ch,
+                        $"executeSql done in {sw.ElapsedMilliseconds}ms: {ok}/{statements.Count} statement(s) ok, {failed} failed. Result -> {BuildConsole.Services.ShaneAppProtocol.ResolveResultPath(req)}");
+                }
+                catch (Exception ex)
+                {
+                    WriteShaneAppResult(req, ok: false, error: ex.Message, statements: null);
+                    BuildConsole.Services.ActivityLog.Log(ch, $"executeSql FAILED after {sw.ElapsedMilliseconds}ms: {ex.Message}");
+                }
+            }
+            catch (Exception ex)
+            {
+                // Absolute backstop — a protocol invocation must never take the app down.
+                BuildConsole.Services.ActivityLog.Log(ch, $"shaneapp:// handler threw (swallowed): {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Best-effort writes the JSON result envelope for a shaneapp:// invocation
+        /// to <see cref="BuildConsole.Services.ShaneAppProtocol.ResolveResultPath"/>,
+        /// so the caller can read the real outcome (the same SqlStatementResult shape
+        /// the SQL Runner renders). A failed write is logged, never thrown.
+        /// </summary>
+        private void WriteShaneAppResult(BuildConsole.Services.ShaneAppRequest req, bool ok, string? error,
+            System.Collections.Generic.List<BuildConsole.Services.SqlStatementResult>? statements)
+        {
+            string path = BuildConsole.Services.ShaneAppProtocol.ResolveResultPath(req);
+            try
+            {
+                var envelope = new
+                {
+                    ok,
+                    error,
+                    action = req.Action,
+                    source = req.Source,
+                    ranAtUtc = DateTime.UtcNow.ToString("o"),
+                    statementCount = statements?.Count ?? 0,
+                    statements,
+                };
+                System.IO.File.WriteAllText(path,
+                    System.Text.Json.JsonSerializer.Serialize(envelope,
+                        new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+            }
+            catch (Exception ex)
+            {
+                BuildConsole.Services.ActivityLog.Log(BuildConsole.Services.ShaneAppProtocol.LogChannel,
+                    $"couldn't write result file {path}: {ex.Message}");
             }
         }
     }
