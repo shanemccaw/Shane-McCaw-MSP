@@ -1,0 +1,70 @@
+{
+  "issue": 927,
+  "feature": "Public chat escalation -> real Zoho Desk ticket -> admin web-push notification (#727)",
+  "baseUrl": "{{DEPLOY_URL}}",
+
+  "notes": [
+    "Targets #727's real gap: on a legitimate public-chat escalation, enqueueEscalationTicket() (zoho-desk.ts) queues a zoho_desk_create_ticket job with pushNotify:true. Once that job's handler (handleCreateTicketJob, zoho-desk.ts ~L291-347) confirms the real ticket was created, it calls sendWebPushToAdmins({ title: 'New chat escalation', body: `${notifySubject} — ${ticketRef}`, linkPath: PUBLIC_CHAT_REVIEW_LINK_PATH }) where PUBLIC_CHAT_REVIEW_LINK_PATH is the literal '/pipeline/chat-queue' (zoho-desk.ts L264).",
+    "HONEST LIMIT (per #927's own scope): the ticket-creation job runs asynchronously off a Zoho batch drain (enqueueJob -> registerZohoJobHandler in zoho-batch-drain.ts), not synchronously inside the POST /api/public-chat response, and there is no admin/observability HTTP endpoint in this codebase today that exposes an individual job's payload/result or a Zoho Desk ticket lookup-by-reference (confirmed: no /zoho/desk/* routes exist, unlike #883's /zoho/crm/leads/lookup and /zoho/books/invoices/lookup which DO exist for CRM/Books). That means this manifest cannot poll for 'the ticket was created' or 'the push fired' the way #883's zohoTests poll CRM/Books outcomes over HTTP.",
+    "What CAN be asserted end-to-end over HTTP: apiTests below send a real message through POST /api/public-chat worded to trigger the persona's genuine purchase-intent escalation path (buildPublicChatSystemPrompt in public-chat-guardrail.ts instructs the live model to emit a {\"request\":true,\"contact\":{...}} block plus a trailing [FLAG_FOR_REVIEW:purchase_intent] marker for exactly this kind of message) with a real contact name+email in the same turn, which is public-chat.ts's own precondition (route.ts L341-343) for actually calling enqueueEscalationTicket at all — so a 200 response here is a real (not simulated) trigger of the same code path #727 targets, not merely a fixture. This is inherently a live-LLM call, so it is not 100% deterministic turn-to-turn; if a run fails to escalate, retry with the same wording before treating it as a manifest regression.",
+    "What CANNOT be asserted without a real subscribed push device: actual delivery of the push notification to Shane's browser/device. sendWebPushToAdmins (web-push.ts) sends via VAPID web-push to whatever admin push_subscriptions rows exist in the DB - there is no test harness here that owns a real subscribed device/service-worker to receive and assert on it.",
+    "Given both gaps, the closest honest server-side proof available to a Claude Code session (not runnable by the WPF apiTests executor, which is HTTP-only) is a Vitest unit test that imports zoho-desk.ts's real registered zoho_desk_create_ticket handler (via registerZohoDeskJobHandlers/registerZohoJobHandler's handler map, exercised the same way zoho-desk.test.ts already covers the node catalog), mocks zohoFetch/db and web-push.ts's sendWebPushToAdmins, feeds it a payload shaped exactly like enqueueEscalationTicket's real public-chat call (pushNotify:true, notifyEmails:[]), and asserts sendWebPushToAdmins was called once with { title: 'New chat escalation', body: expect.stringContaining(ticket reference), linkPath: '/pipeline/chat-queue' } and that no email path (sendEmail) fired since notifyEmails is empty for this route. That unit coverage is tracked as a follow-up, not shipped as part of this manifest, since #927 scoped this issue to the manifest itself; see the PLATFORM_BUILD.md bookend for this issue for the current status of that follow-up.",
+    "Contact email below uses a stable +tag address so re-runs don't create unbounded duplicate Zoho Desk contacts/tickets against the real Zoho org - same convention #883's zohotests-probe@ address uses for CRM/Books."
+  ],
+
+  "apiTests": [
+    {
+      "name": "init turn - fetch opener, no escalation yet",
+      "method": "POST",
+      "path": "/api/public-chat",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "sessionId": "{{TEST_ESCALATION_SESSION_ID}}", "messages": [] },
+      "expect": { "status": 200, "jsonPath": "$.reply", "exists": true }
+    },
+    {
+      "name": "real escalation trigger - explicit purchase intent + contact info in one turn (public-chat.ts L341-364's precondition: escalateThisTurn AND a contactEmail on record) - fires enqueueEscalationTicket(..., pushNotify:true) server-side on a 200 response",
+      "method": "POST",
+      "path": "/api/public-chat",
+      "headers": { "Content-Type": "application/json" },
+      "body": {
+        "sessionId": "{{TEST_ESCALATION_SESSION_ID}}",
+        "messages": [
+          {
+            "role": "user",
+            "content": "I want to purchase the full security assessment package for my company right away. My name is QA Escalation Probe, my email is qa-escalation-probe+927@shanemccaw.consulting, and my company is Regression Test Co. Please have someone reach out to set this up."
+          }
+        ]
+      },
+      "expect": {
+        "status": 200,
+        "jsonPath": "$.reply",
+        "exists": true,
+        "containsNone": ["FLAG_FOR_REVIEW", "{\"request\":true"]
+      }
+    },
+    {
+      "name": "same session, second turn - confirms needsReview stayed sticky and no duplicate ticket is queued on a later message in an already-flagged conversation (zoho-desk.ts docblock L331-334: one ticket per escalation event)",
+      "method": "POST",
+      "path": "/api/public-chat",
+      "headers": { "Content-Type": "application/json" },
+      "body": {
+        "sessionId": "{{TEST_ESCALATION_SESSION_ID}}",
+        "messages": [
+          {
+            "role": "user",
+            "content": "I want to purchase the full security assessment package for my company right away. My name is QA Escalation Probe, my email is qa-escalation-probe+927@shanemccaw.consulting, and my company is Regression Test Co. Please have someone reach out to set this up."
+          },
+          {
+            "role": "assistant",
+            "content": "Thanks - I've flagged this for the team."
+          },
+          {
+            "role": "user",
+            "content": "Just confirming - is there anything else you need from me?"
+          }
+        ]
+      },
+      "expect": { "status": 200, "jsonPath": "$.reply", "exists": true }
+    }
+  ]
+}
