@@ -1,5 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -40,6 +43,123 @@ namespace BuildConsole.Controls
             InitializeComponent();
         }
 
+        /// <summary>Git #944 — a real running build's own local per-item record, matched to a live claude.exe process by launch --name (see LaunchItem), not by queue status.</summary>
+        private class RunningBuildPill
+        {
+            public int Id;
+            public string Epic = "";
+            public string Task = "";
+            public string PillLabel = "";
+        }
+
+        private BuildConsole.Services.BuildTrackerApiClient? _api;
+        private DispatcherTimer? _pillsTimer;
+        private string? _lastPillsSignature;
+
+        /// <summary>Called once from MainWindow alongside its other panel Initialize calls - needs the shared API client purely to look up id/epic/title for a live session's matching queue row, never to trust its status.</summary>
+        public void Initialize(BuildConsole.Services.BuildTrackerApiClient api)
+        {
+            _api = api;
+            _pillsTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(8) };
+            _pillsTimer.Tick += async (_, _) => await RefreshRunningBuildPillsAsync();
+            _pillsTimer.Start();
+            _ = RefreshRunningBuildPillsAsync();
+        }
+
+        /// <summary>
+        /// Git #944 — Shane: "In the open space can you add pills for every
+        /// running build so I can easily switch between them... check actual
+        /// running claude instances, not what the queue says." Ground truth
+        /// is `claude agents --json` (real OS processes via the claude CLI
+        /// itself), never the queue's own `status` field - #943 just proved
+        /// that field can say "failed" while the real process keeps going.
+        /// The queue IS still fetched here, but only as a lookup table for
+        /// id/epic/title metadata to label a pill and to feed LoadQueueItem -
+        /// never as the source of truth for whether something's running.
+        /// Matched by session Name == queue item Title, since LaunchItem
+        /// passes `--name &lt;item.Title&gt;` for every non-resumed launch -
+        /// a session with no matching title (this very Claude Code session
+        /// included) simply gets no pill, which is correct: it isn't a
+        /// queue-launched build.
+        /// </summary>
+        private async Task RefreshRunningBuildPillsAsync()
+        {
+            if (_api == null) return;
+
+            List<Services.ClaudeAgentSession> sessions;
+            try { sessions = await Services.ClaudeAgentsService.ListActiveSessionsAsync(); }
+            catch { return; } // best-effort - a shell-out hiccup shouldn't blank out what's already shown
+
+            List<Services.QueueItem> queueItems;
+            try { queueItems = await _api.GetQueueAsync(); }
+            catch { return; }
+
+            var byTitle = queueItems.Where(i => !string.IsNullOrWhiteSpace(i.Title))
+                                     .GroupBy(i => i.Title)
+                                     .ToDictionary(g => g.Key, g => g.OrderByDescending(i => i.UpdatedAt).First());
+
+            var pills = new List<RunningBuildPill>();
+            foreach (var session in sessions)
+            {
+                if (string.IsNullOrWhiteSpace(session.Name)) continue;
+                if (!byTitle.TryGetValue(session.Name, out var item)) continue;
+
+                pills.Add(new RunningBuildPill
+                {
+                    Id = item.Id,
+                    Epic = item.GithubNumber.HasValue ? $"#{item.GithubNumber}" : "",
+                    Task = item.Title,
+                    PillLabel = item.GithubNumber.HasValue ? $"#{item.GithubNumber}" : item.Title,
+                });
+            }
+
+            var signature = string.Join("|", pills.Select(p => p.Id)) + $"@{_currentId}";
+            if (signature == _lastPillsSignature) return;
+            _lastPillsSignature = signature;
+
+            RunningPillsPanel.Items.Clear();
+            foreach (var pill in pills)
+            {
+                var btn = new Button
+                {
+                    Content = pill.PillLabel,
+                    Tag = pill,
+                    Margin = new Thickness(0, 0, 6, 0),
+                    Padding = new Thickness(8, 2, 8, 2),
+                    FontSize = 11,
+                    Cursor = System.Windows.Input.Cursors.Hand,
+                    Background = pill.Id == _currentId
+                        ? (Brush)Application.Current.FindResource("BlueBrush")
+                        : (Brush)Application.Current.FindResource("Surface1Brush"),
+                    Foreground = pill.Id == _currentId
+                        ? (Brush)Application.Current.FindResource("CrustBrush")
+                        : (Brush)Application.Current.FindResource("TextBrush"),
+                    BorderThickness = new Thickness(0),
+                };
+                btn.Click += (s, e) =>
+                {
+                    var p = (RunningBuildPill)((Button)s!).Tag;
+                    LoadQueueItem(p.Id, p.Epic, p.Task, "running", null);
+                };
+                RunningPillsPanel.Items.Add(btn);
+            }
+        }
+
+        /// <summary>Git #944 — cheap in-place highlight refresh (no re-fetch) so clicking a pill visibly marks it active immediately, instead of waiting up to 8s for the next full poll.</summary>
+        private void UpdatePillHighlight()
+        {
+            foreach (var obj in RunningPillsPanel.Items)
+            {
+                if (obj is not Button { Tag: RunningBuildPill pill } btn) continue;
+                btn.Background = pill.Id == _currentId
+                    ? (Brush)Application.Current.FindResource("BlueBrush")
+                    : (Brush)Application.Current.FindResource("Surface1Brush");
+                btn.Foreground = pill.Id == _currentId
+                    ? (Brush)Application.Current.FindResource("CrustBrush")
+                    : (Brush)Application.Current.FindResource("TextBrush");
+            }
+        }
+
         public void LoadQueueItem(int id, string epic, string task, string status, int? exitCode)
         {
             EmptyState.Visibility = Visibility.Collapsed;
@@ -64,6 +184,7 @@ namespace BuildConsole.Controls
             _tailedLength = 0;
             RawLogBox.Clear();
             LoadNow();
+            UpdatePillHighlight();
 
             _tailTimer?.Stop();
             if (status.Equals("running", StringComparison.OrdinalIgnoreCase))

@@ -49,7 +49,24 @@
                            Text=""
                            FontSize="12"
                            Foreground="{StaticResource TextBrush}"
-                           VerticalAlignment="Center"/>
+                           VerticalAlignment="Center"
+                           Margin="0,0,14,0"/>
+
+                <!-- Git #944 - Shane: "In the open space can you add pills for
+                     every running build so I can easily switch between them...
+                     check actual running claude instances, not what the queue
+                     says." Ground truth is the real claude CLI agent list (real
+                     OS processes), NOT queue status - #943 just proved queue
+                     status can be wrong while the real process keeps going.
+                     Sits in the open space between the task name and the
+                     right-docked status badge/elapsed time. -->
+                <ItemsControl x:Name="RunningPillsPanel" VerticalAlignment="Center">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel Orientation="Horizontal"/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                </ItemsControl>
 
                 <!-- Status badge -->
                 <Border x:Name="StatusBadge"
