@@ -1,0 +1,62 @@
+{
+  "issue": 958,
+  "feature": "UI \"hello world\" — proves a headless build agent can trigger + read back a real UI test result end to end",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "6d7bc6dd3279aead86fe8441b78e1e180c9f5016",
+  "notes": [
+    "Part of Epic #803, UI sibling of #957's hello-world-sql.json. Purpose is NOT to test",
+    "deep product logic — it proves the #898 remote-trigger-over-HTTP pipeline (headless POST",
+    "/admin/deploy/test-run -> BuildConsole claims + runs uiSteps via a live WebView2 ->",
+    "POST .../complete -> headless GET .../<runId> poll) can drive a real browser and read back",
+    "a genuine pass/fail, so more complex uiSteps manifests can be trusted.",
+    "Content assertions reuse #892's containsAny/containsNone. The framework has no DOM-text",
+    "assertion (uiStep `expect` only checks element state: visible/hidden/present/absent —",
+    "textContains is silently ignored, see test-manifests/889-documents-screen.json's unused",
+    "'ready' textContains), so containsAny/containsNone run against a captureResponse'd API",
+    "call the homepage genuinely makes on load, not raw rendered DOM text. Step 1 re-navigates",
+    "to '/' (RunAsync's own initial navigation to baseUrl happens before any uiStep's",
+    "captureResponse is armed, so it would miss the fetch) to capture",
+    "artifacts/api-server/src/routes/public-hero.ts's GET /api/public/hero-headlines, which",
+    "artifacts/shane-mccaw-consulting/src/hooks/useHeroHeadlines.ts's useTypewriterHeadline()",
+    "fetches unconditionally on mount to hydrate Home.tsx's hero headline.",
+    "jsonPath $[0].leadText scopes containsAny/containsNone to that one field's string value",
+    "(server always orders by sort_order ASC, so index 0 is deterministic) rather than the raw",
+    "response body — the response also carries a legitimate seasonalLabel:null for evergreen",
+    "rows (see lib/db/migrations/manual/2026-07-19-hero-headlines.sql), so a containsNone check",
+    "for the literal word 'null' against the WHOLE body would false-fail on that legitimate field.",
+    "containsAny lists all 3 seed-migration headlines' lead_text (2026-07-19-hero-headlines.sql,",
+    "matching useHeroHeadlines.ts's own FALLBACK_HEADLINE for row 1) so the assertion survives",
+    "any one of the three being reordered — but Shane's admin-panel Hero Headlines screen lets",
+    "these be edited at runtime, so if all three seeded headlines have since been replaced this",
+    "assertion will legitimately fail and should be refreshed against whatever real copy is live.",
+    "Second step asserts the header CTA button (a stable, code-literal element, not DB content)",
+    "is genuinely visible after load — the structural 'did it load' half of the hello-world proof."
+  ],
+  "uiSteps": [
+    {
+      "action": "goto",
+      "target": "/",
+      "captureResponse": {
+        "urlPattern": "/api/public/hero-headlines",
+        "expect": {
+          "status": 200,
+          "jsonPath": "$[0].leadText",
+          "containsAny": [
+            "Your tenant has problems",
+            "We watch your tenant",
+            "30 years finding what M365 admins"
+          ],
+          "containsNone": [
+            "undefined",
+            "null",
+            "NaN",
+            "Lorem ipsum",
+            "TypeError",
+            "Cannot read propert"
+          ]
+        }
+      }
+    },
+    { "action": "expect", "selector": "[data-testid=\"get-real-score-cta\"]", "state": "visible" }
+  ]
+}

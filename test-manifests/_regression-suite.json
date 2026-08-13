@@ -16,6 +16,8 @@
     "890-sow-proposal.json",
     "928-tenant-switcher-floaty.json",
     "baseline-actions-powershell-verify.json",
-    "792-remediation-tracker-e2e.json"
+    "792-remediation-tracker-e2e.json",
+    "hello-world-sql.json",
+    "hello-world-ui.json"
   ]
 }

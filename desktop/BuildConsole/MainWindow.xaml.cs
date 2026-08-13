@@ -3406,7 +3406,12 @@ namespace BuildConsole
                 // Git #877 — the same per-run variable store the api/graph executors used, so a
                 // {{name}} extracted earlier resolves in a uiStep's selector/value, and a uiStep's
                 // own extract feeds any later step.
-                var uiResult = await runner.RunUiTestAsync(manifest.BaseUrl, uiActions, vars);
+                // Git #958 — manifest.BaseUrl (e.g. "{{DEPLOY_URL}}") must be resolved through the
+                // same config placeholder substitution HttpTestExecutor already applies to apiTests;
+                // previously this handed UiTestExecutor the raw unresolved literal, which
+                // CoreWebView2.Navigate() throws on, failing every uiSteps manifest's very first step.
+                string uiTargetUrl = BuildConsole.Services.HttpTestExecutor.ResolvePlaceholders(manifest.BaseUrl, config);
+                var uiResult = await runner.RunUiTestAsync(uiTargetUrl, uiActions, vars);
                 var uiStepResults = uiResult.ToTestStepResults();
                 runResult.AddRange(uiStepResults);
 

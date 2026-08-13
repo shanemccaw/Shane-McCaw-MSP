@@ -116,8 +116,8 @@ namespace BuildConsole.Services
 
         internal static string Truncate(string s, int max) => s.Length > max ? s.Substring(0, max) + "..." : s;
 
-        /// <summary>{{DEPLOY_URL}} -> the configured api base url (scripts/build-queue-watcher.config.json), {{SECRET_KEY}} -> its IngestToken — same "Shane's existing secret-key mechanism" #803's Auth section defers to, not a new credential store.</summary>
-        private static string ResolvePlaceholders(string input, BuildTrackerConfig config) =>
+        /// <summary>{{DEPLOY_URL}} -> the configured api base url (scripts/build-queue-watcher.config.json), {{SECRET_KEY}} -> its IngestToken — same "Shane's existing secret-key mechanism" #803's Auth section defers to, not a new credential store. Internal (not private) so MainWindow.RunManifestAsync can resolve manifest.BaseUrl the same way before handing it to UiTestExecutor (Git #958 — uiSteps previously got the raw unresolved "{{DEPLOY_URL}}" string, which CoreWebView2.Navigate() throws on).</summary>
+        internal static string ResolvePlaceholders(string input, BuildTrackerConfig config) =>
             (input ?? "").Replace("{{DEPLOY_URL}}", config.ApiBaseUrl.TrimEnd('/')).Replace("{{SECRET_KEY}}", config.IngestToken);
 
         private static string BuildUrl(string baseUrl, string path)

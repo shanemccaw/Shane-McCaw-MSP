@@ -59,3 +59,8 @@ artifacts/shane-mccaw-consulting/public/sitemap.xml
 # Git #790 — build-queue-watcher.ps1's own config holds the same ingest
 # token the extension's Options page does; only the .example template ships.
 scripts/build-queue-watcher.config.json
+
+# Git #958 — RunManifestAsync's per-run ManifestRunResult JSON dump
+# (test-results/{issue}-{timestamp}.json), written locally by BuildConsole
+# on every run; ephemeral output, never meant to be committed.
+test-results/
