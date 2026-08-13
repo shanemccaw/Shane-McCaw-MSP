@@ -2,7 +2,7 @@
   "issue": 803,
   "feature": "Proactive schema-drift guard — every Drizzle-TS column on the operational error spine actually exists in the live DB (a migration written but never run shows up here BEFORE it dead-letters)",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "19e8e632",
+  "lastVerifiedAgainstCommit": "d942aa25336d0edf517b6c94812a325bb0c56b72",
   "notes": [
     "Epic #803. PROACTIVE half of the schema-drift pair (reactive half: observability/dlq-schema-error-scan.json).",
     "Cross-references the Drizzle TypeScript schema (lib/db/src/schema/*.ts) against the real live schema via",
@@ -39,7 +39,7 @@
     {
       "method": "POST",
       "path": "/api/admin/deploy/sql-test",
-      "headers": { "Content-Type": "application/json" },
+      "headers": { "Content-Type": "application/json", "Authorization": "Bearer {{SECRET_KEY}}" },
       "body": {
         "query": "SELECT e.table_name, e.column_name FROM (VALUES ('msp_dlq_store','id'),('msp_dlq_store','dlq_id'),('msp_dlq_store','source_event_id'),('msp_dlq_store','event_type'),('msp_dlq_store','payload'),('msp_dlq_store','error_message'),('msp_dlq_store','error_stack'),('msp_dlq_store','attempt_count'),('msp_dlq_store','last_attempt_at'),('msp_dlq_store','resolved_at'),('msp_dlq_store','resolution'),('msp_dlq_store','msp_id'),('msp_dlq_store','customer_id'),('msp_dlq_store','created_at'),('msp_job_queue','id'),('msp_job_queue','job_id'),('msp_job_queue','job_type'),('msp_job_queue','status'),('msp_job_queue','msp_id'),('msp_job_queue','customer_id'),('msp_job_queue','payload'),('msp_job_queue','result'),('msp_job_queue','error_message'),('msp_job_queue','error_stack'),('msp_job_queue','attempt_count'),('msp_job_queue','max_attempts'),('msp_job_queue','scheduled_at'),('msp_job_queue','started_at'),('msp_job_queue','completed_at'),('msp_job_queue','correlation_id'),('msp_job_queue','created_at'),('outbound_webhooks','id'),('outbound_webhooks','webhook_id'),('outbound_webhooks','owner_type'),('outbound_webhooks','msp_id'),('outbound_webhooks','customer_id'),('outbound_webhooks','label'),('outbound_webhooks','url'),('outbound_webhooks','secret'),('outbound_webhooks','secret_prefix'),('outbound_webhooks','event_types'),('outbound_webhooks','is_active'),('outbound_webhooks','created_at'),('outbound_webhooks','updated_at')) AS e(table_name, column_name) LEFT JOIN information_schema.columns c ON c.table_schema = 'public' AND c.table_name = e.table_name AND c.column_name = e.column_name WHERE c.column_name IS NULL ORDER BY e.table_name, e.column_name",
         "expect": { "rowCount": 0 }
@@ -49,7 +49,7 @@
     {
       "method": "POST",
       "path": "/api/admin/deploy/sql-test",
-      "headers": { "Content-Type": "application/json" },
+      "headers": { "Content-Type": "application/json", "Authorization": "Bearer {{SECRET_KEY}}" },
       "body": {
         "query": "SELECT count(*)::int AS present FROM (VALUES ('msp_dlq_store','id'),('msp_dlq_store','dlq_id'),('msp_dlq_store','source_event_id'),('msp_dlq_store','event_type'),('msp_dlq_store','payload'),('msp_dlq_store','error_message'),('msp_dlq_store','error_stack'),('msp_dlq_store','attempt_count'),('msp_dlq_store','last_attempt_at'),('msp_dlq_store','resolved_at'),('msp_dlq_store','resolution'),('msp_dlq_store','msp_id'),('msp_dlq_store','customer_id'),('msp_dlq_store','created_at'),('msp_job_queue','id'),('msp_job_queue','job_id'),('msp_job_queue','job_type'),('msp_job_queue','status'),('msp_job_queue','msp_id'),('msp_job_queue','customer_id'),('msp_job_queue','payload'),('msp_job_queue','result'),('msp_job_queue','error_message'),('msp_job_queue','error_stack'),('msp_job_queue','attempt_count'),('msp_job_queue','max_attempts'),('msp_job_queue','scheduled_at'),('msp_job_queue','started_at'),('msp_job_queue','completed_at'),('msp_job_queue','correlation_id'),('msp_job_queue','created_at'),('outbound_webhooks','id'),('outbound_webhooks','webhook_id'),('outbound_webhooks','owner_type'),('outbound_webhooks','msp_id'),('outbound_webhooks','customer_id'),('outbound_webhooks','label'),('outbound_webhooks','url'),('outbound_webhooks','secret'),('outbound_webhooks','secret_prefix'),('outbound_webhooks','event_types'),('outbound_webhooks','is_active'),('outbound_webhooks','created_at'),('outbound_webhooks','updated_at')) AS e(table_name, column_name) JOIN information_schema.columns c ON c.table_schema = 'public' AND c.table_name = e.table_name AND c.column_name = e.column_name"
       },

@@ -2,7 +2,7 @@
   "issue": 957,
   "feature": "SQL \"hello world\" — proves a headless build agent can trigger + read back a real SQL result end to end",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "5a9cfa6effcee22bf1a23a09751660a72788332e",
+  "lastVerifiedAgainstCommit": "d942aa25336d0edf517b6c94812a325bb0c56b72",
   "notes": [
     "Part of Epic #803. Purpose is NOT to test real product logic — it proves the",
     "automation pipeline itself (headless trigger -> #896's sql-test endpoint -> real",
@@ -17,7 +17,7 @@
     {
       "method": "POST",
       "path": "/api/admin/deploy/sql-test",
-      "headers": { "Content-Type": "application/json" },
+      "headers": { "Content-Type": "application/json", "Authorization": "Bearer {{SECRET_KEY}}" },
       "body": { "query": "SELECT 1 AS ping" },
       "expect": { "status": 200, "jsonPath": "$.rows[0].ping", "value": 1 }
     }

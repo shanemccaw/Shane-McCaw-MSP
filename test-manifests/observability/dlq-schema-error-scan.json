@@ -2,7 +2,7 @@
   "issue": 803,
   "feature": "Reactive DLQ scan — no recent dead-letter entry carries a Postgres schema error (missing column/table = a migration written but never run)",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "19e8e632",
+  "lastVerifiedAgainstCommit": "d942aa25336d0edf517b6c94812a325bb0c56b72",
   "notes": [
     "Epic #803. REACTIVE half of the schema-drift pair (proactive half: observability/schema-drift-guard.json).",
     "Intent: prove that in the recent window NOTHING failed into the dead-letter store with a Postgres",
@@ -34,7 +34,7 @@
     {
       "method": "POST",
       "path": "/api/admin/deploy/sql-test",
-      "headers": { "Content-Type": "application/json" },
+      "headers": { "Content-Type": "application/json", "Authorization": "Bearer {{SECRET_KEY}}" },
       "body": {
         "query": "SELECT dlq_id, event_type, to_char(created_at, 'YYYY-MM-DD HH24:MI:SSOF') AS created_at, coalesce(substring(error_message from '\"([^\"]+)\"'), '(no-quoted-identifier)') AS bad_identifier, left(error_message, 240) AS error_excerpt FROM msp_dlq_store WHERE created_at >= now() - interval '48 hours' AND (error_message ~* '(column|relation|type|function) \"[^\"]*\" does not exist' OR error_message ~* 'column \"[^\"]*\" of relation \"[^\"]*\" does not exist' OR error_message ILIKE '%does not exist%' OR error_message ILIKE '%undefined column%' OR error_message ILIKE '%undefined table%') ORDER BY created_at DESC LIMIT 25",
         "expect": { "rowCount": 0 }
