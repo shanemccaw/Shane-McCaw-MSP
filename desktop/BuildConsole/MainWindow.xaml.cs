@@ -3462,6 +3462,11 @@ namespace BuildConsole
             // the standalone AutomationRunnerWindow popup — retired entirely, per #810's own
             // instruction. Telemetry cards stream live via UiTestExecutor.Telemetry, subscribed
             // for the duration of this call inside RunUiTestAsync itself.
+            // Epic #803 — this run's captured WebView2 screenshots (#966), surfaced to the screenshot
+            // baseline review after the whole run completes. Declared out here so it outlives the
+            // uiSteps block scope below; empty when no uiStep ran or nothing was captured.
+            var capturedShots = new List<BuildConsole.Services.UiScreenshotCapture>();
+
             if (manifest.UiSteps.Count > 0)
             {
                 var uiActions = manifest.UiSteps.Select((step, i) => new Controls.AutomationAction
@@ -3501,6 +3506,9 @@ namespace BuildConsole
                     : null;
 
                 var uiResult = await runner.RunUiTestAsync(uiTargetUrl, uiActions, vars, uiDefaultViewport, screenshotDir);
+                // Epic #803 — hand this run's captured screenshots (absolute paths, unchanged by the
+                // repo-relative rewrite below) to the post-run baseline review.
+                capturedShots = uiResult.Screenshots;
                 var uiStepResults = uiResult.ToTestStepResults();
 
                 // Git #966 — the executor set each step's ScreenshotPath to an absolute path; rewrite it
@@ -3555,6 +3563,33 @@ namespace BuildConsole
                     catch (Exception ex)
                     {
                         BuildConsole.Services.ActivityLog.Log("testing.manifest-runner", $"Couldn't write test results: {ex.Message}");
+                    }
+                }
+            }
+
+            // Epic #803 — screenshot baseline review: diff this run's captured screenshots (#966)
+            // against their stored baselines and, only when a baseline is missing or a meaningful
+            // visual change is found, pop the review/approval dialog. This is the single general entry
+            // point every screenshot-producing run uses (a future mailer audit builds its own subject
+            // and calls the same service). The scheduled regression sweep (#967) and the #898 headless
+            // remote-trigger are non-interactive — they compare-and-log but never block on the modal.
+            if (capturedShots.Count > 0)
+            {
+                string? reviewRepoRoot = BuildConsole.Services.BuildTrackerConfig.FindRepoRoot();
+                if (reviewRepoRoot != null)
+                {
+                    try
+                    {
+                        var subject = BuildConsole.Services.ScreenshotReviewService.SubjectFromManifest(manifest, reviewRepoRoot);
+                        await BuildConsole.Services.ScreenshotReviewService.ReviewIfNeededAsync(
+                            this, reviewRepoRoot, subject, capturedShots,
+                            (text, showMessage, onInserted) =>
+                                SendTextToActiveClaudeChatAsync(text, showMessage, onInserted, "testing.screenshot-review", "report"),
+                            interactive: !isRegression && !_testTriggerBusy);
+                    }
+                    catch (Exception ex)
+                    {
+                        BuildConsole.Services.ActivityLog.Log("testing.screenshot-review", $"Screenshot review failed: {ex.Message}");
                     }
                 }
             }

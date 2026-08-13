@@ -1,0 +1,210 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Threading.Tasks;
+using System.Windows;
+
+namespace BuildConsole.Services
+{
+    /// <summary>Identity of the thing whose screenshots are being reviewed: the (area, slug) that keys
+    /// its baseline folder plus the GitHub issue/title it traces back to. For a manifest run this is
+    /// derived from the manifest's own on-disk path + issue number (see
+    /// <see cref="ScreenshotReviewService.SubjectFromManifest"/>); a future producer (e.g. a mailer
+    /// audit) builds its own subject and calls the same service.</summary>
+    public sealed class ScreenshotReviewSubject
+    {
+        public string Area { get; set; } = "_unsorted";
+        public string Slug { get; set; } = "";
+        public int IssueNumber { get; set; }
+        public string Title { get; set; } = "";
+        public string DisplayName => $"{Area}/{Slug}";
+    }
+
+    /// <summary>One screenshot's row in the review dialog: the #966 capture + its baseline comparison,
+    /// with the narration fields the walk-through window renders (what was verified, pass/fail, diff).</summary>
+    public sealed class ScreenshotReviewItem
+    {
+        public UiScreenshotCapture Shot { get; set; } = new();
+        public ScreenshotBaselineStore.Comparison Comparison { get; set; } = new();
+
+        public int StepIndex => Shot.StepIndex;
+        public string CurrentPath => Shot.FilePath;
+        public string BaselinePath => Comparison.BaselinePath;
+        public bool HasBaseline => Comparison.HasBaseline;
+        public bool NeedsReview => Comparison.NeedsReview;
+        public string DiffNote => Comparison.Note;
+
+        /// <summary>#966 captures on any step failure ("step-failed"/"navigation-failed") or an explicit
+        /// opt-in ("explicit"); the reason IS the pass/fail signal for this screenshot.</summary>
+        public bool Passed => Shot.Reason != "step-failed" && Shot.Reason != "navigation-failed";
+        public string Verdict => Passed ? "PASS" : "FAIL";
+        public string What => string.IsNullOrWhiteSpace(Shot.StepLabel) ? $"step {StepIndex}" : Shot.StepLabel;
+        public string Reason => Shot.Reason;
+    }
+
+    /// <summary>
+    /// Epic #803 — the single entry point EVERY screenshot-producing run funnels through to get its
+    /// captures reviewed against the persistent baseline (<see cref="ScreenshotBaselineStore"/>). The
+    /// #966 uiSteps run is the only producer today; a future mailer audit, or any other run that
+    /// captures screenshots, calls this same method with its own <see cref="ScreenshotReviewSubject"/>
+    /// + captured shots, so the whole feature applies to all of them by construction rather than being
+    /// re-implemented per producer.
+    ///
+    /// It compares each shot against its stored baseline and, ONLY when a baseline is missing or a
+    /// meaningful visual diff is found, shows the walk-through review/approval dialog
+    /// (<see cref="ScreenshotReviewWindow"/>). A clean run that matches its baseline shows nothing.
+    /// Non-interactive runs (the scheduled #967 regression sweep, the #898 headless remote-trigger)
+    /// never block on a modal — they log that review is pending so a background/3am run can't hang.
+    ///
+    /// Approve does three things, in order: promote the run's screenshots to the baseline set, send a
+    /// landed-and-verified note into the active Claude chat (the #937 send-to-active-chat mechanism),
+    /// and close the manifest's associated GitHub issue. Report issue reuses the same #937 compose +
+    /// send-to-active-chat, pre-seeded with the diff context. Logs on "testing.screenshot-review".
+    /// </summary>
+    public static class ScreenshotReviewService
+    {
+        public const string Channel = "testing.screenshot-review";
+
+        /// <summary>Traces a manifest to its review subject: (area, slug) come from the manifest's real
+        /// on-disk path under test-manifests/ (the same {area}/{feature-slug} convention CLAUDE.md's
+        /// Test Coverage section uses), and the issue/title come straight off the manifest — so the
+        /// baseline folder and the "which issue does Approve close" association are both grounded in the
+        /// manifest itself, not guessed.</summary>
+        public static ScreenshotReviewSubject SubjectFromManifest(TestManifest manifest, string repoRoot)
+        {
+            string area = "_unsorted";
+            string slug = "";
+            try
+            {
+                if (!string.IsNullOrEmpty(manifest.SourcePath))
+                {
+                    string manifestsRoot = Path.Combine(repoRoot, "test-manifests");
+                    string rel = Path.GetRelativePath(manifestsRoot, manifest.SourcePath);
+                    var parts = rel.Split(new[] { '/', '\\' }, StringSplitOptions.RemoveEmptyEntries);
+                    if (parts.Length >= 2 && parts[0] != "..")
+                    {
+                        area = parts[0];
+                        slug = Path.GetFileNameWithoutExtension(parts[^1]);
+                    }
+                    else if (parts.Length >= 1)
+                    {
+                        // Old flat test-manifests/{issue}-{slug}.json convention, or a path outside the
+                        // manifests root — key it by filename under a catch-all area.
+                        slug = Path.GetFileNameWithoutExtension(parts[^1]);
+                    }
+                }
+            }
+            catch { /* fall back to the defaults below */ }
+
+            if (string.IsNullOrWhiteSpace(slug))
+                slug = manifest.Issue > 0 ? $"issue-{manifest.Issue}" : "manifest";
+
+            return new ScreenshotReviewSubject
+            {
+                Area = area,
+                Slug = slug,
+                IssueNumber = manifest.Issue,
+                Title = string.IsNullOrWhiteSpace(manifest.Feature) ? $"issue #{manifest.Issue}" : manifest.Feature,
+            };
+        }
+
+        /// <param name="sendToChat">The #937 send-to-active-chat path, bound by the caller (MainWindow):
+        /// (text, showMessage, onInserted) =&gt; SendTextToActiveClaudeChatAsync(...). Used both for
+        /// Report issue and for Approve's landed-and-verified note.</param>
+        /// <param name="interactive">False for the scheduled regression sweep and the #898 remote-trigger
+        /// (both headless/background) — those log-and-skip the modal so they never block; true for a
+        /// menu-driven single run, which may show the dialog.</param>
+        // Not `async`: the only awaited work (the Approve flow) lives inside the approveAsync delegate;
+        // this method's body — compare, log, and the modal ShowDialog — is all synchronous, so it
+        // returns Task directly (callers still `await` it) rather than triggering a no-await warning.
+        public static Task ReviewIfNeededAsync(
+            Window? owner,
+            string repoRoot,
+            ScreenshotReviewSubject subject,
+            IReadOnlyList<UiScreenshotCapture> shots,
+            Func<string, Action<string, bool>, Action?, Task> sendToChat,
+            bool interactive)
+        {
+            if (shots == null || shots.Count == 0) return Task.CompletedTask;
+
+            var items = shots
+                .Where(s => !string.IsNullOrEmpty(s.FilePath) && File.Exists(s.FilePath))
+                .Select(s => new ScreenshotReviewItem
+                {
+                    Shot = s,
+                    Comparison = ScreenshotBaselineStore.Compare(repoRoot, subject.Area, subject.Slug, s.StepIndex, s.FilePath),
+                })
+                .ToList();
+
+            if (items.Count == 0) return Task.CompletedTask;
+
+            int noBaseline = items.Count(i => !i.HasBaseline);
+            int diffs = items.Count(i => i.HasBaseline && i.NeedsReview);
+            bool needsReview = items.Any(i => i.NeedsReview);
+
+            ActivityLog.Log(Channel,
+                $"{subject.DisplayName} (issue #{subject.IssueNumber}): {items.Count} screenshot(s) — {noBaseline} without a baseline, {diffs} changed vs baseline. "
+                + (needsReview ? "Review needed." : "Clean — all match baseline, no review shown."));
+
+            if (!needsReview) return Task.CompletedTask;
+
+            if (!interactive)
+            {
+                ActivityLog.Log(Channel,
+                    $"{subject.DisplayName}: review needed ({noBaseline} new, {diffs} changed) but this run is non-interactive (scheduled/remote) — dialog suppressed; re-run interactively to review/approve.");
+                return Task.CompletedTask;
+            }
+
+            // Approve callback: promote baselines -> send the landed-and-verified note to the active
+            // chat -> close the linked issue. Captures `shots`/`subject`/`sendToChat` from this scope.
+            Func<Task<string>> approveAsync = async () =>
+            {
+                int promoted = ScreenshotBaselineStore.Promote(repoRoot, subject.Area, subject.Slug, shots);
+
+                string chatNote = BuildApprovedNote(subject, promoted);
+                try { await sendToChat(chatNote, (_, _) => { }, null); }
+                catch (Exception ex) { ActivityLog.Log(Channel, $"Approve: couldn't send note to active chat: {ex.Message}"); }
+
+                string closeMsg = await CloseIssueAsync(subject.IssueNumber);
+                ActivityLog.Log(Channel, $"Approved {subject.DisplayName}: {promoted} baseline(s) updated; {closeMsg}.");
+                return $"Approved — {promoted} baseline(s) updated, note sent to chat, {closeMsg}.";
+            };
+
+            var win = new ScreenshotReviewWindow(subject, items, sendToChat, approveAsync);
+            if (owner != null) win.Owner = owner;
+            win.ShowDialog();
+            return Task.CompletedTask;
+        }
+
+        private static string BuildApprovedNote(ScreenshotReviewSubject subject, int promoted)
+        {
+            string issue = subject.IssueNumber > 0 ? $" — closing #{subject.IssueNumber}" : "";
+            return
+                $"✅ Screenshots reviewed and approved for {subject.Title} [{subject.DisplayName}]{issue}. "
+                + $"{promoted} screenshot(s) are now the visual baseline; verified as landed and correct.";
+        }
+
+        /// <summary>Closes the manifest's associated GitHub issue on Approve, via the same
+        /// PAT/GitHubApiClient every other direct GitHub call in this app uses. This is Shane's own
+        /// deliberate click (not the automated bookend workflow, which never auto-closes) — the task
+        /// explicitly wires Approve to close the issue. No PAT / no linked issue is reported, not thrown.</summary>
+        private static async Task<string> CloseIssueAsync(int issueNumber)
+        {
+            if (issueNumber <= 0) return "no linked GitHub issue to close";
+            var settings = BuildConsoleSettings.Load();
+            if (!settings.HasGitHubPat) return $"issue #{issueNumber} left open (no GitHub PAT configured in Settings)";
+            try
+            {
+                await new GitHubApiClient(settings.GitHubPat).SetIssueStateAsync(issueNumber, close: true);
+                ActivityLog.Log(Channel, $"Closed GitHub issue #{issueNumber} on screenshot approval.");
+                return $"closed issue #{issueNumber}";
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log(Channel, $"Couldn't close issue #{issueNumber}: {ex.Message}");
+                return $"couldn't close issue #{issueNumber}: {ex.Message}";
+            }
+        }
+    }
+}
