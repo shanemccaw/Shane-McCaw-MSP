@@ -293,7 +293,6 @@ namespace BuildConsole.Controls
         public event EventHandler? StopRecordingRequested;
         public event EventHandler<(string url, List<AutomationAction> steps)>? PlayTestRequested;
 
-        private bool _isRecording = false;
         public readonly List<AutomationAction> RecordedSteps = new();
 
         public void RecordAction(string actionType, string selector, string tagName, string val)
@@ -315,41 +314,29 @@ namespace BuildConsole.Controls
             AutomationStepsList.Items.Add(action);
         }
 
-        private void BtnRecordTest_Click(object sender, RoutedEventArgs e)
-        {
-            _isRecording = !_isRecording;
-            if (_isRecording)
-            {
-                BtnRecordTest.Content = "■ Stop";
-                RecordingBadge.Visibility = Visibility.Visible;
-                StartRecordingRequested?.Invoke(this, AutomationTargetUrl.Text);
-            }
-            else
-            {
-                BtnRecordTest.Content = "● Record";
-                RecordingBadge.Visibility = Visibility.Collapsed;
-                StopRecordingRequested?.Invoke(this, EventArgs.Empty);
-            }
-        }
-
+        /// <summary>Git #963 — the URL box this used to read from is gone (Shane never records
+        /// manually, so there's no manual target to type). Play now resolves its target from the
+        /// currently-loaded manifest's own baseUrl, through the same {{DEPLOY_URL}} placeholder
+        /// resolution HttpTestExecutor/RunManifestAsync already apply — never fires with a stale
+        /// or empty URL.</summary>
         private void BtnPlayTest_Click(object sender, RoutedEventArgs e)
         {
-            if (_isRecording)
+            if (_lastLoadedManifest == null)
             {
-                BtnRecordTest_Click(sender, e);
+                MessageBox.Show("Select a test from Available Tests before playing.", "Play Test");
+                return;
             }
-            PlayTestRequested?.Invoke(this, (AutomationTargetUrl.Text, RecordedSteps));
-        }
 
-        private void BtnClearSteps_Click(object sender, RoutedEventArgs e)
-        {
-            RecordedSteps.Clear();
-            AutomationStepsList.Items.Clear();
+            string targetUrl = HttpTestExecutor.ResolvePlaceholders(_lastLoadedManifest.BaseUrl, BuildTrackerConfig.Load());
+            PlayTestRequested?.Invoke(this, (targetUrl, RecordedSteps));
         }
 
         // ── Git #806: manifest loader (Epic #803 Phase 2) ───────────────────
         /// <summary>Fired after a manifest loads successfully — carries the parsed manifest so MainWindow can track it for Menu &gt; Run &gt; "Run Tests (Current Issue)".</summary>
         public event EventHandler<TestManifest>? ManifestLoaded;
+
+        /// <summary>Git #963 — the last manifest selected in ManifestFilesList, so BtnPlayTest_Click can resolve its target URL from the manifest's own baseUrl instead of the removed URL box.</summary>
+        private TestManifest? _lastLoadedManifest;
 
         /// <summary>Git #869 — enumerates test-manifests/*.json for the in-panel list, replacing the old OpenFileDialog. Called on Automation view-load and from the refresh button.</summary>
         private void PopulateManifestsList()
@@ -383,6 +370,8 @@ namespace BuildConsole.Controls
                 MessageBox.Show($"Couldn't parse {fileName} as a test manifest.", "Load Manifest");
                 return;
             }
+
+            _lastLoadedManifest = manifest;
 
             // Badges reflect the selected manifest (now positioned above the list, per #952).
             ApiTestsBadge.Text = $"API: {manifest.ApiTests.Count}";
