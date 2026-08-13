@@ -86,7 +86,7 @@ namespace BuildConsole.Controls
         private const double MinIssueRowTitleWidth = 24;
         private readonly List<TextBlock> _completedTitleBlocks = new();
         private readonly List<TextBlock> _toDoTitleBlocks = new();
-        /// <summary>Git #957 — In-Flight/Sessions now get the same ellipsis treatment as Completed/To-Do, now that they're full-width single-column tiles too.</summary>
+        /// <summary>Git #971 — In-Flight/Sessions now get the same ellipsis treatment as Completed/To-Do, now that they're full-width single-column tiles too.</summary>
         private readonly List<TextBlock> _inFlightTitleBlocks = new();
         private readonly List<TextBlock> _sessionsTitleBlocks = new();
 
@@ -229,7 +229,7 @@ namespace BuildConsole.Controls
                 var panel = new StackPanel { Orientation = Orientation.Horizontal };
                 panel.Children.Add(new TextBlock { Text = icon + " ", FontSize = 12, Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(iconColor)), VerticalAlignment = VerticalAlignment.Center });
                 var textStack = new StackPanel();
-                // Git #957 — same #932/#941 ellipsis lesson: single-line + CharacterEllipsis, MaxWidth applied by ApplyTitleMaxWidths.
+                // Git #971 — same #932/#941 ellipsis lesson: single-line + CharacterEllipsis, MaxWidth applied by ApplyTitleMaxWidths.
                 var titleBlock = new TextBlock { Text = string.IsNullOrWhiteSpace(s.Name) ? s.SessionId[..8] : s.Name, FontSize = 12, Foreground = (Brush)Application.Current.FindResource("TextBrush"), TextWrapping = TextWrapping.NoWrap, TextTrimming = TextTrimming.CharacterEllipsis };
                 _sessionsTitleBlocks.Add(titleBlock);
                 textStack.Children.Add(titleBlock);
@@ -301,7 +301,7 @@ namespace BuildConsole.Controls
 
                 foreach (var issue in group.OrderByDescending(i => i.UpdatedAt))
                 {
-                    // Git #957 — registered now that In-Flight is a full-width tile getting the same ellipsis treatment as Completed/To-Do.
+                    // Git #971 — registered now that In-Flight is a full-width tile getting the same ellipsis treatment as Completed/To-Do.
                     InFlightIssuesList.Items.Add(BuildIssueRow(issue, "⏳", "#F2CA63", _inFlightTitleBlocks));
                 }
             }
@@ -1205,7 +1205,7 @@ namespace BuildConsole.Controls
         // default, each ToggleButton's own IsChecked (set by the click that
         // fired this handler) IS the expanded state, just mirrored onto its
         // content Border's Visibility.
-        // Git #957 — Shane: "In-Flight and Sessions should not be a 2 column
+        // Git #971 — Shane: "In-Flight and Sessions should not be a 2 column
         // layout, they should work the same as Completed & To-Do." Same
         // mutual-exclusion reasoning as #941's Completed/To-Do below: now
         // that these are full-width tiles with no MaxHeight cap, an open

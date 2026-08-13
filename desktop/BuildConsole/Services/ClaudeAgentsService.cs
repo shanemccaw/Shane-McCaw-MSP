@@ -42,7 +42,7 @@ namespace BuildConsole.Services
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "bin", "claude.exe");
 
         /// <summary>
-        /// Git #957 — Shane: "I think this is what Session is for? But it's
+        /// Git #971 — Shane: "I think this is what Session is for? But it's
         /// always empty. So maybe a bug is there?" Found a real one: this
         /// redirected BOTH stdout and stderr but only ever read stdout, and
         /// only AFTER starting the process — a textbook .NET Process

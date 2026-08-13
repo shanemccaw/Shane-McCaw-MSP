@@ -214,7 +214,7 @@
                          equal-weight tab (#866) to a quiet tile; expands in place on click
                          to reveal its existing list, collapsed by default so it stays out
                          of the way until wanted.
-                         Git #957 - Shane: "In-Flight and Sessions should not be a 2 column
+                         Git #971 - Shane: "In-Flight and Sessions should not be a 2 column
                          layout, they should work the same as Completed & To-Do." Replaces
                          the old side-by-side 2-column Grid with the same full-width single
                          -column StackPanel shape as #941's Completed/To-Do, same mutually
@@ -245,7 +245,7 @@
                     </StackPanel>
 
                     <!-- ══ 3b. SESSIONS — one quiet count-badge tile, collapsed by default ══
-                         Git #957 - Shane: "The Build Queue needs to show even when I am
+                         Git #971 - Shane: "The Build Queue needs to show even when I am
                          building using 'Send to Builder' since that opens a different
                          process... it's not part of the Queue.. but I need a way to know
                          it's running. I think this is what Session is for?" Correct - this
