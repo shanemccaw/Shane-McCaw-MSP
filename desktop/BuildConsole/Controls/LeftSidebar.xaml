@@ -545,29 +545,57 @@
                     </ListBox>
                     <TextBlock x:Name="RecordedActionsHeader" DockPanel.Dock="Bottom" Text="Recorded Test Actions" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource Subtext1Brush}" Margin="0,8,0,4"/>
 
-                    <!-- Git #952 — Available Tests list fills all remaining vertical space (MaxHeight cap removed).
-                         This is the DockPanel's last child, so LastChildFill gives it the whole middle region. -->
-                    <Grid Margin="0,4,0,0">
-                        <ListBox x:Name="ManifestFilesList"
-                                 Background="{StaticResource BaseBrush}" BorderBrush="{StaticResource Surface0Brush}"
-                                 SelectionChanged="ManifestFilesList_SelectionChanged">
-                            <ListBox.ItemTemplate>
-                                <DataTemplate>
-                                    <TextBlock Text="{Binding}" FontSize="11" Padding="4,3" TextTrimming="CharacterEllipsis" Foreground="{StaticResource TextBrush}"/>
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                        </ListBox>
-                        <TextBlock x:Name="TxtNoManifests" Text="No test manifests found in test-manifests/." FontSize="10" Foreground="{StaticResource Subtext0Brush}" Margin="4,6,0,0" VerticalAlignment="Top" Visibility="Collapsed"/>
-                    </Grid>
+                    <!-- Git #984 — Available Tests as a collapsed-by-default, color-coded-by-area TreeView
+                         (was a flat ListBox), with a search box above it. Fills all remaining vertical
+                         space as the DockPanel's last (LastChildFill) child. The tree is built in
+                         code-behind (PopulateManifestsList/RenderManifestTree) so leaves can carry #983's
+                         relative-path Tag and each area gets a stable palette color. -->
+                    <DockPanel Margin="0,4,0,0">
+                        <!-- Git #984 — search box, same overlay-placeholder trick as the Build Queue's #950
+                             search (QueueSearchBox). Filters the tree to manifests whose filename or area
+                             matches; matching areas auto-expand, non-matching hide; clearing restores the
+                             collapsed-by-default state. -->
+                        <Grid DockPanel.Dock="Top" Margin="0,0,0,6">
+                            <TextBox x:Name="ManifestSearchBox"
+                                     Height="26" Padding="6,4" FontSize="12"
+                                     VerticalContentAlignment="Center"
+                                     Background="{StaticResource Surface0Brush}"
+                                     TextChanged="ManifestSearchBox_TextChanged"/>
+                            <TextBlock IsHitTestVisible="False"
+                                       Text="Search tests (name or area)"
+                                       FontSize="12" Margin="8,0,0,0"
+                                       VerticalAlignment="Center" HorizontalAlignment="Left"
+                                       Foreground="{StaticResource Subtext1Brush}">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding Text, ElementName=ManifestSearchBox}" Value="">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </Grid>
+
+                        <Grid>
+                            <TreeView x:Name="ManifestFilesTree"
+                                      BorderThickness="0" Padding="0,2"
+                                      Background="{StaticResource BaseBrush}"
+                                      SelectedItemChanged="ManifestFilesTree_SelectedItemChanged"/>
+                            <TextBlock x:Name="TxtNoManifests" Text="No test manifests found in test-manifests/." FontSize="10" Foreground="{StaticResource Subtext0Brush}" Margin="4,6,0,0" VerticalAlignment="Top" Visibility="Collapsed"/>
+                        </Grid>
+                    </DockPanel>
                 </DockPanel>
 
                 <!-- Git #952 — steps flyout (WPF Popup, same pattern as #864's Web Tools popout).
-                     Opens when a manifest is clicked in ManifestFilesList and lists that manifest's
+                     Opens when a manifest is clicked in ManifestFilesTree (#984) and lists that manifest's
                      apiTests / graphTests / postGraphApiTests / zohoTests / powerShellVerify / uiSteps.
                      Placement=Right flies it out beside the sidebar; StaysOpen=False closes on outside-click.
                      Separate from "Recorded Test Actions", which is untouched by manifest selection. -->
                 <Popup x:Name="ManifestStepsPopup"
-                       PlacementTarget="{Binding ElementName=ManifestFilesList}"
+                       PlacementTarget="{Binding ElementName=ManifestFilesTree}"
                        Placement="Right"
                        StaysOpen="False"
                        AllowsTransparency="True"

@@ -345,37 +345,206 @@ namespace BuildConsole.Controls
         /// <summary>Fired after a manifest loads successfully — carries the parsed manifest so MainWindow can track it for Menu &gt; Run &gt; "Run Tests (Current Issue)".</summary>
         public event EventHandler<TestManifest>? ManifestLoaded;
 
-        /// <summary>Git #963 — the last manifest selected in ManifestFilesList, so BtnPlayTest_Click can resolve its target URL from the manifest's own baseUrl instead of the removed URL box.</summary>
+        /// <summary>Git #963 — the last manifest selected in ManifestFilesTree, so BtnPlayTest_Click can resolve its target URL from the manifest's own baseUrl instead of the removed URL box.</summary>
         private TestManifest? _lastLoadedManifest;
 
+        /// <summary>Git #984 — one manifest as tree data: its #983 relative path (the load key), the
+        /// area it groups under (first path segment), its bare filename (shown at the leaf), and its real
+        /// file creation time (leaves sort by this, most recent first). Held in <see cref="_manifestEntries"/>
+        /// so the search box can re-render the tree without re-hitting disk.</summary>
+        private sealed class ManifestEntry
+        {
+            public string RelativePath = "";
+            public string Area = "";
+            public string FileName = "";
+            public DateTime CreatedUtc;
+        }
+
+        private List<ManifestEntry> _manifestEntries = new();
+
+        /// <summary>Git #984 — distinct, existing-palette accent colors rotated per area so Shane can tell an
+        /// auth test from a copilot-readiness test at a glance. Assignment is a stable hash of the area name
+        /// (see <see cref="AreaBrushKey"/>) so a given area keeps its color regardless of which other areas
+        /// happen to be present.</summary>
+        private static readonly string[] AreaBrushKeys =
+            { "BlueBrush", "MauveBrush", "GreenBrush", "PeachBrush", "YellowBrush", "RedBrush" };
+
+        private static string AreaBrushKey(string area)
+        {
+            int h = 0;
+            foreach (char c in area) h = (h * 31 + c) & 0x7fffffff;
+            return AreaBrushKeys[h % AreaBrushKeys.Length];
+        }
+
         /// <summary>Git #869 — enumerates test-manifests/**/*.json for the in-panel list, replacing the old OpenFileDialog. Called on Automation view-load and from the refresh button.
-        /// Recursive as of the #960 area/feature-slug folder migration — entries are paths relative to manifestsDir (not bare filenames) so Path.Combine in ManifestFilesList_SelectionChanged still resolves,
-        /// and _regression-suite.json (the index, not a runnable test) is excluded.</summary>
+        /// Recursive as of the #960 area/feature-slug folder migration — entries are paths relative to manifestsDir (not bare filenames) so Path.Combine in ManifestFilesTree_SelectedItemChanged still resolves,
+        /// and _regression-suite.json (the index, not a runnable test) is excluded.
+        /// Git #984 — reads each manifest into a <see cref="ManifestEntry"/> (area = first path segment, plus real creation time) and hands off to <see cref="RenderManifestTree"/> for the grouped color-coded tree.</summary>
         private void PopulateManifestsList()
         {
             string manifestsDir = Path.Combine(RootWorkspacePath, "test-manifests");
-            var fileNames = Directory.Exists(manifestsDir)
-                ? Directory.GetFiles(manifestsDir, "*.json", SearchOption.AllDirectories)
-                    .Select(f => Path.GetRelativePath(manifestsDir, f))
-                    .Where(n => !n.Equals("_regression-suite.json", StringComparison.OrdinalIgnoreCase))
-                    .OrderBy(n => n)
-                    .ToList()
-                : new List<string?>();
+            var entries = new List<ManifestEntry>();
 
-            ManifestFilesList.ItemsSource = fileNames;
-            TxtNoManifests.Visibility = fileNames.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+            if (Directory.Exists(manifestsDir))
+            {
+                foreach (var full in Directory.GetFiles(manifestsDir, "*.json", SearchOption.AllDirectories))
+                {
+                    string rel = Path.GetRelativePath(manifestsDir, full);
+                    if (rel.Equals("_regression-suite.json", StringComparison.OrdinalIgnoreCase)) continue;
 
-            ActivityLog.Log("testing.manifest-list", $"listed {fileNames.Count} manifest(s) in {manifestsDir}");
+                    // Area = first path segment; a manifest sitting flat at the top level buckets under "(root)".
+                    var parts = rel.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                    string area = parts.Length > 1 ? parts[0] : "(root)";
+
+                    DateTime created;
+                    try { created = File.GetCreationTimeUtc(full); }
+                    catch { created = DateTime.MinValue; }
+
+                    entries.Add(new ManifestEntry
+                    {
+                        RelativePath = rel,
+                        Area = area,
+                        FileName = Path.GetFileName(rel),
+                        CreatedUtc = created,
+                    });
+                }
+            }
+
+            _manifestEntries = entries;
+            ActivityLog.Log("testing.manifest-list", $"listed {entries.Count} manifest(s) in {manifestsDir}");
+            RenderManifestTree();
         }
+
+        /// <summary>Git #984 — (re)builds the area-grouped TreeView from <see cref="_manifestEntries"/>, applying
+        /// the current search text. Areas are alphabetical (a stable top-level index); leaves within each area
+        /// sort by real file creation date, most recent first. Collapsed by default; while searching, areas with
+        /// a match auto-expand and non-matching areas/leaves drop out. An area whose name itself matches shows all
+        /// of its children.</summary>
+        private void RenderManifestTree()
+        {
+            if (ManifestFilesTree == null) return;
+
+            string search = (ManifestSearchBox?.Text ?? "").Trim();
+            bool searching = search.Length > 0;
+
+            ManifestFilesTree.Items.Clear();
+
+            var byArea = _manifestEntries
+                .GroupBy(e => e.Area)
+                .OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase);
+
+            int shown = 0;
+            foreach (var group in byArea)
+            {
+                bool areaMatches = searching && group.Key.Contains(search, StringComparison.OrdinalIgnoreCase);
+
+                var leaves = group
+                    .Where(e => !searching || areaMatches
+                                || e.FileName.Contains(search, StringComparison.OrdinalIgnoreCase))
+                    .OrderByDescending(e => e.CreatedUtc)
+                    .ThenBy(e => e.FileName, StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                if (leaves.Count == 0) continue;
+
+                string brushKey = AreaBrushKey(group.Key);
+                var areaNode = new TreeViewItem
+                {
+                    Header = MakeAreaHeader(group.Key, leaves.Count, brushKey),
+                    IsExpanded = searching,   // collapsed by default; matches auto-expand while searching
+                };
+
+                foreach (var leaf in leaves)
+                {
+                    areaNode.Items.Add(new TreeViewItem
+                    {
+                        Header = MakeLeafHeader(leaf.FileName, brushKey),
+                        Tag = leaf.RelativePath,   // #983 relative path — the load key
+                    });
+                    shown++;
+                }
+
+                ManifestFilesTree.Items.Add(areaNode);
+            }
+
+            TxtNoManifests.Visibility = shown == 0 ? Visibility.Visible : Visibility.Collapsed;
+            TxtNoManifests.Text = searching && shown == 0
+                ? $"No test matches \"{search}\"."
+                : "No test manifests found in test-manifests/.";
+        }
+
+        /// <summary>Git #984 — colored area row: a small color chip + the area name in the area's accent color +
+        /// a real count badge (e.g. "copilot-readiness (6)").</summary>
+        private FrameworkElement MakeAreaHeader(string area, int count, string brushKey)
+        {
+            var brush = (Brush)FindResource(brushKey);
+            var sp = new StackPanel { Orientation = Orientation.Horizontal };
+            sp.Children.Add(new Border
+            {
+                Width = 8,
+                Height = 8,
+                CornerRadius = new CornerRadius(2),
+                Background = brush,
+                Margin = new Thickness(0, 0, 6, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+            });
+            sp.Children.Add(new TextBlock
+            {
+                Text = area,
+                FontSize = 12,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = brush,
+                VerticalAlignment = VerticalAlignment.Center,
+            });
+            sp.Children.Add(new TextBlock
+            {
+                Text = $" ({count})",
+                FontSize = 11,
+                Foreground = (Brush)FindResource("Subtext0Brush"),
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(4, 0, 0, 0),
+            });
+            return sp;
+        }
+
+        /// <summary>Git #984 — a leaf (manifest filename) with a thin area-colored bar down its left edge, so a
+        /// whole area still reads as one group without tinting the filename text itself (keeps it readable, and
+        /// avoids a red area reading as an "error").</summary>
+        private FrameworkElement MakeLeafHeader(string fileName, string brushKey)
+        {
+            var dp = new DockPanel();
+            dp.Children.Add(new Border
+            {
+                Width = 3,
+                CornerRadius = new CornerRadius(1),
+                Background = (Brush)FindResource(brushKey),
+                Margin = new Thickness(0, 1, 6, 1),
+            }); // DockPanel.Dock defaults to Left → a full-height vertical bar
+            dp.Children.Add(new TextBlock
+            {
+                Text = fileName,
+                FontSize = 11,
+                Foreground = (Brush)FindResource("TextBrush"),
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                VerticalAlignment = VerticalAlignment.Center,
+            });
+            return dp;
+        }
+
+        private void ManifestSearchBox_TextChanged(object sender, TextChangedEventArgs e) => RenderManifestTree();
 
         private void BtnRefreshManifests_Click(object sender, RoutedEventArgs e)
         {
             PopulateManifestsList();
         }
 
-        private void ManifestFilesList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        /// <summary>Git #984 — selecting a leaf loads that manifest and opens #952's steps flyout, exactly as the
+        /// old ListBox SelectionChanged did — only the manifest path now arrives via the leaf's Tag (#983's
+        /// relative path) instead of the ListBox's selected string. Area header nodes carry no Tag, so clicking
+        /// one just expands/collapses and is ignored here.</summary>
+        private void ManifestFilesTree_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
         {
-            if (ManifestFilesList.SelectedItem is not string fileName) return;
+            if (e.NewValue is not TreeViewItem tvi || tvi.Tag is not string fileName) return;
 
             string manifestsDir = Path.Combine(RootWorkspacePath, "test-manifests");
             string fullPath = Path.Combine(manifestsDir, fileName);
