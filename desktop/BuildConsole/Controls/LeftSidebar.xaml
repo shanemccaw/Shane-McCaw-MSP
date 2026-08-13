@@ -394,6 +394,7 @@
                     <TreeView x:Name="IssuesTree"
                               BorderThickness="0"
                               Background="Transparent"
+                              SelectedItemChanged="IssuesTree_SelectedItemChanged"
                               SizeChanged="IssuesTree_SizeChanged">
                         <TreeView.Resources>
                             <Style TargetType="{x:Type TreeViewItem}" BasedOn="{StaticResource {x:Type TreeViewItem}}">
