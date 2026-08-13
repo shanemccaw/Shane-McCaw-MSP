@@ -557,22 +557,134 @@ namespace BuildConsole.Controls
                 return;
             }
 
-            RecordedSteps.Clear();
-            AutomationStepsList.Items.Clear();
-            for (int i = 0; i < manifest.UiSteps.Count; i++)
-            {
-                var step = manifest.UiSteps[i];
-                AddRecordedStep(step.Action, step.Selector ?? step.Target ?? string.Empty, "div", step.Value ?? step.State ?? string.Empty);
-                RecordedSteps[^1].CaptureResponse = step.CaptureResponseJson;
-            }
-
+            // Badges reflect the selected manifest (now positioned above the list, per #952).
             ApiTestsBadge.Text = $"API: {manifest.ApiTests.Count}";
             GraphTestsBadge.Text = $"Graph: {manifest.GraphTests.Count}";
             ManifestBadgesRow.Visibility = Visibility.Visible;
 
-            ActivityLog.Log("testing.manifest-list", $"loaded \"{fileName}\" ({manifest.ApiTests.Count} api, {manifest.GraphTests.Count} graph, {manifest.UiSteps.Count} ui steps)");
+            // Git #952 — clicking a test now opens a read-only steps flyout instead of loading the
+            // manifest's uiSteps into "Recorded Test Actions"; that list stays dedicated to live Record.
+            PopulateStepsFlyout(manifest, fileName);
+            ManifestStepsPopup.IsOpen = true;
 
+            ActivityLog.Log("testing.manifest-list", $"opened steps flyout for \"{fileName}\" ({manifest.ApiTests.Count} api, {manifest.GraphTests.Count} graph, {manifest.UiSteps.Count} ui steps)");
+
+            // MainWindow still tracks this as the loaded manifest for Menu > Run > "Run Tests (Current Issue)".
             ManifestLoaded?.Invoke(this, manifest);
+        }
+
+        // ── Git #952: manifest steps flyout ─────────────────────────────────
+        private void BtnCloseStepsFlyout_Click(object sender, RoutedEventArgs e) => ManifestStepsPopup.IsOpen = false;
+
+        /// <summary>Git #952 — renders the selected manifest's steps into the flyout Popup: one section per
+        /// apiTests / graphTests / postGraphApiTests / zohoTests / powerShellVerify / uiSteps group, each entry on
+        /// a readable line. Purely a read-only view — never touches RecordedSteps/AutomationStepsList.</summary>
+        private void PopulateStepsFlyout(TestManifest manifest, string fileName)
+        {
+            ManifestStepsFlyoutList.Children.Clear();
+            ManifestStepsFlyoutTitle.Text = fileName;
+
+            int total = manifest.ApiTests.Count + manifest.GraphTests.Count + manifest.PostGraphApiTests.Count
+                      + manifest.ZohoTests.Count + manifest.PowerShellVerify.Count + manifest.UiSteps.Count;
+            ManifestStepsFlyoutSubtitle.Text = string.IsNullOrWhiteSpace(manifest.Feature)
+                ? $"{total} step(s)"
+                : $"#{manifest.Issue} · {manifest.Feature} · {total} step(s)";
+
+            AddHttpSection("API Tests", "BlueBrush", manifest.ApiTests);
+            AddHttpSection("Graph Tests", "MauveBrush", manifest.GraphTests);
+            AddHttpSection("Post-Graph API Tests", "BlueBrush", manifest.PostGraphApiTests);
+            AddHttpSection("Zoho Tests", "GreenBrush", manifest.ZohoTests);
+
+            if (manifest.PowerShellVerify.Count > 0)
+            {
+                ManifestStepsFlyoutList.Children.Add(MakeSectionHeader($"PowerShell Verify ({manifest.PowerShellVerify.Count})", "PeachBrush"));
+                for (int i = 0; i < manifest.PowerShellVerify.Count; i++)
+                    ManifestStepsFlyoutList.Children.Add(MakeStepRow(DescribePowerShellEntry(manifest.PowerShellVerify[i], i)));
+            }
+
+            if (manifest.UiSteps.Count > 0)
+            {
+                ManifestStepsFlyoutList.Children.Add(MakeSectionHeader($"UI Steps ({manifest.UiSteps.Count})", "PeachBrush"));
+                for (int i = 0; i < manifest.UiSteps.Count; i++)
+                    ManifestStepsFlyoutList.Children.Add(MakeStepRow(DescribeUiStep(manifest.UiSteps[i], i)));
+            }
+
+            if (total == 0)
+                ManifestStepsFlyoutList.Children.Add(MakeStepRow("This manifest declares no steps."));
+        }
+
+        private void AddHttpSection(string title, string brushKey, List<System.Text.Json.JsonElement> entries)
+        {
+            if (entries.Count == 0) return;
+            ManifestStepsFlyoutList.Children.Add(MakeSectionHeader($"{title} ({entries.Count})", brushKey));
+            for (int i = 0; i < entries.Count; i++)
+                ManifestStepsFlyoutList.Children.Add(MakeStepRow(DescribeHttpEntry(entries[i], i)));
+        }
+
+        private TextBlock MakeSectionHeader(string text, string brushKey) => new TextBlock
+        {
+            Text = text,
+            FontSize = 11,
+            FontWeight = FontWeights.Bold,
+            Foreground = (Brush)FindResource(brushKey),
+            Margin = new Thickness(0, 8, 0, 4),
+        };
+
+        private Border MakeStepRow(string text) => new Border
+        {
+            Background = (Brush)FindResource("Surface0Brush"),
+            CornerRadius = new CornerRadius(4),
+            Padding = new Thickness(6, 4, 6, 4),
+            Margin = new Thickness(0, 0, 0, 3),
+            Child = new TextBlock
+            {
+                Text = text,
+                FontSize = 11,
+                Foreground = (Brush)FindResource("TextBrush"),
+                TextWrapping = TextWrapping.Wrap,
+            },
+        };
+
+        private static string DescribeHttpEntry(System.Text.Json.JsonElement el, int i)
+        {
+            string method = (GetJsonStr(el, "method") ?? "GET").ToUpperInvariant();
+            string path = GetJsonStr(el, "path") ?? GetJsonStr(el, "url") ?? "(no path)";
+            string s = $"{i + 1}. {method} {path}";
+            if (el.ValueKind == System.Text.Json.JsonValueKind.Object
+                && el.TryGetProperty("expect", out var expect)
+                && expect.ValueKind == System.Text.Json.JsonValueKind.Object
+                && expect.TryGetProperty("status", out var status))
+            {
+                s += $"  → {status}";
+            }
+            return s;
+        }
+
+        private static string DescribePowerShellEntry(System.Text.Json.JsonElement el, int i)
+        {
+            string cmdlet = GetJsonStr(el, "cmdlet") ?? "(cmdlet)";
+            string s = $"{i + 1}. {cmdlet}";
+            string? after = GetJsonStr(el, "afterStep");
+            if (!string.IsNullOrEmpty(after)) s += $"  (after: {after})";
+            return s;
+        }
+
+        private static string DescribeUiStep(ManifestUiStep step, int i)
+        {
+            string target = step.Selector ?? step.Target ?? "";
+            string s = $"{i + 1}. {step.Action.ToUpperInvariant()}";
+            if (!string.IsNullOrEmpty(target)) s += $"  {target}";
+            if (!string.IsNullOrEmpty(step.Value)) s += $"  = {step.Value}";
+            if (!string.IsNullOrEmpty(step.State)) s += $"  [{step.State}]";
+            if (!string.IsNullOrEmpty(step.CaptureResponseJson)) s += "  ⟳capture";
+            return s;
+        }
+
+        private static string? GetJsonStr(System.Text.Json.JsonElement el, string prop)
+        {
+            if (el.ValueKind != System.Text.Json.JsonValueKind.Object || !el.TryGetProperty(prop, out var v))
+                return null;
+            return v.ValueKind == System.Text.Json.JsonValueKind.String ? v.GetString() : v.ToString();
         }
 
         /// <summary>Returns the currently displayed view name.</summary>

@@ -523,7 +523,8 @@
                  ══════════════════════════════════ -->
             <Grid x:Name="AutomationView" Visibility="Collapsed">
                 <DockPanel Margin="10,8">
-                    <!-- Control buttons & URL entry -->
+                    <!-- Git #952 — fixed top region: URL box, Record/Play/Clear, recording badge,
+                         Available Tests header, and the API/Graph badges (now moved ABOVE the list). -->
                     <StackPanel DockPanel.Dock="Top" Margin="0,0,0,8">
                         <TextBlock Text="Target Website URL" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
                         <TextBox x:Name="AutomationTargetUrl" Height="26" FontSize="12" Padding="6,3"
@@ -540,8 +541,12 @@
 
                         <Button x:Name="BtnClearSteps" Margin="0,6,0,0" Content="🗑 Clear Actions" Click="BtnClearSteps_Click"/>
 
-                        <!-- Git #869 (Epic #803) — in-panel list instead of an OS OpenFileDialog; enumerates test-manifests/*.json directly, populated on view-load/refresh, selecting an item loads it immediately -->
-                        <Grid Margin="0,6,0,0">
+                        <Border x:Name="RecordingBadge" Background="#31F38BA8" CornerRadius="4" Padding="6,4" Margin="0,8,0,0" Visibility="Collapsed">
+                            <TextBlock Text="● RECORDING IN PROGRESS..." FontSize="10" FontWeight="Bold" Foreground="{StaticResource RedBrush}" HorizontalAlignment="Center"/>
+                        </Border>
+
+                        <!-- Git #869 (Epic #803) — in-panel list instead of an OS OpenFileDialog; enumerates test-manifests/*.json directly, populated on view-load/refresh, selecting an item opens the steps flyout -->
+                        <Grid Margin="0,12,0,0">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
@@ -549,18 +554,8 @@
                             <TextBlock Grid.Column="0" Text="Available Tests" FontSize="11" Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center"/>
                             <Button x:Name="BtnRefreshManifests" Grid.Column="1" Content="⟳" Padding="6,2" Click="BtnRefreshManifests_Click" ToolTip="Refresh test list"/>
                         </Grid>
-                        <ListBox x:Name="ManifestFilesList" Margin="0,4,0,0" MaxHeight="140"
-                                 Background="{StaticResource BaseBrush}" BorderBrush="{StaticResource Surface0Brush}"
-                                 SelectionChanged="ManifestFilesList_SelectionChanged">
-                            <ListBox.ItemTemplate>
-                                <DataTemplate>
-                                    <TextBlock Text="{Binding}" FontSize="11" Padding="4,3" TextTrimming="CharacterEllipsis" Foreground="{StaticResource TextBrush}"/>
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                        </ListBox>
-                        <TextBlock x:Name="TxtNoManifests" Text="No test manifests found in test-manifests/." FontSize="10" Foreground="{StaticResource Subtext0Brush}" Margin="0,4,0,0" Visibility="Collapsed"/>
 
-                        <!-- apiTests/graphTests counts from the loaded manifest — executed by #807/#808, not this phase -->
+                        <!-- Git #952 — apiTests/graphTests counts from the selected manifest, now directly ABOVE the test list -->
                         <Grid x:Name="ManifestBadgesRow" Margin="0,6,0,0" Visibility="Collapsed">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
@@ -573,16 +568,12 @@
                                 <TextBlock x:Name="GraphTestsBadge" Text="Graph: 0" FontSize="10" FontWeight="Bold" Foreground="{StaticResource MauveBrush}" HorizontalAlignment="Center"/>
                             </Border>
                         </Grid>
-
-                        <Border x:Name="RecordingBadge" Background="#31F38BA8" CornerRadius="4" Padding="6,4" Margin="0,8,0,0" Visibility="Collapsed">
-                            <TextBlock Text="● RECORDING IN PROGRESS..." FontSize="10" FontWeight="Bold" Foreground="{StaticResource RedBrush}" HorizontalAlignment="Center"/>
-                        </Border>
                     </StackPanel>
 
-                    <!-- Actions List -->
-                    <TextBlock DockPanel.Dock="Top" Text="Recorded Test Actions" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource Subtext1Brush}" Margin="0,4,0,4"/>
-
-                    <ListBox x:Name="AutomationStepsList" Background="{StaticResource BaseBrush}" BorderBrush="{StaticResource Surface0Brush}">
+                    <!-- Git #952 — "Recorded Test Actions" stays dedicated to the live Record workflow.
+                         Docked to the bottom (bounded height) so the Available Tests list dominates the panel.
+                         Declared list-first so the header docks ABOVE the list (DockPanel edge ordering). -->
+                    <ListBox x:Name="AutomationStepsList" DockPanel.Dock="Bottom" MaxHeight="180" Background="{StaticResource BaseBrush}" BorderBrush="{StaticResource Surface0Brush}">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
                                 <Border Background="{StaticResource Surface0Brush}" CornerRadius="4" Padding="6,4" Margin="0,2">
@@ -598,7 +589,55 @@
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
+                    <TextBlock x:Name="RecordedActionsHeader" DockPanel.Dock="Bottom" Text="Recorded Test Actions" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource Subtext1Brush}" Margin="0,8,0,4"/>
+
+                    <!-- Git #952 — Available Tests list fills all remaining vertical space (MaxHeight cap removed).
+                         This is the DockPanel's last child, so LastChildFill gives it the whole middle region. -->
+                    <Grid Margin="0,4,0,0">
+                        <ListBox x:Name="ManifestFilesList"
+                                 Background="{StaticResource BaseBrush}" BorderBrush="{StaticResource Surface0Brush}"
+                                 SelectionChanged="ManifestFilesList_SelectionChanged">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding}" FontSize="11" Padding="4,3" TextTrimming="CharacterEllipsis" Foreground="{StaticResource TextBrush}"/>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                        <TextBlock x:Name="TxtNoManifests" Text="No test manifests found in test-manifests/." FontSize="10" Foreground="{StaticResource Subtext0Brush}" Margin="4,6,0,0" VerticalAlignment="Top" Visibility="Collapsed"/>
+                    </Grid>
                 </DockPanel>
+
+                <!-- Git #952 — steps flyout (WPF Popup, same pattern as #864's Web Tools popout).
+                     Opens when a manifest is clicked in ManifestFilesList and lists that manifest's
+                     apiTests / graphTests / postGraphApiTests / zohoTests / powerShellVerify / uiSteps.
+                     Placement=Right flies it out beside the sidebar; StaysOpen=False closes on outside-click.
+                     Separate from "Recorded Test Actions", which is untouched by manifest selection. -->
+                <Popup x:Name="ManifestStepsPopup"
+                       PlacementTarget="{Binding ElementName=ManifestFilesList}"
+                       Placement="Right"
+                       StaysOpen="False"
+                       AllowsTransparency="True"
+                       PopupAnimation="Fade">
+                    <Border Background="{StaticResource MantleBrush}"
+                            BorderBrush="{StaticResource Surface0Brush}"
+                            BorderThickness="1"
+                            CornerRadius="6"
+                            Padding="10"
+                            MinWidth="340" MaxWidth="460" MaxHeight="620">
+                        <DockPanel>
+                            <Grid DockPanel.Dock="Top" Margin="0,0,0,8">
+                                <StackPanel>
+                                    <TextBlock x:Name="ManifestStepsFlyoutTitle" Text="Test Steps" FontWeight="Bold" FontSize="13" Foreground="{StaticResource TextBrush}" TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock x:Name="ManifestStepsFlyoutSubtitle" Text="" FontSize="10" Foreground="{StaticResource Subtext0Brush}" TextWrapping="Wrap"/>
+                                </StackPanel>
+                                <Button x:Name="BtnCloseStepsFlyout" Content="✕" HorizontalAlignment="Right" VerticalAlignment="Top" Padding="6,2" Click="BtnCloseStepsFlyout_Click" ToolTip="Close"/>
+                            </Grid>
+                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                <StackPanel x:Name="ManifestStepsFlyoutList"/>
+                            </ScrollViewer>
+                        </DockPanel>
+                    </Border>
+                </Popup>
             </Grid>
 
         </DockPanel>
