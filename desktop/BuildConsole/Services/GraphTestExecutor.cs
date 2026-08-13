@@ -380,6 +380,21 @@ namespace BuildConsole.Services
                     $"tenant == {testTenantId}", $"tenant == {resolvedTenant}", $"authProfile={authProfile}"), "", "");
             }
 
+            // Git #965 — hard testbed gate. The GRAPH_TEST_TENANT_ID equality check above is only as
+            // trustworthy as whoever set that env var; this verifies the resolved tenant is a REAL
+            // isTestbed=true customer per the server's authoritative list before any Graph call is made.
+            // Fail-closed and loud (see TestbedGate) — a non-testbed tenant is refused outright, never
+            // read from. This matches the enforcement strength of the server-side write-action gate.
+            var gate = await TestbedGate.VerifyTenantIsTestbedAsync(resolvedTenant, $"graphTests {label}");
+            if (!gate.Allowed)
+            {
+                ActivityLog.Log(channel, $"REFUSED [{index + 1}/{total}] {label}: {gate.Reason} — no Graph call made.");
+                return (false, Finish(channel, "graph", label, sw, false,
+                    $"testbed gate: {gate.Reason} This dev/regression tool never targets a non-testbed tenant.",
+                    "tenant flagged isTestbed=true on the server", "not confirmed testbed",
+                    $"authProfile={authProfile}, tenant={resolvedTenant}"), "", "");
+            }
+
             var (clientId, clientSecret, fixedTenantId) = ResolveAuthProfile(authProfile);
             if (clientId == null || clientSecret == null)
                 return (false, Finish(channel, "graph", label, sw, false,

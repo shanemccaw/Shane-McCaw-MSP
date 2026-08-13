@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -68,6 +69,11 @@ namespace BuildConsole.Services
         private const string AuthRequiredMarker = "__PSVERIFY_AUTH_REQUIRED__";
         private const string SetupErrorMarker = "__PSVERIFY_SETUP_ERROR__";
         private const string CmdletErrorMarker = "__PSVERIFY_CMDLET_ERROR__";
+        // Git #965 — the pwsh script emits the connected Get-MgContext TenantId, and (if that tenant
+        // isn't in the injected isTestbed allowlist) a refusal marker BEFORE the verification cmdlet
+        // ever runs. So the testbed gate is enforced in-process against the identity actually signed in.
+        private const string TenantMarker = "__PSVERIFY_TENANT__";
+        private const string TestbedRefusedMarker = "__PSVERIFY_TESTBED_REFUSED__";
 
         private const int DefaultTimeoutMs = 60000;
 
@@ -141,10 +147,40 @@ namespace BuildConsole.Services
             ActivityLog.Log(Channel,
                 $"[{index + 1}/{total}] verifying app value \"{Truncate(appValue, 80)}\" (from {{{{{afterStep}}}}}) against ground truth of: {resolvedCmdlet}");
 
+            // Git #965 — hard testbed gate. Fetch the server's authoritative isTestbed=true tenant list
+            // FIRST (fail-closed: if we can't fetch it, we refuse rather than run) and inject it into the
+            // pwsh script as an allowlist. The script checks the connected Get-MgContext TenantId against
+            // that allowlist AFTER Connect-MgGraph succeeds but BEFORE the verification cmdlet runs, so a
+            // cmdlet can never read a non-testbed tenant. This is the deeper check #964 alone can't make:
+            // not just "TenantId matches GRAPH_TEST_TENANT_ID", but "that tenant is genuinely testbed".
+            List<string> allowedTestbedTenants;
+            try
+            {
+                allowedTestbedTenants = await TestbedGate.GetTestbedTenantIdsAsync();
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log(TestbedGate.Channel,
+                    $"REFUSED [powerShellVerify {label}] — could not fetch the server's testbed list ({ex.Message}); fail-closed, no cmdlet run.");
+                return Finish(label, sw, false,
+                    $"testbed gate: could not verify the connected tenant against the server's testbed list ({ex.Message}) — refusing (fail-closed).",
+                    "server testbed-customers list reachable", "unreachable",
+                    $"cmdlet: {resolvedCmdlet}");
+            }
+            if (allowedTestbedTenants.Count == 0)
+            {
+                ActivityLog.Log(TestbedGate.Channel,
+                    $"REFUSED [powerShellVerify {label}] — the server reports NO isTestbed=true customers; fail-closed, no cmdlet run.");
+                return Finish(label, sw, false,
+                    "testbed gate: the server's isTestbed=true customer list is empty — refusing to run any verification cmdlet (fail-closed).",
+                    "at least one isTestbed=true customer", "none",
+                    $"cmdlet: {resolvedCmdlet}");
+            }
+
             PsRunOutcome outcome;
             try
             {
-                outcome = await RunPwshAsync(resolvedCmdlet, timeoutMs);
+                outcome = await RunPwshAsync(resolvedCmdlet, timeoutMs, allowedTestbedTenants);
             }
             catch (Exception ex)
             {
@@ -155,6 +191,14 @@ namespace BuildConsole.Services
 
             switch (outcome.Kind)
             {
+                case PsOutcomeKind.TestbedRefused:
+                    ActivityLog.Log(TestbedGate.Channel,
+                        $"REFUSED [powerShellVerify {label}] — connected tenant '{outcome.ConnectedTenant}' is NOT in the server's isTestbed=true list; cmdlet did NOT run.");
+                    return Finish(label, sw, false,
+                        $"testbed gate: the signed-in Graph tenant '{outcome.ConnectedTenant}' is NOT a confirmed isTestbed=true customer — refusing to run the verification cmdlet against a non-testbed tenant.",
+                        "connected tenant flagged isTestbed=true on the server", $"connected tenant {outcome.ConnectedTenant} not testbed",
+                        $"cmdlet: {resolvedCmdlet}; connectedTenant: {outcome.ConnectedTenant}");
+
                 case PsOutcomeKind.PwshNotFound:
                     return Finish(label, sw, false,
                         "pwsh (PowerShell 7) was not found. Install PowerShell 7 or set POWERSHELL_VERIFY_PWSH_PATH to its full path.",
@@ -188,6 +232,11 @@ namespace BuildConsole.Services
                         $"cmdlet: {resolvedCmdlet}; output: {outcome.RawPreview}");
             }
 
+            // Git #965 — reaching here means Connect-MgGraph succeeded AND the connected tenant passed
+            // the in-script isTestbed allowlist. Log the gate pass loudly on the same channel as refusals.
+            ActivityLog.Log(TestbedGate.Channel,
+                $"PASS [powerShellVerify {label}] — connected tenant '{outcome.ConnectedTenant}' is a confirmed isTestbed=true customer; proceeding.");
+
             // Ok — reduce the parsed JSON ground truth to a comparable value and diff it.
             string groundTruth = ReducePsResult(outcome.ResultJson, out string reduceNote);
             bool passed = Matches(groundTruth, appValue, matchType);
@@ -210,7 +259,7 @@ namespace BuildConsole.Services
         }
 
         // ── pwsh process orchestration ───────────────────────────────────────
-        private enum PsOutcomeKind { Ok, PwshNotFound, SetupError, AuthRequired, Timeout, CmdletError, NoResult }
+        private enum PsOutcomeKind { Ok, PwshNotFound, SetupError, AuthRequired, Timeout, CmdletError, NoResult, TestbedRefused }
 
         private sealed class PsRunOutcome
         {
@@ -218,6 +267,9 @@ namespace BuildConsole.Services
             public string ResultJson = "";
             public string Detail = "";
             public string RawPreview = "";
+            // Git #965 — the tenant Connect-MgGraph actually signed into (Get-MgContext.TenantId), for
+            // testbed-gate logging; empty when the run never reached a connected context.
+            public string ConnectedTenant = "";
         }
 
         /// <summary>
@@ -226,9 +278,9 @@ namespace BuildConsole.Services
         /// prompt is detected on the child's output, and enforces a hard <paramref name="timeoutMs"/>
         /// ceiling as a backstop.
         /// </summary>
-        private static async Task<PsRunOutcome> RunPwshAsync(string resolvedCmdlet, int timeoutMs)
+        private static async Task<PsRunOutcome> RunPwshAsync(string resolvedCmdlet, int timeoutMs, IReadOnlyList<string> allowedTestbedTenants)
         {
-            string script = BuildScript(resolvedCmdlet);
+            string script = BuildScript(resolvedCmdlet, allowedTestbedTenants);
             string encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(script));
 
             var psi = new ProcessStartInfo
@@ -291,6 +343,7 @@ namespace BuildConsole.Services
                     Kind = sawPrompt ? PsOutcomeKind.AuthRequired : PsOutcomeKind.Timeout,
                     Detail = sawPrompt ? "device-code sign-in prompt detected — aborted before it could block." : "",
                     RawPreview = Truncate(raw, 400),
+                    ConnectedTenant = Contains(raw, TenantMarker) ? AfterMarker(raw, TenantMarker) : "",
                 };
             }
 
@@ -304,11 +357,17 @@ namespace BuildConsole.Services
         private static PsRunOutcome Classify(string outText)
         {
             string preview = Truncate(outText, 400);
+            // Git #965 — the connected tenant is emitted right after Connect-MgGraph, before any gate
+            // decision, so surface it on every outcome for logging/diagnostics.
+            string connectedTenant = Contains(outText, TenantMarker) ? AfterMarker(outText, TenantMarker) : "";
 
             if (Contains(outText, AuthRequiredMarker))
-                return new PsRunOutcome { Kind = PsOutcomeKind.AuthRequired, Detail = AfterMarker(outText, AuthRequiredMarker), RawPreview = preview };
+                return new PsRunOutcome { Kind = PsOutcomeKind.AuthRequired, Detail = AfterMarker(outText, AuthRequiredMarker), RawPreview = preview, ConnectedTenant = connectedTenant };
             if (Contains(outText, SetupErrorMarker))
-                return new PsRunOutcome { Kind = PsOutcomeKind.SetupError, Detail = AfterMarker(outText, SetupErrorMarker), RawPreview = preview };
+                return new PsRunOutcome { Kind = PsOutcomeKind.SetupError, Detail = AfterMarker(outText, SetupErrorMarker), RawPreview = preview, ConnectedTenant = connectedTenant };
+            // Git #965 — the in-script testbed gate refused: connected tenant isn't isTestbed-flagged.
+            if (Contains(outText, TestbedRefusedMarker))
+                return new PsRunOutcome { Kind = PsOutcomeKind.TestbedRefused, Detail = AfterMarker(outText, TestbedRefusedMarker), RawPreview = preview, ConnectedTenant = connectedTenant };
 
             int begin = outText.IndexOf(ResultBegin, StringComparison.Ordinal);
             int end = outText.IndexOf(ResultEnd, StringComparison.Ordinal);
@@ -316,24 +375,31 @@ namespace BuildConsole.Services
             {
                 string inner = outText.Substring(begin + ResultBegin.Length, end - (begin + ResultBegin.Length)).Trim();
                 if (Contains(inner, CmdletErrorMarker))
-                    return new PsRunOutcome { Kind = PsOutcomeKind.CmdletError, Detail = AfterMarker(inner, CmdletErrorMarker), RawPreview = preview };
+                    return new PsRunOutcome { Kind = PsOutcomeKind.CmdletError, Detail = AfterMarker(inner, CmdletErrorMarker), RawPreview = preview, ConnectedTenant = connectedTenant };
                 if (string.IsNullOrWhiteSpace(inner) || inner == "null")
-                    return new PsRunOutcome { Kind = PsOutcomeKind.NoResult, RawPreview = preview };
-                return new PsRunOutcome { Kind = PsOutcomeKind.Ok, ResultJson = inner, RawPreview = preview };
+                    return new PsRunOutcome { Kind = PsOutcomeKind.NoResult, RawPreview = preview, ConnectedTenant = connectedTenant };
+                return new PsRunOutcome { Kind = PsOutcomeKind.Ok, ResultJson = inner, RawPreview = preview, ConnectedTenant = connectedTenant };
             }
 
             // No result block and no known marker — could be a device-code prompt with no clean exit,
             // or some other failure. Treat a visible auth prompt as auth-required, else no-result.
             if (LooksLikeAuthPrompt(outText))
-                return new PsRunOutcome { Kind = PsOutcomeKind.AuthRequired, RawPreview = preview };
-            return new PsRunOutcome { Kind = PsOutcomeKind.NoResult, RawPreview = preview };
+                return new PsRunOutcome { Kind = PsOutcomeKind.AuthRequired, RawPreview = preview, ConnectedTenant = connectedTenant };
+            return new PsRunOutcome { Kind = PsOutcomeKind.NoResult, RawPreview = preview, ConnectedTenant = connectedTenant };
         }
 
         /// <summary>The pwsh script: delegated Connect-MgGraph (NOT app-only), then the cmdlet as JSON,
         /// all fenced by sentinels. Built as a here-doc-free interpolated string; passed via
         /// -EncodedCommand so no shell quoting of the cmdlet is ever needed.</summary>
-        private static string BuildScript(string resolvedCmdlet)
+        private static string BuildScript(string resolvedCmdlet, IReadOnlyList<string> allowedTestbedTenants)
         {
+            // Git #965 — the isTestbed=true tenant allowlist, embedded as a pwsh string-array literal.
+            // Values are GUID-sanitized by TestbedGate before we get here; single-quotes are still
+            // doubled defensively. `-notcontains` is case-insensitive, which suits tenant GUIDs.
+            string allowlist = allowedTestbedTenants.Count == 0
+                ? "@()"
+                : "@(" + string.Join(",", allowedTestbedTenants.Select(t => "'" + t.Replace("'", "''") + "'")) + ")";
+
             return
                 "$ErrorActionPreference = 'Stop'\n" +
                 "$ProgressPreference = 'SilentlyContinue'\n" +
@@ -348,6 +414,14 @@ namespace BuildConsole.Services
                 "if (-not $ctx) { Write-Output '" + AuthRequiredMarker + " no Graph context after connect'; exit 3 }\n" +
                 // Enforce that verification uses a DELEGATED identity, never app-only — the whole point.
                 "if ($ctx.AuthType -and $ctx.AuthType -ne 'Delegated') { Write-Output ('" + AuthRequiredMarker + " context AuthType=' + $ctx.AuthType + ' (expected Delegated; run Connect-MgGraph interactively as yourself)'); exit 3 }\n" +
+                // Git #965 — hard testbed gate, enforced AFTER Connect-MgGraph succeeds but BEFORE the
+                // verification cmdlet runs. Emit the connected tenant (for the C# host to log), then
+                // refuse outright if it isn't in the server's isTestbed=true allowlist — the cmdlet
+                // never executes against a non-testbed tenant.
+                "$connectedTenant = [string]$ctx.TenantId\n" +
+                "Write-Output ('" + TenantMarker + " ' + $connectedTenant)\n" +
+                "$allowedTestbed = " + allowlist + "\n" +
+                "if ($allowedTestbed -notcontains $connectedTenant) { Write-Output ('" + TestbedRefusedMarker + " ' + $connectedTenant); exit 5 }\n" +
                 "Write-Output '" + ResultBegin + "'\n" +
                 "try {\n" +
                 "  $__json = " + resolvedCmdlet + " | ConvertTo-Json -Depth 8 -Compress\n" +
