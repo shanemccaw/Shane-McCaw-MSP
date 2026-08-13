@@ -358,6 +358,7 @@ namespace BuildConsole.Services
             string selector;
             string val;
             List<string> textPhrases;
+            List<string> prefixCandidates;
             try
             {
                 // #877 — resolve {{name}} placeholders in the step's target/selector and value
@@ -372,6 +373,16 @@ namespace BuildConsole.Services
                 textPhrases = ParseTextContains(step.TextContains);
                 for (int ti = 0; ti < textPhrases.Count; ti++)
                     textPhrases[ti] = _vars.Resolve(textPhrases[ti]);
+                // #1027 — textPrefixOfAny: resolve each phrase the same way, then expand it into candidate
+                // entries. A `[*]`-wildcard extract (e.g. "$[*].leadText" → the whole real hero-headline set)
+                // stores a SetDelimiter-joined blob under one {{name}}, so a single "{{heroLeads}}" phrase
+                // fans out into every member here via SplitSet. A plain phrase with no delimiter is just a
+                // one-element candidate. Unlike textContains (rendered text CONTAINS a phrase), these are
+                // matched by a two-way prefix relationship in EvaluateExpectOnceAsync — see there.
+                var prefixPhrases = ParseTextContains(step.TextPrefixOfAny);
+                prefixCandidates = new List<string>();
+                foreach (var raw in prefixPhrases)
+                    prefixCandidates.AddRange(TestRunVariables.SplitSet(_vars.Resolve(raw)));
             }
             catch (VariableNotResolvedException ex)
             {
@@ -473,12 +484,16 @@ namespace BuildConsole.Services
                 // condition is genuinely observed, instead of #1016's single one-shot check that lost async
                 // render/hydration timing races. A non-positive override falls back to the default window.
                 int expectTimeoutMs = step.TimeoutMs is > 0 ? (int)step.TimeoutMs.Value : ExpectPollTimeoutMs;
-                (actionPassed, actionDetail, actionActual) = await EvaluateExpectAsync(selector, expectedState, textPhrases, expectTimeoutMs, stepNumber);
+                (actionPassed, actionDetail, actionActual) = await EvaluateExpectAsync(selector, expectedState, textPhrases, prefixCandidates, expectTimeoutMs, stepNumber);
                 actionExpected = $"{selector} state == '{expectedState}'";
                 // Git #1016 — when the step also asserts rendered text, record that in Expected too so the
                 // results JSON shows the full contract that was checked, not just the state half.
                 if (textPhrases.Count > 0)
                     actionExpected += $"; textContains any of [{string.Join(", ", textPhrases.ConvertAll(p => $"\"{p}\""))}]";
+                // #1027 — likewise record the textPrefixOfAny contract (count only; the real set can be 50+
+                // entries — the full list lives in the extract log, not every step's Expected string).
+                if (prefixCandidates.Count > 0)
+                    actionExpected += $"; textPrefixOfAny one of {prefixCandidates.Count} real entrie(s)";
             }
             else
             {
@@ -800,7 +815,7 @@ namespace BuildConsole.Services
         /// elapsed without the condition ever being observed, and returns the last (failing) evaluation, annotated
         /// with the poll duration/attempt count so the results JSON says plainly it was polled, not glanced at once.</summary>
         private async Task<(bool passed, string detail, string actual)> EvaluateExpectAsync(
-            string selector, string expectedState, IReadOnlyList<string>? textContains, int timeoutMs, int stepNumber)
+            string selector, string expectedState, IReadOnlyList<string>? textContains, IReadOnlyList<string>? prefixOfAny, int timeoutMs, int stepNumber)
         {
             var sw = System.Diagnostics.Stopwatch.StartNew();
             int attempts = 0;
@@ -808,7 +823,7 @@ namespace BuildConsole.Services
             while (true)
             {
                 attempts++;
-                last = await EvaluateExpectOnceAsync(selector, expectedState, textContains);
+                last = await EvaluateExpectOnceAsync(selector, expectedState, textContains, prefixOfAny);
                 if (last.passed)
                 {
                     sw.Stop();
@@ -838,8 +853,19 @@ namespace BuildConsole.Services
         /// this, `expect` was presence-only: a `textContains` in a manifest was silently ignored (see the note
         /// in test-manifests/copilot-readiness/remediation-tracker-e2e.json), so a manifest could never assert
         /// that the DOM genuinely DISPLAYS a value — only that some element exists. The text is pulled straight
-        /// out of the live DOM via the same JS-injection path the state check already uses.</summary>
-        private async Task<(bool passed, string detail, string actual)> EvaluateExpectOnceAsync(string selector, string expectedState, IReadOnlyList<string>? textContains)
+        /// out of the live DOM via the same JS-injection path the state check already uses.
+        ///
+        /// Git #1027 — <paramref name="prefixOfAny"/> adds a THIRD, orthogonal assertion for content that is
+        /// randomized and/or rendered progressively (the hero headline: shuffled from a 50-entry set and typed
+        /// out one character at a time, so at any instant the element shows a PARTIAL slice of a RANDOM entry).
+        /// containsAny can't express that — "rendered CONTAINS entry" only holds once a whole entry has finished
+        /// typing, and a fixed phrase list can't enumerate a shuffled runtime set. Instead this passes when the
+        /// element's rendered text shares a PREFIX relationship with at least one candidate entry: the shorter of
+        /// (rendered, entry) is a prefix of the longer (case-insensitive), which is true both while an entry is
+        /// mid-type (rendered ⊑ entry) and once typing has run past the entry into its gradient tail (entry ⊑
+        /// rendered). Empty rendered text never matches (an empty headline element isn't a genuine headline). All three
+        /// assertions (state, textContains, prefixOfAny) must pass; each is independently optional.</summary>
+        private async Task<(bool passed, string detail, string actual)> EvaluateExpectOnceAsync(string selector, string expectedState, IReadOnlyList<string>? textContains, IReadOnlyList<string>? prefixOfAny)
         {
             string script = $@"
 (function() {{
@@ -903,7 +929,34 @@ namespace BuildConsole.Services
                 textOk = textHit != null;
             }
 
-            bool passed = stateOk && textOk;
+            // #1027 — prefix-relationship assertion (see the method summary). Passes when the non-empty
+            // rendered text and some candidate entry are prefix-related (shorter is a prefix of the longer,
+            // case-insensitive) — the match that survives the hero headline's shuffle + per-character typing.
+            bool prefixOk = true;
+            string? prefixHit = null;
+            bool hasPrefixAssertion = prefixOfAny != null && prefixOfAny.Count > 0;
+            if (hasPrefixAssertion)
+            {
+                string rendered = text.Trim();
+                if (rendered.Length > 0)
+                {
+                    foreach (var entry in prefixOfAny!)
+                    {
+                        string e = (entry ?? string.Empty).Trim();
+                        if (e.Length == 0) continue;
+                        string shorter = rendered.Length <= e.Length ? rendered : e;
+                        string longer = rendered.Length <= e.Length ? e : rendered;
+                        if (longer.StartsWith(shorter, StringComparison.OrdinalIgnoreCase))
+                        {
+                            prefixHit = entry;
+                            break;
+                        }
+                    }
+                }
+                prefixOk = prefixHit != null;
+            }
+
+            bool passed = stateOk && textOk && prefixOk;
 
             var parts = new List<string>();
             parts.Add(stateOk
@@ -913,10 +966,14 @@ namespace BuildConsole.Services
                 parts.Add(textOk
                     ? $"text contained \"{textHit}\""
                     : $"text contained none of [{string.Join(", ", ToQuoted(textContains!))}]");
+            if (hasPrefixAssertion)
+                parts.Add(prefixOk
+                    ? $"text is a prefix-match of real entry \"{CollapsePreview(prefixHit ?? string.Empty, 80)}\""
+                    : $"text is a prefix-match of none of the {prefixOfAny!.Count} real entrie(s)");
 
             string preview = CollapsePreview(text, 200);
             string detail = $"{selector} — {string.Join("; ", parts)}";
-            string actual = $"found={found}, visible={visible}" + (hasTextAssertion ? $"; text=\"{preview}\"" : string.Empty);
+            string actual = $"found={found}, visible={visible}" + (hasTextAssertion || hasPrefixAssertion ? $"; text=\"{preview}\"" : string.Empty);
             return (passed, detail, actual);
         }
 

@@ -178,6 +178,23 @@ namespace BuildConsole.Services
                     return $"extract \"{name}\": response body is not JSON — cannot apply jsonPath {jsonPath}.";
                 }
 
+                // A `[*]` array wildcard (e.g. "$[*].leadText") collects EVERY match, not one node —
+                // the whole real set of a response array's values (the 50 admin-authored hero leadTexts,
+                // say), stored as a single SetDelimiter-joined blob under `as`. {{name}} interpolation still
+                // resolves it to that blob verbatim (no braces inside to touch); a consumer that wants the
+                // members back — e.g. UiTestExecutor's `textPrefixOfAny` matcher — splits it via SplitSet.
+                // This keeps the whole #877 store a plain Dictionary<string,string> rather than growing a
+                // parallel array store, at the cost of one reserved control char (U+001F) that never appears
+                // in real copy.
+                if (PathHasWildcard(jsonPath))
+                {
+                    var all = ResolveJsonPathAll(root, jsonPath);
+                    if (all.Count == 0)
+                        return $"extract \"{name}\": jsonPath {jsonPath} matched no elements in the response body.";
+                    Store(name, string.Join(SetDelimiter.ToString(), all), $"jsonPath {jsonPath} (×{all.Count})");
+                    return null;
+                }
+
                 if (!TryResolveJsonPath(root, jsonPath, out var found))
                     return $"extract \"{name}\": jsonPath {jsonPath} did not resolve in the response body.";
 
@@ -223,6 +240,78 @@ namespace BuildConsole.Services
             }
             result = current;
             return true;
+        }
+
+        /// <summary>The reserved separator a `[*]`-wildcard <see cref="Extract"/> joins its collected
+        /// values with (ASCII Unit Separator, U+001F). Chosen because it never appears in real UI copy,
+        /// so a joined set round-trips through the plain string variable store without ambiguity. Consumers
+        /// recover the members via <see cref="SplitSet"/>.</summary>
+        public const char SetDelimiter = '\u001F';
+
+        /// <summary>Split a value produced by a `[*]`-wildcard extract (a <see cref="SetDelimiter"/>-joined
+        /// blob) back into its member strings. A plain (non-wildcard) value with no delimiter round-trips as
+        /// a single-element list, so callers can treat any resolved variable as a candidate set uniformly.
+        /// Empty/blank members are dropped.</summary>
+        public static List<string> SplitSet(string? value)
+        {
+            var list = new List<string>();
+            if (string.IsNullOrEmpty(value)) return list;
+            foreach (var part in value.Split(SetDelimiter))
+                if (!string.IsNullOrEmpty(part)) list.Add(part);
+            return list;
+        }
+
+        private static bool PathHasWildcard(string path) => path.IndexOf("[*]", StringComparison.Ordinal) >= 0;
+
+        // Same token grammar as JsonPathTokenPattern plus the `[*]` array wildcard (group 0, no capture).
+        private static readonly Regex JsonPathWildcardTokenPattern = new(@"\.([A-Za-z0-9_]+)|\[(\d+)\]|\[\*\]", RegexOptions.Compiled);
+
+        /// <summary>Resolve a jsonPath that may contain one or more `[*]` array wildcards, collecting the
+        /// stringified value of EVERY leaf the path reaches ($[*].leadText → every element's leadText).
+        /// A string leaf keeps its raw value; any other kind keeps its JSON text — matching the single-node
+        /// <see cref="Extract"/> path's conversion. Order is document order; non-matching branches are simply
+        /// skipped (a shape mismatch yields fewer results, never an exception).</summary>
+        private static List<string> ResolveJsonPathAll(JsonElement root, string path)
+        {
+            var tokens = new List<(string? prop, int? index, bool wildcard)>();
+            var body = path.StartsWith("$", StringComparison.Ordinal) ? path.Substring(1) : path;
+            foreach (Match tk in JsonPathWildcardTokenPattern.Matches(body))
+            {
+                if (tk.Groups[1].Success) tokens.Add((tk.Groups[1].Value, null, false));
+                else if (tk.Groups[2].Success) tokens.Add((null, int.Parse(tk.Groups[2].Value), false));
+                else tokens.Add((null, null, true)); // [*]
+            }
+
+            var results = new List<string>();
+            WalkCollect(root, tokens, 0, results);
+            return results;
+        }
+
+        private static void WalkCollect(JsonElement current, List<(string? prop, int? index, bool wildcard)> tokens, int i, List<string> results)
+        {
+            if (i >= tokens.Count)
+            {
+                results.Add(current.ValueKind == JsonValueKind.String ? (current.GetString() ?? "") : current.GetRawText());
+                return;
+            }
+
+            var (prop, index, wildcard) = tokens[i];
+            if (wildcard)
+            {
+                if (current.ValueKind != JsonValueKind.Array) return;
+                foreach (var el in current.EnumerateArray())
+                    WalkCollect(el, tokens, i + 1, results);
+            }
+            else if (prop != null)
+            {
+                if (current.ValueKind == JsonValueKind.Object && current.TryGetProperty(prop, out var next))
+                    WalkCollect(next, tokens, i + 1, results);
+            }
+            else if (index.HasValue)
+            {
+                if (current.ValueKind == JsonValueKind.Array && index.Value < current.GetArrayLength())
+                    WalkCollect(current[index.Value], tokens, i + 1, results);
+            }
         }
     }
 }
