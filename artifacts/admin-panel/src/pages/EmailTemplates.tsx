@@ -197,6 +197,7 @@ function PreviewPane({
       </div>
       <iframe
         ref={iframeRef}
+        data-testid="email-tpl-preview-iframe"
         sandbox="allow-same-origin"
         className="flex-1 w-full border-0"
         title="Email preview"
@@ -492,7 +493,7 @@ export default function EmailTemplatesPage() {
 
       <div className="flex flex-col lg:flex-row lg:h-[calc(100vh-64px)] overflow-hidden">
         {/* ── Template list ───────────────────────────────────────────────────── */}
-        <aside className="w-full lg:w-64 shrink-0 border-b lg:border-b-0 border-r-0 lg:border-r bg-card flex flex-col overflow-hidden max-h-64 lg:max-h-none">
+        <aside data-testid="email-tpl-list" className="w-full lg:w-64 shrink-0 border-b lg:border-b-0 border-r-0 lg:border-r bg-card flex flex-col overflow-hidden max-h-64 lg:max-h-none">
           <div className="px-4 py-3 border-b">
             <h1 className="text-sm font-semibold text-foreground">Email Templates</h1>
             <p className="text-xs text-muted-foreground mt-0.5">{filteredTemplates.length} of {templates.length} templates</p>
@@ -528,6 +529,7 @@ export default function EmailTemplatesPage() {
               filteredTemplates.map((t) => (
                 <button
                   key={t.slug}
+                  data-testid={`email-tpl-item-${t.slug}`}
                   onClick={() => handleSelect(t.slug)}
                   className={`w-full text-left px-4 py-3 border-b hover:bg-primary/10 transition-colors ${
                     selected === t.slug ? "bg-primary/10 border-l-2 border-l-primary" : ""
@@ -584,6 +586,7 @@ export default function EmailTemplatesPage() {
                     ✨ Generate with AI
                   </Button>
                   <Button
+                    data-testid="email-tpl-send-test"
                     variant="outline"
                     size="sm"
                     onClick={() => testMutation.mutate()}
@@ -615,6 +618,7 @@ export default function EmailTemplatesPage() {
               {/* ── Tab switcher ─────────────────────────────────────────────────── */}
               <div className="shrink-0 bg-card border-b px-4 flex gap-1">
                 <button
+                  data-testid="email-tpl-tab-preview"
                   onClick={() => setActiveTab("preview")}
                   className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
                     activeTab === "preview"
@@ -625,6 +629,7 @@ export default function EmailTemplatesPage() {
                   Preview
                 </button>
                 <button
+                  data-testid="email-tpl-tab-editor"
                   onClick={() => setActiveTab("editor")}
                   className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
                     activeTab === "editor"

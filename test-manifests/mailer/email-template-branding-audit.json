@@ -1,0 +1,175 @@
+{
+  "issue": 976,
+  "feature": "Email template branding audit — 27 DB email_templates slugs: DB-row-used + wrapped in branded-layout {{body}} (Epic #803, screenshot-gated per #975)",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "555278b430cff19719adbc38e715f32676540b5a",
+
+  "notes": [
+    "PURPOSE: verify, per #976, that each of the 27 real email_templates slugs (a) is actually sent from the DB row rather than a hardcoded mailer.ts body, and (b) is wrapped in the branded-layout {{body}} substitution before it goes out. branded-layout (the wrapper) and tenant-health-block (an embedded snippet) are exempt from the top-level wrap check by design.",
+    "SEND-PATH MODEL (traced against this commit): every sendEmailFromTemplate(slug,...) reads the DB row (getEmailTemplateOrFallback) then sends via sendEmail(...) with NO skipWrapper, so it is auto-wrapped in branded-layout. The workflow 'send_email' node (workflow-executor.ts, actionType==='send_email') with a templateSlug does the same via getEmailTemplateOrFallback + sendEmailOrThrow/sendEmailForMspOrThrow (also auto-wrapped). The two PDF-attachment paths (quiz-report-email, service-overview-email) use sendEmailWithAttachment, which does NOT auto-wrap, and correctly compensate by calling `await brandedEmail(bodyHtml)` explicitly before the send.",
+    "PER-TEMPLATE CLASSIFICATION — full write-up in test-manifests/mailer/README.md. Summary: 20 = DB-used-and-correctly-wrapped; 1 = still-calling-old-hardcoded-function (purchase-confirmation); 4 = no-real-trigger-path-found (client-thread-reply, kanban-script-exhausted, kanban-document-exhausted, manual-script-escalation); 2 = wrapper/snippet exempt (branded-layout, tenant-health-block); 0 = DB-used-but-NOT-wrapped.",
+    "KEY FINDING (drift #976 was hunting): purchase-confirmation — public-assessment-payment.ts:865 calls sendEmail(order.email, 'Payment confirmed — …', purchaseConfirmationEmail({…}), { templateName: 'purchase-confirmation-home-flow' }). This invokes the HARDCODED purchaseConfirmationEmail() body builder and NEVER reads the purchase-confirmation DB row (the templateName arg is only a failed_notifications label, not a slug lookup). It is still branded (sendEmail wraps in branded-layout), but Admin-Panel edits to the purchase-confirmation row have zero effect on what actually goes out. The apiTest below asserts the DB row's content so drift can be diffed against production copy; the #976 report does NOT fix it (audit-only) — flagged for Shane.",
+    "SCREENSHOT GATE: the uiSteps drive the Admin Panel Email Templates page (/content/email-templates). Its Preview pane fetches the real DB row AND the real branded-layout row and renders wrapperHtml.replace('{{body}}', bodyHtml) into a sandboxed iframe — i.e. the exact composed+wrapped email, straight from the DB. Per #977 every uiStep captures a screenshot; per #975 the first run seeds a baseline (Shane approves) and later runs only interrupt on visual drift. This is Shane's explicit 'screenshot-gated, not pass/fail on send success' requirement.",
+    "PRECONDITIONS (BuildConsole #953 Test Environment Variables store): {{TEST_ADMIN_EMAIL}}/{{TEST_ADMIN_PASSWORD}} must be a PlatformAdmin account (email-templates routes are requireAdmin). {{DEPLOY_URL}} is the Admin Panel origin. The apiTest login extracts {{adminToken}} for the requireAdmin GETs.",
+    "HONESTY / LIMITS: (1) not run here — no BuildConsole/WebView2/DB/mail access in this Claude Code session; selectors are real (data-testids added to EmailTemplates.tsx this commit) but the run itself is Shane's. (2) The 3 kanban/manual slugs + client-thread-reply are DB rows with no wired send; they still render in the Admin preview (they have DB content), so their screenshots prove the row content, not a live send. (3) welcome-email is only reachable via a DB-configured workflow send_email node — its screenshot proves the row + wrapping, but whether a live workflow fires it is a DB-config question (see the read-only diagnostic SQL for Shane: lib/db/migrations/manual/archive/diagnostics/2026-08-13-email-template-audit-976.sql). (4) uiStep expect is state-only — assertions are on element visibility, not DOM text; response-body content is asserted in apiTests via #892 containsAny/containsNone."
+  ],
+
+  "apiTests": [
+    {
+      "name": "log in as the PlatformAdmin test account — email_templates admin routes are requireAdmin",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_ADMIN_EMAIL}}", "password": "{{TEST_ADMIN_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "adminToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "GET the full template list — confirms the real DB rows are served to the Admin Panel list the uiSteps click through",
+      "method": "GET",
+      "path": "/api/admin/email-templates",
+      "headers": { "Authorization": "Bearer {{adminToken}}" },
+      "expect": { "status": 200, "jsonPath": "$", "isArray": true }
+    },
+    {
+      "name": "branded-layout (WRAPPER) — MUST retain the {{body}} placeholder; this is the substitution point every wrapped send fills. If this token were missing, nothing would wrap.",
+      "method": "GET",
+      "path": "/api/admin/email-templates/branded-layout",
+      "headers": { "Authorization": "Bearer {{adminToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.bodyHtml", "exists": true, "containsAny": ["{{body}}"] }
+    },
+    {
+      "name": "purchase-confirmation — DB row content assertion. The row is inner HTML only (no <!DOCTYPE/<html>), so it is designed to be wrapped by branded-layout. NOTE: the live home-flow send (public-assessment-payment.ts:865) bypasses this row and uses the hardcoded purchaseConfirmationEmail() instead — this test captures the DB copy so that drift is diffable.",
+      "method": "GET",
+      "path": "/api/admin/email-templates/purchase-confirmation",
+      "headers": { "Authorization": "Bearer {{adminToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.bodyHtml", "exists": true, "containsAny": ["{{serviceName}}"], "containsNone": ["<!DOCTYPE", "<html"] }
+    },
+    {
+      "name": "discovery-call-confirmation — representative correctly-wrapped client template: inner HTML only + embeds the {{tenantHealthBlockHtml}} snippet slot; wrapped in branded-layout at send by sendEmailFromTemplate (booking.ts:268).",
+      "method": "GET",
+      "path": "/api/admin/email-templates/discovery-call-confirmation",
+      "headers": { "Authorization": "Bearer {{adminToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.bodyHtml", "exists": true, "containsAny": ["{{tenantHealthBlockHtml}}"], "containsNone": ["<!DOCTYPE"] }
+    },
+    {
+      "name": "tenant-health-block (SNIPPET) — reusable fragment embedded into client templates via {{tenantHealthBlockHtml}}; it is NOT the wrapper, so it must NOT contain the {{body}} slot.",
+      "method": "GET",
+      "path": "/api/admin/email-templates/tenant-health-block",
+      "headers": { "Authorization": "Bearer {{adminToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.bodyHtml", "exists": true, "containsAny": ["{{tenantScore}}"], "containsNone": ["{{body}}"] }
+    },
+    {
+      "name": "kanban-script-exhausted — orphan-row existence check. The row EXISTS in the DB (part of Shane's 27) but has ZERO code send path (not seeded by seed-email-templates.ts, no sendEmailFromTemplate/getEmailTemplateOrFallback/workflow reference). Confirms the no-trigger finding is about wiring, not a missing row.",
+      "method": "GET",
+      "path": "/api/admin/email-templates/kanban-script-exhausted",
+      "headers": { "Authorization": "Bearer {{adminToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.slug", "exists": true }
+    },
+    {
+      "name": "client-thread-reply — orphan-row existence check. DB row + hardcoded clientThreadReplyEmail() both exist, but the function is never called and no send path references this slug (only admin-thread-reply fires on status-report threads).",
+      "method": "GET",
+      "path": "/api/admin/email-templates/client-thread-reply",
+      "headers": { "Authorization": "Bearer {{adminToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.slug", "exists": true }
+    }
+  ],
+
+  "uiSteps": [
+    { "name": "log in as PlatformAdmin", "action": "goto", "target": "/login" },
+    { "action": "input", "selector": "#email", "value": "{{TEST_ADMIN_EMAIL}}" },
+    { "action": "input", "selector": "#password", "value": "{{TEST_ADMIN_PASSWORD}}" },
+    {
+      "action": "click",
+      "selector": "[data-testid='login-submit']",
+      "captureResponse": {
+        "urlPattern": "/api/auth/login",
+        "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true }
+      }
+    },
+
+    { "name": "open the Admin Panel Email Templates page (real DB rows + real branded-layout wrapper)", "action": "goto", "target": "/content/email-templates" },
+    { "action": "expect", "selector": "[data-testid='email-tpl-list']", "state": "visible" },
+
+    { "name": "account-setup — DB-USED + WRAPPED (sendEmailFromTemplate x5)", "action": "click", "selector": "[data-testid='email-tpl-item-account-setup']" },
+    { "action": "expect", "selector": "[data-testid='email-tpl-preview-iframe']", "state": "visible" },
+
+    { "name": "admin-discovery-call-notification — DB-USED + WRAPPED (sendEmailFromTemplate, booking.ts:292)", "action": "click", "selector": "[data-testid='email-tpl-item-admin-discovery-call-notification']" },
+    { "action": "expect", "selector": "[data-testid='email-tpl-preview-iframe']", "state": "visible" },
+
+    { "name": "admin-message-notification — DB-USED + WRAPPED (sendEmailFromTemplate, portal-messages.ts:125)", "action": "click", "selector": "[data-testid='email-tpl-item-admin-message-notification']" },
+    { "action": "expect", "selector": "[data-testid='email-tpl-preview-iframe']", "state": "visible" },
+
+    { "name": "admin-purchase-alert — DB-USED + WRAPPED (sendEmailFromTemplate, portal-checkout-free.ts:325)", "action": "click", "selector": "[data-testid='email-tpl-item-admin-purchase-alert']" },
+    { "action": "expect", "selector": "[data-testid='email-tpl-preview-iframe']", "state": "visible" },
+
+    { "name": "admin-thread-reply — DB-USED + WRAPPED (sendEmailFromTemplate, admin-status-reports.ts:127)", "action": "click", "selector": "[data-testid='email-tpl-item-admin-thread-reply']" },
+    { "action": "expect", "selector": "[data-testid='email-tpl-preview-iframe']", "state": "visible" },
+
+    { "name": "branded-layout — WRAPPER (exempt): brandedEmail() reads this row and substitutes {{body}}; preview shows it wrapping a sample body", "action": "click", "selector": "[data-testid='email-tpl-item-branded-layout']" },
+    { "action": "expect", "selector": "[data-testid='email-tpl-preview-iframe']", "state": "visible" },
+
+    { "name": "client-message-notification — DB-USED + WRAPPED (sendEmailFromTemplate, portal-messages.ts:88)", "action": "click", "selector": "[data-testid='email-tpl-item-client-message-notification']" },
+    { "action": "expect", "selector": "[data-testid='email-tpl-preview-iframe']", "state": "visible" },
+
+    { "name": "client-thread-reply — NO-TRIGGER-PATH: DB row + clientThreadReplyEmail() exist but nothing sends this slug (only admin-thread-reply fires). Screenshot proves row content, not a live send.", "action": "click", "selector": "[data-testid='email-tpl-item-client-thread-reply']" },
+    { "action": "expect", "selector": "[data-testid='email-tpl-preview-iframe']", "state": "visible" },
+
+    { "name": "closure-request — DB-USED + WRAPPED (sendEmailFromTemplate, admin-projects.ts:1014)", "action": "click", "selector": "[data-testid='email-tpl-item-closure-request']" },
+    { "action": "expect", "selector": "[data-testid='email-tpl-preview-iframe']", "state": "visible" },
+
+    { "name": "contact-inquiry-notification — DB-USED + WRAPPED (getEmailTemplateOrFallback + sendEmailOrThrow, leads.ts:162)", "action": "click", "selector": "[data-testid='email-tpl-item-contact-inquiry-notification']" },
+    { "action": "expect", "selector": "[data-testid='email-tpl-preview-iframe']", "state": "visible" },
+
+    { "name": "discovery-call-confirmation — DB-USED + WRAPPED (sendEmailFromTemplate, booking.ts:268)", "action": "click", "selector": "[data-testid='email-tpl-item-discovery-call-confirmation']" },
+    { "action": "expect", "selector": "[data-testid='email-tpl-preview-iframe']", "state": "visible" },
+
+    { "name": "kanban-document-exhausted — NO-TRIGGER-PATH: DB row exists, zero code references (not seeded, not sent)", "action": "click", "selector": "[data-testid='email-tpl-item-kanban-document-exhausted']" },
+    { "action": "expect", "selector": "[data-testid='email-tpl-preview-iframe']", "state": "visible" },
+
+    { "name": "kanban-script-exhausted — NO-TRIGGER-PATH: DB row exists, zero code references (not seeded, not sent)", "action": "click", "selector": "[data-testid='email-tpl-item-kanban-script-exhausted']" },
+    { "action": "expect", "selector": "[data-testid='email-tpl-preview-iframe']", "state": "visible" },
+
+    { "name": "manual-script-escalation — NO-TRIGGER-PATH: DB row exists, zero code references (not seeded, not sent)", "action": "click", "selector": "[data-testid='email-tpl-item-manual-script-escalation']" },
+    { "action": "expect", "selector": "[data-testid='email-tpl-preview-iframe']", "state": "visible" },
+
+    { "name": "mfa-reset — DB-USED + WRAPPED (sendEmailFromTemplate x4)", "action": "click", "selector": "[data-testid='email-tpl-item-mfa-reset']" },
+    { "action": "expect", "selector": "[data-testid='email-tpl-preview-iframe']", "state": "visible" },
+
+    { "name": "onboarding-confirmation — DB-USED + WRAPPED (sendEmailFromTemplate, portal-checkout-free.ts:279)", "action": "click", "selector": "[data-testid='email-tpl-item-onboarding-confirmation']" },
+    { "action": "expect", "selector": "[data-testid='email-tpl-preview-iframe']", "state": "visible" },
+
+    { "name": "password-reset — DB-USED + WRAPPED (sendEmailFromTemplate x4)", "action": "click", "selector": "[data-testid='email-tpl-item-password-reset']" },
+    { "action": "expect", "selector": "[data-testid='email-tpl-preview-iframe']", "state": "visible" },
+
+    { "name": "purchase-confirmation — HARDCODED FUNCTION (not DB): public-assessment-payment.ts:865 sends purchaseConfirmationEmail(), DB row never read. Preview shows the DB row (what SHOULD go out) so drift vs the hardcoded body is visible.", "action": "click", "selector": "[data-testid='email-tpl-item-purchase-confirmation']" },
+    { "action": "expect", "selector": "[data-testid='email-tpl-preview-iframe']", "state": "visible" },
+
+    { "name": "quiz-lead-notification — DB-USED + WRAPPED (sendEmailFromTemplate, quiz.ts:642)", "action": "click", "selector": "[data-testid='email-tpl-item-quiz-lead-notification']" },
+    { "action": "expect", "selector": "[data-testid='email-tpl-preview-iframe']", "state": "visible" },
+
+    { "name": "quiz-report-email — DB-USED + WRAPPED via attachment path (getEmailTemplateOrFallback + await brandedEmail before sendEmailWithAttachment, quiz.ts:706/909)", "action": "click", "selector": "[data-testid='email-tpl-item-quiz-report-email']" },
+    { "action": "expect", "selector": "[data-testid='email-tpl-preview-iframe']", "state": "visible" },
+
+    { "name": "retainer-resumed — DB-USED + WRAPPED (sendEmailFromTemplate, portal-billing.ts:436)", "action": "click", "selector": "[data-testid='email-tpl-item-retainer-resumed']" },
+    { "action": "expect", "selector": "[data-testid='email-tpl-preview-iframe']", "state": "visible" },
+
+    { "name": "script-run-failed — DB-USED + WRAPPED (sendEmailFromTemplate, client-script-sequence.ts:468)", "action": "click", "selector": "[data-testid='email-tpl-item-script-run-failed']" },
+    { "action": "expect", "selector": "[data-testid='email-tpl-preview-iframe']", "state": "visible" },
+
+    { "name": "service-overview-email — DB-USED + WRAPPED (getEmailTemplateOrFallback + await brandedEmail for attachment / sendEmail otherwise, leads.ts:135)", "action": "click", "selector": "[data-testid='email-tpl-item-service-overview-email']" },
+    { "action": "expect", "selector": "[data-testid='email-tpl-preview-iframe']", "state": "visible" },
+
+    { "name": "service-overview-lead-notification — DB-USED + WRAPPED (sendEmailFromTemplate, leads.ts:152)", "action": "click", "selector": "[data-testid='email-tpl-item-service-overview-lead-notification']" },
+    { "action": "expect", "selector": "[data-testid='email-tpl-preview-iframe']", "state": "visible" },
+
+    { "name": "status-report-reply — DB-USED + WRAPPED (sendEmailFromTemplate, admin-status-reports.ts:55)", "action": "click", "selector": "[data-testid='email-tpl-item-status-report-reply']" },
+    { "action": "expect", "selector": "[data-testid='email-tpl-preview-iframe']", "state": "visible" },
+
+    { "name": "tenant-health-block — SNIPPET (exempt): embedded into client templates via getTenantHealthBlockHtml(); previewed standalone here", "action": "click", "selector": "[data-testid='email-tpl-item-tenant-health-block']" },
+    { "action": "expect", "selector": "[data-testid='email-tpl-preview-iframe']", "state": "visible" },
+
+    { "name": "welcome-email — DB-USED + WRAPPED mechanism (workflow send_email node only; no static route). Screenshot proves row + wrapping; live firing depends on a DB workflow config.", "action": "click", "selector": "[data-testid='email-tpl-item-welcome-email']" },
+    { "action": "expect", "selector": "[data-testid='email-tpl-preview-iframe']", "state": "visible" }
+  ]
+}

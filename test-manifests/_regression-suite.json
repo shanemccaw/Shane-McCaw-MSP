@@ -18,6 +18,7 @@
     "copilot-readiness/checkout.json",
     "copilot-readiness/remediation-tracker-e2e.json",
     "admin/tenant-switcher-floaty.json",
-    "admin/baseline-actions-powershell-verify.json"
+    "admin/baseline-actions-powershell-verify.json",
+    "mailer/email-template-branding-audit.json"
   ]
 }
