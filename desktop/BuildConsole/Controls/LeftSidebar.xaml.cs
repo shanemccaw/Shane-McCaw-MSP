@@ -1016,10 +1016,21 @@ namespace BuildConsole.Controls
             }
 
             BoardResponse board;
+            bool isStale;
+            DateTime? cachedAtUtc;
             try
             {
-                board = await _api.GetBoardAsync();
-                SyncError?.Invoke(this, null);
+                // Git #931 — falls back to the local cache when the dev
+                // server's unreachable (IsStale=true) instead of throwing;
+                // this catch now only fires when there's NO cache either
+                // (e.g. the very first run before anything ever succeeded).
+                var result = await _api.GetBoardAsync();
+                board = result.Data;
+                isStale = result.IsStale;
+                cachedAtUtc = result.CachedAtUtc;
+                SyncError?.Invoke(this, isStale
+                    ? $"Chats: showing cached data from {result.CachedAtUtc?.ToLocalTime():g} — dev server unreachable"
+                    : null);
             }
             catch (Exception ex)
             {
@@ -1037,10 +1048,25 @@ namespace BuildConsole.Controls
             _lastBoardChats = board.Chats;
             _chatEpicById = board.Epics.ToDictionary(e => e.Id);
 
-            var signature = System.Text.Json.JsonSerializer.Serialize(board);
+            // Git #931 — the stale/offline state itself is part of what's
+            // "changed" for repaint purposes: going stale->live (or the
+            // reverse) should always repaint even if the underlying board
+            // data happens to be byte-identical to what's already shown.
+            var signature = isStale + "|" + System.Text.Json.JsonSerializer.Serialize(board);
             if (signature == _lastBoardSignature) return;
             _lastBoardSignature = signature;
             ChatsTree.Items.Clear();
+
+            if (isStale)
+            {
+                ChatsTree.Items.Add(new TreeViewItem
+                {
+                    Header = $"⚠ Offline — showing cached chats from {cachedAtUtc?.ToLocalTime():MMM d, h:mm tt}",
+                    Foreground = GetBrush("PeachBrush"),
+                    IsHitTestVisible = false,
+                    Focusable = false,
+                });
+            }
 
             var epicById = _chatEpicById;
             var byEpic = board.Chats.Where(c => c.EpicId.HasValue).GroupBy(c => c.EpicId!.Value);

@@ -519,13 +519,30 @@ namespace BuildConsole.Controls
         // already rendered.
         private string? _lastQueueSignature;
 
+        /// <summary>Git #931 — true whenever the last successful RefreshAsync served the local cache instead of a live fetch (dev server unreachable); RenderQueue reads this to prepend an offline banner regardless of which filter chip is active.</summary>
+        private bool _queueIsStale;
+        private DateTime? _queueCachedAtUtc;
+
         public async System.Threading.Tasks.Task RefreshAsync()
         {
             if (_api == null || !_api.IsConfigured) return;
             try
             {
-                _lastItems = await _api.GetQueueAsync();
-                var signature = System.Text.Json.JsonSerializer.Serialize(_lastItems);
+                // Git #931 — Shane: "even the build queue does the same
+                // thing [as Chats]... but that one I want to keep on the
+                // server, but maybe also have a synced local JSON file so I
+                // can keep going even when the Replit dev servers shut
+                // down." Falls back to the local cache instead of throwing
+                // when the live fetch fails; QueueWatcherService's own
+                // claim/launch path deliberately does NOT go through this
+                // cached method (see GetQueueCachedAsync's doc comment) -
+                // this is the visible panel only.
+                var result = await _api.GetQueueCachedAsync();
+                _lastItems = result.Data;
+                _queueIsStale = result.IsStale;
+                _queueCachedAtUtc = result.CachedAtUtc;
+
+                var signature = _queueIsStale + "|" + System.Text.Json.JsonSerializer.Serialize(_lastItems);
                 if (signature != _lastQueueSignature)
                 {
                     _lastQueueSignature = signature;
@@ -538,7 +555,9 @@ namespace BuildConsole.Controls
                 // Git #905 — a freshly-done item should show up on the Completed tile
                 // promptly, not wait for that tile's own slower 60s gh CLI poll.
                 RenderCompletedFromCache();
-                SyncError?.Invoke(this, null);
+                SyncError?.Invoke(this, _queueIsStale
+                    ? $"Build Queue: showing cached data from {_queueCachedAtUtc?.ToLocalTime():g} — dev server unreachable"
+                    : null);
             }
             catch (Exception ex)
             {
@@ -582,6 +601,20 @@ namespace BuildConsole.Controls
                 _          => "Queue is empty.",
             };
             QueueTree.Items.Clear();
+
+            // Git #931 — offline banner, shown regardless of which filter chip
+            // is active, whenever this data came from the local cache instead
+            // of a live fetch (see RefreshAsync's GetQueueCachedAsync call).
+            if (_queueIsStale)
+            {
+                QueueTree.Items.Add(new TreeViewItem
+                {
+                    Header = $"⚠ Offline — showing cached queue from {_queueCachedAtUtc?.ToLocalTime():MMM d, h:mm tt}",
+                    Foreground = (Brush)Application.Current.FindResource("PeachBrush"),
+                    IsHitTestVisible = false,
+                    Focusable = false,
+                });
+            }
 
             // Git #799/#813 — a queued item nests under its blocker only when
             // the blocker is ALSO currently in the queue (same scoping choice

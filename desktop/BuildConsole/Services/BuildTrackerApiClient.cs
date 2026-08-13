@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -121,6 +122,26 @@ namespace BuildConsole.Services
     }
 
     /// <summary>
+    /// Git #931 — Shane: "the dev server auto shutting down every 15 min
+    /// with no refresh really is sucking and slowing me down." /
+    /// "even the build queue does the same thing... but that one I want to
+    /// keep on the server, but maybe also have a synced local JSON file so
+    /// I can keep going even when the Replit dev servers shut down."
+    /// Wraps a live-fetch result (IsStale = false) or, when the live call
+    /// fails but a local cache from a previous successful fetch exists, the
+    /// cached data instead (IsStale = true, CachedAtUtc = when it was last
+    /// genuinely live) - so a display-only panel can keep showing
+    /// last-known-good state through a dev-server nap instead of going
+    /// blank, while still being able to tell the difference and say so.
+    /// </summary>
+    public class CachedResult<T>
+    {
+        public T Data { get; set; } = default!;
+        public bool IsStale { get; set; }
+        public DateTime? CachedAtUtc { get; set; }
+    }
+
+    /// <summary>
     /// Talks to the SAME /api/admin/build-tracker/extension/* endpoints the browser
     /// extension and scripts/build-queue-watcher.ps1 already use - one real backend,
     /// three different front ends, so behavior (nesting, blocked state, label sync)
@@ -153,6 +174,53 @@ namespace BuildConsole.Services
         }
 
         /// <summary>
+        /// Git #931 — read-through local JSON cache, one file per `key`
+        /// under `%AppData%\BuildConsole\cache\`. A successful live fetch
+        /// always overwrites the cache and wins - this is a fallback for
+        /// when the server's unreachable, never a replacement for it. Scoped
+        /// deliberately to DISPLAY-ONLY callers (the Chats tree, the visible
+        /// Build Queue panel) - QueueWatcherService's own claim/launch calls
+        /// go through the plain (uncached) GetQueueAsync below unchanged,
+        /// since serving it stale data could mean claiming/launching against
+        /// a queue state that's no longer true.
+        /// </summary>
+        private static readonly string CacheDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "BuildConsole", "cache");
+
+        private static async Task<CachedResult<T>> CachedAsync<T>(string key, Func<Task<T>> liveFetch) where T : class
+        {
+            string path = Path.Combine(CacheDir, $"{key}.json");
+            try
+            {
+                var data = await liveFetch();
+                try
+                {
+                    Directory.CreateDirectory(CacheDir);
+                    File.WriteAllText(path, JsonSerializer.Serialize(data));
+                }
+                catch { /* best-effort - a failed cache write shouldn't fail a successful live fetch */ }
+                return new CachedResult<T> { Data = data, IsStale = false };
+            }
+            catch (Exception liveEx) when (TryLoadCache<T>(path, out var cached))
+            {
+                ActivityLog.Log("api", $"cache: {key} live fetch failed ({liveEx.Message}), serving cached copy from {File.GetLastWriteTimeUtc(path):u}");
+                return new CachedResult<T> { Data = cached!, IsStale = true, CachedAtUtc = File.GetLastWriteTimeUtc(path) };
+            }
+        }
+
+        private static bool TryLoadCache<T>(string path, out T? cached) where T : class
+        {
+            cached = null;
+            try
+            {
+                if (!File.Exists(path)) return false;
+                cached = JsonSerializer.Deserialize<T>(File.ReadAllText(path), JsonOpts);
+                return cached != null;
+            }
+            catch { return false; }
+        }
+
+        /// <summary>
         /// Git #815 — Shane: "put the startup SSE and api calls in there...
         /// so we can just look and see whats happening as its happening in
         /// the background." Wraps every real HTTP call with a start/end (or
@@ -182,6 +250,13 @@ namespace BuildConsole.Services
             var res = await _http.GetFromJsonAsync<QueueResponse>("api/admin/build-tracker/extension/queue", JsonOpts);
             return res?.Items ?? new List<QueueItem>();
         });
+
+        /// <summary>Git #931 — display-only twin of GetQueueAsync above, for BuildQueuePanel's own visible tree: falls back to the local cache when the live fetch fails, so the panel keeps showing last-known-good state through a dev-server nap instead of a dead error. Deliberately NOT used by QueueWatcherService's claim/launch path - that one needs GetQueueAsync's real live-or-throw behavior, never a stale substitute.</summary>
+        public Task<CachedResult<List<QueueItem>>> GetQueueCachedAsync() => TrackAsync("GET queue (cached)", () => CachedAsync("queue", async () =>
+        {
+            var res = await _http.GetFromJsonAsync<QueueResponse>("api/admin/build-tracker/extension/queue", JsonOpts);
+            return res?.Items ?? new List<QueueItem>();
+        }));
 
         /// <summary>Git #817 — the same endpoint scripts/build-queue-watcher.ps1 polls (atomically claims up to `limit` ready rows, marks them running). Used by QueueWatcherService so the app can do this itself instead of requiring that separate script.</summary>
         public Task<List<QueueItem>> GetNextQueueItemsAsync(int limit) => TrackAsync($"GET queue/next?limit={limit}", async () =>
@@ -226,12 +301,23 @@ namespace BuildConsole.Services
             TrackAsync($"POST deploy/test-run/{runId}/complete ({status})", () =>
                 _http.PostAsJsonAsync($"api/admin/deploy/test-run/{runId}/complete", new { status, results, error }));
 
-        /// <summary>No conversationId — this app isn't tied to one specific claude.ai chat the way the browser extension is, so `currentChat` in the response is always null; `epics`/`chats` still come back full, which is all the Chats tree needs.</summary>
-        public Task<BoardResponse> GetBoardAsync() => TrackAsync("GET board", async () =>
+        /// <summary>
+        /// No conversationId — this app isn't tied to one specific claude.ai
+        /// chat the way the browser extension is, so `currentChat` in the
+        /// response is always null; `epics`/`chats` still come back full,
+        /// which is all the Chats tree needs. Git #931 — Shane: "convert the
+        /// chats list into a local JSON file... this pulling it from the dev
+        /// server, the dev server auto shutting down every 15 min... really
+        /// is sucking and slowing me down." Falls back to the local cache
+        /// when the live fetch fails, same shape as GetQueueCachedAsync
+        /// above - display-only (the Chats tree is purely a read view, no
+        /// claim/launch semantics to worry about like the queue watcher).
+        /// </summary>
+        public Task<CachedResult<BoardResponse>> GetBoardAsync() => TrackAsync("GET board", () => CachedAsync("board", async () =>
         {
             var res = await _http.GetFromJsonAsync<BoardResponse>("api/admin/build-tracker/extension/board", JsonOpts);
             return res ?? new BoardResponse();
-        });
+        }));
 
         /// <summary>Git #829 — Shane: "I need the right panel to have another section that shows me all the issues assigned to the chat I'm on." Real GET /admin/build-tracker/issues?epicId=N, same route the admin-panel's own issue tracker UI uses.</summary>
         public Task<List<IssueSummary>> GetIssuesForEpicAsync(int epicId) => TrackAsync($"GET issues?epicId={epicId}", async () =>
