@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Management;
+using System.Runtime.InteropServices;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 
@@ -270,7 +270,20 @@ namespace BuildConsole.Services
             return known;
         }
 
-        /// <summary>Git #991/#995 — walks up to 4 parent levels via WMI looking for the first ancestor with a real window (claude.exe's own console-hosting cmd.exe/powershell.exe/wt.exe/Code.exe). Returns (null, Zero) if none found within that depth (no infinite walk if WMI ever returns a cyclical/bogus chain). Must run off the UI thread - see ListActiveSessionsWithFallbackAsync's own doc comment.</summary>
+        /// <summary>
+        /// Git #999 — the WMI (System.Management/ManagementObjectSearcher,
+        /// DCOM-based) version of this method appeared to simply hang
+        /// forever on every single call on this machine — no exception, no
+        /// timeout, confirmed even after moving the whole call off the UI
+        /// thread via Task.Run (ruling out the STA-COM-reentrancy theory
+        /// too). Direct PowerShell testing earlier used `Get-CimInstance`,
+        /// which is a genuinely DIFFERENT code path (CIM/WinRM, not classic
+        /// WMI/DCOM) — the two can behave completely differently on a given
+        /// machine (locked-down DCOM via firewall/policy/AV is a known
+        /// cause). Replaced with CreateToolhelp32Snapshot (kernel32, pure
+        /// Win32, no COM/DCOM/WMI involved at all) — the standard, reliable
+        /// way to walk process parent-child relationships without WMI.
+        /// </summary>
         private static (string? Title, IntPtr Handle) FindAncestorWindow(int pid)
         {
             try
@@ -278,30 +291,76 @@ namespace BuildConsole.Services
                 int currentPid = pid;
                 for (int depth = 0; depth < 4; depth++)
                 {
-                    using var searcher = new ManagementObjectSearcher(
-                        $"SELECT ParentProcessId FROM Win32_Process WHERE ProcessId = {currentPid}");
-                    using var results = searcher.Get();
-                    var row = results.Cast<ManagementObject>().FirstOrDefault();
-                    if (row == null) return (null, IntPtr.Zero);
-                    int parentPid = Convert.ToInt32(row["ParentProcessId"]);
-                    if (parentPid <= 0 || parentPid == currentPid) return (null, IntPtr.Zero);
+                    int? parentPid = GetParentProcessId(currentPid);
+                    if (parentPid is not int p || p <= 0 || p == currentPid) return (null, IntPtr.Zero);
 
                     try
                     {
-                        using var parent = Process.GetProcessById(parentPid);
+                        using var parent = Process.GetProcessById(p);
                         if (!string.IsNullOrWhiteSpace(parent.MainWindowTitle) && parent.MainWindowHandle != IntPtr.Zero)
                             return (parent.MainWindowTitle, parent.MainWindowHandle);
                     }
-                    catch { /* parent already exited between the WMI query and this lookup */ }
+                    catch { /* parent already exited between the snapshot and this lookup */ }
 
-                    currentPid = parentPid;
+                    currentPid = p;
                 }
             }
             catch (Exception ex)
             {
-                ActivityLog.Log("sessions", $"WMI ancestor-window lookup failed for pid {pid}: {ex.Message}");
+                ActivityLog.Log("sessions", $"ancestor-window lookup failed for pid {pid}: {ex.Message}");
             }
             return (null, IntPtr.Zero);
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct PROCESSENTRY32
+        {
+            public uint dwSize;
+            public uint cntUsage;
+            public uint th32ProcessID;
+            public IntPtr th32DefaultHeapID;
+            public uint th32ModuleID;
+            public uint cntThreads;
+            public uint th32ParentProcessID;
+            public int pcPriClassBase;
+            public uint dwFlags;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)]
+            public string szExeFile;
+        }
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern IntPtr CreateToolhelp32Snapshot(uint dwFlags, uint th32ProcessID);
+
+        [DllImport("kernel32.dll")]
+        private static extern bool Process32First(IntPtr hSnapshot, ref PROCESSENTRY32 lppe);
+
+        [DllImport("kernel32.dll")]
+        private static extern bool Process32Next(IntPtr hSnapshot, ref PROCESSENTRY32 lppe);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool CloseHandle(IntPtr hObject);
+
+        private const uint TH32CS_SNAPPROCESS = 0x00000002;
+
+        /// <summary>Git #999 — one snapshot scan for the given PID's parent, pure kernel32/Toolhelp32, no WMI/COM.</summary>
+        private static int? GetParentProcessId(int pid)
+        {
+            IntPtr snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+            if (snapshot == IntPtr.Zero || snapshot.ToInt64() == -1) return null;
+            try
+            {
+                var entry = new PROCESSENTRY32 { dwSize = (uint)Marshal.SizeOf<PROCESSENTRY32>() };
+                if (!Process32First(snapshot, ref entry)) return null;
+                do
+                {
+                    if (entry.th32ProcessID == (uint)pid) return (int)entry.th32ParentProcessID;
+                } while (Process32Next(snapshot, ref entry));
+            }
+            finally
+            {
+                CloseHandle(snapshot);
+            }
+            return null;
         }
 
         [System.Runtime.InteropServices.DllImport("user32.dll")]
