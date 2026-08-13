@@ -1,0 +1,101 @@
+{
+  "issue": 926,
+  "feature": "EngageBay end-to-end integration (Zoho lead -> engagebay.createContact -> engagebay.startSequence -> webhook -> Activity Log)",
+  "baseUrl": "{{DEPLOY_URL}}",
+
+  "notes": [
+    "Read #926's + #803's full issue body/comments and every file #926 named (engagebay.ts, engagebay-nodes.ts, engagebay-client.ts, engagebay-webhook.ts route + lib, engagebay-tags.ts, engagebay-activity.ts, engagebay-batch-drain.ts, engagebay-nodes-exec.ts) plus engagebay-marketing-lead.ts and engagebay-crm.ts (the funnel entry point and the only admin read routes) before writing this.",
+
+    "NO SANDBOX ACCOUNT: engagebay-client.ts's ENGAGEBAY_API_BASE (line 20) is a single hardcoded https://app.engagebay.com production endpoint — no sandbox subdomain, account-mode flag, or second connection row anywhere in the reviewed files or lib/db/src/schema. Whatever account engagebay_connection (MSP #1) is pointed at IS what these apiTests write to. Per #926's own instruction: flagging this honestly rather than assuming a sandbox exists. If Shane confirms only the shared production EngageBay account is connected, running this manifest creates a REAL contact in that real account — tagged 'engagebaytests-probe' in both email and name specifically so it is identifiable and hand-deletable afterward (EngageBay has no delete-contact endpoint in this codebase — #104's audit already noted deletion stays a manual EngageBay-side action). Do not run this manifest unattended against production until Shane has confirmed that tradeoff.",
+
+    "GAP 1 of 2 — createContact is reachable but gated OFF by default: engagebay-marketing-lead.ts's pushMarketingLeadToEngageBay (the ONLY code path that calls engagebay-client.ts's createContact from a real funnel entry point) returns immediately unless process.env.ENGAGEBAY_MARKETING_LEAD_PUSH_ENABLED === 'true' (line 39). It is also fire-and-forget (`void`) and swallows all errors as non-fatal (lines 41-59), so the triggering request's own response can never confirm the EngageBay call happened — step 4 below polls EngageBay's own search API (GET /api/engagebay/crm/contacts, which calls searchContacts -> GET /dev/api/search) as the real confirmation, per #926's instruction to verify via EngageBay's own API. If ENGAGEBAY_MARKETING_LEAD_PUSH_ENABLED is unset/false on {{DEPLOY_URL}}, step 4 will legitimately find nothing — that is the flag working as coded, not a bug.",
+
+    "GAP 2 of 2 — startSequence has NO reachable trigger from any real lead funnel, and this manifest does not fabricate a fake test for it. Confirmed by reading every EngageBay caller in the repo: engagebay-marketing-lead.ts (the funnel's only EngageBay entry point) calls createContact ONLY — it never calls startSequence or enqueues an engagebay_start_sequence job. engagebay-client.ts's startSequence (line 393) and engagebay-nodes-exec.ts's WRITE_HANDLERS.engagebay_start_sequence (line 119) exist and are real, but the ONLY way to invoke that node type is through the workflow-node executor (executeEngageBayNode / enqueueEngageBayWrite), which requires an actual seeded workflow definition containing an engagebay_start_sequence node — grepped the whole repo for engagebay_start_sequence/engagebay_create_contact: no seeded workflow definition references either node type anywhere (only the catalog/executor/drain files that define the mechanism itself). engagebay-crm.ts's admin CRM routes (the only HTTP-reachable write surface) also only expose a 'contacts' entity (createNode/updateNode/addTagNode) — no sequence entity, no route of any kind maps to engagebay_start_sequence. Net result: #110's own scope ('wire the full Zoho lead -> engagebay.createContact -> engagebay.startSequence -> webhook -> Activity Log flow end to end') is NOT wired today — createContact is reachable (gated), startSequence is unreachable from anywhere outside a hand-built workflow definition. This is the real gap #110 was opened to close; #926 cannot test a code path that does not exist, and building that wiring is out of #926's scope (it says 'write apiTests', not 'wire the flow').",
+
+    "Webhook/Activity Log step (6-7) is SELF-TRIGGERED, not a live EngageBay callback: there is no way from this environment to make the real EngageBay account send a webhook (no sandbox, no way to configure EngageBay's own webhook settings from code). Step 6 instead POSTs directly to this platform's own POST /api/engagebay/webhook receiver with a synthetic 'contact.created' event carrying a unique probe marker, exercising the exact same code path (engagebay-webhook.ts route + engagebay-webhook.ts lib's verifyEngageBayWebhookToken/resolveEngageBayEventType) a real inbound EngageBay call would hit. This requires ENGAGEBAY_WEBHOOK_SECRET to be set on {{DEPLOY_URL}} (the route rejects with 401 otherwise, per verifyEngageBayWebhookToken's 'unset secret always fails' contract) — supply it as {{ENGAGEBAY_WEBHOOK_SECRET}}.",
+
+    "Step 7 (Activity Log) is PRECONDITION-GATED on data this manifest cannot create: the webhook route only writes a wf_trigger_events row when an ENABLED wf_triggers row of type='webhook' with config.engagebayEventType='contact.created' already exists (engagebay-webhook.ts route lines 46-55) — there is no DB access in this environment to check or seed that row (per repo rule), and no code anywhere seeds one for EngageBay. If no such trigger has been built in the Workflow Builder yet, step 6 will legitimately return { matched: 0, fired: 0 } and step 7's poll will find nothing — same honest precondition-gating as #891's checkout manifest. Shane: if step 6/7 fail with matched=0, the fix is building an EngageBay webhook trigger (type=webhook, engagebayEventType='contact.created') in the Workflow Builder, not a code change.",
+
+    "No DB queries were run or attempted from this environment (no DATABASE_URL access here, per repo rule) — every claim above about missing wiring/seeded triggers is from grepping the checked-out source, not from live data.",
+
+    "{{TEST_ADMIN_EMAIL}}/{{TEST_ADMIN_PASSWORD}} follow the same admin-login pattern #928's manifest already uses. Separately noted (pre-existing, not introduced here): HttpTestExecutor.ResolvePlaceholders only substitutes {{DEPLOY_URL}}/{{SECRET_KEY}} from config; {{TEST_ADMIN_EMAIL}}/{{TEST_ADMIN_PASSWORD}}/{{ENGAGEBAY_WEBHOOK_SECRET}} are not config-resolved anywhere in the C# executor today, matching the same already-shipped pattern in #928/#883/#887 — those manifests would hit the same VariableNotResolvedException this one will until the executor's config-placeholder set is extended. Flagging for whoever picks that up; out of #926's own scope to fix."
+  ],
+
+  "apiTests": [
+    {
+      "name": "log in as the designated PlatformAdmin test account — needed for the EngageBay admin routes (GET /api/engagebay/status, /api/engagebay/crm/*, /api/engagebay/activity all requireAdmin per engagebay.ts/engagebay-crm.ts/engagebay-activity.ts)",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_ADMIN_EMAIL}}", "password": "{{TEST_ADMIN_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "adminToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "precondition: confirm engagebay_connection (MSP #1) actually reports connected before anything downstream is attempted — GET /api/engagebay/status (engagebay.ts line 83), never returns the key itself",
+      "method": "GET",
+      "path": "/api/engagebay/status",
+      "headers": { "Authorization": "Bearer {{adminToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.connection.status", "value": "connected" }
+    },
+    {
+      "name": "trigger a real lead through the funnel — same POST /api/quiz/home-lead-capture entry point #883's manifest already proved fires the Zoho bridge; quiz.ts line 779 fires pushMarketingLeadToEngageBay(source:'home_quiz') from this same handler, non-fatal/fire-and-forget so this response cannot itself confirm the EngageBay call — see step 4",
+      "method": "POST",
+      "path": "/api/quiz/home-lead-capture",
+      "headers": { "Content-Type": "application/json" },
+      "body": {
+        "name": "EngageBay Regression Probe",
+        "email": "engagebaytests-probe@shanemccaw.consulting",
+        "company": "EngageBay Regression Test Co",
+        "score": 55,
+        "band": "Developing",
+        "pillars": [
+          { "name": "Identity", "value": 50 },
+          { "name": "Data", "value": 50 },
+          { "name": "Devices", "value": 50 },
+          { "name": "Apps", "value": 50 },
+          { "name": "Infrastructure", "value": 50 },
+          { "name": "Threat Protection", "value": 50 }
+        ]
+      },
+      "expect": { "status": 200, "jsonPath": "$.success", "value": true }
+    },
+    {
+      "name": "confirm engagebay.createContact fired — verified via EngageBay's OWN read API (GET /api/engagebay/crm/contacts?search=..., engagebay-crm.ts line 151, calls searchContacts -> GET /dev/api/search), not a local DB read. Will legitimately find nothing if ENGAGEBAY_MARKETING_LEAD_PUSH_ENABLED is not 'true' on {{DEPLOY_URL}} — see notes GAP 1.",
+      "method": "GET",
+      "path": "/api/engagebay/crm/contacts?search=engagebaytests-probe@shanemccaw.consulting",
+      "headers": { "Authorization": "Bearer {{adminToken}}" },
+      "poll": { "intervalMs": 20000, "timeoutMs": 300000 },
+      "expect": { "status": 200, "containsAny": ["engagebaytests-probe@shanemccaw.consulting"] }
+    },
+    {
+      "name": "GAP — engagebay.startSequence has no reachable trigger from this or any real funnel path; deliberately no apiTest step here. See notes GAP 2 for the full grep-confirmed trace (engagebay-marketing-lead.ts never calls it; no seeded workflow definition references engagebay_start_sequence; engagebay-crm.ts exposes no sequence route). This is the real #110 gap, left honestly untested rather than faked.",
+      "method": "GET",
+      "path": "/api/engagebay/status",
+      "headers": { "Authorization": "Bearer {{adminToken}}" },
+      "expect": { "status": 200 }
+    },
+    {
+      "name": "webhook round-trip (self-triggered, see notes) — POST directly to this platform's own inbound receiver simulating what a real EngageBay 'contact.created' callback would send, carrying a unique probe marker so step 7 can confirm the exact event was logged, not just that some event was",
+      "method": "POST",
+      "path": "/api/engagebay/webhook?token={{ENGAGEBAY_WEBHOOK_SECRET}}&event_type=contact.created",
+      "headers": { "Content-Type": "application/json" },
+      "body": {
+        "event": "contact.created",
+        "entity": {
+          "email": "engagebaytests-probe@shanemccaw.consulting",
+          "probe_marker": "engagebaytests-926-webhook-probe"
+        }
+      },
+      "expect": { "status": 202, "jsonPath": "$.eventType", "value": "contact.created" }
+    },
+    {
+      "name": "confirm the webhook round-trip wrote a real Activity Log entry — GET /api/engagebay/activity (engagebay-activity.ts line 30), filtered to this event type, looking for the exact probe marker step 6 sent. PRECONDITION-GATED: only passes if an enabled wf_triggers row (type=webhook, config.engagebayEventType='contact.created') already exists — see notes. A 200 with an empty/non-matching events array here means that trigger row does not exist yet, not that the webhook route is broken (step 6's 202 + matched count already proves the route itself works).",
+      "method": "GET",
+      "path": "/api/engagebay/activity?eventType=contact.created",
+      "headers": { "Authorization": "Bearer {{adminToken}}" },
+      "poll": { "intervalMs": 10000, "timeoutMs": 60000 },
+      "expect": { "status": 200, "containsAny": ["engagebaytests-926-webhook-probe"] }
+    }
+  ]
+}
