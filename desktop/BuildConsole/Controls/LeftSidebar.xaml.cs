@@ -1381,9 +1381,60 @@ namespace BuildConsole.Controls
         /// </summary>
         private readonly HashSet<string> _collapsedNodeKeys = new();
 
+        // Git #938 (Epic #803) — the same explicit-MaxWidth truncation fix #932
+        // landed on the Chats tree (see ApplyChatTitleMaxWidths), applied here to
+        // the Git Board (IssuesTree). CreateMilestoneHeader/CreateEpicHeader/
+        // CreateIssueHeader each stack a title TextBlock inside a horizontal
+        // StackPanel with no width bound, so a long title measured with the
+        // panel's effectively-infinite available width overflowed to the right
+        // (Shane: "it scrolls WAY far to the right") instead of trimming. As in
+        // #932 — and NOT the Stretch-based approach that failed on this app in
+        // #885/#924 — each title TextBlock gets CharacterEllipsis plus an explicit
+        // numeric MaxWidth = IssuesTree.ActualWidth − a per-row reserve, recomputed
+        // on every width change. The Git Board nests one level deeper than the flat
+        // Chats tree (milestone > epic > issue), so the reserves grow ~19px per
+        // indentation level; the issue row additionally reserves for its priority +
+        // number badges and — only when actually present — the variable-width
+        // blocked badge. Over-reserving only trims a few px early (safe);
+        // under-reserving re-introduces the overflow, so the reserves lean
+        // conservative.
+        private const double IssueTreeIndentPerLevel = 19;
+        private const double IssueTreeChrome = 6;          // tree left padding/border + safety buffer
+        private const double MilestoneEmojiWidth = 22;     // "🎯 " at FontSize 13
+        private const double MilestoneBadgeWidth = 56;     // "NN% (n/n)" progress pill + its 8px left margin
+        private const double EpicCountWidth = 34;          // " (NN)" issue-count suffix
+        private const double IssuePriorityBadgeWidth = 22; // priority glyph + trailing space
+        private const double IssueNumberBadgeWidth = 48;   // "#NNN" bordered pill + its 6px right margin
+        private const double IssueBlockedBadgeWidth = 78;  // "🔴 Blocked" bordered pill + its 6px right margin
+
+        private readonly List<(TextBlock block, double reserve)> _issueTitleBlocks = new();
+
+        // Git #938 — mirrors ApplyChatTitleMaxWidths: MaxWidth = max(MinTitleWidth,
+        // IssuesTree.ActualWidth − reserve). IssuesTree.ActualWidth is the viewport
+        // width (already excludes the vertical scrollbar when shown), so no extra
+        // scrollbar subtraction is needed. Reuses MinTitleWidth from #932.
+        private void ApplyIssueTitleMaxWidths()
+        {
+            var available = IssuesTree.ActualWidth;
+            foreach (var (block, reserve) in _issueTitleBlocks)
+            {
+                block.MaxWidth = Math.Max(MinTitleWidth, available - reserve);
+            }
+        }
+
+        // Git #938 — the sidebar can be resized/collapsed/pinned, so recompute the
+        // Git Board title MaxWidths whenever the tree's width actually changes.
+        // Height-only changes (expanding a milestone/epic) are ignored. Wired in
+        // LeftSidebar.xaml on IssuesTree.SizeChanged, mirroring ChatsTree.
+        private void IssuesTree_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            if (e.WidthChanged) ApplyIssueTitleMaxWidths();
+        }
+
         private void RenderIssuesTree(string filter)
         {
             IssuesTree.Items.Clear();
+            _issueTitleBlocks.Clear();
 
             int totalMilestones = _milestones.Count;
             int totalEpics = _milestones.Sum(m => m.Epics.Count);
@@ -1449,6 +1500,11 @@ namespace BuildConsole.Controls
                     }
                 }
             }
+
+            // Git #938 — every title block for this render is now registered; apply
+            // the explicit MaxWidth against the tree's current width so the
+            // CharacterEllipsis trimming actually engages.
+            ApplyIssueTitleMaxWidths();
         }
 
         private static readonly Dictionary<string, SolidColorBrush> _fallbackBrushes = new()
@@ -1484,7 +1540,8 @@ namespace BuildConsole.Controls
         {
             var p = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 3, 0, 3) };
             p.Children.Add(new TextBlock { Text = "🎯 ", FontSize = 13 });
-            p.Children.Add(new TextBlock { Text = m.Title, FontWeight = FontWeights.Bold, FontSize = 12, Foreground = GetBrush("TextBrush") });
+            var titleBlock = new TextBlock { Text = m.Title, FontWeight = FontWeights.Bold, FontSize = 12, Foreground = GetBrush("TextBrush"), TextTrimming = TextTrimming.CharacterEllipsis };
+            p.Children.Add(titleBlock);
 
             // Git #875 — only a real GitHub milestone has a real completed/
             // total to show; the synthetic "No Milestone" bucket doesn't, so
@@ -1508,14 +1565,26 @@ namespace BuildConsole.Controls
                 p.Children.Add(badge);
             }
 
+            // Git #938 — milestone rows sit at depth 0: one expander column of
+            // indentation + the 🎯 emoji, plus the progress pill (only when a real
+            // milestone has counts). Register the title for the shared MaxWidth pass.
+            _issueTitleBlocks.Add((titleBlock,
+                IssueTreeIndentPerLevel * 1 + IssueTreeChrome + MilestoneEmojiWidth
+                + (m.HasRealCounts ? MilestoneBadgeWidth : 0)));
             return p;
         }
 
         private UIElement CreateEpicHeader(GitEpic e)
         {
             var p = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 2) };
-            p.Children.Add(new TextBlock { Text = e.Title, FontWeight = FontWeights.SemiBold, FontSize = 11, Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(e.ColorHex)) });
+            var titleBlock = new TextBlock { Text = e.Title, FontWeight = FontWeights.SemiBold, FontSize = 11, Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(e.ColorHex)), TextTrimming = TextTrimming.CharacterEllipsis };
+            p.Children.Add(titleBlock);
             p.Children.Add(new TextBlock { Text = $" ({e.Issues.Count})", FontSize = 10, Foreground = GetBrush("Subtext0Brush"), Margin = new Thickness(4, 0, 0, 0) });
+
+            // Git #938 — epic rows sit at depth 1 (nested under a milestone): two
+            // expander columns of indentation + the " (N)" issue-count suffix.
+            _issueTitleBlocks.Add((titleBlock,
+                IssueTreeIndentPerLevel * 2 + IssueTreeChrome + EpicCountWidth));
             return p;
         }
 
@@ -1539,7 +1608,8 @@ namespace BuildConsole.Controls
                 Text = issue.Title,
                 FontSize = 11,
                 Foreground = issue.Status == "CLOSED" ? GetBrush("Subtext0Brush") : GetBrush("TextBrush"),
-                TextDecorations = issue.Status == "CLOSED" ? TextDecorations.Strikethrough : null
+                TextDecorations = issue.Status == "CLOSED" ? TextDecorations.Strikethrough : null,
+                TextTrimming = TextTrimming.CharacterEllipsis
             };
 
             p.Children.Add(prioBlock);
@@ -1563,6 +1633,15 @@ namespace BuildConsole.Controls
             }
 
             p.Children.Add(titleBlock);
+
+            // Git #938 — issue rows sit at depth 2 (issue > epic > milestone), the
+            // deepest tree level: three expander columns of indentation + the
+            // priority glyph + the "#NNN" number pill, plus the red "Blocked" pill
+            // only when this row is actually showing one (same condition as above).
+            bool showsBlocked = issue.Status != "CLOSED" && issue.IsBlocked;
+            _issueTitleBlocks.Add((titleBlock,
+                IssueTreeIndentPerLevel * 3 + IssueTreeChrome + IssuePriorityBadgeWidth + IssueNumberBadgeWidth
+                + (showsBlocked ? IssueBlockedBadgeWidth : 0)));
 
             var tvi = new TreeViewItem
             {

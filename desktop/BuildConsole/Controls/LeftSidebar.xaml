@@ -393,7 +393,8 @@
                     <!-- Milestones / Epics / Issues Tree -->
                     <TreeView x:Name="IssuesTree"
                               BorderThickness="0"
-                              Background="Transparent">
+                              Background="Transparent"
+                              SizeChanged="IssuesTree_SizeChanged">
                         <TreeView.Resources>
                             <Style TargetType="{x:Type TreeViewItem}" BasedOn="{StaticResource {x:Type TreeViewItem}}">
                                 <Setter Property="IsExpanded" Value="True"/>
