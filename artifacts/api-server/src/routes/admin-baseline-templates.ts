@@ -38,12 +38,19 @@ import {
   monitorChecksTable,
 } from "@workspace/db";
 import { eq, and, desc, inArray, count } from "drizzle-orm";
-import { requireAdmin } from "../middlewares/requireAuth";
+import { requireAdmin, requireAdminOrIngestToken } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 
 const log = logger.child({ channel: "admin.clients" });
 
 const router: IRouter = Router();
+
+// Git #901: same requireAdminOrIngestToken bypass admin-test-trigger.ts / admin-deploy-console.ts /
+// admin-engines.ts already use — lets a #898-remote-triggered BuildConsole run (headless, no admin
+// session cookie) authenticate with BUILD_TRACKER_INGEST_TOKEN instead. Applied only to the two
+// routes a headless test run needs (testbed customer lookup + the test-execution trigger); every
+// other route in this file stays plain requireAdmin.
+const requireBaselineTestAccess = requireAdminOrIngestToken();
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -152,7 +159,7 @@ router.get("/admin/baseline-templates/audit-log", requireAdmin, async (req: Requ
 // with a connected tenant are eligible targets for a real Graph write.
 // Registered ahead of the /:templateId GET below so "testbed-customers" is
 // never swallowed as a templateId (same ordering rule as /audit-log above).
-router.get("/admin/baseline-templates/testbed-customers", requireAdmin, async (_req: Request, res: Response) => {
+router.get("/admin/baseline-templates/testbed-customers", requireBaselineTestAccess, async (_req: Request, res: Response) => {
   try {
     const customers = await db
       .select({ id: tenantsTable.id, name: tenantsTable.customerName, tenantId: tenantsTable.tenantId })
@@ -323,19 +330,25 @@ router.delete("/admin/baseline-templates/:templateId", requireAdmin, async (req:
 
 // ── Testing — runs FOR REAL against a connected test tenant, not a dry run ─────
 
-router.post("/admin/baseline-templates/:templateId/test", requireAdmin, async (req: Request, res: Response) => {
+router.post("/admin/baseline-templates/:templateId/test", requireBaselineTestAccess, async (req: Request, res: Response) => {
   try {
     const templateId = req.params.templateId as string;
-    const body = req.body as { customerId?: number; variables?: Record<string, string> };
+    const rawBody = req.body as { customerId?: number | string; variables?: Record<string, string> };
+    // customerId arrives as a JSON string from a #877-interpolated test manifest (an interpolated
+    // {{...}} placeholder is always substituted inside a quoted JSON string, never a bare numeric
+    // literal, or the manifest file itself wouldn't parse as JSON before interpolation ever runs) —
+    // coerce explicitly rather than relying on an implicit driver-level cast.
+    const customerId = typeof rawBody.customerId === "string" ? Number(rawBody.customerId) : rawBody.customerId;
 
-    if (!body.customerId) {
+    if (!customerId || Number.isNaN(customerId)) {
       return void res.status(400).json({ error: "customerId (a testbed customer) is required" });
     }
+    const body = { ...rawBody, customerId };
 
     const [customer] = await db
       .select({ id: tenantsTable.id, tenantId: tenantsTable.tenantId, isTestbed: tenantsTable.isTestbed, name: tenantsTable.customerName })
       .from(tenantsTable)
-      .where(eq(tenantsTable.id, body.customerId))
+      .where(eq(tenantsTable.id, customerId))
       .limit(1);
 
     if (!customer?.tenantId) {

@@ -9,6 +9,7 @@
     "888-verdict-pillars.json",
     "889-documents-screen.json",
     "891-checkout-stripe-test.json",
-    "890-sow-proposal.json"
+    "890-sow-proposal.json",
+    "baseline-actions-powershell-verify.json"
   ]
 }

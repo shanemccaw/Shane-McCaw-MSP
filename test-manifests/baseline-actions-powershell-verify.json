@@ -1,0 +1,320 @@
+{
+  "issue": 901,
+  "feature": "Independently verify all 10 real baseline_action_templates write actions via #900 powerShellVerify",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "notes": [
+    "Part of Epic #803. Triggers each of the 10 real, already-executable baseline_action_templates rows",
+    "(lib/db/migrations/manual/2026-07-20-launch-control-phase3-templates.sql) via the real",
+    "POST /admin/baseline-templates/:templateId/test route, reads back the app's OWN post-write Graph GET",
+    "(graphTests, MT_APP_CLIENT_ID read app) as the 'app-reported' value, then diffs that against",
+    "#900's powerShellVerify — a real delegated Get-*/Get-Mg* cmdlet run as Shane himself (Connect-MgGraph,",
+    "NOT the app's app-only identity) — so the verification is genuinely independent of whatever identity",
+    "performed the write. The 8 quick-start-pack templates from 0195_baseline_templates_quickstart_data.sql",
+    "are NOT covered here — that migration's absolute-URL bug (documented in the phase3 migration's own",
+    "header comment) makes them a separate, out-of-scope fix.",
+    "",
+    "PRECONDITIONS Shane must satisfy before running this manifest (cannot be verified or seeded from",
+    "this headless environment — no DATABASE_URL, no live Graph access):",
+    "  1. At least one tenants row with isTestbed=true, status='active', a connected tenantId, AND that",
+    "     tenant's msps row has write_back_enabled=true and tenants.consent->writeBack.status='granted'",
+    "     (graphWriteForTenant's two write-back gates — a missing grant throws before any Graph call is made).",
+    "  2. GRAPH_TEST_TENANT_ID (BuildConsole env) must equal that same testbed tenant's real tenantId GUID —",
+    "     graphTests below refuse to run against any other tenant by hard guard (GraphTestExecutor.AuthorizeAsync).",
+    "  3. MT_APP_CLIENT_ID/_SECRET (read app) configured in BuildConsole's environment for the graphTests below.",
+    "  4. Every REPLACE_WITH_* / literal placeholder object id below replaced with a REAL object that exists",
+    "     in that testbed tenant, same pattern test-manifests/900-powershell-verify-example.json itself uses",
+    "     ('replace the literal user object id below with a real TESTBED user'). Suggested real seed objects:",
+    "       TESTBED_USER_ID                    - a real testbed user, currently enabled, zero assigned licenses,",
+    "                                             not yet a member of TESTBED_GROUP_ID or TESTBED_TEAM_ID",
+    "       TESTBED_GROUP_ID / TESTBED_TEAM_ID - a real security/M365 group and a real Team in the testbed tenant",
+    "       TESTBED_GROUP_EXISTING_MEMBER_ID   - a user ALREADY a member of TESTBED_GROUP_ID (for the remove test)",
+    "       TESTBED_TEAM_EXISTING_MEMBER_USER_ID - a user ALREADY a member of TESTBED_TEAM_ID (for the remove test)",
+    "       TESTBED_SKU_ID                     - a real subscribedSku GUID available (unconsumed seats) in the tenant",
+    "       TESTBED_DRIVE_ID / TESTBED_RECYCLED_ITEM_ID - a real drive + an item CURRENTLY sitting in its recycle",
+    "                                             bin (Shane must delete a throwaway test file first) — Graph has",
+    "                                             no app-only-readable 'list recycle bin' endpoint to discover this,",
+    "                                             so section 10 is precondition-gated the same way #891's checkout",
+    "                                             money-path manifest is (a real precondition the harness can't seed).",
+    "  5. Run `Connect-MgGraph` interactively once in a pwsh 7 window signed in as Shane (per #900) so the cached",
+    "     delegated token exists before any powerShellVerify step runs.",
+    "",
+    "'Remove' actions (groups.remove_member / teams.remove_member) verify ABSENCE, which this tool's",
+    "afterStep/compareField diff can't express directly (no containsNone in powerShellVerify, only exact/contains).",
+    "Both sides are written as an equivalent presence-probe returning the literal id string when still present or",
+    "'' when gone (PS7 ternary on the app side's regex-captured value, matching shape on both sides) — see the",
+    "per-step comments below. licensing.remove_license uses the same trick against TESTBED_SKU_ID.",
+    "",
+    "Git #901 also required a small scope-matching fix in artifacts/api-server/src/routes/admin-baseline-templates.ts:",
+    "the testbed-customers lookup and the :templateId/test route were plain requireAdmin (session-cookie only),",
+    "which a headless #898-triggered BuildConsole run has no way to satisfy. Switched those two routes (only)",
+    "to requireAdminOrIngestToken(), the exact same bypass admin-test-trigger.ts/admin-deploy-console.ts/",
+    "admin-engines.ts already use for this identical headless-testing purpose."
+  ],
+
+  "apiTests": [
+    {
+      "name": "bootstrap: look up a real testbed customer id (real DB read, no literal placeholder needed)",
+      "method": "GET",
+      "path": "/admin/baseline-templates/testbed-customers",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}" },
+      "expect": { "status": 200, "jsonPath": "$.customers[0].id", "exists": true },
+      "extract": { "as": "testbedCustomerId", "jsonPath": "$.customers[0].id" }
+    },
+
+    {
+      "name": "1/10 users.disable_enable_signin - trigger real write",
+      "method": "POST",
+      "path": "/admin/baseline-templates/users.disable_enable_signin/test",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "customerId": "{{testbedCustomerId}}", "variables": { "userId": "11111111-1111-1111-1111-111111111111", "accountEnabled": false } },
+      "expect": { "status": 200, "jsonPath": "$.result.success", "value": true }
+    },
+
+    {
+      "name": "2/10 users.force_password_reset - trigger real write",
+      "method": "POST",
+      "path": "/admin/baseline-templates/users.force_password_reset/test",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "customerId": "{{testbedCustomerId}}", "variables": { "userId": "11111111-1111-1111-1111-111111111111", "tempPassword": "TempP@ssw0rd!2026Reset" } },
+      "expect": { "status": 200, "jsonPath": "$.result.success", "value": true }
+    },
+
+    {
+      "name": "3/10 auth.revoke_signin_sessions - trigger real write",
+      "method": "POST",
+      "path": "/admin/baseline-templates/auth.revoke_signin_sessions/test",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "customerId": "{{testbedCustomerId}}", "variables": { "userId": "11111111-1111-1111-1111-111111111111" } },
+      "expect": { "status": 200, "jsonPath": "$.result.success", "value": true }
+    },
+
+    {
+      "name": "4/10 licensing.assign_license - trigger real write (must run before 5/10's removal of the same sku)",
+      "method": "POST",
+      "path": "/admin/baseline-templates/licensing.assign_license/test",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "customerId": "{{testbedCustomerId}}", "variables": { "userId": "11111111-1111-1111-1111-111111111111", "skuId": "77777777-7777-7777-7777-777777777777" } },
+      "expect": { "status": 200, "jsonPath": "$.result.success", "value": true }
+    },
+
+    {
+      "name": "5/10 licensing.remove_license - trigger real write (removes the sku 4/10 just assigned)",
+      "method": "POST",
+      "path": "/admin/baseline-templates/licensing.remove_license/test",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "customerId": "{{testbedCustomerId}}", "variables": { "userId": "11111111-1111-1111-1111-111111111111", "skuId": "77777777-7777-7777-7777-777777777777" } },
+      "expect": { "status": 200, "jsonPath": "$.result.success", "value": true }
+    },
+
+    {
+      "name": "6/10 groups.add_member - trigger real write",
+      "method": "POST",
+      "path": "/admin/baseline-templates/groups.add_member/test",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "customerId": "{{testbedCustomerId}}", "variables": { "groupId": "33333333-3333-3333-3333-333333333333", "memberId": "11111111-1111-1111-1111-111111111111" } },
+      "expect": { "status": 200, "jsonPath": "$.result.success", "value": true }
+    },
+
+    {
+      "name": "7/10 groups.remove_member - trigger real write (removes a DIFFERENT, already-present member so this test doesn't depend on 6/10's ordering)",
+      "method": "POST",
+      "path": "/admin/baseline-templates/groups.remove_member/test",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "customerId": "{{testbedCustomerId}}", "variables": { "groupId": "33333333-3333-3333-3333-333333333333", "memberId": "66666666-6666-6666-6666-666666666666" } },
+      "expect": { "status": 200, "jsonPath": "$.result.success", "value": true }
+    },
+
+    {
+      "name": "8/10 teams.add_member - trigger real write",
+      "method": "POST",
+      "path": "/admin/baseline-templates/teams.add_member/test",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "customerId": "{{testbedCustomerId}}", "variables": { "teamId": "44444444-4444-4444-4444-444444444444", "memberId": "11111111-1111-1111-1111-111111111111" } },
+      "expect": { "status": 200, "jsonPath": "$.result.success", "value": true }
+    },
+
+    {
+      "name": "9/10 teams.remove_member - trigger real write (REPLACE_WITH_REAL_TEAM_MEMBERSHIP_ID: the Teams conversationMembership id for TESTBED_TEAM_EXISTING_MEMBER_USER_ID, resolved via GET /teams/{teamId}/members and matched on userId — per the phase3 migration's own note, this is NOT the user id)",
+      "method": "POST",
+      "path": "/admin/baseline-templates/teams.remove_member/test",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "customerId": "{{testbedCustomerId}}", "variables": { "teamId": "44444444-4444-4444-4444-444444444444", "membershipId": "REPLACE_WITH_REAL_TEAM_MEMBERSHIP_ID" } },
+      "expect": { "status": 200, "jsonPath": "$.result.success", "value": true }
+    },
+
+    {
+      "name": "10/10 sharepoint.restore_recycle_bin_item - trigger real write (precondition-gated: driveId/itemId must be a real currently-recycled item, see notes)",
+      "method": "POST",
+      "path": "/admin/baseline-templates/sharepoint.restore_recycle_bin_item/test",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "customerId": "{{testbedCustomerId}}", "variables": { "driveId": "REPLACE_WITH_REAL_TESTBED_DRIVE_ID", "itemId": "REPLACE_WITH_REAL_RECYCLED_ITEM_ID" } },
+      "expect": { "status": 200, "jsonPath": "$.result.success", "value": true }
+    }
+  ],
+
+  "graphTests": [
+    {
+      "name": "1/10 app-reported: read back accountEnabled via the app's own read Graph integration",
+      "authProfile": "MT_APP_CLIENT_ID",
+      "tenant": "{{TEST_TENANT_ID}}",
+      "method": "GET",
+      "path": "https://graph.microsoft.com/v1.0/users/11111111-1111-1111-1111-111111111111?$select=accountEnabled",
+      "expect": { "status": 200, "jsonPath": "$.accountEnabled", "exists": true },
+      "extract": { "as": "appAccountEnabled", "jsonPath": "$.accountEnabled" }
+    },
+
+    {
+      "name": "2/10 app-reported: read back passwordProfile.forceChangePasswordNextSignIn",
+      "authProfile": "MT_APP_CLIENT_ID",
+      "tenant": "{{TEST_TENANT_ID}}",
+      "method": "GET",
+      "path": "https://graph.microsoft.com/v1.0/users/11111111-1111-1111-1111-111111111111?$select=passwordProfile",
+      "expect": { "status": 200, "jsonPath": "$.passwordProfile.forceChangePasswordNextSignIn", "exists": true },
+      "extract": { "as": "appForceChangePasswordNextSignIn", "jsonPath": "$.passwordProfile.forceChangePasswordNextSignIn" }
+    },
+
+    {
+      "name": "3/10 app-reported: read back signInSessionsValidFromDateTime (revokeSignInSessions stamps this to 'now' - identical underlying AAD attribute read twice, so an exact match is meaningful even across two different apps/identities)",
+      "authProfile": "MT_APP_CLIENT_ID",
+      "tenant": "{{TEST_TENANT_ID}}",
+      "method": "GET",
+      "path": "https://graph.microsoft.com/v1.0/users/11111111-1111-1111-1111-111111111111?$select=signInSessionsValidFromDateTime",
+      "expect": { "status": 200, "jsonPath": "$.signInSessionsValidFromDateTime", "exists": true },
+      "extract": { "as": "appSignInSessionsValidFrom", "jsonPath": "$.signInSessionsValidFromDateTime" }
+    },
+
+    {
+      "name": "4/10 app-reported: read back the assigned sku (assumes TESTBED_USER_ID had zero licenses before 4/10 ran, so index [0] is unambiguous)",
+      "authProfile": "MT_APP_CLIENT_ID",
+      "tenant": "{{TEST_TENANT_ID}}",
+      "method": "GET",
+      "path": "https://graph.microsoft.com/v1.0/users/11111111-1111-1111-1111-111111111111?$select=assignedLicenses",
+      "expect": { "status": 200, "jsonPath": "$.assignedLicenses[0].skuId", "exists": true },
+      "extract": { "as": "appAssignedSkuId", "jsonPath": "$.assignedLicenses[0].skuId" }
+    },
+
+    {
+      "name": "5/10 app-reported: probe whether TESTBED_SKU_ID is still present after 5/10's removal - regex with a trailing empty-string alternative so it always resolves: captures the sku guid text if still present, or '' if genuinely gone (never an extraction failure either way)",
+      "authProfile": "MT_APP_CLIENT_ID",
+      "tenant": "{{TEST_TENANT_ID}}",
+      "method": "GET",
+      "path": "https://graph.microsoft.com/v1.0/users/11111111-1111-1111-1111-111111111111/licenseDetails",
+      "expect": { "status": 200 },
+      "extract": { "as": "appSkuStillAssignedAfterRemove", "regex": "(77777777-7777-7777-7777-777777777777)|($)" }
+    },
+
+    {
+      "name": "6/10 app-reported: direct group-membership check (GET /groups/{id}/members/{id} returns the member object if it IS a direct member, 404 otherwise)",
+      "authProfile": "MT_APP_CLIENT_ID",
+      "tenant": "{{TEST_TENANT_ID}}",
+      "method": "GET",
+      "path": "https://graph.microsoft.com/v1.0/groups/33333333-3333-3333-3333-333333333333/members/11111111-1111-1111-1111-111111111111",
+      "expect": { "status": 200, "jsonPath": "$.id", "exists": true },
+      "extract": { "as": "appGroupMemberId", "jsonPath": "$.id" }
+    },
+
+    {
+      "name": "7/10 app-reported: probe whether the removed member is still present - same always-resolves regex trick as 5/10 (captures the id if still a member, '' once genuinely removed; a real 404 here is expected and fine, this reads the response body either way)",
+      "authProfile": "MT_APP_CLIENT_ID",
+      "tenant": "{{TEST_TENANT_ID}}",
+      "method": "GET",
+      "path": "https://graph.microsoft.com/v1.0/groups/33333333-3333-3333-3333-333333333333/members/66666666-6666-6666-6666-666666666666",
+      "extract": { "as": "appGroupMemberStillPresentAfterRemove", "regex": "(66666666-6666-6666-6666-666666666666)|($)" }
+    },
+
+    {
+      "name": "8/10 app-reported: scan the team's member list for the added user's userId (Teams conversationMembers don't support a /members/{userId} direct-lookup shortcut the way group members do, so this regexes the list body for the literal userId)",
+      "authProfile": "MT_APP_CLIENT_ID",
+      "tenant": "{{TEST_TENANT_ID}}",
+      "method": "GET",
+      "path": "https://graph.microsoft.com/v1.0/teams/44444444-4444-4444-4444-444444444444/members",
+      "expect": { "status": 200 },
+      "extract": { "as": "appTeamMemberUserId", "regex": "\"userId\":\"(11111111-1111-1111-1111-111111111111)\"" }
+    },
+
+    {
+      "name": "9/10 app-reported: probe whether TESTBED_TEAM_EXISTING_MEMBER_USER_ID is still in the team's member list - same always-resolves regex trick as 5/10 and 7/10",
+      "authProfile": "MT_APP_CLIENT_ID",
+      "tenant": "{{TEST_TENANT_ID}}",
+      "method": "GET",
+      "path": "https://graph.microsoft.com/v1.0/teams/44444444-4444-4444-4444-444444444444/members",
+      "expect": { "status": 200 },
+      "extract": { "as": "appTeamMemberStillPresentAfterRemove", "regex": "\"userId\":\"88888888-8888-8888-8888-888888888888\"|($)" }
+    },
+
+    {
+      "name": "10/10 app-reported: read back the restored item's name (proves it's live again post-restore, not still 404/deleted)",
+      "authProfile": "MT_APP_CLIENT_ID",
+      "tenant": "{{TEST_TENANT_ID}}",
+      "method": "GET",
+      "path": "https://graph.microsoft.com/v1.0/drives/REPLACE_WITH_REAL_TESTBED_DRIVE_ID/items/REPLACE_WITH_REAL_RECYCLED_ITEM_ID?$select=name",
+      "expect": { "status": 200, "jsonPath": "$.name", "exists": true },
+      "extract": { "as": "appRestoredItemName", "jsonPath": "$.name" }
+    }
+  ],
+
+  "powerShellVerify": [
+    {
+      "name": "1/10 users.disable_enable_signin ground truth",
+      "afterStep": "appAccountEnabled",
+      "cmdlet": "Get-MgUser -UserId 11111111-1111-1111-1111-111111111111 -Property AccountEnabled | Select-Object -ExpandProperty AccountEnabled",
+      "compareField": { "matchType": "exact" }
+    },
+    {
+      "name": "2/10 users.force_password_reset ground truth",
+      "afterStep": "appForceChangePasswordNextSignIn",
+      "cmdlet": "(Get-MgUser -UserId 11111111-1111-1111-1111-111111111111 -Property PasswordProfile).PasswordProfile.ForceChangePasswordNextSignIn",
+      "compareField": { "matchType": "exact" }
+    },
+    {
+      "name": "3/10 auth.revoke_signin_sessions ground truth",
+      "afterStep": "appSignInSessionsValidFrom",
+      "cmdlet": "Get-MgUser -UserId 11111111-1111-1111-1111-111111111111 -Property SignInSessionsValidFromDateTime | Select-Object -ExpandProperty SignInSessionsValidFromDateTime",
+      "compareField": { "matchType": "exact" }
+    },
+    {
+      "name": "4/10 licensing.assign_license ground truth",
+      "afterStep": "appAssignedSkuId",
+      "cmdlet": "(Get-MgUser -UserId 11111111-1111-1111-1111-111111111111 -Property AssignedLicenses).AssignedLicenses[0].SkuId",
+      "compareField": { "matchType": "exact" }
+    },
+    {
+      "name": "5/10 licensing.remove_license ground truth (same presence-or-empty-string shape as the app-side regex in graphTests 5/10)",
+      "afterStep": "appSkuStillAssignedAfterRemove",
+      "cmdlet": "$(if (((Get-MgUser -UserId 11111111-1111-1111-1111-111111111111 -Property AssignedLicenses).AssignedLicenses.SkuId) -contains '77777777-7777-7777-7777-777777777777') { '77777777-7777-7777-7777-777777777777' } else { '' })",
+      "compareField": { "matchType": "exact" }
+    },
+    {
+      "name": "6/10 groups.add_member ground truth",
+      "afterStep": "appGroupMemberId",
+      "cmdlet": "(Get-MgGroupMember -GroupId 33333333-3333-3333-3333-333333333333 -All | Where-Object { $_.Id -eq '11111111-1111-1111-1111-111111111111' }).Id",
+      "compareField": { "matchType": "exact" }
+    },
+    {
+      "name": "7/10 groups.remove_member ground truth (same presence-or-empty-string shape as the app-side regex in graphTests 7/10)",
+      "afterStep": "appGroupMemberStillPresentAfterRemove",
+      "cmdlet": "$(if ((Get-MgGroupMember -GroupId 33333333-3333-3333-3333-333333333333 -All | Select-Object -ExpandProperty Id) -contains '66666666-6666-6666-6666-666666666666') { '66666666-6666-6666-6666-666666666666' } else { '' })",
+      "compareField": { "matchType": "exact" }
+    },
+    {
+      "name": "8/10 teams.add_member ground truth",
+      "afterStep": "appTeamMemberUserId",
+      "cmdlet": "(Get-MgTeamMember -TeamId 44444444-4444-4444-4444-444444444444 -All | Where-Object { $_.AdditionalProperties['userId'] -eq '11111111-1111-1111-1111-111111111111' }).AdditionalProperties['userId']",
+      "compareField": { "matchType": "exact" }
+    },
+    {
+      "name": "9/10 teams.remove_member ground truth (same presence-or-empty-string shape as the app-side regex in graphTests 9/10)",
+      "afterStep": "appTeamMemberStillPresentAfterRemove",
+      "cmdlet": "$(if ((Get-MgTeamMember -TeamId 44444444-4444-4444-4444-444444444444 -All | ForEach-Object { $_.AdditionalProperties['userId'] }) -contains '88888888-8888-8888-8888-888888888888') { '88888888-8888-8888-8888-888888888888' } else { '' })",
+      "compareField": { "matchType": "exact" }
+    },
+    {
+      "name": "10/10 sharepoint.restore_recycle_bin_item ground truth",
+      "afterStep": "appRestoredItemName",
+      "cmdlet": "Get-MgDriveItem -DriveId REPLACE_WITH_REAL_TESTBED_DRIVE_ID -DriveItemId REPLACE_WITH_REAL_RECYCLED_ITEM_ID -Property Name | Select-Object -ExpandProperty Name",
+      "compareField": { "matchType": "exact" }
+    }
+  ],
+
+  "uiSteps": []
+}
