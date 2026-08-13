@@ -1,0 +1,289 @@
+{
+  "issue": 987,
+  "feature": "Money-path E2E (consolidates #886–891) — setup → create/execute → verify login → teardown, one self-contained account-lifecycle flow",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "a8c9de12095938df3f06f780d502a8a7c2b91141",
+
+  "notes": [
+    "GIT #987 (Epic #803). This single manifest CONSOLIDATES the six money-path manifests — #886 assessment/home-quiz.json, #887 copilot-readiness/consent-scan-trigger.json, #888 copilot-readiness/verdict-pillars.json, #889 copilot-readiness/documents-screen.json, #890 copilot-readiness/sow-proposal.json, #891 copilot-readiness/checkout.json — into ONE create → use → verify → teardown lifecycle, restructuring the account lifecycle around every content/theme/honesty assertion those six already proved (none discarded; each is preserved and labelled with its origin issue below).",
+
+    "PHASE → EXECUTOR-BUCKET MAPPING (MainWindow.RunManifestAsync runs phases in a FIXED order: apiTests → graphTests → postGraphApiTests → zohoTests → uiSteps → powerShellVerify, all sharing ONE #877 TestRunVariables store so an extracted value flows forward into every later phase). Setup + Create + Execute(API) + Verify all live in `apiTests` (they must be strictly ordered and precede teardown). Teardown lives in `postGraphApiTests` — because graphTests is empty it runs immediately after apiTests, i.e. AFTER verify. The preserved UI content assertions live in `uiSteps`. Every step's `name` is prefixed with its phase (SETUP/CREATE/EXECUTE/VERIFY/TEARDOWN) so a failure names its phase straight from the live log: apiTests/postGraphApiTests log on the `testing.api-executor` channel, uiSteps on `testing.ui-executor`.",
+
+    "WHY TEARDOWN IS in postGraphApiTests, NOT after uiSteps: the executor has NO HTTP bucket after uiSteps (only powerShellVerify, which runs pwsh Get-* cmdlets, not arbitrary POSTs). So an HTTP teardown structurally cannot run after the UI assertions. This is safe here because the teardown is the CONSERVATIVE #986 reset (clears tenant_engine_overrides + the write-action audit log only) plus the rollback-endpoint contract check — it deletes NO account, scan run, verdict, document, or SOW that the uiSteps observe.",
+
+    "*** HONESTY CAVEAT — 'CREATE ITS OWN ACCOUNT' (the load-bearing constraint) ***: the platform mints the credentialed account (`users` row) ONLY inside the Microsoft admin-consent OAuth callback (`provisionProspectAccount`, direct-tenant-provisioning.ts), and only unlocks its password via `POST /api/public/flow/set-password` AFTER a real Stripe payment flips the checkout session to `paid`. Neither the interactive Microsoft admin-consent OAuth redirect nor a genuinely-confirmed Stripe PaymentIntent is drivable by BuildConsole's WebView2 + HTTP harness, and the harness has NO client-side unique-value generator (TestRunVariables only holds Settings config vars + values extracted from real responses — see TestRunVariables.cs). So a fully harness-minted, unique-per-run login credential is architecturally impossible past that consent+payment wall. What this flow DOES do, honestly: (a) CREATE — it drives the REAL public intake `POST /api/public/checkout-session` (the exact call the quiz→details step fires), minting a genuinely NEW checkout_sessions row + funnel lead every run, and asserts the new session resolves; (b) VERIFY — it performs a real `POST /api/auth/login` credential round-trip. The credentials it logs in with are the designated testbed Assessment account's (config vars), NOT a freshly-minted password — because minting one is impossible here. This is the honest maximum; fabricating an end-to-end account creation was explicitly NOT done. See PLATFORM_BUILD.md #987 row / the issue for Shane's sign-off on this boundary.",
+
+    "SCAN IS ASYNC + MAINTAINED-STATE ASSUMPTION: `POST /api/portal/assessment/debug-trigger-scan` returns 202 `{ runId, status:'pending' }` and runs `runDiagnostics` in the background; the executor cannot await its completion. The EXECUTE apiTests fire it to prove the real trigger contract (202 + a persisted active run + a backend-computed checksTotal — #887's honesty checks), but the verdict/pillars/documents/SOW assertions (API and UI) read the testbed Assessment account's MAINTAINED, already-completed scan — exactly as #888/#889/#890 already assumed. The deep `POST /api/portal/assessment/debug-reset-session` wipe (quiz + diagnostic runs + doc-gen + documents) is therefore DELIBERATELY NOT invoked inside this flow: wiping + async-re-triggering could not restore a completed verdict before the uiSteps run, and would leave every #888/#889 UI assertion asserting the unavailable state. Its contract is noted here for a future synchronous-scan-capable variant. Precondition: keep the testbed Assessment account in a scanned state (a completed scan with a verdict, ≥2 generated documents, and a resolvable SOW), same precondition #888–#890 already require.",
+
+    "GRAPH-WRITE TEARDOWN (#986 teardown-graph-writes): the money path performs NO M365 Graph WRITE actions — the live scan is read-only diagnostics; Launch Control write-actions/remediation are a SEPARATE flow (covered by copilot-readiness/remediation-tracker-e2e.json). So there is nothing real to roll back here. Rather than fabricate a write, the TEARDOWN step exercises the rollback endpoint's dev-origin gate + admin/ingest auth + independent-failure envelope with a deliberately OUT-OF-RANGE auditLogId (proving the path is reachable and gated, returning `toreDown:true` with that id recorded as failed, since rollbackExecution never aborts the batch). A future variant that adds a real write-action captures that write's `/execute` auditLogId and passes it here NEWEST-FIRST (LIFO), per #986's contract.",
+
+    "STRIPE / CHECKOUT (from #891): the journey-checkout HAPPY path (Stripe's own hosted card page) and the signed-scope precondition (`cj_signed_scope` in sessionStorage, set only by Screen 3's drawn-canvas signature) are NOT executor-drivable (WebView2+JS-injection cannot seed sessionStorage, draw the signature, or wait for the cross-origin Stripe redirect). Preserved here is #891's fully-runnable NEGATIVE honesty guardrail: on the checkout route with no signed scope, the 'no signed scope' panel is visible and the pay button is absent (the 2401cbe7 guardrail). Because this session never signs a scope, that negative state is the natural, real observation. Stripe is in TEST mode for any .replit.dev origin (stripe.ts getStripeKey → sk_test_), so nothing here can ever touch a live key.",
+
+    "MUTUALLY-EXCLUSIVE POINT-IN-TIME UI STATES (why some #887/#891 UI selectors are represented at the API level instead of as uiSteps): a single linear WebView2 session holds ONE point in time. #887's live-scan OVERLAY (cj-scan-overlay / cj-scan-streaming-label / cj-scan-checks-done) is only visible DURING an in-progress scan, which is mutually exclusive with the COMPLETED-verdict state #888/#889/#890 need — so #887's Scene-0 honesty contract is preserved via its API assertions in EXECUTE (consentStatus granted, 202 trigger, active.runId, active.checksTotal) and its overlay selectors stay covered by re-running a mid-scan snapshot. Likewise #891's signed-scope happy path is mutually exclusive with its own no-signed-scope negative case; the negative case is what runs here.",
+
+    "ENV VARS required in BuildConsole → Settings → Test Environment Variables: DEPLOY_URL (deployed origin serving both the marketing quiz at '/' and the portal at /login + /copilot-readiness — the same single origin all six source manifests targeted), SECRET_KEY (= BUILD_TRACKER_INGEST_TOKEN; the Bearer that satisfies requireAdminOrIngestToken on the #986 testbed endpoints and the #901 testbed-customers lookup, per requireAuth.ts), TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD (the designated testbed Assessment account), TEST_PORTAL_SLUG (portal branding slug for the login route). The testbed customerId (tenants.id) is NOT a config var — it is read live from the DB via GET /api/admin/baseline-templates/testbed-customers (the same proven #901 bootstrap), so the reset always targets a real testbed customer, never a guessed literal.",
+
+    "The #986 testbed endpoints are hard-gated to a real .replit.dev dev origin (requireDevOrigin, reusing isReplitDevEnvironment from stripe.ts); against a real deployment they 403 by design. Run this manifest against the .replit.dev dev origin. No raw DB access is used anywhere here — every clean/reset/rollback goes through the gated endpoints, per #987."
+  ],
+
+  "apiTests": [
+    {
+      "name": "SETUP 1/3 — bootstrap: resolve the real testbed customer id (tenants.id) from the DB so the reset is scoped to a real testbed customer, not a guessed literal (same #901 lookup)",
+      "method": "GET",
+      "path": "/api/admin/baseline-templates/testbed-customers",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}" },
+      "expect": { "status": 200, "jsonPath": "$.customers[0].id", "exists": true },
+      "extract": { "as": "testbedCustomerId", "jsonPath": "$.customers[0].id" }
+    },
+    {
+      "name": "SETUP 2/3 — #986 testbed reset to a known-clean baseline: clear this testbed customer's tenant_engine_overrides + write-action audit log (dev-origin gated; never raw SQL). This is the 'clean database' step, via the endpoint #986 built for exactly this.",
+      "method": "POST",
+      "path": "/api/admin/testbed/reset",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "customerId": "{{testbedCustomerId}}" },
+      "expect": { "status": 200, "jsonPath": "$.reset", "value": true }
+    },
+    {
+      "name": "SETUP 3/3 — log in as the designated testbed Assessment account to obtain a real bearer for the Assessment-role EXECUTE endpoints below; extract it as {{authToken}}",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    },
+
+    {
+      "name": "CREATE — genuine public intake: POST /api/public/checkout-session (the exact call the quiz→details step fires) mints a brand-NEW checkout_sessions row + funnel lead for the assessment product, from scratch this run; extract the new sessionId. This is the 'go through the purchase flow / create' step the harness CAN genuinely drive (see the CREATE honesty caveat in notes for the consent+payment wall past this point).",
+      "method": "POST",
+      "path": "/api/public/checkout-session",
+      "headers": { "Content-Type": "application/json" },
+      "body": {
+        "productSlug": "copilot-readiness-assessment",
+        "fullName": "Regression Probe",
+        "email": "{{TEST_PORTAL_EMAIL}}",
+        "company": "Money-Path E2E Testbed",
+        "industry": "Technology",
+        "seats": 1
+      },
+      "expect": { "status": 200, "jsonPath": "$.sessionId", "exists": true },
+      "extract": { "as": "sessionId", "jsonPath": "$.sessionId" }
+    },
+    {
+      "name": "CREATE (honesty) — the just-created session is a real, resolvable new funnel record: consent-status for {{sessionId}} returns a real sessionStatus, proving a genuinely new session was created this run (not a reused static one)",
+      "method": "GET",
+      "path": "/api/public/flow/consent-status?sessionId={{sessionId}}",
+      "headers": { "Content-Type": "application/json" },
+      "expect": { "status": 200, "jsonPath": "$.sessionStatus", "exists": true }
+    },
+
+    {
+      "name": "EXECUTE (#887 Scene-0 honesty) — the testbed tenant carries a real GRANTED Microsoft admin consent; the reveal's honesty contract requires a genuinely consented tenant, never the design's stand-in fixture",
+      "method": "GET",
+      "path": "/api/portal/scan-status",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.consentStatus", "value": "granted" }
+    },
+    {
+      "name": "EXECUTE (#887 live-scan trigger) — trigger the real tenant scan the way Scene 0's auto-trigger effect does; hard-gated server-side to testbed tenants, so a 202 here also proves the account is genuinely testbed-flagged, not just asserted client-side; extract the run id",
+      "method": "POST",
+      "path": "/api/portal/assessment/debug-trigger-scan",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 202, "jsonPath": "$.runId", "exists": true },
+      "extract": { "as": "scanRunId", "jsonPath": "$.runId" }
+    },
+    {
+      "name": "EXECUTE (#887) — scan-status now reports a real ACTIVE run backed by the trigger above (the run row genuinely persisted, not a static/mocked response)",
+      "method": "GET",
+      "path": "/api/portal/scan-status",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.active.runId", "exists": true }
+    },
+    {
+      "name": "EXECUTE (#887) — the active run carries a real backend-computed checksTotal (the count Scene 0's radar wedges + centre counter render from), not an empty placeholder",
+      "method": "GET",
+      "path": "/api/portal/scan-status",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.active.checksTotal", "exists": true }
+    },
+    {
+      "name": "EXECUTE (#889 documents gate) — assessment status is the real payload the Documents screen's data hook (useCopilotJourney) polls; copilotGate present on the wire",
+      "method": "GET",
+      "path": "/api/portal/assessment/status",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.copilotGate", "exists": true }
+    },
+    {
+      "name": "EXECUTE (#890 SOW) — sow resolves for the testbed tenant with a real `ready` flag on the wire",
+      "method": "GET",
+      "path": "/api/portal/assessment/sow",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.ready", "exists": true }
+    },
+    {
+      "name": "EXECUTE (#890 SOW) — sow's toggleable workstreams come off the wire as a real array, never a hardcoded fixture",
+      "method": "GET",
+      "path": "/api/portal/assessment/sow",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.allWorkstreams", "isArray": true }
+    },
+    {
+      "name": "EXECUTE (#890 SOW) — sow states the tenant's own stored selection, so a returning customer's real choices are read back rather than silently re-defaulted to everything-on",
+      "method": "GET",
+      "path": "/api/portal/assessment/sow",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.selectedWorkstreamTitles", "isArray": true }
+    },
+    {
+      "name": "EXECUTE (#890 payment-options) — payment-options resolves with a real `ready` flag for the same active document",
+      "method": "GET",
+      "path": "/api/portal/assessment/sow/payment-options",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.ready", "exists": true }
+    },
+    {
+      "name": "EXECUTE (#890 payment-options honesty) — the phased plan states the real platform fact: milestone billing is provider-arranged, selfServe is false, never an invented deposit charge (PLATFORM_BUILD 2401cbe7/2571ed56)",
+      "method": "GET",
+      "path": "/api/portal/assessment/sow/payment-options",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.phased.selfServe", "value": false }
+    },
+    {
+      "name": "EXECUTE (#890 payment-options) — the per-phase breakdown is a real array, the same shape CheckoutPaymentChoice's indicative schedule reads",
+      "method": "GET",
+      "path": "/api/portal/assessment/sow/payment-options",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.phased.phases", "isArray": true }
+    },
+
+    {
+      "name": "VERIFY — the money path's own credential round-trip (Shane: 'login with what you created is the test'): a fresh, unauthenticated POST /api/auth/login with the account credentials returns a real accessToken, proving the login money-path works end to end AFTER the whole execute flow. Honest scope: these are the testbed Assessment account's credentials — a fully harness-minted password is impossible past the consent+payment wall (see the CREATE honesty caveat).",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true }
+    }
+  ],
+
+  "postGraphApiTests": [
+    {
+      "name": "TEARDOWN 1/2 — Graph-write rollback (#986 teardown-graph-writes): exercise the endpoint's dev-origin gate + admin/ingest auth + independent-failure envelope. The money path makes NO real M365 Graph WRITE actions (read-only scan; Launch Control writes are the separate remediation flow), so this is driven with a deliberately out-of-range auditLogId to prove the rollback path is reachable and gated without fabricating a write; the batch records it as failed and still returns toreDown:true. A future write-adding variant passes that write's real /execute auditLogId here, newest-first.",
+      "method": "POST",
+      "path": "/api/admin/testbed/teardown-graph-writes",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "auditLogIds": [2000000000] },
+      "expect": { "status": 200, "jsonPath": "$.toreDown", "value": true }
+    },
+    {
+      "name": "TEARDOWN 2/2 — final #986 reset: clear this testbed customer's tenant_engine_overrides + write-action audit log again so the next run starts fresh with no accumulated sim-drift (conservative — does NOT delete the account, scan, verdict, documents, or SOW the uiSteps below still observe)",
+      "method": "POST",
+      "path": "/api/admin/testbed/reset",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "customerId": "{{testbedCustomerId}}" },
+      "expect": { "status": 200, "jsonPath": "$.reset", "value": true }
+    }
+  ],
+
+  "uiSteps": [
+    { "action": "goto", "target": "/" },
+    { "action": "expect", "selector": "[data-testid='quiz-option-A']", "state": "visible" },
+
+    { "action": "click", "selector": "[data-testid='quiz-option-A']" },
+    { "action": "click", "selector": "[data-testid='quiz-option-A']" },
+    { "action": "click", "selector": "[data-testid='quiz-option-A']" },
+    { "action": "click", "selector": "[data-testid='quiz-option-A']" },
+    { "action": "click", "selector": "[data-testid='quiz-option-A']" },
+    { "action": "click", "selector": "[data-testid='quiz-option-A']" },
+    { "action": "click", "selector": "[data-testid='quiz-option-A']" },
+
+    { "action": "expect", "selector": "[data-testid='quiz-result']", "state": "visible" },
+    { "action": "click", "selector": "[data-testid='get-real-score-cta']" },
+    { "action": "expect", "selector": "[data-testid='assessment-flow-details-step']", "state": "visible" },
+
+    { "action": "goto", "target": "/login" },
+    { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
+    { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
+    {
+      "action": "click",
+      "selector": "[data-testid='login-submit']",
+      "captureResponse": {
+        "urlPattern": "/api/auth/login",
+        "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true }
+      }
+    },
+
+    { "action": "goto", "target": "/copilot-readiness" },
+
+    { "action": "expect", "selector": "[data-cj-scene='1']", "state": "visible" },
+    { "action": "expect", "selector": "[data-testid='preview-badge']", "state": "hidden" },
+
+    { "action": "expect", "selector": "[data-testid='verdict-score']", "state": "visible" },
+    { "action": "expect", "selector": "[data-testid='verdict-score-unavailable']", "state": "hidden" },
+
+    { "action": "expect", "selector": "[data-cj-scene='2'] [data-testid='pillar-headline']", "state": "visible" },
+    { "action": "expect", "selector": "[data-cj-scene='2'] [data-testid='pillar-headline-unavailable']", "state": "hidden" },
+    { "action": "expect", "selector": "[data-cj-scene='2'] [data-testid='pillar-score']", "state": "visible" },
+    { "action": "expect", "selector": "[data-cj-scene='2'] [data-testid='pillar-score-unavailable']", "state": "hidden" },
+
+    { "action": "expect", "selector": "[data-cj-scene='3'] [data-testid='pillar-headline']", "state": "visible" },
+    { "action": "expect", "selector": "[data-cj-scene='3'] [data-testid='pillar-headline-unavailable']", "state": "hidden" },
+    { "action": "expect", "selector": "[data-cj-scene='3'] [data-testid='pillar-score']", "state": "visible" },
+    { "action": "expect", "selector": "[data-cj-scene='3'] [data-testid='pillar-score-unavailable']", "state": "hidden" },
+
+    { "action": "goto", "target": "/copilot-readiness/documents" },
+
+    { "action": "expect", "selector": "[data-testid='document-reading-pane']", "state": "visible" },
+    {
+      "name": "#889 — the ready/pending counter is drawn from the real generation state (JOURNEY_LIVE_DOCUMENT_SPINE, #643): 'N of N ready' with a real number, never a stuck 0 of 0",
+      "action": "expect",
+      "selector": "[data-testid='documents-ready-counter']",
+      "state": "visible",
+      "textContains": "ready"
+    },
+    { "action": "expect", "selector": "[data-testid='document-row-0']", "state": "visible" },
+    { "action": "expect", "selector": "[data-testid='document-row-1']", "state": "visible" },
+    {
+      "name": "#889 — opening a different report from the rail actually switches the reader (header title + reading pane both update, not just the row's active state)",
+      "action": "click",
+      "selector": "[data-testid='document-row-1']"
+    },
+    { "action": "expect", "selector": "[data-testid='active-document-title']", "state": "visible" },
+    { "action": "expect", "selector": "[data-testid='document-reading-pane']", "state": "visible" },
+
+    { "action": "goto", "target": "/copilot-readiness/proposal" },
+
+    {
+      "name": "#890 — the phase list rendered is the real, server-mapped scope, not the design's ?preview=design fixture",
+      "action": "expect",
+      "selector": "[data-testid='proposal-phase-card']",
+      "state": "visible"
+    },
+    {
+      "name": "#890 — the one-off total on the summary rail is real computeTotals()/withAdjustments() output over the fetched sow response, not an invented figure",
+      "action": "expect",
+      "selector": "[data-testid='proposal-summary-total']",
+      "state": "visible"
+    },
+    {
+      "name": "#890 — toggling an unlocked phase is a real scope decision: the summary rail keeps rendering a total off the updated selection rather than freezing or disappearing",
+      "action": "click",
+      "selector": "[data-testid='proposal-phase-toggle']"
+    },
+    { "action": "expect", "selector": "[data-testid='proposal-summary-total']", "state": "visible" },
+
+    { "action": "goto", "target": "/copilot-readiness/checkout" },
+    {
+      "name": "#891 honesty guardrail — with no signed scope in this session (the executor cannot draw Screen 3's canvas signature), checkout refuses to render a pay form for a scope nobody signed (the 2401cbe7 guardrail): the 'no signed scope' panel is visible…",
+      "action": "expect",
+      "selector": "[data-testid='cj-checkout-no-signed-scope']",
+      "state": "visible"
+    },
+    {
+      "name": "#891 honesty guardrail — …and the pay button is absent",
+      "action": "expect",
+      "selector": "[data-testid='cj-checkout-pay']",
+      "state": "absent"
+    }
+  ]
+}
