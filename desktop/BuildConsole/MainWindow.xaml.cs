@@ -125,6 +125,7 @@ namespace BuildConsole
             {
                 _testRunnerWindow = new TestRunnerWindow();
                 _testRunnerWindow.Closed += (_, _) => _testRunnerWindow = null;
+                _testRunnerWindow.RetryRequested += TestRunnerWindow_RetryRequested;
                 _testRunnerWindow.Show();
             }
             _testRunnerWindow.Activate();
@@ -1076,6 +1077,14 @@ namespace BuildConsole
         // powerShellVerify coverage with live TestRunnerWindow telemetry (RunManifestAsync already
         // does EnsureTestRunnerWindow/Clear/SetSteps/BeginRun itself), not a recording-only playback.
         private void LeftSidebar_PlayTestRequested(object? sender, BuildConsole.Services.TestManifest manifest)
+        {
+            _ = RunManifestAsync(manifest, isRegression: false);
+        }
+
+        // "🔄 Retry" in TestRunnerWindow's header — mirrors LeftSidebar_PlayTestRequested exactly, just
+        // sourced from the window's own last-run manifest instead of the sidebar's loaded one, so Shane
+        // can re-run a failed manifest without re-selecting it.
+        private void TestRunnerWindow_RetryRequested(object? sender, BuildConsole.Services.TestManifest manifest)
         {
             _ = RunManifestAsync(manifest, isRegression: false);
         }

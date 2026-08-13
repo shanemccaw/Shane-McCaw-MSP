@@ -99,6 +99,18 @@ namespace BuildConsole
         // it renders above the Live UI Test View WebView2, not behind it — the WPF airspace problem).
         private readonly List<Services.UiScreenshotCapture> _galleryShots = new();
 
+        // Retry button — the last manifest SetSteps was called with, so "🔄 Retry" can re-run it without
+        // Shane re-selecting anything. TestRunnerWindow doesn't otherwise hold a manifest reference (that
+        // lives in MainWindow's RunManifestAsync orchestration, per #989); retained here rather than
+        // threaded through as a param since SetSteps is already the one call every manifest run makes into
+        // this window before BeginRun.
+        private Services.TestManifest? _lastManifest;
+
+        /// <summary>Fired when Shane clicks "🔄 Retry" — mirrors LeftSidebar's PlayTestRequested pattern.
+        /// MainWindow subscribes in EnsureTestRunnerWindow and re-enters RunManifestAsync with the same
+        /// manifest.</summary>
+        public event EventHandler<Services.TestManifest>? RetryRequested;
+
         public TestRunnerWindow()
         {
             InitializeComponent();
@@ -161,6 +173,8 @@ namespace BuildConsole
         {
             RunOnUi(() =>
             {
+                _lastManifest = manifest;
+
                 _steps.Clear();
                 _stepCursor = 0;
 
@@ -252,6 +266,7 @@ namespace BuildConsole
             {
                 TxtRunLabel.Text = $"#{issue} — {feature} ({mode})";
                 SetStatus("● RUNNING...", "PeachBrush");
+                BtnRetry.IsEnabled = false;
                 Services.ActivityLog.Log(Channel, $"Run started: issue #{issue} ({feature}), mode={mode}.");
             });
         }
@@ -265,6 +280,7 @@ namespace BuildConsole
                 int passed = result.Steps.Count(s => s.Passed);
                 SetStatus(result.AllPassed ? $"✔ ALL PASSED ({passed}/{total})" : $"⚠ {passed}/{total} PASSED",
                     result.AllPassed ? "GreenBrush" : "RedBrush");
+                BtnRetry.IsEnabled = _lastManifest != null;
                 Services.ActivityLog.Log(Channel, $"Run complete for issue #{result.Issue}: {passed}/{total} steps passed.");
             });
         }
@@ -468,6 +484,13 @@ namespace BuildConsole
         }
 
         private void BtnClear_Click(object sender, RoutedEventArgs e) => Clear();
+
+        private void BtnRetry_Click(object sender, RoutedEventArgs e)
+        {
+            if (_lastManifest == null) return;
+            Services.ActivityLog.Log(Channel, $"Retry triggered for issue #{_lastManifest.Issue} ({_lastManifest.Feature}).");
+            RetryRequested?.Invoke(this, _lastManifest);
+        }
 
         /// <summary>HttpTestExecutor/GraphTestExecutor's StepCompleted normally resumes on the UI thread already (the RunManifestAsync await chain is kicked off from a UI-thread event handler), but this guards the same way ActivityLog.Log does in case any caller ever awaits with a captured background context.</summary>
         private void RunOnUi(Action action)

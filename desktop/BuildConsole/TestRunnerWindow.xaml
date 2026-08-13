@@ -78,6 +78,8 @@
                     <TextBlock x:Name="TxtSummary" Text="0 pass / 0 warn / 0 crash" FontSize="11" Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center" Margin="0,0,10,0"/>
                     <!-- Git #966 — opens the click-through screenshot review gallery for the last run; disabled until a run captures at least one screenshot. -->
                     <Button x:Name="BtnScreenshots" Content="📷 Screenshots" IsEnabled="False" Margin="0,0,8,0" Click="BtnScreenshots_Click"/>
+                    <!-- Retry — re-runs the exact same manifest last run in this window, no re-selection needed. Disabled until a manifest run has completed, and while a run is actively in progress. -->
+                    <Button x:Name="BtnRetry" Content="🔄 Retry" IsEnabled="False" Margin="0,0,8,0" Click="BtnRetry_Click"/>
                     <Button x:Name="BtnClear" Content="Clear" Click="BtnClear_Click"/>
                 </StackPanel>
             </Grid>
