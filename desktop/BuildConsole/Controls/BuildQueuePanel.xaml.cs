@@ -191,8 +191,29 @@ namespace BuildConsole.Controls
         private DispatcherTimer? _sessionsPollTimer;
         private string? _lastSessionsSignature;
 
+        // Git #999 — the WMI-based ancestor-window walk (#995) is slow enough
+        // (a real COM round trip per level, per session) that it can still be
+        // in flight when the next 10s _sessionsPollTimer tick fires, stacking
+        // up overlapping ListActiveSessionsWithFallbackAsync calls. Besides
+        // wasting real WMI work, this is exactly the same class of bug #956
+        // fixed for the Queue panel - discovered here because DebugLog's own
+        // overwrite-not-append writes made the race directly visible (an
+        // older, still-in-flight call's early-stage write landing AFTER a
+        // newer call's later-stage one). A simple in-flight guard is enough:
+        // unlike #956's RefreshAsync, nothing here needs the LATEST call's
+        // result specifically to win — Sessions data doesn't go stale in a
+        // way that matters between two polls 10s apart, so simply skipping a
+        // tick that finds one already running is sufficient and avoids the
+        // duplicate WMI cost entirely instead of just discarding it after the
+        // fact.
+        private bool _sessionsRefreshInFlight;
+
         private async System.Threading.Tasks.Task RefreshActiveSessionsAsync()
         {
+            if (_sessionsRefreshInFlight) return;
+            _sessionsRefreshInFlight = true;
+            try
+            {
             List<Services.ClaudeAgentSession> sessions;
             try
             {
@@ -248,12 +269,60 @@ namespace BuildConsole.Controls
                 string subtitle = s.Kind == "untracked" ? $"PID {s.Pid}  ·  {elapsedStr} ago" : $"{s.Cwd}  ·  {elapsedStr} ago";
                 textStack.Children.Add(new TextBlock { Text = subtitle, FontSize = 10, Foreground = (Brush)Application.Current.FindResource("Subtext1Brush"), TextWrapping = TextWrapping.Wrap });
                 panel.Children.Add(textStack);
+                // Git #995 — Shane: "if I clicked on them they brought that
+                // window into focus." Tag carries the session so the click
+                // handler can bring its resolved ancestor window forward;
+                // no handle resolved (window already closed/inaccessible)
+                // just means the click quietly no-ops, same tooltip either way.
                 string tooltip = s.Kind == "untracked"
                     ? $"PID {s.Pid} · seen via Get-Process, not reported by claude agents --json"
                     : $"PID {s.Pid} · {s.Kind} · session {s.SessionId}";
-                ActiveSessionsList.Items.Add(new ListBoxItem { Content = panel, ToolTip = tooltip });
+                if (s.WindowHandle != IntPtr.Zero) tooltip += " · click to bring its window forward";
+
+                // Git #998 — Shane: "Give me a right click context menu to
+                // close them." Same immediate-kill-no-confirmation shape as
+                // the Queue tree's own "⏹ Stop" (see BuildTreeItemContextMenu
+                // below) — this app's established convention for a real
+                // running process, not a queued-but-not-started item.
+                var cm = new ContextMenu();
+                var miClose = new MenuItem { Header = "✕ Close Session" };
+                miClose.Click += (_, _) => CloseSession(s);
+                cm.Items.Add(miClose);
+
+                ActiveSessionsList.Items.Add(new ListBoxItem { Content = panel, Tag = s, ToolTip = tooltip, ContextMenu = cm, Cursor = s.WindowHandle != IntPtr.Zero ? System.Windows.Input.Cursors.Hand : System.Windows.Input.Cursors.Arrow });
             }
             ApplyTitleMaxWidths(ActiveSessionsList, _sessionsTitleBlocks);
+            }
+            finally
+            {
+                _sessionsRefreshInFlight = false;
+            }
+        }
+
+        /// <summary>Git #998 — kills the real claude.exe process (and its tree, e.g. any tool subprocess it spawned) for a Sessions row. No confirmation dialog, matching this app's existing "⏹ Stop" convention for a real running process.</summary>
+        private void CloseSession(Services.ClaudeAgentSession s)
+        {
+            try
+            {
+                using var proc = System.Diagnostics.Process.GetProcessById(s.Pid);
+                proc.Kill(entireProcessTree: true);
+                Services.ActivityLog.Log("sessions", $"Closed session: {(string.IsNullOrWhiteSpace(s.Name) ? $"PID {s.Pid}" : s.Name)}");
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Couldn't close session: {ex.Message}", "Close Session");
+            }
+            _ = RefreshActiveSessionsAsync();
+        }
+
+        /// <summary>Git #995 — Shane: "if I clicked on them they brought that window into focus." Clears selection right after so re-clicking the same session still fires SelectionChanged, same pattern as InFlightIssuesList_SelectionChanged/CompletedIssuesList_SelectionChanged elsewhere in this file.</summary>
+        private void ActiveSessionsList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (ActiveSessionsList.SelectedItem is ListBoxItem { Tag: Services.ClaudeAgentSession session })
+            {
+                Services.ClaudeAgentsService.BringToForeground(session.WindowHandle);
+                ActiveSessionsList.SelectedItem = null;
+            }
         }
 
         /// <summary>

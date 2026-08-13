@@ -22,6 +22,10 @@ namespace BuildConsole.Services
         public string SessionId { get; set; } = "";
         public string Name { get; set; } = "";
 
+        /// <summary>Git #995 — Shane: "if I clicked on them they brought that window into focus." claude.exe itself owns no window (see FindAncestorWindow's own doc comment), so this is the ANCESTOR window handle resolved for every session (CLI-tracked or fallback) - IntPtr.Zero if none could be found. Never comes from the CLI's own JSON, so [JsonIgnore] like StartedAt above.</summary>
+        [JsonIgnore]
+        public IntPtr WindowHandle { get; set; } = IntPtr.Zero;
+
         // Git #984 — Shane: "But I have like 2 active" (Sessions kept showing
         // (0) even after #971's deadlock fix, on a genuinely fresh rebuild).
         // The REAL bug, found via this class's own DebugLog mirror below:
@@ -177,12 +181,44 @@ namespace BuildConsole.Services
         /// claude.exe itself with status glyphs like "✳ 989") lives on an
         /// ANCESTOR process - confirmed live as a `cmd.exe` window titled
         /// "✳ 989". Process has no parent-PID API, so this walks the chain
-        /// via WMI's Win32_Process (a real, if slower, standard mechanism),
-        /// checking each ancestor's own MainWindowTitle up to a few levels.
+        /// via WMI's Win32_Process.
+        ///
+        /// Git #999 — Shane: "if I clicked on them they brought that window
+        /// into focus," follow-up bug hunt: the merge step never seemed to
+        /// finish (its own DebugLog line never appeared, poll after poll,
+        /// even after ruling out overlapping calls with a re-entrancy guard).
+        /// Root cause: `ManagementObjectSearcher.Get()` is a synchronous,
+        /// blocking COM call, and everything after `await
+        /// ListActiveSessionsAsync()` resumes on the ORIGINAL synchronization
+        /// context by default - this app's WPF UI (STA) thread. A blocking
+        /// COM/DCOM call made synchronously on an STA thread that's also
+        /// mid-await is a classic deadlock shape (the WMI provider can need
+        /// to pump messages back through that same thread's queue while the
+        /// thread sits blocked waiting on it) - it doesn't error, it just
+        /// never returns, which is indistinguishable from "still running"
+        /// forever. Wrapped the whole WMI-touching merge phase in `Task.Run`
+        /// so it executes on a real thread-pool thread, off the UI thread
+        /// entirely, then awaited normally.
         /// </summary>
         public static async Task<List<ClaudeAgentSession>> ListActiveSessionsWithFallbackAsync()
         {
             var known = await ListActiveSessionsAsync();
+
+            try
+            {
+                known = await Task.Run(() => MergeWithFallback(known));
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("sessions", $"ListActiveSessionsWithFallbackAsync failed: {ex}");
+                DebugLog($"ListActiveSessionsWithFallbackAsync failed: {ex}");
+            }
+            return known;
+        }
+
+        /// <summary>Git #999 — the synchronous (WMI-touching) half of ListActiveSessionsWithFallbackAsync, run via Task.Run so none of it executes on the UI thread. See that method's own doc comment for why.</summary>
+        private static List<ClaudeAgentSession> MergeWithFallback(List<ClaudeAgentSession> known)
+        {
             var knownPids = new HashSet<int>(known.Select(s => s.Pid));
 
             try
@@ -195,11 +231,13 @@ namespace BuildConsole.Services
                         DateTime startTime;
                         try { startTime = proc.StartTime; }
                         catch { continue; } // no permission / already exited between enumeration and this read
+                        var (title, handle) = FindAncestorWindow(proc.Id);
                         known.Add(new ClaudeAgentSession
                         {
                             Pid = proc.Id,
                             Kind = "untracked",
-                            Name = FindAncestorWindowTitle(proc.Id) ?? "",
+                            Name = title ?? "",
+                            WindowHandle = handle,
                             StartedAtMs = new DateTimeOffset(startTime).ToUnixTimeMilliseconds(),
                         });
                     }
@@ -208,14 +246,32 @@ namespace BuildConsole.Services
             catch (Exception ex)
             {
                 ActivityLog.Log("sessions", $"Get-Process fallback scan failed: {ex.Message}");
+                DebugLog($"Get-Process fallback scan failed: {ex}");
             }
 
-            DebugLog("merged: " + string.Join(" | ", known.Select(s => $"pid={s.Pid} kind={s.Kind} name='{s.Name}'")));
+            // Git #995 — Shane: "if I clicked on them they brought that
+            // window into focus." Every session here (CLI-tracked or
+            // fallback) needs its own ancestor window resolved for that to
+            // work, not just the fallback ones - a plain interactive
+            // claude.exe session (like this very conversation) is JUST as
+            // windowless as a Send-to-Builder one; its real window lives 1-2
+            // levels up too (confirmed live: this session's own ancestor
+            // chain resolves to its actual VSCode window). Fallback entries
+            // already got theirs above (also needed for their Name); this
+            // fills in the rest.
+            foreach (var s in known)
+            {
+                if (s.WindowHandle != IntPtr.Zero) continue;
+                var (_, handle) = FindAncestorWindow(s.Pid);
+                s.WindowHandle = handle;
+            }
+
+            DebugLog("merged: " + string.Join(" | ", known.Select(s => $"pid={s.Pid} kind={s.Kind} name='{s.Name}' hwnd={s.WindowHandle}")));
             return known;
         }
 
-        /// <summary>Git #991 — walks up to 4 parent levels via WMI looking for the first ancestor with a real window title (claude.exe's own console-hosting cmd.exe/powershell.exe/wt.exe). Returns null if none found within that depth (no infinite walk if WMI ever returns a cyclical/bogus chain).</summary>
-        private static string? FindAncestorWindowTitle(int pid)
+        /// <summary>Git #991/#995 — walks up to 4 parent levels via WMI looking for the first ancestor with a real window (claude.exe's own console-hosting cmd.exe/powershell.exe/wt.exe/Code.exe). Returns (null, Zero) if none found within that depth (no infinite walk if WMI ever returns a cyclical/bogus chain). Must run off the UI thread - see ListActiveSessionsWithFallbackAsync's own doc comment.</summary>
+        private static (string? Title, IntPtr Handle) FindAncestorWindow(int pid)
         {
             try
             {
@@ -226,14 +282,15 @@ namespace BuildConsole.Services
                         $"SELECT ParentProcessId FROM Win32_Process WHERE ProcessId = {currentPid}");
                     using var results = searcher.Get();
                     var row = results.Cast<ManagementObject>().FirstOrDefault();
-                    if (row == null) return null;
+                    if (row == null) return (null, IntPtr.Zero);
                     int parentPid = Convert.ToInt32(row["ParentProcessId"]);
-                    if (parentPid <= 0 || parentPid == currentPid) return null;
+                    if (parentPid <= 0 || parentPid == currentPid) return (null, IntPtr.Zero);
 
                     try
                     {
                         using var parent = Process.GetProcessById(parentPid);
-                        if (!string.IsNullOrWhiteSpace(parent.MainWindowTitle)) return parent.MainWindowTitle;
+                        if (!string.IsNullOrWhiteSpace(parent.MainWindowTitle) && parent.MainWindowHandle != IntPtr.Zero)
+                            return (parent.MainWindowTitle, parent.MainWindowHandle);
                     }
                     catch { /* parent already exited between the WMI query and this lookup */ }
 
@@ -242,9 +299,36 @@ namespace BuildConsole.Services
             }
             catch (Exception ex)
             {
-                ActivityLog.Log("sessions", $"WMI ancestor-title lookup failed for pid {pid}: {ex.Message}");
+                ActivityLog.Log("sessions", $"WMI ancestor-window lookup failed for pid {pid}: {ex.Message}");
             }
-            return null;
+            return (null, IntPtr.Zero);
+        }
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool IsIconic(IntPtr hWnd);
+
+        private const int SW_RESTORE = 9;
+
+        /// <summary>Git #995 — Shane: "if I clicked on them they brought that window into focus." Un-minimizes first if needed (SetForegroundWindow alone doesn't restore a minimized window), then brings it to the front. Called directly from a click-driven UI event, which is exactly the case Windows' foreground-lock exception allows - the process that currently has focus (BuildConsole, mid-handling a real user click) is always allowed to hand focus to another window as a direct result of that input.</summary>
+        public static bool BringToForeground(IntPtr hWnd)
+        {
+            if (hWnd == IntPtr.Zero) return false;
+            try
+            {
+                if (IsIconic(hWnd)) ShowWindow(hWnd, SW_RESTORE);
+                return SetForegroundWindow(hWnd);
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("sessions", $"BringToForeground failed for hwnd {hWnd}: {ex.Message}");
+                return false;
+            }
         }
     }
 }

@@ -272,7 +272,8 @@
                             <ListBox x:Name="ActiveSessionsList"
                                      Background="Transparent"
                                      BorderThickness="0"
-                                     SizeChanged="ActiveSessionsList_SizeChanged"/>
+                                     SizeChanged="ActiveSessionsList_SizeChanged"
+                                     SelectionChanged="ActiveSessionsList_SelectionChanged"/>
                         </Border>
                     </StackPanel>
 
