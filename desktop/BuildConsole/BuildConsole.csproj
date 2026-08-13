@@ -18,4 +18,60 @@
     <EmbeddedResource Include="Controls\SqlSyntax.xshd" />
   </ItemGroup>
 
+  <!-- ════════════════════════════════════════════════════════════════════
+       Version build-number embedding.
+
+       Before every compile, writes GeneratedBuildInfo.g.cs into the
+       intermediate (obj) folder carrying the git commit count for this app's
+       own folder as a const, then adds it to @(Compile). VersionInfo.RunningBuild
+       reads that const, so a running instance knows the exact build it was
+       compiled from (v{Major}.{Minor}.{build}) even after the local repo moves on.
+
+       - Same git command VersionInfo.GetCurrentBuild() runs at runtime, so the
+         two numbers are directly comparable.
+       - Run from the repo root ($(MSBuildProjectDirectory) up two levels) so the
+         desktop/BuildConsole pathspec resolves regardless of where
+         `dotnet build` was invoked from.
+       - WriteOnlyWhenDifferent keeps the file's timestamp (and thus CoreCompile's
+         up-to-date check) stable when the number hasn't changed — no needless rebuilds.
+       - git failures (not a repo / git not on PATH) degrade to build number 0
+         via ContinueOnError rather than breaking the build.
+       ════════════════════════════════════════════════════════════════════ -->
+  <Target Name="GenerateBuildInfo" BeforeTargets="CoreCompile">
+    <Exec Command="git rev-list --count HEAD -- desktop/BuildConsole"
+          WorkingDirectory="$(MSBuildProjectDirectory)\..\.."
+          ConsoleToMSBuild="true"
+          ContinueOnError="true"
+          StandardOutputImportance="low">
+      <Output TaskParameter="ConsoleOutput" PropertyName="_GitBuildCountRaw" />
+      <Output TaskParameter="ExitCode" PropertyName="_GitBuildCountExit" />
+    </Exec>
+    <PropertyGroup>
+      <_GitBuildCount Condition="'$(_GitBuildCountExit)' == '0' and '$(_GitBuildCountRaw)' != ''">$(_GitBuildCountRaw.Trim())</_GitBuildCount>
+      <_GitBuildCount Condition="'$(_GitBuildCount)' == ''">0</_GitBuildCount>
+      <_GeneratedBuildInfoPath>$(IntermediateOutputPath)GeneratedBuildInfo.g.cs</_GeneratedBuildInfoPath>
+    </PropertyGroup>
+    <ItemGroup>
+      <!-- Each Include is one line of the generated file; the ';' after the const
+           is escaped as %3B so MSBuild doesn't treat it as an item separator. -->
+      <_GeneratedBuildInfoLine Include="// &lt;auto-generated&gt; Regenerated each build by the GenerateBuildInfo target in BuildConsole.csproj." />
+      <_GeneratedBuildInfoLine Include="// Value = git rev-list --count HEAD -- desktop/BuildConsole at build time. Do not edit or commit (lives under obj/)." />
+      <_GeneratedBuildInfoLine Include="namespace BuildConsole.Services" />
+      <_GeneratedBuildInfoLine Include="{" />
+      <_GeneratedBuildInfoLine Include="    internal static class GeneratedBuildInfo" />
+      <_GeneratedBuildInfoLine Include="    {" />
+      <_GeneratedBuildInfoLine Include="        public const int BuildNumber = $(_GitBuildCount)%3B" />
+      <_GeneratedBuildInfoLine Include="    }" />
+      <_GeneratedBuildInfoLine Include="}" />
+    </ItemGroup>
+    <WriteLinesToFile File="$(_GeneratedBuildInfoPath)"
+                      Lines="@(_GeneratedBuildInfoLine)"
+                      Overwrite="true"
+                      WriteOnlyWhenDifferent="true" />
+    <ItemGroup>
+      <Compile Include="$(_GeneratedBuildInfoPath)" />
+      <FileWrites Include="$(_GeneratedBuildInfoPath)" />
+    </ItemGroup>
+  </Target>
+
 </Project>

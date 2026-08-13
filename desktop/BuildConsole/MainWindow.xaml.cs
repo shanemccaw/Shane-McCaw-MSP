@@ -365,6 +365,11 @@ namespace BuildConsole
             _deployStatusTimer.Tick += async (_, _) => await PollDeployStatusAsync();
             _deployStatusTimer.Start();
 
+            // Version status bar + auto-Update button (see MainWindow.VersionUpdate.cs):
+            // live "Current: v{Major}.{Minor}.{build}" vs the build THIS instance was
+            // compiled from, with a queue-gated deploy when the running copy is behind.
+            InitializeVersionUpdate();
+
             // Shane To-Do "Load SQL" -> real GitHub file content into the SQL Runner tab (index 2 in BottomTabs — Build Log, Terminal, SQL Runner, Output).
             LeftSidebar.SqlLoadRequested += (s, path) =>
             {

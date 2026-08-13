@@ -773,6 +773,18 @@ namespace BuildConsole.Controls
             _          => items,
         };
 
+        /// <summary>
+        /// Version-update / deploy gating — true when at least one queue item is
+        /// currently <c>queued</c> or <c>running</c> (the exact "Active" set
+        /// ApplyFilter uses). MainWindow's Update button reads this to decide
+        /// whether it's safe to kick off a ShanesBuild deploy right now, or must
+        /// defer until the queue drains. Reflects the last polled snapshot
+        /// (_lastItems, refreshed every 15s by RefreshAsync); callers that need
+        /// it guaranteed-fresh should <c>await RefreshAsync()</c> first.
+        /// </summary>
+        public bool HasActiveQueueItems =>
+            _lastItems.Any(i => i.Status is "queued" or "running");
+
         /// <summary>Git #933 — replaces the old ToggleButton pill row (FilterChip_Click) that ran off the edge of a narrow panel; same ApplyFilter/RenderTestsTree logic, just driven by the ComboBox's selection instead of "which pill is checked."</summary>
         private void QueueFilterCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
