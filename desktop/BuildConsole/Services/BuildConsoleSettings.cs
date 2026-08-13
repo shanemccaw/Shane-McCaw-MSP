@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 
 namespace BuildConsole.Services
@@ -178,6 +179,7 @@ namespace BuildConsole.Services
             new WebToolEntry { Name = "LinkedIn", Url = "https://www.linkedin.com", Icon = "" },
             new WebToolEntry { Name = "Google Analytics", Url = "https://analytics.google.com", Icon = "" },
             new WebToolEntry { Name = "Microsoft Clarity", Url = "https://clarity.microsoft.com", Icon = "" },
+            new WebToolEntry { Name = "Git", Url = "https://github.com/shanemccaw/Shane-McCaw-MSP", Icon = "\uE71B" },
         };
 
         // Git #953 (Epic #803) — Shane: "How do I set things like TEST_PORTAL_PASSWORD?"
@@ -223,7 +225,28 @@ namespace BuildConsole.Services
                 var json = File.ReadAllText(SettingsPath);
                 var settings = JsonSerializer.Deserialize<BuildConsoleSettings>(
                     json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                return settings ?? new BuildConsoleSettings();
+                settings ??= new BuildConsoleSettings();
+
+                // Web Tools popout: add Git repo as a default entry — the WebTools field
+                // initializer above only seeds the Git entry for a settings.json with no
+                // "webTools" key at all. An existing install (Shane already has the original
+                // three #864 defaults saved) deserializes its own explicit list here, which
+                // has no Git entry and never will on its own. Backfill it once, in place, so
+                // it shows up without Shane needing to add it by hand.
+                if (settings.WebTools != null &&
+                    settings.WebTools.Count > 0 &&
+                    !settings.WebTools.Any(t => string.Equals(t.Url, "https://github.com/shanemccaw/Shane-McCaw-MSP", StringComparison.OrdinalIgnoreCase)))
+                {
+                    settings.WebTools.Add(new WebToolEntry
+                    {
+                        Name = "Git",
+                        Url = "https://github.com/shanemccaw/Shane-McCaw-MSP",
+                        Icon = ""
+                    });
+                    settings.Save();
+                }
+
+                return settings;
             }
             catch
             {
