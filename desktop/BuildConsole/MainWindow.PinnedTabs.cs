@@ -22,11 +22,14 @@ namespace BuildConsole
     /// The ONLY way to keep the session truly loaded while it's off-view is to keep
     /// the control in the visual tree, visible, at a nonzero size. So each pinned
     /// tab's content lives permanently in <c>PinnedHostCanvas</c> (an overlay over
-    /// the editor panes): when collapsed it's slid far OFF-screen at full size
-    /// (still laid out, still alive); when expanded it's slid back to 0,0 over the
-    /// panes. Nothing is ever reparented while pinned, so there is zero WebView2
-    /// churn/reflow between collapse and expand — the LinkedIn session just keeps
-    /// running the whole time.
+    /// the editor panes): when collapsed it's parked 1x1 far OFF-screen (still laid
+    /// out, still alive — see <see cref="ParkOffscreen"/>); when expanded it's grown
+    /// back to full size at 0,0 over the panes. The size change on collapse is
+    /// load-bearing: a WebView2's HwndHost surface only reliably repositions when its
+    /// SIZE changes, so a bare off-screen Canvas translate can leave the live surface
+    /// painted over the panes (that was the "collapsed LinkedIn covers the editor"
+    /// bug). Nothing is ever reparented while pinned, so the session just keeps
+    /// running the whole time — a collapse/expand only reflows the page, never reloads.
     ///
     /// Isolated in its own partial-class file to stay out of the way of the
     /// concurrently-edited MainWindow.xaml.cs (#893/#894/#921 pattern).
@@ -35,16 +38,18 @@ namespace BuildConsole
     {
         private const string PinnedChannel = "tabs.pinned";
 
-        // Far enough left that the whole content Border is clipped away on every
-        // realistic monitor arrangement, while the control stays in the tree at
-        // full size so CoreWebView2 keeps running.
+        // A collapsed host is parked far off-screen in BOTH axes AND shrunk to a
+        // 1x1 footprint. The size change is the load-bearing part: a WebView2 is an
+        // HwndHost whose hosted surface only reliably repositions when its SIZE
+        // changes — a bare Canvas.SetLeft translate can leave the live surface
+        // painted at its last on-screen spot (that was the "collapsed LinkedIn
+        // covers the panes" bug). 1x1 is nonzero, so CoreWebView2 stays alive and
+        // the session never reloads — the exact keep-alive trick ReplitWatcherWebView
+        // / UsageMeterWebView (#902) rely on. z-order can't help here: an HwndHost
+        // always paints over WPF content, so getting it out of view is the only lever.
         private const double PinnedOffscreenX = -20000d;
-
-        // Sensible default so a freshly-seeded pinned WebView2 has a nonzero size
-        // (and therefore a live controller) before the first PinnedHostCanvas
-        // layout pass runs; SizeChanged then keeps it matched to the real bounds.
-        private const double PinnedDefaultWidth = 1280d;
-        private const double PinnedDefaultHeight = 800d;
+        private const double PinnedOffscreenY = -20000d;
+        private const double PinnedCollapsedSize = 1d;
 
         private sealed class PinnedTabEntry
         {
@@ -164,13 +169,10 @@ namespace BuildConsole
             entry.HostBorder = new Border
             {
                 Background = (Brush)FindResource("BaseBrush"),
-                Child = hostGrid,
-                Width = PinnedHostCanvas.ActualWidth > 0 ? PinnedHostCanvas.ActualWidth : PinnedDefaultWidth,
-                Height = PinnedHostCanvas.ActualHeight > 0 ? PinnedHostCanvas.ActualHeight : PinnedDefaultHeight
+                Child = hostGrid
             };
-            Canvas.SetTop(entry.HostBorder, 0);
-            Canvas.SetLeft(entry.HostBorder, PinnedOffscreenX); // start parked off-screen (alive)
             PinnedHostCanvas.Children.Add(entry.HostBorder);
+            ParkOffscreen(entry.HostBorder); // start collapsed: 1x1, off-screen, alive
 
             // Strip item (always visible while pinned) — skipped for header-chip
             // entries (Git #972 revised), which surface via the EDITOR PANES bar
@@ -277,17 +279,21 @@ namespace BuildConsole
         {
             if (!entry.Expanded) return;
 
-            // Slide off-screen — stays in the tree at full size, so CoreWebView2
-            // keeps running and the session stays loaded (not suspended).
-            Canvas.SetLeft(entry.HostBorder, PinnedOffscreenX);
-            Panel.SetZIndex(entry.HostBorder, 0);
+            // Park it 1x1 off-screen — the SIZE change (full -> 1x1) is what forces
+            // the WebView2's HwndHost surface to actually leave view; a bare
+            // Canvas.SetLeft translate would leave the live surface painted over the
+            // panes (that was the covering bug). Still in the tree at nonzero size, so
+            // CoreWebView2 keeps running and the session stays logged in (not reloaded).
+            ParkOffscreen(entry.HostBorder);
 
             entry.Expanded = false;
             if (_expandedPinned == entry) _expandedPinned = null;
             if (_expandedPinned == null) PinnedHostCanvas.IsHitTestVisible = false;
 
             UpdateStripButtonState(entry);
-            ActivityLog.Log(PinnedChannel, $"collapsed: {entry.Label} ({entry.Tag})");
+            ActivityLog.Log(PinnedChannel,
+                $"collapsed: {entry.Label} ({entry.Tag}) -> parked off-screen at " +
+                $"({PinnedOffscreenX},{PinnedOffscreenY}) size {PinnedCollapsedSize}x{PinnedCollapsedSize}");
         }
 
         // ── Unpin — restore as a normal editor tab ──────────────────────────
@@ -363,14 +369,31 @@ namespace BuildConsole
 
         private void PinnedHostCanvas_SizeChanged(object sender, SizeChangedEventArgs e)
         {
-            foreach (var entry in _pinnedEntries)
-                SizePinnedBorder(entry.HostBorder);
+            // Only the currently-expanded host tracks the canvas size. Collapsed
+            // hosts must stay at their 1x1 off-screen park — re-inflating them to
+            // full size (even off-screen) would resurrect the airspace covering
+            // risk, and they don't need real extents while genuinely out of view.
+            if (_expandedPinned != null) SizePinnedBorder(_expandedPinned.HostBorder);
         }
 
+        // Fill the canvas (used when a host is expanded over the panes).
         private void SizePinnedBorder(Border host)
         {
             if (PinnedHostCanvas.ActualWidth > 0) host.Width = PinnedHostCanvas.ActualWidth;
             if (PinnedHostCanvas.ActualHeight > 0) host.Height = PinnedHostCanvas.ActualHeight;
+        }
+
+        // Park a host genuinely out of view but alive: shrink to 1x1 and move
+        // off-screen in both axes. The size change forces the WebView2's HwndHost
+        // surface to update its rendering bounds and follow us off-screen; 1x1 is
+        // nonzero so CoreWebView2 is never torn down (session stays warm/logged in).
+        private void ParkOffscreen(Border host)
+        {
+            host.Width = PinnedCollapsedSize;
+            host.Height = PinnedCollapsedSize;
+            Canvas.SetLeft(host, PinnedOffscreenX);
+            Canvas.SetTop(host, PinnedOffscreenY);
+            Panel.SetZIndex(host, 0);
         }
 
         private void UpdateStripButtonState(PinnedTabEntry entry)
