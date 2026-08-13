@@ -10,6 +10,7 @@
         mc:Ignorable="d"
         Title="BuildConsole" Height="960" Width="1680"
         WindowStartupLocation="CenterScreen"
+        WindowState="Maximized"
         Background="{StaticResource BaseBrush}"
         WindowStyle="None"
         ResizeMode="CanResize"
