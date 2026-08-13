@@ -258,6 +258,7 @@ namespace BuildConsole
             BuildQueuePanel.Initialize(_buildTrackerApi, _queueWatcher);
             LeftSidebar.Initialize(_buildTrackerApi);
             SqlRunnerView.Initialize(_buildTrackerApi);
+            WireSqlRunnerSendToChat(SqlRunnerView); // Git #940
 
             // Git #902 — Shane: "Replit shuts its dev mode down after ~10 min of
             // inactivity... Can we use WebView2 to watch the site. When it sees the
@@ -714,22 +715,47 @@ namespace BuildConsole
         }
 
         /// <summary>
-        /// Git #937 — Send clicked. Finds the active editor tab across the four
-        /// panes, confirms it's a Claude.ai chat (a BoardChat tab, or any tab
-        /// currently on a claude.ai URL), and injects the note into its real
-        /// composer via the #871/#922 technique. Never presses Enter — Shane
-        /// reviews and sends himself. Clears the note only on a confirmed insert.
+        /// Git #937 — Send clicked. Thin wrapper over the shared
+        /// <see cref="SendTextToActiveClaudeChatAsync"/> path (also reused by the
+        /// SQL Runner's "Send to Chat" in #940); reports inline through the Sticky
+        /// Notes window and clears the note only on a confirmed insert.
         /// </summary>
         private async void StickyNotes_SendRequested(object? sender, string text)
         {
             var win = _stickyNotes;
             if (win == null) return;
 
+            await SendTextToActiveClaudeChatAsync(
+                text,
+                showMessage: (msg, isError) => win.ShowInlineMessage(msg, isError),
+                onInserted: () => win.ClearNoteText(),
+                logChannel: "sticky-notes",
+                whatSingular: "note");
+        }
+
+        /// <summary>
+        /// Git #937/#940 — shared: finds the active editor tab across the four
+        /// panes, confirms it's a Claude.ai chat (a BoardChat tab, or any tab
+        /// currently on a claude.ai URL), and injects <paramref name="text"/> into
+        /// its real composer via the #871/#922 technique. Never presses Enter —
+        /// Shane reviews and sends himself. Reports every outcome back through
+        /// <paramref name="showMessage"/> and invokes <paramref name="onInserted"/>
+        /// only on a confirmed insert, so both Sticky Notes (#937) and the SQL
+        /// Runner's "Send to Chat" (#940) share one code path instead of
+        /// reimplementing the active-tab detection + composer injection twice.
+        /// </summary>
+        public async System.Threading.Tasks.Task SendTextToActiveClaudeChatAsync(
+            string text,
+            Action<string, bool> showMessage,
+            Action? onInserted,
+            string logChannel,
+            string whatSingular = "text")
+        {
             var (wv, tab) = GetActiveEditorTabWebView();
             if (wv?.CoreWebView2 == null)
             {
-                win.ShowInlineMessage("No active editor tab to send into — open a Claude.ai chat tab first.", isError: true);
-                BuildConsole.Services.ActivityLog.Log("sticky-notes", "send-failed-no-active-chat: no active editor tab");
+                showMessage("No active editor tab to send into — open a Claude.ai chat tab first.", true);
+                BuildConsole.Services.ActivityLog.Log(logChannel, "send-failed-no-active-chat: no active editor tab");
                 return;
             }
 
@@ -740,8 +766,8 @@ namespace BuildConsole
                                 || url.Contains("claude.ai", StringComparison.OrdinalIgnoreCase);
             if (!isClaudeChat)
             {
-                win.ShowInlineMessage("The active tab isn't a Claude.ai chat — click into a Claude chat tab, then Send.", isError: true);
-                BuildConsole.Services.ActivityLog.Log("sticky-notes", $"send-failed-no-active-chat: active tab is not a Claude chat ({url})");
+                showMessage("The active tab isn't a Claude.ai chat — click into a Claude chat tab, then Send.", true);
+                BuildConsole.Services.ActivityLog.Log(logChannel, $"send-failed-no-active-chat: active tab is not a Claude chat ({url})");
                 return;
             }
 
@@ -758,20 +784,37 @@ namespace BuildConsole
 
             if (status == "inserted")
             {
-                win.ClearNoteText();
-                win.ShowInlineMessage("Sent — review it in the chat and press Enter yourself.", isError: false);
-                BuildConsole.Services.ActivityLog.Log("sticky-notes", $"send: inserted note into active Claude chat ({url})");
+                onInserted?.Invoke();
+                showMessage("Sent — review it in the chat and press Enter yourself.", false);
+                BuildConsole.Services.ActivityLog.Log(logChannel, $"send: inserted {whatSingular} into active Claude chat ({url})");
             }
             else if (status == "no-composer")
             {
-                win.ShowInlineMessage("Couldn't find the Claude chat composer on the active tab — is a conversation open?", isError: true);
-                BuildConsole.Services.ActivityLog.Log("sticky-notes", $"send-failed-no-active-chat: composer not found ({url})");
+                showMessage("Couldn't find the Claude chat composer on the active tab — is a conversation open?", true);
+                BuildConsole.Services.ActivityLog.Log(logChannel, $"send-failed-no-active-chat: composer not found ({url})");
             }
             else
             {
-                win.ShowInlineMessage("Send failed while inserting into the chat.", isError: true);
-                BuildConsole.Services.ActivityLog.Log("sticky-notes", $"send-failed-no-active-chat: {status} ({url})");
+                showMessage("Send failed while inserting into the chat.", true);
+                BuildConsole.Services.ActivityLog.Log(logChannel, $"send-failed-no-active-chat: {status} ({url})");
             }
+        }
+
+        /// <summary>
+        /// Git #940 — routes a SqlRunnerView's "Send to Chat" through the same
+        /// shared active-chat injection path (#937). Applied to both the docked
+        /// SQL Runner and each .sql file tab; reports the outcome back inline on
+        /// the view's own status strip.
+        /// </summary>
+        private void WireSqlRunnerSendToChat(Controls.SqlRunnerView view)
+        {
+            view.SendToChatRequested += async (s, text) =>
+                await SendTextToActiveClaudeChatAsync(
+                    text,
+                    showMessage: (msg, isError) => view.ShowSendStatus(msg),
+                    onInserted: null,
+                    logChannel: "sql-runner.send-to-chat",
+                    whatSingular: "SQL results");
         }
 
         /// <summary>
@@ -1837,6 +1880,7 @@ namespace BuildConsole
             {
                 // SQL Viewer tab
                 var sqlViewer = new Controls.SqlRunnerView();
+                WireSqlRunnerSendToChat(sqlViewer); // Git #940
                 try
                 {
                     string sqlText = File.ReadAllText(filePath);

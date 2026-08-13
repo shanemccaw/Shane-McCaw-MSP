@@ -141,6 +141,15 @@
                         Margin="0,0,8,0"/>
                 <Button Content="Clear"
                         Padding="8,4"/>
+                <!-- Git #940 — enabled only when the results grid actually has rows; sends a
+                     markdown table of the current result set into the active Claude.ai chat. -->
+                <Button x:Name="SendToChatButton"
+                        Content="💬 Send to Chat"
+                        Padding="8,4"
+                        Margin="8,0,0,0"
+                        IsEnabled="False"
+                        ToolTip="Send these results as a markdown table into the currently active Claude.ai chat tab"
+                        Click="SendToChat_Click"/>
                 <TextBlock x:Name="ExecStatus"
                            DockPanel.Dock="Right"
                            Text="Ready"
