@@ -132,6 +132,14 @@ namespace BuildConsole.Services
 
                 string context = $"{method} {resolvedPath} (authProfile={authProfile}, tenant={resolvedTenant}) -> {(int)res.StatusCode}; response body: {Truncate(responseBody)}";
 
+                sw.Stop();
+                string? durationError = HttpTestExecutor.CheckMaxDuration(test, sw.ElapsedMilliseconds);
+                if (durationError != null)
+                {
+                    passed = false;
+                    detail = string.IsNullOrEmpty(detail) || detail == "ok" ? durationError : $"{detail}; {durationError}";
+                }
+
                 return Finish(Channel, "graph", label, sw, passed, detail, expected, actual, context);
             }
             catch (Exception ex)
@@ -247,6 +255,13 @@ namespace BuildConsole.Services
                         {
                             string? extractError = vars.Extract(extractEl, matchedBody);
                             if (extractError != null) { passed = false; detail = $"{detail}; {extractError}"; }
+                        }
+
+                        string? durationError = HttpTestExecutor.CheckMaxDuration(test, sw.ElapsedMilliseconds);
+                        if (durationError != null)
+                        {
+                            passed = false;
+                            detail = $"{detail}; {durationError}";
                         }
 
                         return Finish(MailChannel, "graph", label, sw, passed, detail,

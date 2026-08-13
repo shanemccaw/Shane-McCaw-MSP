@@ -199,6 +199,13 @@ namespace BuildConsole.Services
                 : $"MISMATCH: PowerShell (as you) says \"{Truncate(groundTruth, 60)}\" but the app reported \"{Truncate(appValue, 60)}\" ({matchType})";
             string context = $"cmdlet: {resolvedCmdlet}; raw PS JSON: {Truncate(outcome.ResultJson, 300)}";
 
+            string? durationError = HttpTestExecutor.CheckMaxDuration(step, sw.ElapsedMilliseconds);
+            if (durationError != null)
+            {
+                passed = false;
+                detail = $"{detail}; {durationError}";
+            }
+
             return Finish(label, sw, passed, detail, expected, actual, context);
         }
 

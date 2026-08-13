@@ -94,6 +94,7 @@ namespace BuildConsole.Services
                         ExtractJson = step.TryGetProperty("extract", out var ex) && ex.ValueKind == JsonValueKind.Object ? ex.GetRawText() : null,
                         ViewportJson = step.TryGetProperty("viewport", out var vp) &&
                             (vp.ValueKind == JsonValueKind.Object || vp.ValueKind == JsonValueKind.String) ? vp.GetRawText() : null,
+                        MaxDurationMs = step.TryGetProperty("maxDurationMs", out var md) && md.ValueKind == JsonValueKind.Number && md.TryGetInt64(out var mdn) ? mdn : (long?)null,
                     }).ToList();
                 }
 
@@ -121,5 +122,7 @@ namespace BuildConsole.Services
         /// `{ width, height }` object), overriding the manifest-level default for just this step. Null when
         /// the step declares no viewport of its own.</summary>
         public string? ViewportJson { get; set; }
+        /// <summary>Git #969 — this uiStep's optional `maxDurationMs` threshold, asserted against UiTestExecutor's already-tracked per-step Stopwatch elapsed time. Null when the step declares no threshold.</summary>
+        public long? MaxDurationMs { get; set; }
     }
 }

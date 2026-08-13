@@ -3425,6 +3425,7 @@ namespace BuildConsole
                     CaptureResponse = step.CaptureResponseJson,
                     Extract = step.ExtractJson,
                     Viewport = step.ViewportJson,
+                    MaxDurationMs = step.MaxDurationMs,
                 }).ToList();
 
                 // Git #877 — the same per-run variable store the api/graph executors used, so a

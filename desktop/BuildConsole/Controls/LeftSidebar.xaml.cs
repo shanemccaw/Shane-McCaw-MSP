@@ -117,6 +117,8 @@ namespace BuildConsole.Controls
         /// UiTestExecutor.ViewportSpec.Parse to resolve. Null for manually-recorded steps and steps that
         /// don't override the manifest-level default viewport.</summary>
         public string? Viewport { get; set; }
+        /// <summary>Git #969 — the manifest's optional uiSteps[].maxDurationMs, carried through for UiTestExecutor to assert this step's elapsed time against. Null for manually-recorded steps (no threshold).</summary>
+        public long? MaxDurationMs { get; set; }
     }
 
     public partial class LeftSidebar : UserControl

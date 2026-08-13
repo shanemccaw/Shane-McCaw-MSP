@@ -382,15 +382,20 @@ namespace BuildConsole.Services
                 ActivityLog.Log(TestRunVariables.Channel, $"Step {stepNumber}: {extractError}");
             }
 
+            sw.Stop();
+            // Git #969 — this uiStep's optional maxDurationMs, asserted against the same
+            // Stopwatch elapsed time already recorded into DurationMs below.
+            string? durationError = HttpTestExecutor.CheckMaxDuration(step.MaxDurationMs, sw.ElapsedMilliseconds);
+
             // captureResponse is asserted separately (above) from the step's own UI assertion (below), per #809.
             // #877 — a declared-but-failed extract also fails the step, so a downstream {{name}} reference
             // surfaces the real problem at its source rather than mysteriously later.
-            bool overallPassed = actionPassed && (captureResult == null || captureResult.Passed) && extractError == null;
+            bool overallPassed = actionPassed && (captureResult == null || captureResult.Passed) && extractError == null && durationError == null;
             string stepDetail = extractError == null ? actionDetail : $"{actionDetail} | {extractError}";
+            if (durationError != null) stepDetail = $"{stepDetail} | {durationError}";
             Emit(overallPassed ? $"STEP {stepNumber} PASS" : $"STEP {stepNumber} WARN", stepDetail, overallPassed ? "PASS" : "WARN", overallPassed ? "#A6E3A1" : "#FAB387");
             ActivityLog.Log(Channel, $"Step {stepNumber} ({actionType} {selector}): {(overallPassed ? "PASS" : "WARN")} — {stepDetail}");
 
-            sw.Stop();
             return new UiStepResult
             {
                 Index = stepNumber,

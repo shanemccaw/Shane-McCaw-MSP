@@ -95,6 +95,13 @@ namespace BuildConsole.Services
                 string context = $"{method} {url} -> {(int)resp.StatusCode}; response body: {Truncate(responseBody, 500)}";
 
                 sw.Stop();
+                string? durationError = CheckMaxDuration(test, sw.ElapsedMilliseconds);
+                if (durationError != null)
+                {
+                    passed = false;
+                    detail = string.IsNullOrEmpty(detail) || detail == "ok" ? durationError : $"{detail}; {durationError}";
+                }
+
                 ActivityLog.Log(Channel, (passed ? "PASS " : "FAIL ") + $"{label} ({sw.ElapsedMilliseconds}ms) — {detail}");
                 return new TestStepResult
                 {
@@ -125,6 +132,33 @@ namespace BuildConsole.Services
             if (path.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || path.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
                 return path;
             return baseUrl.TrimEnd('/') + "/" + path.TrimStart('/');
+        }
+
+        /// <summary>
+        /// Git #969 — the single shared evaluator for a step's optional `maxDurationMs` field
+        /// (a sibling of `expect`, not part of it — every step type accepts it: apiTests,
+        /// graphTests, zohoTests, uiSteps, powerShellVerify). Compares against the SAME elapsed-
+        /// time value each executor already tracks for its own logging/telemetry (Stopwatch ->
+        /// TestStepResult.DurationMs) — no new timing instrumentation, just an assertion on data
+        /// that already exists. Reports the real actual-vs-threshold numbers so a failure is
+        /// diagnosable without re-running, per #969 ("not just too slow"). Returns null when no
+        /// threshold is declared or the step ran within it.
+        /// </summary>
+        internal static string? CheckMaxDuration(long? maxDurationMs, long actualDurationMs)
+        {
+            if (!maxDurationMs.HasValue) return null;
+            if (actualDurationMs <= maxDurationMs.Value) return null;
+            return $"exceeded maxDurationMs: took {actualDurationMs}ms, threshold {maxDurationMs.Value}ms";
+        }
+
+        /// <summary>Overload for the raw-JSON step shape (apiTests/graphTests/zohoTests/powerShellVerify) — reads `maxDurationMs` off the step element itself, not off `expect`.</summary>
+        internal static string? CheckMaxDuration(JsonElement step, long actualDurationMs)
+        {
+            long? maxDurationMs = step.ValueKind == JsonValueKind.Object
+                && step.TryGetProperty("maxDurationMs", out var el)
+                && el.ValueKind == JsonValueKind.Number
+                && el.TryGetInt64(out var n) ? n : (long?)null;
+            return CheckMaxDuration(maxDurationMs, actualDurationMs);
         }
 
         /// <summary>Git #812 — Expected/Actual are built from every declared assertion (not just the failing ones), so a passing step's JSON still records what was checked — useful context for diagnosing a DIFFERENT step's regression later without re-running.</summary>
