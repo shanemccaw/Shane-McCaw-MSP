@@ -480,16 +480,23 @@ namespace BuildConsole.Controls
             foreach (var issue in filtered)
             {
                 var (icon, hex) = IsRealClosed(issue.State) ? ("✅", "#7FAE91") : ("⏳", "#8F8C88");
-                var panel = new StackPanel { Orientation = Orientation.Horizontal };
-                panel.Children.Add(new TextBlock { Text = icon + " ", FontSize = 12, Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex)), VerticalAlignment = VerticalAlignment.Center });
-                panel.Children.Add(new TextBlock
+                var panel = new Grid();
+                panel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                panel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                var iconBlock = new TextBlock { Text = icon + " ", FontSize = 12, Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex)), VerticalAlignment = VerticalAlignment.Center };
+                Grid.SetColumn(iconBlock, 0);
+                panel.Children.Add(iconBlock);
+                var titleBlock = new TextBlock
                 {
                     Text = $"#{issue.Number} — {issue.Title}",
                     FontSize = 12,
                     Foreground = (Brush)Application.Current.FindResource("TextBrush"),
-                    TextWrapping = TextWrapping.Wrap,
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                    TextWrapping = TextWrapping.NoWrap,
                     VerticalAlignment = VerticalAlignment.Center,
-                });
+                };
+                Grid.SetColumn(titleBlock, 1);
+                panel.Children.Add(titleBlock);
                 ChatEpicIssuesList.Items.Add(new ListBoxItem { Content = panel, ToolTip = issue.HtmlUrl });
             }
         }
