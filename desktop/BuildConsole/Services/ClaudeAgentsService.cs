@@ -22,7 +22,7 @@ namespace BuildConsole.Services
         public string SessionId { get; set; } = "";
         public string Name { get; set; } = "";
 
-        /// <summary>Git #995 — Shane: "if I clicked on them they brought that window into focus." claude.exe itself owns no window (see FindAncestorWindow's own doc comment), so this is the ANCESTOR window handle resolved for every session (CLI-tracked or fallback) - IntPtr.Zero if none could be found. Never comes from the CLI's own JSON, so [JsonIgnore] like StartedAt above.</summary>
+        /// <summary>Git #1001 — Shane: "if I clicked on them they brought that window into focus." claude.exe itself owns no window (see FindAncestorWindow's own doc comment), so this is the ANCESTOR window handle resolved for every session (CLI-tracked or fallback) - IntPtr.Zero if none could be found. Never comes from the CLI's own JSON, so [JsonIgnore] like StartedAt above.</summary>
         [JsonIgnore]
         public IntPtr WindowHandle { get; set; } = IntPtr.Zero;
 
@@ -183,7 +183,7 @@ namespace BuildConsole.Services
         /// "✳ 989". Process has no parent-PID API, so this walks the chain
         /// via WMI's Win32_Process.
         ///
-        /// Git #999 — Shane: "if I clicked on them they brought that window
+        /// Git #1001 — Shane: "if I clicked on them they brought that window
         /// into focus," follow-up bug hunt: the merge step never seemed to
         /// finish (its own DebugLog line never appeared, poll after poll,
         /// even after ruling out overlapping calls with a re-entrancy guard).
@@ -216,7 +216,7 @@ namespace BuildConsole.Services
             return known;
         }
 
-        /// <summary>Git #999 — the synchronous (WMI-touching) half of ListActiveSessionsWithFallbackAsync, run via Task.Run so none of it executes on the UI thread. See that method's own doc comment for why.</summary>
+        /// <summary>Git #1001 — the synchronous (WMI-touching) half of ListActiveSessionsWithFallbackAsync, run via Task.Run so none of it executes on the UI thread. See that method's own doc comment for why.</summary>
         private static List<ClaudeAgentSession> MergeWithFallback(List<ClaudeAgentSession> known)
         {
             var knownPids = new HashSet<int>(known.Select(s => s.Pid));
@@ -249,7 +249,7 @@ namespace BuildConsole.Services
                 DebugLog($"Get-Process fallback scan failed: {ex}");
             }
 
-            // Git #995 — Shane: "if I clicked on them they brought that
+            // Git #1001 — Shane: "if I clicked on them they brought that
             // window into focus." Every session here (CLI-tracked or
             // fallback) needs its own ancestor window resolved for that to
             // work, not just the fallback ones - a plain interactive
@@ -271,7 +271,7 @@ namespace BuildConsole.Services
         }
 
         /// <summary>
-        /// Git #999 — the WMI (System.Management/ManagementObjectSearcher,
+        /// Git #1001 — the WMI (System.Management/ManagementObjectSearcher,
         /// DCOM-based) version of this method appeared to simply hang
         /// forever on every single call on this machine — no exception, no
         /// timeout, confirmed even after moving the whole call off the UI
@@ -342,7 +342,7 @@ namespace BuildConsole.Services
 
         private const uint TH32CS_SNAPPROCESS = 0x00000002;
 
-        /// <summary>Git #999 — one snapshot scan for the given PID's parent, pure kernel32/Toolhelp32, no WMI/COM.</summary>
+        /// <summary>Git #1001 — one snapshot scan for the given PID's parent, pure kernel32/Toolhelp32, no WMI/COM.</summary>
         private static int? GetParentProcessId(int pid)
         {
             IntPtr snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
@@ -374,7 +374,7 @@ namespace BuildConsole.Services
 
         private const int SW_RESTORE = 9;
 
-        /// <summary>Git #995 — Shane: "if I clicked on them they brought that window into focus." Un-minimizes first if needed (SetForegroundWindow alone doesn't restore a minimized window), then brings it to the front. Called directly from a click-driven UI event, which is exactly the case Windows' foreground-lock exception allows - the process that currently has focus (BuildConsole, mid-handling a real user click) is always allowed to hand focus to another window as a direct result of that input.</summary>
+        /// <summary>Git #1001 — Shane: "if I clicked on them they brought that window into focus." Un-minimizes first if needed (SetForegroundWindow alone doesn't restore a minimized window), then brings it to the front. Called directly from a click-driven UI event, which is exactly the case Windows' foreground-lock exception allows - the process that currently has focus (BuildConsole, mid-handling a real user click) is always allowed to hand focus to another window as a direct result of that input.</summary>
         public static bool BringToForeground(IntPtr hWnd)
         {
             if (hWnd == IntPtr.Zero) return false;

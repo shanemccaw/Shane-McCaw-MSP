@@ -191,7 +191,7 @@ namespace BuildConsole.Controls
         private DispatcherTimer? _sessionsPollTimer;
         private string? _lastSessionsSignature;
 
-        // Git #999 — the WMI-based ancestor-window walk (#995) is slow enough
+        // Git #1001 — the WMI-based ancestor-window walk (#995) is slow enough
         // (a real COM round trip per level, per session) that it can still be
         // in flight when the next 10s _sessionsPollTimer tick fires, stacking
         // up overlapping ListActiveSessionsWithFallbackAsync calls. Besides
@@ -269,7 +269,7 @@ namespace BuildConsole.Controls
                 string subtitle = s.Kind == "untracked" ? $"PID {s.Pid}  ·  {elapsedStr} ago" : $"{s.Cwd}  ·  {elapsedStr} ago";
                 textStack.Children.Add(new TextBlock { Text = subtitle, FontSize = 10, Foreground = (Brush)Application.Current.FindResource("Subtext1Brush"), TextWrapping = TextWrapping.Wrap });
                 panel.Children.Add(textStack);
-                // Git #995 — Shane: "if I clicked on them they brought that
+                // Git #1001 — Shane: "if I clicked on them they brought that
                 // window into focus." Tag carries the session so the click
                 // handler can bring its resolved ancestor window forward;
                 // no handle resolved (window already closed/inaccessible)
@@ -279,7 +279,7 @@ namespace BuildConsole.Controls
                     : $"PID {s.Pid} · {s.Kind} · session {s.SessionId}";
                 if (s.WindowHandle != IntPtr.Zero) tooltip += " · click to bring its window forward";
 
-                // Git #998 — Shane: "Give me a right click context menu to
+                // Git #1001 — Shane: "Give me a right click context menu to
                 // close them." Same immediate-kill-no-confirmation shape as
                 // the Queue tree's own "⏹ Stop" (see BuildTreeItemContextMenu
                 // below) — this app's established convention for a real
@@ -299,7 +299,7 @@ namespace BuildConsole.Controls
             }
         }
 
-        /// <summary>Git #998 — kills the real claude.exe process (and its tree, e.g. any tool subprocess it spawned) for a Sessions row. No confirmation dialog, matching this app's existing "⏹ Stop" convention for a real running process.</summary>
+        /// <summary>Git #1001 — kills the real claude.exe process (and its tree, e.g. any tool subprocess it spawned) for a Sessions row. No confirmation dialog, matching this app's existing "⏹ Stop" convention for a real running process.</summary>
         private void CloseSession(Services.ClaudeAgentSession s)
         {
             try
@@ -315,7 +315,7 @@ namespace BuildConsole.Controls
             _ = RefreshActiveSessionsAsync();
         }
 
-        /// <summary>Git #995 — Shane: "if I clicked on them they brought that window into focus." Clears selection right after so re-clicking the same session still fires SelectionChanged, same pattern as InFlightIssuesList_SelectionChanged/CompletedIssuesList_SelectionChanged elsewhere in this file.</summary>
+        /// <summary>Git #1001 — Shane: "if I clicked on them they brought that window into focus." Clears selection right after so re-clicking the same session still fires SelectionChanged, same pattern as InFlightIssuesList_SelectionChanged/CompletedIssuesList_SelectionChanged elsewhere in this file.</summary>
         private void ActiveSessionsList_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (ActiveSessionsList.SelectedItem is ListBoxItem { Tag: Services.ClaudeAgentSession session })
