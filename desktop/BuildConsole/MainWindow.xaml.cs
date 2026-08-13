@@ -144,6 +144,9 @@ namespace BuildConsole
 
         // ── Git #937: always-on-top Sticky Notes floaty ─────────────────────────
         private StickyNotesWindow? _stickyNotes;
+
+        // ── Git #980: floaty 8-slot Build Watch window ──────────────────────────
+        private BuildWatchWindow? _buildWatch;
         // The editor pane (of the four from #893) the user last interacted with —
         // Send targets whatever Claude chat is active THERE. Updated both on tab
         // selection and on keyboard focus entering a pane (clicking into a
@@ -445,6 +448,8 @@ namespace BuildConsole
             ActivityBar.StickyNotesToggleRequested += (s, e) => ToggleStickyNotes();
             // Git #973 — LinkedIn post pre-fill floaty toggle (see MainWindow.LinkedInComposer.cs).
             ActivityBar.LinkedInComposerToggleRequested += (s, e) => ToggleLinkedInComposer();
+            // Git #980 — floaty 8-slot Build Watch window toggle.
+            ActivityBar.BuildWatchToggleRequested += (s, e) => ToggleBuildWatch();
             _activeEditorPane = EditorTabs;
             // Clicking into any pane's WebView2 to type moves WPF keyboard focus
             // there without changing tab selection — walk up from the newly
@@ -788,6 +793,31 @@ namespace BuildConsole
             };
             _stickyNotes.Show();
             BuildConsole.Services.ActivityLog.Log("sticky-notes", "open");
+        }
+
+        /// <summary>
+        /// Git #980 — toggles the floaty 8-slot Build Watch window. Same
+        /// open-or-close-on-toggle + Owner=this lifecycle as the Sticky Notes
+        /// (#937) and LinkedIn (#973) floaties, so it closes cleanly with the app
+        /// and never orphans. Passes the shared build-tracker API client so the
+        /// window can watch the same queue every other panel reads.
+        /// </summary>
+        private void ToggleBuildWatch()
+        {
+            if (_buildWatch != null)
+            {
+                _buildWatch.Close(); // Closed handler nulls the ref and logs "close"
+                return;
+            }
+
+            _buildWatch = new BuildWatchWindow(_buildTrackerApi) { Owner = this };
+            _buildWatch.Closed += (s, e) =>
+            {
+                _buildWatch = null;
+                BuildConsole.Services.ActivityLog.Log("build-watch", "close");
+            };
+            _buildWatch.Show();
+            BuildConsole.Services.ActivityLog.Log("build-watch", "open");
         }
 
         /// <summary>

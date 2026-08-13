@@ -1,0 +1,74 @@
+<Window x:Class="BuildConsole.BuildWatchWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Build Watch"
+        Width="900" Height="560"
+        MinWidth="480" MinHeight="320"
+        WindowStartupLocation="CenterScreen"
+        ShowInTaskbar="True">
+
+    <!-- Git #980 — Shane: "This should be a floaty panel so I can put it off to
+         another monitor and watch as it progresses... 8 total builds running at
+         once... 8 squares each can contain a build output... When one is done...
+         a green overlay or something around the completed one." A genuine
+         independent top-level Window (not docked inside MainWindow): draggable to
+         any monitor, resizable, position/size persisted in BuildConsoleSettings.
+         Normal window chrome (not the borderless #937 floaty shape) precisely
+         because Shane wants a real, movable, resizable "watch on another monitor"
+         window, not a small always-on-top sticky. -->
+    <Border Background="{StaticResource BaseBrush}">
+        <Grid Margin="8">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <!-- Header: title + live counts + colour legend -->
+            <Grid Grid.Row="0" Margin="2,0,2,8">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="&#x1F5A5;" FontSize="16" Margin="0,0,8,0"
+                               VerticalAlignment="Center"/>
+                    <TextBlock Text="Build Watch" FontSize="15" FontWeight="SemiBold"
+                               VerticalAlignment="Center"
+                               Foreground="{StaticResource TextBrush}"/>
+                    <TextBlock x:Name="Subtitle" Margin="12,0,0,0" FontSize="12"
+                               VerticalAlignment="Center"
+                               Foreground="{StaticResource Subtext1Brush}"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
+                            VerticalAlignment="Center">
+                    <Ellipse Width="10" Height="10" Margin="0,0,4,0"
+                             Fill="{StaticResource GreenBrush}" VerticalAlignment="Center"/>
+                    <TextBlock Text="done" Margin="0,0,12,0" FontSize="11"
+                               VerticalAlignment="Center"
+                               Foreground="{StaticResource Subtext1Brush}"/>
+                    <Ellipse Width="10" Height="10" Margin="0,0,4,0"
+                             Fill="{StaticResource RedBrush}" VerticalAlignment="Center"/>
+                    <TextBlock Text="failed" Margin="0,0,12,0" FontSize="11"
+                               VerticalAlignment="Center"
+                               Foreground="{StaticResource Subtext1Brush}"/>
+                    <Ellipse Width="10" Height="10" Margin="0,0,4,0"
+                             Fill="{StaticResource BlueBrush}" VerticalAlignment="Center"/>
+                    <TextBlock Text="running" FontSize="11"
+                               VerticalAlignment="Center"
+                               Foreground="{StaticResource Subtext1Brush}"/>
+                </StackPanel>
+            </Grid>
+
+            <!-- Waiting-for-a-slot banner (only visible when >8 builds run at once) -->
+            <Border x:Name="WaitingBannerBorder" Grid.Row="1"
+                    Background="{StaticResource Surface0Brush}"
+                    BorderBrush="{StaticResource PeachBrush}"
+                    BorderThickness="1" CornerRadius="4"
+                    Padding="8,5" Margin="2,0,2,8"
+                    Visibility="Collapsed">
+                <TextBlock x:Name="WaitingBanner" FontSize="12" TextWrapping="Wrap"
+                           Foreground="{StaticResource PeachBrush}"/>
+            </Border>
+
+            <!-- 8-slot grid (2 rows x 4 cols). Slots are built in code-behind. -->
+            <UniformGrid x:Name="SlotGrid" Grid.Row="2" Rows="2" Columns="4"/>
+        </Grid>
+    </Border>
+</Window>

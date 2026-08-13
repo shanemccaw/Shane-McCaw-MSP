@@ -166,6 +166,20 @@
                                Foreground="{StaticResource BlueBrush}"/>
                 </Button>
 
+                <!-- Git #980 — Shane: "a floaty panel so I can put it off to
+                     another monitor and watch as it progresses." Toggles the
+                     independent 8-slot Build Watch window (a separate top-level
+                     window, so a plain Button like the two floaties above, not a
+                     LeftSidebar workspace RadioButton). -->
+                <Button x:Name="BtnBuildWatch"
+                        Style="{StaticResource IconButton}"
+                        Width="48" Height="44"
+                        ToolTip="Build Watch — 8-slot live build monitor (floaty)"
+                        Click="BtnBuildWatch_Click">
+                    <TextBlock Text="&#xE7F4;" FontFamily="Segoe MDL2 Assets" FontSize="18"
+                               Foreground="{StaticResource GreenBrush}"/>
+                </Button>
+
             </StackPanel>
 
             <!-- ── Bottom icon: Settings ── -->

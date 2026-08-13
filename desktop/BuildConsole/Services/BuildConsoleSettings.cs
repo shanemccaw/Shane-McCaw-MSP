@@ -103,6 +103,26 @@ namespace BuildConsole.Services
         /// <summary>Last height of the Sticky Notes floaty.</summary>
         public double StickyNotesHeight { get; set; } = 340;
 
+        // ── Git #980 — floaty Build Watch panel window bounds ────────────────
+        // Shane: "put it off to another monitor and watch as it progresses."
+        // Same local %AppData%\BuildConsole\settings.json store / round-trip
+        // pattern as the Sticky Notes floaty above; Left/Top use -1 as the
+        // "never positioned yet" sentinel (center on first open), Width/Height
+        // carry real defaults. A pre-#980 settings.json (no "buildWatch*" keys)
+        // still deserializes with these intact.
+
+        /// <summary>Last on-screen X of the Build Watch window. -1 = never positioned yet (center on first open).</summary>
+        public double BuildWatchLeft { get; set; } = -1;
+
+        /// <summary>Last on-screen Y of the Build Watch window. -1 = never positioned yet (center on first open).</summary>
+        public double BuildWatchTop { get; set; } = -1;
+
+        /// <summary>Last width of the Build Watch window.</summary>
+        public double BuildWatchWidth { get; set; } = 900;
+
+        /// <summary>Last height of the Build Watch window.</summary>
+        public double BuildWatchHeight { get; set; } = 560;
+
         // ── Git #902 — Replit idle watcher (sub-issue of Epic #803) ──────────
         // Shane: "Replit shuts its dev mode down after like 10 minutes of
         // inactivity. So I always have to turn it back on after a build."
