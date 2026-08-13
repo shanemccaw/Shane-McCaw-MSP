@@ -2,7 +2,7 @@
   "issue": 958,
   "feature": "UI \"hello world\" — proves a headless build agent can trigger + read back a real UI test result end to end",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "PENDING_WORK_COMMIT",
+  "lastVerifiedAgainstCommit": "26e99b9e453718c040aaa3268d4d21510689361d",
   "notes": [
     "Part of Epic #803, UI sibling of #957's hello-world-sql.json. Purpose is NOT to test deep",
     "product logic — it proves the #898 remote-trigger-over-HTTP pipeline (headless POST",
