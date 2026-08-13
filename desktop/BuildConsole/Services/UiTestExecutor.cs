@@ -204,6 +204,15 @@ namespace BuildConsole.Services
         /// forever (the try/catch around it cannot rescue a Task that never faults). Same
         /// Task.WhenAny(work, Task.Delay(timeout)) shape navigation (15s) and captureResponse (5s) already use.</summary>
         private const int ScreenshotTimeoutMs = 8000;
+        /// <summary>Full-page screenshot support — bounds the JS scrollHeight query CaptureScreenshotAsync
+        /// runs before every capture. Same hang class as ScreenshotTimeoutMs (ExecuteScriptAsync can stall
+        /// when the control isn't in a renderable state) — guarded so a stuck height query degrades to a
+        /// current-size capture instead of stalling the run.</summary>
+        private const int FullPageHeightQueryTimeoutMs = 3000;
+        /// <summary>Full-page screenshot support — how long to let the page settle (reflow/repaint) after
+        /// resizing the WebView2 control to the full scrollHeight and before CapturePreviewAsync runs, so
+        /// the capture doesn't land mid-reflow and show a partially-laid-out page.</summary>
+        private const int FullPageResizeSettleMs = 150;
         /// <summary>Content-stream read hang guard (Epic #803) — a hard ceiling on EACH of the two awaits in
         /// <see cref="ReadResponseBodyAsync"/> (GetContentAsync, then ReadToEndAsync). A WebView2 content stream
         /// can stall indefinitely on either await (same hang class as the #803 screenshot/captureResponse cases),
@@ -628,7 +637,16 @@ namespace BuildConsole.Services
         /// (its native screenshot capability), save it under this run's screenshots directory as {stepIndex}.png,
         /// register it on the run's Screenshots list for the review gallery, and log to "testing.screenshot".
         /// Never throws — capture is best-effort telemetry, and a capture failure must not fail the run itself.
-        /// Returns the absolute PNG path, or empty string when capture was disabled (no directory) or failed.</summary>
+        /// Returns the absolute PNG path, or empty string when capture was disabled (no directory) or failed.
+        /// Full-page capture — CapturePreviewAsync only rasterizes the control's CURRENT on-screen size, i.e.
+        /// the viewport, not the whole scrollable page. Before capturing, this grows the control's height to the
+        /// page's real scrollHeight (same technique Playwright/Puppeteer use for full-page screenshots) so the
+        /// entire page renders in one shot with nothing below the fold, then restores the original height
+        /// immediately after — see GetFullPageHeightAsync/the resize block below. The whole resize→settle→capture→
+        /// restore sequence runs as one unbroken `await` chain inside this single method call with no yield back
+        /// to the caller in between, so it can't interleave with anything else touching this same WebView2 (e.g.
+        /// a step's own selector-visibility check) — ExecuteStepAsync always awaits this call to completion before
+        /// its own logic continues.</summary>
         private async Task<string> CaptureScreenshotAsync(int stepIndex, string reason, string stepLabel)
         {
             if (_screenshotDir == null) return string.Empty;
@@ -637,12 +655,27 @@ namespace BuildConsole.Services
             // caller) shows up in the log with its own real duration instead of being invisible time.
             var shotSw = System.Diagnostics.Stopwatch.StartNew();
             FileStream? stream = null;
+            double? originalHeight = null;
             try
             {
                 Directory.CreateDirectory(_screenshotDir);
                 string path = Path.Combine(_screenshotDir, $"{stepIndex}.png");
                 stream = new FileStream(path, FileMode.Create, FileAccess.Write);
                 var localStream = stream;
+
+                // Full-page resize — best-effort: a failed/timed-out height query just falls back to
+                // capturing the control at whatever size it already is (the pre-existing viewport-only
+                // behavior), same as a capture failure never fails the run.
+                int? fullHeight = await GetFullPageHeightAsync(stepIndex);
+                if (fullHeight.HasValue)
+                {
+                    originalHeight = _webView.Height;
+                    _webView.Height = fullHeight.Value;
+                    ActivityLog.Log(ScreenshotChannel, $"Step {stepIndex}: resized WebView2 to full page height {fullHeight.Value}px for capture (was {(double.IsNaN(originalHeight.Value) ? "auto" : originalHeight.Value.ToString())}).");
+                    // Let the resize's reflow/repaint settle before capturing, so CapturePreviewAsync
+                    // doesn't rasterize the page mid-layout.
+                    await Task.Delay(FullPageResizeSettleMs);
+                }
 
                 // Post-capture hang fix (Epic #803) — CapturePreviewAsync can never return when the WebView2 is
                 // not in a renderable/composited state (a minimized/occluded/locked-session run), and it is the
@@ -687,9 +720,59 @@ namespace BuildConsole.Services
             }
             finally
             {
+                // Restore the control's original height immediately, no matter how capture ended (success,
+                // timeout, or exception) — a later step or the manual "Play" path sharing this same WebView2
+                // must never inherit a stale full-page resize the same way #970's ApplyViewport(null) guards
+                // against a stale viewport resize.
+                if (originalHeight.HasValue)
+                {
+                    _webView.Height = originalHeight.Value;
+                    ActivityLog.Log(ScreenshotChannel, $"Step {stepIndex}: restored WebView2 height after full-page capture.");
+                }
                 // Normal + exception paths dispose here (flushes the PNG to disk before the caller reads the path);
                 // the timeout path already nulled `stream` and handed disposal to the continuation.
                 stream?.Dispose();
+            }
+        }
+
+        /// <summary>Full-page screenshot support — queries the live DOM's real scrollable height via JS
+        /// injection, checking both document.body.scrollHeight and document.documentElement.scrollHeight (they
+        /// can disagree depending on the page's box model / which element the overflowing content actually
+        /// sits in) and taking whichever is larger — same check Playwright/Puppeteer's full-page capture uses.
+        /// Bounded by FullPageHeightQueryTimeoutMs, same Task.WhenAny(work, Task.Delay(timeout)) shape every
+        /// other WebView2 await in this class uses, so a hung ExecuteScriptAsync degrades to a current-size
+        /// capture instead of stalling the run. Returns null (no resize should happen) on timeout, script
+        /// error, or an unparsable/non-positive result.</summary>
+        private async Task<int?> GetFullPageHeightAsync(int stepIndex)
+        {
+            const string script = @"
+(function() {
+    try {
+        var body = document.body ? document.body.scrollHeight : 0;
+        var html = document.documentElement ? document.documentElement.scrollHeight : 0;
+        return Math.max(body, html);
+    } catch (ex) {
+        return 0;
+    }
+})();";
+
+            try
+            {
+                var scriptTask = _webView.ExecuteScriptAsync(script);
+                var completed = await Task.WhenAny(scriptTask, Task.Delay(FullPageHeightQueryTimeoutMs));
+                if (completed != scriptTask)
+                {
+                    ActivityLog.Log(ScreenshotChannel, $"Step {stepIndex}: full-page height query timed out after {FullPageHeightQueryTimeoutMs}ms — capturing at current size instead.");
+                    return null;
+                }
+
+                string resJson = await scriptTask ?? string.Empty;
+                return int.TryParse(resJson, out int height) && height > 0 ? height : null;
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log(ScreenshotChannel, $"Step {stepIndex}: full-page height query failed — {ex.Message}. Capturing at current size instead.");
+                return null;
             }
         }
 
