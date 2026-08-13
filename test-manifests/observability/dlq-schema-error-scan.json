@@ -1,0 +1,45 @@
+{
+  "issue": 803,
+  "feature": "Reactive DLQ scan — no recent dead-letter entry carries a Postgres schema error (missing column/table = a migration written but never run)",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "19e8e632",
+  "notes": [
+    "Epic #803. REACTIVE half of the schema-drift pair (proactive half: observability/schema-drift-guard.json).",
+    "Intent: prove that in the recent window NOTHING failed into the dead-letter store with a Postgres",
+    "schema error — 'column \"x\" does not exist' / 'relation \"y\" does not exist' etc. Such an error in",
+    "the DLQ is the runtime symptom of a migration that was written in Drizzle TS but never run against live.",
+    "",
+    "WHY THIS DOES NOT CALL GET /admin/dlq (the endpoint the task named):",
+    "  - GET /api/admin/dlq is gated by requireAdmin (artifacts/api-server/src/middlewares/requireAuth.ts:158)",
+    "    which demands a real admin-session JWT and has NO ingest-token fallback. The headless BuildConsole",
+    "    runner authenticates with the {{SECRET_KEY}} ingest token only, so it would get 403 there. By contrast",
+    "    POST /admin/deploy/sql-test is requireAdminOrIngestToken (accepts {{SECRET_KEY}}) — proven callable by",
+    "    the already-verified smoke/hello-world-sql.json.",
+    "  - GET /admin/dlq (admin-dlq.ts:50) also has no time-window filter (only status + limit), so a real",
+    "    'last 48 hours' window isn't even expressible there.",
+    "  - Reading msp_dlq_store directly through #896's read-only SELECT runner lets the query (a) scope to a",
+    "    true 48h window and (b) return ONLY the offending rows with the bad identifier already extracted, so a",
+    "    failure names the exact column/table instead of a generic 'found some'. CLAUDE.md explicitly blesses",
+    "    routing DB verification through #896's endpoint.",
+    "",
+    "The query returns the offending rows in $.rows (dlq_id, event_type, created_at, bad_identifier, error_excerpt);",
+    "the assertion is $.rowCount == 0. On failure the response body (with bad_identifier + error_excerpt) is",
+    "captured in the step's Context for diagnosis. Read-only single SELECT — no forbidden write/DDL keyword, so",
+    "it passes the sql-test validator (validateSqlTestQuery, admin-deploy-console.ts:256).",
+    "",
+    "NOT live-verified against the DB from this environment (no DB access here — CLAUDE.md). Authored against",
+    "msp_dlq_store as defined at lib/db/src/schema/msp.ts:557. The runner / Shane executes it against live."
+  ],
+  "apiTests": [
+    {
+      "method": "POST",
+      "path": "/admin/deploy/sql-test",
+      "headers": { "Content-Type": "application/json" },
+      "body": {
+        "query": "SELECT dlq_id, event_type, to_char(created_at, 'YYYY-MM-DD HH24:MI:SSOF') AS created_at, coalesce(substring(error_message from '\"([^\"]+)\"'), '(no-quoted-identifier)') AS bad_identifier, left(error_message, 240) AS error_excerpt FROM msp_dlq_store WHERE created_at >= now() - interval '48 hours' AND (error_message ~* '(column|relation|type|function) \"[^\"]*\" does not exist' OR error_message ~* 'column \"[^\"]*\" of relation \"[^\"]*\" does not exist' OR error_message ILIKE '%does not exist%' OR error_message ILIKE '%undefined column%' OR error_message ILIKE '%undefined table%') ORDER BY created_at DESC LIMIT 25",
+        "expect": { "rowCount": 0 }
+      },
+      "expect": { "status": 200, "jsonPath": "$.rowCount", "value": 0 }
+    }
+  ]
+}

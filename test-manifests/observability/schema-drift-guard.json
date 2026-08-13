@@ -1,0 +1,59 @@
+{
+  "issue": 803,
+  "feature": "Proactive schema-drift guard — every Drizzle-TS column on the operational error spine actually exists in the live DB (a migration written but never run shows up here BEFORE it dead-letters)",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "19e8e632",
+  "notes": [
+    "Epic #803. PROACTIVE half of the schema-drift pair (reactive half: observability/dlq-schema-error-scan.json).",
+    "Cross-references the Drizzle TypeScript schema (lib/db/src/schema/*.ts) against the real live schema via",
+    "information_schema.columns, through #896's read-only POST /admin/deploy/sql-test. Any column TS defines",
+    "that is missing live = a migration written but never run.",
+    "",
+    "HONEST SCOPE LIMIT — this is the point the task anticipated. Full automated cross-reference of ALL 259",
+    "pgTable() definitions in one manifest step is NOT practical: SQL cannot read the TS files, so the expected",
+    "column set has to be embedded as a snapshot, and a hand-embedded 2000+-column snapshot would rot on every",
+    "schema change and risk transcription-error FALSE POSITIVES (the worst outcome for trust in a green suite).",
+    "So this manifest guards a bounded, accurately-transcribed WATCH-LIST: the operational error spine",
+    "(msp_dlq_store lib/db/src/schema/msp.ts:557, msp_job_queue :855, outbound_webhooks :888) — 44 columns —",
+    "which is exactly where a never-run migration surfaces as the DLQ errors the reactive half scans for.",
+    "The FULL periodic sweep across the rest of the schema is the standalone diagnostic Shane runs by hand:",
+    "lib/db/migrations/manual/archive/diagnostics/2026-08-13-schema-drift-ts-vs-live.sql (which also carries the",
+    "recipe to regenerate/extend the expected VALUES list from the TS schema). This split is deliberate, not",
+    "faked coverage.",
+    "",
+    "Two assertions make the guard non-vacuous:",
+    "  1. drift query — LEFT JOIN, returns any watch-listed (table,column) MISSING live; asserts $.rowCount==0,",
+    "     and $.rows names the exact missing table/column on failure.",
+    "  2. presence count — inner JOIN counts how many of the 44 watch-listed columns ARE present live; asserts",
+    "     it equals 44. This catches a whole table/column vanishing (which would make assertion 1 pass vacuously)",
+    "     and is intentionally NOT brittle to columns being ADDED later (an inner join only counts the expected set).",
+    "     count(*) is cast ::int so node-postgres returns a JSON number (bigint would serialize as a string '44').",
+    "",
+    "Queries are written SELECT-first (VALUES inlined as a FROM-subquery, NOT a leading WITH/CTE) because the",
+    "sql-test validator only accepts statements beginning with SELECT (admin-deploy-console.ts:273). Read-only,",
+    "single statement, no forbidden write/DDL keyword. NOT live-verified from this environment (no DB access —",
+    "CLAUDE.md); the runner / Shane executes it. When a spine column is legitimately added in TS + migrated, bump",
+    "the VALUES list AND the presence-count expected value (44) together, and update lastVerifiedAgainstCommit."
+  ],
+  "apiTests": [
+    {
+      "method": "POST",
+      "path": "/admin/deploy/sql-test",
+      "headers": { "Content-Type": "application/json" },
+      "body": {
+        "query": "SELECT e.table_name, e.column_name FROM (VALUES ('msp_dlq_store','id'),('msp_dlq_store','dlq_id'),('msp_dlq_store','source_event_id'),('msp_dlq_store','event_type'),('msp_dlq_store','payload'),('msp_dlq_store','error_message'),('msp_dlq_store','error_stack'),('msp_dlq_store','attempt_count'),('msp_dlq_store','last_attempt_at'),('msp_dlq_store','resolved_at'),('msp_dlq_store','resolution'),('msp_dlq_store','msp_id'),('msp_dlq_store','customer_id'),('msp_dlq_store','created_at'),('msp_job_queue','id'),('msp_job_queue','job_id'),('msp_job_queue','job_type'),('msp_job_queue','status'),('msp_job_queue','msp_id'),('msp_job_queue','customer_id'),('msp_job_queue','payload'),('msp_job_queue','result'),('msp_job_queue','error_message'),('msp_job_queue','error_stack'),('msp_job_queue','attempt_count'),('msp_job_queue','max_attempts'),('msp_job_queue','scheduled_at'),('msp_job_queue','started_at'),('msp_job_queue','completed_at'),('msp_job_queue','correlation_id'),('msp_job_queue','created_at'),('outbound_webhooks','id'),('outbound_webhooks','webhook_id'),('outbound_webhooks','owner_type'),('outbound_webhooks','msp_id'),('outbound_webhooks','customer_id'),('outbound_webhooks','label'),('outbound_webhooks','url'),('outbound_webhooks','secret'),('outbound_webhooks','secret_prefix'),('outbound_webhooks','event_types'),('outbound_webhooks','is_active'),('outbound_webhooks','created_at'),('outbound_webhooks','updated_at')) AS e(table_name, column_name) LEFT JOIN information_schema.columns c ON c.table_schema = 'public' AND c.table_name = e.table_name AND c.column_name = e.column_name WHERE c.column_name IS NULL ORDER BY e.table_name, e.column_name",
+        "expect": { "rowCount": 0 }
+      },
+      "expect": { "status": 200, "jsonPath": "$.rowCount", "value": 0 }
+    },
+    {
+      "method": "POST",
+      "path": "/admin/deploy/sql-test",
+      "headers": { "Content-Type": "application/json" },
+      "body": {
+        "query": "SELECT count(*)::int AS present FROM (VALUES ('msp_dlq_store','id'),('msp_dlq_store','dlq_id'),('msp_dlq_store','source_event_id'),('msp_dlq_store','event_type'),('msp_dlq_store','payload'),('msp_dlq_store','error_message'),('msp_dlq_store','error_stack'),('msp_dlq_store','attempt_count'),('msp_dlq_store','last_attempt_at'),('msp_dlq_store','resolved_at'),('msp_dlq_store','resolution'),('msp_dlq_store','msp_id'),('msp_dlq_store','customer_id'),('msp_dlq_store','created_at'),('msp_job_queue','id'),('msp_job_queue','job_id'),('msp_job_queue','job_type'),('msp_job_queue','status'),('msp_job_queue','msp_id'),('msp_job_queue','customer_id'),('msp_job_queue','payload'),('msp_job_queue','result'),('msp_job_queue','error_message'),('msp_job_queue','error_stack'),('msp_job_queue','attempt_count'),('msp_job_queue','max_attempts'),('msp_job_queue','scheduled_at'),('msp_job_queue','started_at'),('msp_job_queue','completed_at'),('msp_job_queue','correlation_id'),('msp_job_queue','created_at'),('outbound_webhooks','id'),('outbound_webhooks','webhook_id'),('outbound_webhooks','owner_type'),('outbound_webhooks','msp_id'),('outbound_webhooks','customer_id'),('outbound_webhooks','label'),('outbound_webhooks','url'),('outbound_webhooks','secret'),('outbound_webhooks','secret_prefix'),('outbound_webhooks','event_types'),('outbound_webhooks','is_active'),('outbound_webhooks','created_at'),('outbound_webhooks','updated_at')) AS e(table_name, column_name) JOIN information_schema.columns c ON c.table_schema = 'public' AND c.table_name = e.table_name AND c.column_name = e.column_name"
+      },
+      "expect": { "status": 200, "jsonPath": "$.rows[0].present", "value": 44 }
+    }
+  ]
+}
