@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
+using System.Management;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 
@@ -145,6 +147,104 @@ namespace BuildConsole.Services
                 DebugLog($"parse failed: {ex.Message}. Raw stdout: {stdout}");
                 return new List<ClaudeAgentSession>();
             }
+        }
+
+        /// <summary>
+        /// Git #989 — Shane: "I have like 4 goins now" against a Sessions
+        /// panel that (after #984's real fix) correctly reflected `claude
+        /// agents --json` — but proved, via a direct side-by-side check
+        /// (`Get-Process -Name claude` vs this same command run at the same
+        /// moment), that the CLI's own "agents" registry doesn't discover
+        /// every real running claude.exe process. Specifically: sessions
+        /// launched via the Send-to-Builder path (`run-claude.ps1` ->
+        /// `Start-Process -NoNewWindow -Wait`, non-interactive
+        /// `--permission-mode auto`) were real, running, and completely
+        /// invisible to `claude agents --json`, while a plain interactive
+        /// session (this one) showed up fine. Shane: "fall back using
+        /// Get-Process." This merges the CLI's own (richly-labeled: Name,
+        /// Cwd, SessionId) list with a raw OS process scan, adding one
+        /// fallback entry (Kind="untracked") for every real claude.exe PID
+        /// the CLI's own list doesn't already account for - so a session the
+        /// CLI can't see for whatever reason still shows up as SOMETHING
+        /// (PID + elapsed time) instead of silently vanishing again.
+        ///
+        /// Shane, follow-up: "Can you not get the window title and use those?
+        /// instead of claude.exe." Confirmed via Get-Process that claude.exe
+        /// itself owns no window (MainWindowHandle is always 0 - it's
+        /// attached to its parent's console, per run-claude.ps1's
+        /// `-NoNewWindow`), but the real, LIVE title (run-claude.ps1's own
+        /// `$Host.UI.RawUI.WindowTitle = $title`, further updated by
+        /// claude.exe itself with status glyphs like "✳ 989") lives on an
+        /// ANCESTOR process - confirmed live as a `cmd.exe` window titled
+        /// "✳ 989". Process has no parent-PID API, so this walks the chain
+        /// via WMI's Win32_Process (a real, if slower, standard mechanism),
+        /// checking each ancestor's own MainWindowTitle up to a few levels.
+        /// </summary>
+        public static async Task<List<ClaudeAgentSession>> ListActiveSessionsWithFallbackAsync()
+        {
+            var known = await ListActiveSessionsAsync();
+            var knownPids = new HashSet<int>(known.Select(s => s.Pid));
+
+            try
+            {
+                foreach (var proc in Process.GetProcessesByName("claude"))
+                {
+                    using (proc)
+                    {
+                        if (knownPids.Contains(proc.Id)) continue;
+                        DateTime startTime;
+                        try { startTime = proc.StartTime; }
+                        catch { continue; } // no permission / already exited between enumeration and this read
+                        known.Add(new ClaudeAgentSession
+                        {
+                            Pid = proc.Id,
+                            Kind = "untracked",
+                            Name = FindAncestorWindowTitle(proc.Id) ?? "",
+                            StartedAtMs = new DateTimeOffset(startTime).ToUnixTimeMilliseconds(),
+                        });
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("sessions", $"Get-Process fallback scan failed: {ex.Message}");
+            }
+
+            DebugLog("merged: " + string.Join(" | ", known.Select(s => $"pid={s.Pid} kind={s.Kind} name='{s.Name}'")));
+            return known;
+        }
+
+        /// <summary>Git #989 — walks up to 4 parent levels via WMI looking for the first ancestor with a real window title (claude.exe's own console-hosting cmd.exe/powershell.exe/wt.exe). Returns null if none found within that depth (no infinite walk if WMI ever returns a cyclical/bogus chain).</summary>
+        private static string? FindAncestorWindowTitle(int pid)
+        {
+            try
+            {
+                int currentPid = pid;
+                for (int depth = 0; depth < 4; depth++)
+                {
+                    using var searcher = new ManagementObjectSearcher(
+                        $"SELECT ParentProcessId FROM Win32_Process WHERE ProcessId = {currentPid}");
+                    using var results = searcher.Get();
+                    var row = results.Cast<ManagementObject>().FirstOrDefault();
+                    if (row == null) return null;
+                    int parentPid = Convert.ToInt32(row["ParentProcessId"]);
+                    if (parentPid <= 0 || parentPid == currentPid) return null;
+
+                    try
+                    {
+                        using var parent = Process.GetProcessById(parentPid);
+                        if (!string.IsNullOrWhiteSpace(parent.MainWindowTitle)) return parent.MainWindowTitle;
+                    }
+                    catch { /* parent already exited between the WMI query and this lookup */ }
+
+                    currentPid = parentPid;
+                }
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("sessions", $"WMI ancestor-title lookup failed for pid {pid}: {ex.Message}");
+            }
+            return null;
         }
     }
 }

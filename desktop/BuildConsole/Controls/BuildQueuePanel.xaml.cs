@@ -196,7 +196,13 @@ namespace BuildConsole.Controls
             List<Services.ClaudeAgentSession> sessions;
             try
             {
-                sessions = await Services.ClaudeAgentsService.ListActiveSessionsAsync();
+                // Git #989 — Shane: "fall back using Get-Process," after
+                // proving side-by-side that `claude agents --json` doesn't
+                // discover every real running claude.exe (Send-to-Builder
+                // launches specifically went missing from it). Merges the
+                // CLI's own list with a raw OS process scan for anything it
+                // missed - see ClaudeAgentsService's own doc comment.
+                sessions = await Services.ClaudeAgentsService.ListActiveSessionsWithFallbackAsync();
             }
             catch
             {
@@ -223,19 +229,29 @@ namespace BuildConsole.Controls
             {
                 var elapsed = DateTime.Now - s.StartedAt;
                 string elapsedStr = elapsed.TotalHours >= 1 ? $"{(int)elapsed.TotalHours}h {elapsed.Minutes}m" : $"{(int)elapsed.TotalMinutes}m";
-                var icon = s.Kind == "background" ? "⚙" : "▶";
-                var iconColor = s.Kind == "background" ? "#8F8C88" : "#F2CA63";
+                // Git #989 — "untracked" (Get-Process fallback, no name/cwd/session
+                // available without WMI) gets its own quiet ❔ marker so it visually
+                // reads as "we can see it's real, just not what it is."
+                var icon = s.Kind switch { "background" => "⚙", "untracked" => "❔", _ => "▶" };
+                var iconColor = s.Kind switch { "background" => "#8F8C88", "untracked" => "#8F8C88", _ => "#F2CA63" };
 
                 var panel = new StackPanel { Orientation = Orientation.Horizontal };
                 panel.Children.Add(new TextBlock { Text = icon + " ", FontSize = 12, Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(iconColor)), VerticalAlignment = VerticalAlignment.Center });
                 var textStack = new StackPanel();
                 // Git #971 — same #932/#941 ellipsis lesson: single-line + CharacterEllipsis, MaxWidth applied by ApplyTitleMaxWidths.
-                var titleBlock = new TextBlock { Text = string.IsNullOrWhiteSpace(s.Name) ? s.SessionId[..8] : s.Name, FontSize = 12, Foreground = (Brush)Application.Current.FindResource("TextBrush"), TextWrapping = TextWrapping.NoWrap, TextTrimming = TextTrimming.CharacterEllipsis };
+                string title = !string.IsNullOrWhiteSpace(s.Name) ? s.Name
+                    : !string.IsNullOrWhiteSpace(s.SessionId) ? s.SessionId[..Math.Min(8, s.SessionId.Length)]
+                    : $"claude.exe (untracked)";
+                var titleBlock = new TextBlock { Text = title, FontSize = 12, Foreground = (Brush)Application.Current.FindResource("TextBrush"), TextWrapping = TextWrapping.NoWrap, TextTrimming = TextTrimming.CharacterEllipsis };
                 _sessionsTitleBlocks.Add(titleBlock);
                 textStack.Children.Add(titleBlock);
-                textStack.Children.Add(new TextBlock { Text = $"{s.Cwd}  ·  {elapsedStr} ago", FontSize = 10, Foreground = (Brush)Application.Current.FindResource("Subtext1Brush"), TextWrapping = TextWrapping.Wrap });
+                string subtitle = s.Kind == "untracked" ? $"PID {s.Pid}  ·  {elapsedStr} ago" : $"{s.Cwd}  ·  {elapsedStr} ago";
+                textStack.Children.Add(new TextBlock { Text = subtitle, FontSize = 10, Foreground = (Brush)Application.Current.FindResource("Subtext1Brush"), TextWrapping = TextWrapping.Wrap });
                 panel.Children.Add(textStack);
-                ActiveSessionsList.Items.Add(new ListBoxItem { Content = panel, ToolTip = $"PID {s.Pid} · {s.Kind} · session {s.SessionId}" });
+                string tooltip = s.Kind == "untracked"
+                    ? $"PID {s.Pid} · seen via Get-Process, not reported by claude agents --json"
+                    : $"PID {s.Pid} · {s.Kind} · session {s.SessionId}";
+                ActiveSessionsList.Items.Add(new ListBoxItem { Content = panel, ToolTip = tooltip });
             }
             ApplyTitleMaxWidths(ActiveSessionsList, _sessionsTitleBlocks);
         }
