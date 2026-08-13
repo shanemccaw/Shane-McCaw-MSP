@@ -461,11 +461,12 @@ namespace BuildConsole
 
             UpdateZoomDisplay();
 
-            // Editor Tab "Pinned" state (Epic #803) — first real use: seed a pinned
-            // LinkedIn entry whose WebView2 session stays alive in the background and
-            // is one click away in the strip. Deferred to Loaded priority so the
-            // PinnedHostCanvas has real layout extents before its content mounts.
-            Dispatcher.BeginInvoke(new Action(SeedPinnedLinkedIn), System.Windows.Threading.DispatcherPriority.Loaded);
+            // Persistent web chips (Git #972 revised) — seed the EDITOR PANES header-bar
+            // chips (LinkedIn + Replit Workspace), each a pinned WebView2 session kept
+            // genuinely alive off-screen in PinnedHostCanvas and one click away without
+            // taking a tab slot. Deferred to Loaded priority so the canvas has real
+            // layout extents (and the x:Named chip buttons exist) before content mounts.
+            Dispatcher.BeginInvoke(new Action(SeedPinnedWebChips), System.Windows.Threading.DispatcherPriority.Loaded);
         }
 
         protected override void OnSourceInitialized(EventArgs e)

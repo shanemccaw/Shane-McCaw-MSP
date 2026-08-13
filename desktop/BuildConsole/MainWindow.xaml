@@ -435,7 +435,15 @@
                                     <Button x:Name="BtnLayoutSplitV" Style="{StaticResource IconButton}" Content="⬒ Top/Bottom" ToolTip="Split Top/Bottom (2 Rows)" Click="BtnLayout_Click" Tag="SplitV" Margin="0,0,4,0"/>
                                     <Button x:Name="BtnLayoutGrid4" Style="{StaticResource IconButton}" Content="⊞ 4 Squares" ToolTip="2x2 Grid View" Click="BtnLayout_Click" Tag="Grid4"/>
                                 </StackPanel>
-                                <TextBlock Text="EDITOR PANES" FontSize="10" FontWeight="Bold" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center"/>
+                                <TextBlock DockPanel.Dock="Left" Text="EDITOR PANES" FontSize="10" FontWeight="Bold" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center"/>
+                                <!-- Persistent web-page chips (Git #972 revised) — filling the previously-empty
+                                     middle of this bar. Each opens/focuses an always-alive WebView2 session kept
+                                     running off-screen in PinnedHostCanvas (never suspended), without ever taking a
+                                     tab slot. Centered in the remaining fill space between the label and the layout buttons. -->
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                    <Button x:Name="BtnChipLinkedIn" Style="{StaticResource IconButton}" Content="💼 LinkedIn" ToolTip="Open/focus the always-alive LinkedIn session (kept running in the background, no tab slot)" Click="PinnedChipLinkedIn_Click" Margin="0,0,6,0"/>
+                                    <Button x:Name="BtnChipReplit" Style="{StaticResource IconButton}" Content="🖥 Replit" ToolTip="Open/focus the always-alive Replit Workspace session (kept running in the background, no tab slot)" Click="PinnedChipReplit_Click"/>
+                                </StackPanel>
                             </DockPanel>
                         </Border>
 

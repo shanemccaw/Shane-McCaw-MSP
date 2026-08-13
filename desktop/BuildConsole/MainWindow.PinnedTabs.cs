@@ -55,7 +55,8 @@ namespace BuildConsole
             public Grid ContentSlot = null!;           // holds Content inside HostBorder
             public Border HostBorder = null!;          // parked in PinnedHostCanvas; top bar + ContentSlot
             public TextBlock TitleText = null!;        // the expanded top-bar title
-            public Button StripButton = null!;         // the always-visible strip item
+            public Button StripButton = null!;         // the always-visible strip item (null when the entry is fronted only by a header chip)
+            public Button? ChipButton;                 // the EDITOR PANES header-bar chip fronting this entry (Git #972 revised), if any
             public bool Expanded;
         }
 
@@ -97,7 +98,7 @@ namespace BuildConsole
 
         // ── Core registration (shared by menu-pin and the seeded LinkedIn) ──
 
-        private PinnedTabEntry RegisterPinnedEntry(FrameworkElement content, string tag, string label, string glyph, bool startExpanded)
+        private PinnedTabEntry RegisterPinnedEntry(FrameworkElement content, string tag, string label, string glyph, bool startExpanded, bool addToStrip = true)
         {
             var entry = new PinnedTabEntry { Tag = tag, Label = label, Glyph = glyph, Content = content };
 
@@ -171,12 +172,17 @@ namespace BuildConsole
             Canvas.SetLeft(entry.HostBorder, PinnedOffscreenX); // start parked off-screen (alive)
             PinnedHostCanvas.Children.Add(entry.HostBorder);
 
-            // Strip item (always visible while pinned).
-            entry.StripButton = BuildStripButton(entry);
-            PinnedStrip.Children.Add(entry.StripButton);
+            // Strip item (always visible while pinned) — skipped for header-chip
+            // entries (Git #972 revised), which surface via the EDITOR PANES bar
+            // instead of the 📌 PINNED strip so they never double up.
+            if (addToStrip)
+            {
+                entry.StripButton = BuildStripButton(entry);
+                PinnedStrip.Children.Add(entry.StripButton);
+                PinnedStripBar.Visibility = Visibility.Visible;
+            }
 
             _pinnedEntries.Add(entry);
-            PinnedStripBar.Visibility = Visibility.Visible;
 
             if (startExpanded) ExpandPinned(entry);
             else UpdateStripButtonState(entry);
@@ -345,9 +351,10 @@ namespace BuildConsole
 
             // Tear down the pinned representation.
             PinnedHostCanvas.Children.Remove(entry.HostBorder);
-            PinnedStrip.Children.Remove(entry.StripButton);
+            if (entry.StripButton != null) PinnedStrip.Children.Remove(entry.StripButton);
+            if (entry.ChipButton != null) entry.ChipButton.Background = Brushes.Transparent;
             _pinnedEntries.Remove(entry);
-            if (_pinnedEntries.Count == 0) PinnedStripBar.Visibility = Visibility.Collapsed;
+            if (PinnedStrip.Children.Count == 0) PinnedStripBar.Visibility = Visibility.Collapsed;
 
             ActivityLog.Log(PinnedChannel, $"unpinned: {entry.Label} ({entry.Tag})");
         }
@@ -368,28 +375,86 @@ namespace BuildConsole
 
         private void UpdateStripButtonState(PinnedTabEntry entry)
         {
-            // Subtle highlight so the currently-open pinned item reads as active.
-            entry.StripButton.Background = entry.Expanded
+            // Subtle highlight so the currently-open pinned item reads as active —
+            // on whichever surface fronts it: the 📌 strip item and/or the EDITOR
+            // PANES header chip (Git #972 revised).
+            var active = entry.Expanded
                 ? (Brush)FindResource("Surface1Brush")
                 : Brushes.Transparent;
+            if (entry.StripButton != null) entry.StripButton.Background = active;
+            if (entry.ChipButton != null) entry.ChipButton.Background = active;
         }
 
-        // ── LinkedIn: the first real use of pinned tabs ─────────────────────
+        // ── Persistent web chips (Git #972 revised): LinkedIn + Replit ──────
+        // Shane, with a screenshot: the empty middle of the EDITOR PANES bar
+        // should hold small icon+label chips for always-alive web pages —
+        // LinkedIn AND Replit Workspace. Each is seeded at startup as a pinned
+        // entry whose WebView2 session lives (off-screen, full size) in
+        // PinnedHostCanvas — genuinely running, never suspended — but WITHOUT a
+        // 📌 strip item: the header-bar chip is its one-click entry point, so it
+        // never takes a tab slot or affects the current pane layout. Clicking the
+        // chip expands that live session over the panes; clicking it again tucks
+        // it back off-screen. Reuses the exact pinned-session machinery
+        // (RegisterPinnedEntry / CreatePinnedWebContent / ExpandPinned) and just
+        // relocates the entry point (LinkedIn's included) to this bar.
 
-        /// <summary>Seed a pinned LinkedIn entry at startup: its WebView2 loads and
-        /// stays alive in the off-screen keep-alive canvas, so LinkedIn is always
-        /// one click away in the strip without ever taking up a tab slot. Shares
-        /// the app's WebView2 environment (cookies/session), so Shane stays logged
-        /// in. Idempotent.</summary>
-        public void SeedPinnedLinkedIn()
+        /// <summary>Seed both persistent web chips at startup. Deferred to
+        /// DispatcherPriority.Loaded by the caller so PinnedHostCanvas has real
+        /// layout extents before content mounts. Idempotent per URL. Shares the
+        /// app's WebView2 environment (cookies/session) so Shane stays logged in.</summary>
+        public void SeedPinnedWebChips()
         {
-            const string url = "https://www.linkedin.com";
-            if (_pinnedEntries.Any(e => string.Equals(e.Tag, url, StringComparison.OrdinalIgnoreCase)))
+            SeedPinnedWebChip("https://www.linkedin.com", "LinkedIn", "" /* People */, BtnChipLinkedIn);
+            SeedPinnedWebChip("https://replit.com/~", "Replit Workspace", "" /* Code */, BtnChipReplit);
+        }
+
+        /// <summary>Seed one persistent web chip: build its live WebView2 content and
+        /// register it as a strip-less pinned entry fronted by <paramref name="chip"/>.
+        /// Idempotent per URL.</summary>
+        private void SeedPinnedWebChip(string url, string label, string glyph, Button chip)
+        {
+            var existing = _pinnedEntries.FirstOrDefault(e => string.Equals(e.Tag, url, StringComparison.OrdinalIgnoreCase));
+            if (existing != null)
+            {
+                existing.ChipButton = chip;
+                UpdateStripButtonState(existing);
                 return;
+            }
 
             var content = CreatePinnedWebContent(url);
-            RegisterPinnedEntry(content, url, "LinkedIn", "" /* People */, startExpanded: false);
-            ActivityLog.Log(PinnedChannel, $"pinned: LinkedIn ({url}) [seeded]");
+            var entry = RegisterPinnedEntry(content, url, label, glyph, startExpanded: false, addToStrip: false);
+            entry.ChipButton = chip;
+            UpdateStripButtonState(entry);
+            ActivityLog.Log(PinnedChannel, $"pinned: {label} ({url}) [chip-seeded]");
+        }
+
+        // Header-bar chip clicks — open/focus the persistent session (toggle).
+        private void PinnedChipLinkedIn_Click(object sender, RoutedEventArgs e)
+            => FocusPinnedWebChip("https://www.linkedin.com", "LinkedIn", "", sender as Button);
+
+        private void PinnedChipReplit_Click(object sender, RoutedEventArgs e)
+            => FocusPinnedWebChip("https://replit.com/~", "Replit Workspace", "", sender as Button);
+
+        /// <summary>Open/focus a chip's persistent session. Normally the entry was
+        /// already seeded at startup (session warm in the background) and this just
+        /// slides it over the panes; if it was unpinned/torn down, it is lazily
+        /// recreated. Never consumes a tab slot. Clicking an already-open chip tucks
+        /// it back off-screen (the session stays alive).</summary>
+        private void FocusPinnedWebChip(string url, string label, string glyph, Button? chip)
+        {
+            var entry = _pinnedEntries.FirstOrDefault(e => string.Equals(e.Tag, url, StringComparison.OrdinalIgnoreCase));
+            if (entry == null)
+            {
+                var content = CreatePinnedWebContent(url);
+                entry = RegisterPinnedEntry(content, url, label, glyph, startExpanded: false, addToStrip: false);
+                ActivityLog.Log(PinnedChannel, $"pinned: {label} ({url}) [chip]");
+            }
+            if (chip != null) entry.ChipButton = chip;
+
+            if (entry.Expanded) CollapsePinned(entry);
+            else ExpandPinned(entry);
+
+            ActivityLog.Log(PinnedChannel, $"chip-focus: {label} ({url}) expanded={entry.Expanded}");
         }
 
         /// <summary>Build a self-contained web content panel (nav toolbar + WebView2)
