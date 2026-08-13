@@ -843,6 +843,51 @@
         </Setter>
     </Style>
 
+    <!-- ══════════════════════════════════════════════════════════════════
+         BUBBLE TOOLTIP (Git #947) — a distinctly "chat bubble" tooltip, set
+         apart from the plain dark {x:Type ToolTip} above: larger 10px
+         rounding, a Blue accent border, a small downward pointer/tail toward
+         the hovered element, and its own drop shadow. Used by the Build Queue
+         rows to show a short description of what a build item is doing. The
+         tail is a filled triangle in the same MantleBrush as the bubble,
+         overlapping the bubble's bottom edge by 1px so the two read as one
+         shape; Placement="Top" makes the bubble sit above the row with the
+         tail pointing down at it.
+         ══════════════════════════════════════════════════════════════════ -->
+    <Style x:Key="BubbleToolTip" TargetType="{x:Type ToolTip}">
+        <Setter Property="Foreground"    Value="{StaticResource TextBrush}"/>
+        <Setter Property="FontSize"      Value="12"/>
+        <Setter Property="FontFamily"    Value="Segoe UI"/>
+        <Setter Property="Placement"     Value="Top"/>
+        <Setter Property="HasDropShadow" Value="False"/>
+        <Setter Property="Padding"       Value="0"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type ToolTip}">
+                    <StackPanel Margin="6,6,6,8">
+                        <StackPanel.Effect>
+                            <DropShadowEffect BlurRadius="12" ShadowDepth="2" Direction="270" Opacity="0.45" Color="#000000"/>
+                        </StackPanel.Effect>
+                        <!-- Bubble body -->
+                        <Border Background="{StaticResource MantleBrush}"
+                                BorderBrush="{StaticResource BlueBrush}"
+                                BorderThickness="1"
+                                CornerRadius="10"
+                                Padding="12,8"
+                                MaxWidth="320">
+                            <ContentPresenter TextElement.Foreground="{StaticResource TextBrush}"/>
+                        </Border>
+                        <!-- Downward pointer/tail -->
+                        <Path Data="M0,0 L12,0 L6,7 Z"
+                              Fill="{StaticResource MantleBrush}"
+                              HorizontalAlignment="Left"
+                              Margin="20,-1,0,0"/>
+                    </StackPanel>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- ══════════════════════════════════════════════════════════════
          TREEVIEW & TREEVIEWITEM (DARK MODE & INDENTATION FIX)
          ══════════════════════════════════════════════════════════════ -->

@@ -855,6 +855,37 @@ namespace BuildConsole.Controls
             }
         }
 
+        /// <summary>
+        /// Git #947 — attaches the custom dark bubble tooltip (BubbleToolTip
+        /// style in DarkTheme.xaml) to a queue row's number/title block, showing
+        /// a short description trimmed to ~80 chars. No tooltip is attached for a
+        /// blank title (older/"Untitled" rows), since an empty bubble is noise.
+        /// </summary>
+        private const int TooltipMaxChars = 80;
+        private static void AttachBubbleTooltip(FrameworkElement target, string? title)
+        {
+            var text = (title ?? string.Empty).Trim();
+            if (text.Length == 0) return;
+            if (text.Length > TooltipMaxChars)
+                text = text.Substring(0, TooltipMaxChars).TrimEnd() + "…";
+
+            target.ToolTip = new ToolTip
+            {
+                Style = (Style)Application.Current.FindResource("BubbleToolTip"),
+                Content = new TextBlock
+                {
+                    Text = text,
+                    TextWrapping = TextWrapping.Wrap,
+                    MaxWidth = 296, // inside the bubble's own 320 MaxWidth minus its 12px side padding
+                    Foreground = (Brush)Application.Current.FindResource("TextBrush"),
+                    FontSize = 12,
+                },
+            };
+            // Show promptly on hover rather than the ~1s WPF default.
+            ToolTipService.SetInitialShowDelay(target, 250);
+            ToolTipService.SetShowDuration(target, 20000);
+        }
+
         private TreeViewItem BuildQueueTreeItem(QueueItem item)
         {
             var (icon, hex) = StatusStyle.TryGetValue(item.Status, out var s) ? s : ("•", "#CDD6F4");
@@ -862,13 +893,25 @@ namespace BuildConsole.Controls
 
             var panel = new StackPanel { Orientation = Orientation.Horizontal };
             panel.Children.Add(new TextBlock { Text = icon + " ", FontSize = 12, Foreground = brush, VerticalAlignment = VerticalAlignment.Center });
-            panel.Children.Add(new TextBlock
+            var titleBlock = new TextBlock
             {
                 Text = item.Title,
                 FontSize = 12,
                 Foreground = (Brush)Application.Current.FindResource("TextBrush"),
                 VerticalAlignment = VerticalAlignment.Center,
-            });
+            };
+            // Git #947 — Shane: "when I hover over the build number in the Queue
+            // ... a pretty custom bubble tooltip appears and gives me a very
+            // short description of what its building." The queue Title itself IS
+            // that description (e.g. "#946 — BuildLogView line wrapping", or the
+            // first line of the prompt when no --title was given), but it can run
+            // long (queueBuildFromBlock slices a prompt's first line to 80 chars,
+            // and a --title can be arbitrary), so it's trimmed to a single concise
+            // bubble line rather than dumping a wall of text on hover. Attached to
+            // the number/title block only (not the whole row), using the custom
+            // BubbleToolTip style from DarkTheme.xaml.
+            AttachBubbleTooltip(titleBlock, item.Title);
+            panel.Children.Add(titleBlock);
             var blockerList = item.BlockedByNumbers ?? (item.BlockedByNumber.HasValue ? new List<int> { item.BlockedByNumber.Value } : new List<int>());
             if (blockerList.Count > 0 && item.Status == "queued")
             {
