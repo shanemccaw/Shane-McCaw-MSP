@@ -650,17 +650,71 @@ namespace BuildConsole.Controls
             else RenderQueue(ApplyFilter(_lastItems));
         }
 
+        /// <summary>
+        /// Git #950 — Shane: "Add a search box so I can search direct Git
+        /// numbers." Live substring filter on GithubNumber, re-rendering as he
+        /// types and clearing back to the full sorted list when empty. It
+        /// layers on top of the current filter chip (RenderQueue reads
+        /// ApplyFilter(_lastItems)) rather than bypassing it. The box is a
+        /// queue-number filter only — under the Tests chip QueueTree shows the
+        /// disk-based manifest tree (RenderTestsTree), which has no queue rows
+        /// or GithubNumbers to match, so search is a no-op there.
+        /// </summary>
+        private string _queueSearch = "";
+
+        private void QueueSearchBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            _queueSearch = QueueSearchBox.Text ?? "";
+            if (QueueTree == null || _filter == "Tests") return;
+            RenderQueue(ApplyFilter(_lastItems));
+        }
+
+        /// <summary>
+        /// Git #950 — Shane: "The Build Queue needs to sort biggest number to
+        /// smallest number." Numbered rows come first, biggest GithubNumber
+        /// first; un-numbered rows (a raw prompt queued with no --title/issue
+        /// reference) sort after all numbered ones. QueueItem carries no
+        /// CreatedAt, so Id descending is the reasonable "newest first"
+        /// fallback for those (Id is the autoincrement PK — monotonic with
+        /// creation order) rather than leaving them in raw API order; Id desc
+        /// also tiebreaks duplicate rows that happen to share a GithubNumber.
+        /// </summary>
+        private static List<QueueItem> SortForDisplay(IEnumerable<QueueItem> items) =>
+            items
+                .OrderByDescending(i => i.GithubNumber.HasValue)
+                .ThenByDescending(i => i.GithubNumber ?? 0)
+                .ThenByDescending(i => i.Id)
+                .ToList();
+
         private void RenderQueue(List<QueueItem> items)
         {
+            // Git #950 — the number-search box (above QueueTree) filters the
+            // already-chip-filtered list to rows whose GithubNumber contains
+            // what's typed (substring on the number, e.g. "94" -> #940/#946/
+            // #947); empty box = no filter. Applied here (not only in the
+            // TextChanged handler) so a live 15s RefreshAsync poll or a chip
+            // change re-applies the active search automatically too.
+            var search = _queueSearch.Trim();
+            bool searching = search.Length > 0;
+            if (searching)
+            {
+                items = items
+                    .Where(i => i.GithubNumber.HasValue &&
+                                i.GithubNumber.Value.ToString().Contains(search))
+                    .ToList();
+            }
+
             QueueTree.Visibility = Visibility.Visible;
             QueueEmptyText.Visibility = items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-            QueueEmptyText.Text = _filter switch
-            {
-                "Active"   => "Nothing queued or running.",
-                "Done"     => "Nothing done yet.",
-                "Canceled" => "Nothing canceled.",
-                _          => "Queue is empty.",
-            };
+            QueueEmptyText.Text = searching
+                ? $"No queued item matches #{search}."
+                : _filter switch
+                {
+                    "Active"   => "Nothing queued or running.",
+                    "Done"     => "Nothing done yet.",
+                    "Canceled" => "Nothing canceled.",
+                    _          => "Queue is empty.",
+                };
             QueueTree.Items.Clear();
 
             // Git #931 — offline banner, shown regardless of which filter chip
@@ -730,11 +784,14 @@ namespace BuildConsole.Controls
                 parent.Items.Add(tvi);
                 if (item.GithubNumber.HasValue && childrenOf.TryGetValue(item.GithubNumber.Value, out var kids))
                 {
-                    foreach (var kid in kids) RenderOne(kid, tvi);
+                    // Git #950 — same descending-by-number ordering within a
+                    // nested blocked-by group as at the top level.
+                    foreach (var kid in SortForDisplay(kids)) RenderOne(kid, tvi);
                 }
             }
 
-            foreach (var item in topLevel) RenderOne(item, QueueTree);
+            // Git #950 — biggest GithubNumber first (see SortForDisplay).
+            foreach (var item in SortForDisplay(topLevel)) RenderOne(item, QueueTree);
         }
 
         private static readonly Dictionary<string, (string Icon, string Hex)> StatusStyle = new()
@@ -935,7 +992,10 @@ namespace BuildConsole.Controls
                 });
             }
 
-            var tvi = new TreeViewItem { Header = panel, IsExpanded = true, Tag = item };
+            // Git #950 — Shane: "Everything should be collapsed by default."
+            // Nested blocked-by children (#799/#813) start hidden; Shane
+            // expands a row to see what's nested under it.
+            var tvi = new TreeViewItem { Header = panel, IsExpanded = false, Tag = item };
 
             // Git #801/#820 — Shane: "I need right click like. Stop. Retry.
             // Run Now." Mark Done was the original manual escape hatch (a

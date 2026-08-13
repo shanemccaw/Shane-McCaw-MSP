@@ -124,6 +124,40 @@
                                 <ComboBoxItem Content="All"                  Tag="All"/>
                             </ComboBox>
 
+                            <!-- Git #950 - Shane: "Add a search box so I can search direct
+                                 Git numbers." Live substring filter on GithubNumber (see
+                                 QueueSearchBox_TextChanged); layers on top of the filter chip
+                                 above, clears to the full sorted list when emptied. The grey
+                                 placeholder is the standard WPF overlay-TextBlock trick (no
+                                 native placeholder), shown only while the box is empty. -->
+                            <Grid Margin="0,0,0,8">
+                                <TextBox x:Name="QueueSearchBox"
+                                         Height="26"
+                                         Padding="6,4"
+                                         FontSize="12"
+                                         VerticalContentAlignment="Center"
+                                         Background="{StaticResource Surface0Brush}"
+                                         TextChanged="QueueSearchBox_TextChanged"/>
+                                <TextBlock IsHitTestVisible="False"
+                                           Text="Search # (e.g. 94)"
+                                           FontSize="12"
+                                           Margin="8,0,0,0"
+                                           VerticalAlignment="Center"
+                                           HorizontalAlignment="Left"
+                                           Foreground="{StaticResource Subtext1Brush}">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Text, ElementName=QueueSearchBox}" Value="">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </Grid>
+
                             <!-- ── Queue tree (populated live from GET /extension/queue — see code-behind) ── -->
                             <Grid>
                                 <TreeView x:Name="QueueTree" BorderThickness="0" Padding="0,4" SelectedItemChanged="QueueTree_SelectedItemChanged"/>
