@@ -55,40 +55,66 @@ namespace BuildConsole.Services
     window.chrome.webview.postMessage(JSON.stringify(Object.assign({ type: type }, payload)));
   }
 
-  // Git #942 — the app's bridge back onto ONE specific injected button. Right
-  // after a Queue click the button carries data-bt-correlation (a token the
-  // app echoes back so it can find the exact element that was clicked); once
+  // Git #942 — the app's bridge back onto the injected Queue buttons. Right
+  // after a Queue click the clicked button carries data-bt-correlation (a token
+  // the app echoes back so it can find the exact element that was clicked); once
   // the app has the real queue item id from the POST it swaps that for
-  // data-bt-queue-id, and every later live-status push finds its target by
-  // that id. All three look the element up by attribute so they keep working
-  // even after the original click handler's closure is long gone.
+  // data-bt-queue-id — and tags the block's OTHER bar's Queue button (same
+  // data-bt-block) with it too, so both bars live-update in lockstep. Every
+  // later status push finds its targets by that id. All three look elements up
+  // by attribute so they keep working even after the click handler's closure is
+  // long gone.
   var __btCorrSeq = 0;
+  var __btBlockSeq = 0;
   window.__btTagQueued = function (correlation, queueId) {
-    var el = document.querySelector('[data-bt-correlation="' + correlation + '"]');
-    if (!el) return;
-    el.dataset.btQueueId = String(queueId);
-    delete el.dataset.btCorrelation;
-    delete el.dataset.btFailed;
-    el.disabled = true;
-    el.textContent = "In Progress...";
+    // Git #942 follow-up — find the exact button that was clicked (by its
+    // correlation token), then tag EVERY Queue button belonging to the same
+    // source block, not just this one. buildButtonBar stamps both the top and
+    // bottom bars' Queue buttons with the same data-bt-block id, so the sibling
+    // bar's button (whichever one wasn't clicked) gets the real data-bt-queue-id
+    // too and can be found + live-updated later — before this fix it was never
+    // tagged at all and stayed stuck on its original "📋 Queue" label forever.
+    var clicked = document.querySelector('[data-bt-correlation="' + correlation + '"]');
+    if (!clicked) return;
+    var block = clicked.dataset.btBlock;
+    var els = block
+      ? document.querySelectorAll('[data-bt-block="' + block + '"]')
+      : [clicked];
+    for (var i = 0; i < els.length; i++) {
+      var el = els[i];
+      el.dataset.btQueueId = String(queueId);
+      delete el.dataset.btCorrelation;
+      delete el.dataset.btFailed;
+      el.disabled = true;
+      el.textContent = "In Progress...";
+    }
   };
   window.__btApplyStatus = function (queueId, label, mode) {
-    // querySelectorAll, not querySelector: an issue-linked build dedupes to one
-    // queue id server-side, so if both the top and bottom button bars for the
-    // same block were queued they share a data-bt-queue-id — update them all.
+    // querySelectorAll, not querySelector: __btTagQueued now stamps BOTH the top
+    // and bottom bars' Queue buttons for a block with the same data-bt-queue-id
+    // (Git #942 follow-up), so one status push updates every bar at once.
     var els = document.querySelectorAll('[data-bt-queue-id="' + queueId + '"]');
     for (var i = 0; i < els.length; i++) {
       var el = els[i];
       el.textContent = label;
+      // Git #942 follow-up — the "Send to Builder" button is this Queue button's
+      // immediate previous sibling in the same bar (buildButtonBar appends
+      // Send-to-Builder then Queue). Hide it once the block is queued/running/
+      // done so the bar isn't still offering "launch now" for an in-flight
+      // build; restore it only if the build fails and Queue reverts to its
+      // retry-able state.
+      var sendSib = el.previousElementSibling;
       if (mode === "failed") {
         // Stays clickable on purpose: its existing click handler re-runs
         // queueBuild(), which IS the retry (a brand new correlation -> new id).
         el.dataset.btFailed = "1";
         el.disabled = false;
+        if (sendSib) sendSib.style.display = "";
       } else {
         // "In Progress..." and "Done" are both non-interactive terminal-ish states.
         delete el.dataset.btFailed;
         el.disabled = true;
+        if (sendSib) sendSib.style.display = "none";
       }
     }
   };
@@ -158,7 +184,7 @@ namespace BuildConsole.Services
     post("BT_LOAD_SQL", { sql: text });
   }
 
-  function buildButtonBar(kind, text, marginSide, referencedNumber) {
+  function buildButtonBar(kind, text, marginSide, referencedNumber, blockId) {
     const bar = document.createElement("div");
     bar.style.cssText = "display: flex; justify-content: flex-end; gap: 6px; margin-" + marginSide + ": 4px;";
     const btn = document.createElement("button");
@@ -178,6 +204,10 @@ namespace BuildConsole.Services
       // Git #942 — remembered so __btQueueFailed can restore it verbatim if the
       // queue POST fails after the click already flipped it to "In Progress...".
       queueBtn.dataset.btOrigLabel = "📋 Queue";
+      // Git #942 follow-up — the shared per-block id (identical on this block's
+      // OTHER bar's Queue button) so __btTagQueued can find and tag both bars at
+      // once when either one's click resolves to a real queue id.
+      queueBtn.dataset.btBlock = blockId;
       queueBtn.title = "Add to the build queue instead of launching now";
       queueBtn.style.cssText = btn.style.cssText;
       queueBtn.addEventListener("mouseenter", function () { queueBtn.style.background = "#2e2e2e"; });
@@ -197,8 +227,11 @@ namespace BuildConsole.Services
       if (!text) continue;
       const kind = classifyCodeBlock(text);
       const referencedNumber = kind === "prompt" ? extractReferencedIssueNumber(text) : null;
-      pre.parentElement.insertBefore(buildButtonBar(kind, text, "bottom", referencedNumber), pre);
-      pre.parentElement.insertBefore(buildButtonBar(kind, text, "top", referencedNumber), pre.nextSibling);
+      // Git #942 follow-up — one id shared by BOTH bars built for this block, so
+      // a Queue click on either can tag the other with the same data-bt-queue-id.
+      const blockId = "btb-" + (++__btBlockSeq);
+      pre.parentElement.insertBefore(buildButtonBar(kind, text, "bottom", referencedNumber, blockId), pre);
+      pre.parentElement.insertBefore(buildButtonBar(kind, text, "top", referencedNumber, blockId), pre.nextSibling);
     }
   }
 
