@@ -9,6 +9,13 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4129.50" />
+    <PackageReference Include="ICSharpCode.AvalonEdit" Version="6.3.0.90" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- SQL syntax-highlighting definition, loaded at runtime by SqlRunnerView
+         via Assembly.GetManifestResourceStream (Git #939). -->
+    <EmbeddedResource Include="Controls\SqlSyntax.xshd" />
   </ItemGroup>
 
 </Project>

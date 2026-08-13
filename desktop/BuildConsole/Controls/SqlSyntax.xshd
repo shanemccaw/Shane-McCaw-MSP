@@ -1,0 +1,146 @@
+<?xml version="1.0"?>
+<!--
+  SQL syntax highlighting for BuildConsole's SQL Runner (Git #939).
+
+  Colors are the app's own Catppuccin Mocha dark palette (Themes/DarkTheme.xaml),
+  NOT AvalonEdit's default light-theme SQL colors, so the editor matches the rest
+  of the dark UI. Loaded as an embedded resource by SqlRunnerView (the manifest
+  name is BuildConsole.Controls.SqlSyntax.xshd).
+-->
+<SyntaxDefinition name="SQL" xmlns="http://icsharpcode.net/sharpdevelop/syntaxdefinition/2008">
+
+  <!-- Catppuccin Mocha, matching DarkTheme.xaml's brush resources. -->
+  <Color name="Comment"  foreground="#6C7086" />                   <!-- OverlayBrush -->
+  <Color name="String"   foreground="#A6E3A1" />                   <!-- GreenBrush   -->
+  <Color name="Number"   foreground="#FAB387" />                   <!-- PeachBrush   -->
+  <Color name="Keyword"  foreground="#CBA6F7" fontWeight="bold" /> <!-- MauveBrush   -->
+  <Color name="Function" foreground="#89B4FA" />                   <!-- BlueBrush    -->
+
+  <RuleSet ignoreCase="true">
+
+    <!-- Comments -->
+    <Span color="Comment" begin="--" />
+    <Span color="Comment" multiline="true" begin="/\*" end="\*/" />
+
+    <!-- 'string literal' — a doubled '' escape stays fully string-colored since the
+         two quotes are adjacent (open-close then re-open), so no special handling
+         is needed for the common escaped-quote case. -->
+    <Span color="String" multiline="true">
+      <Begin>'</Begin>
+      <End>'</End>
+    </Span>
+
+    <!-- "quoted identifier" -->
+    <Span color="String" multiline="false">
+      <Begin>"</Begin>
+      <End>"</End>
+    </Span>
+
+    <Keywords color="Keyword">
+      <Word>ADD</Word>
+      <Word>ALL</Word>
+      <Word>ALTER</Word>
+      <Word>AND</Word>
+      <Word>ANY</Word>
+      <Word>AS</Word>
+      <Word>ASC</Word>
+      <Word>BEGIN</Word>
+      <Word>BETWEEN</Word>
+      <Word>BY</Word>
+      <Word>CASCADE</Word>
+      <Word>CASE</Word>
+      <Word>CHECK</Word>
+      <Word>COLUMN</Word>
+      <Word>COMMIT</Word>
+      <Word>CONFLICT</Word>
+      <Word>CONSTRAINT</Word>
+      <Word>CREATE</Word>
+      <Word>CROSS</Word>
+      <Word>DEFAULT</Word>
+      <Word>DELETE</Word>
+      <Word>DESC</Word>
+      <Word>DISTINCT</Word>
+      <Word>DO</Word>
+      <Word>DROP</Word>
+      <Word>ELSE</Word>
+      <Word>END</Word>
+      <Word>EXCEPT</Word>
+      <Word>EXISTS</Word>
+      <Word>FALSE</Word>
+      <Word>FOREIGN</Word>
+      <Word>FROM</Word>
+      <Word>FULL</Word>
+      <Word>GROUP</Word>
+      <Word>HAVING</Word>
+      <Word>IF</Word>
+      <Word>ILIKE</Word>
+      <Word>IN</Word>
+      <Word>INDEX</Word>
+      <Word>INNER</Word>
+      <Word>INSERT</Word>
+      <Word>INTERSECT</Word>
+      <Word>INTO</Word>
+      <Word>IS</Word>
+      <Word>JOIN</Word>
+      <Word>KEY</Word>
+      <Word>LEFT</Word>
+      <Word>LIKE</Word>
+      <Word>LIMIT</Word>
+      <Word>NOT</Word>
+      <Word>NULL</Word>
+      <Word>NULLS</Word>
+      <Word>OFFSET</Word>
+      <Word>ON</Word>
+      <Word>OR</Word>
+      <Word>ORDER</Word>
+      <Word>OUTER</Word>
+      <Word>PRIMARY</Word>
+      <Word>REFERENCES</Word>
+      <Word>RETURNING</Word>
+      <Word>RIGHT</Word>
+      <Word>ROLLBACK</Word>
+      <Word>SELECT</Word>
+      <Word>SET</Word>
+      <Word>TABLE</Word>
+      <Word>THEN</Word>
+      <Word>TRUE</Word>
+      <Word>UNION</Word>
+      <Word>UNIQUE</Word>
+      <Word>UPDATE</Word>
+      <Word>USING</Word>
+      <Word>VALUES</Word>
+      <Word>VIEW</Word>
+      <Word>WHEN</Word>
+      <Word>WHERE</Word>
+      <Word>WITH</Word>
+    </Keywords>
+
+    <Keywords color="Function">
+      <Word>AVG</Word>
+      <Word>CAST</Word>
+      <Word>COALESCE</Word>
+      <Word>CONCAT</Word>
+      <Word>COUNT</Word>
+      <Word>DATE</Word>
+      <Word>JSONB</Word>
+      <Word>JSON</Word>
+      <Word>LENGTH</Word>
+      <Word>LOWER</Word>
+      <Word>MAX</Word>
+      <Word>MIN</Word>
+      <Word>NOW</Word>
+      <Word>NULLIF</Word>
+      <Word>ROUND</Word>
+      <Word>SUM</Word>
+      <Word>TIMESTAMP</Word>
+      <Word>TRIM</Word>
+      <Word>UPPER</Word>
+    </Keywords>
+
+    <!-- Numbers: integers, decimals, and hex -->
+    <Rule color="Number">
+      \b0[xX][0-9a-fA-F]+\b|\b\d+(\.\d+)?\b
+    </Rule>
+
+  </RuleSet>
+</SyntaxDefinition>

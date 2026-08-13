@@ -1,11 +1,18 @@
 using System;
+using System.Collections.Generic;
 using System.Data;
 using System.Linq;
+using System.Reflection;
+using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Xml;
 using BuildConsole.Services;
+using ICSharpCode.AvalonEdit.Highlighting;
+using ICSharpCode.AvalonEdit.Highlighting.Xshd;
 
 namespace BuildConsole.Controls
 {
@@ -38,7 +45,35 @@ namespace BuildConsole.Controls
         /// </summary>
         public event EventHandler<string>? SendToChatRequested;
 
-        public SqlRunnerView() => InitializeComponent();
+        public SqlRunnerView()
+        {
+            InitializeComponent();
+            LoadSqlHighlighting();
+            // Placeholder starter text preserved from the old EditorTextBox (Git #939).
+            QueryEditor.Text = "-- Write your SQL query here\nSELECT *\nFROM public.users\nLIMIT 100;";
+        }
+
+        /// <summary>
+        /// Git #939 — applies the embedded SQL highlighting definition (SqlSyntax.xshd,
+        /// dark-theme colors matching DarkTheme.xaml) to the AvalonEdit editor. Loading
+        /// is best-effort: highlighting is purely cosmetic, so a missing/bad definition
+        /// leaves the editor plain rather than crashing the SQL Runner.
+        /// </summary>
+        private void LoadSqlHighlighting()
+        {
+            try
+            {
+                var asm = Assembly.GetExecutingAssembly();
+                using var stream = asm.GetManifestResourceStream("BuildConsole.Controls.SqlSyntax.xshd");
+                if (stream == null) return;
+                using var reader = new XmlTextReader(stream);
+                QueryEditor.SyntaxHighlighting = HighlightingLoader.Load(reader, HighlightingManager.Instance);
+            }
+            catch
+            {
+                // Cosmetic only — never let a highlighting problem break the editor.
+            }
+        }
 
         public void Initialize(BuildTrackerApiClient api)
         {
@@ -108,7 +143,10 @@ namespace BuildConsole.Controls
             ExecStatus.Text = "Executing…";
             try
             {
-                var statements = await _api.ExecuteSqlAsync(query);
+                // Git #939 — rewrite bare INSERT/UPDATE/DELETE statements to RETURNING *
+                // so the affected rows come back as a real result set (below).
+                var toRun = AddReturningToWrites(query);
+                var statements = await _api.ExecuteSqlAsync(toRun);
                 RenderResults(statements);
             }
             catch (Exception ex)
@@ -262,6 +300,210 @@ namespace BuildConsole.Controls
                  .Replace("\r\n", " ")
                  .Replace("\n", " ")
                  .Replace("\r", " ");
+
+        // ── Auto-RETURNING * (Git #939) ────────────────────────────────────────
+        // A plain INSERT/UPDATE/DELETE with no RETURNING clause returns zero fields
+        // from the driver, so RenderResults' "Fields.Count > 0" path never fires and
+        // Shane only ever saw the summary line ("N statement(s) succeeded"), never the
+        // rows he actually changed. Appending " RETURNING *" makes Postgres hand the
+        // affected rows back as a real result set, which then renders through the exact
+        // same ResultsGrid already used for SELECT.
+        //
+        // This is done per-statement, client-side, before the script is sent — so the
+        // script is first split the same way the server splits it (a faithful C# port
+        // of api-server/src/lib/sql-statement-splitter.ts) to avoid shredding string
+        // literals, dollar-quoted bodies, or comments. Only the qualifying statements
+        // are rewritten; SELECT/DDL/etc. and any statement that already carries its own
+        // RETURNING clause are left byte-for-byte alone. The rejoined script re-splits
+        // identically on the server.
+
+        private static readonly Regex LeadingDmlRegex =
+            new(@"^(insert|update|delete)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex ReturningRegex =
+            new(@"\breturning\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex LeadingCommentOrSpaceRegex =
+            new(@"\A(\s+|--[^\n]*|/\*.*?\*/)", RegexOptions.Singleline | RegexOptions.Compiled);
+
+        /// <summary>
+        /// For each INSERT/UPDATE/DELETE statement in <paramref name="script"/> that
+        /// doesn't already have a RETURNING clause, appends " RETURNING *". Every other
+        /// statement is returned unchanged.
+        /// </summary>
+        private static string AddReturningToWrites(string script)
+        {
+            var statements = SplitSqlStatements(script);
+            if (statements.Count == 0) return script;
+            for (var i = 0; i < statements.Count; i++)
+                statements[i] = MaybeAppendReturning(statements[i]);
+            return string.Join("\n", statements);
+        }
+
+        private static string MaybeAppendReturning(string statement)
+        {
+            // Skip leading whitespace / -- and /* */ comments to reach the first keyword.
+            var body = statement;
+            while (true)
+            {
+                var m = LeadingCommentOrSpaceRegex.Match(body);
+                if (!m.Success || m.Length == 0) break;
+                body = body.Substring(m.Length);
+            }
+
+            if (!LeadingDmlRegex.IsMatch(body)) return statement;    // not INSERT/UPDATE/DELETE
+            if (ReturningRegex.IsMatch(statement)) return statement; // already has RETURNING
+
+            var trimmed = statement.TrimEnd();
+            if (trimmed.EndsWith(";"))
+            {
+                var withoutSemi = trimmed.Substring(0, trimmed.Length - 1).TrimEnd();
+                return withoutSemi + " RETURNING *;";
+            }
+            return trimmed + " RETURNING *";
+        }
+
+        // ── SQL statement splitter (C# port of sql-statement-splitter.ts) ──────────
+        // Splits a multi-statement script on top-level semicolons only, skipping any
+        // that live inside single-quoted strings, double-quoted identifiers, dollar-
+        // quoted blocks, -- line comments or /* */ (nestable) block comments. Comment-
+        // /whitespace-only segments are dropped; a trailing statement with no final
+        // semicolon is still returned; each returned statement is trimmed and keeps its
+        // own terminating ';' when it had one. Kept behavior-identical to the server.
+
+        private static string? MatchDollarTag(string sql, int start)
+        {
+            // sql[start] is known to be '$'. Empty tag ($$) is valid.
+            var i = start + 1;
+            if (i < sql.Length && sql[i] == '$') return "$$";
+            if (i >= sql.Length || !(char.IsLetter(sql[i]) || sql[i] == '_')) return null;
+            i++;
+            while (i < sql.Length && (char.IsLetterOrDigit(sql[i]) || sql[i] == '_')) i++;
+            if (i >= sql.Length || sql[i] != '$') return null;
+            return sql.Substring(start, i - start + 1);
+        }
+
+        private static List<string> SplitSqlStatements(string input)
+        {
+            var statements = new List<string>();
+            var current = new StringBuilder();
+            var hasContent = false;
+            var n = input.Length;
+            var i = 0;
+
+            void Flush()
+            {
+                var trimmed = current.ToString().Trim();
+                if (hasContent && trimmed.Length > 0) statements.Add(trimmed);
+                current.Clear();
+                hasContent = false;
+            }
+
+            while (i < n)
+            {
+                var ch = input[i];
+                var next = i + 1 < n ? input[i + 1] : '\0';
+
+                // -- line comment
+                if (ch == '-' && next == '-')
+                {
+                    var j = i;
+                    while (j < n && input[j] != '\n') j++;
+                    current.Append(input, i, j - i);
+                    i = j;
+                    continue;
+                }
+
+                // /* block comment */ (nestable)
+                if (ch == '/' && next == '*')
+                {
+                    var depth = 1;
+                    current.Append("/*");
+                    var j = i + 2;
+                    while (j < n && depth > 0)
+                    {
+                        if (j + 1 < n && input[j] == '/' && input[j + 1] == '*') { depth++; current.Append("/*"); j += 2; }
+                        else if (j + 1 < n && input[j] == '*' && input[j + 1] == '/') { depth--; current.Append("*/"); j += 2; }
+                        else { current.Append(input[j]); j++; }
+                    }
+                    i = j;
+                    continue;
+                }
+
+                // '...' single-quoted string literal ('' escapes a quote)
+                if (ch == '\'')
+                {
+                    current.Append('\'');
+                    var j = i + 1;
+                    while (j < n)
+                    {
+                        if (input[j] == '\'' && j + 1 < n && input[j + 1] == '\'') { current.Append("''"); j += 2; }
+                        else if (input[j] == '\'') { current.Append('\''); j++; break; }
+                        else { current.Append(input[j]); j++; }
+                    }
+                    hasContent = true;
+                    i = j;
+                    continue;
+                }
+
+                // "..." double-quoted identifier ("" escapes a quote)
+                if (ch == '"')
+                {
+                    current.Append('"');
+                    var j = i + 1;
+                    while (j < n)
+                    {
+                        if (input[j] == '"' && j + 1 < n && input[j + 1] == '"') { current.Append("\"\""); j += 2; }
+                        else if (input[j] == '"') { current.Append('"'); j++; break; }
+                        else { current.Append(input[j]); j++; }
+                    }
+                    hasContent = true;
+                    i = j;
+                    continue;
+                }
+
+                // $tag$ ... $tag$ dollar-quoted block
+                if (ch == '$')
+                {
+                    var tag = MatchDollarTag(input, i);
+                    if (tag != null)
+                    {
+                        current.Append(tag);
+                        var j = i + tag.Length;
+                        var close = input.IndexOf(tag, j, StringComparison.Ordinal);
+                        if (close == -1)
+                        {
+                            current.Append(input, j, n - j);
+                            j = n;
+                        }
+                        else
+                        {
+                            current.Append(input, j, close + tag.Length - j);
+                            j = close + tag.Length;
+                        }
+                        hasContent = true;
+                        i = j;
+                        continue;
+                    }
+                }
+
+                // ; top-level statement terminator
+                if (ch == ';')
+                {
+                    current.Append(';');
+                    i++;
+                    Flush();
+                    continue;
+                }
+
+                current.Append(ch);
+                if (!char.IsWhiteSpace(ch)) hasContent = true;
+                i++;
+            }
+
+            // Trailing statement with no final semicolon.
+            Flush();
+
+            return statements;
+        }
 
         private static string JsonElementToDisplayString(JsonElement el) => el.ValueKind switch
         {

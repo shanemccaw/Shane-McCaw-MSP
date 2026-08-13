@@ -1,6 +1,7 @@
 <UserControl x:Class="BuildConsole.Controls.SqlRunnerView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:avalonedit="http://icsharpcode.net/sharpdevelop/avalonedit">
 
     <Grid Background="{StaticResource BaseBrush}">
         <Grid.RowDefinitions>
@@ -79,14 +80,24 @@
                                FontWeight="SemiBold"
                                Foreground="{StaticResource Subtext1Brush}"/>
                 </Border>
-                <TextBox x:Name="QueryEditor"
-                         Grid.Row="1"
-                         Style="{StaticResource EditorTextBox}"
-                         Text="-- Write your SQL query here&#x0A;SELECT *&#x0A;FROM public.users&#x0A;LIMIT 100;"
-                         AcceptsReturn="True"
-                         AcceptsTab="True"
-                         VerticalScrollBarVisibility="Auto"
-                         HorizontalScrollBarVisibility="Auto"/>
+                <!-- AvalonEdit code editor (Git #939) — real SQL syntax coloring
+                     (SqlSyntax.xshd, loaded in code-behind). AvalonEdit natively
+                     accepts Return/Tab like a code editor, so no AcceptsReturn/AcceptsTab
+                     needed. Background/Foreground/FontFamily/FontSize/Padding mirror the
+                     old EditorTextBox style. Placeholder starter text is set in the
+                     constructor (SqlRunnerView.xaml.cs), after highlighting is applied. -->
+                <avalonedit:TextEditor x:Name="QueryEditor"
+                                       Grid.Row="1"
+                                       Background="{StaticResource CrustBrush}"
+                                       Foreground="{StaticResource TextBrush}"
+                                       FontFamily="Cascadia Code, Consolas, Courier New"
+                                       FontSize="13"
+                                       Padding="8"
+                                       ShowLineNumbers="True"
+                                       LineNumbersForeground="{StaticResource Surface2Brush}"
+                                       WordWrap="False"
+                                       HorizontalScrollBarVisibility="Auto"
+                                       VerticalScrollBarVisibility="Auto"/>
             </Grid>
 
             <GridSplitter Grid.Column="1"
