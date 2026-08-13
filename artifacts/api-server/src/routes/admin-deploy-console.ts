@@ -80,6 +80,32 @@ const DEPLOY_OPERATIONS: Record<string, DeployStep[]> = {
     { label: "pnpm install", command: "pnpm install", timeoutMs: 300_000 },
     { label: "pnpm run build", command: "pnpm run build", timeoutMs: 600_000 },
   ],
+  // Git #911 — restart the running server so a just-pulled commit is actually
+  // loaded. A `git pull` only rewrites files on disk; the old code stays in the
+  // running process's memory until the process itself is replaced.
+  //
+  // Deliberately DEFERRED and DETACHED: the kill is backgrounded behind a short
+  // sleep (and its stdio sent to /dev/null so Node's exec doesn't block on the
+  // pipe), so this command returns immediately with a scheduled-restart message
+  // and the HTTP response can flush before the process dies. Callers must NOT
+  // wait for the server to come back on this connection — it drops — they poll
+  // GET /api/internal/deploy-status (#805) for the new commit hash instead.
+  //
+  // `kill 1` (signal PID 1, the Repl container's init) is the standard Replit
+  // self-restart: this repo has no Procfile / PM2 / other supervisor that would
+  // relaunch a bare `process.exit()`, and dev runs under Replit workflows that
+  // do NOT auto-restart an exited process — rebooting the container re-runs the
+  // Run button (git pull + Start Projects), bringing every workspace app back on
+  // the new commit. UNVERIFIED against Shane's actual deployment — flagged in the
+  // build-complete route below and the PLATFORM_BUILD.md row for #911.
+  "restart": [
+    {
+      label: "restart server",
+      command:
+        '( sleep 2; kill 1 ) >/dev/null 2>&1 & echo "restart scheduled: killing PID 1 in ~2s to load the pulled commit; poll GET /api/internal/deploy-status for the new commit hash"',
+      timeoutMs: 15_000,
+    },
+  ],
 };
 
 // Whether each whitelisted operation reads or writes. This is the ONLY thing
@@ -95,6 +121,7 @@ const OPERATION_KIND: Record<string, "read" | "write" | "heavy"> = {
   "pnpm-install": "write",
   "pnpm-build": "write",
   "full-rebuild": "heavy",
+  "restart": "write",
 };
 
 interface StepResult {
@@ -322,6 +349,187 @@ router.post("/admin/deploy/sql-test", requireDeployAccess, async (req: Request, 
   } finally {
     client.release();
   }
+});
+
+// POST /admin/deploy/build-complete — Git #911 (Epic #803). The single call a
+// finished build makes so a deploy actually lands: push any schema-changing
+// SQL, pull, and restart so the new commit is loaded.
+//
+//   body: { schemaSql?: string }
+//
+// 1. If `schemaSql` is given it is split into individual statements and the
+//    WHOLE request is hard-rejected (400, NOTHING executed) unless EVERY
+//    statement begins with CREATE, ALTER or INSERT (case-insensitive, leading
+//    whitespace/comments ignored). This is a deliberate, narrow exception to
+//    this codebase's standing "Claude never touches the live DB, Shane runs all
+//    SQL by hand" rule — CONFIRMED with Shane on the issue — and it is a HARD
+//    safety filter, not a warning: a DROP/DELETE/TRUNCATE/UPDATE (or anything
+//    else not starting CREATE/ALTER/INSERT) never runs, not even partially. The
+//    allowed statements then execute inside ONE transaction (all-or-nothing —
+//    any failure rolls the entire batch back). Because we wrap them ourselves,
+//    the supplied SQL must be bare statements with no BEGIN/COMMIT of its own
+//    (those would be rejected as non-CREATE/ALTER/INSERT anyway).
+// 2. Then git-pull (the existing whitelisted git-pull step).
+// 3. Then the whitelisted `restart` operation, which is deferred/detached so
+//    this handler returns a full step-by-step StepResult[] result FIRST; the
+//    connection then drops when the process restarts. The caller polls
+//    GET /api/internal/deploy-status (#805) until the commit hash flips to
+//    confirm the new commit is live — we never block on the server returning.
+//
+// Registered before the ":operation" wildcard, same reasoning as the console
+// and sql-test routes above (Express matches in registration order).
+const BUILD_COMPLETE_SQL_TIMEOUT_MS = 120_000;
+
+// A statement is allowed only if, after leading whitespace/comments are
+// stripped, it starts with one of these three keywords. `\b` prevents e.g.
+// "insertfoo" from matching; anything else (DROP/DELETE/TRUNCATE/UPDATE/SET/
+// BEGIN/…) fails and hard-rejects the whole request.
+const SCHEMA_SQL_ALLOWED_PREFIX = /^(?:create|alter|insert)\b/i;
+
+interface SchemaSqlValidation {
+  ok: boolean;
+  statements: string[];
+  offending?: { index: number; preview: string };
+}
+
+function validateSchemaSql(sql: string): SchemaSqlValidation {
+  const statements = splitSqlStatements(sql);
+  for (let i = 0; i < statements.length; i++) {
+    const head = stripLeadingComments(statements[i]!);
+    if (!SCHEMA_SQL_ALLOWED_PREFIX.test(head)) {
+      return { ok: false, statements, offending: { index: i, preview: head.slice(0, 120) } };
+    }
+  }
+  return { ok: true, statements };
+}
+
+function firstLine(statement: string): string {
+  return statement.split("\n").map((l) => l.trim()).filter(Boolean)[0] ?? statement.trim();
+}
+
+// Runs the already-validated statements inside a single transaction on a
+// dedicated connection (all-or-nothing) and returns one StepResult describing
+// the whole batch. Logs exactly what ran. Never throws — a failure is captured
+// in the returned StepResult (ok: false) after a ROLLBACK.
+async function applySchemaSqlTransaction(statements: string[], userId: number | undefined): Promise<StepResult> {
+  const count = statements.length;
+  const label = `apply schema SQL (${count} statement${count === 1 ? "" : "s"})`;
+  const command = statements.map((s) => s.replace(/\s+/g, " ").trim()).join(";\n");
+  const lines: string[] = [];
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    // SET LOCAL so the timeout resets automatically at COMMIT/ROLLBACK and never
+    // leaks onto the next borrower of this pooled connection.
+    await client.query(`SET LOCAL statement_timeout = ${BUILD_COMPLETE_SQL_TIMEOUT_MS}`);
+    for (let i = 0; i < statements.length; i++) {
+      const stmt = statements[i]!;
+      const result = await client.query(stmt);
+      lines.push(`[${i + 1}/${count}] ${firstLine(stmt)} → ${result.rowCount ?? 0} row(s)`);
+    }
+    await client.query("COMMIT");
+    log.info({ userId, count, statements }, "build-complete: schema SQL committed");
+    return { label, command, ok: true, output: lines.join("\n") };
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    const error = err instanceof Error ? err.message : String(err);
+    log.error({ userId, count, error }, "build-complete: schema SQL failed — transaction rolled back, nothing applied");
+    return {
+      label,
+      command,
+      ok: false,
+      output: [...lines, `error: ${error} — transaction rolled back, nothing applied`].join("\n"),
+    };
+  } finally {
+    client.release();
+  }
+}
+
+router.post("/admin/deploy/build-complete", requireDeployAccess, async (req: Request, res: Response) => {
+  const userId = req.user?.id;
+  const actorUserId = userId ?? null;
+  const rawSchemaSql = req.body?.schemaSql;
+
+  // schemaSql is optional; when present it must be a string.
+  if (rawSchemaSql !== undefined && typeof rawSchemaSql !== "string") {
+    res.status(400).json({ ok: false, error: "schemaSql must be a string when provided" });
+    return;
+  }
+
+  let workspaceRoot: string;
+  try {
+    workspaceRoot = getWorkspaceRoot();
+  } catch (err) {
+    log.error({ err: err instanceof Error ? err.message : String(err) }, "build-complete: workspace root resolution failed");
+    res.status(500).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
+    return;
+  }
+
+  const startedAt = Date.now();
+  const steps: StepResult[] = [];
+  const recordCommand = "build-complete: apply schema SQL -> git pull --ff-only -> restart";
+
+  // ── 1. Schema SQL (optional, hard-filtered, all-or-nothing) ─────────────────
+  const schemaSql = typeof rawSchemaSql === "string" ? rawSchemaSql : "";
+  if (schemaSql.trim()) {
+    const validation = validateSchemaSql(schemaSql);
+    if (!validation.ok) {
+      // Hard reject: the WHOLE request, nothing executed. Not a warning.
+      const { index, preview } = validation.offending!;
+      log.warn(
+        { userId, statementIndex: index, preview },
+        "build-complete: schema SQL rejected — a statement is not CREATE/ALTER/INSERT; whole request refused, nothing executed",
+      );
+      res.status(400).json({
+        ok: false,
+        error: `Statement ${index + 1} of ${validation.statements.length} is not a CREATE/ALTER/INSERT statement — the whole build-complete request was rejected and nothing was executed.`,
+        offendingStatement: preview,
+      });
+      return;
+    }
+
+    if (validation.statements.length > 0) {
+      log.info({ userId, count: validation.statements.length }, "build-complete: applying schema SQL in a transaction");
+      const sqlStep = await applySchemaSqlTransaction(validation.statements, userId);
+      steps.push(sqlStep);
+      if (!sqlStep.ok) {
+        // SQL failed and was rolled back — do NOT pull or restart.
+        await recordDeployRun({ command: recordCommand, startedAt, ok: false, steps, opKind: "write", error: "schema SQL failed", actorUserId });
+        res.status(500).json({ ok: false, steps, error: "Schema SQL failed and was rolled back — git pull and restart were skipped." });
+        return;
+      }
+    }
+  }
+
+  // ── 2. git pull ─────────────────────────────────────────────────────────────
+  const gitPullStep = await runStep(DEPLOY_OPERATIONS["git-pull"][0]!, workspaceRoot);
+  steps.push(gitPullStep);
+  if (!gitPullStep.ok) {
+    log.error({ userId }, "build-complete: git pull failed — restart skipped");
+    await recordDeployRun({ command: recordCommand, startedAt, ok: false, steps, opKind: "write", error: "git pull failed", actorUserId });
+    res.status(500).json({ ok: false, steps, error: "git pull failed — restart was skipped, the server keeps running the current commit." });
+    return;
+  }
+
+  // ── 3. restart (deferred/detached) ──────────────────────────────────────────
+  // The whitelisted restart step returns immediately (its kill is backgrounded
+  // behind a short sleep), so the full result below flushes before the process
+  // dies. Everything past this point must assume the connection may drop.
+  log.info({ userId }, "build-complete: scheduling restart to load the pulled commit");
+  const restartStep = await runStep(DEPLOY_OPERATIONS["restart"][0]!, workspaceRoot);
+  steps.push(restartStep);
+
+  await recordDeployRun({ command: recordCommand, startedAt, ok: restartStep.ok, steps, opKind: "write", actorUserId });
+  log.info({ userId, ok: restartStep.ok }, "build-complete: pipeline finished, restart scheduled");
+
+  res.json({
+    ok: restartStep.ok,
+    steps,
+    restarting: restartStep.ok,
+    pollUrl: "/api/internal/deploy-status",
+    note: "Restart scheduled — this server will drop the connection shortly. Poll GET /api/internal/deploy-status (#805) until commitHash changes to confirm the new commit is live; do not wait on this request.",
+  });
 });
 
 // POST /admin/simulator/deploy/:operation — runs one whitelisted operation.

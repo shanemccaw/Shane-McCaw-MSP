@@ -25,6 +25,14 @@ const mockExec = vi.hoisted(() => vi.fn());
 const mockDbQuery = vi.hoisted(() => vi.fn(async (_sql: string, _params?: unknown[]) => ({ rows: [], rowCount: 1 })));
 const mockExecSync = vi.hoisted(() => vi.fn(() => "/repo\n"));
 
+// build-complete (#911) runs its schema SQL on a DEDICATED pooled connection
+// (`pool.connect()`), distinct from the `pool.query` run-history uses — so it
+// gets its own client mock, whose calls (BEGIN / statements / COMMIT / ROLLBACK)
+// are what the transaction tests assert against.
+const mockClientQuery = vi.hoisted(() => vi.fn(async (_sql: string, _params?: unknown[]) => ({ rows: [], rowCount: 1 })));
+const mockClientRelease = vi.hoisted(() => vi.fn());
+const mockConnect = vi.hoisted(() => vi.fn(async () => ({ query: mockClientQuery, release: mockClientRelease })));
+
 vi.mock("child_process", () => ({
   exec: mockExec,
   execSync: mockExecSync,
@@ -35,19 +43,26 @@ vi.mock("child_process", () => ({
 // same reason `logger` is below (a real import throws without DATABASE_URL),
 // and so the recording itself is assertable.
 vi.mock("@workspace/db", () => ({
-  pool: { query: mockDbQuery },
+  pool: { query: mockDbQuery, connect: mockConnect },
 }));
 
-vi.mock("../middlewares/requireAuth", () => ({
-  requireAdmin: (req: express.Request, res: express.Response, next: express.NextFunction) => {
+// This whole file is gated by `requireAdminOrIngestToken()` (Git #702), which
+// RETURNS a middleware — the mock mirrors that shape. (`requireAdmin` is kept
+// too, harmlessly, since the real module exports both.)
+vi.mock("../middlewares/requireAuth", () => {
+  const gate = (req: express.Request, res: express.Response, next: express.NextFunction) => {
     if (!(req.headers["x-test-admin"] === "1")) {
       res.status(403).json({ error: "not admin" });
       return;
     }
     req.user = { id: 1, email: "admin-1@test", role: "admin" };
     next();
-  },
-}));
+  };
+  return {
+    requireAdmin: gate,
+    requireAdminOrIngestToken: () => gate,
+  };
+});
 
 // `logger.ts` transitively pulls in `lib/db`, which throws at import time
 // without a real DATABASE_URL — mock it directly rather than relying on
@@ -84,6 +99,10 @@ beforeEach(() => {
   mockExec.mockReset();
   mockExecSync.mockReset().mockReturnValue("/repo\n");
   mockDbQuery.mockClear();
+  mockConnect.mockClear();
+  mockClientRelease.mockClear();
+  mockClientQuery.mockReset();
+  mockClientQuery.mockResolvedValue({ rows: [], rowCount: 1 });
 });
 
 /** The parameters of the run-history INSERT, if one was issued. */
@@ -245,5 +264,140 @@ describe("run history", () => {
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(true);
     expect(res.body.steps[0].output).toBe("## main...origin/main");
+  });
+});
+
+describe("build-complete pipeline (#911)", () => {
+  it("is gated by requireDeployAccess like the rest of the file", async () => {
+    const res = await request(buildApp()).post("/admin/deploy/build-complete").send({});
+    expect(res.status).toBe(403);
+    expect(mockExec).not.toHaveBeenCalled();
+    expect(mockConnect).not.toHaveBeenCalled();
+  });
+
+  it("HARD-rejects the whole request if ANY statement is not CREATE/ALTER/INSERT, executing nothing", async () => {
+    const res = await request(buildApp())
+      .post("/admin/deploy/build-complete")
+      .set("x-test-admin", "1")
+      .send({ schemaSql: "CREATE TABLE t (id int);\nDROP TABLE other;" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.ok).toBe(false);
+    expect(res.body.offendingStatement).toContain("DROP");
+    // No partial execution: no transaction opened, no git pull, no restart.
+    expect(mockConnect).not.toHaveBeenCalled();
+    expect(mockExec).not.toHaveBeenCalled();
+  });
+
+  it("rejects an UPDATE the same way (write, but not CREATE/ALTER/INSERT)", async () => {
+    const res = await request(buildApp())
+      .post("/admin/deploy/build-complete")
+      .set("x-test-admin", "1")
+      .send({ schemaSql: "UPDATE users SET is_admin = true;" });
+
+    expect(res.status).toBe(400);
+    expect(mockConnect).not.toHaveBeenCalled();
+    expect(mockExec).not.toHaveBeenCalled();
+  });
+
+  it("is not fooled by a leading comment in front of a forbidden statement", async () => {
+    const res = await request(buildApp())
+      .post("/admin/deploy/build-complete")
+      .set("x-test-admin", "1")
+      .send({ schemaSql: "-- innocent looking\n/* block */ TRUNCATE audit_log;" });
+
+    expect(res.status).toBe(400);
+    expect(mockConnect).not.toHaveBeenCalled();
+    expect(mockExec).not.toHaveBeenCalled();
+  });
+
+  it("applies allowed schema SQL in ONE transaction, then pulls, then schedules the deferred restart", async () => {
+    succeed("Already up to date.");                 // git pull --ff-only
+    succeed("restart scheduled: killing PID 1 …");   // restart (deferred)
+
+    const res = await request(buildApp())
+      .post("/admin/deploy/build-complete")
+      .set("x-test-admin", "1")
+      .send({ schemaSql: "CREATE TABLE t (id int);\nALTER TABLE t ADD COLUMN name text;" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.restarting).toBe(true);
+    expect(res.body.pollUrl).toBe("/api/internal/deploy-status");
+    // schema SQL + git pull + restart
+    expect(res.body.steps).toHaveLength(3);
+    expect(res.body.steps[0].label).toContain("apply schema SQL");
+
+    // All-or-nothing: BEGIN … COMMIT on the one dedicated client, then released.
+    const clientSql = mockClientQuery.mock.calls.map((c) => String(c[0]));
+    expect(clientSql).toContain("BEGIN");
+    expect(clientSql).toContain("COMMIT");
+    expect(clientSql).not.toContain("ROLLBACK");
+    expect(mockClientRelease).toHaveBeenCalled();
+
+    // git pull first, restart second.
+    expect(mockExec).toHaveBeenCalledTimes(2);
+    expect(String(mockExec.mock.calls[0]![0])).toContain("git pull --ff-only");
+    expect(String(mockExec.mock.calls[1]![0])).toContain("kill 1");
+  });
+
+  it("rolls back and skips pull/restart when a statement fails mid-transaction", async () => {
+    mockClientQuery.mockImplementation(async (sql: string) => {
+      if (/create table/i.test(sql)) throw new Error("boom");
+      return { rows: [], rowCount: 1 };
+    });
+
+    const res = await request(buildApp())
+      .post("/admin/deploy/build-complete")
+      .set("x-test-admin", "1")
+      .send({ schemaSql: "CREATE TABLE t (id int);" });
+
+    expect(res.status).toBe(500);
+    expect(res.body.ok).toBe(false);
+    const clientSql = mockClientQuery.mock.calls.map((c) => String(c[0]));
+    expect(clientSql).toContain("ROLLBACK");
+    // The failure stops the pipeline: neither git pull nor restart run.
+    expect(mockExec).not.toHaveBeenCalled();
+  });
+
+  it("runs git pull then restart with no schemaSql at all", async () => {
+    succeed("Already up to date.");   // git pull
+    succeed("restart scheduled");     // restart
+
+    const res = await request(buildApp())
+      .post("/admin/deploy/build-complete")
+      .set("x-test-admin", "1")
+      .send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.steps).toHaveLength(2);
+    expect(mockConnect).not.toHaveBeenCalled();
+    expect(mockExec).toHaveBeenCalledTimes(2);
+  });
+
+  it("skips the restart when git pull fails (server keeps the current commit)", async () => {
+    fail("fatal: not a fast-forward");   // git pull
+
+    const res = await request(buildApp())
+      .post("/admin/deploy/build-complete")
+      .set("x-test-admin", "1")
+      .send({});
+
+    expect(res.status).toBe(500);
+    expect(res.body.ok).toBe(false);
+    // Only the git pull exec ran — restart was never scheduled.
+    expect(mockExec).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects a non-string schemaSql without touching the DB or shell", async () => {
+    const res = await request(buildApp())
+      .post("/admin/deploy/build-complete")
+      .set("x-test-admin", "1")
+      .send({ schemaSql: { not: "a string" } });
+
+    expect(res.status).toBe(400);
+    expect(mockConnect).not.toHaveBeenCalled();
+    expect(mockExec).not.toHaveBeenCalled();
   });
 });
