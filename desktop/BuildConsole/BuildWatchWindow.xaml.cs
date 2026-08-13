@@ -119,12 +119,12 @@ namespace BuildConsole
             public Ellipse SpinnerRing = null!;
             /// <summary>Carries a partial trailing line between byte-delta tail reads so a card is only emitted on a full line.</summary>
             public string LineBuffer = "";
-            /// <summary>Last time a real event card landed — drives "longer-running wait" idle detection for the easter egg.</summary>
+            /// <summary>Last time a real event landed — drives "longer-running wait" idle detection for the easter egg.</summary>
             public DateTime LastOutputUtc;
             /// <summary>While now &lt; this, a rolled easter-egg phrase is left on screen instead of being overwritten each poll.</summary>
             public DateTime EasterEggUntilUtc;
             /// <summary>The collapsed "Ran N tools" chip currently absorbing consecutive tool calls, or null if the
-            /// last event wasn't a tool call (any other card — prose, error, done — closes the run; see AddEventBubble).</summary>
+            /// last event wasn't a tool call (any other event — prose, error, done — closes the run; see AddEventBubble).</summary>
             public ToolCallGroup? CurrentToolGroup;
 
             // Live state
@@ -605,13 +605,13 @@ namespace BuildConsole
         }
 
         /// <summary>
-        /// Classifies one completed log line into an event and appends the matching card:
-        ///   • "--- done … ---"  → green result card
-        ///   • obvious stderr    → red error card
-        ///   • text with [tool:] → the prose becomes an assistant card; each tool marker folds into the
+        /// Classifies one completed log line into an event and appends it as flowing prose (see AddEventBubble):
+        ///   • "--- done … ---"  → green ✓ status line
+        ///   • obvious stderr    → red ⚠ error line
+        ///   • text with [tool:] → the prose renders as plain assistant text; each tool marker folds into the
         ///                         current collapsed "Ran N tools" chip (see AddToolCallChip)
-        ///   • anything else     → a blue-accented assistant text card
-        /// Distinct accent + text colour per type satisfies the colour-coding requirement, all from the existing palette.
+        ///   • anything else     → plain assistant prose
+        /// Distinct text colour per type satisfies the colour-coding requirement, all from the existing palette.
         /// </summary>
         private void AppendEventCard(BuildWatchSlot slot, string rawLine)
         {
@@ -661,12 +661,15 @@ namespace BuildConsole
         private const int MaxCardsPerSlot = 200;
 
         /// <summary>
-        /// Builds one chat card: a rounded Border (reusing the app's Surface0 card fill and CornerRadius idiom) with a
-        /// coloured left accent bar and a wrapping TextBlock at a readable 14.5px, then appends it and pins the scroll.
+        /// Renders one assistant event as continuous flowing prose — a bare wrapping TextBlock appended straight
+        /// into the stream, with NO border, background, or per-message container, exactly like a Claude.ai assistant
+        /// turn. Event type is carried entirely by text colour (blue/green/red from the palette) plus an optional
+        /// status glyph (✓ done / ⚠ error); natural paragraph spacing (the block's bottom margin) is what separates
+        /// one turn from the next. The old bordered-card presentation (accent bar + Surface0 fill + shadow) is gone.
         /// </summary>
         private void AddEventBubble(BuildWatchSlot slot, string text, Brush accent, Brush textBrush, bool mono, string? glyph)
         {
-            // Any non-tool card (prose/error/done) closes out whatever tool-call run was
+            // Any non-tool event (prose/error/done) closes out whatever tool-call run was
             // in progress, so the NEXT tool call starts a fresh collapsed chip rather than
             // silently appending to a chip that's no longer adjacent to it on screen.
             slot.CurrentToolGroup = null;
@@ -678,35 +681,16 @@ namespace BuildConsole
                 FontSize = 14.5,
                 TextWrapping = TextWrapping.Wrap,
                 LineHeight = 23, // ≈1.6× — the calm reading rhythm Claude.ai's own assistant messages use (leading-[1.65])
-                VerticalAlignment = VerticalAlignment.Center,
+                // Paragraph spacing between turns — this bottom margin is the ONLY separation now
+                // that there's no card; it's what makes consecutive events read as distinct prose paragraphs.
+                Margin = new Thickness(0, 0, 0, 14),
+                HorizontalAlignment = HorizontalAlignment.Stretch,
             };
             if (mono) body.FontFamily = new FontFamily("Cascadia Mono, Consolas");
             if (ReferenceEquals(accent, _mauve) || ReferenceEquals(accent, _green))
-                body.FontWeight = FontWeights.SemiBold;
+                body.FontWeight = FontWeights.SemiBold; // keep done/status lines a touch heavier for scanning
 
-            var card = new Border
-            {
-                Background = _cardBg,
-                CornerRadius = new CornerRadius(5, 14, 14, 14), // rounded-2xl-ish; keeps the subtle top-left chat "tail"
-                BorderBrush = accent,
-                BorderThickness = new Thickness(3, 0, 0, 0), // coloured left accent bar = event type
-                Padding = new Thickness(13, 9, 13, 9),
-                Margin = new Thickness(0, 0, 0, 9), // generous inter-card gap so cards read as distinct turns
-                HorizontalAlignment = HorizontalAlignment.Stretch,
-                Child = body,
-                // Very subtle lift off the Base background — lighter than the app's speech-bubble
-                // shadow (0.45), tuned for a dense stream so many stacked cards stay calm.
-                Effect = new System.Windows.Media.Effects.DropShadowEffect
-                {
-                    BlurRadius = 7,
-                    ShadowDepth = 1,
-                    Direction = 270,
-                    Opacity = 0.25,
-                    Color = Colors.Black,
-                },
-            };
-
-            slot.EventsPanel.Children.Add(card);
+            slot.EventsPanel.Children.Add(body);
             while (slot.EventsPanel.Children.Count > MaxCardsPerSlot)
                 slot.EventsPanel.Children.RemoveAt(0);
 
@@ -771,14 +755,14 @@ namespace BuildConsole
 
             group.Card = new Border
             {
-                // No fill + a thin Surface1 outline = a clearly-secondary pill that recedes against
-                // the shadowed, filled prose cards, matching how Claude.ai renders collapsed tool blocks.
-                Background = Brushes.Transparent,
-                BorderBrush = (Brush)FindResource("Surface1Brush"),
-                BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(13), // fully-rounded pill
-                Padding = new Thickness(11, 5, 11, 5),
-                Margin = new Thickness(0, 1, 0, 9),
+                // A small muted inline pill: a faint Surface0 fill, no border, no shadow — the one bit
+                // of light visual treatment in the stream, just enough to read as secondary metadata
+                // against the now-borderless flowing prose. Deliberately NOT a full bordered card; this
+                // is how Claude.ai renders a collapsed tool-call row — a subtle chip, not a message box.
+                Background = _cardBg,
+                CornerRadius = new CornerRadius(10),
+                Padding = new Thickness(10, 4, 10, 4),
+                Margin = new Thickness(0, 1, 0, 12),
                 HorizontalAlignment = HorizontalAlignment.Left,
                 Cursor = System.Windows.Input.Cursors.Hand,
                 ToolTip = "Click to expand and see each tool call",
