@@ -209,65 +209,72 @@
                         </StackPanel>
                     </Border>
 
-                    <!-- ══ 3. IN-FLIGHT + SESSIONS — two quiet count-badge tiles, collapsed by default ══
+                    <!-- ══ 3. IN-FLIGHT — one quiet count-badge tile, collapsed by default ══
                          Git #874 - Shane: "In-Flight I reference only." Shrunk from a full
-                         equal-weight tab (#866) to a side-by-side row of small tiles; each
-                         expands in place on click to reveal its existing list, collapsed
-                         by default so it stays out of the way until wanted. -->
-                    <Grid Margin="10,12">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="10"/>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
+                         equal-weight tab (#866) to a quiet tile; expands in place on click
+                         to reveal its existing list, collapsed by default so it stays out
+                         of the way until wanted.
+                         Git #957 - Shane: "In-Flight and Sessions should not be a 2 column
+                         layout, they should work the same as Completed & To-Do." Replaces
+                         the old side-by-side 2-column Grid with the same full-width single
+                         -column StackPanel shape as #941's Completed/To-Do, same mutually
+                         -exclusive accordion between the two (see TileInFlight_Click/
+                         TileSessions_Click), same no-MaxHeight-cap + ellipsis-title
+                         treatment on the inner list. -->
+                    <StackPanel Margin="10,0,10,12">
+                        <ToggleButton x:Name="TileInFlight" Style="{StaticResource QuietTile}" Click="TileInFlight_Click">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="⏳" FontSize="13" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <TextBlock Text="In-Flight" FontSize="11" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="InFlightCountText" Text="(0)" FontSize="11" Margin="4,0,0,0" VerticalAlignment="Center" Foreground="{StaticResource Subtext1Brush}"/>
+                            </StackPanel>
+                        </ToggleButton>
+                        <Border x:Name="TileInFlightContent"
+                                Visibility="Collapsed"
+                                Background="{StaticResource MantleBrush}"
+                                BorderBrush="{StaticResource Surface0Brush}"
+                                BorderThickness="1,0,1,1"
+                                Padding="4"
+                                CornerRadius="0,0,6,6">
+                            <ListBox x:Name="InFlightIssuesList"
+                                     Background="Transparent"
+                                     BorderThickness="0"
+                                     SelectionChanged="InFlightIssuesList_SelectionChanged"
+                                     SizeChanged="InFlightIssuesList_SizeChanged"/>
+                        </Border>
+                    </StackPanel>
 
-                        <StackPanel Grid.Column="0">
-                            <ToggleButton x:Name="TileInFlight" Style="{StaticResource QuietTile}" Click="TileInFlight_Click">
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="⏳" FontSize="13" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                                    <TextBlock Text="In-Flight" FontSize="11" VerticalAlignment="Center"/>
-                                    <TextBlock x:Name="InFlightCountText" Text="(0)" FontSize="11" Margin="4,0,0,0" VerticalAlignment="Center" Foreground="{StaticResource Subtext1Brush}"/>
-                                </StackPanel>
-                            </ToggleButton>
-                            <Border x:Name="TileInFlightContent"
-                                    Visibility="Collapsed"
-                                    Background="{StaticResource MantleBrush}"
-                                    BorderBrush="{StaticResource Surface0Brush}"
-                                    BorderThickness="1,0,1,1"
-                                    Padding="4"
-                                    CornerRadius="0,0,6,6">
-                                <ListBox x:Name="InFlightIssuesList"
-                                         Background="Transparent"
-                                         BorderThickness="0"
-                                         MaxHeight="220"
-                                         ScrollViewer.VerticalScrollBarVisibility="Auto"
-                                         SelectionChanged="InFlightIssuesList_SelectionChanged"/>
-                            </Border>
-                        </StackPanel>
-
-                        <StackPanel Grid.Column="2">
-                            <ToggleButton x:Name="TileSessions" Style="{StaticResource QuietTile}" Click="TileSessions_Click">
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="▶" FontSize="13" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                                    <TextBlock Text="Sessions" FontSize="11" VerticalAlignment="Center"/>
-                                    <TextBlock x:Name="SessionsCountText" Text="(0)" FontSize="11" Margin="4,0,0,0" VerticalAlignment="Center" Foreground="{StaticResource Subtext1Brush}"/>
-                                </StackPanel>
-                            </ToggleButton>
-                            <Border x:Name="TileSessionsContent"
-                                    Visibility="Collapsed"
-                                    Background="{StaticResource MantleBrush}"
-                                    BorderBrush="{StaticResource Surface0Brush}"
-                                    BorderThickness="1,0,1,1"
-                                    Padding="4"
-                                    CornerRadius="0,0,6,6">
-                                <ListBox x:Name="ActiveSessionsList"
-                                         Background="Transparent"
-                                         BorderThickness="0"
-                                         MaxHeight="220"
-                                         ScrollViewer.VerticalScrollBarVisibility="Auto"/>
-                            </Border>
-                        </StackPanel>
-                    </Grid>
+                    <!-- ══ 3b. SESSIONS — one quiet count-badge tile, collapsed by default ══
+                         Git #957 - Shane: "The Build Queue needs to show even when I am
+                         building using 'Send to Builder' since that opens a different
+                         process... it's not part of the Queue.. but I need a way to know
+                         it's running. I think this is what Session is for?" Correct - this
+                         reads the real claude CLI agent list directly (ClaudeAgentsService),
+                         which lists every active Claude Code session on the machine
+                         (interactive AND background) regardless of whether it ever touched
+                         the queue, so a Send-to-Builder launch (a plain named claude.exe
+                         process, no queue row at all) shows up here same as anything else. -->
+                    <StackPanel Margin="10,0,10,12">
+                        <ToggleButton x:Name="TileSessions" Style="{StaticResource QuietTile}" Click="TileSessions_Click">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="▶" FontSize="13" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <TextBlock Text="Sessions" FontSize="11" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="SessionsCountText" Text="(0)" FontSize="11" Margin="4,0,0,0" VerticalAlignment="Center" Foreground="{StaticResource Subtext1Brush}"/>
+                            </StackPanel>
+                        </ToggleButton>
+                        <Border x:Name="TileSessionsContent"
+                                Visibility="Collapsed"
+                                Background="{StaticResource MantleBrush}"
+                                BorderBrush="{StaticResource Surface0Brush}"
+                                BorderThickness="1,0,1,1"
+                                Padding="4"
+                                CornerRadius="0,0,6,6">
+                            <ListBox x:Name="ActiveSessionsList"
+                                     Background="Transparent"
+                                     BorderThickness="0"
+                                     SizeChanged="ActiveSessionsList_SizeChanged"/>
+                        </Border>
+                    </StackPanel>
 
                     <!-- ══ 3b. COMPLETED — done builds whose real GitHub issue is still
                          open, one quiet count-badge tile, collapsed by default ══

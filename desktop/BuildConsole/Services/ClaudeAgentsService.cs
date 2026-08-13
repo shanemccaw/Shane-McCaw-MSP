@@ -41,6 +41,26 @@ namespace BuildConsole.Services
         private static readonly string ClaudeExe = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "bin", "claude.exe");
 
+        /// <summary>
+        /// Git #957 — Shane: "I think this is what Session is for? But it's
+        /// always empty. So maybe a bug is there?" Found a real one: this
+        /// redirected BOTH stdout and stderr but only ever read stdout, and
+        /// only AFTER starting the process — a textbook .NET Process
+        /// deadlock. If `claude agents --json` ever writes enough to stderr
+        /// to fill the OS pipe buffer (a few KB — an update-check notice, a
+        /// deprecation warning, anything), the child process blocks trying
+        /// to write more while this call sits blocked in `ReadToEndAsync()`
+        /// on stdout, waiting for a process that's waiting right back on it
+        /// — neither side ever finishes, so this call just hangs forever on
+        /// whichever poll tick hit it. That reads as "Sessions is always
+        /// empty," not as an error, since nothing ever throws either. Now
+        /// reads both streams concurrently (never sequentially) so neither
+        /// pipe can ever fill up and block the other, and logs the exit
+        /// code/stderr/parse failure on every non-empty failure path
+        /// instead of swallowing it silently, so a future failure is
+        /// actually diagnosable from the Activity Log instead of just
+        /// looking like "nothing running."
+        /// </summary>
         public static async Task<List<ClaudeAgentSession>> ListActiveSessionsAsync()
         {
             if (!File.Exists(ClaudeExe)) return new List<ClaudeAgentSession>();
@@ -58,9 +78,19 @@ namespace BuildConsole.Services
 
             using var proc = new Process { StartInfo = psi };
             proc.Start();
-            string stdout = await proc.StandardOutput.ReadToEndAsync();
+            var stdoutTask = proc.StandardOutput.ReadToEndAsync();
+            var stderrTask = proc.StandardError.ReadToEndAsync();
+            await Task.WhenAll(stdoutTask, stderrTask);
             await proc.WaitForExitAsync();
-            if (proc.ExitCode != 0 || string.IsNullOrWhiteSpace(stdout)) return new List<ClaudeAgentSession>();
+            string stdout = stdoutTask.Result;
+            string stderr = stderrTask.Result;
+
+            if (proc.ExitCode != 0 || string.IsNullOrWhiteSpace(stdout))
+            {
+                ActivityLog.Log("sessions", $"claude agents --json exit {proc.ExitCode}"
+                    + (string.IsNullOrWhiteSpace(stderr) ? "" : $": {stderr.Trim()}"));
+                return new List<ClaudeAgentSession>();
+            }
 
             try
             {
@@ -68,8 +98,9 @@ namespace BuildConsole.Services
                     stdout, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
                 return sessions ?? new List<ClaudeAgentSession>();
             }
-            catch
+            catch (Exception ex)
             {
+                ActivityLog.Log("sessions", $"claude agents --json parse failed: {ex.Message}");
                 return new List<ClaudeAgentSession>();
             }
         }

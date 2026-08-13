@@ -86,6 +86,9 @@ namespace BuildConsole.Controls
         private const double MinIssueRowTitleWidth = 24;
         private readonly List<TextBlock> _completedTitleBlocks = new();
         private readonly List<TextBlock> _toDoTitleBlocks = new();
+        /// <summary>Git #957 — In-Flight/Sessions now get the same ellipsis treatment as Completed/To-Do, now that they're full-width single-column tiles too.</summary>
+        private readonly List<TextBlock> _inFlightTitleBlocks = new();
+        private readonly List<TextBlock> _sessionsTitleBlocks = new();
 
         private void ApplyTitleMaxWidths(ListBox listBox, List<TextBlock> registry)
         {
@@ -104,6 +107,16 @@ namespace BuildConsole.Controls
         private void WaitingOnMeList_SizeChanged(object sender, SizeChangedEventArgs e)
         {
             if (e.WidthChanged) ApplyTitleMaxWidths(WaitingOnMeList, _toDoTitleBlocks);
+        }
+
+        private void InFlightIssuesList_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            if (e.WidthChanged) ApplyTitleMaxWidths(InFlightIssuesList, _inFlightTitleBlocks);
+        }
+
+        private void ActiveSessionsList_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            if (e.WidthChanged) ApplyTitleMaxWidths(ActiveSessionsList, _sessionsTitleBlocks);
         }
 
         public BuildQueuePanel() => InitializeComponent();
@@ -199,6 +212,7 @@ namespace BuildConsole.Controls
             // by default, so this is the at-a-glance value while collapsed).
             SessionsCountText.Text = $"({sessions.Count})";
 
+            _sessionsTitleBlocks.Clear();
             ActiveSessionsList.Items.Clear();
             if (sessions.Count == 0)
             {
@@ -215,11 +229,15 @@ namespace BuildConsole.Controls
                 var panel = new StackPanel { Orientation = Orientation.Horizontal };
                 panel.Children.Add(new TextBlock { Text = icon + " ", FontSize = 12, Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(iconColor)), VerticalAlignment = VerticalAlignment.Center });
                 var textStack = new StackPanel();
-                textStack.Children.Add(new TextBlock { Text = string.IsNullOrWhiteSpace(s.Name) ? s.SessionId[..8] : s.Name, FontSize = 12, Foreground = (Brush)Application.Current.FindResource("TextBrush"), TextWrapping = TextWrapping.Wrap });
+                // Git #957 — same #932/#941 ellipsis lesson: single-line + CharacterEllipsis, MaxWidth applied by ApplyTitleMaxWidths.
+                var titleBlock = new TextBlock { Text = string.IsNullOrWhiteSpace(s.Name) ? s.SessionId[..8] : s.Name, FontSize = 12, Foreground = (Brush)Application.Current.FindResource("TextBrush"), TextWrapping = TextWrapping.NoWrap, TextTrimming = TextTrimming.CharacterEllipsis };
+                _sessionsTitleBlocks.Add(titleBlock);
+                textStack.Children.Add(titleBlock);
                 textStack.Children.Add(new TextBlock { Text = $"{s.Cwd}  ·  {elapsedStr} ago", FontSize = 10, Foreground = (Brush)Application.Current.FindResource("Subtext1Brush"), TextWrapping = TextWrapping.Wrap });
                 panel.Children.Add(textStack);
                 ActiveSessionsList.Items.Add(new ListBoxItem { Content = panel, ToolTip = $"PID {s.Pid} · {s.Kind} · session {s.SessionId}" });
             }
+            ApplyTitleMaxWidths(ActiveSessionsList, _sessionsTitleBlocks);
         }
 
         /// <summary>
@@ -263,6 +281,7 @@ namespace BuildConsole.Controls
             // Git #874 — see RefreshActiveSessionsAsync's identical comment.
             InFlightCountText.Text = $"({issues.Count})";
 
+            _inFlightTitleBlocks.Clear();
             InFlightIssuesList.Items.Clear();
             if (issues.Count == 0)
             {
@@ -282,9 +301,11 @@ namespace BuildConsole.Controls
 
                 foreach (var issue in group.OrderByDescending(i => i.UpdatedAt))
                 {
-                    InFlightIssuesList.Items.Add(BuildIssueRow(issue, "⏳", "#F2CA63"));
+                    // Git #957 — registered now that In-Flight is a full-width tile getting the same ellipsis treatment as Completed/To-Do.
+                    InFlightIssuesList.Items.Add(BuildIssueRow(issue, "⏳", "#F2CA63", _inFlightTitleBlocks));
                 }
             }
+            ApplyTitleMaxWidths(InFlightIssuesList, _inFlightTitleBlocks);
         }
 
         /// <summary>
@@ -1184,11 +1205,35 @@ namespace BuildConsole.Controls
         // default, each ToggleButton's own IsChecked (set by the click that
         // fired this handler) IS the expanded state, just mirrored onto its
         // content Border's Visibility.
-        private void TileInFlight_Click(object sender, RoutedEventArgs e) =>
-            TileInFlightContent.Visibility = TileInFlight.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        // Git #957 — Shane: "In-Flight and Sessions should not be a 2 column
+        // layout, they should work the same as Completed & To-Do." Same
+        // mutual-exclusion reasoning as #941's Completed/To-Do below: now
+        // that these are full-width tiles with no MaxHeight cap, an open
+        // list uses up real vertical room, so two open at once would just
+        // push each other around instead of saving any scrolling.
+        private void TileInFlight_Click(object sender, RoutedEventArgs e)
+        {
+            bool expand = TileInFlight.IsChecked == true;
+            TileInFlightContent.Visibility = expand ? Visibility.Visible : Visibility.Collapsed;
+            if (expand)
+            {
+                TileSessions.IsChecked = false;
+                TileSessionsContent.Visibility = Visibility.Collapsed;
+                ApplyTitleMaxWidths(InFlightIssuesList, _inFlightTitleBlocks);
+            }
+        }
 
-        private void TileSessions_Click(object sender, RoutedEventArgs e) =>
-            TileSessionsContent.Visibility = TileSessions.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        private void TileSessions_Click(object sender, RoutedEventArgs e)
+        {
+            bool expand = TileSessions.IsChecked == true;
+            TileSessionsContent.Visibility = expand ? Visibility.Visible : Visibility.Collapsed;
+            if (expand)
+            {
+                TileInFlight.IsChecked = false;
+                TileInFlightContent.Visibility = Visibility.Collapsed;
+                ApplyTitleMaxWidths(ActiveSessionsList, _sessionsTitleBlocks);
+            }
+        }
 
         // Git #941 — Shane: "collapse To-Do if I click To-Do collapse
         // Completed and expand To-Do the rest of the length" — Completed and
