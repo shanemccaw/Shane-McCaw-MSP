@@ -95,6 +95,7 @@ namespace BuildConsole.Services
                         ViewportJson = step.TryGetProperty("viewport", out var vp) &&
                             (vp.ValueKind == JsonValueKind.Object || vp.ValueKind == JsonValueKind.String) ? vp.GetRawText() : null,
                         MaxDurationMs = step.TryGetProperty("maxDurationMs", out var md) && md.ValueKind == JsonValueKind.Number && md.TryGetInt64(out var mdn) ? mdn : (long?)null,
+                        Screenshot = step.TryGetProperty("screenshot", out var sc) && sc.ValueKind == JsonValueKind.True,
                     }).ToList();
                 }
 
@@ -124,5 +125,7 @@ namespace BuildConsole.Services
         public string? ViewportJson { get; set; }
         /// <summary>Git #969 — this uiStep's optional `maxDurationMs` threshold, asserted against UiTestExecutor's already-tracked per-step Stopwatch elapsed time. Null when the step declares no threshold.</summary>
         public long? MaxDurationMs { get; set; }
+        /// <summary>Git #966 — the uiStep's optional `"screenshot": true` flag for explicit always-capture (independent of the automatic on-failure capture). Defaults false.</summary>
+        public bool Screenshot { get; set; }
     }
 }

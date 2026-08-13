@@ -3428,6 +3428,9 @@ namespace BuildConsole
                     Extract = step.ExtractJson,
                     Viewport = step.ViewportJson,
                     MaxDurationMs = step.MaxDurationMs,
+                    // Git #966 — carry the uiStep's `"screenshot": true` opt-in so UiTestExecutor captures a
+                    // WebView2 screenshot after this step, not only on failure.
+                    Screenshot = step.Screenshot,
                 }).ToList();
 
                 // Git #877 — the same per-run variable store the api/graph executors used, so a
@@ -3441,12 +3444,35 @@ namespace BuildConsole
                 // Git #970 — manifest-level default viewport applied to every uiStep that doesn't
                 // declare its own override (see AutomationAction.Viewport / ViewportSpec.Parse).
                 var uiDefaultViewport = BuildConsole.Services.ViewportSpec.Parse(manifest.ViewportJson);
-                var uiResult = await runner.RunUiTestAsync(uiTargetUrl, uiActions, vars, uiDefaultViewport);
+
+                // Git #966 — screenshots for this run land under test-results/{issue}-{timestamp}/screenshots/,
+                // a folder named for the same run stem WriteToFile uses for the results JSON. Null repoRoot ⇒
+                // capture disabled (nowhere stable to write), same guard WriteToFile already uses.
+                string? uiRepoRoot = BuildConsole.Services.BuildTrackerConfig.FindRepoRoot();
+                string? screenshotDir = uiRepoRoot != null
+                    ? System.IO.Path.Combine(uiRepoRoot, "test-results", runResult.RunFolderName, "screenshots")
+                    : null;
+
+                var uiResult = await runner.RunUiTestAsync(uiTargetUrl, uiActions, vars, uiDefaultViewport, screenshotDir);
                 var uiStepResults = uiResult.ToTestStepResults();
+
+                // Git #966 — the executor set each step's ScreenshotPath to an absolute path; rewrite it
+                // repo-relative (forward slashes) so the committed-shape results JSON stays portable and a
+                // reader resolves it against the repo root.
+                if (uiRepoRoot != null)
+                {
+                    foreach (var s in uiStepResults)
+                    {
+                        if (!string.IsNullOrEmpty(s.ScreenshotPath))
+                            s.ScreenshotPath = System.IO.Path.GetRelativePath(uiRepoRoot, s.ScreenshotPath).Replace('\\', '/');
+                    }
+                }
+
                 runResult.AddRange(uiStepResults);
 
                 BuildConsole.Services.ActivityLog.Log("testing.ui-executor",
-                    $"[{mode}] Issue #{manifest.Issue} uiSteps: {uiResult.PassedSteps}/{uiResult.TotalSteps} passed.");
+                    $"[{mode}] Issue #{manifest.Issue} uiSteps: {uiResult.PassedSteps}/{uiResult.TotalSteps} passed" +
+                    $"{(uiResult.Screenshots.Count > 0 ? $"; {uiResult.Screenshots.Count} screenshot(s) captured" : "")}.");
             }
 
             // Git #900 — powerShellVerify runs LAST, after every HTTP/Graph/Zoho/UI step has

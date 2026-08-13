@@ -32,6 +32,11 @@ namespace BuildConsole.Services
         public string Expected { get; set; } = "";
         public string Actual { get; set; } = "";
         public string Context { get; set; } = "";
+        /// <summary>Git #966 — repo-relative path (forward slashes) of the WebView2 screenshot captured for this
+        /// step, or empty when none was taken. Screenshots are captured for uiSteps on any step failure, or when
+        /// the uiStep declares `"screenshot": true`; a reader (Claude Code, or TestRunnerWindow's review gallery)
+        /// resolves this against the repo root. Only uiSteps ("ui" Kind) ever populate it.</summary>
+        public string ScreenshotPath { get; set; } = "";
     }
 
     public class ManifestRunResult
@@ -46,6 +51,11 @@ namespace BuildConsole.Services
 
         public void AddRange(IEnumerable<TestStepResult> steps) => Steps.AddRange(steps);
 
+        /// <summary>Git #966 — the per-run folder stem ("{issue}-{timestamp}") shared by this run's results
+        /// JSON (WriteToFile) and its screenshots directory (test-results/{stem}/screenshots/), so a step's
+        /// ScreenshotPath in the JSON always sits under a folder named for the same run that wrote the JSON.</summary>
+        public string RunFolderName => $"{Issue}-{StartedAt:yyyyMMddHHmmss}";
+
         /// <summary>Git #812 — this app's module-level logger.child({channel}) equivalent (ActivityLog.Log(channel, ...); no Node logger exists in this WPF process — see the sibling "testing.api-executor"/"testing.graph-executor"/"testing.ui-executor"/"testing.results-panel" channels).</summary>
         private const string Channel = "testing.results-writer";
 
@@ -53,7 +63,7 @@ namespace BuildConsole.Services
         {
             var dir = Path.Combine(repoRoot, "test-results");
             Directory.CreateDirectory(dir);
-            var path = Path.Combine(dir, $"{Issue}-{StartedAt:yyyyMMddHHmmss}.json");
+            var path = Path.Combine(dir, $"{RunFolderName}.json");
             File.WriteAllText(path, JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }));
 
             int passed = Steps.Count(s => s.Passed);

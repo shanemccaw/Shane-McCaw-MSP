@@ -101,6 +101,17 @@ namespace BuildConsole.Services
         public string Expected { get; set; } = string.Empty;
         /// <summary>Git #812 — what the DOM/action actually produced (found/visible booleans, or the raw JS execution result on failure).</summary>
         public string Actual { get; set; } = string.Empty;
+        /// <summary>Git #966 — absolute path of the PNG WebView2 screenshot captured for this step (on failure, or when the uiStep declares `"screenshot": true`), or empty when none was captured. Copied onto TestStepResult.ScreenshotPath (rewritten repo-relative by the caller) via ToTestStepResults() so the results JSON references it.</summary>
+        public string ScreenshotPath { get; set; } = string.Empty;
+    }
+
+    /// <summary>Git #966 — one WebView2 screenshot captured during a run, surfaced to TestRunnerWindow's review gallery. FilePath is absolute (loaded straight into the gallery's Image); Reason is why it was taken ("step-failed" / "explicit" / "navigation-failed").</summary>
+    public class UiScreenshotCapture
+    {
+        public int StepIndex { get; set; }
+        public string FilePath { get; set; } = string.Empty;
+        public string Reason { get; set; } = string.Empty;
+        public string StepLabel { get; set; } = string.Empty;
     }
 
     /// <summary>The structured outcome of a run — this, not the popup, is the reusable artifact #810 will consume once it exists.</summary>
@@ -112,6 +123,9 @@ namespace BuildConsole.Services
         public bool Success { get; set; }
         public string StatusText { get; set; } = string.Empty;
         public List<UiStepResult> Steps { get; } = new();
+
+        /// <summary>Git #966 — every WebView2 screenshot captured during this run, in capture order — fed straight into TestRunnerWindow's click-through review gallery. Empty when no step failed and none declared `"screenshot": true` (or when no screenshot directory was provided).</summary>
+        public List<UiScreenshotCapture> Screenshots { get; } = new();
 
         /// <summary>Git #807's shared ManifestRunResult/TestStepResult pipeline is what #808 and #810 plug into — not a separate output path per executor kind. Folds this run's steps (and captureResponse assertions, as their own distinct entries) into that shape; if the run never got past navigation, a single synthetic "navigate" entry keeps the failure visible instead of silently vanishing as zero UI steps.</summary>
         public List<TestStepResult> ToTestStepResults()
@@ -151,6 +165,8 @@ namespace BuildConsole.Services
                     Expected = step.Expected,
                     Actual = step.Actual,
                     Context = $"step {step.Index}: {step.ActionType} on selector '{step.Selector}'",
+                    // Git #966 — absolute here; the caller (RunManifestAsync) rewrites it repo-relative before the JSON is written.
+                    ScreenshotPath = step.ScreenshotPath,
                 });
             }
 
@@ -174,6 +190,8 @@ namespace BuildConsole.Services
     public class UiTestExecutor
     {
         private const string Channel = "testing.ui-executor";
+        /// <summary>Git #966 — dedicated channel for screenshot capture, per the task's `ActivityLog.Log("testing.screenshot", ...)` instruction (this app's logger.child({channel}) equivalent).</summary>
+        private const string ScreenshotChannel = "testing.screenshot";
         private const int CaptureResponseTimeoutMs = 5000;
         private const int PostNavigationSettleMs = 1200;
         private const int PostStepSettleMs = 1000;
@@ -194,6 +212,15 @@ namespace BuildConsole.Services
         /// the default afterward only when it actually left it.</summary>
         private ViewportSpec? _appliedViewport;
 
+        /// <summary>Git #966 — absolute directory this run's screenshots are written into
+        /// (test-results/{issue}-{timestamp}/screenshots), or null when the caller supplied none (capture
+        /// disabled). Created lazily on the first capture so a passing, non-explicit run leaves no empty folder.</summary>
+        private string? _screenshotDir;
+
+        /// <summary>Git #966 — the in-flight run, so per-step capture can append to its Screenshots list
+        /// (fed to TestRunnerWindow's gallery) from inside ExecuteStepAsync without threading it through.</summary>
+        private UiTestRunResult? _run;
+
         public event EventHandler<UiTelemetryEvent>? Telemetry;
 
         public UiTestExecutor(WebView2 webView)
@@ -201,10 +228,15 @@ namespace BuildConsole.Services
             _webView = webView;
         }
 
-        public async Task<UiTestRunResult> RunAsync(string targetUrl, IReadOnlyList<Controls.AutomationAction> steps, TestRunVariables? vars = null, ViewportSpec? defaultViewport = null)
+        /// <param name="screenshotDir">Git #966 — absolute directory to write PNG screenshots into (created lazily
+        /// on first capture). Null disables capture. A screenshot is taken on any step failure, and on any step
+        /// whose <see cref="Controls.AutomationAction.Screenshot"/> flag is set.</param>
+        public async Task<UiTestRunResult> RunAsync(string targetUrl, IReadOnlyList<Controls.AutomationAction> steps, TestRunVariables? vars = null, ViewportSpec? defaultViewport = null, string? screenshotDir = null)
         {
             _vars = vars ?? new TestRunVariables();
+            _screenshotDir = string.IsNullOrWhiteSpace(screenshotDir) ? null : screenshotDir;
             var result = new UiTestRunResult { TargetUrl = targetUrl, TotalSteps = steps.Count };
+            _run = result;
 
             Emit("START", $"Navigating to {targetUrl}", "INFO", "#89B4FA");
             ActivityLog.Log(Channel, $"Navigating to {targetUrl} ({steps.Count} step(s)).");
@@ -218,6 +250,9 @@ namespace BuildConsole.Services
                 {
                     Emit("NAV FAIL", "Page failed to load or encountered HTTP error.", "ERROR", "#F38BA8");
                     ActivityLog.Log(Channel, $"Navigation failed: {targetUrl}");
+                    // Git #966 — a failed navigation is still worth a screenshot (the error page WebView2 rendered
+                    // is exactly what a human reviewer would want to see); captured as step 0.
+                    await CaptureScreenshotAsync(0, "navigation-failed", $"navigate {targetUrl}");
                     result.Success = false;
                     result.StatusText = "❌ TEST FAILED (Navigation Error)";
                     return result;
@@ -283,6 +318,8 @@ namespace BuildConsole.Services
                 sw.Stop();
                 Emit($"STEP {stepNumber} WARN", ex.Message, "WARN", "#FAB387");
                 ActivityLog.Log(Channel, $"Step {stepNumber} ({actionType}): unresolved variable — {ex.Message}");
+                // Git #966 — an unresolved-variable failure is still a step failure: capture whatever's on screen.
+                string varFailShot = await CaptureScreenshotAsync(stepNumber, "step-failed", $"{actionType} {step.Selector}");
                 return new UiStepResult
                 {
                     Index = stepNumber,
@@ -294,6 +331,7 @@ namespace BuildConsole.Services
                     DurationMs = sw.ElapsedMilliseconds,
                     Expected = "all {{variable}} placeholders resolve to an earlier step's extracted value",
                     Actual = ex.Message,
+                    ScreenshotPath = varFailShot,
                 };
             }
 
@@ -396,6 +434,13 @@ namespace BuildConsole.Services
             Emit(overallPassed ? $"STEP {stepNumber} PASS" : $"STEP {stepNumber} WARN", stepDetail, overallPassed ? "PASS" : "WARN", overallPassed ? "#A6E3A1" : "#FAB387");
             ActivityLog.Log(Channel, $"Step {stepNumber} ({actionType} {selector}): {(overallPassed ? "PASS" : "WARN")} — {stepDetail}");
 
+            // Git #966 — always screenshot a failed step (DOM/text assertions can't catch a visually-broken but
+            // structurally-fine page), plus any step that opted in with `"screenshot": true` for explicit capture.
+            // Runs after the #969 sw.Stop() above on purpose: the capture time must not inflate the step's DurationMs.
+            string screenshotPath = string.Empty;
+            if (!overallPassed || step.Screenshot)
+                screenshotPath = await CaptureScreenshotAsync(stepNumber, overallPassed ? "explicit" : "step-failed", $"{actionType} {selector}");
+
             return new UiStepResult
             {
                 Index = stepNumber,
@@ -408,7 +453,44 @@ namespace BuildConsole.Services
                 CaptureResponse = captureResult,
                 Expected = actionExpected,
                 Actual = actionActual,
+                ScreenshotPath = screenshotPath,
             };
+        }
+
+        /// <summary>Git #966 — capture the WebView2's current visual state to a PNG via CoreWebView2.CapturePreviewAsync
+        /// (its native screenshot capability), save it under this run's screenshots directory as {stepIndex}.png,
+        /// register it on the run's Screenshots list for the review gallery, and log to "testing.screenshot".
+        /// Never throws — capture is best-effort telemetry, and a capture failure must not fail the run itself.
+        /// Returns the absolute PNG path, or empty string when capture was disabled (no directory) or failed.</summary>
+        private async Task<string> CaptureScreenshotAsync(int stepIndex, string reason, string stepLabel)
+        {
+            if (_screenshotDir == null) return string.Empty;
+            try
+            {
+                Directory.CreateDirectory(_screenshotDir);
+                string path = Path.Combine(_screenshotDir, $"{stepIndex}.png");
+                using (var stream = new FileStream(path, FileMode.Create, FileAccess.Write))
+                {
+                    await _webView.CoreWebView2.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png, stream);
+                }
+
+                _run?.Screenshots.Add(new UiScreenshotCapture
+                {
+                    StepIndex = stepIndex,
+                    FilePath = path,
+                    Reason = reason,
+                    StepLabel = stepLabel,
+                });
+
+                Emit($"STEP {stepIndex} SHOT", $"Screenshot captured ({reason}).", "INFO", "#89DCEB");
+                ActivityLog.Log(ScreenshotChannel, $"Captured screenshot for step {stepIndex} ({reason}) — {stepLabel} -> {path}");
+                return path;
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log(ScreenshotChannel, $"Screenshot capture failed for step {stepIndex} ({reason}): {ex.Message}");
+                return string.Empty;
+            }
         }
 
         /// <summary>Git #877 — parse a uiStep's raw `extract` block JSON and apply it against the

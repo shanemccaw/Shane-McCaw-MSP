@@ -10,6 +10,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 
 namespace BuildConsole
 {
@@ -91,6 +92,11 @@ namespace BuildConsole
         private readonly ObservableCollection<StepListItem> _steps = new();
         private readonly ICollectionView _stepsView;
         private int _stepCursor;
+
+        // Git #966 — screenshot review gallery state: the last run's captured screenshots and the
+        // currently-displayed index. Human review only — no automated diffing.
+        private readonly List<Services.UiScreenshotCapture> _galleryShots = new();
+        private int _galleryIndex;
 
         public TestRunnerWindow()
         {
@@ -237,8 +243,18 @@ namespace BuildConsole
         }
 
         /// <summary>Runs a manifest's uiSteps directly through UiTestExecutor against this window's own WebView2 — used by both the Automation sidebar's manual Play button and RunManifestAsync.</summary>
-        public async Task<Services.UiTestRunResult> RunUiTestAsync(string targetUrl, List<BuildConsole.Controls.AutomationAction> steps, Services.TestRunVariables? vars = null, Services.ViewportSpec? defaultViewport = null)
+        public async Task<Services.UiTestRunResult> RunUiTestAsync(string targetUrl, List<BuildConsole.Controls.AutomationAction> steps, Services.TestRunVariables? vars = null, Services.ViewportSpec? defaultViewport = null, string? screenshotDir = null)
         {
+            // Git #966 — the manifest path (RunManifestAsync) passes a screenshotDir named for the run
+            // (test-results/{issue}-{ts}/screenshots); the manual Play path passes none, so fall back to a
+            // per-invocation manual-{timestamp} folder so ad-hoc runs still capture and fill the gallery.
+            if (string.IsNullOrWhiteSpace(screenshotDir))
+            {
+                string? repoRoot = Services.BuildTrackerConfig.FindRepoRoot();
+                if (repoRoot != null)
+                    screenshotDir = System.IO.Path.Combine(repoRoot, "test-results", $"manual-{DateTime.Now:yyyyMMddHHmmss}", "screenshots");
+            }
+
             var executor = new Services.UiTestExecutor(RunnerWebView);
             EventHandler<Services.UiTelemetryEvent> onTelemetry = (s, e) =>
             {
@@ -253,7 +269,9 @@ namespace BuildConsole
             {
                 // Git #877 — thread the per-run variable store so uiSteps can resolve {{name}}
                 // placeholders and extract into the same dictionary the api/graph executors share.
-                var result = await executor.RunAsync(targetUrl, steps, vars, defaultViewport);
+                var result = await executor.RunAsync(targetUrl, steps, vars, defaultViewport, screenshotDir);
+                // Git #966 — hand this run's captured screenshots to the review gallery.
+                SetGalleryScreenshots(result.Screenshots);
                 return result;
             }
             finally
@@ -356,7 +374,114 @@ namespace BuildConsole
                 SetUiStepsPresence(false);
 
                 ConsoleOutputBox.Clear();
+
+                // Git #966 — a fresh run resets the review gallery (screenshots get re-populated once the
+                // run captures any). Note SetGalleryScreenshots is called at run END with the new set, so
+                // clearing here only affects the pre-run/idle state.
+                GalleryOverlay.Visibility = Visibility.Collapsed;
+                _galleryShots.Clear();
+                _galleryIndex = 0;
+                BtnScreenshots.IsEnabled = false;
+                BtnScreenshots.Content = "📷 Screenshots";
             });
+        }
+
+        // ── Git #966: screenshot review gallery ──────────────────────────────────
+        // A simple click-through of the last run's captured WebView2 screenshots (failures + explicit
+        // "screenshot": true steps). Deliberately capture + human review only — no automated pixel-diffing,
+        // which is fragile against font rendering / anti-aliasing / live dates & data.
+
+        /// <summary>Replaces the gallery's contents with a completed run's captured screenshots and enables the
+        /// "📷 Screenshots" button (showing the count) when there's at least one. Safe to call from any thread.</summary>
+        public void SetGalleryScreenshots(IEnumerable<Services.UiScreenshotCapture> shots)
+        {
+            RunOnUi(() =>
+            {
+                _galleryShots.Clear();
+                _galleryShots.AddRange(shots);
+                _galleryIndex = 0;
+
+                bool any = _galleryShots.Count > 0;
+                BtnScreenshots.IsEnabled = any;
+                BtnScreenshots.Content = any ? $"📷 Screenshots ({_galleryShots.Count})" : "📷 Screenshots";
+
+                Services.ActivityLog.Log(Channel, $"Screenshot gallery ready: {_galleryShots.Count} screenshot(s) from the last run.");
+            });
+        }
+
+        private void BtnScreenshots_Click(object sender, RoutedEventArgs e)
+        {
+            if (_galleryShots.Count == 0) return;
+            _galleryIndex = 0;
+            GalleryOverlay.Visibility = Visibility.Visible;
+            ShowGalleryImage();
+        }
+
+        private void BtnGalleryClose_Click(object sender, RoutedEventArgs e) => GalleryOverlay.Visibility = Visibility.Collapsed;
+
+        private void BtnGalleryPrev_Click(object sender, RoutedEventArgs e)
+        {
+            if (_galleryShots.Count == 0) return;
+            _galleryIndex = (_galleryIndex - 1 + _galleryShots.Count) % _galleryShots.Count;
+            ShowGalleryImage();
+        }
+
+        private void BtnGalleryNext_Click(object sender, RoutedEventArgs e)
+        {
+            if (_galleryShots.Count == 0) return;
+            _galleryIndex = (_galleryIndex + 1) % _galleryShots.Count;
+            ShowGalleryImage();
+        }
+
+        /// <summary>Loads the current screenshot into the gallery Image and updates the counter/caption/path.
+        /// Reads the PNG with OnLoad caching so the file handle is released immediately (never locks the file
+        /// the executor just wrote). A missing/unreadable file shows a message rather than throwing.</summary>
+        private void ShowGalleryImage()
+        {
+            if (_galleryShots.Count == 0)
+            {
+                GalleryImage.Source = null;
+                TxtGalleryEmpty.Visibility = Visibility.Visible;
+                TxtGalleryCounter.Text = "0 / 0";
+                TxtGalleryCaption.Text = "";
+                TxtGalleryFile.Text = "";
+                return;
+            }
+
+            if (_galleryIndex < 0 || _galleryIndex >= _galleryShots.Count) _galleryIndex = 0;
+            var shot = _galleryShots[_galleryIndex];
+
+            TxtGalleryCounter.Text = $"{_galleryIndex + 1} / {_galleryShots.Count}";
+            TxtGalleryCaption.Text = $"Step {shot.StepIndex}: {shot.StepLabel}  —  {shot.Reason}";
+            TxtGalleryFile.Text = shot.FilePath;
+
+            try
+            {
+                if (!System.IO.File.Exists(shot.FilePath))
+                {
+                    GalleryImage.Source = null;
+                    TxtGalleryEmpty.Text = $"Screenshot file not found:\n{shot.FilePath}";
+                    TxtGalleryEmpty.Visibility = Visibility.Visible;
+                    return;
+                }
+
+                var bmp = new BitmapImage();
+                bmp.BeginInit();
+                bmp.CacheOption = BitmapCacheOption.OnLoad;
+                bmp.CreateOptions = BitmapCreateOptions.IgnoreImageCache;
+                bmp.UriSource = new Uri(shot.FilePath, UriKind.Absolute);
+                bmp.EndInit();
+                bmp.Freeze();
+
+                GalleryImage.Source = bmp;
+                TxtGalleryEmpty.Visibility = Visibility.Collapsed;
+            }
+            catch (Exception ex)
+            {
+                GalleryImage.Source = null;
+                TxtGalleryEmpty.Text = $"Couldn't load screenshot:\n{ex.Message}";
+                TxtGalleryEmpty.Visibility = Visibility.Visible;
+            }
         }
 
         /// <summary>Git #869 — copies the full accumulated console text in one click, for pasting into a Claude Code prompt to diagnose a failure.</summary>
