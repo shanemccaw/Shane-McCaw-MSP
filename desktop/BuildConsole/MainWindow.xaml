@@ -177,6 +177,17 @@
                                    Text=" - Claude.ai"
                                    FontSize="12"
                                    Foreground="{StaticResource BlueBrush}"/>
+                        <!-- Git #934 - Shane: "add a - [DEBUG] if I have the app open in the
+                             Debug folder." Visibility/Text set from code-behind (OnSourceInitialized)
+                             once, based on whether the running exe's own path is under bin\Debug\ -
+                             collapsed entirely for a Release build, so this never shows up
+                             accidentally in what Shane actually ships/uses day to day. -->
+                        <TextBlock x:Name="DebugBuildMarkerText"
+                                   Text=" - [DEBUG]"
+                                   FontSize="12"
+                                   FontWeight="Bold"
+                                   Foreground="{StaticResource PeachBrush}"
+                                   Visibility="Collapsed"/>
                     </StackPanel>
 
                     <!-- Right: Quick Action Buttons -->

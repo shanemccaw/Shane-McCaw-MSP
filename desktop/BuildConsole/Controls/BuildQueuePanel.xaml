@@ -105,14 +105,24 @@
                                        Foreground="{StaticResource Subtext1Brush}"
                                        Margin="0,0,0,8"/>
 
-                            <!-- ── Filter chips (real — see code-behind's ApplyFilter) ── -->
-                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                <ToggleButton x:Name="ChipAll"       Content="All"               Style="{StaticResource FilterChip}" IsChecked="True" Click="FilterChip_Click" Tag="All"/>
-                                <ToggleButton x:Name="ChipActive"    Content="Queued &amp; Running" Style="{StaticResource FilterChip}" Click="FilterChip_Click" Tag="Active"/>
-                                <ToggleButton x:Name="ChipDone"      Content="Done"              Style="{StaticResource FilterChip}" Click="FilterChip_Click" Tag="Done"/>
-                                <ToggleButton x:Name="ChipCanceled"  Content="Canceled"          Style="{StaticResource FilterChip}" Click="FilterChip_Click" Tag="Canceled"/>
-                                <ToggleButton x:Name="ChipTests"     Content="Tests"             Style="{StaticResource FilterChip}" Click="FilterChip_Click" Tag="Tests"/>
-                            </StackPanel>
+                            <!-- Git #933 - Shane: "Mark the filtering pills be a drop down menu
+                                 because they go off streen. Make All last, and make Queued &
+                                 Running first and Default." The old ToggleButton pill row
+                                 (real — see code-behind's ApplyFilter) had no wrap/scroll of its
+                                 own, so on a narrow panel the later chips (Canceled/Tests) ran
+                                 straight off the edge with no way to reach them. A ComboBox
+                                 never overflows - it just shows whichever one's selected, and
+                                 the dropdown list itself scrolls if it ever needs to. -->
+                            <ComboBox x:Name="QueueFilterCombo"
+                                      Margin="0,0,0,8"
+                                      SelectedIndex="0"
+                                      SelectionChanged="QueueFilterCombo_SelectionChanged">
+                                <ComboBoxItem Content="Queued &amp; Running" Tag="Active"/>
+                                <ComboBoxItem Content="Done"                 Tag="Done"/>
+                                <ComboBoxItem Content="Canceled"             Tag="Canceled"/>
+                                <ComboBoxItem Content="Tests"                Tag="Tests"/>
+                                <ComboBoxItem Content="All"                  Tag="All"/>
+                            </ComboBox>
 
                             <!-- ── Queue tree (populated live from GET /extension/queue — see code-behind) ── -->
                             <Grid>

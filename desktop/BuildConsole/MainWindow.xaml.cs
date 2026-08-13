@@ -168,6 +168,24 @@ namespace BuildConsole
         {
             InitializeComponent();
 
+            // Git #934 — Shane: "add a - [DEBUG] if I have the app open in
+            // the Debug folder." Checked by the running exe's OWN path
+            // (bin\Debug\... vs bin\Release\...), not a `#if DEBUG`
+            // compile-time symbol - that answers "was this DLL built in
+            // Debug configuration," not "am I actually running the copy
+            // that lives in the Debug folder," which is what Shane's own
+            // wording is really asking (e.g. catches a stale Debug exe he
+            // forgot he had open, even if a fresh Release build exists).
+            // Sets both the native window Title (Alt+Tab/taskbar hover
+            // still read this even with the custom title bar from #894)
+            // and the custom bar's own inline marker.
+            if (System.Reflection.Assembly.GetExecutingAssembly().Location
+                .IndexOf(System.IO.Path.Combine("bin", "Debug"), StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                Title += " - [DEBUG]";
+                DebugBuildMarkerText.Visibility = Visibility.Visible;
+            }
+
             // Git #815 — Shane: "put the startup SSE and api calls in
             // there... so we can just look and see whats happening as its
             // happening in the background. This should be multi-threaded so

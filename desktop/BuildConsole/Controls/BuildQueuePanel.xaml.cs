@@ -43,7 +43,8 @@ namespace BuildConsole.Controls
         private Services.QueueWatcherService? _watcher;
         private DispatcherTimer? _pollTimer;
         private List<QueueItem> _lastItems = new();
-        private string _filter = "All";
+        /// <summary>Git #933 — Shane: "make Queued &amp; Running first and Default." Matches QueueFilterCombo's own SelectedIndex="0" in XAML; kept in sync here too so the very first RefreshAsync (which can render before the ComboBox's own SelectionChanged has necessarily fired) filters correctly from the start.</summary>
+        private string _filter = "Active";
 
         public BuildQueuePanel() => InitializeComponent();
 
@@ -577,14 +578,11 @@ namespace BuildConsole.Controls
             _          => items,
         };
 
-        private void FilterChip_Click(object sender, RoutedEventArgs e)
+        /// <summary>Git #933 — replaces the old ToggleButton pill row (FilterChip_Click) that ran off the edge of a narrow panel; same ApplyFilter/RenderTestsTree logic, just driven by the ComboBox's selection instead of "which pill is checked."</summary>
+        private void QueueFilterCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            if (sender is not ToggleButton clicked) return;
-            foreach (var chip in new[] { ChipAll, ChipActive, ChipDone, ChipCanceled, ChipTests })
-            {
-                chip.IsChecked = chip == clicked;
-            }
-            _filter = clicked.Tag as string ?? "All";
+            if (QueueFilterCombo.SelectedItem is not ComboBoxItem selected) return;
+            _filter = selected.Tag as string ?? "Active";
             if (_filter == "Tests") RenderTestsTree();
             else RenderQueue(ApplyFilter(_lastItems));
         }
