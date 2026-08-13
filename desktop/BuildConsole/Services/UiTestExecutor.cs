@@ -124,7 +124,7 @@ namespace BuildConsole.Services
         public string StatusText { get; set; } = string.Empty;
         public List<UiStepResult> Steps { get; } = new();
 
-        /// <summary>Git #966 — every WebView2 screenshot captured during this run, in capture order — fed straight into TestRunnerWindow's click-through review gallery. Empty when no step failed and none declared `"screenshot": true` (or when no screenshot directory was provided).</summary>
+        /// <summary>Git #966 — every WebView2 screenshot captured during this run, in capture order — fed straight into TestRunnerWindow's click-through review gallery. Git #977 — one per uiStep by default now (always-on, not failure-only/opt-in), so #975's baseline/diff can catch UI drift on passing runs too. Empty only when no screenshot directory was provided (capture disabled).</summary>
         public List<UiScreenshotCapture> Screenshots { get; } = new();
 
         /// <summary>Git #807's shared ManifestRunResult/TestStepResult pipeline is what #808 and #810 plug into — not a separate output path per executor kind. Folds this run's steps (and captureResponse assertions, as their own distinct entries) into that shape; if the run never got past navigation, a single synthetic "navigate" entry keeps the failure visible instead of silently vanishing as zero UI steps.</summary>
@@ -229,8 +229,9 @@ namespace BuildConsole.Services
         }
 
         /// <param name="screenshotDir">Git #966 — absolute directory to write PNG screenshots into (created lazily
-        /// on first capture). Null disables capture. A screenshot is taken on any step failure, and on any step
-        /// whose <see cref="Controls.AutomationAction.Screenshot"/> flag is set.</param>
+        /// on first capture). Null disables capture. Git #977 — a screenshot is now taken at EVERY step by default
+        /// (always-on for UI drift detection), superseding #966's failure-only + <see cref="Controls.AutomationAction.Screenshot"/>
+        /// opt-in; the flag now only affects the capture reason label.</param>
         public async Task<UiTestRunResult> RunAsync(string targetUrl, IReadOnlyList<Controls.AutomationAction> steps, TestRunVariables? vars = null, ViewportSpec? defaultViewport = null, string? screenshotDir = null)
         {
             _vars = vars ?? new TestRunVariables();
@@ -434,12 +435,16 @@ namespace BuildConsole.Services
             Emit(overallPassed ? $"STEP {stepNumber} PASS" : $"STEP {stepNumber} WARN", stepDetail, overallPassed ? "PASS" : "WARN", overallPassed ? "#A6E3A1" : "#FAB387");
             ActivityLog.Log(Channel, $"Step {stepNumber} ({actionType} {selector}): {(overallPassed ? "PASS" : "WARN")} — {stepDetail}");
 
-            // Git #966 — always screenshot a failed step (DOM/text assertions can't catch a visually-broken but
-            // structurally-fine page), plus any step that opted in with `"screenshot": true` for explicit capture.
-            // Runs after the #969 sw.Stop() above on purpose: the capture time must not inflate the step's DurationMs.
-            string screenshotPath = string.Empty;
-            if (!overallPassed || step.Screenshot)
-                screenshotPath = await CaptureScreenshotAsync(stepNumber, overallPassed ? "explicit" : "step-failed", $"{actionType} {selector}");
+            // Git #977 — capture a screenshot at EVERY uiStep by default, not just #966's failure-only + explicit
+            // `"screenshot": true` opt-in. A step can pass every DOM/text assertion while the page has drifted
+            // visually, and #975's baseline/diff/approval workflow has nothing to compare on a passing run unless
+            // capture is unconditional — so drift is only catchable suite-wide with always-on capture. The
+            // per-step `screenshot` flag is now redundant for uiSteps (always-on supersedes it) and kept only to
+            // colour the capture reason. Runs after the #969 sw.Stop() above on purpose: the capture time must
+            // not inflate the step's DurationMs. Capture is still best-effort (never throws, no-ops when the
+            // caller supplied no screenshot directory), so making it unconditional can't fail a run.
+            string reason = !overallPassed ? "step-failed" : (step.Screenshot ? "explicit" : "step");
+            string screenshotPath = await CaptureScreenshotAsync(stepNumber, reason, $"{actionType} {selector}");
 
             return new UiStepResult
             {
