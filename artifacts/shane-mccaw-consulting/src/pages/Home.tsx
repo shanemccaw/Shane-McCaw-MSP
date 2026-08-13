@@ -162,6 +162,7 @@ function TypewriterHeadline() {
         }}
       />
       <h1
+        data-testid="hero-headline"
         style={{
           fontSize: `${scale * 100}%`,
           lineHeight: HEADLINE_LINE_HEIGHT,
@@ -517,7 +518,7 @@ export default function Home() {
             )}
 
             {done && (
-              <div data-testid="quiz-result" style={{ background: "linear-gradient(160deg,rgba(23,37,84,.42),#0f172a 62%)", border: "1px solid rgba(37,99,235,.28)", borderRadius: 16, padding: "clamp(20px,4vw,28px)", maxWidth: 520 }}>
+              <div data-testid="quiz-result" data-score={score} data-band={band} style={{ background: "linear-gradient(160deg,rgba(23,37,84,.42),#0f172a 62%)", border: "1px solid rgba(37,99,235,.28)", borderRadius: 16, padding: "clamp(20px,4vw,28px)", maxWidth: 520 }}>
                 <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".16em", textTransform: "uppercase", color: "#60a5fa" }}>Estimated Copilot Readiness</span>
                 <div style={{ display: "flex", alignItems: "baseline", gap: 10, margin: "12px 0 6px" }}>
                   <span style={{ fontSize: "clamp(54px,13vw,82px)", fontWeight: 800, letterSpacing: "-.04em", lineHeight: 0.9, color: "#f8fafc" }}>{score}</span>

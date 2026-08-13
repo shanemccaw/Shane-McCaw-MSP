@@ -192,6 +192,24 @@ phase - not only when explicitly asked.
   that honestly in the manifest's own notes rather than faking coverage.
 - Opt-in when the feature has meaningful API/UI surface - trivial internal
   refactors don't need a manifest.
+- **Verifying an endpoint + that the DOM displays its data: use a plain
+  `apiTests` call for the endpoint, and the uiStep `expect` `textContains`
+  field for the DOM integration - NOT a uiStep `captureResponse`.** A
+  `captureResponse` reads the response body out of WebView2's content stream
+  (`GetContentAsync`), which is unreliable and was retired from
+  test-manifests/smoke/hello-world-ui.json for exactly that reason (#1011 added
+  a timeout guard, #1014 moved the read in-handler, neither made it read
+  reliably). Instead: (1) a top-level `apiTests` GET/POST (HttpTestExecutor's
+  proven HttpClient path, no browser) asserts the endpoint's real response and
+  can `extract` (#877) a value into `{{name}}`; (2) a uiStep
+  `{ "action": "expect", "textContains": "..." }` asserts the element's REAL
+  rendered text (el.innerText/textContent) - interpolate the extracted
+  `{{name}}` to prove the DOM genuinely shows what the API returned.
+  `textContains` accepts a single string or an any-of array of strings
+  (case-insensitive substring); it composes with `state`
+  (visible/hidden/present/absent), which stays element-presence only. Reserve
+  `captureResponse` for asserting a call the browser makes that has no
+  independently-reachable endpoint to hit directly.
 
 ## Shared File Write Discipline
 

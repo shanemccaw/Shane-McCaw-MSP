@@ -92,6 +92,12 @@ namespace BuildConsole.Services
                         State = step.TryGetProperty("state", out var st) ? st.GetString() : null,
                         CaptureResponseJson = step.TryGetProperty("captureResponse", out var cr) ? cr.GetRawText() : null,
                         ExtractJson = step.TryGetProperty("extract", out var ex) && ex.ValueKind == JsonValueKind.Object ? ex.GetRawText() : null,
+                        // Git #1016 — the uiStep's optional `textContains` (a single string or an array of
+                        // strings), carried through as raw JSON for UiTestExecutor's `expect` action to assert
+                        // against the element's real rendered text. Only string/array shapes are carried; any
+                        // other JSON kind is ignored (null).
+                        TextContainsJson = step.TryGetProperty("textContains", out var tc)
+                            && (tc.ValueKind == JsonValueKind.String || tc.ValueKind == JsonValueKind.Array) ? tc.GetRawText() : null,
                         ViewportJson = step.TryGetProperty("viewport", out var vp) &&
                             (vp.ValueKind == JsonValueKind.Object || vp.ValueKind == JsonValueKind.String) ? vp.GetRawText() : null,
                         MaxDurationMs = step.TryGetProperty("maxDurationMs", out var md) && md.ValueKind == JsonValueKind.Number && md.TryGetInt64(out var mdn) ? mdn : (long?)null,
@@ -119,6 +125,12 @@ namespace BuildConsole.Services
         public string? CaptureResponseJson { get; set; }
         /// <summary>Git #877 — raw JSON of this uiStep's optional `extract` block ({ as, regex } / { as, jsonPath }), carried through untouched for UiTestExecutor to apply against the step's captured response body. Null when the step declares no extraction.</summary>
         public string? ExtractJson { get; set; }
+        /// <summary>Git #1016 — raw JSON of this uiStep's optional `textContains` field (a single string
+        /// or an array of strings), asserted by UiTestExecutor's `expect` action against the target
+        /// element's REAL rendered text (el.innerText/textContent), any-of / case-insensitive substring.
+        /// Null when the step declares no text assertion. Complements `state` (visible/hidden/…), which is
+        /// element-presence only — the two are asserted together when both are declared.</summary>
+        public string? TextContainsJson { get; set; }
         /// <summary>Git #970 — raw JSON of this uiStep's optional `viewport` field (preset name string or
         /// `{ width, height }` object), overriding the manifest-level default for just this step. Null when
         /// the step declares no viewport of its own.</summary>

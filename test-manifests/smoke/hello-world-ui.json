@@ -2,61 +2,94 @@
   "issue": 958,
   "feature": "UI \"hello world\" — proves a headless build agent can trigger + read back a real UI test result end to end",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "a8c9de12095938df3f06f780d502a8a7c2b91141",
+  "lastVerifiedAgainstCommit": "a24c93d668fc0264a034afbed6f8b0400bee534c",
   "notes": [
-    "Part of Epic #803, UI sibling of #957's hello-world-sql.json. Purpose is NOT to test",
-    "deep product logic — it proves the #898 remote-trigger-over-HTTP pipeline (headless POST",
-    "/admin/deploy/test-run -> BuildConsole claims + runs uiSteps via a live WebView2 ->",
-    "POST .../complete -> headless GET .../<runId> poll) can drive a real browser and read back",
-    "a genuine pass/fail, so more complex uiSteps manifests can be trusted.",
-    "Content assertions reuse #892's containsAny/containsNone. The framework has no DOM-text",
-    "assertion (uiStep `expect` only checks element state: visible/hidden/present/absent —",
-    "textContains is silently ignored, see test-manifests/copilot-readiness/money-path-e2e.json's unused",
-    "'ready' textContains), so containsAny/containsNone run against a captureResponse'd API",
-    "call the homepage genuinely makes on load, not raw rendered DOM text. Step 1 re-navigates",
-    "to '/' (RunAsync's own initial navigation to baseUrl happens before any uiStep's",
-    "captureResponse is armed, so it would miss the fetch) to capture",
-    "artifacts/api-server/src/routes/public-hero.ts's GET /api/public/hero-headlines, which",
-    "artifacts/shane-mccaw-consulting/src/hooks/useHeroHeadlines.ts's useTypewriterHeadline()",
-    "fetches unconditionally on mount to hydrate Home.tsx's hero headline.",
-    "jsonPath $[0].leadText scopes containsAny/containsNone to that one field's string value",
-    "(server always orders by sort_order ASC, so index 0 is deterministic) rather than the raw",
-    "response body — the response also carries a legitimate seasonalLabel:null for evergreen",
-    "rows (see lib/db/migrations/manual/2026-07-19-hero-headlines.sql), so a containsNone check",
-    "for the literal word 'null' against the WHOLE body would false-fail on that legitimate field.",
-    "containsAny lists all 3 seed-migration headlines' lead_text (2026-07-19-hero-headlines.sql,",
-    "matching useHeroHeadlines.ts's own FALLBACK_HEADLINE for row 1) so the assertion survives",
-    "any one of the three being reordered — but Shane's admin-panel Hero Headlines screen lets",
-    "these be edited at runtime, so if all three seeded headlines have since been replaced this",
-    "assertion will legitimately fail and should be refreshed against whatever real copy is live.",
-    "Second step asserts the header CTA button (a stable, code-literal element, not DB content)",
-    "is genuinely visible after load — the structural 'did it load' half of the hello-world proof."
+    "Part of Epic #803, UI sibling of #957's hello-world-sql.json. Purpose is NOT to test deep",
+    "product logic — it proves the #898 remote-trigger-over-HTTP pipeline (headless POST",
+    "/admin/deploy/test-run -> BuildConsole claims + runs the manifest via a live WebView2 ->",
+    "POST .../complete -> headless GET .../<runId> poll) can drive a real browser and read back a",
+    "genuine pass/fail, so more complex manifests can be trusted.",
+    "",
+    "DESIGN CHANGE (#1016) — captureResponse was ABANDONED here. The endpoint used to be verified by",
+    "arming a uiStep captureResponse on '/api/public/hero-headlines' and reading the response body out",
+    "of WebView2's content stream. That read (UiTestExecutor.ReadResponseBodyAsync -> GetContentAsync)",
+    "proved unreliable: #1011 added a timeout guard so it fails gracefully instead of hanging 21 minutes,",
+    "and #1014 moved the read to fire synchronously inside the WebResourceResponseReceived handler, but",
+    "neither made GetContentAsync return the body reliably — it still times out on real runs. So this",
+    "manifest no longer depends on the WebView2 content stream at all. It splits the old single",
+    "captureResponse into two independent, each-reliable halves:",
+    "",
+    "  (1) ENDPOINT verification — a plain top-level apiTests GET (HttpTestExecutor, the same proven",
+    "  HttpClient path apiTests/graphTests already use, no browser involved) asserts the real endpoint",
+    "  returns status 200, $[0].leadText exists, containsAny the seeded headlines, containsNone the",
+    "  usual junk sentinels (containsAny/containsNone are scoped to the $[0].leadText string field, not",
+    "  the whole body, so the legitimate seasonalLabel:null on evergreen rows can't false-fail the",
+    "  'null' containsNone). It also #877-extracts $[0].leadText into {{heroLeadText}} for the DOM step.",
+    "",
+    "  (2) DOM-INTEGRATION verification — step 3's `expect` uses the new #1016 `textContains` field, a",
+    "  REAL rendered-text assertion (el.innerText/textContent via JS injection). Before #1016, uiStep",
+    "  `expect` was element-STATE only (visible/hidden/present/absent) and a `textContains` was silently",
+    "  ignored (see money-path-e2e.json's unused 'ready' and remediation-tracker-e2e.json's note). Now",
+    "  the hero <h1> (data-testid=\"hero-headline\", added in Home.tsx) is asserted to be visible AND to",
+    "  genuinely DISPLAY the headline the API served — tying 'the API returned X' to 'the DOM shows X' in",
+    "  one assertion instead of two disconnected checks.",
+    "",
+    "  Why textContains is an ANY-OF array, not just {{heroLeadText}}: useHeroHeadlines.ts SHUFFLES the",
+    "  fetched headlines and types them one character at a time, so at the instant step 3 runs the <h1>",
+    "  shows a partial slice of a RANDOM headline, not deterministically $[0]. The array lists",
+    "  {{heroLeadText}} (the exact value the API served at $[0] — deterministic, and identical to the",
+    "  component's FALLBACK_HEADLINE shown in the brief pre-fetch window) PLUS the three seeded lead_texts,",
+    "  so whichever headline the client-side shuffle happens to be typing, its leadText satisfies the",
+    "  assertion. This proves the DOM renders a genuine API-served headline WITHOUT depending on the",
+    "  nondeterministic shuffle order. A leadText (~26 chars @ 35ms/char) types out well within the",
+    "  executor's post-nav (1200ms) + post-step (1000ms) settle, so the only residual flake is the brief",
+    "  ~20ms/char delete transition between headlines — narrow and acceptable for a smoke proof.",
+    "",
+    "The seeded lead_texts (2026-07-19-hero-headlines.sql, row 1 matching useHeroHeadlines.ts's own",
+    "FALLBACK_HEADLINE) are admin-editable at runtime via the Hero Headlines screen. If all three seeds",
+    "have since been replaced, refresh both the apiTests containsAny list and the textContains statics",
+    "against whatever real copy is live; {{heroLeadText}} always tracks whatever the API currently serves.",
+    "Step 2 keeps the header CTA button (a stable, code-literal element, not DB content) visible check as",
+    "the structural 'did it load' half of the hello-world proof."
+  ],
+  "apiTests": [
+    {
+      "method": "GET",
+      "path": "/api/public/hero-headlines",
+      "expect": {
+        "status": 200,
+        "jsonPath": "$[0].leadText",
+        "exists": true,
+        "containsAny": [
+          "Your tenant has problems",
+          "We watch your tenant",
+          "30 years finding what M365 admins"
+        ],
+        "containsNone": [
+          "undefined",
+          "null",
+          "NaN",
+          "Lorem ipsum",
+          "TypeError",
+          "Cannot read propert"
+        ]
+      },
+      "extract": { "as": "heroLeadText", "jsonPath": "$[0].leadText" }
+    }
   ],
   "uiSteps": [
+    { "action": "goto", "target": "/" },
+    { "action": "expect", "selector": "[data-testid=\"get-real-score-cta\"]", "state": "visible" },
     {
-      "action": "goto",
-      "target": "/",
-      "captureResponse": {
-        "urlPattern": "/api/public/hero-headlines",
-        "expect": {
-          "status": 200,
-          "jsonPath": "$[0].leadText",
-          "containsAny": [
-            "Your tenant has problems",
-            "We watch your tenant",
-            "30 years finding what M365 admins"
-          ],
-          "containsNone": [
-            "undefined",
-            "null",
-            "NaN",
-            "Lorem ipsum",
-            "TypeError",
-            "Cannot read propert"
-          ]
-        }
-      }
-    },
-    { "action": "expect", "selector": "[data-testid=\"get-real-score-cta\"]", "state": "visible" }
+      "action": "expect",
+      "selector": "[data-testid=\"hero-headline\"]",
+      "state": "visible",
+      "textContains": [
+        "{{heroLeadText}}",
+        "Your tenant has problems",
+        "We watch your tenant",
+        "30 years finding what M365 admins"
+      ]
+    }
   ]
 }

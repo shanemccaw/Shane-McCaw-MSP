@@ -3733,6 +3733,9 @@ namespace BuildConsole
                     Value = step.Value ?? step.State ?? string.Empty,
                     CaptureResponse = step.CaptureResponseJson,
                     Extract = step.ExtractJson,
+                    // Git #1016 — carry the uiStep's textContains through so the `expect` action can assert
+                    // the element's real rendered text, not just its presence/visibility.
+                    TextContains = step.TextContainsJson,
                     Viewport = step.ViewportJson,
                     MaxDurationMs = step.MaxDurationMs,
                     // Git #966 — carry the uiStep's `"screenshot": true` opt-in so UiTestExecutor captures a

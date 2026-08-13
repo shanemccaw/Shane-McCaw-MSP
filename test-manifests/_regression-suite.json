@@ -12,6 +12,7 @@
     "crm/engagebay-end-to-end.json",
     "copilot-readiness/money-path-e2e.json",
     "copilot-readiness/remediation-tracker-e2e.json",
+    "copilot-readiness/home-quiz-scoring.json",
     "admin/tenant-switcher-floaty.json",
     "admin/baseline-actions-powershell-verify.json",
     "mailer/email-template-branding-audit.json",

@@ -344,6 +344,7 @@ namespace BuildConsole.Services
             string actionType = step.ActionType.ToLowerInvariant();
             string selector;
             string val;
+            List<string> textPhrases;
             try
             {
                 // #877 — resolve {{name}} placeholders in the step's target/selector and value
@@ -351,6 +352,13 @@ namespace BuildConsole.Services
                 // operates on the real value and never the literal "{{name}}" text.
                 selector = _vars.Resolve(step.Selector);
                 val = _vars.Resolve(step.Value);
+                // Git #1016 — an `expect` step's textContains phrases can themselves reference a
+                // {{name}} extracted by an earlier step (e.g. assert the DOM shows the exact value the
+                // API returned), so resolve each phrase here in the same guarded block — an unresolved
+                // one fails the step cleanly rather than asserting against the literal "{{name}}" text.
+                textPhrases = ParseTextContains(step.TextContains);
+                for (int ti = 0; ti < textPhrases.Count; ti++)
+                    textPhrases[ti] = _vars.Resolve(textPhrases[ti]);
             }
             catch (VariableNotResolvedException ex)
             {
@@ -447,8 +455,12 @@ namespace BuildConsole.Services
             else if (actionType == "expect")
             {
                 string expectedState = string.IsNullOrWhiteSpace(val) ? "visible" : val;
-                (actionPassed, actionDetail, actionActual) = await EvaluateExpectAsync(selector, expectedState);
+                (actionPassed, actionDetail, actionActual) = await EvaluateExpectAsync(selector, expectedState, textPhrases);
                 actionExpected = $"{selector} state == '{expectedState}'";
+                // Git #1016 — when the step also asserts rendered text, record that in Expected too so the
+                // results JSON shows the full contract that was checked, not just the state half.
+                if (textPhrases.Count > 0)
+                    actionExpected += $"; textContains any of [{string.Join(", ", textPhrases.ConvertAll(p => $"\"{p}\""))}]";
             }
             else
             {
@@ -760,22 +772,32 @@ namespace BuildConsole.Services
             return (passed, detail);
         }
 
-        private async Task<(bool passed, string detail, string actual)> EvaluateExpectAsync(string selector, string expectedState)
+        /// <summary>Evaluates an `expect` uiStep. Asserts the element's <paramref name="expectedState"/>
+        /// (visible/hidden/present/absent), and — Git #1016 — when <paramref name="textContains"/> is
+        /// non-empty, ALSO asserts the element's REAL rendered text (el.innerText ?? el.textContent) contains
+        /// at least one of the phrases (case-insensitive substring, any-of). Both halves must pass. Before
+        /// this, `expect` was presence-only: a `textContains` in a manifest was silently ignored (see the note
+        /// in test-manifests/copilot-readiness/remediation-tracker-e2e.json), so a manifest could never assert
+        /// that the DOM genuinely DISPLAYS a value — only that some element exists. The text is pulled straight
+        /// out of the live DOM via the same JS-injection path the state check already uses.</summary>
+        private async Task<(bool passed, string detail, string actual)> EvaluateExpectAsync(string selector, string expectedState, IReadOnlyList<string>? textContains)
         {
             string script = $@"
 (function() {{
     try {{
         let el = document.querySelector('{Escape(selector)}');
         let visible = !!(el && (el.offsetWidth || el.offsetHeight || el.getClientRects().length));
-        return JSON.stringify({{ found: !!el, visible: visible }});
+        let text = el ? (el.innerText || el.textContent || '') : '';
+        return JSON.stringify({{ found: !!el, visible: visible, text: text }});
     }} catch(ex) {{
-        return JSON.stringify({{ found: false, visible: false, error: ex.message }});
+        return JSON.stringify({{ found: false, visible: false, text: '', error: ex.message }});
     }}
 }})();";
 
             string resJson = await _webView.ExecuteScriptAsync(script) ?? string.Empty;
             bool found = false;
             bool visible = false;
+            string text = string.Empty;
             try
             {
                 // Same double-encoding as ExecuteClickOrInputAsync: outer layer is ExecuteScriptAsync's
@@ -787,13 +809,15 @@ namespace BuildConsole.Services
                     found = f.GetBoolean();
                 if (root.TryGetProperty("visible", out var v) && (v.ValueKind == JsonValueKind.True || v.ValueKind == JsonValueKind.False))
                     visible = v.GetBoolean();
+                if (root.TryGetProperty("text", out var t) && t.ValueKind == JsonValueKind.String)
+                    text = t.GetString() ?? string.Empty;
             }
             catch (JsonException)
             {
-                // found/visible stay false — surfaced via the detail/actual strings below.
+                // found/visible/text stay at their defaults — surfaced via the detail/actual strings below.
             }
 
-            bool passed = expectedState.ToLowerInvariant() switch
+            bool stateOk = expectedState.ToLowerInvariant() switch
             {
                 "hidden" => !found || !visible,
                 "absent" or "removed" => !found,
@@ -801,11 +825,90 @@ namespace BuildConsole.Services
                 _ => found && visible, // default expected state: "visible"
             };
 
-            string detail = passed
-                ? $"{selector} matched expected state '{expectedState}'"
-                : $"{selector} did not match expected state '{expectedState}' (found={found}, visible={visible})";
-            string actual = $"found={found}, visible={visible}";
+            // Git #1016 — real DOM-text assertion. Any-of, case-insensitive substring against the element's
+            // rendered text, matching the substring semantics HttpTestExecutor.EvaluateContentAssertions'
+            // containsAny already uses for response bodies. Empty list => no text assertion (state-only).
+            bool textOk = true;
+            string? textHit = null;
+            bool hasTextAssertion = textContains != null && textContains.Count > 0;
+            if (hasTextAssertion)
+            {
+                foreach (var phrase in textContains!)
+                {
+                    if (!string.IsNullOrEmpty(phrase) && text.IndexOf(phrase, StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        textHit = phrase;
+                        break;
+                    }
+                }
+                textOk = textHit != null;
+            }
+
+            bool passed = stateOk && textOk;
+
+            var parts = new List<string>();
+            parts.Add(stateOk
+                ? $"state '{expectedState}' matched (found={found}, visible={visible})"
+                : $"state '{expectedState}' NOT matched (found={found}, visible={visible})");
+            if (hasTextAssertion)
+                parts.Add(textOk
+                    ? $"text contained \"{textHit}\""
+                    : $"text contained none of [{string.Join(", ", ToQuoted(textContains!))}]");
+
+            string preview = CollapsePreview(text, 200);
+            string detail = $"{selector} — {string.Join("; ", parts)}";
+            string actual = $"found={found}, visible={visible}" + (hasTextAssertion ? $"; text=\"{preview}\"" : string.Empty);
             return (passed, detail, actual);
+        }
+
+        /// <summary>Git #1016 — parse a uiStep's raw `textContains` JSON into the list of phrases to assert.
+        /// Accepts either a single string ("ready") or an array of strings (["a","b"]); any other shape (or
+        /// malformed JSON) yields an empty list, i.e. no text assertion. Blank entries are dropped.</summary>
+        private static List<string> ParseTextContains(string? json)
+        {
+            var list = new List<string>();
+            if (string.IsNullOrWhiteSpace(json)) return list;
+            try
+            {
+                using var doc = JsonDocument.Parse(json);
+                var root = doc.RootElement;
+                if (root.ValueKind == JsonValueKind.String)
+                {
+                    string? s = root.GetString();
+                    if (!string.IsNullOrEmpty(s)) list.Add(s);
+                }
+                else if (root.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var el in root.EnumerateArray())
+                        if (el.ValueKind == JsonValueKind.String)
+                        {
+                            string? s = el.GetString();
+                            if (!string.IsNullOrEmpty(s)) list.Add(s);
+                        }
+                }
+            }
+            catch (JsonException)
+            {
+                // Malformed textContains JSON — treated the same as "no text assertion declared".
+            }
+            return list;
+        }
+
+        private static List<string> ToQuoted(IReadOnlyList<string> items)
+        {
+            var quoted = new List<string>(items.Count);
+            foreach (var s in items) quoted.Add($"\"{s}\"");
+            return quoted;
+        }
+
+        /// <summary>Whitespace-collapsed, length-capped preview of an element's rendered text, for the
+        /// failure detail/actual strings (the typewritten hero headline, for instance, is multi-line and
+        /// noisy — collapse it so a miss is diagnosable from one log line).</summary>
+        private static string CollapsePreview(string s, int max)
+        {
+            if (string.IsNullOrEmpty(s)) return string.Empty;
+            var collapsed = System.Text.RegularExpressions.Regex.Replace(s, @"\s+", " ").Trim();
+            return collapsed.Length > max ? collapsed.Substring(0, max) + "..." : collapsed;
         }
 
         private static string Escape(string s) => (s ?? string.Empty).Replace("'", "\\'");
