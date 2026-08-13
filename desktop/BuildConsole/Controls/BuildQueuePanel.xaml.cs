@@ -39,6 +39,33 @@ namespace BuildConsole.Controls
         public event EventHandler<int>? IssueChatRequested;
         private bool _isPinned = true;
 
+        /// <summary>
+        /// Git #956 — Shane: "when I click on Queue in the chat... it shows
+        /// the item in the queue in the right Build Queue panel. Then it
+        /// disappears. Then about 20 or so seconds later it reappears."
+        /// Root cause: RefreshAsync() had no protection against overlapping
+        /// calls. Clicking the chat's injected "Queue" button (see #942 in
+        /// MainWindow's BT_QUEUE_BUILD handler) triggers an immediate manual
+        /// RefreshAsync() right after the POST, completely independent of
+        /// the panel's own 15s _pollTimer — so if a regularly-scheduled poll
+        /// happened to already be in flight (started slightly before the
+        /// click, fetching the OLD list without the new item), the two live
+        /// fetches could complete OUT OF ORDER: the click's own fetch (newer
+        /// request, but a faster round trip) finishes first and correctly
+        /// shows the new item, then the earlier-started poll finishes
+        /// second with its stale pre-click snapshot and overwrites it —
+        /// last-writer-wins with no ordering guarantee, not last-REQUESTED-
+        /// wins. The item then reappears on the NEXT poll tick (~15s later),
+        /// matching Shane's "~20 or so seconds" exactly. Fixed with a
+        /// monotonic generation token: bumped synchronously the instant a
+        /// call STARTS (before the await), so a call's result only gets
+        /// applied if it's still the most-recently-STARTED call by the time
+        /// its own fetch completes — whichever call was requested last
+        /// always wins, regardless of which one's network round trip
+        /// happens to finish first.
+        /// </summary>
+        private int _refreshGeneration;
+
         private BuildTrackerApiClient? _api;
         private Services.QueueWatcherService? _watcher;
         private DispatcherTimer? _pollTimer;
@@ -581,6 +608,12 @@ namespace BuildConsole.Controls
         public async System.Threading.Tasks.Task RefreshAsync()
         {
             if (_api == null || !_api.IsConfigured) return;
+            // Git #956 — claim the latest generation BEFORE the await, so any
+            // call already in flight (older generation) knows, the instant it
+            // completes, that it's been superseded and must not overwrite
+            // what a more-recently-requested call applies (see the field's
+            // own doc comment for the full race).
+            int myGeneration = ++_refreshGeneration;
             try
             {
                 // Git #931 — Shane: "even the build queue does the same
@@ -593,6 +626,7 @@ namespace BuildConsole.Controls
                 // cached method (see GetQueueCachedAsync's doc comment) -
                 // this is the visible panel only.
                 var result = await _api.GetQueueCachedAsync();
+                if (myGeneration != _refreshGeneration) return; // superseded by a newer refresh - discard this stale result
                 _lastItems = result.Data;
                 _queueIsStale = result.IsStale;
                 _queueCachedAtUtc = result.CachedAtUtc;
@@ -616,6 +650,7 @@ namespace BuildConsole.Controls
             }
             catch (Exception ex)
             {
+                if (myGeneration != _refreshGeneration) return; // superseded - a newer refresh is already in flight or has already rendered
                 QueueTree.Visibility = Visibility.Collapsed;
                 QueueEmptyText.Text = $"Couldn't reach the API: {ex.Message}";
                 QueueEmptyText.Visibility = Visibility.Visible;
