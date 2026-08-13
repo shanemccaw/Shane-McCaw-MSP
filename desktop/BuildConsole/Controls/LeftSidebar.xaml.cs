@@ -1008,6 +1008,12 @@ namespace BuildConsole.Controls
         // ── CHATS (real GET /extension/board — grouped by linked epic) ──────
         public async void PopulateChatsTree()
         {
+            // Git #932 — the tree is fully rebuilt on every populate, so drop
+            // any title blocks registered by the previous build before the
+            // builders below re-register the current ones. Cleared up front so
+            // every path (including the early returns) starts from empty.
+            _chatTitleBlocks.Clear();
+
             if (_api == null || !_api.IsConfigured)
             {
                 ChatsTree.Items.Clear();
@@ -1110,6 +1116,13 @@ namespace BuildConsole.Controls
                 Grid.SetColumn(titleBlock, 1);
                 p.Children.Add(titleBlock);
 
+                // Git #932 — see ApplyChatTitleMaxWidths: TextTrimming above never
+                // engaged visually because the TreeViewItem's Stretch/Auto
+                // measurement handed the header content effectively unbounded
+                // width, so this epic-header title is registered for an explicit
+                // numeric MaxWidth computed from ChatsTree.ActualWidth.
+                _chatTitleBlocks.Add((titleBlock, EpicTitleWidthReserve));
+
                 // Git #885 — epic groups start collapsed (was IsExpanded = true)
                 // so the tree reads shorter and calmer at a glance; Shane
                 // expands the ones he actually wants to look at.
@@ -1136,6 +1149,12 @@ namespace BuildConsole.Controls
                 };
                 Grid.SetColumn(titleBlock, 1);
                 p.Children.Add(titleBlock);
+
+                // Git #932 — a chat leaf sits one level deeper than an epic
+                // header, so it reserves an extra ~19px of tree indentation on
+                // top of its own expander column; register it with the larger
+                // leaf reserve. See ApplyChatTitleMaxWidths.
+                _chatTitleBlocks.Add((titleBlock, LeafTitleWidthReserve));
 
                 var tvi = new TreeViewItem { Header = p, Tag = chat, HorizontalContentAlignment = HorizontalAlignment.Stretch, Margin = new Thickness(0, 1, 0, 2) };
 
@@ -1192,6 +1211,59 @@ namespace BuildConsole.Controls
             {
                 ChatsTree.Items.Add(new TreeViewItem { Header = "No chats linked yet." });
             }
+
+            // Git #932 — now that every title block for this build is registered,
+            // apply the explicit MaxWidth constraint against the tree's current
+            // width so CharacterEllipsis trimming actually engages.
+            ApplyChatTitleMaxWidths();
+        }
+
+        // Git #932 — the Chats tree's CharacterEllipsis trimming (from #885)
+        // never engaged visually: a TreeViewItem with HorizontalContentAlignment
+        // = Stretch still measures its header content with effectively unbounded
+        // available width in the default template's Auto measure pass, so the
+        // title TextBlock always sized to its full single-line width and clipped
+        // (the wrapping ScrollViewer has HorizontalScrollBarVisibility=Disabled)
+        // instead of trimming. Rather than fight the ancestor-width propagation a
+        // third time (#885 on this tree, #924 on the right panel), each title
+        // block is given an explicit numeric MaxWidth derived from
+        // ChatsTree.ActualWidth — an explicit MaxWidth forces trimming to engage
+        // regardless of what any ancestor's Stretch/Auto measurement resolves to.
+        //
+        // Reserve = everything to the LEFT of the title inside the tree's width:
+        //   Epic header (depth 0): 19px expander column + 14px dot column
+        //     (7px ellipse + 7px right margin) + ~2px tree padding/border + a
+        //     small safety buffer  ->  ~40px.
+        //   Chat leaf (depth 1): an extra ~19px of tree indentation (one nesting
+        //     level) on top of its own 19px expander column, plus a ~22px icon
+        //     column (a 13px Segoe MDL2 glyph ~16px + 6px right margin) + padding
+        //     + buffer  ->  ~68px.
+        // ChatsTree.ActualWidth is the TreeView's viewport width, which already
+        // excludes the vertical scrollbar when it appears, so no extra scrollbar
+        // subtraction is needed. Over-reserving only trims a few px early (safe);
+        // under-reserving would re-introduce the overflow, so the reserves lean
+        // conservative.
+        private const double EpicTitleWidthReserve = 40;
+        private const double LeafTitleWidthReserve = 68;
+        private const double MinTitleWidth = 24;
+
+        private readonly List<(TextBlock block, double reserve)> _chatTitleBlocks = new();
+
+        private void ApplyChatTitleMaxWidths()
+        {
+            var available = ChatsTree.ActualWidth;
+            foreach (var (block, reserve) in _chatTitleBlocks)
+            {
+                block.MaxWidth = Math.Max(MinTitleWidth, available - reserve);
+            }
+        }
+
+        // Git #932 — the sidebar can be resized or collapsed/pinned, so recompute
+        // the title MaxWidths whenever the tree's width actually changes. Height-
+        // only changes (e.g. expanding an epic) are ignored to avoid needless work.
+        private void ChatsTree_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            if (e.WidthChanged) ApplyChatTitleMaxWidths();
         }
 
         private Dictionary<int, BoardEpic> _chatEpicById = new();

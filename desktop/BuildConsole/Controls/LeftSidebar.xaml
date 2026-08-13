@@ -84,7 +84,7 @@
                                   VerticalScrollBarVisibility="Auto"
                                   HorizontalScrollBarVisibility="Disabled"
                                   Padding="0,4">
-                        <TreeView x:Name="ChatsTree" BorderThickness="0" SelectedItemChanged="ChatsTree_SelectedItemChanged"/>
+                        <TreeView x:Name="ChatsTree" BorderThickness="0" SelectedItemChanged="ChatsTree_SelectedItemChanged" SizeChanged="ChatsTree_SizeChanged"/>
                     </ScrollViewer>
                 </DockPanel>
             </Grid>
