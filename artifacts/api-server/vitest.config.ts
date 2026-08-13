@@ -114,6 +114,10 @@ export default defineConfig({
       // redefined using the real consentType axis (Principal vs. AllPrincipals)
       // instead of the identical bare count() both previously shared.
       "src/lib/unreviewed-consents-risky-grants-551.test.ts",
+      // #551 (final phase) — appgov:stale-app-registrations repointed from the
+      // hardcoded (and, for /applications, non-existent) signInActivity read
+      // to a real countWhere('{{createdDateTime}} olderThanDays N') age check.
+      "src/lib/stale-app-registrations-age-based-551.test.ts",
       "src/lib/__tests__/item-detail-collector.test.ts",
       "src/lib/__tests__/graph-consent-revoke.test.ts",
       "src/lib/__tests__/graph-request-capture.test.ts",
