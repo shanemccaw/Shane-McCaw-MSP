@@ -90,6 +90,10 @@ namespace BuildConsole.Services
             string authProfile = GetString(test, "authProfile") ?? "";
             string manifestTenant = GetString(test, "tenant") ?? "";
             string label = $"{method} {path}";
+            // Git #803 — graphTests paths are normally already full Graph URLs, but can still carry
+            // an unresolved {{variable}} (#877). `resolvedPath` holds the real URL actually called
+            // once resolved below; the live PASS/FAIL/ERROR log lines use it instead of raw `label`.
+            string resolvedPath = path;
 
             try
             {
@@ -105,7 +109,7 @@ namespace BuildConsole.Services
                 // extracted. An unresolved {{name}} throws (caught below) rather than sending the
                 // literal placeholder. The tenant guard above already ran against the manifest's
                 // own `tenant` field, so interpolation here only touches the request url/body.
-                string resolvedPath = vars.Resolve(path);
+                resolvedPath = vars.Resolve(path);
                 ActivityLog.Log(Channel, $"[{index + 1}/{total}] {method} {resolvedPath} (authProfile={authProfile}, tenant={resolvedTenant})");
 
                 using var req = new HttpRequestMessage(new HttpMethod(method), resolvedPath);
@@ -140,12 +144,13 @@ namespace BuildConsole.Services
                     detail = string.IsNullOrEmpty(detail) || detail == "ok" ? durationError : $"{detail}; {durationError}";
                 }
 
-                return Finish(Channel, "graph", label, sw, passed, detail, expected, actual, context);
+                return Finish(Channel, "graph", label, sw, passed, detail, expected, actual, context, logLabel: $"{method} {resolvedPath}");
             }
             catch (Exception ex)
             {
                 return Finish(Channel, "graph", label, sw, passed: false, detail: ex.Message,
-                    actual: $"{ex.GetType().Name}: {ex.Message}", context: $"{method} {path} (authProfile={authProfile}, tenant={manifestTenant})");
+                    actual: $"{ex.GetType().Name}: {ex.Message}", context: $"{method} {resolvedPath} (authProfile={authProfile}, tenant={manifestTenant})",
+                    logLabel: $"{method} {resolvedPath}");
             }
         }
 
@@ -465,11 +470,15 @@ namespace BuildConsole.Services
 
         private static string Truncate(string s) => s.Length > 300 ? s.Substring(0, 300) + "..." : s;
 
+        /// <summary>Git #803 — `logLabel` lets callers that have a fully-resolved request URL (e.g.
+        /// after {{variable}} interpolation) use it in the live log line, while `label` (possibly the
+        /// raw unresolved path) still names the TestStepResult itself. Defaults to `label` for callers
+        /// (mail-poll, tenant-guard refusals) that have nothing more specific to show.</summary>
         private static TestStepResult Finish(string channel, string kind, string label, Stopwatch sw, bool passed, string detail,
-            string expected = "", string actual = "", string context = "")
+            string expected = "", string actual = "", string context = "", string? logLabel = null)
         {
             sw.Stop();
-            ActivityLog.Log(channel, (passed ? "PASS " : "FAIL ") + $"{label} ({sw.ElapsedMilliseconds}ms) - {detail}");
+            ActivityLog.Log(channel, (passed ? "PASS " : "FAIL ") + $"{logLabel ?? label} ({sw.ElapsedMilliseconds}ms) - {detail}");
             return new TestStepResult
             {
                 Kind = kind, Label = label, Passed = passed, Detail = detail, DurationMs = sw.ElapsedMilliseconds,

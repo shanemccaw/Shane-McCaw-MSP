@@ -61,6 +61,10 @@ namespace BuildConsole.Services
             string method = test.TryGetProperty("method", out var m) ? (m.GetString() ?? "GET") : "GET";
             string path = test.TryGetProperty("path", out var p) ? (p.GetString() ?? "") : "";
             string label = $"{method} {path}";
+            // Git #803 (same gap as HttpTestExecutor) — `url` holds the real resolved request URL
+            // (host and all) once built below; the live PASS/FAIL/ERROR log lines use it instead of
+            // the relative-path-only `label` so a failure is diagnosable straight from the log.
+            string url = path;
 
             // No Zoho API Token configured -> refuse the call outright and say so, rather than
             // firing an unauthenticated request that 401s and reads like a product bug. Same
@@ -82,7 +86,7 @@ namespace BuildConsole.Services
             try
             {
                 string baseUrl = string.IsNullOrWhiteSpace(manifest.BaseUrl) ? config.ApiBaseUrl : manifest.BaseUrl;
-                string url = BuildUrl(baseUrl, path);
+                url = BuildUrl(baseUrl, path);
 
                 // Git #883 — an optional { "poll": { "intervalMs", "timeoutMs" } } block on a zohoTest
                 // re-runs the SAME request/expect pair until it passes or the timeout elapses, instead
@@ -140,7 +144,7 @@ namespace BuildConsole.Services
                     detail = string.IsNullOrEmpty(detail) || detail == "ok" ? durationError : $"{detail}; {durationError}";
                 }
 
-                ActivityLog.Log(Channel, (passed ? "PASS " : "FAIL ") + $"{label} ({sw.ElapsedMilliseconds}ms, {attempt} attempt(s)) — {detail}");
+                ActivityLog.Log(Channel, (passed ? "PASS " : "FAIL ") + $"{method} {url} ({sw.ElapsedMilliseconds}ms, {attempt} attempt(s)) — {detail}");
                 return new TestStepResult
                 {
                     Kind = "zoho", Label = label, Passed = passed, Detail = detail, DurationMs = sw.ElapsedMilliseconds,
@@ -150,11 +154,11 @@ namespace BuildConsole.Services
             catch (Exception ex)
             {
                 sw.Stop();
-                ActivityLog.Log(Channel, $"ERROR {label}: {ex.Message}");
+                ActivityLog.Log(Channel, $"ERROR {method} {url}: {ex.Message}");
                 return new TestStepResult
                 {
                     Kind = "zoho", Label = label, Passed = false, Detail = ex.Message, DurationMs = sw.ElapsedMilliseconds,
-                    Actual = $"{ex.GetType().Name}: {ex.Message}", Context = $"{method} {path}",
+                    Actual = $"{ex.GetType().Name}: {ex.Message}", Context = $"{method} {url}",
                 };
             }
         }

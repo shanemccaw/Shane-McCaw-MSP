@@ -55,6 +55,12 @@ namespace BuildConsole.Services
             string method = test.TryGetProperty("method", out var m) ? (m.GetString() ?? "GET") : "GET";
             string path = test.TryGetProperty("path", out var p) ? (p.GetString() ?? "") : "";
             string label = $"{method} {path}";
+            // Git #803 (HttpTestExecutor gap) — the live PASS/FAIL/ERROR log line previously used
+            // `label` (relative path only, e.g. "POST /api/chat/escalate"), which doesn't say WHICH
+            // environment/host the run actually hit. `url` holds the real resolved request URL (host
+            // and all) once built below, and is what the log lines use instead; falls back to the
+            // relative path if an exception occurs before the URL could be built.
+            string url = path;
 
             try
             {
@@ -63,7 +69,7 @@ namespace BuildConsole.Services
                 // {{...}} still present after config resolution is genuinely an extracted variable,
                 // and an unresolved one throws (caught below) rather than shipping literal text.
                 string baseUrl = vars.Resolve(ResolvePlaceholders(string.IsNullOrWhiteSpace(manifest.BaseUrl) ? config.ApiBaseUrl : manifest.BaseUrl, config));
-                string url = BuildUrl(baseUrl, vars.Resolve(ResolvePlaceholders(path, config)));
+                url = BuildUrl(baseUrl, vars.Resolve(ResolvePlaceholders(path, config)));
 
                 using var req = new HttpRequestMessage(new HttpMethod(method), url);
                 if (test.TryGetProperty("headers", out var headersEl) && headersEl.ValueKind == JsonValueKind.Object)
@@ -102,7 +108,7 @@ namespace BuildConsole.Services
                     detail = string.IsNullOrEmpty(detail) || detail == "ok" ? durationError : $"{detail}; {durationError}";
                 }
 
-                ActivityLog.Log(Channel, (passed ? "PASS " : "FAIL ") + $"{label} ({sw.ElapsedMilliseconds}ms) — {detail}");
+                ActivityLog.Log(Channel, (passed ? "PASS " : "FAIL ") + $"{method} {url} ({sw.ElapsedMilliseconds}ms) — {detail}");
                 return new TestStepResult
                 {
                     Kind = "api", Label = label, Passed = passed, Detail = detail, DurationMs = sw.ElapsedMilliseconds,
@@ -112,11 +118,11 @@ namespace BuildConsole.Services
             catch (Exception ex)
             {
                 sw.Stop();
-                ActivityLog.Log(Channel, $"ERROR {label}: {ex.Message}");
+                ActivityLog.Log(Channel, $"ERROR {method} {url}: {ex.Message}");
                 return new TestStepResult
                 {
                     Kind = "api", Label = label, Passed = false, Detail = ex.Message, DurationMs = sw.ElapsedMilliseconds,
-                    Actual = $"{ex.GetType().Name}: {ex.Message}", Context = $"{method} {path}",
+                    Actual = $"{ex.GetType().Name}: {ex.Message}", Context = $"{method} {url}",
                 };
             }
         }
