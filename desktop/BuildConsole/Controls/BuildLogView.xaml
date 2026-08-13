@@ -101,8 +101,9 @@
                  Grid.Row="1"
                  Style="{StaticResource TerminalOutputBox}"
                  IsReadOnly="True"
+                 TextWrapping="Wrap"
                  VerticalScrollBarVisibility="Auto"
-                 HorizontalScrollBarVisibility="Auto"/>
+                 HorizontalScrollBarVisibility="Disabled"/>
 
         <!-- Empty state overlay -->
         <StackPanel x:Name="EmptyState"
