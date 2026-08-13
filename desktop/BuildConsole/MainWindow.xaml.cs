@@ -46,6 +46,9 @@ namespace BuildConsole
         private BuildConsole.Services.BuildTrackerApiClient? _buildTrackerApi;
         private BuildConsole.Services.QueueWatcherService? _queueWatcher;
 
+        // ── Build completion sound (mute toggle: _Sound menu > Mute Completion Sound) ──
+        private readonly BuildConsole.Services.BuildCompletionSoundService _buildSound = new();
+
         // ── Git #902: Replit idle watcher (background WebView2 + status indicator) ──
         private BuildConsole.Services.ReplitWatcherService? _replitWatcher;
 
@@ -155,6 +158,10 @@ namespace BuildConsole
         {
             InitializeComponent();
 
+            // Build completion sound mute toggle — reflect the persisted state
+            // (%AppData%\BuildConsole\settings.json) in the menu checkmark on launch.
+            MuteCompletionSoundMenuItem.IsChecked = BuildConsole.Services.BuildConsoleSettings.Load().BuildCompleteSoundMuted;
+
             // Git #934 — Shane: "add a - [DEBUG] if I have the app open in
             // the Debug folder." Checked by the running exe's OWN path
             // (bin\Debug\... vs bin\Release\...), not a `#if DEBUG`
@@ -227,6 +234,7 @@ namespace BuildConsole
             {
                 _queueWatcher = new BuildConsole.Services.QueueWatcherService(
                     _buildTrackerApi, btConfig.MaxConcurrent, BuildConsole.Services.BuildTrackerConfig.FindRepoRoot());
+                _queueWatcher.BuildFinished += QueueWatcher_BuildFinished;
                 _queueWatcher.Start();
 
                 // Git #898 — same "app is already open for the build queue" assumption:
@@ -2480,6 +2488,15 @@ namespace BuildConsole
             SetBottomPanel(true, tabIndex: 0);
         }
 
+        /// <summary>QueueWatcherService.BuildFinished — the genuine "a queue-managed
+        /// build is done" moment (fires for success AND failure alike). Playback
+        /// itself is muted via Settings, not this handler, so the event keeps
+        /// firing/logging normally either way (per the mute toggle's contract).</summary>
+        private void QueueWatcher_BuildFinished(int queueItemId, string title, int exitCode)
+        {
+            _buildSound.Play();
+        }
+
         /// <summary>Git #834 / #954 — File > Settings selects the sidebar's Settings
         /// category nav (via ActivityBar.SelectSettings, which also expands a
         /// collapsed sidebar) AND opens/focuses the native Settings tab directly, so
@@ -2553,6 +2570,14 @@ namespace BuildConsole
         // ── Menu: File ────────────────────────────────────────────────────────
         private void MenuExit_Click(object sender, RoutedEventArgs e)
             => Application.Current.Shutdown();
+
+        // ── Menu: Sound ───────────────────────────────────────────────────────
+        private void MuteCompletionSound_Click(object sender, RoutedEventArgs e)
+        {
+            var settings = BuildConsole.Services.BuildConsoleSettings.Load();
+            settings.BuildCompleteSoundMuted = MuteCompletionSoundMenuItem.IsChecked;
+            settings.Save();
+        }
 
         // ── Menu: View ────────────────────────────────────────────────────────
         private void ToggleSidebar_Click(object sender, RoutedEventArgs e)

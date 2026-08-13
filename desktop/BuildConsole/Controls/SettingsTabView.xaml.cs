@@ -55,6 +55,9 @@ namespace BuildConsole.Controls
             ScheduledRunIntervalBox.Text = savedSettings.ScheduledRegressionIntervalHours.ToString();
             ScheduledRunPushCheck.IsChecked = savedSettings.PushOnRegressionFailure;
 
+            // Build completion sound — pre-fill the custom path from the same store (blank = bundled default).
+            BuildSoundPathBox.Text = savedSettings.BuildCompleteSoundPath;
+
             // Git #864
             RenderWebToolsSettingsList();
 
@@ -93,6 +96,7 @@ namespace BuildConsole.Controls
                 "WebTools"        => SectionWebTools,
                 "ReplitWatcher"   => SectionReplitWatcher,
                 "LinkedIn"        => SectionLinkedIn,
+                "BuildSound"      => SectionBuildSound,
                 _                 => null,
             };
             // Git #961 — opening the Test Environment section re-runs the manifest scan so a
@@ -532,6 +536,70 @@ namespace BuildConsole.Controls
             TestEnvVarNameBox.Text = "";
             TestEnvVarValueBox.Text = "";
             RenderTestEnvVarsSettingsList();
+        }
+
+        // ── SETTINGS: Build completion sound ─────────────────────────────────
+        private System.Windows.Media.MediaPlayer? _testSoundPlayer;
+
+        private void BtnBrowseBuildSound_Click(object sender, RoutedEventArgs e)
+        {
+            var dialog = new Microsoft.Win32.OpenFileDialog
+            {
+                Filter = "Audio files (*.mp3;*.wav)|*.mp3;*.wav|All files (*.*)|*.*",
+                Title = "Choose Build Completion Sound",
+            };
+            if (dialog.ShowDialog() == true)
+                BuildSoundPathBox.Text = dialog.FileName;
+        }
+
+        private void BtnSaveBuildSound_Click(object sender, RoutedEventArgs e)
+        {
+            var settings = BuildConsoleSettings.Load();
+            settings.BuildCompleteSoundPath = BuildSoundPathBox.Text.Trim();
+            settings.Save();
+            BuildSoundSavedText.Text = "Saved.";
+            ActivityLog.Log("build-sound", $"completion sound path set to '{(string.IsNullOrWhiteSpace(settings.BuildCompleteSoundPath) ? "(bundled default)" : settings.BuildCompleteSoundPath)}'.");
+        }
+
+        private void BtnResetBuildSound_Click(object sender, RoutedEventArgs e)
+        {
+            BuildSoundPathBox.Text = "";
+            var settings = BuildConsoleSettings.Load();
+            settings.BuildCompleteSoundPath = "";
+            settings.Save();
+            BuildSoundSavedText.Text = "Reset to bundled default.";
+            ActivityLog.Log("build-sound", "completion sound path reset to bundled default.");
+        }
+
+        private void BtnTestBuildSound_Click(object sender, RoutedEventArgs e)
+        {
+            // Test-play the path currently in the box (even if unsaved), not
+            // whatever's already persisted, so Browse -> Test previews before Save.
+            var candidate = BuildSoundPathBox.Text.Trim();
+            var path = string.IsNullOrWhiteSpace(candidate)
+                ? BuildCompletionSoundService.ResolveSoundPath(new BuildConsoleSettings())
+                : (System.IO.File.Exists(candidate) ? candidate : null);
+
+            if (path == null)
+            {
+                BuildSoundSavedText.Text = "File not found.";
+                return;
+            }
+
+            try
+            {
+                // Kept as a field, not a local — a local MediaPlayer can be garbage
+                // collected mid-playback since nothing else references it, cutting
+                // the test sound short.
+                _testSoundPlayer ??= new System.Windows.Media.MediaPlayer();
+                _testSoundPlayer.Open(new Uri(path, UriKind.Absolute));
+                _testSoundPlayer.Play();
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("build-sound", $"Test playback failed ({path}): {ex.Message}");
+                BuildSoundSavedText.Text = "Couldn't play — see Activity log.";
+            }
         }
     }
 }

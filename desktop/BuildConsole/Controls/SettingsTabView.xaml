@@ -285,6 +285,46 @@
                     </Border>
                 </StackPanel>
 
+                <!-- ════════════════ BUILD COMPLETION SOUND ════════════════ -->
+                <!-- Plays when a queue-managed build genuinely finishes
+                     (QueueWatcherService.BuildFinished). Default is the real
+                     taskCompleted.mp3 bundled from Shane's own Antigravity IDE
+                     install (Assets\Sounds\taskCompleted.mp3); leaving the path
+                     blank uses that bundled default. The mute toggle itself lives
+                     in the top menu bar (_Sound > Mute Completion Sound) so it's
+                     reachable without opening Settings — this section is only for
+                     picking a different sound file. -->
+                <StackPanel x:Name="SectionBuildSound" Margin="0,0,0,10">
+                    <TextBlock Text="🔊  BUILD COMPLETION SOUND" FontSize="13" FontWeight="Bold"
+                               Foreground="{StaticResource PeachBrush}" Margin="0,0,0,2"/>
+                    <TextBlock Text="Plays when a queue-managed build finishes. Mute toggle is in the top menu bar (Sound &gt; Mute Completion Sound) — this only changes which sound file plays."
+                               FontSize="11" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,10" TextWrapping="Wrap"/>
+                    <Border Background="{StaticResource MantleBrush}" BorderBrush="{StaticResource Surface0Brush}"
+                            BorderThickness="1" CornerRadius="8" Padding="16">
+                        <StackPanel>
+                            <TextBlock Text="Sound file (blank = bundled default)" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
+                            <Grid Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBox x:Name="BuildSoundPathBox" Grid.Column="0" Height="26" FontSize="12" Margin="0,0,6,0"/>
+                                <Button x:Name="BtnBrowseBuildSound" Grid.Column="1" Content="Browse…" Style="{StaticResource IconButton}"
+                                        Padding="10,4" FontSize="12" Click="BtnBrowseBuildSound_Click"/>
+                            </Grid>
+                            <StackPanel Orientation="Horizontal">
+                                <Button x:Name="BtnSaveBuildSound" Content="Save" Style="{StaticResource PrimaryButton}"
+                                        Padding="16,4" Click="BtnSaveBuildSound_Click"/>
+                                <Button x:Name="BtnResetBuildSound" Content="Reset to Default" Style="{StaticResource IconButton}"
+                                        Padding="10,4" FontSize="12" Margin="8,0,0,0" Click="BtnResetBuildSound_Click"/>
+                                <Button x:Name="BtnTestBuildSound" Content="▶ Test" Style="{StaticResource IconButton}"
+                                        Padding="10,4" FontSize="12" Margin="8,0,0,0" Click="BtnTestBuildSound_Click"/>
+                            </StackPanel>
+                            <TextBlock x:Name="BuildSoundSavedText" Text="" FontSize="10" Foreground="{StaticResource GreenBrush}" Margin="0,4,0,0"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
             </StackPanel>
         </ScrollViewer>
     </Border>

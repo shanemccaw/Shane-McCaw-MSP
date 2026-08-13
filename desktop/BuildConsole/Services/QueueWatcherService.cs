@@ -58,6 +58,9 @@ namespace BuildConsole.Services
 
         public int RunningCount => _running.Count;
 
+        /// <summary>Raised right after a queued build's completion is reported (MarkQueueItemCompleteAsync succeeds) in TickAsync — the genuine "this build is done" moment, success or failure alike (exitCode 0 = success). Wired by MainWindow to trigger BuildCompletionSoundService.Play.</summary>
+        public event Action<int, string, int>? BuildFinished;
+
         /// <summary>Git #820 — "Stop": kills the real process IF this app instance is the one that launched it (in-memory Process handle, so a different watcher's own launches can't be reached this way). Caller still has to mark the DB row done/failed regardless of the return value, same as the existing "Mark Done" escape hatch already does for a watcher-restart-orphaned item.</summary>
         public bool TryStop(int queueItemId)
         {
@@ -195,7 +198,11 @@ namespace BuildConsole.Services
                     if (!entry.Process.HasExited) continue;
                     int exitCode = entry.Process.ExitCode;
                     ActivityLog.Log("watcher", $"Finished: {entry.Title} (exit {exitCode})");
-                    try { await _api.MarkQueueItemCompleteAsync(id, exitCode, entry.SessionId); }
+                    try
+                    {
+                        await _api.MarkQueueItemCompleteAsync(id, exitCode, entry.SessionId);
+                        BuildFinished?.Invoke(id, entry.Title, exitCode);
+                    }
                     catch (Exception ex) { ActivityLog.Log("watcher", $"Couldn't report completion for queue item {id}: {ex.Message}"); }
                     _running.Remove(id);
                 }

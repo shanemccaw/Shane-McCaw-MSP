@@ -266,6 +266,21 @@ namespace BuildConsole.Services
         /// <summary>When a scheduled run has any failing manifest/step, POST an admin web-push alert (server-side sendWebPushToAdmins, #727) naming the failure. A fully passing run is always silent regardless. On by default so an armed scheduler is actually actionable.</summary>
         public bool PushOnRegressionFailure { get; set; } = true;
 
+        // ── Build completion sound ────────────────────────────────────────
+        // Plays when a queue-managed build genuinely finishes (QueueWatcherService
+        // TickAsync sees the process exit and reports completion). The mute
+        // toggle lives in the top menu bar ("_Sound" > "Mute Completion Sound");
+        // the event itself still fires/logs normally when muted — only
+        // BuildCompletionSoundService's playback is suppressed. Same local
+        // %AppData%\BuildConsole\settings.json store / round-trip pattern as
+        // every field above.
+
+        /// <summary>Off by default (sound plays). When on, BuildCompletionSoundService.Play is a no-op — the completion event/log still fires.</summary>
+        public bool BuildCompleteSoundMuted { get; set; } = false;
+
+        /// <summary>Absolute path to a custom completion sound file. Empty (the default) means "use the bundled Assets\Sounds\taskCompleted.mp3 that ships alongside the app".</summary>
+        public string BuildCompleteSoundPath { get; set; } = "";
+
         private static string SettingsDir =>
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "BuildConsole");
 

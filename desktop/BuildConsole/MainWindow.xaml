@@ -190,6 +190,15 @@
                                 <MenuItem Header="About BuildConsole"/>
                                 <MenuItem Header="Open DevTools"   Click="OpenDevTools_Click"/>
                             </MenuItem>
+
+                            <!-- Build-completion sound mute toggle. The completion event/log still
+                                 fires normally when muted — only BuildCompletionSoundService's
+                                 playback is suppressed. IsChecked bound in code-behind from
+                                 BuildConsoleSettings.BuildCompleteSoundMuted on load. -->
+                            <MenuItem Header="_Sound">
+                                <MenuItem x:Name="MuteCompletionSoundMenuItem" Header="Mute Completion Sound"
+                                          IsCheckable="True" Click="MuteCompletionSound_Click"/>
+                            </MenuItem>
                         </Menu>
                     </StackPanel>
 

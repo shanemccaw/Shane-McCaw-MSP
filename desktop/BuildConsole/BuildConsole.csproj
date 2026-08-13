@@ -18,6 +18,16 @@
     <EmbeddedResource Include="Controls\SqlSyntax.xshd" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Build-completion sound. Real "taskCompleted.mp3" copied from Shane's
+         actual local Antigravity IDE install (a VS Code fork) — its stock
+         accessibility-signal completion sound — bundled here as BuildConsole's
+         own local copy so playback never depends on Antigravity's install path
+         at runtime (BuildCompletionSoundService falls back to this file when
+         Settings has no custom BuildCompleteSoundPath). -->
+    <None Include="Assets\Sounds\taskCompleted.mp3" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <!-- ════════════════════════════════════════════════════════════════════
        Version build-number embedding.
 
