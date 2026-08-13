@@ -68,7 +68,11 @@ export default function ViewAsSwitcher() {
         const res = await fetchWithAuth(`/api/admin/impersonate/${account.userId}`, { method: "POST" });
         if (!res.ok) return;
         const data = (await res.json()) as { token: string };
-        window.open(`${origin}/crm/portal?impersonation_token=${encodeURIComponent(data.token)}`, "_blank", "noopener");
+        window.open(
+          `${origin}/portal/?impersonation_token=${encodeURIComponent(data.token)}&target_slug=${encodeURIComponent(account.mspSlug ?? "")}`,
+          "_blank",
+          "noopener",
+        );
       }
     } finally {
       setLoading(false);
