@@ -11,3 +11,4 @@ See [CLAUDE.md](../../CLAUDE.md) for the exact instructions, including which ses
 
 | Date | Status | Step | Commit |
 |------|--------|------|--------|
+| 2026-08-13 | ⏳ IN FLIGHT — Build Watch slot content redesign (chat-bubble event cards, color coding, animated thinking spinner, "Reticulating splines" easter egg) — #980/#1000 display layer only | Build Watch slot event-card display redesign | — |
