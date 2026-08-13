@@ -22,7 +22,7 @@ namespace BuildConsole.Services
         /// <summary>Discovered placeholder names that were already present in the store (left untouched).</summary>
         public List<string> AlreadyKnownNames { get; } = new();
 
-        /// <summary>Git #1021 — discovered config placeholders (added OR already-known) that surfaced via a
+        /// <summary>Git #961 — discovered config placeholders (added OR already-known) that surfaced via a
         /// <c>powerShellVerify[].afterStep</c> bare-name reference rather than literal <c>{{...}}</c> syntax.
         /// Reported distinctly on the scan channel because these are the names the old scanner missed
         /// entirely (e.g. <c>GRAPH_TEST_TENANT_ID</c> in <c>smoke/hello-world-powershell.json</c>).</summary>
@@ -60,7 +60,7 @@ namespace BuildConsole.Services
     ///   manifest but referenced un-extracted in another still surfaces from the second.</item>
     /// </list>
     ///
-    /// Git #1021 — one manifest field does NOT use literal <c>{{...}}</c> syntax:
+    /// Git #961 — one manifest field does NOT use literal <c>{{...}}</c> syntax:
     /// <c>powerShellVerify[].afterStep</c>. <see cref="PowerShellTestExecutor"/> wraps a bare
     /// <c>afterStep</c> string in <c>{{}}</c> itself before calling
     /// <see cref="TestRunVariables.Resolve"/> (<c>afterStep.Contains("{{") ? afterStep : "{{"+afterStep+"}}"</c>),
@@ -98,7 +98,7 @@ namespace BuildConsole.Services
         private static readonly Regex PlaceholderPattern =
             new(@"\{\{\s*([A-Za-z0-9_]+)\s*\}\}", RegexOptions.Compiled);
 
-        // Git #1021 — a bare afterStep is only a valid implicit {{NAME}} reference if the whole (trimmed)
+        // Git #961 — a bare afterStep is only a valid implicit {{NAME}} reference if the whole (trimmed)
         // string is a single placeholder-grammar identifier; PowerShellTestExecutor wraps it as
         // {{afterStep}} and Resolve's regex ([A-Za-z0-9_]+) would never match anything else anyway.
         private static readonly Regex BareNamePattern =
@@ -143,7 +143,7 @@ namespace BuildConsole.Services
             }
 
             var discovered = new HashSet<string>(StringComparer.Ordinal);
-            // Git #1021 — names that surfaced via a bare powerShellVerify[].afterStep reference and
+            // Git #961 — names that surfaced via a bare powerShellVerify[].afterStep reference and
             // survived per-manifest subtraction into `discovered`. Reported distinctly below.
             var afterStepSourced = new HashSet<string>(StringComparer.Ordinal);
 
@@ -161,7 +161,7 @@ namespace BuildConsole.Services
                 {
                     var placeholders = new HashSet<string>(StringComparer.Ordinal);
                     var extractNames = new HashSet<string>(StringComparer.Ordinal);
-                    // Git #1021 — bare powerShellVerify[].afterStep names found in THIS manifest.
+                    // Git #961 — bare powerShellVerify[].afterStep names found in THIS manifest.
                     var afterStepRefs = new HashSet<string>(StringComparer.Ordinal);
                     Walk(doc.RootElement, placeholders, extractNames, afterStepRefs);
 
@@ -212,7 +212,7 @@ namespace BuildConsole.Services
                     ? $"scanned {result.ManifestsScanned} manifest(s); {result.DistinctConfigPlaceholders} distinct config placeholder(s); added {result.AddedNames.Count} new (needsReview): {string.Join(", ", result.AddedNames)}."
                     : $"scanned {result.ManifestsScanned} manifest(s); {result.DistinctConfigPlaceholders} distinct config placeholder(s); all already known — nothing added.");
 
-            // Git #1021 — report afterStep-sourced discoveries distinctly (these are the ones the old
+            // Git #961 — report afterStep-sourced discoveries distinctly (these are the ones the old
             // literal-{{}}-only scanner missed): which came from a bare powerShellVerify[].afterStep, and
             // of those, which were newly added this scan vs already known.
             if (afterStepSourced.Count > 0)
@@ -234,7 +234,7 @@ namespace BuildConsole.Services
         /// <summary>Recursively collect every <c>{{NAME}}</c> placeholder from string values, every
         /// <c>extract.as</c> name (a cross-step value the run populates itself, so it is NOT a config
         /// var — matches <see cref="TestRunVariables.Extract"/>'s read of the <c>as</c> field), and
-        /// (Git #1021) every bare <c>powerShellVerify[].afterStep</c> name treated as an implicit
+        /// (Git #961) every bare <c>powerShellVerify[].afterStep</c> name treated as an implicit
         /// <c>{{NAME}}</c> reference, mirroring <see cref="PowerShellTestExecutor"/>'s own wrapping.</summary>
         private static void Walk(JsonElement el, HashSet<string> placeholders, HashSet<string> extractNames,
             HashSet<string> afterStepRefs)
@@ -260,7 +260,7 @@ namespace BuildConsole.Services
                             if (!string.IsNullOrWhiteSpace(asName)) extractNames.Add(asName!.Trim());
                         }
 
-                        // Git #1021 — powerShellVerify[].afterStep specifically: its bare string value is
+                        // Git #961 — powerShellVerify[].afterStep specifically: its bare string value is
                         // an implicit {{NAME}} reference (PowerShellTestExecutor wraps a brace-less afterStep
                         // in {{}} before resolving). Scoped to the powerShellVerify array so no other stray
                         // "afterStep"-named field could be misread. A braced afterStep is left to the generic
@@ -282,7 +282,7 @@ namespace BuildConsole.Services
             }
         }
 
-        /// <summary>Git #1021 — for each <c>powerShellVerify[]</c> entry, read its <c>afterStep</c>: a
+        /// <summary>Git #961 — for each <c>powerShellVerify[]</c> entry, read its <c>afterStep</c>: a
         /// brace-less value (e.g. <c>"GRAPH_TEST_TENANT_ID"</c>) is an implicit <c>{{NAME}}</c> reference
         /// and is added to both <paramref name="placeholders"/> (so it flows through the normal
         /// exclusion/extract-subtraction pipeline) and <paramref name="afterStepRefs"/> (so the scan can
