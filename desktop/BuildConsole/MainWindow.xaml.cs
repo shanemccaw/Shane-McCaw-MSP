@@ -118,6 +118,9 @@ namespace BuildConsole
         // ── Git #902: Replit idle watcher (background WebView2 + status indicator) ──
         private BuildConsole.Services.ReplitWatcherService? _replitWatcher;
 
+        // ── Git #967: background scheduled regression-suite runs + on-failure push alert ──
+        private BuildConsole.Services.RegressionScheduleService? _regressionScheduler;
+
         // ── Git #802: chat tabs + their build split panes ───────────────────────
         private class ChatTabState
         {
@@ -302,6 +305,21 @@ namespace BuildConsole
             // Settings tab (SettingsTabView.ReplitWatcherSettingsChanged), wired per
             // tab instance in OpenSettingsTab; the sidebar no longer owns it.
             _replitWatcher.ApplyConfig();
+
+            // Git #967 (Epic #803) — background scheduler for unattended full-suite runs.
+            // Reuses the same DispatcherTimer/ApplyConfig pattern as the Replit watcher,
+            // injected with the existing full-suite runner (RunRegressionSuiteCollectAsync)
+            // and the admin-push alert POST (BuildTrackerApiClient.SendTestAlertAsync).
+            // ApplyConfig() arms/disarms per Settings; it's re-applied live when the
+            // scheduled-runs settings are saved (SettingsTabView.ScheduleSettingsChanged,
+            // wired per tab instance in OpenSettingsTab).
+            _regressionScheduler = new BuildConsole.Services.RegressionScheduleService(
+                RunRegressionSuiteCollectAsync,
+                (title, body, linkPath) =>
+                    _buildTrackerApi != null
+                        ? _buildTrackerApi.SendTestAlertAsync(title, body, linkPath)
+                        : System.Threading.Tasks.Task.FromResult(false));
+            _regressionScheduler.ApplyConfig();
 
             // Git #815 — surfaces a failed poll as a real, visible signal
             // (status-bar QueueDot/QueueStatusText, previously unused
@@ -3276,19 +3294,32 @@ namespace BuildConsole
 
         private async void RunRegressionSuite_Click(object sender, RoutedEventArgs e)
         {
+            await RunRegressionSuiteCollectAsync();
+        }
+
+        // Git #967 (Epic #803) — the full-suite sweep, factored out of the menu handler so the
+        // background RegressionScheduleService can reuse the EXACT same code path (parse
+        // _regression-suite.json → LoadFromFile → RunManifestAsync per entry, sequentially
+        // through the one shared WebView2 runner). Returns each manifest's ManifestRunResult;
+        // the menu caller ignores the list, the scheduler inspects it for failures. Empty list
+        // when the suite file can't be found/parsed (also logged, as before).
+        public async System.Threading.Tasks.Task<List<BuildConsole.Services.ManifestRunResult>> RunRegressionSuiteCollectAsync()
+        {
+            var results = new List<BuildConsole.Services.ManifestRunResult>();
+
             string? repoRoot = BuildConsole.Services.BuildTrackerConfig.FindRepoRoot();
             if (repoRoot == null)
             {
                 BuildConsole.Services.ActivityLog.Log("testing.manifest-runner",
                     "Run Regression Suite: no repo root found (missing scripts\\build-queue-watcher.config.json).");
-                return;
+                return results;
             }
 
             string suitePath = Path.Combine(repoRoot, "test-manifests", "_regression-suite.json");
             if (!File.Exists(suitePath))
             {
                 BuildConsole.Services.ActivityLog.Log("testing.manifest-runner", $"Run Regression Suite: {suitePath} not found.");
-                return;
+                return results;
             }
 
             List<string> manifestFiles;
@@ -3302,7 +3333,7 @@ namespace BuildConsole
             catch (Exception ex)
             {
                 BuildConsole.Services.ActivityLog.Log("testing.manifest-runner", $"Couldn't parse {suitePath}: {ex.Message}");
-                return;
+                return results;
             }
 
             BuildConsole.Services.ActivityLog.Log("testing.manifest-runner", $"Run Regression Suite: {manifestFiles.Count} manifest(s) queued.");
@@ -3314,8 +3345,9 @@ namespace BuildConsole
                     BuildConsole.Services.ActivityLog.Log("testing.manifest-runner", $"Skipping {relPath} — couldn't load/parse.");
                     continue;
                 }
-                await RunManifestAsync(manifest, isRegression: true);
+                results.Add(await RunManifestAsync(manifest, isRegression: true));
             }
+            return results;
         }
 
         // ── Git #807 (Epic #803 Phase 3): HTTP test executor (apiTests) ──

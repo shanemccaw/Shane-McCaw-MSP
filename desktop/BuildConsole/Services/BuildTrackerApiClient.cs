@@ -302,6 +302,29 @@ namespace BuildConsole.Services
                 _http.PostAsJsonAsync($"api/admin/deploy/test-run/{runId}/complete", new { status, results, error }));
 
         /// <summary>
+        /// Git #967 (Epic #803) — the background RegressionScheduleService calls this ONLY
+        /// when a scheduled regression run has one or more failing manifests, to raise an
+        /// admin web-push alert (server-side sendWebPushToAdmins, the #727 pattern) naming the
+        /// failing manifest/step with a deep link back into the app. A fully passing scheduled
+        /// run never calls this. Uses the same shared, Bearer-ingest-token _http as every other
+        /// call; returns true only on a 2xx so the scheduler can log whether the push actually
+        /// went out (vs the api-server being asleep or Build Tracker not configured).
+        /// </summary>
+        public async Task<bool> SendTestAlertAsync(string title, string body, string linkPath)
+        {
+            if (!IsConfigured) return false;
+            try
+            {
+                var resp = await _http.PostAsJsonAsync("api/admin/deploy/test-alert", new { title, body, linkPath });
+                return resp.IsSuccessStatusCode;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        /// <summary>
         /// No conversationId — this app isn't tied to one specific claude.ai
         /// chat the way the browser extension is, so `currentChat` in the
         /// response is always null; `epics`/`chats` still come back full,

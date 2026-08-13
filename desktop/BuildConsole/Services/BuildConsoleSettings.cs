@@ -191,6 +191,25 @@ namespace BuildConsole.Services
         // needs to hold them.
         public List<TestEnvVar> TestEnvironmentVariables { get; set; } = new();
 
+        // ── Git #967 (Epic #803) — scheduled recurring regression-suite runs ──────
+        // A background DispatcherTimer (RegressionScheduleService) sweeps the full
+        // _regression-suite.json every N hours and, ONLY on failure, fires an admin
+        // web-push alert via the api-server (sendWebPushToAdmins, the #727 pattern). Same
+        // local %AppData%\BuildConsole\settings.json store and field-initializer-as-default
+        // convention as the Replit watcher above, so a pre-#967 settings.json still
+        // deserializes cleanly (no "scheduled*" keys → these defaults intact). Off by
+        // default — Shane arms it from Settings > Test Environment when he wants unattended
+        // runs (e.g. before a heavy day of site work, per #967).
+
+        /// <summary>Off by default: when on, the full regression suite runs unattended every ScheduledRegressionIntervalHours.</summary>
+        public bool ScheduledRegressionEnabled { get; set; } = false;
+
+        /// <summary>How often the background scheduler runs the full _regression-suite.json sweep, in hours. Default 24 (once a day). Minimum enforced at 1.</summary>
+        public int ScheduledRegressionIntervalHours { get; set; } = 24;
+
+        /// <summary>When a scheduled run has any failing manifest/step, POST an admin web-push alert (server-side sendWebPushToAdmins, #727) naming the failure. A fully passing run is always silent regardless. On by default so an armed scheduler is actually actionable.</summary>
+        public bool PushOnRegressionFailure { get; set; } = true;
+
         private static string SettingsDir =>
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "BuildConsole");
 

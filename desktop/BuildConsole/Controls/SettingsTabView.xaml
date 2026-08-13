@@ -129,6 +129,34 @@
                             </Border>
                         </StackPanel>
                     </Border>
+
+                    <!-- Git #967 (Epic #803) — Scheduled recurring runs. A background
+                         DispatcherTimer (RegressionScheduleService) sweeps the FULL regression
+                         suite every N hours and, ONLY on failure, fires an admin web-push alert
+                         (sendWebPushToAdmins, the #727 pattern) naming the failing manifest/step
+                         with a link back into the app. A fully passing run is silent. Same
+                         %AppData%\BuildConsole\settings.json store as everything above. -->
+                    <TextBlock Text="⏰  Scheduled runs" FontSize="12" FontWeight="Bold"
+                               Foreground="{StaticResource TextBrush}" Margin="0,18,0,2"/>
+                    <TextBlock Text="Run the FULL regression suite unattended on a timer. You're alerted by push notification only when something fails — a fully passing run stays silent."
+                               FontSize="11" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,8" TextWrapping="Wrap"/>
+                    <Border Background="{StaticResource MantleBrush}" BorderBrush="{StaticResource Surface0Brush}"
+                            BorderThickness="1" CornerRadius="8" Padding="16">
+                        <StackPanel>
+                            <CheckBox x:Name="ScheduledRunEnabledCheck" Content="Enable scheduled regression runs"
+                                      FontSize="12" Foreground="{StaticResource TextBrush}" Margin="0,0,0,8"/>
+
+                            <TextBlock Text="Run every (hours)" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
+                            <TextBox x:Name="ScheduledRunIntervalBox" Height="26" FontSize="12" Margin="0,0,0,8"/>
+
+                            <CheckBox x:Name="ScheduledRunPushCheck" Content="Push-notify admins on failure"
+                                      FontSize="12" Foreground="{StaticResource TextBrush}" Margin="0,0,0,8"/>
+
+                            <Button x:Name="BtnSaveScheduledRun" Content="Save" Style="{StaticResource PrimaryButton}"
+                                    HorizontalAlignment="Left" Padding="16,4" Click="BtnSaveScheduledRun_Click"/>
+                            <TextBlock x:Name="ScheduledRunSavedText" Text="" FontSize="10" Foreground="{StaticResource GreenBrush}" Margin="0,4,0,0"/>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
 
                 <!-- ════════════════ CHAT INTEGRATION ════════════════ -->

@@ -54,6 +54,8 @@ namespace BuildConsole
             // instance (the tab can be closed and reopened), same lifecycle as
             // GitDetailView's OpenIssueNumberRequested hook.
             view.ReplitWatcherSettingsChanged += (s, e) => _replitWatcher?.ApplyConfig();
+            // Git #967 — the scheduled-runs settings re-apply live on save the same way.
+            view.ScheduleSettingsChanged += (s, e) => _regressionScheduler?.ApplyConfig();
 
             AddSettingsTab(view);
 

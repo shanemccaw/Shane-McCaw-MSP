@@ -23,6 +23,9 @@ namespace BuildConsole.Controls
         /// <summary>Git #902 — raised when the Replit idle watcher's Settings are saved, so MainWindow can re-apply them (start/stop, new interval) live without a restart. Rewired per-instance each time the tab opens (see MainWindow.OpenSettingsTab).</summary>
         public event EventHandler? ReplitWatcherSettingsChanged;
 
+        /// <summary>Git #967 — raised when the scheduled-runs settings are saved, so MainWindow can re-apply them (arm/disarm, new interval) live without a restart. Wired per tab instance in OpenSettingsTab, same lifecycle as <see cref="ReplitWatcherSettingsChanged"/>.</summary>
+        public event EventHandler? ScheduleSettingsChanged;
+
         public SettingsTabView()
         {
             InitializeComponent();
@@ -46,6 +49,11 @@ namespace BuildConsole.Controls
             // Git #973 — pre-fill the LinkedIn composer selector + URL from the same store.
             LinkedInComposerSelectorBox.Text = savedSettings.LinkedInComposerSelector;
             LinkedInComposeUrlBox.Text = savedSettings.LinkedInComposeUrl;
+
+            // Git #967 — pre-fill the scheduled-runs fields from the same store.
+            ScheduledRunEnabledCheck.IsChecked = savedSettings.ScheduledRegressionEnabled;
+            ScheduledRunIntervalBox.Text = savedSettings.ScheduledRegressionIntervalHours.ToString();
+            ScheduledRunPushCheck.IsChecked = savedSettings.PushOnRegressionFailure;
 
             // Git #864
             RenderWebToolsSettingsList();
@@ -169,6 +177,27 @@ namespace BuildConsole.Controls
             LinkedInSavedText.Text = "Saved.";
             ActivityLog.Log("linkedin.prefill",
                 $"settings saved — selector='{settings.LinkedInComposerSelector}', url='{settings.LinkedInComposeUrl}'.");
+        }
+
+        // ── SETTINGS: Scheduled regression runs (Git #967) ───────────────────
+        private void BtnSaveScheduledRun_Click(object sender, RoutedEventArgs e)
+        {
+            var settings = BuildConsoleSettings.Load();
+
+            settings.ScheduledRegressionEnabled = ScheduledRunEnabledCheck.IsChecked == true;
+
+            if (int.TryParse(ScheduledRunIntervalBox.Text.Trim(), out var hours) && hours >= 1)
+                settings.ScheduledRegressionIntervalHours = hours;
+
+            settings.PushOnRegressionFailure = ScheduledRunPushCheck.IsChecked == true;
+
+            settings.Save();
+            ScheduledRunSavedText.Text = "Saved.";
+            ActivityLog.Log("testing.scheduled-run",
+                $"Settings saved — enabled={settings.ScheduledRegressionEnabled}, every {settings.ScheduledRegressionIntervalHours}h, push-on-failure={settings.PushOnRegressionFailure}.");
+
+            // Let MainWindow re-apply live (arm/disarm, new interval) without a restart.
+            ScheduleSettingsChanged?.Invoke(this, EventArgs.Empty);
         }
 
         // ── SETTINGS: Web Tools (Git #864) ───────────────────────────────────

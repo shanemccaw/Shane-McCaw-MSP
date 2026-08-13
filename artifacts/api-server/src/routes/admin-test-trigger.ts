@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { randomUUID } from "node:crypto";
 import { requireAdminOrIngestToken } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
+import { sendWebPushToAdmins } from "../lib/web-push";
 
 // Git #898 (sub-issue of Epic #803) — "trigger-over-HTTP" for the UI test
 // harness. Shane's ask: "the agent calls something to execute its UI test
@@ -201,6 +202,40 @@ router.get("/admin/deploy/test-run/:runId", requireTestTriggerAccess, (req: Requ
     return;
   }
   res.json(publicView(run));
+});
+
+// ── POST /admin/deploy/test-alert ───────────────────────────────────────────
+// Git #967 (sub-issue of Epic #803) — BuildConsole's background regression
+// scheduler calls this ONLY on a FAILED scheduled run (a fully passing run is
+// silent) to raise an admin web-push alert naming the failing manifest/step.
+// Reuses the exact sendWebPushToAdmins pattern proven in #727 (chat escalation)
+// and admin-observability/admin-callback-tokens. The WPF app can't call
+// sendWebPushToAdmins directly — VAPID keys and the push-subscription rows live
+// server-side — so this thin endpoint is the rendezvous, behind the same
+// requireAdminOrIngestToken bearer gate the app already uses for /test-run
+// above (no new auth surface). This is Shane's dev server, not production.
+router.post("/admin/deploy/test-alert", requireTestTriggerAccess, async (req: Request, res: Response) => {
+  const title = typeof req.body?.title === "string" ? req.body.title.trim() : "";
+  if (!title) {
+    res.status(400).json({ ok: false, error: "title is required" });
+    return;
+  }
+  const body = typeof req.body?.body === "string" ? req.body.body : "";
+  // Default deep-link: the adminv2 Git/Deploy screen — closest web review surface
+  // for a failed run (Deploy Console + run history). Caller may override.
+  const linkPath =
+    typeof req.body?.linkPath === "string" && req.body.linkPath.trim()
+      ? req.body.linkPath.trim()
+      : "/adminv2/git";
+
+  try {
+    await sendWebPushToAdmins({ title, body, linkPath, playSound: true });
+    log.info({ title, linkPath }, "Scheduled regression-run failure alert pushed to admins");
+    res.json({ ok: true });
+  } catch (err) {
+    log.warn({ err }, "test-alert: sendWebPushToAdmins failed");
+    res.status(500).json({ ok: false, error: "push send failed" });
+  }
 });
 
 export default router;
