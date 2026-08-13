@@ -3,11 +3,30 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Text;
+using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Threading;
 
 namespace BuildConsole.Services
 {
+    /// <summary>
+    /// The three interactive sub-states a BuildConsole-owned queue build can be
+    /// in while its DB row is still "running" (see <see cref="QueueWatcherService"/>).
+    /// Surfaced by the Build Watch window as a clear three-state indicator
+    /// (working / stopped-paused / waiting-for-input).
+    /// </summary>
+    public enum InteractiveInputState
+    {
+        /// <summary>The agent is actively producing output for the current turn.</summary>
+        Working,
+        /// <summary>A turn finished (or a soft interrupt was honored) and the process is alive, idle, awaiting the next stdin message.</summary>
+        WaitingForInput,
+        /// <summary>A soft interrupt (Stop) was issued; the process is paused pending corrective guidance (or escalation to a hard kill).</summary>
+        Stopped,
+    }
+
     /// <summary>
     /// Git #817 — Shane: "Ohh I thought you build that into the WPF app...
     /// So I queued them but I am not seing anything running." He'd been
@@ -29,6 +48,35 @@ namespace BuildConsole.Services
     /// the same time as this, they poll/claim independently and neither
     /// knows about the other's running count — real concurrency could
     /// exceed the configured max. Run one or the other, not both.
+    ///
+    /// ── Interactive queue-managed builds ────────────────────────────────
+    /// When <see cref="BuildConsoleSettings.InteractiveBuilds"/> is on (the
+    /// default), a queue build is launched with BuildConsole owning its
+    /// redirected stdin/stdout: claude.exe runs in `--print
+    /// --input-format stream-json --output-format stream-json --verbose`
+    /// mode (all confirmed-real flags via `claude --help`). The initial
+    /// prompt and every later message the Build Watch chat box types are
+    /// delivered as stream-json user-message lines over stdin — which also
+    /// means an `@path` (or any character) passes through byte-for-byte:
+    /// it's a JSON string value, never a shell/commander argument, so the
+    /// whole class of #767/#820 arg-mangling bugs simply can't apply. The
+    /// live output is kept in an in-memory per-build buffer the Build Watch
+    /// window pulls directly (replacing its per-item log-tail for these),
+    /// while STILL being written to the same BuildLogPaths file so the
+    /// chat-tab BuildLogView (#802) is unaffected.
+    ///
+    /// Git #800 still holds: an interactive build must still auto-complete
+    /// so its slot frees and completion fires. Interactive mode never exits
+    /// on its own (it waits for more stdin), so after a turn's stream-json
+    /// "result" this service starts an idle timer and, if no further input
+    /// arrives within InteractiveIdleFinalizeSeconds, closes stdin so the
+    /// CLI hits EOF and exits with a real exit code — the exact same
+    /// completion path (HasExited → MarkQueueItemCompleteAsync) as the old
+    /// one-shot --print launch. Each sent message resets that window, so an
+    /// active back-and-forth stays alive.
+    ///
+    /// Send-to-Builder sessions (#1001, ClaudeAgentsService) are a
+    /// completely separate launch path and are never touched by any of this.
     /// </summary>
     public class QueueWatcherService
     {
@@ -38,6 +86,32 @@ namespace BuildConsole.Services
             public string Title = "";
             /// <summary>Git #826 — filled in as soon as the run's stream-json output reveals it (usually the very first line); reported at completion so a later Reply can resume this exact conversation.</summary>
             public string? SessionId;
+
+            // ── Interactive (BuildConsole owns stdin/stdout) fields ──────────
+            /// <summary>True when this build was launched in the interactive redirected-stdin mode (owned by this app instance). Legacy/foreign builds are false and behave exactly as before.</summary>
+            public bool Interactive;
+            public string LogPath = "";
+            /// <summary>The owned stdin writer — null for legacy builds. Guarded by <see cref="InputLock"/> for writes.</summary>
+            public StreamWriter? Stdin;
+            public readonly object InputLock = new();
+            public readonly object LogLock = new();
+
+            /// <summary>Current interactive sub-state. Read/written under the service's _gate (touched from both the process's output thread and the UI thread).</summary>
+            public InteractiveInputState State = InteractiveInputState.Working;
+            /// <summary>Last time any output line landed — drives the soft-interrupt "did it go quiet?" escalation check.</summary>
+            public DateTime LastActivityUtc;
+            /// <summary>Set when a turn's "result" lands (or a soft interrupt is honored) and the process is idle awaiting input; null while actively working. Drives the idle auto-finalize.</summary>
+            public DateTime? AwaitingInputSince;
+            /// <summary>Set when a soft interrupt (Stop) is in flight; cleared when a Send resumes it.</summary>
+            public DateTime? StopRequestedUtc;
+            /// <summary>Per-build copy of the idle-finalize grace in ms (0 = never auto-finalize).</summary>
+            public int IdleFinalizeMs;
+            public CancellationTokenSource? AutoFinalizeCts;
+
+            /// <summary>The BuildConsole-owned live output buffer (one summarized line per entry) the Build Watch window pulls directly instead of tailing the log file. Guarded by _gate.</summary>
+            public readonly List<string> OutputLines = new();
+            /// <summary>Total lines ever appended (including ones trimmed off the front of OutputLines) — lets a cursor-based pull survive buffer trimming.</summary>
+            public int TotalEmitted;
         }
 
         private readonly BuildTrackerApiClient _api;
@@ -45,8 +119,27 @@ namespace BuildConsole.Services
         private readonly string _repoRoot;
         private readonly string _claudeExe;
         private readonly Dictionary<int, RunningEntry> _running = new();
+        /// <summary>Interactive builds that have exited but whose slot may still be on screen — kept so the Build Watch window can drain the final output tail and hold the slot in interactive-render mode (never falling back to a double-rendering file-tail). Evicted when the window dismisses the slot (ReleaseInteractive) or capped defensively.</summary>
+        private readonly Dictionary<int, RunningEntry> _retained = new();
+        /// <summary>Guards the mutable interactive fields of a RunningEntry and its OutputLines/_retained — the process output thread and the UI thread both touch these. (_running membership itself is only ever mutated on the UI thread, same as before.)</summary>
+        private readonly object _gate = new();
         private DispatcherTimer? _timer;
         private bool _ticking;
+
+        private const int MaxBufferedLines = 4000;
+        private const int MaxRetained = 32;
+        /// <summary>How long a soft interrupt gets to take effect before the escalation check.</summary>
+        private const int StopSoftGraceMs = 4000;
+        /// <summary>If the process is still emitting output within this window at the escalation check, the soft interrupt is deemed unresponsive → hard kill.</summary>
+        private const int StopQuietMs = 2000;
+
+        private static int _interruptSeq;
+        private static readonly JsonSerializerOptions _msgJson = new()
+        {
+            // @paths, +, /, & etc. stay literal in the wire JSON (still valid
+            // JSON that decodes byte-for-byte) — nicer in the log, same result.
+            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+        };
 
         public QueueWatcherService(BuildTrackerApiClient api, int maxConcurrent, string? repoRoot)
         {
@@ -204,6 +297,19 @@ namespace BuildConsole.Services
                         BuildFinished?.Invoke(id, entry.Title, exitCode);
                     }
                     catch (Exception ex) { ActivityLog.Log("watcher", $"Couldn't report completion for queue item {id}: {ex.Message}"); }
+                    // Keep an interactive build's output around for the Build
+                    // Watch window to finish draining and to hold its slot in
+                    // interactive-render mode (never double-rendering via a
+                    // file-tail). The window evicts it via ReleaseInteractive.
+                    if (entry.Interactive)
+                    {
+                        lock (_gate)
+                        {
+                            CancelAutoFinalize(entry);
+                            _retained[id] = entry;
+                            TrimRetained();
+                        }
+                    }
                     _running.Remove(id);
                 }
 
@@ -233,9 +339,17 @@ namespace BuildConsole.Services
         /// (BuildLogPaths) the chat-tab split pane (#802) already tails, so
         /// that feature works identically regardless of which watcher
         /// launched a given item.
+        ///
+        /// Interactive builds (BuildConsoleSettings.InteractiveBuilds, on by
+        /// default) additionally redirect stdin, add --input-format
+        /// stream-json, and deliver the prompt as the first stdin message
+        /// instead of a positional arg — see the class doc comment.
         /// </summary>
         private void LaunchItem(QueueItem item)
         {
+            var settings = BuildConsoleSettings.Load();
+            bool interactive = settings.InteractiveBuilds;
+
             var psi = new ProcessStartInfo
             {
                 FileName = _claudeExe,
@@ -245,6 +359,16 @@ namespace BuildConsole.Services
                 RedirectStandardError = true,
                 CreateNoWindow = true,
             };
+            if (interactive)
+            {
+                psi.RedirectStandardInput = true;
+                // stream-json is UTF-8; be explicit so non-ASCII prompt/@path
+                // content round-trips exactly rather than via the console codepage.
+                psi.StandardInputEncoding = new UTF8Encoding(false);
+                psi.StandardOutputEncoding = new UTF8Encoding(false);
+                psi.StandardErrorEncoding = new UTF8Encoding(false);
+            }
+
             // Git #826 — a Reply resumes the ORIGINAL session instead of
             // starting a fresh one (that's the whole point - continuing a
             // conversation that already asked a question). --resume brings
@@ -264,30 +388,34 @@ namespace BuildConsole.Services
             psi.ArgumentList.Add("--permission-mode");
             psi.ArgumentList.Add("auto");
             psi.ArgumentList.Add("--print");
-            // Git #825 — Shane: "the build log is NOT giving me any kind of
-            // live feedback." Default --output-format text is fully
-            // buffered when stdout isn't a real console (confirmed: a
-            // trivial prompt sat at 0 bytes for the whole run, then the
-            // full response landed in one shot right before exit) - there
-            // was nothing actually incremental to tail no matter how often
-            // the log file gets re-read. --output-format stream-json emits
-            // one real JSON event per line AS work happens (confirmed via a
-            // live test: system init, assistant text/tool_use, final
-            // result, each its own line) - SummarizeStreamJsonLine below
-            // turns those into readable text for the log instead of raw JSON.
+            // Git #825 — --output-format stream-json emits one real JSON event
+            // per line AS work happens (system init, assistant text/tool_use,
+            // final result). SummarizeStreamJsonLine turns those into readable
+            // text for the log/buffer instead of raw JSON.
+            if (interactive)
+            {
+                // Confirmed real via `claude --help`: "--input-format <format>
+                // ... 'stream-json' (realtime streaming input) (only works with
+                // --print)". The prompt (and every later chat message) is fed as
+                // a stream-json user message on stdin below.
+                psi.ArgumentList.Add("--input-format");
+                psi.ArgumentList.Add("stream-json");
+            }
             psi.ArgumentList.Add("--output-format");
             psi.ArgumentList.Add("stream-json");
             psi.ArgumentList.Add("--verbose");
-            // Git #820 — defense in depth: claude.exe's commander.js-based
-            // parser treats ANY positional argument starting with "--" as
-            // an attempted (unrecognized) option, not plain text — a "806
-            // failed... exit 1" happened exactly this way when an upstream
-            // bug failed to strip a leading flags line off the prompt. A
-            // literal "--" is commander's standard end-of-options marker:
-            // everything after it is always positional, never re-parsed as
-            // a flag, regardless of what the prompt text itself looks like.
-            psi.ArgumentList.Add("--");
-            psi.ArgumentList.Add(item.Prompt);
+
+            if (!interactive)
+            {
+                // Legacy path only. Git #820 — a literal "--" is commander's
+                // end-of-options marker: everything after it is positional,
+                // never re-parsed as a flag, no matter what the prompt looks
+                // like. (Interactive builds don't pass the prompt positionally
+                // at all — it goes over stdin as JSON — so this whole class of
+                // arg-mangling bug can't apply to them.)
+                psi.ArgumentList.Add("--");
+                psi.ArgumentList.Add(item.Prompt);
+            }
 
             var logPath = BuildLogPaths.ForQueueItem(item.Id);
             Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
@@ -297,23 +425,327 @@ namespace BuildConsole.Services
             // Git #826 — created (and about to be registered in _running)
             // BEFORE Start(), so the very first output line - which is
             // where the real session_id shows up - has somewhere to land.
-            var runningEntry = new RunningEntry { Process = proc, Title = item.Title };
-            var logLock = new object();
-            proc.OutputDataReceived += (_, e) =>
+            var entry = new RunningEntry
             {
-                if (e.Data == null) return;
-                if (runningEntry.SessionId == null) runningEntry.SessionId = TryExtractSessionId(e.Data);
-                var summary = SummarizeStreamJsonLine(e.Data);
-                if (summary == null) return;
-                lock (logLock) File.AppendAllText(logPath, summary + Environment.NewLine);
+                Process = proc,
+                Title = item.Title,
+                Interactive = interactive,
+                LogPath = logPath,
+                LastActivityUtc = DateTime.UtcNow,
+                State = InteractiveInputState.Working,
+                IdleFinalizeMs = Math.Max(0, settings.InteractiveIdleFinalizeSeconds) * 1000,
             };
-            proc.ErrorDataReceived += (_, e) => { if (e.Data != null) lock (logLock) File.AppendAllText(logPath, e.Data + Environment.NewLine); };
+            proc.OutputDataReceived += (_, e) => HandleOutput(entry, item.Id, e.Data);
+            proc.ErrorDataReceived += (_, e) => { if (e.Data != null) AppendLog(entry, e.Data); };
             proc.Start();
             proc.BeginOutputReadLine();
             proc.BeginErrorReadLine();
 
-            _running[item.Id] = runningEntry;
+            if (interactive)
+            {
+                entry.Stdin = proc.StandardInput;
+                // Deliver the initial prompt as the first stream-json user
+                // message. If this throws (rare), the process is still up and
+                // the build will simply idle-finalize; log it either way.
+                try { WriteUserMessage(entry, item.Prompt); }
+                catch (Exception ex) { ActivityLog.Log("interactive-build", $"couldn't write initial prompt to queue #{item.Id}: {ex.Message}"); }
+            }
+
+            _running[item.Id] = entry;
+
+            if (interactive)
+                ActivityLog.Log("interactive-build", $"launched (BuildConsole-owned redirected stdin/stdout, --input-format stream-json): {item.Title} (queue #{item.Id}, {_running.Count}/{_maxConcurrent} running)");
             ActivityLog.Log("watcher", $"Started: {item.Title} (queue #{item.Id}, {_running.Count}/{_maxConcurrent} running)");
+        }
+
+        // ── Output handling ─────────────────────────────────────────────────
+
+        private void HandleOutput(RunningEntry entry, int id, string? data)
+        {
+            if (data == null) return;
+            if (entry.SessionId == null)
+            {
+                var sid = TryExtractSessionId(data);
+                if (sid != null) lock (_gate) entry.SessionId ??= sid;
+            }
+
+            var summary = SummarizeStreamJsonLine(data, out bool isResult);
+            if (summary != null) AppendLog(entry, summary);
+
+            if (!entry.Interactive) return;
+
+            string? waitingLog = null;
+            lock (_gate)
+            {
+                entry.LastActivityUtc = DateTime.UtcNow;
+                if (isResult)
+                {
+                    // A turn finished. Unless a Stop is mid-flight, the process
+                    // is now idle awaiting the next stdin message.
+                    if (entry.StopRequestedUtc == null)
+                    {
+                        if (entry.State != InteractiveInputState.WaitingForInput)
+                        {
+                            entry.State = InteractiveInputState.WaitingForInput;
+                            waitingLog = $"waiting for input detected: {entry.Title} (queue #{id})";
+                        }
+                        entry.AwaitingInputSince = DateTime.UtcNow;
+                        ScheduleAutoFinalize(entry, id);
+                    }
+                }
+                else if (summary != null)
+                {
+                    // Fresh assistant/tool output → actively working (unless a
+                    // Stop is in flight, in which case the escalation check owns
+                    // the state and reads LastActivityUtc to decide).
+                    if (entry.StopRequestedUtc == null && entry.State != InteractiveInputState.Working)
+                    {
+                        entry.State = InteractiveInputState.Working;
+                        entry.AwaitingInputSince = null;
+                        CancelAutoFinalize(entry);
+                    }
+                }
+            }
+            if (waitingLog != null) ActivityLog.Log("interactive-build", waitingLog);
+        }
+
+        /// <summary>Writes one already-summarized line to both the per-item log file (BuildLogView/#802) and, for interactive builds, the BuildConsole-owned in-memory buffer the Build Watch window pulls. A summary can carry embedded newlines (the "result" case), so each physical line is a separate buffer entry — matching how the file-tail path splits on '\n'.</summary>
+        private void AppendLog(RunningEntry entry, string text)
+        {
+            try { lock (entry.LogLock) File.AppendAllText(entry.LogPath, text + Environment.NewLine); }
+            catch { /* file locked mid-write elsewhere — the in-memory buffer below still carries it */ }
+
+            if (!entry.Interactive) return;
+            lock (_gate)
+            {
+                foreach (var raw in text.Split('\n'))
+                {
+                    entry.OutputLines.Add(raw.TrimEnd('\r'));
+                    entry.TotalEmitted++;
+                }
+                int overflow = entry.OutputLines.Count - MaxBufferedLines;
+                if (overflow > 0) entry.OutputLines.RemoveRange(0, overflow);
+            }
+        }
+
+        // ── Interactive input / stop / finalize (public: called by BuildWatchWindow) ──
+
+        /// <summary>Owns/knows this queue id as an interactive build (still running OR retained after exit for a Build Watch slot to keep rendering from its buffer).</summary>
+        public bool OwnsInteractive(int id) =>
+            (_running.TryGetValue(id, out var e) && e.Interactive) || _retained.ContainsKey(id);
+
+        /// <summary>The current three-state indicator value for a LIVE interactive build, or null if it isn't one we own and is still running (terminal/retained/legacy/foreign → the caller uses the queue-derived state instead).</summary>
+        public InteractiveInputState? GetInteractiveState(int id)
+        {
+            if (_running.TryGetValue(id, out var e) && e.Interactive && !e.Process.HasExited)
+            {
+                lock (_gate) return e.State;
+            }
+            return null;
+        }
+
+        /// <summary>Pulls every output line appended since <paramref name="cursor"/> (an absolute line index; survives buffer trimming) and advances it. Reads a live entry or, if already reaped, its retained copy — so the final tail is never lost in the exit→remove race.</summary>
+        public List<string> CopyOutputSince(int id, ref int cursor)
+        {
+            if (!_running.TryGetValue(id, out var e)) _retained.TryGetValue(id, out e);
+            if (e == null || !e.Interactive) return new List<string>();
+            lock (_gate)
+            {
+                int first = e.TotalEmitted - e.OutputLines.Count;
+                if (cursor < first) cursor = first;
+                int startIdx = cursor - first;
+                if (startIdx < 0) startIdx = 0;
+                if (startIdx >= e.OutputLines.Count) { cursor = e.TotalEmitted; return new List<string>(); }
+                var slice = e.OutputLines.GetRange(startIdx, e.OutputLines.Count - startIdx);
+                cursor = e.TotalEmitted;
+                return slice;
+            }
+        }
+
+        /// <summary>Types a real chat message into the running build's stdin (delivered as a stream-json user message, so an @path or any character passes through unmangled). Interruption is supported precisely because stdin stays open for the whole run — sending mid-task reaches the live process at once.</summary>
+        public void SendInput(int id, string text)
+        {
+            if (!_running.TryGetValue(id, out var entry) || !entry.Interactive)
+            {
+                ActivityLog.Log("interactive-build", $"input ignored — no interactive process owns queue #{id}");
+                return;
+            }
+            if (entry.Process.HasExited)
+            {
+                ActivityLog.Log("interactive-build", $"input ignored — process for queue #{id} already exited");
+                return;
+            }
+            try { WriteUserMessage(entry, text); }
+            catch (Exception ex) { ActivityLog.Log("interactive-build", $"input failed for queue #{id}: {ex.Message}"); return; }
+
+            lock (_gate)
+            {
+                entry.State = InteractiveInputState.Working;
+                entry.AwaitingInputSince = null;
+                entry.StopRequestedUtc = null; // a Send after a Stop resumes it with corrective guidance
+                entry.LastActivityUtc = DateTime.UtcNow;
+                CancelAutoFinalize(entry);
+            }
+            var preview = text.Length > 80 ? text.Substring(0, 80) + "…" : text;
+            ActivityLog.Log("interactive-build", $"input sent to {entry.Title} (queue #{id}): {preview.Replace("\r", " ").Replace("\n", " ")}");
+        }
+
+        /// <summary>
+        /// Real "Stop" for an interactive build: a soft interrupt (stream-json
+        /// control_request) first, escalating to a hard kill (the same
+        /// Kill(entireProcessTree) as #1001's Close) if the process doesn't go
+        /// quiet within the grace window, or if this is a second Stop / a
+        /// non-interactive process. A honored soft interrupt leaves the process
+        /// alive and paused, so a follow-up Send can redirect the agent.
+        /// </summary>
+        public async Task RequestStopAsync(int id)
+        {
+            if (!_running.TryGetValue(id, out var entry))
+            {
+                ActivityLog.Log("interactive-build", $"stop ignored — no process owns queue #{id}");
+                return;
+            }
+            ActivityLog.Log("interactive-build", $"stop requested: {entry.Title} (queue #{id})");
+            if (entry.Process.HasExited) return;
+
+            bool alreadyStopping;
+            lock (_gate) alreadyStopping = entry.StopRequestedUtc != null;
+
+            if (!entry.Interactive || entry.Stdin == null || alreadyStopping)
+            {
+                HardKill(entry, id, "stop (hard kill)");
+                return;
+            }
+
+            lock (_gate)
+            {
+                entry.StopRequestedUtc = DateTime.UtcNow;
+                entry.State = InteractiveInputState.Stopped;
+                CancelAutoFinalize(entry);
+            }
+
+            try { WriteInterrupt(entry); }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("interactive-build", $"soft interrupt write failed for queue #{id}: {ex.Message} — hard-killing");
+                HardKill(entry, id, "stop (hard kill, interrupt write failed)");
+                return;
+            }
+
+            await Task.Delay(StopSoftGraceMs);
+
+            if (!_running.TryGetValue(id, out entry)) return;   // reaped in the meantime
+            if (entry.Process.HasExited) return;                // honored and exited
+
+            DateTime lastOut; DateTime? stopAt;
+            lock (_gate) { lastOut = entry.LastActivityUtc; stopAt = entry.StopRequestedUtc; }
+            if (stopAt == null) return; // a Send resumed it during the grace window
+
+            if (DateTime.UtcNow - lastOut < TimeSpan.FromMilliseconds(StopQuietMs))
+            {
+                ActivityLog.Log("interactive-build", $"soft interrupt unresponsive (still emitting output) — escalating to hard kill: {entry.Title} (queue #{id})");
+                HardKill(entry, id, "stop (escalated hard kill)");
+            }
+            else
+            {
+                ActivityLog.Log("interactive-build", $"soft interrupt honored — {entry.Title} paused; Send guidance to resume (queue #{id})");
+                // Bound a walked-away pause: let it idle-finalize like a finished turn.
+                lock (_gate) { entry.AwaitingInputSince = DateTime.UtcNow; ScheduleAutoFinalize(entry, id); }
+            }
+        }
+
+        /// <summary>Gracefully ends a still-running interactive build by closing its stdin (EOF → the CLI exits with a real code). Used when a Build Watch slot is dismissed while its build is alive, so the queue row still completes instead of hanging.</summary>
+        public void FinalizeInteractive(int id)
+        {
+            if (!_running.TryGetValue(id, out var entry) || !entry.Interactive) return;
+            if (entry.Process.HasExited) return;
+            try { lock (entry.InputLock) entry.Stdin?.Close(); }
+            catch { /* best effort */ }
+            ActivityLog.Log("interactive-build", $"finalize requested (closing stdin so it exits): {entry.Title} (queue #{id})");
+        }
+
+        /// <summary>The Build Watch window is done with a retained (exited) interactive build's buffer — drop it.</summary>
+        public void ReleaseInteractive(int id) => _retained.Remove(id);
+
+        private void HardKill(RunningEntry entry, int id, string reason)
+        {
+            try { if (!entry.Process.HasExited) entry.Process.Kill(entireProcessTree: true); }
+            catch (Exception ex) { ActivityLog.Log("interactive-build", $"hard kill failed for queue #{id}: {ex.Message}"); return; }
+            // Deliberately left in _running so TickAsync observes HasExited and
+            // reports the real (kill) exit code exactly like any other exit —
+            // completion + BuildFinished stay intact.
+            ActivityLog.Log("interactive-build", $"{reason}: {entry.Title} (queue #{id})");
+        }
+
+        // ── stdin writers ───────────────────────────────────────────────────
+
+        private static void WriteUserMessage(RunningEntry entry, string text)
+        {
+            if (entry.Stdin == null) return;
+            var json = JsonSerializer.Serialize(
+                new { type = "user", message = new { role = "user", content = text } }, _msgJson);
+            lock (entry.InputLock)
+            {
+                // Explicit '\n' (not WriteLine's "\r\n") — NDJSON lines are
+                // split on '\n', and a bare newline avoids any trailing-'\r'
+                // ambiguity in a stream-json parser.
+                entry.Stdin.Write(json);
+                entry.Stdin.Write('\n');
+                entry.Stdin.Flush();
+            }
+        }
+
+        private static void WriteInterrupt(RunningEntry entry)
+        {
+            if (entry.Stdin == null) return;
+            var reqId = "interrupt-" + Interlocked.Increment(ref _interruptSeq);
+            var json = JsonSerializer.Serialize(
+                new { type = "control_request", request_id = reqId, request = new { subtype = "interrupt" } }, _msgJson);
+            lock (entry.InputLock)
+            {
+                entry.Stdin.Write(json);
+                entry.Stdin.Write('\n');
+                entry.Stdin.Flush();
+            }
+        }
+
+        // ── idle auto-finalize (Git #800: builds must still auto-complete) ───
+
+        /// <summary>Caller must hold _gate. (Re)arms the idle timer that closes stdin so an interactive build that's been left waiting eventually exits and frees its slot.</summary>
+        private void ScheduleAutoFinalize(RunningEntry entry, int id)
+        {
+            if (entry.IdleFinalizeMs <= 0) return; // 0 = keep alive until Dismiss/Stop
+            entry.AutoFinalizeCts?.Cancel();
+            var cts = new CancellationTokenSource();
+            entry.AutoFinalizeCts = cts;
+            var token = cts.Token;
+            int delay = entry.IdleFinalizeMs;
+            _ = Task.Delay(delay, token).ContinueWith(t =>
+            {
+                if (t.IsCanceled) return;
+                bool close;
+                lock (_gate) close = entry.AwaitingInputSince != null && !entry.Process.HasExited;
+                if (!close) return;
+                try { lock (entry.InputLock) entry.Stdin?.Close(); } catch { }
+                ActivityLog.Log("interactive-build", $"auto-finalizing idle interactive build (closing stdin so it exits): {entry.Title} (queue #{id})");
+            }, TaskScheduler.Default);
+        }
+
+        /// <summary>Caller must hold _gate.</summary>
+        private static void CancelAutoFinalize(RunningEntry entry)
+        {
+            entry.AutoFinalizeCts?.Cancel();
+            entry.AutoFinalizeCts = null;
+        }
+
+        /// <summary>Caller must hold _gate.</summary>
+        private void TrimRetained()
+        {
+            while (_retained.Count > MaxRetained)
+            {
+                var oldest = _retained.Keys.First();
+                _retained.Remove(oldest);
+            }
         }
 
         /// <summary>Git #826 — every stream-json line carries the real session_id; grabbed from whichever line happens to reveal it first (normally the "system"/init line).</summary>
@@ -321,7 +753,7 @@ namespace BuildConsole.Services
         {
             try
             {
-                using var doc = System.Text.Json.JsonDocument.Parse(line);
+                using var doc = JsonDocument.Parse(line);
                 return doc.RootElement.TryGetProperty("session_id", out var sid) ? sid.GetString() : null;
             }
             catch { return null; }
@@ -332,26 +764,27 @@ namespace BuildConsole.Services
         /// readable log line (real shape confirmed via a live test run):
         /// "assistant" messages carry text/tool_use content blocks (the
         /// actual incremental progress worth showing); "result" is the
-        /// final summary; everything else (system init, rate_limit_event,
-        /// user/tool-result echoes) is skipped as noise for a build log.
-        /// Returns null to skip the line, or the line as-is if it somehow
-        /// isn't valid JSON (shouldn't normally happen with this flag, but
-        /// better than silently dropping real content).
+        /// turn summary (<paramref name="isResult"/> is set true for it, so
+        /// the caller can detect "this turn just finished"); everything else
+        /// (system init, rate_limit_event, user/tool-result echoes) is
+        /// skipped as noise for a build log. Returns null to skip the line,
+        /// or the line as-is if it somehow isn't valid JSON.
         /// </summary>
-        private static string? SummarizeStreamJsonLine(string line)
+        private static string? SummarizeStreamJsonLine(string line, out bool isResult)
         {
+            isResult = false;
             if (string.IsNullOrWhiteSpace(line)) return null;
             try
             {
-                using var doc = System.Text.Json.JsonDocument.Parse(line);
+                using var doc = JsonDocument.Parse(line);
                 var root = doc.RootElement;
                 var type = root.TryGetProperty("type", out var t) ? t.GetString() : null;
                 switch (type)
                 {
                     case "assistant":
-                        if (!root.TryGetProperty("message", out var msg) || !msg.TryGetProperty("content", out var content) || content.ValueKind != System.Text.Json.JsonValueKind.Array)
+                        if (!root.TryGetProperty("message", out var msg) || !msg.TryGetProperty("content", out var content) || content.ValueKind != JsonValueKind.Array)
                             return null;
-                        var sb = new System.Text.StringBuilder();
+                        var sb = new StringBuilder();
                         foreach (var block in content.EnumerateArray())
                         {
                             var blockType = block.TryGetProperty("type", out var bt) ? bt.GetString() : null;
@@ -369,6 +802,7 @@ namespace BuildConsole.Services
                         return string.IsNullOrWhiteSpace(text) ? null : text;
 
                     case "result":
+                        isResult = true;
                         var resultText = root.TryGetProperty("result", out var res) ? res.GetString() : null;
                         var durationMs = root.TryGetProperty("duration_ms", out var dur) ? dur.GetInt32() : (int?)null;
                         return $"--- done{(durationMs.HasValue ? $" ({durationMs}ms)" : "")} ---" + (string.IsNullOrWhiteSpace(resultText) ? "" : $"\n{resultText}");

@@ -281,6 +281,32 @@ namespace BuildConsole.Services
         /// <summary>Absolute path to a custom completion sound file. Empty (the default) means "use the bundled Assets\Sounds\taskCompleted.mp3 that ships alongside the app".</summary>
         public string BuildCompleteSoundPath { get; set; } = "";
 
+        // ── Interactive queue-managed builds ─────────────────────────────────
+        // Change how the in-app QueueWatcherService launches queued builds:
+        // BuildConsole owns their redirected stdin/stdout (claude.exe
+        // --input-format stream-json --output-format stream-json --print), so a
+        // Build Watch slot can type real input into the running process's stdin,
+        // soft-interrupt it, and see when it's genuinely waiting on input. When
+        // OFF, queue builds fall back to the legacy Git #800 path (--print with
+        // the prompt as a positional arg, stdout→log file only, no stdin) — a
+        // safety valve if the interactive path ever misbehaves, flippable without
+        // a rebuild by editing settings.json. Send-to-Builder sessions (#1001)
+        // are never affected either way. Same %AppData%\BuildConsole\settings.json
+        // store / field-initializer-as-default convention as every field above.
+
+        /// <summary>On by default: queue builds launch with BuildConsole-owned redirected stdin/stdout so Build Watch can chat into them. Off = legacy --print positional-prompt path (no stdin, no interactivity).</summary>
+        public bool InteractiveBuilds { get; set; } = true;
+
+        /// <summary>
+        /// Git #800 must still hold: an interactive queue build must still auto-complete so the queue/concurrency
+        /// slot frees and completion (sound, DB row) fires. After a turn finishes (a stream-json "result") the build
+        /// sits WaitingForInput; if no further input arrives within this many seconds, BuildConsole closes its stdin
+        /// so the CLI hits EOF and exits with a real code (exactly like the old one-shot --print). Each sent message
+        /// resets the window, so an active back-and-forth stays alive. Default 15s. Set 0 to keep a build alive
+        /// indefinitely until Dismiss/Stop (power-user; unattended builds will then hold their slot until finalized).
+        /// </summary>
+        public int InteractiveIdleFinalizeSeconds { get; set; } = 15;
+
         private static string SettingsDir =>
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "BuildConsole");
 

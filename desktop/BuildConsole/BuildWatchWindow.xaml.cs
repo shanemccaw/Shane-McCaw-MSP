@@ -57,6 +57,23 @@ namespace BuildConsole
 
         private enum SlotState { Empty, Running, Done, Failed, Stale }
 
+        /// <summary>
+        /// #1004-refinement — matches Claude.ai's own chat pattern: consecutive tool calls
+        /// (Bash/Glob/Grep/Read/etc.) collapse by default into one short muted "Ran N tools"
+        /// chip instead of a row per call, click-to-expand to the real per-call detail
+        /// (each tool name, in order — the log line format only carries the name, not
+        /// args/output, so that's the full real detail available).
+        /// </summary>
+        private sealed class ToolCallGroup
+        {
+            public Border Card = null!;
+            public TextBlock SummaryText = null!;
+            public TextBlock Chevron = null!;
+            public StackPanel DetailPanel = null!;
+            public List<string> Names = new();
+            public bool Expanded;
+        }
+
         private sealed class BuildWatchSlot
         {
             // Visual tree (built once in BuildSlotVisual)
@@ -67,6 +84,26 @@ namespace BuildConsole
             public Border BadgeChip = null!;
             public TextBlock BadgeText = null!;
             public Button DismissButton = null!;
+
+            // ── Interactive chat input (only wired for BuildConsole-owned queue builds) ──
+            /// <summary>The footer chat row (input box + Send + Stop), shown only while an owned interactive build is live (running / waiting / paused).</summary>
+            public Border InputRow = null!;
+            public TextBox InputBox = null!;
+            public Button SendButton = null!;
+            public Button StopButton = null!;
+            /// <summary>Optional @path autocomplete popup anchored to this slot's input box.</summary>
+            public System.Windows.Controls.Primitives.Popup? AutoCompletePopup;
+            public ListBox? AutoCompleteList;
+            /// <summary>True once this slot has been recognised as an owned interactive build — from then on it renders from the watcher's in-memory buffer and never falls back to a (double-rendering) file-tail.</summary>
+            public bool InteractiveBound;
+            /// <summary>Absolute line cursor into the watcher's owned output buffer (survives buffer trimming).</summary>
+            public int InteractiveCursor;
+            /// <summary>The build's working directory, captured at occupy time — powers @path autocomplete.</summary>
+            public string? Cwd;
+            /// <summary>Last interactive sub-state applied, so per-poll visual work only happens on a real change (no animation/pulse churn).</summary>
+            public InteractiveInputState? LastInteractiveState;
+            /// <summary>The peach "needs attention" pulse animation currently running on the badge (waiting-for-input), or null.</summary>
+            public bool AttentionPulsing;
 
             // #1004 display redesign — the raw streaming TextBox is replaced by a
             // scrolling list of per-event chat cards plus a live "thinking" row.
@@ -86,6 +123,9 @@ namespace BuildConsole
             public DateTime LastOutputUtc;
             /// <summary>While now &lt; this, a rolled easter-egg phrase is left on screen instead of being overwritten each poll.</summary>
             public DateTime EasterEggUntilUtc;
+            /// <summary>The collapsed "Ran N tools" chip currently absorbing consecutive tool calls, or null if the
+            /// last event wasn't a tool call (any other card — prose, error, done — closes the run; see AddEventBubble).</summary>
+            public ToolCallGroup? CurrentToolGroup;
 
             // Live state
             public bool Occupied;
@@ -101,6 +141,8 @@ namespace BuildConsole
         }
 
         private readonly BuildTrackerApiClient? _api;
+        /// <summary>The in-app queue watcher (may be null when claude.exe/config isn't set). For builds this instance launched interactively it owns their real stdin — the chat Send/Stop box and live-stream render go through it. Builds it doesn't own (a foreign instance / the legacy path) fall back to read-only file-tail with no input box, an honest boundary.</summary>
+        private readonly Services.QueueWatcherService? _watcher;
         private readonly List<BuildWatchSlot> _slots = new();
         /// <summary>Running builds that couldn't get a slot because all 8 are occupied by still-running builds (nothing completed to evict). Rebuilt every reconcile; drives the waiting banner only. See AdmitNewRunning for the "never force-evict a running build" decision.</summary>
         private readonly List<QueueItem> _waiting = new();
@@ -122,6 +164,7 @@ namespace BuildConsole
         private readonly Brush _emptyBorder;
         private readonly Brush _runningBorder;
         private readonly Brush _badgeText;
+        private readonly Brush _overlay;     // OverlayBrush — muted "paused" tone
         private bool _loaded;
 
         /// <summary>#1004 easter egg — during a longer-running quiet stretch, the activity line occasionally reads
@@ -141,10 +184,11 @@ namespace BuildConsole
         /// <summary>Cheap per-window RNG for the easter-egg roll. (Not Math.random — this is C#; System.Random is fine.)</summary>
         private readonly Random _rng = new();
 
-        public BuildWatchWindow(BuildTrackerApiClient? api)
+        public BuildWatchWindow(BuildTrackerApiClient? api, Services.QueueWatcherService? watcher = null)
         {
             InitializeComponent();
             _api = api;
+            _watcher = watcher;
 
             _green = (Brush)FindResource("GreenBrush");
             _red = (Brush)FindResource("RedBrush");
@@ -158,6 +202,7 @@ namespace BuildConsole
             _emptyBorder = (Brush)FindResource("Surface0Brush");
             _runningBorder = (Brush)FindResource("Surface2Brush");
             _badgeText = (Brush)FindResource("CrustBrush");
+            _overlay = (Brush)FindResource("OverlayBrush");
 
             for (int i = 0; i < SlotCount; i++)
             {
@@ -290,7 +335,16 @@ namespace BuildConsole
             Grid.SetRow(body, 1);
             slot.ContentGrid.Children.Add(body);
 
-            // Footer: the "yep cool" dismiss button (only shown on a terminal slot)
+            // Footer row (row 2): holds EITHER the interactive chat input row (while
+            // an owned build is live) OR the "yep cool" dismiss button (terminal
+            // slot). They're mutually exclusive by state, toggled in the poll loop.
+            var footer = new Grid();
+
+            // The chat input row — a real Send box wired to the running build's
+            // stdin, plus a real Stop (soft interrupt → hard-kill escalation).
+            BuildInputRow(slot);
+            footer.Children.Add(slot.InputRow);
+
             slot.DismissButton = new Button
             {
                 Content = "Dismiss",
@@ -310,11 +364,112 @@ namespace BuildConsole
                 UpdateWaitingBanner();
                 UpdateSubtitle();
             };
-            Grid.SetRow(slot.DismissButton, 2);
-            slot.ContentGrid.Children.Add(slot.DismissButton);
+            footer.Children.Add(slot.DismissButton);
+
+            Grid.SetRow(footer, 2);
+            slot.ContentGrid.Children.Add(footer);
 
             grid.Children.Add(slot.ContentGrid);
             slot.Container.Child = grid;
+        }
+
+        /// <summary>
+        /// Builds a slot's chat input row: a Send box that types real text into the
+        /// running build's stdin (@paths pass through unmangled — it's a stream-json
+        /// value, not a shell arg), a Send button, and a Stop button (soft interrupt
+        /// escalating to a hard kill). Hidden by default; shown only for an owned,
+        /// live interactive build. Includes a lightweight @path autocomplete popup.
+        /// </summary>
+        private void BuildInputRow(BuildWatchSlot slot)
+        {
+            var grid = new Grid();
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            slot.InputBox = new TextBox
+            {
+                MinHeight = 26,
+                MaxHeight = 96,
+                VerticalContentAlignment = VerticalAlignment.Center,
+                AcceptsReturn = false, // Enter = send; the autocomplete owns Enter only while open
+                TextWrapping = TextWrapping.Wrap,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                Background = (Brush)FindResource("BaseBrush"),
+                Foreground = _cardText,
+                CaretBrush = _cardText,
+                BorderBrush = _runningBorder,
+                BorderThickness = new Thickness(1),
+                Padding = new Thickness(7, 3, 7, 3),
+                FontSize = 13,
+                ToolTip = "Type to steer this running build — text goes straight to its stdin. Enter to send, @ for file paths.",
+            };
+            slot.InputBox.PreviewKeyDown += (s, e) => InputBox_PreviewKeyDown(slot, e);
+            slot.InputBox.TextChanged += (s, e) => UpdateAutoComplete(slot);
+            slot.InputBox.LostKeyboardFocus += (s, e) => CloseAutoComplete(slot);
+            Grid.SetColumn(slot.InputBox, 0);
+            grid.Children.Add(slot.InputBox);
+
+            slot.SendButton = new Button
+            {
+                Content = "Send",
+                Style = (Style)FindResource("IconButton"),
+                Padding = new Thickness(10, 3, 10, 3),
+                Margin = new Thickness(5, 0, 0, 0),
+                VerticalAlignment = VerticalAlignment.Bottom,
+                ToolTip = "Send this text to the running build (Enter)",
+            };
+            slot.SendButton.Click += (s, e) => SendSlotInput(slot);
+            Grid.SetColumn(slot.SendButton, 1);
+            grid.Children.Add(slot.SendButton);
+
+            slot.StopButton = new Button
+            {
+                Content = "Stop",
+                Style = (Style)FindResource("IconButton"),
+                Padding = new Thickness(10, 3, 10, 3),
+                Margin = new Thickness(5, 0, 0, 0),
+                VerticalAlignment = VerticalAlignment.Bottom,
+                ToolTip = "Interrupt this build (soft interrupt; press again / unresponsive → hard kill). After stopping, Send corrective guidance to redirect it.",
+            };
+            slot.StopButton.Click += (s, e) => StopSlot(slot);
+            Grid.SetColumn(slot.StopButton, 2);
+            grid.Children.Add(slot.StopButton);
+
+            // @path autocomplete popup (bonus; degrades to nothing if cwd unknown).
+            slot.AutoCompleteList = new ListBox
+            {
+                MaxHeight = 160,
+                Background = (Brush)FindResource("MantleBrush"),
+                Foreground = _cardText,
+                BorderBrush = _runningBorder,
+                BorderThickness = new Thickness(1),
+                FontSize = 12.5,
+            };
+            slot.AutoCompleteList.PreviewMouseLeftButtonUp += (s, e) => AcceptAutoComplete(slot);
+            slot.AutoCompletePopup = new System.Windows.Controls.Primitives.Popup
+            {
+                PlacementTarget = slot.InputBox,
+                Placement = System.Windows.Controls.Primitives.PlacementMode.Top,
+                StaysOpen = false,
+                AllowsTransparency = true,
+                MinWidth = 180,
+                Child = new Border
+                {
+                    Background = (Brush)FindResource("MantleBrush"),
+                    BorderBrush = _runningBorder,
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(4),
+                    Child = slot.AutoCompleteList,
+                },
+            };
+
+            slot.InputRow = new Border
+            {
+                Margin = new Thickness(6, 4, 6, 6),
+                Visibility = Visibility.Collapsed,
+                Child = grid,
+            };
         }
 
         // ── #1004 "thinking" indicator (genuinely animated) ─────────────────
@@ -375,12 +530,21 @@ namespace BuildConsole
         private void StartSpinner(BuildWatchSlot slot, bool verifying)
         {
             slot.SpinnerRing.Stroke = verifying ? _yellow : _blue;
+            slot.SpinnerRing.Visibility = Visibility.Visible;
             slot.ThinkingIndicator.Visibility = Visibility.Visible;
             var anim = new DoubleAnimation(0, 360, new Duration(TimeSpan.FromSeconds(0.9)))
             {
                 RepeatBehavior = RepeatBehavior.Forever,
             };
             slot.SpinnerTransform.BeginAnimation(RotateTransform.AngleProperty, anim);
+        }
+
+        /// <summary>Keeps the activity row visible with its text but no spinning ring — used for the paused / waiting-for-input interactive sub-states (idle, but not terminal).</summary>
+        private static void ShowStaticActivity(BuildWatchSlot slot)
+        {
+            slot.SpinnerTransform.BeginAnimation(RotateTransform.AngleProperty, null);
+            slot.SpinnerRing.Visibility = Visibility.Collapsed;
+            slot.ThinkingIndicator.Visibility = Visibility.Visible;
         }
 
         /// <summary>Stops the arc and hides the thinking row (used on every terminal / stale / cleared state).</summary>
@@ -444,7 +608,8 @@ namespace BuildConsole
         /// Classifies one completed log line into an event and appends the matching card:
         ///   • "--- done … ---"  → green result card
         ///   • obvious stderr    → red error card
-        ///   • text with [tool:] → the prose becomes an assistant card and each tool marker its own mauve tool chip
+        ///   • text with [tool:] → the prose becomes an assistant card; each tool marker folds into the
+        ///                         current collapsed "Ran N tools" chip (see AddToolCallChip)
         ///   • anything else     → a blue-accented assistant text card
         /// Distinct accent + text colour per type satisfies the colour-coding requirement, all from the existing palette.
         /// </summary>
@@ -482,11 +647,7 @@ namespace BuildConsole
                     AddEventBubble(slot, before, _blue, _cardText, mono: false, glyph: null);
 
                 var toolName = m.Groups[1].Value.Trim();
-                AddEventBubble(slot, toolName, _mauve, _mauve, mono: false, glyph: "⚙");
-                // A tool call is fresh activity, and worth reflecting live in the spinner row.
-                slot.LastOutputUtc = DateTime.UtcNow;
-                if (slot.State == SlotState.Running)
-                    slot.ThinkingText.Text = $"running {toolName}…";
+                AddToolCallChip(slot, toolName);
 
                 cursor = m.Index + m.Length;
             }
@@ -505,6 +666,11 @@ namespace BuildConsole
         /// </summary>
         private void AddEventBubble(BuildWatchSlot slot, string text, Brush accent, Brush textBrush, bool mono, string? glyph)
         {
+            // Any non-tool card (prose/error/done) closes out whatever tool-call run was
+            // in progress, so the NEXT tool call starts a fresh collapsed chip rather than
+            // silently appending to a chip that's no longer adjacent to it on screen.
+            slot.CurrentToolGroup = null;
+
             var body = new TextBlock
             {
                 Text = glyph == null ? text : $"{glyph}  {text}",
@@ -538,6 +704,102 @@ namespace BuildConsole
             slot.EventsScroll.ScrollToEnd();
         }
 
+        /// <summary>
+        /// Matches Claude.ai's own chat pattern: a consecutive run of tool calls (Bash, Glob,
+        /// Grep, Read, …) folds into a single small muted "Ran N tools" chip instead of one row
+        /// per call, so the (much more important) narrative text cards stay visually dominant.
+        /// The chip is click-to-expand, revealing the real per-call detail (each tool name, in
+        /// order it happened). First call in a run creates the chip and remembers it on the slot
+        /// (<see cref="BuildWatchSlot.CurrentToolGroup"/>); subsequent adjacent calls extend the
+        /// same chip. AddEventBubble clears CurrentToolGroup whenever any other card lands, which
+        /// is what makes a run "consecutive" — a text/error/done card in between starts a new chip.
+        /// </summary>
+        private void AddToolCallChip(BuildWatchSlot slot, string toolName)
+        {
+            slot.LastOutputUtc = DateTime.UtcNow;
+            if (slot.State == SlotState.Running)
+                slot.ThinkingText.Text = $"running {toolName}…";
+
+            var group = slot.CurrentToolGroup;
+            if (group != null)
+            {
+                group.Names.Add(toolName);
+                group.DetailPanel.Children.Add(BuildToolDetailLine(toolName));
+                group.SummaryText.Text = ToolGroupSummaryText(group.Names);
+                return;
+            }
+
+            group = new ToolCallGroup();
+            group.Names.Add(toolName);
+
+            group.SummaryText = new TextBlock
+            {
+                FontSize = 12,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = _cardSubtext,
+                VerticalAlignment = VerticalAlignment.Center,
+                Text = ToolGroupSummaryText(group.Names),
+            };
+            group.Chevron = new TextBlock
+            {
+                Text = "▸",
+                FontSize = 10,
+                Foreground = _cardSubtext,
+                Margin = new Thickness(6, 0, 0, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            var summaryRow = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+            summaryRow.Children.Add(group.SummaryText);
+            summaryRow.Children.Add(group.Chevron);
+
+            group.DetailPanel = new StackPanel { Visibility = Visibility.Collapsed, Margin = new Thickness(0, 6, 0, 0) };
+            group.DetailPanel.Children.Add(BuildToolDetailLine(toolName));
+
+            var outer = new StackPanel();
+            outer.Children.Add(summaryRow);
+            outer.Children.Add(group.DetailPanel);
+
+            group.Card = new Border
+            {
+                Background = _cardBg,
+                CornerRadius = new CornerRadius(10),
+                Padding = new Thickness(9, 4, 9, 4),
+                Margin = new Thickness(0, 0, 0, 6),
+                HorizontalAlignment = HorizontalAlignment.Left,
+                Cursor = System.Windows.Input.Cursors.Hand,
+                ToolTip = "Click to expand and see each tool call",
+                Child = outer,
+            };
+            group.Card.MouseLeftButtonUp += (s, e) => ToggleToolGroup(group);
+
+            slot.EventsPanel.Children.Add(group.Card);
+            while (slot.EventsPanel.Children.Count > MaxCardsPerSlot)
+                slot.EventsPanel.Children.RemoveAt(0);
+
+            slot.CurrentToolGroup = group;
+            slot.EventsScroll.ScrollToEnd();
+        }
+
+        private TextBlock BuildToolDetailLine(string toolName) => new()
+        {
+            Text = $"⚙  {toolName}",
+            Foreground = _mauve,
+            FontSize = 13,
+            FontWeight = FontWeights.SemiBold,
+            Margin = new Thickness(0, 2, 0, 0),
+        };
+
+        /// <summary>"Ran X" for a single call (names the tool, e.g. "Ran Bash"), "Ran N tools" once a run has more than one — the exact Claude.ai collapsed-chip phrasing named in Git #1004's refinement.</summary>
+        private static string ToolGroupSummaryText(List<string> names) =>
+            names.Count == 1 ? $"⚙ Ran {names[0]}" : $"⚙ Ran {names.Count} tools";
+
+        private static void ToggleToolGroup(ToolCallGroup group)
+        {
+            group.Expanded = !group.Expanded;
+            group.DetailPanel.Visibility = group.Expanded ? Visibility.Visible : Visibility.Collapsed;
+            group.Chevron.Text = group.Expanded ? "▾" : "▸";
+        }
+
         // ── Poll / reconcile ────────────────────────────────────────────────
 
         private async Task PollAsync()
@@ -557,6 +819,9 @@ namespace BuildConsole
                 // 1) Update every occupied slot from this snapshot.
                 foreach (var slot in _slots.Where(s => s.Occupied))
                 {
+                    bool owned = _watcher?.OwnsInteractive(slot.QueueItemId) ?? false;
+                    if (owned) slot.InteractiveBound = true;
+
                     if (byId.TryGetValue(slot.QueueItemId, out var item))
                     {
                         ApplyItemStatusToSlot(slot, item);
@@ -566,12 +831,34 @@ namespace BuildConsole
                         // #943: gone from the queue is NOT proof of completion —
                         // the real process may still be alive. Mark Stale (kept,
                         // manually dismissable, never auto-evicted) and keep
-                        // tailing its log in case it's still writing.
+                        // streaming its output in case it's still writing.
                         if (slot.State != SlotState.Stale) SetSlotState(slot, SlotState.Stale, null);
                     }
-                    TailSlotLog(slot);
-                    if (slot.State == SlotState.Running)
-                        UpdateThinkingText(slot, slot.Verifying); // refresh activity line / roll the easter egg
+
+                    // Render: an owned interactive build streams from the watcher's
+                    // in-memory buffer (replacing the file-tail for these); every
+                    // other build tails its per-item log file exactly as before.
+                    if (slot.InteractiveBound) DrainInteractiveOutput(slot);
+                    else TailSlotLog(slot);
+
+                    // Interactive overlay: while the queue still calls it running and
+                    // we own the live process, surface the real working / paused /
+                    // waiting-for-input sub-state and the chat input row.
+                    var ist = (slot.State == SlotState.Running && owned)
+                        ? _watcher!.GetInteractiveState(slot.QueueItemId)
+                        : null;
+                    if (ist.HasValue)
+                    {
+                        ApplyInteractiveState(slot, ist.Value);
+                    }
+                    else
+                    {
+                        ShowInputRow(slot, false);
+                        StopAttentionPulse(slot);
+                        slot.LastInteractiveState = null;
+                        if (slot.State == SlotState.Running)
+                            UpdateThinkingText(slot, slot.Verifying); // refresh activity line / roll the easter egg
+                    }
                 }
 
                 // 2) Admit newly-running builds into free / oldest-completed slots.
@@ -630,17 +917,23 @@ namespace BuildConsole
             {
                 case SlotState.Running:
                     slot.Verifying = verifying;
-                    slot.Container.BorderBrush = _runningBorder;
-                    slot.Container.BorderThickness = new Thickness(1);
-                    slot.BadgeChip.Background = verifying ? _yellow : _blue;
-                    slot.BadgeText.Text = verifying ? "VERIFYING…" : "RUNNING";
-                    slot.BadgeChip.ToolTip = verifying
-                        ? "Queue reported failed with the #943 orphan-sweep sentinel (exit -2) — holding as running until a real exit code lands."
-                        : null;
                     slot.DismissButton.Visibility = Visibility.Collapsed;
                     slot.CompletedAtUtc = null;
-                    StartSpinner(slot, verifying); // genuinely alive while the build runs
-                    if (changed) UpdateThinkingText(slot, verifying);
+                    // For a BuildConsole-owned interactive build the badge/border/
+                    // spinner/thinking are owned by ApplyInteractiveState (which knows
+                    // the real working/paused/waiting sub-state); don't fight it here.
+                    if (!slot.InteractiveBound)
+                    {
+                        slot.Container.BorderBrush = _runningBorder;
+                        slot.Container.BorderThickness = new Thickness(1);
+                        slot.BadgeChip.Background = verifying ? _yellow : _blue;
+                        slot.BadgeText.Text = verifying ? "VERIFYING…" : "RUNNING";
+                        slot.BadgeChip.ToolTip = verifying
+                            ? "Queue reported failed with the #943 orphan-sweep sentinel (exit -2) — holding as running until a real exit code lands."
+                            : null;
+                        StartSpinner(slot, verifying); // genuinely alive while the build runs
+                        if (changed) UpdateThinkingText(slot, verifying);
+                    }
                     break;
 
                 case SlotState.Done:
@@ -755,13 +1048,26 @@ namespace BuildConsole
             slot.LastOutputUtc = DateTime.UtcNow;
             slot.EasterEggUntilUtc = DateTime.MinValue;
             slot.EventsPanel.Children.Clear();
+            slot.CurrentToolGroup = null;
             slot.ThinkingText.Text = "starting…";
             slot.EmptyText.Visibility = Visibility.Collapsed;
             slot.ContentGrid.Visibility = Visibility.Visible;
             slot.HeaderText.Text = slot.GithubNumber.HasValue ? $"#{slot.GithubNumber}  {slot.Title}" : slot.Title;
             slot.HeaderText.ToolTip = slot.HeaderText.Text;
+
+            // Interactive rebind — is this a build THIS app owns the stdin of?
+            slot.Cwd = item.Cwd;
+            slot.InteractiveCursor = 0;
+            slot.LastInteractiveState = null;
+            slot.InputBox.Text = "";
+            CloseAutoComplete(slot);
+            slot.InteractiveBound = _watcher?.OwnsInteractive(item.Id) ?? false;
+
             SetSlotState(slot, SlotState.Running, null);
-            TailSlotLog(slot);
+            // Render from the owned in-memory stream for interactive builds
+            // (replacing the file-tail for these); file-tail for everything else.
+            if (slot.InteractiveBound) DrainInteractiveOutput(slot);
+            else TailSlotLog(slot);
             ReflowSlotGrid(); // occupancy grew — resize the grid to fit
             ActivityLog.Log("build-watch",
                 $"occupied slot: {slot.Title} (queue #{item.Id}{(slot.GithubNumber.HasValue ? $", GH #{slot.GithubNumber}" : "")})");
@@ -770,7 +1076,18 @@ namespace BuildConsole
         private void ClearSlot(BuildWatchSlot slot, string reason)
         {
             if (!slot.Occupied) return;
-            ActivityLog.Log("build-watch", $"{reason}: {slot.Title} (queue #{slot.QueueItemId})");
+            int id = slot.QueueItemId;
+            ActivityLog.Log("build-watch", $"{reason}: {slot.Title} (queue #{id})");
+
+            // If this was an owned interactive build: gracefully finalize it if it's
+            // still alive (close stdin → it exits → queue completes, never hangs),
+            // then drop its retained output buffer.
+            if (slot.InteractiveBound && _watcher != null)
+            {
+                _watcher.FinalizeInteractive(id); // no-op if already exited
+                _watcher.ReleaseInteractive(id);
+            }
+
             slot.Occupied = false;
             slot.QueueItemId = 0;
             slot.GithubNumber = null;
@@ -780,8 +1097,17 @@ namespace BuildConsole
             slot.TailedLength = 0;
             slot.Verifying = false;
             slot.LineBuffer = "";
+            slot.InteractiveBound = false;
+            slot.InteractiveCursor = 0;
+            slot.LastInteractiveState = null;
+            slot.Cwd = null;
             StopSpinner(slot);
+            StopAttentionPulse(slot);
+            ShowInputRow(slot, false);
+            slot.InputBox.Text = "";
+            CloseAutoComplete(slot);
             slot.EventsPanel.Children.Clear();
+            slot.CurrentToolGroup = null;
             slot.HeaderText.ToolTip = null;
             slot.BadgeChip.ToolTip = null;
             slot.ContentGrid.Visibility = Visibility.Collapsed;
@@ -879,6 +1205,7 @@ namespace BuildConsole
                     slot.TailedLength = 0;
                     slot.LineBuffer = "";
                     slot.EventsPanel.Children.Clear();
+                    slot.CurrentToolGroup = null;
                 }
                 if (fs.Length <= slot.TailedLength) return;
                 fs.Seek(slot.TailedLength, SeekOrigin.Begin);
@@ -899,6 +1226,268 @@ namespace BuildConsole
                 }
             }
             catch { /* file locked mid-write by the watcher — retry next tick */ }
+        }
+
+        // ── Interactive builds: live stream, 3-state indicator, chat input ──
+
+        /// <summary>
+        /// Renders an owned interactive build's live output by pulling the lines the
+        /// watcher has buffered since our cursor and turning each into an event card —
+        /// the same card renderer the file-tail path uses, just sourced from the
+        /// BuildConsole-owned in-memory stream instead of the per-item log file.
+        /// </summary>
+        private void DrainInteractiveOutput(BuildWatchSlot slot)
+        {
+            if (_watcher == null) return;
+            int cursor = slot.InteractiveCursor;
+            List<string> lines;
+            try { lines = _watcher.CopyOutputSince(slot.QueueItemId, ref cursor); }
+            catch { return; }
+            slot.InteractiveCursor = cursor;
+            foreach (var line in lines)
+                AppendEventCard(slot, line);
+        }
+
+        /// <summary>Shows/hides a slot's chat input row (the Dismiss button shares the footer and shows opposite it, from the terminal SetSlotState cases).</summary>
+        private static void ShowInputRow(BuildWatchSlot slot, bool show) =>
+            slot.InputRow.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+
+        /// <summary>
+        /// Drives the clear three-state indicator + chat input row for a live owned
+        /// interactive build: Working (blue, spinner running), WaitingForInput (peach —
+        /// the app's existing "needs attention" colour, same as the waiting banner and
+        /// stale slot — with a soft badge pulse), and Stopped/paused (muted). Idempotent
+        /// and gated on a real sub-state change so it never restarts animations per poll.
+        /// </summary>
+        private void ApplyInteractiveState(BuildWatchSlot slot, InteractiveInputState state)
+        {
+            ShowInputRow(slot, true);
+
+            if (slot.LastInteractiveState == state) return; // no visual churn on an unchanged state
+            slot.LastInteractiveState = state;
+
+            switch (state)
+            {
+                case InteractiveInputState.Working:
+                    StopAttentionPulse(slot);
+                    slot.Container.BorderBrush = _blue;
+                    slot.Container.BorderThickness = new Thickness(1);
+                    slot.BadgeChip.Background = _blue;
+                    slot.BadgeText.Text = "RUNNING";
+                    slot.BadgeChip.ToolTip = "Working — type below to steer it mid-task; text goes straight to its stdin.";
+                    slot.ThinkingText.Text = "working…";
+                    StartSpinner(slot, verifying: false);
+                    break;
+
+                case InteractiveInputState.WaitingForInput:
+                    slot.Container.BorderBrush = _peach;
+                    slot.Container.BorderThickness = new Thickness(3);
+                    slot.BadgeChip.Background = _peach;
+                    slot.BadgeText.Text = "✋ NEEDS INPUT";
+                    slot.BadgeChip.ToolTip = "This build finished its turn and is waiting on you — reply to continue, or it wraps up on its own shortly.";
+                    slot.ThinkingText.Text = "waiting for your input…";
+                    ShowStaticActivity(slot);
+                    StartAttentionPulse(slot);
+                    break;
+
+                case InteractiveInputState.Stopped:
+                    StopAttentionPulse(slot);
+                    slot.Container.BorderBrush = _overlay;
+                    slot.Container.BorderThickness = new Thickness(2);
+                    slot.BadgeChip.Background = _overlay;
+                    slot.BadgeText.Text = "⏸ PAUSED";
+                    slot.BadgeChip.ToolTip = "Interrupted — Send corrective guidance to redirect it, or Stop again to hard-kill.";
+                    slot.ThinkingText.Text = "stopped — send guidance to resume…";
+                    ShowStaticActivity(slot);
+                    break;
+            }
+        }
+
+        /// <summary>The peach "needs attention" pulse on a waiting slot's badge — a gentle opacity throb so a build genuinely waiting on Shane catches his eye from across the room.</summary>
+        private void StartAttentionPulse(BuildWatchSlot slot)
+        {
+            if (slot.AttentionPulsing) return;
+            slot.AttentionPulsing = true;
+            var anim = new DoubleAnimation(1.0, 0.4, new Duration(TimeSpan.FromSeconds(0.7)))
+            {
+                AutoReverse = true,
+                RepeatBehavior = RepeatBehavior.Forever,
+            };
+            slot.BadgeChip.BeginAnimation(UIElement.OpacityProperty, anim);
+        }
+
+        private static void StopAttentionPulse(BuildWatchSlot slot)
+        {
+            if (!slot.AttentionPulsing) return;
+            slot.AttentionPulsing = false;
+            slot.BadgeChip.BeginAnimation(UIElement.OpacityProperty, null);
+            slot.BadgeChip.Opacity = 1.0;
+        }
+
+        /// <summary>Send clicked / Enter pressed — types the box text into the running build's real stdin, echoes it as a chat bubble, and clears the box.</summary>
+        private void SendSlotInput(BuildWatchSlot slot)
+        {
+            if (_watcher == null) return;
+            CloseAutoComplete(slot);
+            var text = slot.InputBox.Text;
+            if (string.IsNullOrWhiteSpace(text)) return;
+            _watcher.SendInput(slot.QueueItemId, text);
+            AddUserBubble(slot, text);
+            slot.InputBox.Text = "";
+            // Reflect immediately: back to working; force a re-apply next poll.
+            StopAttentionPulse(slot);
+            slot.LastInteractiveState = null;
+            slot.ThinkingText.Text = "working…";
+        }
+
+        /// <summary>Stop clicked — soft interrupt (escalating to a hard kill in the watcher if unresponsive / on a repeat press). Optimistically shows the paused state right away.</summary>
+        private void StopSlot(BuildWatchSlot slot)
+        {
+            if (_watcher == null) return;
+            CloseAutoComplete(slot);
+            _ = _watcher.RequestStopAsync(slot.QueueItemId);
+            slot.LastInteractiveState = null;
+            ApplyInteractiveState(slot, InteractiveInputState.Stopped);
+        }
+
+        /// <summary>A right-aligned bubble echoing what Shane just typed, so a slot reads like a real chat thread.</summary>
+        private void AddUserBubble(BuildWatchSlot slot, string text)
+        {
+            var body = new TextBlock
+            {
+                Text = "▷  " + text.Trim(),
+                Foreground = _cardText,
+                FontSize = 14.5,
+                TextWrapping = TextWrapping.Wrap,
+                LineHeight = 19,
+            };
+            var card = new Border
+            {
+                Background = _runningBorder, // Surface2 — distinct from the Surface0 event cards
+                CornerRadius = new CornerRadius(10, 4, 10, 10),
+                BorderBrush = _blue,
+                BorderThickness = new Thickness(0, 0, 3, 0),
+                Padding = new Thickness(10, 7, 10, 7),
+                Margin = new Thickness(24, 2, 0, 6),
+                HorizontalAlignment = HorizontalAlignment.Right,
+                Child = body,
+            };
+            slot.EventsPanel.Children.Add(card);
+            while (slot.EventsPanel.Children.Count > MaxCardsPerSlot)
+                slot.EventsPanel.Children.RemoveAt(0);
+            slot.EventsScroll.ScrollToEnd();
+        }
+
+        // ── @path autocomplete (bonus; degrades to nothing when cwd is unknown) ──
+
+        private void InputBox_PreviewKeyDown(BuildWatchSlot slot, System.Windows.Input.KeyEventArgs e)
+        {
+            // While the autocomplete popup is open it owns the arrow/Tab/Enter/Esc keys.
+            if (slot.AutoCompletePopup?.IsOpen == true && slot.AutoCompleteList != null && slot.AutoCompleteList.Items.Count > 0)
+            {
+                switch (e.Key)
+                {
+                    case System.Windows.Input.Key.Down:
+                        slot.AutoCompleteList.SelectedIndex = Math.Min(slot.AutoCompleteList.SelectedIndex + 1, slot.AutoCompleteList.Items.Count - 1);
+                        slot.AutoCompleteList.ScrollIntoView(slot.AutoCompleteList.SelectedItem);
+                        e.Handled = true; return;
+                    case System.Windows.Input.Key.Up:
+                        slot.AutoCompleteList.SelectedIndex = Math.Max(slot.AutoCompleteList.SelectedIndex - 1, 0);
+                        slot.AutoCompleteList.ScrollIntoView(slot.AutoCompleteList.SelectedItem);
+                        e.Handled = true; return;
+                    case System.Windows.Input.Key.Tab:
+                    case System.Windows.Input.Key.Enter:
+                        AcceptAutoComplete(slot); e.Handled = true; return;
+                    case System.Windows.Input.Key.Escape:
+                        CloseAutoComplete(slot); e.Handled = true; return;
+                }
+            }
+
+            if (e.Key == System.Windows.Input.Key.Enter &&
+                (System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Shift) == 0)
+            {
+                SendSlotInput(slot);
+                e.Handled = true;
+            }
+        }
+
+        private void UpdateAutoComplete(BuildWatchSlot slot)
+        {
+            if (slot.AutoCompletePopup == null || slot.AutoCompleteList == null) return;
+            var frag = CurrentAtFragment(slot.InputBox);
+            if (frag == null || string.IsNullOrEmpty(slot.Cwd) || !Directory.Exists(slot.Cwd))
+            {
+                CloseAutoComplete(slot);
+                return;
+            }
+            var matches = MatchPaths(slot.Cwd!, frag);
+            if (matches.Count == 0) { CloseAutoComplete(slot); return; }
+            slot.AutoCompleteList.ItemsSource = matches;
+            slot.AutoCompleteList.SelectedIndex = 0;
+            slot.AutoCompletePopup.IsOpen = true;
+        }
+
+        private static void CloseAutoComplete(BuildWatchSlot slot)
+        {
+            if (slot.AutoCompletePopup != null) slot.AutoCompletePopup.IsOpen = false;
+        }
+
+        private void AcceptAutoComplete(BuildWatchSlot slot)
+        {
+            if (slot.AutoCompleteList?.SelectedItem is not string pick) { CloseAutoComplete(slot); return; }
+            var box = slot.InputBox;
+            int caret = Math.Min(box.CaretIndex, (box.Text ?? "").Length);
+            string text = box.Text ?? "";
+            string upto = text.Substring(0, caret);
+            int at = upto.LastIndexOf('@');
+            if (at < 0) { CloseAutoComplete(slot); return; }
+            string before = text.Substring(0, at + 1); // keep the '@'
+            string after = text.Substring(caret);
+            box.Text = before + pick + after;
+            box.CaretIndex = (before + pick).Length;
+            CloseAutoComplete(slot); // final word: closed (a re-trigger fired mid-assignment, this wins)
+            box.Focus();
+        }
+
+        /// <summary>The '@'-prefixed path fragment immediately left of the caret (or null if the caret isn't inside one). '@' must start a token (be at the start or follow whitespace) and the fragment must be whitespace-free.</summary>
+        private static string? CurrentAtFragment(TextBox box)
+        {
+            string text = box.Text ?? "";
+            int caret = Math.Min(box.CaretIndex, text.Length);
+            string upto = text.Substring(0, caret);
+            int at = upto.LastIndexOf('@');
+            if (at < 0) return null;
+            if (at > 0 && !char.IsWhiteSpace(upto[at - 1])) return null;
+            string frag = upto.Substring(at + 1);
+            return frag.Any(char.IsWhiteSpace) ? null : frag;
+        }
+
+        /// <summary>Up to 20 files/dirs under <paramref name="cwd"/> matching the (possibly directory-qualified) fragment, as forward-slashed relative paths, directories suffixed with '/'.</summary>
+        private static List<string> MatchPaths(string cwd, string frag)
+        {
+            var results = new List<string>();
+            try
+            {
+                string rel = frag.Replace('\\', '/');
+                string dirPart = "", namePart = rel;
+                int slash = rel.LastIndexOf('/');
+                if (slash >= 0) { dirPart = rel.Substring(0, slash); namePart = rel.Substring(slash + 1); }
+                string baseDir = string.IsNullOrEmpty(dirPart) ? cwd : Path.Combine(cwd, dirPart);
+                if (!Directory.Exists(baseDir)) return results;
+                foreach (var entry in Directory.EnumerateFileSystemEntries(baseDir))
+                {
+                    var name = Path.GetFileName(entry);
+                    if (name.StartsWith(".", StringComparison.Ordinal)) continue; // skip dotfiles / .git
+                    if (namePart.Length > 0 && !name.StartsWith(namePart, StringComparison.OrdinalIgnoreCase)) continue;
+                    bool isDir = Directory.Exists(entry);
+                    string relOut = (string.IsNullOrEmpty(dirPart) ? name : dirPart + "/" + name) + (isDir ? "/" : "");
+                    results.Add(relOut);
+                    if (results.Count >= 20) break;
+                }
+                results.Sort(StringComparer.OrdinalIgnoreCase);
+            }
+            catch { /* best-effort autocomplete */ }
+            return results;
         }
 
         /// <summary>

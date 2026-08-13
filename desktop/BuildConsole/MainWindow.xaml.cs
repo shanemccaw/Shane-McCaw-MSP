@@ -750,7 +750,7 @@ namespace BuildConsole
                 return;
             }
 
-            _buildWatch = new BuildWatchWindow(_buildTrackerApi) { Owner = this };
+            _buildWatch = new BuildWatchWindow(_buildTrackerApi, _queueWatcher) { Owner = this };
             _buildWatch.Closed += (s, e) =>
             {
                 _buildWatch = null;
