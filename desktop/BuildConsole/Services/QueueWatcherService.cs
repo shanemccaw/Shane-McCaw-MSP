@@ -135,9 +135,37 @@ namespace BuildConsole.Services
         /// failed with a distinct sentinel exit code so it's visibly
         /// explained rather than silent, and Retry is right there to
         /// re-queue it for real.
+        ///
+        /// Git #943 — Shane: "I'm losing builds... 939 is still running but
+        /// it's not showing in the queue." #939's real claude.exe process was
+        /// legitimately claimed and launched by one BuildConsole instance,
+        /// but this sweep ran from a SECOND, concurrently-open instance whose
+        /// own fresh `_running` dict was empty - from its perspective #939
+        /// looked orphaned, so it force-marked it failed (exitCode -2) only
+        /// ~2 minutes after being claimed, while the real process (confirmed
+        /// still alive in Task Manager) kept running, completely unaware its
+        /// own DB row had just been killed out from under it. #822's
+        /// original assumption - "still 'running' when I start must be
+        /// orphaned from a dead previous instance" - only holds for exactly
+        /// one BuildConsole instance at a time; it breaks the moment a
+        /// second is open, which happens routinely (Shane keeping an old
+        /// window up while a new one launches, or - as happened here -
+        /// Claude Code itself relaunching the app repeatedly mid-session to
+        /// verify a rebuild). A false "still orphaned" is recoverable (Retry
+        /// is right there); a false "failed" on a real running job silently
+        /// discards live work instead. So: if any OTHER BuildConsole.exe
+        /// process is already alive, this can't safely tell "orphaned" from
+        /// "legitimately owned elsewhere" and skips the sweep entirely
+        /// rather than guess wrong.
         /// </summary>
         private async Task RecoverOrphanedRunningItemsAsync()
         {
+            if (Process.GetProcessesByName("BuildConsole").Length > 1)
+            {
+                ActivityLog.Log("watcher", "Skipping orphaned-running sweep - another BuildConsole instance is already open, can't safely tell orphaned from legitimately in-progress elsewhere.");
+                return;
+            }
+
             List<QueueItem> items;
             try { items = await _api.GetQueueAsync(); }
             catch (Exception ex) { ActivityLog.Log("watcher", $"Couldn't check for orphaned running items: {ex.Message}"); return; }
