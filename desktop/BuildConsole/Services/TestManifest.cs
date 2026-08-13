@@ -98,7 +98,7 @@ namespace BuildConsole.Services
                         // other JSON kind is ignored (null).
                         TextContainsJson = step.TryGetProperty("textContains", out var tc)
                             && (tc.ValueKind == JsonValueKind.String || tc.ValueKind == JsonValueKind.Array) ? tc.GetRawText() : null,
-                        // Git #1027 — the uiStep's optional `textPrefixOfAny` (single string or array), carried
+                        // Git #1025 — the uiStep's optional `textPrefixOfAny` (single string or array), carried
                         // through as raw JSON for UiTestExecutor's `expect` action to prefix-match against the
                         // element's rendered text. Same shape-guard as textContains; any other JSON kind → null.
                         TextPrefixOfAnyJson = step.TryGetProperty("textPrefixOfAny", out var tp)
@@ -137,7 +137,7 @@ namespace BuildConsole.Services
         /// Null when the step declares no text assertion. Complements `state` (visible/hidden/…), which is
         /// element-presence only — the two are asserted together when both are declared.</summary>
         public string? TextContainsJson { get; set; }
-        /// <summary>Git #1027 — raw JSON of this uiStep's optional `textPrefixOfAny` field (a single string or
+        /// <summary>Git #1025 — raw JSON of this uiStep's optional `textPrefixOfAny` field (a single string or
         /// an array of strings, each typically a `{{name}}` referencing a `[*]`-wildcard extract of a whole
         /// runtime set). Asserted by UiTestExecutor's `expect` action via a two-way prefix relationship against
         /// the target element's REAL rendered text — the match that survives randomized + progressively-typed

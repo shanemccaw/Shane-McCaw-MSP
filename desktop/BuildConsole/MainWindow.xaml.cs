@@ -3751,7 +3751,7 @@ namespace BuildConsole
                     // Git #1016 — carry the uiStep's textContains through so the `expect` action can assert
                     // the element's real rendered text, not just its presence/visibility.
                     TextContains = step.TextContainsJson,
-                    // Git #1027 — carry the uiStep's textPrefixOfAny through so the `expect` action can prefix-
+                    // Git #1025 — carry the uiStep's textPrefixOfAny through so the `expect` action can prefix-
                     // match the rendered text against a whole runtime set (randomized/progressively-typed content).
                     TextPrefixOfAny = step.TextPrefixOfAnyJson,
                     Viewport = step.ViewportJson,

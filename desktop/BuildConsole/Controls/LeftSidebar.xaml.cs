@@ -117,7 +117,7 @@ namespace BuildConsole.Controls
         /// to assert against the target element's real rendered text (el.innerText/textContent). Null for
         /// manually-recorded steps and steps that assert only element state.</summary>
         public string? TextContains { get; set; }
-        /// <summary>Git #1027 — raw JSON of the manifest's optional uiSteps[].textPrefixOfAny field (a single
+        /// <summary>Git #1025 — raw JSON of the manifest's optional uiSteps[].textPrefixOfAny field (a single
         /// string or array of strings, each typically a `{{name}}` referencing a `[*]`-wildcard extract of a
         /// whole runtime set). Carried through untouched for the UI executor's `expect` action to prefix-match
         /// the element's real rendered text against the resolved candidate set — the assertion that survives

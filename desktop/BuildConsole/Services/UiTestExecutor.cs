@@ -373,7 +373,7 @@ namespace BuildConsole.Services
                 textPhrases = ParseTextContains(step.TextContains);
                 for (int ti = 0; ti < textPhrases.Count; ti++)
                     textPhrases[ti] = _vars.Resolve(textPhrases[ti]);
-                // #1027 — textPrefixOfAny: resolve each phrase the same way, then expand it into candidate
+                // #1025 — textPrefixOfAny: resolve each phrase the same way, then expand it into candidate
                 // entries. A `[*]`-wildcard extract (e.g. "$[*].leadText" → the whole real hero-headline set)
                 // stores a SetDelimiter-joined blob under one {{name}}, so a single "{{heroLeads}}" phrase
                 // fans out into every member here via SplitSet. A plain phrase with no delimiter is just a
@@ -490,7 +490,7 @@ namespace BuildConsole.Services
                 // results JSON shows the full contract that was checked, not just the state half.
                 if (textPhrases.Count > 0)
                     actionExpected += $"; textContains any of [{string.Join(", ", textPhrases.ConvertAll(p => $"\"{p}\""))}]";
-                // #1027 — likewise record the textPrefixOfAny contract (count only; the real set can be 50+
+                // #1025 — likewise record the textPrefixOfAny contract (count only; the real set can be 50+
                 // entries — the full list lives in the extract log, not every step's Expected string).
                 if (prefixCandidates.Count > 0)
                     actionExpected += $"; textPrefixOfAny one of {prefixCandidates.Count} real entrie(s)";
@@ -855,7 +855,7 @@ namespace BuildConsole.Services
         /// that the DOM genuinely DISPLAYS a value — only that some element exists. The text is pulled straight
         /// out of the live DOM via the same JS-injection path the state check already uses.
         ///
-        /// Git #1027 — <paramref name="prefixOfAny"/> adds a THIRD, orthogonal assertion for content that is
+        /// Git #1025 — <paramref name="prefixOfAny"/> adds a THIRD, orthogonal assertion for content that is
         /// randomized and/or rendered progressively (the hero headline: shuffled from a 50-entry set and typed
         /// out one character at a time, so at any instant the element shows a PARTIAL slice of a RANDOM entry).
         /// containsAny can't express that — "rendered CONTAINS entry" only holds once a whole entry has finished
@@ -929,7 +929,7 @@ namespace BuildConsole.Services
                 textOk = textHit != null;
             }
 
-            // #1027 — prefix-relationship assertion (see the method summary). Passes when the non-empty
+            // #1025 — prefix-relationship assertion (see the method summary). Passes when the non-empty
             // rendered text and some candidate entry are prefix-related (shorter is a prefix of the longer,
             // case-insensitive) — the match that survives the hero headline's shuffle + per-character typing.
             bool prefixOk = true;
