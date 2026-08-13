@@ -11,8 +11,6 @@ import NotFound from "./pages/not-found";
 import { trackPageview } from "./lib/analytics";
 import { PersonalizationProvider } from "./hooks/PersonalizationProvider";
 
-import Login from "./pages/Login";
-
 import QuickWinQuiz from "./pages/QuickWinQuiz";
 import QuickWinResultsPage from "./pages/QuickWinResultsPage";
 import QuizResultsPage from "./pages/QuizResultsPage";
@@ -24,6 +22,16 @@ function RedirectToHome() {
   useEffect(() => {
     setLocation("/", { replace: true });
   }, [setLocation]);
+  return null;
+}
+
+// /login used to render its own form here, but real client login lives in the genuinely
+// separate msp-portal SPA. A wouter <Redirect> can't reach it (different app, different
+// bundle) — this needs a full browser navigation.
+function RedirectToPortalLogin() {
+  useEffect(() => {
+    window.location.replace("/portal/login");
+  }, []);
   return null;
 }
 
@@ -69,7 +77,7 @@ export default function App() {
       <Route path="/status" component={Status} />
       <Route path="/resources" component={Resources} />
       <Route path="/resources/:slug" component={ArticlePage} />
-      <Route path="/login" component={Login} />
+      <Route path="/login" component={RedirectToPortalLogin} />
 
       {/* Legal Routes */}
       <Route path="/terms" component={Terms} />
