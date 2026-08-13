@@ -583,6 +583,15 @@ namespace BuildConsole.Controls
         {
             if (QueueFilterCombo.SelectedItem is not ComboBoxItem selected) return;
             _filter = selected.Tag as string ?? "Active";
+
+            // Git #935 — SelectedIndex="0" in XAML fires this SelectionChanged
+            // synchronously during InitializeComponent() itself, before QueueTree
+            // (declared later in the same BuildQueuePanel.xaml) has been assigned
+            // yet. RenderQueue/RenderTestsTree null-ref on it at that point, which
+            // — because this all happens mid-BAML-parse — crashed the entire app
+            // at startup rather than just this panel. Nothing to render yet.
+            if (QueueTree == null) return;
+
             if (_filter == "Tests") RenderTestsTree();
             else RenderQueue(ApplyFilter(_lastItems));
         }

@@ -43,6 +43,20 @@ namespace BuildConsole
         {
             e.Handled = true; // Prevent silent crash
             ShowExceptionDialog("UI Thread Error", e.Exception);
+
+            // Git #935 — if this exception happened during startup (MainWindow
+            // never finished constructing, e.g. a XAML parse failure), marking
+            // it Handled used to leave the process running invisibly forever:
+            // no window, nothing in the taskbar, but still alive and holding
+            // the exe file locked. Shane couldn't tell it hadn't opened, so
+            // he'd relaunch — over and over, piling up zombie processes that
+            // also blocked every subsequent `dotnet build`. If nothing ever
+            // became the MainWindow, there's nothing left to run for; shut down
+            // for real instead of idling invisibly.
+            if (this.MainWindow == null)
+            {
+                Shutdown(-1);
+            }
         }
 
         private void CurrentDomain_UnhandledException(object sender, UnhandledExceptionEventArgs e)
@@ -64,10 +78,31 @@ namespace BuildConsole
 
         private void ShowExceptionDialog(string title, Exception ex)
         {
-            string errMessage = $"[{title}]\n" +
-                                $"Type: {ex.GetType().FullName}\n" +
-                                $"Message: {ex.Message}\n\n" +
-                                $"Stack Trace:\n{ex.StackTrace}";
+            // Git #935 — a TargetInvocationException (thrown whenever WPF's XAML
+            // parser or reflection invokes a constructor that itself throws, e.g.
+            // during Application.DoStartup()'s BAML load) has a useless top-level
+            // Message ("Exception has been thrown by the target of an invocation.")
+            // — the real cause is always in InnerException, which this used to
+            // never look at, so the dialog and crash log were both blind to the
+            // actual root cause of any startup crash.
+            var sb = new System.Text.StringBuilder();
+            sb.Append($"[{title}]\n");
+            Exception? current = ex;
+            int depth = 0;
+            while (current != null)
+            {
+                string prefix = depth == 0 ? "" : $"--- Inner Exception #{depth} ---\n";
+                sb.Append($"{prefix}Type: {current.GetType().FullName}\n");
+                sb.Append($"Message: {current.Message}\n");
+                if (current is System.Windows.Markup.XamlParseException xpe)
+                {
+                    sb.Append($"XAML Line: {xpe.LineNumber}, Position: {xpe.LinePosition}\n");
+                }
+                sb.Append($"Stack Trace:\n{current.StackTrace}\n\n");
+                current = current.InnerException;
+                depth++;
+            }
+            string errMessage = sb.ToString();
 
             try
             {
