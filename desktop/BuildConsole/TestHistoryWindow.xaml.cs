@@ -113,5 +113,26 @@ namespace BuildConsole
         }
 
         private void BtnRefresh_Click(object sender, RoutedEventArgs e) => Refresh();
+
+        // ── Git #1006: custom title bar caption buttons (same pattern as MainWindow, Git #894) ──
+        protected override void OnSourceInitialized(EventArgs e)
+        {
+            base.OnSourceInitialized(e);
+            WindowChromeHelper.Setup(this);
+        }
+
+        private void BtnMinimize_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
+
+        private void BtnMaximizeRestore_Click(object sender, RoutedEventArgs e) =>
+            WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+
+        private void BtnCloseWindow_Click(object sender, RoutedEventArgs e) => Close();
+
+        private void Window_StateChanged(object sender, EventArgs e)
+        {
+            bool maximized = WindowState == WindowState.Maximized;
+            BtnMaximizeRestoreIcon.Text = maximized ? "" : "";
+            BtnMaximizeRestore.ToolTip = maximized ? "Restore Down" : "Maximize";
+        }
     }
 }

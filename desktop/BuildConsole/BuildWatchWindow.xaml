@@ -1,11 +1,25 @@
 <Window x:Class="BuildConsole.BuildWatchWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         Title="Build Watch"
         Width="900" Height="560"
         MinWidth="480" MinHeight="320"
         WindowStartupLocation="CenterScreen"
-        ShowInTaskbar="True">
+        ShowInTaskbar="True"
+        WindowStyle="None"
+        StateChanged="Window_StateChanged">
+
+    <!-- Git #1006 — same custom title bar treatment as MainWindow (Git #894):
+         WindowStyle="None" + WindowChrome keeps real OS drag/resize/snap
+         behavior while a plain WPF Border replaces the native caption. -->
+    <WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="36"
+                             ResizeBorderThickness="6"
+                             GlassFrameThickness="0"
+                             CornerRadius="0"
+                             UseAeroCaptionButtons="False"/>
+    </WindowChrome.WindowChrome>
 
     <!-- Git #980 — Shane: "This should be a floaty panel so I can put it off to
          another monitor and watch as it progresses... 8 total builds running at
@@ -16,6 +30,33 @@
          Normal window chrome (not the borderless #937 floaty shape) precisely
          because Shane wants a real, movable, resizable "watch on another monitor"
          window, not a small always-on-top sticky. -->
+    <DockPanel LastChildFill="True">
+        <Border DockPanel.Dock="Top"
+                Background="{StaticResource CrustBrush}"
+                BorderBrush="{StaticResource Surface0Brush}"
+                BorderThickness="0,0,0,1"
+                Height="36">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Build Watch" Margin="12,0,0,0"
+                           VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold"
+                           Foreground="{StaticResource Subtext1Brush}"/>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" WindowChrome.IsHitTestVisibleInChrome="True">
+                    <Button x:Name="BtnMinimize" Style="{StaticResource CaptionButton}" ToolTip="Minimize" Click="BtnMinimize_Click">
+                        <TextBlock Text="&#xE921;" FontFamily="Segoe MDL2 Assets" FontSize="10"/>
+                    </Button>
+                    <Button x:Name="BtnMaximizeRestore" Style="{StaticResource CaptionButton}" ToolTip="Maximize" Click="BtnMaximizeRestore_Click">
+                        <TextBlock x:Name="BtnMaximizeRestoreIcon" Text="&#xE922;" FontFamily="Segoe MDL2 Assets" FontSize="10"/>
+                    </Button>
+                    <Button x:Name="BtnCloseWindow" Style="{StaticResource CaptionButtonClose}" ToolTip="Close" Click="BtnCloseWindow_Click">
+                        <TextBlock Text="&#xE8BB;" FontFamily="Segoe MDL2 Assets" FontSize="10"/>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
     <Border Background="{StaticResource BaseBrush}">
         <Grid Margin="8">
             <Grid.RowDefinitions>
@@ -76,4 +117,5 @@
             <UniformGrid x:Name="SlotGrid" Grid.Row="2" Rows="2" Columns="4"/>
         </Grid>
     </Border>
+    </DockPanel>
 </Window>

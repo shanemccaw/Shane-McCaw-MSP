@@ -2,12 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
-using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
 
@@ -24,73 +22,6 @@ namespace BuildConsole
 
     public partial class MainWindow : Window
     {
-        [DllImport("dwmapi.dll", PreserveSig = true)]
-        private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
-
-        // ── Git #894: WindowStyle="None" + WindowChrome maximize-covers-taskbar fix ──
-        // A well-known WPF gotcha (not specific to this app): a chromeless
-        // window's WindowState.Maximized ignores the taskbar and covers the
-        // whole monitor, including other apps' taskbars on multi-monitor
-        // setups, unless WM_GETMINMAXINFO is intercepted and clamped to the
-        // real work area. Native chrome (WindowStyle=SingleBorderWindow, the
-        // default before this issue) never had this problem - the OS handled
-        // it. Registered from OnSourceInitialized, right next to the
-        // existing dark-title-bar DWM call.
-        [StructLayout(LayoutKind.Sequential)]
-        private struct POINT { public int X; public int Y; }
-
-        [StructLayout(LayoutKind.Sequential)]
-        private struct RECT { public int Left, Top, Right, Bottom; }
-
-        [StructLayout(LayoutKind.Sequential)]
-        private struct MINMAXINFO
-        {
-            public POINT ptReserved;
-            public POINT ptMaxSize;
-            public POINT ptMaxPosition;
-            public POINT ptMinTrackSize;
-            public POINT ptMaxTrackSize;
-        }
-
-        [StructLayout(LayoutKind.Sequential)]
-        private struct MONITORINFO
-        {
-            public int cbSize;
-            public RECT rcMonitor;
-            public RECT rcWork;
-            public int dwFlags;
-        }
-
-        [DllImport("user32.dll")]
-        private static extern IntPtr MonitorFromWindow(IntPtr handle, int flags);
-
-        [DllImport("user32.dll")]
-        private static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
-
-        private const int MONITOR_DEFAULTTONEAREST = 0x00000002;
-        private const int WM_GETMINMAXINFO = 0x0024;
-
-        private static void ClampMaximizedBoundsToWorkArea(IntPtr hwnd, IntPtr lParam)
-        {
-            var mmi = Marshal.PtrToStructure<MINMAXINFO>(lParam);
-
-            IntPtr monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
-            if (monitor != IntPtr.Zero)
-            {
-                var monitorInfo = new MONITORINFO { cbSize = Marshal.SizeOf(typeof(MONITORINFO)) };
-                GetMonitorInfo(monitor, ref monitorInfo);
-                RECT workArea = monitorInfo.rcWork;
-                RECT monitorArea = monitorInfo.rcMonitor;
-
-                mmi.ptMaxPosition.X = Math.Abs(workArea.Left - monitorArea.Left);
-                mmi.ptMaxPosition.Y = Math.Abs(workArea.Top - monitorArea.Top);
-                mmi.ptMaxSize.X = Math.Abs(workArea.Right - workArea.Left);
-                mmi.ptMaxSize.Y = Math.Abs(workArea.Bottom - workArea.Top);
-            }
-
-            Marshal.StructureToPtr(mmi, lParam, true);
-        }
-
         // ── Layout constants ───────────────────────────────────────────────────
         private const double DefaultSidebarWidth  = 260;
         private const double DefaultQueueWidth    = 300;
@@ -505,25 +436,7 @@ namespace BuildConsole
         protected override void OnSourceInitialized(EventArgs e)
         {
             base.OnSourceInitialized(e);
-            var hwnd = new WindowInteropHelper(this).Handle;
-            try
-            {
-                int darkMode = 1;
-                DwmSetWindowAttribute(hwnd, 20, ref darkMode, sizeof(int)); // DWMWA_USE_IMMERSIVE_DARK_MODE
-                DwmSetWindowAttribute(hwnd, 19, ref darkMode, sizeof(int)); // Fallback for older Win10 builds
-            }
-            catch { }
-
-            // Git #894 — see ClampMaximizedBoundsToWorkArea's own doc comment.
-            HwndSource.FromHwnd(hwnd)?.AddHook((IntPtr wnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled) =>
-            {
-                if (msg == WM_GETMINMAXINFO)
-                {
-                    ClampMaximizedBoundsToWorkArea(wnd, lParam);
-                    handled = true;
-                }
-                return IntPtr.Zero;
-            });
+            Services.WindowChromeHelper.Setup(this);
         }
 
         // ── Git #894: custom title bar caption buttons ──────────────────────────
