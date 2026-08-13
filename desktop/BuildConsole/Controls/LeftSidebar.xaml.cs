@@ -176,7 +176,11 @@ namespace BuildConsole.Controls
         private void BtnRefreshGitBoard_Click(object sender, RoutedEventArgs e)
         {
             ActivityLog.Log("git-board.refresh", "manual refresh clicked");
-            PopulateGitTrackerBoard();
+            // Git #923 — a deliberate click should always mean a real,
+            // uncached fetch and a guaranteed repaint, not "maybe, if the
+            // 5-minute milestone cache happens to have expired and
+            // something in the open-issues list happens to have moved."
+            PopulateGitTrackerBoard(forceFresh: true);
         }
 
         public void ExpandPanel()
@@ -640,9 +644,10 @@ namespace BuildConsole.Controls
         private DateTime _lastMilestonesFetchUtc = DateTime.MinValue;
         private static readonly TimeSpan MilestonesCacheTtl = TimeSpan.FromMinutes(5);
 
-        private async System.Threading.Tasks.Task<List<GitHubApiClient.GitHubMilestoneInfo>> GetMilestonesThrottledAsync(GitHubApiClient client)
+        /// <summary>Git #923 — `forceFresh` skips the cache entirely (the manual Refresh button - a rare, deliberate click, not a background poll, same reasoning IssueFilter_Click's Done chip already gets).</summary>
+        private async System.Threading.Tasks.Task<List<GitHubApiClient.GitHubMilestoneInfo>> GetMilestonesThrottledAsync(GitHubApiClient client, bool forceFresh = false)
         {
-            if (_cachedMilestoneInfos != null && DateTime.UtcNow - _lastMilestonesFetchUtc < MilestonesCacheTtl)
+            if (!forceFresh && _cachedMilestoneInfos != null && DateTime.UtcNow - _lastMilestonesFetchUtc < MilestonesCacheTtl)
             {
                 return _cachedMilestoneInfos;
             }
@@ -652,7 +657,25 @@ namespace BuildConsole.Controls
             return _cachedMilestoneInfos;
         }
 
-        public async void PopulateGitTrackerBoard()
+        /// <summary>
+        /// Git #923 — Shane: "I had a chat delete a bunch of Milestones and
+        /// merge other things... It's been a couple of minutes and the Git
+        /// Board is not showing the changes." Two compounding bugs found:
+        /// (1) the manual Refresh button (BtnRefreshGitBoard_Click) called
+        /// this with no way to bypass #876's 5-minute milestone cache, so
+        /// clicking Refresh genuinely did nothing for up to 5 minutes after
+        /// a milestone-only change - `forceFresh` here is what that button
+        /// now passes. (2) Even past that cache window, the repaint-skip
+        /// signature below was computed from the OPEN ISSUES list only,
+        /// never from milestoneInfos - a milestone with zero open issues
+        /// (exactly what "delete a bunch of milestones" tends to be, see
+        /// #884's whole reason for backfilling EMPTY milestones onto the
+        /// board in the first place) changes nothing about any issue, so
+        /// the old signature never moved and the stale board would have
+        /// silently never repainted again, cache or no cache. Fixed by
+        /// folding milestoneInfos into the same signature.
+        /// </summary>
+        public async void PopulateGitTrackerBoard(bool forceFresh = false)
         {
             // Git #839 — the 🟢 Done view is a manual CLOSED snapshot; let a
             // background poll leave it be rather than repaint OPEN over it.
@@ -683,7 +706,7 @@ namespace BuildConsole.Controls
                 // list above is OPEN-only, so it can never supply a real
                 // "closed" count on its own (see GitMilestone.HasRealCounts).
                 // Git #876 (reopened) — throttled/cached, see GetMilestonesThrottledAsync.
-                milestoneInfos = await GetMilestonesThrottledAsync(client);
+                milestoneInfos = await GetMilestonesThrottledAsync(client, forceFresh);
                 SyncError?.Invoke(this, null);
             }
             catch (Exception ex)
@@ -698,9 +721,16 @@ namespace BuildConsole.Controls
             ActivityLog.Log("git-board.data", $"loaded {issues.Count} open issue(s), {issues.Count(i => i.IsEpic)} epic(s)");
 
             _boardShowsClosed = false;
-            var signature = System.Text.Json.JsonSerializer.Serialize(
-                issues.Select(i => new { i.Number, i.Title, i.State, i.SubIssueCount, i.MilestoneTitle }));
-            if (signature == _lastInProgressSignature) return;
+            // Git #923 — milestoneInfos folded in (Number/Title/counts per
+            // milestone), not just the open-issues list - see this method's
+            // own doc comment above for why issues alone missed milestone-
+            // only changes (deletes/merges with no open-issue side effect).
+            var signature = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                Issues = issues.Select(i => new { i.Number, i.Title, i.State, i.SubIssueCount, i.MilestoneTitle }),
+                Milestones = milestoneInfos.Select(m => new { m.Number, m.Title, m.OpenIssues, m.ClosedIssues }),
+            });
+            if (!forceFresh && signature == _lastInProgressSignature) return;
             _lastInProgressSignature = signature;
 
             BuildBoardFromGitHub(issues, milestoneInfos);
