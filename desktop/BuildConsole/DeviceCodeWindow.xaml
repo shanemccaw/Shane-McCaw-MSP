@@ -1,0 +1,124 @@
+<Window x:Class="BuildConsole.DeviceCodeWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Microsoft Sign-In"
+        Width="360" SizeToContent="Height"
+        MinWidth="300"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        Topmost="True"
+        ShowInTaskbar="False"
+        AllowsTransparency="True"
+        Background="Transparent">
+
+    <!-- Interactive device-code sign-in floaty for powerShellVerify. Same shape as the #937 Sticky
+         Notes / #973 LinkedIn floaties: borderless always-on-top window, the thin header strip is the
+         drag handle. Shows the real device code + a clickable devicelogin link so Shane can sign in
+         WITHOUT the run being aborted; the waiting pwsh process detects success and continues on its
+         own. Non-blocking — never a modal. -->
+    <Border Background="{StaticResource MantleBrush}"
+            BorderBrush="{StaticResource PeachBrush}"
+            BorderThickness="1"
+            CornerRadius="6">
+        <Grid Margin="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- Header strip: title + close, doubles as the drag handle -->
+            <Border x:Name="HeaderStrip" Grid.Row="0"
+                    Background="{StaticResource CrustBrush}"
+                    CornerRadius="6,6,0,0"
+                    Padding="8,5,6,5"
+                    MouseLeftButtonDown="Header_MouseLeftButtonDown">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="&#xE8FA;"
+                               FontFamily="Segoe MDL2 Assets" FontSize="13"
+                               Margin="0,0,6,0" VerticalAlignment="Center"
+                               Foreground="{StaticResource PeachBrush}"/>
+                    <TextBlock Grid.Column="1" Text="Microsoft Sign-In Needed"
+                               FontSize="12" FontWeight="SemiBold"
+                               VerticalAlignment="Center"
+                               Foreground="{StaticResource TextBrush}"/>
+                    <Button x:Name="BtnClose" Grid.Column="2"
+                            Content="&#x2715;"
+                            Style="{StaticResource IconButton}"
+                            FontSize="10"
+                            Padding="4,1,4,1"
+                            ToolTip="Dismiss (the verification keeps waiting in the background)"
+                            Click="BtnClose_Click"/>
+                </Grid>
+            </Border>
+
+            <!-- Instruction -->
+            <TextBlock Grid.Row="1"
+                       Margin="12,10,12,6"
+                       TextWrapping="Wrap"
+                       FontSize="12"
+                       Foreground="{StaticResource Subtext0Brush}"
+                       Text="A test wants to verify Microsoft Graph as you. Open the link, enter the code below, and sign in — the test keeps waiting and continues on its own once you're signed in."/>
+
+            <!-- The device code + copy -->
+            <Border Grid.Row="2"
+                    Margin="12,4,12,4"
+                    Background="{StaticResource BaseBrush}"
+                    BorderBrush="{StaticResource Surface0Brush}"
+                    BorderThickness="1"
+                    CornerRadius="5"
+                    Padding="10,8,10,8">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBox x:Name="CodeText" Grid.Column="0"
+                             Text="—"
+                             IsReadOnly="True"
+                             BorderThickness="0"
+                             Background="Transparent"
+                             Foreground="{StaticResource YellowBrush}"
+                             FontFamily="Consolas, Cascadia Mono, monospace"
+                             FontSize="22" FontWeight="Bold"
+                             VerticalAlignment="Center"/>
+                    <Button x:Name="BtnCopy" Grid.Column="1"
+                            Content="Copy"
+                            Style="{StaticResource IconButton}"
+                            Padding="8,3,8,3"
+                            VerticalAlignment="Center"
+                            ToolTip="Copy the code to the clipboard"
+                            Click="BtnCopy_Click"/>
+                </Grid>
+            </Border>
+
+            <!-- The clickable verification link -->
+            <TextBlock Grid.Row="3"
+                       Margin="12,4,12,2"
+                       FontSize="12"
+                       TextWrapping="Wrap">
+                <Hyperlink x:Name="UrlLink" NavigateUri="https://microsoft.com/devicelogin"
+                           RequestNavigate="UrlLink_RequestNavigate"
+                           Foreground="{StaticResource BlueBrush}">
+                    <Run x:Name="UrlRun" Text="https://microsoft.com/devicelogin"/>
+                </Hyperlink>
+            </TextBlock>
+
+            <!-- Status line (waiting / signed in / timed out) -->
+            <TextBlock x:Name="StatusText" Grid.Row="5"
+                       Margin="12,6,12,12"
+                       FontSize="11"
+                       TextWrapping="Wrap"
+                       Foreground="{StaticResource PeachBrush}"
+                       Text="Waiting for you to sign in…"/>
+        </Grid>
+    </Border>
+</Window>

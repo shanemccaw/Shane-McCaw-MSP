@@ -4,6 +4,8 @@ using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace BuildConsole.Services
@@ -77,24 +79,71 @@ namespace BuildConsole.Services
 
         private const int DefaultTimeoutMs = 60000;
 
+        // Interactive device-code sign-in window. When a Play Test / manual run hits a device-code
+        // prompt (no valid cached delegated token), we do NOT abort like the headless path does —
+        // we surface the real code + URL to Shane and keep the pwsh process alive this long so he can
+        // actually complete sign-in in a browser. Connect-MgGraph is polling the whole time; the
+        // instant sign-in succeeds it proceeds to the verification cmdlet and exits on its own, so no
+        // manual re-run is needed. Deliberately generous (5 min) to cover opening a browser + MFA.
+        private const int InteractiveDeviceCodeWaitMs = 300000;
+
         /// <summary>Git #810 — raised after each powerShellVerify step completes so the Test Runner window renders a telemetry card live during the run, same as every other executor.</summary>
         public static event Action<TestStepResult>? StepCompleted;
 
-        public static async Task<List<TestStepResult>> RunAsync(TestManifest manifest, TestRunVariables vars)
+        /// <summary>The parsed contents of a Connect-MgGraph device-code prompt — the real code and
+        /// verification URL pulled out of the child pwsh's output so the host can show them.</summary>
+        public sealed class DeviceCodePrompt
+        {
+            public string UserCode = "";
+            public string VerificationUrl = "";
+            /// <summary>The raw device-code instruction line, for display fallback.</summary>
+            public string Message = "";
+        }
+
+        /// <summary>How a surfaced device-code prompt ended, so the host can update/close its floaty.</summary>
+        public sealed class DeviceCodeResolution
+        {
+            public bool SignedIn;
+            public bool TimedOut;
+            public string Message = "";
+        }
+
+        /// <summary>
+        /// Interactive device-code bridge. Supplied by the host ONLY for an interactive run (Play Test /
+        /// manual trigger). When present, a device-code prompt is parsed and surfaced non-blockingly
+        /// (via <see cref="OnPrompt"/>) and the pwsh process is given real time to complete sign-in
+        /// instead of being aborted; <see cref="OnResolved"/> fires once that process finishes.
+        /// When null (the default — the #967 scheduled sweep and the #898 headless remote trigger both
+        /// pass null), a device-code prompt keeps its original fast-abort behaviour with no UI.
+        /// </summary>
+        public sealed class DeviceCodeInteraction
+        {
+            /// <summary>Invoked (off the UI thread) the first time a device-code prompt is parsed from
+            /// the child's output. The host marshals to the UI and shows a non-blocking floaty.</summary>
+            public Action<DeviceCodePrompt>? OnPrompt;
+
+            /// <summary>Invoked once the waiting pwsh process finishes after a prompt was shown — either
+            /// signed in (connection established, cmdlet proceeding) or timed out waiting.</summary>
+            public Action<DeviceCodeResolution>? OnResolved;
+        }
+
+        public static async Task<List<TestStepResult>> RunAsync(TestManifest manifest, TestRunVariables vars,
+            DeviceCodeInteraction? deviceCode = null)
         {
             var results = new List<TestStepResult>();
             if (manifest.PowerShellVerify.Count == 0) return results;
 
             for (int i = 0; i < manifest.PowerShellVerify.Count; i++)
             {
-                var result = await RunOneAsync(vars, manifest.PowerShellVerify[i], i, manifest.PowerShellVerify.Count);
+                var result = await RunOneAsync(vars, manifest.PowerShellVerify[i], i, manifest.PowerShellVerify.Count, deviceCode);
                 results.Add(result);
                 StepCompleted?.Invoke(result);
             }
             return results;
         }
 
-        private static async Task<TestStepResult> RunOneAsync(TestRunVariables vars, JsonElement step, int index, int total)
+        private static async Task<TestStepResult> RunOneAsync(TestRunVariables vars, JsonElement step, int index, int total,
+            DeviceCodeInteraction? deviceCode)
         {
             var sw = Stopwatch.StartNew();
 
@@ -181,14 +230,17 @@ namespace BuildConsole.Services
             // out-of-band pwsh auth/connection phase in flight, same principle as UiTestExecutor's
             // captureResponse-armed logging: a hang here (e.g. a device-code prompt) should be
             // immediately visible as "still connecting" rather than a silent gap in the log.
+            bool interactive = deviceCode != null;
             ActivityLog.Log(Channel,
-                $"[{index + 1}/{total}] {label}: connecting via delegated Connect-MgGraph (silent if a valid cached token exists; aborts on a device-code prompt; hard ceiling {timeoutMs}ms)...");
+                interactive
+                    ? $"[{index + 1}/{total}] {label}: connecting via delegated Connect-MgGraph (silent if a valid cached token exists; on a device-code prompt the real code is surfaced and sign-in is awaited up to {InteractiveDeviceCodeWaitMs}ms; pre-prompt ceiling {timeoutMs}ms)..."
+                    : $"[{index + 1}/{total}] {label}: connecting via delegated Connect-MgGraph (silent if a valid cached token exists; aborts on a device-code prompt; hard ceiling {timeoutMs}ms)...");
 
             var connectSw = Stopwatch.StartNew();
             PsRunOutcome outcome;
             try
             {
-                outcome = await RunPwshAsync(resolvedCmdlet, timeoutMs, allowedTestbedTenants);
+                outcome = await RunPwshAsync(resolvedCmdlet, timeoutMs, allowedTestbedTenants, deviceCode);
             }
             catch (Exception ex)
             {
@@ -288,12 +340,23 @@ namespace BuildConsole.Services
 
         /// <summary>
         /// Runs the delegated Connect-MgGraph + verification cmdlet in a pwsh 7 child process, capturing
-        /// its output as structured JSON. Never blocks indefinitely: aborts the instant a device-code
-        /// prompt is detected on the child's output, and enforces a hard <paramref name="timeoutMs"/>
-        /// ceiling as a backstop.
+        /// its output as structured JSON.
+        ///
+        /// Two device-code behaviours, selected by whether the host supplied a <paramref name="deviceCode"/>:
+        ///  • Headless (deviceCode == null — the #967 scheduled sweep, the #898 remote trigger): aborts the
+        ///    instant a device-code prompt is detected on the child's output, with a hard
+        ///    <paramref name="timeoutMs"/> ceiling as a backstop. Never blocks. Unchanged from before.
+        ///  • Interactive (deviceCode != null — Play Test / manual trigger): on a device-code prompt it
+        ///    parses the real code + URL, surfaces them non-blockingly via <c>deviceCode.OnPrompt</c>, and
+        ///    keeps the process alive up to <see cref="InteractiveDeviceCodeWaitMs"/> so Shane can complete
+        ///    sign-in — after which Connect-MgGraph proceeds to the verification cmdlet automatically. The
+        ///    <paramref name="timeoutMs"/> ceiling still bounds the PRE-prompt phase, so a connect that
+        ///    hangs without ever printing a code is still cut off.
         /// </summary>
-        private static async Task<PsRunOutcome> RunPwshAsync(string resolvedCmdlet, int timeoutMs, IReadOnlyList<string> allowedTestbedTenants)
+        private static async Task<PsRunOutcome> RunPwshAsync(string resolvedCmdlet, int timeoutMs,
+            IReadOnlyList<string> allowedTestbedTenants, DeviceCodeInteraction? deviceCode)
         {
+            bool interactive = deviceCode != null;
             string script = BuildScript(resolvedCmdlet, allowedTestbedTenants);
             string encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(script));
 
@@ -313,7 +376,11 @@ namespace BuildConsole.Services
 
             var stdout = new StringBuilder();
             var stderr = new StringBuilder();
+            // Headless: signals "abort now". Interactive: signals "a device-code prompt appeared, surface it
+            // and wait" (carrying the parsed code/URL). Only one is ever armed, per `interactive`.
             var authNeeded = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var deviceCodeSeen = new TaskCompletionSource<DeviceCodePrompt>(TaskCreationOptions.RunContinuationsAsynchronously);
+            int devicePromptFired = 0;
 
             using var proc = new Process { StartInfo = psi, EnableRaisingEvents = true };
 
@@ -321,9 +388,21 @@ namespace BuildConsole.Services
             {
                 if (data == null) return;
                 lock (sink) sink.AppendLine(data);
-                // An interactive device-code prompt means we have no usable cached token — abort
-                // immediately rather than let the SDK block polling for a human to sign in.
-                if (LooksLikeAuthPrompt(data)) authNeeded.TrySetResult(true);
+                if (!LooksLikeAuthPrompt(data)) return;
+
+                if (interactive)
+                {
+                    // We have no usable cached token, but this is an interactive run — DON'T abort.
+                    // Parse the real code/URL (from the full snapshot so the whole instruction line is
+                    // available) and signal the wait loop to surface it and give the flow real time.
+                    if (Interlocked.Exchange(ref devicePromptFired, 1) == 0)
+                        deviceCodeSeen.TrySetResult(ParseDeviceCode(Snapshot(stdout, stderr)));
+                }
+                else
+                {
+                    // Headless run — abort immediately rather than let the SDK block polling for a human.
+                    authNeeded.TrySetResult(true);
+                }
             }
 
             proc.OutputDataReceived += (_, e) => OnLine(stdout, e.Data);
@@ -344,11 +423,60 @@ namespace BuildConsole.Services
             proc.BeginErrorReadLine();
 
             var exitTask = proc.WaitForExitAsync();
-            var completed = await Task.WhenAny(exitTask, authNeeded.Task, Task.Delay(timeoutMs));
+            var completed = await Task.WhenAny(exitTask, authNeeded.Task, deviceCodeSeen.Task, Task.Delay(timeoutMs));
+
+            if (completed == deviceCodeSeen.Task)
+            {
+                // Interactive-only branch. Surface the real code/URL and keep the process alive while Shane
+                // signs in — the process proceeds to the cmdlet and exits on its own once auth completes.
+                var prompt = deviceCodeSeen.Task.Result;
+                ActivityLog.Log(Channel,
+                    $"device-code sign-in prompt detected (code {(string.IsNullOrEmpty(prompt.UserCode) ? "?" : prompt.UserCode)}, url {prompt.VerificationUrl}) — surfacing to Shane and waiting up to {InteractiveDeviceCodeWaitMs}ms for interactive sign-in (not aborting).");
+                try { deviceCode!.OnPrompt?.Invoke(prompt); } catch { /* host UI is best-effort */ }
+
+                var afterPrompt = await Task.WhenAny(exitTask, Task.Delay(InteractiveDeviceCodeWaitMs));
+                if (afterPrompt != exitTask)
+                {
+                    // Shane never completed sign-in in time. Now abort (with the extended window spent).
+                    TryKill(proc);
+                    string rawTimeout = Snapshot(stdout, stderr);
+                    ActivityLog.Log(Channel,
+                        $"device-code sign-in NOT completed within {InteractiveDeviceCodeWaitMs}ms — timed out waiting; aborted.");
+                    try { deviceCode!.OnResolved?.Invoke(new DeviceCodeResolution { TimedOut = true, Message = $"Timed out waiting for sign-in ({InteractiveDeviceCodeWaitMs / 1000}s)." }); }
+                    catch { /* best-effort */ }
+                    return new PsRunOutcome
+                    {
+                        Kind = PsOutcomeKind.Timeout,
+                        Detail = $"device-code sign-in was surfaced but not completed within {InteractiveDeviceCodeWaitMs / 1000}s — sign in via the code/link, then re-run.",
+                        RawPreview = Truncate(rawTimeout, 400),
+                        ConnectedTenant = Contains(rawTimeout, TenantMarker) ? AfterMarker(rawTimeout, TenantMarker) : "",
+                    };
+                }
+
+                // Signed in — the process ran to completion. Classify and tell the floaty it succeeded.
+                try { proc.WaitForExit(); } catch { /* already exited */ }
+                string signedInText = Snapshot(stdout, stderr);
+                var signedInOutcome = Classify(signedInText);
+                bool connected = signedInOutcome.Kind != PsOutcomeKind.AuthRequired;
+                ActivityLog.Log(Channel,
+                    $"device-code sign-in completed — connection {(connected ? "succeeded" : "still not established")}; outcome {signedInOutcome.Kind}"
+                    + (string.IsNullOrEmpty(signedInOutcome.ConnectedTenant) ? "" : $" (tenant {signedInOutcome.ConnectedTenant})") + ".");
+                try
+                {
+                    deviceCode!.OnResolved?.Invoke(new DeviceCodeResolution
+                    {
+                        SignedIn = connected,
+                        Message = connected ? "Signed in — continuing verification." : "Sign-in didn't establish a Graph connection.",
+                    });
+                }
+                catch { /* best-effort */ }
+                return signedInOutcome;
+            }
 
             if (completed != exitTask)
             {
-                // Either a device-code prompt was seen, or we hit the hard ceiling. Kill and classify.
+                // Headless device-code abort (authNeeded), OR the hard ceiling elapsed before any
+                // device-code prompt appeared (in either mode). Kill and classify.
                 TryKill(proc);
                 string raw = Snapshot(stdout, stderr);
                 bool sawPrompt = completed == authNeeded.Task || LooksLikeAuthPrompt(raw);
@@ -365,6 +493,47 @@ namespace BuildConsole.Services
             try { proc.WaitForExit(); } catch { /* already exited */ }
             string outText = Snapshot(stdout, stderr);
             return Classify(outText);
+        }
+
+        /// <summary>Pulls the real device code and verification URL out of the Graph SDK's device-code
+        /// instruction text (e.g. "To sign in, use a web browser to open the page
+        /// https://microsoft.com/devicelogin and enter the code ABCD-EFGH to authenticate."). Falls back
+        /// to the well-known devicelogin URL and an empty code if the exact shape isn't matched, so the
+        /// floaty still shows a usable link.</summary>
+        private static DeviceCodePrompt ParseDeviceCode(string text)
+        {
+            string s = text ?? "";
+            // Prefer the single line that actually carries the prompt, so a URL/token elsewhere in the
+            // accumulated output can't be mistaken for the code.
+            string line = "";
+            foreach (var l in s.Split('\n'))
+            {
+                if (LooksLikeAuthPrompt(l)) { line = l.Trim(); break; }
+            }
+            string src = line.Length > 0 ? line : s;
+
+            // URL — prefer one pointing at devicelogin / microsoft.com, else the first http(s) URL.
+            string url = "";
+            var urlMatches = Regex.Matches(src, @"https?://[^\s""']+", RegexOptions.IgnoreCase);
+            foreach (Match m in urlMatches)
+            {
+                if (m.Value.IndexOf("devicelogin", StringComparison.OrdinalIgnoreCase) >= 0
+                    || m.Value.IndexOf("microsoft.com", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    url = m.Value;
+                    break;
+                }
+            }
+            if (url.Length == 0 && urlMatches.Count > 0) url = urlMatches[0].Value;
+            if (url.Length == 0) url = "https://microsoft.com/devicelogin";
+            url = url.TrimEnd('.', ',', ')', ']', '"', '\'');
+
+            // Code — "enter the code XXXX to authenticate". Codes are alphanumeric, sometimes hyphenated.
+            string code = "";
+            var codeMatch = Regex.Match(src, @"enter the code\s+([A-Za-z0-9][A-Za-z0-9-]{3,})", RegexOptions.IgnoreCase);
+            if (codeMatch.Success) code = codeMatch.Groups[1].Value;
+
+            return new DeviceCodePrompt { UserCode = code, VerificationUrl = url, Message = Truncate(src.Trim(), 400) };
         }
 
         /// <summary>Classifies fully-flushed pwsh output by the sentinels the script emits.</summary>

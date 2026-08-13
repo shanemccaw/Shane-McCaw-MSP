@@ -3816,7 +3816,47 @@ namespace BuildConsole
             // stream, same test-results/ file — no separate output path. Because the #898 remote
             // trigger runs this exact RunManifestAsync, a Claude-Code-triggered run includes and
             // reports powerShellVerify with no special casing.
-            var powerShellResults = await BuildConsole.Services.PowerShellTestExecutor.RunAsync(manifest, vars);
+            // Interactive device-code bridge. On a Play Test / manual run (NOT the #967 scheduled sweep
+            // or the #898 headless remote trigger — same interactive test as the screenshot review below:
+            // !isRegression && !_testTriggerBusy), a Connect-MgGraph device-code prompt is surfaced in a
+            // non-blocking floaty (real code + clickable devicelogin link) and the pwsh process is given
+            // real time to complete sign-in, then continues to the verification cmdlet automatically — no
+            // manual re-run. Headless runs pass null and keep today's fast-abort behaviour unchanged.
+            BuildConsole.Services.PowerShellTestExecutor.DeviceCodeInteraction? deviceCodeUi = null;
+            if (!isRegression && !_testTriggerBusy)
+            {
+                DeviceCodeWindow? dcWin = null;
+                deviceCodeUi = new BuildConsole.Services.PowerShellTestExecutor.DeviceCodeInteraction
+                {
+                    OnPrompt = prompt => Dispatcher.Invoke(() =>
+                    {
+                        try
+                        {
+                            dcWin?.Close();
+                            dcWin = new DeviceCodeWindow(prompt) { Owner = this };
+                            dcWin.Closed += (_, _) => dcWin = null;
+                            dcWin.Show();
+                        }
+                        catch (Exception ex)
+                        {
+                            BuildConsole.Services.ActivityLog.Log("testing.powershell-verify",
+                                $"device-code floaty failed to show: {ex.Message}");
+                        }
+                    }),
+                    OnResolved = res => Dispatcher.Invoke(() =>
+                    {
+                        try
+                        {
+                            if (dcWin == null) return;
+                            if (res.TimedOut) dcWin.MarkTimedOut(res.Message);
+                            else dcWin.MarkSignedIn(res.Message);
+                        }
+                        catch { /* best-effort UI update */ }
+                    }),
+                };
+            }
+
+            var powerShellResults = await BuildConsole.Services.PowerShellTestExecutor.RunAsync(manifest, vars, deviceCodeUi);
             runResult.AddRange(powerShellResults);
 
             if (powerShellResults.Count > 0)
