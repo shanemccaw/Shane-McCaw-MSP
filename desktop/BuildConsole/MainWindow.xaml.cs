@@ -275,7 +275,9 @@ namespace BuildConsole
             _replitWatcher = new BuildConsole.Services.ReplitWatcherService(
                 ReplitWatcherWebView, EnsureWebViewInitializedAsync);
             _replitWatcher.StatusChanged += ReplitWatcher_StatusChanged;
-            LeftSidebar.ReplitWatcherSettingsChanged += (s, e) => _replitWatcher?.ApplyConfig();
+            // Git #954 — the Replit watcher's "re-apply on save" hook moved onto the
+            // Settings tab (SettingsTabView.ReplitWatcherSettingsChanged), wired per
+            // tab instance in OpenSettingsTab; the sidebar no longer owns it.
             _replitWatcher.ApplyConfig();
 
             // Git #815 — surfaces a failed poll as a real, visible signal
@@ -342,6 +344,11 @@ namespace BuildConsole
             // #893/#894 multi-pane editor tab infra every other tab uses.
             LeftSidebar.MilestoneTabRequested += (s, m) => OpenMilestoneDetailTab(m);
             LeftSidebar.GitDetailTabRequested += (s, issue) => OpenGitIssueDetailTab(issue);
+
+            // Git #954 (Epic #803) — the sidebar's Settings view is a category nav
+            // list now; a click opens (or focuses) the native Settings tab scrolled
+            // to that section (same opens-or-focuses infra as the #921 detail tabs).
+            LeftSidebar.SettingsCategoryRequested += (s, category) => OpenSettingsTab(category);
             _buildTailTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
             _buildTailTimer.Tick += async (_, _) => await PollChatTabBuildStateAsync();
             _buildTailTimer.Start();
@@ -2200,15 +2207,27 @@ namespace BuildConsole
             SetBottomPanel(true, tabIndex: 0);
         }
 
-        /// <summary>Git #834 — the File > Settings menu item was dead (no Click handler); routes through ActivityBar.SelectSettings() so it lands on the exact same SettingsView the cog icon already opens (expanding the sidebar first if it's currently collapsed).</summary>
+        /// <summary>Git #834 / #954 — File > Settings selects the sidebar's Settings
+        /// category nav (via ActivityBar.SelectSettings, which also expands a
+        /// collapsed sidebar) AND opens/focuses the native Settings tab directly, so
+        /// it works even when Settings is already the active sidebar view (a re-check
+        /// of an already-checked RadioButton fires no ActiveViewChanged event).</summary>
         private void MenuSettings_Click(object sender, RoutedEventArgs e)
         {
             ActivityBar.SelectSettings();
+            OpenSettingsTab();
         }
 
         // ── ActivityBar → LeftSidebar ─────────────────────────────────────────
         private void ActivityBar_ActiveViewChanged(object? sender, string view)
         {
+            // Git #954 (Epic #803) — the cog now opens/focuses the native Settings
+            // tab instead of cramming everything into the sidebar; the sidebar's
+            // Settings view is just the category nav list. Done before the collapse
+            // toggle below so the tab still opens even on an already-active re-click.
+            if (view == "Settings")
+                OpenSettingsTab();
+
             // VS Code behavior: clicking the already-active icon collapses the sidebar
             if (ColSidebar.Width.Value > 0 && LeftSidebar.GetCurrentView() == view)
             {

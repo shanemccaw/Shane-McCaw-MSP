@@ -404,144 +404,85 @@
                     </TreeView>
                 </DockPanel>
             </Grid>
+            <!-- Git #954 (Epic #803) — the sidebar's Settings view is now just a
+                 category navigation list. Shane: "The left panel can be used for
+                 navigation inside the settings page." Every real field moved out to
+                 the native SettingsTabView tab (Controls/SettingsTabView.xaml);
+                 clicking a category here opens (or focuses) that tab and scrolls to
+                 the matching section via MainWindow.OpenSettingsTab. No settings
+                 content lives in the sidebar anymore — one source of truth, the tab. -->
             <Grid x:Name="SettingsView" Visibility="Collapsed">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
-                <StackPanel Margin="12">
-                    <TextBlock Text="Settings" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,12"/>
-                    <TextBlock Text="Claude endpoint" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
-                    <TextBox Text="https://claude.ai" Height="26" FontSize="12" Margin="0,0,0,12" IsReadOnly="True"/>
+                <StackPanel Margin="8,10">
+                    <TextBlock Text="Settings" FontSize="14" FontWeight="SemiBold" Margin="4,0,0,4"/>
+                    <TextBlock Text="Pick a section to open the full Settings tab there."
+                               FontSize="10" Foreground="{StaticResource Subtext0Brush}" TextWrapping="Wrap" Margin="4,0,0,10"/>
 
-                    <!-- Read-only — the real value lives in scripts/build-queue-watcher.config.json,
-                         the SAME config the extension's watcher script uses. Edit it there, not here,
-                         so there's one source of truth instead of two configs drifting apart. -->
-                    <TextBlock Text="Build Tracker API (from scripts\build-queue-watcher.config.json)"
-                               FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
-                    <TextBox x:Name="ApiBaseUrlDisplay" Text="(not connected)" Height="26" FontSize="12" Margin="0,0,0,4" IsReadOnly="True"/>
-                    <TextBlock x:Name="ConfigPathText" Text="" FontSize="10" Foreground="{StaticResource Subtext0Brush}"
-                               Margin="0,0,0,12" TextWrapping="Wrap"/>
-
-                    <TextBlock Text="Theme" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
-                    <ComboBox Height="26" FontSize="12" Margin="0,0,0,12">
-                        <ComboBoxItem Content="Catppuccin Mocha" IsSelected="True"/>
-                        <ComboBoxItem Content="Catppuccin Latte"/>
-                        <ComboBoxItem Content="One Dark Pro"/>
-                    </ComboBox>
-
-                    <!-- Git #834 — Shane: "Use that to hold my PAT in app settings or
-                         something." Read/write local store (%AppData%\BuildConsole\settings.json,
-                         never committed to git) — used directly by the Git Board's real GitHub
-                         issue search (QuickAddIssueBox). -->
-                    <TextBlock Text="GitHub Personal Access Token" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
-                    <PasswordBox x:Name="GitHubPatBox" Height="26" FontSize="12" Margin="0,0,0,6"/>
-                    <Button x:Name="BtnSaveGitHubPat" Content="Save" Style="{StaticResource PrimaryButton}"
-                            HorizontalAlignment="Left" Padding="16,4" Click="BtnSaveGitHubPat_Click"/>
-                    <TextBlock x:Name="GitHubPatSavedText" Text="" FontSize="10" Foreground="{StaticResource GreenBrush}" Margin="0,4,0,0"/>
-
-                    <!-- Git #880 — Shane: same pattern as #834's GitHub PAT field - a masked
-                         input in the existing SettingsView, persisted in the local
-                         BuildConsoleSettings store, so zohoTests can authenticate real Zoho
-                         API calls. -->
-                    <TextBlock Text="Zoho API Token" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
-                    <PasswordBox x:Name="ZohoApiTokenBox" Height="26" FontSize="12" Margin="0,0,0,6"/>
-                    <Button x:Name="BtnSaveZohoApiToken" Content="Save" Style="{StaticResource PrimaryButton}"
-                            HorizontalAlignment="Left" Padding="16,4" Click="BtnSaveZohoApiToken_Click"/>
-                    <TextBlock x:Name="ZohoApiTokenSavedText" Text="" FontSize="10" Foreground="{StaticResource GreenBrush}" Margin="0,4,0,0"/>
-
-                    <!-- Git #922 (Epic #803) — Shane: right-click an epic with NO linked chat →
-                         "New Epic Chat" opens THIS URL in a new tab, prefilled with the GitHub PAT
-                         then "Epic #N". BuildConsole's own copy of the browser extension's
-                         "New chat project URL" (that lives in chrome.storage.local; this in the same
-                         %AppData%\BuildConsole\settings.json store — separate storage, same concept,
-                         since BuildConsole's WebView2 isn't real Chrome with the extension). -->
-                    <TextBlock Text="New Chat Project URL (epic right-click → New Chat)" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
-                    <TextBox x:Name="EpicChatProjectUrlBox" Height="26" FontSize="12" Margin="0,0,0,6"/>
-                    <Button x:Name="BtnSaveEpicChatProjectUrl" Content="Save" Style="{StaticResource PrimaryButton}"
-                            HorizontalAlignment="Left" Padding="16,4" Click="BtnSaveEpicChatProjectUrl_Click"/>
-                    <TextBlock x:Name="EpicChatProjectUrlSavedText" Text="" FontSize="10" Foreground="{StaticResource GreenBrush}" Margin="0,4,0,0"/>
-
-                    <!-- Git #864 — Shane: "a configuration in the settings might actually be
-                         better" for the ActivityBar's Web Tools popout. Same local store as the
-                         PAT above (%AppData%\BuildConsole\settings.json), extended with a
-                         WebTools list instead of a second settings mechanism. -->
-                    <Border Height="1" Background="{StaticResource Surface0Brush}" Margin="0,16,0,12"/>
-                    <TextBlock Text="Web Tools" FontSize="12" FontWeight="SemiBold" Margin="0,0,0,4"/>
-                    <TextBlock Text="Shown in the ActivityBar's Web Tools popout — click to open in a new tab."
-                               FontSize="10" Foreground="{StaticResource Subtext0Brush}" TextWrapping="Wrap" Margin="0,0,0,8"/>
-
-                    <StackPanel x:Name="WebToolsSettingsList" Margin="0,0,0,8"/>
-
-                    <Border Background="{StaticResource Surface0Brush}" CornerRadius="4" Padding="8" Margin="0,0,0,4">
-                        <StackPanel>
-                            <TextBlock Text="Name" FontSize="10" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,2"/>
-                            <TextBox x:Name="WebToolNameBox" Height="24" FontSize="12" Margin="0,0,0,6"/>
-                            <TextBlock Text="URL" FontSize="10" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,2"/>
-                            <TextBox x:Name="WebToolUrlBox" Height="24" FontSize="12" Margin="0,0,0,6"/>
-                            <TextBlock Text="Icon (optional emoji)" FontSize="10" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,2"/>
-                            <TextBox x:Name="WebToolIconBox" Height="24" FontSize="12" Margin="0,0,0,8"/>
-                            <Button x:Name="BtnAddWebTool" Content="Add Web Tool" Style="{StaticResource PrimaryButton}"
-                                    HorizontalAlignment="Left" Padding="16,4" Click="BtnAddWebTool_Click"/>
+                    <Button Style="{StaticResource IconButton}" HorizontalContentAlignment="Left"
+                            Padding="10,8" Margin="0,0,0,4" Tag="General" Click="SidebarSettingsCategory_Click">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="⚙" FontSize="14" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="General" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"/>
+                                <TextBlock Text="Claude endpoint, Theme" FontSize="10" Foreground="{StaticResource Subtext0Brush}"/>
+                            </StackPanel>
                         </StackPanel>
-                    </Border>
+                    </Button>
 
-                    <!-- Git #953 (Epic #803) — Shane: "How do I set things like
-                         TEST_PORTAL_PASSWORD?" A general add/edit/remove NAME=value store
-                         (same local %AppData%\BuildConsole\settings.json, same round-trip
-                         pattern as Web Tools above). A manifest run resolves {{NAME}}
-                         against these BEFORE per-run extracted values — the same precedence
-                         {{DEPLOY_URL}}/{{SECRET_KEY}} already have. This replaces the old
-                         hardcoded two-name substitution; TEST_*/GRAPH_TEST_* placeholders go
-                         here. (DEPLOY_URL/SECRET_KEY still come from
-                         build-queue-watcher.config.json — no need to re-enter them here.) -->
-                    <Border Height="1" Background="{StaticResource Surface0Brush}" Margin="0,16,0,12"/>
-                    <TextBlock Text="Test Environment Variables" FontSize="12" FontWeight="SemiBold" Margin="0,0,0,4"/>
-                    <TextBlock Text="NAME=value pairs a manifest run resolves for {{NAME}} placeholders (e.g. TEST_PORTAL_PASSWORD, GRAPH_TEST_TENANT_ID). Checked before any value an earlier step extracted."
-                               FontSize="10" Foreground="{StaticResource Subtext0Brush}" TextWrapping="Wrap" Margin="0,0,0,8"/>
-
-                    <StackPanel x:Name="TestEnvVarsSettingsList" Margin="0,0,0,8"/>
-
-                    <Border Background="{StaticResource Surface0Brush}" CornerRadius="4" Padding="8" Margin="0,0,0,4">
-                        <StackPanel>
-                            <TextBlock Text="Name" FontSize="10" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,2"/>
-                            <TextBox x:Name="TestEnvVarNameBox" Height="24" FontSize="12" Margin="0,0,0,6"/>
-                            <TextBlock Text="Value" FontSize="10" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,2"/>
-                            <TextBox x:Name="TestEnvVarValueBox" Height="24" FontSize="12" Margin="0,0,0,8"/>
-                            <Button x:Name="BtnAddTestEnvVar" Content="Add Variable" Style="{StaticResource PrimaryButton}"
-                                    HorizontalAlignment="Left" Padding="16,4" Click="BtnAddTestEnvVar_Click"/>
+                    <Button Style="{StaticResource IconButton}" HorizontalContentAlignment="Left"
+                            Padding="10,8" Margin="0,0,0,4" Tag="Credentials" Click="SidebarSettingsCategory_Click">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="🔑" FontSize="14" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="Credentials" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"/>
+                                <TextBlock Text="GitHub PAT, Zoho API Token" FontSize="10" Foreground="{StaticResource Subtext0Brush}"/>
+                            </StackPanel>
                         </StackPanel>
-                    </Border>
+                    </Button>
 
-                    <!-- Git #902 (sub-issue of Epic #803) — Shane: "Replit shuts its dev
-                         mode down after ~10 min of inactivity... watch the site... when it
-                         sees the services off it waits 20 seconds then turns them back on."
-                         Same local %AppData%\BuildConsole\settings.json store as the fields
-                         above. The Run-button selector is editable because its real value
-                         only exists in Shane's live authenticated Replit IDE and must be
-                         calibrated there — it cannot be hardcoded from a sandbox. -->
-                    <Border Height="1" Background="{StaticResource Surface0Brush}" Margin="0,16,0,12"/>
-                    <TextBlock Text="Replit Idle Watcher" FontSize="12" FontWeight="SemiBold" Margin="0,0,0,4"/>
-                    <TextBlock Text="Watches the deployed app in the background and clicks Run on the Replit dashboard when it goes to sleep. Requires you to be logged into Replit in the app, and the Run-button selector calibrated to your live IDE."
-                               FontSize="10" Foreground="{StaticResource Subtext0Brush}" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                    <Button Style="{StaticResource IconButton}" HorizontalContentAlignment="Left"
+                            Padding="10,8" Margin="0,0,0,4" Tag="TestEnvironment" Click="SidebarSettingsCategory_Click">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="🧪" FontSize="14" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="Test Environment" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"/>
+                                <TextBlock Text="Manifest {{NAME}} variables" FontSize="10" Foreground="{StaticResource Subtext0Brush}"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Button>
 
-                    <CheckBox x:Name="ReplitWatcherEnabledCheck" Content="Enable watcher"
-                              FontSize="12" Foreground="{StaticResource TextBrush}" Margin="0,0,0,8"/>
+                    <Button Style="{StaticResource IconButton}" HorizontalContentAlignment="Left"
+                            Padding="10,8" Margin="0,0,0,4" Tag="ChatIntegration" Click="SidebarSettingsCategory_Click">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="💬" FontSize="14" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="Chat Integration" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"/>
+                                <TextBlock Text="New Chat Project URL" FontSize="10" Foreground="{StaticResource Subtext0Brush}"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Button>
 
-                    <TextBlock Text="Check interval (minutes)" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
-                    <TextBox x:Name="ReplitWatcherIntervalBox" Height="26" FontSize="12" Margin="0,0,0,8"/>
+                    <Button Style="{StaticResource IconButton}" HorizontalContentAlignment="Left"
+                            Padding="10,8" Margin="0,0,0,4" Tag="WebTools" Click="SidebarSettingsCategory_Click">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="🌐" FontSize="14" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="Web Tools" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"/>
+                                <TextBlock Text="ActivityBar popout links" FontSize="10" Foreground="{StaticResource Subtext0Brush}"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Button>
 
-                    <TextBlock Text="Replit Run Button Selector" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
-                    <TextBox x:Name="ReplitRunSelectorBox" Height="26" FontSize="12" Margin="0,0,0,2"/>
-                    <TextBlock Text="CSS selector for Replit's Run button. Best-guess default — calibrate against your live dashboard. Falls back to any button whose text is exactly &quot;Run&quot;."
-                               FontSize="10" Foreground="{StaticResource Subtext0Brush}" TextWrapping="Wrap" Margin="0,0,0,8"/>
-
-                    <TextBlock Text="Deployed App URL (polled for up/down)" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
-                    <TextBox x:Name="ReplitAppUrlBox" Height="26" FontSize="12" Margin="0,0,0,8"/>
-
-                    <TextBlock Text="Replit Workspace URL (dashboard to click Run)" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
-                    <TextBox x:Name="ReplitWorkspaceUrlBox" Height="26" FontSize="12" Margin="0,0,0,8"/>
-
-                    <Button x:Name="BtnSaveReplitWatcher" Content="Save" Style="{StaticResource PrimaryButton}"
-                            HorizontalAlignment="Left" Padding="16,4" Click="BtnSaveReplitWatcher_Click"/>
-                    <TextBlock x:Name="ReplitWatcherSavedText" Text="" FontSize="10" Foreground="{StaticResource GreenBrush}" Margin="0,4,0,0"/>
+                    <Button Style="{StaticResource IconButton}" HorizontalContentAlignment="Left"
+                            Padding="10,8" Margin="0,0,0,4" Tag="ReplitWatcher" Click="SidebarSettingsCategory_Click">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="🔁" FontSize="14" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="Replit Watcher" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"/>
+                                <TextBlock Text="Interval, selector, URLs" FontSize="10" Foreground="{StaticResource Subtext0Brush}"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Button>
                 </StackPanel>
                 </ScrollViewer>
             </Grid>
