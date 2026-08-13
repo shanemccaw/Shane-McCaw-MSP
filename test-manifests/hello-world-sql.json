@@ -1,0 +1,24 @@
+{
+  "issue": 957,
+  "feature": "SQL \"hello world\" — proves a headless build agent can trigger + read back a real SQL result end to end",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "notes": [
+    "Part of Epic #803. Purpose is NOT to test real product logic — it proves the",
+    "automation pipeline itself (headless trigger -> #896's sql-test endpoint -> real",
+    "row value read back) works, so more complex manifests can be trusted.",
+    "Must be triggered via #898's remote-trigger-over-HTTP path (POST /admin/deploy/test-run,",
+    "polled at GET /admin/deploy/test-run/<runId>), not run manually through BuildConsole's UI.",
+    "Asserts on the REAL returned value, not just success/no-error: `SELECT 1 AS ping` runs through",
+    "#896's POST /admin/deploy/sql-test as an apiTest, and jsonPath `$.rows[0].ping` must literally",
+    "equal 1 — a query that ran without erroring but returned the wrong value must still fail."
+  ],
+  "apiTests": [
+    {
+      "method": "POST",
+      "path": "/admin/deploy/sql-test",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "query": "SELECT 1 AS ping" },
+      "expect": { "status": 200, "jsonPath": "$.rows[0].ping", "value": 1 }
+    }
+  ]
+}

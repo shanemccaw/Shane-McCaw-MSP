@@ -1,5 +1,6 @@
 {
   "manifests": [
+    "hello-world-sql.json",
     "926-engagebay-end-to-end.json",
     "725-chat-escalation.json",
     "927-chat-escalation-push.json",
