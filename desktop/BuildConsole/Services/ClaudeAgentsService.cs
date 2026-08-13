@@ -150,7 +150,7 @@ namespace BuildConsole.Services
         }
 
         /// <summary>
-        /// Git #989 — Shane: "I have like 4 goins now" against a Sessions
+        /// Git #991 — Shane: "I have like 4 goins now" against a Sessions
         /// panel that (after #984's real fix) correctly reflected `claude
         /// agents --json` — but proved, via a direct side-by-side check
         /// (`Get-Process -Name claude` vs this same command run at the same
@@ -214,7 +214,7 @@ namespace BuildConsole.Services
             return known;
         }
 
-        /// <summary>Git #989 — walks up to 4 parent levels via WMI looking for the first ancestor with a real window title (claude.exe's own console-hosting cmd.exe/powershell.exe/wt.exe). Returns null if none found within that depth (no infinite walk if WMI ever returns a cyclical/bogus chain).</summary>
+        /// <summary>Git #991 — walks up to 4 parent levels via WMI looking for the first ancestor with a real window title (claude.exe's own console-hosting cmd.exe/powershell.exe/wt.exe). Returns null if none found within that depth (no infinite walk if WMI ever returns a cyclical/bogus chain).</summary>
         private static string? FindAncestorWindowTitle(int pid)
         {
             try

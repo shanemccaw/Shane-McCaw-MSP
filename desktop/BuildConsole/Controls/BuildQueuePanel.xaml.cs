@@ -196,7 +196,7 @@ namespace BuildConsole.Controls
             List<Services.ClaudeAgentSession> sessions;
             try
             {
-                // Git #989 — Shane: "fall back using Get-Process," after
+                // Git #991 — Shane: "fall back using Get-Process," after
                 // proving side-by-side that `claude agents --json` doesn't
                 // discover every real running claude.exe (Send-to-Builder
                 // launches specifically went missing from it). Merges the
@@ -229,7 +229,7 @@ namespace BuildConsole.Controls
             {
                 var elapsed = DateTime.Now - s.StartedAt;
                 string elapsedStr = elapsed.TotalHours >= 1 ? $"{(int)elapsed.TotalHours}h {elapsed.Minutes}m" : $"{(int)elapsed.TotalMinutes}m";
-                // Git #989 — "untracked" (Get-Process fallback, no name/cwd/session
+                // Git #991 — "untracked" (Get-Process fallback, no name/cwd/session
                 // available without WMI) gets its own quiet ❔ marker so it visually
                 // reads as "we can see it's real, just not what it is."
                 var icon = s.Kind switch { "background" => "⚙", "untracked" => "❔", _ => "▶" };
