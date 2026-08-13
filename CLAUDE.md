@@ -163,3 +163,21 @@ phase - not only when explicitly asked.
   that honestly in the manifest's own notes rather than faking coverage.
 - Opt-in when the feature has meaningful API/UI surface - trivial internal
   refactors don't need a manifest.
+
+## Shared File Write Discipline
+
+PLATFORM_BUILD.md (and any other shared, frequently-appended-to file) is
+written to by many independent Claude Code sessions. Before your FINAL
+commit to such a file (e.g. flipping your bookend row from IN FLIGHT to
+DONE), always:
+
+1. `git pull --rebase origin main` to get the current remote state.
+2. Re-apply/re-append your own change against that now-current content -
+   do not assume the file still looks like it did when your session started.
+3. Commit and push.
+4. If the push is rejected (someone else landed in the same instant),
+   pull --rebase again and retry from step 2.
+
+Never overwrite unrelated rows/content you didn't intend to touch - if a
+diff shows changes outside your own hunk, stop and re-isolate before
+committing.
