@@ -177,6 +177,14 @@ namespace BuildConsole.Services
                     $"cmdlet: {resolvedCmdlet}");
             }
 
+            // Git #995 — logged before the connect attempt so the log shows this step has an
+            // out-of-band pwsh auth/connection phase in flight, same principle as UiTestExecutor's
+            // captureResponse-armed logging: a hang here (e.g. a device-code prompt) should be
+            // immediately visible as "still connecting" rather than a silent gap in the log.
+            ActivityLog.Log(Channel,
+                $"[{index + 1}/{total}] {label}: connecting via delegated Connect-MgGraph (silent if a valid cached token exists; aborts on a device-code prompt; hard ceiling {timeoutMs}ms)...");
+
+            var connectSw = Stopwatch.StartNew();
             PsRunOutcome outcome;
             try
             {
@@ -184,10 +192,16 @@ namespace BuildConsole.Services
             }
             catch (Exception ex)
             {
+                connectSw.Stop();
+                ActivityLog.Log(Channel, $"[{index + 1}/{total}] {label}: pwsh launch failed after {connectSw.ElapsedMilliseconds}ms — {ex.Message}");
                 return Finish(label, sw, false, $"failed to launch pwsh: {ex.Message}",
                     "pwsh (PowerShell 7) available", $"{ex.GetType().Name}: {ex.Message}",
                     "set POWERSHELL_VERIFY_PWSH_PATH to the pwsh.exe path if it isn't on PATH");
             }
+            connectSw.Stop();
+            ActivityLog.Log(Channel,
+                $"[{index + 1}/{total}] {label}: auth/connection resolved as {outcome.Kind} in {connectSw.ElapsedMilliseconds}ms"
+                + (string.IsNullOrEmpty(outcome.ConnectedTenant) ? "" : $" (connected tenant {outcome.ConnectedTenant})") + ".");
 
             switch (outcome.Kind)
             {

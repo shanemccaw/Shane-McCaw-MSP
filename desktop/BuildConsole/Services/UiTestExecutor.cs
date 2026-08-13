@@ -336,9 +336,23 @@ namespace BuildConsole.Services
                 };
             }
 
-            Emit($"STEP {stepNumber}", $"{step.ActionTypeUpper}: {selector} {(string.IsNullOrEmpty(val) ? "" : "=> " + val)}", "RUNNING", "#89DCEB");
-
+            // Git #995 — parsed and logged BEFORE the step's own action runs, alongside it, so the
+            // log makes visible (not just the eventual capture-response log line, which only appears
+            // once the wait resolves) that this step has other work armed in parallel with its primary
+            // action — the exact context a future #995-shaped hang needs to be diagnosable from the
+            // log alone, without a manual trace.
             var captureSpec = ParseCaptureResponse(step.CaptureResponse);
+            bool hasExtract = !string.IsNullOrWhiteSpace(step.Extract);
+
+            string armedNote = "";
+            if (captureSpec != null)
+                armedNote += $" — also capturing response matching '{captureSpec.UrlPattern}' (timeout {CaptureResponseTimeoutMs}ms)";
+            if (hasExtract)
+                armedNote += captureSpec != null ? "; extracting a value from that response on match" : " — extract declared but no captureResponse to extract from";
+
+            Emit($"STEP {stepNumber}", $"{step.ActionTypeUpper}: {selector} {(string.IsNullOrEmpty(val) ? "" : "=> " + val)}{armedNote}", "RUNNING", "#89DCEB");
+            ActivityLog.Log(Channel, $"Step {stepNumber} ({actionType} {selector}): starting{armedNote}.");
+
             TaskCompletionSource<CoreWebView2WebResourceResponseReceivedEventArgs>? captureTcs = null;
             EventHandler<CoreWebView2WebResourceResponseReceivedEventArgs>? captureHandler = null;
 
@@ -381,14 +395,22 @@ namespace BuildConsole.Services
                 actionActual = actionPassed ? "executed" : actionDetail;
             }
 
-            bool hasExtract = !string.IsNullOrWhiteSpace(step.Extract);
             UiCaptureResponseResult? captureResult = null;
             string? extractError = null;
             if (captureSpec != null && captureTcs != null && captureHandler != null)
             {
+                // Git #995 — timed separately from the step's own Stopwatch so the log states exactly
+                // which of the two race outcomes happened (a genuine match vs. the CaptureResponseTimeoutMs
+                // ceiling winning) and how long the wait actually took, instead of leaving that implicit.
+                var captureSw = System.Diagnostics.Stopwatch.StartNew();
                 var completed = await Task.WhenAny(captureTcs.Task, Task.Delay(CaptureResponseTimeoutMs));
+                captureSw.Stop();
                 _webView.CoreWebView2.WebResourceResponseReceived -= captureHandler;
                 var capturedArgs = completed == captureTcs.Task ? captureTcs.Task.Result : null;
+                bool captureMatched = capturedArgs != null;
+                ActivityLog.Log(Channel, captureMatched
+                    ? $"Step {stepNumber} captureResponse [{captureSpec.UrlPattern}]: matched after {captureSw.ElapsedMilliseconds}ms."
+                    : $"Step {stepNumber} captureResponse [{captureSpec.UrlPattern}]: TIMED OUT after {captureSw.ElapsedMilliseconds}ms — no response matching '{captureSpec.UrlPattern}' was observed within the {CaptureResponseTimeoutMs}ms ceiling.");
 
                 // Read the matched response body at most once — reused for both the captureResponse
                 // assertions and #877's extract, so the WebView2 content stream is never consumed twice.
@@ -404,14 +426,18 @@ namespace BuildConsole.Services
                 // #877 — extract a value out of the captured response body for later steps to use.
                 if (hasExtract)
                 {
+                    var extractSw = System.Diagnostics.Stopwatch.StartNew();
                     if (capturedArgs == null)
                         extractError = "extract: no response matching the captureResponse urlPattern was observed — nothing to extract from.";
                     else if (bodyReadError != null)
                         extractError = $"extract: couldn't read the captured response body — {bodyReadError}";
                     else
                         extractError = ApplyUiExtract(step.Extract!, capturedBody ?? string.Empty);
+                    extractSw.Stop();
                     if (extractError != null)
-                        ActivityLog.Log(TestRunVariables.Channel, $"Step {stepNumber} {extractError}");
+                        ActivityLog.Log(TestRunVariables.Channel, $"Step {stepNumber} {extractError} ({extractSw.ElapsedMilliseconds}ms).");
+                    else
+                        ActivityLog.Log(TestRunVariables.Channel, $"Step {stepNumber}: extract resolved successfully from the captured '{captureSpec.UrlPattern}' response ({extractSw.ElapsedMilliseconds}ms).");
                 }
             }
             else if (hasExtract)
@@ -470,6 +496,10 @@ namespace BuildConsole.Services
         private async Task<string> CaptureScreenshotAsync(int stepIndex, string reason, string stepLabel)
         {
             if (_screenshotDir == null) return string.Empty;
+            // Git #995 — timed so a slow/hanging CapturePreviewAsync (this step feature runs invisibly
+            // AFTER the step's own Stopwatch already stopped, per the #977 comment above this method's
+            // caller) shows up in the log with its own real duration instead of being invisible time.
+            var shotSw = System.Diagnostics.Stopwatch.StartNew();
             try
             {
                 Directory.CreateDirectory(_screenshotDir);
@@ -478,6 +508,7 @@ namespace BuildConsole.Services
                 {
                     await _webView.CoreWebView2.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png, stream);
                 }
+                shotSw.Stop();
 
                 _run?.Screenshots.Add(new UiScreenshotCapture
                 {
@@ -487,13 +518,14 @@ namespace BuildConsole.Services
                     StepLabel = stepLabel,
                 });
 
-                Emit($"STEP {stepIndex} SHOT", $"Screenshot captured ({reason}).", "INFO", "#89DCEB");
-                ActivityLog.Log(ScreenshotChannel, $"Captured screenshot for step {stepIndex} ({reason}) — {stepLabel} -> {path}");
+                Emit($"STEP {stepIndex} SHOT", $"Screenshot captured ({reason}) in {shotSw.ElapsedMilliseconds}ms.", "INFO", "#89DCEB");
+                ActivityLog.Log(ScreenshotChannel, $"Captured screenshot for step {stepIndex} ({reason}) in {shotSw.ElapsedMilliseconds}ms — {stepLabel} -> {path}");
                 return path;
             }
             catch (Exception ex)
             {
-                ActivityLog.Log(ScreenshotChannel, $"Screenshot capture failed for step {stepIndex} ({reason}): {ex.Message}");
+                shotSw.Stop();
+                ActivityLog.Log(ScreenshotChannel, $"Screenshot capture failed for step {stepIndex} ({reason}) after {shotSw.ElapsedMilliseconds}ms: {ex.Message}");
                 return string.Empty;
             }
         }
