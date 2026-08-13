@@ -2,6 +2,7 @@
   "issue": 888,
   "feature": "Copilot Readiness Reveal — verdict + pillar deep-dives (Scenes 1-7, money path 3/6)",
   "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "36f6d2fbb05a8325649628da9bc5d61f5623e133",
 
   "uiSteps": [
     { "action": "goto", "target": "/login" },

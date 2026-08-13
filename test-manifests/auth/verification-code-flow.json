@@ -2,6 +2,7 @@
   "issue": 879,
   "feature": "Email verification-code flow (#437) — send, deliver, extract, verify",
   "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "45bb3e558c40620ae29b8d8a667656f19f956a1a",
 
   "apiTests": [
     {

@@ -2,6 +2,7 @@
   "issue": 927,
   "feature": "Public chat escalation -> real Zoho Desk ticket -> admin web-push notification (#727)",
   "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "97c497256822b673440947e2f8ea6821976f6f4d",
 
   "notes": [
     "Targets #727's real gap: on a legitimate public-chat escalation, enqueueEscalationTicket() (zoho-desk.ts) queues a zoho_desk_create_ticket job with pushNotify:true. Once that job's handler (handleCreateTicketJob, zoho-desk.ts ~L291-347) confirms the real ticket was created, it calls sendWebPushToAdmins({ title: 'New chat escalation', body: `${notifySubject} — ${ticketRef}`, linkPath: PUBLIC_CHAT_REVIEW_LINK_PATH }) where PUBLIC_CHAT_REVIEW_LINK_PATH is the literal '/pipeline/chat-queue' (zoho-desk.ts L264).",

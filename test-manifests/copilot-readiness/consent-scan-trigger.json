@@ -2,6 +2,7 @@
   "issue": 887,
   "feature": "Copilot Readiness Reveal — Scene 0 consent + live scan trigger (money path 2/6)",
   "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "b216f9207083a860546d41bdd28c4ef043a9b203",
 
   "apiTests": [
     {

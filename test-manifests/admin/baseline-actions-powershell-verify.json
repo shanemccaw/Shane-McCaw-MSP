@@ -2,6 +2,7 @@
   "issue": 901,
   "feature": "Independently verify all 10 real baseline_action_templates write actions via #900 powerShellVerify",
   "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "83af155da478032a749e79b4f72f941c005bad02",
   "notes": [
     "Part of Epic #803. Triggers each of the 10 real, already-executable baseline_action_templates rows",
     "(lib/db/migrations/manual/2026-07-20-launch-control-phase3-templates.sql) via the real",
@@ -22,7 +23,7 @@
     "     graphTests below refuse to run against any other tenant by hard guard (GraphTestExecutor.AuthorizeAsync).",
     "  3. MT_APP_CLIENT_ID/_SECRET (read app) configured in BuildConsole's environment for the graphTests below.",
     "  4. Every REPLACE_WITH_* / literal placeholder object id below replaced with a REAL object that exists",
-    "     in that testbed tenant, same pattern test-manifests/900-powershell-verify-example.json itself uses",
+    "     in that testbed tenant, same pattern test-manifests/admin/powershell-verify-example.json itself uses",
     "     ('replace the literal user object id below with a real TESTBED user'). Suggested real seed objects:",
     "       TESTBED_USER_ID                    - a real testbed user, currently enabled, zero assigned licenses,",
     "                                             not yet a member of TESTBED_GROUP_ID or TESTBED_TEAM_ID",

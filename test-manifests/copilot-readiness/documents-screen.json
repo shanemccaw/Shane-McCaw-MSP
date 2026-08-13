@@ -2,6 +2,7 @@
   "issue": 889,
   "feature": "Copilot Readiness Documents screen (money path 4/6) — reach after a scan, ready/pending counter reflects real generation state, open/preview a document",
   "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "dcfab8e43a01a2164039eb47f2554bfdc5ceac16",
 
   "apiTests": [
     {

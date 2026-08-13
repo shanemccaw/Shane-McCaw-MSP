@@ -2,6 +2,7 @@
   "issue": 928,
   "feature": "TenantSwitcherFloaty — PlatformAdmin app-shell viewing-as widget (#797)",
   "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "11f652014257f0eebb287ebfb192052fed8392c7",
 
   "apiTests": [
     {

@@ -2,7 +2,7 @@
   "issue": 958,
   "feature": "UI \"hello world\" — proves a headless build agent can trigger + read back a real UI test result end to end",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "6d7bc6dd3279aead86fe8441b78e1e180c9f5016",
+  "lastVerifiedAgainstCommit": "3a8564f1906afd4453ef92e00eb94f226544e540",
   "notes": [
     "Part of Epic #803, UI sibling of #957's hello-world-sql.json. Purpose is NOT to test",
     "deep product logic — it proves the #898 remote-trigger-over-HTTP pipeline (headless POST",
@@ -11,7 +11,7 @@
     "a genuine pass/fail, so more complex uiSteps manifests can be trusted.",
     "Content assertions reuse #892's containsAny/containsNone. The framework has no DOM-text",
     "assertion (uiStep `expect` only checks element state: visible/hidden/present/absent —",
-    "textContains is silently ignored, see test-manifests/889-documents-screen.json's unused",
+    "textContains is silently ignored, see test-manifests/copilot-readiness/documents-screen.json's unused",
     "'ready' textContains), so containsAny/containsNone run against a captureResponse'd API",
     "call the homepage genuinely makes on load, not raw rendered DOM text. Step 1 re-navigates",
     "to '/' (RunAsync's own initial navigation to baseUrl happens before any uiStep's",

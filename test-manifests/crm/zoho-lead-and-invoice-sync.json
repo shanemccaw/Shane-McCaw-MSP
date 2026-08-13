@@ -2,6 +2,7 @@
   "issue": 883,
   "feature": "Lead-to-Zoho-CRM + invoice-to-Zoho-Books verification",
   "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "369f9b5b684ec5b7939806104230e7eca6cecc21",
 
   "zohoTests": [
     {

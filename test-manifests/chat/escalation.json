@@ -2,6 +2,7 @@
   "issue": 725,
   "feature": "PersistentChatBubble Zoho escalation",
   "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "740c96bd7d5916f0ca3388acfa705ae9f7afba6e",
 
   "apiTests": [
     {

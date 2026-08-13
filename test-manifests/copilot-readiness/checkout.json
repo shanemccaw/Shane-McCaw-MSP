@@ -2,6 +2,7 @@
   "issue": 891,
   "feature": "Copilot Readiness checkout — honesty guardrail + real Stripe test-card completion (money path 6/6)",
   "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "5bf43c70a85eb2c0b30a2d9a7cd99c89a0451ce7",
 
   "notes": [
     "TARGET: /copilot-readiness/checkout (copilot-readiness-checkout.tsx, the journey checkout — NOT the marketing-site Checkout.tsx). The card frame on this screen is inert divs; real card entry happens on Stripe's own hosted page after the redirect POST /api/portal/assessment/sow/checkout returns { outcome: 'checkout', url }.",

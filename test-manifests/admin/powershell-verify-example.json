@@ -2,6 +2,7 @@
   "issue": 900,
   "feature": "powerShellVerify example — independent delegated-PowerShell tenant verification",
   "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "97781c75ec5fad7a611124c4f3609c53467ba806",
   "notes": [
     "EXAMPLE / TEMPLATE — deliberately NOT registered in _regression-suite.json.",
     "Demonstrates Git #900's powerShellVerify: after the app reads or writes something, confirm the",

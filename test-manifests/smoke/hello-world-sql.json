@@ -2,6 +2,7 @@
   "issue": 957,
   "feature": "SQL \"hello world\" — proves a headless build agent can trigger + read back a real SQL result end to end",
   "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "5a9cfa6effcee22bf1a23a09751660a72788332e",
   "notes": [
     "Part of Epic #803. Purpose is NOT to test real product logic — it proves the",
     "automation pipeline itself (headless trigger -> #896's sql-test endpoint -> real",

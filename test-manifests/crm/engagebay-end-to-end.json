@@ -2,6 +2,7 @@
   "issue": 926,
   "feature": "EngageBay end-to-end integration (Zoho lead -> engagebay.createContact -> engagebay.startSequence -> webhook -> Activity Log)",
   "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "fb4cbc0d9c81ce20f4f619176bf8d400964e2cc5",
 
   "notes": [
     "Read #926's + #803's full issue body/comments and every file #926 named (engagebay.ts, engagebay-nodes.ts, engagebay-client.ts, engagebay-webhook.ts route + lib, engagebay-tags.ts, engagebay-activity.ts, engagebay-batch-drain.ts, engagebay-nodes-exec.ts) plus engagebay-marketing-lead.ts and engagebay-crm.ts (the funnel entry point and the only admin read routes) before writing this.",

@@ -2,6 +2,7 @@
   "issue": 886,
   "feature": "Home quiz -> Assessment flow handoff (money path 1/6)",
   "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "74127843f3b6a486aa04acba9b5d0f887e11ecd4",
 
   "uiSteps": [
     { "action": "goto", "target": "/" },

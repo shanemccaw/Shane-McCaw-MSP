@@ -179,7 +179,7 @@ phase - not only when explicitly asked.
   update it every time a session touches the manifest, even if the only
   change is re-confirming it still matches current code.
 - Schema sections as appropriate: apiTests / graphTests / zohoTests / uiSteps
-  - see test-manifests/725-chat-escalation.json for a real example covering
+  - see test-manifests/chat/escalation.json for a real example covering
   extraction/interpolation, captureResponse, and containsAny/containsNone.
 - Register every new manifest in test-manifests/_regression-suite.json.
 - Add data-testid to the specific interactive elements a manifest touches if

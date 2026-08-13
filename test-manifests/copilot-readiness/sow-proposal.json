@@ -2,6 +2,7 @@
   "issue": 890,
   "feature": "Copilot Readiness SOW Proposal — real server-computed pricing, no invented deposit (money path 5/6)",
   "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "06c2bb6f5989356d505473e3acef53d26377cbb2",
 
   "notes": [
     "TARGET: /copilot-readiness/proposal (copilot-readiness-proposal.tsx, Screen 3 of the journey) — NOT components/copilot-assessment/screens/SowScreen.tsx, an unrelated older client-only prototype (/copilot-assessment route, checkoutClient.ts) with its own hardcoded SCOPE_MODULES pricing table. The real screen fetches GET /api/portal/assessment/sow and maps it through the shared journeyScopeFromSow(); with no stored SOW it shows an honest unavailable state rather than falling back to any fixture price.",
