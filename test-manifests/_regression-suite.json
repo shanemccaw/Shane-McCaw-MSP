@@ -14,6 +14,7 @@
     "891-checkout-stripe-test.json",
     "890-sow-proposal.json",
     "928-tenant-switcher-floaty.json",
-    "baseline-actions-powershell-verify.json"
+    "baseline-actions-powershell-verify.json",
+    "792-remediation-tracker-e2e.json"
   ]
 }

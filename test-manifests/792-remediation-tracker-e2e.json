@@ -1,0 +1,345 @@
+{
+  "issue": 792,
+  "feature": "Remediation Tracker + Guide end-to-end (dynamic guide selection #658, script parameterization #776/#782, persistent tracker state #730-734, s24/s25 removal #757) — #792's browser-test checklist, written under #925",
+  "baseUrl": "{{DEPLOY_URL}}",
+
+  "notes": [
+    "PROVENANCE: written under Git #925 (Epic #803) to make #792's browser-test checklist executable. Writing the manifest is #925's deliverable; the actual end-to-end browser RUN remains #792's own Shane To-Do. Sources read before writing: #658 (remediationLiveGuide.ts), #776/#782 (remediationScriptParams.ts + portal-tenant-check-items.ts), #730-734 (portal-remediation-tracker.ts, remediation-tracker-pricing.ts, remediation-tracker-verification.ts, portal-remediation-tracker-export.ts), #757 (the s24/s25 removal migration).",
+
+    "NO DATA-TESTIDS ON THE GUIDE/TRACKER: RemediationGuideBody.tsx carries ZERO data-testid attributes (grep-confirmed). Every uiStep below therefore targets the one stable, queryable hook that DOES exist — each step's `<button role=\"checkbox\" aria-checked aria-label=\"Mark Step N complete: <title>\">` (RemediationGuideBody.tsx:660). Selectors use `[role=\"checkbox\"][aria-label^=\"Mark Step N complete\"]` plus `[aria-checked=\"true\"|\"false\"]`. This assumes step.label === \"Step N\" (true for the current catalogue). RECOMMENDATION: add data-testids to the #658 notice banner, the \"N of M\" progress text, and each per-step copy-script <code> block so the text-content claims below become directly assertable.",
+
+    "EXECUTOR TEXT LIMIT: the WPF UiTestExecutor `expect` supports ONLY element state (visible/hidden/absent/present) via document.querySelector — it does not read element text (a `textContains` field, as seen in 889, is silently ignored by UiTestExecutor.EvaluateExpectAsync). So the #658 notice-banner WORDING and the literal \"N of M steps resolved\" COUNT cannot be asserted by the runner as written. They are covered indirectly: 'only s27/s30 render on a never-scanned tenant' is the observable proxy for the banner, and the set of rendered checkboxes IS the 'N of M' denominator. Direct text assertions require the testids above (or an executor upgrade).",
+
+    "DYNAMIC SELECTION (#658) — how the UI proves it without testids: s18 and s28 are gap steps (STEP_CHECK_GAPS — no check-key mapping) that render in the static PREVIEW fixture but NEVER in the live per-tenant guide (rendersInLiveGuide() only passes finding/process steps). So `Mark Step 18 complete` VISIBLE under ?preview=design and ABSENT on the live guide is a tenant-independent proof that live mode runs dynamic selection, not the static 28-step list. s27/s30 are PROCESS_ONLY_STEP_IDS and always render. A never-scanned tenant renders EXACTLY s27+s30 (every other step absent) — asserted in the re-login block.",
+
+    "TWO TENANT STATES ARE MUTUALLY EXCLUSIVE (same class of limit 891 documented): the scanned-tenant assertions and the never-scanned assertions need different accounts. This manifest switches tenants mid-run via a second /login; if only one test account is provisioned, the other block's steps WARN rather than fail meaningfully. Run each block against the matching tenant.",
+
+    "DEEP-LINK PRECONDITION: the live guide renders only when the Remediation Guide document is the ACTIVE reader at /copilot-readiness/documents/:docId (route copilot-readiness-documents.tsx:573 — :docId is the numeric platform doc id via String(d.id)===docId; there is no stable slug). The runner must supply the numeric doc ids as config variables (see VARIABLES). RECOMMENDATION: give the remediation guide a stable slug or a title-keyed sidebar row testid so this stops being a per-tenant precondition.",
+
+    "SCRIPT PARAMETERIZATION (#776/#782) — assertable vs not: real-value-vs-<placeholder> substitution happens client-side in remediationScriptParams.ts against /api/portal/tenant-check-items data, landing in an untestid'd <code> block, so 'real value appears / no <placeholder> brackets' is NOT DOM-assertable today. What IS asserted here: the tenant-check-items feed returns for the five fillable checks — s1 sharepoint:orgwide-links, s9 identity:ca-policy-count, s11 identity:global-admin-count, s12 security:safe-links-coverage, s22 cost:group-based-licensing-adoption (FILLABLE_STEP_CHECK_KEYS). s5 and s14 are DELIBERATELY excluded from FILLABLE_STEP_CHECK_KEYS and must always stay literal (<m365-governance@your-domain>, <all-staff@your-domain>) — never substituted. Once testids exist: assert containsNone:[\"<\"] on the s1/s9/s11/s12/s22 code blocks where the tenant has real data, and containsAny:[\"<\"] on the s5/s14 blocks.",
+
+    "#782 FIELD-NAME AUDIT CAVEAT (unproven — do this before trusting a green s1/s9/s12/s22): per #782's own honesty note, only s11 was ever confirmed against real monitor_checks data; s1/s9/s12/s22 are unproven against live collected items. Reconcile against remediationScriptParams.ts's field lists — s1 SITE_URL_FIELDS=[\"Url\",\"SiteUrl\",\"webUrl\",\"siteUrl\",\"url\"]; s9 CA_ID_FIELDS=[\"id\",\"Id\"]; s11 ADMIN_ID_FIELDS=[\"id\"]+ADMIN_ODATA_TYPE_FIELD=\"@odata.type\" (CONFIRMED); s12 SAFE_LINKS_NAME_FIELDS=[\"Name\",\"name\",\"Identity\",\"identity\"]; s22 GROUP_DISPLAY_NAME_FIELDS=[\"displayName\",\"DisplayName\"] + regex /^LIC-[^-]+-(.+)$/i. Audit SQL: SELECT key, properties FROM monitor_checks WHERE key IN ('sharepoint:orgwide-links','identity:ca-policy-count','identity:global-admin-count','security:safe-links-coverage','cost:group-based-licensing-adoption'); — if a check's collected item field name is not in the matching list, substitution silently falls back to <placeholder> and the field list (not this manifest) is the bug. Do NOT silently flip these assertions to green without this audit.",
+
+    "VERIFIED STATE CANNOT BE FORCED: verificationState flips to 'verified' only when a real re-scan (runDiagnostics -> reverifyRemediationTrackerSteps, remediation-tracker-verification.ts) finds ALL of a step's mapped checks clean; EVERY tracker write resets verificationState to 'unverified' (portal-remediation-tracker.ts). The runner can trigger a rescan (debug-trigger-scan, 202) but cannot deterministically make real findings clean. Two consequences: (a) LIVE PRICING — partial progress (completed but unverified) does NOT drop the price, asserted deterministically below (Phase 1 fee stays 16200 = governance 9800 + security 6400 after ticking a Phase-1 step); the price only drops after a phase is fully resolved AND re-scanned-clean, which is precondition-gated (needs a tenant whose Phase-1 checks genuinely pass) and is a manual spot-check. (b) EVIDENCE PACK HONESTY — evidence-pack.pdf includes only steps with a real verified finding (server gate portal-remediation-tracker-export.ts:149, joined to msp_diagnostic_findings severity 'ok'); the endpoint returning a real %PDF is asserted, but that it OMITS non-verified steps is a binary-PDF content claim → manual spot-check (same honesty-limit spirit as #888/#891).",
+
+    "PDF CONTENT: export.pdf and evidence-pack.pdf are asserted to be real, non-empty PDFs (body starts with %PDF) — full visual/layout correctness is not machine-checked; open the file to spot-check. CSV export IS content-checked (header row Step,Title,Pillar,Status,...).",
+
+    "RESCAN REVERIFY IS ASYNC: debug-trigger-scan returns 202 immediately and reverifyRemediationTrackerSteps runs inside the async runDiagnostics, so this manifest asserts the TRIGGER, not the post-scan verified/drift flip (that needs polling the run to completion then re-reading the tracker — a follow-up once the runner grows a poll primitive, cf. #877's mail-poll extract).",
+
+    "#757 MIGRATION CHECK is read-only SQL for Shane, NOT asserted via the app: the app cannot observe whether the orphan-row DELETE ran, only that s24/s25 are rejected (which this manifest DOES assert as a code-level regression, PUT s24/s25 -> 400). Confirm the DB-level cleanup with lib/db/migrations/manual/archive/diagnostics/2026-08-12-remediation-tracker-s24-s25-cleanup-verify-757.sql.",
+
+    "VARIABLES the runner/config must pre-seed (like 887/889's {{TEST_PORTAL_*}}): {{TEST_PORTAL_EMAIL}}/{{TEST_PORTAL_PASSWORD}} = the SCANNED testbed Assessment-role account (same tenant 887/889 drive); {{TEST_REMEDIATION_DOC_ID}} = numeric doc id of the live Remediation Guide document for that tenant; {{TEST_REMEDIATION_PREVIEW_DOC_ID}} = numeric doc id of the Remediation Guide in the ?preview=design fixture (deterministic across tenants — the fixture's fixed index+1); and for the never-scanned block {{TEST_NEVERSCANNED_EMAIL}}/{{TEST_NEVERSCANNED_PASSWORD}}/{{TEST_NEVERSCANNED_REMEDIATION_DOC_ID}}. {{authToken}} is extracted at runtime from the first login apiTest.",
+
+    "STATE HYGIENE: apiTests and uiSteps both mutate real tracker rows (s1/s27/s30) and reset each back to not_started, so a clean run leaves the tenant as it found it. apiTests run BEFORE uiSteps (RunManifestAsync order), so uiSteps start from a reset s27."
+  ],
+
+  "apiTests": [
+    {
+      "name": "Log in as the SCANNED testbed Assessment-role account (same {{TEST_PORTAL_EMAIL}}/{{TEST_PORTAL_PASSWORD}} the uiSteps use) so apiTests and browser session drive the SAME real tenant; extract the bearer for every portal call below.",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "Tracker read returns the real per-tenant steps array (only rows that exist; unknown/removed ids filtered) — persistent server-side state, not session-only.",
+      "method": "GET",
+      "path": "/api/portal/remediation-tracker",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.steps", "isArray": true }
+    },
+    {
+      "name": "Tracker read carries the live phase-gated pricing (#734) alongside steps — phases is the 3-phase array (Phase 1 gov+sec, Phase 2 comp+lic, Phase 3 adopt+health).",
+      "method": "GET",
+      "path": "/api/portal/remediation-tracker",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.pricing.phases", "isArray": true }
+    },
+    {
+      "name": "Pricing exposes the live 'hire Shane for the rest' price (remediation-tracker-pricing.ts hire.price).",
+      "method": "GET",
+      "path": "/api/portal/remediation-tracker",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.pricing.hire.price", "exists": true }
+    },
+
+    {
+      "name": "#757 regression: Step 24 was REMOVED from the catalogue (GAP, not renumber) — a write to it is rejected 400, proving the removal reached REMEDIATION_TRACKER_STEP_IDS, not just the guide UI.",
+      "method": "PUT",
+      "path": "/api/portal/remediation-tracker/steps/s24",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "status": "completed" },
+      "expect": { "status": 400, "containsAny": ["Unknown remediation step"] }
+    },
+    {
+      "name": "#757 regression: Step 25 likewise rejected 400.",
+      "method": "PUT",
+      "path": "/api/portal/remediation-tracker/steps/s25",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "status": "completed" },
+      "expect": { "status": 400, "containsAny": ["Unknown remediation step"] }
+    },
+    {
+      "name": "#757 regression: a SURVIVING id past the gap (s26) is still accepted — the removal did not renumber s26-s30. Set to not_started so no state changes.",
+      "method": "PUT",
+      "path": "/api/portal/remediation-tracker/steps/s26",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "status": "not_started" },
+      "expect": { "status": 200, "jsonPath": "$.step.status", "value": "not_started" }
+    },
+
+    {
+      "name": "Per-step action — SELF-RESOLVE (tick): status 'completed' via the single PUT endpoint; the write also RESETS verificationState to 'unverified' (#732), asserted next.",
+      "method": "PUT",
+      "path": "/api/portal/remediation-tracker/steps/s27",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "status": "completed" },
+      "expect": { "status": 200, "jsonPath": "$.step.status", "value": "completed" }
+    },
+    {
+      "name": "Verification RESETS on every write (#732): the same PUT response reports verificationState 'unverified' — a customer tick is not a verified finding.",
+      "method": "PUT",
+      "path": "/api/portal/remediation-tracker/steps/s27",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "status": "completed" },
+      "expect": { "status": 200, "jsonPath": "$.step.verificationState", "value": "unverified" }
+    },
+    {
+      "name": "Per-step action — DEFER ('Deferring to a later phase' -> status 'deferred'; counts toward phase readiness per #734).",
+      "method": "PUT",
+      "path": "/api/portal/remediation-tracker/steps/s27",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "status": "deferred" },
+      "expect": { "status": 200, "jsonPath": "$.step.status", "value": "deferred" }
+    },
+    {
+      "name": "Per-step action — SHANE HANDLES ('Have Shane do this one' -> status 'shane_handles'; deliberately NOT in READY_STATUSES, blocks the phase per #734).",
+      "method": "PUT",
+      "path": "/api/portal/remediation-tracker/steps/s27",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "status": "shane_handles" },
+      "expect": { "status": 200, "jsonPath": "$.step.status", "value": "shane_handles" }
+    },
+    {
+      "name": "Per-step action — ALREADY HANDLED ('Already handled another way' -> status 'already_handled').",
+      "method": "PUT",
+      "path": "/api/portal/remediation-tracker/steps/s27",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "status": "already_handled" },
+      "expect": { "status": 200, "jsonPath": "$.step.status", "value": "already_handled" }
+    },
+    {
+      "name": "Per-step action — NOT APPLICABLE ('Not applicable to this tenant' -> status 'not_applicable').",
+      "method": "PUT",
+      "path": "/api/portal/remediation-tracker/steps/s27",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "status": "not_applicable" },
+      "expect": { "status": 200, "jsonPath": "$.step.status", "value": "not_applicable" }
+    },
+    {
+      "name": "Vocabulary is enum-guarded (z.enum(REMEDIATION_TRACKER_STEP_STATUS)): an unknown status is rejected 400, not stored.",
+      "method": "PUT",
+      "path": "/api/portal/remediation-tracker/steps/s27",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "status": "totally-made-up" },
+      "expect": { "status": 400 }
+    },
+    {
+      "name": "Per-step action — UNDO/RESET (status 'not_started') leaves s27 clean for the uiSteps that follow.",
+      "method": "PUT",
+      "path": "/api/portal/remediation-tracker/steps/s27",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "status": "not_started" },
+      "expect": { "status": 200, "jsonPath": "$.step.status", "value": "not_started" }
+    },
+
+    {
+      "name": "PERSISTENCE (server-side, not session): tick s30, then the next GET must still carry the s30 row — proving the write landed in remediation_tracker_steps, not in browser state. (The stronger reload-across-navigation proof is in uiSteps.)",
+      "method": "PUT",
+      "path": "/api/portal/remediation-tracker/steps/s30",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "status": "completed" },
+      "expect": { "status": 200, "jsonPath": "$.step.status", "value": "completed" }
+    },
+    {
+      "name": "PERSISTENCE cont.: a fresh GET (a brand-new request, no shared client state) returns the s30 row just written.",
+      "method": "GET",
+      "path": "/api/portal/remediation-tracker",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "containsAny": ["s30"] }
+    },
+    {
+      "name": "PERSISTENCE cleanup: reset s30 to not_started.",
+      "method": "PUT",
+      "path": "/api/portal/remediation-tracker/steps/s30",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "status": "not_started" },
+      "expect": { "status": 200, "jsonPath": "$.step.status", "value": "not_started" }
+    },
+
+    {
+      "name": "Script-parameterization DATA feed (#776): tenant-check-items returns the collected items for all five FILLABLE checks (s1/s9/s11/s12/s22 read from these). $.items is the checkKey-keyed map remediationScriptParams.ts substitutes from.",
+      "method": "GET",
+      "path": "/api/portal/tenant-check-items?checkKeys=sharepoint:orgwide-links,identity:ca-policy-count,identity:global-admin-count,security:safe-links-coverage,cost:group-based-licensing-adoption",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.items", "exists": true }
+    },
+    {
+      "name": "tenant-check-items REQUIRES checkKeys: omitting it is a hard 400 (portal-tenant-check-items.ts) — the feed never silently returns everything.",
+      "method": "GET",
+      "path": "/api/portal/tenant-check-items",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 400, "containsAny": ["checkKeys"] }
+    },
+
+    {
+      "name": "RE-SCAN trigger (#732): debug-trigger-scan runs runDiagnostics -> reverifyRemediationTrackerSteps (testbed-gated; a 202 also proves the account is genuinely testbed-flagged). NOTE: reverify runs async inside the scan — this asserts the trigger, not the post-scan verified/drift flip.",
+      "method": "POST",
+      "path": "/api/portal/assessment/debug-trigger-scan",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 202, "jsonPath": "$.runId", "exists": true }
+    },
+
+    {
+      "name": "EXPORT CSV (#733): real text/csv with the fixed header row Step,Title,Pillar,Status,Completed At,Last Updated.",
+      "method": "GET",
+      "path": "/api/portal/remediation-tracker/export.csv",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "containsAny": ["Step,Title,Pillar,Status"] }
+    },
+    {
+      "name": "EXPORT PDF (#733): a real, non-empty PDF (body starts %PDF). Full visual layout is a manual spot-check (see notes).",
+      "method": "GET",
+      "path": "/api/portal/remediation-tracker/export.pdf",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "containsAny": ["%PDF"] }
+    },
+    {
+      "name": "EVIDENCE PACK PDF (#742): a real, non-empty PDF. HONESTY GUARANTEE (server gate: verificationState==='verified', joined to msp_diagnostic_findings severity 'ok') — that it OMITS non-verified steps is a binary-PDF content claim, so it's a manual spot-check, not asserted here.",
+      "method": "GET",
+      "path": "/api/portal/remediation-tracker/evidence-pack.pdf",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "containsAny": ["%PDF"] }
+    },
+
+    {
+      "name": "LIVE PRICING — partial progress does NOT drop the price: tick a Phase-1 step (s1) to completed-but-unverified.",
+      "method": "PUT",
+      "path": "/api/portal/remediation-tracker/steps/s1",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "status": "completed" },
+      "expect": { "status": 200, "jsonPath": "$.step.status", "value": "completed" }
+    },
+    {
+      "name": "LIVE PRICING — with a Phase-1 step completed-but-unverified, phases[0] is Phase 1.",
+      "method": "GET",
+      "path": "/api/portal/remediation-tracker",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.pricing.phases[0].phase", "value": 1 }
+    },
+    {
+      "name": "LIVE PRICING — Phase 1 fee stays FLAT at 16200 (governance 9800 + security 6400) despite the tick: outstanding only drops on completed AND verified, and no rescan has verified anything. Price must NOT drop on partial progress. CAVEAT: 16200 holds only when no Phase-1 step is currently completed+verified (writes reset verification; a failure here surfaces real stale verified state worth investigating). The price-DOES-drop case (fully resolved AND re-scanned-clean) is precondition-gated — manual spot-check.",
+      "method": "GET",
+      "path": "/api/portal/remediation-tracker",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.pricing.phases[0].fee", "value": 16200 }
+    },
+    {
+      "name": "LIVE PRICING cleanup: reset s1 to not_started.",
+      "method": "PUT",
+      "path": "/api/portal/remediation-tracker/steps/s1",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "status": "not_started" },
+      "expect": { "status": 200, "jsonPath": "$.step.status", "value": "not_started" }
+    }
+  ],
+
+  "uiSteps": [
+    { "action": "goto", "target": "/login" },
+    { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
+    { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
+    {
+      "action": "click",
+      "selector": "[data-testid='login-submit']",
+      "captureResponse": {
+        "urlPattern": "/api/auth/login",
+        "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true }
+      }
+    },
+
+    {
+      "name": "PREVIEW MODE (#658): ?preview=design must still render the full static 28-step Halden fixture unchanged. s18 is a gap step that ONLY the static fixture renders — its presence proves preview is untouched.",
+      "action": "goto",
+      "target": "/copilot-readiness/documents/{{TEST_REMEDIATION_PREVIEW_DOC_ID}}?preview=design"
+    },
+    { "action": "expect", "selector": "[role='checkbox'][aria-label^='Mark Step 18 complete']", "state": "visible" },
+    { "action": "expect", "selector": "[role='checkbox'][aria-label^='Mark Step 1 complete']", "state": "visible" },
+
+    {
+      "name": "LIVE MODE (#658), scanned tenant: process-only steps s27/s30 always render; the gap steps s18/s28 NEVER render live — so their absence here (vs. their presence in preview above) proves dynamic per-tenant selection is active, not the static list.",
+      "action": "goto",
+      "target": "/copilot-readiness/documents/{{TEST_REMEDIATION_DOC_ID}}"
+    },
+    { "action": "expect", "selector": "[role='checkbox'][aria-label^='Mark Step 27 complete']", "state": "visible" },
+    { "action": "expect", "selector": "[role='checkbox'][aria-label^='Mark Step 30 complete']", "state": "visible" },
+    { "action": "expect", "selector": "[role='checkbox'][aria-label^='Mark Step 18 complete']", "state": "absent" },
+    { "action": "expect", "selector": "[role='checkbox'][aria-label^='Mark Step 28 complete']", "state": "absent" },
+
+    {
+      "name": "PERSISTENCE across a real reload (#730): tick s27, confirm it checks, then re-navigate (full page load, not SPA state) and confirm it is STILL checked — proving the tick was written server-side, not held in session.",
+      "action": "click",
+      "selector": "[role='checkbox'][aria-label^='Mark Step 27 complete']",
+      "captureResponse": {
+        "urlPattern": "/api/portal/remediation-tracker/steps/s27",
+        "expect": { "status": 200 }
+      }
+    },
+    { "action": "expect", "selector": "[role='checkbox'][aria-label^='Mark Step 27 complete'][aria-checked='true']", "state": "visible" },
+    { "action": "goto", "target": "/copilot-readiness/documents/{{TEST_REMEDIATION_DOC_ID}}" },
+    { "action": "expect", "selector": "[role='checkbox'][aria-label^='Mark Step 27 complete'][aria-checked='true']", "state": "visible" },
+
+    {
+      "name": "PERSISTENCE cleanup: toggle s27 back off so the run leaves the tenant as it found it.",
+      "action": "click",
+      "selector": "[role='checkbox'][aria-label^='Mark Step 27 complete']",
+      "captureResponse": {
+        "urlPattern": "/api/portal/remediation-tracker/steps/s27",
+        "expect": { "status": 200 }
+      }
+    },
+    { "action": "expect", "selector": "[role='checkbox'][aria-label^='Mark Step 27 complete'][aria-checked='false']", "state": "visible" },
+
+    {
+      "name": "NEVER-SCANNED tenant (#658) — re-authenticate as a tenant with no scan findings. MUTUALLY EXCLUSIVE with the scanned block above; WARNs if {{TEST_NEVERSCANNED_*}} are not provisioned.",
+      "action": "goto",
+      "target": "/login"
+    },
+    { "action": "input", "selector": "#email", "value": "{{TEST_NEVERSCANNED_EMAIL}}" },
+    { "action": "input", "selector": "#password", "value": "{{TEST_NEVERSCANNED_PASSWORD}}" },
+    {
+      "action": "click",
+      "selector": "[data-testid='login-submit']",
+      "captureResponse": {
+        "urlPattern": "/api/auth/login",
+        "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true }
+      }
+    },
+    { "action": "goto", "target": "/copilot-readiness/documents/{{TEST_NEVERSCANNED_REMEDIATION_DOC_ID}}" },
+    {
+      "name": "Never-scanned: ONLY the two standing/process-only steps render.",
+      "action": "expect",
+      "selector": "[role='checkbox'][aria-label^='Mark Step 27 complete']",
+      "state": "visible"
+    },
+    { "action": "expect", "selector": "[role='checkbox'][aria-label^='Mark Step 30 complete']", "state": "visible" },
+    {
+      "name": "Never-scanned: a finding-driven step (s1) is ABSENT — the old static 28-step list is gone; the #658 notice banner accompanies this (banner text itself not machine-assertable — see notes).",
+      "action": "expect",
+      "selector": "[role='checkbox'][aria-label^='Mark Step 1 complete']",
+      "state": "absent"
+    },
+    { "action": "expect", "selector": "[role='checkbox'][aria-label^='Mark Step 7 complete']", "state": "absent" }
+  ]
+}
