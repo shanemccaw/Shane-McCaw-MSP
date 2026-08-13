@@ -196,6 +196,14 @@ namespace BuildConsole.Services
         private const int PostNavigationSettleMs = 1200;
         private const int PostStepSettleMs = 1000;
         private const int NavigationTimeoutMs = 15000;
+        /// <summary>Post-capture hang fix (Epic #803) — a hard ceiling on the best-effort #966/#977 WebView2
+        /// screenshot capture. CoreWebView2.CapturePreviewAsync never completes when the control isn't in a
+        /// renderable/composited state (a run triggered while BuildConsole is minimized/occluded/on a locked
+        /// session), and it is the only await left in a step's post-capture path once the captureResponse wait
+        /// has already timed out — so without this guard one un-renderable screenshot deadlocks the entire run
+        /// forever (the try/catch around it cannot rescue a Task that never faults). Same
+        /// Task.WhenAny(work, Task.Delay(timeout)) shape navigation (15s) and captureResponse (5s) already use.</summary>
+        private const int ScreenshotTimeoutMs = 8000;
 
         private readonly WebView2 _webView;
 
@@ -412,12 +420,26 @@ namespace BuildConsole.Services
                     ? $"Step {stepNumber} captureResponse [{captureSpec.UrlPattern}]: matched after {captureSw.ElapsedMilliseconds}ms."
                     : $"Step {stepNumber} captureResponse [{captureSpec.UrlPattern}]: TIMED OUT after {captureSw.ElapsedMilliseconds}ms — no response matching '{captureSpec.UrlPattern}' was observed within the {CaptureResponseTimeoutMs}ms ceiling.");
 
+                // Post-capture hang fix (Epic #803) — trace every stage AFTER the captureResponse wait resolves,
+                // so a stall anywhere in this stretch (the null-capture path, the body read, or the screenshot
+                // below) is pinpointable from the log alone instead of presenting as a silent multi-minute freeze.
+                // capturedArgs == null (the 5s timeout won) is an EXPECTED valid outcome, not a crash — the step
+                // still completes and reports the captureResponse as a WARN.
+                ActivityLog.Log(Channel, $"Step {stepNumber} capture wait resolved: " +
+                    (capturedArgs != null
+                        ? $"matching response for [{captureSpec.UrlPattern}] observed — processing."
+                        : $"no matching response for [{captureSpec.UrlPattern}] within {CaptureResponseTimeoutMs}ms (timeout) — continuing with null capture."));
+
                 // Read the matched response body at most once — reused for both the captureResponse
                 // assertions and #877's extract, so the WebView2 content stream is never consumed twice.
                 string? capturedBody = null;
                 string? bodyReadError = null;
                 if (capturedArgs != null && (CaptureNeedsBody(captureSpec) || hasExtract))
+                {
+                    ActivityLog.Log(Channel, $"Step {stepNumber}: reading captured response body for [{captureSpec.UrlPattern}]…");
                     (capturedBody, bodyReadError) = await ReadResponseBodyAsync(capturedArgs);
+                    ActivityLog.Log(Channel, $"Step {stepNumber}: response body read {(bodyReadError == null ? $"OK ({capturedBody?.Length ?? 0} chars)" : $"FAILED — {bodyReadError}")}.");
+                }
 
                 captureResult = BuildCaptureResult(captureSpec, capturedArgs, capturedBody, bodyReadError);
                 Emit($"STEP {stepNumber} CAPTURE", captureResult.Detail, captureResult.Passed ? "PASS" : "WARN", captureResult.Passed ? "#A6E3A1" : "#FAB387");
@@ -470,7 +492,12 @@ namespace BuildConsole.Services
             // not inflate the step's DurationMs. Capture is still best-effort (never throws, no-ops when the
             // caller supplied no screenshot directory), so making it unconditional can't fail a run.
             string reason = !overallPassed ? "step-failed" : (step.Screenshot ? "explicit" : "step");
+            // Post-capture hang fix (Epic #803) — bracket the screenshot with logs: this is the last await in a
+            // step and (see ScreenshotTimeoutMs / CaptureScreenshotAsync) was the actual freeze site, so an entry
+            // log here plus the "returning" log after it makes a screenshot stall obvious instead of invisible.
+            ActivityLog.Log(Channel, $"Step {stepNumber}: capturing post-step screenshot (reason={reason})…");
             string screenshotPath = await CaptureScreenshotAsync(stepNumber, reason, $"{actionType} {selector}");
+            ActivityLog.Log(Channel, $"Step {stepNumber}: complete — returning result (passed={overallPassed}, screenshot={(string.IsNullOrEmpty(screenshotPath) ? "none" : "captured")}).");
 
             return new UiStepResult
             {
@@ -500,14 +527,35 @@ namespace BuildConsole.Services
             // AFTER the step's own Stopwatch already stopped, per the #977 comment above this method's
             // caller) shows up in the log with its own real duration instead of being invisible time.
             var shotSw = System.Diagnostics.Stopwatch.StartNew();
+            FileStream? stream = null;
             try
             {
                 Directory.CreateDirectory(_screenshotDir);
                 string path = Path.Combine(_screenshotDir, $"{stepIndex}.png");
-                using (var stream = new FileStream(path, FileMode.Create, FileAccess.Write))
+                stream = new FileStream(path, FileMode.Create, FileAccess.Write);
+                var localStream = stream;
+
+                // Post-capture hang fix (Epic #803) — CapturePreviewAsync can never return when the WebView2 is
+                // not in a renderable/composited state (a minimized/occluded/locked-session run), and it is the
+                // only await left in a step's post-capture path once the captureResponse wait has timed out. Guard
+                // it with the same Task.WhenAny(work, Task.Delay(timeout)) shape navigation/captureResponse use:
+                // best-effort telemetry must NEVER be able to hang a run, and the surrounding try/catch only
+                // rescues exceptions — a stuck Task never faults, so without this guard the whole run deadlocks.
+                ActivityLog.Log(ScreenshotChannel, $"Step {stepIndex}: invoking CapturePreviewAsync ({reason})…");
+                var captureTask = _webView.CoreWebView2.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png, stream);
+                var completed = await Task.WhenAny(captureTask, Task.Delay(ScreenshotTimeoutMs));
+                if (completed != captureTask)
                 {
-                    await _webView.CoreWebView2.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png, stream);
+                    // Timed out. Hand stream ownership to a continuation so a late (or never) CapturePreviewAsync
+                    // can't write to a stream we've already disposed, and so its eventual exception is always
+                    // observed (never surfaces as an unobserved-task-exception). Then skip — the run continues.
+                    stream = null; // the continuation owns disposal now; keep finally from double-disposing
+                    _ = captureTask.ContinueWith(t => { _ = t.Exception; localStream.Dispose(); }, TaskScheduler.Default);
+                    Emit($"STEP {stepIndex} SHOT", $"Screenshot skipped — capture timed out after {ScreenshotTimeoutMs}ms.", "WARN", "#FAB387");
+                    ActivityLog.Log(ScreenshotChannel, $"Screenshot capture for step {stepIndex} ({reason}) timed out after {ScreenshotTimeoutMs}ms — CapturePreviewAsync never returned (WebView2 likely not in a renderable/visible state). Skipping so the run can complete instead of hanging.");
+                    return string.Empty;
                 }
+                await captureTask; // observe success / surface any capture exception into the catch below
                 shotSw.Stop();
 
                 _run?.Screenshots.Add(new UiScreenshotCapture
@@ -527,6 +575,12 @@ namespace BuildConsole.Services
                 shotSw.Stop();
                 ActivityLog.Log(ScreenshotChannel, $"Screenshot capture failed for step {stepIndex} ({reason}) after {shotSw.ElapsedMilliseconds}ms: {ex.Message}");
                 return string.Empty;
+            }
+            finally
+            {
+                // Normal + exception paths dispose here (flushes the PNG to disk before the caller reads the path);
+                // the timeout path already nulled `stream` and handed disposal to the continuation.
+                stream?.Dispose();
             }
         }
 
