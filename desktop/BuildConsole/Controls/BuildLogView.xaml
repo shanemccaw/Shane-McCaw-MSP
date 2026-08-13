@@ -103,7 +103,17 @@
                  IsReadOnly="True"
                  TextWrapping="Wrap"
                  VerticalScrollBarVisibility="Auto"
-                 HorizontalScrollBarVisibility="Disabled"/>
+                 HorizontalScrollBarVisibility="Disabled">
+            <!-- Git #945 — heavy-mouse-user right-click menu; no ContextMenu existed here before. -->
+            <TextBox.ContextMenu>
+                <ContextMenu>
+                    <MenuItem Header="Copy" Click="CopyLog_Click"/>
+                    <MenuItem Header="Copy All" Click="CopyAllLog_Click"/>
+                    <Separator/>
+                    <MenuItem Header="Clear Log" Click="ClearLog_Click"/>
+                </ContextMenu>
+            </TextBox.ContextMenu>
+        </TextBox>
 
         <!-- Empty state overlay -->
         <StackPanel x:Name="EmptyState"

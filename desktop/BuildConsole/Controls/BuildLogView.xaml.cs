@@ -195,6 +195,22 @@ namespace BuildConsole.Controls
             }
         }
 
+        // ── Git #945 — right-click menu (Copy, Copy All, Clear Log) ─────────
+        private void CopyLog_Click(object sender, RoutedEventArgs e)
+        {
+            if (!string.IsNullOrEmpty(RawLogBox.SelectedText)) Clipboard.SetText(RawLogBox.SelectedText);
+        }
+
+        private void CopyAllLog_Click(object sender, RoutedEventArgs e)
+        {
+            if (RawLogBox.Text.Length > 0) Clipboard.SetText(RawLogBox.Text);
+        }
+
+        private void ClearLog_Click(object sender, RoutedEventArgs e)
+        {
+            RawLogBox.Clear();
+        }
+
         private void LoadNow()
         {
             var path = Services.BuildLogPaths.ForQueueItem(_currentId);

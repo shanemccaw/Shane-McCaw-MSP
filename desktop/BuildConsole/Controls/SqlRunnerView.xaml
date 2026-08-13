@@ -132,7 +132,18 @@
                           Grid.Row="1"
                           IsReadOnly="True"
                           AutoGenerateColumns="True"
-                          BorderThickness="0"/>
+                          BorderThickness="0"
+                          PreviewMouseRightButtonDown="ResultsGrid_PreviewMouseRightButtonDown">
+                    <!-- Git #945 — heavy-mouse-user right-click menu; no ContextMenu existed here before. -->
+                    <DataGrid.ContextMenu>
+                        <ContextMenu>
+                            <MenuItem Header="Copy Cell" Click="CopyCell_Click"/>
+                            <MenuItem Header="Copy Row" Click="CopyRow_Click"/>
+                            <Separator/>
+                            <MenuItem Header="Copy All as CSV" Click="CopyAllCsv_Click"/>
+                        </ContextMenu>
+                    </DataGrid.ContextMenu>
+                </DataGrid>
             </Grid>
         </Grid>
 

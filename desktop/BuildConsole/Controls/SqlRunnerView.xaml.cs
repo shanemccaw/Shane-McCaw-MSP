@@ -8,6 +8,8 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Xml;
 using BuildConsole.Services;
@@ -300,6 +302,77 @@ namespace BuildConsole.Controls
                  .Replace("\r\n", " ")
                  .Replace("\n", " ")
                  .Replace("\r", " ");
+
+        // ── Git #945 — ResultsGrid right-click menu (Copy Cell, Copy Row, Copy All as CSV) ──
+        // WPF's DataGrid doesn't move CurrentCell/SelectedItem on a right-click by
+        // itself (only left-click does), so a right-click on a cell that wasn't
+        // already the active selection would otherwise let "Copy Cell"/"Copy Row"
+        // silently act on stale selection. Moving selection to the clicked cell
+        // here, before the context menu opens, makes both act on what Shane
+        // actually right-clicked.
+        private void ResultsGrid_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            var source = e.OriginalSource as DependencyObject;
+            while (source != null && source is not DataGridCell) source = VisualTreeHelper.GetParent(source);
+            if (source is not DataGridCell cell) return;
+
+            var row = FindVisualParent<DataGridRow>(cell);
+            if (row == null) return;
+
+            cell.Focus();
+            ResultsGrid.SelectedItem = row.Item;
+            ResultsGrid.CurrentCell = new DataGridCellInfo(row.Item, cell.Column);
+        }
+
+        private static T? FindVisualParent<T>(DependencyObject child) where T : DependencyObject
+        {
+            var parent = VisualTreeHelper.GetParent(child);
+            while (parent != null && parent is not T) parent = VisualTreeHelper.GetParent(parent);
+            return parent as T;
+        }
+
+        /// <summary>Resolves the DataTable field name an auto-generated DataGrid column is bound to, so a cell/row value can be read straight from the backing DataRowView.</summary>
+        private static string? BoundFieldName(DataGridColumn column) =>
+            (column as DataGridBoundColumn)?.Binding is Binding binding ? binding.Path.Path : null;
+
+        private void CopyCell_Click(object sender, RoutedEventArgs e)
+        {
+            var cellInfo = ResultsGrid.CurrentCell;
+            if (cellInfo.Item is not DataRowView rowView || cellInfo.Column == null) return;
+            var field = BoundFieldName(cellInfo.Column);
+            if (field == null) return;
+            Clipboard.SetText(rowView[field]?.ToString() ?? "");
+        }
+
+        private void CopyRow_Click(object sender, RoutedEventArgs e)
+        {
+            if (ResultsGrid.SelectedItem is not DataRowView rowView) return;
+            var values = rowView.Row.ItemArray.Select(v => v?.ToString() ?? "");
+            Clipboard.SetText(string.Join(",", values.Select(EscapeCsvCell)));
+        }
+
+        private void CopyAllCsv_Click(object sender, RoutedEventArgs e)
+        {
+            var table = _lastResultTable;
+            if (table == null || table.Rows.Count == 0) return;
+            Clipboard.SetText(BuildCsv(table));
+        }
+
+        private static string BuildCsv(DataTable table)
+        {
+            var cols = table.Columns.Cast<DataColumn>().Select(c => c.ColumnName).ToList();
+            var sb = new StringBuilder();
+            sb.AppendLine(string.Join(",", cols.Select(EscapeCsvCell)));
+            foreach (DataRow row in table.Rows)
+                sb.AppendLine(string.Join(",", cols.Select(c => EscapeCsvCell(row[c]?.ToString() ?? ""))));
+            return sb.ToString().TrimEnd();
+        }
+
+        /// <summary>RFC 4180 field quoting — quotes (doubling embedded quotes) any field containing a comma, quote, or newline.</summary>
+        private static string EscapeCsvCell(string value) =>
+            value.IndexOfAny(new[] { ',', '"', '\n', '\r' }) >= 0
+                ? "\"" + value.Replace("\"", "\"\"") + "\""
+                : value;
 
         // ── Auto-RETURNING * (Git #939) ────────────────────────────────────────
         // A plain INSERT/UPDATE/DELETE with no RETURNING clause returns zero fields

@@ -96,6 +96,27 @@ namespace BuildConsole.Controls
             }
         }
 
+        // ── Git #945 — right-click menu (Copy, Copy All, Clear, Scroll to Bottom) ──
+        private void CopyOutput_Click(object sender, RoutedEventArgs e)
+        {
+            if (!string.IsNullOrEmpty(OutputBox.SelectedText)) Clipboard.SetText(OutputBox.SelectedText);
+        }
+
+        private void CopyAllOutput_Click(object sender, RoutedEventArgs e)
+        {
+            if (OutputBox.Text.Length > 0) Clipboard.SetText(OutputBox.Text);
+        }
+
+        private void ClearOutput_Click(object sender, RoutedEventArgs e)
+        {
+            OutputBox.Clear();
+        }
+
+        private void ScrollToBottom_Click(object sender, RoutedEventArgs e)
+        {
+            OutputBox.ScrollToEnd();
+        }
+
         private void Send_Click(object sender, RoutedEventArgs e)
         {
             var cmd = InputBox.Text.Trim();
