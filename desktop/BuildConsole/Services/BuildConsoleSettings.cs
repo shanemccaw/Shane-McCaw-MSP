@@ -42,6 +42,31 @@ namespace BuildConsole.Services
     }
 
     /// <summary>
+    /// Git #874 Home screen — one open chat tab remembered across restarts so the
+    /// Home view's "Where you left off" roll-up can offer to reopen it. Captures
+    /// the real BoardChat identity (ConversationId/Title/ClaudeUrl/EpicId/
+    /// IssueGithubNumber) the app already opens chats by (see MainWindow.OpenChatTab
+    /// / BoardChat) plus which of the four editor panes it was living in, so the
+    /// per-pane layout is remembered too. This is TRACKING only — the session does
+    /// NOT auto-reopen these on launch; the roll-up references them and Shane clicks
+    /// to reopen. Same %AppData%\BuildConsole\settings.json store / round-trip as
+    /// every field below; a pre-#874 settings.json (no "openChatTabs" key) still
+    /// deserializes with the empty-list field initializer intact.
+    /// </summary>
+    public class PersistedChatTab
+    {
+        public string ConversationId { get; set; } = "";
+        public string Title { get; set; } = "";
+        public string ClaudeUrl { get; set; } = "";
+        public int? EpicId { get; set; }
+        public int? IssueGithubNumber { get; set; }
+        /// <summary>Which editor pane (0 = primary EditorTabs, 1 = EditorTabs2, 2 = EditorTabs3, 3 = EditorTabs4) this chat tab was in when last persisted.</summary>
+        public int PaneIndex { get; set; }
+        /// <summary>When this snapshot was written — surfaced as the "left off" subtitle.</summary>
+        public DateTime SavedAt { get; set; }
+    }
+
+    /// <summary>
     /// Git #834 — Shane: "There is a settings menu item, and a settings cog
     /// bottom left corner. Use that to hold my PAT in app settings or
     /// something." Small writable local store — a JSON file under
@@ -51,6 +76,15 @@ namespace BuildConsole.Services
     /// </summary>
     public class BuildConsoleSettings
     {
+        // ── Git #874 Home screen — open chat tabs remembered across restarts ──
+        // Rewritten in full every time a chat tab opens/closes or is dragged
+        // between panes (MainWindow.PersistOpenChatTabs); the Home view's
+        // "Where you left off" section reads the snapshot captured AT LAUNCH so
+        // it always shows where the LAST session left off, not this one's live
+        // state. Empty-list field initializer so a pre-#874 settings.json
+        // (no "openChatTabs" key) still deserializes cleanly.
+        public List<PersistedChatTab> OpenChatTabs { get; set; } = new();
+
         public string GitHubPat { get; set; } = "";
 
         public bool HasGitHubPat => !string.IsNullOrWhiteSpace(GitHubPat);

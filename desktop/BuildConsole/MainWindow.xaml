@@ -67,6 +67,23 @@
                       HorizontalAlignment="Right" VerticalAlignment="Bottom"
                       Panel.ZIndex="-1"/>
 
+        <!-- Git #874 Home screen — ClaudeWebView, formerly the content of the
+             hardcoded (non-closable) claude.ai TabItem, is now parked here as a
+             1×1 hidden background WebView2, exactly like ReplitWatcherWebView /
+             UsageMeterWebView above. It keeps the app's persistent claude.ai
+             session warm: it's the non-null fallback GetActiveWebView returns
+             (so the ~19 zoom/reload/devtools call sites can't NRE), it's where
+             InitializeClaudeTabAsync injects the builder buttons + navigates at
+             startup, and it's a #942 chat-button-status push target. Same
+             HwndHost-alive rule as the two above: a WebView2's Opacity is
+             read-only and Visibility=Hidden/Collapsed would stop CoreWebView2
+             from ever being created, so it's a single non-interactive pixel. -->
+        <wv2:WebView2 x:Name="ClaudeWebView"
+                      Width="1" Height="1"
+                      IsHitTestVisible="False"
+                      HorizontalAlignment="Left" VerticalAlignment="Top"
+                      Panel.ZIndex="-1"/>
+
         <DockPanel LastChildFill="True">
 
             <!-- ══════════════════════════════════════════════════════════════
@@ -520,19 +537,15 @@
                                         BorderThickness="0"
                                         SelectionChanged="EditorTabs_SelectionChanged"
                                         AllowDrop="True" Drop="EditorTabsPane_Drop" DragOver="TabDragOver">
-                                <!-- Claude.ai tab -->
-                                <TabItem Tag="https://claude.ai">
-                                    <TabItem.Header>
-                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                            <TextBlock Text="&#xE8BD;" FontFamily="Segoe MDL2 Assets" FontSize="12"
-                                                       Foreground="{StaticResource BlueBrush}" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                            <TextBlock Text="Claude.ai" FontSize="13" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                                            <Ellipse Width="6" Height="6" Fill="{StaticResource BlueBrush}" VerticalAlignment="Center"/>
-                                        </StackPanel>
-                                    </TabItem.Header>
-                                    <!-- Git #816 - Source is set from code-behind AFTER the builder-button script is injected, not here; a XAML-bound Source navigates the instant CoreWebView2 is ready, which can race ahead of AddScriptToExecuteOnDocumentCreatedAsync and mean the very first load never gets the injected buttons. -->
-                                    <wv2:WebView2 x:Name="ClaudeWebView"/>
-                                </TabItem>
+                                <!-- Git #874 Home screen — EditorTabs starts EMPTY. The old
+                                     hardcoded (non-closable) claude.ai TabItem was removed and
+                                     replaced by a native, CLOSABLE "Home" tab that MainWindow
+                                     adds programmatically at startup (OpenHomeTab), so it goes
+                                     through the same closable-tab infrastructure as every other
+                                     tab. The ClaudeWebView it used to host is now a parked 1×1
+                                     hidden WebView2 at the top of the outer Grid (kept alive so
+                                     the GetActiveWebView fallback + the builder-button / #942
+                                     chat-status infra it feeds all keep working). -->
                             </TabControl>
 
                             <!-- GridSplitters -->

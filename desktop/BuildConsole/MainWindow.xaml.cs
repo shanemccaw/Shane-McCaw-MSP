@@ -142,6 +142,18 @@ namespace BuildConsole
         private readonly Dictionary<int, string> _chatButtonStatus = new();
         private DispatcherTimer? _buildTailTimer;
 
+        // ── Git #874 Home screen — native landing tab + real-data roll-up ───────
+        private const string HomeTabTag = "home://";
+        private BuildConsole.Controls.HomeView? _homeView;
+        /// <summary>The persisted open-chat-tabs snapshot loaded ONCE at launch — what the Home "Where you left off" section shows, so it always reflects where the LAST session ended, not this session's live tab state.</summary>
+        private List<BuildConsole.Services.PersistedChatTab> _chatTabsAtLaunch = new();
+        private DispatcherTimer? _homeRollupTimer;
+        /// <summary>Open-issue-number cache for the Home "Done, waiting for you" section — the same GitHubIssuesService source the Build Queue panel uses, refreshed on the same ~60s cadence rather than every roll-up tick.</summary>
+        private HashSet<int> _homeOpenIssueNumbers = new();
+        private DateTime _homeOpenNumbersFetchedAt = DateTime.MinValue;
+        /// <summary>Content signature of the last Running/Done render — skips the re-render (and its section-render log) on a 10s tick whose data is identical, same anti-flicker pattern as BuildQueuePanel's _lastQueueSignature.</summary>
+        private string? _homeRollupSignature;
+
         // ── Git #937: always-on-top Sticky Notes floaty ─────────────────────────
         private StickyNotesWindow? _stickyNotes;
 
@@ -350,16 +362,7 @@ namespace BuildConsole
             // issue." Resolves via LeftSidebar's already-fetched chat/epic
             // data (no separate fetch) and opens/focuses it exactly like
             // clicking the same chat in the Chats tree would.
-            BuildQueuePanel.IssueChatRequested += (s, githubNumber) =>
-            {
-                var chat = LeftSidebar.FindChatForIssue(githubNumber);
-                if (chat == null)
-                {
-                    MessageBox.Show($"No chat linked to #{githubNumber} yet.", "Open Chat");
-                    return;
-                }
-                OpenChatTab(chat, githubNumber);
-            };
+            BuildQueuePanel.IssueChatRequested += (s, githubNumber) => OpenChatForIssue(githubNumber);
 
             // Git #802 - Shane: "The Claude chats should open in their own
             // tabs. And if there is a build, that tab should split with the
@@ -410,6 +413,17 @@ namespace BuildConsole
             _buildTailTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
             _buildTailTimer.Tick += async (_, _) => await PollChatTabBuildStateAsync();
             _buildTailTimer.Start();
+
+            // Git #874 Home screen — capture the persisted open-chat-tabs snapshot
+            // ONCE at launch (before this session opens/persists anything over it),
+            // open the native Home tab as the default first tab, and start the
+            // roll-up timer. RefreshHomeRollupAsync no-ops whenever the Home tab
+            // isn't open, so there's no steady-state polling cost when it's closed.
+            _chatTabsAtLaunch = BuildConsole.Services.BuildConsoleSettings.Load().OpenChatTabs ?? new();
+            OpenHomeTab();
+            _homeRollupTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(10) };
+            _homeRollupTimer.Tick += async (_, _) => await RefreshHomeRollupAsync();
+            _homeRollupTimer.Start();
 
             // Git #805 — Epic #803 Phase 1: "polling, not webhook/SSE... follow
             // the existing pattern." Same 3s DispatcherTimer shape as
@@ -1619,12 +1633,232 @@ namespace BuildConsole
                 EditorTabs.Items.Remove(newTab);
                 if (EditorTabs.Items.Count > 0)
                     EditorTabs.SelectedIndex = Math.Max(0, EditorTabs.Items.Count - 1);
+                PersistOpenChatTabs(); // Git #874 — a closed chat drops out of "Where you left off"
             };
 
             AttachTabContextMenu(newTab, EditorTabs);
             AttachTabDragHandlers(newTab);
             EditorTabs.Items.Add(newTab);
             EditorTabs.SelectedItem = newTab;
+            PersistOpenChatTabs(); // Git #874 — remember this chat (BoardChat identity + pane) for next launch's Home roll-up
+        }
+
+        // ── Git #874 Home screen ────────────────────────────────────────────────
+
+        /// <summary>
+        /// Git #874 — opens (or focuses) the native Home tab. Replaces the old
+        /// hardcoded, non-closable claude.ai tab: this one is created through the
+        /// same closable-tab infrastructure (own ✕, drag/context-menu handlers) as
+        /// every other tab and inserted as the default FIRST tab of the primary
+        /// pane. Also re-openable from the command palette. First paint renders
+        /// "Where you left off" from the launch snapshot and kicks a live roll-up
+        /// refresh for the Running/Done sections.
+        /// </summary>
+        public void OpenHomeTab()
+        {
+            // Dedupe across all four editor panes (it can be dragged like any tab).
+            foreach (var pane in new[] { EditorTabs, EditorTabs2, EditorTabs3, EditorTabs4 })
+            {
+                foreach (TabItem existing in pane.Items)
+                {
+                    if (existing.Tag as string == HomeTabTag)
+                    {
+                        pane.SelectedItem = existing;
+                        BuildConsole.Services.ActivityLog.Log("home-screen", "Home tab focused (already open)");
+                        return;
+                    }
+                }
+            }
+
+            var home = new BuildConsole.Controls.HomeView();
+            home.ResumeChatRequested += Home_ResumeChatRequested;
+            home.RunningItemClicked  += (s, c) => { if (c.GithubNumber is int n) OpenChatForIssue(n); };
+            home.DoneItemClicked     += (s, c) => { if (c.GithubNumber is int n) OpenChatForIssue(n); };
+            _homeView = home;
+
+            var headerPanel = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+            headerPanel.Children.Add(new TextBlock
+            {
+                Text = "", FontFamily = new FontFamily("Segoe MDL2 Assets"), FontSize = 12, // Home glyph
+                Margin = new Thickness(0, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center,
+                Foreground = (Brush)FindResource("BlueBrush")
+            });
+            headerPanel.Children.Add(new TextBlock
+            {
+                Text = "Home", FontSize = 13, Margin = new Thickness(0, 0, 8, 0),
+                VerticalAlignment = VerticalAlignment.Center, Foreground = (Brush)FindResource("TextBrush")
+            });
+            var closeBtn = new Button
+            {
+                Content = "✕", Style = (Style)FindResource("IconButton"), FontSize = 10,
+                Padding = new Thickness(3, 1, 3, 1), Margin = new Thickness(4, 0, 0, 0),
+                ToolTip = "Close Tab", VerticalAlignment = VerticalAlignment.Center
+            };
+            headerPanel.Children.Add(closeBtn);
+
+            var tab = new TabItem { Tag = HomeTabTag, Header = headerPanel, Content = home };
+            closeBtn.Click += (s, e) =>
+            {
+                var pane = tab.Parent as TabControl ?? EditorTabs;
+                pane.Items.Remove(tab);
+                if (_homeView == home) _homeView = null;
+                if (pane.Items.Count > 0) pane.SelectedIndex = Math.Max(0, pane.Items.Count - 1);
+                BuildConsole.Services.ActivityLog.Log("home-screen", "Home tab closed");
+            };
+
+            AttachTabContextMenu(tab, EditorTabs);
+            AttachTabDragHandlers(tab);
+            EditorTabs.Items.Insert(0, tab);
+            EditorTabs.SelectedItem = tab;
+
+            BuildConsole.Services.ActivityLog.Log("home-screen", "Home tab opened");
+
+            // First paint: "Where you left off" from the launch snapshot; the live
+            // Running/Done sections from the shared queue data (force = refresh the
+            // open-issue set immediately rather than waiting for the 60s guard).
+            home.RenderLeftOff(_chatTabsAtLaunch);
+            _ = RefreshHomeRollupAsync(force: true);
+        }
+
+        /// <summary>
+        /// Git #851/#874 — resolve the chat linked to a GitHub issue (via
+        /// LeftSidebar's already-fetched board data) and open/focus its tab.
+        /// Shared by the Build Queue panel's In-Flight rows (#851) and the Home
+        /// screen's Running/Done rows (#874) — one path, reusing OpenChatTab.
+        /// </summary>
+        private void OpenChatForIssue(int githubNumber)
+        {
+            var chat = LeftSidebar.FindChatForIssue(githubNumber);
+            if (chat == null)
+            {
+                MessageBox.Show($"No chat linked to #{githubNumber} yet.", "Open Chat");
+                return;
+            }
+            OpenChatTab(chat, githubNumber);
+        }
+
+        /// <summary>Git #874 — "Where you left off" click: reconstruct the BoardChat identity from the persisted snapshot and open/focus it through the same OpenChatTab path (dedupes on ConversationId).</summary>
+        private void Home_ResumeChatRequested(object? sender, BuildConsole.Services.PersistedChatTab p)
+        {
+            if (string.IsNullOrWhiteSpace(p.ClaudeUrl))
+            {
+                MessageBox.Show($"That saved chat has no Claude URL to reopen.\n\n\"{p.Title}\"", "Resume Chat");
+                return;
+            }
+            var chat = new BuildConsole.Services.BoardChat
+            {
+                ConversationId = p.ConversationId,
+                Title = p.Title,
+                ClaudeUrl = p.ClaudeUrl,
+                EpicId = p.EpicId,
+                IssueGithubNumber = p.IssueGithubNumber,
+            };
+            OpenChatTab(chat, p.IssueGithubNumber);
+        }
+
+        /// <summary>
+        /// Git #874 — feeds the Home view's live sections from the SAME source the
+        /// Build Queue panel uses: the shared BuildTrackerApiClient queue (Running)
+        /// and GitHubIssuesService open-issue awareness (Done, waiting for you). No
+        /// second Build Queue is built — this reuses the one shared client. Gated on
+        /// the Home tab actually being open, so a closed Home costs nothing; the
+        /// open-issue set is refreshed on the panel's own ~60s cadence, not per tick.
+        /// </summary>
+        private async System.Threading.Tasks.Task RefreshHomeRollupAsync(bool force = false)
+        {
+            var home = _homeView;
+            if (home == null) return; // Home tab closed — nothing to refresh
+
+            List<BuildConsole.Services.QueueItem> running;
+            List<BuildConsole.Services.QueueItem> doneWaiting;
+
+            if (_buildTrackerApi == null || !_buildTrackerApi.IsConfigured)
+            {
+                running = new();
+                doneWaiting = new();
+            }
+            else
+            {
+                List<BuildConsole.Services.QueueItem> queue;
+                try { queue = await _buildTrackerApi.GetQueueAsync(); }
+                catch { return; } // best-effort — keep whatever's already rendered
+
+                // "Done, waiting for you" needs the open-issue set — the same
+                // GitHubIssuesService source the Build Queue panel uses, on the same
+                // ~60s cadence (not every tick).
+                if (force || (DateTime.Now - _homeOpenNumbersFetchedAt).TotalSeconds >= 60)
+                {
+                    try
+                    {
+                        _homeOpenIssueNumbers = await BuildConsole.Services.GitHubIssuesService.GetOpenIssueNumbersAsync();
+                        _homeOpenNumbersFetchedAt = DateTime.Now;
+                    }
+                    catch { /* keep the last-known open-issue set */ }
+                }
+
+                if (_homeView != home) return; // tab closed/replaced while awaiting
+
+                running = queue
+                    .Where(i => i.Status == "running")
+                    .OrderByDescending(i => i.UpdatedAt)
+                    .ToList();
+                doneWaiting = queue
+                    .Where(i => i.Status == "done" && i.GithubNumber.HasValue && _homeOpenIssueNumbers.Contains(i.GithubNumber.Value))
+                    .OrderByDescending(i => i.UpdatedAt)
+                    .ToList();
+            }
+
+            // Skip the re-render (and its section-render logging) when nothing
+            // changed since the last tick — same anti-flicker guard the panel uses.
+            var signature = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                r = running.Select(i => new { i.Id, i.Status, i.UpdatedAt }),
+                d = doneWaiting.Select(i => new { i.Id, i.GithubNumber, i.UpdatedAt }),
+            });
+            if (!force && signature == _homeRollupSignature) return;
+            _homeRollupSignature = signature;
+
+            home.RenderRunning(running);
+            home.RenderDoneWaiting(doneWaiting);
+        }
+
+        /// <summary>
+        /// Git #874 — snapshots every open chat tab (real BoardChat identity + which
+        /// of the four panes it's in) into BuildConsoleSettings, so next launch's
+        /// Home "Where you left off" can reference it. Tracking only — nothing is
+        /// auto-reopened. Called whenever a chat tab opens/closes or a tab is dragged
+        /// between panes.
+        /// </summary>
+        private void PersistOpenChatTabs()
+        {
+            try
+            {
+                var panes = new[] { EditorTabs, EditorTabs2, EditorTabs3, EditorTabs4 };
+                var list = new List<BuildConsole.Services.PersistedChatTab>();
+                foreach (var (tab, state) in _chatTabs)
+                {
+                    if (tab.Tag is not BuildConsole.Services.BoardChat chat) continue;
+                    int paneIndex = System.Array.IndexOf(panes, tab.Parent as TabControl);
+                    if (paneIndex < 0) paneIndex = 0;
+                    list.Add(new BuildConsole.Services.PersistedChatTab
+                    {
+                        ConversationId = chat.ConversationId,
+                        Title = chat.Title,
+                        ClaudeUrl = chat.ClaudeUrl,
+                        EpicId = chat.EpicId,
+                        IssueGithubNumber = state.GithubNumber ?? chat.IssueGithubNumber,
+                        PaneIndex = paneIndex,
+                        SavedAt = DateTime.Now,
+                    });
+                }
+                var settings = BuildConsole.Services.BuildConsoleSettings.Load();
+                settings.OpenChatTabs = list;
+                settings.Save();
+            }
+            catch (Exception ex)
+            {
+                BuildConsole.Services.ActivityLog.Log("home-screen", $"Persist open chat tabs failed: {ex.Message}");
+            }
         }
 
         /// <summary>
@@ -2932,6 +3166,10 @@ namespace BuildConsole
                 System.Diagnostics.Debug.WriteLine($"Palette file scan error: {ex.Message}");
             }
 
+            // Git #874 Home screen — re-open the native Home landing tab (it's a
+            // normal closable tab now, so a palette entry gives it back if closed).
+            _allPaletteItems.Add(new PaletteItem { Category = "View", Icon = "🏠", Title = "Home", Description = "Open the Home tab — where you left off, running now, done waiting for you", ExecuteAction = () => OpenHomeTab() });
+
             // 2. Chats
             _allPaletteItems.Add(new PaletteItem { Category = "Chats", Icon = "💬", Title = "Antigravity IDE layout & Catppuccin theme", Description = "Active pairing chat session", ExecuteAction = () => LeftSidebar.SwitchView("Chats") });
             _allPaletteItems.Add(new PaletteItem { Category = "Chats", Icon = "💬", Title = "TreeViewUsability & Mouse Wheel Fix", Description = "File Explorer smooth scroll discussion", ExecuteAction = () => LeftSidebar.SwitchView("Chats") });
@@ -3272,6 +3510,7 @@ namespace BuildConsole
             }
 
             targetTabs.SelectedItem = draggedTab;
+            PersistOpenChatTabs(); // Git #874 — a chat dragged to another pane updates its persisted per-pane layout
             e.Handled = true;
         }
 
@@ -3315,6 +3554,7 @@ namespace BuildConsole
             target.SelectedItem = draggedTab;
 
             DockGuideOverlay.Visibility = Visibility.Collapsed;
+            PersistOpenChatTabs(); // Git #874 — a chat docked into a pane updates its persisted per-pane layout
             e.Handled = true;
         }
 
