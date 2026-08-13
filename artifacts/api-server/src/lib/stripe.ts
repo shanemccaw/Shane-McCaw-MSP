@@ -1,4 +1,29 @@
 /**
+ * True when the API server is running against a real Replit DEV origin — i.e.
+ * the environment {@link getStripeKey} classifies as "dev" (a *.replit.dev
+ * workspace preview, or no REPLIT_DOMAINS set at all / local dev), as opposed to
+ * a real deployment (*.replit.app or a custom domain).
+ *
+ * This is the single dev/prod determination behind the platform's real
+ * domain-sensitive decisions — the same REPLIT_DOMAINS inspection that selects
+ * sk_test_ vs sk_live_ Stripe keys below. Destructive dev-only tooling (the
+ * testbed reset / Graph teardown endpoints, Git #986) reuses THIS exact check as
+ * its environment gate rather than inventing a second dev/prod mechanism, so
+ * "is this real money / a real deployment" and "may I wipe testbed state" can
+ * never disagree.
+ *
+ *   dev  ⇔  REPLIT_DOMAINS absent, OR every listed domain ends in .replit.dev
+ *   prod ⇔  REPLIT_DOMAINS present AND any listed domain is NOT .replit.dev
+ */
+export function isReplitDevEnvironment(): boolean {
+  const domains = process.env.REPLIT_DOMAINS ?? "";
+  const isProd =
+    domains.length > 0 &&
+    domains.split(",").some((d) => !d.trim().endsWith(".replit.dev"));
+  return !isProd;
+}
+
+/**
  * Returns the Stripe secret key appropriate for the current environment.
  *
  * Environment detection uses REPLIT_DOMAINS:
@@ -17,9 +42,7 @@
  * are forced to handle the case — there is no silent fallback to the wrong key.
  */
 export function getStripeKey(): string {
-  const domains = process.env.REPLIT_DOMAINS ?? "";
-  const isProd = domains.length > 0 &&
-    domains.split(",").some(d => !d.trim().endsWith(".replit.dev"));
+  const isProd = !isReplitDevEnvironment();
 
   if (isProd) {
     const key = process.env.STRIPE_SECRET_KEY_PROD;
@@ -60,9 +83,7 @@ export function getStripeKey(): string {
  * on ("payment is temporarily unavailable"), not a 500.
  */
 export function getStripePublishableKey(): string | null {
-  const domains = process.env.REPLIT_DOMAINS ?? "";
-  const isProd = domains.length > 0 &&
-    domains.split(",").some(d => !d.trim().endsWith(".replit.dev"));
+  const isProd = !isReplitDevEnvironment();
 
   const key = isProd
     ? process.env.STRIPE_PUBLISHABLE_KEY_PROD
