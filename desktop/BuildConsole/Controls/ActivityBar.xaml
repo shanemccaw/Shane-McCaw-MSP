@@ -151,6 +151,21 @@
                     <TextBlock Text="&#x1F5D2;" FontSize="16"/>
                 </Button>
 
+                <!-- Git #973 — Shane: "pre-fill and then I'd press the actual
+                     schedule button." Toggles the always-on-top LinkedIn post
+                     composer floaty; Send pre-fills LinkedIn's real compose box
+                     (Shane presses Schedule/Post himself). Same plain-Button
+                     shape as Sticky Notes above (a separate top-level window,
+                     not a LeftSidebar view). -->
+                <Button x:Name="BtnLinkedInComposer"
+                        Style="{StaticResource IconButton}"
+                        Width="48" Height="44"
+                        ToolTip="LinkedIn Post pre-fill (always-on-top floaty)"
+                        Click="BtnLinkedInComposer_Click">
+                    <TextBlock Text="&#xE71B;" FontFamily="Segoe MDL2 Assets" FontSize="16"
+                               Foreground="{StaticResource BlueBrush}"/>
+                </Button>
+
             </StackPanel>
 
             <!-- ── Bottom icon: Settings ── -->

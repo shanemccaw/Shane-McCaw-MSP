@@ -19,6 +19,9 @@ namespace BuildConsole.Controls
         /// <summary>Git #937 — raised when the Sticky Notes icon is clicked; MainWindow toggles the always-on-top floaty open/closed.</summary>
         public event EventHandler? StickyNotesToggleRequested;
 
+        /// <summary>Git #973 — raised when the LinkedIn composer icon is clicked; MainWindow toggles the always-on-top LinkedIn post pre-fill floaty open/closed.</summary>
+        public event EventHandler? LinkedInComposerToggleRequested;
+
         public ActivityBar() => InitializeComponent();
 
         /// <summary>Git #834 — File > Settings menu item routes here so it lands on the SAME SettingsView the cog icon already opens, instead of being a second, divergent path.</summary>
@@ -33,6 +36,10 @@ namespace BuildConsole.Controls
         /// <summary>Git #937 — toggles the always-on-top Sticky Notes floaty.</summary>
         private void BtnStickyNotes_Click(object sender, RoutedEventArgs e) =>
             StickyNotesToggleRequested?.Invoke(this, EventArgs.Empty);
+
+        /// <summary>Git #973 — toggles the always-on-top LinkedIn post pre-fill floaty.</summary>
+        private void BtnLinkedInComposer_Click(object sender, RoutedEventArgs e) =>
+            LinkedInComposerToggleRequested?.Invoke(this, EventArgs.Empty);
 
         private void QuickNav_Click(object sender, RoutedEventArgs e)
         {

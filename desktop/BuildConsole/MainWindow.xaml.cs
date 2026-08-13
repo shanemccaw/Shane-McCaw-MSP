@@ -411,6 +411,8 @@ namespace BuildConsole
 
             // Git #937 — Sticky Notes floaty toggle + active-pane focus tracking.
             ActivityBar.StickyNotesToggleRequested += (s, e) => ToggleStickyNotes();
+            // Git #973 — LinkedIn post pre-fill floaty toggle (see MainWindow.LinkedInComposer.cs).
+            ActivityBar.LinkedInComposerToggleRequested += (s, e) => ToggleLinkedInComposer();
             _activeEditorPane = EditorTabs;
             // Clicking into any pane's WebView2 to type moves WPF keyboard focus
             // there without changing tab selection — walk up from the newly

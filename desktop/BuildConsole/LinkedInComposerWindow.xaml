@@ -1,0 +1,98 @@
+<Window x:Class="BuildConsole.LinkedInComposerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="LinkedIn Post"
+        Width="340" Height="380"
+        MinWidth="240" MinHeight="220"
+        WindowStyle="None"
+        ResizeMode="CanResizeWithGrip"
+        Topmost="True"
+        ShowInTaskbar="False"
+        AllowsTransparency="True"
+        Background="Transparent">
+
+    <!-- Git #973 — always-on-top LinkedIn post composer floaty. Same shape as
+         the #937 Sticky Notes floaty: borderless window, the thin header strip
+         is the drag handle (Header_MouseLeftButtonDown -> DragMove). The Send
+         button does NO injection itself — MainWindow owns the WebView2 tabs, so
+         this raises SendRequested and MainWindow injects into LinkedIn's real
+         compose box (never presses Schedule/Post; Shane does that himself). -->
+    <Border Background="{StaticResource MantleBrush}"
+            BorderBrush="{StaticResource Surface0Brush}"
+            BorderThickness="1"
+            CornerRadius="6">
+        <Grid Margin="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- Header strip: title + close, doubles as the drag handle -->
+            <Border x:Name="HeaderStrip" Grid.Row="0"
+                    Background="{StaticResource CrustBrush}"
+                    CornerRadius="6,6,0,0"
+                    Padding="8,5,6,5"
+                    MouseLeftButtonDown="Header_MouseLeftButtonDown">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="&#xE71B;"
+                               FontFamily="Segoe MDL2 Assets" FontSize="13"
+                               Margin="0,0,6,0" VerticalAlignment="Center"
+                               Foreground="{StaticResource BlueBrush}"/>
+                    <TextBlock Grid.Column="1" Text="LinkedIn Post"
+                               FontSize="12" FontWeight="SemiBold"
+                               VerticalAlignment="Center"
+                               Foreground="{StaticResource TextBrush}"/>
+                    <Button x:Name="BtnClose" Grid.Column="2"
+                            Content="&#x2715;"
+                            Style="{StaticResource IconButton}"
+                            FontSize="10"
+                            Padding="4,1,4,1"
+                            ToolTip="Close (reopen from the ActivityBar)"
+                            Click="BtnClose_Click"/>
+                </Grid>
+            </Border>
+
+            <!-- The post draft -->
+            <TextBox x:Name="PostBox" Grid.Row="1"
+                     Margin="6,6,6,4"
+                     AcceptsReturn="True"
+                     AcceptsTab="True"
+                     TextWrapping="Wrap"
+                     VerticalScrollBarVisibility="Auto"
+                     VerticalContentAlignment="Top"
+                     Background="{StaticResource BaseBrush}"
+                     Foreground="{StaticResource TextBrush}"
+                     BorderBrush="{StaticResource Surface0Brush}"
+                     BorderThickness="1"
+                     FontSize="13"
+                     Padding="6"
+                     TextChanged="PostBox_TextChanged"/>
+
+            <!-- Inline status/error message (empty by default) -->
+            <TextBlock x:Name="InlineMessage" Grid.Row="2"
+                       Margin="8,0,8,2"
+                       FontSize="11"
+                       TextWrapping="Wrap"
+                       Visibility="Collapsed"
+                       Foreground="{StaticResource Subtext1Brush}"/>
+
+            <!-- Send row -->
+            <Grid Grid.Row="3" Margin="6,2,6,10">
+                <Button x:Name="BtnSend"
+                        Content="Send to LinkedIn"
+                        Style="{StaticResource PrimaryButton}"
+                        HorizontalAlignment="Right"
+                        Padding="12,5,12,5"
+                        ToolTip="Pre-fills LinkedIn's compose box — you press Schedule/Post yourself."
+                        Click="BtnSend_Click"/>
+            </Grid>
+        </Grid>
+    </Border>
+</Window>

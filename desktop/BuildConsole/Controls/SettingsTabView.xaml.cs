@@ -43,6 +43,10 @@ namespace BuildConsole.Controls
             ReplitAppUrlBox.Text = savedSettings.ReplitAppUrl;
             ReplitWorkspaceUrlBox.Text = savedSettings.ReplitWorkspaceUrl;
 
+            // Git #973 — pre-fill the LinkedIn composer selector + URL from the same store.
+            LinkedInComposerSelectorBox.Text = savedSettings.LinkedInComposerSelector;
+            LinkedInComposeUrlBox.Text = savedSettings.LinkedInComposeUrl;
+
             // Git #864
             RenderWebToolsSettingsList();
 
@@ -80,6 +84,7 @@ namespace BuildConsole.Controls
                 "ChatIntegration" => SectionChatIntegration,
                 "WebTools"        => SectionWebTools,
                 "ReplitWatcher"   => SectionReplitWatcher,
+                "LinkedIn"        => SectionLinkedIn,
                 _                 => null,
             };
             // Git #961 — opening the Test Environment section re-runs the manifest scan so a
@@ -145,6 +150,25 @@ namespace BuildConsole.Controls
 
             // Let MainWindow re-apply live (start/stop, new interval) without a restart.
             ReplitWatcherSettingsChanged?.Invoke(this, EventArgs.Empty);
+        }
+
+        // ── SETTINGS: LinkedIn post pre-fill (Git #973) ──────────────────────
+        private void BtnSaveLinkedIn_Click(object sender, RoutedEventArgs e)
+        {
+            var settings = BuildConsoleSettings.Load();
+
+            var selector = LinkedInComposerSelectorBox.Text.Trim();
+            if (!string.IsNullOrWhiteSpace(selector))
+                settings.LinkedInComposerSelector = selector;
+
+            var url = LinkedInComposeUrlBox.Text.Trim();
+            if (!string.IsNullOrWhiteSpace(url))
+                settings.LinkedInComposeUrl = url;
+
+            settings.Save();
+            LinkedInSavedText.Text = "Saved.";
+            ActivityLog.Log("linkedin.prefill",
+                $"settings saved — selector='{settings.LinkedInComposerSelector}', url='{settings.LinkedInComposeUrl}'.");
         }
 
         // ── SETTINGS: Web Tools (Git #864) ───────────────────────────────────

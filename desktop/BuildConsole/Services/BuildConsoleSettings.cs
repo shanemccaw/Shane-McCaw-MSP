@@ -127,6 +127,44 @@ namespace BuildConsole.Services
         /// <summary>CSS selector for the Replit "Run" button. This is a BEST-GUESS default — the real selector only exists inside Shane's authenticated Replit IDE session and cannot be determined from a sandboxed build, so it MUST be editable here without a rebuild. The watcher also falls back to any button/anchor whose visible text is exactly "Run", but Shane should calibrate this once he's landed on the live dashboard.</summary>
         public string ReplitRunButtonSelector { get; set; } = "[data-cy=\"ws-run-btn\"]";
 
+        // ── Git #973 — LinkedIn post pre-fill via WebView2 (NOT Epic #803) ────
+        // Shane: "Can we use the WebView2 DOM to auto-schedule LinkedIn posts...
+        // I was more thinking a pre-fill and then I'd press the actual schedule
+        // button." Pre-fill ONLY — the LinkedIn composer floaty (#937 shape)
+        // injects the post text into LinkedIn's real compose box; Shane presses
+        // Schedule/Post himself. Same local %AppData%\BuildConsole\settings.json
+        // store / round-trip pattern as every field above; the initializers
+        // double as defaults for a pre-#973 settings.json.
+
+        /// <summary>
+        /// CSS selector for LinkedIn's real post-composer element. This is a
+        /// BEST-GUESS default (LinkedIn's share box is a Quill contenteditable
+        /// div) — the exact live-authenticated DOM can't be inspected from a
+        /// sandboxed build, so it MUST be editable here without a rebuild and
+        /// calibrated against Shane's real LinkedIn session, exactly like #902's
+        /// ReplitRunButtonSelector. If it matches no element the floaty shows a
+        /// clear recalibrate message rather than failing silently.
+        /// </summary>
+        public string LinkedInComposerSelector { get; set; } = "div.ql-editor[contenteditable=\"true\"]";
+
+        /// <summary>The LinkedIn URL the "Send to LinkedIn" action opens/focuses when no LinkedIn tab is already open. Defaults to the feed, where the "Start a post" composer lives.</summary>
+        public string LinkedInComposeUrl { get; set; } = "https://www.linkedin.com/feed/";
+
+        /// <summary>The LinkedIn composer floaty's current draft text, auto-saved (debounced) as Shane types so a stray close can't lose it (same as StickyNotesText).</summary>
+        public string LinkedInComposerText { get; set; } = "";
+
+        /// <summary>Last on-screen X of the LinkedIn composer floaty. -1 = never positioned yet (center on first open).</summary>
+        public double LinkedInComposerLeft { get; set; } = -1;
+
+        /// <summary>Last on-screen Y of the LinkedIn composer floaty. -1 = never positioned yet (center on first open).</summary>
+        public double LinkedInComposerTop { get; set; } = -1;
+
+        /// <summary>Last width of the LinkedIn composer floaty.</summary>
+        public double LinkedInComposerWidth { get; set; } = 340;
+
+        /// <summary>Last height of the LinkedIn composer floaty.</summary>
+        public double LinkedInComposerHeight { get; set; } = 380;
+
         // Git #864 — Shane: "I need you to design me a icon based popout panel
         // with web site tools like: LinkedIn, Google Analytics, Microsoft
         // Clarity... a configuration in the settings might actually be

@@ -188,7 +188,7 @@
                 </StackPanel>
 
                 <!-- ════════════════ REPLIT WATCHER ════════════════ -->
-                <StackPanel x:Name="SectionReplitWatcher" Margin="0,0,0,10">
+                <StackPanel x:Name="SectionReplitWatcher" Margin="0,0,0,26">
                     <TextBlock Text="🔁  REPLIT WATCHER" FontSize="13" FontWeight="Bold"
                                Foreground="{StaticResource PeachBrush}" Margin="0,0,0,2"/>
                     <TextBlock Text="Watches the deployed app in the background and clicks Run on the Replit dashboard when it goes to sleep. Requires you to be logged into Replit in the app, and the Run-button selector calibrated to your live IDE."
@@ -224,6 +224,35 @@
                             <Button x:Name="BtnSaveReplitWatcher" Content="Save" Style="{StaticResource PrimaryButton}"
                                     HorizontalAlignment="Left" Padding="16,4" Click="BtnSaveReplitWatcher_Click"/>
                             <TextBlock x:Name="ReplitWatcherSavedText" Text="" FontSize="10" Foreground="{StaticResource GreenBrush}" Margin="0,4,0,0"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <!-- Git #973 — Shane: "pre-fill and then I'd press the actual schedule
+                     button." The LinkedIn composer floaty injects a post into LinkedIn's
+                     real compose box; Shane presses Schedule/Post himself. The selector
+                     is editable because LinkedIn's live authenticated compose-box DOM
+                     can't be inspected from a sandbox — it must be calibrated against
+                     Shane's real session, exactly like #902's Replit Run selector. -->
+                <StackPanel x:Name="SectionLinkedIn" Margin="0,0,0,10">
+                    <TextBlock Text="&#x1F4BC;  LINKEDIN" FontSize="13" FontWeight="Bold"
+                               Foreground="{StaticResource BlueBrush}" Margin="0,0,0,2"/>
+                    <TextBlock Text="Pre-fills LinkedIn's post composer from the always-on-top LinkedIn floaty (ActivityBar). It never presses Schedule/Post — you complete that yourself in LinkedIn."
+                               FontSize="11" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,10" TextWrapping="Wrap"/>
+                    <Border Background="{StaticResource MantleBrush}" BorderBrush="{StaticResource Surface0Brush}"
+                            BorderThickness="1" CornerRadius="8" Padding="16">
+                        <StackPanel>
+                            <TextBlock Text="LinkedIn Post Composer Selector" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
+                            <TextBox x:Name="LinkedInComposerSelectorBox" Height="26" FontSize="12" Margin="0,0,0,2"/>
+                            <TextBlock Text="CSS selector for LinkedIn's real compose box. Best-guess default (a Quill contenteditable div) — open &quot;Start a post&quot;, inspect the editor, and calibrate this against your live session. If it matches nothing the floaty tells you to recalibrate."
+                                       FontSize="10" Foreground="{StaticResource Subtext0Brush}" TextWrapping="Wrap" Margin="0,0,0,8"/>
+
+                            <TextBlock Text="LinkedIn URL (opened when no LinkedIn tab is already open)" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
+                            <TextBox x:Name="LinkedInComposeUrlBox" Height="26" FontSize="12" Margin="0,0,0,8"/>
+
+                            <Button x:Name="BtnSaveLinkedIn" Content="Save" Style="{StaticResource PrimaryButton}"
+                                    HorizontalAlignment="Left" Padding="16,4" Click="BtnSaveLinkedIn_Click"/>
+                            <TextBlock x:Name="LinkedInSavedText" Text="" FontSize="10" Foreground="{StaticResource GreenBrush}" Margin="0,4,0,0"/>
                         </StackPanel>
                     </Border>
                 </StackPanel>
