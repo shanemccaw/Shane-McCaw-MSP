@@ -722,8 +722,41 @@ namespace BuildConsole.Controls
             if (!string.IsNullOrEmpty(target)) s += $"  {target}";
             if (!string.IsNullOrEmpty(step.Value)) s += $"  = {step.Value}";
             if (!string.IsNullOrEmpty(step.State)) s += $"  [{step.State}]";
-            if (!string.IsNullOrEmpty(step.CaptureResponseJson)) s += "  ⟳capture";
+            if (!string.IsNullOrEmpty(step.CaptureResponseJson)) s += "  " + DescribeCaptureResponse(step.CaptureResponseJson);
             return s;
+        }
+
+        /// <summary>Git #997 — expand the bare "⟳capture" glyph to show the real urlPattern being watched
+        /// (matching #996's live-log detail), plus a short summary of the expect block's assertions when it fits.</summary>
+        private static string DescribeCaptureResponse(string captureResponseJson)
+        {
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(captureResponseJson);
+                var root = doc.RootElement;
+                string urlPattern = GetJsonStr(root, "urlPattern") ?? "(no urlPattern)";
+                string s = $"⟳capture: {urlPattern}";
+
+                if (root.TryGetProperty("expect", out var expect) && expect.ValueKind == System.Text.Json.JsonValueKind.Object)
+                {
+                    var parts = new List<string>();
+                    if (expect.TryGetProperty("status", out var status))
+                        parts.Add($"status {status}");
+                    if (expect.TryGetProperty("jsonPath", out var jsonPath) && jsonPath.ValueKind == System.Text.Json.JsonValueKind.String)
+                        parts.Add(jsonPath.GetString() ?? "");
+                    if (expect.TryGetProperty("containsAny", out var containsAny) && containsAny.ValueKind == System.Text.Json.JsonValueKind.Array)
+                        parts.Add($"containsAny×{containsAny.GetArrayLength()}");
+                    if (expect.TryGetProperty("containsNone", out var containsNone) && containsNone.ValueKind == System.Text.Json.JsonValueKind.Array)
+                        parts.Add($"containsNone×{containsNone.GetArrayLength()}");
+                    if (parts.Count > 0) s += $"  ({string.Join(", ", parts)})";
+                }
+
+                return s;
+            }
+            catch
+            {
+                return "⟳capture";
+            }
         }
 
         private static string? GetJsonStr(System.Text.Json.JsonElement el, string prop)
