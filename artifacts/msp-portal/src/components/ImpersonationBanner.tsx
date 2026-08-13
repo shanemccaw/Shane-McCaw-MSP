@@ -30,7 +30,10 @@ export function ImpersonationBanner({ email }: { email: string }) {
   };
 
   return (
-    <div className="fixed top-0 inset-x-0 z-[9999] bg-amber-500 text-white flex items-center justify-between px-4 py-2 shadow-lg">
+    <div
+      data-testid="impersonation-banner"
+      className="fixed top-0 inset-x-0 z-[9999] bg-amber-500 text-white flex items-center justify-between px-4 py-2 shadow-lg"
+    >
       <div className="flex items-center gap-2 text-sm font-semibold">
         <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />

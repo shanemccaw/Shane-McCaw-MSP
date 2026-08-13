@@ -1,0 +1,95 @@
+{
+  "issue": 928,
+  "feature": "TenantSwitcherFloaty — PlatformAdmin app-shell viewing-as widget (#797)",
+  "baseUrl": "{{DEPLOY_URL}}",
+
+  "apiTests": [
+    {
+      "name": "log in as the designated PlatformAdmin test account — same {{TEST_ADMIN_EMAIL}}/{{TEST_ADMIN_PASSWORD}} the uiSteps login form below uses, so apiTests and the browser session drive the SAME real admin identity",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_ADMIN_EMAIL}}", "password": "{{TEST_ADMIN_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "adminToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "confirm the real GET /api/admin/view-as/accounts endpoint the floaty's own useEffect fetch calls returns a real, non-empty account list — the same list the uiSteps below click into",
+      "method": "GET",
+      "path": "/api/admin/view-as/accounts",
+      "headers": { "Authorization": "Bearer {{adminToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.accounts", "isArray": true }
+    }
+  ],
+
+  "uiSteps": [
+    { "name": "log in as PlatformAdmin", "action": "goto", "target": "/login" },
+    { "action": "input", "selector": "#email", "value": "{{TEST_ADMIN_EMAIL}}" },
+    { "action": "input", "selector": "#password", "value": "{{TEST_ADMIN_PASSWORD}}" },
+    {
+      "action": "click",
+      "selector": "[data-testid='login-submit']",
+      "captureResponse": {
+        "urlPattern": "/api/auth/login",
+        "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true }
+      }
+    },
+
+    { "name": "confirm the floaty is visible for a PlatformAdmin session", "action": "goto", "target": "/dashboard" },
+    { "action": "expect", "selector": "[data-testid='tenant-switcher-floaty']", "state": "visible" },
+
+    { "name": "confirm it persists across a route change (app-shell-mounted, not per-page)", "action": "goto", "target": "/customers" },
+    { "action": "expect", "selector": "[data-testid='tenant-switcher-floaty']", "state": "visible" },
+
+    { "name": "log out of the PlatformAdmin session", "action": "click", "selector": "[data-testid='sidebar-logout']" },
+
+    { "name": "log in as a non-PlatformAdmin test account (CustomerUser tier)", "action": "goto", "target": "/login" },
+    { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
+    { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
+    {
+      "action": "click",
+      "selector": "[data-testid='login-submit']",
+      "captureResponse": {
+        "urlPattern": "/api/auth/login",
+        "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true }
+      }
+    },
+    { "action": "goto", "target": "/m365-health" },
+    { "name": "confirm the floaty is NOT visible for a non-PlatformAdmin session", "action": "expect", "selector": "[data-testid='tenant-switcher-floaty']", "state": "hidden" },
+
+    { "name": "log back in as PlatformAdmin to test the actual tenant switch", "action": "click", "selector": "[data-testid='sidebar-logout']" },
+    { "action": "goto", "target": "/login" },
+    { "action": "input", "selector": "#email", "value": "{{TEST_ADMIN_EMAIL}}" },
+    { "action": "input", "selector": "#password", "value": "{{TEST_ADMIN_PASSWORD}}" },
+    {
+      "action": "click",
+      "selector": "[data-testid='login-submit']",
+      "captureResponse": {
+        "urlPattern": "/api/auth/login",
+        "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true }
+      }
+    },
+    { "action": "goto", "target": "/dashboard" },
+
+    { "name": "expand the collapsed floaty panel", "action": "click", "selector": "[data-testid='tenant-switcher-toggle']" },
+    { "action": "expect", "selector": "[data-testid='tenant-switcher-account']", "state": "visible" },
+
+    {
+      "name": "switch to viewing a real test tenant — the endpoint returns a real impersonation token, exchanged in place via switchToTenant()",
+      "action": "click",
+      "selector": "[data-testid='tenant-switcher-account']",
+      "captureResponse": {
+        "urlPattern": "/impersonate",
+        "expect": { "status": 200, "jsonPath": "$.token", "exists": true }
+      }
+    },
+
+    { "name": "confirm the viewing-as indicator shows correctly", "action": "expect", "selector": "[data-testid='impersonation-banner']", "state": "visible" },
+    { "name": "floaty stays reachable for the whole viewing-as session, not just before the first switch", "action": "expect", "selector": "[data-testid='tenant-switcher-floaty']", "state": "visible" },
+
+    { "name": "returnToAdmin — click None to exit viewing-as", "action": "click", "selector": "[data-testid='tenant-switcher-none']" },
+
+    { "name": "confirm returnToAdmin genuinely exits viewing-as state", "action": "expect", "selector": "[data-testid='impersonation-banner']", "state": "hidden" },
+    { "name": "confirm the real admin session is restored, not just the banner hidden", "action": "expect", "selector": "[data-testid='tenant-switcher-floaty']", "state": "visible" }
+  ]
+}

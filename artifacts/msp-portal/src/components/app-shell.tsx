@@ -1903,6 +1903,7 @@ export function AppShell({ children, title, actions }: AppShellProps) {
         <Button
           variant="ghost"
           size="sm"
+          data-testid="sidebar-logout"
           className={`text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent ${collapsed ? "w-full justify-center px-2" : "w-full justify-start"}`}
           onClick={() => void logout()}
           title={collapsed ? "Sign out" : undefined}

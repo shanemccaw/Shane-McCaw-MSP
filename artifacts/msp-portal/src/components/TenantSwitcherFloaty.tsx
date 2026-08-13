@@ -195,6 +195,7 @@ export function TenantSwitcherFloaty() {
           )}
           <button
             type="button"
+            data-testid="tenant-switcher-toggle"
             onPointerDown={(e) => e.stopPropagation()}
             onClick={toggleCollapsed}
             className="rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
