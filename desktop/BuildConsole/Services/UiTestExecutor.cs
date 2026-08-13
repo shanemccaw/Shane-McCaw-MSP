@@ -231,6 +231,17 @@ namespace BuildConsole.Services
 
         public event EventHandler<UiTelemetryEvent>? Telemetry;
 
+        /// <summary>Epic #803 — raised after each uiStep (goto/click/input/expect, …) completes, mirroring the
+        /// static <c>StepCompleted</c> the api/graph/zoho/powershell executors already fire (HttpTestExecutor,
+        /// GraphTestExecutor, ZohoTestExecutor, PowerShellTestExecutor). Before this, uiSteps were the one
+        /// executor kind NOT on this spine — their live per-step signal came only from the UI-specific
+        /// <see cref="Telemetry"/> "STEP N PASS/WARN" pattern, so a consumer that watches StepCompleted (e.g. a
+        /// headless run reading nothing but this stream) never saw uiSteps at all, and a captureResponse that
+        /// timed out to a null capture (an EXPECTED WARN/fail) was invisible in the stream. Now every uiStep the
+        /// run executes raises exactly one combined <see cref="TestStepResult"/> here — including that
+        /// null-capture case — carrying the step's real label/passed/detail/duration.</summary>
+        public static event Action<TestStepResult>? StepCompleted;
+
         public UiTestExecutor(WebView2 webView)
         {
             _webView = webView;
@@ -280,6 +291,17 @@ namespace BuildConsole.Services
                     var stepResult = await ExecuteStepAsync(i + 1, steps[i]);
                     result.Steps.Add(stepResult);
                     if (stepResult.Passed) passed++;
+
+                    // Epic #803 — fire the static StepCompleted once per uiStep, matching the api/graph/zoho/
+                    // powershell executors, so this step streams into the SAME live per-step TestStepResult spine
+                    // (TestRunnerWindow.OnStepCompleted → AddStepResult + AdvanceStep) rather than only the UI's
+                    // Telemetry pattern-match. Fires for EVERY executed step, including ExecuteStepAsync's
+                    // early-return paths (an unresolved {{variable}} still returns a failed UiStepResult) and the
+                    // captureResponse timeout/null-capture WARN — the case previously invisible in this stream.
+                    // Uses the COMBINED verdict (stepResult.Passed), so the shared step cursor advances exactly as
+                    // the retired "STEP N PASS/WARN" telemetry level did.
+                    StepCompleted?.Invoke(BuildStepCompletedResult(stepResult));
+
                     await Task.Delay(PostStepSettleMs);
                 }
 
@@ -1008,6 +1030,38 @@ namespace BuildConsole.Services
         private void Emit(string label, string detail, string level, string colorHex)
         {
             Telemetry?.Invoke(this, new UiTelemetryEvent { Label = label, Detail = detail, Level = level, ColorHex = colorHex });
+        }
+
+        /// <summary>Epic #803 — builds the single combined <see cref="TestStepResult"/> raised on
+        /// <see cref="StepCompleted"/> for one finished uiStep. Deliberately ONE entry per step (the step list
+        /// has one row per uiStep, and OnStepCompleted advances the shared cursor once per firing), unlike
+        /// <see cref="UiTestRunResult.ToTestStepResults"/> which splits the file record into a separate
+        /// captureResponse entry plus the action entry. <see cref="TestStepResult.Passed"/> is the step's
+        /// COMBINED verdict (<see cref="UiStepResult.Passed"/> = action AND captureResponse AND extract/duration),
+        /// so the row is marked exactly as the retired "STEP N PASS/WARN" telemetry level did; and the capture's
+        /// own outcome is folded into Detail so a consumer that sees nothing but this stream (a headless run)
+        /// still gets the full story on the null-capture WARN.</summary>
+        private static TestStepResult BuildStepCompletedResult(UiStepResult step)
+        {
+            string detail = step.CaptureResponse != null
+                ? $"{step.Detail} | captureResponse: {step.CaptureResponse.Detail}"
+                : step.Detail;
+
+            return new TestStepResult
+            {
+                Kind = "ui",
+                Label = $"{step.ActionType} {step.Selector}",
+                Passed = step.Passed,
+                Detail = detail,
+                DurationMs = step.DurationMs,
+                Expected = step.Expected,
+                Actual = step.Actual,
+                Context = $"step {step.Index}: {step.ActionType} on selector '{step.Selector}'"
+                    + (step.CaptureResponse != null
+                        ? $"; captureResponse [{step.CaptureResponse.UrlPattern}] status={step.CaptureResponse.Status?.ToString() ?? "none"}"
+                        : string.Empty),
+                ScreenshotPath = step.ScreenshotPath,
+            };
         }
     }
 }

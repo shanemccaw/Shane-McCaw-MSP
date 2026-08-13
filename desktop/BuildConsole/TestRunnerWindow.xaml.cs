@@ -115,12 +115,17 @@ namespace BuildConsole
             Services.GraphTestExecutor.StepCompleted += OnStepCompleted;
             Services.ZohoTestExecutor.StepCompleted += OnStepCompleted;
             Services.PowerShellTestExecutor.StepCompleted += OnStepCompleted;
+            // Epic #803 — uiSteps now fire the same static StepCompleted as the other four (previously they
+            // advanced only via the UiStepDonePattern telemetry match in RunUiTestAsync, which is now removed
+            // so the shared cursor isn't double-advanced — OnStepCompleted is the single advance path).
+            Services.UiTestExecutor.StepCompleted += OnStepCompleted;
             Closed += (_, _) =>
             {
                 Services.HttpTestExecutor.StepCompleted -= OnStepCompleted;
                 Services.GraphTestExecutor.StepCompleted -= OnStepCompleted;
                 Services.ZohoTestExecutor.StepCompleted -= OnStepCompleted;
                 Services.PowerShellTestExecutor.StepCompleted -= OnStepCompleted;
+                Services.UiTestExecutor.StepCompleted -= OnStepCompleted;
             };
         }
 
@@ -259,11 +264,14 @@ namespace BuildConsole
             var executor = new Services.UiTestExecutor(RunnerWebView);
             EventHandler<Services.UiTelemetryEvent> onTelemetry = (s, e) =>
             {
+                // Epic #803 — the per-step PASS/WARN summary and the step-cursor advance now arrive as a
+                // structured TestStepResult via UiTestExecutor.StepCompleted (OnStepCompleted → AddStepResult +
+                // AdvanceStep), exactly like the other four executors. So skip re-carding the raw
+                // "STEP N PASS/WARN" telemetry line (StepCompleted's card supersedes it) and do NOT advance the
+                // cursor here — advancing in both places would double-step the shared cursor. Every other
+                // telemetry line (START/NAV/RUNNING/CAPTURE/VIEWPORT/SHOT) still streams as a live card.
+                if (UiStepDonePattern.IsMatch(e.Label)) return;
                 AddCard(e.Label, e.Detail, e.Level, e.ColorHex);
-
-                var doneMatch = UiStepDonePattern.Match(e.Label);
-                if (doneMatch.Success)
-                    RunOnUi(() => AdvanceStep(e.Level == "PASS"));
             };
             executor.Telemetry += onTelemetry;
             try
