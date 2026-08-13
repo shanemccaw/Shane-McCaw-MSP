@@ -22,6 +22,12 @@ namespace BuildConsole.Services
         /// <summary>Discovered placeholder names that were already present in the store (left untouched).</summary>
         public List<string> AlreadyKnownNames { get; } = new();
 
+        /// <summary>Git #1021 — discovered config placeholders (added OR already-known) that surfaced via a
+        /// <c>powerShellVerify[].afterStep</c> bare-name reference rather than literal <c>{{...}}</c> syntax.
+        /// Reported distinctly on the scan channel because these are the names the old scanner missed
+        /// entirely (e.g. <c>GRAPH_TEST_TENANT_ID</c> in <c>smoke/hello-world-powershell.json</c>).</summary>
+        public List<string> AfterStepSourcedNames { get; } = new();
+
         public string SummaryLine =>
             !RepoRootFound
                 ? "Could not locate test-manifests/ — no repo root (Settings has the config path)."
@@ -54,6 +60,20 @@ namespace BuildConsole.Services
     ///   manifest but referenced un-extracted in another still surfaces from the second.</item>
     /// </list>
     ///
+    /// Git #1021 — one manifest field does NOT use literal <c>{{...}}</c> syntax:
+    /// <c>powerShellVerify[].afterStep</c>. <see cref="PowerShellTestExecutor"/> wraps a bare
+    /// <c>afterStep</c> string in <c>{{}}</c> itself before calling
+    /// <see cref="TestRunVariables.Resolve"/> (<c>afterStep.Contains("{{") ? afterStep : "{{"+afterStep+"}}"</c>),
+    /// so a value like <c>"GRAPH_TEST_TENANT_ID"</c> is a real config-variable reference even though it
+    /// carries no braces. This scanner mirrors that exact wrapping: for each <c>powerShellVerify[]</c>
+    /// entry it treats a brace-less <c>afterStep</c> as an implicit <c>{{afterStep}}</c> reference (subject
+    /// to the same per-manifest extract subtraction — an <c>afterStep</c> that names a value an earlier
+    /// step of the SAME manifest extracts is still a cross-step value, not config). <c>afterStep</c> is
+    /// the only field with this bare-name behavior — every other Resolve call site (paths, headers, bodies,
+    /// cmdlet text, Graph mailbox/subject, UI selector/value) passes the raw field through Resolve and so
+    /// requires literal <c>{{...}}</c>, which the generic string walk already catches. Names discovered via
+    /// <c>afterStep</c> are reported distinctly (<see cref="ManifestVariableScanResult.AfterStepSourcedNames"/>).
+    ///
     /// Every scan logs a one-line summary to the dedicated <see cref="Channel"/>
     /// (<c>testing.config-vars.scan</c>), distinct from #953's <c>testing.config-vars</c>
     /// resolve/miss channel. No GitHub issue is filed per variable — the in-app "needs review"
@@ -77,6 +97,12 @@ namespace BuildConsole.Services
         // Same placeholder grammar TestRunVariables uses: {{ NAME }} with optional inner whitespace.
         private static readonly Regex PlaceholderPattern =
             new(@"\{\{\s*([A-Za-z0-9_]+)\s*\}\}", RegexOptions.Compiled);
+
+        // Git #1021 — a bare afterStep is only a valid implicit {{NAME}} reference if the whole (trimmed)
+        // string is a single placeholder-grammar identifier; PowerShellTestExecutor wraps it as
+        // {{afterStep}} and Resolve's regex ([A-Za-z0-9_]+) would never match anything else anyway.
+        private static readonly Regex BareNamePattern =
+            new(@"^[A-Za-z0-9_]+$", RegexOptions.Compiled);
 
         /// <summary>
         /// Scan all manifests and auto-fill any discovered placeholder not already in
@@ -117,6 +143,9 @@ namespace BuildConsole.Services
             }
 
             var discovered = new HashSet<string>(StringComparer.Ordinal);
+            // Git #1021 — names that surfaced via a bare powerShellVerify[].afterStep reference and
+            // survived per-manifest subtraction into `discovered`. Reported distinctly below.
+            var afterStepSourced = new HashSet<string>(StringComparer.Ordinal);
 
             foreach (var file in files)
             {
@@ -132,7 +161,9 @@ namespace BuildConsole.Services
                 {
                     var placeholders = new HashSet<string>(StringComparer.Ordinal);
                     var extractNames = new HashSet<string>(StringComparer.Ordinal);
-                    Walk(doc.RootElement, placeholders, extractNames);
+                    // Git #1021 — bare powerShellVerify[].afterStep names found in THIS manifest.
+                    var afterStepRefs = new HashSet<string>(StringComparer.Ordinal);
+                    Walk(doc.RootElement, placeholders, extractNames, afterStepRefs);
 
                     // Per-manifest subtraction BEFORE the cross-file union: a name this
                     // manifest extracts for itself is a cross-step value, not config.
@@ -141,12 +172,16 @@ namespace BuildConsole.Services
                         if (ExcludedNames.Contains(name)) continue;
                         if (extractNames.Contains(name)) continue;
                         discovered.Add(name);
+                        // Track distinctly if THIS manifest sourced the name via a bare afterStep
+                        // (it survived exclusion + extract subtraction, so it's a real config var).
+                        if (afterStepRefs.Contains(name)) afterStepSourced.Add(name);
                     }
                 }
                 result.ManifestsScanned++;
             }
 
             result.DistinctConfigPlaceholders = discovered.Count;
+            result.AfterStepSourcedNames.AddRange(afterStepSourced.OrderBy(n => n, StringComparer.Ordinal));
 
             // Fill gaps only — an existing entry (whatever Shane set it to) is left untouched.
             var existing = new HashSet<string>(
@@ -177,14 +212,32 @@ namespace BuildConsole.Services
                     ? $"scanned {result.ManifestsScanned} manifest(s); {result.DistinctConfigPlaceholders} distinct config placeholder(s); added {result.AddedNames.Count} new (needsReview): {string.Join(", ", result.AddedNames)}."
                     : $"scanned {result.ManifestsScanned} manifest(s); {result.DistinctConfigPlaceholders} distinct config placeholder(s); all already known — nothing added.");
 
+            // Git #1021 — report afterStep-sourced discoveries distinctly (these are the ones the old
+            // literal-{{}}-only scanner missed): which came from a bare powerShellVerify[].afterStep, and
+            // of those, which were newly added this scan vs already known.
+            if (afterStepSourced.Count > 0)
+            {
+                var afterStepAdded = afterStepSourced
+                    .Where(n => result.AddedNames.Contains(n))
+                    .OrderBy(n => n, StringComparer.Ordinal)
+                    .ToList();
+                ActivityLog.Log(Channel,
+                    $"of those, {afterStepSourced.Count} came from a powerShellVerify[].afterStep bare-name reference (implicit {{{{...}}}}): {string.Join(", ", result.AfterStepSourcedNames)}"
+                    + (afterStepAdded.Count > 0
+                        ? $"; newly added (needsReview): {string.Join(", ", afterStepAdded)}."
+                        : "; all already known."));
+            }
+
             return result;
         }
 
-        /// <summary>Recursively collect every <c>{{NAME}}</c> placeholder from string values, and
-        /// every <c>extract.as</c> name (a cross-step value the run populates itself, so it is NOT
-        /// a config var). Matches <see cref="TestRunVariables.Extract"/>'s read of the <c>as</c>
-        /// field.</summary>
-        private static void Walk(JsonElement el, HashSet<string> placeholders, HashSet<string> extractNames)
+        /// <summary>Recursively collect every <c>{{NAME}}</c> placeholder from string values, every
+        /// <c>extract.as</c> name (a cross-step value the run populates itself, so it is NOT a config
+        /// var — matches <see cref="TestRunVariables.Extract"/>'s read of the <c>as</c> field), and
+        /// (Git #1021) every bare <c>powerShellVerify[].afterStep</c> name treated as an implicit
+        /// <c>{{NAME}}</c> reference, mirroring <see cref="PowerShellTestExecutor"/>'s own wrapping.</summary>
+        private static void Walk(JsonElement el, HashSet<string> placeholders, HashSet<string> extractNames,
+            HashSet<string> afterStepRefs)
         {
             switch (el.ValueKind)
             {
@@ -206,14 +259,56 @@ namespace BuildConsole.Services
                             var asName = asEl.GetString();
                             if (!string.IsNullOrWhiteSpace(asName)) extractNames.Add(asName!.Trim());
                         }
-                        Walk(prop.Value, placeholders, extractNames);
+
+                        // Git #1021 — powerShellVerify[].afterStep specifically: its bare string value is
+                        // an implicit {{NAME}} reference (PowerShellTestExecutor wraps a brace-less afterStep
+                        // in {{}} before resolving). Scoped to the powerShellVerify array so no other stray
+                        // "afterStep"-named field could be misread. A braced afterStep is left to the generic
+                        // string walk below (which the recursion into prop.Value still performs).
+                        if (string.Equals(prop.Name, "powerShellVerify", StringComparison.Ordinal)
+                            && prop.Value.ValueKind == JsonValueKind.Array)
+                        {
+                            CollectAfterStepRefs(prop.Value, placeholders, afterStepRefs);
+                        }
+
+                        Walk(prop.Value, placeholders, extractNames, afterStepRefs);
                     }
                     break;
 
                 case JsonValueKind.Array:
                     foreach (var item in el.EnumerateArray())
-                        Walk(item, placeholders, extractNames);
+                        Walk(item, placeholders, extractNames, afterStepRefs);
                     break;
+            }
+        }
+
+        /// <summary>Git #1021 — for each <c>powerShellVerify[]</c> entry, read its <c>afterStep</c>: a
+        /// brace-less value (e.g. <c>"GRAPH_TEST_TENANT_ID"</c>) is an implicit <c>{{NAME}}</c> reference
+        /// and is added to both <paramref name="placeholders"/> (so it flows through the normal
+        /// exclusion/extract-subtraction pipeline) and <paramref name="afterStepRefs"/> (so the scan can
+        /// report it distinctly). A value already containing <c>{{...}}</c> is left to the generic string
+        /// walk. Only accepts a value matching the placeholder-name grammar — anything else would never
+        /// resolve at runtime either.</summary>
+        private static void CollectAfterStepRefs(JsonElement arrayEl, HashSet<string> placeholders,
+            HashSet<string> afterStepRefs)
+        {
+            foreach (var entry in arrayEl.EnumerateArray())
+            {
+                if (entry.ValueKind != JsonValueKind.Object) continue;
+                if (!entry.TryGetProperty("afterStep", out var afterEl)
+                    || afterEl.ValueKind != JsonValueKind.String) continue;
+
+                var raw = afterEl.GetString();
+                if (string.IsNullOrWhiteSpace(raw)) continue;
+
+                // A braced afterStep is handled by the generic {{...}} walk — don't double-count.
+                if (raw.IndexOf("{{", StringComparison.Ordinal) >= 0) continue;
+
+                var name = raw.Trim();
+                if (!BareNamePattern.IsMatch(name)) continue;
+
+                placeholders.Add(name);
+                afterStepRefs.Add(name);
             }
         }
     }
