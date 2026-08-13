@@ -120,6 +120,8 @@ namespace BuildConsole
                 SlotGrid.Children.Add(slot.Container);
             }
 
+            ReflowSlotGrid(); // 0 active → 1x1 full-window empty state to start
+
             RestoreWindowBounds();
 
             Loaded += (s, e) =>
@@ -470,6 +472,7 @@ namespace BuildConsole
             slot.HeaderText.ToolTip = slot.HeaderText.Text;
             SetSlotState(slot, SlotState.Running, null);
             TailSlotLog(slot);
+            ReflowSlotGrid(); // occupancy grew — resize the grid to fit
             ActivityLog.Log("build-watch",
                 $"occupied slot: {slot.Title} (queue #{item.Id}{(slot.GithubNumber.HasValue ? $", GH #{slot.GithubNumber}" : "")})");
         }
@@ -492,7 +495,73 @@ namespace BuildConsole
             slot.EmptyText.Visibility = Visibility.Visible;
             slot.Container.BorderBrush = _emptyBorder;
             slot.Container.BorderThickness = new Thickness(1);
+            ReflowSlotGrid(); // occupancy shrank — resize the grid to fit
         }
+
+        // ── Dynamic slot-grid sizing (Git #980) ─────────────────────────────
+
+        /// <summary>
+        /// Recomputes SlotGrid.Rows/Columns from the real current count of active
+        /// (occupied) slots and packs the occupied slot visuals to the front of the
+        /// UniformGrid, re-applied on every occupancy change. So the window shows
+        /// exactly as many squares as there are live builds instead of a fixed 2x4:
+        ///   1 → 1x1 (a single build fills the whole window)
+        ///   2 → 1x2 (side-by-side split)
+        ///   3-4 → 2x2 (quad)
+        ///   5-6 → 2x3
+        ///   7-8 → 2x4 (today's fixed layout — now only the true max)
+        /// A UniformGrid lays its children row-major across exactly Rows×Columns
+        /// cells, so any slot beyond that count falls outside the visible area.
+        /// The 8 slot visuals are created once and never destroyed, but a slot can
+        /// be freed at any index (dismiss / auto-evict / issue-close), so we reorder
+        /// the child collection to put the occupied slots first (in stable _slots
+        /// order) — that guarantees every live build stays on screen no matter which
+        /// physical slot index it holds, while the empty slots are the ones that
+        /// fall out of the shrunk grid. Idempotent: the child collection is only
+        /// mutated when the desired order actually differs from the current one.
+        /// </summary>
+        private void ReflowSlotGrid()
+        {
+            int active = _slots.Count(s => s.Occupied);
+            var (rows, cols) = GridDimsForActiveCount(active);
+
+            // Desired order: occupied slots first (stable _slots order), then empties.
+            var desired = _slots.Where(s => s.Occupied).Select(s => s.Container)
+                .Concat(_slots.Where(s => !s.Occupied).Select(s => s.Container))
+                .ToList();
+
+            bool orderChanged = SlotGrid.Children.Count != desired.Count;
+            if (!orderChanged)
+            {
+                for (int i = 0; i < desired.Count; i++)
+                {
+                    if (!ReferenceEquals(SlotGrid.Children[i], desired[i])) { orderChanged = true; break; }
+                }
+            }
+            if (orderChanged)
+            {
+                SlotGrid.Children.Clear();
+                foreach (var c in desired) SlotGrid.Children.Add(c);
+            }
+
+            if (SlotGrid.Rows != rows) SlotGrid.Rows = rows;
+            if (SlotGrid.Columns != cols) SlotGrid.Columns = cols;
+        }
+
+        /// <summary>
+        /// The (rows, columns) the slot grid should use for a given active-slot
+        /// count. 0 active collapses to 1x1 (a single full-window "empty" square)
+        /// rather than an empty grid; anything above the 8-slot max is clamped to
+        /// the 2x4 ceiling as a safety net.
+        /// </summary>
+        private static (int rows, int cols) GridDimsForActiveCount(int active) => active switch
+        {
+            <= 1 => (1, 1),
+            2 => (1, 2),
+            <= 4 => (2, 2),
+            <= 6 => (2, 3),
+            _ => (2, 4), // 7-8 (and any overflow) → the true max
+        };
 
         /// <summary>
         /// Reuses the exact per-item log-tail convention the main window's chat-tab

@@ -67,7 +67,12 @@
                            Foreground="{StaticResource PeachBrush}"/>
             </Border>
 
-            <!-- 8-slot grid (2 rows x 4 cols). Slots are built in code-behind. -->
+            <!-- Slot grid. 8 slot visuals are built once in code-behind, but the
+                 Rows/Columns are recomputed from the real current count of active
+                 (occupied) slots on every occupancy change (see ReflowSlotGrid) so
+                 the window shows exactly as many squares as there are live builds:
+                 1→1x1 (full window), 2→1x2, 3-4→2x2, 5-6→2x3, 7-8→2x4 (the true
+                 max). The Rows/Columns below are only the initial fallback. -->
             <UniformGrid x:Name="SlotGrid" Grid.Row="2" Rows="2" Columns="4"/>
         </Grid>
     </Border>
