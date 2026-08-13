@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         Title="Build Watch"
+        Icon="app.ico"
         Width="900" Height="560"
         MinWidth="480" MinHeight="320"
         WindowStartupLocation="CenterScreen"

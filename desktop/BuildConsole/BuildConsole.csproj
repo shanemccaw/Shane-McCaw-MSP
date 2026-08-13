@@ -5,7 +5,16 @@
     <TargetFramework>net7.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
     <UseWPF>true</UseWPF>
+    <ApplicationIcon>app.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- App icon (exe/taskbar/Explorer icon, via ApplicationIcon above) — also
+         embedded as a WPF Resource so Window.Icon="app.ico" can reference it
+         from XAML. Matches the in-app "Antigravity" logo mark (blue triangle
+         on CrustBrush). -->
+    <Resource Include="app.ico" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4129.50" />

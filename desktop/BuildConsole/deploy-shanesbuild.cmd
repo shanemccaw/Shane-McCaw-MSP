@@ -6,6 +6,9 @@ set "CONFIG=Release"
 set "BUILD_OUT=%PROJECT_DIR%bin\%CONFIG%\net7.0-windows"
 set "OUT_DIR=%PROJECT_DIR%bin\ShanesBuild"
 
+echo === Cleaning obj ===
+if exist "%PROJECT_DIR%obj" rmdir /s /q "%PROJECT_DIR%obj"
+
 echo === Building BuildConsole (%CONFIG%) ===
 dotnet build "%PROJECT_DIR%BuildConsole.csproj" -c %CONFIG%
 if errorlevel 1 (

@@ -9,6 +9,7 @@
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         mc:Ignorable="d"
         Title="BuildConsole" Height="960" Width="1680"
+        Icon="app.ico"
         WindowStartupLocation="CenterScreen"
         WindowState="Maximized"
         Background="{StaticResource BaseBrush}"

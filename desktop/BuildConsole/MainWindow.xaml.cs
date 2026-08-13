@@ -488,7 +488,7 @@ namespace BuildConsole
                 if (e.Key == Key.Escape)
                 {
                     e.Handled = true;
-                    CommandPaletteOverlay.Visibility = Visibility.Collapsed;
+                    HideCommandPalette();
                 }
             }
             else if (TabSwitcherOverlay.Visibility == Visibility.Visible)
@@ -562,7 +562,7 @@ namespace BuildConsole
             var activeWv = GetActiveWebView();
             if (activeWv != null) activeWv.Visibility = Visibility.Hidden;
 
-            TabSwitcherOverlay.Visibility = Visibility.Visible;
+            Services.UiFadeHelper.FadeIn(TabSwitcherOverlay);
             TabSwitcherList.SelectedIndex = nextIdx;
 
             if (TabSwitcherList.SelectedItem != null)
@@ -594,7 +594,7 @@ namespace BuildConsole
                 EditorTabs.SelectedIndex = card.TabIndex;
             }
 
-            TabSwitcherOverlay.Visibility = Visibility.Collapsed;
+            Services.UiFadeHelper.FadeOut(TabSwitcherOverlay);
 
             // Restore active WebView2 HWND visibility
             var activeWv = GetActiveWebView();
@@ -1440,9 +1440,12 @@ namespace BuildConsole
             closeBtn.Click += (s, e) =>
             {
                 keepAliveTimer?.Stop();
-                EditorTabs.Items.Remove(newTab);
-                if (EditorTabs.Items.Count > 0)
-                    EditorTabs.SelectedIndex = Math.Max(0, EditorTabs.Items.Count - 1);
+                Services.UiFadeHelper.FadeOut(newTab, onComplete: () =>
+                {
+                    EditorTabs.Items.Remove(newTab);
+                    if (EditorTabs.Items.Count > 0)
+                        EditorTabs.SelectedIndex = Math.Max(0, EditorTabs.Items.Count - 1);
+                });
             };
 
             AttachTabContextMenu(newTab, EditorTabs);
@@ -1565,10 +1568,13 @@ namespace BuildConsole
             closeBtn.Click += (s, e) =>
             {
                 _chatTabs.Remove(newTab);
-                EditorTabs.Items.Remove(newTab);
-                if (EditorTabs.Items.Count > 0)
-                    EditorTabs.SelectedIndex = Math.Max(0, EditorTabs.Items.Count - 1);
-                PersistOpenChatTabs(); // Git #874 — a closed chat drops out of "Where you left off"
+                Services.UiFadeHelper.FadeOut(newTab, onComplete: () =>
+                {
+                    EditorTabs.Items.Remove(newTab);
+                    if (EditorTabs.Items.Count > 0)
+                        EditorTabs.SelectedIndex = Math.Max(0, EditorTabs.Items.Count - 1);
+                    PersistOpenChatTabs(); // Git #874 — a closed chat drops out of "Where you left off"
+                });
             };
 
             AttachTabContextMenu(newTab, EditorTabs);
@@ -1635,10 +1641,13 @@ namespace BuildConsole
             closeBtn.Click += (s, e) =>
             {
                 var pane = tab.Parent as TabControl ?? EditorTabs;
-                pane.Items.Remove(tab);
-                if (_homeView == home) _homeView = null;
-                if (pane.Items.Count > 0) pane.SelectedIndex = Math.Max(0, pane.Items.Count - 1);
-                BuildConsole.Services.ActivityLog.Log("home-screen", "Home tab closed");
+                Services.UiFadeHelper.FadeOut(tab, onComplete: () =>
+                {
+                    pane.Items.Remove(tab);
+                    if (_homeView == home) _homeView = null;
+                    if (pane.Items.Count > 0) pane.SelectedIndex = Math.Max(0, pane.Items.Count - 1);
+                    BuildConsole.Services.ActivityLog.Log("home-screen", "Home tab closed");
+                });
             };
 
             AttachTabContextMenu(tab, EditorTabs);
@@ -2169,11 +2178,14 @@ namespace BuildConsole
 
         private void CloseTab(TabItem tabItem, TabControl ownerTabControl)
         {
-            ownerTabControl.Items.Remove(tabItem);
-            if (ownerTabControl.Items.Count > 0)
+            Services.UiFadeHelper.FadeOut(tabItem, onComplete: () =>
             {
-                ownerTabControl.SelectedIndex = Math.Max(0, ownerTabControl.Items.Count - 1);
-            }
+                ownerTabControl.Items.Remove(tabItem);
+                if (ownerTabControl.Items.Count > 0)
+                {
+                    ownerTabControl.SelectedIndex = Math.Max(0, ownerTabControl.Items.Count - 1);
+                }
+            });
         }
 
         private void LeftSidebar_FileSelected(object? sender, string filePath)
@@ -2314,9 +2326,12 @@ namespace BuildConsole
 
             closeBtn.Click += (s, e) =>
             {
-                EditorTabs.Items.Remove(newTab);
-                if (EditorTabs.Items.Count > 0)
-                    EditorTabs.SelectedIndex = Math.Max(0, EditorTabs.Items.Count - 1);
+                Services.UiFadeHelper.FadeOut(newTab, onComplete: () =>
+                {
+                    EditorTabs.Items.Remove(newTab);
+                    if (EditorTabs.Items.Count > 0)
+                        EditorTabs.SelectedIndex = Math.Max(0, EditorTabs.Items.Count - 1);
+                });
             };
 
             EditorTabs.Items.Add(newTab);
@@ -3037,7 +3052,7 @@ namespace BuildConsole
             var activeWv = GetActiveWebView();
             if (activeWv != null) activeWv.Visibility = Visibility.Hidden;
 
-            CommandPaletteOverlay.Visibility = Visibility.Visible;
+            Services.UiFadeHelper.FadeIn(CommandPaletteOverlay);
             PaletteSearchBox.Text = string.Empty;
             PerformPaletteSearch();
 
@@ -3050,7 +3065,7 @@ namespace BuildConsole
 
         private void HideCommandPalette()
         {
-            CommandPaletteOverlay.Visibility = Visibility.Collapsed;
+            Services.UiFadeHelper.FadeOut(CommandPaletteOverlay);
 
             // Restore active WebView2 HWND visibility
             var activeWv = GetActiveWebView();

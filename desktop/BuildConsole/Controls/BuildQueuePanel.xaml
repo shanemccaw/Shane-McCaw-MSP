@@ -64,16 +64,6 @@
                                    Foreground="{StaticResource Subtext1Brush}"/>
                     </StackPanel>
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" HorizontalAlignment="Right">
-                        <Button Style="{StaticResource IconButton}"
-                                ToolTip="Refresh"
-                                Padding="4">
-                            <TextBlock Text="&#xE72C;" FontFamily="Segoe MDL2 Assets" FontSize="13" VerticalAlignment="Center"/>
-                        </Button>
-                        <Button Style="{StaticResource IconButton}"
-                                ToolTip="Add Item"
-                                Padding="4">
-                            <TextBlock Text="&#xE710;" FontFamily="Segoe MDL2 Assets" FontSize="13" VerticalAlignment="Center"/>
-                        </Button>
                         <Button x:Name="BtnPinQueue"
                                 Style="{StaticResource IconButton}"
                                 ToolTip="Pin / Collapse Panel"
