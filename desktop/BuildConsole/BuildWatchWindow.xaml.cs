@@ -318,7 +318,7 @@ namespace BuildConsole
             body.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
             body.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
-            slot.EventsPanel = new StackPanel { Margin = new Thickness(8, 8, 8, 4) };
+            slot.EventsPanel = new StackPanel { Margin = new Thickness(10, 10, 10, 6) };
             slot.EventsScroll = new ScrollViewer
             {
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
@@ -677,7 +677,7 @@ namespace BuildConsole
                 Foreground = textBrush,
                 FontSize = 14.5,
                 TextWrapping = TextWrapping.Wrap,
-                LineHeight = 19,
+                LineHeight = 23, // ≈1.6× — the calm reading rhythm Claude.ai's own assistant messages use (leading-[1.65])
                 VerticalAlignment = VerticalAlignment.Center,
             };
             if (mono) body.FontFamily = new FontFamily("Cascadia Mono, Consolas");
@@ -687,13 +687,23 @@ namespace BuildConsole
             var card = new Border
             {
                 Background = _cardBg,
-                CornerRadius = new CornerRadius(4, 10, 10, 10),
+                CornerRadius = new CornerRadius(5, 14, 14, 14), // rounded-2xl-ish; keeps the subtle top-left chat "tail"
                 BorderBrush = accent,
                 BorderThickness = new Thickness(3, 0, 0, 0), // coloured left accent bar = event type
-                Padding = new Thickness(10, 7, 10, 7),
-                Margin = new Thickness(0, 0, 0, 6),
+                Padding = new Thickness(13, 9, 13, 9),
+                Margin = new Thickness(0, 0, 0, 9), // generous inter-card gap so cards read as distinct turns
                 HorizontalAlignment = HorizontalAlignment.Stretch,
                 Child = body,
+                // Very subtle lift off the Base background — lighter than the app's speech-bubble
+                // shadow (0.45), tuned for a dense stream so many stacked cards stay calm.
+                Effect = new System.Windows.Media.Effects.DropShadowEffect
+                {
+                    BlurRadius = 7,
+                    ShadowDepth = 1,
+                    Direction = 270,
+                    Opacity = 0.25,
+                    Color = Colors.Black,
+                },
             };
 
             slot.EventsPanel.Children.Add(card);
@@ -734,9 +744,9 @@ namespace BuildConsole
 
             group.SummaryText = new TextBlock
             {
-                FontSize = 12,
-                FontWeight = FontWeights.SemiBold,
-                Foreground = _cardSubtext,
+                FontSize = 12.5,
+                FontWeight = FontWeights.Normal, // NOT semibold — a tool run is secondary to the narrative cards
+                Foreground = _cardSubtext,       // muted Subtext1, readable but visibly lighter than prose
                 VerticalAlignment = VerticalAlignment.Center,
                 Text = ToolGroupSummaryText(group.Names),
             };
@@ -744,8 +754,8 @@ namespace BuildConsole
             {
                 Text = "▸",
                 FontSize = 10,
-                Foreground = _cardSubtext,
-                Margin = new Thickness(6, 0, 0, 0),
+                Foreground = _overlay, // dimmer still than the summary — the least-important affordance
+                Margin = new Thickness(7, 0, 0, 0),
                 VerticalAlignment = VerticalAlignment.Center,
             };
             var summaryRow = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
@@ -761,10 +771,14 @@ namespace BuildConsole
 
             group.Card = new Border
             {
-                Background = _cardBg,
-                CornerRadius = new CornerRadius(10),
-                Padding = new Thickness(9, 4, 9, 4),
-                Margin = new Thickness(0, 0, 0, 6),
+                // No fill + a thin Surface1 outline = a clearly-secondary pill that recedes against
+                // the shadowed, filled prose cards, matching how Claude.ai renders collapsed tool blocks.
+                Background = Brushes.Transparent,
+                BorderBrush = (Brush)FindResource("Surface1Brush"),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(13), // fully-rounded pill
+                Padding = new Thickness(11, 5, 11, 5),
+                Margin = new Thickness(0, 1, 0, 9),
                 HorizontalAlignment = HorizontalAlignment.Left,
                 Cursor = System.Windows.Input.Cursors.Hand,
                 ToolTip = "Click to expand and see each tool call",
