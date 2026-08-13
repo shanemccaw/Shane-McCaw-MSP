@@ -70,7 +70,11 @@ namespace BuildConsole.Services
     {
         public const string Channel = "usage-meter";
 
-        public const string UsageUrl = "https://claude.ai/settings/usage";
+        // Confirmed real URL: Shane navigated to this himself in his own browser and
+        // confirmed it lands on the usage page. The SPA routes usage off the /new
+        // shell with a #settings/usage hash fragment; the older bare
+        // https://claude.ai/settings/usage no longer renders the meter reliably.
+        public const string UsageUrl = "https://claude.ai/new#settings/usage";
 
         /// <summary>Reasonable, deliberately-not-real-time poll cadence (the task asks for 5–15 min).</summary>
         private static readonly TimeSpan PollInterval = TimeSpan.FromMinutes(10);
@@ -82,7 +86,17 @@ namespace BuildConsole.Services
         private const int CountdownThresholdPercent = 85;
 
         private const int NavigationTimeoutMs = 20000;
-        private const int PostNavigationSettleMs = 1500;
+
+        // The usage page is a client-side-rendered SPA: NavigationCompleted fires when
+        // the HTML shell lands, long before React has hydrated and painted the
+        // [role="meter"] element. Rather than a single fixed short delay (which raced
+        // hydration and produced spurious "meter not found"), poll the DOM until the
+        // meter actually appears, an auth wall is detected, or we give up.
+        private const int HydrationMaxWaitMs = 12000;
+        private const int HydrationPollIntervalMs = 400;
+        // A minimum settle even once a meter appears, so a half-hydrated meter (element
+        // present, aria values not yet populated) gets a moment to finish.
+        private const int PostMeterSettleMs = 400;
 
         private readonly WebView2 _webView;
         private readonly Func<WebView2, Task<bool>> _ensureInitialized;
@@ -142,30 +156,64 @@ namespace BuildConsole.Services
                 Emit(ClaudeUsageMeterState.Polling);
                 ActivityLog.Log(Channel, $"Polling {UsageUrl} …");
 
+                // ── Phase 1: navigation itself ──────────────────────────────
                 if (!await NavigateAsync(UsageUrl))
                 {
-                    ActivityLog.Log(Channel, "Poll: navigation to usage page failed — showing muted state.");
+                    // NavigateAsync already logged the specific reason (threw / timed out).
+                    ActivityLog.Log(Channel, "FAIL[navigation] — the usage page never reported a successful NavigationCompleted; nothing could be read. Showing muted state.");
                     SetUnavailable("usage page did not load");
                     return;
                 }
+                ActivityLog.Log(Channel, "OK[navigation] — page shell loaded; waiting for the SPA to hydrate the meter …");
 
-                await Task.Delay(PostNavigationSettleMs);
-
-                var reading = await ReadMeterAsync();
+                // ── Phase 2: wait for the SPA to actually render the meter ───
+                var probe = await WaitForHydrationAsync();
                 _lastPoll = DateTime.Now;
 
-                if (reading == null || reading.Percent == null)
+                if (probe == null)
                 {
-                    ActivityLog.Log(Channel, "Poll: no [role=meter] found (not logged in, or page structure changed) — showing muted state.");
-                    SetUnavailable("meter not found");
+                    // Could not even run the DOM probe (script eval failed) — genuinely opaque.
+                    ActivityLog.Log(Channel, "FAIL[probe] — navigation succeeded but the in-page diagnostic script could not be evaluated at all. Showing muted state.");
+                    SetUnavailable("page not readable");
                     return;
                 }
 
+                // ── Phase 3: classify what we actually landed on ────────────
+                // 3a — an auth / login wall instead of the real usage page.
+                if (probe.AuthWall)
+                {
+                    ActivityLog.Log(Channel,
+                        $"FAIL[auth-wall] — navigation succeeded but the page looks like a login/auth wall, not the usage page. url=\"{Trim(probe.Url)}\", readyState={probe.ReadyState}, meters={probe.MeterCount}, passwordField={probe.HasPasswordField}, loginText={probe.HasLoginText}, bodyLen={probe.BodyTextLength}. Sign in to claude.ai in a normal BuildConsole tab so the shared cookies authenticate this hidden poll. Showing muted state.");
+                    SetUnavailable("hit a login/auth wall — sign in to claude.ai");
+                    return;
+                }
+
+                // 3b — page loaded, not an auth wall, but the meter never appeared.
+                if (probe.MeterCount == 0)
+                {
+                    ActivityLog.Log(Channel,
+                        $"FAIL[meter-not-found] — navigation succeeded and no auth wall, but [role=\"meter\"] never appeared after {HydrationMaxWaitMs}ms of hydration polling (SPA slow, page structure changed, or usage not shown for this account). url=\"{Trim(probe.Url)}\", readyState={probe.ReadyState}, bodyLen={probe.BodyTextLength}, resetLabelSeen={(string.IsNullOrEmpty(probe.ResetLabel) ? "no" : "yes")}. Showing muted state.");
+                    SetUnavailable("meter not found on usage page");
+                    return;
+                }
+
+                // 3c — meter element(s) present, but none yielded a usable percentage
+                //      (aria-valuenow / aria-valuetext missing or malformed).
+                var reading = ExtractReading(probe);
+                if (reading.Percent == null)
+                {
+                    ActivityLog.Log(Channel,
+                        $"FAIL[meter-malformed] — found {probe.MeterCount} [role=\"meter\"] element(s) but none had a parseable value; aria-valuenow/aria-valuetext missing or malformed. Raw meters: {DescribeMeters(probe)}. url=\"{Trim(probe.Url)}\". Showing muted state.");
+                    SetUnavailable("meter present but value unreadable");
+                    return;
+                }
+
+                // 3d — success.
                 _percent = reading.Percent;
                 _resetTarget = ParseResetTarget(reading.ResetLabel);
 
                 ActivityLog.Log(Channel,
-                    $"Poll OK — {_percent}% used (valuetext=\"{Trim(reading.ValueText)}\"); reset label=\"{Trim(reading.ResetLabel)}\" → target {(_resetTarget.HasValue ? _resetTarget.Value.ToString("ddd yyyy-MM-dd HH:mm") : "unparsed")}.");
+                    $"OK[read] — {_percent}% used (from {probe.MeterCount} meter(s); winning valuetext=\"{Trim(reading.ValueText)}\"); reset label=\"{Trim(reading.ResetLabel)}\" → target {(_resetTarget.HasValue ? _resetTarget.Value.ToString("ddd yyyy-MM-dd HH:mm") : "unparsed")}. hydration≈{probe.WaitedMs}ms.");
 
                 Emit(ClaudeUsageMeterState.Ok);
             }
@@ -208,8 +256,70 @@ namespace BuildConsole.Services
             public string ResetLabel { get; set; } = string.Empty;
         }
 
-        /// <summary>Reads every [role="meter"] on the page (aria-valuenow/valuemax/valuetext) plus the first "Resets …" label, then picks the most-constraining meter (highest %). Pure read; all parsing is done in C#.</summary>
-        private async Task<MeterReading?> ReadMeterAsync()
+        /// <summary>One in-page snapshot: the raw meter attributes plus enough page-level
+        /// signal to tell an auth wall from a slow SPA from a genuinely-missing meter. All
+        /// interpretation happens in C# so the diagnostics stay in the log, not the page.</summary>
+        private class PageProbe
+        {
+            public string Url { get; set; } = string.Empty;
+            public string ReadyState { get; set; } = string.Empty;
+            public int MeterCount { get; set; }
+            public bool HasPasswordField { get; set; }
+            public bool HasLoginText { get; set; }
+            public int BodyTextLength { get; set; }
+            public string ResetLabel { get; set; } = string.Empty;
+            public (string now, string max, string text)[] Meters { get; set; } = Array.Empty<(string, string, string)>();
+            public int WaitedMs { get; set; }
+
+            /// <summary>Login/auth wall heuristic: an explicit password field, or login-ish copy
+            /// with no meter present at all. Kept deliberately conservative so a real usage page
+            /// (which has a meter) is never misclassified as an auth wall.</summary>
+            public bool AuthWall => HasPasswordField || (HasLoginText && MeterCount == 0);
+        }
+
+        /// <summary>Polls the DOM until the meter renders, an auth wall is detected, or
+        /// <see cref="HydrationMaxWaitMs"/> elapses. Returns the last probe taken (or the first
+        /// definitive one). Null only if the probe script could never be evaluated.</summary>
+        private async Task<PageProbe?> WaitForHydrationAsync()
+        {
+            int waited = 0;
+            PageProbe? last = null;
+
+            while (true)
+            {
+                var probe = await ProbePageAsync();
+                if (probe != null)
+                {
+                    probe.WaitedMs = waited;
+                    last = probe;
+
+                    // Definitive outcomes — stop polling early:
+                    //  • a meter appeared (page is up), or
+                    //  • an auth wall is clearly showing (no point waiting for a meter that won't come).
+                    if (probe.MeterCount > 0)
+                    {
+                        if (PostMeterSettleMs > 0) await Task.Delay(PostMeterSettleMs);
+                        return await ProbePageAsync() is { } settled
+                            ? Also(settled, waited + PostMeterSettleMs)
+                            : probe;
+                    }
+                    if (probe.AuthWall)
+                        return probe;
+                }
+
+                if (waited >= HydrationMaxWaitMs)
+                    return last; // give up: return whatever the last probe saw (for the diagnostics)
+
+                await Task.Delay(HydrationPollIntervalMs);
+                waited += HydrationPollIntervalMs;
+            }
+        }
+
+        private static PageProbe Also(PageProbe p, int waitedMs) { p.WaitedMs = waitedMs; return p; }
+
+        /// <summary>Single DOM snapshot: reads every [role="meter"] (aria-valuenow/valuemax/valuetext),
+        /// the first "Resets …" label, and page-level auth/readiness signals. Pure read.</summary>
+        private async Task<PageProbe?> ProbePageAsync()
         {
             const string script = @"
 (function() {
@@ -229,7 +339,18 @@ namespace BuildConsole.Services
             var txt = (nodes[j].innerText || nodes[j].textContent || '').trim();
             if (txt && txt.length < 120 && /reset/i.test(txt)) { resetLabel = txt; break; }
         }
-        return JSON.stringify({ meters: meters, resetLabel: resetLabel });
+        var bodyText = (document.body && (document.body.innerText || document.body.textContent) || '');
+        var hasPassword = !!document.querySelector('input[type=password]');
+        var hasLoginText = /log in to claude|sign in|continue with google|welcome back/i.test(bodyText);
+        return JSON.stringify({
+            url: location.href,
+            readyState: document.readyState,
+            meters: meters,
+            resetLabel: resetLabel,
+            hasPassword: hasPassword,
+            hasLoginText: hasLoginText,
+            bodyLen: bodyText.length
+        });
     } catch (ex) {
         return JSON.stringify({ meters: [], resetLabel: '', error: ex.message });
     }
@@ -238,30 +359,71 @@ namespace BuildConsole.Services
             var root = await EvalAsync(script);
             if (root == null) return null;
 
-            string resetLabel = root.Value.TryGetProperty("resetLabel", out var rl) ? (rl.GetString() ?? string.Empty) : string.Empty;
+            var probe = new PageProbe
+            {
+                Url = GetStr(root.Value, "url"),
+                ReadyState = GetStr(root.Value, "readyState"),
+                ResetLabel = GetStr(root.Value, "resetLabel"),
+                HasPasswordField = GetBool(root.Value, "hasPassword"),
+                HasLoginText = GetBool(root.Value, "hasLoginText"),
+                BodyTextLength = GetInt(root.Value, "bodyLen"),
+            };
 
-            if (!root.Value.TryGetProperty("meters", out var meters) || meters.ValueKind != JsonValueKind.Array || meters.GetArrayLength() == 0)
-                return new MeterReading { Percent = null, ResetLabel = resetLabel };
+            if (root.Value.TryGetProperty("meters", out var meters) && meters.ValueKind == JsonValueKind.Array)
+            {
+                var list = new System.Collections.Generic.List<(string, string, string)>();
+                foreach (var m in meters.EnumerateArray())
+                {
+                    list.Add((
+                        m.TryGetProperty("valuenow", out var vn) ? (vn.GetString() ?? string.Empty) : string.Empty,
+                        m.TryGetProperty("valuemax", out var vm) ? (vm.GetString() ?? string.Empty) : string.Empty,
+                        m.TryGetProperty("valuetext", out var vt) ? (vt.GetString() ?? string.Empty) : string.Empty));
+                }
+                probe.Meters = list.ToArray();
+                probe.MeterCount = list.Count;
+            }
 
+            return probe;
+        }
+
+        /// <summary>Picks the most-constraining meter (highest %) out of a probe. All parsing in C#.</summary>
+        private static MeterReading ExtractReading(PageProbe probe)
+        {
             int? best = null;
             string bestText = string.Empty;
-            foreach (var m in meters.EnumerateArray())
+            foreach (var (now, max, text) in probe.Meters)
             {
-                string valuenow = m.TryGetProperty("valuenow", out var vn) ? (vn.GetString() ?? string.Empty) : string.Empty;
-                string valuemax = m.TryGetProperty("valuemax", out var vm) ? (vm.GetString() ?? string.Empty) : string.Empty;
-                string valuetext = m.TryGetProperty("valuetext", out var vt) ? (vt.GetString() ?? string.Empty) : string.Empty;
-
-                int? pct = ComputePercent(valuenow, valuemax, valuetext);
+                int? pct = ComputePercent(now, max, text);
                 if (pct == null) continue;
                 if (best == null || pct.Value > best.Value)
                 {
                     best = pct;
-                    bestText = valuetext;
+                    bestText = text;
                 }
             }
-
-            return new MeterReading { Percent = best, ValueText = bestText, ResetLabel = resetLabel };
+            return new MeterReading { Percent = best, ValueText = bestText, ResetLabel = probe.ResetLabel };
         }
+
+        /// <summary>Compact human-readable dump of every raw meter's ARIA attributes, for the
+        /// meter-malformed diagnostic log line.</summary>
+        private static string DescribeMeters(PageProbe probe)
+        {
+            var sb = new StringBuilder();
+            for (int i = 0; i < probe.Meters.Length; i++)
+            {
+                var (now, max, text) = probe.Meters[i];
+                if (i > 0) sb.Append("; ");
+                sb.Append($"[{i}] valuenow=\"{now}\" valuemax=\"{max}\" valuetext=\"{Trim(text)}\"");
+            }
+            return sb.Length == 0 ? "(none)" : sb.ToString();
+        }
+
+        private static string GetStr(JsonElement e, string name) =>
+            e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? (v.GetString() ?? string.Empty) : string.Empty;
+        private static bool GetBool(JsonElement e, string name) =>
+            e.TryGetProperty(name, out var v) && (v.ValueKind == JsonValueKind.True || v.ValueKind == JsonValueKind.False) && v.GetBoolean();
+        private static int GetInt(JsonElement e, string name) =>
+            e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out var i) ? i : 0;
 
         /// <summary>Turns a meter's raw ARIA attributes into a whole-number percentage. Prefers an explicit "NN%" in aria-valuetext; otherwise derives it from valuenow/valuemax (defaulting max to 100).</summary>
         internal static int? ComputePercent(string valuenow, string valuemax, string valuetext)
