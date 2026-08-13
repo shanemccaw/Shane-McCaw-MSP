@@ -78,11 +78,19 @@ namespace BuildConsole.Services
             string baselinePath = BaselinePath(repoRoot, area, slug, stepIndex);
             var c = new Comparison { BaselinePath = baselinePath };
 
+            // Diagnostic trace (task: make a "why did it re-prompt?" recurrence diagnosable from the log
+            // alone). Logs the EXACT read-side inputs — repoRoot, the sanitized area/slug actually used to
+            // build the path, stepIndex — and the fully-resolved baseline path, so a read-vs-write path
+            // drift (or a per-run area/slug drift from a changed SourcePath) is visible without a debugger.
+            // This must mirror, key-for-key, what Promote logs on the write side.
             if (!File.Exists(baselinePath))
             {
                 c.HasBaseline = false;
                 c.NeedsReview = true;
                 c.Note = "no baseline yet — first capture (approve to set it)";
+                ActivityLog.Log(Channel,
+                    $"Compare[read] repoRoot='{repoRoot}' area='{Sanitize(area)}' slug='{Sanitize(slug)}' step={stepIndex} "
+                    + $"baseline='{baselinePath}' EXISTS=false → NO BASELINE, review (first capture).");
                 return c;
             }
             c.HasBaseline = true;
@@ -102,6 +110,10 @@ namespace BuildConsole.Services
                 c.NeedsReview = true;
                 c.Note = $"couldn't compare against baseline: {ex.Message}";
             }
+            ActivityLog.Log(Channel,
+                $"Compare[read] repoRoot='{repoRoot}' area='{Sanitize(area)}' slug='{Sanitize(slug)}' step={stepIndex} "
+                + $"baseline='{baselinePath}' EXISTS=true captured='{capturedPath}' "
+                + $"diff={c.DiffRatio * 100:0.0}% (thresh {MeaningfulDiffThreshold * 100:0.#}%) → {(c.NeedsReview ? "REVIEW" : "match, no review")}.");
             return c;
         }
 
@@ -112,23 +124,41 @@ namespace BuildConsole.Services
         {
             string dir = BaselineDir(repoRoot, area, slug);
             Directory.CreateDirectory(dir);
+
+            // Diagnostic trace (task): log the EXACT write-side inputs up front — repoRoot, the sanitized
+            // area/slug actually used, and the resolved baseline dir — so this line can be diffed against
+            // Compare[read]'s line for the SAME (area, slug) on a later run. If a run re-prompts despite a
+            // prior approve, the two lines' repoRoot/area/slug/dir must be identical; any difference here is
+            // the bug. (Confirmed identical in this task via byte-identical baseline↔promoted-run MD5s.)
+            var shotList = shots as ICollection<UiScreenshotCapture> ?? new List<UiScreenshotCapture>(shots);
+            ActivityLog.Log(Channel,
+                $"Promote[write] repoRoot='{repoRoot}' area='{Sanitize(area)}' slug='{Sanitize(slug)}' dir='{dir}' "
+                + $"— {shotList.Count} candidate shot(s).");
+
             int written = 0;
-            foreach (var shot in shots)
+            foreach (var shot in shotList)
             {
-                if (string.IsNullOrEmpty(shot.FilePath) || !File.Exists(shot.FilePath)) continue;
+                if (string.IsNullOrEmpty(shot.FilePath) || !File.Exists(shot.FilePath))
+                {
+                    // Previously a silent `continue` — log it so a promote that writes fewer files than
+                    // expected (or zero) is never a mystery.
+                    ActivityLog.Log(Channel,
+                        $"Promote[write] SKIP step {shot.StepIndex} ({shot.Reason}) — source screenshot missing: '{shot.FilePath}'.");
+                    continue;
+                }
                 string dest = BaselinePath(repoRoot, area, slug, shot.StepIndex);
                 try
                 {
                     File.Copy(shot.FilePath, dest, overwrite: true);
                     written++;
-                    ActivityLog.Log(Channel, $"Baseline set: {Sanitize(area)}/{Sanitize(slug)}/{shot.StepIndex}.png <- step {shot.StepIndex} ({shot.Reason}).");
+                    ActivityLog.Log(Channel, $"Baseline set: dest='{dest}' <- step {shot.StepIndex} ({shot.Reason}) src='{shot.FilePath}'.");
                 }
                 catch (Exception ex)
                 {
-                    ActivityLog.Log(Channel, $"Couldn't write baseline {Sanitize(area)}/{Sanitize(slug)}/{shot.StepIndex}.png: {ex.Message}");
+                    ActivityLog.Log(Channel, $"Couldn't write baseline dest='{dest}': {ex.Message}");
                 }
             }
-            ActivityLog.Log(Channel, $"Promoted {written} screenshot(s) to baseline for {Sanitize(area)}/{Sanitize(slug)}.");
+            ActivityLog.Log(Channel, $"Promoted {written} screenshot(s) to baseline for {Sanitize(area)}/{Sanitize(slug)} (dir='{dir}').");
             return written;
         }
 

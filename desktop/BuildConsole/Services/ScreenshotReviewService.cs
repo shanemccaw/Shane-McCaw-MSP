@@ -100,6 +100,14 @@ namespace BuildConsole.Services
             if (string.IsNullOrWhiteSpace(slug))
                 slug = manifest.Issue > 0 ? $"issue-{manifest.Issue}" : "manifest";
 
+            // Diagnostic trace on the same "testing.baseline" channel Compare/Promote use: record the exact
+            // SourcePath this run resolved and the (area, slug) it derived. Two runs of the SAME manifest MUST
+            // log an identical SourcePath → identical area/slug here; if a re-prompt ever recurs, this line is
+            // where a per-run SourcePath drift (e.g. a different trigger path handing in a differently-rooted
+            // path) would show up, upstream of the baseline dir the Promote[write]/Compare[read] lines log.
+            ActivityLog.Log(ScreenshotBaselineStore.Channel,
+                $"SubjectFromManifest repoRoot='{repoRoot}' sourcePath='{manifest.SourcePath}' → area='{area}' slug='{slug}' issue=#{manifest.Issue}.");
+
             return new ScreenshotReviewSubject
             {
                 Area = area,
