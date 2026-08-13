@@ -3312,6 +3312,12 @@ namespace BuildConsole
             // interpolated via {{name}} into a later graphTest/uiStep in this same run.
             var vars = new BuildConsole.Services.TestRunVariables();
 
+            // Git #953 (Epic #803) — seed the config-variable layer from Settings' stored
+            // "Test Environment Variables" (TEST_PORTAL_PASSWORD, GRAPH_TEST_TENANT_ID, …) before
+            // any executor runs, so {{NAME}} placeholders resolve against them first — the general
+            // replacement for HttpTestExecutor's old hardcoded two-name DEPLOY_URL/SECRET_KEY chain.
+            vars.SeedConfigVariables(BuildConsole.Services.BuildConsoleSettings.Load().TestEnvironmentVariables);
+
             var config = BuildConsole.Services.BuildTrackerConfig.Load();
             var apiResults = await BuildConsole.Services.HttpTestExecutor.RunAsync(manifest, config, vars);
             runResult.AddRange(apiResults);

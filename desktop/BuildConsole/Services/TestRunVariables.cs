@@ -34,21 +34,59 @@ namespace BuildConsole.Services
     {
         public const string Channel = "testing.interpolation";
 
+        /// <summary>Git #953 — dedicated channel for the config-variable (Test Environment
+        /// Variables) resolution layer, distinct from the per-run cross-step interpolation
+        /// channel above, so a "the manifest referenced {{TEST_PORTAL_PASSWORD}} and it
+        /// wasn't set in Settings" event is greppable on its own.</summary>
+        public const string ConfigChannel = "testing.config-vars";
+
         private static readonly Regex PlaceholderPattern = new(@"\{\{\s*([A-Za-z0-9_]+)\s*\}\}", RegexOptions.Compiled);
         private static readonly Regex JsonPathTokenPattern = new(@"\.([A-Za-z0-9_]+)|\[(\d+)\]", RegexOptions.Compiled);
 
         private readonly Dictionary<string, string> _values = new(StringComparer.Ordinal);
 
+        /// <summary>Git #953 — config placeholders resolved from BuildConsole Settings'
+        /// "Test Environment Variables" store (TEST_PORTAL_PASSWORD, GRAPH_TEST_TENANT_ID,
+        /// …), seeded once at the start of a run via <see cref="SeedConfigVariables"/>.
+        /// Checked in <see cref="Resolve"/> BEFORE the per-run extracted <see cref="_values"/>,
+        /// giving stored config vars the same "resolved first" precedence
+        /// {{DEPLOY_URL}}/{{SECRET_KEY}} already have (those stay resolved by the executors
+        /// before this class runs).</summary>
+        private readonly Dictionary<string, string> _configVars = new(StringComparer.Ordinal);
+
         /// <summary>Snapshot of everything extracted so far — for diagnostics/telemetry only.</summary>
         public IReadOnlyDictionary<string, string> Values => _values;
 
         /// <summary>
-        /// Resolve every <c>{{name}}</c> placeholder in <paramref name="input"/> against the
-        /// values extracted by earlier steps. If any referenced variable has not been extracted
-        /// yet, logs each missing name and throws <see cref="VariableNotResolvedException"/> — never
-        /// returns a string still containing an unresolved <c>{{name}}</c>. Config placeholders such
-        /// as <c>{{DEPLOY_URL}}</c>/<c>{{SECRET_KEY}}</c>/<c>{{TEST_TENANT_ID}}</c> are resolved by
-        /// the executors BEFORE this runs, so anything left here is genuinely an extracted variable.
+        /// Git #953 (Epic #803) — seed the config-variable layer from Settings' stored
+        /// "Test Environment Variables" before a run starts. Empty/blank names are skipped;
+        /// on a duplicate name the last one wins (mirrors a plain env-var override). Values
+        /// are stored verbatim; secrets are never logged in full (see <see cref="Preview"/>).
+        /// Idempotent-ish: calling it again replaces the whole config layer.
+        /// </summary>
+        public void SeedConfigVariables(IEnumerable<TestEnvVar>? configVars)
+        {
+            _configVars.Clear();
+            if (configVars == null) return;
+            int count = 0;
+            foreach (var cv in configVars)
+            {
+                if (cv == null || string.IsNullOrWhiteSpace(cv.Name)) continue;
+                _configVars[cv.Name.Trim()] = cv.Value ?? "";
+                count++;
+            }
+            ActivityLog.Log(ConfigChannel, $"seeded {count} Test Environment Variable(s) for this run.");
+        }
+
+        /// <summary>
+        /// Resolve every <c>{{name}}</c> placeholder in <paramref name="input"/>. Each name is
+        /// tried against the Settings-stored "Test Environment Variables" (<see cref="_configVars"/>,
+        /// Git #953) FIRST, then against the values extracted by earlier steps
+        /// (<see cref="_values"/>). If any referenced variable is found in neither, logs each
+        /// missing name and throws <see cref="VariableNotResolvedException"/> — never returns a
+        /// string still containing an unresolved <c>{{name}}</c>. <c>{{DEPLOY_URL}}</c>/
+        /// <c>{{SECRET_KEY}}</c> are still resolved by the executors (HttpTestExecutor) BEFORE
+        /// this runs, so they never reach here as unresolved.
         /// </summary>
         public string Resolve(string? input)
         {
@@ -59,6 +97,13 @@ namespace BuildConsole.Services
             string result = PlaceholderPattern.Replace(input, m =>
             {
                 string name = m.Groups[1].Value;
+                // Git #953 — Test Environment Variables win first, matching {{DEPLOY_URL}}/
+                // {{SECRET_KEY}}'s "resolved before extracted values" precedence.
+                if (_configVars.TryGetValue(name, out var cval))
+                {
+                    ActivityLog.Log(ConfigChannel, $"resolved {{{{{name}}}}} from Test Environment Variables -> \"{Preview(cval)}\"");
+                    return cval;
+                }
                 if (_values.TryGetValue(name, out var val))
                 {
                     ActivityLog.Log(Channel, $"resolved {{{{{name}}}}} -> \"{Preview(val)}\"");
@@ -71,10 +116,15 @@ namespace BuildConsole.Services
             if (missing.Count > 0)
             {
                 foreach (var name in missing)
-                    ActivityLog.Log(Channel, $"MISSING {{{{{name}}}}} — no earlier step extracted it; refusing to send the literal placeholder.");
+                {
+                    // Git #953 — a miss is logged on the config-vars channel too, so the fix
+                    // ("set it in Settings > Test Environment Variables") is obvious from the log.
+                    ActivityLog.Log(ConfigChannel, $"MISSING {{{{{name}}}}} — not set in Settings > Test Environment Variables.");
+                    ActivityLog.Log(Channel, $"MISSING {{{{{name}}}}} — no Test Environment Variable and no earlier step extracted it; refusing to send the literal placeholder.");
+                }
                 throw new VariableNotResolvedException(
                     "unresolved variable(s): " + string.Join(", ", missing.ConvertAll(n => "{{" + n + "}}"))
-                    + " — no earlier step extracted them.");
+                    + " — set them in Settings > Test Environment Variables, or extract them in an earlier step.");
             }
 
             return result;

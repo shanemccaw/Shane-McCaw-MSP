@@ -14,6 +14,20 @@ namespace BuildConsole.Services
     }
 
     /// <summary>
+    /// Git #953 (Epic #803) — one NAME=value pair in the Settings "Test Environment
+    /// Variables" store. Shane sets TEST_PORTAL_PASSWORD and every other
+    /// TEST_*/GRAPH_TEST_* placeholder here; a manifest run resolves {{Name}} against
+    /// these before falling through to per-run extracted values, so the placeholders
+    /// the session's manifests reference actually resolve instead of throwing
+    /// VariableNotResolvedException. Same local store / round-trip pattern as WebTools.
+    /// </summary>
+    public class TestEnvVar
+    {
+        public string Name { get; set; } = "";
+        public string Value { get; set; } = "";
+    }
+
+    /// <summary>
     /// Git #834 — Shane: "There is a settings menu item, and a settings cog
     /// bottom left corner. Use that to hold my PAT in app settings or
     /// something." Small writable local store — a JSON file under
@@ -114,6 +128,17 @@ namespace BuildConsole.Services
             new WebToolEntry { Name = "Google Analytics", Url = "https://analytics.google.com", Icon = "" },
             new WebToolEntry { Name = "Microsoft Clarity", Url = "https://clarity.microsoft.com", Icon = "" },
         };
+
+        // Git #953 (Epic #803) — Shane: "How do I set things like TEST_PORTAL_PASSWORD?"
+        // The manifest runner resolves {{NAME}} placeholders against these stored pairs
+        // BEFORE falling through to TestRunVariables' per-run extracted values — the same
+        // precedence {{DEPLOY_URL}}/{{SECRET_KEY}} already have. Field initializer (empty
+        // list, not a ctor assignment) so a pre-#953 settings.json — one with no
+        // "testEnvironmentVariables" key — still deserializes cleanly. DEPLOY_URL/SECRET_KEY
+        // are NOT stored here; they keep resolving from build-queue-watcher.config.json
+        // exactly as before (HttpTestExecutor.ResolvePlaceholders), so this store never
+        // needs to hold them.
+        public List<TestEnvVar> TestEnvironmentVariables { get; set; } = new();
 
         private static string SettingsDir =>
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "BuildConsole");

@@ -482,6 +482,33 @@
                         </StackPanel>
                     </Border>
 
+                    <!-- Git #953 (Epic #803) — Shane: "How do I set things like
+                         TEST_PORTAL_PASSWORD?" A general add/edit/remove NAME=value store
+                         (same local %AppData%\BuildConsole\settings.json, same round-trip
+                         pattern as Web Tools above). A manifest run resolves {{NAME}}
+                         against these BEFORE per-run extracted values — the same precedence
+                         {{DEPLOY_URL}}/{{SECRET_KEY}} already have. This replaces the old
+                         hardcoded two-name substitution; TEST_*/GRAPH_TEST_* placeholders go
+                         here. (DEPLOY_URL/SECRET_KEY still come from
+                         build-queue-watcher.config.json — no need to re-enter them here.) -->
+                    <Border Height="1" Background="{StaticResource Surface0Brush}" Margin="0,16,0,12"/>
+                    <TextBlock Text="Test Environment Variables" FontSize="12" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                    <TextBlock Text="NAME=value pairs a manifest run resolves for {{NAME}} placeholders (e.g. TEST_PORTAL_PASSWORD, GRAPH_TEST_TENANT_ID). Checked before any value an earlier step extracted."
+                               FontSize="10" Foreground="{StaticResource Subtext0Brush}" TextWrapping="Wrap" Margin="0,0,0,8"/>
+
+                    <StackPanel x:Name="TestEnvVarsSettingsList" Margin="0,0,0,8"/>
+
+                    <Border Background="{StaticResource Surface0Brush}" CornerRadius="4" Padding="8" Margin="0,0,0,4">
+                        <StackPanel>
+                            <TextBlock Text="Name" FontSize="10" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,2"/>
+                            <TextBox x:Name="TestEnvVarNameBox" Height="24" FontSize="12" Margin="0,0,0,6"/>
+                            <TextBlock Text="Value" FontSize="10" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,2"/>
+                            <TextBox x:Name="TestEnvVarValueBox" Height="24" FontSize="12" Margin="0,0,0,8"/>
+                            <Button x:Name="BtnAddTestEnvVar" Content="Add Variable" Style="{StaticResource PrimaryButton}"
+                                    HorizontalAlignment="Left" Padding="16,4" Click="BtnAddTestEnvVar_Click"/>
+                        </StackPanel>
+                    </Border>
+
                     <!-- Git #902 (sub-issue of Epic #803) — Shane: "Replit shuts its dev
                          mode down after ~10 min of inactivity... watch the site... when it
                          sees the services off it waits 20 seconds then turns them back on."

@@ -277,6 +277,9 @@ namespace BuildConsole.Controls
 
             // Git #864
             RenderWebToolsSettingsList();
+
+            // Git #953
+            RenderTestEnvVarsSettingsList();
         }
 
         // ── SETTINGS: GitHub PAT (Git #834) ──────────────────────────────────
@@ -443,6 +446,142 @@ namespace BuildConsole.Controls
             WebToolUrlBox.Text = "";
             WebToolIconBox.Text = "";
             RenderWebToolsSettingsList();
+        }
+
+        // ── SETTINGS: Test Environment Variables (Git #953) ──────────────────
+        // Add/edit/remove NAME=value pairs the manifest runner resolves {{NAME}}
+        // against (TestRunVariables.SeedConfigVariables). Same render/edit/remove
+        // shape as Web Tools above, values masked in the list since they're often
+        // secrets (TEST_PORTAL_PASSWORD etc).
+        private int _editingTestEnvVarIndex = -1;
+
+        private const string TestEnvVarsChannel = "testing.config-vars";
+
+        private void RenderTestEnvVarsSettingsList()
+        {
+            var settings = BuildConsole.Services.BuildConsoleSettings.Load();
+            TestEnvVarsSettingsList.Children.Clear();
+
+            for (int i = 0; i < settings.TestEnvironmentVariables.Count; i++)
+            {
+                var v = settings.TestEnvironmentVariables[i];
+                var row = new Grid { Margin = new Thickness(0, 0, 0, 4) };
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+                var label = new TextBlock
+                {
+                    Text = $"{v.Name} = {MaskValue(v.Value)}",
+                    FontSize = 11,
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Foreground = (Brush)FindResource("TextBrush")
+                };
+                Grid.SetColumn(label, 0);
+                row.Children.Add(label);
+
+                var editBtn = new Button
+                {
+                    Content = "✏", FontSize = 10, Style = (Style)FindResource("IconButton"),
+                    Padding = new Thickness(4, 1, 4, 1), Margin = new Thickness(4, 0, 0, 0), Tag = i
+                };
+                editBtn.Click += BtnEditTestEnvVar_Click;
+                Grid.SetColumn(editBtn, 1);
+                row.Children.Add(editBtn);
+
+                var removeBtn = new Button
+                {
+                    Content = "✕", FontSize = 10, Style = (Style)FindResource("IconButton"),
+                    Padding = new Thickness(4, 1, 4, 1), Margin = new Thickness(4, 0, 0, 0), Tag = i
+                };
+                removeBtn.Click += BtnRemoveTestEnvVar_Click;
+                Grid.SetColumn(removeBtn, 2);
+                row.Children.Add(removeBtn);
+
+                TestEnvVarsSettingsList.Children.Add(row);
+            }
+        }
+
+        /// <summary>Never render a stored secret in full — show a short masked preview only.</summary>
+        private static string MaskValue(string? value)
+        {
+            if (string.IsNullOrEmpty(value)) return "(empty)";
+            if (value.Length <= 4) return new string('•', value.Length);
+            return value.Substring(0, 2) + new string('•', Math.Min(value.Length - 2, 8));
+        }
+
+        private void BtnEditTestEnvVar_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not Button btn || btn.Tag is not int index) return;
+            var settings = BuildConsole.Services.BuildConsoleSettings.Load();
+            if (index < 0 || index >= settings.TestEnvironmentVariables.Count) return;
+
+            var v = settings.TestEnvironmentVariables[index];
+            TestEnvVarNameBox.Text = v.Name;
+            TestEnvVarValueBox.Text = v.Value;
+            _editingTestEnvVarIndex = index;
+            BtnAddTestEnvVar.Content = "Save Changes";
+        }
+
+        private void BtnRemoveTestEnvVar_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not Button btn || btn.Tag is not int index) return;
+            var settings = BuildConsole.Services.BuildConsoleSettings.Load();
+            if (index < 0 || index >= settings.TestEnvironmentVariables.Count) return;
+
+            var removed = settings.TestEnvironmentVariables[index];
+            settings.TestEnvironmentVariables.RemoveAt(index);
+            settings.Save();
+            BuildConsole.Services.ActivityLog.Log(TestEnvVarsChannel, $"removed \"{removed.Name}\"");
+
+            _editingTestEnvVarIndex = -1;
+            BtnAddTestEnvVar.Content = "Add Variable";
+            TestEnvVarNameBox.Text = "";
+            TestEnvVarValueBox.Text = "";
+            RenderTestEnvVarsSettingsList();
+        }
+
+        private void BtnAddTestEnvVar_Click(object sender, RoutedEventArgs e)
+        {
+            var name = TestEnvVarNameBox.Text.Trim();
+            var value = TestEnvVarValueBox.Text;
+            if (string.IsNullOrWhiteSpace(name)) return;
+
+            var settings = BuildConsole.Services.BuildConsoleSettings.Load();
+
+            if (_editingTestEnvVarIndex >= 0 && _editingTestEnvVarIndex < settings.TestEnvironmentVariables.Count)
+            {
+                var v = settings.TestEnvironmentVariables[_editingTestEnvVarIndex];
+                v.Name = name;
+                v.Value = value;
+                BuildConsole.Services.ActivityLog.Log(TestEnvVarsChannel, $"edited \"{name}\"");
+            }
+            else
+            {
+                // A repeat NAME edits the existing entry in place rather than adding a
+                // duplicate — SeedConfigVariables would let the last one win anyway, but
+                // keeping the store clean avoids a confusing double row in the list.
+                var existing = settings.TestEnvironmentVariables.Find(x => string.Equals(x.Name, name, StringComparison.Ordinal));
+                if (existing != null)
+                {
+                    existing.Value = value;
+                    BuildConsole.Services.ActivityLog.Log(TestEnvVarsChannel, $"updated \"{name}\"");
+                }
+                else
+                {
+                    settings.TestEnvironmentVariables.Add(new BuildConsole.Services.TestEnvVar { Name = name, Value = value });
+                    BuildConsole.Services.ActivityLog.Log(TestEnvVarsChannel, $"added \"{name}\"");
+                }
+            }
+
+            settings.Save();
+
+            _editingTestEnvVarIndex = -1;
+            BtnAddTestEnvVar.Content = "Add Variable";
+            TestEnvVarNameBox.Text = "";
+            TestEnvVarValueBox.Text = "";
+            RenderTestEnvVarsSettingsList();
         }
 
         private void ExplorerTree_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
