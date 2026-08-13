@@ -391,18 +391,42 @@ namespace BuildConsole.Services
             Emit($"STEP {stepNumber}", $"{step.ActionTypeUpper}: {selector} {(string.IsNullOrEmpty(val) ? "" : "=> " + val)}{armedNote}", "RUNNING", "#89DCEB");
             ActivityLog.Log(Channel, $"Step {stepNumber} ({actionType} {selector}): starting{armedNote}.");
 
-            TaskCompletionSource<CoreWebView2WebResourceResponseReceivedEventArgs>? captureTcs = null;
+            TaskCompletionSource<CapturedResponse>? captureTcs = null;
             EventHandler<CoreWebView2WebResourceResponseReceivedEventArgs>? captureHandler = null;
 
             if (captureSpec != null)
             {
                 // Armed before the step's own JS/navigation runs, per #809 — the UI action is what
                 // actually triggers the network call this is meant to observe.
-                captureTcs = new TaskCompletionSource<CoreWebView2WebResourceResponseReceivedEventArgs>();
+                captureTcs = new TaskCompletionSource<CapturedResponse>();
                 captureHandler = (s, args) =>
                 {
-                    if (args.Request.Uri.Contains(captureSpec.UrlPattern, StringComparison.OrdinalIgnoreCase))
-                        captureTcs.TrySetResult(args);
+                    // Only the FIRST matching response is captured; ignore any later matches so we never
+                    // kick off a second, never-consumed read for them.
+                    if (captureTcs.Task.IsCompleted) return;
+                    if (!args.Request.Uri.Contains(captureSpec.UrlPattern, StringComparison.OrdinalIgnoreCase)) return;
+
+                    // #803 follow-on to #1011 — kick off the response body read IMMEDIATELY, here inside the
+                    // WebResourceResponseReceived handler the instant the matching response arrives, instead of
+                    // deferring it until after the outer capture Task.WhenAny resolves. `args.Response.GetContentAsync()`
+                    // is therefore invoked synchronously within the event (ReadResponseBodyAsync runs to its first
+                    // await before returning), and the resulting in-flight read Task is stored on the captured payload
+                    // for the awaiting code to simply consume — not the raw event args.
+                    //   HONEST SCOPE (verified against real Microsoft WebView2 docs before committing to this shape):
+                    //   this is a DEFENSIVE (narrow the window in which the WebView2 content stream can go stale —
+                    //   see WebView2Feedback #3283/#4298 where GetContentAsync errors on stale/redirected responses)
+                    //   + DIAGNOSTIC change, NOT a documented-constraint fix. MS Learn's GetContentAsync Remarks
+                    //   explicitly PERMIT deferred calls ("if this method is being called after a first call has
+                    //   completed, it will return immediately"), and the real hang class is a *blocking stream read
+                    //   awaiting data that never arrives* — already guarded by #1011's ResponseBodyReadTimeoutMs races.
+                    var firedSw = System.Diagnostics.Stopwatch.StartNew();
+                    Task<(string? body, string? error)>? readTask = null;
+                    if (CaptureNeedsBody(captureSpec) || hasExtract)
+                    {
+                        ActivityLog.Log(Channel, $"Step {stepNumber}: matching response for [{captureSpec.UrlPattern}] received on {args.Request.Uri} — starting content read immediately in-handler (deferral eliminated).");
+                        readTask = ReadResponseBodyAsync(args, firedSw, stepNumber);
+                    }
+                    captureTcs.TrySetResult(new CapturedResponse(args, readTask, firedSw));
                 };
                 _webView.CoreWebView2.WebResourceResponseReceived += captureHandler;
             }
@@ -444,7 +468,8 @@ namespace BuildConsole.Services
                 var completed = await Task.WhenAny(captureTcs.Task, Task.Delay(CaptureResponseTimeoutMs));
                 captureSw.Stop();
                 _webView.CoreWebView2.WebResourceResponseReceived -= captureHandler;
-                var capturedArgs = completed == captureTcs.Task ? captureTcs.Task.Result : null;
+                var captured = completed == captureTcs.Task ? captureTcs.Task.Result : null;
+                var capturedArgs = captured?.Args;
                 bool captureMatched = capturedArgs != null;
                 ActivityLog.Log(Channel, captureMatched
                     ? $"Step {stepNumber} captureResponse [{captureSpec.UrlPattern}] on {_webView.Source}: matched after {captureSw.ElapsedMilliseconds}ms."
@@ -464,10 +489,19 @@ namespace BuildConsole.Services
                 // assertions and #877's extract, so the WebView2 content stream is never consumed twice.
                 string? capturedBody = null;
                 string? bodyReadError = null;
-                if (capturedArgs != null && (CaptureNeedsBody(captureSpec) || hasExtract))
+                if (captured != null && capturedArgs != null && (CaptureNeedsBody(captureSpec) || hasExtract))
                 {
-                    ActivityLog.Log(Channel, $"Step {stepNumber}: reading captured response body for [{captureSpec.UrlPattern}]…");
-                    (capturedBody, bodyReadError) = await ReadResponseBodyAsync(capturedArgs);
+                    // The read was already kicked off inside the WebResourceResponseReceived handler the instant the
+                    // matching response arrived (captured.ReadTask). Here we simply await its result — logging how long
+                    // elapsed between the event firing and the main flow reaching this consume point, so a future
+                    // recurrence has real timing data instead of needing to be reasoned about from scratch. The
+                    // ReadTask == null branch is a defensive fallback only (the handler always starts the read under the
+                    // same CaptureNeedsBody||hasExtract condition, so it is not expected to be taken).
+                    ActivityLog.Log(Channel, $"Step {stepNumber}: consuming in-flight response body read for [{captureSpec.UrlPattern}] — read was started in-handler; main flow resumed {captured.EventFiredElapsedMs}ms after the event fired.");
+                    if (captured.ReadTask != null)
+                        (capturedBody, bodyReadError) = await captured.ReadTask;
+                    else
+                        (capturedBody, bodyReadError) = await ReadResponseBodyAsync(capturedArgs, null, stepNumber);
                     ActivityLog.Log(Channel, $"Step {stepNumber}: response body read {(bodyReadError == null ? $"OK ({capturedBody?.Length ?? 0} chars)" : $"FAILED — {bodyReadError}")}.");
                 }
 
@@ -838,10 +872,37 @@ namespace BuildConsole.Services
             (!string.IsNullOrEmpty(spec.ExpectJsonPath) && (spec.ExpectExists.HasValue || spec.ExpectIsArray.HasValue))
             || spec.HasContentAssertions;
 
+        /// <summary>#803 follow-on — the payload the captureResponse <see cref="TaskCompletionSource{TResult}"/> now
+        /// carries instead of the raw event args: the matched <see cref="CoreWebView2WebResourceResponseReceivedEventArgs"/>,
+        /// the in-flight body-read <see cref="Task"/> kicked off immediately inside the WebResourceResponseReceived
+        /// handler (null when the step needs no body), and a stopwatch started the instant that event fired so the
+        /// awaiting code can log how long elapsed before it resumed to consume the result.</summary>
+        private sealed class CapturedResponse
+        {
+            public CoreWebView2WebResourceResponseReceivedEventArgs Args { get; }
+            public Task<(string? body, string? error)>? ReadTask { get; }
+            private readonly System.Diagnostics.Stopwatch _eventFiredSw;
+
+            public CapturedResponse(CoreWebView2WebResourceResponseReceivedEventArgs args, Task<(string? body, string? error)>? readTask, System.Diagnostics.Stopwatch eventFiredSw)
+            {
+                Args = args;
+                ReadTask = readTask;
+                _eventFiredSw = eventFiredSw;
+            }
+
+            /// <summary>Milliseconds elapsed since the WebResourceResponseReceived event fired (the stopwatch keeps
+            /// running; read it at consume time to see how long the main flow took to pick the result up).</summary>
+            public long EventFiredElapsedMs => _eventFiredSw.ElapsedMilliseconds;
+        }
+
         /// <summary>Read a matched response's body exactly once — the WebView2 content stream can't be
         /// re-read, so the caller reads it here and hands the string to both the captureResponse
-        /// assertions and #877's extract. Returns (body, null) on success or (null, error) on failure.</summary>
-        private static async Task<(string? body, string? error)> ReadResponseBodyAsync(CoreWebView2WebResourceResponseReceivedEventArgs args)
+        /// assertions and #877's extract. Returns (body, null) on success or (null, error) on failure.
+        /// #803 follow-on — now started IMMEDIATELY from inside the WebResourceResponseReceived handler
+        /// (so GetContentAsync runs synchronously within the event); <paramref name="eventFiredSw"/> is the
+        /// stopwatch started when that event fired (null when called on the deferred fallback path) and
+        /// <paramref name="stepNumber"/> is used only for log correlation.</summary>
+        private static async Task<(string? body, string? error)> ReadResponseBodyAsync(CoreWebView2WebResourceResponseReceivedEventArgs args, System.Diagnostics.Stopwatch? eventFiredSw, int stepNumber)
         {
             // Epic #803 — GetContentAsync() and ReadToEndAsync() are the two awaits on the WebView2 content
             // stream, and EITHER can stall indefinitely if the underlying stream never delivers (same hang
@@ -851,6 +912,13 @@ namespace BuildConsole.Services
             // let the caller continue instead of awaiting forever. A never-completing Task never faults, so the
             // try/catch below alone cannot rescue this — the timeout race is what makes it recoverable.
             var sw = System.Diagnostics.Stopwatch.StartNew();
+            // #803 follow-on — record how long elapsed between the WebResourceResponseReceived event firing and this
+            // read actually being ATTEMPTED. On the new in-handler path this is ~0ms, which is the whole point; the
+            // number is logged regardless so a future investigation can SEE whether the read was prompt (and, if this
+            // method is ever called on the deferred fallback path again, exactly how long it was delayed) rather than
+            // having to reason about the deferral from scratch.
+            if (eventFiredSw != null)
+                ActivityLog.Log(Channel, $"Step {stepNumber}: ReadResponseBodyAsync entered {eventFiredSw.ElapsedMilliseconds}ms after the WebResourceResponseReceived event fired — invoking GetContentAsync now.");
             try
             {
                 // Stage 1 — obtain the content stream.
