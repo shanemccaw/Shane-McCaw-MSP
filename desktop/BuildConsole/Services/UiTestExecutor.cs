@@ -204,6 +204,14 @@ namespace BuildConsole.Services
         /// forever (the try/catch around it cannot rescue a Task that never faults). Same
         /// Task.WhenAny(work, Task.Delay(timeout)) shape navigation (15s) and captureResponse (5s) already use.</summary>
         private const int ScreenshotTimeoutMs = 8000;
+        /// <summary>Content-stream read hang guard (Epic #803) — a hard ceiling on EACH of the two awaits in
+        /// <see cref="ReadResponseBodyAsync"/> (GetContentAsync, then ReadToEndAsync). A WebView2 content stream
+        /// can stall indefinitely on either await (same hang class as the #803 screenshot/captureResponse cases),
+        /// and once the captureResponse wait has resolved the body read is the last unguarded await that could
+        /// deadlock a run — a never-completing Task never faults, so the method's try/catch cannot rescue it.
+        /// Same Task.WhenAny(work, Task.Delay(timeout)) shape captureResponse (5s)/navigation (15s)/screenshot (8s)
+        /// use; scaled to captureResponse's 5s since it reads that same captured response.</summary>
+        private const int ResponseBodyReadTimeoutMs = 5000;
 
         private readonly WebView2 _webView;
 
@@ -835,15 +843,77 @@ namespace BuildConsole.Services
         /// assertions and #877's extract. Returns (body, null) on success or (null, error) on failure.</summary>
         private static async Task<(string? body, string? error)> ReadResponseBodyAsync(CoreWebView2WebResourceResponseReceivedEventArgs args)
         {
+            // Epic #803 — GetContentAsync() and ReadToEndAsync() are the two awaits on the WebView2 content
+            // stream, and EITHER can stall indefinitely if the underlying stream never delivers (same hang
+            // class as the #803 screenshot/captureResponse cases). Guard BOTH with the same
+            // Task.WhenAny(work, Task.Delay(timeout)) shape the rest of this file uses so a stuck read can
+            // never hang the whole run — on timeout, return a clear (null, "…timed out after Xms") result and
+            // let the caller continue instead of awaiting forever. A never-completing Task never faults, so the
+            // try/catch below alone cannot rescue this — the timeout race is what makes it recoverable.
+            var sw = System.Diagnostics.Stopwatch.StartNew();
             try
             {
-                using var stream = await args.Response.GetContentAsync();
-                if (stream == null) return (string.Empty, null);
-                using var reader = new StreamReader(stream);
-                return (await reader.ReadToEndAsync(), null);
+                // Stage 1 — obtain the content stream.
+                var getContentTask = args.Response.GetContentAsync();
+                var stage1 = await Task.WhenAny(getContentTask, Task.Delay(ResponseBodyReadTimeoutMs));
+                if (stage1 != getContentTask)
+                {
+                    sw.Stop();
+                    // Task.Delay won. A late (or never) GetContentAsync still owns a stream we'll never read —
+                    // dispose it (and observe any fault) in a continuation so it neither leaks nor surfaces as
+                    // an unobserved-task exception. Then return a timeout result; the step completes.
+                    _ = getContentTask.ContinueWith(t =>
+                    {
+                        if (t.Status == TaskStatus.RanToCompletion) t.Result?.Dispose();
+                        else _ = t.Exception; // observe
+                    }, TaskScheduler.Default);
+                    var msg = $"GetContentAsync timed out after {ResponseBodyReadTimeoutMs}ms";
+                    ActivityLog.Log(Channel, $"ReadResponseBodyAsync: {msg} — Task.Delay won the race at {sw.ElapsedMilliseconds}ms; WebView2 content stream never delivered. Returning a timeout result so the step can complete instead of hanging.");
+                    return (null, msg);
+                }
+
+                var stream = getContentTask.Result;
+                if (stream == null)
+                {
+                    sw.Stop();
+                    ActivityLog.Log(Channel, $"ReadResponseBodyAsync: GetContentAsync resolved to a null stream after {sw.ElapsedMilliseconds}ms (empty body).");
+                    return (string.Empty, null);
+                }
+                ActivityLog.Log(Channel, $"ReadResponseBodyAsync: GetContentAsync resolved in {sw.ElapsedMilliseconds}ms — reading body.");
+
+                // Stage 2 — read the stream to the end. (No `using`: on the timeout path a still-in-flight read
+                // must own disposal via a continuation, otherwise disposing the stream out from under it here
+                // throws — so disposal is handled explicitly on every path below instead.)
+                var reader = new StreamReader(stream);
+                var readTask = reader.ReadToEndAsync();
+                var stage2 = await Task.WhenAny(readTask, Task.Delay(ResponseBodyReadTimeoutMs));
+                if (stage2 != readTask)
+                {
+                    sw.Stop();
+                    // Task.Delay won. The read is still in flight against reader/stream — hand disposal to a
+                    // continuation (and observe the eventual result/fault) rather than disposing here, so we
+                    // never tear the stream out from under a pending read.
+                    _ = readTask.ContinueWith(t =>
+                    {
+                        _ = t.Exception; // observe
+                        reader.Dispose();
+                        stream.Dispose();
+                    }, TaskScheduler.Default);
+                    var msg = $"ReadToEndAsync timed out after {ResponseBodyReadTimeoutMs}ms";
+                    ActivityLog.Log(Channel, $"ReadResponseBodyAsync: {msg} — Task.Delay won the race at {sw.ElapsedMilliseconds}ms; content stream opened but never finished delivering. Returning a timeout result so the step can complete instead of hanging.");
+                    return (null, msg);
+                }
+
+                var body = readTask.Result;
+                sw.Stop();
+                reader.Dispose(); // disposes the underlying stream too
+                ActivityLog.Log(Channel, $"ReadResponseBodyAsync: body read complete in {sw.ElapsedMilliseconds}ms ({body?.Length ?? 0} chars).");
+                return (body, null);
             }
             catch (Exception ex)
             {
+                sw.Stop();
+                ActivityLog.Log(Channel, $"ReadResponseBodyAsync: FAILED after {sw.ElapsedMilliseconds}ms — {ex.Message}");
                 return (null, ex.Message);
             }
         }
