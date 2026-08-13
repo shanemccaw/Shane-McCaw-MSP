@@ -301,7 +301,13 @@ namespace BuildConsole.Controls
 
         public event EventHandler<string>? StartRecordingRequested;
         public event EventHandler? StopRecordingRequested;
-        public event EventHandler<(string url, List<AutomationAction> steps)>? PlayTestRequested;
+
+        /// <summary>Git #963/Epic #803 — carries the currently-loaded manifest so MainWindow can run
+        /// it through the same real <c>RunManifestAsync</c> pipeline every other trigger uses. Used to
+        /// carry <c>(url, RecordedSteps)</c> for the recording-only playback path, but #963 removed the
+        /// Record button, so <c>RecordedSteps</c> is now permanently empty and that path ran zero steps —
+        /// Play now runs the whole manifest (api/graph/postGraphApi/zoho/uiSteps/powerShellVerify).</summary>
+        public event EventHandler<TestManifest>? PlayTestRequested;
 
         public readonly List<AutomationAction> RecordedSteps = new();
 
@@ -324,11 +330,12 @@ namespace BuildConsole.Controls
             AutomationStepsList.Items.Add(action);
         }
 
-        /// <summary>Git #963 — the URL box this used to read from is gone (Shane never records
-        /// manually, so there's no manual target to type). Play now resolves its target from the
-        /// currently-loaded manifest's own baseUrl, through the same {{DEPLOY_URL}} placeholder
-        /// resolution HttpTestExecutor/RunManifestAsync already apply — never fires with a stale
-        /// or empty URL.</summary>
+        /// <summary>Git #963 — Play used to fire with <c>RecordedSteps</c>, but that list was only ever
+        /// populated by the (now-removed) Record button, so it's permanently empty and Play replayed nothing.
+        /// Play now hands MainWindow the currently-loaded manifest itself and lets it run through the exact
+        /// same <c>RunManifestAsync</c> pipeline as Menu &gt; Run Tests / the regression sweep / the #898
+        /// remote trigger — baseUrl and every {{DEPLOY_URL}}/{{…}} placeholder are resolved by that pipeline,
+        /// not here, so Play never fires with a stale/empty target and covers all test kinds, not just uiSteps.</summary>
         private void BtnPlayTest_Click(object sender, RoutedEventArgs e)
         {
             if (_lastLoadedManifest == null)
@@ -337,8 +344,7 @@ namespace BuildConsole.Controls
                 return;
             }
 
-            string targetUrl = HttpTestExecutor.ResolvePlaceholders(_lastLoadedManifest.BaseUrl, BuildTrackerConfig.Load());
-            PlayTestRequested?.Invoke(this, (targetUrl, RecordedSteps));
+            PlayTestRequested?.Invoke(this, _lastLoadedManifest);
         }
 
         // ── Git #806: manifest loader (Epic #803 Phase 2) ───────────────────

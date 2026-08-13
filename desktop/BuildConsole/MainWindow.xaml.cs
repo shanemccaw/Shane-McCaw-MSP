@@ -1128,18 +1128,16 @@ namespace BuildConsole
         }
 
         // Git #810 — the manual "Play" button (Automation sidebar) used to open the standalone
-        // AutomationRunnerWindow popup; it drives the same UiTestExecutor directly through a
-        // shared WebView2 instead, so both manual and manifest-driven UI runs share one
-        // telemetry stream and the popup is retired entirely. Git #857 moved that shared
-        // WebView2 from the (now also retired) Test Results tab into the dedicated
-        // TestRunnerWindow.
-        private void LeftSidebar_PlayTestRequested(object? sender, (string url, List<Controls.AutomationAction> steps) e)
+        // AutomationRunnerWindow popup, then (post-#857) replayed RecordedSteps directly through
+        // UiTestExecutor. But #963 removed the Record button, so RecordedSteps is permanently empty
+        // and that uiSteps-only replay ran nothing. Play now hands over the loaded manifest and runs
+        // it through the SAME RunManifestAsync pipeline as Menu > Run Tests (Current Issue), the
+        // regression sweep, and the #898 remote trigger — full api/graph/postGraphApi/zoho/uiSteps/
+        // powerShellVerify coverage with live TestRunnerWindow telemetry (RunManifestAsync already
+        // does EnsureTestRunnerWindow/Clear/SetSteps/BeginRun itself), not a recording-only playback.
+        private void LeftSidebar_PlayTestRequested(object? sender, BuildConsole.Services.TestManifest manifest)
         {
-            var runner = EnsureTestRunnerWindow();
-            runner.Clear();
-            runner.SetStepsFromActions(e.steps);
-            runner.BeginRun(0, "Manual Play Test", "manual");
-            _ = runner.RunUiTestAsync(e.url, e.steps);
+            _ = RunManifestAsync(manifest, isRegression: false);
         }
 
         private void Wv_WebMessageReceived(object? sender, Microsoft.Web.WebView2.Core.CoreWebView2WebMessageReceivedEventArgs e)
