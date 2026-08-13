@@ -460,6 +460,12 @@ namespace BuildConsole
             }
 
             UpdateZoomDisplay();
+
+            // Editor Tab "Pinned" state (Epic #803) — first real use: seed a pinned
+            // LinkedIn entry whose WebView2 session stays alive in the background and
+            // is one click away in the strip. Deferred to Loaded priority so the
+            // PinnedHostCanvas has real layout extents before its content mounts.
+            Dispatcher.BeginInvoke(new Action(SeedPinnedLinkedIn), System.Windows.Threading.DispatcherPriority.Loaded);
         }
 
         protected override void OnSourceInitialized(EventArgs e)
@@ -1871,6 +1877,14 @@ namespace BuildConsole
                 CurrentOwner().Items.Clear();
             };
             cm.Items.Add(miCloseAll);
+
+            cm.Items.Add(new Separator());
+
+            // 5b. Pin Tab — collapse this tab to the always-visible pinned strip,
+            // keeping its WebView2 session alive off-screen (see MainWindow.PinnedTabs.cs).
+            var miPin = new MenuItem { Header = "Pin Tab" };
+            miPin.Click += (s, e) => PinTabFromMenu(tabItem);
+            cm.Items.Add(miPin);
 
             cm.Items.Add(new Separator());
 

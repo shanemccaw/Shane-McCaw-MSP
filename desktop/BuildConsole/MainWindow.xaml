@@ -439,7 +439,31 @@
                             </DockPanel>
                         </Border>
 
-                        <!-- Multi-Pane Grid Container -->
+                        <!-- Editor Tab "Pinned" strip — a small always-visible strip
+                             (icon + short label per pinned tab), shown only when >=1
+                             tab is pinned. Clicking a strip item opens that pinned tab
+                             to full view; its WebView2 keeps running off-screen in the
+                             keep-alive canvas below meanwhile. -->
+                        <Border x:Name="PinnedStripBar" DockPanel.Dock="Bottom"
+                                Visibility="Collapsed"
+                                Background="{StaticResource Surface0Brush}"
+                                BorderBrush="{StaticResource Surface1Brush}"
+                                BorderThickness="0,1,0,0" Padding="6,3">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="📌 PINNED" FontSize="10" FontWeight="Bold"
+                                           Foreground="{StaticResource Subtext0Brush}"
+                                           VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                <StackPanel x:Name="PinnedStrip" Orientation="Horizontal"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Multi-Pane Grid Container + pinned keep-alive overlay, stacked
+                             in one cell. PinnedHostCanvas holds each pinned tab's live
+                             content: parked off-screen (nonzero size, still in the visual
+                             tree) so CoreWebView2 stays loaded/not-suspended per the same
+                             HwndHost rule as ReplitWatcherWebView (#902), and slid to 0,0
+                             over the panes when expanded. -->
+                        <Grid>
                         <Grid x:Name="EditorGridContainer">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition x:Name="PaneCol0" Width="*"/>
@@ -485,6 +509,14 @@
 
                             <!-- Pane 4 (Bottom Right / Quadrant 4) -->
                             <TabControl x:Name="EditorTabs4" Grid.Row="2" Grid.Column="2" BorderThickness="0" Visibility="Collapsed" SelectionChanged="EditorTabs_SelectionChanged" AllowDrop="True" Drop="EditorTabsPane_Drop" DragOver="TabDragOver"/>
+                        </Grid>
+                        <!-- Pinned tabs' live keep-alive host (overlaps the panes). Not
+                             hit-testable while everything is collapsed (all children are
+                             parked off-screen); MainWindow.PinnedTabs.cs flips it on when
+                             a pinned tab is expanded over the panes. -->
+                        <Canvas x:Name="PinnedHostCanvas" IsHitTestVisible="False"
+                                ClipToBounds="True"
+                                SizeChanged="PinnedHostCanvas_SizeChanged"/>
                         </Grid>
                     </DockPanel>
 
