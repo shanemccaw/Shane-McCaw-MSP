@@ -348,12 +348,18 @@ namespace BuildConsole.Controls
         /// <summary>Git #963 — the last manifest selected in ManifestFilesList, so BtnPlayTest_Click can resolve its target URL from the manifest's own baseUrl instead of the removed URL box.</summary>
         private TestManifest? _lastLoadedManifest;
 
-        /// <summary>Git #869 — enumerates test-manifests/*.json for the in-panel list, replacing the old OpenFileDialog. Called on Automation view-load and from the refresh button.</summary>
+        /// <summary>Git #869 — enumerates test-manifests/**/*.json for the in-panel list, replacing the old OpenFileDialog. Called on Automation view-load and from the refresh button.
+        /// Recursive as of the #960 area/feature-slug folder migration — entries are paths relative to manifestsDir (not bare filenames) so Path.Combine in ManifestFilesList_SelectionChanged still resolves,
+        /// and _regression-suite.json (the index, not a runnable test) is excluded.</summary>
         private void PopulateManifestsList()
         {
             string manifestsDir = Path.Combine(RootWorkspacePath, "test-manifests");
             var fileNames = Directory.Exists(manifestsDir)
-                ? Directory.GetFiles(manifestsDir, "*.json").Select(Path.GetFileName).OrderBy(n => n).ToList()
+                ? Directory.GetFiles(manifestsDir, "*.json", SearchOption.AllDirectories)
+                    .Select(f => Path.GetRelativePath(manifestsDir, f))
+                    .Where(n => !n.Equals("_regression-suite.json", StringComparison.OrdinalIgnoreCase))
+                    .OrderBy(n => n)
+                    .ToList()
                 : new List<string?>();
 
             ManifestFilesList.ItemsSource = fileNames;
