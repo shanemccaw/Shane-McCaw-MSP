@@ -354,7 +354,7 @@ namespace BuildConsole.Services
 
             string armedNote = "";
             if (captureSpec != null)
-                armedNote += $" — also capturing response matching '{captureSpec.UrlPattern}' (timeout {CaptureResponseTimeoutMs}ms)";
+                armedNote += $" — also capturing response matching '{captureSpec.UrlPattern}' on {_webView.Source} (timeout {CaptureResponseTimeoutMs}ms)";
             if (hasExtract)
                 armedNote += captureSpec != null ? "; extracting a value from that response on match" : " — extract declared but no captureResponse to extract from";
 
@@ -417,8 +417,8 @@ namespace BuildConsole.Services
                 var capturedArgs = completed == captureTcs.Task ? captureTcs.Task.Result : null;
                 bool captureMatched = capturedArgs != null;
                 ActivityLog.Log(Channel, captureMatched
-                    ? $"Step {stepNumber} captureResponse [{captureSpec.UrlPattern}]: matched after {captureSw.ElapsedMilliseconds}ms."
-                    : $"Step {stepNumber} captureResponse [{captureSpec.UrlPattern}]: TIMED OUT after {captureSw.ElapsedMilliseconds}ms — no response matching '{captureSpec.UrlPattern}' was observed within the {CaptureResponseTimeoutMs}ms ceiling.");
+                    ? $"Step {stepNumber} captureResponse [{captureSpec.UrlPattern}] on {_webView.Source}: matched after {captureSw.ElapsedMilliseconds}ms."
+                    : $"Step {stepNumber} captureResponse [{captureSpec.UrlPattern}] on {_webView.Source}: TIMED OUT after {captureSw.ElapsedMilliseconds}ms — no response matching '{captureSpec.UrlPattern}' was observed within the {CaptureResponseTimeoutMs}ms ceiling.");
 
                 // Post-capture hang fix (Epic #803) — trace every stage AFTER the captureResponse wait resolves,
                 // so a stall anywhere in this stretch (the null-capture path, the body read, or the screenshot
@@ -443,7 +443,7 @@ namespace BuildConsole.Services
 
                 captureResult = BuildCaptureResult(captureSpec, capturedArgs, capturedBody, bodyReadError);
                 Emit($"STEP {stepNumber} CAPTURE", captureResult.Detail, captureResult.Passed ? "PASS" : "WARN", captureResult.Passed ? "#A6E3A1" : "#FAB387");
-                ActivityLog.Log(Channel, $"Step {stepNumber} captureResponse [{captureSpec.UrlPattern}]: {(captureResult.Passed ? "PASS" : "WARN")} — {captureResult.Detail}");
+                ActivityLog.Log(Channel, $"Step {stepNumber} captureResponse [{captureSpec.UrlPattern}] on {_webView.Source}: {(captureResult.Passed ? "PASS" : "WARN")} — {captureResult.Detail}");
 
                 // #877 — extract a value out of the captured response body for later steps to use.
                 if (hasExtract)
