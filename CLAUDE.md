@@ -32,7 +32,7 @@ If the work is abandoned, fails, or the session ends before this step, the row i
 
 ### GitHub issue label sync (same two moments as the bookend, when a Git issue is involved)
 
-When the work is tied to a specific GitHub issue (referenced by number — e.g. `Git #684` — in the row you're about to append), keep that issue's labels in sync with the same two bookend moments. This is what drives the live status dot/overlay in Shane's browser extension panel (`artifacts/build-tracker-extension/`) — it reads these labels off the issue so he can tell at a glance whether something is actively being worked on or already confirmed done in code, without checking PLATFORM_BUILD.md or the git log himself.
+When the work is tied to a specific GitHub issue (referenced by number — e.g. `Git #684` — in the row you're about to append), keep that issue's labels in sync with the same two bookend moments. This is what drives the live status dot/overlay in Shane's BuildConsole desktop app (`desktop/BuildConsole/`, which replaced the old browser extension) — it reads these labels off the issue so he can tell at a glance whether something is actively being worked on or already confirmed done in code, without checking PLATFORM_BUILD.md or the git log himself.
 
 Two labels, `in-flight` and `complete`. Create them once if they don't exist yet:
 
@@ -93,7 +93,7 @@ If that list is empty, or every issue in it is closed/`complete`-labeled, you're
 
 If it's still genuinely blocked (the dependency is still open and not `complete`), say so and stop again rather than guessing forward.
 
-Shane's browser extension panel (`artifacts/build-tracker-extension/`) reads both the label and the real dependency to show a blocked build nested under whatever it's waiting on, in a red box — and flags it a different color the moment that dependency clears, so he knows to go start it again without having to remember himself.
+Shane's BuildConsole desktop app (`desktop/BuildConsole/`) reads both the label and the real dependency to show a blocked build nested under whatever it's waiting on, in a red box — and flags it a different color the moment that dependency clears, so he knows to go start it again without having to remember himself.
 
 ## Git conventions
 

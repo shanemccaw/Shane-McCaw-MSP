@@ -3,7 +3,8 @@ import { createHash } from "crypto";
 import { db, exceptionGroupsTable, exceptionOccurrencesTable } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { getRequestContext } from "./request-context.ts";
-import { syncExceptionGroupToGitHub } from "./exception-github-sync.ts";
+// syncExceptionGroupToGitHub import removed with the auto-file-to-GitHub
+// call below — see that comment for why, and what to restore to re-enable.
 
 interface CaptureOptions {
   channel: string;
@@ -95,7 +96,7 @@ export async function captureException(err: Error, opts: CaptureOptions): Promis
     const ctx = getRequestContext();
     const now = new Date();
 
-    const [group] = await db
+    await db
       .insert(exceptionGroupsTable)
       .values({
         fingerprint,
@@ -135,12 +136,21 @@ export async function captureException(err: Error, opts: CaptureOptions): Promis
       occurredAt: now,
     });
 
-    // Fire-and-forget, deliberately not awaited: this is a live GitHub API
-    // call and must never add its latency to the capture path (especially
-    // the uncaughtException handler's 2s exit-race in app.ts). Dev-only
-    // (production has no path to GitHub at all) and no-op without
-    // GITHUB_TOKEN — see its own doc comment.
-    if (group) void syncExceptionGroupToGitHub(group);
+    // Auto-file-to-GitHub disabled (Shane, 2026-08-14): "there is code in
+    // there that creates issues in git automatically. That could be a cause
+    // too" — part of the same "all git calls should come from the WPF app
+    // when I hit refresh manually" sweep that removed the browser extension.
+    // syncExceptionGroupToGitHub was gated "dev-only", but Shane's real
+    // day-to-day workspace IS the dev environment (where GITHUB_TOKEN
+    // actually lives), so it was firing for real off the back of
+    // msp-jobs.ts's 5s worker, any DLQ enqueue, and any logger.error({err})
+    // call anywhere in the server — genuine automatic GitHub write traffic
+    // with no client request behind it. The grouping/occurrence-count DB
+    // tracking above stays on; only this automatic file/comment step is
+    // disabled. syncExceptionGroupToGitHub (exception-github-sync.ts) itself
+    // is untouched — to turn this back on: re-add the import above, capture
+    // the inserted row (`const [group] = await db.insert(...)`), and call
+    // `if (group) void syncExceptionGroupToGitHub(group);` here.
   } catch (captureErr) {
     // Never let exception tracking itself crash the app or recurse into logger.
     console.error("exception-tracker: capture failed", captureErr);
