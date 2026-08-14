@@ -10,6 +10,7 @@ genuinely remote/CI caller uses plain HTTP.**
 | **Run SQL** | `shaneapp://executeSql` local protocol | SQL runs on BuildConsole's **own direct local Postgres connection** (zero round‑trip to the deployed app); a caller that isn't on this machine can't reach it. |
 | **Run a test manifest — local agent** | `shaneapp://runTest` local protocol | Runs the manifest **in‑process** through the same `RunManifestAsync` pipeline Play Test uses (ALL step types, not just uiSteps) — no HTTP hop, since the agent and BuildConsole are the same machine. |
 | **Run a test manifest — remote/CI caller** | Git #898 HTTP (`/api/admin/deploy/test-run`) | For a caller **not** on this machine. Any HTTP‑capable agent calls it directly. Unchanged by `runTest`. |
+| **Run a tenant scan + get per‑finding results back** | `shaneapp://runScan` local protocol *(landing under local #59)* | Triggers a real diagnostics run, **settles it to completion**, and hands back the full **per‑finding** envelope — so the agent can diff each engine observation against an independent PowerShell ground‑truth read of the same tenant fact, not merely confirm "the scan ran". The whole point is the **comparison** (see **§5** below). |
 
 ---
 
@@ -343,3 +344,211 @@ pull. Per this repo's DB rule, **only Shane supplies this SQL**:
 ### Logging
 Server-side logging is already wired by both routes (`admin.deploy` and
 `testing.deploy-poll` channels) — the script itself adds none.
+
+---
+
+## 5. Dual‑verification — engine observation vs PowerShell ground truth
+
+> **This section is the durable design contract, not a nice‑to‑have.** Two
+> triggers exist to make the platform's engines and write‑actions provable:
+> `shaneapp://runScan` (a **read/scan** — landing under local #59) and the
+> `powerShellVerify` manifest phase (a **write** — already live, Git #900/#901).
+> Both are built around the SAME idea, and it is the point of both: **PowerShell,
+> signed in as Shane himself, is an independent source of ground truth; the
+> engine's finding — or a write action's claimed effect — is checked *against*
+> that ground truth, not merely checked for "did it complete without erroring."**
+
+### The principle (Shane's own words)
+
+> "Right and we have PowerShell. So agent could now literally reach into my
+> tenant. Get the source of truth from PowerShell. Then make sure the engines are
+> grabbing that properly. They can also automate test the api write actions.
+> Write runs. Agent PowerShell verify action success."
+
+A scan that returns HTTP 200 and a healthy‑looking score has proven **nothing**
+about whether the engine actually *saw the tenant correctly*. A write action that
+reports `success: true` has proven nothing about whether the value actually
+*landed in the tenant*. The only thing that proves either is reading the SAME
+real fact a second time, through a **completely separate identity and code path**
+— Shane's delegated `Connect-MgGraph` session, NOT the app's app‑only service
+principal — and asserting the two agree. A bug that makes the app misreport
+success cannot also make that independent read lie.
+
+### The general model (one shape, two instantiations)
+
+Every dual‑verification test — scan‑side or write‑side, now or future — is the
+same three moves:
+
+1. **Trigger** the real action through its real code path (a scan run; a write
+   endpoint), and capture the value the **engine/app itself observed or claimed**.
+2. **Independently read** the same real tenant fact via a delegated PowerShell
+   `Get-*`/`Get-Mg*` cmdlet run as Shane (the #900/#901 auth: `Connect-MgGraph`,
+   reusing the locally cached delegated token — never the app's client‑credentials
+   identity). This is the **ground truth**.
+3. **Assert equality.** A pass means the engine is genuinely seeing reality; a
+   *mismatch is a real engine/mapping bug even when the action "succeeded."*
+   Never stop at step 1 — "the scan ran" / "the write returned 200" is not a
+   verification, it is a precondition for one.
+
+The two halves below are just this model applied to reads and to writes.
+
+---
+
+### 5a. Write actions — the live, canonical example (Git #901)
+
+**This half is already live and is the template every future write‑action test
+copies.** `test-manifests/admin/baseline-actions-powershell-verify.json` verifies
+all 10 real `baseline_action_templates` write actions, and its shape IS the
+general model:
+
+- **`apiTests`** POST `/admin/baseline-templates/:templateId/test` with
+  `{ customerId, variables }` → **triggers the real write** (step 1).
+- **`graphTests`** read the value back through the app's own Graph integration →
+  the **app‑reported** value (still step 1 — what the app *thinks* it did).
+- **`powerShellVerify`** (`afterStep` → `cmdlet` → `compareField`) reads the same
+  fact as Shane's delegated identity and **diffs it** against the app‑reported
+  value → **ground truth + assert** (steps 2–3).
+
+`test-manifests/admin/powershell-verify-example.json` is the minimal one‑step
+template of the same thing. The `powerShellVerify` executor
+(`desktop/BuildConsole/Services/PowerShellTestExecutor.cs`, Git #900) handles the
+delegated auth, the testbed‑tenant guard (#965), and the JSON‑parsed comparison.
+
+**The general rule (applies to ALL write‑action automation, not just these 10):**
+a write‑action test is not done when it asserts `result.success === true`. It is
+done when it *independently confirms the effect landed* via `powerShellVerify`
+(or an equivalent independent read). Copy `baseline-actions-powershell-verify.json`
+— don't invent a new shape. Absence/removal actions use the
+presence‑probe‑returns‑`''`‑or‑the‑id trick documented in that manifest's notes.
+
+---
+
+### 5b. Scans / reads — `shaneapp://runScan` (local #59), same model
+
+The scanning ("diagnostics") engine is triggered by
+`POST /api/msp/customers/:customerId/diagnostics/run`, which is **fire‑and‑forget**:
+it returns `202 { runId, status: "pending" }` immediately and runs
+`runDiagnostics(...)` asynchronously (see
+`artifacts/api-server/src/routes/msp-diagnostics.ts`). The settled result — per
+check — is then read from
+`GET /api/msp/customers/:customerId/diagnostics/runs/:runId` as `{ run, findings }`.
+
+`shaneapp://runScan`'s job is to make that loop usable by a local agent the same
+way `runTest` does: **trigger the run, poll it to a terminal status
+(`completed`/`partial`/`failed`) — or consume the run's SSE stream — and only then
+write ONE settled result envelope.** A `202 pending` is not a result an agent can
+diff; runScan must not return until the scan has genuinely settled (with a hard
+timeout backstop so a stuck run fails the envelope cleanly rather than hanging the
+agent's poll, exactly like `runTest`).
+
+#### The result envelope contract — per‑finding detail is REQUIRED
+
+The whole reason runScan exists (rather than the agent just POSTing the run) is
+that the envelope must carry **enough structured, per‑check detail to be compared
+against a separate PowerShell read — not just an overall score.** An aggregate
+health number can't tell you *which* check the engine saw wrong; the per‑finding
+observed values can. So the envelope MUST include, for **every** check in the run,
+the finding's own observed data — grounded in the real `msp_diagnostic_findings`
+columns the runs/:runId route already returns:
+
+```jsonc
+{
+  "ok": true,                    // false ONLY if the scan couldn't run / never settled
+  "error": null,                 // reason it couldn't run / settle, else null
+  "action": "runScan",
+  "source": "claude-code",       // whatever ?src= was
+  "ranAtUtc": "2026-08-14T...Z",
+  "customerId": 42,
+  "runId": "…uuid…",
+  "runStatus": "completed",      // the SETTLED terminal status (completed | partial | failed)
+  "packageKey": "core:security-baseline",
+  "rollup": {                    // the run's own aggregate counters — the REAL msp_diagnostic_runs
+                                 // columns: checks_total / checks_ok / checks_error / checks_license_gap
+    "checksTotal": 34, "checksOk": 20, "checksError": 11, "checksLicenseGap": 3,
+    "compositeScore": 61         // summary.compositeScore — coverage-gated, may be null
+  },
+  "findings": [                  // REQUIRED: one entry PER CHECK — never collapsed to a score
+    {
+      "checkKey": "exchange:distribution-list-count",
+      "checkLabel": "Distribution list count",
+      "checkStatus": "ok",       // ok | error | license_gap | consent_revoked | requires_script | …
+      "severity": "info",
+      "title": "…",
+      "description": "…",
+      "extractedProperties": {   // ← THE ENGINE'S OWN OBSERVED VALUES — the thing you diff
+        "distributionListCount": 0, "_itemCount": 17
+      },
+      "classification": null     // #379 triage verdict; null unless a real failure
+    }
+    // …every other check in the run…
+  ]
+}
+```
+
+`extractedProperties` is the load‑bearing field: it is what the engine *observed*
+about the tenant for that check, and it is what a PowerShell read is diffed
+against. Dropping it (or only returning `compositeScore`) makes the whole
+dual‑verification impossible — that is why it is a hard requirement of the #59
+build, not an optional extra.
+
+#### The concrete comparison workflow (this is the reusable pattern)
+
+Trigger the scan, then prove a specific finding against ground truth. The example
+below uses a **real** finding observed in this tenant
+(`docs/check_key.json`): `exchange:distribution-list-count` reported
+`distributionListCount: 0`. That check was `status: "ok"` — and yet, across the
+same corpus, this engine returned 1869 `error` findings and only ONE `ok`, so a
+bare "0, healthy" is exactly the kind of result that must be checked against
+reality before it's trusted. A false clean reads identically to a real clean until
+you diff it.
+
+```powershell
+# 1) TRIGGER + SETTLE the scan, read the per-finding envelope (runScan does the polling).
+$out = Join-Path $env:TEMP "shaneapp-runScan-42.result.json"
+Remove-Item $out -ErrorAction SilentlyContinue
+Start-Process ("shaneapp://runScan?src=claude-code&customerId=42&resultRef=" + [uri]::EscapeDataString($out))
+while (-not (Test-Path $out)) { Start-Sleep -Milliseconds 300 }
+$scan = Get-Content $out -Raw | ConvertFrom-Json
+
+# 2) Pull the ENGINE'S OBSERVED value for the check under test.
+$engineDlCount = ($scan.findings |
+  Where-Object { $_.checkKey -eq 'exchange:distribution-list-count' }).extractedProperties.distributionListCount
+
+# 3) Read the SAME fact independently as Shane (delegated Connect-MgGraph — the #900/#901 auth).
+#    Distribution lists = mail-enabled, non-security groups; a genuinely separate code path
+#    from whatever the engine's check did (which, per the dump, was erroring on an
+#    'exchange-online:' Graph segment — precisely the mismatch this catches).
+Connect-MgGraph -UseDeviceCode -ContextScope CurrentUser -NoWelcome   # silent reuse of the cached token
+$truthDlCount = (Get-MgGroup -All -ConsistencyLevel eventual `
+  -Filter "mailEnabled eq true and securityEnabled eq false").Count
+
+# 4) ASSERT the engine matches ground truth — NOT merely that the scan ran.
+if ($engineDlCount -eq $truthDlCount) {
+  "PASS — engine observed $engineDlCount DLs, PowerShell ground truth confirms $truthDlCount."
+} else {
+  "FAIL — engine reported $engineDlCount but the tenant actually has $truthDlCount. " +
+  "The scan 'succeeded' while the engine's observation is wrong."
+}
+```
+
+The same shape generalizes to any check whose fact a `Get-Mg*` cmdlet can read
+independently (identity/MFA state, a policy value, a count, a specific object's
+attribute): pull `extractedProperties.<value>` from the runScan envelope, read the
+same fact via delegated PowerShell, assert they agree. Where a manifest is
+preferable, once runScan has settled the run you can also drive the comparison
+through the existing manifest phases — an `apiTests` GET of `…/diagnostics/runs/:runId`
+that `extract`s the finding value, diffed by a `powerShellVerify` step — the exact
+#901 shape, pointed at a read instead of a write.
+
+> **Status:** the `runScan` trigger mechanism itself lands under local #59; do not
+> invoke `shaneapp://runScan` until that ships (until then the URI has no handler
+> and an agent's poll would hang). The **write half (5a) is live today.** This
+> section is the contract #59 is built to: settle‑to‑terminal + per‑finding
+> `extractedProperties` in the envelope, so the comparison above is possible.
+
+### Logging
+Both halves log on their existing channels — the scan engine on `tenant.portal`
+(server‑side) and the delegated‑PowerShell verification on
+`testing.powershell-verify` (BuildConsole). runScan itself will log on the shared
+`sql-runner.protocol` shaneapp channel like `executeSql`/`runTest` (trigger →
+settle → per‑finding count → result path, or the exact reason it couldn't run).
