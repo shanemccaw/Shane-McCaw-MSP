@@ -42,6 +42,19 @@ namespace BuildConsole.Controls
         private int _transcriptCursor;
         private string _buildChipSig = "";
 
+        // Local #47 refinement — left-panel epic drill-down. Shane's feedback: the CHILDREN
+        // panel showed the whole milestone-wide issue list flat, with no way to narrow to one
+        // epic. When an epic child is clicked we drill INTO it: the same left panel shows ONLY
+        // that epic's own real sub-issues (fetched live from GitHub on the click — a
+        // user-initiated manual action, the same precedent BuildQueuePanel.SetActiveChatEpic
+        // set — since there's no client-side epic→child linkage to filter locally), with a
+        // breadcrumb Back to return to the full list. Null = showing the full milestone list.
+        private int? _drillEpicNumber;
+        private string? _drillEpicTitle;
+        private int? _drillMilestoneNumber;                 // the focus milestone at drill time (drop the drill if it changes)
+        private List<GitHubSubIssue> _drillChildren = new();
+        private int _drillRequestSeq;                        // guards a stale fetch landing after another click/back
+
         public FocusImmersiveView()
         {
             InitializeComponent();
@@ -94,6 +107,7 @@ namespace BuildConsole.Controls
             _pumpTimer?.Stop(); _pumpTimer = null;
             CharacterLayer.Stop();
             ExitChatMode(); // local #47 — dispose any hosted chat WebView2 when leaving immersive
+            ClearDrill(refresh: false); // local #47 — start fresh (full list) next time immersive opens
             _selectedBuildId = null;
             _transcriptCursor = 0;
             _buildChipSig = "";
@@ -164,7 +178,20 @@ namespace BuildConsole.Controls
         private void RefreshChildren()
         {
             var svc = FocusModeService.Instance;
+            // Drop the drill-down if the focused epic/milestone changed underneath us.
+            if (_drillEpicNumber.HasValue && svc.ActiveMilestoneNumber != _drillMilestoneNumber)
+                ClearDrill(refresh: false);
+
+            if (_drillEpicNumber.HasValue) RenderDrilledChildren();
+            else RenderFullChildren();
+        }
+
+        /// <summary>The default view: the whole active milestone's issue set (real epics first).</summary>
+        private void RenderFullChildren()
+        {
+            var svc = FocusModeService.Instance;
             var kids = svc.ActiveChildIssues;
+            DrillBreadcrumb.Visibility = Visibility.Collapsed;
             ChildrenList.Children.Clear();
             int open = kids.Count(k => !k.IsClosed);
             ChildrenCountText.Text = kids.Count == 0 ? "" : $"{open} open · {kids.Count} total";
@@ -182,6 +209,7 @@ namespace BuildConsole.Controls
             var grid = new Grid { Margin = new Thickness(0, 1, 0, 1) };
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // drill chevron (epics only)
 
             var g = new TextBlock
             {
@@ -207,6 +235,24 @@ namespace BuildConsole.Controls
             Grid.SetColumn(t, 1);
             grid.Children.Add(t);
 
+            // Epics (issues with real sub-issues) get a › affordance signalling the row drills
+            // into just this epic's children rather than opening its chat/build.
+            if (k.IsEpic && !k.IsClosed)
+            {
+                var chev = new TextBlock
+                {
+                    Text = "›",
+                    FontSize = 15,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = Res("Subtext0Brush"),
+                    Margin = new Thickness(8, 0, 0, 0),
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                Grid.SetColumn(chev, 2);
+                grid.Children.Add(chev);
+            }
+
+            bool drillable = k.IsEpic && !k.IsClosed;
             var border = new Border
             {
                 Background = Res("Surface0Brush"),
@@ -216,29 +262,191 @@ namespace BuildConsole.Controls
                 Cursor = Cursors.Hand,
                 Child = grid,
                 Tag = k,
-                ToolTip = k.IsClosed ? "Closed" : "Click to focus its live build, or open its chat"
+                ToolTip = k.IsClosed
+                    ? "Closed"
+                    : (drillable
+                        ? "Click to see only this epic's children"
+                        : "Click to focus its live build, or open its chat")
             };
-            border.MouseLeftButtonUp += (_, _) => OnChildClicked(k);
+            if (drillable)
+                border.MouseLeftButtonUp += (_, _) => DrillIntoEpic(k);
+            else
+                border.MouseLeftButtonUp += (_, _) => OnChildActivated(k.Number);
             return border;
         }
 
-        private void OnChildClicked(GitBoardIssue k)
+        /// <summary>Open a child in the centre panel: if a build is running for it, focus its live
+        /// transcript; otherwise load its linked Claude chat straight into THIS view's centre panel
+        /// (local #47) — no main-tab navigation, no exit from immersive mode.</summary>
+        private void OnChildActivated(int githubNumber)
         {
-            // If a build is running for this child, focus its live transcript; otherwise load
-            // its linked Claude chat straight into THIS view's centre panel (local #47) — no
-            // main-tab navigation, no exit from immersive mode.
             var items = _queueItemsProbe?.Invoke() ?? Array.Empty<QueueItem>();
-            var build = items.FirstOrDefault(i => i.GithubNumber == k.Number && (i.Status == "running" || i.Status == "queued"));
+            var build = items.FirstOrDefault(i => i.GithubNumber == githubNumber && (i.Status == "running" || i.Status == "queued"));
             if (build != null && build.Status == "running")
             {
                 SelectBuild(build); // clears chat mode + shows the transcript
-                ActivityLog.Log("focus-mode", $"immersive: focused live build for child #{k.Number}");
+                ActivityLog.Log("focus-mode", $"immersive: focused live build for child #{githubNumber}");
             }
             else
             {
-                LoadChatForChild(k.Number);
+                LoadChatForChild(githubNumber);
             }
         }
+
+        // ================================================================
+        // Left — epic drill-down (local #47 refinement)
+        // ================================================================
+
+        /// <summary>Clicking an epic narrows the CHILDREN panel to ONLY that epic's own real
+        /// sub-issues. There's no client-side epic→child linkage, so we fetch the real sub-issues
+        /// live from GitHub on the click — a user-initiated manual action (the same precedent
+        /// BuildQueuePanel.SetActiveChatEpic set), not a background poll, so it doesn't reintroduce
+        /// the automatic GitHub traffic the manual-refresh-only work removed.</summary>
+        private async void DrillIntoEpic(GitBoardIssue epic)
+        {
+            var svc = FocusModeService.Instance;
+            _drillEpicNumber = epic.Number;
+            _drillEpicTitle = Clean(epic.Title, 60);
+            _drillMilestoneNumber = svc.ActiveMilestoneNumber;
+            _drillChildren = new();
+            int seq = ++_drillRequestSeq;
+
+            RenderDrilledChildren(loading: true);
+
+            var settings = BuildConsoleSettings.Load();
+            if (!settings.HasGitHubPat)
+            {
+                if (seq != _drillRequestSeq) return;
+                RenderDrilledChildren(error: "No GitHub PAT configured — set one in Settings to see an epic's children.");
+                return;
+            }
+
+            List<GitHubSubIssue> subs;
+            try
+            {
+                var client = new GitHubApiClient(settings.GitHubPat);
+                subs = await client.GetSubIssuesAsync(epic.Number);
+            }
+            catch (Exception ex)
+            {
+                if (seq != _drillRequestSeq) return; // a newer click/back superseded this fetch
+                RenderDrilledChildren(error: $"Couldn't load this epic's children: {ex.Message}");
+                return;
+            }
+
+            if (seq != _drillRequestSeq || _drillEpicNumber != epic.Number) return; // superseded mid-flight
+            _drillChildren = subs;
+            RenderDrilledChildren();
+        }
+
+        /// <summary>Render the drilled-in view: breadcrumb + only the drilled epic's sub-issues
+        /// (or a loading / error / empty note).</summary>
+        private void RenderDrilledChildren(bool loading = false, string? error = null)
+        {
+            DrillBreadcrumb.Visibility = Visibility.Visible;
+            DrillEpicTitleText.Text = $"#{_drillEpicNumber}  {_drillEpicTitle}";
+            ChildrenList.Children.Clear();
+
+            if (loading)
+            {
+                ChildrenCountText.Text = "loading…";
+                ChildrenList.Children.Add(NoteRow("Loading this epic's children…"));
+                return;
+            }
+            if (error != null)
+            {
+                ChildrenCountText.Text = "";
+                ChildrenList.Children.Add(NoteRow(error));
+                return;
+            }
+
+            var kids = _drillChildren;
+            if (kids.Count == 0)
+            {
+                ChildrenCountText.Text = "0";
+                ChildrenList.Children.Add(NoteRow("This epic has no sub-issues."));
+                return;
+            }
+
+            int open = kids.Count(k => !IsClosedState(k.State));
+            ChildrenCountText.Text = $"{open} open · {kids.Count} total";
+            foreach (var k in kids.OrderBy(k => IsClosedState(k.State) ? 1 : 0).ThenBy(k => k.Number))
+                ChildrenList.Children.Add(BuildDrilledChildRow(k));
+        }
+
+        private UIElement BuildDrilledChildRow(GitHubSubIssue k)
+        {
+            bool closed = IsClosedState(k.State);
+            var grid = new Grid { Margin = new Thickness(0, 1, 0, 1) };
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+            var g = new TextBlock
+            {
+                Text = closed ? "✓" : "▸",
+                FontSize = 12.5,
+                Foreground = closed ? Res("GreenBrush") : Res("Subtext1Brush"),
+                Margin = new Thickness(0, 0, 8, 0),
+                VerticalAlignment = VerticalAlignment.Top
+            };
+            Grid.SetColumn(g, 0);
+            grid.Children.Add(g);
+
+            var t = new TextBlock
+            {
+                Text = $"#{k.Number}  {Clean(k.Title)}",
+                FontSize = 12,
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = closed ? Res("Subtext0Brush") : Res("TextBrush"),
+                TextDecorations = closed ? TextDecorations.Strikethrough : null
+            };
+            Grid.SetColumn(t, 1);
+            grid.Children.Add(t);
+
+            var border = new Border
+            {
+                Background = Res("Surface0Brush"),
+                CornerRadius = new CornerRadius(5),
+                Padding = new Thickness(9, 6, 9, 6),
+                Margin = new Thickness(0, 0, 0, 4),
+                Cursor = Cursors.Hand,
+                Child = grid,
+                ToolTip = closed ? "Closed" : "Click to focus its live build, or open its chat"
+            };
+            border.MouseLeftButtonUp += (_, _) => OnChildActivated(k.Number);
+            return border;
+        }
+
+        /// <summary>A quiet full-width note row for the drilled panel's loading / error / empty states.</summary>
+        private UIElement NoteRow(string text) => new TextBlock
+        {
+            Text = text,
+            FontSize = 11.5,
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = Res("Subtext0Brush"),
+            Margin = new Thickness(4, 6, 4, 0)
+        };
+
+        /// <summary>Leave the drilled-in view and return to the full milestone-wide child list.</summary>
+        private void ClearDrill(bool refresh)
+        {
+            _drillEpicNumber = null;
+            _drillEpicTitle = null;
+            _drillMilestoneNumber = null;
+            _drillChildren = new();
+            _drillRequestSeq++; // invalidate any in-flight fetch
+            if (refresh) RefreshChildren();
+        }
+
+        private void DrillBack_Click(object sender, RoutedEventArgs e) => ClearDrill(refresh: true);
+
+        private void DrillOpenEpic_Click(object sender, RoutedEventArgs e)
+        {
+            if (_drillEpicNumber.HasValue) OnChildActivated(_drillEpicNumber.Value);
+        }
+
+        private static bool IsClosedState(string? state)
+            => string.Equals(state, "closed", StringComparison.OrdinalIgnoreCase);
 
         /// <summary>Local #47 — load a child's linked chat into the immersive centre panel in
         /// place, staying immersive. Reuses the real WebView2 chat session the normal tabs
