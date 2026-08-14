@@ -66,16 +66,31 @@ namespace BuildConsole
 
     public partial class TestHistoryWindow : Window
     {
+        /// <summary>Non-null while filtered to one manifest's own runs (opened via the manifest steps
+        /// flyout's "History" button); null shows the full unfiltered history.</summary>
+        private int? _issueFilter;
+
         public TestHistoryWindow()
         {
             InitializeComponent();
             Refresh();
         }
 
-        public void Refresh()
+        public void Refresh() => Refresh(_issueFilter);
+
+        /// <summary>issueFilter narrows both lists to just that manifest's Issue number; pass null to show
+        /// the full unfiltered history. Persists across subsequent parameterless Refresh() calls (e.g. the
+        /// window's own Refresh button) until a different filter is applied.</summary>
+        public void Refresh(int? issueFilter)
         {
+            _issueFilter = issueFilter;
+            BtnClearFilter.Visibility = issueFilter.HasValue ? Visibility.Visible : Visibility.Collapsed;
+            TxtFilterBanner.Visibility = issueFilter.HasValue ? Visibility.Visible : Visibility.Collapsed;
+            TxtFilterBanner.Text = issueFilter.HasValue ? $"Filtered to #{issueFilter.Value}" : "";
+
             string? repoRoot = BuildTrackerConfig.FindRepoRoot();
             var entries = repoRoot != null ? TestHistoryStore.ReadAll(repoRoot) : new List<TestHistoryEntry>();
+            if (issueFilter.HasValue) entries = entries.Where(e => e.Issue == issueFilter.Value).ToList();
 
             var newestFirst = entries.OrderByDescending(e => e.StartedAt).ToList();
             RunsList.ItemsSource = new ObservableCollection<HistoryRunItem>(newestFirst.Select(e => new HistoryRunItem(e)));
@@ -113,6 +128,8 @@ namespace BuildConsole
         }
 
         private void BtnRefresh_Click(object sender, RoutedEventArgs e) => Refresh();
+
+        private void BtnClearFilter_Click(object sender, RoutedEventArgs e) => Refresh(null);
 
         // ── Git #1006: custom title bar caption buttons (same pattern as MainWindow, Git #894) ──
         protected override void OnSourceInitialized(EventArgs e)

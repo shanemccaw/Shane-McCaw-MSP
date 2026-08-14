@@ -62,9 +62,14 @@
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Text="TEST HISTORY" FontSize="12" FontWeight="Bold" Foreground="{StaticResource BlueBrush}" VerticalAlignment="Center"/>
-                <Button x:Name="BtnRefresh" Grid.Column="1" Content="Refresh" Padding="10,2" Click="BtnRefresh_Click"/>
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="TEST HISTORY" FontSize="12" FontWeight="Bold" Foreground="{StaticResource BlueBrush}" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="TxtFilterBanner" Text="" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="10,0,0,0" VerticalAlignment="Center" Visibility="Collapsed"/>
+                </StackPanel>
+                <Button x:Name="BtnClearFilter" Grid.Column="1" Content="Show All" Padding="10,2" Margin="0,0,8,0" Click="BtnClearFilter_Click" Visibility="Collapsed" ToolTip="Clear the per-manifest filter and show the full history"/>
+                <Button x:Name="BtnRefresh" Grid.Column="2" Content="Refresh" Padding="10,2" Click="BtnRefresh_Click"/>
             </Grid>
         </Border>
 

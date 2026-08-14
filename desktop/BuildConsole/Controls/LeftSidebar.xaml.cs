@@ -366,6 +366,11 @@ namespace BuildConsole.Controls
         /// <summary>Fired after a manifest loads successfully — carries the parsed manifest so MainWindow can track it for Menu &gt; Run &gt; "Run Tests (Current Issue)".</summary>
         public event EventHandler<TestManifest>? ManifestLoaded;
 
+        /// <summary>Fired from the manifest steps flyout's "History" button — carries the manifest's Issue
+        /// number so MainWindow can open (or focus) TestHistoryWindow filtered to just that manifest's own
+        /// run history, per Git discoverability fix (TestHistoryWindow had no entry point).</summary>
+        public event EventHandler<int>? ManifestHistoryRequested;
+
         /// <summary>Git #963 — the last manifest selected in ManifestFilesTree, so BtnPlayTest_Click can resolve its target URL from the manifest's own baseUrl instead of the removed URL box.</summary>
         private TestManifest? _lastLoadedManifest;
 
@@ -768,6 +773,15 @@ namespace BuildConsole.Controls
             if (_lastLoadedManifest == null) return;
             ManifestStepsPopup.IsOpen = false;
             OpenManifestViewer(_lastLoadedManifest, showChartFirst: false);
+        }
+
+        /// <summary>History button in the manifest steps flyout — opens Test History filtered to this
+        /// manifest's own Issue number rather than the full unfiltered history.</summary>
+        private void BtnOpenManifestHistory_Click(object sender, RoutedEventArgs e)
+        {
+            if (_lastLoadedManifest == null) return;
+            ManifestStepsPopup.IsOpen = false;
+            ManifestHistoryRequested?.Invoke(this, _lastLoadedManifest.Issue);
         }
 
         /// <summary>Parses the manifest at <paramref name="fullPath"/> and opens the Manifest Viewer on the
