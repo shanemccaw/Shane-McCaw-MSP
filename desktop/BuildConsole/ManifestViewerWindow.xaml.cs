@@ -52,7 +52,7 @@ namespace BuildConsole
         private const double GutterLeft = 14;                    // phase labels live in the left gutter
         private const double CanvasRightPad = 40;
 
-        public ManifestViewerWindow(TestManifest manifest)
+        public ManifestViewerWindow(TestManifest manifest, bool showChartFirst = false)
         {
             _manifest = manifest ?? throw new ArgumentNullException(nameof(manifest));
             InitializeComponent();
@@ -71,7 +71,10 @@ namespace BuildConsole
 
             LoadRawJson();
             BuildLegend();
-            ShowJsonView();
+
+            // "View Run Diagram" opens straight on the chart; "View Raw JSON" (and the flyout button) on JSON.
+            if (showChartFirst) ShowChartView();
+            else ShowJsonView();
         }
 
         // ── (1) Raw JSON view ───────────────────────────────────────────────

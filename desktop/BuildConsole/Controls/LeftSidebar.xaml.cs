@@ -642,9 +642,9 @@ namespace BuildConsole.Controls
         // acts on the node it was opened from — no reliance on tree SelectedItem.
 
         /// <summary>Right-click menu for one manifest leaf. Run reuses the exact double-click run path
-        /// (LoadManifestLeaf → PlayTestRequested). View Run Diagram / View Raw JSON are stubbed disabled:
-        /// the ManifestViewerWindow they open is a separate build that hasn't landed yet — deliberately not
-        /// a second diagram/JSON implementation here. Edit opens the manifest through the same
+        /// (LoadManifestLeaf → PlayTestRequested). View Run Diagram / View Raw JSON open the dedicated
+        /// ManifestViewerWindow (now landed) on its workflow-chart / raw-JSON view respectively. Edit opens
+        /// the manifest through the same
         /// FileSelected → OpenFileTab path every other file uses (JSON lands in the Monaco editor), consistent
         /// with Explorer's "Open". Copy Path / Reveal in Explorer mirror CreateExplorerContextMenu exactly.</summary>
         private ContextMenu BuildManifestLeafContextMenu(TreeViewItem leafNode, string relativePath)
@@ -665,12 +665,15 @@ namespace BuildConsole.Controls
 
             cm.Items.Add(new Separator());
 
-            // 2 & 3. View Run Diagram / View Raw JSON — the ManifestViewerWindow (workflow chart + raw-JSON
-            // tabs) these open is a separate build not landed yet. Stub disabled with a tooltip rather than
-            // building a second implementation. Wire these up to the real window once it lands.
-            const string pendingTip = "Pending — opens in the dedicated Manifest Viewer, which hasn't landed yet.";
-            cm.Items.Add(new MenuItem { Header = "View Run Diagram", IsEnabled = false, ToolTip = pendingTip });
-            cm.Items.Add(new MenuItem { Header = "View Raw JSON", IsEnabled = false, ToolTip = pendingTip });
+            // 2 & 3. View Run Diagram / View Raw JSON — open the dedicated ManifestViewerWindow (now landed) on
+            // its workflow-chart or raw-JSON view respectively, for the manifest this menu was opened from.
+            var miDiagram = new MenuItem { Header = "View Run Diagram", ToolTip = "Open the Manifest Viewer's workflow chart for this manifest" };
+            miDiagram.Click += (s, e) => OpenManifestViewerFromPath(fullPath, showChartFirst: true);
+            cm.Items.Add(miDiagram);
+
+            var miRawJson = new MenuItem { Header = "View Raw JSON", ToolTip = "Open the Manifest Viewer's raw-JSON view for this manifest" };
+            miRawJson.Click += (s, e) => OpenManifestViewerFromPath(fullPath, showChartFirst: false);
+            cm.Items.Add(miRawJson);
 
             // 4. Edit — open as a normal editor tab (Monaco for .json), the app's standard file-open path.
             var miEdit = new MenuItem { Header = "Edit" };
@@ -759,15 +762,33 @@ namespace BuildConsole.Controls
 
         /// <summary>Opens the fuller Manifest Viewer (raw JSON tree + native-Canvas workflow chart) for the
         /// currently-selected manifest — the same <see cref="_lastLoadedManifest"/> this flyout was populated
-        /// from. Closes the flyout so the window takes focus; non-modal (Show, not ShowDialog) so the rest of
-        /// the app stays usable, owned by the main window so it stays on top of it.</summary>
+        /// from. Closes the flyout so the window takes focus.</summary>
         private void BtnOpenManifestViewer_Click(object sender, RoutedEventArgs e)
         {
-            var manifest = _lastLoadedManifest;
-            if (manifest == null) return;
-
+            if (_lastLoadedManifest == null) return;
             ManifestStepsPopup.IsOpen = false;
-            var viewer = new BuildConsole.ManifestViewerWindow(manifest) { Owner = Window.GetWindow(this) };
+            OpenManifestViewer(_lastLoadedManifest, showChartFirst: false);
+        }
+
+        /// <summary>Parses the manifest at <paramref name="fullPath"/> and opens the Manifest Viewer on the
+        /// requested view — the entry point the leaf right-click "View Run Diagram" / "View Raw JSON" items use
+        /// (they carry a path, not an already-parsed manifest).</summary>
+        private void OpenManifestViewerFromPath(string fullPath, bool showChartFirst)
+        {
+            var manifest = TestManifest.LoadFromFile(fullPath);
+            if (manifest == null)
+            {
+                MessageBox.Show($"Couldn't parse {Path.GetFileName(fullPath)} as a test manifest.", "Manifest Viewer");
+                return;
+            }
+            OpenManifestViewer(manifest, showChartFirst);
+        }
+
+        /// <summary>Shows the ManifestViewerWindow non-modally (Show, not ShowDialog, so the rest of the app
+        /// stays usable), owned by the main window so it floats above it.</summary>
+        private void OpenManifestViewer(TestManifest manifest, bool showChartFirst)
+        {
+            var viewer = new BuildConsole.ManifestViewerWindow(manifest, showChartFirst) { Owner = Window.GetWindow(this) };
             viewer.Show();
         }
 
