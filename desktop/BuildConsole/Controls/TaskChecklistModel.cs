@@ -20,6 +20,21 @@ namespace BuildConsole.Controls
         /// <summary>The GitHub issue number this build is tied to (null for a local / unattributed build). Recorded so Focus Mode can surface only on-milestone builds' checklists — via <see cref="Services.FocusModeService.IsIssueInActiveMilestone"/> — without re-parsing <see cref="BuildLabel"/>.</summary>
         public int? GithubNumber { get; }
 
+        /// <summary>The structured Task-tool id this row is bound to ("Task #N" from a real
+        /// <c>TaskCreate</c>, referenced by <c>TaskUpdate</c>'s <c>taskId</c>), or null when the row came
+        /// from #28's free-form checkbox-text detection. When set, completion is driven by an EXPLICIT
+        /// TaskUpdate status flip matched on this exact id — reliable structured data, not the
+        /// text-similarity guess the marker path falls back on.</summary>
+        public string? TaskId { get; private set; }
+
+        /// <summary>Binds this row to the structured task id learned from a TaskCreate tool_result
+        /// ("Task #N created …"), so a later TaskUpdate for that id flips exactly this row. Set-once
+        /// (ignores a blank/duplicate id).</summary>
+        public void AssignTaskId(string? taskId)
+        {
+            if (!string.IsNullOrWhiteSpace(taskId)) TaskId = taskId;
+        }
+
         /// <summary>Short human label for the source build, e.g. "GH #984" or "queue #12".</summary>
         public string BuildLabel { get; }
 
@@ -42,7 +57,7 @@ namespace BuildConsole.Controls
         /// <summary>The checkbox glyph the view renders — a hollow box while pending, a check once done. (The green tint is applied by a DataTrigger on <see cref="Done"/> in XAML.)</summary>
         public string Glyph => _done ? "✔" : "☐"; // ✔ / ☐
 
-        public ChecklistItemViewModel(int queueItemId, string buildLabel, int? githubNumber, string text, bool done)
+        public ChecklistItemViewModel(int queueItemId, string buildLabel, int? githubNumber, string text, bool done, string? taskId = null)
         {
             QueueItemId = queueItemId;
             BuildLabel = buildLabel;
@@ -50,6 +65,7 @@ namespace BuildConsole.Controls
             Text = text;
             Normalized = ChecklistExtractor.Normalize(text);
             _done = done;
+            TaskId = taskId;
         }
     }
 
@@ -101,6 +117,49 @@ namespace BuildConsole.Controls
                 : IngestPending(queueItemId, buildLabel, githubNumber, text);
             if (changed) Recompute();
             return changed;
+        }
+
+        // ── Structured Task-tool ingest (TaskCreate / TaskUpdate) ──────────────────────────
+        // The reliable path: real structured task data straight from the stream-json tool-call
+        // events (a task's own subject + an explicit id + status), NOT text pattern-matching.
+        // TaskCreate adds a pending row; the create's tool_result reveals its "Task #N" id, which
+        // binds the row (see ChecklistItemViewModel.AssignTaskId); a later TaskUpdate flips that
+        // exact row by real id — an id match, never a similarity guess. #28's marker/Ingest text
+        // path above stays wired as the fallback for agents still printing free-form checklists.
+
+        /// <summary>Adds a pending row for a real TaskCreate event using the task's own reported
+        /// text, and returns it so the caller can bind it to the id the create's tool_result reveals.
+        /// The row starts with no <see cref="ChecklistItemViewModel.TaskId"/> — it's assigned once the
+        /// result lands.</summary>
+        public ChecklistItemViewModel AddStructuredTask(int queueItemId, string buildLabel, int? githubNumber, string text)
+        {
+            var item = new ChecklistItemViewModel(queueItemId, buildLabel, githubNumber, text, done: false);
+            Items.Add(item);
+            Recompute();
+            return item;
+        }
+
+        /// <summary>Applies a real TaskUpdate status to the row bound to <paramref name="taskId"/> for
+        /// this build: "completed"/"done" flips it to a green check; "deleted" drops it. A non-terminal
+        /// status (pending/in_progress) is a no-op — completion is sticky, exactly like #28's text path.
+        /// No matching row (e.g. an update for a task created before Build Watch attached) is a safe
+        /// no-op. Returns true if the list changed.</summary>
+        public bool MarkStructuredStatus(int queueItemId, string taskId, bool done, bool deleted)
+        {
+            if (string.IsNullOrWhiteSpace(taskId)) return false;
+            var item = FindByTaskId(queueItemId, taskId);
+            if (item == null) return false;
+            if (deleted) { Items.Remove(item); Recompute(); return true; }
+            if (done && !item.Done) { item.Done = true; Recompute(); return true; }
+            return false;
+        }
+
+        /// <summary>The row for this build bound to the given structured task id, or null.</summary>
+        private ChecklistItemViewModel? FindByTaskId(int queueItemId, string taskId)
+        {
+            foreach (var item in Items)
+                if (item.QueueItemId == queueItemId && item.TaskId == taskId) return item;
+            return null;
         }
 
         private bool IngestPending(int queueItemId, string buildLabel, int? githubNumber, string text)
