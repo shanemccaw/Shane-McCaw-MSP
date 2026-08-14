@@ -121,6 +121,13 @@ namespace BuildConsole.Controls
 
         public BuildQueuePanel() => InitializeComponent();
 
+        /// <summary>Git #876 (reopened) — true only when the BuildConsole window hosting this panel is genuinely on screen (present, visible, not minimized). The background `gh` CLI GitHub polls are suppressed entirely otherwise, so a minimized/hidden app stops burning the shared 5,000/hr rate limit for no reason.</summary>
+        private bool IsHostWindowVisible()
+        {
+            var w = Window.GetWindow(this);
+            return w != null && w.IsVisible && w.WindowState != WindowState.Minimized;
+        }
+
         /// <summary>Called once from MainWindow with the shared API client — starts polling immediately. `watcher` (Git #820) may be null (e.g. claude.exe not found) - Stop/Run Now degrade gracefully when it is, since those need a real local process handle/launcher.</summary>
         public void Initialize(BuildTrackerApiClient api, Services.QueueWatcherService? watcher = null)
         {
@@ -150,21 +157,30 @@ namespace BuildConsole.Controls
             // GitHub traffic with no loss of correctness (the content-
             // signature guard already in RenderIssueList/RenderInFlightGrouped
             // still skips a no-op re-render either way).
+            // Git #876 (reopened) — Shane: "heavy GitHub API traffic for no
+            // reason." These three `gh` CLI reads each hit GitHub's REST API
+            // (gh uses it under the hood, sharing the same 5,000/hr account
+            // limit as the Git Board), and #876's earlier pass only slowed them
+            // 20s -> 60s: they still fired unconditionally, all day, even while
+            // BuildConsole was minimized/hidden. Now every background tick is
+            // gated on the window actually being on screen (initial immediate
+            // paint on Initialize is kept). No visible window = no reason to be
+            // polling GitHub.
             _inFlightPollTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(60) };
-            _inFlightPollTimer.Tick += async (_, _) => await RefreshInFlightIssuesAsync();
+            _inFlightPollTimer.Tick += async (_, _) => { if (IsHostWindowVisible()) await RefreshInFlightIssuesAsync(); };
             _inFlightPollTimer.Start();
             _ = RefreshInFlightIssuesAsync();
 
             // Git #850 — same direct-gh-CLI reasoning, "Shane To-Do" label.
             _waitingOnMePollTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(60) };
-            _waitingOnMePollTimer.Tick += async (_, _) => await RefreshWaitingOnMeAsync();
+            _waitingOnMePollTimer.Tick += async (_, _) => { if (IsHostWindowVisible()) await RefreshWaitingOnMeAsync(); };
             _waitingOnMePollTimer.Start();
             _ = RefreshWaitingOnMeAsync();
 
             // Git #905 — same direct-gh-CLI reasoning as In-Flight/To-Do above,
             // just "which issue numbers are open" instead of a label filter.
             _completedPollTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(60) };
-            _completedPollTimer.Tick += async (_, _) => await RefreshCompletedAsync();
+            _completedPollTimer.Tick += async (_, _) => { if (IsHostWindowVisible()) await RefreshCompletedAsync(); };
             _completedPollTimer.Start();
             _ = RefreshCompletedAsync();
 

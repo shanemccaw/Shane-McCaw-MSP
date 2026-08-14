@@ -244,6 +244,22 @@ namespace BuildConsole.Controls
         private BuildTrackerApiClient? _api;
         private DispatcherTimer? _pollTimer;
 
+        // Git #876 (reopened) — the Git Board's hands-off background GitHub poll
+        // runs on this slow cadence (minutes), independent of the 20s chat tick
+        // that shares the same DispatcherTimer. Tab-switch (SwitchView) and the
+        // manual Refresh button both still paint the board immediately; this only
+        // paces the background refresh so an idle Issues tab isn't re-hitting
+        // GitHub every 20s.
+        private DateTime _lastGitBoardPollUtc = DateTime.MinValue;
+        private static readonly TimeSpan GitBoardBackgroundPollInterval = TimeSpan.FromMinutes(2);
+
+        /// <summary>Git #876 (reopened) — true only when the BuildConsole window hosting this sidebar is genuinely on screen (present, visible, not minimized). The background GitHub/board/chat polls are suppressed entirely otherwise: "heavy traffic for no reason" was the app polling every 20s while minimized or hidden.</summary>
+        private bool IsHostWindowVisible()
+        {
+            var w = Window.GetWindow(this);
+            return w != null && w.IsVisible && w.WindowState != WindowState.Minimized;
+        }
+
         /// <summary>Called once from MainWindow with the shared API client — the Issues board fetches on demand once this is set.</summary>
         public void Initialize(BuildTrackerApiClient api)
         {
@@ -265,17 +281,38 @@ namespace BuildConsole.Controls
                 _pollTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(20) };
                 _pollTimer.Tick += (_, _) =>
                 {
-                    // Git #863 — only hit the GitHub API in the background while
-                    // the Git Board is actually the visible view; avoids
-                    // unnecessary calls (and rate-limit pressure) while Shane is
-                    // looking at Chats/Explorer/etc.
-                    if (_currentView == "Issues")
+                    // Git #876 (reopened) — Shane: "heavy GitHub API traffic for
+                    // no reason." A big part of that "no reason" was this poll
+                    // firing every 20s all day even while BuildConsole was
+                    // minimized/hidden behind other windows. Never poll ANYTHING
+                    // while the host window isn't actually on screen — no visible
+                    // window = no reason to be talking to GitHub (or the dev
+                    // server) at all.
+                    if (!IsHostWindowVisible()) return;
+
+                    // GitHub Git Board: still gated on the Issues view being the
+                    // visible one (#863), and now ALSO on its own slow background
+                    // cadence (#876) — minutes, not the 20s chat tick. The board
+                    // already repaints immediately on tab-switch (SwitchView) and
+                    // on the manual Refresh button, so this timer only governs the
+                    // hands-off background refresh, where GitHub state doesn't move
+                    // second-to-second and 20s was pure rate-limit burn.
+                    if (_currentView == "Issues"
+                        && DateTime.UtcNow - _lastGitBoardPollUtc >= GitBoardBackgroundPollInterval)
                     {
+                        _lastGitBoardPollUtc = DateTime.UtcNow;
                         PopulateGitTrackerBoard();
+                        GitHubApiClient.LogRestTrafficSummary("git-board background poll");
                     }
+                    // Chats hits the local dev server, not GitHub, so it keeps the
+                    // 20s cadence — but only while visible, per the gate above.
                     PopulateChatsTree();
                 };
                 _pollTimer.Start();
+                ActivityLog.Log("git-board.traffic",
+                    "Git Board poll reconfigured (#876): was every 20s whenever the Issues view was selected (fired even while minimized/hidden) "
+                    + $"-> now every {GitBoardBackgroundPollInterval.TotalMinutes:0} min, and only while the window is actually visible. "
+                    + "GitHub REST reads now send conditional ETag requests, so an unchanged poll returns 304 and is free of the 5,000/hr limit.");
             }
         }
 

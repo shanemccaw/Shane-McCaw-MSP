@@ -146,6 +146,69 @@ namespace BuildConsole.Services
             _http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
         }
 
+        // ── Git #876 (reopened): conditional requests (ETag) + traffic telemetry ─
+        // Shane: "heavy GitHub API traffic for no reason" / repeatedly crossing
+        // GitHub's 5,000/hour REST limit. A GitHubApiClient is constructed fresh
+        // on nearly every call across the app (LeftSidebar/BuildQueuePanel
+        // `new GitHubApiClient(pat)` per poll), so this cache and these counters
+        // MUST be static to survive between polls — it's all one repo/account, so
+        // sharing across instances is safe. On a repeat GET we replay the last
+        // resource's ETag as `If-None-Match`; when nothing changed GitHub answers
+        // `304 Not Modified` and — per GitHub's documented behaviour — that 304
+        // does NOT count against the primary rate limit, so an unchanged poll is
+        // now free. GraphQL (ListBoardIssuesAsync) can't do this — it's POST and
+        // uses a separate points budget — but the per-issue blocked_by sweep and
+        // the milestones read (the two real REST rate-limit consumers here) can.
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, CachedGet> _conditionalCache = new();
+        private sealed class CachedGet { public EntityTagHeaderValue ETag = null!; public object? Value; }
+
+        private static long _restGetTotal;  // REST GETs actually sent this session
+        private static long _restGet304;    // of those, rate-limit-free 304s
+
+        /// <summary>Git #876 — running REST GET totals this session: how many GETs went to the wire and how many came back 304 Not Modified (which GitHub does NOT count against the 5,000/hr limit). Lets the Git Board log its real before/after call frequency.</summary>
+        public static (long Sent, long NotModified) RestGetStats =>
+            (System.Threading.Interlocked.Read(ref _restGetTotal), System.Threading.Interlocked.Read(ref _restGet304));
+
+        /// <summary>Git #876 — one activity-log line summarizing REST GET traffic and the rate-limit-free 304 share so the reduction is actually visible in the feed.</summary>
+        public static void LogRestTrafficSummary(string context)
+        {
+            var (sent, notMod) = RestGetStats;
+            long counted = sent - notMod;
+            int pct = sent == 0 ? 0 : (int)Math.Round(100.0 * notMod / sent);
+            ActivityLog.Log("git-board.traffic",
+                $"{context}: REST GETs this session={sent}, of which 304-not-modified={notMod} ({pct}% rate-limit-free); ~{counted} actually counted against GitHub's 5,000/hr limit.");
+        }
+
+        /// <summary>
+        /// Git #876 — conditional GET: replays this path's last ETag as
+        /// `If-None-Match` so an unchanged resource comes back 304 (free of the
+        /// rate limit) and we return the cached body. Any non-304 response still
+        /// goes through <see cref="HttpResponseMessage.EnsureSuccessStatusCode"/>,
+        /// so callers' existing 404 catches (blocked_by / sub_issues / single
+        /// issue) keep working exactly as before.
+        /// </summary>
+        private async Task<T?> GetConditionalAsync<T>(string path) where T : class
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Get, path);
+            if (_conditionalCache.TryGetValue(path, out var cached))
+                req.Headers.IfNoneMatch.Add(cached.ETag);
+
+            var res = await _http.SendAsync(req);
+            System.Threading.Interlocked.Increment(ref _restGetTotal);
+
+            if (res.StatusCode == HttpStatusCode.NotModified && cached != null)
+            {
+                System.Threading.Interlocked.Increment(ref _restGet304);
+                return (T?)cached.Value;
+            }
+
+            res.EnsureSuccessStatusCode();
+            var value = await res.Content.ReadFromJsonAsync<T>(JsonOpts);
+            if (res.Headers.ETag is { } etag)
+                _conditionalCache[path] = new CachedGet { ETag = etag, Value = value };
+            return value;
+        }
+
         /// <summary>
         /// Number-aware: a purely numeric query (optionally prefixed with #)
         /// hits the single-issue endpoint directly, since GitHub's search API
@@ -162,8 +225,8 @@ namespace BuildConsole.Services
             {
                 try
                 {
-                    var single = await _http.GetFromJsonAsync<GitHubIssueResult>(
-                        $"repos/{Owner}/{Repo}/issues/{number}", JsonOpts);
+                    var single = await GetConditionalAsync<GitHubIssueResult>(
+                        $"repos/{Owner}/{Repo}/issues/{number}");
                     return single != null ? new List<GitHubIssueResult> { single } : new List<GitHubIssueResult>();
                 }
                 catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
@@ -173,7 +236,7 @@ namespace BuildConsole.Services
             }
 
             string q = Uri.EscapeDataString($"repo:{Owner}/{Repo} {query} state:all");
-            var res = await _http.GetFromJsonAsync<GitHubSearchResponse>($"search/issues?q={q}", JsonOpts);
+            var res = await GetConditionalAsync<GitHubSearchResponse>($"search/issues?q={q}");
             return res?.Items ?? new List<GitHubIssueResult>();
         }
 
@@ -190,8 +253,8 @@ namespace BuildConsole.Services
         {
             try
             {
-                var blockers = await _http.GetFromJsonAsync<List<GitHubIssueResult>>(
-                    $"repos/{Owner}/{Repo}/issues/{number}/dependencies/blocked_by", JsonOpts);
+                var blockers = await GetConditionalAsync<List<GitHubIssueResult>>(
+                    $"repos/{Owner}/{Repo}/issues/{number}/dependencies/blocked_by");
                 return blockers?.FirstOrDefault(b => !b.IsClosed);
             }
             catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
@@ -250,8 +313,8 @@ namespace BuildConsole.Services
         /// <summary>Git #875 — real open+closed counts per milestone, state=all so both open and fully-closed milestones come back.</summary>
         public async Task<List<GitHubMilestoneInfo>> GetMilestonesAsync()
         {
-            var milestones = await _http.GetFromJsonAsync<List<GitHubMilestoneInfo>>(
-                $"repos/{Owner}/{Repo}/milestones?state=all&per_page=100", JsonOpts);
+            var milestones = await GetConditionalAsync<List<GitHubMilestoneInfo>>(
+                $"repos/{Owner}/{Repo}/milestones?state=all&per_page=100");
             return milestones ?? new List<GitHubMilestoneInfo>();
         }
 
@@ -282,8 +345,8 @@ namespace BuildConsole.Services
         {
             try
             {
-                var subIssues = await _http.GetFromJsonAsync<List<GitHubSubIssue>>(
-                    $"repos/{Owner}/{Repo}/issues/{parentNumber}/sub_issues", JsonOpts);
+                var subIssues = await GetConditionalAsync<List<GitHubSubIssue>>(
+                    $"repos/{Owner}/{Repo}/issues/{parentNumber}/sub_issues");
                 return subIssues ?? new List<GitHubSubIssue>();
             }
             catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
@@ -297,8 +360,8 @@ namespace BuildConsole.Services
         {
             try
             {
-                return await _http.GetFromJsonAsync<GitHubIssueDetail>(
-                    $"repos/{Owner}/{Repo}/issues/{number}", JsonOpts);
+                return await GetConditionalAsync<GitHubIssueDetail>(
+                    $"repos/{Owner}/{Repo}/issues/{number}");
             }
             catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
             {
@@ -311,8 +374,8 @@ namespace BuildConsole.Services
         {
             try
             {
-                var comments = await _http.GetFromJsonAsync<List<GitHubIssueComment>>(
-                    $"repos/{Owner}/{Repo}/issues/{number}/comments", JsonOpts);
+                var comments = await GetConditionalAsync<List<GitHubIssueComment>>(
+                    $"repos/{Owner}/{Repo}/issues/{number}/comments");
                 return comments ?? new List<GitHubIssueComment>();
             }
             catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
