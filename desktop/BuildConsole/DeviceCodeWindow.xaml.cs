@@ -1,8 +1,9 @@
 using System;
-using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Documents;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Navigation;
 using BuildConsole.Services;
@@ -22,6 +23,14 @@ namespace BuildConsole
     {
         private readonly string _url;
         private readonly string _code;
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint uFlags);
+
+        private static readonly IntPtr HwndTopmost = new IntPtr(-1);
+        private const uint SwpNoMove = 0x0002;
+        private const uint SwpNoSize = 0x0001;
+        private const uint SwpNoActivate = 0x0010;
 
         public DeviceCodeWindow(PowerShellTestExecutor.DeviceCodePrompt prompt)
         {
@@ -51,7 +60,25 @@ namespace BuildConsole
                     Top = wa.Top + 24;
                 }
                 catch { WindowStartupLocation = WindowStartupLocation.CenterScreen; }
+                ForceTopmost();
             };
+
+            // XAML Topmost="True" alone doesn't reliably stick against the maximized Test Runner
+            // window (a separate top-level window, not owned by this one) — once it activates, it
+            // can end up drawn above this floaty despite the flag. Re-assert HWND_TOPMOST via Win32
+            // every time this window loses activation, without stealing focus back (SWP_NOACTIVATE).
+            Deactivated += (_, _) => ForceTopmost();
+        }
+
+        private void ForceTopmost()
+        {
+            try
+            {
+                var hwnd = new WindowInteropHelper(this).Handle;
+                if (hwnd != IntPtr.Zero)
+                    SetWindowPos(hwnd, HwndTopmost, 0, 0, 0, 0, SwpNoMove | SwpNoSize | SwpNoActivate);
+            }
+            catch { /* best-effort */ }
         }
 
         private void Header_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -78,11 +105,13 @@ namespace BuildConsole
         {
             try
             {
-                Process.Start(new ProcessStartInfo(_url) { UseShellExecute = true });
+                // Stay inside BuildConsole — same OpenWebTab every other web interaction in this app
+                // already goes through — instead of launching a separate, un-synced system browser.
+                (Owner as MainWindow)?.OpenWebTab(_url, "Microsoft Sign-In", "");
             }
             catch (Exception ex)
             {
-                ActivityLog.Log("testing.powershell-verify", $"device-code: couldn't open browser to {_url} — {ex.Message}");
+                ActivityLog.Log("testing.powershell-verify", $"device-code: couldn't open sign-in tab for {_url} — {ex.Message}");
             }
             e.Handled = true;
         }
