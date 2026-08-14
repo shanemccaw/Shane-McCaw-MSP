@@ -58,7 +58,10 @@ namespace BuildConsole
         /// <summary>Git #943 — QueueWatcherService.RecoverOrphanedRunningItemsAsync marks orphan-swept rows failed with this exact sentinel. It is a KNOWN false-failure marker, never a real process exit code, so a slot carrying it is held as still-running rather than badged complete.</summary>
         private const int OrphanSweepSentinelExitCode = -2;
 
-        private const int SlotCount = 8;
+        /// <summary>The number of concurrent Build Watch slots. Public so Focus Mode's downtime
+        /// detection (<see cref="Services.FocusBuildSaturation"/>) keys "all slots occupied" off the
+        /// same single definition of saturation Build Watch itself renders.</summary>
+        public const int SlotCount = 8;
         private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(3);
 
         /// <summary>The maximum number of transcript turns kept per slot — older turns fall off the top so a very long build can't grow the visual tree without bound (the pre-redesign code had the same cap on its own card list).</summary>

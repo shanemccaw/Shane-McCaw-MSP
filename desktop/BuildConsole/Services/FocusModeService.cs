@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Windows.Threading;
 
@@ -18,8 +17,11 @@ namespace BuildConsole.Services
     ///   1. Active-milestone declaration (one at a time, persisted).
     ///   2. The hard global filter predicate every panel consults to HIDE off-milestone
     ///      content (genuinely hidden, not deprioritised).
-    ///   3. Downtime detection — a queue build is actively running AND Shane is idle
-    ///      (Win32 GetLastInputInfo) — with quick on-milestone task suggestions.
+    ///   3. Downtime detection — genuine build-slot saturation: every one of the 8 Build
+    ///      Watch slots is occupied AND the queue still has items waiting behind them —
+    ///      with quick on-milestone task suggestions. (No idle timer: Shane never lets
+    ///      builds sit, so "he's idle" was the wrong signal; a full-and-backed-up queue
+    ///      is the real "nothing more I can start right now" moment.)
     ///   4. Automatic context snapshot on downtime + auto-restore when the build that
     ///      caused it finishes (or a quick task is finished/dismissed).
     ///   5. A tasteful game layer over the REAL milestone numbers (honest closed/total,
@@ -40,8 +42,6 @@ namespace BuildConsole.Services
         public static FocusModeService Instance => _instance.Value;
 
         // ---- tunables --------------------------------------------------
-        /// <summary>Seconds of no keyboard/mouse input, while a build runs, before it's downtime.</summary>
-        public int IdleThresholdSeconds { get; set; } = 60;
         private const int PointsPerClose = 10;
         private const int MaxSuggestions = 5;
         // ETA confidence gates (mirrors UsageProjection's spirit; closes are rarer than
@@ -50,7 +50,9 @@ namespace BuildConsole.Services
         private static readonly TimeSpan MinEtaSpan = TimeSpan.FromHours(1);
 
         // ---- injected probes (set once by MainWindow.InitFocusMode) -----
-        private Func<bool>? _isBuildRunning;
+        /// <summary>Real build-slot saturation right now (occupied slots, queued backlog, slot capacity)
+        /// read from the shared server queue snapshot. This — not any idle timer — is the downtime signal.</summary>
+        private Func<FocusBuildSaturation>? _buildSaturation;
         private Func<FocusContextSnapshot?>? _captureContext;
         private Action<FocusContextSnapshot>? _restoreContext;
 
@@ -102,13 +104,13 @@ namespace BuildConsole.Services
 
         /// <summary>Called once by MainWindow.InitFocusMode with the probes only the shell can
         /// provide, then starts the downtime timer. Safe to call before any board data exists.</summary>
-        public void Start(Dispatcher ui, Func<bool> isBuildRunning,
+        public void Start(Dispatcher ui, Func<FocusBuildSaturation> buildSaturation,
                           Func<FocusContextSnapshot?> captureContext,
                           Action<FocusContextSnapshot> restoreContext)
         {
             if (_started) return;
             _started = true;
-            _isBuildRunning = isBuildRunning;
+            _buildSaturation = buildSaturation;
             _captureContext = captureContext;
             _restoreContext = restoreContext;
 
@@ -266,30 +268,36 @@ namespace BuildConsole.Services
         {
             if (!IsActive) { if (_inDowntime) ExitDowntime(false, "focus off"); return; }
 
-            bool buildRunning;
-            try { buildRunning = _isBuildRunning?.Invoke() ?? false; }
-            catch { buildRunning = false; }
+            FocusBuildSaturation sat;
+            try { sat = _buildSaturation?.Invoke() ?? default; }
+            catch { sat = default; }
 
-            double idle = IdleSeconds();
-            bool downtimeNow = buildRunning && idle >= IdleThresholdSeconds;
+            // The precise real trigger: every build slot occupied AND items still queued
+            // behind them — genuine saturation, no idle timer (see FocusBuildSaturation).
+            bool downtimeNow = sat.IsSaturated;
 
             if (downtimeNow && !_inDowntime && !_suppressReentry
                 && (DateTime.Now - _lastDowntimeEnd) > ReentryCooldown)
             {
-                EnterDowntime();
+                EnterDowntime(sat);
             }
             else if (!downtimeNow && _inDowntime)
             {
-                // Shane started interacting again (or the build stopped). Stop nagging, but
-                // do NOT auto-restore on mere activity — restore is reserved for a genuine
-                // build-complete or a finished/dismissed quick task (Shane's explicit ask).
-                bool stillRunning = buildRunning;
-                ExitDowntime(restore: false, reason: idle < IdleThresholdSeconds ? "back at keyboard" : "build stopped");
-                if (!stillRunning) { _pendingRestore = null; _suppressReentry = false; } // build gone without a finish signal — drop stale capture
+                // Saturation broke — a slot freed (running < slots) or the queue drained
+                // (nothing left queued behind them). Stop nagging, but do NOT auto-restore on
+                // mere de-saturation; restore is reserved for the genuine build-complete signal
+                // (the finished build that freed the slot fires it) or a resolved quick task.
+                string reason = sat.RunningCount < sat.SlotCount
+                    ? $"a slot freed ({sat.RunningCount}/{sat.SlotCount} occupied, {sat.QueuedCount} queued)"
+                    : $"queue drained (0 waiting behind {sat.RunningCount}/{sat.SlotCount} occupied)";
+                ExitDowntime(restore: false, reason: reason);
+                // No builds running at all → no build-complete signal will ever come to trigger a
+                // restore; drop the now-orphaned capture so it can't restore out of nowhere later.
+                if (sat.RunningCount == 0) { _pendingRestore = null; _suppressReentry = false; }
             }
         }
 
-        private void EnterDowntime()
+        private void EnterDowntime(FocusBuildSaturation sat)
         {
             _inDowntime = true;
 
@@ -315,7 +323,7 @@ namespace BuildConsole.Services
 
             RecomputeSuggestions();
             ActivityLog.Log("focus-mode",
-                $"downtime detected (build running + idle ≥ {IdleThresholdSeconds}s) — offering {Suggestions.Count} quick on-milestone task(s)");
+                $"downtime detected — genuine saturation: all {sat.RunningCount}/{sat.SlotCount} build slots occupied with {sat.QueuedCount} item(s) queued behind them; offering {Suggestions.Count} quick on-milestone task(s)");
             DowntimeChanged?.Invoke();
         }
 
@@ -582,27 +590,6 @@ namespace BuildConsole.Services
                 File.WriteAllText(StatePath, json);
             }
             catch (Exception ex) { ActivityLog.Log("focus-mode", $"couldn't save focus-mode.json: {ex.Message}"); }
-        }
-
-        // ================================================================
-        // Win32 idle detection
-        // ================================================================
-
-        [StructLayout(LayoutKind.Sequential)]
-        private struct LASTINPUTINFO { public uint cbSize; public uint dwTime; }
-
-        [DllImport("user32.dll")]
-        private static extern bool GetLastInputInfo(ref LASTINPUTINFO plii);
-
-        /// <summary>Seconds since the last real keyboard/mouse input, machine-wide. There is no
-        /// prior idle detection anywhere in this app — this is the only "is Shane here" signal.</summary>
-        public static double IdleSeconds()
-        {
-            var lii = new LASTINPUTINFO { cbSize = (uint)Marshal.SizeOf<LASTINPUTINFO>() };
-            if (!GetLastInputInfo(ref lii)) return 0;
-            uint now = (uint)Environment.TickCount;      // unsigned subtraction handles the ~49-day wrap
-            uint idleMs = now - lii.dwTime;
-            return idleMs / 1000.0;
         }
 
         private void RaiseStateChanged() => StateChanged?.Invoke();

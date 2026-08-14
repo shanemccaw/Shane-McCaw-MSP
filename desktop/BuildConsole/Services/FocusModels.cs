@@ -45,6 +45,26 @@ namespace BuildConsole.Services
         public string NumberStr => $"#{IssueNumber}";
     }
 
+    /// <summary>A snapshot of real build-slot saturation, the ONLY thing downtime detection
+    /// keys off (there is no idle timer — Shane never lets builds sit, so "idle" was the wrong
+    /// signal). Downtime is genuine saturation: every one of the <see cref="SlotCount"/> Build
+    /// Watch slots is occupied by a running build AND at least one more item is still
+    /// <c>queued</c> behind them — the precise moment Shane has zero builds he can start and
+    /// wanders off into a side quest. All three counts come from the shared server queue
+    /// snapshot (<c>BuildQueuePanel.CurrentQueueItems</c>), so foreign / standalone-watcher
+    /// builds count too. A default value (<see cref="SlotCount"/> == 0) reads as "not saturated".</summary>
+    public struct FocusBuildSaturation
+    {
+        /// <summary>Items with server status <c>running</c> — i.e. occupied Build Watch slots.</summary>
+        public int RunningCount { get; set; }
+        /// <summary>Items with server status <c>queued</c> — the backlog waiting behind the running ones (blocked or not; either way Shane can't start them and there's no free slot).</summary>
+        public int QueuedCount { get; set; }
+        /// <summary>The number of concurrent build slots (Build Watch's 8). Saturation needs RunningCount ≥ this.</summary>
+        public int SlotCount { get; set; }
+        /// <summary>All slots occupied AND real backlog behind them — the genuine downtime trigger.</summary>
+        public readonly bool IsSaturated => SlotCount > 0 && RunningCount >= SlotCount && QueuedCount > 0;
+    }
+
     /// <summary>A tasteful, earned badge for a REAL event under the active milestone
     /// (an issue closed, an epic issue cleared, the To-Do pile hit zero, the milestone
     /// completed). In the same spirit as Build Watch's "Reticulating Splines" — a wink,

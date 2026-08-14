@@ -13,7 +13,8 @@ namespace BuildConsole
     ///
     /// This is where the three things only the shell can do live:
     ///   • host the <see cref="FocusModeBar"/> inside the existing single-window layout,
-    ///   • answer "is a build running right now?" and capture/restore Shane's exact context,
+    ///   • report real build-slot saturation (occupied slots + queued backlog) and
+    ///     capture/restore Shane's exact context,
     ///   • fan a filter-change out to every panel and route the bar's open-issue / open-milestone
     ///     intents into real tabs.
     /// The behavioural logic itself all lives in <see cref="FocusModeService"/>.
@@ -48,7 +49,7 @@ namespace BuildConsole
                 // Start the service with the probes only the shell can supply.
                 FocusModeService.Instance.Start(
                     Dispatcher,
-                    IsAnyBuildRunning,
+                    GetBuildSaturation,
                     CaptureFocusContext,
                     RestoreFocusContext);
 
@@ -83,13 +84,24 @@ namespace BuildConsole
 
         // ---- probes -----------------------------------------------------
 
-        private bool IsAnyBuildRunning()
+        /// <summary>Real build-slot saturation for downtime detection: how many slots are occupied
+        /// (running), how many items are queued behind them, and the slot capacity (Build Watch's 8).
+        /// Read from the shared server queue snapshot (<see cref="BuildQueuePanel.CurrentQueueItems"/>),
+        /// which covers foreign / standalone-watcher builds too — the same source Build Watch fills its
+        /// slots from. Downtime is genuine saturation: running ≥ slots AND queued &gt; 0.</summary>
+        private FocusBuildSaturation GetBuildSaturation()
         {
-            // App-owned running processes, OR the queue snapshot showing a running row
-            // (covers foreign / standalone-watcher builds too).
-            if ((_queueWatcher?.RunningCount ?? 0) > 0) return true;
-            try { return BuildQueuePanel.CurrentQueueItems.Any(i => i.Status == "running"); }
-            catch { return false; }
+            try
+            {
+                var items = BuildQueuePanel.CurrentQueueItems;
+                return new FocusBuildSaturation
+                {
+                    RunningCount = items.Count(i => i.Status == "running"),
+                    QueuedCount = items.Count(i => i.Status == "queued"),
+                    SlotCount = BuildWatchWindow.SlotCount
+                };
+            }
+            catch { return default; }
         }
 
         private static readonly Func<MainWindow, TabControl[]> PanesOf =
