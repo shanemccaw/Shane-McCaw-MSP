@@ -68,7 +68,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db, monitorChecksTable, tenantsTable, type MonitorCheck } from "@workspace/db";
 import { and, eq, like } from "drizzle-orm";
 import { randomUUID } from "crypto";
-import { requireAdmin } from "../middlewares/requireAuth";
+import { requireAdmin, requireAdminOrIngestToken } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { executeMonitorCheck, type MappingRule } from "../lib/monitor-executor";
 import { traceCheckResponse } from "../lib/monitor-check-trace";
@@ -305,7 +305,15 @@ async function resolveCustomer(
 // Fire-and-forget, mirroring msp-diagnostics' trigger route: persist the run,
 // return 202 + runId immediately, execute asynchronously.
 
-router.post("/admin/monitor-checks/:key/run", requireAdmin, async (req: Request, res: Response) => {
+// Guarded by requireAdminOrIngestToken (not bare requireAdmin) so an on-machine
+// headless caller holding BUILD_TRACKER_INGEST_TOKEN — Shane's BuildConsole
+// `shaneapp://executeScan` local protocol — can trigger ONE real per-check run
+// without an admin session cookie, the SAME bearer-token pattern already used by
+// /simulator/sql/execute (#702) and /admin/baseline-templates/testbed-customers
+// (#965). This only widens WHO can reach the route; executeScan itself still
+// enforces the #965 isTestbed=true gate (BuildConsole's TestbedGate) before it
+// ever sends a customerId here, so the token cannot point a run at a live tenant.
+router.post("/admin/monitor-checks/:key/run", requireAdminOrIngestToken(), async (req: Request, res: Response) => {
   try {
     const key = req.params.key as string;
     const body = (req.body ?? {}) as Record<string, unknown>;
@@ -516,7 +524,10 @@ router.get("/admin/monitor-check-runs", requireAdmin, async (req: Request, res: 
 
 // ── GET /api/admin/monitor-check-runs/:runId ──────────────────────────────────
 
-router.get("/admin/monitor-check-runs/:runId", requireAdmin, async (req: Request, res: Response) => {
+// requireAdminOrIngestToken (see the /:key/run note above): executeScan polls this
+// route to settle the run it started to a terminal status before writing its result
+// envelope, so it must be reachable with the same ingest token that started the run.
+router.get("/admin/monitor-check-runs/:runId", requireAdminOrIngestToken(), async (req: Request, res: Response) => {
   try {
     const run = await getRun(req.params.runId as string);
     if (!run) return void res.status(404).json({ error: "Run not found" });
@@ -553,7 +564,11 @@ router.get("/admin/monitor-check-runs/:runId", requireAdmin, async (req: Request
 // already narrows to. No new persistence: `items` already exists on the run
 // (see completeRun in simulator-run-store.ts), this just exposes it on demand.
 
-router.get("/admin/monitor-check-runs/:runId/items", requireAdmin, async (req: Request, res: Response) => {
+// requireAdminOrIngestToken (see the /:key/run note above): the full captured Graph
+// items are the fullest ground-truth surface executeScan can hand an agent to diff a
+// finding against an independent PowerShell read, so this opt-in read is reachable
+// with the ingest token too. Bulk-run / history / diff / trace stay admin-only.
+router.get("/admin/monitor-check-runs/:runId/items", requireAdminOrIngestToken(), async (req: Request, res: Response) => {
   try {
     const run = await getRun(req.params.runId as string);
     if (!run) return void res.status(404).json({ error: "Run not found" });

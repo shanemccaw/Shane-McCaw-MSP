@@ -11,6 +11,7 @@ genuinely remote/CI caller uses plain HTTP.**
 | **Run a test manifest — local agent** | `shaneapp://runTest` local protocol | Runs the manifest **in‑process** through the same `RunManifestAsync` pipeline Play Test uses (ALL step types, not just uiSteps) — no HTTP hop, since the agent and BuildConsole are the same machine. |
 | **Run a test manifest — remote/CI caller** | Git #898 HTTP (`/api/admin/deploy/test-run`) | For a caller **not** on this machine. Any HTTP‑capable agent calls it directly. Unchanged by `runTest`. |
 | **Run a tenant scan + get per‑finding results back** | `shaneapp://runScan` local protocol *(landing under local #59)* | Triggers a real diagnostics run, **settles it to completion**, and hands back the full **per‑finding** envelope — so the agent can diff each engine observation against an independent PowerShell ground‑truth read of the same tenant fact, not merely confirm "the scan ran". The whole point is the **comparison** (see **§5** below). |
+| **Run ONE individual check + get its observed values back** | `shaneapp://executeScan` local protocol *(local #60)* | Triggers exactly **one** monitor check by its real `monitor_checks` key — Simulator Studio's "M365 Endpoints" per‑check Run — against a **testbed** tenant, settles that single run, and returns the check's own **observed output** (`extractedProperties`, item/page counts, severity, raw captured items). The granular sibling of `runScan` (which runs the whole aggregate scan); same dual‑verification purpose (**§5**), pointed at one check. See **§7**. |
 
 ---
 
@@ -706,3 +707,155 @@ once, all actions ride it, no extra setup. (2) Set `TEST_PORTAL_EMAIL` /
 `TEST_PORTAL_PASSWORD` (the pre-provisioned testbed Assessment account) in
 Settings → Test Environment Variables — the same creds the assessment test
 manifests use.
+
+---
+
+## 7. `shaneapp://executeScan` — local SINGLE monitor-check trigger (local #60)
+
+The **granular** sibling of `runScan` (§6 / #59). Where `runScan` triggers the
+**whole aggregate** diagnostics scan for a customer, `executeScan` triggers exactly
+**ONE** individual monitor check by its real `monitor_checks` **key** — the same
+thing Simulator Studio's **"M365 Endpoints"** node does when an operator picks a
+single check (e.g. `appgov:stale-app-registrations`, grouped under its `appgov`
+key‑prefix domain), leaves the pre‑filled defaults alone, and clicks **Run**
+against a testbed tenant. (Note `runScan` and `executeScan` hit **different** real
+engines: `runScan` → the Copilot Readiness / diagnostics engine
+(`/api/portal/assessment/debug-trigger-scan` → `runDiagnostics`, findings in
+`msp_diagnostic_findings`); `executeScan` → the **monitoring** engine
+(`monitor_checks` → `executeMonitorCheck`, result in `tenant_monitor_profiles`).)
+
+### Reuse, not reimplementation
+`executeScan` calls the **exact same real endpoint** the Simulator Studio canvas
+(`SimulatorEndpointCanvas.tsx`) calls — it is a courier, not a second scanner:
+
+| Step | Real endpoint (`artifacts/api-server/src/routes/admin-monitor-check-runs.ts`) |
+|------|------------------------------------------------------------------------------|
+| trigger | `POST /api/admin/monitor-checks/:key/run` → `202 { runId, status, run }` (fire‑and‑forget) |
+| settle  | `GET /api/admin/monitor-check-runs/:runId` → `{ run, classification }` (polled to terminal) |
+| detail  | `GET /api/admin/monitor-check-runs/:runId/items` → `{ items, itemCount }` (raw captured Graph objects, best‑effort) |
+
+"Same defaults" is real: BuildConsole sends **only** `{ customerId }`, and the run
+route merges every field as `override ?? check.<field>` — so the check runs with
+its **own stored** endpoint/method/`$select`/`$filter`/body, exactly as the UI's
+Run button does with nothing edited. The Graph request, `@odata.nextLink`
+pagination, mapping/extraction, severity classification and the
+`tenant_monitor_profiles` write all belong to the server's `executeMonitorCheck`
+— none of it is re‑implemented in BuildConsole (`Services/MonitorScanClient.cs` is
+a thin HTTP courier; the handler is `MainWindow.ShaneAppExecuteScan.cs`).
+
+> **Server‑side change this shipped with:** those three routes were `requireAdmin`
+> (admin session cookie only). They are now `requireAdminOrIngestToken()` — the
+> SAME bearer‑token widening `/simulator/sql/execute` (#702) and
+> `/admin/baseline-templates/testbed-customers` (#965) already use — so an
+> on‑machine headless caller holding `BUILD_TRACKER_INGEST_TOKEN` can reach them
+> with no admin cookie. It only widens **who** can reach the route; the run still
+> executes exactly as before. **This requires the dev api‑server to be on the new
+> code** (deploy) before `executeScan` will authenticate — until then the run
+> route answers `403` and the envelope says so honestly. (This differs from
+> `runScan`, whose trigger route needs an Assessment JWT via a testbed login;
+> `executeScan`'s route takes the ingest token BuildConsole already holds.)
+
+### The #965 testbed gate (never a real customer tenant)
+Before any run starts, the caller‑supplied `tenantId` is resolved against the
+server's **live isTestbed=true customer list**
+(`Services/TestbedGate.ResolveTestbedTargetAsync`, fail‑closed) — the same #965
+gate every tenant‑touching action already enforces. That one step **both** refuses
+a non‑testbed target **and** yields the numeric `customerId` (= `tenants.id`) the
+run endpoint needs. `tenantId` may be passed as the **Entra tenant GUID** or the
+**numeric customer id**; either is matched only against the testbed list, so a
+value that isn't a confirmed testbed customer can never run.
+
+### The invocation contract
+
+```
+shaneapp://executeScan?scan=<monitor_checks key>&tenantId=<testbed tenant GUID or customer id>&resultRef=<optional out path>&src=<optional caller tag>
+```
+
+| Query param | Required | Meaning |
+|-------------|----------|---------|
+| `scan` | **yes** | The `monitor_checks.key` to run, e.g. `appgov:stale-app-registrations`. |
+| `tenantId` | **yes** | The **testbed** target — the Entra tenant GUID **or** the numeric customer id (`tenants.id`). Resolved + #965‑gated against the server's live testbed list. |
+| `resultRef` | no | Path to write the JSON result envelope to. Defaults to `%TEMP%\shaneapp-executeScan-<scan>.result.json` (scan key filename‑sanitized). |
+| `src` | no | Free‑text caller tag, logged verbatim as the source (`unknown` when absent). |
+
+The action name is the URI **authority** (`executeScan`); it is case‑insensitive.
+
+### How to invoke it (PowerShell)
+
+```powershell
+$scan   = "appgov:stale-app-registrations"          # a real monitor_checks key
+$tenant = "<your-testbed-tenant-GUID-or-customer-id>"
+$out    = Join-Path $env:TEMP "shaneapp-executeScan-appgov-stale-app-registrations.result.json"
+Remove-Item $out -ErrorAction SilentlyContinue      # clear any stale result first
+
+Start-Process ("shaneapp://executeScan?src=claude-code" +
+  "&scan="     + [uri]::EscapeDataString($scan) +
+  "&tenantId=" + [uri]::EscapeDataString($tenant) +
+  "&resultRef=" + [uri]::EscapeDataString($out))
+
+# Poll for the settled result file, then read it:
+while (-not (Test-Path $out)) { Start-Sleep -Milliseconds 400 }
+$r = Get-Content $out -Raw | ConvertFrom-Json
+"{0}: {1} / check {2}" -f (@{$true='OK';$false='FAIL'}[$r.ok]), $r.runStatus, $r.checkStatus
+$r.extractedProperties        # ← the engine's OWN observed values, to diff vs PowerShell
+```
+
+### The result envelope
+
+Written to `resultRef` (or the temp default). Top‑line `ok`/`error` a CLI agent can
+branch on immediately, the resolved testbed target, the settled run status, and the
+check's own **observed output** — `extractedProperties` is the load‑bearing
+dual‑verification field (see §5):
+
+```jsonc
+{
+  "ok": true,                      // false if the run failed / couldn't start / never settled / gate refused
+  "error": null,                   // the refusal / failure reason, else null
+  "action": "executeScan",
+  "source": "claude-code",         // whatever ?src= was
+  "ranAtUtc": "2026-08-14T...Z",
+  "scan": "appgov:stale-app-registrations",
+  "tenantId": "<as supplied>",
+  "customerId": 42,                // resolved tenants.id (the run target)
+  "matchedCustomerName": "…",      // the testbed customer the gate matched
+  "runId": "…uuid…",
+  "runStatus": "completed",        // the SETTLED terminal status (completed | failed)
+  "checkStatus": "ok",             // run.result.status (ok | error | license_gap | consent_revoked | requires_script | partial)
+  "severityMatched": null,
+  "severityLabel": null,
+  "itemCount": 17,                 // engine's fetched item count
+  "pageCount": 1,
+  "extractedProperties": { … },    // ← THE ENGINE'S OWN OBSERVED VALUES — diff THIS vs a PowerShell read
+  "classification": null,          // failure triage, null on a clean run
+  "rawItemCount": 17,              // length of the raw captured items (best-effort)
+  "itemsError": null,              // why raw items were unavailable (409/failed/too-large), else null
+  "items": [ … ],                  // the raw captured Graph objects (fullest ground-truth surface), or null
+  "run": { … }                     // the full settled run object (result nested)
+}
+```
+
+Then diff exactly as §5b: pull `extractedProperties.<value>`, read the same fact
+via a delegated `Connect-MgGraph` / `Get-Mg*` call as Shane (the #900/#901 auth),
+and assert they agree — a mismatch is a real engine/mapping bug even though the
+check "ran". `executeScan` gives you one check's observation to check; `runScan`
+gives you the whole run's.
+
+### Settle‑to‑terminal & non‑hang guarantee
+The run route is fire‑and‑forget, so `executeScan` polls the run to a terminal
+status (`completed`/`failed`) — with a hard timeout backstop
+(`ExecuteScanPollTimeoutSeconds`) — and only THEN writes one settled envelope. A
+`202 pending` is never handed back. Every failure path (missing `scan`/`tenantId`,
+a refused gate, a `403`/`404`/`400` from the run route, a run that never settles, or
+any thrown exception) still writes an envelope, so an agent's file poll never hangs.
+
+### Logging
+Every invocation lands on the same **`sql-runner.protocol`** ActivityLog channel as
+`executeSql`/`runTest`/`runScan` (real scan key, real tenant, real outcome: gate
+result, run started, settled status, elapsed ms, result path — or the exact reason
+it couldn't run). The #965 gate additionally logs its pass/refuse on
+`testing.testbed-gate`.
+
+### One‑time setup
+The **same** `shaneapp://` registration `executeSql` uses
+(`setup-shaneapp-protocol.ps1`) already covers `executeScan` — the scheme is
+registered once, all actions ride it. No extra setup.

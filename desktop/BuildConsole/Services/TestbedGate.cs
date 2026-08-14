@@ -130,6 +130,65 @@ namespace BuildConsole.Services
         }
 
         /// <summary>
+        /// Resolve a caller-supplied testbed target — accepted as EITHER the Entra tenant GUID or the
+        /// numeric customer id (tenants.id) — to the real isTestbed=true customer row, enforcing the
+        /// #965 gate in the SAME fail-closed, server-is-source-of-truth, loudly-logged way as
+        /// <see cref="VerifyTenantIsTestbedAsync"/>. Returns the matched <see cref="TestbedCustomer"/>
+        /// — which carries the numeric <see cref="TestbedCustomer.Id"/> the monitor-check run endpoint
+        /// needs (POST /api/admin/monitor-checks/:key/run wants customerId = tenants.id, NOT the GUID) —
+        /// on success, or a null customer + refusal reason when the target is not a confirmed testbed
+        /// customer (or the list can't be fetched). Callers MUST treat a null customer as a refusal,
+        /// never as "no restriction". Used by shaneapp://executeScan to gate a single-check run.
+        /// </summary>
+        public static async Task<(TestbedCustomer? Customer, string Reason)> ResolveTestbedTargetAsync(
+            string tenantOrCustomerId, string context)
+        {
+            if (string.IsNullOrWhiteSpace(tenantOrCustomerId))
+            {
+                const string reason = "no tenant/customer id supplied to the testbed gate.";
+                LogResult(new GateResult(false, reason, null), "(none)", context);
+                return (null, reason);
+            }
+
+            List<TestbedCustomer> customers;
+            try
+            {
+                customers = await GetTestbedCustomersAsync();
+            }
+            catch (Exception ex)
+            {
+                var reason =
+                    $"could not verify the target against the server's testbed list ({ex.Message}) — refusing (fail-closed).";
+                LogResult(new GateResult(false, reason, null), tenantOrCustomerId, context);
+                return (null, reason);
+            }
+
+            var needle = tenantOrCustomerId.Trim();
+
+            // Match by the Entra tenant GUID first (the primary identifier callers pass); fall back to
+            // the numeric customer id only when the value is a bare integer. Either way the match MUST
+            // come from the server's isTestbed=true list, so a non-testbed value can never resolve.
+            var match = customers.FirstOrDefault(c =>
+                !string.IsNullOrWhiteSpace(c.TenantId)
+                && string.Equals(c.TenantId!.Trim(), needle, StringComparison.OrdinalIgnoreCase));
+            if (match == null && int.TryParse(needle, out var customerId))
+                match = customers.FirstOrDefault(c => c.Id == customerId);
+
+            if (match != null)
+            {
+                var reason =
+                    $"target is a confirmed isTestbed=true customer ('{match.Name}', id={match.Id}, tenant={match.TenantId}).";
+                LogResult(new GateResult(true, reason, match.Name), needle, context);
+                return (match, reason);
+            }
+
+            var refuseReason =
+                $"target '{needle}' is NOT in the server's isTestbed=true customer list — refusing to run a real monitor check against a non-testbed tenant.";
+            LogResult(new GateResult(false, refuseReason, null), needle, context);
+            return (null, refuseReason);
+        }
+
+        /// <summary>
         /// The set of GUID-safe tenant IDs that are real isTestbed=true customers, for callers that
         /// need to enforce the gate themselves (PowerShellTestExecutor injects this allowlist into its
         /// pwsh script so the connected Get-MgContext TenantId is checked in-process before the

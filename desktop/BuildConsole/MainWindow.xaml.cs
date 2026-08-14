@@ -4591,10 +4591,24 @@ namespace BuildConsole
                     return;
                 }
 
+                // executeScan → trigger exactly ONE real monitor check by its monitor_checks key
+                // against a testbed tenant, reusing Simulator Studio's own per-check run endpoint
+                // in-process (MainWindow.ShaneAppExecuteScan.cs). The granular sibling of runScan
+                // (which runs the whole aggregate scan). Testbed-gated (#965) and guarantees a
+                // result envelope on every path (including its own top-level catch), so an agent's
+                // poll never hangs.
+                if (string.Equals(req.Action, "executeScan", StringComparison.OrdinalIgnoreCase))
+                {
+                    BuildConsole.Services.ActivityLog.Log(ch,
+                        $"Routing action '{req.Action}' to in-process executeScan handler (src='{src}').");
+                    await HandleShaneAppExecuteScanAsync(req, src, ch);
+                    return;
+                }
+
                 if (!string.Equals(req.Action, "executeSql", StringComparison.OrdinalIgnoreCase))
                 {
                     BuildConsole.Services.ActivityLog.Log(ch,
-                        $"Unsupported action '{req.Action}' — only executeSql / runTest / uiTest / runScan are handled (other test execution goes over #898 HTTP, not this protocol). Ignoring (an unknown action has no known result path to write a failure envelope to).");
+                        $"Unsupported action '{req.Action}' — only executeSql / runTest / uiTest / runScan / executeScan are handled (other test execution goes over #898 HTTP, not this protocol). Ignoring (an unknown action has no known result path to write a failure envelope to).");
                     return;
                 }
 
