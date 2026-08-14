@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -57,6 +58,38 @@ namespace BuildConsole.Controls
         {
             if ((sender as FrameworkElement)?.DataContext is ToolGroupTurn group)
                 group.IsExpanded = !group.IsExpanded;
+        }
+
+        // ── Copy — right-click "Copy" on transcript blocks, since the plain TextBlocks here
+        // don't support click-and-drag selection or Ctrl+C on their own. ──
+        private void CopyBlockText_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is MenuItem { Parent: ContextMenu { PlacementTarget: TextBlock tb } })
+            {
+                var text = tb.Text;
+                if (!string.IsNullOrEmpty(text)) Clipboard.SetText(text);
+            }
+        }
+
+        /// <summary>Copies a whole tool-call detail (name, real command, real diff, real output) as one block — the right-click target is the detail's own StackPanel, whose DataContext is its <see cref="ToolDetailLine"/>.</summary>
+        private void CopyToolDetail_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not MenuItem { Parent: ContextMenu { PlacementTarget: FrameworkElement fe } } ||
+                fe.DataContext is not ToolDetailLine detail) return;
+
+            var sb = new StringBuilder(detail.ToolName);
+            if (detail.HasCommand) sb.Append("  ").Append(detail.CommandPreview);
+            if (detail.HasDiff)
+            {
+                sb.AppendLine();
+                foreach (var line in detail.Diff!) sb.AppendLine(line.Text);
+            }
+            if (detail.HasOutput)
+            {
+                sb.AppendLine();
+                sb.Append(detail.Output);
+            }
+            Clipboard.SetText(sb.ToString());
         }
 
         // ── Composer: send / stop / dismiss ─────────────────────────────

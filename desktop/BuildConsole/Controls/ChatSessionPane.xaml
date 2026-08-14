@@ -22,6 +22,15 @@
         <conv:DiffLineKindToBackgroundConverter x:Key="DiffBg"/>
         <BooleanToVisibilityConverter x:Key="BoolVis"/>
 
+        <!-- Content here was plain TextBlock, so nothing could be selected/copied out of the
+             live agent output. Rather than swap to TextBox (which would risk regressing #1026's
+             visual redesign across every template here), each copyable block gets a right-click
+             "Copy" menu, matching the #945 pattern already established in BuildLogView.xaml.
+             Shared handlers live in ChatSessionPane.xaml.cs. -->
+        <ContextMenu x:Key="CopyTextMenu">
+            <MenuItem Header="Copy" Click="CopyBlockText_Click"/>
+        </ContextMenu>
+
         <!-- ── User message ─────────────────────────────────────────── -->
         <DataTemplate x:Key="UserMessageTemplate">
             <Border BorderBrush="{StaticResource ChatPane.BorderSubtle60}" BorderThickness="0,0,0,1" Padding="0,24,0,26">
@@ -35,6 +44,7 @@
                                    FontSize="{Binding ActualWidth, ElementName=Root, Converter={StaticResource Fluid}, ConverterParameter='9.5,12'}"/>
                     </StackPanel>
                     <TextBlock Text="{Binding Text}" Foreground="{StaticResource ChatPane.Text1}" TextWrapping="Wrap" LineHeight="26"
+                               ContextMenu="{StaticResource CopyTextMenu}"
                                FontSize="{Binding ActualWidth, ElementName=Root, Converter={StaticResource Fluid}, ConverterParameter='12.5,17.5'}"/>
                 </StackPanel>
             </Border>
@@ -59,6 +69,7 @@
                 <TextBlock Text="{Binding Text}" TextWrapping="Wrap" LineHeight="27"
                            Foreground="{Binding Kind, Converter={StaticResource KindBrush}}"
                            FontWeight="{Binding Kind, Converter={StaticResource KindWeight}}"
+                           ContextMenu="{StaticResource CopyTextMenu}"
                            FontSize="{Binding ActualWidth, ElementName=Root, Converter={StaticResource Fluid}, ConverterParameter='12.5,17.5'}"/>
                 <!-- Blinking streaming caret (spec: 1s discrete blink, visible 0-45%). -->
                 <Border x:Name="Caret" Width="8" Height="16" Background="{StaticResource ChatPane.CaretBrush}"
@@ -162,9 +173,15 @@
                                      output on the next line(s), and a real colored diff for a
                                      file edit — all revealed only when the chip is expanded. -->
                                 <StackPanel Margin="0,0,0,8">
+                                    <StackPanel.ContextMenu>
+                                        <ContextMenu>
+                                            <MenuItem Header="Copy Tool Call" Click="CopyToolDetail_Click"/>
+                                        </ContextMenu>
+                                    </StackPanel.ContextMenu>
                                     <!-- ⚙ ToolName  <real command / file_path / pattern> -->
                                     <TextBlock FontFamily="{StaticResource ChatPane.MonoFont}" TextWrapping="Wrap"
                                                Foreground="{StaticResource ChatPane.Muted3}" Margin="0,0,0,3"
+                                               ContextMenu="{StaticResource CopyTextMenu}"
                                                FontSize="{Binding ActualWidth, ElementName=Root, Converter={StaticResource Fluid}, ConverterParameter='10.5,13.5'}">
                                         <Run Text="⚙  " Foreground="{StaticResource ChatPane.AccentText1}"/>
                                         <Run Text="{Binding ToolName, Mode=OneWay}" FontWeight="SemiBold" Foreground="{StaticResource ChatPane.Muted1}"/>
@@ -181,7 +198,8 @@
                                                     <DataTemplate>
                                                         <Border Background="{Binding Kind, Converter={StaticResource DiffBg}}">
                                                             <TextBlock Text="{Binding Text}" FontFamily="{StaticResource ChatPane.MonoFont}" TextWrapping="Wrap"
-                                                                       Foreground="{Binding Kind, Converter={StaticResource DiffFg}}" FontSize="11.5" Padding="2,0"/>
+                                                                       Foreground="{Binding Kind, Converter={StaticResource DiffFg}}" FontSize="11.5" Padding="2,0"
+                                                                       ContextMenu="{StaticResource CopyTextMenu}"/>
                                                         </Border>
                                                     </DataTemplate>
                                                 </ItemsControl.ItemTemplate>
@@ -193,7 +211,8 @@
                                     <Border Visibility="{Binding HasOutput, Converter={StaticResource BoolVis}}"
                                             Background="{StaticResource ChatPane.Surface}" CornerRadius="4" Padding="8,6" Margin="10,1,0,0" MaxHeight="180">
                                         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                                            <TextBlock Text="{Binding Output}" FontFamily="{StaticResource ChatPane.MonoFont}" TextWrapping="Wrap" FontSize="11.5">
+                                            <TextBlock Text="{Binding Output}" FontFamily="{StaticResource ChatPane.MonoFont}" TextWrapping="Wrap" FontSize="11.5"
+                                                       ContextMenu="{StaticResource CopyTextMenu}">
                                                 <TextBlock.Style>
                                                     <Style TargetType="TextBlock">
                                                         <Setter Property="Foreground" Value="{StaticResource ChatPane.Muted3}"/>
