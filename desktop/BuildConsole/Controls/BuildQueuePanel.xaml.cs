@@ -1237,6 +1237,27 @@ namespace BuildConsole.Controls
             var cm = new ContextMenu();
             if (item.Status == "running")
             {
+                // Git — "Resume": unstick a BuildConsole-owned interactive build
+                // that stalled on a dropped network connection (Shane lost WiFi;
+                // the process is blocked mid-turn on a hung in-flight API call
+                // and isn't reading stdin, so the Send box alone can't reach it).
+                // Only offered when THIS app instance owns the live interactive
+                // stdin — it works by aborting the hung call + sending a continue
+                // message, which needs that owned stdin; a foreign/legacy watcher's
+                // process can't be reached this way, so there's nothing to offer.
+                if (_watcher?.OwnsInteractive(item.Id) == true)
+                {
+                    var miResume = new MenuItem { Header = "⏵ Resume (unstick after network loss)" };
+                    miResume.Click += async (_, _) =>
+                    {
+                        if (_watcher == null) return;
+                        ActivityLog.Log("interactive-build", $"Resume invoked from Build Queue context menu: {item.Title} (queue #{item.Id})");
+                        await _watcher.RequestResumeAsync(item.Id);
+                        await RefreshAsync();
+                    };
+                    cm.Items.Add(miResume);
+                }
+
                 var miStop = new MenuItem { Header = "⏹ Stop" };
                 miStop.Click += async (_, _) =>
                 {

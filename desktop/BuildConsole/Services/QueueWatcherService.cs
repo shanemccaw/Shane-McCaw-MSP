@@ -134,6 +134,12 @@ namespace BuildConsole.Services
         private const int StopSoftGraceMs = 4000;
         /// <summary>If the process is still emitting output within this window at the escalation check, the soft interrupt is deemed unresponsive → hard kill.</summary>
         private const int StopQuietMs = 2000;
+        /// <summary>Resume: how long to let the soft interrupt abort the hung in-flight request and unwind the aborted turn before writing the follow-up continue message.</summary>
+        private const int ResumeInterruptSettleMs = 900;
+        /// <summary>Resume: how long to watch for the fresh turn to produce real output before deciding "resumed" vs "still stuck". A reconnect + first streamed token can take a few seconds.</summary>
+        private const int ResumeObserveMs = 8000;
+        /// <summary>Resume: the short follow-up user message that kicks a fresh turn after the interrupt. Kept concise and honest about the real trigger (network came back) so it doesn't pollute the conversation.</summary>
+        private const string ResumeContinueMessage = "Network connection was restored. Please continue where you left off.";
 
         private static int _interruptSeq;
         private static readonly JsonSerializerOptions _msgJson = new()
@@ -665,6 +671,126 @@ namespace BuildConsole.Services
                 // Bound a walked-away pause: let it idle-finalize like a finished turn.
                 lock (_gate) { entry.AwaitingInputSince = DateTime.UtcNow; ScheduleAutoFinalize(entry, id); }
             }
+        }
+
+        /// <summary>
+        /// Real "Resume" for an interactive build that stalled on a dropped
+        /// network connection. Shane lost WiFi and every active build paused:
+        /// the claude.exe process was blocked mid-turn on an in-flight API
+        /// request whose socket went half-open (WiFi dropped → no RST/FIN ever
+        /// arrives, so the socket read hangs until the OS TCP retransmit
+        /// timeout, minutes later). Crucially, while blocked mid-turn the CLI is
+        /// NOT reading stdin for a new turn — which is exactly why the plain
+        /// Send box couldn't reach it (a queued user message can't interrupt an
+        /// in-flight request; it's only consumed when the current turn ends).
+        ///
+        /// So Resume is deliberately DIFFERENT from both Send and Stop:
+        ///   1. First it sends a soft stream-json interrupt
+        ///      (control_request/interrupt — the same primitive Stop uses) to
+        ///      ABORT the hung in-flight request. That's the actual unstick: an
+        ///      aborted fetch lets the SDK's turn logic proceed at once instead
+        ///      of waiting out the TCP timeout.
+        ///   2. Then, once the aborted turn has unwound, it writes a short
+        ///      "continue" user message so a FRESH turn re-attempts the work —
+        ///      which now reconnects successfully because the network is back.
+        /// Unlike Stop it NEVER escalates to a kill: the whole point is to keep
+        /// the process alive and get it moving again.
+        ///
+        /// It then observes and logs the real outcome — resumed (new output
+        /// after the continue message), still stuck (no output within the
+        /// window, e.g. the network isn't actually back yet), or exited.
+        /// </summary>
+        public async Task RequestResumeAsync(int id)
+        {
+            if (!_running.TryGetValue(id, out var entry) || !entry.Interactive)
+            {
+                ActivityLog.Log("interactive-build", $"resume ignored — no interactive process owns queue #{id}");
+                return;
+            }
+            if (entry.Process.HasExited)
+            {
+                ActivityLog.Log("interactive-build", $"resume ignored — process for queue #{id} already exited");
+                return;
+            }
+            if (entry.Stdin == null)
+            {
+                ActivityLog.Log("interactive-build", $"resume ignored — no owned stdin for queue #{id}");
+                return;
+            }
+
+            ActivityLog.Log("interactive-build", $"resume requested (interrupt hung call, then continue): {entry.Title} (queue #{id})");
+
+            // 1) Abort whatever in-flight request is hung on the dead socket.
+            try { WriteInterrupt(entry); }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("interactive-build", $"resume interrupt write failed for queue #{id}: {ex.Message}");
+                return;
+            }
+
+            // Let the CLI process the interrupt (abort the fetch, end the aborted
+            // turn) before the follow-up message opens a fresh one.
+            await Task.Delay(ResumeInterruptSettleMs);
+
+            if (!_running.TryGetValue(id, out entry)) return; // reaped meanwhile
+            if (entry.Process.HasExited)
+            {
+                ActivityLog.Log("interactive-build", $"resume outcome: EXITED — process for queue #{id} exited right after the interrupt (exit {SafeExitCode(entry)}): {entry.Title}");
+                return;
+            }
+
+            // Baseline is captured AFTER the interrupt settles — so the aborted
+            // turn's own "result" line (which lands during the settle window)
+            // isn't mistaken for the fresh turn making real progress.
+            int baselineEmitted;
+            lock (_gate) baselineEmitted = entry.TotalEmitted;
+
+            // 2) Kick a fresh turn so it re-attempts now the network is back.
+            try { WriteUserMessage(entry, ResumeContinueMessage); }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("interactive-build", $"resume continue-message write failed for queue #{id}: {ex.Message}");
+                return;
+            }
+            lock (_gate)
+            {
+                entry.State = InteractiveInputState.Working;
+                entry.AwaitingInputSince = null;
+                entry.StopRequestedUtc = null;
+                entry.LastActivityUtc = DateTime.UtcNow;
+                CancelAutoFinalize(entry);
+            }
+
+            // 3) Observe & log the real outcome.
+            await Task.Delay(ResumeObserveMs);
+
+            if (!_running.TryGetValue(id, out entry))
+            {
+                ActivityLog.Log("interactive-build", $"resume outcome: completed/reaped during observation — queue #{id}");
+                return;
+            }
+            if (entry.Process.HasExited)
+            {
+                ActivityLog.Log("interactive-build", $"resume outcome: EXITED — process for queue #{id} exited during observation (exit {SafeExitCode(entry)}): {entry.Title}");
+                return;
+            }
+            int afterEmitted;
+            lock (_gate) afterEmitted = entry.TotalEmitted;
+            if (afterEmitted > baselineEmitted)
+            {
+                ActivityLog.Log("interactive-build", $"resume outcome: RESUMED — {afterEmitted - baselineEmitted} new output line(s) after the continue message: {entry.Title} (queue #{id})");
+            }
+            else
+            {
+                ActivityLog.Log("interactive-build", $"resume outcome: STILL STUCK — no new output within {ResumeObserveMs}ms (network may still be down, or the call is re-hanging); Resume again, or Stop to hard-kill: {entry.Title} (queue #{id})");
+            }
+        }
+
+        /// <summary>ExitCode is only valid once HasExited — read it defensively for logging.</summary>
+        private static string SafeExitCode(RunningEntry entry)
+        {
+            try { return entry.Process.HasExited ? entry.Process.ExitCode.ToString() : "?"; }
+            catch { return "?"; }
         }
 
         /// <summary>Gracefully ends a still-running interactive build by closing its stdin (EOF → the CLI exits with a real code). Used when a Build Watch slot is dismissed while its build is alive, so the queue row still completes instead of hanging.</summary>
