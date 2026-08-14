@@ -86,6 +86,15 @@ namespace BuildConsole
             /// <summary>The build's working directory, captured at occupy time — powers @path autocomplete (forwarded to Pane.Cwd).</summary>
             public string? Cwd;
             public InteractiveInputState? LastInteractiveState;
+            /// <summary>
+            /// Structured events pulled from the watcher's buffer (<see cref="CopyEventsSince"/>) but not
+            /// yet rendered into the transcript. Drained in small chunks by <see cref="PumpSlotRender"/>,
+            /// yielding between them, so a fast build's backlog never floods the UI thread in one
+            /// synchronous flush — the direct cause of the whole-app freeze this fixes.
+            /// </summary>
+            public readonly Queue<InteractiveEvent> PendingRender = new();
+            /// <summary>True while a background-priority render pump is already scheduled for this slot — the guard that stops overlapping pumps from stacking up per poll.</summary>
+            public bool RenderPumpScheduled;
 
             // Transcript bookkeeping
             /// <summary>The trailing live status turn while this slot is running (removed on any terminal state); mutated in place rather than re-created each poll.</summary>
@@ -131,6 +140,11 @@ namespace BuildConsole
         private DispatcherTimer? _elapsedTimer;
         private bool _polling;
         private List<QueueItem> _lastQueue = new();
+
+        /// <summary>Backs the live "Task Checklist" side panel (Git #980 follow-on): checklist items
+        /// extracted from every slot's reported progress via <see cref="ChecklistExtractor"/>, attributed
+        /// per build. Bound to ChecklistPanel in XAML; mutated only on the UI-thread poll tick.</summary>
+        private readonly Controls.TaskChecklistViewModel _checklist = new();
 
         // Theme brushes (resolved once)
         private readonly Brush _emptyBorder;
@@ -190,6 +204,8 @@ namespace BuildConsole
             }
 
             ReflowSlotGrid(); // 0 active → 1x1 full-window empty state to start
+
+            ChecklistPanel.DataContext = _checklist;
 
             RestoreWindowBounds();
 
@@ -304,6 +320,33 @@ namespace BuildConsole
                 RegexOptions.IgnoreCase);
         }
 
+        // ── Task Checklist side panel extraction ────────────────────────────
+        // Non-destructively observes the same text that flows into the transcript and mirrors any
+        // genuine checklist markers into the live side panel (_checklist). This never consumes or
+        // alters a line — the transcript still renders it exactly as before.
+
+        /// <summary>
+        /// Scans a chunk of reported progress text (one log line, or a multi-line assistant block)
+        /// for checklist markers and feeds each hit into the side-panel model. Only real markers
+        /// (☐/☑/✓/✔ or "- [ ]"/"- [x]") are picked up — ordinary prose and plain bullets are ignored
+        /// (see <see cref="ChecklistExtractor"/>). Safe to call on every text event.
+        /// </summary>
+        private void ScanForChecklist(BuildWatchSlot slot, string? text)
+        {
+            if (string.IsNullOrEmpty(text)) return;
+            foreach (var raw in text.Split('\n'))
+            {
+                var line = raw.TrimEnd('\r');
+                var marker = ChecklistExtractor.TryParse(line, out var item);
+                if (marker == ChecklistExtractor.Marker.None) continue;
+                _checklist.Ingest(slot.QueueItemId, ChecklistBuildLabel(slot), marker, item);
+            }
+        }
+
+        /// <summary>Short per-build label shown beside each checklist row (matches the pane's own LocalLabel format).</summary>
+        private static string ChecklistBuildLabel(BuildWatchSlot slot) =>
+            slot.GithubNumber.HasValue ? $"GH #{slot.GithubNumber}" : $"queue #{slot.QueueItemId}";
+
         /// <summary>
         /// Classifies one completed log line into a transcript turn:
         ///   • "--- done … ---"  → green-tinted AssistantParagraphTurn(Kind=Done)
@@ -315,6 +358,10 @@ namespace BuildConsole
         private void AppendEventCard(BuildWatchSlot slot, string rawLine)
         {
             var line = rawLine.TrimEnd();
+
+            // Mirror any checklist marker on this line into the side panel first (observe-only —
+            // it never consumes the line, which still renders as a normal turn below).
+            ScanForChecklist(slot, line);
 
             // A run of consecutive code-diff lines (a ```diff fence, or a raw unified-diff
             // hunk) folds into ONE DiffTurn — rendered by DiffView as a real green/red
@@ -559,6 +606,9 @@ namespace BuildConsole
                     {
                         var text = (ev.Text ?? "").TrimEnd();
                         if (text.Length == 0) return;
+                        // Scan the full (possibly multi-line) block for checklist markers before it's
+                        // rendered — the structured stream delivers a whole paragraph per event.
+                        ScanForChecklist(slot, text);
                         AddParagraph(slot, text, (ev.IsError || LooksLikeError(text)) ? ParagraphKind.Error : ParagraphKind.Normal);
                         break;
                     }
@@ -572,7 +622,12 @@ namespace BuildConsole
                     {
                         var dur = ev.DurationMs.HasValue ? $" ({ev.DurationMs}ms)" : "";
                         AddParagraph(slot, $"done{dur}", ParagraphKind.Done);
-                        if (!string.IsNullOrWhiteSpace(ev.Text)) AddParagraph(slot, ev.Text!.Trim(), ParagraphKind.Normal);
+                        if (!string.IsNullOrWhiteSpace(ev.Text))
+                        {
+                            // A wrap-up message can restate the checklist with items now ticked.
+                            ScanForChecklist(slot, ev.Text);
+                            AddParagraph(slot, ev.Text!.Trim(), ParagraphKind.Normal);
+                        }
                         break;
                     }
             }
@@ -989,6 +1044,11 @@ namespace BuildConsole
 
         private void OccupySlot(BuildWatchSlot slot, QueueItem item)
         {
+            // If this slot was reused (evicted straight into a new build, no ClearSlot in between),
+            // drop the previous occupant's checklist rows before the new build's start streaming.
+            if (slot.QueueItemId != 0 && slot.QueueItemId != item.Id)
+                _checklist.RemoveForBuild(slot.QueueItemId);
+
             slot.Occupied = true;
             slot.QueueItemId = item.Id;
             slot.GithubNumber = item.GithubNumber;
@@ -1023,6 +1083,8 @@ namespace BuildConsole
             slot.Cwd = item.Cwd;
             slot.Pane.Cwd = item.Cwd;
             slot.InteractiveCursor = 0;
+            slot.PendingRender.Clear();
+            slot.RenderPumpScheduled = false;
             slot.LastInteractiveState = null;
             slot.InteractiveBound = _watcher?.OwnsInteractive(item.Id) ?? false;
 
@@ -1041,6 +1103,9 @@ namespace BuildConsole
             if (!slot.Occupied) return;
             int id = slot.QueueItemId;
             ActivityLog.Log("build-watch", $"{reason}: {slot.Title} (queue #{id})");
+
+            // This build's checklist rows belong to it — drop them as the slot frees.
+            _checklist.RemoveForBuild(id);
 
             // If this was an owned interactive build: gracefully finalize it if it's
             // still alive (close stdin → it exits → queue completes, never hangs),
@@ -1062,6 +1127,8 @@ namespace BuildConsole
             slot.LineBuffer = "";
             slot.InteractiveBound = false;
             slot.InteractiveCursor = 0;
+            slot.PendingRender.Clear();
+            slot.RenderPumpScheduled = false;
             slot.LastInteractiveState = null;
             slot.Cwd = null;
             slot.Pane.Cwd = null;
@@ -1210,6 +1277,39 @@ namespace BuildConsole
         /// (<see cref="TailSlotLog"/> → <see cref="AppendEventCard"/>) is unchanged and stays
         /// name-only, an honest boundary.
         /// </summary>
+        /// <summary>
+        /// Max structured events rendered into the transcript per UI-thread pump pass before the pump
+        /// yields (re-posts itself at <see cref="DispatcherPriority.Background"/>). Keeps each pass short
+        /// so input, layout and render stay responsive while a big backlog drains.
+        /// </summary>
+        private const int RenderChunkBudget = 40;
+        /// <summary>
+        /// Hard cap on a slot's un-rendered backlog. Beyond this the oldest surplus is dropped — it would
+        /// only be rendered and then immediately trimmed off the far end of the ≤<see cref="MaxCardsPerSlot"/>
+        /// transcript anyway (pure wasted UI-thread work, and the thing that made "catch up" freeze the whole
+        /// app) — with one honest inline marker so the skip is visible, never silent.
+        /// </summary>
+        private const int MaxPendingRender = 600;
+        /// <summary>A pull larger than this (a build outrunning the render) is logged with real counts so the batching behaviour is diagnosable.</summary>
+        private const int LargePullLogThreshold = 200;
+        /// <summary>A pump pass slower than this is logged with real timing (ms + counts) so flush/batching cost is visible in the log.</summary>
+        private const int SlowPumpLogThresholdMs = 60;
+
+        /// <summary>
+        /// Pulls the owned interactive build's newly-buffered structured events into this slot's
+        /// <see cref="BuildWatchSlot.PendingRender"/> queue and kicks the chunked render pump — it does
+        /// NOT render them inline any more.
+        ///
+        /// The freeze this fixes: the old body rendered the ENTIRE per-poll backlog (up to
+        /// <see cref="Services.QueueWatcherService"/>'s ~4000 buffered events) in one synchronous
+        /// <c>foreach</c>, and did so for EVERY occupied slot inside a single <see cref="PollAsync"/>
+        /// tick, into a NON-virtualized ItemsControl (ChatSessionPane transcript) whose every add forces a
+        /// full measure/arrange + <c>ScrollToEnd()</c>. A fast build emits hundreds–thousands of stream-json
+        /// lines between the 3s polls, so the catch-up was ~O(n²) work that blocked the one Dispatcher thread
+        /// (every window) until it finished — exactly the "not staying live, then hangs the whole app on catch
+        /// up; 6 slots all stamped the same instant" symptom. Now the pull is cheap (enqueue only) and the
+        /// actual rendering is bounded + yielded by <see cref="PumpSlotRender"/>.
+        /// </summary>
         private void DrainInteractiveOutput(BuildWatchSlot slot)
         {
             if (_watcher == null) return;
@@ -1218,8 +1318,74 @@ namespace BuildConsole
             try { events = _watcher.CopyEventsSince(slot.QueueItemId, ref cursor); }
             catch { return; }
             slot.InteractiveCursor = cursor;
-            foreach (var ev in events)
-                ApplyInteractiveEvent(slot, ev);
+
+            if (events.Count > 0)
+            {
+                foreach (var ev in events) slot.PendingRender.Enqueue(ev);
+                if (events.Count >= LargePullLogThreshold)
+                    ActivityLog.Log("build-watch", $"render backlog: pulled {events.Count} event(s) this poll for {slot.Title} (queue #{slot.QueueItemId}); {slot.PendingRender.Count} now queued to render (build is outrunning the UI — draining in {RenderChunkBudget}-event chunks)");
+                CoalescePendingIfHuge(slot);
+            }
+            // Kick (or keep) the pump even on an empty pull — an earlier backlog may still be draining.
+            EnsureRenderPump(slot);
+        }
+
+        /// <summary>
+        /// Guards against a runaway-fast build burying the UI thread: only the last
+        /// <see cref="MaxCardsPerSlot"/> turns can survive the transcript's front-trim, so a backlog past
+        /// <see cref="MaxPendingRender"/> is mostly events that would be rendered and instantly trimmed —
+        /// wasted work and the direct cause of the whole-app freeze on catch-up. Drop the oldest surplus,
+        /// keep the recent tail, and render ONE honest inline marker so the skip is visible, not silent.
+        /// Dropping un-rendered events is safe: a later <c>tool_result</c> whose <c>tool_use</c> chip was
+        /// dropped simply finds no chip in <see cref="BuildWatchSlot.ToolCallsById"/> and is a no-op.
+        /// UI-thread only (called from <see cref="DrainInteractiveOutput"/>).
+        /// </summary>
+        private void CoalescePendingIfHuge(BuildWatchSlot slot)
+        {
+            if (slot.PendingRender.Count <= MaxPendingRender) return;
+            int drop = slot.PendingRender.Count - MaxPendingRender;
+            for (int i = 0; i < drop; i++) slot.PendingRender.Dequeue();
+            AddParagraph(slot, $"… (skipped {drop} buffered event{(drop == 1 ? "" : "s")} to catch up)", ParagraphKind.Normal);
+            ActivityLog.Log("build-watch", $"render backlog coalesced: dropped {drop} un-rendered event(s) for {slot.Title} (queue #{slot.QueueItemId}) to keep the UI responsive; {slot.PendingRender.Count} kept");
+        }
+
+        /// <summary>Schedules the yielding render pump for a slot if one isn't already pending and there's anything to render.</summary>
+        private void EnsureRenderPump(BuildWatchSlot slot)
+        {
+            if (slot.RenderPumpScheduled || slot.PendingRender.Count == 0) return;
+            slot.RenderPumpScheduled = true;
+            // Background priority: the pump runs after pending input/layout/render, so the app stays
+            // responsive; it re-posts itself between chunks rather than looping, letting a big backlog
+            // drain smoothly instead of blocking the Dispatcher thread in one synchronous flush.
+            Dispatcher.BeginInvoke(new Action(() => PumpSlotRender(slot)), DispatcherPriority.Background);
+        }
+
+        /// <summary>
+        /// Renders at most <see cref="RenderChunkBudget"/> queued events into the transcript, then — if any
+        /// remain — re-posts itself at Background priority instead of continuing to loop. This is the core of
+        /// the freeze fix: each UI-thread pass is bounded and the thread is released between passes, so a
+        /// catch-up drains progressively and never hangs the app. Real per-slow-chunk timing is logged.
+        /// </summary>
+        private void PumpSlotRender(BuildWatchSlot slot)
+        {
+            slot.RenderPumpScheduled = false;
+            // Slot dismissed / rebound to a non-interactive build since scheduling: nothing to render.
+            if (!slot.Occupied || !slot.InteractiveBound) { slot.PendingRender.Clear(); return; }
+            if (slot.PendingRender.Count == 0) return;
+
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            int rendered = 0;
+            while (rendered < RenderChunkBudget && slot.PendingRender.Count > 0)
+            {
+                ApplyInteractiveEvent(slot, slot.PendingRender.Dequeue());
+                rendered++;
+            }
+            sw.Stop();
+
+            if (sw.ElapsedMilliseconds >= SlowPumpLogThresholdMs)
+                ActivityLog.Log("build-watch", $"render pump chunk: {rendered} event(s) in {sw.ElapsedMilliseconds}ms, {slot.PendingRender.Count} still queued ({slot.Title}, queue #{slot.QueueItemId})");
+
+            if (slot.PendingRender.Count > 0) EnsureRenderPump(slot);
         }
 
         /// <summary>
