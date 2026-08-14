@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Text.RegularExpressions;
 
 namespace BuildConsole.Services
 {
@@ -137,7 +138,7 @@ namespace BuildConsole.Services
                 foreach (var line in stdout.Split('\n'))
                 {
                     var t = line.Trim();
-                    if (t.Length > 0) result.Add(t);
+                    if (t.Length > 0 && !IsBookendCommitTitle(t)) result.Add(t);
                 }
             }
             catch
@@ -146,6 +147,21 @@ namespace BuildConsole.Services
             }
             return result;
         }
+
+        // Matches the session-bookend commit conventions from CLAUDE.md's "Mandatory
+        // session bookends" section (BUILD_LOG.md / PLATFORM_BUILD.md IN FLIGHT/DONE
+        // rows), plus the looser "Bookend:"/bare "IN FLIGHT:" phrasings seen in real
+        // history — these are process/tracking commits, not human-readable feature
+        // descriptions, so What's New should never show them alongside the real
+        // commit for the same change.
+        private static readonly Regex BookendTitlePattern = new Regex(
+            @"^(?:BuildConsole\s+)?(?:BUILD_LOG|PLATFORM_BUILD)\b|^Bookend\s*:|^(?:DONE|IN\s+FLIGHT)\s*[:-]",
+            RegexOptions.IgnoreCase);
+
+        /// <summary>True if <paramref name="title"/> is a pure session-bookend/tracking
+        /// commit (see <see cref="BookendTitlePattern"/>) rather than a real feature commit.</summary>
+        public static bool IsBookendCommitTitle(string title) =>
+            !string.IsNullOrEmpty(title) && BookendTitlePattern.IsMatch(title);
 
         /// <summary>
         /// Repo root = the nearest ancestor of the running exe that contains a

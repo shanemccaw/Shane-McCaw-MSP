@@ -1751,11 +1751,12 @@ namespace BuildConsole
                 var titles = await System.Threading.Tasks.Task.Run(
                     () => BuildConsole.Services.VersionInfo.GetNewCommitTitles(lastSeen, max));
 
-                // If git genuinely returned no titles we still advance last-seen (the
-                // build moved; there's just nothing to show) so we don't keep retrying a
-                // git call that yields nothing every launch.
+                // "more" means genuinely-uncovered-by-the-max-cap commits, NOT bookend
+                // commits GetNewCommitTitles already filtered out of titles — those are
+                // intentionally hidden, not truncated, so they must not inflate this count.
                 int totalNew = current - lastSeen;
-                int more = titles.Count > 0 ? Math.Max(0, totalNew - titles.Count) : 0;
+                int take = Math.Min(totalNew, max);
+                int more = Math.Max(0, totalNew - take);
 
                 _whatsNewTitles = titles;
                 _whatsNewVersion = BuildConsole.Services.VersionInfo.Format(current);
