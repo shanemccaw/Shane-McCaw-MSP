@@ -342,25 +342,65 @@
                 </Grid>
             </Border>
 
-            <!-- ══ Transcript ═══════════════════════════════════════════ -->
-            <ScrollViewer Grid.Row="1" x:Name="TranscriptScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
-                          Padding="0,8,0,4" ScrollChanged="TranscriptScroll_ScrollChanged">
-                <Border MaxWidth="800" HorizontalAlignment="Stretch"
-                        Padding="{Binding ActualWidth, ElementName=Root, Converter={StaticResource FluidPad}, ConverterParameter='14,36'}">
-                    <ItemsControl x:Name="TranscriptItems" ItemsSource="{Binding Turns}" ItemTemplateSelector="{StaticResource TurnSelector}">
-                        <ItemsControl.ItemContainerStyle>
-                            <Style TargetType="ContentPresenter">
-                                <Setter Property="Margin" Value="{Binding ActualWidth, ElementName=Root, Converter={StaticResource FluidGap}, ConverterParameter='11,22'}"/>
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding Converter={StaticResource IsUserMsg}}" Value="True">
-                                        <Setter Property="Margin" Value="0"/>
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </ItemsControl.ItemContainerStyle>
-                    </ItemsControl>
+            <!-- ══ Transcript + this build's OWN Task Checklist column ═══════════
+                 Git #42/#56: each build's detected checklist now lives in a slim column to
+                 the right of THIS build's transcript, scoped to this build alone — the old
+                 single shared global Task Checklist panel (which merged every concurrent
+                 build's items into one flat list) is gone. Rows are built in code-behind
+                 (RefreshChecklist) from the SAME real shared TaskChecklistViewModel /
+                 ChecklistExtractor detection, filtered to this pane's build; the column is
+                 hidden entirely until this build reports its first checklist item. -->
+            <Grid Grid.Row="1">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <ScrollViewer Grid.Column="0" x:Name="TranscriptScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                              Padding="0,8,0,4" ScrollChanged="TranscriptScroll_ScrollChanged">
+                    <Border MaxWidth="800" HorizontalAlignment="Stretch"
+                            Padding="{Binding ActualWidth, ElementName=Root, Converter={StaticResource FluidPad}, ConverterParameter='14,36'}">
+                        <ItemsControl x:Name="TranscriptItems" ItemsSource="{Binding Turns}" ItemTemplateSelector="{StaticResource TurnSelector}">
+                            <ItemsControl.ItemContainerStyle>
+                                <Style TargetType="ContentPresenter">
+                                    <Setter Property="Margin" Value="{Binding ActualWidth, ElementName=Root, Converter={StaticResource FluidGap}, ConverterParameter='11,22'}"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Converter={StaticResource IsUserMsg}}" Value="True">
+                                            <Setter Property="Margin" Value="0"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </ItemsControl.ItemContainerStyle>
+                        </ItemsControl>
+                    </Border>
+                </ScrollViewer>
+
+                <!-- This build's own checklist — a slim right-hand column, shown only when this
+                     build has reported steps. Rows built in code-behind (RefreshChecklist) in the
+                     same ☐ / green-✔ / strikethrough visual language as the old global panel and
+                     Focus Mode's band. -->
+                <Border Grid.Column="1" x:Name="ChecklistPanel" Visibility="Collapsed" Width="190"
+                        Background="{StaticResource MantleBrush}"
+                        BorderBrush="{StaticResource Surface0Brush}" BorderThickness="1,0,0,0">
+                    <Grid Margin="9,8">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,2">
+                            <TextBlock Text="&#x1F5D2;" FontSize="12" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                            <TextBlock Text="Checklist" FontSize="11.5" FontWeight="SemiBold"
+                                       Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
+                        </StackPanel>
+                        <TextBlock Grid.Row="1" x:Name="ChecklistSummaryText" FontSize="10"
+                                   Margin="0,0,0,4" Foreground="{StaticResource Subtext1Brush}"/>
+                        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                            <StackPanel x:Name="ChecklistRows"/>
+                        </ScrollViewer>
+                    </Grid>
                 </Border>
-            </ScrollViewer>
+            </Grid>
 
             <!-- ══ Composer ═════════════════════════════════════════════ -->
             <Border Grid.Row="2" Background="{StaticResource ChatPane.CanvasChrome}" BorderBrush="{StaticResource ChatPane.BorderSubtle90}"

@@ -1,5 +1,7 @@
 using System;
+using System.ComponentModel;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
@@ -37,6 +39,108 @@ namespace BuildConsole.Controls
             InitializeComponent();
             DataContext = ViewModel;
             BuildAutoCompletePopup();
+
+            // Live-refresh this build's own checklist column off the shared tracker. Subscribe on
+            // Loaded / unsubscribe on Unloaded (the exact pattern FocusModeBar uses) so a closed
+            // Build Watch window's panes don't linger attached to the app-wide singleton.
+            Loaded += (_, _) => { TaskChecklistViewModel.Shared.PropertyChanged += OnSharedChecklistChanged; RefreshChecklist(); };
+            Unloaded += (_, _) => { TaskChecklistViewModel.Shared.PropertyChanged -= OnSharedChecklistChanged; };
+        }
+
+        // ── This build's own Task Checklist column (Git #42/#56) ─────────────────
+        // Renders ONLY this pane's build's checklist — the same real items #56 detects
+        // (structured TaskCreate/TaskUpdate) plus #28's free-form ☐ / "- [ ]" text fallback —
+        // read straight from the shared TaskChecklistViewModel and filtered to this build's
+        // queue id. The old single global panel that merged every build's items into one flat
+        // list is gone; each build now shows only its own steps, in its own square. Focus Mode's
+        // band still reads the same shared model, unchanged.
+
+        /// <summary>The queue id whose checklist this pane shows, or 0 when unbound (column hidden). Set by BuildWatchWindow when a slot is occupied / freed.</summary>
+        private int _checklistBuildId;
+        /// <summary>Cheap guard so we skip the row rebuild when nothing in THIS build's slice changed — the shared tracker fires PropertyChanged on every ingest, most of which don't touch our build.</summary>
+        private string _checklistSignature = "";
+
+        /// <summary>Points this pane's checklist column at a specific build (its queue id), or 0 to unbind and hide it. Called by BuildWatchWindow on occupy / clear.</summary>
+        public void SetChecklistBuild(int queueItemId)
+        {
+            _checklistBuildId = queueItemId;
+            _checklistSignature = "";   // force a rebuild for the newly-bound build
+            RefreshChecklist();
+        }
+
+        private void OnSharedChecklistChanged(object? sender, PropertyChangedEventArgs e) => RefreshChecklist();
+
+        /// <summary>
+        /// Rebuilds this build's checklist rows from the shared tracker, filtered to <see cref="_checklistBuildId"/>.
+        /// Hidden entirely when unbound or this build has reported nothing. A signature guard (state + text of this
+        /// build's items) skips the visual rebuild when this build's slice is unchanged — a Done flip changes the
+        /// signature, so it re-renders; an unrelated build's ingest does not.
+        /// </summary>
+        private void RefreshChecklist()
+        {
+            if (_checklistBuildId == 0)
+            {
+                ChecklistPanel.Visibility = Visibility.Collapsed;
+                _checklistSignature = "";
+                ChecklistRows.Children.Clear();
+                return;
+            }
+
+            var items = TaskChecklistViewModel.Shared.Items
+                .Where(it => it.QueueItemId == _checklistBuildId)
+                .ToList();
+
+            if (items.Count == 0)
+            {
+                ChecklistPanel.Visibility = Visibility.Collapsed;
+                _checklistSignature = "";
+                ChecklistRows.Children.Clear();
+                return;
+            }
+
+            var sig = string.Join("|", items.Select(i => (i.Done ? "1" : "0") + i.Text));
+            if (sig == _checklistSignature) { ChecklistPanel.Visibility = Visibility.Visible; return; }
+            _checklistSignature = sig;
+
+            int done = items.Count(i => i.Done);
+            ChecklistSummaryText.Text = $"{done}/{items.Count} done";
+
+            ChecklistRows.Children.Clear();
+            foreach (var it in items) ChecklistRows.Children.Add(BuildChecklistRow(it));
+            ChecklistPanel.Visibility = Visibility.Visible;
+        }
+
+        /// <summary>One step row: hollow-box glyph while pending, a real green ✔ + strikethrough once the agent
+        /// reports it done — the exact visual language of #28's Task Checklist panel and Focus Mode's band.</summary>
+        private UIElement BuildChecklistRow(ChecklistItemViewModel it)
+        {
+            var grid = new Grid { Margin = new Thickness(0, 3, 0, 0) };
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+            var glyph = new TextBlock
+            {
+                Text = it.Glyph,
+                FontSize = 11.5,
+                Margin = new Thickness(0, 0, 6, 0),
+                VerticalAlignment = VerticalAlignment.Top,
+                Foreground = (Brush)FindResource(it.Done ? "GreenBrush" : "Subtext1Brush"),
+            };
+            Grid.SetColumn(glyph, 0);
+            grid.Children.Add(glyph);
+
+            var text = new TextBlock
+            {
+                Text = it.Text,
+                FontSize = 11,
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = (Brush)FindResource(it.Done ? "Subtext1Brush" : "TextBrush"),
+                TextDecorations = it.Done ? TextDecorations.Strikethrough : null,
+            };
+            Grid.SetColumn(text, 1);
+            grid.Children.Add(text);
+
+            return grid;
         }
 
         // ── Auto-scroll: stick to bottom only while already near it (README: "do not use forced scroll-into-view") ──

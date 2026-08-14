@@ -146,13 +146,15 @@ namespace BuildConsole
         private bool _polling;
         private List<QueueItem> _lastQueue = new();
 
-        /// <summary>Backs the live "Task Checklist" side panel (Git #980 follow-on): checklist items
-        /// extracted from every slot's reported progress via <see cref="ChecklistExtractor"/>, attributed
-        /// per build. Bound to ChecklistPanel in XAML; mutated only on the UI-thread poll tick.
-        /// The app-wide <see cref="Controls.TaskChecklistViewModel.Shared"/> singleton — Focus Mode's
-        /// strip reads the very same instance so its live checklist band reflects #28's real detection
-        /// with no second parser. Cleared when this window closes (see the Closed handler) so each
-        /// Build Watch session starts fresh, exactly as it did when this was a per-window field.</summary>
+        /// <summary>Backs the live Task Checklists (Git #980 follow-on): checklist items extracted from
+        /// every slot's reported progress via <see cref="ChecklistExtractor"/> / the structured Task tools,
+        /// attributed per build; mutated only on the UI-thread poll tick. Git #42/#56 — there is no longer
+        /// one shared global panel bound to this; each build's own <see cref="Controls.ChatSessionPane"/>
+        /// renders ITS build's slice (filtered by queue id, wired in OccupySlot/ClearSlot). The app-wide
+        /// <see cref="Controls.TaskChecklistViewModel.Shared"/> singleton — Focus Mode's strip reads the very
+        /// same instance so its live checklist band reflects #28's real detection with no second parser.
+        /// Cleared when this window closes (see the Closed handler) so each Build Watch session starts
+        /// fresh, exactly as it did when this was a per-window field.</summary>
         private readonly Controls.TaskChecklistViewModel _checklist = Controls.TaskChecklistViewModel.Shared;
 
         // Theme brushes (resolved once)
@@ -214,7 +216,10 @@ namespace BuildConsole
 
             ReflowSlotGrid(); // 0 active → 1x1 full-window empty state to start
 
-            ChecklistPanel.DataContext = _checklist;
+            // Git #42/#56: the checklist no longer has one shared global panel to bind here —
+            // each build's checklist now lives inside its own ChatSessionPane (scoped per build,
+            // pointed at its queue id in OccupySlot / cleared in ClearSlot). The shared
+            // _checklist tracker is still fed by the same detection and still read by Focus Mode.
 
             RestoreWindowBounds();
 
@@ -1200,6 +1205,10 @@ namespace BuildConsole
             vm.TokensUsed = null;
             vm.TokenBudget = null;
 
+            // Point this pane's own checklist column at THIS build (Git #42/#56): it renders only
+            // this build's items from the shared tracker, filtered to this queue id, in the pane itself.
+            slot.Pane.SetChecklistBuild(item.Id);
+
             slot.EmptyText.Visibility = Visibility.Collapsed;
             slot.ContentGrid.Visibility = Visibility.Visible;
 
@@ -1256,6 +1265,7 @@ namespace BuildConsole
             slot.LastInteractiveState = null;
             slot.Cwd = null;
             slot.Pane.Cwd = null;
+            slot.Pane.SetChecklistBuild(0); // unbind this pane's checklist column (RemoveForBuild above already dropped its rows)
             slot.CurrentToolGroup = null;
             slot.ToolCallsById.Clear();
             slot.PendingTaskCreatesByUseId.Clear();
