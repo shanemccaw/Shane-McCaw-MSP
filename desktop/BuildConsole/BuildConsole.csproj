@@ -25,6 +25,9 @@
     <!-- SQL syntax-highlighting definition, loaded at runtime by SqlRunnerView
          via Assembly.GetManifestResourceStream (Git #939). -->
     <EmbeddedResource Include="Controls\SqlSyntax.xshd" />
+    <!-- JSON syntax-highlighting definition, loaded the same way by the Manifest
+         Viewer's raw-JSON tab (ManifestViewerWindow). -->
+    <EmbeddedResource Include="Controls\JsonSyntax.xshd" />
   </ItemGroup>
 
   <ItemGroup>

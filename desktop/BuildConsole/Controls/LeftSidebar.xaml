@@ -615,11 +615,15 @@
                             MinWidth="340" MaxWidth="460" MaxHeight="620">
                         <DockPanel>
                             <Grid DockPanel.Dock="Top" Margin="0,0,0,8">
-                                <StackPanel>
+                                <StackPanel Margin="0,0,118,0">
                                     <TextBlock x:Name="ManifestStepsFlyoutTitle" Text="Test Steps" FontWeight="Bold" FontSize="13" Foreground="{StaticResource TextBrush}" TextTrimming="CharacterEllipsis"/>
                                     <TextBlock x:Name="ManifestStepsFlyoutSubtitle" Text="" FontSize="10" Foreground="{StaticResource Subtext0Brush}" TextWrapping="Wrap"/>
                                 </StackPanel>
-                                <Button x:Name="BtnCloseStepsFlyout" Content="✕" HorizontalAlignment="Right" VerticalAlignment="Top" Padding="6,2" Click="BtnCloseStepsFlyout_Click" ToolTip="Close"/>
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
+                                    <!-- Opens the fuller Manifest Viewer (raw JSON tree + workflow chart) for the selected manifest. -->
+                                    <Button x:Name="BtnOpenManifestViewer" Content="⤢ View" Padding="8,2" Margin="0,0,6,0" Click="BtnOpenManifestViewer_Click" ToolTip="Open the Manifest Viewer — raw JSON and a workflow chart of this manifest"/>
+                                    <Button x:Name="BtnCloseStepsFlyout" Content="✕" Padding="6,2" Click="BtnCloseStepsFlyout_Click" ToolTip="Close"/>
+                                </StackPanel>
                             </Grid>
                             <ScrollViewer VerticalScrollBarVisibility="Auto">
                                 <StackPanel x:Name="ManifestStepsFlyoutList"/>

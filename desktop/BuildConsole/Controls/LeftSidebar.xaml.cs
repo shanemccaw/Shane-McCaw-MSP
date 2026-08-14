@@ -757,6 +757,20 @@ namespace BuildConsole.Controls
         // ── Git #952: manifest steps flyout ─────────────────────────────────
         private void BtnCloseStepsFlyout_Click(object sender, RoutedEventArgs e) => ManifestStepsPopup.IsOpen = false;
 
+        /// <summary>Opens the fuller Manifest Viewer (raw JSON tree + native-Canvas workflow chart) for the
+        /// currently-selected manifest — the same <see cref="_lastLoadedManifest"/> this flyout was populated
+        /// from. Closes the flyout so the window takes focus; non-modal (Show, not ShowDialog) so the rest of
+        /// the app stays usable, owned by the main window so it stays on top of it.</summary>
+        private void BtnOpenManifestViewer_Click(object sender, RoutedEventArgs e)
+        {
+            var manifest = _lastLoadedManifest;
+            if (manifest == null) return;
+
+            ManifestStepsPopup.IsOpen = false;
+            var viewer = new BuildConsole.ManifestViewerWindow(manifest) { Owner = Window.GetWindow(this) };
+            viewer.Show();
+        }
+
         /// <summary>Git #988 — the same click that opens the popup (tree SelectionChanged, itself fired from a
         /// mouse-up) was being read as an "outside click" under the old StaysOpen="False", closing it the instant
         /// it opened. Now StaysOpen="True" and dismissal is explicit: hook the owning Window's PreviewMouseDown
@@ -819,14 +833,14 @@ namespace BuildConsole.Controls
             {
                 ManifestStepsFlyoutList.Children.Add(MakeSectionHeader($"PowerShell Verify ({manifest.PowerShellVerify.Count})", "PeachBrush"));
                 for (int i = 0; i < manifest.PowerShellVerify.Count; i++)
-                    ManifestStepsFlyoutList.Children.Add(MakeStepRow(DescribePowerShellEntry(manifest.PowerShellVerify[i], i)));
+                    ManifestStepsFlyoutList.Children.Add(MakeStepRow(ManifestStepDescriber.DescribePowerShellEntry(manifest.PowerShellVerify[i], i)));
             }
 
             if (manifest.UiSteps.Count > 0)
             {
                 ManifestStepsFlyoutList.Children.Add(MakeSectionHeader($"UI Steps ({manifest.UiSteps.Count})", "PeachBrush"));
                 for (int i = 0; i < manifest.UiSteps.Count; i++)
-                    ManifestStepsFlyoutList.Children.Add(MakeStepRow(DescribeUiStep(manifest.UiSteps[i], i)));
+                    ManifestStepsFlyoutList.Children.Add(MakeStepRow(ManifestStepDescriber.DescribeUiStep(manifest.UiSteps[i], i)));
             }
 
             if (total == 0)
@@ -838,7 +852,7 @@ namespace BuildConsole.Controls
             if (entries.Count == 0) return;
             ManifestStepsFlyoutList.Children.Add(MakeSectionHeader($"{title} ({entries.Count})", brushKey));
             for (int i = 0; i < entries.Count; i++)
-                ManifestStepsFlyoutList.Children.Add(MakeStepRow(DescribeHttpEntry(entries[i], i)));
+                ManifestStepsFlyoutList.Children.Add(MakeStepRow(ManifestStepDescriber.DescribeHttpEntry(entries[i], i)));
         }
 
         private TextBlock MakeSectionHeader(string text, string brushKey) => new TextBlock
@@ -865,80 +879,9 @@ namespace BuildConsole.Controls
             },
         };
 
-        private static string DescribeHttpEntry(System.Text.Json.JsonElement el, int i)
-        {
-            string method = (GetJsonStr(el, "method") ?? "GET").ToUpperInvariant();
-            string path = GetJsonStr(el, "path") ?? GetJsonStr(el, "url") ?? "(no path)";
-            string s = $"{i + 1}. {method} {path}";
-            if (el.ValueKind == System.Text.Json.JsonValueKind.Object
-                && el.TryGetProperty("expect", out var expect)
-                && expect.ValueKind == System.Text.Json.JsonValueKind.Object
-                && expect.TryGetProperty("status", out var status))
-            {
-                s += $"  → {status}";
-            }
-            return s;
-        }
-
-        private static string DescribePowerShellEntry(System.Text.Json.JsonElement el, int i)
-        {
-            string cmdlet = GetJsonStr(el, "cmdlet") ?? "(cmdlet)";
-            string s = $"{i + 1}. {cmdlet}";
-            string? after = GetJsonStr(el, "afterStep");
-            if (!string.IsNullOrEmpty(after)) s += $"  (after: {after})";
-            return s;
-        }
-
-        private static string DescribeUiStep(ManifestUiStep step, int i)
-        {
-            string target = step.Selector ?? step.Target ?? "";
-            string s = $"{i + 1}. {step.Action.ToUpperInvariant()}";
-            if (!string.IsNullOrEmpty(target)) s += $"  {target}";
-            if (!string.IsNullOrEmpty(step.Value)) s += $"  = {step.Value}";
-            if (!string.IsNullOrEmpty(step.State)) s += $"  [{step.State}]";
-            if (!string.IsNullOrEmpty(step.CaptureResponseJson)) s += "  " + DescribeCaptureResponse(step.CaptureResponseJson);
-            return s;
-        }
-
-        /// <summary>Git #997 — expand the bare "⟳capture" glyph to show the real urlPattern being watched
-        /// (matching #996's live-log detail), plus a short summary of the expect block's assertions when it fits.</summary>
-        private static string DescribeCaptureResponse(string captureResponseJson)
-        {
-            try
-            {
-                using var doc = System.Text.Json.JsonDocument.Parse(captureResponseJson);
-                var root = doc.RootElement;
-                string urlPattern = GetJsonStr(root, "urlPattern") ?? "(no urlPattern)";
-                string s = $"⟳capture: {urlPattern}";
-
-                if (root.TryGetProperty("expect", out var expect) && expect.ValueKind == System.Text.Json.JsonValueKind.Object)
-                {
-                    var parts = new List<string>();
-                    if (expect.TryGetProperty("status", out var status))
-                        parts.Add($"status {status}");
-                    if (expect.TryGetProperty("jsonPath", out var jsonPath) && jsonPath.ValueKind == System.Text.Json.JsonValueKind.String)
-                        parts.Add(jsonPath.GetString() ?? "");
-                    if (expect.TryGetProperty("containsAny", out var containsAny) && containsAny.ValueKind == System.Text.Json.JsonValueKind.Array)
-                        parts.Add($"containsAny×{containsAny.GetArrayLength()}");
-                    if (expect.TryGetProperty("containsNone", out var containsNone) && containsNone.ValueKind == System.Text.Json.JsonValueKind.Array)
-                        parts.Add($"containsNone×{containsNone.GetArrayLength()}");
-                    if (parts.Count > 0) s += $"  ({string.Join(", ", parts)})";
-                }
-
-                return s;
-            }
-            catch
-            {
-                return "⟳capture";
-            }
-        }
-
-        private static string? GetJsonStr(System.Text.Json.JsonElement el, string prop)
-        {
-            if (el.ValueKind != System.Text.Json.JsonValueKind.Object || !el.TryGetProperty(prop, out var v))
-                return null;
-            return v.ValueKind == System.Text.Json.JsonValueKind.String ? v.GetString() : v.ToString();
-        }
+        // Git #952 step-summarization (DescribeHttpEntry / DescribePowerShellEntry / DescribeUiStep /
+        // DescribeCaptureResponse / GetJsonStr) now lives in the shared BuildConsole.Services.ManifestStepDescriber
+        // so the manifest viewer's workflow-chart boxes label themselves identically — one source of truth.
 
         /// <summary>Returns the currently displayed view name.</summary>
         public string GetCurrentView() => _currentView;

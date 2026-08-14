@@ -1,0 +1,60 @@
+<?xml version="1.0"?>
+<!--
+  JSON syntax highlighting for BuildConsole's Manifest Viewer (raw-JSON tab).
+
+  Same approach as SqlSyntax.xshd (Git #939): the app's own Catppuccin Mocha dark
+  palette (Themes/DarkTheme.xaml), loaded as an embedded resource by
+  ManifestViewerWindow (manifest name BuildConsole.Controls.JsonSyntax.xshd).
+
+  Standard JSON conventions, color-coded by token type:
+    keys (property names) -> blue, string values -> green, numbers -> peach,
+    booleans -> mauve (bold), null -> red. Braces/brackets/colons/commas keep the
+    default text color.
+
+  Everything is expressed as <Rule>s (no <Span>s) on purpose: the highlighting
+  engine, at a tie on the same offset, prefers the FIRST-declared rule, so the key
+  rule must precede the string-value rule. A key is a quoted string immediately
+  followed by a colon (zero-width look-ahead, so the colon itself is not colored);
+  any other quoted string is a value. A value string is fully consumed before the
+  boolean/number/null rules ever see its interior, so "true"/"123" inside a string
+  are never mis-colored.
+-->
+<SyntaxDefinition name="JSON" xmlns="http://icsharpcode.net/sharpdevelop/syntaxdefinition/2008">
+
+  <!-- Catppuccin Mocha, matching DarkTheme.xaml's brush resources. -->
+  <Color name="Key"     foreground="#89B4FA" />                   <!-- BlueBrush  -->
+  <Color name="String"  foreground="#A6E3A1" />                   <!-- GreenBrush -->
+  <Color name="Number"  foreground="#FAB387" />                   <!-- PeachBrush -->
+  <Color name="Boolean" foreground="#CBA6F7" fontWeight="bold" /> <!-- MauveBrush -->
+  <Color name="Null"    foreground="#F38BA8" />                   <!-- RedBrush   -->
+
+  <!-- Case-sensitive: JSON's true/false/null are lowercase literals. -->
+  <RuleSet ignoreCase="false">
+
+    <!-- Property key: a quoted string immediately followed by ':' (look-ahead keeps
+         the colon out of the colored span). Must come before the value-string rule. -->
+    <Rule color="Key">
+      "(?:[^"\\]|\\.)*"(?=\s*:)
+    </Rule>
+
+    <!-- String value: any other quoted string (handles \" and other escapes). -->
+    <Rule color="String">
+      "(?:[^"\\]|\\.)*"
+    </Rule>
+
+    <Keywords color="Boolean">
+      <Word>true</Word>
+      <Word>false</Word>
+    </Keywords>
+
+    <Keywords color="Null">
+      <Word>null</Word>
+    </Keywords>
+
+    <!-- Numbers: integers/decimals with optional exponent, optional leading minus. -->
+    <Rule color="Number">
+      -?\b\d+(\.\d+)?([eE][+-]?\d+)?\b
+    </Rule>
+
+  </RuleSet>
+</SyntaxDefinition>
