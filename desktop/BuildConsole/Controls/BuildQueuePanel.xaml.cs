@@ -776,6 +776,12 @@ namespace BuildConsole.Controls
         // already rendered.
         private string? _lastQueueSignature;
 
+        /// <summary>Queued-for-Restart lag fix — last rendered signature of the pending-update
+        /// spillover group (title + github number per item), so RenderQueuedForRestartGroup logs a
+        /// durable UI-refresh timestamp only when the group's contents actually change, not on every
+        /// unrelated queue re-render.</summary>
+        private string? _lastRestartGroupSignature;
+
         /// <summary>Git #931 — true whenever the last successful RefreshAsync served the local cache instead of a live fetch (dev server unreachable); RenderQueue reads this to prepend an offline banner regardless of which filter chip is active.</summary>
         private bool _queueIsStale;
         private DateTime? _queueCachedAtUtc;
@@ -806,7 +812,24 @@ namespace BuildConsole.Controls
                 _queueIsStale = result.IsStale;
                 _queueCachedAtUtc = result.CachedAtUtc;
 
-                var signature = _queueIsStale + "|" + System.Text.Json.JsonSerializer.Serialize(_lastItems);
+                // Queued-for-Restart lag fix — fold the pending-update spillover
+                // file's current contents into the poll signature. RenderQueue() is
+                // what draws the "🔄 Queued for Restart" group (via
+                // RenderQueuedForRestartGroup, read fresh off disk), but the #821
+                // anti-flicker guard SKIPS RenderQueue whenever the LIVE queue is
+                // unchanged — and an intercepted Queue click during a pending update
+                // changes ONLY the spillover file, never _lastItems. Without the
+                // spillover state in the signature the group wouldn't repaint until
+                // some unrelated live-queue change happened to trip the guard, which
+                // is exactly the "takes a really long time to update" lag Shane
+                // reported (same class as the #40/#41 Focus-Mode signature-guard bug).
+                // The file is tiny and only changes on a rare intercept/replay, so
+                // reading it every poll is cheap.
+                string restartSignature;
+                try { restartSignature = System.Text.Json.JsonSerializer.Serialize(MainWindow.GetPersistedQueueDisplayItems()); }
+                catch { restartSignature = ""; }
+
+                var signature = _queueIsStale + "|" + System.Text.Json.JsonSerializer.Serialize(_lastItems) + "|" + restartSignature;
                 if (signature != _lastQueueSignature)
                 {
                     _lastQueueSignature = signature;
@@ -1155,6 +1178,24 @@ namespace BuildConsole.Controls
             List<MainWindow.PersistedQueueDisplayItem> pending;
             try { pending = MainWindow.GetPersistedQueueDisplayItems(); }
             catch { return; } // best-effort — a read hiccup shouldn't block the real queue from rendering
+
+            // Queued-for-Restart lag fix — write a real UI-refresh timestamp to the
+            // durable pending-update-queue.log whenever the rendered set actually
+            // changes (an item added, replayed away, or the group emptied). Paired
+            // with the file-write timestamps PersistQueueRequestDuringPendingUpdate
+            // already writes to the SAME durable file, this makes the write→display
+            // lag computable straight from the log with no live repro — the whole
+            // point of the fix (ActivityLog is in-memory only and useless across the
+            // restart this feature spans). Guarded by a signature so a normal 15s
+            // poll that re-renders the queue for an unrelated reason doesn't spam it.
+            var restartRenderSignature = System.Text.Json.JsonSerializer.Serialize(
+                pending.Select(p => new { p.Title, p.GithubNumber }));
+            if (restartRenderSignature != _lastRestartGroupSignature)
+            {
+                _lastRestartGroupSignature = restartRenderSignature;
+                MainWindow.LogQueuedForRestartRender(pending.Count);
+            }
+
             if (pending.Count == 0) return;
 
             var restartBrush = (Brush)Application.Current.FindResource("MauveBrush");

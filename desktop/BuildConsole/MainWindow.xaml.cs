@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Net.Http;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -3347,58 +3346,34 @@ namespace BuildConsole
                         else
                             ToastEngine.Warning("Queued after update",
                                 "A BuildConsole update is pending, but saving this build request to disk failed — it was NOT queued. Try again after the update finishes.");
+                        // Queued-for-Restart lag fix — repaint the "🔄 Queued for Restart"
+                        // group NOW instead of waiting up to 15s for the panel's own poll.
+                        // The normal (non-pending) queue path below already calls
+                        // RefreshAsync after its POST; the intercept path never did, so a
+                        // just-persisted item only appeared on a later poll that happened to
+                        // re-render for an unrelated reason — a real contributor to the lag
+                        // Shane reported. RefreshAsync now folds the spillover file into its
+                        // render signature, so this forces the group to show the new item
+                        // immediately. Only when it actually persisted (a failed save has
+                        // nothing to show).
+                        if (saved)
+                        {
+                            try { await BuildQueuePanel.RefreshAsync(); }
+                            catch { /* best-effort visual refresh */ }
+                        }
                         return;
                     }
 
                     var res = await _buildTrackerApi.QueueBuildAsync(
                         Str("title") ?? "Untitled", Str("prompt") ?? "", Str("model"), Str("effort"), Str("cwd"), Int("githubNumber"), blockedByNumbers);
-
-                    // Git #931 — the dev api-server naps after ~15 min idle. Asleep, Replit's own
-                    // "wake up the app" placeholder page (HTML, not JSON) comes back on this POST
-                    // instead of a real API error, and used to get dumped verbatim into the error
-                    // toast. Detect that case (Content-Type + body sniff) before showing anything,
-                    // retry once after a brief wait — the common nap case usually resolves itself on
-                    // a second try — and only then fall back to a short human message instead of the
-                    // raw markup.
                     if (!res.IsSuccessStatusCode)
                     {
                         var body = await res.Content.ReadAsStringAsync();
-                        if (IsLikelyDevServerNapHtml(res, body))
-                        {
-                            BuildConsole.Services.ActivityLog.Log("api",
-                                $"Queue Build: got HTML instead of JSON (status {(int)res.StatusCode}, content-type {res.Content.Headers.ContentType?.MediaType ?? "none"}) — dev server likely asleep (#931), retrying once after a brief wait");
-                            await System.Threading.Tasks.Task.Delay(TimeSpan.FromSeconds(8));
-                            res = await _buildTrackerApi.QueueBuildAsync(
-                                Str("title") ?? "Untitled", Str("prompt") ?? "", Str("model"), Str("effort"), Str("cwd"), Int("githubNumber"), blockedByNumbers);
-
-                            if (!res.IsSuccessStatusCode)
-                            {
-                                var retryBody = await res.Content.ReadAsStringAsync();
-                                if (IsLikelyDevServerNapHtml(res, retryBody))
-                                {
-                                    BuildConsole.Services.ActivityLog.Log("api",
-                                        $"Queue Build: retry still got HTML (status {(int)res.StatusCode}, content-type {res.Content.Headers.ContentType?.MediaType ?? "none"}) — dev server still asleep, giving up");
-                                    ToastEngine.Error("Queue Build", "Server unreachable, it may be asleep — try again in a moment.");
-                                }
-                                else
-                                {
-                                    ToastEngine.Error("Queue Build", $"Couldn't queue build: {retryBody}");
-                                }
-                                if (correlation != null)
-                                    await RunScriptInAllChatWebViewsAsync($"window.__btQueueFailed && window.__btQueueFailed({JsLiteral(correlation)});");
-                                return;
-                            }
-                            // retry came back 2xx — fall through to the success handling below.
-                        }
-                        else
-                        {
-                            ToastEngine.Error("Queue Build", $"Couldn't queue build: {body}");
-                            if (correlation != null)
-                                await RunScriptInAllChatWebViewsAsync($"window.__btQueueFailed && window.__btQueueFailed({JsLiteral(correlation)});");
-                            return;
-                        }
+                        ToastEngine.Error("Queue Build", $"Couldn't queue build: {body}");
+                        if (correlation != null)
+                            await RunScriptInAllChatWebViewsAsync($"window.__btQueueFailed && window.__btQueueFailed({JsLiteral(correlation)});");
                     }
-
+                    else
                     {
                         // Git #942 — the 201 body IS the queue row; capture its
                         // real id, tag the exact button with it, and start
@@ -3433,19 +3408,6 @@ namespace BuildConsole
                 }
             }
             catch { }
-        }
-
-        /// <summary>Git #931 — true when a non-2xx response is really Replit's own "wake up the app"
-        /// dev-server-nap placeholder page (HTML) rather than a genuine JSON API error, so callers can
-        /// show a short human message and retry instead of dumping the raw page markup into a dialog.</summary>
-        private static bool IsLikelyDevServerNapHtml(HttpResponseMessage res, string body)
-        {
-            var mediaType = res.Content.Headers.ContentType?.MediaType;
-            if (!string.IsNullOrEmpty(mediaType) && mediaType.Contains("html", StringComparison.OrdinalIgnoreCase))
-                return true;
-            var trimmed = body.TrimStart();
-            return trimmed.StartsWith("<!DOCTYPE", StringComparison.OrdinalIgnoreCase)
-                || trimmed.StartsWith("<html", StringComparison.OrdinalIgnoreCase);
         }
 
         // ── Menu: Help ────────────────────────────────────────────────────────

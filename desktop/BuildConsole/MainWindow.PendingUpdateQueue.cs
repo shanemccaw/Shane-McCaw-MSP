@@ -123,6 +123,23 @@ namespace BuildConsole
         }
 
         /// <summary>
+        /// Called by <see cref="Controls.BuildQueuePanel"/> each time it actually
+        /// (re)renders the "Queued for Restart" group with a changed item set, so the
+        /// durable spillover log carries a real UI-refresh timestamp next to each
+        /// file-write timestamp <see cref="PersistQueueRequestDuringPendingUpdate"/>
+        /// already writes. The write→display lag Shane reported ("takes a really long
+        /// time to update") is then computable straight from pending-update-queue.log —
+        /// no live repro, and durable across the very restart this feature spans (unlike
+        /// <see cref="ActivityLog"/>, which is in-memory only). Durable-log only
+        /// (mirrorChannel null): a render line can fire on any queue poll, so it must not
+        /// spam the live version-update panel.
+        /// </summary>
+        public static void LogQueuedForRestartRender(int renderedCount) =>
+            PendingUpdateQueueDiag(
+                $"UI refresh — BuildQueuePanel rendered the \"Queued for Restart\" group with {renderedCount} item(s).",
+                mirrorChannel: null);
+
+        /// <summary>
         /// Called from the BT_QUEUE_BUILD handler while <c>_updatePending</c> is set,
         /// in place of hitting the live queue. Appends the request to the on-disk
         /// spillover file (so several Queue clicks during the wait all survive) rather
