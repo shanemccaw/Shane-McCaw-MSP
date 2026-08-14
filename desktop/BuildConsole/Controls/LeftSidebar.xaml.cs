@@ -1446,18 +1446,29 @@ namespace BuildConsole.Controls
         }
 
         // ── CHATS (real GET /extension/board — grouped by linked epic) ──────
+        // Chats tree redesign — Shane: the Chats tree was "hard to see, read,
+        // navigate" while every other panel is "pretty, easy, tight, legible."
+        // Rebuilt to mirror the UI Automation manifest tree (#984, his stated
+        // favourite panel): each epic group now gets its OWN stable palette
+        // colour (a coloured chip + accent-coloured title + a real chat-count
+        // badge) instead of every epic sharing one BlueBrush, its chat leaves
+        // carry a thin epic-coloured left bar (so the whole group reads as one
+        // colour without tinting the title text itself), groups stay collapsed
+        // by default (#885), and the search box above the tree filters it live
+        // (matching epics auto-expand, non-matching drop out) — the exact same
+        // shape #984's RenderManifestTree / MakeAreaHeader / MakeLeafHeader use.
+        //
+        // The network fetch stays here in PopulateChatsTree; the actual tree
+        // BUILD moved into RenderChatsTree so the search box (ChatSearch_
+        // TextChanged) can re-render from the cached board (_lastBoardChats +
+        // _chatEpicById) without re-hitting the dev server — same split #984
+        // uses between PopulateManifestsList and RenderManifestTree.
         public async void PopulateChatsTree()
         {
-            // Git #932 — the tree is fully rebuilt on every populate, so drop
-            // any title blocks registered by the previous build before the
-            // builders below re-register the current ones. Cleared up front so
-            // every path (including the early returns) starts from empty.
-            _chatTitleBlocks.Clear();
-
             if (_api == null || !_api.IsConfigured)
             {
-                ChatsTree.Items.Clear();
-                ChatsTree.Items.Add(new TreeViewItem { Header = "Not connected — see Settings" });
+                _lastBoardChats = new();
+                ShowChatsMessage("Not connected — see Settings");
                 return;
             }
 
@@ -1480,8 +1491,7 @@ namespace BuildConsole.Controls
             }
             catch (Exception ex)
             {
-                ChatsTree.Items.Clear();
-                ChatsTree.Items.Add(new TreeViewItem { Header = $"Couldn't reach the API: {ex.Message}" });
+                ShowChatsMessage($"Couldn't reach the API: {ex.Message}");
                 SyncError?.Invoke(this, $"Chats: {ex.Message}");
                 return;
             }
@@ -1493,6 +1503,8 @@ namespace BuildConsole.Controls
             // cached the last time the tree actually re-rendered.
             _lastBoardChats = board.Chats;
             _chatEpicById = board.Epics.ToDictionary(e => e.Id);
+            _chatsIsStale = isStale;
+            _chatsCachedAtUtc = cachedAtUtc;
 
             // Git #931 — the stale/offline state itself is part of what's
             // "changed" for repaint purposes: going stale->live (or the
@@ -1501,13 +1513,52 @@ namespace BuildConsole.Controls
             var signature = isStale + "|" + System.Text.Json.JsonSerializer.Serialize(board);
             if (signature == _lastBoardSignature) return;
             _lastBoardSignature = signature;
+
+            RenderChatsTree();
+        }
+
+        /// <summary>Chats redesign — the connection/error placeholder path. Kept
+        /// separate from <see cref="RenderChatsTree"/> (which renders real board
+        /// data) so both share the tree-clearing + title-block reset discipline,
+        /// and so the signature is nulled to force a real repaint once the board
+        /// is reachable again.</summary>
+        private void ShowChatsMessage(string message)
+        {
+            _chatTitleBlocks.Clear();
+            ChatsTree.Items.Clear();
+            ChatsTree.Items.Add(new TreeViewItem { Header = message, Foreground = GetBrush("Subtext1Brush") });
+            if (TxtNoChats != null) TxtNoChats.Visibility = Visibility.Collapsed;
+            _lastBoardSignature = null;
+        }
+
+        /// <summary>Chats redesign (mirrors #984's RenderManifestTree) — (re)builds
+        /// the Chats TreeView from the cached board (<see cref="_lastBoardChats"/> +
+        /// <see cref="_chatEpicById"/>), applying the current <see cref="ChatSearch"/>
+        /// text. Epics are colour-coded per epic (a stable hash of the title, so a
+        /// given epic keeps its colour regardless of which others are present),
+        /// sorted alphabetically for a stable top-level index with the synthetic
+        /// "Unlinked" bucket pinned last; leaves sort newest-first. Groups are
+        /// collapsed by default; while searching, epics with a match auto-expand and
+        /// non-matching epics/leaves drop out (an epic whose own title matches shows
+        /// all of its chats).</summary>
+        private void RenderChatsTree()
+        {
+            if (ChatsTree == null) return;
+
+            // Fully rebuilt on every render, so drop the previous build's
+            // registered title blocks before the builders below re-register
+            // the current ones (#932's MaxWidth trimming mechanism).
+            _chatTitleBlocks.Clear();
             ChatsTree.Items.Clear();
 
-            if (isStale)
+            string search = (ChatSearch?.Text ?? "").Trim();
+            bool searching = search.Length > 0;
+
+            if (_chatsIsStale)
             {
                 ChatsTree.Items.Add(new TreeViewItem
                 {
-                    Header = $"⚠ Offline — showing cached chats from {cachedAtUtc?.ToLocalTime():MMM d, h:mm tt}",
+                    Header = $"⚠ Offline — showing cached chats from {_chatsCachedAtUtc?.ToLocalTime():MMM d, h:mm tt}",
                     Foreground = GetBrush("PeachBrush"),
                     IsHitTestVisible = false,
                     Focusable = false,
@@ -1515,148 +1566,183 @@ namespace BuildConsole.Controls
             }
 
             var epicById = _chatEpicById;
-            var byEpic = board.Chats.Where(c => c.EpicId.HasValue).GroupBy(c => c.EpicId!.Value);
-            var unlinked = board.Chats.Where(c => !c.EpicId.HasValue).ToList();
+            var byEpic = _lastBoardChats.Where(c => c.EpicId.HasValue).GroupBy(c => c.EpicId!.Value);
+            var unlinked = _lastBoardChats.Where(c => !c.EpicId.HasValue).ToList();
 
-            // Git #885 (sub-issue of Epic #803, ADHD cleanup) — Shane: "all the
-            // text is a bright white with a scroll to the right and it all
-            // blends together... ADHD style organization." Epic header and
-            // chat leaf titles previously both fell through to the same
-            // inherited (bright-white) Foreground, giving no real color
-            // hierarchy between them. Epic headers now use BlueBrush (the
-            // same brush already used for the header's dot) as the brighter/
-            // primary color; chat leaf titles use the muted Subtext1Brush,
-            // same pattern BuildQueuePanel.xaml.cs already uses for its own
-            // secondary row text. Both titles also switch from a plain
-            // StackPanel to a Grid with a Star-width title column (with
-            // HorizontalContentAlignment="Stretch" on the TreeViewItem so the
-            // header content actually stretches to fill it) plus
-            // TextTrimming="CharacterEllipsis" — the containing ScrollViewer
-            // has HorizontalScrollBarVisibility="Disabled", so an overlong
-            // title used to just clip/overflow instead of truncating.
-            TreeViewItem BuildEpicHeader(string title)
-            {
-                var p = new Grid { Margin = new Thickness(0, 6, 0, 2) };
-                p.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-                p.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-
-                var dot = new System.Windows.Shapes.Ellipse { Width = 7, Height = 7, Fill = GetBrush("BlueBrush"), Margin = new Thickness(0, 0, 7, 0), VerticalAlignment = VerticalAlignment.Center };
-                Grid.SetColumn(dot, 0);
-                p.Children.Add(dot);
-
-                var titleBlock = new TextBlock
-                {
-                    Text = title,
-                    FontSize = 13,
-                    FontWeight = FontWeights.SemiBold,
-                    VerticalAlignment = VerticalAlignment.Center,
-                    Foreground = GetBrush("BlueBrush"),
-                    TextTrimming = TextTrimming.CharacterEllipsis
-                };
-                Grid.SetColumn(titleBlock, 1);
-                p.Children.Add(titleBlock);
-
-                // Git #932 — see ApplyChatTitleMaxWidths: TextTrimming above never
-                // engaged visually because the TreeViewItem's Stretch/Auto
-                // measurement handed the header content effectively unbounded
-                // width, so this epic-header title is registered for an explicit
-                // numeric MaxWidth computed from ChatsTree.ActualWidth.
-                _chatTitleBlocks.Add((titleBlock, EpicTitleWidthReserve));
-
-                // Git #885 — epic groups start collapsed (was IsExpanded = true)
-                // so the tree reads shorter and calmer at a glance; Shane
-                // expands the ones he actually wants to look at.
-                return new TreeViewItem { Header = p, IsExpanded = false, HorizontalContentAlignment = HorizontalAlignment.Stretch, Margin = new Thickness(0, 4, 0, 4) };
-            }
-
-            TreeViewItem BuildChatLeaf(BoardChat chat)
-            {
-                var p = new Grid { Margin = new Thickness(0, 3, 0, 3) };
-                p.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-                p.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-
-                var icon = new TextBlock { Text = "", FontFamily = new FontFamily("Segoe MDL2 Assets"), FontSize = 13, Foreground = GetBrush("BlueBrush"), Margin = new Thickness(0, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center };
-                Grid.SetColumn(icon, 0);
-                p.Children.Add(icon);
-
-                var titleBlock = new TextBlock
-                {
-                    Text = chat.Title,
-                    FontSize = 13,
-                    VerticalAlignment = VerticalAlignment.Center,
-                    Foreground = GetBrush("Subtext1Brush"),
-                    TextTrimming = TextTrimming.CharacterEllipsis
-                };
-                Grid.SetColumn(titleBlock, 1);
-                p.Children.Add(titleBlock);
-
-                // Git #932 — a chat leaf sits one level deeper than an epic
-                // header, so it reserves an extra ~19px of tree indentation on
-                // top of its own expander column; register it with the larger
-                // leaf reserve. See ApplyChatTitleMaxWidths.
-                _chatTitleBlocks.Add((titleBlock, LeafTitleWidthReserve));
-
-                var tvi = new TreeViewItem { Header = p, Tag = chat, HorizontalContentAlignment = HorizontalAlignment.Stretch, Margin = new Thickness(0, 1, 0, 2) };
-
-                // Git #828 - Shane: "I need a way to assign a chat to an
-                // epic in the WPF app." Same POST /chats/ingest the
-                // extensions own "link this chat to that epic" click
-                // already uses (Git #781), just reached from here instead.
-                var cm = new ContextMenu();
-                var miAssign = new MenuItem { Header = "Assign to Epic..." };
-                miAssign.Click += async (_, _) =>
-                {
-                    if (_api == null) return;
-                    var dialog = new AssignEpicDialog(chat.Title, board.Epics);
-                    if (dialog.ShowDialog() != true || dialog.SelectedEpicId == null) return;
-                    try
-                    {
-                        var res = await _api.LinkChatToEpicAsync(chat.ConversationId, dialog.SelectedEpicId.Value);
-                        if (!res.IsSuccessStatusCode)
-                        {
-                            var body = await res.Content.ReadAsStringAsync();
-                            ToastEngine.Error("Assign to Epic", $"Couldn't assign: {body}");
-                            return;
-                        }
-                        _lastBoardSignature = null;
-                        PopulateChatsTree();
-                    }
-                    catch (System.Exception ex)
-                    {
-                        ToastEngine.Error("Assign to Epic", $"Couldn't assign: {ex.Message}");
-                    }
-                };
-                cm.Items.Add(miAssign);
-                tvi.ContextMenu = cm;
-
-                return tvi;
-            }
-
+            // Build (title, chats) groups: real epics first, sorted alphabetically
+            // (a stable top-level index, exactly like #984's alphabetical areas),
+            // with "Unlinked" pinned last as the no-category bucket.
+            var groups = new List<(string Title, List<BoardChat> Chats)>();
             foreach (var grp in byEpic)
             {
                 var title = epicById.TryGetValue(grp.Key, out var epic) ? epic.Title : $"Epic #{grp.Key}";
-                var epicItem = BuildEpicHeader(title);
-                foreach (var chat in grp.OrderByDescending(c => c.UpdatedAt)) epicItem.Items.Add(BuildChatLeaf(chat));
-                ChatsTree.Items.Add(epicItem);
+                groups.Add((title, grp.OrderByDescending(c => c.UpdatedAt).ToList()));
             }
-
+            groups.Sort((a, b) => string.Compare(a.Title, b.Title, StringComparison.OrdinalIgnoreCase));
             if (unlinked.Count > 0)
+                groups.Add(("Unlinked", unlinked.OrderByDescending(c => c.UpdatedAt).ToList()));
+
+            int shown = 0;
+            foreach (var (title, chats) in groups)
             {
-                var unlinkedItem = BuildEpicHeader("Unlinked");
-                foreach (var chat in unlinked.OrderByDescending(c => c.UpdatedAt)) unlinkedItem.Items.Add(BuildChatLeaf(chat));
-                ChatsTree.Items.Add(unlinkedItem);
+                bool epicMatches = searching && title.Contains(search, StringComparison.OrdinalIgnoreCase);
+                var leaves = chats
+                    .Where(c => !searching || epicMatches
+                                || (c.Title ?? "").Contains(search, StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+                if (leaves.Count == 0) continue;
+
+                // Colour by epic title (same stable-hash convention #984 uses for
+                // areas — see AreaBrushKey), so an epic keeps its colour session
+                // to session regardless of which other epics happen to be present.
+                string brushKey = AreaBrushKey(title);
+                var epicItem = BuildChatEpicHeader(title, leaves.Count, brushKey, searching);
+                foreach (var chat in leaves) epicItem.Items.Add(BuildChatLeaf(chat, brushKey));
+                ChatsTree.Items.Add(epicItem);
+                shown += leaves.Count;
             }
 
-            if (ChatsTree.Items.Count == 0)
+            bool empty = shown == 0;
+            if (TxtNoChats != null)
             {
-                ChatsTree.Items.Add(new TreeViewItem { Header = "No chats linked yet." });
+                TxtNoChats.Visibility = empty && !_chatsIsStale ? Visibility.Visible : Visibility.Collapsed;
+                TxtNoChats.Text = searching && empty
+                    ? $"No chats match \"{search}\"."
+                    : "No chats linked yet.";
             }
 
-            // Git #932 — now that every title block for this build is registered,
-            // apply the explicit MaxWidth constraint against the tree's current
-            // width so CharacterEllipsis trimming actually engages.
+            // #932 — now that every title block for this build is registered, apply
+            // the explicit MaxWidth constraint against the tree's current width so
+            // CharacterEllipsis trimming actually engages (long chat/epic titles
+            // still overflow this narrow tree — exactly what #885/#924/#932 fought,
+            // so the proven MaxWidth mechanism is kept under the new look).
             ApplyChatTitleMaxWidths();
         }
+
+        /// <summary>Chats redesign (mirrors #984's MakeAreaHeader) — a colour-coded
+        /// epic row: an 8×8 rounded colour chip, the epic title in that epic's accent
+        /// colour, and a muted chat-count badge (e.g. "War Room  (6)"). The title is
+        /// registered for #932's explicit-MaxWidth trimming.</summary>
+        private TreeViewItem BuildChatEpicHeader(string title, int chatCount, string brushKey, bool searching)
+        {
+            var brush = GetBrush(brushKey);
+            var sp = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 4, 0, 4) };
+
+            sp.Children.Add(new Border
+            {
+                Width = 9,
+                Height = 9,
+                CornerRadius = new CornerRadius(2),
+                Background = brush,
+                Margin = new Thickness(0, 0, 7, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+            });
+
+            var titleBlock = new TextBlock
+            {
+                Text = title,
+                FontSize = 13,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = brush,
+                VerticalAlignment = VerticalAlignment.Center,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+            };
+            sp.Children.Add(titleBlock);
+            _chatTitleBlocks.Add((titleBlock, EpicTitleWidthReserve));
+
+            sp.Children.Add(new TextBlock
+            {
+                Text = $" ({chatCount})",
+                FontSize = 11,
+                Foreground = GetBrush("Subtext0Brush"),
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(4, 0, 0, 0),
+            });
+
+            // Collapsed by default (#885); a search auto-expands matching epics (#984).
+            return new TreeViewItem
+            {
+                Header = sp,
+                IsExpanded = searching,
+                HorizontalContentAlignment = HorizontalAlignment.Stretch,
+                Margin = new Thickness(0, 2, 0, 2),
+            };
+        }
+
+        /// <summary>Chats redesign (mirrors #984's MakeLeafHeader) — a chat leaf with a
+        /// thin epic-coloured left bar + the chat title in muted Subtext1Brush. Title
+        /// registered for #932's MaxWidth trim. Retains #828's "Assign to Epic..."
+        /// right-click, now sourcing its epic list from the cached <see cref="_chatEpicById"/>
+        /// instead of the fetch's board.Epics (identical data, no second round-trip).</summary>
+        private TreeViewItem BuildChatLeaf(BoardChat chat, string brushKey)
+        {
+            var dp = new DockPanel { Margin = new Thickness(0, 2, 0, 2) };
+
+            dp.Children.Add(new Border
+            {
+                Width = 3,
+                CornerRadius = new CornerRadius(1),
+                Background = GetBrush(brushKey),
+                Margin = new Thickness(0, 1, 7, 1),
+            }); // DockPanel.Dock defaults to Left → a full-height vertical bar
+
+            var titleBlock = new TextBlock
+            {
+                Text = chat.Title,
+                FontSize = 12,
+                VerticalAlignment = VerticalAlignment.Center,
+                Foreground = GetBrush("Subtext1Brush"),
+                TextTrimming = TextTrimming.CharacterEllipsis,
+            };
+            dp.Children.Add(titleBlock);
+
+            // #932 — a chat leaf sits one level deeper than an epic header, so it
+            // reserves an extra ~19px of tree indentation on top of its own expander
+            // column; register it with the larger leaf reserve.
+            _chatTitleBlocks.Add((titleBlock, LeafTitleWidthReserve));
+
+            var tvi = new TreeViewItem
+            {
+                Header = dp,
+                Tag = chat,
+                HorizontalContentAlignment = HorizontalAlignment.Stretch,
+                Margin = new Thickness(0, 1, 0, 1),
+            };
+
+            // Git #828 — Shane: "I need a way to assign a chat to an epic in the WPF
+            // app." Same POST /chats/ingest the extension's own "link this chat to
+            // that epic" click already uses (Git #781), just reached from here.
+            var cm = new ContextMenu();
+            var miAssign = new MenuItem { Header = "Assign to Epic..." };
+            miAssign.Click += async (_, _) =>
+            {
+                if (_api == null) return;
+                var dialog = new AssignEpicDialog(chat.Title, _chatEpicById.Values.ToList());
+                if (dialog.ShowDialog() != true || dialog.SelectedEpicId == null) return;
+                try
+                {
+                    var res = await _api.LinkChatToEpicAsync(chat.ConversationId, dialog.SelectedEpicId.Value);
+                    if (!res.IsSuccessStatusCode)
+                    {
+                        var body = await res.Content.ReadAsStringAsync();
+                        ToastEngine.Error("Assign to Epic", $"Couldn't assign: {body}");
+                        return;
+                    }
+                    _lastBoardSignature = null;
+                    PopulateChatsTree();
+                }
+                catch (System.Exception ex)
+                {
+                    ToastEngine.Error("Assign to Epic", $"Couldn't assign: {ex.Message}");
+                }
+            };
+            cm.Items.Add(miAssign);
+            tvi.ContextMenu = cm;
+
+            return tvi;
+        }
+
+        private void ChatSearch_TextChanged(object sender, TextChangedEventArgs e) => RenderChatsTree();
 
         // Git #932 — the Chats tree's CharacterEllipsis trimming (from #885)
         // never engaged visually: a TreeViewItem with HorizontalContentAlignment
@@ -1670,21 +1756,24 @@ namespace BuildConsole.Controls
         // ChatsTree.ActualWidth — an explicit MaxWidth forces trimming to engage
         // regardless of what any ancestor's Stretch/Auto measurement resolves to.
         //
-        // Reserve = everything to the LEFT of the title inside the tree's width:
-        //   Epic header (depth 0): 19px expander column + 14px dot column
-        //     (7px ellipse + 7px right margin) + ~2px tree padding/border + a
-        //     small safety buffer  ->  ~40px.
+        // Reserve = everything ON THE SAME ROW as the title that is NOT the title,
+        // inside the tree's width (redesign updates these for the new #984-style
+        // chip / count-badge / left-bar layout — the title now also reserves the
+        // count badge sitting to its RIGHT so the badge stays on-screen):
+        //   Epic header (depth 0): 19px expander column + ~16px colour-chip column
+        //     (9px chip + 7px right margin) + ~34px trailing count badge
+        //     (" (12)" @ 11px) + ~2px tree padding/border + a small safety buffer
+        //     ->  ~74px.
         //   Chat leaf (depth 1): an extra ~19px of tree indentation (one nesting
-        //     level) on top of its own 19px expander column, plus a ~22px icon
-        //     column (a 13px Segoe MDL2 glyph ~16px + 6px right margin) + padding
-        //     + buffer  ->  ~68px.
+        //     level) on top of its own 19px expander column, plus a ~10px left-bar
+        //     column (3px bar + 7px right margin) + padding + buffer  ->  ~52px.
         // ChatsTree.ActualWidth is the TreeView's viewport width, which already
         // excludes the vertical scrollbar when it appears, so no extra scrollbar
         // subtraction is needed. Over-reserving only trims a few px early (safe);
         // under-reserving would re-introduce the overflow, so the reserves lean
         // conservative.
-        private const double EpicTitleWidthReserve = 40;
-        private const double LeafTitleWidthReserve = 68;
+        private const double EpicTitleWidthReserve = 74;
+        private const double LeafTitleWidthReserve = 52;
         private const double MinTitleWidth = 24;
 
         private readonly List<(TextBlock block, double reserve)> _chatTitleBlocks = new();
@@ -1708,6 +1797,14 @@ namespace BuildConsole.Controls
 
         private Dictionary<int, BoardEpic> _chatEpicById = new();
         private List<BoardChat> _lastBoardChats = new();
+
+        // Chats redesign — the last fetch's stale/offline state + cache timestamp,
+        // held so RenderChatsTree (invoked by the search box, not just the fetch)
+        // can re-render the "⚠ Offline — cached chats from …" banner without a
+        // re-fetch. Mirrors how #984's _manifestEntries lets its search re-render
+        // the tree from cached data.
+        private bool _chatsIsStale;
+        private DateTime? _chatsCachedAtUtc;
 
         /// <summary>Git #829 — MainWindow needs the real epic TITLE (not just its id) for the right panel's "Issues in this epic" header; reuses the same lookup PopulateChatsTree already built rather than a second fetch.</summary>
         public string? GetEpicTitle(int epicId) => _chatEpicById.TryGetValue(epicId, out var epic) ? epic.Title : null;
