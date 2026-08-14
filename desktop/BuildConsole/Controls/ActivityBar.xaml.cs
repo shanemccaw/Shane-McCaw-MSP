@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 
 namespace BuildConsole.Controls
 {
@@ -135,15 +136,18 @@ namespace BuildConsole.Controls
                 };
 
                 var row = new StackPanel { Orientation = Orientation.Horizontal };
-                row.Children.Add(new TextBlock
+
+                var iconGlyph = new TextBlock
                 {
-                    Text = string.IsNullOrWhiteSpace(tool.Icon) ? "" : tool.Icon,
+                    Text = string.IsNullOrWhiteSpace(tool.Icon) ? "" : tool.Icon,
                     FontFamily = new FontFamily("Segoe MDL2 Assets"),
                     FontSize = 14,
+                    Width = 16,
                     Margin = new Thickness(0, 0, 8, 0),
                     VerticalAlignment = VerticalAlignment.Center,
                     Foreground = (Brush)FindResource("BlueBrush")
-                });
+                };
+                row.Children.Add(iconGlyph);
                 row.Children.Add(new TextBlock
                 {
                     Text = tool.Name,
@@ -155,9 +159,59 @@ namespace BuildConsole.Controls
                 entryButton.Content = row;
                 entryButton.Click += WebToolEntry_Click;
                 WebToolsList.Children.Add(entryButton);
+
+                LoadFaviconAsync(tool.Url, iconGlyph, row);
             }
 
             WebToolsPopup.IsOpen = true;
+        }
+
+        /// <summary>Fetches (or reads from the on-disk cache) the real favicon for a Web Tools
+        /// entry's domain and swaps it in for the generic glyph once ready. Never throws and
+        /// never removes the glyph if the fetch fails - the glyph stays as the fallback icon.</summary>
+        private static async void LoadFaviconAsync(string url, TextBlock glyph, StackPanel row)
+        {
+            string? path;
+            try
+            {
+                path = await BuildConsole.Services.FaviconCacheService.GetIconPathAsync(url);
+            }
+            catch
+            {
+                return;
+            }
+
+            if (string.IsNullOrEmpty(path)) return;
+
+            try
+            {
+                var bitmap = new BitmapImage();
+                bitmap.BeginInit();
+                bitmap.CacheOption = BitmapCacheOption.OnLoad;
+                bitmap.UriSource = new Uri(path, UriKind.Absolute);
+                bitmap.EndInit();
+                bitmap.Freeze();
+
+                var image = new Image
+                {
+                    Source = bitmap,
+                    Width = 16,
+                    Height = 16,
+                    Margin = glyph.Margin,
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+
+                var index = row.Children.IndexOf(glyph);
+                if (index >= 0)
+                {
+                    row.Children.RemoveAt(index);
+                    row.Children.Insert(index, image);
+                }
+            }
+            catch
+            {
+                // Corrupt/partial cache file - leave the glyph in place.
+            }
         }
 
         private void WebToolEntry_Click(object sender, RoutedEventArgs e)
