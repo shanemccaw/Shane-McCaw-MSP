@@ -1794,6 +1794,38 @@ namespace BuildConsole.Controls
                 }
             };
             cm.Items.Add(miAssign);
+
+            if (chat.EpicId.HasValue)
+            {
+                var formerEpicId = chat.EpicId.Value;
+                var formerEpicTitle = _chatEpicById.TryGetValue(formerEpicId, out var formerEpic) ? formerEpic.Title : $"Epic #{formerEpicId}";
+                var miUnassign = new MenuItem { Header = "Unassign from Epic" };
+                miUnassign.Click += async (_, _) =>
+                {
+                    if (_api == null) return;
+                    try
+                    {
+                        var res = await _api.UnlinkChatFromEpicAsync(chat.ConversationId);
+                        if (!res.IsSuccessStatusCode)
+                        {
+                            var body = await res.Content.ReadAsStringAsync();
+                            ActivityLog.Log("git-board.assign-chat", $"unassign chat {chat.ConversationId} from epic \"{formerEpicTitle}\" (id {formerEpicId}) FAILED: HTTP {(int)res.StatusCode} {body}");
+                            ToastEngine.Error("Unassign from Epic", $"Couldn't unassign: {body}");
+                            return;
+                        }
+                        ActivityLog.Log("git-board.assign-chat", $"unassigned chat {chat.ConversationId} ({chat.Title}) from epic \"{formerEpicTitle}\" (id {formerEpicId})");
+                        _lastBoardSignature = null;
+                        PopulateChatsTree();
+                    }
+                    catch (System.Exception ex)
+                    {
+                        ActivityLog.Log("git-board.assign-chat", $"unassign chat {chat.ConversationId} from epic \"{formerEpicTitle}\" (id {formerEpicId}) FAILED: {ex.Message}");
+                        ToastEngine.Error("Unassign from Epic", $"Couldn't unassign: {ex.Message}");
+                    }
+                };
+                cm.Items.Add(miUnassign);
+            }
+
             tvi.ContextMenu = cm;
 
             return tvi;

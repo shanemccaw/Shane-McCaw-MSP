@@ -1965,6 +1965,40 @@ router.patch("/admin/build-tracker/chats/:id", requireAdmin, async (req: Request
   }
 });
 
+/**
+ * POST /admin/build-tracker/chats/unassign-epic
+ *
+ * BuildConsole's "Unassign from Epic" right-click action. Looks the chat up
+ * by conversation_id (the desktop app only ever has the conversationId, not
+ * the chat's numeric db id — the /extension/board response doesn't expose
+ * it) and clears its epicId directly. Deliberately does NOT touch issueId —
+ * a chat linked to an issue (whose epic is shown via inheritance, see
+ * /extension/board's `chats` mapping above) isn't "assigned to an epic" in
+ * the sense this action targets; only the chat's own epicId column is a
+ * direct epic assignment.
+ */
+router.post("/admin/build-tracker/chats/unassign-epic", requireAdmin, async (req: Request, res: Response) => {
+  const { conversation_id } = req.body as { conversation_id?: string };
+  if (!conversation_id?.trim()) {
+    res.status(400).json({ error: "conversation_id is required" });
+    return;
+  }
+  const id = conversation_id.trim();
+  try {
+    const [row] = await db
+      .update(btChatsTable)
+      .set({ epicId: null, updatedAt: new Date() })
+      .where(eq(btChatsTable.conversationId, id))
+      .returning();
+    if (!row) { res.status(404).json({ error: "not found" }); return; }
+    log.info({ conversationId: id }, "unassigned chat from epic");
+    res.json({ ...row, claudeUrl: claudeUrl(row.conversationId) });
+  } catch (err) {
+    log.error({ err, conversationId: id }, "POST /chats/unassign-epic failed");
+    res.status(500).json({ error: "Failed to unassign chat" });
+  }
+});
+
 /** DELETE /admin/build-tracker/chats/:id */
 router.delete("/admin/build-tracker/chats/:id", requireAdmin, async (req: Request, res: Response) => {
   const id = parseInt(req.params.id, 10);

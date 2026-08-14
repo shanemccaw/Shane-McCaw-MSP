@@ -365,6 +365,20 @@ namespace BuildConsole.Services
                 force = true,
             }));
 
+        /// <summary>
+        /// "Unassign from Epic" — clears a chat's real epicId server-side via
+        /// POST /chats/unassign-epic (looked up by conversationId, since the
+        /// /extension/board response never exposes the chat's numeric db id).
+        /// On success the chat drops out of its former epic's group and
+        /// falls into the existing "Unlinked" bucket the next time the tree
+        /// re-renders — no client-side grouping change needed.
+        /// </summary>
+        public Task<HttpResponseMessage> UnlinkChatFromEpicAsync(string conversationId) =>
+            TrackAsync("POST chats/unassign-epic", () => _http.PostAsJsonAsync("api/admin/build-tracker/chats/unassign-epic", new
+            {
+                conversation_id = conversationId,
+            }));
+
         /// <summary>Same file-content endpoint the extension's Shane-To-Do 🗄 button uses — reads a real migration file's text straight from GitHub, no local filesystem assumption.</summary>
         public Task<string> GetFileContentAsync(string path) => TrackAsync($"GET file-content {path}", async () =>
         {
