@@ -294,6 +294,7 @@ export default defineConfig({
       // absent rather than an error, and a batch call returns exactly one
       // (the most recent) row per key.
       "src/routes/portal-tenant-check-items.test.ts",
+      "src/lib/__tests__/onedrive-sharing.test.ts",
     ],
     coverage: {
       provider: "v8",

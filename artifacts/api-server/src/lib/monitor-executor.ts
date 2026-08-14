@@ -33,6 +33,7 @@ import {
   type SharePointTenantRef,
 } from "./sharepoint-admin";
 import { normalizeSiteSharing, SHAREPOINT_SITE_SHARING_NORMALIZER } from "./sharepoint-sharing";
+import { normalizeDriveSharing, ONEDRIVE_DRIVE_SHARING_NORMALIZER } from "./onedrive-sharing";
 import { logger } from "./logger";
 const log = logger.child({ channel: "engine.monitor" });
 
@@ -99,6 +100,7 @@ export type FanOutItemNormalizer = (
  */
 export const FAN_OUT_ITEM_NORMALIZERS: Record<string, FanOutItemNormalizer> = {
   [SHAREPOINT_SITE_SHARING_NORMALIZER]: normalizeSiteSharing,
+  [ONEDRIVE_DRIVE_SHARING_NORMALIZER]: normalizeDriveSharing,
 };
 
 function resolveFanOutItemNormalizer(key: string | null | undefined): FanOutItemNormalizer | null {
