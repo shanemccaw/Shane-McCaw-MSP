@@ -1,13 +1,15 @@
 # Agent → BuildConsole trigger surfaces
 
 How an agent (a local Claude Code session, a script) hands work to the
-already‑running BuildConsole. There are **two** surfaces, and the split is
-deliberate — one is a local‑machine protocol, the other is plain HTTP.
+already‑running BuildConsole. The surfaces below split deliberately along one
+line: **a local agent on this machine uses the `shaneapp://` local protocol; a
+genuinely remote/CI caller uses plain HTTP.**
 
 | Need | Surface | Why this one |
 |------|---------|--------------|
 | **Run SQL** | `shaneapp://executeSql` local protocol | SQL runs on BuildConsole's **own direct local Postgres connection** (zero round‑trip to the deployed app); a caller that isn't on this machine can't reach it. |
-| **Run a UI test manifest + get results** | Git #898 HTTP (`/api/admin/deploy/test-run`) | Already covers it. **No protocol needed** — any HTTP‑capable agent calls it directly. |
+| **Run a test manifest — local agent** | `shaneapp://runTest` local protocol | Runs the manifest **in‑process** through the same `RunManifestAsync` pipeline Play Test uses (ALL step types, not just uiSteps) — no HTTP hop, since the agent and BuildConsole are the same machine. |
+| **Run a test manifest — remote/CI caller** | Git #898 HTTP (`/api/admin/deploy/test-run`) | For a caller **not** on this machine. Any HTTP‑capable agent calls it directly. Unchanged by `runTest`. |
 
 ---
 
@@ -140,11 +142,105 @@ deployed exe path changes (a normal `git pull` + redeploy keeps the same path).
 
 ---
 
-## 2. UI test execution — use Git #898 HTTP directly (no protocol)
+## 2. `shaneapp://runTest` — local test-manifest trigger
 
-There is **no** `shaneapp://runTest`, and none is needed. Git #898 already exposes
-UI‑test execution over plain HTTP, so any HTTP‑capable agent drives it directly
-against the dev api‑server. Same bearer token BuildConsole/Build Tracker use
+The local‑agent counterpart to executeSql, for running a whole **test manifest**.
+It runs the manifest **in‑process** through the exact same `RunManifestAsync`
+pipeline a Play Test / manifest double‑click uses — every step type it supports
+(apiTests, graphTests, postGraphApiTests, zohoTests, uiSteps, powerShellVerify),
+not just uiSteps. `shaneapp://uiTest` is accepted as an alias and does the same
+thing (the name predates realizing it's not UI‑specific).
+
+### Why local and not the #898 HTTP path
+Git #898 (section 3 below) exposes test execution over HTTP for a **remote** caller
+(a CI box not on this machine): create run → BuildConsole polls `/next` → runs →
+POSTs `/complete` → the caller polls `/:runId`. That whole round‑trip through the
+deployed api‑server is pure overhead when the agent is a **local** Claude Code
+session on the same machine as BuildConsole. `runTest` skips it: the launch is
+couriered straight to the running instance (`Services/ShaneAppProtocol.cs`) and
+`RunManifestAsync` is invoked directly — no network hop. #898's HTTP endpoint stays
+as‑is for the genuinely remote case.
+
+### The invocation contract
+
+```
+shaneapp://runTest?file=<manifest filename>&resultRef=<optional out path>&src=<optional caller tag>
+```
+
+| Query param | Required | Meaning |
+|-------------|----------|---------|
+| `file` | **yes** | Manifest to run. A bare `{feature}.json` filename resolved by searching `test-manifests/` recursively (the same resolution #898/#964 use since #960 moved manifests into `{area}/` subdirs); an absolute or repo‑relative existing path is honored directly too. (`ref=` is accepted as a fallback alias for this.) |
+| `resultRef` | no | Path to write the JSON result envelope to. Defaults to `%TEMP%\shaneapp-runTest-<file>.result.json` (predictable, so a caller can read it without passing `resultRef`). |
+| `src` | no | Free‑text caller tag, logged verbatim as the source (`unknown` when absent). |
+
+The action name is the URI **authority** (`runTest`/`uiTest`); it is case‑insensitive.
+
+### How to invoke it (PowerShell)
+
+```powershell
+$file = "hello-world-ui.json"
+$out  = Join-Path $env:TEMP "shaneapp-runTest-$file.result.json"
+Remove-Item $out -ErrorAction SilentlyContinue   # clear any stale result first
+
+Start-Process ("shaneapp://runTest?src=claude-code&file=" + [uri]::EscapeDataString($file))
+
+# Poll for the fresh result file, then read it:
+while (-not (Test-Path $out)) { Start-Sleep -Milliseconds 300 }
+$r = Get-Content $out -Raw | ConvertFrom-Json
+"{0}: {1}/{2} steps passed" -f (@{$true='PASS';$false='FAIL'}[$r.ok]), $r.passedCount, $r.stepCount
+```
+
+### The result envelope
+
+BuildConsole writes JSON to `resultRef` (or the temp default). A top‑line summary a
+CLI agent can branch on immediately, plus the **full `ManifestRunResult`** (the same
+shape `test-results/*.json` and #898's HTTP delivery use):
+
+```jsonc
+{
+  "ok": true,                 // false if any step failed / it couldn't run
+  "error": null,              // reason it couldn't run, or the "N of M steps failed" summary
+  "action": "runTest",
+  "source": "claude-code",    // whatever ?src= was
+  "ranAtUtc": "2026-08-13T...Z",
+  "manifestFile": "hello-world-ui.json",
+  "manifestPath": "test-manifests/smoke/hello-world-ui.json",  // repo-relative, resolved
+  "issue": 1011,
+  "feature": "...",
+  "stepCount": 6,
+  "passedCount": 6,
+  "failedCount": 0,
+  "result": { /* full ManifestRunResult — Steps[] with per-step pass/fail, timings, etc. */ }
+}
+```
+
+### Concurrency & interactivity
+`RunManifestAsync` drives the **one** shared TestRunnerWindow/WebView2, which can't
+service two runs at once. A `runTest` therefore takes the **same latch** #898's
+remote poll uses (`_testTriggerBusy`): if a remote OR local run is already going it
+**refuses** (envelope `ok:false`, "a test run is already in progress — retry
+shortly") rather than corrupting the in‑flight run, and while it runs the remote poll
+won't claim one. Holding that latch also makes the run **non‑interactive** (no
+device‑code / screenshot‑review modals) — correct for an agent polling a result file,
+which a blocking modal would otherwise strand.
+
+### Logging
+Every invocation lands on the same **`sql-runner.protocol`** ActivityLog channel as
+executeSql (source/action/file + the real outcome: manifest resolved, steps
+passed/failed, elapsed ms, result path — or the exact reason it couldn't run).
+
+### One‑time setup
+The **same** `shaneapp://` registration executeSql uses (setup-shaneapp-protocol.ps1)
+already covers `runTest` — the scheme is registered once, all actions ride it. No
+extra setup.
+
+---
+
+## 3. Remote/CI test execution — Git #898 HTTP (no local machine required)
+
+When the caller is **not** on this machine (a future CI runner), use Git #898's HTTP
+endpoint instead of `runTest`. Any HTTP‑capable agent drives it directly against the
+dev api‑server. Same bearer token BuildConsole/Build Tracker use
 (`BUILD_TRACKER_INGEST_TOKEN`, via `requireAdminOrIngestToken`).
 
 **Flow** (agent ↔ api‑server; the already‑running BuildConsole is what actually

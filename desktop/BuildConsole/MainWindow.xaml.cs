@@ -4290,10 +4290,21 @@ namespace BuildConsole
                 BuildConsole.Services.ActivityLog.Log(ch,
                     $"Invoked: action='{req.Action}' src='{src}' ref='{req.Ref ?? "(none)"}'.");
 
+                // runTest / uiTest — run a full test manifest IN-PROCESS through the exact
+                // RunManifestAsync pipeline Play Test uses (ALL step types, not just uiSteps).
+                // Deliberately LOCAL: no HTTP round-trip to #898, since the agent and
+                // BuildConsole are on the same machine. See MainWindow.ShaneAppRunTest.cs.
+                if (string.Equals(req.Action, "runTest", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(req.Action, "uiTest", StringComparison.OrdinalIgnoreCase))
+                {
+                    await HandleShaneAppRunTestAsync(req, src, ch);
+                    return;
+                }
+
                 if (!string.Equals(req.Action, "executeSql", StringComparison.OrdinalIgnoreCase))
                 {
                     BuildConsole.Services.ActivityLog.Log(ch,
-                        $"Unsupported action '{req.Action}' — only executeSql is handled (test execution goes over #898 HTTP, not this protocol). Ignoring.");
+                        $"Unsupported action '{req.Action}' — supported: executeSql (local SQL), runTest/uiTest (local manifest run). Ignoring.");
                     return;
                 }
 
