@@ -143,8 +143,12 @@ namespace BuildConsole
 
         /// <summary>Backs the live "Task Checklist" side panel (Git #980 follow-on): checklist items
         /// extracted from every slot's reported progress via <see cref="ChecklistExtractor"/>, attributed
-        /// per build. Bound to ChecklistPanel in XAML; mutated only on the UI-thread poll tick.</summary>
-        private readonly Controls.TaskChecklistViewModel _checklist = new();
+        /// per build. Bound to ChecklistPanel in XAML; mutated only on the UI-thread poll tick.
+        /// The app-wide <see cref="Controls.TaskChecklistViewModel.Shared"/> singleton — Focus Mode's
+        /// strip reads the very same instance so its live checklist band reflects #28's real detection
+        /// with no second parser. Cleared when this window closes (see the Closed handler) so each
+        /// Build Watch session starts fresh, exactly as it did when this was a per-window field.</summary>
+        private readonly Controls.TaskChecklistViewModel _checklist = Controls.TaskChecklistViewModel.Shared;
 
         // Theme brushes (resolved once)
         private readonly Brush _emptyBorder;
@@ -228,7 +232,14 @@ namespace BuildConsole
                 _pollTimer.Start();
                 _ = PollAsync();
             };
-            Closed += (s, e) => { _pollTimer?.Stop(); _elapsedTimer?.Stop(); };
+            Closed += (s, e) =>
+            {
+                _pollTimer?.Stop();
+                _elapsedTimer?.Stop();
+                // Reset the shared checklist tracker so the next Build Watch session starts clean and
+                // Focus Mode's band doesn't linger stale rows for builds we're no longer detecting.
+                _checklist.Clear();
+            };
             LocationChanged += (s, e) => PersistBounds();
             SizeChanged += (s, e) => PersistBounds();
         }
@@ -339,7 +350,7 @@ namespace BuildConsole
                 var line = raw.TrimEnd('\r');
                 var marker = ChecklistExtractor.TryParse(line, out var item);
                 if (marker == ChecklistExtractor.Marker.None) continue;
-                _checklist.Ingest(slot.QueueItemId, ChecklistBuildLabel(slot), marker, item);
+                _checklist.Ingest(slot.QueueItemId, ChecklistBuildLabel(slot), slot.GithubNumber, marker, item);
             }
         }
 

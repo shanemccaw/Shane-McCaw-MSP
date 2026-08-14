@@ -17,6 +17,9 @@ namespace BuildConsole.Controls
         /// <summary>Which live build (queue item) reported this task — items are attributed per build so 8 concurrent agents don't blur into one list, and matching is scoped to a single build.</summary>
         public int QueueItemId { get; }
 
+        /// <summary>The GitHub issue number this build is tied to (null for a local / unattributed build). Recorded so Focus Mode can surface only on-milestone builds' checklists — via <see cref="Services.FocusModeService.IsIssueInActiveMilestone"/> — without re-parsing <see cref="BuildLabel"/>.</summary>
+        public int? GithubNumber { get; }
+
         /// <summary>Short human label for the source build, e.g. "GH #984" or "queue #12".</summary>
         public string BuildLabel { get; }
 
@@ -39,10 +42,11 @@ namespace BuildConsole.Controls
         /// <summary>The checkbox glyph the view renders — a hollow box while pending, a check once done. (The green tint is applied by a DataTrigger on <see cref="Done"/> in XAML.)</summary>
         public string Glyph => _done ? "✔" : "☐"; // ✔ / ☐
 
-        public ChecklistItemViewModel(int queueItemId, string buildLabel, string text, bool done)
+        public ChecklistItemViewModel(int queueItemId, string buildLabel, int? githubNumber, string text, bool done)
         {
             QueueItemId = queueItemId;
             BuildLabel = buildLabel;
+            GithubNumber = githubNumber;
             Text = text;
             Normalized = ChecklistExtractor.Normalize(text);
             _done = done;
@@ -68,6 +72,15 @@ namespace BuildConsole.Controls
         /// <summary>A near-identity floor used only to suppress duplicate PENDING rows when the same item is reported again — higher than <see cref="MatchThreshold"/> so we don't fold two genuinely different pending tasks together.</summary>
         private const double DedupeThreshold = 0.82;
 
+        /// <summary>
+        /// The single app-wide checklist tracker. Build Watch feeds it (its poll tick's
+        /// <see cref="Ingest"/> calls) and clears it when the window closes; Focus Mode's strip
+        /// (<see cref="FocusModeBar"/>) reads this very same instance, so the two surfaces show one
+        /// truth off #28's one detector — never a second parser. All access is on the WPF UI thread
+        /// (Build Watch's poll tick and Focus Mode's bar both run there), so no locking is needed.
+        /// </summary>
+        public static TaskChecklistViewModel Shared { get; } = new();
+
         public ObservableCollection<ChecklistItemViewModel> Items { get; } = new();
 
         private string _summary = "No checklist items detected yet.";
@@ -81,16 +94,16 @@ namespace BuildConsole.Controls
         /// Pending/Done result from <see cref="ChecklistExtractor.TryParse"/>; callers never pass
         /// <see cref="ChecklistExtractor.Marker.None"/>. Returns true if the list changed.
         /// </summary>
-        public bool Ingest(int queueItemId, string buildLabel, ChecklistExtractor.Marker marker, string text)
+        public bool Ingest(int queueItemId, string buildLabel, int? githubNumber, ChecklistExtractor.Marker marker, string text)
         {
             bool changed = marker == ChecklistExtractor.Marker.Done
-                ? IngestDone(queueItemId, buildLabel, text)
-                : IngestPending(queueItemId, buildLabel, text);
+                ? IngestDone(queueItemId, buildLabel, githubNumber, text)
+                : IngestPending(queueItemId, buildLabel, githubNumber, text);
             if (changed) Recompute();
             return changed;
         }
 
-        private bool IngestPending(int queueItemId, string buildLabel, string text)
+        private bool IngestPending(int queueItemId, string buildLabel, int? githubNumber, string text)
         {
             // Already tracking this (or a near-identical) task for this build? Do nothing —
             // re-printing the same unchecked line each turn shouldn't stack duplicates. Note we
@@ -99,11 +112,11 @@ namespace BuildConsole.Controls
             var existing = BestMatch(queueItemId, text, DedupeThreshold);
             if (existing != null) return false;
 
-            Items.Add(new ChecklistItemViewModel(queueItemId, buildLabel, text, done: false));
+            Items.Add(new ChecklistItemViewModel(queueItemId, buildLabel, githubNumber, text, done: false));
             return true;
         }
 
-        private bool IngestDone(int queueItemId, string buildLabel, string text)
+        private bool IngestDone(int queueItemId, string buildLabel, int? githubNumber, string text)
         {
             // Prefer flipping an existing PENDING item for this build; fall back to matching an
             // already-done one (idempotent re-report) before creating anything new.
@@ -120,7 +133,7 @@ namespace BuildConsole.Controls
 
             // Reported complete with no pending counterpart we can confidently tie it to —
             // record it as an already-done row rather than dropping the signal.
-            Items.Add(new ChecklistItemViewModel(queueItemId, buildLabel, text, done: true));
+            Items.Add(new ChecklistItemViewModel(queueItemId, buildLabel, githubNumber, text, done: true));
             return true;
         }
 
@@ -152,6 +165,16 @@ namespace BuildConsole.Controls
                 if (Items[i].QueueItemId == queueItemId) { Items.RemoveAt(i); removed = true; }
             }
             if (removed) Recompute();
+        }
+
+        /// <summary>Drops every tracked item — called when the Build Watch window closes so a fresh
+        /// session starts clean (preserving #28's original per-window-instance behaviour now that this
+        /// is an app-wide singleton) and nothing lingers/leaks across window open-close cycles.</summary>
+        public void Clear()
+        {
+            if (Items.Count == 0) return;
+            Items.Clear();
+            Recompute();
         }
 
         private void Recompute()

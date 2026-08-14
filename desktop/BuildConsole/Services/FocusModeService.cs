@@ -202,6 +202,18 @@ namespace BuildConsole.Services
             return _issueToMilestone.Count == 0; // cold map: don't hide everything
         }
 
+        /// <summary>Strict "this issue genuinely belongs to the ACTIVE milestone" test. Unlike
+        /// <see cref="IsIssueInFocus"/> — whose job is "should this be shown / not hidden", so it errs
+        /// toward SHOWING (null/local numbers and a cold map both pass, since you never hide the running
+        /// build) — this returns true only on a positive, warm-map milestone match. The Focus checklist
+        /// band uses it to surface only on-milestone builds' progress, never a local/off-milestone build.</summary>
+        public bool IsIssueInActiveMilestone(int? githubNumber)
+        {
+            if (!IsActive || githubNumber is null || githubNumber.Value <= 0) return false;
+            return _issueToMilestone.TryGetValue(githubNumber.Value, out var ms)
+                   && ms == _state.ActiveMilestoneNumber;
+        }
+
         /// <summary>Chats tree: resolve the chat's issue (direct, or via its epic's issue number)
         /// then apply <see cref="IsIssueInFocus"/> semantics. Unlinked chats are hidden while
         /// focused (they belong to no milestone), but never when the map is cold.</summary>
