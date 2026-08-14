@@ -93,9 +93,8 @@ namespace BuildConsole
         private string _whatsNewVersion = "";
         private List<string> _whatsNewTitles = new();
         private int _whatsNewMore;
-        /// <summary>Open-issue-number cache for the Home "Done, waiting for you" section — the same GitHubIssuesService source the Build Queue panel uses, refreshed on the same ~60s cadence rather than every roll-up tick.</summary>
+        /// <summary>Open-issue-number cache for the Home "Done, waiting for you" section (a `gh` CLI read). Manual-only GitHub (Shane, 2026-08-14): refreshed ONLY on a force roll-up (Home-tab open/refresh), no longer on a ~60s background cadence — the background 10s tick keeps the local-dev-server queue live without touching GitHub.</summary>
         private HashSet<int> _homeOpenIssueNumbers = new();
-        private DateTime _homeOpenNumbersFetchedAt = DateTime.MinValue;
         /// <summary>Content signature of the last Running/Done render — skips the re-render (and its section-render log) on a 10s tick whose data is identical, same anti-flicker pattern as BuildQueuePanel's _lastQueueSignature.</summary>
         private string? _homeRollupSignature;
 
@@ -1837,15 +1836,23 @@ namespace BuildConsole
                 try { queue = await _buildTrackerApi.GetQueueAsync(); }
                 catch { return; } // best-effort — keep whatever's already rendered
 
-                // "Done, waiting for you" needs the open-issue set — the same
-                // GitHubIssuesService source the Build Queue panel uses, on the same
-                // ~60s cadence (not every tick).
-                if (force || (DateTime.Now - _homeOpenNumbersFetchedAt).TotalSeconds >= 60)
+                // Manual-only GitHub (Shane, 2026-08-14): "Done, waiting for you"
+                // needs the open-issue set (a `gh` CLI call). This USED to auto-
+                // refresh every ~60s the whole time the Home tab was open — real,
+                // recurring GitHub traffic on the shared 5,000/hr limit ("this app
+                // is killing my git connections"). It now fetches ONLY on a force
+                // refresh: opening the Home tab (OpenHomeTab passes force:true)
+                // re-syncs it once, and that's the manual trigger for now. The
+                // background 10s roll-up tick (force:false) still keeps the live
+                // Running list fresh from the LOCAL dev-server queue, but no longer
+                // touches GitHub. Logged on github.manual-refresh (attributable).
+                if (force)
                 {
                     try
                     {
                         _homeOpenIssueNumbers = await BuildConsole.Services.GitHubIssuesService.GetOpenIssueNumbersAsync();
-                        _homeOpenNumbersFetchedAt = DateTime.Now;
+                        BuildConsole.Services.ActivityLog.Log("github.manual-refresh",
+                            $"Home 'Done, waiting for you' [Home-tab open/refresh]: {_homeOpenIssueNumbers.Count} open issue number(s) via gh CLI");
                     }
                     catch { /* keep the last-known open-issue set */ }
                 }

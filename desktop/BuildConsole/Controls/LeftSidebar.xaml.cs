@@ -227,11 +227,18 @@ namespace BuildConsole.Controls
         /// </summary>
         private void BtnRefreshGitBoard_Click(object sender, RoutedEventArgs e)
         {
-            ActivityLog.Log("git-board.refresh", "manual refresh clicked");
-            // Git #923 — a deliberate click should always mean a real,
-            // uncached fetch and a guaranteed repaint, not "maybe, if the
-            // 5-minute milestone cache happens to have expired and
-            // something in the open-issues list happens to have moved."
+            // Manual-only GitHub (Shane, 2026-08-14): this is now the PRIMARY
+            // trigger for Git Board GitHub traffic — the background poll was
+            // removed. Logged on the shared github.manual-refresh channel (source
+            // here; the real outcome/count follows on git-board.data) so every
+            // GitHub call this app makes is attributable to a real click.
+            ActivityLog.Log("github.manual-refresh",
+                "Git Board [manual Refresh click]: forcing a fresh GitHub fetch (GraphQL issues + REST milestones + blocked_by).");
+            // Git #923 — a deliberate click should always mean a real, uncached
+            // fetch and a guaranteed repaint. A manual refresh also re-runs the
+            // blocked_by sweep immediately (bypass its 3-min throttle), since the
+            // whole point of clicking Refresh is "re-check GitHub right now."
+            _lastBlockedEnrichUtc = DateTime.MinValue;
             PopulateGitTrackerBoard(forceFresh: true);
         }
 
@@ -244,14 +251,14 @@ namespace BuildConsole.Controls
         private BuildTrackerApiClient? _api;
         private DispatcherTimer? _pollTimer;
 
-        // Git #876 (reopened) — the Git Board's hands-off background GitHub poll
-        // runs on this slow cadence (minutes), independent of the 20s chat tick
-        // that shares the same DispatcherTimer. Tab-switch (SwitchView) and the
-        // manual Refresh button both still paint the board immediately; this only
-        // paces the background refresh so an idle Issues tab isn't re-hitting
-        // GitHub every 20s.
-        private DateTime _lastGitBoardPollUtc = DateTime.MinValue;
-        private static readonly TimeSpan GitBoardBackgroundPollInterval = TimeSpan.FromMinutes(2);
+        // Manual-only GitHub (Shane, 2026-08-14): the Git Board's hands-off
+        // background GitHub poll was REMOVED entirely — "this app is killing my
+        // git connections... turn git into a manual refresh." The Git Board now
+        // fetches GitHub ONLY on an explicit user action: opening the Issues tab
+        // (SwitchView -> PopulateGitTrackerBoard) or the manual Refresh button
+        // (BtnRefreshGitBoard_Click). The shared _pollTimer below no longer
+        // touches GitHub at all — it only refreshes the Chats tree, which hits
+        // the LOCAL DEV SERVER (GET /extension/board), not GitHub's API.
 
         /// <summary>Git #876 (reopened) — true only when the BuildConsole window hosting this sidebar is genuinely on screen (present, visible, not minimized). The background GitHub/board/chat polls are suppressed entirely otherwise: "heavy traffic for no reason" was the app polling every 20s while minimized or hidden.</summary>
         private bool IsHostWindowVisible()
@@ -281,38 +288,24 @@ namespace BuildConsole.Controls
                 _pollTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(20) };
                 _pollTimer.Tick += (_, _) =>
                 {
-                    // Git #876 (reopened) — Shane: "heavy GitHub API traffic for
-                    // no reason." A big part of that "no reason" was this poll
-                    // firing every 20s all day even while BuildConsole was
-                    // minimized/hidden behind other windows. Never poll ANYTHING
-                    // while the host window isn't actually on screen — no visible
-                    // window = no reason to be talking to GitHub (or the dev
-                    // server) at all.
+                    // Never poll while the host window isn't on screen — no visible
+                    // window = no reason to be talking to the dev server at all.
                     if (!IsHostWindowVisible()) return;
 
-                    // GitHub Git Board: still gated on the Issues view being the
-                    // visible one (#863), and now ALSO on its own slow background
-                    // cadence (#876) — minutes, not the 20s chat tick. The board
-                    // already repaints immediately on tab-switch (SwitchView) and
-                    // on the manual Refresh button, so this timer only governs the
-                    // hands-off background refresh, where GitHub state doesn't move
-                    // second-to-second and 20s was pure rate-limit burn.
-                    if (_currentView == "Issues"
-                        && DateTime.UtcNow - _lastGitBoardPollUtc >= GitBoardBackgroundPollInterval)
-                    {
-                        _lastGitBoardPollUtc = DateTime.UtcNow;
-                        PopulateGitTrackerBoard();
-                        GitHubApiClient.LogRestTrafficSummary("git-board background poll");
-                    }
-                    // Chats hits the local dev server, not GitHub, so it keeps the
-                    // 20s cadence — but only while visible, per the gate above.
+                    // Manual-only GitHub (Shane, 2026-08-14): the Git Board GitHub
+                    // fetch that USED to run here on a background cadence is GONE —
+                    // it now happens only on an explicit user action (opening the
+                    // Issues tab, or the manual Refresh button). This timer no
+                    // longer touches GitHub. It only refreshes the Chats tree,
+                    // which hits the LOCAL DEV SERVER (GET /extension/board), not
+                    // GitHub, so it doesn't consume the shared 5,000/hr rate limit.
                     PopulateChatsTree();
                 };
                 _pollTimer.Start();
                 ActivityLog.Log("git-board.traffic",
-                    "Git Board poll reconfigured (#876): was every 20s whenever the Issues view was selected (fired even while minimized/hidden) "
-                    + $"-> now every {GitBoardBackgroundPollInterval.TotalMinutes:0} min, and only while the window is actually visible. "
-                    + "GitHub REST reads now send conditional ETag requests, so an unchanged poll returns 304 and is free of the 5,000/hr limit.");
+                    "Git Board background GitHub poll DISABLED (Shane: manual-refresh-only, to stop rate-limit burn). "
+                    + "The 20s shared timer now refreshes only the Chats tree (local dev server, not GitHub); "
+                    + "Git Board GitHub traffic fires solely on tab-open (SwitchView) or the manual Refresh button.");
             }
         }
 

@@ -121,13 +121,6 @@ namespace BuildConsole.Controls
 
         public BuildQueuePanel() => InitializeComponent();
 
-        /// <summary>Git #876 (reopened) — true only when the BuildConsole window hosting this panel is genuinely on screen (present, visible, not minimized). The background `gh` CLI GitHub polls are suppressed entirely otherwise, so a minimized/hidden app stops burning the shared 5,000/hr rate limit for no reason.</summary>
-        private bool IsHostWindowVisible()
-        {
-            var w = Window.GetWindow(this);
-            return w != null && w.IsVisible && w.WindowState != WindowState.Minimized;
-        }
-
         /// <summary>Called once from MainWindow with the shared API client — starts polling immediately. `watcher` (Git #820) may be null (e.g. claude.exe not found) - Stop/Run Now degrade gracefully when it is, since those need a real local process handle/launcher.</summary>
         public void Initialize(BuildTrackerApiClient api, Services.QueueWatcherService? watcher = null)
         {
@@ -142,47 +135,22 @@ namespace BuildConsole.Controls
             _sessionsPollTimer.Start();
             _ = RefreshActiveSessionsAsync();
 
-            // Git #848 — same reasoning: real GitHub state via the local
-            // `gh` CLI directly, not bt_build_queue/the server at all, so it
-            // polls unconditionally too.
-            // Git #876 (reopened) — Shane: still crossing GitHub's 5,000/hour
-            // rate limit. This timer and _waitingOnMePollTimer below both ran
-            // unconditionally at 20s regardless of which tab/view is focused
-            // or whether the panel is even visible — two real `gh` CLI calls
-            // every 20s, all day, every time the app is open (~360 calls/hour
-            // combined, on top of the Git Board's own traffic). Neither
-            // fetch's own content changes anywhere near that fast (labels
-            // don't flip in-flight/Shane-To-Do multiple times a minute), so
-            // both moved to 60s — a real 3x cut to this panel's steady-state
-            // GitHub traffic with no loss of correctness (the content-
-            // signature guard already in RenderIssueList/RenderInFlightGrouped
-            // still skips a no-op re-render either way).
-            // Git #876 (reopened) — Shane: "heavy GitHub API traffic for no
-            // reason." These three `gh` CLI reads each hit GitHub's REST API
-            // (gh uses it under the hood, sharing the same 5,000/hr account
-            // limit as the Git Board), and #876's earlier pass only slowed them
-            // 20s -> 60s: they still fired unconditionally, all day, even while
-            // BuildConsole was minimized/hidden. Now every background tick is
-            // gated on the window actually being on screen (initial immediate
-            // paint on Initialize is kept). No visible window = no reason to be
-            // polling GitHub.
-            _inFlightPollTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(60) };
-            _inFlightPollTimer.Tick += async (_, _) => { if (IsHostWindowVisible()) await RefreshInFlightIssuesAsync(); };
-            _inFlightPollTimer.Start();
-            _ = RefreshInFlightIssuesAsync();
-
-            // Git #850 — same direct-gh-CLI reasoning, "Shane To-Do" label.
-            _waitingOnMePollTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(60) };
-            _waitingOnMePollTimer.Tick += async (_, _) => { if (IsHostWindowVisible()) await RefreshWaitingOnMeAsync(); };
-            _waitingOnMePollTimer.Start();
-            _ = RefreshWaitingOnMeAsync();
-
-            // Git #905 — same direct-gh-CLI reasoning as In-Flight/To-Do above,
-            // just "which issue numbers are open" instead of a label filter.
-            _completedPollTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(60) };
-            _completedPollTimer.Tick += async (_, _) => { if (IsHostWindowVisible()) await RefreshCompletedAsync(); };
-            _completedPollTimer.Start();
-            _ = RefreshCompletedAsync();
+            // Manual-only GitHub (Shane, 2026-08-14): these three tiles each read
+            // GitHub via the `gh` CLI — In-Flight (issues labelled in-flight),
+            // To-Do ("Shane To-Do" label), Completed (the open-issue-number set).
+            // They USED to poll on their own 60s DispatcherTimers, all day, every
+            // time the app was open — real, continuous GitHub traffic sharing the
+            // account's 5,000/hr limit. Shane: "this app is killing my git
+            // connections... turn git into a manual refresh. I hit it when I know
+            // things have changed instead of this automatic stuff." Those three
+            // background timers are GONE. Each tile loads ONCE here (so the panel
+            // isn't blank at startup) and otherwise refreshes ONLY when Shane
+            // clicks the panel header's ⟳ Refresh button (BtnRefreshGitHubTiles_
+            // Click). Every fetch — initial or manual — is logged on the
+            // github.manual-refresh channel so all GitHub traffic is attributable.
+            _ = RefreshInFlightIssuesAsync("initial load");
+            _ = RefreshWaitingOnMeAsync("initial load");
+            _ = RefreshCompletedAsync("initial load");
 
             if (!api.IsConfigured)
             {
@@ -352,14 +320,19 @@ namespace BuildConsole.Controls
         /// round-trip, same self-contained polling shape as
         /// RefreshActiveSessionsAsync above.
         /// </summary>
-        private DispatcherTimer? _inFlightPollTimer;
         private string? _lastInFlightSignature;
 
-        private async System.Threading.Tasks.Task RefreshInFlightIssuesAsync()
+        /// <summary>Manual-only GitHub (Shane, 2026-08-14): no longer polled on a
+        /// timer — called once on Initialize ("initial load") and thereafter only
+        /// from the panel's ⟳ Refresh button ("manual Refresh click"). Logs the
+        /// real `gh` fetch + outcome on github.manual-refresh so this tile's GitHub
+        /// traffic is fully attributable.</summary>
+        private async System.Threading.Tasks.Task RefreshInFlightIssuesAsync(string trigger)
         {
             List<Services.GitHubIssueSummary> issues;
             try { issues = await Services.GitHubIssuesService.ListOpenByLabelAsync("in-flight"); }
-            catch { return; } // best-effort - a gh CLI hiccup shouldn't blank out what's already shown
+            catch { ActivityLog.Log("github.manual-refresh", $"In-Flight tile [{trigger}]: gh CLI fetch FAILED"); return; } // best-effort - a gh CLI hiccup shouldn't blank out what's already shown
+            ActivityLog.Log("github.manual-refresh", $"In-Flight tile [{trigger}]: {issues.Count} open in-flight issue(s) via gh CLI");
 
             var signature = System.Text.Json.JsonSerializer.Serialize(issues);
             if (signature == _lastInFlightSignature) return;
@@ -417,14 +390,17 @@ namespace BuildConsole.Controls
         /// etc), applied by Claude at the DONE bookend and cleared only by
         /// Shane once actually done. Same direct-gh-CLI shape as In-Flight.
         /// </summary>
-        private DispatcherTimer? _waitingOnMePollTimer;
         private string? _lastWaitingOnMeSignature;
 
-        private async System.Threading.Tasks.Task RefreshWaitingOnMeAsync()
+        /// <summary>Manual-only GitHub (Shane, 2026-08-14): no longer polled on a
+        /// timer — "initial load" on Initialize, then only the ⟳ Refresh button.
+        /// Logs the real `gh` fetch + outcome on github.manual-refresh.</summary>
+        private async System.Threading.Tasks.Task RefreshWaitingOnMeAsync(string trigger)
         {
             List<Services.GitHubIssueSummary> issues;
             try { issues = await Services.GitHubIssuesService.ListOpenByLabelAsync("Shane To-Do"); }
-            catch { return; }
+            catch { ActivityLog.Log("github.manual-refresh", $"To-Do tile [{trigger}]: gh CLI fetch FAILED"); return; }
+            ActivityLog.Log("github.manual-refresh", $"To-Do tile [{trigger}]: {issues.Count} open 'Shane To-Do' issue(s) via gh CLI");
 
             var signature = System.Text.Json.JsonSerializer.Serialize(issues);
             if (signature == _lastWaitingOnMeSignature) return;
@@ -507,14 +483,19 @@ namespace BuildConsole.Controls
         /// against whatever open-numbers snapshot is currently cached,
         /// without needing its own `gh` call every 15s.
         /// </summary>
-        private DispatcherTimer? _completedPollTimer;
         private HashSet<int> _lastOpenIssueNumbers = new();
         private string? _lastCompletedSignature;
 
-        private async System.Threading.Tasks.Task RefreshCompletedAsync()
+        /// <summary>Manual-only GitHub (Shane, 2026-08-14): no longer polled on a
+        /// timer — "initial load" on Initialize, then only the ⟳ Refresh button.
+        /// (RenderCompletedFromCache is still called cheaply from the 15s queue
+        /// poll, but that's local dev-server data — no `gh`/GitHub call.) Logs the
+        /// real `gh` open-issue-number fetch + outcome on github.manual-refresh.</summary>
+        private async System.Threading.Tasks.Task RefreshCompletedAsync(string trigger)
         {
             try { _lastOpenIssueNumbers = await Services.GitHubIssuesService.GetOpenIssueNumbersAsync(); }
-            catch { return; } // best-effort - a gh CLI hiccup shouldn't blank out what's already shown
+            catch { ActivityLog.Log("github.manual-refresh", $"Completed tile [{trigger}]: gh CLI fetch FAILED"); return; } // best-effort - a gh CLI hiccup shouldn't blank out what's already shown
+            ActivityLog.Log("github.manual-refresh", $"Completed tile [{trigger}]: {_lastOpenIssueNumbers.Count} open issue number(s) via gh CLI");
 
             RenderCompletedFromCache();
         }
@@ -1466,6 +1447,26 @@ namespace BuildConsole.Controls
             _isPinned = !_isPinned;
             PinQueueIcon.Text = _isPinned ? "📌" : "📍";
             PinToggled?.Invoke(this, _isPinned);
+        }
+
+        /// <summary>
+        /// Manual-only GitHub (Shane, 2026-08-14): the single, explicit trigger
+        /// for this panel's three GitHub-backed tiles (In-Flight / To-Do /
+        /// Completed) now that their background timers are gone — Shane clicks it
+        /// when he knows something changed on GitHub. Mirrors the Git Board's own
+        /// #863 header refresh-icon pattern. Each tile logs its real `gh` fetch +
+        /// outcome on github.manual-refresh, so the whole click is attributable.
+        /// The live Queue/Sessions data below hits the local dev server / local
+        /// machine (not GitHub) and keeps its own cadence, unaffected by this.
+        /// </summary>
+        private async void BtnRefreshGitHubTiles_Click(object sender, RoutedEventArgs e)
+        {
+            ActivityLog.Log("github.manual-refresh",
+                "Build Queue panel [manual Refresh click]: re-fetching the three GitHub tiles (In-Flight + To-Do + Completed) via gh CLI.");
+            await System.Threading.Tasks.Task.WhenAll(
+                RefreshInFlightIssuesAsync("manual Refresh click"),
+                RefreshWaitingOnMeAsync("manual Refresh click"),
+                RefreshCompletedAsync("manual Refresh click"));
         }
 
         // Git #874 — In-Flight/Sessions/To-Do quiet tiles: collapsed by

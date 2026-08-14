@@ -64,6 +64,18 @@
                                    Foreground="{StaticResource Subtext1Brush}"/>
                     </StackPanel>
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" HorizontalAlignment="Right">
+                        <!-- Manual-only GitHub (Shane, 2026-08-14): the three GitHub-backed
+                             tiles below (In-Flight / To-Do / Completed) no longer poll on a
+                             timer — this is their single, explicit refresh trigger, matching
+                             the Git Board's own #863 header refresh icon. -->
+                        <Button x:Name="BtnRefreshGitHubTiles"
+                                Style="{StaticResource IconButton}"
+                                ToolTip="Refresh GitHub tiles (In-Flight / To-Do / Completed) — these no longer auto-poll"
+                                Padding="4"
+                                Margin="2,0,0,0"
+                                Click="BtnRefreshGitHubTiles_Click">
+                            <TextBlock Text="🔄" FontSize="11" VerticalAlignment="Center"/>
+                        </Button>
                         <Button x:Name="BtnPinQueue"
                                 Style="{StaticResource IconButton}"
                                 ToolTip="Pin / Collapse Panel"

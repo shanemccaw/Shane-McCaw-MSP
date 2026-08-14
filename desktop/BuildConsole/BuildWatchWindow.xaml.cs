@@ -60,8 +60,6 @@ namespace BuildConsole
 
         private const int SlotCount = 8;
         private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(3);
-        /// <summary>Issue-closure is checked every Nth poll tick (≈30s at a 3s poll) — a `gh` process spawn per check is heavier than the in-memory queue reconcile, so it runs less often.</summary>
-        private const int IssueCheckEveryNTicks = 10;
 
         /// <summary>The maximum number of transcript turns kept per slot — older turns fall off the top so a very long build can't grow the visual tree without bound (the pre-redesign code had the same cap on its own card list).</summary>
         private const int MaxCardsPerSlot = 200;
@@ -128,7 +126,6 @@ namespace BuildConsole
         private readonly List<QueueItem> _waiting = new();
         private DispatcherTimer? _pollTimer;
         private DispatcherTimer? _elapsedTimer;
-        private int _ticksSinceIssueCheck;
         private bool _polling;
         private List<QueueItem> _lastQueue = new();
 
@@ -807,12 +804,16 @@ namespace BuildConsole
                 // 2) Admit newly-running builds into free / oldest-completed slots.
                 AdmitNewRunning(queue);
 
-                // 3) Throttled: auto-remove any slot whose GitHub issue has closed.
-                if (_ticksSinceIssueCheck++ >= IssueCheckEveryNTicks)
-                {
-                    _ticksSinceIssueCheck = 0;
-                    await CheckIssueClosuresAsync();
-                }
+                // 3) Manual-only GitHub (Shane, 2026-08-14): the ≈30s automatic
+                // `gh` issue-closure check (CheckIssueClosuresAsync — one gh CLI
+                // spawn against GitHub's shared 5,000/hr limit, every 10th 3s
+                // tick, the whole time this window was open) is DISABLED. Shane:
+                // "this app is killing my git connections... turn git into a
+                // manual refresh." A slot whose GitHub issue is closed is no
+                // longer auto-removed here — dismiss it with the slot's own
+                // manual close (unchanged), which costs zero GitHub traffic. The
+                // rest of this tick (queue reconcile / admit) is local dev-server
+                // data, not GitHub, and keeps its 3s cadence.
 
                 UpdateWaitingBanner();
                 UpdateSubtitle();
@@ -1307,6 +1308,13 @@ namespace BuildConsole
         /// on any `gh` failure, so an empty result is treated as "couldn't
         /// determine" and skipped — otherwise a transient gh hiccup would nuke
         /// every slot. Only a non-empty (successful) result drives removals.
+        ///
+        /// Manual-only GitHub (Shane, 2026-08-14): NO LONGER CALLED AUTOMATICALLY.
+        /// Its ≈30s `gh` poll was real, continuous GitHub traffic on the shared
+        /// 5,000/hr limit ("this app is killing my git connections"), so the tick
+        /// that invoked it (see PollAsync) was removed. Retained intact so a future
+        /// explicit "re-check closures" action can call it on demand; until then a
+        /// closed issue's slot is simply dismissed with the slot's own manual close.
         /// </summary>
         private async Task CheckIssueClosuresAsync()
         {
