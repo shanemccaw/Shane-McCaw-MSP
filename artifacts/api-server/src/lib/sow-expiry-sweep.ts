@@ -22,10 +22,11 @@
  * on the still-live status), so a rescan fires at most once per SOW; rescans are
  * de-duplicated per customer within a single sweep pass.
  */
-import { db, mspSowsTable, mspSowEventsTable } from "@workspace/db";
+import { db, mspSowsTable, mspSowEventsTable, tenantsTable } from "@workspace/db";
 import { and, eq, inArray, isNotNull, lt } from "drizzle-orm";
 import { logger } from "./logger";
 import { runDiagnostics } from "./diagnostics-runner";
+import { runItemDetailCollection } from "./item-detail-collector";
 
 const log = logger.child({ channel: "workflow.doc-pipeline" });
 
@@ -99,6 +100,39 @@ export async function sweepExpiredSows(): Promise<void> {
           log.info({ customerId }, "sow-expiry-sweep: 30-day expiry rescan started");
         } catch (err) {
           log.warn({ err, customerId }, "sow-expiry-sweep: rescan failed (non-fatal)");
+        }
+      })();
+
+      // Fire-and-forget full-item detail collection (#339, Git #1037) — a
+      // SEPARATE parallel pass alongside the rescan above, mirroring the
+      // consent.granted / msp-diagnostics.ts call sites (item-detail-
+      // collector.ts's NON-INTERFERENCE contract: own triggerId, own package,
+      // no tenant_monitor_profiles row, never throws). Without this, the
+      // 30-day expiry rescan refreshed the scoring aggregate but left
+      // tenant_check_item_details on whatever it was at last consent/manual
+      // run — one of the confirmed causes of the write-path lag in #1037.
+      // runDiagnostics resolves tenantId from customerId internally and
+      // doesn't expose it back, so it's re-resolved here rather than
+      // threaded through DiagnosticsRunResult.
+      void (async () => {
+        try {
+          const [customer] = await db
+            .select({ tenantId: tenantsTable.tenantId })
+            .from(tenantsTable)
+            .where(eq(tenantsTable.id, customerId))
+            .limit(1);
+          if (!customer) return;
+          const detail = await runItemDetailCollection({
+            tenantId: customer.tenantId,
+            customerId,
+            scopeToPackageKey: "core:security-baseline", // runDiagnostics' own default above
+          });
+          log.info(
+            { customerId, detailRunId: detail.runId, status: detail.status, itemsPersisted: detail.itemsPersisted },
+            "sow-expiry-sweep: full-item detail collection finished",
+          );
+        } catch (err) {
+          log.warn({ err, customerId }, "sow-expiry-sweep: full-item detail collection failed (non-fatal)");
         }
       })();
     }

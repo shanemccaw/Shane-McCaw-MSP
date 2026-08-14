@@ -8375,6 +8375,39 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
           startedAt: mepResult.startedAt,
           completedAt: mepResult.completedAt,
         };
+
+        // Fire-and-forget full-item detail collection (#339, Git #1037) —
+        // a SEPARATE parallel pass, mirroring the msp-diagnostics.ts / consent.ts
+        // call sites (item-detail-collector.ts's NON-INTERFERENCE contract: own
+        // triggerId, own package, no tenant_monitor_profiles row, never throws).
+        // Every OTHER real-scan trigger already fires this alongside the scoring
+        // run; this node type is the one both of them were missing — it backs
+        // the weekly "Free/Assessment Tenants" retargeting rescan (and any other
+        // Workflow-Studio-built schedule that uses this node), which is why
+        // tenant_check_item_details rows were observed lagging
+        // tenant_monitor_profiles by days: the aggregate refreshed on every
+        // scheduled pass through this node, but the detail table never did
+        // (Git #1037). `scopeToPackageKey` reuses the SAME packageKey this node
+        // just scored, so collection stays scoped to the intersection the #543
+        // fix requires — never the full ~133-check catalog.
+        if (mepResult.runStatus !== "consent_revoked") {
+          void (async () => {
+            try {
+              const { runItemDetailCollection } = await import("./item-detail-collector");
+              const detail = await runItemDetailCollection({
+                tenantId: mepTenantId,
+                scopeToPackageKey: mepPackageKey,
+                parallelToRunId: mepTriggerId,
+              });
+              log.info(
+                { runId, nodeId: node.id, tenantId: mepTenantId, detailRunId: detail.runId, status: detail.status, itemsPersisted: detail.itemsPersisted },
+                "monitor_execute_package: full-item detail collection finished",
+              );
+            } catch (detailErr) {
+              log.warn({ err: detailErr, runId, nodeId: node.id, tenantId: mepTenantId }, "monitor_execute_package: full-item detail collection failed (non-fatal)");
+            }
+          })();
+        }
         break;
       }
 
