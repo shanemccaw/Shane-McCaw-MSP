@@ -473,15 +473,18 @@ namespace BuildConsole.Controls
                 {
                     Header = MakeAreaHeader(group.Key, leaves.Count, brushKey),
                     IsExpanded = searching,   // collapsed by default; matches auto-expand while searching
+                    ContextMenu = BuildAreaContextMenu(),   // area headers carry no manifest — just bulk expand/collapse
                 };
 
                 foreach (var leaf in leaves)
                 {
-                    areaNode.Items.Add(new TreeViewItem
+                    var leafNode = new TreeViewItem
                     {
                         Header = MakeLeafHeader(leaf.FileName, brushKey),
                         Tag = leaf.RelativePath,   // #983 relative path — the load key
-                    });
+                    };
+                    leafNode.ContextMenu = BuildManifestLeafContextMenu(leafNode, leaf.RelativePath);
+                    areaNode.Items.Add(leafNode);
                     shown++;
                 }
 
@@ -627,6 +630,128 @@ namespace BuildConsole.Controls
                     : LogicalTreeHelper.GetParent(source);
             }
             return source as TreeViewItem;
+        }
+
+        // ── Manifest tree right-click menus ─────────────────────────────────
+        // Reuses #945's real ContextMenu/MenuItem styling directly (the same
+        // plain `new ContextMenu()` / `new MenuItem` shape CreateExplorerContextMenu
+        // already uses in this file — the app's implicit dark ContextMenu style
+        // applies automatically). Scoped to leaf manifest nodes; area-group
+        // headers get their own bulk expand/collapse menu (BuildAreaContextMenu).
+        // Each item bakes its target path into the closure, so the menu always
+        // acts on the node it was opened from — no reliance on tree SelectedItem.
+
+        /// <summary>Right-click menu for one manifest leaf. Run reuses the exact double-click run path
+        /// (LoadManifestLeaf → PlayTestRequested). View Run Diagram / View Raw JSON are stubbed disabled:
+        /// the ManifestViewerWindow they open is a separate build that hasn't landed yet — deliberately not
+        /// a second diagram/JSON implementation here. Edit opens the manifest through the same
+        /// FileSelected → OpenFileTab path every other file uses (JSON lands in the Monaco editor), consistent
+        /// with Explorer's "Open". Copy Path / Reveal in Explorer mirror CreateExplorerContextMenu exactly.</summary>
+        private ContextMenu BuildManifestLeafContextMenu(TreeViewItem leafNode, string relativePath)
+        {
+            string manifestsDir = Path.Combine(RootWorkspacePath, "test-manifests");
+            string fullPath = Path.Combine(manifestsDir, relativePath);
+
+            var cm = new ContextMenu();
+
+            // 1. Run — same real run path the double-click handler uses.
+            var miRun = new MenuItem { Header = "▶  Run" };
+            miRun.Click += (s, e) =>
+            {
+                var manifest = LoadManifestLeaf(leafNode, relativePath);
+                if (manifest != null) PlayTestRequested?.Invoke(this, manifest);
+            };
+            cm.Items.Add(miRun);
+
+            cm.Items.Add(new Separator());
+
+            // 2 & 3. View Run Diagram / View Raw JSON — the ManifestViewerWindow (workflow chart + raw-JSON
+            // tabs) these open is a separate build not landed yet. Stub disabled with a tooltip rather than
+            // building a second implementation. Wire these up to the real window once it lands.
+            const string pendingTip = "Pending — opens in the dedicated Manifest Viewer, which hasn't landed yet.";
+            cm.Items.Add(new MenuItem { Header = "View Run Diagram", IsEnabled = false, ToolTip = pendingTip });
+            cm.Items.Add(new MenuItem { Header = "View Raw JSON", IsEnabled = false, ToolTip = pendingTip });
+
+            // 4. Edit — open as a normal editor tab (Monaco for .json), the app's standard file-open path.
+            var miEdit = new MenuItem { Header = "Edit" };
+            miEdit.Click += (s, e) => FileSelected?.Invoke(this, fullPath);
+            cm.Items.Add(miEdit);
+
+            cm.Items.Add(new Separator());
+
+            // 5. Copy Path — the real absolute file path.
+            var miCopyPath = new MenuItem { Header = "Copy Path" };
+            miCopyPath.Click += (s, e) => Clipboard.SetText(fullPath);
+            cm.Items.Add(miCopyPath);
+
+            // 6. Reveal in Explorer — same /select shape CreateExplorerContextMenu uses.
+            var miReveal = new MenuItem { Header = "Reveal in Explorer" };
+            miReveal.Click += (s, e) =>
+            {
+                try { System.Diagnostics.Process.Start("explorer.exe", $"/select,\"{fullPath}\""); }
+                catch { }
+            };
+            cm.Items.Add(miReveal);
+
+            cm.Items.Add(new Separator());
+
+            // Bonus — Duplicate: low-risk, copies the file to "<name>-copy.json" beside itself and re-lists so
+            // the new leaf appears. New file only; never touches the original. (Rename is deliberately NOT
+            // offered: a manifest is registered in test-manifests/_regression-suite.json by its path, so a
+            // silent rename here would orphan that registration — not a low-risk convenience.)
+            var miDuplicate = new MenuItem { Header = "Duplicate" };
+            miDuplicate.Click += (s, e) => DuplicateManifest(fullPath);
+            cm.Items.Add(miDuplicate);
+
+            return cm;
+        }
+
+        /// <summary>Area-header right-click — just bulk expand/collapse every area, since a header row carries
+        /// no manifest of its own to act on.</summary>
+        private ContextMenu BuildAreaContextMenu()
+        {
+            var cm = new ContextMenu();
+
+            var miExpand = new MenuItem { Header = "Expand All" };
+            miExpand.Click += (s, e) => SetAllManifestAreasExpanded(true);
+            cm.Items.Add(miExpand);
+
+            var miCollapse = new MenuItem { Header = "Collapse All" };
+            miCollapse.Click += (s, e) => SetAllManifestAreasExpanded(false);
+            cm.Items.Add(miCollapse);
+
+            return cm;
+        }
+
+        private void SetAllManifestAreasExpanded(bool expanded)
+        {
+            if (ManifestFilesTree == null) return;
+            foreach (var item in ManifestFilesTree.Items)
+                if (item is TreeViewItem tvi) tvi.IsExpanded = expanded;
+        }
+
+        /// <summary>Copies a manifest to "&lt;name&gt;-copy.json" (bumping -copy-2, -copy-3… if taken) in the same
+        /// folder, then re-lists so the new leaf shows immediately. Best-effort; a failure just message-boxes.</summary>
+        private void DuplicateManifest(string fullPath)
+        {
+            try
+            {
+                string dir = Path.GetDirectoryName(fullPath) ?? "";
+                string name = Path.GetFileNameWithoutExtension(fullPath);
+                string ext = Path.GetExtension(fullPath);
+                string candidate = Path.Combine(dir, $"{name}-copy{ext}");
+                int n = 2;
+                while (File.Exists(candidate))
+                    candidate = Path.Combine(dir, $"{name}-copy-{n++}{ext}");
+
+                File.Copy(fullPath, candidate);
+                ActivityLog.Log("testing.manifest-list", $"duplicated {Path.GetFileName(fullPath)} -> {Path.GetFileName(candidate)}");
+                PopulateManifestsList();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Couldn't duplicate the manifest: {ex.Message}", "Duplicate Manifest");
+            }
         }
 
         // ── Git #952: manifest steps flyout ─────────────────────────────────
