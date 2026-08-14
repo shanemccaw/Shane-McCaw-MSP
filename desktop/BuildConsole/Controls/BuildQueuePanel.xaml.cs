@@ -884,6 +884,16 @@ namespace BuildConsole.Controls
                 });
             }
 
+            // Queued-for-restart group — items MainWindow.PendingUpdateQueue
+            // intercepted-and-persisted to the local spillover file while a
+            // version update sat waiting (see that file's own doc comment).
+            // These are NOT in the real live queue yet (bt_build_queue never
+            // saw them; a restart is what actually re-queues them), so they're
+            // rendered as their own distinct, non-selectable group — visually
+            // separate from the real active/pending/running rows below rather
+            // than indistinguishable from them.
+            RenderQueuedForRestartGroup();
+
             // Git #799/#813 — a queued item nests under its blocker only when
             // the blocker is ALSO currently in the queue (same scoping choice
             // content.js's renderQueueSection() made) - otherwise it just
@@ -945,6 +955,62 @@ namespace BuildConsole.Controls
 
             // Git #950 — biggest GithubNumber first (see SortForDisplay).
             foreach (var item in SortForDisplay(topLevel)) RenderOne(item, QueueTree);
+        }
+
+        /// <summary>
+        /// Reads MainWindow's pending-update spillover file (see
+        /// MainWindow.PendingUpdateQueue.cs) and, if anything's currently
+        /// waiting there, adds a distinct "🔄 Queued for Restart" group at
+        /// the top of QueueTree — a non-selectable header row plus one
+        /// non-selectable child row per persisted item, styled in MauveBrush
+        /// so it reads as its own category rather than blending into the
+        /// real queued/running rows StatusStyle colors below it. Read
+        /// directly off disk (not cached), same as MainWindow's own
+        /// LoadPersistedQueueRequests — this file only ever changes on a
+        /// Queue click during a pending update or on the post-restart
+        /// replay, both rare, so a fresh read each RenderQueue call is cheap
+        /// and always current.
+        /// </summary>
+        private void RenderQueuedForRestartGroup()
+        {
+            List<MainWindow.PersistedQueueDisplayItem> pending;
+            try { pending = MainWindow.GetPersistedQueueDisplayItems(); }
+            catch { return; } // best-effort — a read hiccup shouldn't block the real queue from rendering
+            if (pending.Count == 0) return;
+
+            var restartBrush = (Brush)Application.Current.FindResource("MauveBrush");
+            var header = new StackPanel { Orientation = Orientation.Horizontal };
+            header.Children.Add(new TextBlock { Text = "🔄 ", FontSize = 12, Foreground = restartBrush, VerticalAlignment = VerticalAlignment.Center });
+            header.Children.Add(new TextBlock
+            {
+                Text = $"Queued for Restart ({pending.Count})",
+                FontSize = 11,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = restartBrush,
+                VerticalAlignment = VerticalAlignment.Center,
+            });
+            var groupItem = new TreeViewItem { Header = header, IsExpanded = true, IsHitTestVisible = false, Focusable = false };
+
+            foreach (var item in pending)
+            {
+                var row = new StackPanel { Orientation = Orientation.Horizontal };
+                row.Children.Add(new TextBlock { Text = "⏸ ", FontSize = 12, Foreground = restartBrush, VerticalAlignment = VerticalAlignment.Center });
+                row.Children.Add(new TextBlock
+                {
+                    Text = item.GithubNumber.HasValue ? $"{FormatIssueRef(item.GithubNumber.Value)} — {item.Title}" : item.Title,
+                    FontSize = 12,
+                    Foreground = (Brush)Application.Current.FindResource("TextBrush"),
+                    VerticalAlignment = VerticalAlignment.Center,
+                });
+                groupItem.Items.Add(new TreeViewItem
+                {
+                    Header = row,
+                    IsHitTestVisible = false,
+                    Focusable = false,
+                });
+            }
+
+            QueueTree.Items.Add(groupItem);
         }
 
         /// <summary>Git #1034 — a negative number is one of Shane's own local

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows;
@@ -99,6 +100,31 @@ namespace BuildConsole
                 return false;
             }
         }
+
+        /// <summary>
+        /// Lightweight, read-only view of a persisted spillover entry for display
+        /// purposes only — deliberately drops Prompt/Model/Effort/Cwd/BlockedByNumbers,
+        /// which the Build Queue panel's "Queued for Restart" group has no use for and
+        /// which <see cref="PersistedQueueRequest"/> keeps private to this file.
+        /// </summary>
+        public sealed class PersistedQueueDisplayItem
+        {
+            public string Title { get; set; } = "Untitled";
+            public int? GithubNumber { get; set; }
+        }
+
+        /// <summary>
+        /// Read-only snapshot of whatever's currently sitting in the pending-update
+        /// spillover file, for BuildQueuePanel's "Queued for Restart" tree group —
+        /// these items are intercepted-and-persisted, NOT in the real live queue, so
+        /// the panel renders them as a visually distinct group rather than mixing them
+        /// into the normal active/pending/running rows. Safe to call anytime (never
+        /// throws, returns empty on a missing/corrupt file — see LoadPersistedQueueRequests).
+        /// </summary>
+        public static List<PersistedQueueDisplayItem> GetPersistedQueueDisplayItems() =>
+            LoadPersistedQueueRequests()
+                .Select(r => new PersistedQueueDisplayItem { Title = r.Title, GithubNumber = r.GithubNumber })
+                .ToList();
 
         private static List<PersistedQueueRequest> LoadPersistedQueueRequests()
         {
