@@ -591,7 +591,7 @@ namespace BuildConsole.Services
                 "catch { Write-Output ('" + SetupErrorMarker + " ' + $_.Exception.Message); exit 4 }\n" +
                 // Silent when a valid cached delegated token exists; -UseDeviceCode makes the
                 // "needs auth" fallback a detectable device-code prompt (no silent browser pop).
-                "try { Connect-MgGraph -UseDeviceCode -NoWelcome -ErrorAction Stop | Out-Null }\n" +
+                "try { Connect-MgGraph -UseDeviceCode -NoWelcome -ErrorAction Stop }\n" +
                 "catch { Write-Output ('" + AuthRequiredMarker + " ' + $_.Exception.Message); exit 3 }\n" +
                 "$ctx = Get-MgContext\n" +
                 "if (-not $ctx) { Write-Output '" + AuthRequiredMarker + " no Graph context after connect'; exit 3 }\n" +
