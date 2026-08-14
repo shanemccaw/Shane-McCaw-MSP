@@ -162,6 +162,115 @@ namespace BuildConsole
             BtnMaximizeRestore.ToolTip = maximized ? "Restore Down" : "Maximize";
         }
 
+        // ── Non-intrusive run lifecycle ─────────────────────────────────────────────
+        // Shane: "Unless there is an error or drift I need to see, the test window should auto close when
+        // done. Also tests should never interrupt me — run minimized and only give me a toast when they
+        // need my attention." The window used to open maximized (WindowState="Maximized") and MainWindow
+        // Activate()'d it on every run, so a routine test grabbed his main screen. Now every run (Play
+        // Test, double-click, shaneapp://runTest, #898 remote — they all funnel through RunManifestAsync)
+        // starts the window HIDDEN via PrepareForBackgroundRun, then RunManifestAsync either
+        // AutoCloseAfterCleanRun()s it (clean) or leaves it and toasts (needs attention).
+
+        // "Hidden" here is parked-off-screen, NOT minimized: a minimized (or occluded) WebView2 can't be
+        // screenshotted — CoreWebView2.CapturePreviewAsync never completes in that state, so uiStep captures
+        // (#966/#977) would all hit UiTestExecutor's 8s ScreenshotTimeoutMs and produce nothing. An off-screen
+        // Normal window is still composited by DWM, so the hosted WebView2 renders and captures work, while
+        // Shane never sees it. (Opacity/Visibility hiding also breaks WebView2 — #902 — hence off-screen.)
+
+        /// <summary>Puts the window into its hidden background-run state: off-screen, Normal, never
+        /// activated. Called by MainWindow.EnsureTestRunnerWindow before every run. If Shane is actively
+        /// looking at the window (it's focused — e.g. he just clicked 🔄 Retry inside it), it's left where
+        /// it is so he can watch, rather than being yanked off-screen out from under him.</summary>
+        public void PrepareForBackgroundRun()
+        {
+            RunOnUi(() =>
+            {
+                if (IsActive)
+                {
+                    Services.ActivityLog.Log(Channel, "Run starting while the Test Runner is focused — keeping it visible so Shane can watch (not backgrounding it).");
+                    return;
+                }
+                if (WindowState != WindowState.Normal) WindowState = WindowState.Normal;
+                ParkOffScreen();
+            });
+        }
+
+        /// <summary>Positions the window just past the right edge of the whole virtual desktop (all
+        /// monitors) — guaranteed off every screen, positive coords (no negative-clamp surprises). DWM
+        /// still composites it, so WebView2 renders; discoverable via the taskbar / Alt-Tab if needed.</summary>
+        private void ParkOffScreen()
+        {
+            Left = SystemParameters.VirtualScreenLeft + SystemParameters.VirtualScreenWidth + 200;
+            Top = Math.Max(SystemParameters.VirtualScreenTop, 0);
+        }
+
+        /// <summary>Auto-closes the window after a genuinely clean run (no failures, no screenshot review
+        /// needed). Skipped if Shane is actively viewing it (focused) — don't yank a window closed while
+        /// he's reading it. Logged either way on the window's own channel.</summary>
+        public void AutoCloseAfterCleanRun()
+        {
+            RunOnUi(() =>
+            {
+                if (IsActive)
+                {
+                    Services.ActivityLog.Log(Channel, "Clean run finished, but the Test Runner is focused (Shane is viewing it) — leaving it open instead of auto-closing.");
+                    return;
+                }
+                Services.ActivityLog.Log(Channel, "Clean run finished (no failures, no screenshot review needed) — auto-closing the Test Runner window.");
+                Close();
+            });
+        }
+
+        /// <summary>Makes the window visible on-screen but WITHOUT stealing focus — used for a regression
+        /// SWEEP (isRegression), which drives this one shared window across many manifests in a loop and
+        /// has no per-run toast/auto-close, so it must stay watchable and never get orphaned off-screen.
+        /// Only re-centres a window that is currently parked off-screen (e.g. left over from a prior
+        /// single run); if it's already on-screen it's left exactly where Shane put it, and it is never
+        /// activated — so the per-manifest calls in the sweep loop can't cause a focus-steal storm.</summary>
+        public void EnsureOnScreenBackground()
+        {
+            RunOnUi(() =>
+            {
+                if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+
+                var wa = SystemParameters.WorkArea;
+                // NaN Left/Top = a brand-new window not yet positioned → treat as off-screen so it centres.
+                bool offScreen = double.IsNaN(Left) || double.IsNaN(Top)
+                    || Left >= wa.Right || Top >= wa.Bottom
+                    || Left + Width <= wa.Left || Top + Height <= wa.Top;
+                if (offScreen)
+                {
+                    if (Width > wa.Width) Width = wa.Width;
+                    if (Height > wa.Height) Height = wa.Height;
+                    Left = wa.Left + (wa.Width - Width) / 2;
+                    Top = wa.Top + (wa.Height - Height) / 2;
+                }
+                // Deliberately NO Activate() — visible/watchable, but not focus-stealing.
+            });
+        }
+
+        /// <summary>Brings the (off-screen / minimized) window back on-screen, centred and focused — the
+        /// click-through target for the "run needs attention" toast.</summary>
+        public void RestoreToForeground()
+        {
+            RunOnUi(() =>
+            {
+                if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+
+                var wa = SystemParameters.WorkArea;
+                if (Width > wa.Width) Width = wa.Width;
+                if (Height > wa.Height) Height = wa.Height;
+                Left = wa.Left + (wa.Width - Width) / 2;
+                Top = wa.Top + (wa.Height - Height) / 2;
+
+                Show();
+                Activate();
+                // Pop above other windows without staying pinned there.
+                Topmost = true;
+                Topmost = false;
+            });
+        }
+
         private void OnStepCompleted(Services.TestStepResult result)
         {
             AddStepResult(result);

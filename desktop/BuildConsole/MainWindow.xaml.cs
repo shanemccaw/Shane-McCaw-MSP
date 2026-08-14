@@ -143,16 +143,36 @@ namespace BuildConsole
         // (a new one is only created if none exists yet or Shane closed the last one).
         private TestRunnerWindow? _testRunnerWindow;
 
-        private TestRunnerWindow EnsureTestRunnerWindow()
+        /// <param name="background">True for a single run (Play Test, double-click, shaneapp://runTest,
+        /// #898 remote) — the window is parked off-screen (hidden, renderable, no focus steal) and
+        /// RunManifestAsync then auto-closes it (clean) or toasts (attention). False for a regression
+        /// SWEEP — the window stays on-screen/background so the sweep is watchable and never orphaned.</param>
+        private TestRunnerWindow EnsureTestRunnerWindow(bool background)
         {
             if (_testRunnerWindow == null)
             {
                 _testRunnerWindow = new TestRunnerWindow();
                 _testRunnerWindow.Closed += (_, _) => _testRunnerWindow = null;
                 _testRunnerWindow.RetryRequested += TestRunnerWindow_RetryRequested;
+                // Set the position/state BEFORE the first Show() (window is ShowActivated="False", so
+                // neither path steals focus): a single run flashes nothing onto Shane's main screen
+                // ("tests should never interrupt me... Right now the tests take up my main screen"),
+                // a sweep comes up visible-but-unfocused.
+                if (background) _testRunnerWindow.PrepareForBackgroundRun();
+                else _testRunnerWindow.EnsureOnScreenBackground();
                 _testRunnerWindow.Show();
             }
-            _testRunnerWindow.Activate();
+            else if (background)
+            {
+                // Re-park a reused window that a previous "needs attention" run may have left centred.
+                _testRunnerWindow.PrepareForBackgroundRun();
+            }
+            else
+            {
+                _testRunnerWindow.EnsureOnScreenBackground();
+            }
+            // Deliberately NO Activate() — no run steals focus. RunManifestAsync brings the window forward
+            // itself (via the attention toast's click-through) only when a single run needs attention.
             return _testRunnerWindow;
         }
 
@@ -3949,7 +3969,9 @@ namespace BuildConsole
             // apiTests/graphTests cards stream in live via HttpTestExecutor/GraphTestExecutor's
             // own StepCompleted events (subscribed once per TestRunnerWindow instance), not
             // pushed from here.
-            var runner = EnsureTestRunnerWindow();
+            // A single run (Play Test / double-click / shaneapp / #898 remote) opens the window hidden
+            // off-screen; a regression sweep keeps it on-screen/background (see EnsureTestRunnerWindow).
+            var runner = EnsureTestRunnerWindow(background: !isRegression);
             runner.Clear();
             runner.SetSteps(manifest);
             runner.BeginRun(manifest.Issue, manifest.Feature, mode);
@@ -4190,11 +4212,13 @@ namespace BuildConsole
             }
 
             // Epic #803 — screenshot baseline review: diff this run's captured screenshots (#966)
-            // against their stored baselines and, only when a baseline is missing or a meaningful
-            // visual change is found, pop the review/approval dialog. This is the single general entry
-            // point every screenshot-producing run uses (a future mailer audit builds its own subject
-            // and calls the same service). The scheduled regression sweep (#967) and the #898 headless
-            // remote-trigger are non-interactive — they compare-and-log but never block on the modal.
+            // against their stored baselines. #975's exact condition (items.Any(i => i.NeedsReview))
+            // decides whether review is needed; the dialog itself is now DEFERRED (returned as an action)
+            // rather than popped inline, so it never interrupts the run — the "needs attention" toast
+            // below pops it on Shane's click. This is the single general entry point every
+            // screenshot-producing run uses. The scheduled regression sweep (#967) and the #898 headless
+            // remote-trigger stay non-interactive — they compare-and-log but build no dialog action.
+            BuildConsole.Services.ScreenshotReviewResult? reviewResult = null;
             if (capturedShots.Count > 0)
             {
                 string? reviewRepoRoot = BuildConsole.Services.BuildTrackerConfig.FindRepoRoot();
@@ -4203,8 +4227,8 @@ namespace BuildConsole
                     try
                     {
                         var subject = BuildConsole.Services.ScreenshotReviewService.SubjectFromManifest(manifest, reviewRepoRoot);
-                        await BuildConsole.Services.ScreenshotReviewService.ReviewIfNeededAsync(
-                            this, reviewRepoRoot, subject, capturedShots,
+                        reviewResult = await BuildConsole.Services.ScreenshotReviewService.EvaluateAsync(
+                            runner, reviewRepoRoot, subject, capturedShots,
                             (text, showMessage, onInserted) =>
                                 SendTextToActiveClaudeChatAsync(text, showMessage, onInserted, "testing.screenshot-review", "report"),
                             interactive: !isRegression && !_testTriggerBusy);
@@ -4216,7 +4240,61 @@ namespace BuildConsole
                 }
             }
 
+            // ── Auto-close-clean / toast-on-attention — the window's own default behaviour for a run ──
+            // Applied to every single-run trigger (Play Test, double-click, shaneapp://runTest, #898
+            // remote) since they all reach here. A regression SWEEP (isRegression) drives the ONE shared
+            // window across many manifests in a loop, so it must NOT auto-close per manifest — it keeps
+            // today's behaviour (no auto-close, no per-manifest toast).
+            if (!isRegression)
+                ApplyRunOutcomeToRunnerWindow(runner, runResult, reviewResult);
+
             return runResult;
+        }
+
+        /// <summary>Decides what happens to the Test Runner window once a single run finishes: a genuinely
+        /// clean run (no failed steps AND #975's screenshot review not needed) auto-closes the window —
+        /// Shane never needs to look. A run that needs attention (a real step failure, or #975's needsReview
+        /// firing) leaves the window and surfaces a non-blocking, clickable ToastEngine (#24) toast whose
+        /// click restores the window and pops the deferred #975 review dialog (when there is one). Logs the
+        /// real outcome on the window's own "testing.results-panel" channel.</summary>
+        private void ApplyRunOutcomeToRunnerWindow(
+            TestRunnerWindow runner,
+            BuildConsole.Services.ManifestRunResult runResult,
+            BuildConsole.Services.ScreenshotReviewResult? reviewResult)
+        {
+            const string ch = "testing.results-panel";
+            int total = runResult.Steps.Count;
+            int passed = runResult.Steps.Count(s => s.Passed);
+            bool hasFailure = runResult.Steps.Any(s => !s.Passed);
+            bool needsReview = reviewResult?.NeedsReview == true;
+
+            if (!hasFailure && !needsReview)
+            {
+                BuildConsole.Services.ActivityLog.Log(ch,
+                    $"Run #{runResult.Issue} clean ({passed}/{total} passed) — no attention needed; auto-closing the Test Runner window.");
+                runner.AutoCloseAfterCleanRun();
+                return;
+            }
+
+            string title = hasFailure
+                ? $"Test run needs attention — #{runResult.Issue}"
+                : $"Screenshot review needed — #{runResult.Issue}";
+            string body = hasFailure
+                ? $"{passed}/{total} steps passed. Click to open the Test Runner and see the failing steps."
+                : $"{reviewResult?.NoBaseline ?? 0} new, {reviewResult?.Diffs ?? 0} changed vs baseline. Click to review & approve.";
+
+            BuildConsole.Services.ActivityLog.Log(ch,
+                $"Run #{runResult.Issue} needs attention (hasFailure={hasFailure}, needsReview={needsReview}) — surfaced a non-blocking toast and kept the window (not auto-closed).");
+
+            // Capture the deferred review dialog (if any) so the toast click can pop it.
+            Action? showReviewDialog = reviewResult?.ShowReviewDialog;
+            Action onClick = () =>
+            {
+                runner.RestoreToForeground();
+                showReviewDialog?.Invoke();
+            };
+
+            ToastEngine.Show(title, body, hasFailure ? ToastKind.Error : ToastKind.Warning, duration: null, onClick: onClick);
         }
 
         // ── Git #898 (Epic #803): remote UI-test trigger poll ────────────────────

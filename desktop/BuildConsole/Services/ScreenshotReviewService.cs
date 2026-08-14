@@ -43,6 +43,32 @@ namespace BuildConsole.Services
         public string Reason => Shot.Reason;
     }
 
+    /// <summary>Outcome of evaluating a run's screenshots against their baselines. Carries #975's exact
+    /// review decision (<see cref="NeedsReview"/> = <c>items.Any(i =&gt; i.NeedsReview)</c>) plus, for an
+    /// interactive run that does need review, a DEFERRED <see cref="ShowReviewDialog"/> action. The dialog
+    /// is no longer popped inline (that interrupted Shane mid-run) — the caller invokes it later from the
+    /// "run needs attention" toast's click-through, so a routine run never blocks on a modal.</summary>
+    public sealed class ScreenshotReviewResult
+    {
+        /// <summary>#975's exact condition — true when at least one shot has no baseline or a meaningful
+        /// diff vs its baseline. This is the same signal that used to gate showing the review dialog.</summary>
+        public bool NeedsReview { get; init; }
+        /// <summary>How many shots had no baseline yet (new).</summary>
+        public int NoBaseline { get; init; }
+        /// <summary>How many shots differed from an existing baseline.</summary>
+        public int Diffs { get; init; }
+        /// <summary>How many shots were compared in total.</summary>
+        public int ItemCount { get; init; }
+        /// <summary>Non-null ONLY for an interactive run that needs review: invoking it (on the UI thread)
+        /// pops the modal <see cref="ScreenshotReviewWindow"/> with the full Approve flow intact (promote
+        /// baselines → landed-and-verified chat note → close the linked issue). Null for a clean run, or a
+        /// non-interactive (scheduled #967 / remote #898) run whose dialog stays suppressed.</summary>
+        public Action? ShowReviewDialog { get; init; }
+
+        /// <summary>The "nothing to review" result (no shots, or none on disk).</summary>
+        public static readonly ScreenshotReviewResult None = new();
+    }
+
     /// <summary>
     /// Epic #803 — the single entry point EVERY screenshot-producing run funnels through to get its
     /// captures reviewed against the persistent baseline (<see cref="ScreenshotBaselineStore"/>). The
@@ -52,8 +78,10 @@ namespace BuildConsole.Services
     /// re-implemented per producer.
     ///
     /// It compares each shot against its stored baseline and, ONLY when a baseline is missing or a
-    /// meaningful visual diff is found, shows the walk-through review/approval dialog
-    /// (<see cref="ScreenshotReviewWindow"/>). A clean run that matches its baseline shows nothing.
+    /// meaningful visual diff is found, marks the run as needing review and hands back a DEFERRED action
+    /// that pops the walk-through review/approval dialog (<see cref="ScreenshotReviewWindow"/>). The dialog
+    /// is no longer shown inline (it interrupted Shane mid-run) — the caller pops it from the "run needs
+    /// attention" toast's click-through. A clean run that matches its baseline needs no review, shows nothing.
     /// Non-interactive runs (the scheduled #967 regression sweep, the #898 headless remote-trigger)
     /// never block on a modal — they log that review is pending so a background/3am run can't hang.
     ///
@@ -122,11 +150,14 @@ namespace BuildConsole.Services
         /// Report issue and for Approve's landed-and-verified note.</param>
         /// <param name="interactive">False for the scheduled regression sweep and the #898 remote-trigger
         /// (both headless/background) — those log-and-skip the modal so they never block; true for a
-        /// menu-driven single run, which may show the dialog.</param>
+        /// menu-driven single run, which builds the deferred <see cref="ScreenshotReviewResult.ShowReviewDialog"/>.</param>
+        /// <returns>The review decision (see <see cref="ScreenshotReviewResult"/>). This method no longer
+        /// shows the dialog itself — it evaluates #975's condition and, for an interactive run that needs
+        /// review, hands back a deferred <see cref="ScreenshotReviewResult.ShowReviewDialog"/> the caller
+        /// pops from the attention toast's click-through instead of interrupting the run inline.</returns>
         // Not `async`: the only awaited work (the Approve flow) lives inside the approveAsync delegate;
-        // this method's body — compare, log, and the modal ShowDialog — is all synchronous, so it
-        // returns Task directly (callers still `await` it) rather than triggering a no-await warning.
-        public static Task ReviewIfNeededAsync(
+        // this method's body — compare and log — is all synchronous, so it returns Task directly.
+        public static Task<ScreenshotReviewResult> EvaluateAsync(
             Window? owner,
             string repoRoot,
             ScreenshotReviewSubject subject,
@@ -134,7 +165,7 @@ namespace BuildConsole.Services
             Func<string, Action<string, bool>, Action?, Task> sendToChat,
             bool interactive)
         {
-            if (shots == null || shots.Count == 0) return Task.CompletedTask;
+            if (shots == null || shots.Count == 0) return Task.FromResult(ScreenshotReviewResult.None);
 
             var items = shots
                 .Where(s => !string.IsNullOrEmpty(s.FilePath) && File.Exists(s.FilePath))
@@ -145,7 +176,7 @@ namespace BuildConsole.Services
                 })
                 .ToList();
 
-            if (items.Count == 0) return Task.CompletedTask;
+            if (items.Count == 0) return Task.FromResult(ScreenshotReviewResult.None);
 
             int noBaseline = items.Count(i => !i.HasBaseline);
             int diffs = items.Count(i => i.HasBaseline && i.NeedsReview);
@@ -155,13 +186,20 @@ namespace BuildConsole.Services
                 $"{subject.DisplayName} (issue #{subject.IssueNumber}): {items.Count} screenshot(s) — {noBaseline} without a baseline, {diffs} changed vs baseline. "
                 + (needsReview ? "Review needed." : "Clean — all match baseline, no review shown."));
 
-            if (!needsReview) return Task.CompletedTask;
+            if (!needsReview)
+                return Task.FromResult(new ScreenshotReviewResult
+                {
+                    NeedsReview = false, NoBaseline = noBaseline, Diffs = diffs, ItemCount = items.Count,
+                });
 
             if (!interactive)
             {
                 ActivityLog.Log(Channel,
                     $"{subject.DisplayName}: review needed ({noBaseline} new, {diffs} changed) but this run is non-interactive (scheduled/remote) — dialog suppressed; re-run interactively to review/approve.");
-                return Task.CompletedTask;
+                return Task.FromResult(new ScreenshotReviewResult
+                {
+                    NeedsReview = true, NoBaseline = noBaseline, Diffs = diffs, ItemCount = items.Count,
+                });
             }
 
             // Approve callback: promote baselines -> send the landed-and-verified note to the active
@@ -179,10 +217,21 @@ namespace BuildConsole.Services
                 return $"Approved — {promoted} baseline(s) updated, note sent to chat, {closeMsg}.";
             };
 
-            var win = new ScreenshotReviewWindow(subject, items, sendToChat, approveAsync);
-            if (owner != null) win.Owner = owner;
-            win.ShowDialog();
-            return Task.CompletedTask;
+            // Deferred — invoked from the attention toast's click-through, NOT inline, so the run never
+            // interrupts Shane. When it fires, the shots still exist on disk and the captured
+            // subject/sendToChat/approveAsync are all still valid.
+            Action showReviewDialog = () =>
+            {
+                var win = new ScreenshotReviewWindow(subject, items, sendToChat, approveAsync);
+                if (owner != null) win.Owner = owner;
+                win.ShowDialog();
+            };
+
+            return Task.FromResult(new ScreenshotReviewResult
+            {
+                NeedsReview = true, NoBaseline = noBaseline, Diffs = diffs, ItemCount = items.Count,
+                ShowReviewDialog = showReviewDialog,
+            });
         }
 
         private static string BuildApprovedNote(ScreenshotReviewSubject subject, int promoted)

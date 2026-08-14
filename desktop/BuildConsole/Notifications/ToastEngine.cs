@@ -52,19 +52,22 @@ namespace BuildConsole
         /// caller isn't already on it. <paramref name="title"/> is the bold first line (typically the
         /// old MessageBox caption), <paramref name="message"/> the body. A null <paramref name="duration"/>
         /// picks a sensible default for the <paramref name="kind"/> (errors/warnings dwell longer).
+        /// <paramref name="onClick"/>, when supplied, makes the whole card a click target (hand cursor):
+        /// clicking the body invokes it (on the UI thread) and dismisses the toast — used by the Test
+        /// Runner's "run needs attention" toast to restore the window / open the review dialog.
         /// </summary>
-        public static void Show(string title, string message, ToastKind kind = ToastKind.Info, TimeSpan? duration = null)
+        public static void Show(string title, string message, ToastKind kind = ToastKind.Info, TimeSpan? duration = null, Action? onClick = null)
         {
             var app = Application.Current;
             if (app?.Dispatcher == null) return; // no live WPF app (headless / teardown) — nothing to show
 
             if (app.Dispatcher.CheckAccess())
-                ShowCore(title, message, kind, duration);
+                ShowCore(title, message, kind, duration, onClick);
             else
-                app.Dispatcher.BeginInvoke(new Action(() => ShowCore(title, message, kind, duration)));
+                app.Dispatcher.BeginInvoke(new Action(() => ShowCore(title, message, kind, duration, onClick)));
         }
 
-        private static void ShowCore(string title, string message, ToastKind kind, TimeSpan? duration)
+        private static void ShowCore(string title, string message, ToastKind kind, TimeSpan? duration, Action? onClick)
         {
             try
             {
@@ -87,7 +90,7 @@ namespace BuildConsole
                     _host = host;
                 }
 
-                host.AddToast(title ?? "", message ?? "", kind, duration ?? DefaultDuration(kind));
+                host.AddToast(title ?? "", message ?? "", kind, duration ?? DefaultDuration(kind), onClick);
             }
             catch
             {

@@ -50,10 +50,11 @@ namespace BuildConsole
             Deactivated += (_, _) => ForceTopmost();
         }
 
-        /// <summary>Adds a new toast to the bottom of the stack, showing the host if hidden.</summary>
-        public void AddToast(string title, string message, ToastKind kind, TimeSpan duration)
+        /// <summary>Adds a new toast to the bottom of the stack, showing the host if hidden.
+        /// <paramref name="onClick"/>, when supplied, makes the card body clickable (see <see cref="ToastCard"/>).</summary>
+        public void AddToast(string title, string message, ToastKind kind, TimeSpan duration, Action? onClick = null)
         {
-            var card = new ToastCard(title, message, kind, duration);
+            var card = new ToastCard(title, message, kind, duration, onClick);
             card.Dismissed += (_, _) => RemoveCard(card);
             ToastStack.Children.Add(card);
 

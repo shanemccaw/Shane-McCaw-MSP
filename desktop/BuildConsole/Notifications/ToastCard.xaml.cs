@@ -23,13 +23,23 @@ namespace BuildConsole
 
         private readonly DispatcherTimer _timer;
         private readonly TimeSpan _duration;
+        private readonly Action? _onClick;
         private bool _closing;
 
-        public ToastCard(string title, string message, ToastKind kind, TimeSpan duration)
+        public ToastCard(string title, string message, ToastKind kind, TimeSpan duration, Action? onClick = null)
         {
             InitializeComponent();
 
             _duration = duration;
+            _onClick = onClick;
+
+            // A card with a click action becomes a click target: hand cursor + a body-click handler
+            // (the ✕ close button keeps its own handler; a click on it is excluded below).
+            if (_onClick != null)
+            {
+                CardRoot.Cursor = System.Windows.Input.Cursors.Hand;
+                CardRoot.MouseLeftButtonUp += CardRoot_MouseLeftButtonUp;
+            }
 
             var (accent, glyph) = StyleFor(kind);
             AccentBar.Background = accent;
@@ -94,6 +104,31 @@ namespace BuildConsole
         }
 
         private void BtnClose_Click(object sender, RoutedEventArgs e) => BeginClose();
+
+        // Body click (only wired when an onClick was supplied). Ignore clicks that originate on the ✕
+        // close button (it has its own handler) so a dismiss-click doesn't also fire the action; then
+        // invoke the action and animate the toast out.
+        private void CardRoot_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+        {
+            if (_closing || _onClick == null) return;
+            if (IsWithinCloseButton(e.OriginalSource as DependencyObject)) return;
+
+            try { _onClick(); }
+            catch { /* a click handler must never crash the toast */ }
+            BeginClose();
+        }
+
+        private bool IsWithinCloseButton(DependencyObject? source)
+        {
+            while (source != null)
+            {
+                if (ReferenceEquals(source, BtnClose)) return true;
+                source = source is Visual || source is System.Windows.Media.Media3D.Visual3D
+                    ? VisualTreeHelper.GetParent(source)
+                    : LogicalTreeHelper.GetParent(source);
+            }
+            return false;
+        }
 
         /// <summary>Starts the exit animation; safe to call more than once. Raises <see cref="Dismissed"/> when done.</summary>
         public void BeginClose()
