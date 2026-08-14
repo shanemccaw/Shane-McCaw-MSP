@@ -1,0 +1,75 @@
+<!--
+    Design tokens for the Build Watch chat pane, taken verbatim from
+    design_handoff_claude_cli_chat/README.md's "Design Tokens" section. Deliberately NOT
+    the app's existing Catppuccin Themes/DarkTheme.xaml brushes — the handoff specifies its
+    own exact hex palette ("High fidelity... colors... are final. Match them.") which is a
+    different, purpose-built dark scheme for this one control.
+-->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Surfaces -->
+    <SolidColorBrush x:Key="ChatPane.Canvas" Color="#020617"/>
+    <SolidColorBrush x:Key="ChatPane.CanvasChrome" Color="#F2020617"/>
+    <SolidColorBrush x:Key="ChatPane.Surface" Color="#0D1526"/>
+    <SolidColorBrush x:Key="ChatPane.Border" Color="#1E293B"/>
+    <SolidColorBrush x:Key="ChatPane.BorderStrong" Color="#26344A"/>
+    <SolidColorBrush x:Key="ChatPane.BorderSubtle60" Color="#991E293B"/>
+    <SolidColorBrush x:Key="ChatPane.BorderSubtle90" Color="#E51E293B"/>
+
+    <!-- Brand / primary -->
+    <SolidColorBrush x:Key="ChatPane.Primary" Color="#0078D4"/>
+    <SolidColorBrush x:Key="ChatPane.PrimaryHover" Color="#1A8AE0"/>
+    <SolidColorBrush x:Key="ChatPane.PrimaryPressed" Color="#005A9E"/>
+    <SolidColorBrush x:Key="ChatPane.Accent" Color="#00B4D8"/>
+    <LinearGradientBrush x:Key="ChatPane.BrandGradient" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#0078D4" Offset="0"/>
+        <GradientStop Color="#00B4D8" Offset="1"/>
+    </LinearGradientBrush>
+
+    <SolidColorBrush x:Key="ChatPane.AccentText1" Color="#60A5FA"/>
+    <SolidColorBrush x:Key="ChatPane.AccentText2" Color="#7DBAFF"/>
+    <SolidColorBrush x:Key="ChatPane.AccentText3" Color="#A8CCFF"/>
+    <SolidColorBrush x:Key="ChatPane.AccentText4" Color="#93C5FD"/>
+
+    <!-- Text -->
+    <SolidColorBrush x:Key="ChatPane.Text1" Color="#F8FAFC"/>
+    <SolidColorBrush x:Key="ChatPane.Text2" Color="#EEF2F7"/>
+    <SolidColorBrush x:Key="ChatPane.Text3" Color="#E2E8F0"/>
+
+    <!-- Muted -->
+    <SolidColorBrush x:Key="ChatPane.Muted1" Color="#CBD5E1"/>
+    <SolidColorBrush x:Key="ChatPane.Muted2" Color="#B6C2D2"/>
+    <SolidColorBrush x:Key="ChatPane.Muted3" Color="#A3B0C2"/>
+    <SolidColorBrush x:Key="ChatPane.Muted4" Color="#94A3B8"/>
+    <SolidColorBrush x:Key="ChatPane.Muted5" Color="#8494A8"/>
+    <SolidColorBrush x:Key="ChatPane.Muted6" Color="#7C8B9F"/>
+    <SolidColorBrush x:Key="ChatPane.Muted7" Color="#64748B"/>
+
+    <!-- Status -->
+    <SolidColorBrush x:Key="ChatPane.Success" Color="#34D399"/>
+    <SolidColorBrush x:Key="ChatPane.Warning" Color="#FBBF24"/>
+    <SolidColorBrush x:Key="ChatPane.Danger" Color="#FCA5A5"/>
+    <SolidColorBrush x:Key="ChatPane.DangerFill" Color="#14EF4444"/>
+    <SolidColorBrush x:Key="ChatPane.DangerFillHover" Color="#29EF4444"/>
+    <SolidColorBrush x:Key="ChatPane.DangerBorder" Color="#4DEF4444"/>
+
+    <!-- Pill fills/borders (10%/25% tints of the state color, per spec's RUNNING pill spec) -->
+    <SolidColorBrush x:Key="ChatPane.Pill.RunningFill" Color="#1A2563EB"/>
+    <SolidColorBrush x:Key="ChatPane.Pill.RunningBorder" Color="#402563EB"/>
+    <SolidColorBrush x:Key="ChatPane.Pill.IdleFill" Color="#1A94A3B8"/>
+    <SolidColorBrush x:Key="ChatPane.Pill.IdleBorder" Color="#4094A3B8"/>
+    <SolidColorBrush x:Key="ChatPane.Pill.ErrorFill" Color="#1AEF4444"/>
+    <SolidColorBrush x:Key="ChatPane.Pill.ErrorBorder" Color="#40EF4444"/>
+    <SolidColorBrush x:Key="ChatPane.Pill.WarningFill" Color="#1AFBBF24"/>
+    <SolidColorBrush x:Key="ChatPane.Pill.WarningBorder" Color="#40FBBF24"/>
+    <SolidColorBrush x:Key="ChatPane.Pill.SuccessFill" Color="#1A34D399"/>
+    <SolidColorBrush x:Key="ChatPane.Pill.SuccessBorder" Color="#4034D399"/>
+
+    <SolidColorBrush x:Key="ChatPane.ToolDetailRule" Color="#592563EB"/>
+    <SolidColorBrush x:Key="ChatPane.CaretBrush" Color="#60A5FA"/>
+
+    <FontFamily x:Key="ChatPane.UiFont">Inter, Segoe UI Variable, Segoe UI</FontFamily>
+    <FontFamily x:Key="ChatPane.MonoFont">Menlo, Consolas</FontFamily>
+
+</ResourceDictionary>

@@ -1,0 +1,36 @@
+<!--
+    Vector icon geometries for the Build Watch chat pane (design_handoff_claude_cli_chat
+    README: "Icons: Lucide (2px stroke) ... do not use emoji or an icon font"). Each
+    resource is a Lucide icon's real path data (24x24 source coordinate space), used as
+    stroked (not filled) PathGeometry via <Path Data="{StaticResource ...}" Stroke="..."
+    StrokeThickness="2" .../> so it renders exactly like the prototype's Lucide glyphs.
+-->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <PathGeometry x:Key="Icon.Sparkles"
+                  Figures="M9.937 15.5A2 2 0 0 0 8.5 14.063L2.365 12.481A0.5 0.5 0 0 1 2.365 11.519L8.5 9.936A2 2 0 0 0 9.937 8.5L11.519 2.365A0.5 0.5 0 0 1 12.481 2.365L14.063 8.5A2 2 0 0 0 15.5 9.937L21.635 11.519A0.5 0.5 0 0 1 21.635 12.481L15.5 14.063A2 2 0 0 0 14.063 15.5L12.481 21.635A0.5 0.5 0 0 1 11.519 21.635Z M20 3 L20 7 M18 5 L22 5 M4 17 L4 19 M3 18 L5 18"/>
+
+    <PathGeometry x:Key="Icon.Wrench"
+                  Figures="M14.7 6.3 A1 1 0 0 0 14.7 7.7 L16.3 9.3 A1 1 0 0 0 17.7 9.3 L21.47 5.53 A6 6 0 0 1 13.53 13.47 L6.62 20.38 A2.12 2.12 0 0 1 3.62 17.38 L10.53 10.47 A6 6 0 0 1 18.47 2.53 Z"/>
+
+    <PathGeometry x:Key="Icon.FileText"
+                  Figures="M14.5 2 L6 2 A2 2 0 0 0 4 4 L4 20 A2 2 0 0 0 6 22 L18 22 A2 2 0 0 0 20 20 L20 7.5 Z M14 2 L14 8 L20 8 M16 13 L8 13 M16 17 L8 17 M10 9 L8 9"/>
+
+    <PathGeometry x:Key="Icon.ChevronDown" Figures="M6 9 L12 15 L18 9"/>
+
+    <!-- Full ellipse (not a PathGeometry arc, which degenerates when start==end) —
+         a StrokeDashArray applied at each usage site (same proven technique as the
+         existing dashed-ring spinner in BuildWatchWindow.xaml.cs) leaves the visible gap. -->
+    <EllipseGeometry x:Key="Icon.Loader2" Center="12,12" RadiusX="9" RadiusY="9"/>
+
+    <PathGeometry x:Key="Icon.Terminal" Figures="M4 17 L10 11 L4 5 M12 19 L20 19"/>
+
+    <PathGeometry x:Key="Icon.Square" Figures="M5 3 L19 3 A2 2 0 0 1 21 5 L21 19 A2 2 0 0 1 19 21 L5 21 A2 2 0 0 1 3 19 L3 5 A2 2 0 0 1 5 3 Z"/>
+
+    <PathGeometry x:Key="Icon.ArrowRight" Figures="M5 12 L19 12 M12 5 L19 12 L12 19"/>
+
+    <!-- Clock face as two half-circle arcs (a single arc with start==end is degenerate in WPF) plus the hand ticks. -->
+    <PathGeometry x:Key="Icon.Clock" Figures="M12 2 A10 10 0 0 1 12 22 A10 10 0 0 1 12 2 M12 6 L12 12 L16 14"/>
+
+</ResourceDictionary>

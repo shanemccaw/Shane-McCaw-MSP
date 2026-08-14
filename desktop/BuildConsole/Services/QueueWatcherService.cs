@@ -86,6 +86,8 @@ namespace BuildConsole.Services
             public string Title = "";
             /// <summary>Git #826 — filled in as soon as the run's stream-json output reveals it (usually the very first line); reported at completion so a later Reply can resume this exact conversation.</summary>
             public string? SessionId;
+            /// <summary>Approximate current context-window usage — input_tokens + cache_creation_input_tokens + cache_read_input_tokens of the most recently seen "assistant"/"result" stream-json event's real `usage` object (the standard way to read "how full is the context window", since every API turn re-sends the whole conversation as input). Overwritten (not summed) on each new usage-bearing line. Null until the first such line lands.</summary>
+            public long? ContextTokens;
 
             // ── Interactive (BuildConsole owns stdin/stdout) fields ──────────
             /// <summary>True when this build was launched in the interactive redirected-stdin mode (owned by this app instance). Legacy/foreign builds are false and behave exactly as before.</summary>
@@ -469,6 +471,9 @@ namespace BuildConsole.Services
                 if (sid != null) lock (_gate) entry.SessionId ??= sid;
             }
 
+            var ctxTokens = TryExtractContextTokens(data);
+            if (ctxTokens.HasValue) lock (_gate) entry.ContextTokens = ctxTokens;
+
             var summary = SummarizeStreamJsonLine(data, out bool isResult);
             if (summary != null) AppendLog(entry, summary);
 
@@ -541,6 +546,14 @@ namespace BuildConsole.Services
             {
                 lock (_gate) return e.State;
             }
+            return null;
+        }
+
+        /// <summary>Approximate current context-window token usage for a live or just-exited (retained) interactive build — real numbers read from the CLI's own stream-json `usage` field, or null if unknown/not an interactive build/nothing seen yet.</summary>
+        public long? GetContextTokens(int id)
+        {
+            if (_running.TryGetValue(id, out var e) && e.Interactive) { lock (_gate) return e.ContextTokens; }
+            if (_retained.TryGetValue(id, out var r) && r.Interactive) { lock (_gate) return r.ContextTokens; }
             return null;
         }
 
@@ -755,6 +768,41 @@ namespace BuildConsole.Services
             {
                 using var doc = JsonDocument.Parse(line);
                 return doc.RootElement.TryGetProperty("session_id", out var sid) ? sid.GetString() : null;
+            }
+            catch { return null; }
+        }
+
+        /// <summary>
+        /// Real Claude Code SDK `usage` object (the same shape as `claude --output-format
+        /// stream-json` emits on every "assistant" message's `message.usage` and on the
+        /// turn-ending "result" event's own `usage`): input_tokens + cache_creation_input_tokens
+        /// + cache_read_input_tokens approximates the total conversation context size sent on
+        /// that API call (the Messages API re-sends full history every turn, no server-side
+        /// memory) — the same metric Claude Code's own UI uses for "context window used".
+        /// Returns null for any line/type that doesn't carry a usage object.
+        /// </summary>
+        private static long? TryExtractContextTokens(string line)
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(line);
+                var root = doc.RootElement;
+                var type = root.TryGetProperty("type", out var t) ? t.GetString() : null;
+
+                JsonElement usage;
+                if (type == "assistant")
+                {
+                    if (!root.TryGetProperty("message", out var msg) || !msg.TryGetProperty("usage", out usage))
+                        return null;
+                }
+                else if (type == "result")
+                {
+                    if (!root.TryGetProperty("usage", out usage)) return null;
+                }
+                else return null;
+
+                long Get(string name) => usage.TryGetProperty(name, out var v) && v.TryGetInt64(out var n) ? n : 0;
+                return Get("input_tokens") + Get("cache_creation_input_tokens") + Get("cache_read_input_tokens");
             }
             catch { return null; }
         }
