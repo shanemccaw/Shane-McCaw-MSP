@@ -64,6 +64,23 @@
                                    Foreground="{StaticResource Subtext1Brush}"/>
                     </StackPanel>
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" HorizontalAlignment="Right">
+                        <!-- Global "Queue Paused / Running" toggle — separate from any
+                             individual build's Stop. While paused, new queued items are NOT
+                             picked up/started (already-running builds keep going); queuing
+                             still works normally. See QueueWatcherService.SetPaused and the
+                             BuildQueuePanel.QueuePause.cs partial. Colour + glyph flip in
+                             code-behind so the paused state is unmistakable at a glance. -->
+                        <Button x:Name="BtnPauseQueue"
+                                Style="{StaticResource IconButton}"
+                                ToolTip="Queue running — click to pause (already-running builds keep going; no new items start until resumed)"
+                                Padding="6,4"
+                                Margin="0,0,2,0"
+                                Click="BtnPauseQueue_Click">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock x:Name="PauseQueueIcon" Text="⏸" FontSize="11" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="PauseQueueLabel" Text="Running" FontSize="10" Margin="4,0,0,0" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
                         <!-- Manual-only GitHub (Shane, 2026-08-14): the three GitHub-backed
                              tiles below (In-Flight / To-Do / Completed) no longer poll on a
                              timer — this is their single, explicit refresh trigger, matching

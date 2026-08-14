@@ -170,6 +170,39 @@ namespace BuildConsole.Services
 
         public int RunningCount => _running.Count;
 
+        /// <summary>
+        /// Global "Queue Paused / Running" toggle — a per-instance, in-memory
+        /// switch, separate from any individual build's own Stop. While paused,
+        /// TickAsync still REAPS builds that finish (so completions/slot-frees
+        /// still fire) but never CLAIMS or LAUNCHES a new queued item — the
+        /// server-side claim (GetNextQueueItemsAsync) is skipped entirely, so a
+        /// queued item stays queued (not silently claimed-but-not-run) until
+        /// Shane resumes. Queuing new items is unaffected: this only gates the
+        /// automatic pickup loop, not the queue itself. Builds already running
+        /// when Pause is pressed keep running to completion. Defaults to running
+        /// (false); it's in-memory only, so a restart always comes up running.
+        /// "Run Now" (ForceLaunch) is a deliberate manual per-item override and
+        /// intentionally still works while paused.
+        /// </summary>
+        private bool _paused;
+
+        /// <summary>Whether the automatic queue pickup loop is currently paused. See <see cref="SetPaused"/>.</summary>
+        public bool IsPaused => _paused;
+
+        /// <summary>Raised whenever the pause state actually changes (deduped) — lets any UI reflecting the toggle stay in sync. Argument: the new paused value.</summary>
+        public event Action<bool>? PausedStateChanged;
+
+        /// <summary>Flips the global pause state. No-op (and no log) when already in the requested state. Logs the transition on the "watcher" channel.</summary>
+        public void SetPaused(bool paused)
+        {
+            if (_paused == paused) return;
+            _paused = paused;
+            ActivityLog.Log("watcher", paused
+                ? "Queue PAUSED — already-running builds continue; no new queued items will be claimed/started until resumed."
+                : "Queue RESUMED — the pickup loop will claim and start queued items again on the next tick.");
+            PausedStateChanged?.Invoke(paused);
+        }
+
         /// <summary>Raised right after a queued build's completion is reported (MarkQueueItemCompleteAsync succeeds) in TickAsync — the genuine "this build is done" moment, success or failure alike (exitCode 0 = success). Wired by MainWindow to trigger BuildCompletionSoundService.Play.</summary>
         public event Action<int, string, int>? BuildFinished;
 
@@ -331,6 +364,12 @@ namespace BuildConsole.Services
                     }
                     _running.Remove(id);
                 }
+
+                // Global pause: reaping (above) still runs so already-running
+                // builds complete and free their slots, but the claim/launch of
+                // any NEW queued item is skipped entirely while paused — no
+                // server-side claim happens, so items stay queued until resumed.
+                if (_paused) return;
 
                 int freeSlots = _maxConcurrent - _running.Count;
                 if (freeSlots <= 0) return;
