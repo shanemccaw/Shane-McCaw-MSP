@@ -552,3 +552,157 @@ Both halves log on their existing channels — the scan engine on `tenant.portal
 `testing.powershell-verify` (BuildConsole). runScan itself will log on the shared
 `sql-runner.protocol` shaneapp channel like `executeSql`/`runTest` (trigger →
 settle → per‑finding count → result path, or the exact reason it couldn't run).
+
+---
+
+## 6. `shaneapp://runScan` — the local scan/assessment trigger (as shipped)
+
+The third `shaneapp://` action — the local-agent companion to `executeSql`/`runTest`,
+and the concrete handler §5 is built around. It runs the platform's REAL Copilot
+Readiness scan/assessment engine (`runDiagnostics` — real per-tenant Microsoft Graph
+reads → real findings/scores/pillars) against a **testbed** tenant and writes ONE
+settled result envelope, so a build session can exercise and debug the scanning
+engine without walking the whole quiz → consent → scan → verdict UI. Shane's
+motivation: *"if the agent could execute a scan on their own outside the UI path,
+they could help debug and make my scanning engine better."*
+
+### Why HTTP (unlike executeSql/runTest)
+`executeSql` runs on BuildConsole's own local Postgres; `runTest` runs a manifest
+in-process. Neither applies here: the scan engine (`runDiagnostics`) is Node/TS in
+the deployed api-server and can't run in-process. The ONLY way to run the REAL
+engine is the same authenticated api-server route the product uses — so runScan is a
+deliberate HTTP client (`Services/ScanRunnerClient.cs`) reusing the exact trigger,
+never a second scan implementation.
+
+### The trigger route + auth (why a testbed login is required)
+runScan posts the assessment UI's own trigger,
+**`POST /api/portal/assessment/debug-trigger-scan`** (`portal-assessment.ts`) — the
+platform's ONE scan trigger, hard-gated server-side to `tenants.is_testbed = true`
+(Git #965). That surface is `requireRole("Assessment")`; BuildConsole's
+`BUILD_TRACKER_INGEST_TOKEN` is not a JWT and is rejected there (401), and no
+ingest-token endpoint scans a chosen tenant. So runScan does the SAME thing the test
+manifests do — logs in as the pre-provisioned testbed Assessment account
+(`TEST_PORTAL_EMAIL`/`TEST_PORTAL_PASSWORD` from **Settings → Test Environment
+Variables**) via `POST /api/auth/login`, then uses that Assessment JWT for the
+trigger and the result reads.
+
+> **Reconciliation with §5b:** §5b sketches the MSP-operator route
+> (`/api/msp/customers/:id/diagnostics/run`, `?customerId=`); the shipped action
+> instead uses the **assessment UI's own** `debug-trigger-scan` (`?tenantId=`),
+> because that is the exact trigger the customer journey calls AND the one carrying
+> the #965 isTestbed gate, and it is reachable via the testbed Assessment login
+> BuildConsole already uses for manifests (the MSP route needs an MSPOperator JWT
+> BuildConsole doesn't hold). The settled per-finding read is the equivalent
+> customer-scoped `GET /api/portal/diagnostics/runs/:runId` — same `{ run, findings }`
+> shape §5b relies on, reachable with the same Assessment JWT.
+
+### The double testbed gate (#965)
+runScan never scans a non-testbed tenant, two independent ways:
+1. **Before triggering**, it runs its OWN #965 gate — `Services/TestbedGate`
+   (`VerifyTenantIsTestbedAsync`), the SAME enforced isTestbed=true gate
+   graphTests/powerShellVerify use — against the server's authoritative testbed
+   customer list. Fail-closed: a non-testbed (or unconfirmable) tenant is refused
+   with an `ok:false` envelope and never triggered.
+2. The **server-side** `debug-trigger-scan` gate refuses (403) if the logged-in
+   account's tenant isn't testbed — a second belt.
+
+As a correctness belt, the login's `customerId` claim is confirmed to match the
+requested `tenantId`'s testbed customer, so runScan can never silently scan a
+DIFFERENT (still-testbed) tenant than asked (surfaced as
+`tenantCorrespondenceConfirmed` in the envelope).
+
+### The invocation contract
+
+```
+shaneapp://runScan?tenantId=<Entra tenant GUID>&resultRef=<optional out path>&src=<optional caller tag>&timeoutSeconds=<optional>
+```
+
+| Query param | Required | Meaning |
+|-------------|----------|---------|
+| `tenantId` | **yes** | The Entra tenant GUID of a **real testbed tenant** (matched against the server's isTestbed=true customer list). Must be the tenant the configured `TEST_PORTAL_*` account belongs to. |
+| `resultRef` | no | Path to write the JSON result envelope to. Defaults to `%TEMP%\shaneapp-runScan-<tenantId>.result.json`. |
+| `src` | no | Free-text caller tag, logged verbatim as the source (`unknown` when absent). |
+| `timeoutSeconds` | no | How long to wait for the scan to settle. Default 600; clamped to [60, 1800]. |
+
+The action name is the URI authority (`runScan`); it is case-insensitive. As with
+`executeSql`/`runTest`, only a short reference travels in the URL — the creds come
+from Settings, never inline.
+
+### How to invoke it (PowerShell)
+
+```powershell
+$tenantId = "00000000-0000-0000-0000-000000000000"   # a real testbed tenant GUID
+$out = Join-Path $env:TEMP "shaneapp-runScan-$tenantId.result.json"
+Remove-Item $out -ErrorAction SilentlyContinue        # clear any stale result first
+
+Start-Process ("shaneapp://runScan?src=claude-code&tenantId=" + [uri]::EscapeDataString($tenantId) + "&resultRef=" + [uri]::EscapeDataString($out))
+
+# Scans are minutes-scale (real Graph reads); poll for the SETTLED result file, then read it:
+while (-not (Test-Path $out)) { Start-Sleep -Milliseconds 500 }
+$scan = Get-Content $out -Raw | ConvertFrom-Json
+"{0}: run {1} status={2} ({3} findings, checks {4}/{5} ok)" -f `
+  (@{$true='OK';$false='FAIL'}[$scan.ok]), $scan.runId, $scan.scanStatus, `
+  $scan.findingsCount, $scan.checksOk, $scan.checksTotal
+```
+
+### The result envelope
+
+Written to `resultRef` (or the temp default). Same top-line fields as the other two
+actions (`ok`/`error`/`action`/`source`/`ranAtUtc`), plus the real scan result:
+
+```jsonc
+{
+  "ok": true,                       // false if it couldn't run / never settled / the run 'failed'
+  "error": null,                    // the reason it couldn't run/settle, else null
+  "action": "runScan",
+  "source": "claude-code",          // whatever ?src= was
+  "ranAtUtc": "2026-08-14T...Z",
+  "tenantId": "…GUID…",
+  "testbedCustomer": { "id": 42, "name": "…" },  // resolved from the #965 testbed list
+  "runId": "…uuid…",
+  "scanStatus": "completed",        // the SETTLED terminal status: completed | partial | failed
+  "tenantCorrespondenceConfirmed": true,         // login customerId matched the requested tenant
+  "elapsedMs": 84213,
+  "checksTotal": 34, "checksOk": 20, "checksError": 11,   // lifted from the real run row
+  "findingsCount": 34,
+  "copilotGate": { "status": "no_go", "score": 61, "threshold": 82 },   // from /assessment/status
+  "run":      { /* the full real msp_diagnostic_runs row: status, checks*, summary, … */ },
+  "findings": [ /* the full msp_diagnostic_findings rows — per finding: checkKey, checkLabel,
+                   checkStatus, severity, title, description, extractedProperties, recommendation */ ],
+  "assessmentStatus": { /* GET /assessment/status: radar/pillars, stats, copilotReadiness, copilotGate */ }
+}
+```
+
+`findings[]` is the raw per-finding rows straight from `…/diagnostics/runs/:runId`,
+**including each finding's `extractedProperties`** — exactly the per-finding detail
+§5b requires for dual-verification. The §5b comparison workflow works against this
+envelope directly, e.g.:
+
+```powershell
+($scan.findings | Where-Object { $_.checkKey -eq 'exchange:distribution-list-count' }).extractedProperties.distributionListCount
+```
+
+See **§5** for the full engine-observation-vs-PowerShell-ground-truth methodology.
+
+### Concurrency & timing
+runScan is pure HTTP and does NOT touch the shared TestRunnerWindow/WebView2, so
+(unlike `runTest`) it needs no `_testTriggerBusy` latch and can run alongside a
+manifest run. The trigger is fire-and-forget server-side, so runScan polls
+`…/diagnostics/runs/:runId` every few seconds until the run reaches a terminal
+status (or `timeoutSeconds`), then reads `/assessment/status` once. On timeout the
+envelope is `ok:false` with the last-seen status and the `runId`, so the agent can
+re-check later rather than hang.
+
+### Logging
+Every stage lands on the shared **`sql-runner.protocol`** ActivityLog channel like
+`executeSql`/`runTest` (testbed-gate result, login, trigger + runId, poll progress,
+settle, finding/checks counts, result path — or the exact reason it couldn't run);
+the testbed gate additionally logs on its own `testing.testbed-gate` channel.
+
+### One-time setup
+Two things: (1) the SAME `shaneapp://` registration `executeSql`/`runTest` use
+(setup-shaneapp-protocol.ps1) already covers `runScan` — the scheme is registered
+once, all actions ride it, no extra setup. (2) Set `TEST_PORTAL_EMAIL` /
+`TEST_PORTAL_PASSWORD` (the pre-provisioned testbed Assessment account) in
+Settings → Test Environment Variables — the same creds the assessment test
+manifests use.

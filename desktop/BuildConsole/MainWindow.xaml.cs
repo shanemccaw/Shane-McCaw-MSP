@@ -4490,10 +4490,24 @@ namespace BuildConsole
                     return;
                 }
 
+                // runScan → trigger the REAL Copilot Readiness scan/assessment engine against a testbed
+                // tenant over HTTP, reusing the exact trigger the customer UI calls (POST
+                // /api/portal/assessment/debug-trigger-scan → runDiagnostics), enforcing the #965
+                // isTestbed gate, and writing the real findings/scores/pillar breakdown to a result
+                // envelope (MainWindow.ShaneAppRunScan.cs). Like runTest, it guarantees an envelope on
+                // every path so an agent polling the result file never hangs.
+                if (string.Equals(req.Action, "runScan", StringComparison.OrdinalIgnoreCase))
+                {
+                    BuildConsole.Services.ActivityLog.Log(ch,
+                        $"Routing action '{req.Action}' to runScan handler (src='{src}').");
+                    await HandleShaneAppRunScanAsync(req, src, ch);
+                    return;
+                }
+
                 if (!string.Equals(req.Action, "executeSql", StringComparison.OrdinalIgnoreCase))
                 {
                     BuildConsole.Services.ActivityLog.Log(ch,
-                        $"Unsupported action '{req.Action}' — only executeSql / runTest / uiTest are handled (other test execution goes over #898 HTTP, not this protocol). Ignoring (an unknown action has no known result path to write a failure envelope to).");
+                        $"Unsupported action '{req.Action}' — only executeSql / runTest / uiTest / runScan are handled (other test execution goes over #898 HTTP, not this protocol). Ignoring (an unknown action has no known result path to write a failure envelope to).");
                     return;
                 }
 

@@ -146,6 +146,23 @@ namespace BuildConsole.Services
                 .ToList();
         }
 
+        /// <summary>
+        /// The matched isTestbed=true customer for <paramref name="tenantId"/> (Id/Name/TenantId), or
+        /// null if the tenant isn't in the server's live testbed list. Same authoritative source + 30s
+        /// cache as <see cref="VerifyTenantIsTestbedAsync"/>; lets a caller that needs the customer's
+        /// numeric id — e.g. shaneapp://runScan confirming a logged-in Assessment account matches the
+        /// requested tenant — resolve it without re-implementing the fetch. THROWS on any failure to
+        /// fetch; the caller must treat that as fail-closed (never as "no restrictions").
+        /// </summary>
+        public static async Task<TestbedCustomer?> FindTestbedCustomerAsync(string tenantId)
+        {
+            if (string.IsNullOrWhiteSpace(tenantId)) return null;
+            var customers = await GetTestbedCustomersAsync();
+            return customers.FirstOrDefault(c =>
+                !string.IsNullOrWhiteSpace(c.TenantId)
+                && string.Equals(c.TenantId!.Trim(), tenantId.Trim(), StringComparison.OrdinalIgnoreCase));
+        }
+
         private static async Task<List<TestbedCustomer>> GetTestbedCustomersAsync()
         {
             lock (CacheLock)
