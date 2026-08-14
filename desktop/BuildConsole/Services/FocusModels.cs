@@ -149,6 +149,10 @@ namespace BuildConsole.Services
         public int? ActiveMilestoneNumber { get; set; }
         public string ActiveMilestoneTitle { get; set; } = "";
         public bool IsActive { get; set; }
+        /// <summary>Whether the dedicated full-screen immersive Focus view was engaged when the app last
+        /// closed — restored on next launch (only if <see cref="IsActive"/>) so a focus session resumes
+        /// exactly where it was left, matching Shane's "get me back right where I was" ask.</summary>
+        public bool ImmersiveActive { get; set; }
         public int Points { get; set; }
         public List<FocusAchievement> Achievements { get; set; } = new();
         public List<FocusClosedSample> ClosedSamples { get; set; } = new();

@@ -86,6 +86,33 @@ namespace BuildConsole.Services
         public IReadOnlyList<FocusSuggestion> Suggestions { get; private set; } = new List<FocusSuggestion>();
         public FocusProgress Progress { get; private set; } = new();
 
+        /// <summary>Whether the dedicated full-screen immersive Focus view is engaged right now (a real
+        /// window-covering takeover, distinct from <see cref="IsActive"/> which is just "a milestone is
+        /// focused / panels are filtered"). You can be focused without being immersive (the bar shows);
+        /// immersive requires a focused milestone to zoom into.</summary>
+        public bool ImmersiveActive => _state.IsActive && _state.ImmersiveActive && _state.ActiveMilestoneNumber.HasValue;
+
+        /// <summary>The active "Epic" (focus milestone)'s real child issues — every board issue under the
+        /// active milestone, ordered the way the immersive view lists them: real GitHub epics first (they
+        /// anchor the tree), then Shane-To-Do items, then the rest, closed issues last. Empty when not
+        /// focused. (There is no client-side epic→child linkage — <c>SubIssueCount</c> is a count only — so
+        /// "the Epic's children" is honestly the milestone's issue set, with real epics surfaced first.)</summary>
+        public IReadOnlyList<GitBoardIssue> ActiveChildIssues
+        {
+            get
+            {
+                if (!IsActive) return Array.Empty<GitBoardIssue>();
+                int? active = _state.ActiveMilestoneNumber;
+                return _issues
+                    .Where(i => i.MilestoneNumber == active)
+                    .OrderBy(i => i.IsClosed ? 1 : 0)                          // open first
+                    .ThenBy(i => i.IsEpic ? 0 : (i.IsTodo ? 1 : 2))           // epics, then To-Do, then rest
+                    .ThenByDescending(i => i.SubIssueCount)                    // bigger epics first
+                    .ThenBy(i => i.Number)
+                    .ToList();
+            }
+        }
+
         // ---- events (UI reacts on the same UI thread) ------------------
         /// <summary>Active milestone / points / progress / achievements changed — refresh the bar.</summary>
         public event Action? StateChanged;
@@ -95,6 +122,15 @@ namespace BuildConsole.Services
         public event Action? DowntimeChanged;
         /// <summary>A real achievement was just unlocked — pop a tasteful toast.</summary>
         public event Action<FocusAchievement>? AchievementUnlocked;
+        /// <summary>The immersive full-screen view was engaged / dismissed — MainWindow shows or hides the
+        /// window-covering overlay in response.</summary>
+        public event Action? ImmersiveChanged;
+        /// <summary>N real issue(s) just closed under the active milestone (a positive closed-count delta vs
+        /// the persisted baseline, computed in <see cref="RecomputeGame"/>). Drives the immersive view's
+        /// tasteful "issue closed" celebration. Honest caveat: it's the milestone's aggregate closed count
+        /// advancing — which only moves when GitHub milestone data is refreshed (manual-refresh-only) — not
+        /// a per-issue push signal, since no per-issue "closed" event exists in the app.</summary>
+        public event Action<int, FocusMilestone>? MilestoneIssuesClosed;
 
         private FocusModeService() { }
 
@@ -169,10 +205,51 @@ namespace BuildConsole.Services
             _pendingRestore = null;
             _suppressReentry = false;
             ExitDowntime(restore: false, reason: "focus deactivated");
+            bool wasImmersive = _state.ImmersiveActive;
+            _state.ImmersiveActive = false; // can't be immersive in an epic you're no longer focused on
             ActivityLog.Log("focus-mode", $"milestone deactivated (was '{was}') — all panels unfiltered");
             Save();
+            if (wasImmersive) ImmersiveChanged?.Invoke();
             RaiseFilterChanged();
             RaiseStateChanged();
+        }
+
+        // ================================================================
+        // Immersive full-screen view (the dedicated zoom-in on the Epic)
+        // ================================================================
+
+        /// <summary>Engage the dedicated full-screen immersive view — the window-covering "video-game-esque"
+        /// zoom onto the one Epic being worked. No-op unless a milestone is actually focused (there's nothing
+        /// to be immersive about otherwise). MainWindow shows the overlay on <see cref="ImmersiveChanged"/>.</summary>
+        public void EnterImmersive()
+        {
+            if (!IsActive)
+            {
+                ActivityLog.Log("focus-mode", "enter-immersive ignored — no milestone is focused to zoom into");
+                return;
+            }
+            if (_state.ImmersiveActive) return;
+            _state.ImmersiveActive = true;
+            ActivityLog.Log("focus-mode", $"entered immersive view — full-screen zoom on '{_state.ActiveMilestoneTitle}' (#{_state.ActiveMilestoneNumber})");
+            Save();
+            ImmersiveChanged?.Invoke();
+        }
+
+        /// <summary>Dismiss the immersive view, dropping back to the normal multi-pane shell. The milestone
+        /// stays focused (the bar remains) — this only collapses the full-screen takeover.</summary>
+        public void ExitImmersive()
+        {
+            if (!_state.ImmersiveActive) return;
+            _state.ImmersiveActive = false;
+            ActivityLog.Log("focus-mode", "exited immersive view — back to the normal shell (milestone still focused)");
+            Save();
+            ImmersiveChanged?.Invoke();
+        }
+
+        /// <summary>Toggle the immersive view (the Ctrl+Shift+F hotkey and the bar's ⛶ button use this).</summary>
+        public void ToggleImmersive()
+        {
+            if (ImmersiveActive) ExitImmersive(); else EnterImmersive();
         }
 
         // ================================================================
@@ -464,6 +541,7 @@ namespace BuildConsole.Services
                     _state.Points += delta * PointsPerClose;
                     ActivityLog.Log("focus-mode", $"+{delta * PointsPerClose} pts — {delta} issue(s) closed under '{ms.Title}' ({closed}/{total})");
                     MaybeAwardProgressAchievements(ms, silent: false);
+                    MilestoneIssuesClosed?.Invoke(delta, ms); // → immersive view's "issue closed" celebration
                 }
                 else if (active && !haveBaseline)
                 {

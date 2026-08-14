@@ -31,6 +31,7 @@ namespace BuildConsole
                 _focusBar.SuggestionActivated += OnFocusSuggestionActivated;
                 _focusBar.MilestoneOpenRequested += OnFocusMilestoneOpen;
                 _focusBar.AchievementsRequested += OnFocusAchievementsRequested;
+                _focusBar.ImmersiveRequested += () => FocusModeService.Instance.EnterImmersive();
                 InsertFocusBar(_focusBar);
 
                 // Subscribe BEFORE Start(): a restored-active milestone fires FilterChanged from
@@ -52,6 +53,11 @@ namespace BuildConsole
                     GetBuildSaturation,
                     CaptureFocusContext,
                     RestoreFocusContext);
+
+                // Wire the dedicated immersive full-screen view on top of everything above (runs AFTER
+                // Start() so the service's persisted state — including whether immersive was engaged — is
+                // already loaded and can be restored).
+                InitFocusImmersive();
 
                 ActivityLog.Log("focus-mode", "Focus Mode wired into the shell");
             }

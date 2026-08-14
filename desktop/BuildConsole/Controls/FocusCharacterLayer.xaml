@@ -1,0 +1,17 @@
+<UserControl x:Class="BuildConsole.Controls.FocusCharacterLayer"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             mc:Ignorable="d"
+             IsHitTestVisible="False">
+    <!-- The playful ambient/celebration layer for the immersive Focus view. A single
+         Canvas of small, cute "companion" glyphs that stroll the bottom border, peek in
+         from the edges, and burst into confetti/trophies on real milestone events (a build
+         completing, issues closing) — Microsoft-Clarity's animal-companion spirit, done with
+         original emoji + WPF motion, in the same lighthearted register as Build Watch's
+         "Reticulating splines…" easter egg. Never interactive (IsHitTestVisible=False), so it
+         floats over the real content without ever intercepting a click. All motion is built in
+         code-behind (FocusCharacterLayer.xaml.cs); this file is just the clipped Canvas. -->
+    <Canvas x:Name="Stage" ClipToBounds="True" Background="Transparent"/>
+</UserControl>

@@ -28,6 +28,8 @@ namespace BuildConsole.Controls
         public event Action<int>? MilestoneOpenRequested;
         /// <summary>The achievements chip was clicked — show the earned list.</summary>
         public event Action? AchievementsRequested;
+        /// <summary>The ⛶ Immersive button was clicked — MainWindow engages the full-screen immersive view.</summary>
+        public event Action? ImmersiveRequested;
 
         public FocusModeBar()
         {
@@ -339,6 +341,8 @@ namespace BuildConsole.Controls
         }
 
         private void ExitBtn_Click(object sender, RoutedEventArgs e) => FocusModeService.Instance.Deactivate();
+
+        private void ImmersiveBtn_Click(object sender, RoutedEventArgs e) => ImmersiveRequested?.Invoke();
 
         private void BackNowBtn_Click(object sender, RoutedEventArgs e) => FocusModeService.Instance.RequestRestoreNow();
 
