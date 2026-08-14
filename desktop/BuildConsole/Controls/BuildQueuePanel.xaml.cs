@@ -321,6 +321,9 @@ namespace BuildConsole.Controls
         /// RefreshActiveSessionsAsync above.
         /// </summary>
         private string? _lastInFlightSignature;
+        /// <summary>Focus Mode — the last In-Flight issues fetched from `gh`, cached so a focus
+        /// toggle can re-filter/re-render this list from memory with no new GitHub call.</summary>
+        private List<Services.GitHubIssueSummary> _lastInFlightIssues = new();
 
         /// <summary>Manual-only GitHub (Shane, 2026-08-14): no longer polled on a
         /// timer — called once on Initialize ("initial load") and thereafter only
@@ -338,6 +341,7 @@ namespace BuildConsole.Controls
             if (signature == _lastInFlightSignature) return;
             _lastInFlightSignature = signature;
 
+            _lastInFlightIssues = issues;
             RenderInFlightGrouped(issues);
         }
 
@@ -352,6 +356,12 @@ namespace BuildConsole.Controls
         /// </summary>
         private void RenderInFlightGrouped(List<Services.GitHubIssueSummary> issues)
         {
+            // Focus Mode — hard-hide in-flight issues that don't belong to the active milestone
+            // (each resolved by its own GitHub number against the open-board milestone map).
+            // Applied here (the single render path) so both the gh refresh and the cache-only focus
+            // reapply stay filtered; the count text below then reflects only what's actually shown.
+            issues = ApplyIssueFocusFilter(issues);
+
             // Git #874 — see RefreshActiveSessionsAsync's identical comment.
             InFlightCountText.Text = $"({issues.Count})";
 
@@ -391,6 +401,9 @@ namespace BuildConsole.Controls
         /// Shane once actually done. Same direct-gh-CLI shape as In-Flight.
         /// </summary>
         private string? _lastWaitingOnMeSignature;
+        /// <summary>Focus Mode — the last To-Do (Shane To-Do) issues fetched from `gh`, cached so a
+        /// focus toggle can re-filter/re-render this list from memory with no new GitHub call.</summary>
+        private List<Services.GitHubIssueSummary> _lastWaitingOnMeIssues = new();
 
         /// <summary>Manual-only GitHub (Shane, 2026-08-14): no longer polled on a
         /// timer — "initial load" on Initialize, then only the ⟳ Refresh button.
@@ -406,6 +419,19 @@ namespace BuildConsole.Controls
             if (signature == _lastWaitingOnMeSignature) return;
             _lastWaitingOnMeSignature = signature;
 
+            _lastWaitingOnMeIssues = issues;
+            RenderWaitingOnMe(issues);
+        }
+
+        /// <summary>Renders the "Waiting on you" (Shane To-Do) list, applying Focus Mode's
+        /// active-milestone hard filter. Shared by the gh-CLI refresh and the cache-only focus
+        /// reapply, so a focus toggle re-filters this list with no GitHub call. The tile's count and
+        /// its PeachBrush announce-appearance both reflect the post-filter, on-milestone count.</summary>
+        private void RenderWaitingOnMe(List<Services.GitHubIssueSummary> issues)
+        {
+            // Focus Mode — hard-hide To-Do issues not in the active milestone (see ApplyIssueFocusFilter).
+            issues = ApplyIssueFocusFilter(issues);
+
             // Git #874 — the To-Do tile is the one section that should visually
             // announce itself once there's something in it (Shane: "To-Do I
             // reference only after a build tells me there is something for me
@@ -416,6 +442,19 @@ namespace BuildConsole.Controls
             _toDoTitleBlocks.Clear();
             RenderIssueList(WaitingOnMeList, issues, "Nothing waiting on you.", "🔴", "#E5A3A3", _toDoTitleBlocks);
             ApplyTitleMaxWidths(WaitingOnMeList, _toDoTitleBlocks);
+        }
+
+        /// <summary>Focus Mode — filters a GitHub-issue list to the active milestone (each issue's
+        /// own number against the open-board milestone map). Off-focus it's a pass-through, so the
+        /// unfiltered view stays byte-identical to before Focus Mode existed. No logging here (this
+        /// runs on every render); the shown/hidden split is logged once per focus toggle in
+        /// <see cref="ReapplyFocusFilter"/>.</summary>
+        private static List<Services.GitHubIssueSummary> ApplyIssueFocusFilter(List<Services.GitHubIssueSummary> issues)
+        {
+            var focus = BuildConsole.Services.FocusModeService.Instance;
+            return focus.IsActive
+                ? issues.Where(i => focus.IsIssueInFocus(i.Number)).ToList()
+                : issues;
         }
 
         /// <summary>Shared by RefreshWaitingOnMeAsync (flat) and RenderInFlightGrouped (grouped, via BuildIssueRow) — same GitHubIssueSummary shape, just a different label/empty-text/icon. `titleRegistry` (Git #941) is only passed by the To-Do caller — In-Flight keeps its original wrapping titles, untouched.</summary>
@@ -504,6 +543,8 @@ namespace BuildConsole.Controls
         {
             var completed = _lastItems
                 .Where(i => i.Status == "done" && i.GithubNumber.HasValue && _lastOpenIssueNumbers.Contains(i.GithubNumber.Value))
+                // Focus Mode — hard-hide completed items whose issue isn't in the active milestone.
+                .Where(i => BuildConsole.Services.FocusModeService.Instance.IsIssueInFocus(i.GithubNumber))
                 .OrderByDescending(i => i.UpdatedAt)
                 .ToList();
 
@@ -784,6 +825,47 @@ namespace BuildConsole.Controls
 
         /// <summary>Universal title-bar search — read-only view of the last polled queue snapshot (Title/Prompt/GithubNumber/Id/Status). Lets MainWindow's search match queue rows against the SAME in-memory list the tree renders, without a re-fetch or a parallel index. Mutation stays inside RefreshAsync.</summary>
         public IReadOnlyList<QueueItem> CurrentQueueItems => _lastItems;
+
+        /// <summary>Focus Mode — force every queue sub-list (Queue, In-Flight, To-Do, Completed) to
+        /// re-render from its already-fetched cache so the active-milestone hard filter applies the
+        /// instant focus is toggled, with NO API or `gh`/GitHub call (Shane's manual-refresh-only
+        /// rule). Necessary because each list's anti-flicker signature guard keys off the underlying
+        /// DATA, which a focus toggle doesn't change — so the normal refresh paths would skip the
+        /// re-render and leave the panel showing off-milestone items. That was the live bug: the
+        /// Focus Mode header counted "N hidden" correctly while these lists stayed unfiltered. Wired
+        /// into MainWindow's focus filter fan-out. Sessions are intentionally NOT filtered — a
+        /// running claude.exe process carries no issue/milestone linkage to filter on; that's logged
+        /// honestly rather than faked.</summary>
+        public void ReapplyFocusFilter()
+        {
+            var focus = BuildConsole.Services.FocusModeService.Instance;
+
+            // Completed keeps an internal signature guard; clear it so this forced re-render happens.
+            _lastCompletedSignature = null;
+
+            try { if (QueueTree != null && _filter != "Tests") RenderQueue(ApplyFilter(_lastItems)); } catch { }
+            try { RenderInFlightGrouped(_lastInFlightIssues); } catch { }
+            try { RenderWaitingOnMe(_lastWaitingOnMeIssues); } catch { }
+            try { RenderCompletedFromCache(); } catch { }
+
+            // Per-list shown/hidden diagnostics on the focus-mode channel (both transitions), so a
+            // regression is instantly diagnosable by comparing these counts against what rendered.
+            try
+            {
+                var qBase = ApplyFilter(_lastItems);
+                int qShown = qBase.Count(i => focus.IsIssueInFocus(i.GithubNumber));
+                int ifShown = _lastInFlightIssues.Count(i => focus.IsIssueInFocus(i.Number));
+                int tdShown = _lastWaitingOnMeIssues.Count(i => focus.IsIssueInFocus(i.Number));
+                var cBase = _lastItems
+                    .Where(i => i.Status == "done" && i.GithubNumber.HasValue && _lastOpenIssueNumbers.Contains(i.GithubNumber.Value))
+                    .ToList();
+                int cShown = cBase.Count(i => focus.IsIssueInFocus(i.GithubNumber));
+                ActivityLog.Log("focus-mode", focus.IsActive
+                    ? $"Build Queue re-filtered — Queue {qShown}/{qBase.Count}, In-Flight {ifShown}/{_lastInFlightIssues.Count}, To-Do {tdShown}/{_lastWaitingOnMeIssues.Count}, Completed {cShown}/{cBase.Count} shown (rest hidden by focus); Sessions not milestone-attributable, left unfiltered"
+                    : $"Build Queue unfiltered — Queue {qBase.Count}, In-Flight {_lastInFlightIssues.Count}, To-Do {_lastWaitingOnMeIssues.Count}, Completed {cBase.Count} all shown");
+            }
+            catch { }
+        }
 
         /// <summary>Universal title-bar search — reveal + select a specific queue row by its Id.
         /// Switches to the filter chip that actually renders that row, clears the GithubNumber

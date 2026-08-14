@@ -143,11 +143,25 @@ namespace BuildConsole.Controls
             return new Border { Padding = new Thickness(0, 2, 0, 2), Child = panel };
         }
 
+        /// <summary>Focus Mode diagnostics — when a milestone is active and this Home section
+        /// actually hid something, record the shown/hidden split on the focus-mode channel so a
+        /// future regression (the filter silently not applying) is caught by comparing this against
+        /// what actually rendered. Silent off-focus and when nothing was hidden, to avoid noise on
+        /// the roll-up's normal ticks.</summary>
+        private static void LogFocusHidden(string section, int before, int after)
+        {
+            var focus = FocusModeService.Instance;
+            if (focus.IsActive && after < before)
+                ActivityLog.Log("focus-mode", $"Home '{section}' — {after} shown, {before - after} hidden by focus");
+        }
+
         // ── Section 1: Where you left off (persisted last-launch chat tabs) ──
         public void RenderLeftOff(IReadOnlyList<PersistedChatTab> tabs)
         {
             // Focus Mode — while a milestone is active, the Home tab only shows on-milestone work.
+            int beforeFocus = tabs.Count;
             tabs = tabs.Where(t => FocusModeService.Instance.IsIssueInFocus(t.IssueGithubNumber)).ToList();
+            LogFocusHidden("Where you left off", beforeFocus, tabs.Count);
             LeftOffList.Children.Clear();
             LeftOffCountText.Text = $"({tabs.Count})";
             LeftOffEmpty.Visibility = tabs.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -188,7 +202,9 @@ namespace BuildConsole.Controls
         /// </summary>
         public void RenderRunning(IReadOnlyList<QueueItem> running)
         {
+            int beforeFocus = running.Count;
             running = running.Where(i => FocusModeService.Instance.IsIssueInFocus(i.GithubNumber)).ToList();
+            LogFocusHidden("Running now", beforeFocus, running.Count);
             RunningList.Children.Clear();
 
             int staleCount = 0;
@@ -288,7 +304,9 @@ namespace BuildConsole.Controls
         // ── Section 3: Done, waiting for you (done builds whose GitHub issue is still open) ──
         public void RenderDoneWaiting(IReadOnlyList<QueueItem> done)
         {
+            int beforeFocus = done.Count;
             done = done.Where(i => FocusModeService.Instance.IsIssueInFocus(i.GithubNumber)).ToList();
+            LogFocusHidden("Done, waiting for you", beforeFocus, done.Count);
             DoneList.Children.Clear();
             DoneCountText.Text = $"({done.Count})";
             DoneEmpty.Visibility = done.Count == 0 ? Visibility.Visible : Visibility.Collapsed;

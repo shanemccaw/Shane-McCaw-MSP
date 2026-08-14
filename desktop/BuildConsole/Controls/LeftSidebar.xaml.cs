@@ -1299,8 +1299,34 @@ namespace BuildConsole.Controls
         /// by MainWindow whenever focus is turned on/off or its milestone changes.</summary>
         public void ReapplyFocusFilter()
         {
+            var focus = BuildConsole.Services.FocusModeService.Instance;
+
+            // Git Board — re-render straight from the cached milestones so the active-milestone
+            // hard filter (RenderIssuesTree's IsMilestoneInFocus) applies immediately, no network hit.
             try { RenderIssuesTree(_currentFilter == "Done" ? "All" : _currentFilter); } catch { }
-            try { PopulateChatsTree(); } catch { }
+
+            // Chats — MUST call RenderChatsTree directly (renders from _lastBoardChats), NOT
+            // PopulateChatsTree. The latter re-fetches the board and early-returns at its
+            // unchanged-data signature guard, so on a focus toggle (board data identical, only the
+            // filter changed) RenderChatsTree — and thus IsChatInFocus — never ran. THAT was the
+            // live bug: the header counted "N hidden" correctly while the tree stayed unfiltered.
+            try { RenderChatsTree(); } catch { }
+
+            // Per-panel focus diagnostics on the focus-mode channel: how many known items the filter
+            // is hiding vs showing, so a future regression is instantly visible by comparing this
+            // against what actually rendered. Logged on both the activate and deactivate transitions.
+            try
+            {
+                int msTotal = _milestones.Count;
+                int msShown = _milestones.Count(m => focus.IsMilestoneInFocus(m.GithubNumber, m.Title));
+                int chTotal = _lastBoardChats.Count;
+                int chShown = _lastBoardChats.Count(c => focus.IsChatInFocus(c));
+                BuildConsole.Services.ActivityLog.Log("focus-mode",
+                    focus.IsActive
+                        ? $"filter applied — Git Board {msShown}/{msTotal} milestone(s) shown ({msTotal - msShown} hidden); Chats {chShown}/{chTotal} chat(s) shown ({chTotal - chShown} hidden)"
+                        : $"filter cleared — Git Board {msTotal} milestone(s) + Chats {chTotal} chat(s) all shown");
+            }
+            catch { }
         }
 
         /// <summary>The enumerated test manifests backing ManifestFilesTree (area, file name, and the resolved absolute path for MainWindow.OpenFileTab). Projected from the private <see cref="_manifestEntries"/> so the search never re-scans disk itself.</summary>

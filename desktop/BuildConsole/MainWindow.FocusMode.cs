@@ -205,12 +205,20 @@ namespace BuildConsole
             Dispatcher.Invoke(() =>
             {
                 try { LeftSidebar.ReapplyFocusFilter(); } catch { }
-                try { _ = BuildQueuePanel.RefreshAsync(); } catch { }  // local dev-server queue, no GitHub
+                // Cache-only re-render of every Build Queue sub-list (Queue/In-Flight/To-Do/
+                // Completed) — NOT RefreshAsync: that re-fetches and its unchanged-data signature
+                // guard would skip the re-render, so the focus filter never actually re-applied
+                // (the live bug). ReapplyFocusFilter renders from the last-fetched cache, no API/gh.
+                try { BuildQueuePanel.ReapplyFocusFilter(); } catch { }
                 // Re-render Home from the LOCAL queue + already-known open-issue set so the filter
                 // applies immediately. force:false deliberately avoids any gh/GitHub call (Shane's
                 // manual-refresh-only rule); clearing the signature defeats the anti-flicker guard
                 // so the re-render actually happens even though the queue data itself didn't change.
                 try { _homeRollupSignature = null; _ = RefreshHomeRollupAsync(); } catch { }
+                // "Where you left off" isn't part of the roll-up (it's rendered once when the Home
+                // tab opens), so re-filter it explicitly here from the same persisted snapshot —
+                // otherwise that one Home section would stay unfiltered across a focus toggle.
+                try { _homeView?.RenderLeftOff(_chatTabsAtLaunch); } catch { }
             });
         }
 
