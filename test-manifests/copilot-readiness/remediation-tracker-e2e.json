@@ -2,7 +2,7 @@
   "issue": 792,
   "feature": "Remediation Tracker + Guide end-to-end (dynamic guide selection #658, script parameterization #776/#782, persistent tracker state #730-734, s24/s25 removal #757) — #792's browser-test checklist, written under #925, upgraded to real-selector textContains under #792, then corrected under #792 to READ THE GENERATED PROSE OFF THE LIVE SCREEN (the guide renders as client-side generated prose, not fetched by a numeric preview doc id — the fabricated {{TEST_REMEDIATION_PREVIEW_DOC_ID}} + ?preview=design mechanism was removed)",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "627e627ad57ea9b069e1a2e4e62c984a9c5b63be",
+  "lastVerifiedAgainstCommit": "602341fbb73fda633c34bf9db46d235dcb1c8a38",
 
   "notes": [
     "PROVENANCE: written under Git #925 (Epic #803) to make #792's browser-test checklist executable. Writing the manifest is #925's deliverable; the actual end-to-end browser RUN remains #792's own Shane To-Do. Sources read before writing: #658 (remediationLiveGuide.ts), #776/#782 (remediationScriptParams.ts + portal-tenant-check-items.ts), #730-734 (portal-remediation-tracker.ts, remediation-tracker-pricing.ts, remediation-tracker-verification.ts, portal-remediation-tracker-export.ts), #757 (the s24/s25 removal migration).",

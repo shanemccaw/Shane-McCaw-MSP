@@ -2,7 +2,7 @@
   "issue": 987,
   "feature": "Money-path E2E (consolidates #886–891) — setup → create/execute → verify login → teardown, one self-contained account-lifecycle flow",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "a8c9de12095938df3f06f780d502a8a7c2b91141",
+  "lastVerifiedAgainstCommit": "602341fbb73fda633c34bf9db46d235dcb1c8a38",
 
   "notes": [
     "GIT #987 (Epic #803). This single manifest CONSOLIDATES the six money-path manifests — #886 assessment/home-quiz.json, #887 copilot-readiness/consent-scan-trigger.json, #888 copilot-readiness/verdict-pillars.json, #889 copilot-readiness/documents-screen.json, #890 copilot-readiness/sow-proposal.json, #891 copilot-readiness/checkout.json — into ONE create → use → verify → teardown lifecycle, restructuring the account lifecycle around every content/theme/honesty assertion those six already proved (none discarded; each is preserved and labelled with its origin issue below).",
