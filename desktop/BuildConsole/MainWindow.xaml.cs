@@ -3405,12 +3405,50 @@ namespace BuildConsole
         /// plain click (select the tab, or hit the close button) is
         /// untouched - this never marks the initiating MouseDown as Handled.
         /// </summary>
+        /// <summary>Git #1035 — Shane: "The document tabs still do not drag and drop.
+        /// What does is the body of the document... Its like the TAB itself doesnt
+        /// have the drag. If I use say the Epic document screen I can grab the body
+        /// of that document and then it drags." The Epic detail screen is pure WPF
+        /// content (GitDetailView, no WebView2 anywhere in it); every other kind of
+        /// tab hosts a WebView2. That split is the tell: PreviewMouseLeftButtonDown
+        /// never called CaptureMouse(), so once a drag gesture's cursor drifted even
+        /// slightly off the header — trivially easy, since real drags rarely move in
+        /// a perfectly straight horizontal line — a WebView2 (a native child HWND)
+        /// sitting anywhere nearby steals ALL further mouse input the instant the
+        /// cursor crosses into its bounds, and no more PreviewMouseMove ever reaches
+        /// the TabItem again for that gesture; the OS drag-threshold check (further
+        /// down) never gets a chance to fire again, so DoDragDrop never runs. A pure-
+        /// WPF tab has no competing native HWND to steal capture, so it never hit
+        /// this failure mode — matching exactly what Shane described. Fixed by
+        /// explicitly capturing the mouse on the initiating MouseDown (the standard
+        /// WPF idiom for manual drag-threshold-then-DoDragDrop, which this code was
+        /// missing) and releasing it either on a plain click (MouseUp before the
+        /// threshold crosses) or right before DoDragDrop takes over (which manages
+        /// its own capture for the rest of the real OS-level drag). Kept the
+        /// "tabs.drag" ActivityLog instrumentation from investigating this so any
+        /// future regression here is diagnosable without another blind guess.</summary>
         private void AttachTabDragHandlers(TabItem tab)
         {
             tab.PreviewMouseLeftButtonDown += (s, e) =>
             {
+                // Git #1035 — don't arm/capture for a click that's actually on the
+                // close button (or any other interactive header child): capturing
+                // the mouse on the TabItem itself would redirect the button's own
+                // release-within-bounds Click logic to the ancestor instead,
+                // silently breaking "close this tab" for the one click that
+                // started here.
+                if (e.OriginalSource is DependencyObject src && FindAncestorButton(src, tab) != null) return;
+
                 _tabDragStartPoint = e.GetPosition(null);
                 _tabDragCandidate = tab;
+                tab.CaptureMouse();
+                BuildConsole.Services.ActivityLog.Log("tabs.drag", $"candidate armed: '{TabDragLabel(tab)}' at {_tabDragStartPoint}");
+            };
+
+            tab.PreviewMouseLeftButtonUp += (s, e) =>
+            {
+                if (ReferenceEquals(_tabDragCandidate, tab)) _tabDragCandidate = null;
+                if (tab.IsMouseCaptured) tab.ReleaseMouseCapture();
             };
 
             tab.PreviewMouseMove += (s, e) =>
@@ -3425,6 +3463,11 @@ namespace BuildConsole
                 }
 
                 _tabDragCandidate = null;
+                BuildConsole.Services.ActivityLog.Log("tabs.drag", $"threshold crossed for '{TabDragLabel(tab)}' - starting DoDragDrop");
+
+                // Release our manual capture — DoDragDrop runs its own modal loop
+                // with its own capture for the rest of the real OS-level drag.
+                if (tab.IsMouseCaptured) tab.ReleaseMouseCapture();
 
                 // Nowhere else visible to drop this tab (still in Single-pane
                 // mode) - show the dock-target overlay so dragging can reveal
@@ -3441,10 +3484,29 @@ namespace BuildConsole
                     DockGuideOverlay.Visibility = Visibility.Visible;
                 }
 
-                DragDrop.DoDragDrop(tab, new DataObject(TabDragFormat, tab), DragDropEffects.Move);
+                var result = DragDrop.DoDragDrop(tab, new DataObject(TabDragFormat, tab), DragDropEffects.Move);
+                BuildConsole.Services.ActivityLog.Log("tabs.drag", $"DoDragDrop returned {result} for '{TabDragLabel(tab)}'");
 
                 DockGuideOverlay.Visibility = Visibility.Collapsed;
             };
+        }
+
+        private static string TabDragLabel(TabItem tab) => tab.Tag?.ToString() ?? tab.Header?.ToString() ?? "?";
+
+        /// <summary>Walks up from <paramref name="start"/> (typically e.OriginalSource)
+        /// looking for a Button, stopping once it reaches <paramref name="stopAt"/>
+        /// (the TabItem itself) without finding one. Used to tell "clicked the close
+        /// button" apart from "clicked the header text/icon" for the same tunneling
+        /// MouseDown.</summary>
+        private static Button? FindAncestorButton(DependencyObject start, TabItem stopAt)
+        {
+            var current = start;
+            while (current != null && !ReferenceEquals(current, stopAt))
+            {
+                if (current is Button b) return b;
+                current = System.Windows.Media.VisualTreeHelper.GetParent(current);
+            }
+            return null;
         }
 
         /// <summary>
@@ -3474,6 +3536,8 @@ namespace BuildConsole
             if (sender is not TabControl targetTabs) return;
             if (e.Data.GetData(TabDragFormat) is not TabItem draggedTab) return;
             if (draggedTab.Parent is not TabControl sourceTabs) return;
+
+            BuildConsole.Services.ActivityLog.Log("tabs.drag", $"Drop received on {targetTabs.Name} for '{TabDragLabel(draggedTab)}' (source pane: {sourceTabs.Name})");
 
             if (sourceTabs == targetTabs)
             {
