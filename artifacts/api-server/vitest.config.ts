@@ -118,6 +118,10 @@ export default defineConfig({
       // hardcoded (and, for /applications, non-existent) signInActivity read
       // to a real countWhere('{{createdDateTime}} olderThanDays N') age check.
       "src/lib/stale-app-registrations-age-based-551.test.ts",
+      // #404 — onedrive:departed-user-access repointed from plain
+      // accountEnabled == false to the real manager-based OneDrive-exposure
+      // signal (countWhere over manager.id == null, plus a 30d age band).
+      "src/lib/onedrive-departed-user-access-manager-404.test.ts",
       "src/lib/__tests__/item-detail-collector.test.ts",
       "src/lib/__tests__/graph-consent-revoke.test.ts",
       "src/lib/__tests__/graph-request-capture.test.ts",
