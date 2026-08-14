@@ -1,15 +1,15 @@
 {
   "issue": 792,
-  "feature": "Remediation Tracker + Guide end-to-end (dynamic guide selection #658, script parameterization #776/#782, persistent tracker state #730-734, s24/s25 removal #757) — #792's browser-test checklist, written under #925",
+  "feature": "Remediation Tracker + Guide end-to-end (dynamic guide selection #658, script parameterization #776/#782, persistent tracker state #730-734, s24/s25 removal #757) — #792's browser-test checklist, written under #925, upgraded to real-selector textContains under #792",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "da802afb6069a1c6703282d51d0e560599d889aa",
+  "lastVerifiedAgainstCommit": "c6ce4f17e90477b56832e572d9121cd0bb9ad01b",
 
   "notes": [
     "PROVENANCE: written under Git #925 (Epic #803) to make #792's browser-test checklist executable. Writing the manifest is #925's deliverable; the actual end-to-end browser RUN remains #792's own Shane To-Do. Sources read before writing: #658 (remediationLiveGuide.ts), #776/#782 (remediationScriptParams.ts + portal-tenant-check-items.ts), #730-734 (portal-remediation-tracker.ts, remediation-tracker-pricing.ts, remediation-tracker-verification.ts, portal-remediation-tracker-export.ts), #757 (the s24/s25 removal migration).",
 
-    "NO DATA-TESTIDS ON THE GUIDE/TRACKER: RemediationGuideBody.tsx carries ZERO data-testid attributes (grep-confirmed). Every uiStep below therefore targets the one stable, queryable hook that DOES exist — each step's `<button role=\"checkbox\" aria-checked aria-label=\"Mark Step N complete: <title>\">` (RemediationGuideBody.tsx:660). Selectors use `[role=\"checkbox\"][aria-label^=\"Mark Step N complete\"]` plus `[aria-checked=\"true\"|\"false\"]`. This assumes step.label === \"Step N\" (true for the current catalogue). RECOMMENDATION: add data-testids to the #658 notice banner, the \"N of M\" progress text, and each per-step copy-script <code> block so the text-content claims below become directly assertable.",
+    "SELECTORS (updated under #792): two scoped data-testids were ADDED to RemediationGuideBody.tsx to make the two text-content claims #925 could only cover indirectly directly assertable — `[data-testid=\"remediation-progress\"]` on the \"N of M steps resolved\" span (RemediationGuideBody.tsx, the standfirst progress row) and `[data-testid=\"remediation-selection-notice\"]` on the #658 no-findings notice banner div (rendered only when the live guide collapsed to the two standing steps). Per-step assertions still target the one pre-existing stable hook — each step's `<button role=\"checkbox\" aria-checked aria-label=\"Mark Step N complete: <title>\">` — via `[role=\"checkbox\"][aria-label^=\"Mark Step N complete\"]` plus `[aria-checked=\"true\"|\"false\"]` (assumes step.label === \"Step N\", true for the current catalogue). No per-step <code>-block testid was added, so the script-parameterization real-value-vs-<placeholder> claim stays a DATA-level assertion via /api/portal/tenant-check-items (see the #776/#782 note below), not a DOM assertion.",
 
-    "EXECUTOR TEXT LIMIT: the WPF UiTestExecutor `expect` supports ONLY element state (visible/hidden/absent/present) via document.querySelector — it does not read element text (a `textContains` field, as seen in 889, is silently ignored by UiTestExecutor.EvaluateExpectAsync). So the #658 notice-banner WORDING and the literal \"N of M steps resolved\" COUNT cannot be asserted by the runner as written. They are covered indirectly: 'only s27/s30 render on a never-scanned tenant' is the observable proxy for the banner, and the set of rendered checkboxes IS the 'N of M' denominator. Direct text assertions require the testids above (or an executor upgrade).",
+    "TEXT ASSERTIONS ARE NOW LIVE (post-#1016, corrects #925's original note): the WPF UiTestExecutor `expect` DOES read an element's real rendered text — as of Git #1016, `EvaluateExpectOnceAsync` asserts `el.innerText ?? el.textContent` contains any of a step's `textContains` phrases (case-insensitive), composing with `state`. The earlier note that `textContains` was silently ignored is obsolete. This manifest now uses it against the two testids above to assert the REAL rendered numbers/wording directly: the #658 notice banner's actual copy, and — the #792 checklist item 'N of M counts reflect the REAL rendered count, not a hardcoded number' — the literal denominator (28 on the ?preview=design fixture, 2 on a never-scanned tenant). `textContains` accepts a single string or an any-of array; the notice assertion passes an any-of array covering both the never-scanned and scanned-but-no-mapped-finding wordings (resolveDynamicSelectionNotice's two branches).",
 
     "DYNAMIC SELECTION (#658) — how the UI proves it without testids: s18 and s28 are gap steps (STEP_CHECK_GAPS — no check-key mapping) that render in the static PREVIEW fixture but NEVER in the live per-tenant guide (rendersInLiveGuide() only passes finding/process steps). So `Mark Step 18 complete` VISIBLE under ?preview=design and ABSENT on the live guide is a tenant-independent proof that live mode runs dynamic selection, not the static 28-step list. s27/s30 are PROCESS_ONLY_STEP_IDS and always render. A never-scanned tenant renders EXACTLY s27+s30 (every other step absent) — asserted in the re-login block.",
 
@@ -277,6 +277,13 @@
     },
     { "action": "expect", "selector": "[role='checkbox'][aria-label^='Mark Step 18 complete']", "state": "visible" },
     { "action": "expect", "selector": "[role='checkbox'][aria-label^='Mark Step 1 complete']", "state": "visible" },
+    {
+      "name": "PREVIEW (#792 'full 28-step fixture' + 'N of M reflects the REAL rendered count, not a hardcoded number'): the progress denominator IS the literal 28 the preview renders — asserted directly against the new remediation-progress testid's rendered text.",
+      "action": "expect",
+      "selector": "[data-testid='remediation-progress']",
+      "state": "visible",
+      "textContains": ["of 28 steps resolved"]
+    },
 
     {
       "name": "LIVE MODE (#658), scanned tenant: process-only steps s27/s30 always render; the gap steps s18/s28 NEVER render live — so their absence here (vs. their presence in preview above) proves dynamic per-tenant selection is active, not the static list.",
@@ -287,6 +294,13 @@
     { "action": "expect", "selector": "[role='checkbox'][aria-label^='Mark Step 30 complete']", "state": "visible" },
     { "action": "expect", "selector": "[role='checkbox'][aria-label^='Mark Step 18 complete']", "state": "absent" },
     { "action": "expect", "selector": "[role='checkbox'][aria-label^='Mark Step 28 complete']", "state": "absent" },
+    {
+      "name": "LIVE (#792 'N of M reflects the REAL rendered count'): the progress text renders its DERIVED per-tenant denominator, never a hardcoded 28/30. Exact M is tenant-dependent so only the derived-count text is asserted here; the deterministic denominator is pinned on preview (28) and never-scanned (2).",
+      "action": "expect",
+      "selector": "[data-testid='remediation-progress']",
+      "state": "visible",
+      "textContains": ["steps resolved"]
+    },
 
     {
       "name": "PERSISTENCE across a real reload (#730): tick s27, confirm it checks, then re-navigate (full page load, not SPA state) and confirm it is STILL checked — proving the tick was written server-side, not held in session.",
@@ -336,7 +350,21 @@
     },
     { "action": "expect", "selector": "[role='checkbox'][aria-label^='Mark Step 30 complete']", "state": "visible" },
     {
-      "name": "Never-scanned: a finding-driven step (s1) is ABSENT — the old static 28-step list is gone; the #658 notice banner accompanies this (banner text itself not machine-assertable — see notes).",
+      "name": "Never-scanned (#658 + #792): the explicit no-findings-drove-selection notice banner RENDERS, and its REAL copy is now asserted directly (post-#1016) — any-of covers resolveDynamicSelectionNotice's two branches (never-scanned vs scanned-but-no-mapped-finding). Its mere presence is itself the proof the guide did NOT fall back to the old static list.",
+      "action": "expect",
+      "selector": "[data-testid='remediation-selection-notice']",
+      "state": "visible",
+      "textContains": ["No scan has recorded findings for this tenant yet", "Your last scan recorded no finding on any check this guide maps a step to"]
+    },
+    {
+      "name": "Never-scanned (#792 'N of M reflects the REAL rendered count'): the denominator is the literal 2 — only the two standing steps render — proving the count is the real rendered total, not a hardcoded 28/30.",
+      "action": "expect",
+      "selector": "[data-testid='remediation-progress']",
+      "state": "visible",
+      "textContains": ["of 2 steps resolved"]
+    },
+    {
+      "name": "Never-scanned: a finding-driven step (s1) is ABSENT — the old static 28-step list is gone.",
       "action": "expect",
       "selector": "[role='checkbox'][aria-label^='Mark Step 1 complete']",
       "state": "absent"

@@ -1012,6 +1012,7 @@ export function RemediationGuideBody({
             />
           </span>
           <span
+            data-testid="remediation-progress"
             style={{
               fontSize: 12.5,
               fontWeight: 700,
@@ -1134,6 +1135,7 @@ export function RemediationGuideBody({
       */}
       {selectionNotice ? (
         <div
+          data-testid="remediation-selection-notice"
           style={{
             display: "flex",
             gap: 11,
