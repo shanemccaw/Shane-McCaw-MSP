@@ -88,64 +88,133 @@
             </Grid>
         </Border>
 
-        <!-- ── Baseline vs This run ── -->
+        <!-- ── Baseline vs This run (with zoom/pan for full-page screenshots) ── -->
         <Grid Grid.Row="1" Margin="16,14,16,0">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="14"/>
-                <ColumnDefinition Width="*"/>
-            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
 
-            <!-- Baseline -->
-            <Border Grid.Column="0" Background="{StaticResource MantleBrush}"
+            <!-- Zoom toolbar: full-page captures render as an illegible sliver at fit-width, so
+                 mouse-wheel over either pane, the −/+ buttons and the slider drive a shared zoom;
+                 left-drag pans; both panes scroll in lockstep (Sync scroll) for side-by-side diffing. -->
+            <Border Grid.Row="0" Margin="0,0,0,8" Padding="10,5"
+                    Background="{StaticResource CrustBrush}"
                     BorderBrush="{StaticResource Surface0Brush}" BorderThickness="1" CornerRadius="6">
-                <DockPanel>
-                    <Border DockPanel.Dock="Top" Background="{StaticResource Surface0Brush}" Padding="10,6">
-                        <TextBlock Text="BASELINE (source of truth)" FontSize="11" FontWeight="SemiBold"
-                                   Foreground="{StaticResource Subtext0Brush}"/>
-                    </Border>
-                    <Grid>
-                        <Image x:Name="BaselineImage" Stretch="Uniform" Margin="8"
-                               RenderOptions.BitmapScalingMode="HighQuality">
-                            <!-- Git #1017 — heavy-mouse-user right-click menu, same pattern as #945. -->
-                            <Image.ContextMenu>
-                                <ContextMenu>
-                                    <MenuItem Header="Copy Image" Click="CopyBaselineImage_Click"/>
-                                </ContextMenu>
-                            </Image.ContextMenu>
-                        </Image>
-                        <TextBlock x:Name="BaselineEmptyText" TextWrapping="Wrap" TextAlignment="Center"
-                                   HorizontalAlignment="Center" VerticalAlignment="Center" Margin="16"
-                                   Foreground="{StaticResource PeachBrush}"
-                                   Text="No baseline yet — this run will set it on Approve."/>
-                    </Grid>
-                </DockPanel>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="🔍 Zoom" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center"
+                               Foreground="{StaticResource Subtext1Brush}" Margin="0,0,10,0"/>
+                    <Button x:Name="ZoomOutButton" Content="−" Width="30" MinWidth="30"
+                            Style="{StaticResource SecondaryButton}" Click="ZoomOutButton_Click"
+                            ToolTip="Zoom out"/>
+                    <Slider x:Name="ZoomSlider" Width="180" Minimum="25" Maximum="500" Value="100"
+                            VerticalAlignment="Center" Margin="8,0"
+                            IsSnapToTickEnabled="False" SmallChange="10" LargeChange="50"
+                            ValueChanged="ZoomSlider_ValueChanged"/>
+                    <Button x:Name="ZoomInButton" Content="+" Width="30" MinWidth="30"
+                            Style="{StaticResource SecondaryButton}" Click="ZoomInButton_Click"
+                            ToolTip="Zoom in"/>
+                    <TextBlock x:Name="ZoomLabel" Text="100%" FontSize="12" VerticalAlignment="Center"
+                               MinWidth="46" TextAlignment="Right" Margin="10,0,0,0"
+                               Foreground="{StaticResource Subtext0Brush}"/>
+                    <Button x:Name="ZoomFitButton" Content="Fit width" MinWidth="80" Margin="14,0,0,0"
+                            Style="{StaticResource SecondaryButton}" Click="ZoomFitButton_Click"
+                            ToolTip="Reset zoom to fit the panel width"/>
+                    <CheckBox x:Name="SyncScrollCheck" Content="Sync scroll" IsChecked="True"
+                              VerticalAlignment="Center" Margin="14,0,0,0"
+                              Foreground="{StaticResource Subtext1Brush}"
+                              ToolTip="Scroll both panes together for side-by-side comparison"/>
+                </StackPanel>
             </Border>
 
-            <!-- This run -->
-            <Border Grid.Column="2" Background="{StaticResource MantleBrush}"
-                    BorderBrush="{StaticResource Surface0Brush}" BorderThickness="1" CornerRadius="6">
-                <DockPanel>
-                    <Border DockPanel.Dock="Top" Background="{StaticResource Surface0Brush}" Padding="10,6">
-                        <TextBlock Text="THIS RUN" FontSize="11" FontWeight="SemiBold"
-                                   Foreground="{StaticResource Subtext0Brush}"/>
-                    </Border>
-                    <Grid>
-                        <Image x:Name="CurrentImage" Stretch="Uniform" Margin="8"
-                               RenderOptions.BitmapScalingMode="HighQuality">
-                            <!-- Git #1017 — heavy-mouse-user right-click menu, same pattern as #945. -->
-                            <Image.ContextMenu>
-                                <ContextMenu>
-                                    <MenuItem Header="Copy Image" Click="CopyCurrentImage_Click"/>
-                                </ContextMenu>
-                            </Image.ContextMenu>
-                        </Image>
-                        <TextBlock x:Name="CurrentEmptyText" TextWrapping="Wrap" TextAlignment="Center"
-                                   HorizontalAlignment="Center" VerticalAlignment="Center" Margin="16"
-                                   Foreground="{StaticResource RedBrush}" Visibility="Collapsed" Text=""/>
-                    </Grid>
-                </DockPanel>
-            </Border>
+            <Grid Grid.Row="1">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="14"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Baseline -->
+                <Border Grid.Column="0" Background="{StaticResource MantleBrush}"
+                        BorderBrush="{StaticResource Surface0Brush}" BorderThickness="1" CornerRadius="6">
+                    <DockPanel>
+                        <Border DockPanel.Dock="Top" Background="{StaticResource Surface0Brush}" Padding="10,6">
+                            <TextBlock Text="BASELINE (source of truth)" FontSize="11" FontWeight="SemiBold"
+                                       Foreground="{StaticResource Subtext0Brush}"/>
+                        </Border>
+                        <Grid>
+                            <ScrollViewer x:Name="BaselineScroll" Margin="8"
+                                          HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Visible"
+                                          Background="Transparent"
+                                          PreviewMouseWheel="Pane_PreviewMouseWheel"
+                                          ScrollChanged="Pane_ScrollChanged"
+                                          SizeChanged="Pane_SizeChanged"
+                                          PreviewMouseLeftButtonDown="Pane_MouseLeftButtonDown"
+                                          PreviewMouseMove="Pane_MouseMove"
+                                          PreviewMouseLeftButtonUp="Pane_MouseLeftButtonUp">
+                                <Image x:Name="BaselineImage" Stretch="None"
+                                       HorizontalAlignment="Left" VerticalAlignment="Top"
+                                       RenderOptions.BitmapScalingMode="HighQuality">
+                                    <Image.LayoutTransform>
+                                        <ScaleTransform x:Name="BaselineScale" ScaleX="1" ScaleY="1"/>
+                                    </Image.LayoutTransform>
+                                    <!-- Git #1017 — heavy-mouse-user right-click menu, same pattern as #945. -->
+                                    <Image.ContextMenu>
+                                        <ContextMenu>
+                                            <MenuItem Header="Copy Image" Click="CopyBaselineImage_Click"/>
+                                        </ContextMenu>
+                                    </Image.ContextMenu>
+                                </Image>
+                            </ScrollViewer>
+                            <TextBlock x:Name="BaselineEmptyText" TextWrapping="Wrap" TextAlignment="Center"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" Margin="16"
+                                       IsHitTestVisible="False"
+                                       Foreground="{StaticResource PeachBrush}"
+                                       Text="No baseline yet — this run will set it on Approve."/>
+                        </Grid>
+                    </DockPanel>
+                </Border>
+
+                <!-- This run -->
+                <Border Grid.Column="2" Background="{StaticResource MantleBrush}"
+                        BorderBrush="{StaticResource Surface0Brush}" BorderThickness="1" CornerRadius="6">
+                    <DockPanel>
+                        <Border DockPanel.Dock="Top" Background="{StaticResource Surface0Brush}" Padding="10,6">
+                            <TextBlock Text="THIS RUN" FontSize="11" FontWeight="SemiBold"
+                                       Foreground="{StaticResource Subtext0Brush}"/>
+                        </Border>
+                        <Grid>
+                            <ScrollViewer x:Name="CurrentScroll" Margin="8"
+                                          HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Visible"
+                                          Background="Transparent"
+                                          PreviewMouseWheel="Pane_PreviewMouseWheel"
+                                          ScrollChanged="Pane_ScrollChanged"
+                                          SizeChanged="Pane_SizeChanged"
+                                          PreviewMouseLeftButtonDown="Pane_MouseLeftButtonDown"
+                                          PreviewMouseMove="Pane_MouseMove"
+                                          PreviewMouseLeftButtonUp="Pane_MouseLeftButtonUp">
+                                <Image x:Name="CurrentImage" Stretch="None"
+                                       HorizontalAlignment="Left" VerticalAlignment="Top"
+                                       RenderOptions.BitmapScalingMode="HighQuality">
+                                    <Image.LayoutTransform>
+                                        <ScaleTransform x:Name="CurrentScale" ScaleX="1" ScaleY="1"/>
+                                    </Image.LayoutTransform>
+                                    <!-- Git #1017 — heavy-mouse-user right-click menu, same pattern as #945. -->
+                                    <Image.ContextMenu>
+                                        <ContextMenu>
+                                            <MenuItem Header="Copy Image" Click="CopyCurrentImage_Click"/>
+                                        </ContextMenu>
+                                    </Image.ContextMenu>
+                                </Image>
+                            </ScrollViewer>
+                            <TextBlock x:Name="CurrentEmptyText" TextWrapping="Wrap" TextAlignment="Center"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" Margin="16"
+                                       IsHitTestVisible="False"
+                                       Foreground="{StaticResource RedBrush}" Visibility="Collapsed" Text=""/>
+                        </Grid>
+                    </DockPanel>
+                </Border>
+            </Grid>
         </Grid>
 
         <!-- ── Narration ── -->

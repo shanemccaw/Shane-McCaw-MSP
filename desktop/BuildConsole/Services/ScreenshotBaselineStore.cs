@@ -17,9 +17,12 @@ namespace BuildConsole.Services
     /// re-approval — never silently.
     ///
     /// Deliberately NOT exact-pixel matching (which #966 explicitly rejected as too fragile against
-    /// font rendering / anti-aliasing / live data): each image is rendered down to a small fixed
-    /// grid and compared by mean per-channel difference against a tolerance threshold, so sub-pixel
-    /// / anti-aliasing noise averages away while real layout / content changes still register.
+    /// font rendering / anti-aliasing / live data): each image is rendered down to a small grid and
+    /// compared by mean per-channel difference against a tolerance threshold, so sub-pixel /
+    /// anti-aliasing noise averages away while real layout / content changes still register. The grid's
+    /// width is fixed but its height scales with the image's real aspect ratio, so a tall full-page
+    /// capture is compared at a proportionally taller resolution instead of being crushed into a square
+    /// that would average localized text changes out of existence (a full-page false-negative risk).
     /// All imaging is in-box WPF (System.Windows.Media.Imaging + RenderTargetBitmap) so nothing new
     /// has to be restored from NuGet (the build-time package proxy can't fetch new packages here).
     ///
@@ -35,10 +38,23 @@ namespace BuildConsole.Services
     {
         public const string Channel = "testing.baseline";
 
-        /// <summary>Fixed grid every screenshot is normalized to before comparison. Small enough that
-        /// font anti-aliasing / a 1px reflow averages out, large enough that a real layout or content
-        /// change moves enough cells to clear the threshold.</summary>
-        private const int CompareSize = 64;
+        /// <summary>Horizontal resolution every screenshot is normalized to before comparison. Small
+        /// enough that font anti-aliasing / a 1px reflow averages out, large enough that a real layout
+        /// or content change moves enough cells to clear the threshold. The VERTICAL resolution is no
+        /// longer fixed to this — it scales with the image's real aspect ratio (see <see cref="Compare"/>),
+        /// so a tall full-page capture isn't crushed into a square that averages localized text changes
+        /// away. A roughly-square viewport screenshot still normalizes to CompareWidth×CompareWidth,
+        /// exactly as the old fixed 64×64 grid did.</summary>
+        private const int CompareWidth = 64;
+
+        /// <summary>Floor for the computed comparison-grid height (a square/short image never goes below
+        /// this — keeps the old 64×64 behaviour for viewport shots).</summary>
+        private const int MinCompareHeight = 64;
+
+        /// <summary>Ceiling for the computed comparison-grid height. Caps the pixel buffer for an
+        /// extremely long page (64×2048 Bgra32 ≈ 512 KB) while still giving a full-page capture far more
+        /// vertical signal than the old 64 rows. 2048 rows ≈ ~32× the old vertical resolution.</summary>
+        private const int MaxCompareHeight = 2048;
 
         /// <summary>Mean per-channel difference (0..1) above which two screenshots count as a
         /// MEANINGFUL visual diff worth Shane's review. ~6% tolerates rendering noise / minor live-data
@@ -95,10 +111,17 @@ namespace BuildConsole.Services
             }
             c.HasBaseline = true;
 
+            // Compare grid: width is fixed (CompareWidth); height scales with the taller of the two
+            // images' real aspect ratio, so a tall full-page capture is compared at a proportionally
+            // taller resolution instead of being crushed into a square that averages localized text
+            // changes away (the false-negative risk Shane raised). Both images are then rendered to the
+            // SAME grid — the compare stays resolution-independent, exactly as the old fixed grid was.
+            int gridW = CompareWidth;
+            int gridH = ComputeGridHeight(baselinePath, capturedPath);
             try
             {
-                byte[] a = Normalize(baselinePath);
-                byte[] b = Normalize(capturedPath);
+                byte[] a = Normalize(baselinePath, gridW, gridH);
+                byte[] b = Normalize(capturedPath, gridW, gridH);
                 c.DiffRatio = MeanDiff(a, b);
                 c.NeedsReview = c.DiffRatio > MeaningfulDiffThreshold;
                 c.Note = c.NeedsReview
@@ -110,9 +133,12 @@ namespace BuildConsole.Services
                 c.NeedsReview = true;
                 c.Note = $"couldn't compare against baseline: {ex.Message}";
             }
+            // Log the REAL comparison grid actually used for this screenshot (task: verifiable/tunable
+            // from the log alone, without re-reading code) — so a full-page shot showing e.g. grid=64x1180
+            // vs a viewport shot's grid=64x64 is visible, and MaxCompareHeight clamping is diagnosable.
             ActivityLog.Log(Channel,
                 $"Compare[read] repoRoot='{repoRoot}' area='{Sanitize(area)}' slug='{Sanitize(slug)}' step={stepIndex} "
-                + $"baseline='{baselinePath}' EXISTS=true captured='{capturedPath}' "
+                + $"baseline='{baselinePath}' EXISTS=true captured='{capturedPath}' grid={gridW}x{gridH} "
                 + $"diff={c.DiffRatio * 100:0.0}% (thresh {MeaningfulDiffThreshold * 100:0.#}%) → {(c.NeedsReview ? "REVIEW" : "match, no review")}.");
             return c;
         }
@@ -164,11 +190,47 @@ namespace BuildConsole.Services
 
         // ── image normalization + compare (in-box WPF imaging; no extra NuGet) ──
 
-        /// <summary>Loads a PNG and renders it into a fixed CompareSize×CompareSize Bgra32 grid, then
-        /// returns its raw pixels. Rendering to a small fixed grid is what makes the compare robust to
+        /// <summary>Picks the comparison-grid HEIGHT for a pair of images: CompareWidth scaled by the
+        /// LARGER of the two images' height/width aspect ratios (so neither a tall baseline nor a tall
+        /// capture loses vertical signal), clamped to [MinCompareHeight, MaxCompareHeight]. A
+        /// roughly-square pair yields ≈CompareWidth (the old 64×64 behaviour); a full-page capture (say
+        /// 1280×25600) yields the full MaxCompareHeight so localized text changes aren't averaged out.
+        /// Falls back to MinCompareHeight if neither image's dimensions can be read.</summary>
+        private static int ComputeGridHeight(string baselinePath, string capturedPath)
+        {
+            double aspect = 1.0; // Max() floor → a square/wide image never drops below CompareWidth rows.
+            aspect = Math.Max(aspect, AspectHeightOverWidth(baselinePath));
+            aspect = Math.Max(aspect, AspectHeightOverWidth(capturedPath));
+            int h = (int)Math.Round(CompareWidth * aspect);
+            return Math.Max(MinCompareHeight, Math.Min(MaxCompareHeight, h));
+        }
+
+        /// <summary>height/width of the PNG at <paramref name="path"/>, or 0 if it can't be read (so it
+        /// contributes nothing to the Max() in <see cref="ComputeGridHeight"/>).</summary>
+        private static double AspectHeightOverWidth(string path)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(path) || !File.Exists(path)) return 0;
+                // BitmapFrame.Create reads just the header/metadata (PixelWidth/PixelHeight) without
+                // decoding the full raster — cheap even for a very large full-page PNG.
+                var frame = BitmapFrame.Create(new Uri(path, UriKind.Absolute),
+                    BitmapCreateOptions.DelayCreation, BitmapCacheOption.None);
+                if (frame.PixelWidth <= 0 || frame.PixelHeight <= 0) return 0;
+                return (double)frame.PixelHeight / frame.PixelWidth;
+            }
+            catch
+            {
+                return 0;
+            }
+        }
+
+        /// <summary>Loads a PNG and renders it into a gridWidth×gridHeight Bgra32 grid, then returns its
+        /// raw pixels. Rendering both sides to the identical grid is what makes the compare robust to
         /// anti-aliasing / a 1px reflow and independent of the two images' original resolutions (both
-        /// sides get the identical square resample, so any distortion is shared and cancels out).</summary>
-        private static byte[] Normalize(string path)
+        /// sides get the same resample, so any distortion is shared and cancels out). The grid is now
+        /// aspect-scaled (see <see cref="ComputeGridHeight"/>) rather than a fixed square.</summary>
+        private static byte[] Normalize(string path, int gridWidth, int gridHeight)
         {
             var src = new BitmapImage();
             src.BeginInit();
@@ -180,20 +242,20 @@ namespace BuildConsole.Services
 
             var visual = new DrawingVisual();
             using (var dc = visual.RenderOpen())
-                dc.DrawImage(src, new Rect(0, 0, CompareSize, CompareSize));
+                dc.DrawImage(src, new Rect(0, 0, gridWidth, gridHeight));
 
-            var rtb = new RenderTargetBitmap(CompareSize, CompareSize, 96, 96, PixelFormats.Pbgra32);
+            var rtb = new RenderTargetBitmap(gridWidth, gridHeight, 96, 96, PixelFormats.Pbgra32);
             rtb.Render(visual);
 
             var converted = new FormatConvertedBitmap(rtb, PixelFormats.Bgra32, null, 0);
-            int stride = CompareSize * 4;
-            byte[] px = new byte[stride * CompareSize];
+            int stride = gridWidth * 4;
+            byte[] px = new byte[stride * gridHeight];
             converted.CopyPixels(px, stride, 0);
             return px;
         }
 
         /// <summary>Mean absolute per-channel difference of two equal-length pixel buffers, normalized
-        /// to 0..1. Both buffers are the same fixed CompareSize grid, so their lengths always match.</summary>
+        /// to 0..1. Both buffers are rendered to the same computed grid, so their lengths always match.</summary>
         private static double MeanDiff(byte[] a, byte[] b)
         {
             int n = Math.Min(a.Length, b.Length);
