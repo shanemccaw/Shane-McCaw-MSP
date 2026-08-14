@@ -625,37 +625,65 @@ function profileValuePreview(value: unknown): string {
 const PROFILE_COLLISION_LOG_LIMIT = 25;
 
 /**
- * Merges the latest monitor rows into a signal-evaluation profile: full
- * extracted properties (so every DB-configured `monitor_checks.mapping`
- * targetField — e.g. mfaEnforced, globalAdminCount, dlpPoliciesCount — reaches
+ * Runtime property names that exist purely as PER-CHECK diagnostic markers —
+ * `_itemCount` (every check) and the license-gap trio (Graph checks that hit
+ * LicenseGapError; monitor-executor.ts). Git #545: confirmed by #544's live
+ * audit that zero `signal_derivation_rules` rows and no code path reads any
+ * of these off the bare flat `mergedProfile` (real consumers use the
+ * namespaced `<checkKey>__itemCount` key or `LICENSE_GAP_PROFILE_FLAG_KEYS`
+ * instead — see `buildProducibleProfileKeys` in pillar-coverage.ts, which
+ * never enumerates these bare names as producible). By construction across
+ * every check, these bare names also collide on every merge — the `_itemCount`
+ * collision noise #544's block comment above already calls out. Excluded from
+ * the flat merge here; still recorded verbatim, per check, in
+ * `mergedProfileByCheck` for anything that genuinely wants them.
+ */
+const CHECK_DIAGNOSTIC_ONLY_KEYS = new Set([
+  "_itemCount",
+  "_licenseGap",
+  "_licenseGapCode",
+  "_licenseGapFeature",
+]);
+
+/**
+ * Merges the latest monitor rows into a signal-evaluation profile: extracted
+ * properties (so every DB-configured `monitor_checks.mapping` targetField —
+ * e.g. mfaEnforced, globalAdminCount, dlpPoliciesCount — reaches
  * `evaluateRule()`), the synthetic `<checkKey>__itemCount` keys that
  * `threshold` rules read, and the legacy-vocabulary bridge above.
+ *
+ * `CHECK_DIAGNOSTIC_ONLY_KEYS` (Git #545) is excluded from the flat merge —
+ * those bare names collide across every check by construction and have no
+ * real reader on `mergedProfile` (`__itemCount` and the license-gap flags
+ * each have their own namespaced/derived producible key instead).
  *
  * `mergedProfileByCheck` (optional, Git #544) is filled in the same pass with
  * the namespaced companion view — see the block comment above. Passing it
  * changes NOTHING about what lands in `mergedProfile`; call sites that don't
  * need it simply omit it.
  *
- * Deliberately, a check's bucket holds its extracted properties VERBATIM: the
- * `?? 0` default the flat `<checkKey>__itemCount` key applies is a threshold-rule
- * contract, and mirroring it here would hand a document prompt a fabricated
- * "0 items" for a check that errored and measured nothing.
+ * Deliberately, a check's bucket holds its extracted properties VERBATIM,
+ * diagnostic keys included: the `?? 0` default the flat `<checkKey>__itemCount`
+ * key applies is a threshold-rule contract, and mirroring it here would hand
+ * a document prompt a fabricated "0 items" for a check that errored and
+ * measured nothing.
  */
 export function mergeMonitorProfileRows(
   mergedProfile: Record<string, unknown>,
   monitorRows: TenantMonitorProfileRow[],
   mergedProfileByCheck?: MergedProfileByCheck,
 ): void {
-  // Loud-on-loss (Git #544): overwrites with an IDENTICAL value are skipped —
-  // `_licenseGap`/`_licenseGapCode` agree across every gapped check and would
-  // otherwise drown the signal. Collected and emitted as one warn per merge
-  // rather than one per key, so a 62-collision tenant stays greppable.
+  // Loud-on-loss (Git #544): overwrites with an IDENTICAL value are skipped
+  // (`CHECK_DIAGNOSTIC_ONLY_KEYS` are excluded from this loop entirely — see
+  // above, Git #545). Collected and emitted as one warn per merge rather than
+  // one per key, so a 62-collision tenant stays greppable.
   const collisions: Array<{ key: string; lostFrom: string | null; wonBy: string; lostValue: string; keptValue: string }> = [];
   const lastWriterByKey = new Map<string, string>();
 
   for (const row of monitorRows) {
     const props = row.extractedProperties ?? {};
     for (const [key, value] of Object.entries(props)) {
+      if (CHECK_DIAGNOSTIC_ONLY_KEYS.has(key)) continue;
       if (key in mergedProfile && !sameProfileValue(mergedProfile[key], value)) {
         collisions.push({
           key,
@@ -670,7 +698,10 @@ export function mergeMonitorProfileRows(
       }
       lastWriterByKey.set(key, row.checkKey);
     }
-    Object.assign(mergedProfile, props);
+    for (const [key, value] of Object.entries(props)) {
+      if (CHECK_DIAGNOSTIC_ONLY_KEYS.has(key)) continue;
+      mergedProfile[key] = value;
+    }
     mergedProfile[`${row.checkKey}__itemCount`] = props["_itemCount"] ?? 0;
     if (mergedProfileByCheck) {
       const bucket = (mergedProfileByCheck[row.checkKey] ??= {});

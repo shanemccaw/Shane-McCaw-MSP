@@ -107,7 +107,9 @@ describe("#544 — mergedProfileByCheck resolves a real collision the flat profi
     // it saw before the fix — this is an additive change, not a migration.
     expect(flat["displayName_count"]).toBe(18);
     expect(flat["id_count"]).toBe(18);
-    expect(flat["_itemCount"]).toBe(18);
+    // Git #545: bare _itemCount no longer lands in the flat profile at all —
+    // superseded by the namespaced <checkKey>__itemCount, asserted below.
+    expect("_itemCount" in flat).toBe(false);
   });
 
   it("produces a byte-identical flat profile whether or not the companion is collected", () => {
@@ -161,7 +163,10 @@ describe("#544 companion 1 — the loss is loud", () => {
     expect(warnSpy).toHaveBeenCalledTimes(1);
     const [meta, message] = warnSpy.mock.calls[0] as [Record<string, unknown>, string];
     expect(message).toContain("overwritten with a DIFFERENT value");
-    expect(meta["collidingKeys"]).toEqual(expect.arrayContaining(["displayName_count", "id_count", "_itemCount"]));
+    // Git #545: _itemCount is a CHECK_DIAGNOSTIC_ONLY_KEYS member now excluded
+    // from the flat merge entirely, so it no longer collides here.
+    expect(meta["collidingKeys"]).toEqual(expect.arrayContaining(["displayName_count", "id_count"]));
+    expect(meta["collidingKeys"]).not.toEqual(expect.arrayContaining(["_itemCount"]));
     const collisions = meta["collisions"] as Array<Record<string, unknown>>;
     const displayName = collisions.find((c) => c["key"] === "displayName_count");
     expect(displayName?.["lostFrom"]).toBe("appgov:enterprise-app-count");
@@ -169,14 +174,17 @@ describe("#544 companion 1 — the loss is loud", () => {
     expect(displayName?.["lostValue"]).toBe("495");
   });
 
-  it("stays SILENT when the overwriting value is identical — _licenseGap* agrees everywhere", () => {
-    mergeMonitorProfileRows({}, [
+  it("stays SILENT on _licenseGap*/_itemCount — Git #545 excludes them from the flat merge entirely", () => {
+    const flat: Record<string, unknown> = {};
+    mergeMonitorProfileRows(flat, [
       row("compliance:label-errors", { _licenseGap: true, _licenseGapCode: "cmdlet_unavailable" }),
       row("compliance:missing-labels", { _licenseGap: true, _licenseGapCode: "cmdlet_unavailable" }),
       row("compliance:weak-dlp-policies", { _licenseGap: true, _licenseGapCode: "cmdlet_unavailable" }),
     ], {});
 
     expect(warnSpy).not.toHaveBeenCalled();
+    expect("_licenseGap" in flat).toBe(false);
+    expect("_licenseGapCode" in flat).toBe(false);
   });
 
   it("distinguishes a non-monitor loser (script/profile source) with a null lostFrom", () => {
