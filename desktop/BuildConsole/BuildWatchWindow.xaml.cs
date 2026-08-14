@@ -95,6 +95,10 @@ namespace BuildConsole
             public ToolGroupTurn? CurrentToolGroup;
             /// <summary>Maps a tool_use id → its chip detail line, so a tool_result event (which arrives a beat later, on its own stream-json line) can fill in that exact call's real output. Interactive builds only; reset per occupancy, soft-capped to bound a very long build's memory.</summary>
             public readonly Dictionary<string, ToolDetailLine> ToolCallsById = new();
+            /// <summary>Lines of an in-progress code diff being folded into a single DiffTurn, or null when not currently inside a diff — mirrors CurrentToolGroup's "consecutive run" bookkeeping (see HandleDiffLine).</summary>
+            public List<string>? DiffLines;
+            /// <summary>True while <see cref="DiffLines"/> is being filled from inside a fenced ```diff block (which closes on the ``` fence); false for a raw unified-diff run (which closes on the first non-diff line).</summary>
+            public bool InDiffFence;
             public string LineBuffer = "";
             /// <summary>Last time a real event landed — drives "longer-running wait" idle detection for the easter egg.</summary>
             public DateTime LastOutputUtc;
@@ -283,6 +287,14 @@ namespace BuildConsole
 
         private static readonly Regex ToolTokenRegex = new(@"\[tool:\s*([^\]]+)\]", RegexOptions.Compiled);
 
+        // ── Code-diff detection signals (see HandleDiffLine) ─────────────────
+        /// <summary>Opening fence of a ```diff / ```patch code block (the strongest "this is a diff" signal in agent prose).</summary>
+        private static readonly Regex DiffFenceOpenRegex = new(@"^\s*`{3,}\s*(diff|patch|udiff)\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        /// <summary>A closing (or bare) ``` fence.</summary>
+        private static readonly Regex CodeFenceCloseRegex = new(@"^\s*`{3,}\s*$", RegexOptions.Compiled);
+        /// <summary>A unified-diff hunk header — "@@ -a,b +c,d @@" — the most reliable structural anchor for a raw (unfenced) diff.</summary>
+        private static readonly Regex DiffHunkHeaderRegex = new(@"^@@ -\d+(,\d+)? \+\d+(,\d+)? @@", RegexOptions.Compiled);
+
         /// <summary>Distinguishes obvious stderr / error lines (folded in raw by the watcher) so they get a red-tinted paragraph,
         /// while staying tight enough not to redden ordinary assistant prose that merely mentions the word "error".</summary>
         private static bool LooksLikeError(string line)
@@ -303,6 +315,14 @@ namespace BuildConsole
         private void AppendEventCard(BuildWatchSlot slot, string rawLine)
         {
             var line = rawLine.TrimEnd();
+
+            // A run of consecutive code-diff lines (a ```diff fence, or a raw unified-diff
+            // hunk) folds into ONE DiffTurn — rendered by DiffView as a real green/red
+            // diff view — instead of a stack of grey prose paragraphs. Checked BEFORE the
+            // empty-line guard because a blank line INSIDE a fenced diff is real code
+            // content, not noise. Returns true when the line was consumed by the diff run.
+            if (HandleDiffLine(slot, line)) return;
+
             if (line.Length == 0) return;
 
             if (line.StartsWith("--- done", StringComparison.Ordinal))
@@ -339,6 +359,99 @@ namespace BuildConsole
             }
             var after = line.Substring(cursor).Trim();
             if (after.Length > 0) AddParagraph(slot, after, ParagraphKind.Normal);
+        }
+
+        /// <summary>
+        /// Folds a run of consecutive code-diff lines into a single <see cref="DiffTurn"/>,
+        /// mirroring how AddToolCallChip folds a run of tool calls into one ToolGroupTurn.
+        /// A diff is opened by a strong, low-false-positive anchor — a ```diff fence, or a
+        /// raw unified-diff hunk header ("@@ … @@") / "diff --git" line — and then absorbs
+        /// its body lines until the fence closes (fenced case) or the first non-diff line
+        /// arrives (raw case). Returns true when the line was consumed by diff handling;
+        /// false means the caller should classify it normally (prose / tool / done / error).
+        /// Ordinary prose and tool-call chips are never touched — only genuine diff content.
+        /// </summary>
+        private bool HandleDiffLine(BuildWatchSlot slot, string line)
+        {
+            // Inside a fenced ```diff block: everything up to the closing fence is content.
+            if (slot.InDiffFence)
+            {
+                if (CodeFenceCloseRegex.IsMatch(line)) { FinishDiff(slot); return true; }
+                slot.DiffLines!.Add(line);
+                return true;
+            }
+
+            // Inside a raw (unfenced) diff run: keep absorbing while lines still look like diff body.
+            if (slot.DiffLines != null)
+            {
+                if (IsRawDiffBodyLine(line)) { slot.DiffLines.Add(line); return true; }
+                FinishDiff(slot);   // run ended — fall through so THIS line is classified normally
+            }
+
+            // Not currently in a diff: does this line open one?
+            if (DiffFenceOpenRegex.IsMatch(line)) { StartDiff(slot, fenced: true); return true; }
+            if (DiffHunkHeaderRegex.IsMatch(line) || line.StartsWith("diff --git ", StringComparison.Ordinal))
+            {
+                StartDiff(slot, fenced: false);
+                slot.DiffLines!.Add(line);
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>Continuation test for a raw (unfenced) diff run — an add/remove/context/hunk/header line. The build's own "--- done" completion marker is explicitly excluded so it never gets swallowed as a removed line.</summary>
+        private static bool IsRawDiffBodyLine(string line)
+        {
+            if (line.Length == 0) return false;                                   // blank line ends a raw hunk
+            if (line.StartsWith("--- done", StringComparison.Ordinal)) return false; // build-complete marker, not a diff line
+            char c = line[0];
+            return c == '+' || c == '-' || c == ' ' || c == '@' || c == '\\'
+                   || line.StartsWith("index ", StringComparison.Ordinal)
+                   || line.StartsWith("diff --git ", StringComparison.Ordinal);
+        }
+
+        private void StartDiff(BuildWatchSlot slot, bool fenced)
+        {
+            // No EnsureAssistantRun here — the CLAUDE role header is added by FinishDiff
+            // only once real diff content is confirmed, so a false-positive/empty fence
+            // never leaves an orphan header behind.
+            slot.CurrentToolGroup = null;   // a diff breaks any consecutive tool-chip run, same as a paragraph does
+            slot.DiffLines = new List<string>();
+            slot.InDiffFence = fenced;
+            slot.LastOutputUtc = DateTime.UtcNow;
+        }
+
+        /// <summary>
+        /// Materializes the collected diff lines into a DiffTurn. Guards against a false
+        /// positive (e.g. a ```diff fence that turned out to hold no +/- lines) by replaying
+        /// the collected lines as ordinary prose instead — so nothing is ever lost or hidden.
+        /// </summary>
+        private void FinishDiff(BuildWatchSlot slot)
+        {
+            var lines = slot.DiffLines;
+            slot.DiffLines = null;
+            slot.InDiffFence = false;
+            if (lines == null) return;
+
+            while (lines.Count > 0 && lines[^1].Length == 0) lines.RemoveAt(lines.Count - 1); // trim trailing blanks
+            if (lines.Count == 0) return;
+
+            bool hasChange = lines.Any(l =>
+                (l.StartsWith("+", StringComparison.Ordinal) && !l.StartsWith("+++", StringComparison.Ordinal)) ||
+                (l.StartsWith("-", StringComparison.Ordinal) && !l.StartsWith("---", StringComparison.Ordinal)));
+
+            if (!hasChange)
+            {
+                // Not actually a diff — don't hide it behind an empty diff card; show the prose.
+                foreach (var l in lines)
+                    if (l.Length > 0) AddParagraph(slot, l, ParagraphKind.Normal);
+                return;
+            }
+
+            EnsureAssistantRun(slot);
+            AddTurn(slot, new DiffTurn(string.Join("\n", lines)));
+            slot.LastOutputUtc = DateTime.UtcNow;
         }
 
         private void AddParagraph(BuildWatchSlot slot, string text, ParagraphKind kind)
@@ -744,6 +857,12 @@ namespace BuildConsole
             slot.State = newState;
             var vm = slot.Pane.ViewModel;
 
+            // If a code diff was still being collected when the run ended, flush it now so
+            // its content isn't lost — the raw-run case normally closes on the next non-diff
+            // line, but a build can go terminal/stale without one ever arriving.
+            if (newState is SlotState.Done or SlotState.Failed or SlotState.Stale)
+                FinishDiff(slot);
+
             switch (newState)
             {
                 case SlotState.Running:
@@ -880,6 +999,8 @@ namespace BuildConsole
             slot.InAssistantRun = false;
             slot.CurrentToolGroup = null;
             slot.ToolCallsById.Clear();
+            slot.DiffLines = null;
+            slot.InDiffFence = false;
             slot.StatusLine = null;
 
             var vm = slot.Pane.ViewModel;
@@ -1049,6 +1170,8 @@ namespace BuildConsole
                     slot.LineBuffer = "";
                     slot.Pane.ViewModel.Turns.Clear();
                     slot.CurrentToolGroup = null;
+                    slot.DiffLines = null;
+                    slot.InDiffFence = false;
                     slot.StatusLine = null;
                     slot.InAssistantRun = false;
                 }

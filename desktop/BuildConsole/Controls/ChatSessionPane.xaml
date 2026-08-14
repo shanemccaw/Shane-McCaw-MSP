@@ -215,6 +215,11 @@
             </StackPanel>
         </DataTemplate>
 
+        <!-- ── Code diff (genuine +/- diff view, not grey prose) ──────── -->
+        <DataTemplate x:Key="DiffTemplate">
+            <local:DiffView/>
+        </DataTemplate>
+
         <!-- ── Live status line ─────────────────────────────────────── -->
         <DataTemplate x:Key="StatusLineTemplate">
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,6,0,2">
@@ -256,6 +261,7 @@
             AssistantTurnStartTemplate="{StaticResource AssistantTurnStartTemplate}"
             AssistantParagraphTemplate="{StaticResource AssistantParagraphTemplate}"
             ToolGroupTemplate="{StaticResource ToolGroupTemplate}"
+            DiffTemplate="{StaticResource DiffTemplate}"
             StatusLineTemplate="{StaticResource StatusLineTemplate}"/>
     </UserControl.Resources>
 

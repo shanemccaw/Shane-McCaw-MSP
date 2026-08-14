@@ -132,6 +132,23 @@ namespace BuildConsole.Controls
         public bool IsExpanded { get => _isExpanded; set => SetProperty(ref _isExpanded, value); }
     }
 
+    /// <summary>
+    /// A genuine code diff detected in the agent's output stream (a run of consecutive
+    /// unified-diff lines, or a fenced ```diff block — see BuildWatchWindow's diff
+    /// detector), rendered by <see cref="DiffView"/> as a real AvalonEdit diff view
+    /// (per-line green/red backgrounds, a diff-aware line-number gutter, and
+    /// underlying-language syntax highlighting) instead of a stack of grey prose
+    /// paragraphs. Immutable: the whole block is collected before the turn is created,
+    /// so the view parses <see cref="RawDiff"/> once. <see cref="RawDiff"/> holds the
+    /// verbatim diff lines (prefixes intact) joined by '\n' — DiffView derives the file
+    /// path, language, and per-line kinds from it.
+    /// </summary>
+    public sealed class DiffTurn : TurnItem
+    {
+        public string RawDiff { get; }
+        public DiffTurn(string rawDiff) => RawDiff = rawDiff;
+    }
+
     /// <summary>The trailing live "running X…" row shown only while a slot is actively working. No per-call elapsed timer is shown (spec's "4.2s") — this app doesn't track per-tool-call timing, only overall run elapsed (already surfaced in the composer's status footer), so nothing is fabricated here.</summary>
     public sealed class StatusLineTurn : TurnItem
     {

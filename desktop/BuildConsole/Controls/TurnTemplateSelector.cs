@@ -10,6 +10,7 @@ namespace BuildConsole.Controls
         public DataTemplate? AssistantTurnStartTemplate { get; set; }
         public DataTemplate? AssistantParagraphTemplate { get; set; }
         public DataTemplate? ToolGroupTemplate { get; set; }
+        public DataTemplate? DiffTemplate { get; set; }
         public DataTemplate? StatusLineTemplate { get; set; }
 
         public override DataTemplate? SelectTemplate(object item, DependencyObject container) => item switch
@@ -18,6 +19,7 @@ namespace BuildConsole.Controls
             AssistantTurnStartTurn => AssistantTurnStartTemplate,
             AssistantParagraphTurn => AssistantParagraphTemplate,
             ToolGroupTurn => ToolGroupTemplate,
+            DiffTurn => DiffTemplate,
             StatusLineTurn => StatusLineTemplate,
             _ => null,
         };
