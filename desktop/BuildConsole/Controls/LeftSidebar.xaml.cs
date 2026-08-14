@@ -1146,6 +1146,10 @@ namespace BuildConsole.Controls
             _lastInProgressSignature = signature;
 
             BuildBoardFromGitHub(issues, milestoneInfos);
+            // Feed Focus Mode the real issue→milestone map + milestone counts (this is the
+            // OPEN board fetch; the closed-view BuildBoardFromGitHub call deliberately does NOT
+            // feed, so the filter map isn't overwritten with closed-only issues).
+            BuildConsole.Services.FocusModeService.Instance.UpdateBoardSnapshot(issues, milestoneInfos);
             RenderIssuesTree(_currentFilter == "Done" ? "All" : _currentFilter);
 
             // Git #845 (Git Board Phase 7) — the board's own GraphQL fetch above
@@ -1285,6 +1289,15 @@ namespace BuildConsole.Controls
 
         /// <summary>The real GitHub milestones the Git Board built (fully-populated Epics), so the search can jump straight into MainWindow.OpenMilestoneDetailTab.</summary>
         public IReadOnlyList<GitMilestone> CurrentMilestones => _milestones;
+
+        /// <summary>Focus Mode — re-render the Git Board and Chats tree from the already-fetched
+        /// caches so the active-milestone hard filter applies immediately (no network hit). Called
+        /// by MainWindow whenever focus is turned on/off or its milestone changes.</summary>
+        public void ReapplyFocusFilter()
+        {
+            try { RenderIssuesTree(_currentFilter == "Done" ? "All" : _currentFilter); } catch { }
+            try { PopulateChatsTree(); } catch { }
+        }
 
         /// <summary>The enumerated test manifests backing ManifestFilesTree (area, file name, and the resolved absolute path for MainWindow.OpenFileTab). Projected from the private <see cref="_manifestEntries"/> so the search never re-scans disk itself.</summary>
         public IReadOnlyList<(string Area, string FileName, string FullPath)> CurrentManifests =>
@@ -1493,6 +1506,8 @@ namespace BuildConsole.Controls
             // cached the last time the tree actually re-rendered.
             _lastBoardChats = board.Chats;
             _chatEpicById = board.Epics.ToDictionary(e => e.Id);
+            // Focus Mode needs chats + epic→issue-number to resolve a chat's milestone.
+            BuildConsole.Services.FocusModeService.Instance.UpdateChatSnapshot(board.Chats, _chatEpicById);
 
             // Git #931 — the stale/offline state itself is part of what's
             // "changed" for repaint purposes: going stale->live (or the
@@ -1515,8 +1530,13 @@ namespace BuildConsole.Controls
             }
 
             var epicById = _chatEpicById;
-            var byEpic = board.Chats.Where(c => c.EpicId.HasValue).GroupBy(c => c.EpicId!.Value);
-            var unlinked = board.Chats.Where(c => !c.EpicId.HasValue).ToList();
+            // Focus Mode — hard-hide chats that don't belong to the active milestone
+            // (resolved via the chat's issue / epic issue number). Off-focus = all chats.
+            var focusChats = board.Chats
+                .Where(c => BuildConsole.Services.FocusModeService.Instance.IsChatInFocus(c))
+                .ToList();
+            var byEpic = focusChats.Where(c => c.EpicId.HasValue).GroupBy(c => c.EpicId!.Value);
+            var unlinked = focusChats.Where(c => !c.EpicId.HasValue).ToList();
 
             // Git #885 (sub-issue of Epic #803, ADHD cleanup) — Shane: "all the
             // text is a bright white with a scroll to the right and it all
@@ -1838,17 +1858,24 @@ namespace BuildConsole.Controls
             IssuesTree.Items.Clear();
             _issueTitleBlocks.Clear();
 
-            int totalMilestones = _milestones.Count;
-            int totalEpics = _milestones.Sum(m => m.Epics.Count);
-            int openIssues = _milestones.Sum(m => m.Epics.Sum(e => e.Issues.Count(i => i.Status != "CLOSED")));
-            int closedIssues = _milestones.Sum(m => m.Epics.Sum(e => e.Issues.Count(i => i.Status == "CLOSED")));
+            // Focus Mode — when a milestone is active, the whole Git Board hard-hides
+            // every other milestone (genuinely gone, not greyed), and the stat tiles
+            // scope to just the focused one. Off-focus this is the full list unchanged.
+            var shownMilestones = _milestones
+                .Where(m => BuildConsole.Services.FocusModeService.Instance.IsMilestoneInFocus(m.GithubNumber, m.Title))
+                .ToList();
+
+            int totalMilestones = shownMilestones.Count;
+            int totalEpics = shownMilestones.Sum(m => m.Epics.Count);
+            int openIssues = shownMilestones.Sum(m => m.Epics.Sum(e => e.Issues.Count(i => i.Status != "CLOSED")));
+            int closedIssues = shownMilestones.Sum(m => m.Epics.Sum(e => e.Issues.Count(i => i.Status == "CLOSED")));
 
             IssueStatMilestones.Text = $"{totalMilestones} Active";
             IssueStatEpics.Text = $"{totalEpics} Active";
             IssueStatOpen.Text = $"{openIssues} Pending";
             IssueStatClosed.Text = $"{closedIssues} Done";
 
-            foreach (var m in _milestones)
+            foreach (var m in shownMilestones)
             {
                 if (filter == "Milestones" || filter == "All" || filter == "Priority")
                 {

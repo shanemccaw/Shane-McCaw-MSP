@@ -416,6 +416,11 @@ namespace BuildConsole
             // compiled from, with a queue-gated deploy when the running copy is behind.
             InitializeVersionUpdate();
 
+            // Focus Mode (active-milestone global filter + downtime quick-tasks +
+            // context save/restore + game layer). All logic lives in FocusModeService
+            // and MainWindow.FocusMode.cs — this is the single shell-side entry point.
+            InitFocusMode();
+
             // If a previous session persisted Queue clicks while a version Update was
             // pending (the deploy restart would have dropped them), re-queue them now
             // that the Build Tracker client + panels are initialized (see

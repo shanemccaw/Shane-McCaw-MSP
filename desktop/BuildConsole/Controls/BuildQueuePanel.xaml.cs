@@ -916,6 +916,13 @@ namespace BuildConsole.Controls
                     .ToList();
             }
 
+            // Focus Mode — hard-hide queue items whose issue isn't in the active milestone.
+            // Unattributable / local items (no or negative issue number) are kept, so an
+            // actively-running build is never hidden out from under Shane.
+            items = items
+                .Where(i => BuildConsole.Services.FocusModeService.Instance.IsIssueInFocus(i.GithubNumber))
+                .ToList();
+
             QueueTree.Visibility = Visibility.Visible;
             QueueEmptyText.Visibility = items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
             QueueEmptyText.Text = searching

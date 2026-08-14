@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -105,6 +106,8 @@ namespace BuildConsole.Controls
         // ── Section 1: Where you left off (persisted last-launch chat tabs) ──
         public void RenderLeftOff(IReadOnlyList<PersistedChatTab> tabs)
         {
+            // Focus Mode — while a milestone is active, the Home tab only shows on-milestone work.
+            tabs = tabs.Where(t => FocusModeService.Instance.IsIssueInFocus(t.IssueGithubNumber)).ToList();
             LeftOffList.Children.Clear();
             LeftOffCountText.Text = $"({tabs.Count})";
             LeftOffEmpty.Visibility = tabs.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -136,6 +139,7 @@ namespace BuildConsole.Controls
         // ── Section 2: Running now (live queue — same source as the Build Queue panel) ──
         public void RenderRunning(IReadOnlyList<QueueItem> running)
         {
+            running = running.Where(i => FocusModeService.Instance.IsIssueInFocus(i.GithubNumber)).ToList();
             RunningList.Children.Clear();
             RunningCountText.Text = $"({running.Count})";
             RunningEmpty.Visibility = running.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -165,6 +169,7 @@ namespace BuildConsole.Controls
         // ── Section 3: Done, waiting for you (done builds whose GitHub issue is still open) ──
         public void RenderDoneWaiting(IReadOnlyList<QueueItem> done)
         {
+            done = done.Where(i => FocusModeService.Instance.IsIssueInFocus(i.GithubNumber)).ToList();
             DoneList.Children.Clear();
             DoneCountText.Text = $"({done.Count})";
             DoneEmpty.Visibility = done.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
