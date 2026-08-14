@@ -15,6 +15,7 @@
     "copilot-readiness/home-quiz-scoring.json",
     "admin/tenant-switcher-floaty.json",
     "admin/baseline-actions-powershell-verify.json",
+    "admin/testbed-gate-negative.json",
     "mailer/email-template-branding-audit.json",
     "observability/dlq-schema-error-scan.json",
     "observability/schema-drift-guard.json"

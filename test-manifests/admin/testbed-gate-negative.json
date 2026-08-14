@@ -1,0 +1,127 @@
+{
+  "feature": "isTestbed write-gate — real negative (breach-attempt) regression test",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "393ddafe",
+
+  "notes": [
+    "PURPOSE — a REAL negative test, not a code read. Every isTestbed-gated write endpoint refuses a",
+    "mutating action unless the target tenant is flagged tenants.is_testbed = true. This manifest does not",
+    "trust that the code 'looks like it should refuse' — it actually FIRES a genuine write request at a",
+    "deliberately NON-testbed tenant and asserts the server refuses it. If the gate is ever weakened,",
+    "removed, or bypassed, these assertions FAIL LOUDLY (a refused 4xx turns into a 200/real-write, or the",
+    "specific gate message disappears) — that is the entire point of this file.",
+    "",
+    "WHY A DECLARED NON_TESTBED_CUSTOMER_ID VARIABLE (Shane must set it): to hit the isTestbed refusal you",
+    "need a REAL, existing, active, NON-testbed tenant that HAS a connected Entra tenantId. There is no way",
+    "to synthesize that without touching the DB (no DB access in this environment). Set the Test Environment",
+    "Variable NON_TESTBED_CUSTOMER_ID to a real tenants.id that is NOT a testbed row but IS connected.",
+    "IMPORTANT failure-direction: if that id is wrong (nonexistent, or a testbed row, or has no connected",
+    "tenant) the probe returns a DIFFERENT message/status and this test FAILS rather than silently passing —",
+    "it can never green-light on a misconfigured variable. Pick an id that is genuinely a live paying",
+    "customer's tenant; that is exactly the tenant the gate must protect.",
+    "",
+    "SELF-SAFE BY DESIGN — this test can NEVER cause a real mutation, even if the gate is already broken:",
+    "the templateId path segment is a deliberately NON-EXISTENT template id",
+    "('negative-testbed-gate-probe-nonexistent'). In admin-baseline-templates.ts the isTestbed check",
+    "(status 400, ~line 357) runs BEFORE the template lookup (~line 361), so with the gate intact the probe",
+    "is refused at the gate. In the impossible event the gate is bypassed, the request then hits",
+    "'Baseline template not found' (404) — NOT a real Graph write — and the assertion still fails loudly.",
+    "",
+    "COVERAGE HONESTY — which of these tests the isTestbed gate itself vs. the auth wall in front of it:",
+    "  * apiTest #2 (baseline-templates/:templateId/test) is guarded by requireAdminOrIngestToken",
+    "    (requireAuth.ts:183). The headless harness's Bearer {{SECRET_KEY}} (= BUILD_TRACKER_INGEST_TOKEN)",
+    "    genuinely PASSES auth here (proved by apiTest #1), so the 400 refusal it receives is provably the",
+    "    isTestbed gate (assertion checks the gate's exact message). This is the load-bearing test: weaken",
+    "    the gate and #2 fails.",
+    "  * apiTests #3-#7 (write-actions preview/execute, launch-control execute, config-packs run, portal",
+    "    mission-control remediate) sit behind requireAdmin / requireRole(...), which REJECT the ingest",
+    "    token with 401 BEFORE the isTestbed check is ever reached. The headless harness cannot mint the",
+    "    admin / MSPOperator / PlatformAdmin JWT those routes require (same credential boundary the",
+    "    money-path-e2e manifest documents — no admin session is available here), so it cannot exercise",
+    "    their in-handler isTestbed refusal directly. What #3-#7 DO assert, honestly, is that the write path",
+    "    is unreachable at all with a non-admin credential — i.e. the AUTH WALL in front of each gate is",
+    "    intact. Each sends a genuine breach payload (the same NON-testbed customerId, confirmed:true where",
+    "    required) so that if anyone ever widens these routes to accept the ingest token (the prerequisite",
+    "    for the harness to reach their gate) the observed status changes from 401 and the test fails loudly",
+    "    — flagging that a real write endpoint just became reachable and its isTestbed gate now needs a",
+    "    session-authenticated negative test of its own. This is NOT faked gate coverage: it is documented",
+    "    as auth-wall coverage, per the test-coverage honesty rule.",
+    "",
+    "The allow-path (a write against a genuine testbed tenant succeeding) is already exercised by",
+    "test-manifests/admin/baseline-actions-powershell-verify.json — this file is the deliberately-refused",
+    "counterpart, so together they prove the gate discriminates rather than blanket-refusing.",
+    "",
+    "SHANE TO-DO: set BuildConsole Test Environment Variable NON_TESTBED_CUSTOMER_ID to a real, active,",
+    "connected, NON-testbed tenants.id before running; DEPLOY_URL + SECRET_KEY (= BUILD_TRACKER_INGEST_TOKEN)",
+    "as usual. Run against the real deploy."
+  ],
+
+  "apiTests": [
+    {
+      "name": "auth-proof: the ingest token genuinely authenticates to the testbed router — so a later refusal is provably the isTestbed gate, not an auth failure",
+      "method": "GET",
+      "path": "/api/admin/baseline-templates/testbed-customers",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}" },
+      "expect": { "status": 200, "jsonPath": "$.customers", "exists": true, "isArray": true }
+    },
+
+    {
+      "name": "REAL BREACH (the load-bearing test): authenticated ingest-token write against a NON-testbed tenant is refused by the isTestbed gate (baseline-templates/:templateId/test, requireAdminOrIngestToken)",
+      "method": "POST",
+      "path": "/api/admin/baseline-templates/negative-testbed-gate-probe-nonexistent/test",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "customerId": "{{NON_TESTBED_CUSTOMER_ID}}" },
+      "expect": {
+        "status": 400,
+        "jsonPath": "$.error",
+        "exists": true,
+        "containsAny": ["flagged isTestbed", "never point it at a live customer tenant"]
+      }
+    },
+
+    {
+      "name": "breach attempt — write-actions PREVIEW against a NON-testbed tenant is refused before any write (requireAdmin auth wall in front of assertTestbedCustomer's 403; ingest token cannot reach the gate -> 401)",
+      "method": "POST",
+      "path": "/api/admin/write-actions/negative-testbed-gate-probe-nonexistent/preview",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "customerId": "{{NON_TESTBED_CUSTOMER_ID}}" },
+      "expect": { "status": 401, "jsonPath": "$.error", "exists": true }
+    },
+
+    {
+      "name": "breach attempt — write-actions EXECUTE (confirmed:true) against a NON-testbed tenant is refused before any write (requireAdmin auth wall; ingest token -> 401, never reaches the 403 isTestbed gate)",
+      "method": "POST",
+      "path": "/api/admin/write-actions/negative-testbed-gate-probe-nonexistent/execute",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "customerId": "{{NON_TESTBED_CUSTOMER_ID}}", "confirmed": true },
+      "expect": { "status": 401, "jsonPath": "$.error", "exists": true }
+    },
+
+    {
+      "name": "breach attempt — Launch Control EXECUTE against a NON-testbed tenant is refused before any write (requireRole(MSPOperator) auth wall in front of the 403 isTestbed gate; ingest token -> 401)",
+      "method": "POST",
+      "path": "/api/msp/1/launch-control/execute",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "catalogActionId": "negative-testbed-gate-probe", "customerId": "{{NON_TESTBED_CUSTOMER_ID}}" },
+      "expect": { "status": 401, "jsonPath": "$.error", "exists": true }
+    },
+
+    {
+      "name": "breach attempt — Config Pack RUN against a NON-testbed tenant is refused before any write (requireRole(PlatformAdmin) auth wall in front of the orchestrator's customer_not_testbed -> 422 gate; ingest token -> 401)",
+      "method": "POST",
+      "path": "/api/admin/config-packs/negative-testbed-gate-probe-nonexistent/run",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "customerId": "{{NON_TESTBED_CUSTOMER_ID}}" },
+      "expect": { "status": 401, "jsonPath": "$.error", "exists": true }
+    },
+
+    {
+      "name": "breach attempt — Portal instant-remediation is refused for a non-session caller (requireRole + customerId derived from the caller's own token, so a foreign tenant can't even be targeted; ingest token -> 401, never reaches the 403 isTestbed gate)",
+      "method": "POST",
+      "path": "/api/portal/mission-control/remediate",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "catalogActionId": "negative-testbed-gate-probe" },
+      "expect": { "status": 401, "jsonPath": "$.error", "exists": true }
+    }
+  ]
+}
