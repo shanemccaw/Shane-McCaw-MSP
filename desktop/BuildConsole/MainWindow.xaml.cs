@@ -4087,6 +4087,10 @@ namespace BuildConsole
                     // Git #966 — carry the uiStep's `"screenshot": true` opt-in so UiTestExecutor captures a
                     // WebView2 screenshot after this step, not only on failure.
                     Screenshot = step.Screenshot,
+                    // Carry the uiStep's `"critical": true` opt-in so UiTestExecutor halts the whole run the
+                    // moment this step fails (instead of cascading through every downstream step) — e.g. a
+                    // failed login makes all subsequent steps meaningless by definition.
+                    Critical = step.Critical,
                 }).ToList();
 
                 // Git #877 — the same per-run variable store the api/graph executors used, so a
@@ -4131,6 +4135,7 @@ namespace BuildConsole
 
                 BuildConsole.Services.ActivityLog.Log("testing.ui-executor",
                     $"[{mode}] Issue #{manifest.Issue} uiSteps: {uiResult.PassedSteps}/{uiResult.TotalSteps} passed" +
+                    $"{(uiResult.Aborted ? $"; RUN ABORTED — {uiResult.AbortReason} (remaining steps skipped)" : "")}" +
                     $"{(uiResult.Screenshots.Count > 0 ? $"; {uiResult.Screenshots.Count} screenshot(s) captured" : "")}.");
             }
 

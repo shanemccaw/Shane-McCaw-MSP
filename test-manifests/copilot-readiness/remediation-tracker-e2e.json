@@ -264,8 +264,10 @@
     { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
     { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
     {
+      "name": "Primary login — CRITICAL: authenticate before anything else. A failed login makes EVERY downstream guide/tracker/prose assertion meaningless (the page never authenticates), so on failure the run ABORTS here immediately instead of running ~20 more steps that each burn their full poll timeout on a cascade of failures that are all really this one root cause. (The mid-run never-scanned re-login below is deliberately NOT critical — it is documented to WARN-and-continue when {{TEST_NEVERSCANNED_*}} aren't provisioned.)",
       "action": "click",
       "selector": "[data-testid='login-submit']",
+      "critical": true,
       "captureResponse": {
         "urlPattern": "/api/auth/login",
         "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true }

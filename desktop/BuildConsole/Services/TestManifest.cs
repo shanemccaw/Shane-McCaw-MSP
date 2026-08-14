@@ -108,6 +108,11 @@ namespace BuildConsole.Services
                         MaxDurationMs = step.TryGetProperty("maxDurationMs", out var md) && md.ValueKind == JsonValueKind.Number && md.TryGetInt64(out var mdn) ? mdn : (long?)null,
                         TimeoutMs = step.TryGetProperty("timeoutMs", out var tm) && tm.ValueKind == JsonValueKind.Number && tm.TryGetInt64(out var tmn) ? tmn : (long?)null,
                         Screenshot = step.TryGetProperty("screenshot", out var sc) && sc.ValueKind == JsonValueKind.True,
+                        // Optional `"critical": true` — when a step so marked fails, UiTestExecutor halts the
+                        // whole run immediately instead of proceeding through the remaining steps (see
+                        // ManifestUiStep.Critical). Same optional-field shape-guard as `screenshot`; any non-`true`
+                        // JSON kind (absent/false/string/number) leaves it false = today's WARN-and-continue.
+                        Critical = step.TryGetProperty("critical", out var crit) && crit.ValueKind == JsonValueKind.True,
                     }).ToList();
                 }
 
@@ -155,5 +160,13 @@ namespace BuildConsole.Services
         public long? TimeoutMs { get; set; }
         /// <summary>Git #966 — the uiStep's optional `"screenshot": true` flag for explicit always-capture (independent of the automatic on-failure capture). Defaults false.</summary>
         public bool Screenshot { get; set; }
+        /// <summary>Optional `"critical": true` — marks this uiStep a prerequisite whose failure makes every
+        /// subsequent step meaningless (e.g. a login that never succeeded). When a critical step fails,
+        /// UiTestExecutor HALTS the whole run immediately and reports it as aborted (naming this step + why),
+        /// instead of proceeding to run every downstream step and burn its full poll timeout on a long cascade
+        /// of failures that are really one root cause. Opt-in per step (same optional-field convention as
+        /// maxDurationMs/extract/textContains); default false keeps today's log-the-WARN-and-continue behaviour,
+        /// since seeing multiple independent failures in one pass is sometimes genuinely useful.</summary>
+        public bool Critical { get; set; }
     }
 }

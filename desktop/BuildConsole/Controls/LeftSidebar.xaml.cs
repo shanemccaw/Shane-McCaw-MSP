@@ -137,6 +137,10 @@ namespace BuildConsole.Controls
         /// <summary>Git #966 — the manifest uiStep's optional `"screenshot": true` flag: when set, UiTestExecutor
         /// always captures a WebView2 screenshot after this step, not only on failure. False for manually-recorded steps.</summary>
         public bool Screenshot { get; set; }
+        /// <summary>The manifest uiStep's optional `"critical": true` flag (see ManifestUiStep.Critical): when a
+        /// critical step fails, UiTestExecutor halts the whole run immediately rather than proceeding to the
+        /// remaining steps. False for manually-recorded steps and steps that keep the default WARN-and-continue.</summary>
+        public bool Critical { get; set; }
     }
 
     public partial class LeftSidebar : UserControl

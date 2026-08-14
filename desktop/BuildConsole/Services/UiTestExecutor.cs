@@ -122,6 +122,16 @@ namespace BuildConsole.Services
         public int PassedSteps { get; set; }
         public bool Success { get; set; }
         public string StatusText { get; set; } = string.Empty;
+        /// <summary>True when the run was HALTED early because a step marked `"critical": true` failed — as
+        /// opposed to a run that simply finished with some non-critical failures (⚠ INCOMPLETE). When set, the
+        /// steps AFTER the failing critical step were never executed (they are deliberately absent from
+        /// <see cref="Steps"/>), and <see cref="AbortReason"/> / <see cref="StatusText"/> name which step failed
+        /// and why. Distinct from Success so a consumer can tell "aborted at a prerequisite" apart from "ran to
+        /// the end, some steps failed".</summary>
+        public bool Aborted { get; set; }
+        /// <summary>Human-readable reason the run aborted (the critical step's number/action/selector and its
+        /// failure detail), empty when the run was not aborted. Also folded into <see cref="StatusText"/>.</summary>
+        public string AbortReason { get; set; } = string.Empty;
         public List<UiStepResult> Steps { get; } = new();
 
         /// <summary>Git #966 — every WebView2 screenshot captured during this run, in capture order — fed straight into TestRunnerWindow's click-through review gallery. Git #977 — one per uiStep by default now (always-on, not failure-only/opt-in), so #975's baseline/diff can catch UI drift on passing runs too. Empty only when no screenshot directory was provided (capture disabled).</summary>
@@ -331,6 +341,31 @@ namespace BuildConsole.Services
                     // Uses the COMBINED verdict (stepResult.Passed), so the shared step cursor advances exactly as
                     // the retired "STEP N PASS/WARN" telemetry level did.
                     StepCompleted?.Invoke(BuildStepCompletedResult(stepResult));
+
+                    // Critical-step abort: a step the manifest marks `"critical": true` is a prerequisite whose
+                    // failure makes every subsequent step meaningless (e.g. a login that never succeeded — the
+                    // real motivating case: #email/#password not found, then nine downstream `expect` steps each
+                    // burned their full poll timeout, ~45s of pure waste, producing nine failures that are all
+                    // really one root cause). Halt the whole run the instant such a step fails, naming which step
+                    // and why, rather than continuing. Non-critical failures fall through and keep today's
+                    // log-the-WARN-and-continue behaviour (steps[i].Critical is false), since seeing multiple
+                    // independent failures in one pass is sometimes genuinely useful — this is opt-in per step,
+                    // not a global behaviour change. The `finally` below still restores the viewport.
+                    if (steps[i].Critical && !stepResult.Passed)
+                    {
+                        int skipped = steps.Count - (i + 1);
+                        string reason = $"critical step {i + 1} ({stepResult.ActionType} {stepResult.Selector}) failed: {stepResult.Detail}";
+                        result.PassedSteps = passed;
+                        result.Success = false;
+                        result.Aborted = true;
+                        result.AbortReason = reason;
+                        result.StatusText = $"❌ TEST ABORTED — {reason} ({passed}/{steps.Count} steps ran, {skipped} skipped)";
+                        // Distinct from a normal per-step WARN: an ABORT level names the halt so it can't be mistaken
+                        // for one more ordinary failing step in the live telemetry stream.
+                        Emit("RUN ABORTED", $"Halting run — {reason}. {skipped} subsequent step(s) skipped (they could only pass if this step had).", "ERROR", "#F38BA8");
+                        ActivityLog.Log(Channel, $"RUN ABORTED for {targetUrl} — {reason}. Halting immediately; {skipped} of {steps.Count} subsequent step(s) skipped rather than cascading downstream failures from this one root cause.");
+                        return result;
+                    }
 
                     await Task.Delay(PostStepSettleMs);
                 }
