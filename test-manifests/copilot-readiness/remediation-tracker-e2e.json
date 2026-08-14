@@ -1,17 +1,19 @@
 {
   "issue": 792,
-  "feature": "Remediation Tracker + Guide end-to-end (dynamic guide selection #658, script parameterization #776/#782, persistent tracker state #730-734, s24/s25 removal #757) — #792's browser-test checklist, written under #925, upgraded to real-selector textContains under #792",
+  "feature": "Remediation Tracker + Guide end-to-end (dynamic guide selection #658, script parameterization #776/#782, persistent tracker state #730-734, s24/s25 removal #757) — #792's browser-test checklist, written under #925, upgraded to real-selector textContains under #792, then corrected under #792 to READ THE GENERATED PROSE OFF THE LIVE SCREEN (the guide renders as client-side generated prose, not fetched by a numeric preview doc id — the fabricated {{TEST_REMEDIATION_PREVIEW_DOC_ID}} + ?preview=design mechanism was removed)",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "c6ce4f17e90477b56832e572d9121cd0bb9ad01b",
+  "lastVerifiedAgainstCommit": "627e627ad57ea9b069e1a2e4e62c984a9c5b63be",
 
   "notes": [
     "PROVENANCE: written under Git #925 (Epic #803) to make #792's browser-test checklist executable. Writing the manifest is #925's deliverable; the actual end-to-end browser RUN remains #792's own Shane To-Do. Sources read before writing: #658 (remediationLiveGuide.ts), #776/#782 (remediationScriptParams.ts + portal-tenant-check-items.ts), #730-734 (portal-remediation-tracker.ts, remediation-tracker-pricing.ts, remediation-tracker-verification.ts, portal-remediation-tracker-export.ts), #757 (the s24/s25 removal migration).",
 
     "SELECTORS (updated under #792): two scoped data-testids were ADDED to RemediationGuideBody.tsx to make the two text-content claims #925 could only cover indirectly directly assertable — `[data-testid=\"remediation-progress\"]` on the \"N of M steps resolved\" span (RemediationGuideBody.tsx, the standfirst progress row) and `[data-testid=\"remediation-selection-notice\"]` on the #658 no-findings notice banner div (rendered only when the live guide collapsed to the two standing steps). Per-step assertions still target the one pre-existing stable hook — each step's `<button role=\"checkbox\" aria-checked aria-label=\"Mark Step N complete: <title>\">` — via `[role=\"checkbox\"][aria-label^=\"Mark Step N complete\"]` plus `[aria-checked=\"true\"|\"false\"]` (assumes step.label === \"Step N\", true for the current catalogue). No per-step <code>-block testid was added, so the script-parameterization real-value-vs-<placeholder> claim stays a DATA-level assertion via /api/portal/tenant-check-items (see the #776/#782 note below), not a DOM assertion.",
 
-    "TEXT ASSERTIONS ARE NOW LIVE (post-#1016, corrects #925's original note): the WPF UiTestExecutor `expect` DOES read an element's real rendered text — as of Git #1016, `EvaluateExpectOnceAsync` asserts `el.innerText ?? el.textContent` contains any of a step's `textContains` phrases (case-insensitive), composing with `state`. The earlier note that `textContains` was silently ignored is obsolete. This manifest now uses it against the two testids above to assert the REAL rendered numbers/wording directly: the #658 notice banner's actual copy, and — the #792 checklist item 'N of M counts reflect the REAL rendered count, not a hardcoded number' — the literal denominator (28 on the ?preview=design fixture, 2 on a never-scanned tenant). `textContains` accepts a single string or an any-of array; the notice assertion passes an any-of array covering both the never-scanned and scanned-but-no-mapped-finding wordings (resolveDynamicSelectionNotice's two branches).",
+    "PROSE-GENERATION (Shane correction, #792): the remediation guide is NOT fetched as generated HTML by a numeric document id and previewed via a ?preview=design fixture — that older doc-id lookup pipeline no longer drives this document. On a live tenant the guide is rendered CLIENT-SIDE as generated prose: DocumentBody.tsx:555 intercepts on doc.title === JOURNEY_REMEDIATION_DOCUMENT ('Full Remediation Guide — Copilot Gate Clearance Plan', journeyTokens.ts:399) and mounts LiveRemediationGuideBody, whose text is assembled synchronously per-tenant in remediationLiveGuide.ts (resolveStandfirst/resolveClosing/resolveHandoffBlurb/resolveDynamicSelectionNotice etc.) plus fixed section headings from previewRemediationGuide.ts's REMEDIATION_GUIDE constant. The numeric LiveBody fetch of /api/portal/assessment/documents/:id is the OLD pipeline and is never reached for this doc. So the test READS THE REAL RENDERED PROSE OFF THE SCREEN (post-#1016 textContains against the live DOM), not a pre-seeded doc-id/preview fixture. There is no {{TEST_REMEDIATION_PREVIEW_DOC_ID}} anymore.",
 
-    "DYNAMIC SELECTION (#658) — how the UI proves it without testids: s18 and s28 are gap steps (STEP_CHECK_GAPS — no check-key mapping) that render in the static PREVIEW fixture but NEVER in the live per-tenant guide (rendersInLiveGuide() only passes finding/process steps). So `Mark Step 18 complete` VISIBLE under ?preview=design and ABSENT on the live guide is a tenant-independent proof that live mode runs dynamic selection, not the static 28-step list. s27/s30 are PROCESS_ONLY_STEP_IDS and always render. A never-scanned tenant renders EXACTLY s27+s30 (every other step absent) — asserted in the re-login block.",
+    "TEXT ASSERTIONS ARE LIVE (post-#1016): the WPF UiTestExecutor `expect` reads an element's real rendered text — `EvaluateExpectOnceAsync` asserts `el.innerText ?? el.textContent` contains any of a step's `textContains` phrases (case-insensitive), composing with `state`. `textContains` accepts a single string or an any-of array. This manifest reads the generated prose straight off the live guide: the always-present [data-testid=\"document-reading-pane\"] scroll container (copilot-readiness-documents.tsx:872, which wraps the mounted guide) carries the whole guide's innerText, so each stable, tenant-independent prose string produced by the generator (standfirst 'This is a runbook.' — remediationLiveGuide.ts:979; h1 'Every step required to clear the Copilot Gate'; section headings 'Remediation Overview' / 'Executive Summary'; handoff 'If you would rather not run this yourself') is asserted as a separate expect against that pane. The #658 no-findings notice's REAL copy is asserted against [data-testid=\"remediation-selection-notice\"] (any-of covers resolveDynamicSelectionNotice's two branches). The 'N of M reflects the REAL rendered count, not a hardcoded number' claim is pinned to the deterministic never-scanned denominator (literal 2 — only the two standing steps render) via [data-testid=\"remediation-progress\"].",
+
+    "DYNAMIC SELECTION (#658) — proven entirely from the LIVE screen (no preview fixture): s18 and s28 are gap steps (STEP_CHECK_GAPS — no check-key mapping) that rendersInLiveGuide() filters out (only finding/process steps render live), so they are ABSENT on the live guide. s27/s30 are PROCESS_ONLY_STEP_IDS and always render. The decisive proof is the never-scanned tenant: it renders EXACTLY s27+s30 (every finding-driven step absent) AND surfaces the resolveDynamicSelectionNotice banner — asserted in the re-login block. On a scanned tenant, s27/s30 present + s18/s28 absent shows the live guide is the dynamically-selected per-tenant list, not a static 28-step catalogue.",
 
     "TWO TENANT STATES ARE MUTUALLY EXCLUSIVE (same class of limit 891 documented): the scanned-tenant assertions and the never-scanned assertions need different accounts. This manifest switches tenants mid-run via a second /login; if only one test account is provisioned, the other block's steps WARN rather than fail meaningfully. Run each block against the matching tenant.",
 
@@ -29,7 +31,7 @@
 
     "#757 MIGRATION CHECK is read-only SQL for Shane, NOT asserted via the app: the app cannot observe whether the orphan-row DELETE ran, only that s24/s25 are rejected (which this manifest DOES assert as a code-level regression, PUT s24/s25 -> 400). Confirm the DB-level cleanup with lib/db/migrations/manual/archive/diagnostics/2026-08-12-remediation-tracker-s24-s25-cleanup-verify-757.sql.",
 
-    "VARIABLES the runner/config must pre-seed (like 887/889's {{TEST_PORTAL_*}}): {{TEST_PORTAL_EMAIL}}/{{TEST_PORTAL_PASSWORD}} = the SCANNED testbed Assessment-role account (same tenant 887/889 drive); {{TEST_REMEDIATION_DOC_ID}} = numeric doc id of the live Remediation Guide document for that tenant; {{TEST_REMEDIATION_PREVIEW_DOC_ID}} = numeric doc id of the Remediation Guide in the ?preview=design fixture (deterministic across tenants — the fixture's fixed index+1); and for the never-scanned block {{TEST_NEVERSCANNED_EMAIL}}/{{TEST_NEVERSCANNED_PASSWORD}}/{{TEST_NEVERSCANNED_REMEDIATION_DOC_ID}}. {{authToken}} is extracted at runtime from the first login apiTest.",
+    "VARIABLES the runner/config must pre-seed (like 887/889's {{TEST_PORTAL_*}}): {{TEST_PORTAL_EMAIL}}/{{TEST_PORTAL_PASSWORD}} = the SCANNED testbed Assessment-role account (same tenant 887/889 drive); {{TEST_REMEDIATION_DOC_ID}} = numeric doc id of the live Remediation Guide document for that tenant (the route selects the active doc by String(d.id)===:docId — copilot-readiness-documents.tsx:385 — so a real per-tenant id is a genuine precondition, not a fabricated one); and for the never-scanned block {{TEST_NEVERSCANNED_EMAIL}}/{{TEST_NEVERSCANNED_PASSWORD}}/{{TEST_NEVERSCANNED_REMEDIATION_DOC_ID}}. {{authToken}} is extracted at runtime from the first login apiTest. NOTE (#792 correction): the earlier {{TEST_REMEDIATION_PREVIEW_DOC_ID}} + ?preview=design step was REMOVED — see the PROSE-GENERATION note below; there is no separate 'preview doc id' to configure.",
 
     "STATE HYGIENE: apiTests and uiSteps both mutate real tracker rows (s1/s27/s30) and reset each back to not_started, so a clean run leaves the tenant as it found it. apiTests run BEFORE uiSteps (RunManifestAsync order), so uiSteps start from a reset s27."
   ],
@@ -204,11 +206,11 @@
     },
 
     {
-      "name": "EXPORT CSV (#733): real text/csv with the fixed header row Step,Title,Pillar,Status,Completed At,Last Updated.",
+      "name": "EXPORT CSV (#733): real text/csv with the fixed header row — columns are QUOTED (\"Step\",\"Title\",\"Pillar\",\"Status\",\"Completed At\",\"Last Updated\"), confirmed against the real export body when this manifest was run.",
       "method": "GET",
       "path": "/api/portal/remediation-tracker/export.csv",
       "headers": { "Authorization": "Bearer {{authToken}}" },
-      "expect": { "status": 200, "containsAny": ["Step,Title,Pillar,Status"] }
+      "expect": { "status": 200, "containsAny": ["\"Step\",\"Title\",\"Pillar\",\"Status\""] }
     },
     {
       "name": "EXPORT PDF (#733): a real, non-empty PDF (body starts %PDF). Full visual layout is a manual spot-check (see notes).",
@@ -271,31 +273,63 @@
     },
 
     {
-      "name": "PREVIEW MODE (#658): ?preview=design must still render the full static 28-step Halden fixture unchanged. s18 is a gap step that ONLY the static fixture renders — its presence proves preview is untouched.",
-      "action": "goto",
-      "target": "/copilot-readiness/documents/{{TEST_REMEDIATION_PREVIEW_DOC_ID}}?preview=design"
-    },
-    { "action": "expect", "selector": "[role='checkbox'][aria-label^='Mark Step 18 complete']", "state": "visible" },
-    { "action": "expect", "selector": "[role='checkbox'][aria-label^='Mark Step 1 complete']", "state": "visible" },
-    {
-      "name": "PREVIEW (#792 'full 28-step fixture' + 'N of M reflects the REAL rendered count, not a hardcoded number'): the progress denominator IS the literal 28 the preview renders — asserted directly against the new remediation-progress testid's rendered text.",
-      "action": "expect",
-      "selector": "[data-testid='remediation-progress']",
-      "state": "visible",
-      "textContains": ["of 28 steps resolved"]
-    },
-
-    {
-      "name": "LIVE MODE (#658), scanned tenant: process-only steps s27/s30 always render; the gap steps s18/s28 NEVER render live — so their absence here (vs. their presence in preview above) proves dynamic per-tenant selection is active, not the static list.",
+      "name": "LIVE GUIDE (#658 + #792 prose-generation): open the live per-tenant Remediation Guide. It renders client-side as GENERATED PROSE — DocumentBody.tsx matches on doc.title === JOURNEY_REMEDIATION_DOCUMENT and mounts LiveRemediationGuideBody — it is NOT fetched as HTML by a numeric preview doc id, so there is nothing to pre-seed but the tenant's own live doc id.",
       "action": "goto",
       "target": "/copilot-readiness/documents/{{TEST_REMEDIATION_DOC_ID}}"
     },
-    { "action": "expect", "selector": "[role='checkbox'][aria-label^='Mark Step 27 complete']", "state": "visible" },
+    {
+      "name": "Right document is open — the reader header shows the live guide's real title (substring avoids the em-dash).",
+      "action": "expect",
+      "selector": "[data-testid='active-document-title']",
+      "state": "visible",
+      "textContains": ["Full Remediation Guide"]
+    },
+    {
+      "name": "READ THE GENERATED PROSE OFF THE SCREEN (#792 Shane correction): the standfirst the generator produced (remediationLiveGuide.ts:979 resolveStandfirst) renders in the reading pane. Asserting its REAL rendered text — not a pre-seeded doc-id/preview fixture — proves the prose was genuinely generated and shown on screen.",
+      "action": "expect",
+      "selector": "[data-testid='document-reading-pane']",
+      "state": "visible",
+      "textContains": ["This is a runbook."]
+    },
+    {
+      "name": "Generated prose — the guide's real headline (REMEDIATION_GUIDE.headline) is rendered.",
+      "action": "expect",
+      "selector": "[data-testid='document-reading-pane']",
+      "state": "visible",
+      "textContains": ["Every step required to clear the Copilot Gate"]
+    },
+    {
+      "name": "Generated prose — the 'Remediation Overview' section heading renders.",
+      "action": "expect",
+      "selector": "[data-testid='document-reading-pane']",
+      "state": "visible",
+      "textContains": ["Remediation Overview"]
+    },
+    {
+      "name": "Generated prose — the 'Executive Summary' section (its closing paragraphs come from resolveClosing) renders.",
+      "action": "expect",
+      "selector": "[data-testid='document-reading-pane']",
+      "state": "visible",
+      "textContains": ["Executive Summary"]
+    },
+    {
+      "name": "Generated prose — the SOW handoff heading renders (resolveHandoffBlurb sits beneath it).",
+      "action": "expect",
+      "selector": "[data-testid='document-reading-pane']",
+      "state": "visible",
+      "textContains": ["If you would rather not run this yourself"]
+    },
+    {
+      "name": "LIVE MODE (#658), scanned tenant: process-only steps s27/s30 always render; the gap steps s18/s28 NEVER render live — proving dynamic per-tenant selection is active, not a static 28-step list.",
+      "action": "expect",
+      "selector": "[role='checkbox'][aria-label^='Mark Step 27 complete']",
+      "state": "visible"
+    },
     { "action": "expect", "selector": "[role='checkbox'][aria-label^='Mark Step 30 complete']", "state": "visible" },
     { "action": "expect", "selector": "[role='checkbox'][aria-label^='Mark Step 18 complete']", "state": "absent" },
     { "action": "expect", "selector": "[role='checkbox'][aria-label^='Mark Step 28 complete']", "state": "absent" },
     {
-      "name": "LIVE (#792 'N of M reflects the REAL rendered count'): the progress text renders its DERIVED per-tenant denominator, never a hardcoded 28/30. Exact M is tenant-dependent so only the derived-count text is asserted here; the deterministic denominator is pinned on preview (28) and never-scanned (2).",
+      "name": "LIVE (#792 'N of M reflects the REAL rendered count'): the progress text renders its DERIVED per-tenant denominator, never a hardcoded 28/30. Exact M is tenant-dependent so only the derived-count text is asserted here; the deterministic denominator is pinned on the never-scanned tenant below (literal 2).",
       "action": "expect",
       "selector": "[data-testid='remediation-progress']",
       "state": "visible",
