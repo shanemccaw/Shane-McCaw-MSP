@@ -6,7 +6,7 @@ deliberate — one is a local‑machine protocol, the other is plain HTTP.
 
 | Need | Surface | Why this one |
 |------|---------|--------------|
-| **Run SQL** | `shaneapp://executeSql` local protocol | SQL runs through BuildConsole's **own** configured dev‑DB path; a caller without the app's local config can't reach it. |
+| **Run SQL** | `shaneapp://executeSql` local protocol | SQL runs on BuildConsole's **own direct local Postgres connection** (zero round‑trip to the deployed app); a caller that isn't on this machine can't reach it. |
 | **Run a UI test manifest + get results** | Git #898 HTTP (`/api/admin/deploy/test-run`) | Already covers it. **No protocol needed** — any HTTP‑capable agent calls it directly. |
 
 ---
@@ -15,14 +15,32 @@ deliberate — one is a local‑machine protocol, the other is plain HTTP.
 
 ### Why a protocol and not HTTP
 UI test runs (#898) are exposed over HTTP because anything HTTP‑reachable can ask
-for one. SQL execution is kept **off** HTTP on purpose: it runs through
-BuildConsole's own `BuildTrackerApiClient.ExecuteSqlAsync` →
-`POST /api/simulator/sql/execute`, carrying **this app's locally‑held Build
-Tracker token + base URL** (the exact path the floaty SQL Runner and
-`SqlRunnerView` (#896/#939) already use). A caller that doesn't have
-BuildConsole's local config can't reach that path — which is the local‑context
-guarantee Shane wants for SQL. So the trigger is a **local‑machine handoff**, not
-a network endpoint.
+for one. SQL execution is kept **off** HTTP on purpose. Every agent that runs SQL
+(queue‑managed or Send‑to‑Builder) is **already on this machine**, so the SQL runs
+through BuildConsole's **own direct local Postgres connection**
+(`Services/LocalSqlExecutor`, Npgsql) — **zero round‑trip to the deployed dev
+api‑server** (which naps every ~15 min, #931). The connection string comes from
+BuildConsole's own local config (see **Connection string** below), so a caller
+that isn't on this machine — and doesn't have that config — can't reach it. That's
+the local‑context guarantee Shane wants for SQL. So the trigger is a
+**local‑machine handoff**, not a network endpoint.
+
+> The manual SQL Runner UI (`SqlRunnerView`, #896/#939) still uses the HTTP
+> `POST /api/simulator/sql/execute` path against the configured `apiBaseUrl` — it
+> has never held a local DB connection. This protocol is the first thing in
+> BuildConsole to talk to Postgres directly.
+
+### Connection string
+`LocalSqlExecutor` reads the Postgres connection string from, in order:
+1. a **`databaseUrl`** field in `scripts/build-queue-watcher.config.json` (next to
+   `apiBaseUrl` / `ingestToken`), or
+2. the **`DATABASE_URL`** environment variable.
+
+Use the same connection string the dev api‑server itself uses. A `postgres://` /
+`postgresql://` URI (Neon/Replit/Supabase style, with `?sslmode=require`) is
+accepted and converted to Npgsql form; an Npgsql key/value string is used as‑is.
+When **neither** is set, `executeSql` writes an `ok:false` result whose `error`
+says exactly that — it never silently no‑ops.
 
 ### The invocation contract
 
@@ -80,16 +98,18 @@ BuildConsole writes JSON to `resultRef` (or `<ref>.result.json`):
   per‑user named pipe (`Services/ShaneAppProtocol.cs`) and exits **without ever
   drawing a window** (WPF app → no console flash either).
 - The running instance handles it on the UI thread: read the temp file → run the
-  SQL through its own api client → write the result envelope.
+  SQL through its own **direct local Postgres connection** (`LocalSqlExecutor`,
+  per‑statement, continue‑on‑error) → write the result envelope.
 - If **no** instance is running, the launch becomes a real cold start that handles
   the URI itself once it's up.
 
 ### Logging
 Every invocation lands on the **`sql-runner.protocol`** ActivityLog channel
 (watch it live in BuildConsole's Activity log) — the parse, the source/action/ref,
-the run, and the real outcome (statements ok/failed, elapsed ms, result path), or
+the run (including the log‑safe local‑DB target — host/port/db/user, never the
+password), and the real outcome (statements ok/failed, elapsed ms, result path), or
 the exact reason it couldn't run (malformed URI, missing/empty/oversized payload,
-not connected).
+no `databaseUrl`/`DATABASE_URL` configured, or a connection failure).
 
 ### Design notes
 

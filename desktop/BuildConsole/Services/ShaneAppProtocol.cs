@@ -34,13 +34,15 @@ namespace BuildConsole.Services
     ///   Git #898's remote-trigger is a rendezvous over plain HTTP for UI test
     ///   runs — anything HTTP-reachable (a headless Claude Code session) can POST
     ///   /admin/deploy/test-run and poll the result. SQL execution is kept off
-    ///   that path ON PURPOSE: it runs through BuildConsole's OWN configured,
-    ///   authenticated dev-DB path (the same POST /api/simulator/sql/execute the
-    ///   floaty SQL Runner and SqlRunnerView already use, carrying THIS app's
-    ///   locally-held Build Tracker token/base-url — see BuildTrackerApiClient).
-    ///   A caller that doesn't have BuildConsole's local config can't reach it,
-    ///   which is exactly the local-context guarantee Shane wants for SQL. So the
-    ///   trigger is a local-machine handoff, not an HTTP endpoint.
+    ///   that path ON PURPOSE: every agent that runs SQL (queue-managed or
+    ///   Send-to-Builder) is ALREADY on this machine, so it runs through
+    ///   BuildConsole's OWN direct local Postgres connection (Services/
+    ///   LocalSqlExecutor — connection string from the `databaseUrl` config field
+    ///   or the DATABASE_URL env var), with ZERO round-trip to the deployed dev
+    ///   api-server. A caller that isn't on this machine (and lacks BuildConsole's
+    ///   local config) can't reach it, which is exactly the local-context
+    ///   guarantee Shane wants for SQL. So the trigger is a local-machine handoff,
+    ///   not an HTTP endpoint.
     ///
     /// HOW IT REACHES THE ALREADY-RUNNING APP:
     ///   shaneapp:// is registered (setup-shaneapp-protocol.ps1) to launch THIS

@@ -19,6 +19,11 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4129.50" />
     <PackageReference Include="AvalonEdit" Version="6.3.1.120" />
+    <!-- Direct local Postgres client for shaneapp://executeSql — lets BuildConsole
+         run SQL through its OWN local DB connection (LocalSqlExecutor), with zero
+         round-trip to the deployed Replit dev api-server. 7.0.x targets net7.0
+         directly, matching this app's TFM. -->
+    <PackageReference Include="Npgsql" Version="7.0.7" />
   </ItemGroup>
 
   <ItemGroup>

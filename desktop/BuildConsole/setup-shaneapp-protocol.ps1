@@ -11,8 +11,9 @@
   registration):
     • mybuilder:// launches a fresh Claude Code session via a PowerShell runner —
       so it points at a repo script (`git pull` keeps the runner current).
-    • shaneapp:// must reach the ALREADY-RUNNING BuildConsole (SQL runs through
-      that app's own configured dev-DB path). The handler IS the app, so the
+    • shaneapp:// must reach the ALREADY-RUNNING BuildConsole (SQL runs on that
+      app's own DIRECT LOCAL Postgres connection — Services/LocalSqlExecutor — with
+      zero round-trip to the deployed api-server). The handler IS the app, so the
       registry command points at the deployed BuildConsole.exe itself. A WPF app
       has no console, so there is NO `cmd.exe /k` wrapper — a protocol launch
       never flashes a window: a running instance forwards the URI over a named
@@ -23,6 +24,15 @@
   same path, so it doesn't need re-running for code fixes.
 
   Safe to re-run: the registry key is overwritten idempotently.
+
+  PREREQUISITE — the local DB connection string:
+    executeSql runs SQL through BuildConsole's OWN Postgres connection, so it needs
+    a connection string. Set ONE of these to the same value the dev api-server uses:
+      • a "databaseUrl" field in scripts/build-queue-watcher.config.json, or
+      • the DATABASE_URL environment variable.
+    A postgres://user:pass@host/db?sslmode=require URI is accepted as-is. Until one
+    is set, executeSql returns an ok:false result explaining exactly that (it never
+    silently no-ops). This registration step itself does NOT need the DB string.
 
 .PARAMETER ExePath
   Full path to the BuildConsole.exe the protocol should launch. Defaults to the

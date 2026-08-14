@@ -19,6 +19,18 @@ namespace BuildConsole.Services
         public string IngestToken { get; set; } = "";
         public int MaxConcurrent { get; set; } = 8;
 
+        /// <summary>
+        /// Optional direct Postgres connection string for the shaneapp://executeSql LOCAL
+        /// SQL path (<see cref="LocalSqlExecutor"/>) — a `postgres://…` URI or Npgsql
+        /// key/value form, the same connection string the api-server itself uses. Lets an
+        /// on-machine agent run SQL through BuildConsole's OWN local DB connection with zero
+        /// round-trip to the deployed dev api-server. When blank, the DATABASE_URL
+        /// environment variable is used instead; when neither is set, executeSql returns a
+        /// clear "not configured" result rather than running. NOT required for anything
+        /// else — the HTTP path (queue/board/manual SQL Runner) ignores it entirely.
+        /// </summary>
+        public string DatabaseUrl { get; set; } = "";
+
         public bool IsConfigured => !string.IsNullOrWhiteSpace(ApiBaseUrl) && !string.IsNullOrWhiteSpace(IngestToken);
 
         public static string? FindConfigPath()
