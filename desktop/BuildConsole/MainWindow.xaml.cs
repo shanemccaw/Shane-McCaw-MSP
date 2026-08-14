@@ -393,6 +393,12 @@ namespace BuildConsole
             // compiled from, with a queue-gated deploy when the running copy is behind.
             InitializeVersionUpdate();
 
+            // If a previous session persisted Queue clicks while a version Update was
+            // pending (the deploy restart would have dropped them), re-queue them now
+            // that the Build Tracker client + panels are initialized (see
+            // MainWindow.PendingUpdateQueue.cs). Fire-and-forget — never blocks launch.
+            _ = ReplayPersistedQueueRequestsOnLaunchAsync();
+
             // Shane To-Do "Load SQL" -> real GitHub file content into the SQL Runner tab (index 2 in BottomTabs — Build Log, Terminal, SQL Runner, Output).
             LeftSidebar.SqlLoadRequested += (s, path) =>
             {
@@ -2915,6 +2921,33 @@ namespace BuildConsole
                     {
                         blockedByNumbers = arr.EnumerateArray().Select(x => x.GetInt32()).ToList();
                     }
+
+                    // A version Update is pending: the deploy is deferred until the
+                    // Build Queue drains, then deploy-shanesbuild.cmd restarts this
+                    // whole process. Don't add this request to the live/in-memory queue
+                    // the restart would drop it from — persist it to disk instead and
+                    // let the next launch re-queue it automatically (see
+                    // MainWindow.PendingUpdateQueue.cs).
+                    if (_updatePending)
+                    {
+                        bool saved = PersistQueueRequestDuringPendingUpdate(
+                            Str("title") ?? "Untitled", Str("prompt") ?? "", Str("model"), Str("effort"), Str("cwd"),
+                            Int("githubNumber"), blockedByNumbers);
+                        // Unstick the injected button back to its clickable label (it was
+                        // set to a disabled "In Progress..." on click) — nothing is in the
+                        // live queue, so leaving it stuck would misrepresent reality.
+                        if (correlation != null)
+                            await RunScriptInAllChatWebViewsAsync($"window.__btQueueFailed && window.__btQueueFailed({JsLiteral(correlation)});");
+                        MessageBox.Show(
+                            saved
+                                ? "A BuildConsole update is pending and will restart the app once the Build Queue clears.\n\n" +
+                                  "This build request has been saved and will be queued automatically right after that restart."
+                                : "A BuildConsole update is pending, but saving this build request to disk failed — it was NOT queued. Try again after the update finishes.",
+                            "Queued after update", MessageBoxButton.OK,
+                            saved ? MessageBoxImage.Information : MessageBoxImage.Warning);
+                        return;
+                    }
+
                     var res = await _buildTrackerApi.QueueBuildAsync(
                         Str("title") ?? "Untitled", Str("prompt") ?? "", Str("model"), Str("effort"), Str("cwd"), Int("githubNumber"), blockedByNumbers);
                     if (!res.IsSuccessStatusCode)
