@@ -357,7 +357,7 @@ namespace BuildConsole
             // the extension's composer poll+insert in this WebView2 tab. Uses the
             // same OpenWebTab every other web tab already goes through.
             LeftSidebar.EpicChatRequested += (s, e) =>
-                OpenWebTab(e.Url, e.Title, "", injectPrefillPoll: e.InjectPrefill);
+                OpenWebTab(e.Url, e.Title, "", injectPrefillPoll: e.InjectPrefill, associateEpicGithubNumber: e.EpicGithubNumber);
 
             // Git #840 (Git Board Phase 2) — Shane: "I need to be able to...
             // read their descriptions, comments, etc..." Clicking an issue in
@@ -1246,7 +1246,94 @@ namespace BuildConsole
   }
 })();";
 
-        public void OpenWebTab(string url, string title, string glyph, bool offerKeepAlive = false, bool injectPrefillPoll = false)
+        /// <summary>
+        /// Git #922 follow-up — the association half of the "New Epic Chat" flow.
+        /// The browser extension links a chat to an epic via an explicit numeric
+        /// epicId (content.js linkTo → POST /chats/ingest force:true); it recovers
+        /// the conversation from the URL with conversationIdFromUrl() (the same
+        /// /chat/&lt;uuid&gt; regex). BuildConsole's own WebView2 has no extension,
+        /// so this injected watcher plays that role: it reads location.pathname for
+        /// the conversation UUID — which claude.ai only mints once the FIRST message
+        /// is actually sent — and posts it back to the host the instant it appears
+        /// (and only once). It self-polls because sending the message is an SPA
+        /// route change (history.pushState), not a document reload, so a document-
+        /// created hook alone would miss it. MainWindow's WebMessageReceived handler
+        /// then resolves the epic and writes the link (AssociateEpicChatAsync).
+        /// </summary>
+        private const string EpicChatAssociationWatcherScript = @"
+(function () {
+  try {
+    if (window.__btEpicAssocWatching) return 'already-watching';
+    window.__btEpicAssocWatching = true;
+    var RE = /\/chat\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i;
+    var reported = null;
+    function check() {
+      var m = (window.location.pathname || '').match(RE);
+      if (m && m[1] && m[1] !== reported) {
+        reported = m[1];
+        try {
+          window.chrome.webview.postMessage(JSON.stringify({ type: 'BT_EPIC_CHAT_CONVERSATION', conversationId: m[1] }));
+        } catch (e) { /* host bridge not ready — the interval retries */ }
+      }
+    }
+    check();
+    setInterval(check, 1000);
+    return 'watching';
+  } catch (ex) {
+    return 'error: ' + ex.message;
+  }
+})();";
+
+        /// <summary>
+        /// Git #922 follow-up — writes the chat→epic link once the injected
+        /// <see cref="EpicChatAssociationWatcherScript"/> reports that a "New Epic
+        /// Chat" WebView2 session got a real conversation UUID (i.e. Shane actually
+        /// sent the prefilled "Epic #N" message). Resolves the epic's internal
+        /// bt_epics id from its GitHub number via a live board fetch — GetBoardAsync's
+        /// CachedAsync always live-fetches first, only falling back to cache on
+        /// failure, so it's current — then POSTs the SAME /chats/ingest force:true the
+        /// extension's own "link to this epic" click uses
+        /// (<see cref="BuildConsole.Services.BuildTrackerApiClient.LinkChatToEpicAsync"/>),
+        /// and refreshes the Chats tree so the chat lands under the epic. Every branch
+        /// logs on the git-board.epic-chat channel so a missed association (epic not in
+        /// bt_epics, API down, non-2xx) is diagnosable rather than silent.
+        /// </summary>
+        private async System.Threading.Tasks.Task AssociateEpicChatAsync(string conversationId, int epicGithubNumber)
+        {
+            if (_buildTrackerApi == null || !_buildTrackerApi.IsConfigured)
+            {
+                BuildConsole.Services.ActivityLog.Log("git-board.epic-chat", $"cannot associate chat {conversationId} to epic #{epicGithubNumber}: Build Tracker API not configured (set apiBaseUrl/ingestToken)");
+                return;
+            }
+            try
+            {
+                var board = await _buildTrackerApi.GetBoardAsync();
+                var epic = board.Data.Epics.FirstOrDefault(ep => ep.GithubNumber == epicGithubNumber);
+                if (epic == null)
+                {
+                    BuildConsole.Services.ActivityLog.Log("git-board.epic-chat", $"chat {conversationId} was sent for epic #{epicGithubNumber}, but no bt_epics row has github_number {epicGithubNumber} — cannot auto-associate (register the epic in the Build Tracker, then use 'Assign to Epic…')");
+                    return;
+                }
+                var resp = await _buildTrackerApi.LinkChatToEpicAsync(conversationId, epic.Id);
+                if (resp.IsSuccessStatusCode)
+                {
+                    BuildConsole.Services.ActivityLog.Log("git-board.epic-chat", $"associated chat {conversationId} -> epic #{epicGithubNumber} (bt_epics id {epic.Id}, force) — BoardChat upserted (HTTP {(int)resp.StatusCode}); refreshing Chats panel");
+                    try { LeftSidebar.PopulateChatsTree(); } catch { /* refresh is best-effort — the link is already written server-side */ }
+                }
+                else
+                {
+                    string body;
+                    try { body = await resp.Content.ReadAsStringAsync(); } catch { body = ""; }
+                    BuildConsole.Services.ActivityLog.Log("git-board.epic-chat", $"association POST for chat {conversationId} -> epic #{epicGithubNumber} (bt_epics id {epic.Id}) returned HTTP {(int)resp.StatusCode}: {body}");
+                }
+            }
+            catch (Exception ex)
+            {
+                BuildConsole.Services.ActivityLog.Log("git-board.epic-chat", $"association failed for chat {conversationId} -> epic #{epicGithubNumber}: {ex.Message}");
+            }
+        }
+
+        public void OpenWebTab(string url, string title, string glyph, bool offerKeepAlive = false, bool injectPrefillPoll = false, int? associateEpicGithubNumber = null)
         {
             // Deduplicate if already open
             foreach (TabItem item in EditorTabs.Items)
@@ -1332,10 +1419,62 @@ namespace BuildConsole
             // unconditionally re-Navigate every time, discarding whatever
             // Shane had navigated to within the page. `navigated` makes the
             // real navigation happen exactly once.
+            // Git #922 follow-up — Shane found live (on epic #704) that "New Epic
+            // Chat" prefilled the "Epic #N" message but never actually assigned the
+            // resulting chat to the epic / showed it in the Chats panel. #922
+            // replicated the extension's composer prefill (EpicChatPrefillPollScript
+            // above) but NOT the association write the extension's own "link to this
+            // epic" click does (POST /chats/ingest force:true). This is that missing
+            // half: a fresh claude.ai chat only gets a real /chat/<uuid> conversation
+            // URL once Shane actually SENDS the first message, so an injected watcher
+            // (EpicChatAssociationWatcherScript) polls location.pathname and posts the
+            // conversation id back the instant it appears; AssociateEpicChatAsync then
+            // resolves the epic's internal bt_epics id from its GitHub number and links
+            // the chat. Ignore a uuid already present in the initial URL (a
+            // misconfigured base pointing straight at an existing chat) so we only ever
+            // link the genuinely-new conversation Shane just created.
+            string? initialConversationId = null;
+            var initConvMatch = System.Text.RegularExpressions.Regex.Match(
+                url, @"/chat/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})");
+            if (initConvMatch.Success) initialConversationId = initConvMatch.Groups[1].Value;
+
             bool navigated = false;
+            bool epicAssocWired = false;
+            bool epicAssociated = false;
             wv.Loaded += async (s, e) =>
             {
                 bool ready = await EnsureWebViewInitializedAsync(wv);
+
+                if (ready && associateEpicGithubNumber.HasValue && !epicAssocWired)
+                {
+                    epicAssocWired = true;
+                    int epicGithubNumber = associateEpicGithubNumber.Value;
+                    wv.CoreWebView2.WebMessageReceived += async (ws, we) =>
+                    {
+                        if (epicAssociated) return;
+                        string raw;
+                        // The watcher posts a JSON *string*; other injected scripts on this
+                        // page may post objects (TryGetWebMessageAsString throws for those) —
+                        // ignore anything that isn't our string marker.
+                        try { raw = we.TryGetWebMessageAsString(); }
+                        catch { return; }
+                        if (string.IsNullOrEmpty(raw) ||
+                            raw.IndexOf("BT_EPIC_CHAT_CONVERSATION", StringComparison.Ordinal) < 0) return;
+                        var m = System.Text.RegularExpressions.Regex.Match(
+                            raw, @"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}");
+                        if (!m.Success) return;
+                        var conversationId = m.Value;
+                        if (!string.IsNullOrEmpty(initialConversationId) &&
+                            string.Equals(conversationId, initialConversationId, StringComparison.OrdinalIgnoreCase)) return;
+                        epicAssociated = true;
+                        await AssociateEpicChatAsync(conversationId, epicGithubNumber);
+                    };
+                    // Added before Navigate below so it runs on the fresh document, then
+                    // self-polls across the SPA route change that sending the message causes.
+                    try { await wv.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(EpicChatAssociationWatcherScript); }
+                    catch { /* best-effort — worst case the association just doesn't fire; Shane can still use "Assign to Epic…" */ }
+                }
+
                 if (ready && !navigated)
                 {
                     navigated = true;
