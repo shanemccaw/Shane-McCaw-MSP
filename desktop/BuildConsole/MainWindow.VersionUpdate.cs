@@ -235,9 +235,8 @@ namespace BuildConsole
             {
                 ActivityLog.Log(VersionChannel,
                     $"FAILED: deploy-shanesbuild.cmd not found (repoRoot={repoRoot ?? "null"}).");
-                MessageBox.Show(
-                    "Couldn't find deploy-shanesbuild.cmd under desktop\\BuildConsole — deploy not started.",
-                    "Update BuildConsole", MessageBoxButton.OK, MessageBoxImage.Warning);
+                ToastEngine.Warning("Update BuildConsole",
+                    "Couldn't find deploy-shanesbuild.cmd under desktop\\BuildConsole — deploy not started.");
                 // Re-offer the button so Shane can retry once the path is sorted.
                 _updatePending = false;
                 _pendingDeployPollTimer?.Stop();
@@ -265,9 +264,8 @@ namespace BuildConsole
             {
                 _deployInvoked = false;
                 ActivityLog.Log(VersionChannel, $"FAILED to launch deploy-shanesbuild.cmd: {ex.Message}");
-                MessageBox.Show(
-                    $"Couldn't start the deploy: {ex.Message}",
-                    "Update BuildConsole", MessageBoxButton.OK, MessageBoxImage.Error);
+                ToastEngine.Error("Update BuildConsole",
+                    $"Couldn't start the deploy: {ex.Message}");
                 ApplyVersionUiState();
             }
         }

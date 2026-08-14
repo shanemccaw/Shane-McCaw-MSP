@@ -326,7 +326,7 @@ namespace BuildConsole.Controls
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Couldn't close session: {ex.Message}", "Close Session");
+                ToastEngine.Error("Close Session", $"Couldn't close session: {ex.Message}");
             }
             _ = RefreshActiveSessionsAsync();
         }
@@ -1344,9 +1344,8 @@ namespace BuildConsole.Controls
                     await _api.MarkQueueItemCompleteAsync(item.Id, -1);
                     if (!killed)
                     {
-                        MessageBox.Show(
-                            "Marked stopped in the queue, but couldn't confirm the real process was killed — it may have been launched by a different watcher (the standalone script, or another machine) that this app can't reach directly.",
-                            "Stop");
+                        ToastEngine.Warning("Stop",
+                            "Marked stopped in the queue, but couldn't confirm the real process was killed — it may have been launched by a different watcher (the standalone script, or another machine) that this app can't reach directly.");
                     }
                     await RefreshAsync();
                 };
@@ -1364,7 +1363,7 @@ namespace BuildConsole.Controls
                     if (_api == null) return;
                     if (_watcher == null)
                     {
-                        MessageBox.Show("No local watcher available in this app instance (claude.exe not found, or config not set) — can't launch directly.", "Run Now");
+                        ToastEngine.Warning("Run Now", "No local watcher available in this app instance (claude.exe not found, or config not set) — can't launch directly.");
                         return;
                     }
                     try
@@ -1375,7 +1374,7 @@ namespace BuildConsole.Controls
                     }
                     catch (Exception ex)
                     {
-                        MessageBox.Show($"Couldn't run now: {ex.Message}", "Run Now");
+                        ToastEngine.Error("Run Now", $"Couldn't run now: {ex.Message}");
                     }
                 };
                 cm.Items.Add(miRunNow);
@@ -1394,7 +1393,7 @@ namespace BuildConsole.Controls
                     if (!res.IsSuccessStatusCode)
                     {
                         var body = await res.Content.ReadAsStringAsync();
-                        MessageBox.Show($"Couldn't retry: {body}", "Retry");
+                        ToastEngine.Error("Retry", $"Couldn't retry: {body}");
                     }
                     await RefreshAsync();
                 };
@@ -1422,7 +1421,7 @@ namespace BuildConsole.Controls
                         if (!res.IsSuccessStatusCode)
                         {
                             var body = await res.Content.ReadAsStringAsync();
-                            MessageBox.Show($"Couldn't send reply: {body}", "Reply");
+                            ToastEngine.Error("Reply", $"Couldn't send reply: {body}");
                         }
                         await RefreshAsync();
                     };

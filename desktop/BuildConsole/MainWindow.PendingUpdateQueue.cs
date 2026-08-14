@@ -278,6 +278,10 @@ namespace BuildConsole
                 TryDeletePendingUpdateQueueFile();
                 PendingUpdateQueueDiag(
                     "All persisted Queue request(s) re-queued successfully — spillover file deleted.");
+                // Surface the restart outcome to Shane through the app's own toast engine (the
+                // pending-update-on-restart notice) rather than leaving it buried in the diag log.
+                ToastEngine.Success("Builds re-queued",
+                    $"{pending.Count} build request(s) saved during the last update were automatically re-queued after the restart.");
             }
             else
             {
@@ -288,6 +292,9 @@ namespace BuildConsole
                         $"{stillPending.Count} of {pending.Count} request(s) did NOT queue this launch (server cold/unreachable?) — " +
                         $"KEPT in the spillover file so the next launch retries them automatically. " +
                         $"Titles kept: {string.Join(", ", stillPending.Select(r => $"\"{r.Title}\""))}");
+                    ToastEngine.Warning("Builds re-queued",
+                        $"{pending.Count - stillPending.Count} of {pending.Count} saved build request(s) re-queued after the restart; " +
+                        $"{stillPending.Count} will retry on the next launch (the server may still be waking up).");
                 }
                 catch (Exception ex)
                 {

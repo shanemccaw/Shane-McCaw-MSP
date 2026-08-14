@@ -392,7 +392,7 @@ namespace BuildConsole.Controls
         {
             if (_lastLoadedManifest == null)
             {
-                MessageBox.Show("Select a test from Available Tests before playing.", "Play Test");
+                ToastEngine.Warning("Play Test", "Select a test from Available Tests before playing.");
                 return;
             }
 
@@ -622,7 +622,7 @@ namespace BuildConsole.Controls
             var manifest = TestManifest.LoadFromFile(fullPath);
             if (manifest == null)
             {
-                MessageBox.Show($"Couldn't parse {fileName} as a test manifest.", "Load Manifest");
+                ToastEngine.Error("Load Manifest", $"Couldn't parse {fileName} as a test manifest.");
                 return null;
             }
 
@@ -795,7 +795,7 @@ namespace BuildConsole.Controls
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Couldn't duplicate the manifest: {ex.Message}", "Duplicate Manifest");
+                ToastEngine.Error("Duplicate Manifest", $"Couldn't duplicate the manifest: {ex.Message}");
             }
         }
 
@@ -829,7 +829,7 @@ namespace BuildConsole.Controls
             var manifest = TestManifest.LoadFromFile(fullPath);
             if (manifest == null)
             {
-                MessageBox.Show($"Couldn't parse {Path.GetFileName(fullPath)} as a test manifest.", "Manifest Viewer");
+                ToastEngine.Error("Manifest Viewer", $"Couldn't parse {Path.GetFileName(fullPath)} as a test manifest.");
                 return;
             }
             OpenManifestViewer(manifest, showChartFirst);
@@ -1178,7 +1178,7 @@ namespace BuildConsole.Controls
             var settings = BuildConsole.Services.BuildConsoleSettings.Load();
             if (!settings.HasGitHubPat)
             {
-                MessageBox.Show("No GitHub PAT configured — set one in Settings (cog icon / File > Settings) first.", "New Issue");
+                ToastEngine.Warning("New Issue", "No GitHub PAT configured — set one in Settings (cog icon / File > Settings) first.");
                 return;
             }
 
@@ -1195,7 +1195,7 @@ namespace BuildConsole.Controls
             catch (Exception ex)
             {
                 ActivityLog.Log("git-board.create", $"issue creation FAILED: {ex.Message}");
-                MessageBox.Show($"Couldn't create the issue: {ex.Message}", "New Issue");
+                ToastEngine.Error("New Issue", $"Couldn't create the issue: {ex.Message}");
                 return;
             }
 
@@ -1211,7 +1211,7 @@ namespace BuildConsole.Controls
                 catch (Exception ex)
                 {
                     ActivityLog.Log("git-board.create", $"#{created.Number} -> epic #{dialog.SelectedEpicNumber} attach FAILED: {ex.Message}");
-                    MessageBox.Show($"Issue #{created.Number} was created, but couldn't be attached under epic #{dialog.SelectedEpicNumber}: {ex.Message}", "New Issue");
+                    ToastEngine.Warning("New Issue", $"Issue #{created.Number} was created, but couldn't be attached under epic #{dialog.SelectedEpicNumber}: {ex.Message}");
                 }
             }
 
@@ -1622,7 +1622,7 @@ namespace BuildConsole.Controls
                         if (!res.IsSuccessStatusCode)
                         {
                             var body = await res.Content.ReadAsStringAsync();
-                            MessageBox.Show($"Couldn't assign: {body}", "Assign to Epic");
+                            ToastEngine.Error("Assign to Epic", $"Couldn't assign: {body}");
                             return;
                         }
                         _lastBoardSignature = null;
@@ -1630,7 +1630,7 @@ namespace BuildConsole.Controls
                     }
                     catch (System.Exception ex)
                     {
-                        MessageBox.Show($"Couldn't assign: {ex.Message}", "Assign to Epic");
+                        ToastEngine.Error("Assign to Epic", $"Couldn't assign: {ex.Message}");
                     }
                 };
                 cm.Items.Add(miAssign);
@@ -2099,7 +2099,7 @@ namespace BuildConsole.Controls
                 catch (Exception ex)
                 {
                     ActivityLog.Log("git-board.state-change", $"#{issue.IssueNumber} state change FAILED: {ex.Message}");
-                    MessageBox.Show($"Couldn't {(closing ? "close" : "reopen")} #{issue.IssueNumber}: {ex.Message}", "Git Board");
+                    ToastEngine.Error("Git Board", $"Couldn't {(closing ? "close" : "reopen")} #{issue.IssueNumber}: {ex.Message}");
                     return;
                 }
                 _lastInProgressSignature = null;
@@ -2130,7 +2130,7 @@ namespace BuildConsole.Controls
                 catch (Exception ex)
                 {
                     ActivityLog.Log("git-board.edit", $"#{issue.IssueNumber} update FAILED: {ex.Message}");
-                    MessageBox.Show($"Couldn't save #{issue.IssueNumber}: {ex.Message}", "Edit Issue");
+                    ToastEngine.Error("Edit Issue", $"Couldn't save #{issue.IssueNumber}: {ex.Message}");
                     return;
                 }
                 _lastInProgressSignature = null;
@@ -2167,7 +2167,7 @@ namespace BuildConsole.Controls
                 catch (Exception ex)
                 {
                     ActivityLog.Log("git-board.assign-epic", $"#{issue.IssueNumber} -> #{targetEpic.Number} FAILED: {ex.Message}");
-                    MessageBox.Show($"Couldn't assign #{issue.IssueNumber} to epic #{targetEpic.Number}: {ex.Message}", "Assign to Epic");
+                    ToastEngine.Error("Assign to Epic", $"Couldn't assign #{issue.IssueNumber} to epic #{targetEpic.Number}: {ex.Message}");
                     return;
                 }
                 _lastInProgressSignature = null;
@@ -2205,7 +2205,7 @@ namespace BuildConsole.Controls
                 catch (Exception ex)
                 {
                     ActivityLog.Log("git-board.set-blocked-by", $"#{issue.IssueNumber} -> #{blocker.Number} FAILED: {ex.Message}");
-                    MessageBox.Show($"Couldn't set #{issue.IssueNumber} blocked by #{blocker.Number}: {ex.Message}", "Set Blocked By");
+                    ToastEngine.Error("Set Blocked By", $"Couldn't set #{issue.IssueNumber} blocked by #{blocker.Number}: {ex.Message}");
                     return;
                 }
                 _lastInProgressSignature = null;
@@ -2253,14 +2253,14 @@ namespace BuildConsole.Controls
                         if (!settings.HasEpicChatProjectUrl)
                         {
                             ActivityLog.Log("git-board.epic-chat", $"new chat for epic #{issue.IssueNumber} aborted — no New Chat Project URL configured");
-                            MessageBox.Show("Set a \"New Chat Project URL\" in the Settings tab first.", "New Epic Chat");
+                            ToastEngine.Warning("New Epic Chat", "Set a \"New Chat Project URL\" in the Settings tab first.");
                             return;
                         }
                         var baseUrl = settings.EpicChatProjectUrl.Trim();
                         if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out _))
                         {
                             ActivityLog.Log("git-board.epic-chat", $"new chat for epic #{issue.IssueNumber} aborted — invalid New Chat Project URL '{baseUrl}'");
-                            MessageBox.Show("The configured New Chat Project URL isn't a valid URL.", "New Epic Chat");
+                            ToastEngine.Warning("New Epic Chat", "The configured New Chat Project URL isn't a valid URL.");
                             return;
                         }
                         var pat = settings.GitHubPat?.Trim() ?? "";

@@ -1785,7 +1785,7 @@ namespace BuildConsole
             var chat = LeftSidebar.FindChatForIssue(githubNumber);
             if (chat == null)
             {
-                MessageBox.Show($"No chat linked to #{githubNumber} yet.", "Open Chat");
+                ToastEngine.Warning("Open Chat", $"No chat linked to #{githubNumber} yet.");
                 return;
             }
             OpenChatTab(chat, githubNumber);
@@ -1796,7 +1796,7 @@ namespace BuildConsole
         {
             if (string.IsNullOrWhiteSpace(p.ClaudeUrl))
             {
-                MessageBox.Show($"That saved chat has no Claude URL to reopen.\n\n\"{p.Title}\"", "Resume Chat");
+                ToastEngine.Warning("Resume Chat", $"That saved chat has no Claude URL to reopen.\n\n\"{p.Title}\"");
                 return;
             }
             var chat = new BuildConsole.Services.BoardChat
@@ -3009,7 +3009,7 @@ namespace BuildConsole
                     string? correlation = Str("correlation");
                     if (_buildTrackerApi == null || !_buildTrackerApi.IsConfigured)
                     {
-                        MessageBox.Show("Not connected — see Settings.", "Queue Build");
+                        ToastEngine.Warning("Queue Build", "Not connected — see Settings.");
                         if (correlation != null)
                             await RunScriptInAllChatWebViewsAsync($"window.__btQueueFailed && window.__btQueueFailed({JsLiteral(correlation)});");
                         return;
@@ -3036,13 +3036,13 @@ namespace BuildConsole
                         // live queue, so leaving it stuck would misrepresent reality.
                         if (correlation != null)
                             await RunScriptInAllChatWebViewsAsync($"window.__btQueueFailed && window.__btQueueFailed({JsLiteral(correlation)});");
-                        MessageBox.Show(
-                            saved
-                                ? "A BuildConsole update is pending and will restart the app once the Build Queue clears.\n\n" +
-                                  "This build request has been saved and will be queued automatically right after that restart."
-                                : "A BuildConsole update is pending, but saving this build request to disk failed — it was NOT queued. Try again after the update finishes.",
-                            "Queued after update", MessageBoxButton.OK,
-                            saved ? MessageBoxImage.Information : MessageBoxImage.Warning);
+                        if (saved)
+                            ToastEngine.Success("Queued after update",
+                                "A BuildConsole update is pending and will restart the app once the Build Queue clears.\n\n" +
+                                "This build request has been saved and will be queued automatically right after that restart.");
+                        else
+                            ToastEngine.Warning("Queued after update",
+                                "A BuildConsole update is pending, but saving this build request to disk failed — it was NOT queued. Try again after the update finishes.");
                         return;
                     }
 
@@ -3051,7 +3051,7 @@ namespace BuildConsole
                     if (!res.IsSuccessStatusCode)
                     {
                         var body = await res.Content.ReadAsStringAsync();
-                        MessageBox.Show($"Couldn't queue build: {body}", "Queue Build");
+                        ToastEngine.Error("Queue Build", $"Couldn't queue build: {body}");
                         if (correlation != null)
                             await RunScriptInAllChatWebViewsAsync($"window.__btQueueFailed && window.__btQueueFailed({JsLiteral(correlation)});");
                     }
@@ -3574,7 +3574,7 @@ namespace BuildConsole
             {
                 BuildConsole.Services.ActivityLog.Log("testing.manifest-runner",
                     "Run Tests (Current Issue): no manifest loaded — use Load Manifest in the Automation sidebar first.");
-                MessageBox.Show("No manifest loaded — use Load Manifest in the Automation sidebar first.", "Run Tests");
+                ToastEngine.Warning("Run Tests", "No manifest loaded — use Load Manifest in the Automation sidebar first.");
                 return;
             }
             _ = RunManifestAsync(_loadedManifest, isRegression: false);
