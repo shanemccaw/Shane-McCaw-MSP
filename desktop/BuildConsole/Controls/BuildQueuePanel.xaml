@@ -360,6 +360,37 @@
                         </Border>
                     </StackPanel>
 
+                    <!-- ══ 5. NEEDS ATTENTION (test runs) — one quiet count-badge tile, collapsed by default ══
+                         A durable fallback for #54's "needs attention" test-result toast. That toast
+                         (surfaced by MainWindow.ApplyRunOutcomeToRunnerWindow when a run fails or #975's
+                         screenshot-review fires) auto-dismisses after a few seconds — Shane can miss it.
+                         Every such result is ALSO recorded here and STAYS until he actually opens/reviews
+                         it (clicking either the toast or the row here addresses + clears it). Same quiet
+                         collapsed-by-default tile + PeachBrush/red "announce itself" treatment as To-Do
+                         above; wholly in-memory / local (no GitHub, no DB), driven by the real run outcome. -->
+                    <StackPanel Margin="10,0,10,12">
+                        <ToggleButton x:Name="TileAttention" Style="{StaticResource QuietTile}" Click="TileAttention_Click">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock x:Name="AttentionIcon" Text="🧪" FontSize="13" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <TextBlock x:Name="AttentionLabel" Text="Needs Attention" FontSize="11" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="AttentionCountText" Text="(0)" FontSize="11" Margin="4,0,0,0" VerticalAlignment="Center" Foreground="{StaticResource Subtext1Brush}"/>
+                            </StackPanel>
+                        </ToggleButton>
+                        <Border x:Name="TileAttentionContent"
+                                Visibility="Collapsed"
+                                Background="{StaticResource MantleBrush}"
+                                BorderBrush="{StaticResource Surface0Brush}"
+                                BorderThickness="1,0,1,1"
+                                Padding="4"
+                                CornerRadius="0,0,6,6">
+                            <ListBox x:Name="AttentionList"
+                                     Background="Transparent"
+                                     BorderThickness="0"
+                                     SelectionChanged="AttentionList_SelectionChanged"
+                                     SizeChanged="AttentionList_SizeChanged"/>
+                        </Border>
+                    </StackPanel>
+
                 </StackPanel>
             </ScrollViewer>
 

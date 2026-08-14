@@ -309,6 +309,58 @@
                         <TextBlock Text="{Binding ModelLabel}" Foreground="{StaticResource ChatPane.Muted4}" FontWeight="Medium"
                                    VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="220"
                                    FontSize="{Binding ActualWidth, ElementName=Root, Converter={StaticResource Fluid}, ConverterParameter='10,13'}"/>
+
+                        <!-- Tucked-away reveal of THIS build's original instructions — the full prompt it was
+                             started with. Hidden until there are instructions (HasInstructions), collapsed by
+                             default: click the little document icon to pop the full prompt in a scrollable,
+                             selectable panel. Same "hidden until you ask for it" spirit as the #1012 collapsed
+                             tool chips and the per-build checklist column. -->
+                        <ToggleButton x:Name="InstructionsButton" Margin="10,0,0,0" VerticalAlignment="Center"
+                                      Cursor="Hand" Background="Transparent" BorderThickness="0" Padding="3"
+                                      Visibility="{Binding HasInstructions, Converter={StaticResource BoolVis}}"
+                                      ToolTip="Show the original instructions this build was started with">
+                            <ToggleButton.Template>
+                                <ControlTemplate TargetType="ToggleButton">
+                                    <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                        <Path Data="{StaticResource Icon.FileText}" Stroke="{StaticResource ChatPane.Muted4}" StrokeThickness="2"
+                                              StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                              Width="14" Height="14" Stretch="Uniform"/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource ChatPane.Surface}"/>
+                                        </Trigger>
+                                        <Trigger Property="IsChecked" Value="True">
+                                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource ChatPane.Surface}"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </ToggleButton.Template>
+                        </ToggleButton>
+                        <!-- The reveal itself. Two-way IsOpen↔IsChecked + StaysOpen=False: clicking away
+                             closes the popup AND unchecks the toggle, so the next click reopens cleanly. -->
+                        <Popup PlacementTarget="{Binding ElementName=InstructionsButton}" Placement="Bottom"
+                               StaysOpen="False" AllowsTransparency="True"
+                               IsOpen="{Binding IsChecked, ElementName=InstructionsButton, Mode=TwoWay}">
+                            <Border Background="{StaticResource ChatPane.Canvas}" BorderBrush="{StaticResource ChatPane.BorderStrong}"
+                                    BorderThickness="1" CornerRadius="8" Margin="0,4,0,0" MaxWidth="460" MaxHeight="380">
+                                <Grid Margin="12,10">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="*"/>
+                                    </Grid.RowDefinitions>
+                                    <TextBlock Grid.Row="0" Text="Original instructions" FontWeight="SemiBold" FontSize="12"
+                                               Foreground="{StaticResource ChatPane.Muted2}" Margin="0,0,0,6"/>
+                                    <!-- Read-only TextBox (not TextBlock) so Shane can select + Ctrl+C the real prompt. -->
+                                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                                        <TextBox Text="{Binding OriginalInstructions, Mode=OneWay}" IsReadOnly="True"
+                                                 TextWrapping="Wrap" AcceptsReturn="True" BorderThickness="0" Background="Transparent"
+                                                 Foreground="{StaticResource ChatPane.Text1}" FontSize="12.5"
+                                                 VerticalScrollBarVisibility="Disabled"/>
+                                    </ScrollViewer>
+                                </Grid>
+                            </Border>
+                        </Popup>
                     </StackPanel>
 
                     <!-- RUNNING / IDLE / ERROR / etc pill -->

@@ -1204,6 +1204,9 @@ namespace BuildConsole
             vm.ModelLabel = string.IsNullOrWhiteSpace(item.Model) ? "" : item.Model!;
             vm.TokensUsed = null;
             vm.TokenBudget = null;
+            // The real full prompt this build was launched with — revealed on demand from the pane's
+            // tucked-away header button (hidden entirely when empty).
+            vm.OriginalInstructions = item.Prompt ?? "";
 
             // Point this pane's own checklist column at THIS build (Git #42/#56): it renders only
             // this build's items from the shared tracker, filtered to this queue id, in the pane itself.
@@ -1279,6 +1282,7 @@ namespace BuildConsole
             vm.CanStop = false;
             vm.TokensUsed = null;
             vm.TokenBudget = null;
+            vm.OriginalInstructions = "";
 
             slot.ContentGrid.Visibility = Visibility.Collapsed;
             slot.EmptyText.Visibility = Visibility.Visible;

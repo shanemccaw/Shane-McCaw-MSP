@@ -4293,10 +4293,24 @@ namespace BuildConsole
 
             // Capture the deferred review dialog (if any) so the toast click can pop it.
             Action? showReviewDialog = reviewResult?.ShowReviewDialog;
-            Action onClick = () =>
+            Action openAction = () =>
             {
                 runner.RestoreToForeground();
                 showReviewDialog?.Invoke();
+            };
+
+            // Durable fallback for the toast's auto-dismiss: ALSO record this result in the Build Queue
+            // panel's "Needs Attention" section, where it stays until Shane actually addresses it. Keyed by
+            // issue+feature so a re-run of the same manifest updates its row instead of stacking duplicates.
+            string attentionKey = $"{runResult.Issue}:{runResult.Feature}";
+            BuildQueuePanel.AddNeedsAttention(attentionKey, title, body, hasFailure, openAction);
+
+            // Clicking the toast addresses it just like clicking the section row does: open the Test Runner /
+            // review dialog AND clear the durable item so it doesn't linger after Shane has looked.
+            Action onClick = () =>
+            {
+                openAction();
+                BuildQueuePanel.ClearNeedsAttention(attentionKey);
             };
 
             ToastEngine.Show(title, body, hasFailure ? ToastKind.Error : ToastKind.Warning, duration: null, onClick: onClick);

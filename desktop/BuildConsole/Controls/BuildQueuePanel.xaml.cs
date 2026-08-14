@@ -89,6 +89,32 @@ namespace BuildConsole.Controls
         /// <summary>Git #971 — In-Flight/Sessions now get the same ellipsis treatment as Completed/To-Do, now that they're full-width single-column tiles too.</summary>
         private readonly List<TextBlock> _inFlightTitleBlocks = new();
         private readonly List<TextBlock> _sessionsTitleBlocks = new();
+        private readonly List<TextBlock> _attentionTitleBlocks = new();
+
+        // ── Needs Attention (durable #54-toast fallback) ─────────────────────────
+        // A test run that fails, or trips #975's screenshot-review-needed state, surfaces the
+        // #54 "needs attention" toast — which auto-dismisses after a few seconds and can be
+        // missed. MainWindow.ApplyRunOutcomeToRunnerWindow ALSO records the same result here via
+        // AddNeedsAttention; it STAYS in this collapsible section until Shane actually addresses
+        // it (clicking the toast, or the row here — both open the Test Runner / review dialog and
+        // clear the item). Purely in-memory + local — no GitHub, no DB. Keyed so re-running the
+        // same manifest updates its existing row rather than piling duplicates.
+        private const string AttentionChannel = "testing.needs-attention";
+
+        /// <summary>One recorded needs-attention test result. <see cref="OnOpen"/> is the real
+        /// address action (restore the Test Runner window + pop the deferred #975 review dialog),
+        /// shared with the toast so either entry point does the same thing and clears the row.</summary>
+        private sealed class NeedsAttentionItem
+        {
+            public string Key = "";
+            public string Title = "";
+            public string Body = "";
+            public bool IsFailure;
+            public DateTime AtLocal;
+            public Action? OnOpen;
+        }
+
+        private readonly List<NeedsAttentionItem> _attentionItems = new();
 
         private void ApplyTitleMaxWidths(ListBox listBox, List<TextBlock> registry)
         {
@@ -117,6 +143,11 @@ namespace BuildConsole.Controls
         private void ActiveSessionsList_SizeChanged(object sender, SizeChangedEventArgs e)
         {
             if (e.WidthChanged) ApplyTitleMaxWidths(ActiveSessionsList, _sessionsTitleBlocks);
+        }
+
+        private void AttentionList_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            if (e.WidthChanged) ApplyTitleMaxWidths(AttentionList, _attentionTitleBlocks);
         }
 
         public BuildQueuePanel() => InitializeComponent();
@@ -1611,6 +1642,8 @@ namespace BuildConsole.Controls
             {
                 TileCompleted.IsChecked = false;
                 TileCompletedContent.Visibility = Visibility.Collapsed;
+                TileAttention.IsChecked = false;
+                TileAttentionContent.Visibility = Visibility.Collapsed;
                 ApplyTitleMaxWidths(WaitingOnMeList, _toDoTitleBlocks);
             }
         }
@@ -1623,7 +1656,173 @@ namespace BuildConsole.Controls
             {
                 TileToDo.IsChecked = false;
                 TileToDoContent.Visibility = Visibility.Collapsed;
+                TileAttention.IsChecked = false;
+                TileAttentionContent.Visibility = Visibility.Collapsed;
                 ApplyTitleMaxWidths(CompletedIssuesList, _completedTitleBlocks);
+            }
+        }
+
+        // ── Needs Attention section (durable #54-toast fallback) ─────────────────
+
+        private void TileAttention_Click(object sender, RoutedEventArgs e)
+        {
+            bool expand = TileAttention.IsChecked == true;
+            TileAttentionContent.Visibility = expand ? Visibility.Visible : Visibility.Collapsed;
+            if (expand)
+            {
+                TileToDo.IsChecked = false;
+                TileToDoContent.Visibility = Visibility.Collapsed;
+                TileCompleted.IsChecked = false;
+                TileCompletedContent.Visibility = Visibility.Collapsed;
+                ApplyTitleMaxWidths(AttentionList, _attentionTitleBlocks);
+            }
+        }
+
+        /// <summary>
+        /// Records a needs-attention test result so it survives the #54 toast's auto-dismiss. Called from
+        /// MainWindow.ApplyRunOutcomeToRunnerWindow at the same moment it fires the toast. Dispatcher-safe
+        /// (RunManifestAsync can complete off the UI thread). Keyed: re-running the same manifest updates its
+        /// existing row (most-recent first) rather than stacking duplicates. <paramref name="onOpen"/> is the
+        /// real address action (restore the Test Runner + pop the #975 review dialog); the row invokes it and
+        /// then clears itself when Shane clicks it — the same thing the toast's own click does.
+        /// </summary>
+        public void AddNeedsAttention(string key, string title, string body, bool isFailure, Action? onOpen)
+        {
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.BeginInvoke(new Action(() => AddNeedsAttention(key, title, body, isFailure, onOpen)));
+                return;
+            }
+
+            var existing = _attentionItems.FirstOrDefault(i => i.Key == key);
+            if (existing != null) _attentionItems.Remove(existing);
+            _attentionItems.Insert(0, new NeedsAttentionItem
+            {
+                Key = key,
+                Title = title,
+                Body = body,
+                IsFailure = isFailure,
+                AtLocal = DateTime.Now,
+                OnOpen = onOpen,
+            });
+
+            ActivityLog.Log(AttentionChannel,
+                $"Recorded needs-attention result [{key}] ({(isFailure ? "failure" : "screenshot-review")}) — '{title}'. {_attentionItems.Count} item(s) now pending Shane's review{(existing != null ? " (updated existing row)" : "")}.");
+
+            RenderAttentionList();
+        }
+
+        /// <summary>Clears a recorded needs-attention item once it's been addressed (Shane opened it — from
+        /// the toast click or the row here). Dispatcher-safe. A no-op if the key isn't present. Public so the
+        /// #54 toast's own onClick can clear the matching row after restoring the window.</summary>
+        public void ClearNeedsAttention(string key)
+        {
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.BeginInvoke(new Action(() => ClearNeedsAttention(key)));
+                return;
+            }
+
+            var existing = _attentionItems.FirstOrDefault(i => i.Key == key);
+            if (existing == null) return;
+            _attentionItems.Remove(existing);
+            ActivityLog.Log(AttentionChannel,
+                $"Cleared needs-attention result [{key}] ('{existing.Title}') — addressed. {_attentionItems.Count} item(s) still pending.");
+            RenderAttentionList();
+        }
+
+        /// <summary>A row click addresses the item: invoke its open action (restore the Test Runner / pop the
+        /// #975 review dialog) and clear it from the section. Guards against the SelectionChanged that fires
+        /// while RenderAttentionList rebuilds the list (empty selection / non-item rows).</summary>
+        private void AttentionList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (AttentionList.SelectedItem is not ListBoxItem { Tag: NeedsAttentionItem item }) return;
+            AttentionList.SelectedIndex = -1; // reset so the same/next row can be re-selected later
+            ClearNeedsAttention(item.Key);    // logs the "addressed" clear
+            try { item.OnOpen?.Invoke(); }
+            catch (Exception ex) { ActivityLog.Log(AttentionChannel, $"Open action for [{item.Key}] threw: {ex.Message}"); }
+        }
+
+        /// <summary>Rebuilds the Needs Attention list + tile badge/accent from <see cref="_attentionItems"/>.</summary>
+        private void RenderAttentionList()
+        {
+            UpdateAttentionTileAppearance(_attentionItems.Count);
+
+            _attentionTitleBlocks.Clear();
+            AttentionList.Items.Clear();
+
+            if (_attentionItems.Count == 0)
+            {
+                AttentionList.Items.Add(new ListBoxItem { Content = "Nothing needs your attention.", Foreground = (Brush)Application.Current.FindResource("Subtext1Brush") });
+                // Nothing to address — collapse the section so it doesn't sit open-and-empty.
+                if (TileAttention.IsChecked == true)
+                {
+                    TileAttention.IsChecked = false;
+                    TileAttentionContent.Visibility = Visibility.Collapsed;
+                }
+                return;
+            }
+
+            foreach (var item in _attentionItems)
+                AttentionList.Items.Add(BuildAttentionRow(item));
+            ApplyTitleMaxWidths(AttentionList, _attentionTitleBlocks);
+        }
+
+        /// <summary>One Needs Attention row — a failure (🔴) or screenshot-review (📷) glyph, the run title,
+        /// and a sub-line with the body + local time. Same single-column row shape as the To-Do/Completed
+        /// lists; Tag carries the item so a click can address + clear it.</summary>
+        private ListBoxItem BuildAttentionRow(NeedsAttentionItem item)
+        {
+            var panel = new StackPanel { Orientation = Orientation.Horizontal };
+            panel.Children.Add(new TextBlock
+            {
+                Text = (item.IsFailure ? "🔴" : "📷") + " ",
+                FontSize = 12,
+                VerticalAlignment = VerticalAlignment.Center,
+            });
+            var textStack = new StackPanel();
+            var titleBlock = new TextBlock
+            {
+                Text = item.Title,
+                FontSize = 12,
+                Foreground = (Brush)Application.Current.FindResource("TextBrush"),
+                TextWrapping = TextWrapping.NoWrap,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+            };
+            _attentionTitleBlocks.Add(titleBlock);
+            textStack.Children.Add(titleBlock);
+            textStack.Children.Add(new TextBlock
+            {
+                Text = $"{item.Body}  ·  {item.AtLocal:MMM d, h:mm tt}",
+                FontSize = 10,
+                Foreground = (Brush)Application.Current.FindResource("Subtext1Brush"),
+                TextWrapping = TextWrapping.Wrap,
+            });
+            panel.Children.Add(textStack);
+            return new ListBoxItem { Content = panel, Tag = item, ToolTip = "Click to open the Test Runner / review and clear this item." };
+        }
+
+        /// <summary>Same "announce itself" pattern as UpdateToDoTileAppearance — a pending needs-attention
+        /// result is an action item, so the tile swaps to PeachBrush once count > 0, neutral at 0.</summary>
+        private void UpdateAttentionTileAppearance(int count)
+        {
+            AttentionCountText.Text = $"({count})";
+            if (count > 0)
+            {
+                var peach = (Brush)Application.Current.FindResource("PeachBrush");
+                TileAttention.BorderBrush = peach;
+                TileAttention.Foreground = peach;
+                AttentionIcon.Foreground = peach;
+                AttentionLabel.Foreground = peach;
+                AttentionCountText.Foreground = peach;
+            }
+            else
+            {
+                TileAttention.ClearValue(BorderBrushProperty);
+                TileAttention.ClearValue(ForegroundProperty);
+                AttentionIcon.ClearValue(ForegroundProperty);
+                AttentionLabel.ClearValue(ForegroundProperty);
+                AttentionCountText.ClearValue(TextBlock.ForegroundProperty);
             }
         }
 

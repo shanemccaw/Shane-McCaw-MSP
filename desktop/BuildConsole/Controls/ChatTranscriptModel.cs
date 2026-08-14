@@ -182,6 +182,22 @@ namespace BuildConsole.Controls
         private string _modelLabel = "";
         public string ModelLabel { get => _modelLabel; set => SetProperty(ref _modelLabel, value); }
 
+        /// <summary>
+        /// The full original prompt/instructions this build was started with (QueueItem.Prompt),
+        /// surfaced on demand from the header's tucked-away reveal button — collapsed/hidden by
+        /// default, same spirit as the #1012 collapsed tool chips and the per-build checklist column.
+        /// Empty string hides the reveal button entirely (see <see cref="HasInstructions"/>).
+        /// </summary>
+        private string _originalInstructions = "";
+        public string OriginalInstructions
+        {
+            get => _originalInstructions;
+            set { if (SetProperty(ref _originalInstructions, value)) OnPropertyChanged(nameof(HasInstructions)); }
+        }
+
+        /// <summary>Whether there's any original prompt text to reveal — drives the header reveal button's visibility.</summary>
+        public bool HasInstructions => !string.IsNullOrWhiteSpace(OriginalInstructions);
+
         // Pill — brushes are set directly by BuildWatchWindow's state-transition code
         // (FindResource against Resources/ChatPaneBrushes.xaml), mirroring how the
         // pre-redesign code directly assigned Border/TextBlock brushes for each state.
