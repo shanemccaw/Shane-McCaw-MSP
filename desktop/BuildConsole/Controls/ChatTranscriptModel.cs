@@ -64,11 +64,54 @@ namespace BuildConsole.Controls
         public ParagraphKind Kind { get; init; } = ParagraphKind.Normal;
     }
 
-    /// <summary>One collapsed tool call's detail line. The underlying log line format only ever carries the tool's name (not args/output — see BuildWatchWindow's original BuildToolDetailLine comment), so that stays the full real detail available; nothing here is fabricated to match the richer mockup ("2 files", "14 matches" etc. aren't real data this app has).</summary>
-    public sealed class ToolDetailLine
+    /// <summary>One kind of line in a rendered file-edit diff (Edit/Write/MultiEdit), built from the real tool-call `input`.</summary>
+    public enum DiffLineKind { Context, Added, Removed, Meta }
+
+    /// <summary>One line of a real file-edit diff — the verbatim text (with its "+"/"-"/"  " prefix) and its kind, so the view can tint it. Immutable.</summary>
+    public sealed class DiffLine
+    {
+        public string Text { get; }
+        public DiffLineKind Kind { get; }
+        public DiffLine(string text, DiffLineKind kind) { Text = text; Kind = kind; }
+    }
+
+    /// <summary>
+    /// One collapsed tool call's detail line. For a BuildConsole-owned interactive build this now
+    /// carries the REAL detail parsed from the stream-json event (QueueWatcherService.ParseInteractiveEvents):
+    /// the one-line <see cref="CommandPreview"/> (the Bash command / Read file_path / Grep pattern …),
+    /// the tool's real <see cref="Output"/> (filled in when its matching tool_result event lands, keyed
+    /// by <see cref="ToolUseId"/>), and — for Edit/Write/MultiEdit — a real colored <see cref="Diff"/>.
+    /// A foreign/legacy file-tail build still only has the tool name available (the log FILE keeps the
+    /// old "[tool: X]" flattening), so those fields stay null there — an honest boundary, nothing faked.
+    /// Extends <see cref="ObservableObject"/> because <see cref="Output"/>/<see cref="IsError"/> fill in
+    /// AFTER the chip is created (the tool_result arrives a beat later), so the expanded view updates live.
+    /// </summary>
+    public sealed class ToolDetailLine : ObservableObject
     {
         public string ToolName { get; }
-        public ToolDetailLine(string toolName) => ToolName = toolName;
+        public string? ToolUseId { get; }
+        public string? CommandPreview { get; }
+        public bool HasCommand => !string.IsNullOrWhiteSpace(CommandPreview);
+
+        /// <summary>Colored diff lines for a file-edit tool (Edit/Write/MultiEdit), else null. Known at creation time (from the tool_use `input`).</summary>
+        public ObservableCollection<DiffLine>? Diff { get; init; }
+        public bool HasDiff => Diff != null && Diff.Count > 0;
+
+        private string? _output;
+        /// <summary>The tool's real output — filled in when its tool_result event lands. Null until then.</summary>
+        public string? Output { get => _output; set { if (SetProperty(ref _output, value)) OnPropertyChanged(nameof(HasOutput)); } }
+        public bool HasOutput => !string.IsNullOrWhiteSpace(Output);
+
+        private bool _isError;
+        /// <summary>The tool reported an error (tool_result is_error) — the display tints the output.</summary>
+        public bool IsError { get => _isError; set => SetProperty(ref _isError, value); }
+
+        public ToolDetailLine(string toolName, string? toolUseId = null, string? commandPreview = null)
+        {
+            ToolName = toolName;
+            ToolUseId = toolUseId;
+            CommandPreview = commandPreview;
+        }
     }
 
     public sealed class ToolGroupTurn : TurnItem

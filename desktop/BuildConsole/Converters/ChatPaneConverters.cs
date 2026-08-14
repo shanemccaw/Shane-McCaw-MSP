@@ -92,4 +92,43 @@ namespace BuildConsole.Converters
         public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
             throw new NotSupportedException();
     }
+
+    /// <summary>A file-edit diff line's foreground by kind — green added / red removed / accent meta header / muted context, reusing the pane's existing signal colors.</summary>
+    public sealed class DiffLineKindToBrushConverter : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            var kind = value as DiffLineKind? ?? DiffLineKind.Context;
+            var key = kind switch
+            {
+                DiffLineKind.Added => "ChatPane.Success",
+                DiffLineKind.Removed => "ChatPane.Danger",
+                DiffLineKind.Meta => "ChatPane.AccentText1",
+                _ => "ChatPane.Muted5",
+            };
+            return Application.Current.TryFindResource(key);
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
+            throw new NotSupportedException();
+    }
+
+    /// <summary>A file-edit diff line's row background by kind — a faint green/red wash for added/removed lines, transparent otherwise. Reuses the pane's existing translucent fill tokens.</summary>
+    public sealed class DiffLineKindToBackgroundConverter : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            var kind = value as DiffLineKind? ?? DiffLineKind.Context;
+            var key = kind switch
+            {
+                DiffLineKind.Added => "ChatPane.Pill.SuccessFill",
+                DiffLineKind.Removed => "ChatPane.DangerFill",
+                _ => (string?)null,
+            };
+            return key == null ? System.Windows.Media.Brushes.Transparent : Application.Current.TryFindResource(key);
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
+            throw new NotSupportedException();
+    }
 }

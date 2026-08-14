@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows;
@@ -91,6 +93,8 @@ namespace BuildConsole
             public bool InAssistantRun;
             /// <summary>The collapsed "Ran N tools" turn currently absorbing consecutive tool calls, or null if the last event wasn't a tool call.</summary>
             public ToolGroupTurn? CurrentToolGroup;
+            /// <summary>Maps a tool_use id → its chip detail line, so a tool_result event (which arrives a beat later, on its own stream-json line) can fill in that exact call's real output. Interactive builds only; reset per occupancy, soft-capped to bound a very long build's memory.</summary>
+            public readonly Dictionary<string, ToolDetailLine> ToolCallsById = new();
             public string LineBuffer = "";
             /// <summary>Last time a real event landed — drives "longer-running wait" idle detection for the easter egg.</summary>
             public DateTime LastOutputUtc;
@@ -386,13 +390,20 @@ namespace BuildConsole
 
         /// <summary>
         /// Matches Claude.ai's own chat pattern: a consecutive run of tool calls (Bash, Glob,
-        /// Grep, Read, …) folds into a single small muted "Ran N tools" turn instead of one
-        /// row per call, click-to-expand to the real per-call detail (each tool name, in
-        /// order it happened — the log line format only carries the name, not args/output,
-        /// so that's the full real detail available). AddParagraph clears CurrentToolGroup
-        /// whenever any other turn lands, which is what makes a run "consecutive".
+        /// Grep, Read, …) folds into a single small muted "Ran N tools" turn instead of one row
+        /// per call, click-to-expand to the real per-call detail. For a BuildConsole-owned
+        /// interactive build that detail is now genuinely rich — the real command/params, the
+        /// real output, and a real diff for file edits (see <see cref="AddInteractiveToolCall"/>).
+        /// A foreign/legacy file-tail build only has the tool name (the log FILE keeps the old
+        /// "[tool: X]" flattening), so this name-only overload is what it uses — an honest
+        /// boundary, nothing faked. AddParagraph clears CurrentToolGroup whenever any other turn
+        /// lands, which is what makes a run "consecutive".
         /// </summary>
-        private void AddToolCallChip(BuildWatchSlot slot, string toolName)
+        private void AddToolCallChip(BuildWatchSlot slot, string toolName) =>
+            AddToolCallDetail(slot, toolName, new ToolDetailLine(toolName));
+
+        /// <summary>Folds one already-built <see cref="ToolDetailLine"/> into the slot's current (or a fresh) collapsed tool group.</summary>
+        private void AddToolCallDetail(BuildWatchSlot slot, string toolName, ToolDetailLine detail)
         {
             slot.LastOutputUtc = DateTime.UtcNow;
             if (slot.State == SlotState.Running && slot.StatusLine != null)
@@ -406,7 +417,7 @@ namespace BuildConsole
                 slot.CurrentToolGroup = group;
                 AddTurn(slot, group);
             }
-            group.Details.Add(new ToolDetailLine(toolName));
+            group.Details.Add(detail);
             UpdateToolGroupSummary(group);
         }
 
@@ -417,6 +428,166 @@ namespace BuildConsole
             group.Title = names.Count == 1 ? $"Ran {names[0]}" : $"Ran {names.Count} tools";
             group.Summary = string.Join(" · ", names.Distinct());
             group.GlyphKey = names.Count == 1 && names[0].Equals("Read", StringComparison.OrdinalIgnoreCase) ? "file-text" : "wrench";
+        }
+
+        // ── Structured interactive event → transcript turns (the real fix) ──────
+        // The interactive Build Watch render consumes the full-fidelity InteractiveEvent
+        // stream (real command/args + real tool output), NOT the old flattened "[tool: X]"
+        // text lines. AppendEventCard above stays the name-only path for foreign/file-tail builds.
+
+        private const int MaxToolCallsTracked = 2000;
+
+        /// <summary>Turns one structured stream-json event into transcript turns / chip detail.</summary>
+        private void ApplyInteractiveEvent(BuildWatchSlot slot, InteractiveEvent ev)
+        {
+            switch (ev.Kind)
+            {
+                case InteractiveEventKind.AssistantText:
+                    {
+                        var text = (ev.Text ?? "").TrimEnd();
+                        if (text.Length == 0) return;
+                        AddParagraph(slot, text, (ev.IsError || LooksLikeError(text)) ? ParagraphKind.Error : ParagraphKind.Normal);
+                        break;
+                    }
+                case InteractiveEventKind.ToolCall:
+                    AddInteractiveToolCall(slot, ev);
+                    break;
+                case InteractiveEventKind.ToolResult:
+                    FillToolResult(slot, ev);
+                    break;
+                case InteractiveEventKind.TurnResult:
+                    {
+                        var dur = ev.DurationMs.HasValue ? $" ({ev.DurationMs}ms)" : "";
+                        AddParagraph(slot, $"done{dur}", ParagraphKind.Done);
+                        if (!string.IsNullOrWhiteSpace(ev.Text)) AddParagraph(slot, ev.Text!.Trim(), ParagraphKind.Normal);
+                        break;
+                    }
+            }
+        }
+
+        /// <summary>Builds a rich tool-call chip detail from a ToolCall event — real command preview, an Edit/Write/MultiEdit diff, and a slot in <see cref="BuildWatchSlot.ToolCallsById"/> so its later tool_result can fill in the real output.</summary>
+        private void AddInteractiveToolCall(BuildWatchSlot slot, InteractiveEvent ev)
+        {
+            var toolName = string.IsNullOrWhiteSpace(ev.ToolName) ? "tool" : ev.ToolName!;
+            var detail = new ToolDetailLine(toolName, ev.ToolUseId, ev.CommandPreview)
+            {
+                Diff = BuildDiffForToolCall(toolName, ev.InputJson),
+            };
+            if (!string.IsNullOrEmpty(ev.ToolUseId))
+            {
+                if (slot.ToolCallsById.Count >= MaxToolCallsTracked) slot.ToolCallsById.Clear(); // bound memory on a very long build
+                slot.ToolCallsById[ev.ToolUseId!] = detail;
+            }
+            AddToolCallDetail(slot, toolName, detail);
+        }
+
+        /// <summary>Fills a prior tool call's chip with its real output when the matching tool_result event lands. Does NOT break the tool group (CurrentToolGroup stays), so consecutive calls keep folding into one chip.</summary>
+        private void FillToolResult(BuildWatchSlot slot, InteractiveEvent ev)
+        {
+            if (string.IsNullOrEmpty(ev.ResultForToolUseId)) return;
+            if (!slot.ToolCallsById.TryGetValue(ev.ResultForToolUseId!, out var detail)) return;
+
+            var outText = ev.Text ?? "";
+            const int cap = 4000;
+            if (outText.Length > cap) outText = outText.Substring(0, cap) + $"\n… (+{outText.Length - cap} more chars)";
+            detail.Output = outText;
+            detail.IsError = ev.IsError;
+            slot.LastOutputUtc = DateTime.UtcNow;
+        }
+
+        // ── File-edit diff rendering (Edit / Write / MultiEdit) ─────────────────
+
+        /// <summary>Max diff lines rendered for one file-edit chip (a huge edit is truncated with a marker, never silently).</summary>
+        private const int MaxDiffLines = 60;
+
+        /// <summary>
+        /// Builds a real colored diff from a file-edit tool call's raw `input` — the genuine
+        /// before/after content the agent is writing, not a fabricated approximation. Edit uses
+        /// old_string→new_string, Write shows the whole new content as additions, MultiEdit shows
+        /// each edit. Returns null for any non-file-edit tool (its chip just shows command+output).
+        /// </summary>
+        private static ObservableCollection<DiffLine>? BuildDiffForToolCall(string toolName, string? inputJson)
+        {
+            if (string.IsNullOrWhiteSpace(inputJson)) return null;
+            JsonDocument doc;
+            try { doc = JsonDocument.Parse(inputJson); }
+            catch { return null; }
+
+            using (doc)
+            {
+                var input = doc.RootElement;
+                if (input.ValueKind != JsonValueKind.Object) return null;
+                string? S(string k) => input.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+
+                var lines = new ObservableCollection<DiffLine>();
+                switch (toolName)
+                {
+                    case "Write":
+                        {
+                            var content = S("content");
+                            if (content == null) return null;
+                            lines.Add(new DiffLine($"＋ new file · {S("file_path")}", DiffLineKind.Meta));
+                            AppendReplaceBlock(lines, "", content);
+                            break;
+                        }
+                    case "Edit":
+                        {
+                            var oldS = S("old_string"); var newS = S("new_string");
+                            if (oldS == null || newS == null) return null;
+                            lines.Add(new DiffLine($"✎ {S("file_path")}", DiffLineKind.Meta));
+                            AppendReplaceBlock(lines, oldS, newS);
+                            break;
+                        }
+                    case "MultiEdit":
+                        {
+                            if (!input.TryGetProperty("edits", out var edits) || edits.ValueKind != JsonValueKind.Array) return null;
+                            lines.Add(new DiffLine($"✎ {S("file_path")} · {edits.GetArrayLength()} edits", DiffLineKind.Meta));
+                            int i = 0;
+                            foreach (var e in edits.EnumerateArray())
+                            {
+                                if (e.ValueKind != JsonValueKind.Object) continue;
+                                if (i++ > 0) AddDiff(lines, "┈┈┈┈┈", DiffLineKind.Context);
+                                var oldS = e.TryGetProperty("old_string", out var o) && o.ValueKind == JsonValueKind.String ? o.GetString() : null;
+                                var newS = e.TryGetProperty("new_string", out var n) && n.ValueKind == JsonValueKind.String ? n.GetString() : null;
+                                AppendReplaceBlock(lines, oldS ?? "", newS ?? "");
+                            }
+                            break;
+                        }
+                    default:
+                        return null;
+                }
+                return lines.Count > 0 ? lines : null;
+            }
+        }
+
+        /// <summary>Appends a minimal before→after diff for one replacement: common leading/trailing lines are kept as a little context, the changed middle is shown as "-" removed then "+" added lines.</summary>
+        private static void AppendReplaceBlock(ObservableCollection<DiffLine> lines, string oldText, string newText)
+        {
+            var oldLines = oldText.Length == 0 ? Array.Empty<string>() : oldText.Replace("\r\n", "\n").Split('\n');
+            var newLines = newText.Length == 0 ? Array.Empty<string>() : newText.Replace("\r\n", "\n").Split('\n');
+
+            int p = 0; // common prefix
+            while (p < oldLines.Length && p < newLines.Length && oldLines[p] == newLines[p]) p++;
+            int s = 0; // common suffix (not overlapping the prefix)
+            while (s < oldLines.Length - p && s < newLines.Length - p &&
+                   oldLines[oldLines.Length - 1 - s] == newLines[newLines.Length - 1 - s]) s++;
+
+            int ctxBefore = Math.Min(2, p);
+            for (int i = p - ctxBefore; i < p; i++) AddDiff(lines, "  " + oldLines[i], DiffLineKind.Context);
+            for (int i = p; i < oldLines.Length - s; i++) AddDiff(lines, "- " + oldLines[i], DiffLineKind.Removed);
+            for (int i = p; i < newLines.Length - s; i++) AddDiff(lines, "+ " + newLines[i], DiffLineKind.Added);
+            int ctxAfter = Math.Min(2, s);
+            for (int i = oldLines.Length - s; i < oldLines.Length - s + ctxAfter; i++) AddDiff(lines, "  " + oldLines[i], DiffLineKind.Context);
+        }
+
+        private static void AddDiff(ObservableCollection<DiffLine> lines, string text, DiffLineKind kind)
+        {
+            if (lines.Count >= MaxDiffLines)
+            {
+                if (lines.Count == MaxDiffLines) lines.Add(new DiffLine("… (diff truncated)", DiffLineKind.Context));
+                return;
+            }
+            lines.Add(new DiffLine(text, kind));
         }
 
         /// <summary>
@@ -708,6 +879,7 @@ namespace BuildConsole
             slot.RunStartedUtc = DateTime.UtcNow;
             slot.InAssistantRun = false;
             slot.CurrentToolGroup = null;
+            slot.ToolCallsById.Clear();
             slot.StatusLine = null;
 
             var vm = slot.Pane.ViewModel;
@@ -769,6 +941,7 @@ namespace BuildConsole
             slot.Cwd = null;
             slot.Pane.Cwd = null;
             slot.CurrentToolGroup = null;
+            slot.ToolCallsById.Clear();
             slot.StatusLine = null;
             slot.InAssistantRun = false;
 
@@ -903,21 +1076,23 @@ namespace BuildConsole
         // ── Interactive builds: live stream, 3-state indicator, chat input ──
 
         /// <summary>
-        /// Renders an owned interactive build's live output by pulling the lines the
-        /// watcher has buffered since our cursor and turning each into a transcript turn —
-        /// the same classifier the file-tail path uses, just sourced from the
-        /// BuildConsole-owned in-memory stream instead of the per-item log file.
+        /// Renders an owned interactive build's live output by pulling the full-fidelity
+        /// structured events the watcher has buffered since our cursor (real command/args +
+        /// real tool output, replacing the old flattened "[tool: X]" strings) and turning each
+        /// into transcript turns / rich chip detail. The foreign/legacy file-tail path
+        /// (<see cref="TailSlotLog"/> → <see cref="AppendEventCard"/>) is unchanged and stays
+        /// name-only, an honest boundary.
         /// </summary>
         private void DrainInteractiveOutput(BuildWatchSlot slot)
         {
             if (_watcher == null) return;
             int cursor = slot.InteractiveCursor;
-            List<string> lines;
-            try { lines = _watcher.CopyOutputSince(slot.QueueItemId, ref cursor); }
+            List<InteractiveEvent> events;
+            try { events = _watcher.CopyEventsSince(slot.QueueItemId, ref cursor); }
             catch { return; }
             slot.InteractiveCursor = cursor;
-            foreach (var line in lines)
-                AppendEventCard(slot, line);
+            foreach (var ev in events)
+                ApplyInteractiveEvent(slot, ev);
         }
 
         /// <summary>

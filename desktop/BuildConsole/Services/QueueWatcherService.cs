@@ -110,9 +110,17 @@ namespace BuildConsole.Services
             public int IdleFinalizeMs;
             public CancellationTokenSource? AutoFinalizeCts;
 
-            /// <summary>The BuildConsole-owned live output buffer (one summarized line per entry) the Build Watch window pulls directly instead of tailing the log file. Guarded by _gate.</summary>
-            public readonly List<string> OutputLines = new();
-            /// <summary>Total lines ever appended (including ones trimmed off the front of OutputLines) — lets a cursor-based pull survive buffer trimming.</summary>
+            /// <summary>
+            /// The BuildConsole-owned live STRUCTURED event stream the Build Watch window pulls
+            /// directly (via <see cref="CopyEventsSince"/>) instead of tailing the log file.
+            /// Full-fidelity — carries each tool call's real command/arguments and each tool
+            /// result's real output (see <see cref="InteractiveEvent"/>), the detail the old
+            /// flattened "[tool: X]" string buffer threw away. Guarded by _gate. The
+            /// human-readable per-item log FILE (#802 / foreign file-tail) is fed separately by
+            /// <see cref="AppendToLogFile"/> and is unaffected.
+            /// </summary>
+            public readonly List<InteractiveEvent> Events = new();
+            /// <summary>Total events ever appended (including ones trimmed off the front of <see cref="Events"/>) — lets a cursor-based pull survive buffer trimming.</summary>
             public int TotalEmitted;
         }
 
@@ -123,12 +131,12 @@ namespace BuildConsole.Services
         private readonly Dictionary<int, RunningEntry> _running = new();
         /// <summary>Interactive builds that have exited but whose slot may still be on screen — kept so the Build Watch window can drain the final output tail and hold the slot in interactive-render mode (never falling back to a double-rendering file-tail). Evicted when the window dismisses the slot (ReleaseInteractive) or capped defensively.</summary>
         private readonly Dictionary<int, RunningEntry> _retained = new();
-        /// <summary>Guards the mutable interactive fields of a RunningEntry and its OutputLines/_retained — the process output thread and the UI thread both touch these. (_running membership itself is only ever mutated on the UI thread, same as before.)</summary>
+        /// <summary>Guards the mutable interactive fields of a RunningEntry and its Events/_retained — the process output thread and the UI thread both touch these. (_running membership itself is only ever mutated on the UI thread, same as before.)</summary>
         private readonly object _gate = new();
         private DispatcherTimer? _timer;
         private bool _ticking;
 
-        private const int MaxBufferedLines = 4000;
+        private const int MaxBufferedEvents = 4000;
         private const int MaxRetained = 32;
         /// <summary>How long a soft interrupt gets to take effect before the escalation check.</summary>
         private const int StopSoftGraceMs = 4000;
@@ -142,6 +150,9 @@ namespace BuildConsole.Services
         private const string ResumeContinueMessage = "Network connection was restored. Please continue where you left off.";
 
         private static int _interruptSeq;
+        /// <summary>One-shot guards so exactly one real raw sample of each stream-json shape is logged per app run (diagnostics — see <see cref="LogRawSampleOnce"/>).</summary>
+        private static int _loggedToolUseSample;
+        private static int _loggedToolResultSample;
         private static readonly JsonSerializerOptions _msgJson = new()
         {
             // @paths, +, /, & etc. stay literal in the wire JSON (still valid
@@ -444,7 +455,7 @@ namespace BuildConsole.Services
                 IdleFinalizeMs = Math.Max(0, settings.InteractiveIdleFinalizeSeconds) * 1000,
             };
             proc.OutputDataReceived += (_, e) => HandleOutput(entry, item.Id, e.Data);
-            proc.ErrorDataReceived += (_, e) => { if (e.Data != null) AppendLog(entry, e.Data); };
+            proc.ErrorDataReceived += (_, e) => { if (e.Data != null) HandleStderr(entry, e.Data); };
             proc.Start();
             proc.BeginOutputReadLine();
             proc.BeginErrorReadLine();
@@ -480,10 +491,23 @@ namespace BuildConsole.Services
             var ctxTokens = TryExtractContextTokens(data);
             if (ctxTokens.HasValue) lock (_gate) entry.ContextTokens = ctxTokens;
 
+            // (1) Human-readable per-item log FILE — for BOTH interactive and legacy builds
+            //     (#802 BuildLogView + the foreign/legacy file-tail render path). Unchanged:
+            //     the same flattened "[tool: X]" summary as before.
             var summary = SummarizeStreamJsonLine(data, out bool isResult);
-            if (summary != null) AppendLog(entry, summary);
+            if (summary != null) AppendToLogFile(entry, summary);
 
             if (!entry.Interactive) return;
+
+            // (2) Structured event stream — interactive builds only. Full fidelity: the real
+            //     command/arguments (ToolCall) and real tool output (ToolResult) the Build
+            //     Watch chip renders on expand, plus file-edit diffs. This is exactly where the
+            //     old bug lived: SummarizeStreamJsonLine kept only the tool NAME and dropped
+            //     `input` + every tool_result event, so the chip had nothing to show inside.
+            var events = ParseInteractiveEvents(data);
+            LogRawSampleOnce(events, data);
+            bool hadRenderable = false;
+            foreach (var ev in events) { AppendEvent(entry, ev); hadRenderable = true; }
 
             string? waitingLog = null;
             lock (_gate)
@@ -504,11 +528,11 @@ namespace BuildConsole.Services
                         ScheduleAutoFinalize(entry, id);
                     }
                 }
-                else if (summary != null)
+                else if (hadRenderable)
                 {
-                    // Fresh assistant/tool output → actively working (unless a
-                    // Stop is in flight, in which case the escalation check owns
-                    // the state and reads LastActivityUtc to decide).
+                    // Fresh assistant / tool / tool-result output → actively working (unless a
+                    // Stop is in flight, in which case the escalation check owns the state and
+                    // reads LastActivityUtc to decide).
                     if (entry.StopRequestedUtc == null && entry.State != InteractiveInputState.Working)
                     {
                         entry.State = InteractiveInputState.Working;
@@ -520,24 +544,54 @@ namespace BuildConsole.Services
             if (waitingLog != null) ActivityLog.Log("interactive-build", waitingLog);
         }
 
-        /// <summary>Writes one already-summarized line to both the per-item log file (BuildLogView/#802) and, for interactive builds, the BuildConsole-owned in-memory buffer the Build Watch window pulls. A summary can carry embedded newlines (the "result" case), so each physical line is a separate buffer entry — matching how the file-tail path splits on '\n'.</summary>
-        private void AppendLog(RunningEntry entry, string text)
+        /// <summary>Writes one already-summarized line to the per-item log FILE (BuildLogView/#802 and the foreign/legacy file-tail render path). File only — the interactive Build Watch render pulls the structured <see cref="RunningEntry.Events"/> stream instead (see <see cref="AppendEvent"/>).</summary>
+        private static void AppendToLogFile(RunningEntry entry, string text)
         {
             try { lock (entry.LogLock) File.AppendAllText(entry.LogPath, text + Environment.NewLine); }
-            catch { /* file locked mid-write elsewhere — the in-memory buffer below still carries it */ }
+            catch { /* file locked mid-write elsewhere — the structured buffer still carries it for Build Watch */ }
+        }
 
-            if (!entry.Interactive) return;
+        /// <summary>Appends one structured event to the interactive build's live buffer the Build Watch window pulls (via <see cref="CopyEventsSince"/>), trimming the front once over <see cref="MaxBufferedEvents"/>. Guarded by _gate.</summary>
+        private void AppendEvent(RunningEntry entry, InteractiveEvent ev)
+        {
             lock (_gate)
             {
-                foreach (var raw in text.Split('\n'))
-                {
-                    entry.OutputLines.Add(raw.TrimEnd('\r'));
-                    entry.TotalEmitted++;
-                }
-                int overflow = entry.OutputLines.Count - MaxBufferedLines;
-                if (overflow > 0) entry.OutputLines.RemoveRange(0, overflow);
+                entry.Events.Add(ev);
+                entry.TotalEmitted++;
+                int overflow = entry.Events.Count - MaxBufferedEvents;
+                if (overflow > 0) entry.Events.RemoveRange(0, overflow);
             }
         }
+
+        /// <summary>A raw stderr line (not stream-json): tee it to the log FILE and, for an interactive build, surface it in the Build Watch render as an error-tinted text event.</summary>
+        private void HandleStderr(RunningEntry entry, string data)
+        {
+            AppendToLogFile(entry, data);
+            if (entry.Interactive) AppendEvent(entry, new InteractiveEvent { Kind = InteractiveEventKind.AssistantText, Text = data, IsError = true });
+        }
+
+        /// <summary>
+        /// Logs exactly one real raw sample of a tool_use event and one of a tool_result event
+        /// per app run (on the "stream-json" ActivityLog channel), so the real event structure
+        /// this parser depends on is verifiable/diagnosable from the log alone if a related issue
+        /// ever recurs — without having to redo the live-capture investigation. Truncated so a
+        /// large tool result can't flood the log.
+        /// </summary>
+        private static void LogRawSampleOnce(List<InteractiveEvent> events, string rawLine)
+        {
+            bool hasToolUse = false, hasToolResult = false;
+            foreach (var ev in events)
+            {
+                if (ev.Kind == InteractiveEventKind.ToolCall) hasToolUse = true;
+                else if (ev.Kind == InteractiveEventKind.ToolResult) hasToolResult = true;
+            }
+            if (hasToolUse && Interlocked.Exchange(ref _loggedToolUseSample, 1) == 0)
+                ActivityLog.Log("stream-json", "sample tool_use event (raw, once/run): " + Truncate(rawLine, 2000));
+            if (hasToolResult && Interlocked.Exchange(ref _loggedToolResultSample, 1) == 0)
+                ActivityLog.Log("stream-json", "sample tool_result event (raw, once/run): " + Truncate(rawLine, 2000));
+        }
+
+        private static string Truncate(string s, int max) => s.Length <= max ? s : s.Substring(0, max) + $"… (+{s.Length - max} chars)";
 
         // ── Interactive input / stop / finalize (public: called by BuildWatchWindow) ──
 
@@ -563,19 +617,19 @@ namespace BuildConsole.Services
             return null;
         }
 
-        /// <summary>Pulls every output line appended since <paramref name="cursor"/> (an absolute line index; survives buffer trimming) and advances it. Reads a live entry or, if already reaped, its retained copy — so the final tail is never lost in the exit→remove race.</summary>
-        public List<string> CopyOutputSince(int id, ref int cursor)
+        /// <summary>Pulls every structured event appended since <paramref name="cursor"/> (an absolute event index; survives buffer trimming) and advances it. Reads a live entry or, if already reaped, its retained copy — so the final tail is never lost in the exit→remove race.</summary>
+        public List<InteractiveEvent> CopyEventsSince(int id, ref int cursor)
         {
             if (!_running.TryGetValue(id, out var e)) _retained.TryGetValue(id, out e);
-            if (e == null || !e.Interactive) return new List<string>();
+            if (e == null || !e.Interactive) return new List<InteractiveEvent>();
             lock (_gate)
             {
-                int first = e.TotalEmitted - e.OutputLines.Count;
+                int first = e.TotalEmitted - e.Events.Count;
                 if (cursor < first) cursor = first;
                 int startIdx = cursor - first;
                 if (startIdx < 0) startIdx = 0;
-                if (startIdx >= e.OutputLines.Count) { cursor = e.TotalEmitted; return new List<string>(); }
-                var slice = e.OutputLines.GetRange(startIdx, e.OutputLines.Count - startIdx);
+                if (startIdx >= e.Events.Count) { cursor = e.TotalEmitted; return new List<InteractiveEvent>(); }
+                var slice = e.Events.GetRange(startIdx, e.Events.Count - startIdx);
                 cursor = e.TotalEmitted;
                 return slice;
             }
@@ -778,7 +832,7 @@ namespace BuildConsole.Services
             lock (_gate) afterEmitted = entry.TotalEmitted;
             if (afterEmitted > baselineEmitted)
             {
-                ActivityLog.Log("interactive-build", $"resume outcome: RESUMED — {afterEmitted - baselineEmitted} new output line(s) after the continue message: {entry.Title} (queue #{id})");
+                ActivityLog.Log("interactive-build", $"resume outcome: RESUMED — {afterEmitted - baselineEmitted} new output event(s) after the continue message: {entry.Title} (queue #{id})");
             }
             else
             {
@@ -934,15 +988,18 @@ namespace BuildConsole.Services
         }
 
         /// <summary>
-        /// Git #825 — turns one --output-format stream-json line into a
-        /// readable log line (real shape confirmed via a live test run):
-        /// "assistant" messages carry text/tool_use content blocks (the
-        /// actual incremental progress worth showing); "result" is the
-        /// turn summary (<paramref name="isResult"/> is set true for it, so
-        /// the caller can detect "this turn just finished"); everything else
-        /// (system init, rate_limit_event, user/tool-result echoes) is
-        /// skipped as noise for a build log. Returns null to skip the line,
-        /// or the line as-is if it somehow isn't valid JSON.
+        /// Git #825 — turns one --output-format stream-json line into a readable log line for
+        /// the per-item log FILE (BuildLogView/#802 and the foreign/legacy file-tail render
+        /// path). Deliberately LOSSY: "assistant" text/tool_use blocks collapse to prose +
+        /// "[tool: X]" name markers, "result" becomes the turn summary (<paramref name="isResult"/>
+        /// set true so the caller can detect "turn finished"), everything else is skipped.
+        ///
+        /// This name-only "[tool: X]" flattening is exactly what made the tool-call bubbles
+        /// show nothing but a bare name — so the interactive Build Watch render no longer uses
+        /// this; it pulls the full-fidelity <see cref="ParseInteractiveEvents"/> stream instead.
+        /// This method stays as the human-readable FILE summary only (unchanged on purpose so
+        /// #802 / foreign builds are unaffected). Returns null to skip, or the raw line if it
+        /// somehow isn't valid JSON.
         /// </summary>
         private static string? SummarizeStreamJsonLine(string line, out bool isResult)
         {
@@ -988,6 +1045,164 @@ namespace BuildConsole.Services
             catch
             {
                 return line;
+            }
+        }
+
+        /// <summary>
+        /// Parses one --output-format stream-json line into zero or more full-fidelity
+        /// <see cref="InteractiveEvent"/>s for the interactive Build Watch render — the fix for
+        /// the "tool bubble shows only a bare name" bug. Unlike <see cref="SummarizeStreamJsonLine"/>
+        /// this keeps everything the display needs:
+        ///   • "assistant" → one AssistantText per real "text" block, one ToolCall per "tool_use"
+        ///     block (with its id, name, a one-line command preview, and the raw `input` JSON);
+        ///   • "user"      → one ToolResult per "tool_result" block (matched back by tool_use_id,
+        ///     carrying the real output text + is_error) — the whole event the old code dropped;
+        ///   • "result"    → one TurnResult (duration + final text).
+        /// Other event types (system init, rate_limit_event, thinking_tokens, empty "thinking"
+        /// blocks) are genuine noise and produce no events. A non-JSON line becomes one raw
+        /// AssistantText so nothing is silently lost.
+        /// </summary>
+        private static List<InteractiveEvent> ParseInteractiveEvents(string line)
+        {
+            var events = new List<InteractiveEvent>();
+            if (string.IsNullOrWhiteSpace(line)) return events;
+
+            JsonDocument doc;
+            try { doc = JsonDocument.Parse(line); }
+            catch { events.Add(new InteractiveEvent { Kind = InteractiveEventKind.AssistantText, Text = line }); return events; }
+
+            using (doc)
+            {
+                var root = doc.RootElement;
+                var type = root.TryGetProperty("type", out var t) ? t.GetString() : null;
+                switch (type)
+                {
+                    case "assistant":
+                        if (root.TryGetProperty("message", out var amsg) && amsg.TryGetProperty("content", out var acontent) && acontent.ValueKind == JsonValueKind.Array)
+                        {
+                            foreach (var block in acontent.EnumerateArray())
+                            {
+                                if (block.ValueKind != JsonValueKind.Object) continue;
+                                var bt = block.TryGetProperty("type", out var btv) ? btv.GetString() : null;
+                                if (bt == "text" && block.TryGetProperty("text", out var txt))
+                                {
+                                    var s = txt.GetString();
+                                    if (!string.IsNullOrEmpty(s))
+                                        events.Add(new InteractiveEvent { Kind = InteractiveEventKind.AssistantText, Text = s });
+                                }
+                                else if (bt == "tool_use")
+                                {
+                                    var name = block.TryGetProperty("name", out var nm) ? nm.GetString() : null;
+                                    var id = block.TryGetProperty("id", out var idv) ? idv.GetString() : null;
+                                    string? inputJson = null, preview = null;
+                                    if (block.TryGetProperty("input", out var input))
+                                    {
+                                        inputJson = input.GetRawText();
+                                        preview = BuildCommandPreview(name, input);
+                                    }
+                                    events.Add(new InteractiveEvent
+                                    {
+                                        Kind = InteractiveEventKind.ToolCall,
+                                        ToolName = string.IsNullOrWhiteSpace(name) ? "tool" : name,
+                                        ToolUseId = id,
+                                        CommandPreview = preview,
+                                        InputJson = inputJson,
+                                    });
+                                }
+                                // "thinking" blocks: no user-facing content (signature only) — skipped.
+                            }
+                        }
+                        break;
+
+                    case "user":
+                        // tool_result blocks are carried on the message.content array of a type:"user" event.
+                        if (root.TryGetProperty("message", out var umsg) && umsg.TryGetProperty("content", out var ucontent) && ucontent.ValueKind == JsonValueKind.Array)
+                        {
+                            foreach (var block in ucontent.EnumerateArray())
+                            {
+                                if (block.ValueKind != JsonValueKind.Object) continue;
+                                var bt = block.TryGetProperty("type", out var btv) ? btv.GetString() : null;
+                                if (bt != "tool_result") continue;
+                                var forId = block.TryGetProperty("tool_use_id", out var tid) ? tid.GetString() : null;
+                                bool isErr = block.TryGetProperty("is_error", out var ie) && ie.ValueKind == JsonValueKind.True;
+                                events.Add(new InteractiveEvent
+                                {
+                                    Kind = InteractiveEventKind.ToolResult,
+                                    ResultForToolUseId = forId,
+                                    Text = ExtractToolResultText(block),
+                                    IsError = isErr,
+                                });
+                            }
+                        }
+                        break;
+
+                    case "result":
+                        {
+                            var resultText = root.TryGetProperty("result", out var res) ? res.GetString() : null;
+                            int? durationMs = root.TryGetProperty("duration_ms", out var dur) && dur.TryGetInt32(out var dm) ? dm : (int?)null;
+                            events.Add(new InteractiveEvent { Kind = InteractiveEventKind.TurnResult, Text = resultText, DurationMs = durationMs });
+                        }
+                        break;
+
+                    default:
+                        break; // system init / rate_limit_event / thinking_tokens — noise
+                }
+            }
+            return events;
+        }
+
+        /// <summary>A tool_result block's <c>content</c> is either a plain string (Bash, Read, …) or an array of content parts (text/image blocks). Flatten both to one readable output string.</summary>
+        private static string ExtractToolResultText(JsonElement block)
+        {
+            if (!block.TryGetProperty("content", out var c)) return "";
+            if (c.ValueKind == JsonValueKind.String) return c.GetString() ?? "";
+            if (c.ValueKind == JsonValueKind.Array)
+            {
+                var sb = new StringBuilder();
+                foreach (var part in c.EnumerateArray())
+                {
+                    if (part.ValueKind == JsonValueKind.String) { if (sb.Length > 0) sb.Append('\n'); sb.Append(part.GetString()); continue; }
+                    if (part.ValueKind != JsonValueKind.Object) continue;
+                    var pt = part.TryGetProperty("type", out var ptv) ? ptv.GetString() : null;
+                    if (pt == "text" && part.TryGetProperty("text", out var tx)) { if (sb.Length > 0) sb.Append('\n'); sb.Append(tx.GetString()); }
+                    else if (pt == "image") { if (sb.Length > 0) sb.Append('\n'); sb.Append("[image]"); }
+                }
+                return sb.ToString();
+            }
+            return "";
+        }
+
+        /// <summary>
+        /// A one-line, human-readable summary of a tool call's key argument(s) — the real command
+        /// for Bash, the file_path for Read/Edit/Write, the pattern for Glob/Grep, etc. Falls back
+        /// to a compact single-line of the whole `input` object for tools without a special case,
+        /// so an unfamiliar tool still shows its real arguments rather than nothing.
+        /// </summary>
+        private static string? BuildCommandPreview(string? toolName, JsonElement input)
+        {
+            if (input.ValueKind != JsonValueKind.Object) return null;
+            string? S(string k) => input.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+
+            switch (toolName)
+            {
+                case "Bash": return S("command");
+                case "Read": return S("file_path");
+                case "Edit":
+                case "Write":
+                case "MultiEdit": return S("file_path");
+                case "NotebookEdit": return S("notebook_path") ?? S("file_path");
+                case "Glob": { var p = S("pattern"); var path = S("path"); return path == null ? p : $"{p}  in {path}"; }
+                case "Grep":
+                    {
+                        var p = S("pattern"); var path = S("path"); var g = S("glob");
+                        return p + (g != null ? $"  glob:{g}" : "") + (path != null ? $"  in {path}" : "");
+                    }
+                case "WebFetch": return S("url");
+                case "WebSearch": return S("query");
+                case "Task": { var d = S("description"); var st = S("subagent_type"); return d + (st != null ? $"  ({st})" : ""); }
+                default:
+                    var raw = input.GetRawText().Replace("\r", " ").Replace("\n", " ");
+                    return raw.Length > 200 ? raw.Substring(0, 200) + "…" : raw;
             }
         }
     }

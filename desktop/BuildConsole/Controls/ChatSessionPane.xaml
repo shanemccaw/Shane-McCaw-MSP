@@ -18,6 +18,8 @@
         <conv:IsUserMessageTurnConverter x:Key="IsUserMsg"/>
         <conv:StringNonEmptyToVisibilityConverter x:Key="NonEmptyVis"/>
         <conv:StringEmptyToVisibilityConverter x:Key="EmptyVis"/>
+        <conv:DiffLineKindToBrushConverter x:Key="DiffFg"/>
+        <conv:DiffLineKindToBackgroundConverter x:Key="DiffBg"/>
         <BooleanToVisibilityConverter x:Key="BoolVis"/>
 
         <!-- ── User message ─────────────────────────────────────────── -->
@@ -156,12 +158,56 @@
                     <ItemsControl ItemsSource="{Binding Details}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
-                                <TextBlock Foreground="{StaticResource ChatPane.Muted3}" FontFamily="{StaticResource ChatPane.MonoFont}"
-                                           Margin="0,0,0,4"
-                                           FontSize="{Binding ActualWidth, ElementName=Root, Converter={StaticResource Fluid}, ConverterParameter='10.5,13.5'}">
-                                    <Run Text="⚙  " Foreground="{StaticResource ChatPane.AccentText1}"/>
-                                    <Run Text="{Binding ToolName, Mode=OneWay}"/>
-                                </TextBlock>
+                                <!-- Per-tool-call detail: the real command/params, its real
+                                     output on the next line(s), and a real colored diff for a
+                                     file edit — all revealed only when the chip is expanded. -->
+                                <StackPanel Margin="0,0,0,8">
+                                    <!-- ⚙ ToolName  <real command / file_path / pattern> -->
+                                    <TextBlock FontFamily="{StaticResource ChatPane.MonoFont}" TextWrapping="Wrap"
+                                               Foreground="{StaticResource ChatPane.Muted3}" Margin="0,0,0,3"
+                                               FontSize="{Binding ActualWidth, ElementName=Root, Converter={StaticResource Fluid}, ConverterParameter='10.5,13.5'}">
+                                        <Run Text="⚙  " Foreground="{StaticResource ChatPane.AccentText1}"/>
+                                        <Run Text="{Binding ToolName, Mode=OneWay}" FontWeight="SemiBold" Foreground="{StaticResource ChatPane.Muted1}"/>
+                                        <Run Text="  "/>
+                                        <Run Text="{Binding CommandPreview, Mode=OneWay}" Foreground="{StaticResource ChatPane.Muted5}"/>
+                                    </TextBlock>
+
+                                    <!-- Real colored diff (Edit / Write / MultiEdit) -->
+                                    <Border Visibility="{Binding HasDiff, Converter={StaticResource BoolVis}}"
+                                            Background="{StaticResource ChatPane.Surface}" CornerRadius="4" Padding="8,6" Margin="10,1,0,3" MaxHeight="260">
+                                        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                                            <ItemsControl ItemsSource="{Binding Diff}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Border Background="{Binding Kind, Converter={StaticResource DiffBg}}">
+                                                            <TextBlock Text="{Binding Text}" FontFamily="{StaticResource ChatPane.MonoFont}" TextWrapping="Wrap"
+                                                                       Foreground="{Binding Kind, Converter={StaticResource DiffFg}}" FontSize="11.5" Padding="2,0"/>
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </ScrollViewer>
+                                    </Border>
+
+                                    <!-- Real tool output (filled in when the tool_result event lands) -->
+                                    <Border Visibility="{Binding HasOutput, Converter={StaticResource BoolVis}}"
+                                            Background="{StaticResource ChatPane.Surface}" CornerRadius="4" Padding="8,6" Margin="10,1,0,0" MaxHeight="180">
+                                        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                                            <TextBlock Text="{Binding Output}" FontFamily="{StaticResource ChatPane.MonoFont}" TextWrapping="Wrap" FontSize="11.5">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Foreground" Value="{StaticResource ChatPane.Muted3}"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsError}" Value="True">
+                                                                <Setter Property="Foreground" Value="{StaticResource ChatPane.Danger}"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </ScrollViewer>
+                                    </Border>
+                                </StackPanel>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
