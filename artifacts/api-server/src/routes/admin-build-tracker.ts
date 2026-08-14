@@ -1503,23 +1503,37 @@ async function fetchRealBlockedByNumbers(issueNumber: number): Promise<number[]>
  * the queued build IS a real tracked issue, same priority #799 established
  * for the single-blocker case — just over the full list now instead of [0].
  */
-async function effectiveBlockedByNumbers(item: { githubNumber: number | null; blockedByNumber: number | null; blockedByNumbers?: number[] | null; status?: string }): Promise<number[]> {
+async function effectiveBlockedByNumbers(
+  item: { githubNumber: number | null; blockedByNumber: number | null; blockedByNumbers?: number[] | null; status?: string },
+  allowLiveFetch: boolean,
+): Promise<number[]> {
   // Git #899 — Shane: "I am still getting rate limited quickly. Is there an
   // API call this thing is making to our API that is then calling git?"
   // Yes: GET /extension/queue (below) calls this once per row, and this
-  // function calls the real GitHub API per row when it has a githubNumber -
-  // with NO cap on row count after #865 removed the old 30-minute
-  // visibility cutoff, that's now one real GitHub REST call per HISTORICAL
-  // queue row, every single poll (BuildQueuePanel's _pollTimer, 15s,
-  // unconditional - no view-gating like the Git Board's own timer has).
-  // A finished (done/failed/canceled) row's live blocked-by status is
-  // meaningless anyway - BuildQueuePanel's own UI only ever shows the
-  // "waiting on #N" badge for status === "queued" - so only active
-  // (queued/running) rows are worth a real API call; terminal rows fall
-  // straight back to the stored column(s), same as when GitHub returns
-  // nothing.
+  // function used to call the real GitHub API per row when it had a
+  // githubNumber - with at least 4 independent BuildConsole timers polling
+  // that route (MainWindow's 3s _buildTailTimer, BuildWatchWindow's 3s
+  // _pollTimer, QueueWatcherService's 10s background watcher, BuildQueuePanel's
+  // 15s _pollTimer - #899's own fix only added a 5s per-call timeout + gated
+  // to active rows, neither of which stops the automatic polling itself),
+  // that was still real, continuous GitHub traffic on the shared 5,000/hr
+  // limit — the exact same "this app is killing my git connections" problem
+  // Shane already had BuildConsole's own client-side pollers fixed for
+  // (2026-08-14, manual-refresh-only) but which persisted here because this
+  // leak is server-side, one hop away from any BuildConsole code Shane could
+  // see doing it.
+  //
+  // 2026-08-14 (Shane, same request, follow-up sighting: "Something still
+  // made 139 calls in 13 minutes"): the live per-row fetch is now OFF by
+  // default - `allowLiveFetch` must be explicitly true, and nothing in this
+  // route passes that today, so it never fires from an automatic poll.
+  // Retained (not deleted) for a future genuine manual "refresh blocked-by
+  // status" trigger to opt into via `?liveBlocked=1`; until Shane wants
+  // that wired up, the badge reflects whatever was last written to the
+  // stored column(s) by an explicit action (SetBlockedByDialog, sync-epic,
+  // github-sync, quick-sync).
   const isActive = item.status === "queued" || item.status === "running";
-  if (isActive && item.githubNumber != null) {
+  if (allowLiveFetch && isActive && item.githubNumber != null) {
     const real = await fetchRealBlockedByNumbers(item.githubNumber);
     if (real.length > 0) return real;
   }
@@ -1555,8 +1569,20 @@ async function isBlockerCleared(blockerNum: number): Promise<boolean> {
     .orderBy(desc(btBuildQueueTable.createdAt))
     .limit(1);
   if (latestRow) return latestRow.status === "done" && latestRow.exitCode === 0;
-  const blocker = process.env.GITHUB_TOKEN ? await ghFetchIssue(blockerNum) : null;
-  return !blocker || blocker.state === "closed" || blocker.labels.some((l) => l.name === "complete");
+  // 2026-08-14 (Shane: "Something still made 139 calls in 13 minutes") — this
+  // was the bigger of two automatic GitHub leaks found in this file (the
+  // other was effectiveBlockedByNumbers, see its own comment). This function
+  // is called by GET /extension/queue/next, which QueueWatcherService's
+  // background watcher polls every 10s continuously (not gated to any window
+  // being open) — a blocker with no matching local queue row fell through to
+  // a live `ghFetchIssue` call, every 10s, for as long as it stayed
+  // unresolved. Now: no local row = "not yet determined, keep waiting"
+  // instead of asking GitHub live. A blocker closed OUTSIDE the queue system
+  // (e.g. closed directly on GitHub, never run through here) no longer
+  // auto-clears its dependents — use the queue's own manual force-claim
+  // (POST .../queue/:id/force-claim) for that case instead, which is a real
+  // user click, not a poll.
+  return false;
 }
 
 /** Git #813 — every blocker in the list must clear, not just one. */
@@ -1578,7 +1604,7 @@ async function areBlockersCleared(blockerNums: number[]): Promise<boolean> {
  * that was never sent. Returns every row now; the existing client-side chips
  * (BuildQueuePanel.ApplyFilter) are the real filtering mechanism.
  */
-router.get("/admin/build-tracker/extension/queue", ingestAuth, async (_req: Request, res: Response) => {
+router.get("/admin/build-tracker/extension/queue", ingestAuth, async (req: Request, res: Response) => {
   try {
     const rows = await db
       .select()
@@ -1588,9 +1614,17 @@ router.get("/admin/build-tracker/extension/queue", ingestAuth, async (_req: Requ
     // overrides the stored column(s) for display too, so nesting in the
     // panel matches what's actually true. blockedByNumber (singular) stays
     // for older consumers, set to the first blocker.
+    //
+    // `allowLiveFetch` (2026-08-14, see effectiveBlockedByNumbers's own
+    // comment): this route is polled automatically by at least 4 BuildConsole
+    // timers, so a real GitHub call per active row here was genuine
+    // continuous, automatic GitHub traffic — off by default. `?liveBlocked=1`
+    // is the escape hatch for a future explicit manual-refresh action; no
+    // current caller sets it.
+    const allowLiveFetch = req.query.liveBlocked === "1";
     const items = await Promise.all(
       rows.map(async (row) => {
-        const blockers = await effectiveBlockedByNumbers(row);
+        const blockers = await effectiveBlockedByNumbers(row, allowLiveFetch);
         return { ...row, blockedByNumbers: blockers, blockedByNumber: blockers[0] ?? null };
       }),
     );
@@ -1626,11 +1660,14 @@ router.get("/admin/build-tracker/extension/queue/next", ingestAuth, async (req: 
     const ready: typeof queued = [];
     for (const item of queued) {
       if (ready.length >= limit) break;
-      // Git #799/#813 — checks the item's REAL GitHub blocked-by
-      // dependencies (when it's tied to a real issue), not just the stored
-      // column(s) set from an explicit --blocked-by flag at queue time.
-      // ALL blockers must clear, not just one.
-      const blockerNums = await effectiveBlockedByNumbers(item);
+      // Git #799/#813 — checks the item's blocked-by dependencies (real
+      // GitHub deps when tied to a real issue, else the stored column(s) set
+      // from an explicit --blocked-by flag at queue time). ALL blockers must
+      // clear, not just one. `allowLiveFetch: false` — this route is the
+      // watcher's own 10s-polled claim loop (QueueWatcherService), so a live
+      // per-row GitHub call here would be automatic traffic; see
+      // effectiveBlockedByNumbers's own comment.
+      const blockerNums = await effectiveBlockedByNumbers(item, false);
       if (blockerNums.length === 0) { ready.push(item); continue; }
       if (await areBlockersCleared(blockerNums)) ready.push(item);
     }
