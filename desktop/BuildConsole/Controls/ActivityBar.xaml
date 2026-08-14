@@ -196,6 +196,59 @@
                                Foreground="{StaticResource GreenBrush}"/>
                 </Button>
 
+                <!-- Separator -->
+                <Border Height="1" Background="{StaticResource Surface0Brush}" Margin="8,6"/>
+
+                <!-- Shelf — Shane: right-click any editor tab → "Shelve Tab" to set it
+                     aside without killing it. The tab leaves the tab bar but its real
+                     content keeps running genuinely alive off-screen (a DIRECT reuse of
+                     the #972/#982 PinnedHostCanvas + ParkOffscreen keep-alive, generalized
+                     to ANY tab — see MainWindow.ShelvedTabs.cs). This ONE icon opens an
+                     anchored popout listing everything currently shelved (real icon +
+                     title per item), each entry one click away from restoring as a live
+                     tab. MainWindow owns the shelved-tab state and hands us the rows to
+                     host — same owner/host split as the Web Tools popout above. The badge
+                     shows how many tabs are parked so they're never invisibly lost. -->
+                <Button x:Name="BtnShelf"
+                        Style="{StaticResource IconButton}"
+                        Width="48" Height="44"
+                        ToolTip="Shelf — tabs set aside &amp; kept alive in the background (right-click a tab → Shelve Tab)"
+                        Click="BtnShelf_Click">
+                    <Grid Width="24" Height="24">
+                        <TextBlock Text="&#x1F5C3;" FontSize="16"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        <Border x:Name="ShelfCountBadge" Visibility="Collapsed"
+                                Background="{StaticResource RedBrush}" CornerRadius="7"
+                                MinWidth="14" Height="14" Padding="3,0"
+                                HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-3,-3,0">
+                            <TextBlock x:Name="ShelfCountText" Text="0" FontSize="9" FontWeight="Bold"
+                                       Foreground="{StaticResource CrustBrush}"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </Grid>
+                </Button>
+
+                <Popup x:Name="ShelfPopup"
+                       PlacementTarget="{Binding ElementName=BtnShelf}"
+                       Placement="Right"
+                       StaysOpen="False"
+                       AllowsTransparency="True"
+                       PopupAnimation="Fade">
+                    <Border Background="{StaticResource MantleBrush}"
+                            BorderBrush="{StaticResource Surface0Brush}"
+                            BorderThickness="1"
+                            CornerRadius="4"
+                            Padding="4"
+                            MinWidth="220" MaxWidth="340">
+                        <StackPanel>
+                            <TextBlock Text="🗃 SHELF" FontSize="10" FontWeight="Bold"
+                                       Foreground="{StaticResource Subtext0Brush}"
+                                       Margin="8,6,8,6"/>
+                            <StackPanel x:Name="ShelfList"/>
+                        </StackPanel>
+                    </Border>
+                </Popup>
+
             </StackPanel>
 
             <!-- ── Bottom icon: Settings ── -->

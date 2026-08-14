@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -25,6 +26,11 @@ namespace BuildConsole.Controls
         /// <summary>Git #980 — raised when the Build Watch icon is clicked; MainWindow toggles the floaty 8-slot Build Watch window open/closed.</summary>
         public event EventHandler? BuildWatchToggleRequested;
 
+        /// <summary>Raised when the Shelf icon is clicked. MainWindow owns the shelved-tab
+        /// state (the live off-screen content), so it responds by calling <see cref="ShowShelf"/>
+        /// with the current entries' rows.</summary>
+        public event EventHandler? ShelfOpenRequested;
+
         public ActivityBar() => InitializeComponent();
 
         /// <summary>Git #834 — File > Settings menu item routes here so it lands on the SAME SettingsView the cog icon already opens, instead of being a second, divergent path.</summary>
@@ -47,6 +53,49 @@ namespace BuildConsole.Controls
         /// <summary>Git #980 — toggles the floaty 8-slot Build Watch window.</summary>
         private void BtnBuildWatch_Click(object sender, RoutedEventArgs e) =>
             BuildWatchToggleRequested?.Invoke(this, EventArgs.Empty);
+
+        /// <summary>Shelf icon clicked — ask MainWindow (which owns the shelved-tab state)
+        /// to populate + open the popout via <see cref="ShowShelf"/>.</summary>
+        private void BtnShelf_Click(object sender, RoutedEventArgs e) =>
+            ShelfOpenRequested?.Invoke(this, EventArgs.Empty);
+
+        /// <summary>Host the given shelf entry rows in the anchored popout and open it.
+        /// MainWindow builds each row (real icon + title + restore-on-click); the
+        /// ActivityBar just presents them — same owner/host split as the Web Tools
+        /// popout, but with MainWindow-owned live data. Shows an empty-state hint when
+        /// nothing is shelved.</summary>
+        public void ShowShelf(IReadOnlyList<UIElement> rows)
+        {
+            ShelfList.Children.Clear();
+            if (rows == null || rows.Count == 0)
+            {
+                ShelfList.Children.Add(new TextBlock
+                {
+                    Text = "Nothing shelved. Right-click a tab → Shelve Tab to park it here — it stays alive in the background.",
+                    FontSize = 11,
+                    Foreground = (Brush)FindResource("Subtext1Brush"),
+                    TextWrapping = TextWrapping.Wrap,
+                    Margin = new Thickness(8)
+                });
+            }
+            else
+            {
+                foreach (var row in rows)
+                    ShelfList.Children.Add(row);
+            }
+            ShelfPopup.IsOpen = true;
+        }
+
+        /// <summary>Close the Shelf popout (e.g. right after a restore consumes an entry).</summary>
+        public void CloseShelf() => ShelfPopup.IsOpen = false;
+
+        /// <summary>Reflect the current shelved-tab count as a small badge on the Shelf
+        /// icon, so parked tabs are never invisibly lost from the tab bar.</summary>
+        public void SetShelfCount(int count)
+        {
+            ShelfCountText.Text = count > 99 ? "99+" : count.ToString();
+            ShelfCountBadge.Visibility = count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        }
 
         private void QuickNav_Click(object sender, RoutedEventArgs e)
         {

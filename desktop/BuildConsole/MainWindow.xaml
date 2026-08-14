@@ -462,6 +462,7 @@
                 <!-- ── Activity Bar ── -->
                 <ctrl:ActivityBar x:Name="ActivityBar"
                                   Grid.Column="0"
+                                  ShelfOpenRequested="ActivityBar_ShelfOpenRequested"
                                   ActiveViewChanged="ActivityBar_ActiveViewChanged"/>
 
                 <!-- ── Left Sidebar ── -->
