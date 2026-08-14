@@ -2128,6 +2128,21 @@ namespace BuildConsole
             ReplitStatusText.ToolTip = tip.ToString();
         }
 
+        /// <summary>Refresh icon next to the usage status text — triggers an immediate manual poll instead of waiting for the next scheduled cycle (Shane reports the automatic poll only lands ~25% of the time). Reuses the exact same polling logic as the timer via ClaudeUsageMeterService.ManualRefreshAsync; the service's own Polling-state emit (dot turns amber, "Checking claude.ai…" tooltip) is the in-progress feedback, so a click is never silent. Button is disabled for the duration so repeat clicks can't stack polls.</summary>
+        private async void BtnUsageRefresh_Click(object sender, RoutedEventArgs e)
+        {
+            if (_usageMeter == null) return;
+            BtnUsageRefresh.IsEnabled = false;
+            try
+            {
+                await _usageMeter.ManualRefreshAsync();
+            }
+            finally
+            {
+                BtnUsageRefresh.IsEnabled = true;
+            }
+        }
+
         /// <summary>Renders the Claude usage meter's live state in the status bar (dot + text + tooltip). The service computes DisplayText/ToolTip fully, so this just paints them and maps the state to a dot colour. Runs on the UI thread; the service raises this from UI-thread timer continuations already, but guard anyway.</summary>
         private void UsageMeter_StatusChanged(BuildConsole.Services.ClaudeUsageStatus status)
         {

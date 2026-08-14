@@ -62,35 +62,21 @@
                  ══════════════════════════════════ -->
             <Grid x:Name="ChatsView" DockPanel.Dock="Top">
                 <DockPanel>
-                    <!-- Chats tree redesign — mirrors #984's UI Automation manifest tree
-                         (Shane's favourite panel): the same overlay-placeholder search box
-                         above the tree, color-coded-by-epic groups, count badges, and a
-                         collapsed-by-default layout. Search box uses the exact overlay-
-                         placeholder trick #984's ManifestSearchBox / #950's QueueSearchBox use. -->
-                    <Border DockPanel.Dock="Top" Padding="8,6">
-                        <Grid>
-                            <TextBox x:Name="ChatSearch"
-                                     Height="26" Padding="6,4" FontSize="12"
-                                     VerticalContentAlignment="Center"
-                                     Background="{StaticResource Surface0Brush}"
-                                     TextChanged="ChatSearch_TextChanged"/>
-                            <TextBlock IsHitTestVisible="False"
-                                       Text="Search chats (title or epic)"
-                                       FontSize="12" Margin="8,0,0,0"
-                                       VerticalAlignment="Center" HorizontalAlignment="Left"
-                                       Foreground="{StaticResource Subtext1Brush}">
-                                <TextBlock.Style>
-                                    <Style TargetType="TextBlock">
-                                        <Setter Property="Visibility" Value="Collapsed"/>
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding Text, ElementName=ChatSearch}" Value="">
-                                                <Setter Property="Visibility" Value="Visible"/>
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </TextBlock.Style>
-                            </TextBlock>
-                        </Grid>
+                    <!-- Search box -->
+                    <Border DockPanel.Dock="Top"
+                            Padding="8,6">
+                        <TextBox x:Name="ChatSearch"
+                                 Height="26"
+                                 Padding="6,4"
+                                 FontSize="12"
+                                 Text="">
+                            <TextBox.Style>
+                                <Style TargetType="{x:Type TextBox}" BasedOn="{StaticResource {x:Type TextBox}}">
+                                    <Setter Property="Background" Value="{StaticResource Surface0Brush}"/>
+                                    <Setter Property="VerticalContentAlignment" Value="Center"/>
+                                </Style>
+                            </TextBox.Style>
+                        </TextBox>
                     </Border>
 
                     <!-- Chat tree (populated live from GET /extension/board — see code-behind) -->
@@ -98,10 +84,7 @@
                                   VerticalScrollBarVisibility="Auto"
                                   HorizontalScrollBarVisibility="Disabled"
                                   Padding="0,4">
-                        <Grid>
-                            <TreeView x:Name="ChatsTree" BorderThickness="0" SelectedItemChanged="ChatsTree_SelectedItemChanged" SizeChanged="ChatsTree_SizeChanged"/>
-                            <TextBlock x:Name="TxtNoChats" Text="No chats linked yet." FontSize="10" Foreground="{StaticResource Subtext0Brush}" Margin="12,6,0,0" VerticalAlignment="Top" Visibility="Collapsed"/>
-                        </Grid>
+                        <TreeView x:Name="ChatsTree" BorderThickness="0" SelectedItemChanged="ChatsTree_SelectedItemChanged" SizeChanged="ChatsTree_SizeChanged"/>
                     </ScrollViewer>
                 </DockPanel>
             </Grid>

@@ -147,6 +147,23 @@ namespace BuildConsole.Services
             _displayTimer.Stop();
         }
 
+        /// <summary>Manual on-demand poll, e.g. the status bar's refresh icon. Reuses the exact
+        /// same TickAsync logic as the scheduled timer — the only difference is the log line
+        /// distinguishing a Shane-triggered click from the automatic cadence, so "why did this
+        /// poll happen" is answerable from the log alone. If a poll is already in flight (either
+        /// kind), this is a no-op — TickAsync's own _busy guard already covers that, so callers
+        /// don't need to check IsBusy themselves before calling.</summary>
+        public async Task ManualRefreshAsync()
+        {
+            if (_busy)
+            {
+                ActivityLog.Log(Channel, "Manual refresh requested — ignored, a poll is already in flight.");
+                return;
+            }
+            ActivityLog.Log(Channel, "Manual refresh requested (status bar refresh icon).");
+            await TickAsync();
+        }
+
         /// <summary>One real poll: navigate the hidden WebView2 to the usage page, read the meter + reset label, update cached state, and publish. Never lets ticks stack, never throws out.</summary>
         private async Task TickAsync()
         {
