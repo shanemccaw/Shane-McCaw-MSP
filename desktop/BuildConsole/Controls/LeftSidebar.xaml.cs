@@ -1583,7 +1583,7 @@ namespace BuildConsole.Controls
             var epicById = _chatEpicById;
             // Focus Mode — hard-hide chats that don't belong to the active milestone
             // (resolved via the chat's issue / epic issue number). Off-focus = all chats.
-            var focusChats = board.Chats
+            var focusChats = _lastBoardChats
                 .Where(c => BuildConsole.Services.FocusModeService.Instance.IsChatInFocus(c))
                 .ToList();
             var byEpic = focusChats.Where(c => c.EpicId.HasValue).GroupBy(c => c.EpicId!.Value);
