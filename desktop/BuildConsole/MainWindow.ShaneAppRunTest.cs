@@ -62,82 +62,111 @@ namespace BuildConsole
         /// </summary>
         private async Task HandleShaneAppRunTestAsync(BuildConsole.Services.ShaneAppRequest req, string src, string ch)
         {
-            // The manifest to run rides in ?file= (a bare {feature}.json). ?ref= is
-            // accepted as a fallback alias so a caller reusing the executeSql-style param
-            // name still works.
-            string? fileArg = GetShaneAppQueryParam(req.Raw, "file");
-            if (string.IsNullOrWhiteSpace(fileArg)) fileArg = req.Ref;
+            // fileArg + manifestPath are declared OUTSIDE the top-level try so the absolute
+            // backstop catch at the bottom can still name the manifest in a guaranteed
+            // failure envelope even if an exception is thrown mid-resolution.
+            string? fileArg = null;
+            string? manifestPath = null;
 
-            if (string.IsNullOrWhiteSpace(fileArg))
-            {
-                BuildConsole.Services.ActivityLog.Log(ch, "runTest called with no file= manifest filename — nothing to run.");
-                WriteShaneAppRunTestResult(req, fileArg, ok: false, error: "no file= manifest filename supplied", manifestPath: null, result: null);
-                return;
-            }
-
-            string? repoRoot = BuildConsole.Services.BuildTrackerConfig.FindRepoRoot();
-            if (repoRoot == null)
-            {
-                BuildConsole.Services.ActivityLog.Log(ch,
-                    "runTest: no repo root found (missing scripts\\build-queue-watcher.config.json) — can't locate test-manifests/.");
-                WriteShaneAppRunTestResult(req, fileArg, ok: false, error: "no repo root found — can't locate test-manifests/", manifestPath: null, result: null);
-                return;
-            }
-
-            string? manifestPath = ResolveManifestPath(repoRoot, fileArg!);
-            var manifest = manifestPath != null ? BuildConsole.Services.TestManifest.LoadFromFile(manifestPath) : null;
-            if (manifest == null)
-            {
-                BuildConsole.Services.ActivityLog.Log(ch,
-                    $"runTest: manifest not found or unparseable: '{fileArg}' (searched recursively under {Path.Combine(repoRoot, "test-manifests")}).");
-                WriteShaneAppRunTestResult(req, fileArg, ok: false, error: $"manifest not found or unparseable: {fileArg}", manifestPath: manifestPath, result: null);
-                return;
-            }
-
-            // See the file header: hold the same latch #898's remote poll uses — both for
-            // mutual exclusion on the single shared runner AND to make RunManifestAsync run
-            // headless (no blocking device-code / screenshot-review modals). This flag is
-            // only ever touched on the UI thread (here and in TestTriggerTickAsync), and
-            // this check-and-set runs before any await, so it can't race that poll.
-            if (_testTriggerBusy)
-            {
-                BuildConsole.Services.ActivityLog.Log(ch,
-                    $"runTest: a test run is already in progress — refusing concurrent run of '{fileArg}'. Retry shortly.");
-                WriteShaneAppRunTestResult(req, fileArg, ok: false, error: "a test run is already in progress — retry shortly", manifestPath: manifestPath, result: null);
-                return;
-            }
-
-            _testTriggerBusy = true;
-            var sw = System.Diagnostics.Stopwatch.StartNew();
+            // TOP-LEVEL GUARANTEE: this entire path is wrapped so that ANY failure — not
+            // just one inside the run itself — still produces a result envelope. This
+            // mirrors executeSql's "never silently no-op" contract: the original bug that
+            // stranded Shane's poll was a URI that reached this app but produced no envelope,
+            // so an agent polling the result file must NEVER be able to hang on an unhandled
+            // exception occurring anywhere between URI receipt and the intended write.
             try
             {
+                // The manifest to run rides in ?file= (a bare {feature}.json). ?ref= is
+                // accepted as a fallback alias so a caller reusing the executeSql-style param
+                // name still works.
+                fileArg = GetShaneAppQueryParam(req.Raw, "file");
+                if (string.IsNullOrWhiteSpace(fileArg)) fileArg = req.Ref;
+
+                if (string.IsNullOrWhiteSpace(fileArg))
+                {
+                    BuildConsole.Services.ActivityLog.Log(ch, "runTest called with no file= manifest filename — nothing to run.");
+                    WriteShaneAppRunTestResult(req, fileArg, ok: false, error: "no file= manifest filename supplied", manifestPath: null, result: null);
+                    return;
+                }
+
+                string? repoRoot = BuildConsole.Services.BuildTrackerConfig.FindRepoRoot();
+                if (repoRoot == null)
+                {
+                    BuildConsole.Services.ActivityLog.Log(ch,
+                        "runTest: no repo root found (missing scripts\\build-queue-watcher.config.json) — can't locate test-manifests/.");
+                    WriteShaneAppRunTestResult(req, fileArg, ok: false, error: "no repo root found — can't locate test-manifests/", manifestPath: null, result: null);
+                    return;
+                }
+
+                manifestPath = ResolveManifestPath(repoRoot, fileArg!);
+                var manifest = manifestPath != null ? BuildConsole.Services.TestManifest.LoadFromFile(manifestPath) : null;
+                if (manifest == null)
+                {
+                    BuildConsole.Services.ActivityLog.Log(ch,
+                        $"runTest: manifest not found or unparseable: '{fileArg}' (searched recursively under {Path.Combine(repoRoot, "test-manifests")}).");
+                    WriteShaneAppRunTestResult(req, fileArg, ok: false, error: $"manifest not found or unparseable: {fileArg}", manifestPath: manifestPath, result: null);
+                    return;
+                }
+
+                // Stage: manifest successfully resolved + parsed.
                 BuildConsole.Services.ActivityLog.Log(ch,
-                    $"runTest running manifest #{manifest.Issue} ({manifest.Feature}) from {manifestPath} (src='{src}')…");
+                    $"runTest: manifest resolved -> {manifestPath} (#{manifest.Issue} {manifest.Feature}).");
 
-                var result = await RunManifestAsync(manifest, isRegression: false);
+                // See the file header: hold the same latch #898's remote poll uses — both for
+                // mutual exclusion on the single shared runner AND to make RunManifestAsync run
+                // headless (no blocking device-code / screenshot-review modals). This flag is
+                // only ever touched on the UI thread (here and in TestTriggerTickAsync), and
+                // this check-and-set runs before any await, so it can't race that poll.
+                if (_testTriggerBusy)
+                {
+                    BuildConsole.Services.ActivityLog.Log(ch,
+                        $"runTest: a test run is already in progress — refusing concurrent run of '{fileArg}'. Retry shortly.");
+                    WriteShaneAppRunTestResult(req, fileArg, ok: false, error: "a test run is already in progress — retry shortly", manifestPath: manifestPath, result: null);
+                    return;
+                }
 
-                int total = result.Steps.Count;
-                int passed = result.Steps.Count(s => s.Passed);
-                // A step-ful run is "ok" only when every step passed. A step-less manifest
-                // genuinely ran with nothing to assert — report ok, but leave the counts
-                // at zero so the caller can tell it asserted nothing.
-                bool ok = total == 0 || passed == total;
-                string? error = total == 0
-                    ? null
-                    : (passed == total ? null : $"{total - passed} of {total} step(s) failed");
+                _testTriggerBusy = true;
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                try
+                {
+                    BuildConsole.Services.ActivityLog.Log(ch,
+                        $"runTest running manifest #{manifest.Issue} ({manifest.Feature}) from {manifestPath} (src='{src}')…");
 
-                WriteShaneAppRunTestResult(req, fileArg, ok, error, manifestPath, result);
-                BuildConsole.Services.ActivityLog.Log(ch,
-                    $"runTest done in {sw.ElapsedMilliseconds}ms: {passed}/{total} step(s) passed. Result -> {ResolveRunTestResultPath(req, fileArg!)}");
+                    var result = await RunManifestAsync(manifest, isRegression: false);
+
+                    int total = result.Steps.Count;
+                    int passed = result.Steps.Count(s => s.Passed);
+                    // A step-ful run is "ok" only when every step passed. A step-less manifest
+                    // genuinely ran with nothing to assert — report ok, but leave the counts
+                    // at zero so the caller can tell it asserted nothing.
+                    bool ok = total == 0 || passed == total;
+                    string? error = total == 0
+                        ? null
+                        : (passed == total ? null : $"{total - passed} of {total} step(s) failed");
+
+                    WriteShaneAppRunTestResult(req, fileArg, ok, error, manifestPath, result);
+                    BuildConsole.Services.ActivityLog.Log(ch,
+                        $"runTest done in {sw.ElapsedMilliseconds}ms: {passed}/{total} step(s) passed. Result -> {ResolveRunTestResultPath(req, fileArg!)}");
+                }
+                catch (Exception ex)
+                {
+                    WriteShaneAppRunTestResult(req, fileArg, ok: false, error: ex.Message, manifestPath: manifestPath, result: null);
+                    BuildConsole.Services.ActivityLog.Log(ch, $"runTest FAILED after {sw.ElapsedMilliseconds}ms: {ex.Message}");
+                }
+                finally
+                {
+                    _testTriggerBusy = false;
+                }
             }
             catch (Exception ex)
             {
-                WriteShaneAppRunTestResult(req, fileArg, ok: false, error: ex.Message, manifestPath: manifestPath, result: null);
-                BuildConsole.Services.ActivityLog.Log(ch, $"runTest FAILED after {sw.ElapsedMilliseconds}ms: {ex.Message}");
-            }
-            finally
-            {
-                _testTriggerBusy = false;
+                // Absolute backstop: any exception thrown OUTSIDE the run's own try/catch
+                // above (e.g. during manifest resolution or the busy check) still yields a
+                // result envelope so the caller's poll never hangs. The inner catch already
+                // handles run-time failures and never rethrows, so this won't double-write on
+                // the normal path.
+                BuildConsole.Services.ActivityLog.Log(ch, $"runTest handler threw (backstop caught, writing failure envelope): {ex.Message}");
+                WriteShaneAppRunTestResult(req, fileArg, ok: false, error: $"runTest handler error: {ex.Message}", manifestPath: manifestPath, result: null);
             }
         }
 
