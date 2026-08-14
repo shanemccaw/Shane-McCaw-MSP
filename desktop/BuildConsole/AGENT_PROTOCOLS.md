@@ -269,3 +269,77 @@ never touch those two; they only `POST … /test-run` and `GET … /test-run/:ru
 Route source: `artifacts/api-server/src/routes/admin-test-trigger.ts`. BuildConsole
 side: `TestTriggerTickAsync` in `MainWindow.xaml.cs`, `GetNextTestRunAsync` /
 `CompleteTestRunAsync` in `Services/BuildTrackerApiClient.cs`.
+
+---
+
+## 4. Trigger the real deploy (pull + restart) and WAIT for it — `trigger-deploy-and-wait.ps1`
+
+The convenient one-command trigger for the server-side deploy step that already
+exists but had no shell caller: **build lands → push → tell the dev server to
+`git pull` + restart → confirm the new code is genuinely live** before running
+tests against it. This is the missing piece between "I pushed" and "the dev
+server is actually running what I pushed".
+
+It wraps two real endpoints (both under `/api`), using the **same bearer token**
+every other admin-deploy call uses (`BUILD_TRACKER_INGEST_TOKEN`, via
+`requireAdminOrIngestToken`):
+
+| Endpoint | Git # | Source | Role |
+|----------|-------|--------|------|
+| `POST /api/admin/deploy/build-complete` | #911 | `artifacts/api-server/src/routes/admin-deploy-console.ts` | Does the real `git pull --ff-only` then schedules the server restart so the pulled commit is actually loaded. |
+| `GET /api/internal/deploy-status` | #805 | `artifacts/api-server/src/routes/version.ts` | Reports the running server's current `commitHash` — the thing we poll for a change. |
+
+### Why it polls instead of trusting the POST
+
+#911's restart is **deliberately deferred + detached** — it kills PID 1 behind a
+short sleep so the HTTP response flushes first, then the connection drops. The
+endpoint therefore **never waits** for the server to come back; a `200` only
+means "accepted, restart scheduled". The only real proof the new code is live is
+the reported `commitHash` **flipping** from what it was before. So the script:
+
+1. `GET /api/internal/deploy-status` → captures the **old** commit hash first.
+2. `POST /api/admin/deploy/build-complete` (Bearer token) → triggers pull+restart.
+   A dropped/failed connection here is expected and tolerated (per #911).
+3. Polls `GET /api/internal/deploy-status` every few seconds — treating the
+   server being unreachable (mid-restart) as "keep waiting" — until the hash
+   **changes**, or a timeout.
+4. Prints old hash, new hash, and **real elapsed time**, so you know definitively
+   the dev server is on your latest push before moving on to tests.
+
+### How to invoke it (PowerShell)
+
+```powershell
+# After your build has pushed to origin/main:
+.\trigger-deploy-and-wait.ps1
+```
+
+`ApiBaseUrl` and the ingest token default to the **same
+`scripts/build-queue-watcher.config.json`** BuildConsole itself reads
+(`apiBaseUrl` / `ingestToken`); the token also falls back to
+`$env:BUILD_TRACKER_INGEST_TOKEN`. Override either explicitly if needed:
+
+```powershell
+.\trigger-deploy-and-wait.ps1 -ApiBaseUrl https://your-dev-server -TimeoutSeconds 240
+```
+
+If a schema change must land with the deploy, pass CREATE/ALTER/INSERT-only SQL —
+#911 hard-rejects anything else and applies it in one transaction before the
+pull. Per this repo's DB rule, **only Shane supplies this SQL**:
+
+```powershell
+.\trigger-deploy-and-wait.ps1 -SchemaSqlFile ..\..\lib\db\migrations\manual\0042-add-thing.sql
+```
+
+### Exit codes & output
+
+- **Exit 0** — a green `DEPLOY CONFIRMED` block with old hash → new hash → elapsed.
+  The dev server is provably on the new code.
+- **Exit 1** — either `build-complete` reported a real failure (e.g. `git pull`
+  diverged, or the schema SQL rolled back — no restart was scheduled), **or** the
+  hash never flipped within the timeout (nothing new to pull, or the restart
+  didn't complete). Either way it says plainly the server is **not** confirmed on
+  new code, so you don't run tests against stale code by mistake.
+
+### Logging
+Server-side logging is already wired by both routes (`admin.deploy` and
+`testing.deploy-poll` channels) — the script itself adds none.
