@@ -37,7 +37,10 @@ namespace BuildConsole
                 _immersive.Init(
                     _queueWatcher,
                     () => BuildQueuePanel.CurrentQueueItems,
-                    openIssue: n => { FocusModeService.Instance.ExitImmersive(); OpenChatForIssue(n); },
+                    // Local #47 — a linked child's real chat loads into the immersive centre
+                    // panel IN PLACE (same WebView2 session the normal tabs use), staying
+                    // immersive; this no longer exits to the normal tab bar.
+                    buildChatView: BuildImmersiveChatView,
                     openMilestone: n => { FocusModeService.Instance.ExitImmersive(); OnFocusMilestoneOpen(n); },
                     openBuildWatch: OpenOrFocusBuildWatch,
                     takeSuggestion: s => { FocusModeService.Instance.ExitImmersive(); OnFocusSuggestionActivated(s); });

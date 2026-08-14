@@ -1669,6 +1669,37 @@ namespace BuildConsole
         }
 
         // ── Git #802: chat tabs (own WebView2 per chat) + build split pane ──────
+        /// <summary>
+        /// Builds a fully-wired Claude chat WebView2 for a BoardChat — the exact same
+        /// configuration OpenChatTab uses (nav handlers, builder-button injection, and the
+        /// Git #852 navigate-once-on-first-Loaded guard). Extracted so the immersive Focus
+        /// view (local #47) can host the SAME real chat session in its own centre panel
+        /// instead of forcing a normal tab open (which used to exit immersive mode).
+        /// </summary>
+        public Microsoft.Web.WebView2.Wpf.WebView2 BuildChatWebView(BuildConsole.Services.BoardChat chat)
+        {
+            var wv = new Microsoft.Web.WebView2.Wpf.WebView2();
+            wv.NavigationStarting  += WebView_NavigationStarting;
+            wv.NavigationCompleted += WebView_NavigationCompleted;
+            wv.SourceChanged       += WebView_SourceChanged;
+            // Git #852 — see OpenWebTab's identical fix: Loaded fires again
+            // every time this tab becomes active (WPF TabControl detaches/
+            // reattaches Content on switch), not just once - `navigated`
+            // stops the chat from reloading itself back to its landing URL
+            // every time Shane switches back to it.
+            bool navigated = false;
+            wv.Loaded += async (s, e) =>
+            {
+                await InjectBuilderButtonsAsync(wv);
+                if (!navigated && wv.CoreWebView2 != null)
+                {
+                    navigated = true;
+                    wv.CoreWebView2.Navigate(chat.ClaudeUrl);
+                }
+            };
+            return wv;
+        }
+
         public void OpenChatTab(BuildConsole.Services.BoardChat chat, int? githubNumber)
         {
             // Dedupe on the chat's own id, not the URL - a chat's ClaudeUrl
@@ -1703,25 +1734,7 @@ namespace BuildConsole
             };
             headerPanel.Children.Add(closeBtn);
 
-            var wv = new Microsoft.Web.WebView2.Wpf.WebView2();
-            wv.NavigationStarting  += WebView_NavigationStarting;
-            wv.NavigationCompleted += WebView_NavigationCompleted;
-            wv.SourceChanged       += WebView_SourceChanged;
-            // Git #852 — see OpenWebTab's identical fix: Loaded fires again
-            // every time this tab becomes active (WPF TabControl detaches/
-            // reattaches Content on switch), not just once - `navigated`
-            // stops the chat from reloading itself back to its landing URL
-            // every time Shane switches back to it.
-            bool navigated = false;
-            wv.Loaded += async (s, e) =>
-            {
-                await InjectBuilderButtonsAsync(wv);
-                if (!navigated && wv.CoreWebView2 != null)
-                {
-                    navigated = true;
-                    wv.CoreWebView2.Navigate(chat.ClaudeUrl);
-                }
-            };
+            var wv = BuildChatWebView(chat);
 
             // Split grid: chat WebView2 in column 0, build output pane in
             // column 1 (starts collapsed - PollChatTabBuildStateAsync opens it
@@ -1962,6 +1975,25 @@ namespace BuildConsole
                 return;
             }
             OpenChatTab(chat, githubNumber);
+        }
+
+        /// <summary>
+        /// Local #47 — resolve the Claude chat linked to a child issue and return a
+        /// ready-to-host chat WebView2 for the immersive Focus view's OWN centre panel.
+        /// Returns null (and toasts) when no chat is linked yet, so the immersive view can
+        /// fall back to its own calm empty state. Crucially this does NOT touch the normal
+        /// tab bar and does NOT exit immersive mode — that exit-then-open-in-main-tabs
+        /// behaviour (via OpenChatForIssue) was the whole bug this fixes.
+        /// </summary>
+        public Microsoft.Web.WebView2.Wpf.WebView2? BuildImmersiveChatView(int githubNumber)
+        {
+            var chat = LeftSidebar.FindChatForIssue(githubNumber);
+            if (chat == null)
+            {
+                ToastEngine.Warning("Open Chat", $"No chat linked to #{githubNumber} yet.");
+                return null;
+            }
+            return BuildChatWebView(chat);
         }
 
         /// <summary>Git #874 — "Where you left off" click: reconstruct the BoardChat identity from the persisted snapshot and open/focus it through the same OpenChatTab path (dedupes on ConversationId).</summary>

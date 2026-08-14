@@ -23,12 +23,18 @@ namespace BuildConsole.Controls
     {
         private QueueWatcherService? _watcher;
         private Func<IReadOnlyList<QueueItem>>? _queueItemsProbe;
-        private Action<int>? _openIssue;
+        private Func<int, UIElement?>? _buildChatView;
         private Action<int>? _openMilestone;
         private Action? _openBuildWatch;
         private Action<FocusSuggestion>? _takeSuggestion;
 
         private bool _active;
+
+        // Local #47 — while a linked child's chat is loaded into the centre panel, we're in
+        // "chat mode": the auto-follow build logic must not yank the centre back to a
+        // transcript/empty state, and the transcript pump stays parked.
+        private bool _chatMode;
+        private int? _loadedChatIssue;
         private DispatcherTimerLike? _refreshTimer;
         private DispatcherTimerLike? _pumpTimer;
 
@@ -46,14 +52,14 @@ namespace BuildConsole.Controls
         public void Init(
             QueueWatcherService? watcher,
             Func<IReadOnlyList<QueueItem>> queueItemsProbe,
-            Action<int> openIssue,
+            Func<int, UIElement?> buildChatView,
             Action<int> openMilestone,
             Action openBuildWatch,
             Action<FocusSuggestion> takeSuggestion)
         {
             _watcher = watcher;
             _queueItemsProbe = queueItemsProbe;
-            _openIssue = openIssue;
+            _buildChatView = buildChatView;
             _openMilestone = openMilestone;
             _openBuildWatch = openBuildWatch;
             _takeSuggestion = takeSuggestion;
@@ -87,6 +93,7 @@ namespace BuildConsole.Controls
             _refreshTimer?.Stop(); _refreshTimer = null;
             _pumpTimer?.Stop(); _pumpTimer = null;
             CharacterLayer.Stop();
+            ExitChatMode(); // local #47 — dispose any hosted chat WebView2 when leaving immersive
             _selectedBuildId = null;
             _transcriptCursor = 0;
             _buildChipSig = "";
@@ -217,20 +224,67 @@ namespace BuildConsole.Controls
 
         private void OnChildClicked(GitBoardIssue k)
         {
-            // If a build is running/queued for this child, focus its live transcript; else go open its chat.
+            // If a build is running for this child, focus its live transcript; otherwise load
+            // its linked Claude chat straight into THIS view's centre panel (local #47) — no
+            // main-tab navigation, no exit from immersive mode.
             var items = _queueItemsProbe?.Invoke() ?? Array.Empty<QueueItem>();
             var build = items.FirstOrDefault(i => i.GithubNumber == k.Number && (i.Status == "running" || i.Status == "queued"));
             if (build != null && build.Status == "running")
             {
-                ShowEmptyState(false);
-                SelectBuild(build);
+                SelectBuild(build); // clears chat mode + shows the transcript
                 ActivityLog.Log("focus-mode", $"immersive: focused live build for child #{k.Number}");
             }
             else
             {
-                ActivityLog.Log("focus-mode", $"immersive: opening child #{k.Number} from the epic children list");
-                _openIssue?.Invoke(k.Number);
+                LoadChatForChild(k.Number);
             }
+        }
+
+        /// <summary>Local #47 — load a child's linked chat into the immersive centre panel in
+        /// place, staying immersive. Reuses the real WebView2 chat session the normal tabs
+        /// build (MainWindow hands one back via the buildChatView callback).</summary>
+        private void LoadChatForChild(int githubNumber)
+        {
+            // Already showing this child's chat — nothing to do (don't rebuild the WebView2).
+            if (_chatMode && _loadedChatIssue == githubNumber && ChatHost.Child != null) return;
+
+            var view = _buildChatView?.Invoke(githubNumber);
+            if (view == null)
+            {
+                // No linked chat (MainWindow already toasted) — stay put, don't exit immersive.
+                ActivityLog.Log("focus-mode", $"immersive: child #{githubNumber} has no linked chat to load");
+                return;
+            }
+
+            // Swap in the new chat session, disposing any prior one.
+            if (ChatHost.Child is IDisposable prev) { try { prev.Dispose(); } catch { } }
+            ChatHost.Child = view;
+            _loadedChatIssue = githubNumber;
+            EnterChatMode();
+            ActivityLog.Log("focus-mode", $"immersive: loaded linked chat for child #{githubNumber} into the centre panel (stayed immersive)");
+        }
+
+        private void EnterChatMode()
+        {
+            _chatMode = true;
+            // Park the transcript pump — nothing should append into the now-hidden panel.
+            _selectedBuildId = null;
+            _transcriptCursor = 0;
+            EmptyStatePanel.Visibility = Visibility.Collapsed;
+            TranscriptScroller.Visibility = Visibility.Collapsed;
+            ChatHost.Visibility = Visibility.Visible;
+            UpdateSendEnabled(); // the immersive Send box has no owned build selected → disables
+            UpdateBuildChipSelection();
+        }
+
+        private void ExitChatMode()
+        {
+            if (!_chatMode) return;
+            _chatMode = false;
+            ChatHost.Visibility = Visibility.Collapsed;
+            if (ChatHost.Child is IDisposable prev) { try { prev.Dispose(); } catch { } }
+            ChatHost.Child = null;
+            _loadedChatIssue = null;
         }
 
         // ================================================================
@@ -253,6 +307,15 @@ namespace BuildConsole.Controls
             {
                 _buildChipSig = sig;
                 RebuildBuildChips(running, queued);
+            }
+
+            // Local #47 — a linked chat is loaded in the centre. Chips + status still refresh
+            // above, but don't let the auto-follow logic pull the centre back to a
+            // transcript/empty state; Shane leaves chat mode by picking a running build chip.
+            if (_chatMode)
+            {
+                UpdateBuildChipSelection();
+                return;
             }
 
             if (running.Count == 0)
@@ -313,7 +376,7 @@ namespace BuildConsole.Controls
                 IsEnabled = isRunning,
                 ToolTip = isRunning ? "Show this build's live transcript" : "Queued — waiting for a free slot"
             };
-            if (isRunning) btn.Click += (_, _) => { ShowEmptyState(false); SelectBuild(b); };
+            if (isRunning) btn.Click += (_, _) => SelectBuild(b); // SelectBuild leaves chat mode + shows the transcript
             return btn;
         }
 
@@ -329,6 +392,9 @@ namespace BuildConsole.Controls
 
         private void SelectBuild(QueueItem? b)
         {
+            // Selecting a live build means leaving any loaded chat behind (local #47).
+            ExitChatMode();
+            ShowEmptyState(false);
             int? newId = b?.Id;
             if (newId == _selectedBuildId) { UpdateSendEnabled(); return; }
             _selectedBuildId = newId;
