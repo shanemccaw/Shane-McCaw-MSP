@@ -55,6 +55,11 @@ namespace BuildConsole
         // ── Claude usage meter (background WebView2 poll of claude.ai/settings/usage) ──
         private BuildConsole.Services.ClaudeUsageMeterService? _usageMeter;
 
+        // ── Animated startup loading overlay — honest per-connection progress while the
+        //    real launch connections (Build Tracker board / in-flight / queue / deploy +
+        //    Claude usage meter) settle; fades to Home once all are done or timed out. ──
+        private BuildConsole.Services.StartupConnectivityService? _startupConnectivity;
+
         // ── Git #967: background scheduled regression-suite runs + on-failure push alert ──
         private BuildConsole.Services.RegressionScheduleService? _regressionScheduler;
 
@@ -498,6 +503,13 @@ namespace BuildConsole
             // taking a tab slot. Deferred to Loaded priority so the canvas has real
             // layout extents (and the x:Named chip buttons exist) before content mounts.
             Dispatcher.BeginInvoke(new Action(SeedPinnedWebChips), System.Windows.Threading.DispatcherPriority.Loaded);
+
+            // Animated startup loading overlay (StartupOverlay in XAML, already painting
+            // its running-character animation). Build its honest per-connection rows and
+            // kick off the real probes now that _buildTrackerApi + _usageMeter exist; it
+            // fades out to reveal Home once every real launch connection settles (or times
+            // out). See InitializeStartupOverlay for the full wiring.
+            InitializeStartupOverlay();
         }
 
         protected override void OnSourceInitialized(EventArgs e)
@@ -1668,6 +1680,15 @@ namespace BuildConsole
             home.ResumeChatRequested += Home_ResumeChatRequested;
             home.RunningItemClicked  += (s, c) => { if (c.GithubNumber is int n) OpenChatForIssue(n); };
             home.DoneItemClicked     += (s, c) => { if (c.GithubNumber is int n) OpenChatForIssue(n); };
+            // Clear a stale/orphaned "Running now" row — cancel the queue item (same
+            // DELETE queue/{id} the Build Queue panel's right-click Cancel uses), then refresh.
+            home.ClearStuckItemRequested += async (s, c) =>
+            {
+                if (_buildTrackerApi == null || !_buildTrackerApi.IsConfigured) return;
+                try { await _buildTrackerApi.CancelQueueItemAsync(c.QueueItemId); }
+                catch { /* best-effort — a failed cancel just leaves the row, never crashes the glance screen */ }
+                await RefreshHomeRollupAsync(force: true);
+            };
             _homeView = home;
 
             var headerPanel = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
@@ -2167,6 +2188,50 @@ namespace BuildConsole
 
             UsageStatusText.Text = status.DisplayText;
             UsageStatusText.ToolTip = status.ToolTip;
+
+            // Feed the SAME real meter reading into the startup splash's "Claude usage"
+            // row (no-op once that row has already settled — the meter keeps polling for
+            // the status bar long after launch).
+            _startupConnectivity?.ReportUsageMeter(status);
+        }
+
+        // ── Animated startup loading overlay ────────────────────────────────────
+        /// <summary>
+        /// Builds the StartupOverlay's honest per-connection rows and starts the real
+        /// launch-connection probes (Build Tracker board / in-flight / queue / deploy via
+        /// the shared BuildTrackerApiClient, plus the observed Claude usage meter). Each
+        /// connection updates its own row as it settles; once every connection reaches a
+        /// terminal state (or the service's global cap fires), the overlay fades out and
+        /// is removed from the visual tree so it costs nothing after launch. Called at the
+        /// end of the constructor, after _buildTrackerApi + _usageMeter exist.
+        /// </summary>
+        private void InitializeStartupOverlay()
+        {
+            if (StartupOverlay == null) return;
+
+            _startupConnectivity = new BuildConsole.Services.StartupConnectivityService(_buildTrackerApi);
+
+            // Build one row per real connection, in order, before any probe reports in.
+            StartupOverlay.Initialize(_startupConnectivity.Connections);
+
+            // Per-connection repaint (marshals onto the UI thread itself).
+            _startupConnectivity.ConnectionChanged += status => StartupOverlay.UpdateConnection(status);
+
+            // All real connections settled → play the brief "Ready!" beat + fade-out.
+            _startupConnectivity.AllSettled += () => StartupOverlay.FadeOutAndDismiss();
+
+            // Fade-out finished → drop the overlay from the tree entirely.
+            StartupOverlay.DismissRequested += StartupOverlay_DismissRequested;
+
+            _startupConnectivity.Start();
+        }
+
+        private void StartupOverlay_DismissRequested()
+        {
+            if (StartupOverlay == null) return;
+            // Remove from the root Grid so it stops rendering/animating for good.
+            if (StartupOverlay.Parent is Panel parent)
+                parent.Children.Remove(StartupOverlay);
         }
 
         private static void TailBuildLog(ChatTabState state)

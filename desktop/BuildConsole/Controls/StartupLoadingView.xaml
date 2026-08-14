@@ -1,0 +1,227 @@
+<UserControl x:Class="BuildConsole.Controls.StartupLoadingView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="{StaticResource CrustBrush}">
+
+    <!-- Shane: "maybe the home screen is a really pretty animated loading thing…
+         like Donald Duck running across the screen until the connections to all
+         the apis are made." No licensed characters available, so this is an
+         ORIGINAL plucky egg-shaped runner ("Sprocket") sprinting in place while
+         the world scrolls past under it — the classic side-scroller "hero runs,
+         world moves" read of running-across-the-screen — with legs pumping, a
+         bob, speed lines and dust puffs. Below it: the honest, real per-connection
+         progress list this whole screen is actually waiting on. -->
+
+    <UserControl.Resources>
+        <LinearGradientBrush x:Key="BodyBrush" StartPoint="0,0" EndPoint="0.4,1">
+            <GradientStop Color="#F9E2AF" Offset="0"/>
+            <GradientStop Color="#FAB387" Offset="1"/>
+        </LinearGradientBrush>
+
+        <!-- Character bob + gentle forward lean/sway -->
+        <Storyboard x:Key="BobStoryboard" RepeatBehavior="Forever" AutoReverse="True">
+            <DoubleAnimation Storyboard.TargetName="CharBob" Storyboard.TargetProperty="Y"
+                             From="0" To="-16" Duration="0:0:0.36">
+                <DoubleAnimation.EasingFunction><SineEase EasingMode="EaseInOut"/></DoubleAnimation.EasingFunction>
+            </DoubleAnimation>
+            <DoubleAnimation Storyboard.TargetName="CharSway" Storyboard.TargetProperty="X"
+                             From="-10" To="10" Duration="0:0:0.72">
+                <DoubleAnimation.EasingFunction><SineEase EasingMode="EaseInOut"/></DoubleAnimation.EasingFunction>
+            </DoubleAnimation>
+            <DoubleAnimation Storyboard.TargetName="CharLean" Storyboard.TargetProperty="Angle"
+                             From="-4" To="4" Duration="0:0:0.72">
+                <DoubleAnimation.EasingFunction><SineEase EasingMode="EaseInOut"/></DoubleAnimation.EasingFunction>
+            </DoubleAnimation>
+        </Storyboard>
+
+        <!-- Legs pump in opposite phase -->
+        <Storyboard x:Key="LegStoryboard" RepeatBehavior="Forever" AutoReverse="True">
+            <DoubleAnimation Storyboard.TargetName="FrontLegRotate" Storyboard.TargetProperty="Angle"
+                             From="-38" To="34" Duration="0:0:0.36">
+                <DoubleAnimation.EasingFunction><SineEase EasingMode="EaseInOut"/></DoubleAnimation.EasingFunction>
+            </DoubleAnimation>
+            <DoubleAnimation Storyboard.TargetName="BackLegRotate" Storyboard.TargetProperty="Angle"
+                             From="34" To="-38" Duration="0:0:0.36">
+                <DoubleAnimation.EasingFunction><SineEase EasingMode="EaseInOut"/></DoubleAnimation.EasingFunction>
+            </DoubleAnimation>
+        </Storyboard>
+
+        <!-- Little wing flap -->
+        <Storyboard x:Key="WingStoryboard" RepeatBehavior="Forever" AutoReverse="True">
+            <DoubleAnimation Storyboard.TargetName="WingRotate" Storyboard.TargetProperty="Angle"
+                             From="12" To="-26" Duration="0:0:0.36">
+                <DoubleAnimation.EasingFunction><SineEase EasingMode="EaseInOut"/></DoubleAnimation.EasingFunction>
+            </DoubleAnimation>
+        </Storyboard>
+
+        <!-- Scrolling ground dashes: one pitch (72px) of leftward travel, looped -->
+        <Storyboard x:Key="GroundStoryboard" RepeatBehavior="Forever">
+            <DoubleAnimation Storyboard.TargetName="GroundScroll" Storyboard.TargetProperty="X"
+                             From="0" To="-72" Duration="0:0:0.36"/>
+        </Storyboard>
+
+        <!-- Speed lines whooshing past behind the runner -->
+        <Storyboard x:Key="SpeedStoryboard" RepeatBehavior="Forever">
+            <DoubleAnimation Storyboard.TargetName="Speed1T" Storyboard.TargetProperty="X" From="560" To="-160" Duration="0:0:0.7"/>
+            <DoubleAnimation Storyboard.TargetName="Speed1" Storyboard.TargetProperty="(UIElement.Opacity)" From="0" To="0.9" Duration="0:0:0.35" AutoReverse="True"/>
+            <DoubleAnimation Storyboard.TargetName="Speed2T" Storyboard.TargetProperty="X" From="560" To="-160" Duration="0:0:0.9" BeginTime="0:0:0.25"/>
+            <DoubleAnimation Storyboard.TargetName="Speed2" Storyboard.TargetProperty="(UIElement.Opacity)" From="0" To="0.7" Duration="0:0:0.45" BeginTime="0:0:0.25" AutoReverse="True"/>
+            <DoubleAnimation Storyboard.TargetName="Speed3T" Storyboard.TargetProperty="X" From="560" To="-160" Duration="0:0:0.8" BeginTime="0:0:0.45"/>
+            <DoubleAnimation Storyboard.TargetName="Speed3" Storyboard.TargetProperty="(UIElement.Opacity)" From="0" To="0.6" Duration="0:0:0.4" BeginTime="0:0:0.45" AutoReverse="True"/>
+        </Storyboard>
+
+        <!-- Dust puffs kicked up at the feet -->
+        <Storyboard x:Key="DustStoryboard" RepeatBehavior="Forever">
+            <DoubleAnimation Storyboard.TargetName="DustScale" Storyboard.TargetProperty="ScaleX" From="0.2" To="1.6" Duration="0:0:0.5"/>
+            <DoubleAnimation Storyboard.TargetName="DustScale" Storyboard.TargetProperty="ScaleY" From="0.2" To="1.6" Duration="0:0:0.5"/>
+            <DoubleAnimation Storyboard.TargetName="DustPuff" Storyboard.TargetProperty="(UIElement.Opacity)" From="0.5" To="0" Duration="0:0:0.5"/>
+            <DoubleAnimation Storyboard.TargetName="DustTranslate" Storyboard.TargetProperty="X" From="0" To="-46" Duration="0:0:0.5"/>
+        </Storyboard>
+    </UserControl.Resources>
+
+    <UserControl.Triggers>
+        <EventTrigger RoutedEvent="UserControl.Loaded">
+            <BeginStoryboard Storyboard="{StaticResource BobStoryboard}"/>
+            <BeginStoryboard Storyboard="{StaticResource LegStoryboard}"/>
+            <BeginStoryboard Storyboard="{StaticResource WingStoryboard}"/>
+            <BeginStoryboard Storyboard="{StaticResource GroundStoryboard}"/>
+            <BeginStoryboard Storyboard="{StaticResource SpeedStoryboard}"/>
+            <BeginStoryboard Storyboard="{StaticResource DustStoryboard}"/>
+        </EventTrigger>
+    </UserControl.Triggers>
+
+    <Grid>
+        <!-- Soft radial-ish vignette backdrop -->
+        <Grid.Background>
+            <RadialGradientBrush GradientOrigin="0.5,0.42" Center="0.5,0.42" RadiusX="0.75" RadiusY="0.9">
+                <GradientStop Color="#1E1E2E" Offset="0"/>
+                <GradientStop Color="#11111B" Offset="1"/>
+            </RadialGradientBrush>
+        </Grid.Background>
+
+        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Width="620">
+
+            <!-- Wordmark -->
+            <TextBlock Text="BuildConsole"
+                       FontSize="30" FontWeight="Bold"
+                       Foreground="{StaticResource TextBrush}"
+                       HorizontalAlignment="Center"/>
+            <TextBlock x:Name="PhraseText" Text="Warming up the flux capacitor…"
+                       FontSize="13" Foreground="{StaticResource Subtext1Brush}"
+                       HorizontalAlignment="Center" Margin="0,4,0,0"/>
+
+            <!-- ── The runner stage ──────────────────────────────────────── -->
+            <Canvas x:Name="Stage" Width="560" Height="200" Margin="0,18,0,10" ClipToBounds="True">
+
+                <!-- Speed lines (behind everything) -->
+                <Rectangle x:Name="Speed1" Canvas.Top="70" Width="120" Height="3" RadiusX="1.5" RadiusY="1.5"
+                           Fill="{StaticResource Surface2Brush}" Opacity="0">
+                    <Rectangle.RenderTransform><TranslateTransform x:Name="Speed1T" X="560"/></Rectangle.RenderTransform>
+                </Rectangle>
+                <Rectangle x:Name="Speed2" Canvas.Top="104" Width="90" Height="3" RadiusX="1.5" RadiusY="1.5"
+                           Fill="{StaticResource Surface1Brush}" Opacity="0">
+                    <Rectangle.RenderTransform><TranslateTransform x:Name="Speed2T" X="560"/></Rectangle.RenderTransform>
+                </Rectangle>
+                <Rectangle x:Name="Speed3" Canvas.Top="128" Width="140" Height="3" RadiusX="1.5" RadiusY="1.5"
+                           Fill="{StaticResource Surface2Brush}" Opacity="0">
+                    <Rectangle.RenderTransform><TranslateTransform x:Name="Speed3T" X="560"/></Rectangle.RenderTransform>
+                </Rectangle>
+
+                <!-- Ground line + scrolling dashes -->
+                <Line X1="0" Y1="168" X2="560" Y2="168" Stroke="{StaticResource Surface1Brush}" StrokeThickness="2"/>
+                <Canvas Canvas.Top="176">
+                    <Canvas.RenderTransform><TranslateTransform x:Name="GroundScroll" X="0"/></Canvas.RenderTransform>
+                    <!-- tiled dashes: pitch 72, drawn well past the 560 width so the -72 loop is seamless -->
+                    <Rectangle Canvas.Left="0"   Width="40" Height="4" RadiusX="2" RadiusY="2" Fill="{StaticResource Surface1Brush}"/>
+                    <Rectangle Canvas.Left="72"  Width="40" Height="4" RadiusX="2" RadiusY="2" Fill="{StaticResource Surface1Brush}"/>
+                    <Rectangle Canvas.Left="144" Width="40" Height="4" RadiusX="2" RadiusY="2" Fill="{StaticResource Surface1Brush}"/>
+                    <Rectangle Canvas.Left="216" Width="40" Height="4" RadiusX="2" RadiusY="2" Fill="{StaticResource Surface1Brush}"/>
+                    <Rectangle Canvas.Left="288" Width="40" Height="4" RadiusX="2" RadiusY="2" Fill="{StaticResource Surface1Brush}"/>
+                    <Rectangle Canvas.Left="360" Width="40" Height="4" RadiusX="2" RadiusY="2" Fill="{StaticResource Surface1Brush}"/>
+                    <Rectangle Canvas.Left="432" Width="40" Height="4" RadiusX="2" RadiusY="2" Fill="{StaticResource Surface1Brush}"/>
+                    <Rectangle Canvas.Left="504" Width="40" Height="4" RadiusX="2" RadiusY="2" Fill="{StaticResource Surface1Brush}"/>
+                    <Rectangle Canvas.Left="576" Width="40" Height="4" RadiusX="2" RadiusY="2" Fill="{StaticResource Surface1Brush}"/>
+                </Canvas>
+
+                <!-- Dust puff at the feet -->
+                <Ellipse x:Name="DustPuff" Canvas.Left="238" Canvas.Top="150" Width="26" Height="16"
+                         Fill="{StaticResource Surface2Brush}" Opacity="0">
+                    <Ellipse.RenderTransform>
+                        <TransformGroup>
+                            <ScaleTransform x:Name="DustScale" ScaleX="0.2" ScaleY="0.2" CenterX="13" CenterY="8"/>
+                            <TranslateTransform x:Name="DustTranslate" X="0"/>
+                        </TransformGroup>
+                    </Ellipse.RenderTransform>
+                </Ellipse>
+
+                <!-- ── Sprocket, the runner ── centered around x≈280, feet at y≈168 -->
+                <Canvas x:Name="Character" Canvas.Left="248" Canvas.Top="52">
+                    <Canvas.RenderTransform>
+                        <TransformGroup>
+                            <RotateTransform x:Name="CharLean" Angle="0" CenterX="32" CenterY="60"/>
+                            <TranslateTransform x:Name="CharBob" Y="0"/>
+                            <TranslateTransform x:Name="CharSway" X="0"/>
+                        </TransformGroup>
+                    </Canvas.RenderTransform>
+
+                    <!-- Back leg (behind body) -->
+                    <Rectangle Canvas.Left="26" Canvas.Top="74" Width="9" Height="34" RadiusX="4.5" RadiusY="4.5"
+                               Fill="#E8A33C">
+                        <Rectangle.RenderTransform><RotateTransform x:Name="BackLegRotate" Angle="20" CenterX="4.5" CenterY="2"/></Rectangle.RenderTransform>
+                    </Rectangle>
+                    <!-- Back foot -->
+                    <Ellipse Canvas.Left="18" Canvas.Top="104" Width="22" Height="9" Fill="#FAB387">
+                        <Ellipse.RenderTransform><RotateTransform Angle="20" CenterX="-8" CenterY="-30"/></Ellipse.RenderTransform>
+                    </Ellipse>
+
+                    <!-- Body -->
+                    <Ellipse Canvas.Left="6" Canvas.Top="20" Width="66" Height="80" Fill="{StaticResource BodyBrush}"
+                             Stroke="#E8A33C" StrokeThickness="1.5"/>
+                    <!-- Belly highlight -->
+                    <Ellipse Canvas.Left="18" Canvas.Top="46" Width="34" Height="46" Fill="#FDF3D0" Opacity="0.65"/>
+
+                    <!-- Wing -->
+                    <Path Fill="#F2C766" Data="M 44,44 C 66,40 74,58 60,74 C 52,66 46,56 44,44 Z">
+                        <Path.RenderTransform><RotateTransform x:Name="WingRotate" Angle="0" CenterX="46" CenterY="46"/></Path.RenderTransform>
+                    </Path>
+
+                    <!-- Head tuft (duck-ish, original) -->
+                    <Path Fill="#F2C766" Data="M 40,14 C 44,4 54,6 52,16 C 60,10 66,18 58,24 C 52,18 46,20 40,14 Z"/>
+
+                    <!-- Eye -->
+                    <Ellipse Canvas.Left="46" Canvas.Top="30" Width="16" Height="16" Fill="White"/>
+                    <Ellipse Canvas.Left="52" Canvas.Top="34" Width="7" Height="8" Fill="#11111B"/>
+                    <Ellipse Canvas.Left="53.5" Canvas.Top="35" Width="2.5" Height="2.5" Fill="White"/>
+
+                    <!-- Beak -->
+                    <Polygon Points="60,42 84,46 60,52" Fill="#FF9E3D" Stroke="#E8822A" StrokeThickness="0.75"/>
+
+                    <!-- Rosy cheek -->
+                    <Ellipse Canvas.Left="44" Canvas.Top="44" Width="10" Height="6" Fill="#F38BA8" Opacity="0.5"/>
+
+                    <!-- Front leg (in front of body) -->
+                    <Rectangle Canvas.Left="40" Canvas.Top="74" Width="9" Height="34" RadiusX="4.5" RadiusY="4.5"
+                               Fill="#F2B24A">
+                        <Rectangle.RenderTransform><RotateTransform x:Name="FrontLegRotate" Angle="-20" CenterX="4.5" CenterY="2"/></Rectangle.RenderTransform>
+                    </Rectangle>
+                    <!-- Front foot -->
+                    <Ellipse Canvas.Left="44" Canvas.Top="104" Width="22" Height="9" Fill="#FF9E3D">
+                        <Ellipse.RenderTransform><RotateTransform Angle="-20" CenterX="0" CenterY="-30"/></Ellipse.RenderTransform>
+                    </Ellipse>
+                </Canvas>
+            </Canvas>
+
+            <!-- ── Honest per-connection progress ────────────────────────── -->
+            <Border Background="{StaticResource MantleBrush}"
+                    BorderBrush="{StaticResource Surface0Brush}" BorderThickness="1"
+                    CornerRadius="10" Padding="18,14" Width="420" HorizontalAlignment="Center">
+                <StackPanel>
+                    <TextBlock Text="Connecting to services"
+                               FontSize="12" FontWeight="SemiBold"
+                               Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,8"/>
+                    <StackPanel x:Name="ConnectionList"/>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </Grid>
+</UserControl>

@@ -10,8 +10,52 @@
          same source as the Build Queue panel), "Done, waiting for you" (done
          builds whose GitHub issue is still open). Rows are built in code-behind
          (HomeView.xaml.cs) so each can carry its real BoardChat / GitHub-number
-         identity and click straight through to the originating chat tab. -->
+         identity and click straight through to the originating chat tab.
+
+         ADHD-scroll redesign — Shane: "it's a very long scroll list. NOT ADHD
+         friendly." What's New used to dump its full raw commit list (14+ bullets)
+         always-visible at the top, forcing a long scroll before the actionable
+         sections. It now collapses to ONE quiet count-badge tile (exact same
+         #874 QuietTile ToggleButton the Build Queue's In-Flight/Completed tiles
+         use — collapsed by default, expands in place on click), so the common
+         case fits on one glance; the three actionable sections stay visible and
+         prominent with count badges + hairline separators between them. -->
     <UserControl.Resources>
+        <!-- Git #874 — the exact quiet count-badge tile from the Build Queue
+             panel (BuildQueuePanel.xaml). A ToggleButton so IsChecked IS the
+             expanded state; the attached content Visibility is toggled in
+             code-behind off Click. Rest state matches the app's ordinary
+             Mantle/Surface0 hover language ("quiet"). Same style, verbatim, so
+             the Home tab and the right panel read as one system. -->
+        <Style x:Key="QuietTile" TargetType="{x:Type ToggleButton}">
+            <Setter Property="Background"      Value="{StaticResource MantleBrush}"/>
+            <Setter Property="BorderBrush"     Value="{StaticResource Surface0Brush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Foreground"      Value="{StaticResource Subtext0Brush}"/>
+            <Setter Property="Padding"         Value="10,8"/>
+            <Setter Property="Cursor"          Value="Hand"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type ToggleButton}">
+                        <Border x:Name="Bd"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="6"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource Surface0Brush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <!-- Clickable roll-up row — same Mantle/Surface0 hover language as the
              panel's QuietTile, so the whole page reads as one system. -->
         <Style x:Key="HomeRow" TargetType="{x:Type Border}">
@@ -35,6 +79,16 @@
             <Setter Property="Foreground" Value="{StaticResource Subtext1Brush}"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
         </Style>
+
+        <!-- Hairline separator between the three actionable sections — the same
+             Surface0 divider weight the Build Queue panel puts between its
+             primary sections (#874), giving each section real visual breathing
+             room instead of one undifferentiated scroll. -->
+        <Style x:Key="HomeDivider" TargetType="{x:Type Border}">
+            <Setter Property="Height" Value="1"/>
+            <Setter Property="Background" Value="{StaticResource Surface0Brush}"/>
+            <Setter Property="Margin" Value="0,0,0,18"/>
+        </Style>
     </UserControl.Resources>
 
     <Border Background="{StaticResource BaseBrush}">
@@ -49,28 +103,49 @@
                 </StackPanel>
                 <TextBlock Text="Pick up where you left off — what's running, and what's waiting on you."
                            FontSize="12" Foreground="{StaticResource Subtext1Brush}"
-                           TextWrapping="Wrap" Margin="0,0,0,20"/>
+                           TextWrapping="Wrap" Margin="0,0,0,18"/>
 
-                <!-- ══ 0. WHAT'S NEW ══  (video-game-patch-notes style)
+                <!-- ══ 0. WHAT'S NEW ══  (video-game-patch-notes style, now collapsed by default)
                      Shows the real first-line commit titles for BuildConsole that
                      landed since the last launch (VersionInfo.GetNewCommitTitles,
-                     reusing the same #992 git-commit-count build number). Collapsed
-                     entirely when there's nothing new — a light bullet list, not a
-                     verbose changelog. Sits above everything else because it's the
-                     "here's what changed in the copy you just opened" glance. -->
-                <StackPanel x:Name="WhatsNewSection" Margin="0,0,0,20" Visibility="Collapsed">
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                        <TextBlock Text="✨" FontSize="13" VerticalAlignment="Center" Margin="0,0,6,0"
-                                   Foreground="#C6A0F6"/>
-                        <TextBlock Text="WHAT'S NEW" Style="{StaticResource HomeSectionHeader}"/>
-                        <TextBlock x:Name="WhatsNewVersionText" Text="" FontSize="11" Margin="6,0,0,0"
-                                   VerticalAlignment="Center" Foreground="{StaticResource Subtext1Brush}"/>
-                    </StackPanel>
-                    <StackPanel x:Name="WhatsNewList"/>
+                     reusing the same #992 git-commit-count build number). ADHD-scroll
+                     redesign: instead of dumping the whole bullet list inline (14+
+                     rows above everything actionable), this is now a single quiet
+                     count-badge tile — "N changes since you last looked" — collapsed
+                     by default, expanding in place on click to reveal the real full
+                     list. Same #874 QuietTile shape as the Build Queue panel's
+                     In-Flight/Completed tiles. The whole section stays Collapsed when
+                     there's nothing new (a launch with no new commits shows no box). -->
+                <StackPanel x:Name="WhatsNewSection" Margin="0,0,0,18" Visibility="Collapsed">
+                    <ToggleButton x:Name="WhatsNewTile" Style="{StaticResource QuietTile}" Click="WhatsNewTile_Click">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="✨" FontSize="13" VerticalAlignment="Center" Margin="0,0,8,0"
+                                       Foreground="#C6A0F6"/>
+                            <TextBlock Text="What's New" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="WhatsNewSummaryText" Text="" FontSize="11" Margin="6,0,0,0"
+                                       VerticalAlignment="Center" Foreground="{StaticResource Subtext1Brush}"/>
+                        </StackPanel>
+                    </ToggleButton>
+                    <!-- Collapsed-by-default content, visually attached below the tile
+                         (BorderThickness 1,0,1,1 + CornerRadius 0,0,6,6) — exactly the
+                         #874 tile-content treatment. -->
+                    <Border x:Name="WhatsNewContent"
+                            Visibility="Collapsed"
+                            Background="{StaticResource MantleBrush}"
+                            BorderBrush="{StaticResource Surface0Brush}"
+                            BorderThickness="1,0,1,1"
+                            Padding="10,8"
+                            CornerRadius="0,0,6,6">
+                        <StackPanel>
+                            <TextBlock x:Name="WhatsNewVersionText" Text="" FontSize="10" Margin="0,0,0,6"
+                                       Foreground="{StaticResource Subtext1Brush}"/>
+                            <StackPanel x:Name="WhatsNewList"/>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
 
                 <!-- ══ 1. WHERE YOU LEFT OFF ══ -->
-                <StackPanel Margin="0,0,0,20">
+                <StackPanel Margin="0,0,0,18">
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                         <TextBlock Text="🕘" FontSize="13" VerticalAlignment="Center" Margin="0,0,6,0"/>
                         <TextBlock Text="WHERE YOU LEFT OFF" Style="{StaticResource HomeSectionHeader}"/>
@@ -83,8 +158,16 @@
                                TextWrapping="Wrap" Margin="2,2,0,0" Visibility="Collapsed"/>
                 </StackPanel>
 
-                <!-- ══ 2. RUNNING NOW ══ -->
-                <StackPanel Margin="0,0,0,20">
+                <Border Style="{StaticResource HomeDivider}"/>
+
+                <!-- ══ 2. RUNNING NOW ══
+                     Stale-entry detection (Shane's screenshot bug): a "running" row
+                     whose UpdatedAt is ≥60 min old (or absent) is an orphan from a
+                     failed launch, not a live build — RenderRunning flags those with a
+                     ⚠ amber treatment + "likely stuck" subtitle + a ✕ clear button
+                     (cancels the queue item) instead of rendering them identically to a
+                     genuinely active build. -->
+                <StackPanel Margin="0,0,0,18">
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                         <TextBlock Text="▶" FontSize="13" VerticalAlignment="Center" Margin="0,0,6,0"
                                    Foreground="#F2CA63"/>
@@ -97,6 +180,8 @@
                                FontSize="11" Foreground="{StaticResource Subtext1Brush}"
                                TextWrapping="Wrap" Margin="2,2,0,0" Visibility="Collapsed"/>
                 </StackPanel>
+
+                <Border Style="{StaticResource HomeDivider}"/>
 
                 <!-- ══ 3. DONE, WAITING FOR YOU ══
                      Announces itself (PeachBrush) once count > 0, exactly like the
