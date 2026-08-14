@@ -109,6 +109,14 @@ namespace BuildConsole.Services
         private DateTime? _lastPoll;
         private ClaudeUsageMeterState _lastState = ClaudeUsageMeterState.Unavailable;
 
+        // ── projected "time until 100%" (real observed growth rate, current window only) ──
+        // Anchored exactly like _resetTarget: an absolute LOCAL datetime the estimate points AT,
+        // so the between-poll display timer can tick it down live against DateTime.Now the same
+        // way the reset countdown does, without recomputing the rate. Null until there's enough
+        // data in the current reset window to make a meaningful projection.
+        private DateTime? _projectedFullTarget;
+        private double _projectedRatePerHour;
+
         public event Action<ClaudeUsageStatus>? StatusChanged;
 
         public ClaudeUsageMeterService(WebView2 webView, Func<WebView2, Task<bool>> ensureInitialized)
@@ -215,6 +223,10 @@ namespace BuildConsole.Services
                 ActivityLog.Log(Channel,
                     $"OK[read] — {_percent}% used (from {probe.MeterCount} meter(s); winning valuetext=\"{Trim(reading.ValueText)}\"); reset label=\"{Trim(reading.ResetLabel)}\" → target {(_resetTarget.HasValue ? _resetTarget.Value.ToString("ddd yyyy-MM-dd HH:mm") : "unparsed")}. hydration≈{probe.WaitedMs}ms.");
 
+                // Persist this data point and (re)compute the time-until-100% projection off the
+                // real observed growth rate within the current reset window.
+                UpdateProjection(_percent.Value, _resetTarget, _lastPoll ?? DateTime.Now);
+
                 Emit(ClaudeUsageMeterState.Ok);
             }
             catch (Exception ex)
@@ -231,20 +243,70 @@ namespace BuildConsole.Services
         /// <summary>Fast between-poll tick: only re-emits when a live countdown is actually being shown (usage ≥ threshold with a known reset target), so the seconds/minutes visibly tick down without a real poll. Otherwise it's a no-op — the plain percentage doesn't change between polls.</summary>
         private void OnDisplayTick()
         {
-            if (_lastState == ClaudeUsageMeterState.Ok
-                && _percent.HasValue && _percent.Value >= CountdownThresholdPercent
-                && _resetTarget.HasValue)
-            {
+            if (_lastState != ClaudeUsageMeterState.Ok) return;
+
+            // Re-emit when EITHER live countdown is showing so its text visibly ticks between
+            // polls: the reset countdown (usage ≥ threshold with a known reset target), or the
+            // projected time-to-100% (which is shown at any usage level once there's a projection).
+            bool resetCountdownShown = _percent.HasValue && _percent.Value >= CountdownThresholdPercent && _resetTarget.HasValue;
+            bool projectionShown = _projectedFullTarget.HasValue;
+            if (resetCountdownShown || projectionShown)
                 Emit(ClaudeUsageMeterState.Ok);
-            }
         }
 
         private void SetUnavailable(string reason, ClaudeUsageMeterState state = ClaudeUsageMeterState.Unavailable)
         {
-            // Drop the stale number so we never show a wrong percentage.
+            // Drop the stale number so we never show a wrong percentage — and with it the
+            // projection, which is only meaningful next to a live reading.
             _percent = null;
             _resetTarget = null;
+            _projectedFullTarget = null;
+            _projectedRatePerHour = 0;
             Emit(state, reason);
+        }
+
+        // ── time-until-100% projection ──────────────────────────────────────
+
+        /// <summary>Persists the just-read (timestamp, percentage) point, then recomputes the
+        /// time-until-100% projection from the real growth rate observed WITHIN the current reset
+        /// window (see <see cref="UsageProjection"/>). Anchors the estimate as an absolute target
+        /// datetime so the display timer can tick it down live, exactly like the reset countdown.
+        /// Logs both the stored point and the resulting projection (or the reason one was withheld)
+        /// for diagnosability. Never throws out — a store/compute hiccup just means no projection
+        /// this cycle, not a failed poll.</summary>
+        private void UpdateProjection(int percent, DateTime? resetTarget, DateTime pollMoment)
+        {
+            try
+            {
+                var sample = new UsageSample { At = pollMoment, Percent = percent, ResetTarget = resetTarget };
+                bool stored = UsageHistoryStore.Append(sample);
+                ActivityLog.Log(Channel,
+                    $"data-point {(stored ? "stored" : "NOT stored")}: {percent}% at {pollMoment:yyyy-MM-dd HH:mm:ss}"
+                    + (resetTarget.HasValue ? $" (reset target {resetTarget.Value:ddd HH:mm})" : " (reset target unparsed)") + ".");
+
+                var projection = UsageProjection.Compute(UsageHistoryStore.ReadAll(), pollMoment);
+                if (projection.HasProjection && projection.TimeTo100.HasValue)
+                {
+                    _projectedFullTarget = pollMoment + projection.TimeTo100.Value;
+                    _projectedRatePerHour = projection.RatePerHour;
+                    ActivityLog.Log(Channel,
+                        $"projection: ~{FormatCountdown(projection.TimeTo100.Value)} to 100% "
+                        + $"(rate {projection.RatePerHour:0.00}%/hr over {projection.WindowSampleCount} current-window points; "
+                        + $"projected 100% at {_projectedFullTarget.Value:ddd yyyy-MM-dd HH:mm}).");
+                }
+                else
+                {
+                    _projectedFullTarget = null;
+                    _projectedRatePerHour = 0;
+                    ActivityLog.Log(Channel, $"projection withheld: {projection.Reason}.");
+                }
+            }
+            catch (Exception ex)
+            {
+                _projectedFullTarget = null;
+                _projectedRatePerHour = 0;
+                ActivityLog.Log(Channel, $"projection update failed: {ex.Message}");
+            }
         }
 
         // ── meter extraction ────────────────────────────────────────────────
@@ -545,6 +607,14 @@ namespace BuildConsole.Services
                 if (remaining > TimeSpan.Zero)
                     text += $" — resets in {FormatCountdown(remaining)}";
             }
+            // Projected time-until-100% at the observed rate, shown alongside the percentage
+            // once there's enough current-window data (the "~" flags it as an estimate).
+            if (_projectedFullTarget.HasValue)
+            {
+                var toFull = _projectedFullTarget.Value - DateTime.Now;
+                if (toFull > TimeSpan.Zero)
+                    text += $" · ~{FormatCountdown(toFull)} to 100%";
+            }
             return text;
         }
 
@@ -561,6 +631,8 @@ namespace BuildConsole.Services
             });
             if (_resetTarget.HasValue)
                 tip.Append($"\nResets: {_resetTarget.Value:ddd MMM d, h:mm tt}");
+            if (_projectedFullTarget.HasValue)
+                tip.Append($"\nProjected 100%: {_projectedFullTarget.Value:ddd MMM d, h:mm tt} (~{_projectedRatePerHour:0.0}%/hr at the current rate)");
             tip.Append(_lastPoll.HasValue ? $"\nLast checked: {_lastPoll:HH:mm:ss}" : "\nLast checked: —");
             return tip.ToString();
         }
