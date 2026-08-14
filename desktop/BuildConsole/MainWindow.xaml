@@ -591,10 +591,51 @@
                                   Visibility="Collapsed"/>
 
                     <!-- ── Bottom panel (Build Log / Terminal / SQL / Output) ── -->
+                    <Grid x:Name="BottomPanelGrid" Grid.Row="2" Visibility="Collapsed">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- Real system-wide (not just BuildConsole's own process) CPU
+                             and Memory meters, polled every ~1.5s. See
+                             MainWindow.ResourceMonitor.cs. -->
+                        <Border Grid.Row="0"
+                                Background="{StaticResource MantleBrush}"
+                                BorderBrush="{StaticResource Surface0Brush}"
+                                BorderThickness="0,1,0,1"
+                                Padding="10,5">
+                            <StackPanel Orientation="Horizontal">
+                                <StackPanel Orientation="Horizontal" Width="180" Margin="0,0,20,0">
+                                    <TextBlock Text="CPU" Foreground="{StaticResource Subtext1Brush}"
+                                               FontSize="11" VerticalAlignment="Center" Width="30"/>
+                                    <ProgressBar x:Name="CpuMeterBar"
+                                                 Style="{StaticResource ResourceMeterBar}"
+                                                 Foreground="{StaticResource BlueBrush}"
+                                                 Width="90" Margin="4,0"
+                                                 VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="CpuMeterText" Text="—"
+                                               Foreground="{StaticResource TextBrush}"
+                                               FontSize="11" VerticalAlignment="Center" Width="34"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Width="260">
+                                    <TextBlock Text="Memory" Foreground="{StaticResource Subtext1Brush}"
+                                               FontSize="11" VerticalAlignment="Center" Width="42"/>
+                                    <ProgressBar x:Name="MemoryMeterBar"
+                                                 Style="{StaticResource ResourceMeterBar}"
+                                                 Foreground="{StaticResource MauveBrush}"
+                                                 Width="90" Margin="4,0"
+                                                 VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="MemoryMeterText" Text="—"
+                                               Foreground="{StaticResource TextBrush}"
+                                               FontSize="11" VerticalAlignment="Center" Width="110"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
                     <TabControl x:Name="BottomTabs"
-                                Grid.Row="2"
-                                BorderThickness="0,1,0,0"
-                                Visibility="Collapsed">
+                                Grid.Row="1"
+                                BorderThickness="0">
 
                         <TabItem Header="Build Log">
                             <ctrl:BuildLogView x:Name="BuildLogView"/>
@@ -624,6 +665,7 @@
                         </TabItem>
 
                     </TabControl>
+                    </Grid>
                 </Grid>
 
                 <!-- Splitter: center ↔ queue -->

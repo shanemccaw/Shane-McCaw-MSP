@@ -224,6 +224,8 @@ namespace BuildConsole
             _clockTimer.Start();
             ClockText.Text = DateTime.Now.ToString("HH:mm:ss");
 
+            InitializeResourceMonitor();
+
             // Initial WebView2 events
             ClaudeWebView.NavigationStarting  += WebView_NavigationStarting;
             ClaudeWebView.NavigationCompleted += WebView_NavigationCompleted;
@@ -2744,7 +2746,7 @@ namespace BuildConsole
             {
                 RowBottom.Height      = new GridLength(DefaultBottomHeight);
                 BottomSplitter.Visibility = Visibility.Visible;
-                BottomTabs.Visibility     = Visibility.Visible;
+                BottomPanelGrid.Visibility = Visibility.Visible;
                 if (tabIndex >= 0 && tabIndex < BottomTabs.Items.Count)
                     BottomTabs.SelectedIndex = tabIndex;
             }
@@ -2752,7 +2754,7 @@ namespace BuildConsole
             {
                 RowBottom.Height          = new GridLength(0);
                 BottomSplitter.Visibility = Visibility.Collapsed;
-                BottomTabs.Visibility     = Visibility.Collapsed;
+                BottomPanelGrid.Visibility = Visibility.Collapsed;
             }
         }
 

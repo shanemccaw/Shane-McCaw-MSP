@@ -24,6 +24,10 @@
          round-trip to the deployed Replit dev api-server. 7.0.x targets net7.0
          directly, matching this app's TFM. -->
     <PackageReference Include="Npgsql" Version="7.0.7" />
+    <!-- Real system-wide CPU % for the bottom-panel resource meters (Processor/%
+         Processor Time/_Total). Not in the .NET base class libraries since
+         .NET Core — Windows-only, which is fine, this app is Windows-only WPF. -->
+    <PackageReference Include="System.Diagnostics.PerformanceCounter" Version="7.0.0" />
   </ItemGroup>
 
   <ItemGroup>

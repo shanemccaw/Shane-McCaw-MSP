@@ -395,6 +395,30 @@
         </Style.Triggers>
     </Style>
 
+    <!-- Slim resource-meter progress bar (CPU / Memory strip above the bottom panel) -->
+    <Style x:Key="ResourceMeterBar" TargetType="{x:Type ProgressBar}">
+        <Setter Property="Height" Value="6"/>
+        <Setter Property="Minimum" Value="0"/>
+        <Setter Property="Maximum" Value="100"/>
+        <Setter Property="Background" Value="{StaticResource Surface0Brush}"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type ProgressBar}">
+                    <Border Background="{TemplateBinding Background}" CornerRadius="3">
+                        <Grid ClipToBounds="True">
+                            <Rectangle x:Name="PART_Track" Fill="Transparent"/>
+                            <Border x:Name="PART_Indicator"
+                                    Background="{TemplateBinding Foreground}"
+                                    CornerRadius="3"
+                                    HorizontalAlignment="Left"/>
+                        </Grid>
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- Filter chip ToggleButton (pill-shaped) -->
     <Style x:Key="FilterChip" TargetType="{x:Type ToggleButton}">
         <Setter Property="Background"      Value="Transparent"/>
