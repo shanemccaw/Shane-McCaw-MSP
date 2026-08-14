@@ -85,6 +85,21 @@ namespace BuildConsole.Services
         // (no "openChatTabs" key) still deserializes cleanly.
         public List<PersistedChatTab> OpenChatTabs { get; set; } = new();
 
+        // ── "What's New" Home patch-notes (reuses the #992/version build number) ──
+        // The Home screen shows a short, video-game-patch-notes-style bullet list of
+        // the real commit titles that have landed for BuildConsole since Shane last
+        // launched. This is the ONLY new state it needs: the build number of the last
+        // launch we already showed him. It reuses the SAME real build-number value the
+        // version-tracking feature computes (VersionInfo.RunningBuild — the git commit
+        // count for desktop/BuildConsole baked into this assembly); no second
+        // versioning system is introduced. -1 is a "never launched before" sentinel:
+        // on the very first launch we seed it to the current build silently rather than
+        // dumping the entire history as "new". A pre-existing settings.json (no
+        // "lastSeenBuild" key) deserializes with this -1 intact, so an existing install
+        // also just seeds a baseline on its first post-update launch instead of
+        // replaying every commit.
+        public int LastSeenBuild { get; set; } = -1;
+
         public string GitHubPat { get; set; } = "";
 
         public bool HasGitHubPat => !string.IsNullOrWhiteSpace(GitHubPat);

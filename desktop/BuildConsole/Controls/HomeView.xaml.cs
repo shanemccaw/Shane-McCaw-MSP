@@ -39,6 +39,69 @@ namespace BuildConsole.Controls
 
         public HomeView() => InitializeComponent();
 
+        // ── Section 0: What's New (real commit titles since last launch, patch-notes style) ──
+        /// <summary>
+        /// Renders the "What's New" patch-notes bullets from the real commit titles
+        /// MainWindow computed via VersionInfo.GetNewCommitTitles (reusing the #992
+        /// git-commit-count build number). Video-game-update style: a handful of short
+        /// bullets, no rewriting — the commit subjects are already concise. The whole
+        /// section stays collapsed when there's nothing new, so a launch with no new
+        /// commits shows no empty box. <paramref name="moreCount"/> &gt; 0 means the
+        /// list was capped and that many additional changes aren't shown individually.
+        /// </summary>
+        public void RenderWhatsNew(string versionLabel, IReadOnlyList<string> titles, int moreCount = 0)
+        {
+            WhatsNewList.Children.Clear();
+
+            if (titles == null || titles.Count == 0)
+            {
+                WhatsNewSection.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            WhatsNewVersionText.Text = versionLabel;
+
+            foreach (var title in titles)
+                WhatsNewList.Children.Add(BuildBullet(title));
+
+            if (moreCount > 0)
+            {
+                var more = BuildBullet($"…and {moreCount} more change{(moreCount == 1 ? "" : "s")}");
+                // The "…and N more" line reads as a quiet aside, not another change.
+                ((TextBlock)((StackPanel)((Border)more).Child).Children[1]).FontStyle = FontStyles.Italic;
+                WhatsNewList.Children.Add(more);
+            }
+
+            WhatsNewSection.Visibility = Visibility.Visible;
+            ActivityLog.Log("home-screen", $"Rendered 'What's New' {versionLabel} ({titles.Count} item{(titles.Count == 1 ? "" : "s")}{(moreCount > 0 ? $", +{moreCount} more" : "")})");
+        }
+
+        /// <summary>One light patch-notes bullet: a muted "•" glyph + the raw commit title (wraps, no click, no hover chrome — this is read-only, unlike the roll-up rows below).</summary>
+        private Border BuildBullet(string text)
+        {
+            var dot = new TextBlock
+            {
+                Text = "•",
+                FontSize = 13,
+                Margin = new Thickness(2, 0, 8, 0),
+                VerticalAlignment = VerticalAlignment.Top,
+                Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#C6A0F6")),
+            };
+            var body = new TextBlock
+            {
+                Text = text,
+                FontSize = 12,
+                Foreground = (Brush)FindResource("TextBrush"),
+                TextWrapping = TextWrapping.Wrap,
+                MaxWidth = 660,
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            var panel = new StackPanel { Orientation = Orientation.Horizontal };
+            panel.Children.Add(dot);
+            panel.Children.Add(body);
+            return new Border { Padding = new Thickness(0, 2, 0, 2), Child = panel };
+        }
+
         // ── Section 1: Where you left off (persisted last-launch chat tabs) ──
         public void RenderLeftOff(IReadOnlyList<PersistedChatTab> tabs)
         {

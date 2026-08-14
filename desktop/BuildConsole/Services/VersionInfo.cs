@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 
@@ -75,6 +76,75 @@ namespace BuildConsole.Services
             {
                 return null;
             }
+        }
+
+        /// <summary>
+        /// The real first-line commit titles for the BuildConsole commits that landed
+        /// AFTER build <paramref name="sinceBuild"/> and up to and including the
+        /// currently-running build (<see cref="RunningBuild"/>), newest first — the raw
+        /// material for the Home screen's "What's New" patch-notes list. Reuses the same
+        /// <c>desktop/BuildConsole</c> pathspec the build number itself is derived from,
+        /// so "one build number = one commit touching BuildConsole" holds exactly: the
+        /// count of titles returned equals <c>RunningBuild - sinceBuild</c> (barring the
+        /// safety cap below).
+        ///
+        /// Because the local repo may have moved ON PAST the running build (Shane keeps
+        /// committing after launching a build), we anchor to the running build, not the
+        /// live repo head: skip the commits newer than RunningBuild, then take the
+        /// RunningBuild→sinceBuild window. <c>%s</c> is git's subject (first line only),
+        /// never the body. Returns an empty list on any failure (git missing, not a
+        /// repo, nothing new) so the caller can treat "no titles" and "couldn't tell"
+        /// identically — the section just doesn't show. Runs git synchronously and
+        /// briefly; call it off the UI thread (Task.Run) like <see cref="GetCurrentBuild"/>.
+        /// </summary>
+        /// <param name="max">Hard cap on how many titles to return — a light patch-notes
+        /// list, not a full changelog dump. If more than this landed, the newest
+        /// <paramref name="max"/> are returned and the caller can note the remainder.</param>
+        public static List<string> GetNewCommitTitles(int sinceBuild, int max = 15)
+        {
+            var result = new List<string>();
+            int current = RunningBuild;
+            int take = current - sinceBuild;
+            if (take <= 0) return result;                 // nothing new (or clock went backwards)
+            if (take > max) take = max;                   // cap — keep the list quick to scan
+
+            var repoRoot = FindRepoRoot();
+            if (repoRoot == null) return result;
+
+            // How far the LIVE repo is ahead of the build we're actually running — those
+            // newer-than-us commits must be skipped so we show the window that ended at
+            // this running build, not the repo's current head. Clamp at 0 (never negative).
+            int liveBuild = GetCurrentBuild() ?? current;
+            int skip = liveBuild - current;
+            if (skip < 0) skip = 0;
+
+            try
+            {
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "git",
+                    // %s = subject (first line only). Same pathspec as the build number.
+                    Arguments = $"log --skip={skip} --max-count={take} --format=%s HEAD -- desktop/BuildConsole",
+                    WorkingDirectory = repoRoot,
+                    RedirectStandardOutput = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                };
+                using var proc = Process.Start(psi);
+                if (proc == null) return result;
+                string stdout = proc.StandardOutput.ReadToEnd();
+                proc.WaitForExit(5000);
+                foreach (var line in stdout.Split('\n'))
+                {
+                    var t = line.Trim();
+                    if (t.Length > 0) result.Add(t);
+                }
+            }
+            catch
+            {
+                return new List<string>();
+            }
+            return result;
         }
 
         /// <summary>

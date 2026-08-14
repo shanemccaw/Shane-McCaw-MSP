@@ -82,6 +82,17 @@ namespace BuildConsole
         /// <summary>The persisted open-chat-tabs snapshot loaded ONCE at launch — what the Home "Where you left off" section shows, so it always reflects where the LAST session ended, not this session's live tab state.</summary>
         private List<BuildConsole.Services.PersistedChatTab> _chatTabsAtLaunch = new();
         private DispatcherTimer? _homeRollupTimer;
+        // ── Home "What's New" patch-notes (computed ONCE at launch) ───────────────
+        // The real commit titles for BuildConsole that landed since the last launch,
+        // computed off the UI thread once at startup (VersionInfo.GetNewCommitTitles,
+        // reusing the #992 build number) and cached here so re-opening the Home tab
+        // re-renders the same set without re-hitting git. LastSeenBuild is advanced to
+        // the current build the moment this is computed, so the same changes never show
+        // again on the next launch unless newer commits have landed.
+        private bool _whatsNewReady;
+        private string _whatsNewVersion = "";
+        private List<string> _whatsNewTitles = new();
+        private int _whatsNewMore;
         /// <summary>Open-issue-number cache for the Home "Done, waiting for you" section — the same GitHubIssuesService source the Build Queue panel uses, refreshed on the same ~60s cadence rather than every roll-up tick.</summary>
         private HashSet<int> _homeOpenIssueNumbers = new();
         private DateTime _homeOpenNumbersFetchedAt = DateTime.MinValue;
@@ -375,6 +386,12 @@ namespace BuildConsole
             // isn't open, so there's no steady-state polling cost when it's closed.
             _chatTabsAtLaunch = BuildConsole.Services.BuildConsoleSettings.Load().OpenChatTabs ?? new();
             OpenHomeTab();
+            // "What's New" patch notes — compute the real commit titles since the last
+            // launch off the UI thread, then render into the (already-open) Home tab and
+            // advance LastSeenBuild so this set won't re-show next launch. Fire-and-forget:
+            // OpenHomeTab already painted the rest of the page; this fills in the top
+            // section when git returns.
+            _ = InitWhatsNewAsync();
             _homeRollupTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(10) };
             _homeRollupTimer.Tick += async (_, _) => await RefreshHomeRollupAsync();
             _homeRollupTimer.Start();
@@ -1681,7 +1698,67 @@ namespace BuildConsole
             // Running/Done sections from the shared queue data (force = refresh the
             // open-issue set immediately rather than waiting for the 60s guard).
             home.RenderLeftOff(_chatTabsAtLaunch);
+            // Re-render the "What's New" section from the launch-time cache (no-op /
+            // stays collapsed until InitWhatsNewAsync has computed it, or when there's
+            // nothing new). Reopening Home mid-session shows the same set.
+            if (_whatsNewReady) home.RenderWhatsNew(_whatsNewVersion, _whatsNewTitles, _whatsNewMore);
             _ = RefreshHomeRollupAsync(force: true);
+        }
+
+        /// <summary>
+        /// Computes the Home "What's New" patch-notes ONCE at launch: the real
+        /// first-line commit titles for BuildConsole that landed since the last launch,
+        /// reusing the SAME #992 git-commit-count build number (VersionInfo.RunningBuild)
+        /// as the version indicator — no second versioning system. A "last seen build" is
+        /// persisted in BuildConsoleSettings; when the running build is ahead of it we
+        /// fetch the intervening commit subjects (off the UI thread), render them, and
+        /// advance last-seen to the current build so the same set never shows twice.
+        /// First-ever launch (sentinel LastSeenBuild == -1) silently seeds the baseline
+        /// instead of replaying all history.
+        /// </summary>
+        private async System.Threading.Tasks.Task InitWhatsNewAsync()
+        {
+            try
+            {
+                var settings = BuildConsole.Services.BuildConsoleSettings.Load();
+                int current = BuildConsole.Services.VersionInfo.RunningBuild;
+                int lastSeen = settings.LastSeenBuild;
+
+                // First launch ever (or a pre-existing settings.json with no lastSeenBuild):
+                // seed the baseline silently — don't dump the whole history as "new".
+                if (lastSeen < 0)
+                {
+                    settings.LastSeenBuild = current;
+                    settings.Save();
+                    return;
+                }
+
+                if (current <= lastSeen) return; // nothing new since last launch
+
+                const int max = 15;
+                var titles = await System.Threading.Tasks.Task.Run(
+                    () => BuildConsole.Services.VersionInfo.GetNewCommitTitles(lastSeen, max));
+
+                // If git genuinely returned no titles we still advance last-seen (the
+                // build moved; there's just nothing to show) so we don't keep retrying a
+                // git call that yields nothing every launch.
+                int totalNew = current - lastSeen;
+                int more = titles.Count > 0 ? Math.Max(0, totalNew - titles.Count) : 0;
+
+                _whatsNewTitles = titles;
+                _whatsNewVersion = BuildConsole.Services.VersionInfo.Format(current);
+                _whatsNewMore = more;
+                _whatsNewReady = true;
+
+                // Advance last-seen now (once computed) so this set won't re-show next launch.
+                settings.LastSeenBuild = current;
+                settings.Save();
+
+                // Render into the Home tab if it's currently open (it is at launch).
+                if (_homeView != null && titles.Count > 0)
+                    _homeView.RenderWhatsNew(_whatsNewVersion, _whatsNewTitles, _whatsNewMore);
+            }
+            catch { /* pure display feature — never let a git/settings hiccup disturb launch */ }
         }
 
         /// <summary>
@@ -2147,6 +2224,14 @@ namespace BuildConsole
             var miPin = new MenuItem { Header = "Pin Tab" };
             miPin.Click += (s, e) => PinTabFromMenu(tabItem);
             cm.Items.Add(miPin);
+
+            // 5c. Shelve Tab — remove this tab from the bar but keep its content
+            // genuinely alive off-screen (the SAME #972/#982 PinnedHostCanvas keep-alive
+            // as Pin, generalized to any tab), browsable + restorable from the Shelf
+            // activity-bar icon (see MainWindow.ShelvedTabs.cs).
+            var miShelve = new MenuItem { Header = "Shelve Tab" };
+            miShelve.Click += (s, e) => ShelveTabFromMenu(tabItem);
+            cm.Items.Add(miShelve);
 
             cm.Items.Add(new Separator());
 

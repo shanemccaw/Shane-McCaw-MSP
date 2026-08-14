@@ -51,6 +51,24 @@
                            FontSize="12" Foreground="{StaticResource Subtext1Brush}"
                            TextWrapping="Wrap" Margin="0,0,0,20"/>
 
+                <!-- ══ 0. WHAT'S NEW ══  (video-game-patch-notes style)
+                     Shows the real first-line commit titles for BuildConsole that
+                     landed since the last launch (VersionInfo.GetNewCommitTitles,
+                     reusing the same #992 git-commit-count build number). Collapsed
+                     entirely when there's nothing new — a light bullet list, not a
+                     verbose changelog. Sits above everything else because it's the
+                     "here's what changed in the copy you just opened" glance. -->
+                <StackPanel x:Name="WhatsNewSection" Margin="0,0,0,20" Visibility="Collapsed">
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                        <TextBlock Text="✨" FontSize="13" VerticalAlignment="Center" Margin="0,0,6,0"
+                                   Foreground="#C6A0F6"/>
+                        <TextBlock Text="WHAT'S NEW" Style="{StaticResource HomeSectionHeader}"/>
+                        <TextBlock x:Name="WhatsNewVersionText" Text="" FontSize="11" Margin="6,0,0,0"
+                                   VerticalAlignment="Center" Foreground="{StaticResource Subtext1Brush}"/>
+                    </StackPanel>
+                    <StackPanel x:Name="WhatsNewList"/>
+                </StackPanel>
+
                 <!-- ══ 1. WHERE YOU LEFT OFF ══ -->
                 <StackPanel Margin="0,0,0,20">
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
