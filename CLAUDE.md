@@ -2,6 +2,10 @@
 
 Instructions for Claude Code sessions working in this repository.
 
+## Mandatory task planning
+
+Every session — including BuildConsole-launched build sessions — must create a `TodoWrite` task list breaking the planned work into concrete steps before making any code changes (before the first Read/Edit/Write/Bash aimed at the actual task). Keep it updated as steps complete. A `SessionStart` hook in `.claude/settings.json` injects a reminder of this at the start of every session; this section is the durable, always-loaded record of the same requirement.
+
 ## Mandatory session bookends
 
 This project tracks every work session in [PLATFORM_BUILD.md](PLATFORM_BUILD.md), so that even a session that crashes or gets abandoned mid-way leaves proof an attempt was made.
@@ -103,7 +107,8 @@ Shane's BuildConsole desktop app (`desktop/BuildConsole/`) reads both the label 
 
 ## Database
 
-- **No direct database access in this environment** — there is no `DATABASE_URL`/DB connectivity available to Claude Code sessions here. For any task requiring DB reads or writes: write the SQL and stop — Shane runs it himself via his SQL console. Never attempt live DB queries or `ALTER`/`UPDATE`/`INSERT` statements directly, and don't claim something is verified against live data when it wasn't.
+- **Default: self-verify SQL via `shaneapp://executeSql`, not "write it and stop."** This environment has no direct `DATABASE_URL` and BuildConsole-launched sessions historically deferred all live DB work to Shane's own SQL console — that rule is now obsolete. `shaneapp://executeSql` (confirmed working; see `desktop/BuildConsole/AGENT_PROTOCOLS.md` section 1) runs SQL through BuildConsole's own direct local Postgres connection with zero round-trip, closing the same loop test execution now closes via `shaneapp://runTest`. Where practical, a build session should run and verify its own SQL directly through that protocol — reads to confirm state, and writes/`ALTER`/`UPDATE`/`INSERT` that are a normal, reversible part of the task — and report the real result honestly, the same way it reports test pass/fail. Don't claim something is verified against live data unless it actually was, through the protocol.
+- **Manual SQL for Shane's own SQL console stays as a real fallback, not the default** — reserved for anything genuinely too destructive or sensitive to self-execute (irreversible bulk deletes, production-affecting changes, anything Shane would reasonably want eyes-on before it runs). Judging what qualifies is Shane's call to make explicit when it matters; when in doubt on a risky write, say so and hand it to him rather than self-executing.
 - **Schema changes require manual SQL, not `drizzle-kit push`.** Do not run `drizzle-kit push` or `push --force` — interactive push surfaces large pre-existing schema drift unrelated to the change at hand. Instead: add the Drizzle TS schema definitions, then hand-write the equivalent `CREATE TABLE`/`ALTER TABLE ... ADD COLUMN IF NOT EXISTS` SQL into a new file under `lib/db/migrations/manual/`, for Shane to review and run himself.
 - No literal prices, tier names, or seat counts hardcoded in `.tsx` files outside API response handling (no-hardcoding rule) — these should flow through the Products Catalog / API responses, not be baked into UI code. Verifiable by grep.
 
@@ -139,6 +144,30 @@ Shane does **not** use Resend, ever, for any reason. All outgoing platform email
 
 - Backup before any new execution layer or tool touches the codebase for the first time.
 - Review the actual diff before committing any change.
+
+## Verification defaults — don't default to "unable to verify"
+
+A pattern showed up repeatedly across past sessions: honestly reporting things
+like "not live-verified — I can't launch/restart BuildConsole from here" or
+"no WebView2/BuildConsole runner or dev tenant is reachable from here." That
+was true when it was written. It is no longer true and should not be assumed.
+
+Both `shaneapp://runTest` (real UI/API/PowerShell test execution, in-process
+through the same `RunManifestAsync` pipeline Play Test uses) and
+`shaneapp://executeSql` (real SQL investigation/verification against
+BuildConsole's own direct local Postgres connection) are confirmed working
+and reachable from a build session on this machine — see
+`desktop/BuildConsole/AGENT_PROTOCOLS.md` sections 1 and 2 for the exact
+invocation contracts and result envelopes.
+
+A session should no longer default to "unable to verify" language for UI
+testing or SQL investigation. It should actually invoke the real protocol and
+report the real result — pass, fail, or the actual data returned. Reserve
+"unable to verify" for when the protocol itself genuinely fails for a
+specific, statable reason (e.g. `shaneapp://` isn't registered on this
+machine, no BuildConsole instance is running to courier the call to, or a
+real timeout/error came back from the result envelope) — never as an assumed
+default limitation.
 
 ## Test Coverage — Standing Practice
 
@@ -210,6 +239,18 @@ phase - not only when explicitly asked.
   (visible/hidden/present/absent), which stays element-presence only. Reserve
   `captureResponse` for asserting a call the browser makes that has no
   independently-reachable endpoint to hit directly.
+- **Run what you write, in the same session.** Writing or updating a manifest
+  is not the finish line. Once a real manifest is written/updated for a build
+  phase touching `artifacts/msp-portal/` or `artifacts/shane-mccaw-consulting/`,
+  run it before the session ends via `shaneapp://runTest` (see
+  `desktop/BuildConsole/AGENT_PROTOCOLS.md` section 2 for the invocation
+  contract and result envelope) and report the real pass/fail result honestly
+  in the build's own summary/commit - don't write a test and leave it
+  unexecuted for someone else to discover was red. If the manifest genuinely
+  fails, say so plainly rather than reporting the build as successful while a
+  real test fails. Before calling it done, confirm the manifest actually lands
+  at `test-manifests/{area}/{feature-slug}.json` per the discover-before-create
+  convention above, and is registered in `test-manifests/_regression-suite.json`.
 
 ## Shared File Write Discipline
 
