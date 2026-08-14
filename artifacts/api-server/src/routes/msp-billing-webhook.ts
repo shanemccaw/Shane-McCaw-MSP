@@ -81,64 +81,7 @@ router.post("/msp/stripe/webhook", async (req: Request, res: Response) => {
   log.info({ eventType: event.type, eventId: event.id }, "msp-billing-webhook: received event");
 
   try {
-    switch (event.type) {
-      case "checkout.session.completed":
-        await handleCheckoutCompleted(stripe, event.data.object as import("stripe").Stripe.Checkout.Session);
-        break;
-
-      case "customer.subscription.updated":
-        await handleSubscriptionUpdated(event.data.object as import("stripe").Stripe.Subscription);
-        break;
-
-      case "customer.subscription.deleted":
-        await handleSubscriptionDeleted(event.data.object as import("stripe").Stripe.Subscription);
-        break;
-
-      case "invoice.payment_succeeded":
-        await handlePaymentSucceeded(event.data.object as import("stripe").Stripe.Invoice);
-        break;
-
-      case "invoice.payment_failed":
-        await handlePaymentFailed(event.data.object as import("stripe").Stripe.Invoice);
-        break;
-
-      // ── Zoho Books sync (#87) — audited fresh: this webhook previously had
-      // no invoice.finalized/invoice.paid/charge.refunded cases at all. Added
-      // as their own independent cases (rather than folded into
-      // payment_succeeded/payment_failed above) so the pre-existing dunning
-      // logic is untouched and Zoho sync can't double-fire off two Stripe
-      // events for the same invoice.
-      case "invoice.finalized":
-        await handleInvoiceFinalizedZohoSync(event.data.object as import("stripe").Stripe.Invoice);
-        break;
-
-      case "invoice.paid":
-        await handleInvoicePaidZohoSync(event.data.object as import("stripe").Stripe.Invoice);
-        break;
-
-      case "charge.refunded":
-        handleChargeRefundedZohoNote(event.data.object as import("stripe").Stripe.Charge);
-        break;
-
-      case "subscription_schedule.updated":
-        await handleScheduleUpdated(event.data.object as import("stripe").Stripe.SubscriptionSchedule);
-        break;
-
-      case "subscription_schedule.completed":
-        await handleScheduleCompleted(event.data.object as import("stripe").Stripe.SubscriptionSchedule);
-        break;
-
-      case "subscription_schedule.released":
-        await handleScheduleReleased(event.data.object as import("stripe").Stripe.SubscriptionSchedule);
-        break;
-
-      case "subscription_schedule.canceled":
-        await handleScheduleCanceled(event.data.object as import("stripe").Stripe.SubscriptionSchedule);
-        break;
-
-      default:
-        log.info({ eventType: event.type }, "msp-billing-webhook: unhandled event type (ok)");
-    }
+    await dispatchMspStripeEvent(stripe, event);
   } catch (err) {
     log.error({ err, eventType: event.type }, "msp-billing-webhook: event handler failed");
     // Return 200 to prevent Stripe from retrying indefinitely for transient errors.
@@ -147,6 +90,83 @@ router.post("/msp/stripe/webhook", async (req: Request, res: Response) => {
 
   res.json({ received: true });
 });
+
+/**
+ * The single source of truth for MSP-billing Stripe event dispatch.
+ *
+ * Extracted verbatim from the webhook route's own switch so there is exactly
+ * ONE event-type → handler mapping. The production webhook route above calls
+ * this after it verifies the Stripe signature; the dev-origin-gated testbed
+ * simulator (POST /api/admin/testbed/billing-simulate, admin-testbed.ts) calls
+ * this with a synthetic-but-faithful event so the REAL handler logic + REAL DB
+ * mutations are what a billing-lifecycle test manifest exercises — the only
+ * thing the simulator path skips is Stripe's own signature verification (which
+ * a test harness cannot produce) and Stripe-side event generation. Keep every
+ * case here identical to the set documented in this file's header.
+ */
+export async function dispatchMspStripeEvent(
+  stripe: import("stripe").Stripe,
+  event: import("stripe").Stripe.Event,
+): Promise<void> {
+  switch (event.type) {
+    case "checkout.session.completed":
+      await handleCheckoutCompleted(stripe, event.data.object as import("stripe").Stripe.Checkout.Session);
+      break;
+
+    case "customer.subscription.updated":
+      await handleSubscriptionUpdated(event.data.object as import("stripe").Stripe.Subscription);
+      break;
+
+    case "customer.subscription.deleted":
+      await handleSubscriptionDeleted(event.data.object as import("stripe").Stripe.Subscription);
+      break;
+
+    case "invoice.payment_succeeded":
+      await handlePaymentSucceeded(event.data.object as import("stripe").Stripe.Invoice);
+      break;
+
+    case "invoice.payment_failed":
+      await handlePaymentFailed(event.data.object as import("stripe").Stripe.Invoice);
+      break;
+
+    // ── Zoho Books sync (#87) — audited fresh: this webhook previously had
+    // no invoice.finalized/invoice.paid/charge.refunded cases at all. Added
+    // as their own independent cases (rather than folded into
+    // payment_succeeded/payment_failed above) so the pre-existing dunning
+    // logic is untouched and Zoho sync can't double-fire off two Stripe
+    // events for the same invoice.
+    case "invoice.finalized":
+      await handleInvoiceFinalizedZohoSync(event.data.object as import("stripe").Stripe.Invoice);
+      break;
+
+    case "invoice.paid":
+      await handleInvoicePaidZohoSync(event.data.object as import("stripe").Stripe.Invoice);
+      break;
+
+    case "charge.refunded":
+      handleChargeRefundedZohoNote(event.data.object as import("stripe").Stripe.Charge);
+      break;
+
+    case "subscription_schedule.updated":
+      await handleScheduleUpdated(event.data.object as import("stripe").Stripe.SubscriptionSchedule);
+      break;
+
+    case "subscription_schedule.completed":
+      await handleScheduleCompleted(event.data.object as import("stripe").Stripe.SubscriptionSchedule);
+      break;
+
+    case "subscription_schedule.released":
+      await handleScheduleReleased(event.data.object as import("stripe").Stripe.SubscriptionSchedule);
+      break;
+
+    case "subscription_schedule.canceled":
+      await handleScheduleCanceled(event.data.object as import("stripe").Stripe.SubscriptionSchedule);
+      break;
+
+    default:
+      log.info({ eventType: event.type }, "msp-billing-webhook: unhandled event type (ok)");
+  }
+}
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 

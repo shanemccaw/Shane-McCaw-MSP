@@ -1,0 +1,71 @@
+{
+  "feature": "Money path — immediate cancellation (MSP platform subscription). customer.subscription.deleted cancels the subscription, suspends the MSP org, and records a canceled event.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "c46fac85cb1b0ba6a51f7fbcf098a806e5b8ca4a",
+  "notes": [
+    "Epic #803 (Money-path lifecycle coverage). Drives the REAL msp-billing-webhook handleSubscriptionDeleted via the dev-origin-gated POST /api/admin/testbed/billing-simulate (same dispatchMspStripeEvent as production). Honest boundary + self-contained testbed setup: see payment-failed-dunning.json notes.",
+    "customer.subscription.deleted is what Stripe sends for an IMMEDIATE cancellation (and also when a scheduled cancel_at_period_end finally fires at period end). The real handler: msp_subscriptions.status → 'canceled'; msps.status → 'suspended' with suspended_at set; one msp.subscription.canceled event. All three are asserted against the DB.",
+    "GAP NOTE (documented, not asserted here): this wired path exists ONLY for the MSP platform channel. The direct-customer retainer channel (client_services) has NO customer.subscription.deleted handler — a retainer that actually cancels at period end never flips client_services.status to canceled; it stays 'active' indefinitely. See retainer-cancel-resume.json and the PLATFORM_BUILD.md row for this session.",
+    "PRECONDITION / Shane To-Do: POST /api/admin/testbed/billing-simulate deployed; .replit.dev dev origin. Not run from this authoring environment. ENV VARS: DEPLOY_URL, SECRET_KEY."
+  ],
+  "apiTests": [
+    {
+      "name": "SETUP — testbed MSP subscription at clean active baseline",
+      "method": "POST",
+      "path": "/api/admin/testbed/billing-simulate",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "action": "ensureSubscription" },
+      "expect": { "status": 200, "jsonPath": "$.subscription.status", "value": "active" }
+    },
+    {
+      "name": "EXECUTE — customer.subscription.deleted (immediate cancel) through the real dispatcher",
+      "method": "POST",
+      "path": "/api/admin/testbed/billing-simulate",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "action": "dispatchEvent", "event": { "type": "customer.subscription.deleted", "object": { "id": "sub_regression_testbed", "status": "canceled" } } },
+      "expect": { "status": 200, "jsonPath": "$.dispatched", "value": true }
+    },
+    {
+      "name": "VERIFY — subscription status is now canceled",
+      "method": "POST",
+      "path": "/api/admin/deploy/sql-test",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "query": "SELECT status FROM msp_subscriptions WHERE stripe_subscription_id = 'sub_regression_testbed'" },
+      "expect": { "status": 200, "jsonPath": "$.rows[0].status", "value": "canceled" }
+    },
+    {
+      "name": "VERIFY — the MSP org was suspended",
+      "method": "POST",
+      "path": "/api/admin/deploy/sql-test",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "query": "SELECT m.status FROM msps m JOIN msp_subscriptions s ON s.msp_id = m.id WHERE s.stripe_subscription_id = 'sub_regression_testbed'" },
+      "expect": { "status": 200, "jsonPath": "$.rows[0].status", "value": "suspended" }
+    },
+    {
+      "name": "VERIFY — suspended_at was recorded",
+      "method": "POST",
+      "path": "/api/admin/deploy/sql-test",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "query": "SELECT (m.suspended_at IS NOT NULL) AS suspended_set FROM msps m JOIN msp_subscriptions s ON s.msp_id = m.id WHERE s.stripe_subscription_id = 'sub_regression_testbed'" },
+      "expect": { "status": 200, "jsonPath": "$.rows[0].suspended_set", "value": true }
+    },
+    {
+      "name": "VERIFY — exactly one msp.subscription.canceled event was recorded",
+      "method": "POST",
+      "path": "/api/admin/deploy/sql-test",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "query": "SELECT e.id FROM msp_event_store e JOIN msp_subscriptions s ON s.msp_id = e.msp_id WHERE s.stripe_subscription_id = 'sub_regression_testbed' AND e.event_type = 'msp.subscription.canceled'" },
+      "expect": { "status": 200, "jsonPath": "$.rowCount", "value": 1 }
+    }
+  ],
+  "postGraphApiTests": [
+    {
+      "name": "TEARDOWN — restore clean baseline (status=active, msp un-suspended)",
+      "method": "POST",
+      "path": "/api/admin/testbed/billing-simulate",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "action": "ensureSubscription" },
+      "expect": { "status": 200, "jsonPath": "$.ok", "value": true }
+    }
+  ]
+}

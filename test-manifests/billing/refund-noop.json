@@ -1,0 +1,55 @@
+{
+  "feature": "Money path — refund (charge.refunded) is LOG-ONLY. This manifest pins the real, current behavior: a refund event changes NO subscription/billing DB state anywhere in the platform. It exists to document the gap honestly and to flag the day that behavior changes.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "c46fac85cb1b0ba6a51f7fbcf098a806e5b8ca4a",
+  "notes": [
+    "Epic #803 (Money-path lifecycle coverage). Drives the REAL msp-billing-webhook handleChargeRefundedZohoNote via the dev-origin-gated POST /api/admin/testbed/billing-simulate (same dispatchMspStripeEvent as production). Honest boundary + self-contained testbed setup: see payment-failed-dunning.json notes.",
+    "*** GAP BEING DOCUMENTED ***: charge.refunded is the ONLY refund handling in the entire repo, and it is a LOG-ONLY warning (artifacts/api-server/src/routes/msp-billing-webhook.ts handleChargeRefundedZohoNote). It writes nothing to msp_subscriptions, msp_event_store, invoices, or anywhere else, and does not distinguish a full from a partial refund. There is no refund state machine on any channel (MSP or direct-customer). So a refund today leaves the platform's own records completely unchanged — the accounting correction is expected to happen manually in Zoho Books.",
+    "This manifest therefore asserts the CURRENT correct behavior: after a charge.refunded event the testbed subscription is UNCHANGED (still active) and NO event row was written. It is intentionally a change-detector: if/when real refund handling is implemented (e.g. a 'refunded' state or a credit-note event), this manifest MUST be updated to assert the new state — a failure here after such a change is the signal, not a bug in the test.",
+    "PRECONDITION / Shane To-Do: POST /api/admin/testbed/billing-simulate deployed; .replit.dev dev origin. Not run from this authoring environment. ENV VARS: DEPLOY_URL, SECRET_KEY."
+  ],
+  "apiTests": [
+    {
+      "name": "SETUP — testbed MSP subscription at clean active baseline (event log cleared to zero)",
+      "method": "POST",
+      "path": "/api/admin/testbed/billing-simulate",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "action": "ensureSubscription" },
+      "expect": { "status": 200, "jsonPath": "$.subscription.status", "value": "active" }
+    },
+    {
+      "name": "EXECUTE — charge.refunded (a refund is issued) through the real dispatcher",
+      "method": "POST",
+      "path": "/api/admin/testbed/billing-simulate",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "action": "dispatchEvent", "event": { "type": "charge.refunded", "object": { "id": "ch_testbed_refund_1", "customer": "cus_regression_testbed", "amount_refunded": 5000, "invoice": "in_testbed_renew_1" } } },
+      "expect": { "status": 200, "jsonPath": "$.dispatched", "value": true }
+    },
+    {
+      "name": "VERIFY (gap) — subscription status is UNCHANGED (still active) after the refund; no refund state exists",
+      "method": "POST",
+      "path": "/api/admin/deploy/sql-test",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "query": "SELECT status FROM msp_subscriptions WHERE stripe_subscription_id = 'sub_regression_testbed'" },
+      "expect": { "status": 200, "jsonPath": "$.rows[0].status", "value": "active" }
+    },
+    {
+      "name": "VERIFY (gap) — the refund wrote NO event row (log-only handler); event store for this MSP is still empty",
+      "method": "POST",
+      "path": "/api/admin/deploy/sql-test",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "query": "SELECT e.id FROM msp_event_store e JOIN msp_subscriptions s ON s.msp_id = e.msp_id WHERE s.stripe_subscription_id = 'sub_regression_testbed'" },
+      "expect": { "status": 200, "jsonPath": "$.rowCount", "value": 0 }
+    }
+  ],
+  "postGraphApiTests": [
+    {
+      "name": "TEARDOWN — restore clean baseline",
+      "method": "POST",
+      "path": "/api/admin/testbed/billing-simulate",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "action": "ensureSubscription" },
+      "expect": { "status": 200, "jsonPath": "$.ok", "value": true }
+    }
+  ]
+}

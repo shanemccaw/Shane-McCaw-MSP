@@ -1,0 +1,70 @@
+{
+  "feature": "Money path — successful recurring renewal (MSP platform subscription). invoice.payment_succeeded on an already-active subscription keeps it active, leaves dunning untouched, and does NOT spuriously fire the dunning-cleared recovery branch.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "c46fac85cb1b0ba6a51f7fbcf098a806e5b8ca4a",
+  "notes": [
+    "Epic #803 (Money-path lifecycle coverage) — the post-purchase transition money-path-e2e.json does not reach. Drives the REAL msp-billing-webhook handlePaymentSucceeded via the dev-origin-gated POST /api/admin/testbed/billing-simulate (same dispatchMspStripeEvent the production /api/msp/stripe/webhook route calls). See payment-failed-dunning.json notes for the full honest-boundary explanation (signature verification + Stripe event emission are the only skipped parts).",
+    "The distinctive assertion here: handlePaymentSucceeded only emits an msp.subscription.dunning_cleared event + restores the MSP when the subscription WAS in dunning. On a plain healthy renewal (no prior failure) that branch must NOT fire — asserted as rowCount 0 — so a regression that eagerly clears/restores on every renewal would be caught.",
+    "PRECONDITION / Shane To-Do: POST /api/admin/testbed/billing-simulate must be deployed; run against a .replit.dev dev origin. Not run from this authoring environment. ENV VARS: DEPLOY_URL, SECRET_KEY."
+  ],
+  "apiTests": [
+    {
+      "name": "SETUP — testbed MSP subscription at clean active baseline",
+      "method": "POST",
+      "path": "/api/admin/testbed/billing-simulate",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "action": "ensureSubscription" },
+      "expect": { "status": 200, "jsonPath": "$.subscription.status", "value": "active" }
+    },
+    {
+      "name": "EXECUTE — invoice.payment_succeeded (normal monthly renewal) through the real dispatcher",
+      "method": "POST",
+      "path": "/api/admin/testbed/billing-simulate",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "action": "dispatchEvent", "event": { "type": "invoice.payment_succeeded", "object": { "id": "in_testbed_renew_1", "subscription": "sub_regression_testbed" } } },
+      "expect": { "status": 200, "jsonPath": "$.dispatched", "value": true }
+    },
+    {
+      "name": "VERIFY — subscription remains active after the renewal",
+      "method": "POST",
+      "path": "/api/admin/deploy/sql-test",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "query": "SELECT status FROM msp_subscriptions WHERE stripe_subscription_id = 'sub_regression_testbed'" },
+      "expect": { "status": 200, "jsonPath": "$.rows[0].status", "value": "active" }
+    },
+    {
+      "name": "VERIFY — dunning_state stays NULL on a healthy renewal",
+      "method": "POST",
+      "path": "/api/admin/deploy/sql-test",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "query": "SELECT (dunning_state IS NULL) AS dunning_clear FROM msp_subscriptions WHERE stripe_subscription_id = 'sub_regression_testbed'" },
+      "expect": { "status": 200, "jsonPath": "$.rows[0].dunning_clear", "value": true }
+    },
+    {
+      "name": "VERIFY — payment_failed_at stays NULL on a healthy renewal",
+      "method": "POST",
+      "path": "/api/admin/deploy/sql-test",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "query": "SELECT (payment_failed_at IS NULL) AS failed_clear FROM msp_subscriptions WHERE stripe_subscription_id = 'sub_regression_testbed'" },
+      "expect": { "status": 200, "jsonPath": "$.rows[0].failed_clear", "value": true }
+    },
+    {
+      "name": "VERIFY — the dunning-cleared recovery branch did NOT fire (no such event) on a plain renewal",
+      "method": "POST",
+      "path": "/api/admin/deploy/sql-test",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "query": "SELECT e.id FROM msp_event_store e JOIN msp_subscriptions s ON s.msp_id = e.msp_id WHERE s.stripe_subscription_id = 'sub_regression_testbed' AND e.event_type = 'msp.subscription.dunning_cleared'" },
+      "expect": { "status": 200, "jsonPath": "$.rowCount", "value": 0 }
+    }
+  ],
+  "postGraphApiTests": [
+    {
+      "name": "TEARDOWN — restore clean baseline",
+      "method": "POST",
+      "path": "/api/admin/testbed/billing-simulate",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "action": "ensureSubscription" },
+      "expect": { "status": 200, "jsonPath": "$.ok", "value": true }
+    }
+  ]
+}

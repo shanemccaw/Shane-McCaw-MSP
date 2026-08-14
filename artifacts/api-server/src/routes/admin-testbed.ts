@@ -47,10 +47,16 @@ import {
   tenantsTable,
   tenantEngineOverridesTable,
   baselineActionTemplateAuditLogTable,
+  mspsTable,
+  mspSubscriptionsTable,
+  mspEventStoreTable,
+  servicesTable,
 } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
 import { requireAdminOrIngestToken } from "../middlewares/requireAuth";
-import { isReplitDevEnvironment } from "../lib/stripe";
+import { isReplitDevEnvironment, getStripeKey } from "../lib/stripe";
+import { dispatchMspStripeEvent } from "./msp-billing-webhook";
+import { handleMspDunningAdvance } from "../lib/msp-billing-nodes";
 import { logger } from "../lib/logger";
 
 const log = logger.child({ channel: "admin.testbed" });
@@ -317,6 +323,305 @@ router.post(
       log.error({ err }, "admin-testbed: teardown-graph-writes failed");
       res.status(500).json({
         error: err instanceof Error ? err.message : "Failed to tear down Graph writes",
+      });
+    }
+  },
+);
+
+// ── POST /admin/testbed/billing-simulate ──────────────────────────────────────
+//
+// Drive the REAL post-purchase Stripe billing lifecycle handlers against a
+// dedicated, isTestbed-flagged MSP subscription — so a test manifest can assert
+// the genuine resulting DB state (msp_subscriptions / msps / msp_event_store)
+// after a renewal, cancellation, failed payment + dunning advance, or refund,
+// not merely that a webhook returned 200.
+//
+// Why this exists: Stripe billing webhooks are the money spine, but they cannot
+// be exercised from the headless HTTP/WebView2 test harness the normal way — the
+// harness cannot produce a valid Stripe webhook SIGNATURE, and Stripe-side event
+// generation (renewals, dunning retries) is asynchronous and non-deterministic.
+// So this endpoint calls the SAME dispatchMspStripeEvent() the production
+// /api/msp/stripe/webhook route calls (one shared switch — see msp-billing-webhook.ts)
+// with a synthetic-but-faithful event object carrying exactly the fields each
+// real handler reads. The REAL handler logic and REAL DB writes run; the ONLY
+// thing skipped is signature verification + Stripe's own event emission. That is
+// the honest boundary, gated behind the same dev-origin wall as reset above.
+//
+// Actions (body.action):
+//   "ensureSubscription" — idempotently upsert the testbed MSP + msp_subscription
+//        to a known baseline (status=active, dunning=null, a fixed
+//        stripe_subscription_id) and clear its msp_event_store rows. Also the
+//        teardown: re-running it restores the clean baseline. isTestbed=true.
+//   "dispatchEvent"      — { event: { type, object } } → dispatchMspStripeEvent()
+//        (the real production dispatcher). No new billing logic here.
+//   "advanceDunning"     — optionally back-date payment_failed_at on the testbed
+//        sub by paymentFailedDaysAgo, then run the REAL handleMspDunningAdvance()
+//        daily-worker node so the null→reminder_sent→suspended→access_revoked→
+//        archival_flagged ladder is assertable without waiting real days.
+//
+// Everything is scoped to the single fixed testbed stripe_subscription_id below;
+// no real customer subscription is reachable, and the dev-origin gate is the
+// outer safety boundary (identical to reset).
+
+const TESTBED_MSP_SLUG = "regression-testbed-msp";
+const TESTBED_MSP_NAME = "Regression Testbed MSP (billing lifecycle)";
+const TESTBED_STRIPE_SUB_ID = "sub_regression_testbed";
+const TESTBED_STRIPE_CUSTOMER_ID = "cus_regression_testbed";
+const TESTBED_STRIPE_PRICE_ID = "price_regression_testbed";
+const TESTBED_CONTACT_EMAIL = "regression-testbed@example.com";
+
+router.post(
+  "/admin/testbed/billing-simulate",
+  requireDevOrigin,
+  requireAdminOrIngestToken(),
+  async (req: Request, res: Response): Promise<void> => {
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const action = typeof body.action === "string" ? body.action : "";
+
+    try {
+      // ── ensureSubscription: upsert testbed MSP + subscription to baseline ──────
+      if (action === "ensureSubscription") {
+        const now = new Date();
+
+        const [msp] = await db
+          .insert(mspsTable)
+          .values({
+            name: TESTBED_MSP_NAME,
+            slug: TESTBED_MSP_SLUG,
+            status: "active",
+            isTestbed: true,
+            isDirectBusiness: false,
+          })
+          .onConflictDoUpdate({
+            target: mspsTable.slug,
+            set: {
+              name: TESTBED_MSP_NAME,
+              status: "active",
+              suspendedAt: null,
+              isTestbed: true,
+              updatedAt: now,
+            },
+          })
+          .returning({ id: mspsTable.id, slug: mspsTable.slug });
+
+        if (!msp) {
+          res.status(500).json({ error: "failed to upsert testbed MSP" });
+          return;
+        }
+
+        // Resolve a real services.id to attach (serviceId is DB-FK-enforced).
+        // Prefer an msp_monthly_subscription tier; fall back to any service.
+        let [svc] = await db
+          .select({ id: servicesTable.id })
+          .from(servicesTable)
+          .where(eq(servicesTable.fulfillmentType, "msp_monthly_subscription"))
+          .orderBy(servicesTable.id)
+          .limit(1);
+        if (!svc) {
+          [svc] = await db
+            .select({ id: servicesTable.id })
+            .from(servicesTable)
+            .orderBy(servicesTable.id)
+            .limit(1);
+        }
+        if (!svc) {
+          res.status(500).json({
+            error: "no services row exists to attach the testbed subscription to (seed the product catalog first)",
+          });
+          return;
+        }
+
+        const periodStart = now;
+        const periodEnd = new Date(now.getTime() + 30 * 86_400_000);
+
+        const [sub] = await db
+          .insert(mspSubscriptionsTable)
+          .values({
+            mspId: msp.id,
+            serviceId: svc.id,
+            stripeCustomerId: TESTBED_STRIPE_CUSTOMER_ID,
+            stripeSubscriptionId: TESTBED_STRIPE_SUB_ID,
+            stripePriceId: TESTBED_STRIPE_PRICE_ID,
+            status: "active",
+            billingInterval: "month",
+            currentPeriodStart: periodStart,
+            currentPeriodEnd: periodEnd,
+            dunningState: null,
+            paymentFailedAt: null,
+            contactEmail: TESTBED_CONTACT_EMAIL,
+          })
+          .onConflictDoUpdate({
+            target: mspSubscriptionsTable.mspId,
+            set: {
+              serviceId: svc.id,
+              stripeCustomerId: TESTBED_STRIPE_CUSTOMER_ID,
+              stripeSubscriptionId: TESTBED_STRIPE_SUB_ID,
+              stripePriceId: TESTBED_STRIPE_PRICE_ID,
+              status: "active",
+              billingInterval: "month",
+              currentPeriodStart: periodStart,
+              currentPeriodEnd: periodEnd,
+              dunningState: null,
+              paymentFailedAt: null,
+              contactEmail: TESTBED_CONTACT_EMAIL,
+              updatedAt: now,
+            },
+          })
+          .returning({
+            id: mspSubscriptionsTable.id,
+            status: mspSubscriptionsTable.status,
+            stripeSubscriptionId: mspSubscriptionsTable.stripeSubscriptionId,
+          });
+
+        // Clear this testbed MSP's event-store rows so each run's assertions
+        // (e.g. "exactly one msp.subscription.canceled row") start from zero.
+        const clearedEvents = await db
+          .delete(mspEventStoreTable)
+          .where(eq(mspEventStoreTable.mspId, msp.id))
+          .returning({ id: mspEventStoreTable.id });
+
+        log.info(
+          {
+            action: "billing-simulate:ensureSubscription",
+            gate: "dev-origin",
+            gatePassed: true,
+            mspId: msp.id,
+            serviceId: svc.id,
+            stripeSubscriptionId: TESTBED_STRIPE_SUB_ID,
+            eventsCleared: clearedEvents.length,
+            ...describeOrigin(req),
+          },
+          `admin-testbed: billing-simulate ensureSubscription — testbed MSP ${msp.id} baseline (status=active, dunning=null), cleared ${clearedEvents.length} event-store row(s)`,
+        );
+
+        res.json({
+          ok: true,
+          action,
+          msp: { id: msp.id, slug: msp.slug },
+          serviceId: svc.id,
+          subscription: sub,
+          eventsCleared: clearedEvents.length,
+        });
+        return;
+      }
+
+      // ── dispatchEvent: run the real production dispatcher ─────────────────────
+      if (action === "dispatchEvent") {
+        const evt = body.event as { type?: unknown; object?: unknown } | undefined;
+        if (
+          !evt ||
+          typeof evt.type !== "string" ||
+          typeof evt.object !== "object" ||
+          evt.object === null
+        ) {
+          res.status(400).json({
+            error: "dispatchEvent requires event: { type: string, object: { ... } }",
+          });
+          return;
+        }
+
+        let stripeKey: string;
+        try {
+          stripeKey = getStripeKey();
+        } catch {
+          res.status(503).json({ error: "Stripe is not configured in this environment" });
+          return;
+        }
+        const { default: Stripe } = await import("stripe");
+        const stripe = new Stripe(stripeKey);
+
+        const syntheticEvent = {
+          id: "evt_testbed_sim",
+          object: "event",
+          type: evt.type,
+          data: { object: evt.object },
+        } as unknown as import("stripe").Stripe.Event;
+
+        await dispatchMspStripeEvent(stripe, syntheticEvent);
+
+        log.info(
+          {
+            action: "billing-simulate:dispatchEvent",
+            gate: "dev-origin",
+            gatePassed: true,
+            eventType: evt.type,
+            ...describeOrigin(req),
+          },
+          `admin-testbed: billing-simulate dispatchEvent — dispatched synthetic '${evt.type}' through the real msp-billing dispatcher`,
+        );
+
+        res.json({ ok: true, action, dispatched: true, eventType: evt.type });
+        return;
+      }
+
+      // ── advanceDunning: back-date + run the real dunning-advance node ──────────
+      if (action === "advanceDunning") {
+        const stripeSubscriptionId =
+          typeof body.stripeSubscriptionId === "string"
+            ? body.stripeSubscriptionId
+            : TESTBED_STRIPE_SUB_ID;
+
+        if (body.paymentFailedDaysAgo !== undefined) {
+          const daysAgo = Number(body.paymentFailedDaysAgo);
+          if (!Number.isFinite(daysAgo) || daysAgo < 0) {
+            res.status(400).json({ error: "paymentFailedDaysAgo must be a non-negative number" });
+            return;
+          }
+          const backdated = new Date(Date.now() - daysAgo * 86_400_000);
+          await db
+            .update(mspSubscriptionsTable)
+            .set({ status: "past_due", paymentFailedAt: backdated, updatedAt: new Date() })
+            .where(eq(mspSubscriptionsTable.stripeSubscriptionId, stripeSubscriptionId));
+        }
+
+        const thresholds: Record<string, unknown> = {};
+        for (const k of ["dayReminder", "daySuspend", "dayRevoke", "dayArchive"]) {
+          if (body[k] !== undefined) thresholds[k] = body[k];
+        }
+
+        const result = await handleMspDunningAdvance(thresholds);
+
+        const [row] = await db
+          .select({
+            dunningState: mspSubscriptionsTable.dunningState,
+            status: mspSubscriptionsTable.status,
+          })
+          .from(mspSubscriptionsTable)
+          .where(eq(mspSubscriptionsTable.stripeSubscriptionId, stripeSubscriptionId))
+          .limit(1);
+
+        log.info(
+          {
+            action: "billing-simulate:advanceDunning",
+            gate: "dev-origin",
+            gatePassed: true,
+            stripeSubscriptionId,
+            paymentFailedDaysAgo: body.paymentFailedDaysAgo ?? null,
+            result,
+            resultingDunningState: row?.dunningState ?? null,
+            ...describeOrigin(req),
+          },
+          `admin-testbed: billing-simulate advanceDunning — ran real msp_dunning_advance; testbed sub dunning_state now '${row?.dunningState ?? "null"}'`,
+        );
+
+        res.json({
+          ok: true,
+          action,
+          result,
+          dunningState: row?.dunningState ?? null,
+          status: row?.status ?? null,
+        });
+        return;
+      }
+
+      res.status(400).json({
+        error:
+          "unknown action — expected one of: ensureSubscription | dispatchEvent | advanceDunning",
+      });
+    } catch (err) {
+      log.error({ err, action }, "admin-testbed: billing-simulate failed");
+      res.status(500).json({
+        error: err instanceof Error ? err.message : "billing-simulate failed",
       });
     }
   },

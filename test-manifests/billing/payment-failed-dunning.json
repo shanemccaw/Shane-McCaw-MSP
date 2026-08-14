@@ -1,0 +1,202 @@
+{
+  "feature": "Money path — failed payment → dunning ladder → recovery (MSP platform subscription). Drives the REAL msp-billing Stripe handlers + the REAL daily dunning-advance node against an isTestbed MSP subscription and asserts the genuine resulting msp_subscriptions / msps / msp_event_store state after every rung.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "c46fac85cb1b0ba6a51f7fbcf098a806e5b8ca4a",
+  "notes": [
+    "Epic #803 (Money-path lifecycle coverage). This covers what money-path-e2e.json does NOT: money-path stops at INITIAL checkout; this exercises the post-purchase failed-payment + dunning + recovery transitions of the ONLY fully-wired Stripe billing state machine in the repo — the MSP platform channel (artifacts/api-server/src/routes/msp-billing-webhook.ts → msp_subscriptions, and the daily worker artifacts/api-server/src/lib/msp-billing-nodes.ts handleMspDunningAdvance).",
+    "HOW IT DRIVES REAL CODE (honest boundary): the BuildConsole HTTP harness cannot produce a valid Stripe webhook SIGNATURE, and Stripe-side event generation (renewals, dunning retries) is asynchronous + non-deterministic — so a webhook cannot be driven the normal way from here. Instead the dev-origin-gated testbed endpoint POST /api/admin/testbed/billing-simulate calls the SAME dispatchMspStripeEvent() the production /api/msp/stripe/webhook route calls (one shared switch), and the SAME handleMspDunningAdvance() the daily workflow calls. So the REAL handler logic + REAL DB writes run. The ONLY parts skipped are (a) Stripe signature verification and (b) Stripe's own event emission — neither is drivable from this harness. That is stated plainly rather than faked.",
+    "SELF-CONTAINED: the SETUP step (billing-simulate ensureSubscription) idempotently upserts an isTestbed=true MSP + msp_subscription at a fixed stripe_subscription_id ('sub_regression_testbed') to a known baseline (status=active, dunning_state=null) and clears that MSP's msp_event_store rows so the 'exactly one event' assertions start from zero. TEARDOWN re-runs ensureSubscription to restore the baseline. No real customer subscription is reachable; the dev-origin gate (requireDevOrigin / isReplitDevEnvironment, the same REPLIT_DOMAINS check that selects sk_test_) is the outer safety boundary, identical to /api/admin/testbed/reset.",
+    "DB ASSERTIONS are real: each VERIFY hits POST /api/admin/deploy/sql-test (single read-only SELECT, Bearer {{SECRET_KEY}}) and asserts the genuine column value (msp_subscriptions.status, .dunning_state, .payment_failed_at; msps.status) or an event-row rowCount — not merely that a call returned 200.",
+    "DUNNING LADDER: handleMspDunningAdvance computes daysSince = floor((now - payment_failed_at)/1 day) and advances null → reminder_sent (Day 3) → suspended (Day 7) → access_revoked (Day 14) → archival_flagged (Day 30). advanceDunning back-dates payment_failed_at by paymentFailedDaysAgo then runs the real node; margins (4/8/15/31) are used so each threshold is unambiguously crossed. msps.status flips to 'suspended' at the suspended + access_revoked rungs (suspended_at set once, on first suspend) and stays 'active' at reminder_sent — asserted at each rung.",
+    "RECOVERY: invoice.payment_succeeded while in dunning clears dunning_state + payment_failed_at, sets status='active', restores msps.status='active' + suspended_at=null, and writes exactly one msp.subscription.dunning_cleared event — all asserted.",
+    "PRECONDITION / Shane To-Do: requires POST /api/admin/testbed/billing-simulate to be deployed (added to admin-testbed.ts this session) and a dev (.replit.dev) origin. NOT run from this authoring environment (no DEPLOY_URL / dev origin / DB reachable here) — Shane runs it against the dev origin. ENV VARS: DEPLOY_URL, SECRET_KEY (= BUILD_TRACKER_INGEST_TOKEN)."
+  ],
+  "apiTests": [
+    {
+      "name": "SETUP — ensure the testbed MSP subscription exists at a clean baseline (status=active, dunning=null, event log cleared)",
+      "method": "POST",
+      "path": "/api/admin/testbed/billing-simulate",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "action": "ensureSubscription" },
+      "expect": { "status": 200, "jsonPath": "$.subscription.status", "value": "active" }
+    },
+    {
+      "name": "SETUP verify — baseline row is genuinely active in the DB",
+      "method": "POST",
+      "path": "/api/admin/deploy/sql-test",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "query": "SELECT status FROM msp_subscriptions WHERE stripe_subscription_id = 'sub_regression_testbed'" },
+      "expect": { "status": 200, "jsonPath": "$.rows[0].status", "value": "active" }
+    },
+    {
+      "name": "EXECUTE — invoice.payment_failed (recurring charge declined) through the real dispatcher",
+      "method": "POST",
+      "path": "/api/admin/testbed/billing-simulate",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "action": "dispatchEvent", "event": { "type": "invoice.payment_failed", "object": { "id": "in_testbed_fail_1", "subscription": "sub_regression_testbed", "attempt_count": 1 } } },
+      "expect": { "status": 200, "jsonPath": "$.dispatched", "value": true }
+    },
+    {
+      "name": "VERIFY — subscription is now past_due in the DB (real handlePaymentFailed write)",
+      "method": "POST",
+      "path": "/api/admin/deploy/sql-test",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "query": "SELECT status FROM msp_subscriptions WHERE stripe_subscription_id = 'sub_regression_testbed'" },
+      "expect": { "status": 200, "jsonPath": "$.rows[0].status", "value": "past_due" }
+    },
+    {
+      "name": "VERIFY — payment_failed_at (the dunning clock origin) is now set",
+      "method": "POST",
+      "path": "/api/admin/deploy/sql-test",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "query": "SELECT (payment_failed_at IS NOT NULL) AS failed_set FROM msp_subscriptions WHERE stripe_subscription_id = 'sub_regression_testbed'" },
+      "expect": { "status": 200, "jsonPath": "$.rows[0].failed_set", "value": true }
+    },
+    {
+      "name": "VERIFY — exactly one msp.subscription.payment_failed event was recorded",
+      "method": "POST",
+      "path": "/api/admin/deploy/sql-test",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "query": "SELECT e.id FROM msp_event_store e JOIN msp_subscriptions s ON s.msp_id = e.msp_id WHERE s.stripe_subscription_id = 'sub_regression_testbed' AND e.event_type = 'msp.subscription.payment_failed'" },
+      "expect": { "status": 200, "jsonPath": "$.rowCount", "value": 1 }
+    },
+    {
+      "name": "EXECUTE — advance dunning at Day ~4: expect reminder_sent (real handleMspDunningAdvance)",
+      "method": "POST",
+      "path": "/api/admin/testbed/billing-simulate",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "action": "advanceDunning", "paymentFailedDaysAgo": 4 },
+      "expect": { "status": 200, "jsonPath": "$.dunningState", "value": "reminder_sent" }
+    },
+    {
+      "name": "VERIFY — dunning_state is reminder_sent in the DB",
+      "method": "POST",
+      "path": "/api/admin/deploy/sql-test",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "query": "SELECT dunning_state FROM msp_subscriptions WHERE stripe_subscription_id = 'sub_regression_testbed'" },
+      "expect": { "status": 200, "jsonPath": "$.rows[0].dunning_state", "value": "reminder_sent" }
+    },
+    {
+      "name": "VERIFY — the MSP org is still active at the reminder stage (not yet suspended)",
+      "method": "POST",
+      "path": "/api/admin/deploy/sql-test",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "query": "SELECT m.status FROM msps m JOIN msp_subscriptions s ON s.msp_id = m.id WHERE s.stripe_subscription_id = 'sub_regression_testbed'" },
+      "expect": { "status": 200, "jsonPath": "$.rows[0].status", "value": "active" }
+    },
+    {
+      "name": "EXECUTE — advance dunning at Day ~8: expect suspended",
+      "method": "POST",
+      "path": "/api/admin/testbed/billing-simulate",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "action": "advanceDunning", "paymentFailedDaysAgo": 8 },
+      "expect": { "status": 200, "jsonPath": "$.dunningState", "value": "suspended" }
+    },
+    {
+      "name": "VERIFY — dunning_state is suspended in the DB",
+      "method": "POST",
+      "path": "/api/admin/deploy/sql-test",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "query": "SELECT dunning_state FROM msp_subscriptions WHERE stripe_subscription_id = 'sub_regression_testbed'" },
+      "expect": { "status": 200, "jsonPath": "$.rows[0].dunning_state", "value": "suspended" }
+    },
+    {
+      "name": "VERIFY — the MSP org is now suspended (real msps.status write on the suspend rung)",
+      "method": "POST",
+      "path": "/api/admin/deploy/sql-test",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "query": "SELECT m.status FROM msps m JOIN msp_subscriptions s ON s.msp_id = m.id WHERE s.stripe_subscription_id = 'sub_regression_testbed'" },
+      "expect": { "status": 200, "jsonPath": "$.rows[0].status", "value": "suspended" }
+    },
+    {
+      "name": "EXECUTE — advance dunning at Day ~15: expect access_revoked",
+      "method": "POST",
+      "path": "/api/admin/testbed/billing-simulate",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "action": "advanceDunning", "paymentFailedDaysAgo": 15 },
+      "expect": { "status": 200, "jsonPath": "$.dunningState", "value": "access_revoked" }
+    },
+    {
+      "name": "VERIFY — dunning_state is access_revoked in the DB",
+      "method": "POST",
+      "path": "/api/admin/deploy/sql-test",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "query": "SELECT dunning_state FROM msp_subscriptions WHERE stripe_subscription_id = 'sub_regression_testbed'" },
+      "expect": { "status": 200, "jsonPath": "$.rows[0].dunning_state", "value": "access_revoked" }
+    },
+    {
+      "name": "EXECUTE — advance dunning at Day ~31: expect archival_flagged",
+      "method": "POST",
+      "path": "/api/admin/testbed/billing-simulate",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "action": "advanceDunning", "paymentFailedDaysAgo": 31 },
+      "expect": { "status": 200, "jsonPath": "$.dunningState", "value": "archival_flagged" }
+    },
+    {
+      "name": "VERIFY — dunning_state is archival_flagged in the DB",
+      "method": "POST",
+      "path": "/api/admin/deploy/sql-test",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "query": "SELECT dunning_state FROM msp_subscriptions WHERE stripe_subscription_id = 'sub_regression_testbed'" },
+      "expect": { "status": 200, "jsonPath": "$.rows[0].dunning_state", "value": "archival_flagged" }
+    },
+    {
+      "name": "EXECUTE — recovery: invoice.payment_succeeded (the customer's card finally clears) through the real dispatcher",
+      "method": "POST",
+      "path": "/api/admin/testbed/billing-simulate",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "action": "dispatchEvent", "event": { "type": "invoice.payment_succeeded", "object": { "id": "in_testbed_ok_1", "subscription": "sub_regression_testbed" } } },
+      "expect": { "status": 200, "jsonPath": "$.dispatched", "value": true }
+    },
+    {
+      "name": "VERIFY — subscription is active again after recovery",
+      "method": "POST",
+      "path": "/api/admin/deploy/sql-test",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "query": "SELECT status FROM msp_subscriptions WHERE stripe_subscription_id = 'sub_regression_testbed'" },
+      "expect": { "status": 200, "jsonPath": "$.rows[0].status", "value": "active" }
+    },
+    {
+      "name": "VERIFY — dunning_state was cleared to NULL on recovery",
+      "method": "POST",
+      "path": "/api/admin/deploy/sql-test",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "query": "SELECT (dunning_state IS NULL) AS dunning_cleared FROM msp_subscriptions WHERE stripe_subscription_id = 'sub_regression_testbed'" },
+      "expect": { "status": 200, "jsonPath": "$.rows[0].dunning_cleared", "value": true }
+    },
+    {
+      "name": "VERIFY — payment_failed_at was cleared to NULL on recovery",
+      "method": "POST",
+      "path": "/api/admin/deploy/sql-test",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "query": "SELECT (payment_failed_at IS NULL) AS failed_cleared FROM msp_subscriptions WHERE stripe_subscription_id = 'sub_regression_testbed'" },
+      "expect": { "status": 200, "jsonPath": "$.rows[0].failed_cleared", "value": true }
+    },
+    {
+      "name": "VERIFY — the MSP org was restored to active on recovery",
+      "method": "POST",
+      "path": "/api/admin/deploy/sql-test",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "query": "SELECT m.status FROM msps m JOIN msp_subscriptions s ON s.msp_id = m.id WHERE s.stripe_subscription_id = 'sub_regression_testbed'" },
+      "expect": { "status": 200, "jsonPath": "$.rows[0].status", "value": "active" }
+    },
+    {
+      "name": "VERIFY — exactly one msp.subscription.dunning_cleared event was recorded on recovery",
+      "method": "POST",
+      "path": "/api/admin/deploy/sql-test",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "query": "SELECT e.id FROM msp_event_store e JOIN msp_subscriptions s ON s.msp_id = e.msp_id WHERE s.stripe_subscription_id = 'sub_regression_testbed' AND e.event_type = 'msp.subscription.dunning_cleared'" },
+      "expect": { "status": 200, "jsonPath": "$.rowCount", "value": 1 }
+    }
+  ],
+  "postGraphApiTests": [
+    {
+      "name": "TEARDOWN — restore the testbed MSP subscription to the clean baseline for the next run",
+      "method": "POST",
+      "path": "/api/admin/testbed/billing-simulate",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "action": "ensureSubscription" },
+      "expect": { "status": 200, "jsonPath": "$.ok", "value": true }
+    }
+  ]
+}

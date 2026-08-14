@@ -1,0 +1,87 @@
+{
+  "feature": "Money path — scheduled cancellation + status sync (MSP platform subscription). customer.subscription.updated mirrors Stripe's own status into the local row and syncs the period window; the scheduled-cancel (cancel_at_period_end) case is proven to mirror as 'active'.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "c46fac85cb1b0ba6a51f7fbcf098a806e5b8ca4a",
+  "notes": [
+    "Epic #803 (Money-path lifecycle coverage). Drives the REAL msp-billing-webhook handleSubscriptionUpdated via the dev-origin-gated POST /api/admin/testbed/billing-simulate (same dispatchMspStripeEvent as production). Honest boundary + self-contained testbed setup: see payment-failed-dunning.json notes.",
+    "SCHEDULED CANCELLATION SEMANTICS on the MSP channel (documented + asserted): when a customer schedules a cancel_at_period_end, Stripe keeps the subscription status 'active' until the period actually ends, and only then sends customer.subscription.deleted. handleSubscriptionUpdated mirrors subscription.status verbatim and does NOT read/persist cancel_at_period_end — so the local msp_subscriptions row shows 'active' for a subscription that is scheduled to cancel. This test asserts that real behavior (status stays 'active' after the cancel_at_period_end update). LIMITATION worth Shane's awareness: the local row cannot distinguish 'active' from 'active-but-ending' — the pending-cancel is only visible in Stripe until the period-end deleted event (covered by cancellation-immediate.json).",
+    "STATUS SYNC: the same handler is the ONLY place Stripe's active → past_due → active status is mirrored for the MSP channel, so this manifest also fires a real status change (active → past_due → active) and asserts each mirrors, catching a regression where the mirror freezes on one value.",
+    "PRECONDITION / Shane To-Do: POST /api/admin/testbed/billing-simulate deployed; .replit.dev dev origin. Not run from this authoring environment. ENV VARS: DEPLOY_URL, SECRET_KEY."
+  ],
+  "apiTests": [
+    {
+      "name": "SETUP — testbed MSP subscription at clean active baseline",
+      "method": "POST",
+      "path": "/api/admin/testbed/billing-simulate",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "action": "ensureSubscription" },
+      "expect": { "status": 200, "jsonPath": "$.subscription.status", "value": "active" }
+    },
+    {
+      "name": "EXECUTE — customer.subscription.updated with cancel_at_period_end=true, status active (a scheduled cancellation)",
+      "method": "POST",
+      "path": "/api/admin/testbed/billing-simulate",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "action": "dispatchEvent", "event": { "type": "customer.subscription.updated", "object": { "id": "sub_regression_testbed", "status": "active", "cancel_at_period_end": true, "current_period_start": 1735689600, "current_period_end": 4102444800 } } },
+      "expect": { "status": 200, "jsonPath": "$.dispatched", "value": true }
+    },
+    {
+      "name": "VERIFY — a scheduled-to-cancel subscription still mirrors as 'active' locally (documented behavior)",
+      "method": "POST",
+      "path": "/api/admin/deploy/sql-test",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "query": "SELECT status FROM msp_subscriptions WHERE stripe_subscription_id = 'sub_regression_testbed'" },
+      "expect": { "status": 200, "jsonPath": "$.rows[0].status", "value": "active" }
+    },
+    {
+      "name": "VERIFY — the period window was synced from the event (current_period_end set)",
+      "method": "POST",
+      "path": "/api/admin/deploy/sql-test",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "query": "SELECT (current_period_end IS NOT NULL) AS period_set FROM msp_subscriptions WHERE stripe_subscription_id = 'sub_regression_testbed'" },
+      "expect": { "status": 200, "jsonPath": "$.rows[0].period_set", "value": true }
+    },
+    {
+      "name": "EXECUTE — customer.subscription.updated with status past_due (prove the mirror reflects a real status change)",
+      "method": "POST",
+      "path": "/api/admin/testbed/billing-simulate",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "action": "dispatchEvent", "event": { "type": "customer.subscription.updated", "object": { "id": "sub_regression_testbed", "status": "past_due" } } },
+      "expect": { "status": 200, "jsonPath": "$.dispatched", "value": true }
+    },
+    {
+      "name": "VERIFY — local status now mirrors past_due",
+      "method": "POST",
+      "path": "/api/admin/deploy/sql-test",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "query": "SELECT status FROM msp_subscriptions WHERE stripe_subscription_id = 'sub_regression_testbed'" },
+      "expect": { "status": 200, "jsonPath": "$.rows[0].status", "value": "past_due" }
+    },
+    {
+      "name": "EXECUTE — customer.subscription.updated back to active",
+      "method": "POST",
+      "path": "/api/admin/testbed/billing-simulate",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "action": "dispatchEvent", "event": { "type": "customer.subscription.updated", "object": { "id": "sub_regression_testbed", "status": "active" } } },
+      "expect": { "status": 200, "jsonPath": "$.dispatched", "value": true }
+    },
+    {
+      "name": "VERIFY — local status mirrors active again",
+      "method": "POST",
+      "path": "/api/admin/deploy/sql-test",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "query": "SELECT status FROM msp_subscriptions WHERE stripe_subscription_id = 'sub_regression_testbed'" },
+      "expect": { "status": 200, "jsonPath": "$.rows[0].status", "value": "active" }
+    }
+  ],
+  "postGraphApiTests": [
+    {
+      "name": "TEARDOWN — restore clean baseline",
+      "method": "POST",
+      "path": "/api/admin/testbed/billing-simulate",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "action": "ensureSubscription" },
+      "expect": { "status": 200, "jsonPath": "$.ok", "value": true }
+    }
+  ]
+}
