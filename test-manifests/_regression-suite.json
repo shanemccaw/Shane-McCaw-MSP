@@ -13,6 +13,7 @@
     "copilot-readiness/money-path-e2e.json",
     "copilot-readiness/remediation-tracker-e2e.json",
     "copilot-readiness/home-quiz-scoring.json",
+    "copilot-readiness/assessment-monitoring-rescan.json",
     "billing/retainer-signup.json",
     "billing/retainer-lifecycle.json",
     "admin/tenant-switcher-floaty.json",

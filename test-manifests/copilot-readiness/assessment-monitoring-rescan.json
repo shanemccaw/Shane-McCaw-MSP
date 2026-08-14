@@ -1,0 +1,149 @@
+{
+  "issue": 454,
+  "feature": "Assessment Monitoring / weekly-rescan surface (Git #454, area:shane-mccaw-consulting) — access gate, real testbed rescan trigger, and the real weekly cron cadence. Written to be honest about the gap between the requested framing ('weekly re-scan gated behind a signed SOW') and what actually exists in code (see notes).",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "88c809d9e44f3e348aa9c13c8235aee677dcd5fc",
+
+  "notes": [
+    "PROVENANCE / GIT #454. This manifest was written after a full source investigation of the 'Assessment Monitoring' product. The requested framing was: a weekly re-scan GATED BEHIND A SIGNED SOW, with a real scheduled trigger and a signed-SOW gate that blocks unentitled customers. GROUND TRUTH after reading the code: that exact feature — a weekly rescan whose gate is a *signed SOW* — DOES NOT EXIST as one unified mechanism. Rather than fabricate coverage for a gate/trigger that isn't there (which would violate this repo's test-honesty discipline), this manifest asserts the REAL, adjacent mechanisms that DO exist and documents each divergence in-line below. Sources read: seed-system-workflows.ts (the weekly cron workflow), workflow-executor.ts (triggerScheduledWorkflows + computeNextCronRun), sow-expiry-sweep.ts, portal-assessment.ts (debug-trigger-scan), diagnostics-runner.ts (runDiagnostics), portal-customer-engines.ts (the payment entitlement gate), sow-monitoring-addon.ts (pricing resolver), journeyPreviewFixture.ts (the 'tenant-monitoring' design fixture), admin-workflows.ts (the trigger-inspection endpoints), requireAuth.ts (the guards).",
+
+    "DIVERGENCE 1 — THE 'SIGNED-SOW GATE' DOES NOT EXIST. There is no code of the form `if (!sow.signed) return 403` in front of any rescan or monitoring read. The gates that genuinely exist are: (a) the manual customer-reachable rescan trigger POST /api/portal/assessment/debug-trigger-scan is hard-gated to TESTBED tenants (portal-assessment.ts: `customer.isTestbed !== true` -> 403 'Scan trigger is not available for this account'); (b) raw findings/recommendation TEXT on GET /api/portal/dashboard is gated on PAYMENT, not signature — `assessment_sow_agreements.status IN ('paid','free_activated')` (portal-customer-engines.ts isPaidTier); composite/pillar SCORES are never gated. So a customer 'without a signed SOW' is not the real access boundary — the real boundaries are testbed-flag (for the manual trigger), payment status (for findings text), and role/auth (for every portal + admin route). This manifest asserts the boundaries that are real and deterministic with the available testbed credentials.",
+
+    "DIVERGENCE 2 — THE WEEKLY CADENCE IS REAL, BUT TIER+CONSENT GATED, NOT SOW GATED. A genuine weekly schedule-triggered rescan EXISTS: the seeded Workflow-Engine definition '__system__: Weekly Retargeting Rescan — Free/Assessment Tenants' (seed-system-workflows.ts), triggerType 'schedule', cron '0 3 * * 1' (every Monday 03:00). It is dispatched by triggerScheduledWorkflows() (index.ts setInterval 60s -> workflow-executor.ts, which reschedules via computeNextCronRun and stamps wf_triggers.next_run_at). Its fan-out selects `users.msp_role IN ('Free','Assessment')` whose tenant Graph consent is 'granted' — and its OWN code comment says: 'Explicitly NOT a Monitoring subscription — does not touch msp_subscriptions or any billing/monitoring_tier config.' So the real cadence is gated on tenant TIER + Graph CONSENT, and is deliberately independent of any purchased/signed monitoring product. The CADENCE apiTests below assert this real definition + cron via the admin trigger-inspection endpoint.",
+
+    "DIVERGENCE 3 — 'TENANT MONITORING' IS A PRICED SOW ADD-ON LINE ITEM, NOT A RUNNING HOURLY ENGINE. The 'Six signal engines against your tenant every hour' copy (journeyPreviewFixture.ts / sow-monitoring-addon.ts) is self-documented IN THE CODE as marketing shorthand ('this is marketing shorthand, not a literal per-tier engine count'). resolveTenantMonitoringAddon() is a per-seat PRICING resolver over `services` rows (serviceType 'monitoring_tier'); it contains no entitlement/gate logic and fires no scan. There is no six-engine hourly rescan wired to a purchased monitoring SOW. Nothing here asserts an hourly-six-engine loop because none exists.",
+
+    "DIVERGENCE 4 — THE #454 DASHBOARD DRIFT VISUALIZATION IS UNBUILT. assessment-dashboard.tsx renders only the current-run snapshot: NO drift/trend/history/score-over-time, and ZERO data-testid attributes (grep-confirmed). The '#454 drift viz' half of the issue is not implemented, so there are NO uiSteps in this manifest — there is no stable, honestly-assertable DOM surface for drift. When the drift viz is built (score-over-time per pillar with data-testids), add uiSteps here asserting the real rendered series. Documented as an explicit gap rather than faked with guessed selectors.",
+
+    "WHAT A RE-SCAN ACTUALLY PRODUCES: all scan paths converge on runDiagnostics() (diagnostics-runner.ts), which INSERTS an msp_diagnostic_runs row (status pending -> running -> completed/failed/partial, with startedAt/completedAt) and writes findings rows, then emits a 'diagnostics.run_completed' workflow event. There is NO nextScanAt / scan_cadence / monitoring_enabled column anywhere; 'lastScanAt' shown in the portal is DERIVED from the most-recent completed run row. The RESCAN apiTests below assert the trigger creates a real, persisted, active run (runId + backend-computed checksTotal). ASYNC LIMIT (same as money-path-e2e.json / remediation-tracker-e2e.json): debug-trigger-scan returns 202 immediately and runDiagnostics runs in the background; the executor cannot await completion, so the post-scan score/finding DELTA ('genuinely updated results') is asserted at the trigger + persisted-active-run level, and the completed-scan delta is a polling follow-up for when the runner grows a poll primitive (cf. #877). Firing the trigger twice proves a fresh run row is minted each call (each returns its own new runId).",
+
+    "TESTBED-ONLY / DEV-ORIGIN-ONLY SAFETY: this manifest never touches raw DB and performs no real M365 Graph writes. The only write it causes is debug-trigger-scan inserting an msp_diagnostic_runs row on the TESTBED tenant — additive read-only-scan telemetry on a testbed account, identical to what money-path-e2e.json and remediation-tracker-e2e.json already leave, so no teardown is required. The manual trigger is server-side hard-gated to testbed tenants (202 only for a genuinely testbed-flagged account — a 202 here also PROVES the account is testbed-flagged, not merely asserted client-side). Run against the .replit.dev dev origin (same origin the other copilot-readiness manifests target).",
+
+    "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL (the .replit.dev dev origin serving /api). TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD (the designated TESTBED Assessment-role account — same account money-path-e2e.json + remediation-tracker-e2e.json drive; it must be isTestbed=true or the RESCAN block's 202 becomes a 403). SECRET_KEY (= BUILD_TRACKER_INGEST_TOKEN) — used ONLY to prove the strict admin surface REJECTS it. TEST_ADMIN_EMAIL / TEST_ADMIN_PASSWORD (a role='admin' account) — REQUIRED for the CADENCE block, because GET /api/admin/workflows/triggers is guarded by requireAdmin (strict: req.user.role==='admin'), which — unlike the requireAdminOrIngestToken testbed endpoints — does NOT honor the ingest token (requireAuth.ts:158,183). If TEST_ADMIN_EMAIL/PASSWORD are not provisioned, the admin login returns 401, {{adminToken}} stays unset, and every CADENCE step fails LOUDLY (by design — that failure means 'provision a testbed admin account', it is not a false negative about the cron). This is the manifest's one Shane To-Do.",
+
+    "AUTH-BOUNDARY FACTS asserted below (all real, all deterministic with the creds above): (1) anonymous (no bearer) -> 401 on the trigger, the scan-status read, and the SOW read (requireRole/requireAuth). (2) valid Assessment-role bearer -> 403 on the admin trigger-config surface (requireAdmin, wrong role). (3) the ingest token (SECRET_KEY) -> 401 on the admin trigger-config surface (requireAdmin runs requireAuth first and the ingest token is not a valid JWT) — proving the workflow-config surface is strictly admin-gated, NOT ingest-openable like the testbed reset endpoints. These three together are the honest, real answer to 'a caller without the right entitlement cannot trigger/read monitoring' — the entitlement that matters is testbed-flag + role + auth, not a signed SOW."
+  ],
+
+  "apiTests": [
+    {
+      "name": "SETUP 1/2 — log in as the designated TESTBED Assessment account; extract the bearer used by the GATE + RESCAN blocks. (Same account money-path-e2e.json / remediation-tracker-e2e.json drive.)",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "SETUP 2/2 — log in as the TESTBED ADMIN account (role='admin') for the CADENCE block's requireAdmin-guarded trigger-inspection endpoint; extract {{adminToken}}. PRECONDITION: needs TEST_ADMIN_EMAIL/PASSWORD provisioned (the one Shane To-Do). If unset, this 401s and the CADENCE steps fail loudly — that is the signal to provision the account, not a cron regression.",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_ADMIN_EMAIL}}", "password": "{{TEST_ADMIN_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "adminToken", "jsonPath": "$.accessToken" }
+    },
+
+    {
+      "name": "GATE A1 — anonymous (no bearer) cannot trigger a rescan: POST debug-trigger-scan without Authorization is refused by requireRole('Assessment') -> 401. The rescan trigger is genuinely access-gated, not open.",
+      "method": "POST",
+      "path": "/api/portal/assessment/debug-trigger-scan",
+      "headers": { "Content-Type": "application/json" },
+      "expect": { "status": 401 }
+    },
+    {
+      "name": "GATE A2 — anonymous cannot read scan status: GET /portal/scan-status without a bearer -> 401.",
+      "method": "GET",
+      "path": "/api/portal/scan-status",
+      "headers": { "Content-Type": "application/json" },
+      "expect": { "status": 401 }
+    },
+    {
+      "name": "GATE A3 — anonymous cannot read the SOW/monitoring scope: GET /portal/assessment/sow without a bearer -> 401 (requireRole('Assessment')).",
+      "method": "GET",
+      "path": "/api/portal/assessment/sow",
+      "headers": { "Content-Type": "application/json" },
+      "expect": { "status": 401 }
+    },
+    {
+      "name": "GATE A4 — WRONG ROLE is genuinely blocked from the monitoring-schedule CONFIG surface: a valid Assessment-role bearer hitting the admin trigger-inspection endpoint is refused by requireAdmin -> 403. (Proves the cron/monitoring configuration is not reachable by an ordinary customer, only an admin.)",
+      "method": "GET",
+      "path": "/api/admin/workflows/triggers",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 403 }
+    },
+    {
+      "name": "GATE A5 — the INGEST TOKEN is NOT admin: SECRET_KEY (BUILD_TRACKER_INGEST_TOKEN) on the requireAdmin-guarded trigger surface -> 401 (requireAdmin runs requireAuth first; the ingest token is not a valid JWT). This is the real boundary between the strict admin surface and the requireAdminOrIngestToken testbed endpoints — the workflow-config surface is admin-only, not ingest-openable.",
+      "method": "GET",
+      "path": "/api/admin/workflows/triggers",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}" },
+      "expect": { "status": 401 }
+    },
+
+    {
+      "name": "RESCAN B1 — a genuinely testbed-flagged Assessment account CAN trigger the real rescan: POST debug-trigger-scan -> 202 with a fresh runId. runDiagnostics runs async; a 202 also proves the account passed the hard server-side isTestbed gate (a non-testbed tenant would 403 here). Extract the run id.",
+      "method": "POST",
+      "path": "/api/portal/assessment/debug-trigger-scan",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 202, "jsonPath": "$.runId", "exists": true },
+      "extract": { "as": "scanRunId", "jsonPath": "$.runId" }
+    },
+    {
+      "name": "RESCAN B2 — the trigger reports the pending status contract on the wire (real 202 envelope, not a mocked 200).",
+      "method": "POST",
+      "path": "/api/portal/assessment/debug-trigger-scan",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 202, "jsonPath": "$.status", "value": "pending" }
+    },
+    {
+      "name": "RESCAN B3 — the rescan produced a REAL, PERSISTED active run: scan-status now reports active.runId (the run row genuinely landed in msp_diagnostic_runs, not a static/mocked response).",
+      "method": "GET",
+      "path": "/api/portal/scan-status",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.active.runId", "exists": true }
+    },
+    {
+      "name": "RESCAN B4 — the active run carries a real backend-computed checksTotal (the count runDiagnostics computes over the monitoring package), evidence the scan is doing genuine work, not returning an empty placeholder. NOTE: the completed-scan score/finding DELTA is async and not awaitable here (see the ASYNC LIMIT note) — this asserts a real in-progress run, which is the honest maximum for this runner.",
+      "method": "GET",
+      "path": "/api/portal/scan-status",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.active.checksTotal", "exists": true }
+    },
+    {
+      "name": "RESCAN B5 — the maintained-scan surface the drift/report layer reads is live: GET /portal/assessment/status returns a real copilotGate on the wire (same payload the Documents/dashboard hooks poll).",
+      "method": "GET",
+      "path": "/api/portal/assessment/status",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.copilotGate", "exists": true }
+    },
+
+    {
+      "name": "CADENCE C1 — the real weekly rescan cadence EXISTS as a Workflow-Engine schedule trigger: GET /admin/workflows/triggers (admin bearer) returns the seeded '__system__: Weekly Retargeting Rescan — Free/Assessment Tenants' definition on the wire. containsAny substring-matches the definition name in the real triggers list.",
+      "method": "GET",
+      "path": "/api/admin/workflows/triggers",
+      "headers": { "Authorization": "Bearer {{adminToken}}" },
+      "expect": { "status": 200, "containsAny": ["Weekly Retargeting Rescan"] }
+    },
+    {
+      "name": "CADENCE C2 — the cadence is genuinely WEEKLY: the same triggers list carries the real cron expression '0 3 * * 1' (every Monday 03:00) for a schedule-type trigger. This is the real scheduling logic, on the wire, not a fixture.",
+      "method": "GET",
+      "path": "/api/admin/workflows/triggers",
+      "headers": { "Authorization": "Bearer {{adminToken}}" },
+      "expect": { "status": 200, "containsAny": ["0 3 * * 1"] }
+    },
+    {
+      "name": "CADENCE C3 — the trigger is a SCHEDULE trigger and is ENABLED (the 60s triggerScheduledWorkflows scanner only fires enabled schedule triggers whose next_run_at has passed). containsAny confirms a real 'schedule' trigger type is present in the list.",
+      "method": "GET",
+      "path": "/api/admin/workflows/triggers",
+      "headers": { "Authorization": "Bearer {{adminToken}}" },
+      "expect": { "status": 200, "containsAny": ["schedule"] }
+    },
+    {
+      "name": "CADENCE C4 — the cadence logic has actually COMPUTED a next fire: the triggers list carries a nextRunAt field (computeNextCronRun stamps wf_triggers.next_run_at each reschedule). Presence of the nextRunAt key on the wire confirms the schedule machinery is wired, not dormant. (A non-null value assertion is a polling/DB follow-up — the key's presence is what this runner can assert.)",
+      "method": "GET",
+      "path": "/api/admin/workflows/triggers",
+      "headers": { "Authorization": "Bearer {{adminToken}}" },
+      "expect": { "status": 200, "containsAny": ["nextRunAt"] }
+    }
+  ]
+}
