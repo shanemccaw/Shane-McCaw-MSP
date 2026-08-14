@@ -785,6 +785,68 @@ namespace BuildConsole.Controls
         public bool HasActiveQueueItems =>
             _lastItems.Any(i => i.Status is "queued" or "running");
 
+        /// <summary>Universal title-bar search — read-only view of the last polled queue snapshot (Title/Prompt/GithubNumber/Id/Status). Lets MainWindow's search match queue rows against the SAME in-memory list the tree renders, without a re-fetch or a parallel index. Mutation stays inside RefreshAsync.</summary>
+        public IReadOnlyList<QueueItem> CurrentQueueItems => _lastItems;
+
+        /// <summary>Universal title-bar search — reveal + select a specific queue row by its Id.
+        /// Switches to the filter chip that actually renders that row, clears the GithubNumber
+        /// search box (so nothing filters it back out), re-renders, then selects and scrolls the
+        /// matching <see cref="TreeViewItem"/> (whose Tag is the <see cref="QueueItem"/>). Selecting
+        /// it drives the existing TaskSelected path exactly as a manual click would.</summary>
+        public void RevealQueueItem(int id)
+        {
+            var item = _lastItems.FirstOrDefault(i => i.Id == id);
+            if (item == null) return;
+
+            string targetFilter = item.Status switch
+            {
+                "queued" or "running" => "Active",
+                "done"                => "Done",
+                "canceled"            => "Canceled",
+                _                     => "All",   // "failed" (and any other) only render under the unfiltered view
+            };
+
+            // Prefer syncing the real filter ComboBox (its SelectionChanged re-renders);
+            // fall back to setting _filter + rendering directly when there's no matching item.
+            ComboBoxItem? match = null;
+            if (QueueFilterCombo != null)
+            {
+                foreach (var obj in QueueFilterCombo.Items)
+                    if (obj is ComboBoxItem ci && (ci.Tag as string) == targetFilter) { match = ci; break; }
+            }
+            if (match != null && !ReferenceEquals(QueueFilterCombo!.SelectedItem, match))
+                QueueFilterCombo.SelectedItem = match;   // fires QueueFilterCombo_SelectionChanged -> re-render
+            else
+                _filter = targetFilter;
+
+            // Clear the number-search so the row isn't filtered out, then guarantee a render.
+            if (QueueSearchBox != null && !string.IsNullOrEmpty(QueueSearchBox.Text))
+                QueueSearchBox.Text = "";                // fires QueueSearchBox_TextChanged -> re-render
+            else if (QueueTree != null && _filter != "Tests")
+                RenderQueue(ApplyFilter(_lastItems));
+
+            // Select + scroll the matching row (rows can nest under a group header, so recurse).
+            var tvi = FindQueueTreeItem(QueueTree?.Items, id);
+            if (tvi != null)
+            {
+                tvi.IsSelected = true;
+                tvi.BringIntoView();
+            }
+        }
+
+        private static TreeViewItem? FindQueueTreeItem(ItemCollection? items, int id)
+        {
+            if (items == null) return null;
+            foreach (var obj in items)
+            {
+                if (obj is not TreeViewItem tvi) continue;
+                if (tvi.Tag is QueueItem qi && qi.Id == id) return tvi;
+                var nested = FindQueueTreeItem(tvi.Items, id);
+                if (nested != null) { tvi.IsExpanded = true; return nested; }
+            }
+            return null;
+        }
+
         /// <summary>Git #933 — replaces the old ToggleButton pill row (FilterChip_Click) that ran off the edge of a narrow panel; same ApplyFilter/RenderTestsTree logic, just driven by the ComboBox's selection instead of "which pill is checked."</summary>
         private void QueueFilterCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {

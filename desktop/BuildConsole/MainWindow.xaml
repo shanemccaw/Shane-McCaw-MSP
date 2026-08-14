@@ -106,13 +106,15 @@
 
                     <!-- Left: Logo + Menu Bar -->
                     <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                        <!-- Antigravity Logo Icon -->
+                        <!-- App logo + branding. The "Antigravity IDE" descriptor is deprioritized
+                             (removed from the prime center slot, which now holds the universal
+                             search bar); the "Shane McCaw MSP" name stays clearly visible here. -->
                         <Border Width="24" Height="24"
-                                Margin="8,0,4,0"
+                                Margin="8,0,6,0"
                                 Background="#1A89B4FA"
                                 CornerRadius="4"
                                 VerticalAlignment="Center"
-                                ToolTip="Antigravity IDE">
+                                ToolTip="Shane McCaw MSP">
                             <TextBlock Text="▲"
                                        FontSize="12"
                                        FontWeight="Bold"
@@ -120,6 +122,12 @@
                                        HorizontalAlignment="Center"
                                        VerticalAlignment="Center"/>
                         </Border>
+                        <TextBlock Text="Shane McCaw MSP"
+                                   FontSize="12"
+                                   FontWeight="SemiBold"
+                                   Foreground="{StaticResource TextBrush}"
+                                   VerticalAlignment="Center"
+                                   Margin="0,0,12,0"/>
 
                         <Menu Background="Transparent" BorderThickness="0" VerticalAlignment="Center" WindowChrome.IsHitTestVisibleInChrome="True">
                             <MenuItem Header="_File">
@@ -203,37 +211,82 @@
                         </Menu>
                     </StackPanel>
 
-                    <!-- Center: Project & Active Document Title -->
-                    <StackPanel Grid.Column="1"
-                                Orientation="Horizontal"
-                                HorizontalAlignment="Center"
-                                VerticalAlignment="Center">
-                        <TextBlock Text="Shane McCaw MSP"
-                                   FontSize="12"
-                                   FontWeight="SemiBold"
-                                   Foreground="{StaticResource TextBrush}"/>
-                        <TextBlock Text=" • "
-                                   FontSize="12"
-                                   Foreground="{StaticResource Surface2Brush}"/>
-                        <TextBlock Text="Antigravity IDE"
-                                   FontSize="12"
-                                   Foreground="{StaticResource Subtext0Brush}"/>
-                        <TextBlock x:Name="ActiveDocTitleText"
-                                   Text=" - Claude.ai"
-                                   FontSize="12"
-                                   Foreground="{StaticResource BlueBrush}"/>
-                        <!-- Git #934 - Shane: "add a - [DEBUG] if I have the app open in the
-                             Debug folder." Visibility/Text set from code-behind (OnSourceInitialized)
-                             once, based on whether the running exe's own path is under bin\Debug\ -
-                             collapsed entirely for a Release build, so this never shows up
-                             accidentally in what Shane actually ships/uses day to day. -->
-                        <TextBlock x:Name="DebugBuildMarkerText"
-                                   Text=" - [DEBUG]"
-                                   FontSize="12"
-                                   FontWeight="Bold"
-                                   Foreground="{StaticResource PeachBrush}"
-                                   Visibility="Collapsed"/>
-                    </StackPanel>
+                    <!-- Center: UNIVERSAL SEARCH BAR (primary). Replaces the old static
+                         "Shane McCaw MSP • Antigravity IDE - {doc}" text. The app name stays
+                         top-left by the logo; the active-document context is kept here as a
+                         small secondary label to the right of the search box. -->
+                    <DockPanel Grid.Column="1"
+                               VerticalAlignment="Center"
+                               Margin="8,0,8,0"
+                               LastChildFill="True">
+
+                        <!-- Active-document context (secondary). Kept alive because ~dozens of
+                             code-behind call sites set ActiveDocTitleText.Text; just deprioritized. -->
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal"
+                                    VerticalAlignment="Center" Margin="10,0,0,0">
+                            <TextBlock x:Name="ActiveDocTitleText"
+                                       Text=" - Claude.ai"
+                                       FontSize="11"
+                                       MaxWidth="220"
+                                       TextTrimming="CharacterEllipsis"
+                                       Foreground="{StaticResource Subtext0Brush}"
+                                       VerticalAlignment="Center"/>
+                            <!-- Git #934 - "- [DEBUG]" marker; Visibility/Text driven from code-behind
+                                 (OnSourceInitialized) only when the running exe is under bin\Debug\. -->
+                            <TextBlock x:Name="DebugBuildMarkerText"
+                                       Text=" - [DEBUG]"
+                                       FontSize="11"
+                                       FontWeight="Bold"
+                                       Foreground="{StaticResource PeachBrush}"
+                                       VerticalAlignment="Center"
+                                       Visibility="Collapsed"/>
+                        </StackPanel>
+
+                        <!-- Universal search box (primary, spans the center). Focusing/typing
+                             opens the grouped results dropdown (CommandPaletteOverlay) below;
+                             Ctrl+K focuses it. IsHitTestVisibleInChrome so clicks reach it
+                             inside the WindowChrome drag bar. -->
+                        <Border Background="{StaticResource Surface0Brush}"
+                                CornerRadius="6"
+                                BorderBrush="{StaticResource Surface1Brush}"
+                                BorderThickness="1"
+                                Padding="8,3"
+                                MaxWidth="820"
+                                HorizontalAlignment="Stretch"
+                                VerticalAlignment="Center"
+                                WindowChrome.IsHitTestVisibleInChrome="True">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="🔍" FontSize="12"
+                                           Margin="0,0,7,0" VerticalAlignment="Center"/>
+                                <Grid Grid.Column="1">
+                                    <TextBlock x:Name="SearchPlaceholder"
+                                               Text="Search files, issues, chats, tests, builds…"
+                                               FontSize="12"
+                                               Foreground="{StaticResource Subtext0Brush}"
+                                               VerticalAlignment="Center"
+                                               IsHitTestVisible="False"/>
+                                    <TextBox x:Name="TitleSearchBox"
+                                             FontSize="12"
+                                             Background="Transparent"
+                                             Foreground="{StaticResource TextBrush}"
+                                             CaretBrush="{StaticResource TextBrush}"
+                                             BorderThickness="0"
+                                             VerticalContentAlignment="Center"
+                                             GotKeyboardFocus="TitleSearchBox_GotKeyboardFocus"
+                                             TextChanged="TitleSearchBox_TextChanged"
+                                             PreviewKeyDown="TitleSearchBox_PreviewKeyDown"/>
+                                </Grid>
+                                <TextBlock Grid.Column="2" Text="Ctrl+K" FontSize="10"
+                                           Foreground="{StaticResource Subtext1Brush}"
+                                           VerticalAlignment="Center" Margin="7,0,2,0"/>
+                            </Grid>
+                        </Border>
+                    </DockPanel>
 
                     <!-- Right: Quick Action Buttons -->
                     <StackPanel Grid.Column="2"
@@ -814,88 +867,82 @@
         <!-- ══════════════════════════════════════════════════════════════
              CTRL+K FIND EVERYTHING FLOATING COMMAND PALETTE
              ══════════════════════════════════════════════════════════════ -->
+        <!-- Anchored under the title-bar search box; scrim starts below the 36px
+             title bar so the search box stays interactive above it. Input lives in
+             the title bar (TitleSearchBox) — this overlay is just the grouped-by-
+             source results dropdown, VS Code Quick-Open style. -->
         <Grid x:Name="CommandPaletteOverlay"
               Visibility="Collapsed"
-              Background="#80000000"
+              Background="#22000000"
+              Margin="0,36,0,0"
               Panel.ZIndex="9999"
               MouseDown="CommandPaletteOverlay_MouseDown">
-            
-            <Border Width="650" MaxHeight="480"
-                    VerticalAlignment="Top" Margin="0,50,0,0"
+
+            <Border Width="680" MaxHeight="520"
+                    VerticalAlignment="Top" HorizontalAlignment="Center"
+                    Margin="0,6,0,0"
                     Background="{StaticResource CrustBrush}"
                     BorderBrush="{StaticResource BlueBrush}"
                     BorderThickness="1.5"
                     CornerRadius="8"
-                    Padding="16">
-                
-                <Grid x:Name="PaletteInnerGrid">
+                    Padding="10">
+                <Grid>
                     <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/> <!-- Search Box -->
-                        <RowDefinition Height="Auto"/> <!-- Category Filter Chips -->
-                        <RowDefinition Height="*"/>    <!-- Results List -->
-                        <RowDefinition Height="Auto"/> <!-- Footer Hint -->
+                        <RowDefinition Height="*"/>    <!-- Grouped results -->
+                        <RowDefinition Height="Auto"/> <!-- Footer hint -->
                     </Grid.RowDefinitions>
 
-                    <!-- Search Input Box -->
-                    <Border Grid.Row="0"
-                            Background="{StaticResource Surface0Brush}"
-                            CornerRadius="6"
-                            BorderBrush="{StaticResource Surface1Brush}"
-                            BorderThickness="1"
-                            Padding="10,6" Margin="0,0,0,10">
-                        <DockPanel>
-                            <TextBlock Text="🔍" FontSize="14" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                            <TextBox x:Name="PaletteSearchBox"
-                                     FontSize="14"
-                                     Background="Transparent"
-                                     Foreground="{StaticResource TextBrush}"
-                                     BorderThickness="0"
-                                     VerticalContentAlignment="Center"
-                                     TextChanged="PaletteSearchBox_TextChanged"
-                                     PreviewKeyDown="PaletteSearchBox_PreviewKeyDown"/>
-                        </DockPanel>
-                    </Border>
+                    <!-- Empty / no-match state (overlaid with the list in row 0) -->
+                    <TextBlock x:Name="SearchEmptyHint"
+                               Grid.Row="0"
+                               Text="Type to search files, issues, chats, tests &amp; builds…"
+                               FontSize="12"
+                               Foreground="{StaticResource Subtext0Brush}"
+                               Margin="8,10,8,10"/>
 
-                    <!-- Category Chips -->
-                    <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,10">
-                        <RadioButton x:Name="ChipAll" Content="All" IsChecked="True" Style="{StaticResource ActivityBarButton}" Margin="0,0,6,0" Click="PaletteChip_Click"/>
-                        <RadioButton x:Name="ChipFiles" Content="📁 Files" Style="{StaticResource ActivityBarButton}" Margin="0,0,6,0" Click="PaletteChip_Click"/>
-                        <RadioButton x:Name="ChipChats" Content="💬 Chats" Style="{StaticResource ActivityBarButton}" Margin="0,0,6,0" Click="PaletteChip_Click"/>
-                        <RadioButton x:Name="ChipBuilds" Content="📦 Builds" Style="{StaticResource ActivityBarButton}" Margin="0,0,6,0" Click="PaletteChip_Click"/>
-                        <RadioButton x:Name="ChipAutomation" Content="⚡ Automation" Style="{StaticResource ActivityBarButton}" Margin="0,0,6,0" Click="PaletteChip_Click"/>
-                        <RadioButton x:Name="ChipGit" Content="🔀 Git" Style="{StaticResource ActivityBarButton}" Click="PaletteChip_Click"/>
-                    </StackPanel>
-
-                    <!-- Results ListBox -->
+                    <!-- Grouped results: one small header per source type -->
                     <ListBox x:Name="PaletteResultsList"
-                             Grid.Row="2"
-                             MaxHeight="300"
+                             Grid.Row="0"
+                             MaxHeight="440"
                              Background="Transparent"
                              BorderThickness="0"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             PreviewMouseLeftButtonUp="PaletteResultsList_PreviewMouseLeftButtonUp"
                              MouseDoubleClick="PaletteResultsList_MouseDoubleClick">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
-                                <Border Background="{StaticResource Surface0Brush}" CornerRadius="4" Padding="10,6" Margin="0,2">
+                                <Border Background="Transparent" CornerRadius="4" Padding="8,5" Margin="0,1">
                                     <DockPanel>
-                                        <TextBlock Text="{Binding Icon}" FontSize="16" Margin="0,0,10,0" VerticalAlignment="Center"/>
-                                        <Border DockPanel.Dock="Right" Background="{StaticResource MantleBrush}" CornerRadius="3" Padding="6,2" VerticalAlignment="Center">
-                                            <TextBlock Text="{Binding CategoryUpper}" FontSize="10" FontWeight="Bold" Foreground="{StaticResource BlueBrush}"/>
-                                        </Border>
+                                        <TextBlock Text="{Binding Icon}" FontSize="15" Margin="0,0,10,0" VerticalAlignment="Center"/>
                                         <StackPanel VerticalAlignment="Center">
-                                            <TextBlock Text="{Binding Title}" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"/>
+                                            <TextBlock Text="{Binding Title}" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" TextTrimming="CharacterEllipsis"/>
                                             <TextBlock Text="{Binding Description}" FontSize="11" Foreground="{StaticResource Subtext0Brush}" TextTrimming="CharacterEllipsis"/>
                                         </StackPanel>
                                     </DockPanel>
                                 </Border>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
+                        <ListBox.GroupStyle>
+                            <GroupStyle>
+                                <GroupStyle.HeaderTemplate>
+                                    <DataTemplate>
+                                        <Border Margin="2,8,2,3" Padding="0,0,0,3" BorderBrush="{StaticResource Surface0Brush}" BorderThickness="0,0,0,1">
+                                            <DockPanel>
+                                                <TextBlock Text="{Binding Name}" FontSize="10" FontWeight="Bold" Foreground="{StaticResource BlueBrush}"/>
+                                                <TextBlock DockPanel.Dock="Right" Text="{Binding ItemCount}" FontSize="10" Foreground="{StaticResource Subtext1Brush}" HorizontalAlignment="Right"/>
+                                            </DockPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </GroupStyle.HeaderTemplate>
+                            </GroupStyle>
+                        </ListBox.GroupStyle>
                     </ListBox>
 
-                    <!-- Footer Hint -->
-                    <Border Grid.Row="3" Margin="0,10,0,0" Padding="0,6,0,0" BorderBrush="{StaticResource Surface0Brush}" BorderThickness="0,1,0,0">
+                    <!-- Footer hint -->
+                    <Border Grid.Row="1" Margin="2,8,2,0" Padding="0,6,0,0" BorderBrush="{StaticResource Surface0Brush}" BorderThickness="0,1,0,0">
                         <DockPanel>
-                            <TextBlock Text="Press ↑↓ to navigate  •  Enter to open  •  Esc to close" FontSize="11" Foreground="{StaticResource Subtext1Brush}"/>
-                            <TextBlock Text="CTRL+K" FontSize="11" FontWeight="Bold" Foreground="{StaticResource PeachBrush}" HorizontalAlignment="Right"/>
+                            <TextBlock Text="↑↓ navigate  •  Enter / click to open  •  Esc to close" FontSize="11" Foreground="{StaticResource Subtext1Brush}"/>
+                            <TextBlock Text="Ctrl+K" FontSize="11" FontWeight="Bold" Foreground="{StaticResource PeachBrush}" HorizontalAlignment="Right"/>
                         </DockPanel>
                     </Border>
                 </Grid>

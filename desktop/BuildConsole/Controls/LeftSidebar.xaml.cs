@@ -1246,6 +1246,35 @@ namespace BuildConsole.Controls
         /// <summary>Git #921 (Epic #803) — the board's own last real open-issue fetch, so a detail tab can resolve a clicked/linked issue number (its title, epic-ness, To-Do status, linked epic) without a second GitHub round-trip. Read-only view; mutation stays inside BuildBoardFromGitHub.</summary>
         public IReadOnlyList<GitBoardIssue> CurrentBoardIssues => _lastBoardIssues;
 
+        // ── Universal title-bar search — read-only views over the SAME in-memory
+        //    source lists the sidebar trees already render, so the search reads
+        //    real live data instead of building any parallel index. ─────────────
+
+        /// <summary>The last real chat board fetch (polled every 20s in Initialize regardless of view). The title-bar search matches these and navigates via MainWindow.OpenChatTab.</summary>
+        public IReadOnlyList<BoardChat> CurrentBoardChats => _lastBoardChats;
+
+        /// <summary>The real GitHub milestones the Git Board built (fully-populated Epics), so the search can jump straight into MainWindow.OpenMilestoneDetailTab.</summary>
+        public IReadOnlyList<GitMilestone> CurrentMilestones => _milestones;
+
+        /// <summary>The enumerated test manifests backing ManifestFilesTree (area, file name, and the resolved absolute path for MainWindow.OpenFileTab). Projected from the private <see cref="_manifestEntries"/> so the search never re-scans disk itself.</summary>
+        public IReadOnlyList<(string Area, string FileName, string FullPath)> CurrentManifests =>
+            _manifestEntries
+                .Select(e => (e.Area, e.FileName,
+                              Path.Combine(RootWorkspacePath, "test-manifests", e.RelativePath)))
+                .ToList();
+
+        /// <summary>Universal search warm-up: ensure the in-memory sources the title-bar search reads are populated. Manifests are a cheap synchronous disk scan; the Git Board only auto-polls while its own view is visible (#863), so warm it here when empty. Chats already poll every 20s regardless of view, but are warmed too if still empty. All reuse the real Populate* paths — no separate index.</summary>
+        public void WarmSearchSources()
+        {
+            if (_manifestEntries.Count == 0) PopulateManifestsList();
+
+            var settings = BuildConsole.Services.BuildConsoleSettings.Load();
+            if (_lastBoardIssues.Count == 0 && settings.HasGitHubPat)
+                PopulateGitTrackerBoard();
+            if (_lastBoardChats.Count == 0 && _api != null && _api.IsConfigured)
+                PopulateChatsTree();
+        }
+
         /// <summary>Git #921 (Epic #803) — map a real board issue number to the same <see cref="GitIssue"/> display shape the tree nodes carry (identical mapping to MapBucket), so MainWindow's tab-to-tab navigation resolves numbers to detail tabs from cached data. Null when the number isn't on the current OPEN board (MainWindow then falls back to a live GetIssueAsync fetch).</summary>
         public GitIssue? BuildDetailIssue(int number)
         {
