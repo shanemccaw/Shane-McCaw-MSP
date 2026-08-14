@@ -359,6 +359,15 @@ namespace BuildConsole
             LeftSidebar.EpicChatRequested += (s, e) =>
                 OpenWebTab(e.Url, e.Title, "", injectPrefillPoll: e.InjectPrefill, associateEpicGithubNumber: e.EpicGithubNumber);
 
+            // Backs "Assign Chat to Epic..."'s "Assign current chat" button --
+            // only a chat tab opened via OpenChatTab has its TabItem.Tag typed as
+            // BoardChat (plain web tabs use a bare string url), so this is how we
+            // tell "a real focused chat" apart from any other open tab kind.
+            LeftSidebar.GetActiveChatUrl = () =>
+                EditorTabs.SelectedItem is TabItem selected && selected.Tag is BuildConsole.Services.BoardChat chat
+                    ? chat.ClaudeUrl
+                    : null;
+
             // Git #840 (Git Board Phase 2) — Shane: "I need to be able to...
             // read their descriptions, comments, etc..." Clicking an issue in
             // the Git Board tree opens the bottom panel's Issue Detail tab

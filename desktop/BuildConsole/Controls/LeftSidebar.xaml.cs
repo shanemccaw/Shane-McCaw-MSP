@@ -199,6 +199,13 @@ namespace BuildConsole.Controls
         /// not on a separate/inconsistent schedule.
         /// </summary>
         public event EventHandler? WorkspaceChanged;
+
+        /// <summary>Set by MainWindow — resolves the currently-focused editor tab's chat
+        /// URL, or null if the active tab isn't a chat tab. Backs "Assign Chat to
+        /// Epic..."'s "Assign current chat" button so Shane doesn't have to
+        /// copy/paste when the chat he wants is already open.</summary>
+        public Func<string?>? GetActiveChatUrl { get; set; }
+
         private bool _isPinned = true;
 
         private void BtnPinSidebar_Click(object sender, RoutedEventArgs e)
@@ -2423,6 +2430,68 @@ namespace BuildConsole.Controls
                     };
                     cm.Items.Add(miNewChat);
                 }
+
+                // Shane: real chats he can't currently associate to Epics through
+                // any manual path. Opens AssignChatToEpicDialog (paste a URL, or
+                // "Assign current chat" pulls it off whatever chat tab is
+                // actually focused via GetActiveChatUrl). Reuses the same
+                // POST /chats/ingest force:true write (LinkChatToEpicAsync) every
+                // other chat-epic assignment already goes through, so the Chats
+                // panel and every other epic-aware view pick it up immediately —
+                // no separate sync step.
+                var miAssignChat = new MenuItem { Header = "🔗 Assign Chat to Epic..." };
+                miAssignChat.Click += async (s, e) =>
+                {
+                    if (_api == null || !_api.IsConfigured)
+                    {
+                        ToastEngine.Warning("Assign Chat to Epic", "Build Tracker API isn't configured.");
+                        return;
+                    }
+
+                    var existingChat = FindChatForIssue(issue.IssueNumber);
+                    var dialog = new AssignChatToEpicDialog($"Epic #{issue.IssueNumber}", existingChat?.ClaudeUrl, GetActiveChatUrl);
+                    if (dialog.ShowDialog() != true || string.IsNullOrWhiteSpace(dialog.ResultChatUrl)) return;
+                    var chatUrl = dialog.ResultChatUrl.Trim();
+
+                    var convMatch = System.Text.RegularExpressions.Regex.Match(
+                        chatUrl, @"/chat/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})");
+                    if (!convMatch.Success)
+                    {
+                        ActivityLog.Log("git-board.assign-chat", $"assign chat to epic #{issue.IssueNumber} aborted — '{chatUrl}' has no recognizable /chat/<uuid> conversation id");
+                        ToastEngine.Warning("Assign Chat to Epic", "That doesn't look like a chat URL (expected .../chat/<uuid>).");
+                        return;
+                    }
+                    var conversationId = convMatch.Groups[1].Value;
+
+                    var epic = _chatEpicById.Values.FirstOrDefault(ep => ep.GithubNumber == issue.IssueNumber);
+                    if (epic == null)
+                    {
+                        ActivityLog.Log("git-board.assign-chat", $"assign chat {conversationId} to epic #{issue.IssueNumber} aborted — no bt_epics row has github_number {issue.IssueNumber}");
+                        ToastEngine.Warning("Assign Chat to Epic", $"Epic #{issue.IssueNumber} isn't registered in the Build Tracker yet.");
+                        return;
+                    }
+
+                    try
+                    {
+                        var res = await _api.LinkChatToEpicAsync(conversationId, epic.Id);
+                        if (!res.IsSuccessStatusCode)
+                        {
+                            var body = await res.Content.ReadAsStringAsync();
+                            ActivityLog.Log("git-board.assign-chat", $"assign chat {conversationId} -> epic #{issue.IssueNumber} (bt_epics id {epic.Id}) FAILED: HTTP {(int)res.StatusCode} {body}");
+                            ToastEngine.Error("Assign Chat to Epic", $"Couldn't assign: {body}");
+                            return;
+                        }
+                        ActivityLog.Log("git-board.assign-chat", $"assigned chat {conversationId} ({chatUrl}) -> epic #{issue.IssueNumber} (bt_epics id {epic.Id})");
+                        _lastBoardSignature = null;
+                        PopulateChatsTree();
+                    }
+                    catch (Exception ex)
+                    {
+                        ActivityLog.Log("git-board.assign-chat", $"assign chat {conversationId} -> epic #{issue.IssueNumber} FAILED: {ex.Message}");
+                        ToastEngine.Error("Assign Chat to Epic", $"Couldn't assign: {ex.Message}");
+                    }
+                };
+                cm.Items.Add(miAssignChat);
             }
 
             // Same real capability as the extension's Shane To-Do 🗄 button —
