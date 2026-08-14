@@ -1,0 +1,103 @@
+{
+  "feature": "Fractional IT retainer — ongoing retainer state + retainer-resumed/cancellation lifecycle (portal-billing.ts cancel/resume/resubscribe + portal-retainer-billing.ts interval-switch): auth-gated state reads and every mutation route's auth+validation+ownership gate, testbed-only, no real Stripe mutation.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "9abc8d5f84045b301430d3c1f7a6fe5d946d3c47",
+
+  "notes": [
+    "WHAT THIS COVERS: the ongoing Fractional retainer STATE and its cancel → resume → resubscribe lifecycle. Active retainers are client_services rows (status active|completed|paused, stripeSubscriptionId, billingInterval, stripeScheduleId, pendingBillingInterval). The cancel/resume/resubscribe routes live in portal-billing.ts; the monthly↔yearly interval-switch routes in portal-retainer-billing.ts. The cancelled-vs-active state itself is held in Stripe (cancel_at_period_end, read live by GET /portal/billing/subscriptions) — NOT a DB column — and each transition is recorded as an audit row (retainer_cancelled / retainer_resumed); resume also sends the 'retainer-resumed' email template.",
+
+    "NOTE ON ISSUE PROVENANCE: this work was requested as related to '#15', but issue #15 is 'MSP Portal Audit Log shows raw JSON instead of formatted view' (closed) — unrelated to retainers. The real retainer-resumed/cancellation lifecycle is not tied to a discoverable issue number, so none is cited here (MEMORY: dont-fabricate-issue-numbers-in-code). This manifest is verified against the actual portal-billing.ts / portal-retainer-billing.ts code, not an issue.",
+
+    "*** TESTBED-ONLY SAFETY — why the mutation steps are GATE checks, not a live cancel/resume round-trip ***: a real cancel→resume round-trip needs the testbed portal account to OWN an active retainer with a linked stripeSubscriptionId, which the testbed does not guarantee (GET subscriptions may be an empty array). Manifests are linear with no conditionals, so a conditional 'extract $[0].id then cancel/resume it' would break (or mutate a real live Stripe subscription) whenever that precondition isn't met. So — exactly like money-path-e2e.json's rollback contract check with an out-of-range id — every mutation route is exercised with an id that provably does NOT resolve to one of THIS user's retainers, asserting the route's auth + Zod-validation + ownership gate fires (400 'Invalid ID' / 400 bad body / 404 'Subscription not found') WITHOUT touching any real Stripe subscription. This is the honest maximum here; a fully live reversible cancel→resume round-trip is deferred to a future variant that maintains a dedicated testbed retainer subscription (the same maintained-state pattern money-path uses for its scanned Assessment account), which would extract $[0].id from the subscriptions read and drive cancel (assert cancelAtPeriodEnd=true) → resume (assert cancelAtPeriodEnd=false), returning to the original state.",
+
+    "The two STATE reads (subscriptions, retainer-intervals) ARE real positive assertions: with the testbed portal bearer they return 200 + a real array (possibly empty) — the exact payloads customer-billing.tsx / SubscriptionList.tsx render. 999999999 is used as a valid-integer-but-not-this-user's client_services id; a NEGATIVE ownership result there also proves a customer cannot cancel/resume someone else's retainer.",
+
+    "ENV VARS (BuildConsole → Settings → Test Environment Variables): DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD (a designated testbed portal account — the same one money-path-e2e.json uses). No SECRET_KEY needed (no admin/testbed-reset endpoints are touched — nothing to reset, since no real mutation is performed). Run against the deployed origin serving /api/auth/login and /api/portal/*.",
+
+    "logger channel for all endpoints under test: `billing`."
+  ],
+
+  "apiTests": [
+    {
+      "name": "AUTH-GATE — retainer state is protected: GET /api/portal/billing/subscriptions with NO Authorization header returns 401 (requireAuth), proving a customer's retainer/subscription state is never public",
+      "method": "GET",
+      "path": "/api/portal/billing/subscriptions",
+      "headers": { "Content-Type": "application/json" },
+      "expect": { "status": 401 }
+    },
+    {
+      "name": "SETUP — log in as the designated testbed portal account to obtain a real client bearer for the retainer endpoints; extract it as {{authToken}}",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "STATE — ongoing retainer state reads back for the authenticated customer: GET /api/portal/billing/subscriptions returns a real array (the client_services⋈services join, each merged with live Stripe cancel_at_period_end) — the exact payload SubscriptionList.tsx renders",
+      "method": "GET",
+      "path": "/api/portal/billing/subscriptions",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "expect": { "status": 200, "jsonPath": "$", "isArray": true }
+    },
+    {
+      "name": "STATE — retainer billing-interval state reads back: GET /api/portal/billing/retainer-intervals returns a real array of { billingInterval, pendingBillingInterval, hasPendingSwitch, monthlyPriceCents, annualPriceCents } — the companion payload the billing page merges per subscription card",
+      "method": "GET",
+      "path": "/api/portal/billing/retainer-intervals",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "expect": { "status": 200, "jsonPath": "$", "isArray": true }
+    },
+    {
+      "name": "CANCEL gate (validation) — POST /portal/billing/subscriptions/not-a-number/cancel: the id is validated before anything else; a non-numeric id is refused 400 'Invalid ID' (auth already passed)",
+      "method": "POST",
+      "path": "/api/portal/billing/subscriptions/not-a-number/cancel",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "expect": { "status": 400, "jsonPath": "$.error", "value": "Invalid ID" }
+    },
+    {
+      "name": "CANCEL gate (ownership) — POST /portal/billing/subscriptions/999999999/cancel: a valid integer id that is NOT one of this customer's retainers is refused 404 'Subscription not found' — proving the cancel route + its owner-scoped lookup exist and a customer cannot cancel a retainer that isn't theirs. No real Stripe subscription is touched.",
+      "method": "POST",
+      "path": "/api/portal/billing/subscriptions/999999999/cancel",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "expect": { "status": 404, "jsonPath": "$.error", "value": "Subscription not found" }
+    },
+    {
+      "name": "RESUME gate (ownership) — POST /portal/billing/subscriptions/999999999/resume: the retainer-RESUMED route (clears cancel_at_period_end, writes the retainer_resumed audit row + retainer-resumed email) exists and is owner-scoped — a non-owned id is refused 404 'Subscription not found'. No real Stripe subscription is touched.",
+      "method": "POST",
+      "path": "/api/portal/billing/subscriptions/999999999/resume",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "expect": { "status": 404, "jsonPath": "$.error", "value": "Subscription not found" }
+    },
+    {
+      "name": "RESUBSCRIBE gate (ownership) — POST /portal/billing/subscriptions/999999999/resubscribe: the new-Checkout-for-a-canceled-retainer route exists and is owner-scoped — a non-owned id is refused 404 'Subscription not found'. No Stripe Checkout session is created.",
+      "method": "POST",
+      "path": "/api/portal/billing/subscriptions/999999999/resubscribe",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "expect": { "status": 404, "jsonPath": "$.error", "value": "Subscription not found" }
+    },
+    {
+      "name": "SWITCH-INTERVAL gate (ownership, valid body) — POST /portal/billing/subscriptions/999999999/switch-interval with a VALID { targetInterval:'year' } body: the Zod body passes, then the owner-scoped lookup refuses the non-owned id 404 'Subscription not found'. Proves the monthly↔yearly switch route + its body schema + ownership gate. No Stripe schedule is created.",
+      "method": "POST",
+      "path": "/api/portal/billing/subscriptions/999999999/switch-interval",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "targetInterval": "year" },
+      "expect": { "status": 404, "jsonPath": "$.error", "value": "Subscription not found" }
+    },
+    {
+      "name": "SWITCH-INTERVAL gate (body validation) — POST /portal/billing/subscriptions/999999999/switch-interval with an INVALID { targetInterval:'weekly' } body: the Zod enum (month|year) rejects it 400 before the lookup, proving the switch route validates its target interval",
+      "method": "POST",
+      "path": "/api/portal/billing/subscriptions/999999999/switch-interval",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "targetInterval": "weekly" },
+      "expect": { "status": 400 }
+    },
+    {
+      "name": "CANCEL-INTERVAL-SWITCH gate (ownership) — POST /portal/billing/subscriptions/999999999/cancel-interval-switch: the route that releases a pending monthly↔yearly schedule exists and is owner-scoped — a non-owned id is refused 404 'Subscription not found'. No Stripe schedule is released.",
+      "method": "POST",
+      "path": "/api/portal/billing/subscriptions/999999999/cancel-interval-switch",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "expect": { "status": 404, "jsonPath": "$.error", "value": "Subscription not found" }
+    }
+  ]
+}

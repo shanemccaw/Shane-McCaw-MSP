@@ -13,6 +13,8 @@
     "copilot-readiness/money-path-e2e.json",
     "copilot-readiness/remediation-tracker-e2e.json",
     "copilot-readiness/home-quiz-scoring.json",
+    "billing/retainer-signup.json",
+    "billing/retainer-lifecycle.json",
     "admin/tenant-switcher-floaty.json",
     "admin/baseline-actions-powershell-verify.json",
     "admin/testbed-gate-negative.json",

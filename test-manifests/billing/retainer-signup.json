@@ -1,0 +1,89 @@
+{
+  "feature": "Fractional IT retainer — signup/activation entry flow (Fractional M365 Architecture tiers): public catalog → checkout-session mint + round-trip → M365 admin-consent URL threading → checkout wizard renders. Paid-provisioning gap asserted honestly.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "9abc8d5f84045b301430d3c1f7a6fe5d946d3c47",
+
+  "notes": [
+    "WHAT THIS COVERS: the REAL, harness-drivable half of the Fractional IT retainer signup/activation. The product is the 'Fractional M365 Architecture' retainer line — three tiers seeded as servicesTable rows with serviceType='retainer' / billingType='recurring_monthly', slugs architect-essentials / architect-growth / architect-enterprise (seed-portal.ts). The marketing detail pages (retainers/Architect*.tsx) link to /checkout/:slug, and Checkout.tsx drives: catalog resolve → POST /api/public/checkout-session (guest info) → GET /api/public/consent-url (M365 admin consent) → contract → payment → confirmed.",
+
+    "*** HONESTY CAVEAT — the PAID activation endpoint does not exist (load-bearing) ***: Checkout.tsx's paid 'Proceed to payment' branch (and OnboardingLink.tsx) POST to /api/portal/checkout/create-session, but NO router registers that path — confirmed by the mount table (routes/index.ts mounts only portalCheckoutFreeRouter for /portal/checkout/*) and by the explicit in-code comment in public-assessment-payment.ts ('the /api/portal/checkout/create-session route the legacy (unrouted) Checkout.tsx calls does not exist; the only provisioning pipeline that does exist is the $0 one in portal-checkout-free.ts'). So a paid Fractional retainer cannot be provisioned end-to-end in this codebase today. Rather than fabricate that step, the GAP-GUARD apiTest below asserts the endpoint's real 404 as a live fact; if it is ever implemented (returns non-404) the guard fails loudly, signalling this manifest should be extended to drive the real paid activation + the resulting client_services row.",
+
+    "TESTBED-ONLY SAFETY: every call here is either the genuine PUBLIC intake (POST /api/public/checkout-session — the exact call the wizard fires, minting a real new checkout_sessions row + funnel lead each run, same pattern as copilot-readiness/money-path-e2e.json's CREATE) or a read. No account is minted (the consent-OAuth + Stripe-payment wall past checkout-session is architecturally undrivable by the WebView2/HTTP harness — see money-path-e2e.json's caveat), no money moves, no DB is touched directly. Stripe is forced to TEST mode for any .replit.dev origin.",
+
+    "PRECONDITION: MT_APP_CLIENT_ID must be set on the target origin for the CONSENT step to return a real login.microsoftonline.com admin-consent URL (if unset the endpoint returns { url: null } and that step fails — same env the money-path already assumes a consented testbed tenant on). Run against the deployed .replit.dev dev origin, DEPLOY_URL pointing at the origin that serves both the marketing site (/checkout, /api/public/*, /api/services) and the api.",
+
+    "ENV VARS (BuildConsole → Settings → Test Environment Variables): DEPLOY_URL. No SECRET_KEY / portal login needed — this flow is entirely public-intake + catalog.",
+
+    "UI SCOPE (honest): this manifest is API-only. The retainer tier's realness and the activation flow are proven at the enforced API layer (catalog serves the real architect-* tier slugs; the checkout-session round-trips the retainer slug; consent-url threads the new session into a real Microsoft admin-consent URL). A /checkout/:slug DOM render step is intentionally NOT included: the marketing Checkout.tsx has no stable data-testid, which wizard step renders depends on runtime catalog fulfillmentTypeKey config not guaranteed in the harness, and uiStep textContains is not a reliable value-assertion path (MEMORY: ui-test-expect-state-only). A future variant may add a scoped checkout-page testid + a presence-only render step once that page is instrumented."
+  ],
+
+  "apiTests": [
+    {
+      "name": "CATALOG — the public storefront serves the real Fractional M365 Architecture retainer tiers: GET /api/services?type=retainer returns an array carrying the seeded architect-* slugs (the exact call useCatalog's fetchServices('retainer') makes)",
+      "method": "GET",
+      "path": "/api/services?type=retainer",
+      "headers": { "Content-Type": "application/json" },
+      "expect": {
+        "status": 200,
+        "jsonPath": "$[*].slug",
+        "containsAny": ["architect-essentials", "architect-growth", "architect-enterprise"]
+      }
+    },
+    {
+      "name": "CATALOG (honesty) — the retainer catalog response is a real array (not a single object / error envelope), the shape useCatalog maps over",
+      "method": "GET",
+      "path": "/api/services?type=retainer",
+      "headers": { "Content-Type": "application/json" },
+      "expect": { "status": 200, "jsonPath": "$", "isArray": true }
+    },
+    {
+      "name": "CREATE — genuine public intake for a Fractional retainer: POST /api/public/checkout-session with productSlug architect-essentials (the exact call Checkout.tsx's guest-info step fires) mints a brand-NEW checkout_sessions row + funnel lead this run; extract the new sessionId",
+      "method": "POST",
+      "path": "/api/public/checkout-session",
+      "headers": { "Content-Type": "application/json" },
+      "body": {
+        "productSlug": "architect-essentials",
+        "fullName": "Retainer Regression Probe",
+        "email": "retainer-regression@testbed.local",
+        "company": "Fractional Retainer E2E Testbed",
+        "industry": "technology",
+        "seats": 1
+      },
+      "expect": { "status": 200, "jsonPath": "$.sessionId", "exists": true },
+      "extract": { "as": "retainerSessionId", "jsonPath": "$.sessionId" }
+    },
+    {
+      "name": "ACTIVATE round-trip — the just-created session persisted with the retainer product slug: GET /api/public/checkout-session/{{retainerSessionId}} returns productSlug='architect-essentials', proving the retainer activation session is real and re-resolvable (not a reused static one)",
+      "method": "GET",
+      "path": "/api/public/checkout-session/{{retainerSessionId}}",
+      "headers": { "Content-Type": "application/json" },
+      "expect": { "status": 200, "jsonPath": "$.productSlug", "value": "architect-essentials" }
+    },
+    {
+      "name": "ACTIVATE round-trip (honesty) — the session carries a real lifecycle status field on the wire",
+      "method": "GET",
+      "path": "/api/public/checkout-session/{{retainerSessionId}}",
+      "headers": { "Content-Type": "application/json" },
+      "expect": { "status": 200, "jsonPath": "$.status", "exists": true }
+    },
+    {
+      "name": "CONSENT — the next activation step is real: GET /api/public/consent-url?sessionId={{retainerSessionId}} threads THIS new session into a genuine Microsoft admin-consent URL (the server refuses a state-less URL for an unresolved session, so a real microsoft URL here also proves the session resolved server-side)",
+      "method": "GET",
+      "path": "/api/public/consent-url?sessionId={{retainerSessionId}}",
+      "headers": { "Content-Type": "application/json" },
+      "expect": {
+        "status": 200,
+        "jsonPath": "$.url",
+        "containsAny": ["login.microsoftonline.com", "adminconsent"]
+      }
+    },
+    {
+      "name": "GAP-GUARD (honesty) — the paid retainer-subscription provisioning endpoint Checkout.tsx's pay branch calls is genuinely UNROUTED: POST /api/portal/checkout/create-session returns 404. This documents the known gap as a live fact; if it is ever implemented (returns non-404) this guard fails, signalling this manifest must be extended to drive real paid activation + the resulting client_services row.",
+      "method": "POST",
+      "path": "/api/portal/checkout/create-session",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "sessionId": "{{retainerSessionId}}" },
+      "expect": { "status": 404 }
+    }
+  ]
+}
