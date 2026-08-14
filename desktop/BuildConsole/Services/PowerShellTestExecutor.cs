@@ -76,6 +76,13 @@ namespace BuildConsole.Services
         // ever runs. So the testbed gate is enforced in-process against the identity actually signed in.
         private const string TenantMarker = "__PSVERIFY_TENANT__";
         private const string TestbedRefusedMarker = "__PSVERIFY_TESTBED_REFUSED__";
+        // Diagnostic line the script emits (pre- and post-connect) carrying the resolved
+        // token-cache-relevant paths/state — loaded module version, USERPROFILE/LOCALAPPDATA, the
+        // %USERPROFILE%\.mg AuthenticationRecord path + whether it exists, and the on-disk MSAL cache
+        // files. Logged verbatim by the host so a delegated device-code token that fails to persist
+        // across BuildConsole-spawned pwsh runs is diagnosable from ActivityLog alone, without redoing
+        // the investigation. See RunPwshAsync's launch log for why the AuthenticationRecord matters.
+        private const string DiagMarker = "__PSVERIFY_DIAG__";
 
         private const int DefaultTimeoutMs = 60000;
 
@@ -395,6 +402,11 @@ namespace BuildConsole.Services
             {
                 if (data == null) return;
                 lock (sink) sink.AppendLine(data);
+                // Surface the script's cache-diagnostic lines to the log as they arrive (live, even if
+                // the run later aborts on a device-code prompt), so the resolved cache paths/record
+                // state are always captured.
+                if (data.IndexOf(DiagMarker, StringComparison.Ordinal) >= 0)
+                    ActivityLog.Log(Channel, "pwsh cache diag: " + AfterMarker(data, DiagMarker));
                 if (!LooksLikeAuthPrompt(data)) return;
 
                 if (interactive)
@@ -414,6 +426,26 @@ namespace BuildConsole.Services
 
             proc.OutputDataReceived += (_, e) => OnLine(stdout, e.Data);
             proc.ErrorDataReceived += (_, e) => OnLine(stderr, e.Data);
+
+            // Log the resolved cache-relevant environment the child will inherit, at launch. The child
+            // is spawned with UseShellExecute=false and no EnvironmentVariables edits, so it inherits
+            // BuildConsole's (Shane's interactive) environment verbatim — USERPROFILE/LOCALAPPDATA here
+            // ARE what the child sees. The delegated device-code flow can only SILENTLY reuse a cached
+            // token when the Azure.Identity AuthenticationRecord (%USERPROFILE%\.mg\mg.authrecord.json)
+            // exists: the Graph SDK's device-code path gates silent reuse on File.Exists(that record),
+            // so if it's absent, Connect-MgGraph -UseDeviceCode re-prompts every run even though the
+            // DPAPI MSAL token cache itself persists. Logging this makes a recurrence self-explanatory.
+            string userProfile = Environment.GetEnvironmentVariable("USERPROFILE") ?? "";
+            string localAppData = Environment.GetEnvironmentVariable("LOCALAPPDATA") ?? "";
+            string mgDir = string.IsNullOrEmpty(userProfile) ? "" : System.IO.Path.Combine(userProfile, ".mg");
+            string authRecordPath = string.IsNullOrEmpty(mgDir) ? "" : System.IO.Path.Combine(mgDir, "mg.authrecord.json");
+            bool authRecordExists = !string.IsNullOrEmpty(authRecordPath) && System.IO.File.Exists(authRecordPath);
+            ActivityLog.Log(Channel,
+                $"pwsh launch: exe={psi.FileName} USERPROFILE={userProfile} LOCALAPPDATA={localAppData} .mg={mgDir} "
+                + $"authRecordExists={authRecordExists} — delegated device-code silent reuse REQUIRES mg.authrecord.json; "
+                + (authRecordExists
+                    ? "present, so a valid cached token should reconnect silently."
+                    : "ABSENT, so a fresh device-code sign-in prompt is expected until one completes and the record is written."));
 
             try
             {
@@ -594,14 +626,41 @@ namespace BuildConsole.Services
                 "$ErrorActionPreference = 'Stop'\n" +
                 "$ProgressPreference = 'SilentlyContinue'\n" +
                 "$WarningPreference = 'SilentlyContinue'\n" +
-                "try { Import-Module Microsoft.Graph.Authentication -ErrorAction Stop }\n" +
+                // Import the NEWEST installed Microsoft.Graph.Authentication, not whatever a bare
+                // Import-Module resolves to. PowerShell resolves a bare `Import-Module Name` against the
+                // FIRST PSModulePath entry that contains the module — which on Shane's box is a stale
+                // 2.29.1 under D:\Shane\Documents shadowing the newer 2.38.0 in Program Files. Newer SDK
+                // builds have materially more robust delegated-token / AuthenticationRecord resolution
+                // (keyed + legacy record fallback, login-hint matching). All versions share the SAME
+                // on-disk cache (%USERPROFILE%\.mg\mg.authrecord.json + the .IdentityService MSAL cache),
+                // so this reuses Shane's existing cache rather than orphaning it.
+                "try {\n" +
+                "  $__mgMod = Get-Module Microsoft.Graph.Authentication -ListAvailable | Sort-Object Version -Descending | Select-Object -First 1\n" +
+                "  if ($__mgMod) { Import-Module $__mgMod.Path -ErrorAction Stop } else { Import-Module Microsoft.Graph.Authentication -ErrorAction Stop }\n" +
+                "}\n" +
                 "catch { Write-Output ('" + SetupErrorMarker + " ' + $_.Exception.Message); exit 4 }\n" +
-                // Silent when a valid cached delegated token exists; -UseDeviceCode makes the
-                // "needs auth" fallback a detectable device-code prompt (no silent browser pop).
-                "try { Connect-MgGraph -UseDeviceCode -NoWelcome -ErrorAction Stop }\n" +
+                // Diagnostic BEFORE connecting: the resolved cache-relevant paths/state. Delegated
+                // device-code silent reuse needs BOTH the persistent MSAL token cache AND the
+                // AuthenticationRecord (%USERPROFILE%\.mg\mg.authrecord.json); a missing record is
+                // exactly what forces Connect-MgGraph -UseDeviceCode to re-prompt despite a valid cache.
+                "$__loaded = Get-Module Microsoft.Graph.Authentication\n" +
+                "$__mgDir = Join-Path $env:USERPROFILE '.mg'\n" +
+                "$__authRec = Join-Path $__mgDir 'mg.authrecord.json'\n" +
+                "$__idsvc = Join-Path $env:LOCALAPPDATA '.IdentityService'\n" +
+                "$__cacheFiles = (Get-ChildItem -Path $__idsvc -Filter 'mg.msal.cache*' -ErrorAction SilentlyContinue | ForEach-Object { $_.Name }) -join ','\n" +
+                "Write-Output ('" + DiagMarker + " pre-connect module=' + $__loaded.Version + ' base=' + $__loaded.ModuleBase + ' user=' + $env:USERNAME + ' USERPROFILE=' + $env:USERPROFILE + ' LOCALAPPDATA=' + $env:LOCALAPPDATA + ' authRecord=' + $__authRec + ' authRecordExists=' + (Test-Path $__authRec) + ' msalCache=[' + $__cacheFiles + ']')\n" +
+                // Silent when a valid cached delegated token + AuthenticationRecord exist; -UseDeviceCode
+                // makes the "needs auth" fallback a detectable device-code prompt (no silent browser pop).
+                // -ContextScope CurrentUser is the documented default for this delegated path on Windows,
+                // but we set it explicitly so the on-disk (not in-process) cache is used unambiguously,
+                // independent of any host/interactivity heuristic.
+                "try { Connect-MgGraph -UseDeviceCode -NoWelcome -ContextScope CurrentUser -ErrorAction Stop }\n" +
                 "catch { Write-Output ('" + AuthRequiredMarker + " ' + $_.Exception.Message); exit 3 }\n" +
                 "$ctx = Get-MgContext\n" +
                 "if (-not $ctx) { Write-Output '" + AuthRequiredMarker + " no Graph context after connect'; exit 3 }\n" +
+                // Diagnostic AFTER connecting: whether the record now exists on disk (proves this run
+                // actually persisted a reusable record) plus the resolved context identity/scope.
+                "Write-Output ('" + DiagMarker + " post-connect AuthType=' + $ctx.AuthType + ' ContextScope=' + $ctx.ContextScope + ' TokenCredentialType=' + $ctx.TokenCredentialType + ' authRecordExistsNow=' + (Test-Path $__authRec))\n" +
                 // Enforce that verification uses a DELEGATED identity, never app-only — the whole point.
                 "if ($ctx.AuthType -and $ctx.AuthType -ne 'Delegated') { Write-Output ('" + AuthRequiredMarker + " context AuthType=' + $ctx.AuthType + ' (expected Delegated; run Connect-MgGraph interactively as yourself)'); exit 3 }\n" +
                 // Git #965 — hard testbed gate, enforced AFTER Connect-MgGraph succeeds but BEFORE the
