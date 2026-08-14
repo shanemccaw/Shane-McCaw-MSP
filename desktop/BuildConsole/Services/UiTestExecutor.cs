@@ -370,6 +370,13 @@ namespace BuildConsole.Services
             List<string> prefixCandidates;
             try
             {
+                // Pause-on-unset (Epic #803, extends #953/#961) — before resolving this step, prompt for any
+                // {{NAME}} it references (selector/value/textContains/textPrefixOfAny) whose Test Environment
+                // Variable is still <unset>/needsReview, so the DOM action never operates on a bad "<unset>".
+                // No-op when nothing is unset; a dismissal falls through to the VariableNotResolvedException
+                // path below as a clear step failure.
+                await _vars.PrepareAsync(step.Selector, step.Value, step.TextContains, step.TextPrefixOfAny);
+
                 // #877 — resolve {{name}} placeholders in the step's target/selector and value
                 // against earlier steps' extracted values BEFORE executing, so the DOM action
                 // operates on the real value and never the literal "{{name}}" text.

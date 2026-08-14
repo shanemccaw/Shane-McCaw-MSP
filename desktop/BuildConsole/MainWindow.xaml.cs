@@ -3885,6 +3885,24 @@ namespace BuildConsole
             // replacement for HttpTestExecutor's old hardcoded two-name DEPLOY_URL/SECRET_KEY chain.
             vars.SeedConfigVariables(BuildConsole.Services.BuildConsoleSettings.Load().TestEnvironmentVariables);
 
+            // Pause-on-unset (Epic #803, extends #953/#961) — on an interactive Play Test / manual run
+            // (NOT the #967 scheduled sweep or the #898 headless remote trigger — same interactive test
+            // as the device-code bridge below), if a step is about to resolve a {{NAME}} whose stored
+            // Test Environment Variable is still <unset>/needsReview, pause the run and prompt for the
+            // real value in a non-blocking floaty (same shape as DeviceCodeWindow). Once entered it's
+            // saved to the store (needsReview cleared) and the run resumes on that value; dismissal fails
+            // just that step, clearly naming the variable. Headless runs leave this null and keep today's
+            // fail-clearly-on-unset behaviour (Resolve refuses to ship the "<unset>" placeholder).
+            if (!isRegression && !_testTriggerBusy)
+            {
+                vars.OnMissingVariable = prompt => Dispatcher.Invoke(() =>
+                {
+                    var mvWin = new MissingVariableWindow(prompt) { Owner = this };
+                    mvWin.Show();
+                    return mvWin.Result;
+                });
+            }
+
             var config = BuildConsole.Services.BuildTrackerConfig.Load();
             var apiResults = await BuildConsole.Services.HttpTestExecutor.RunAsync(manifest, config, vars);
             runResult.AddRange(apiResults);
@@ -4290,21 +4308,10 @@ namespace BuildConsole
                 BuildConsole.Services.ActivityLog.Log(ch,
                     $"Invoked: action='{req.Action}' src='{src}' ref='{req.Ref ?? "(none)"}'.");
 
-                // runTest / uiTest — run a full test manifest IN-PROCESS through the exact
-                // RunManifestAsync pipeline Play Test uses (ALL step types, not just uiSteps).
-                // Deliberately LOCAL: no HTTP round-trip to #898, since the agent and
-                // BuildConsole are on the same machine. See MainWindow.ShaneAppRunTest.cs.
-                if (string.Equals(req.Action, "runTest", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(req.Action, "uiTest", StringComparison.OrdinalIgnoreCase))
-                {
-                    await HandleShaneAppRunTestAsync(req, src, ch);
-                    return;
-                }
-
                 if (!string.Equals(req.Action, "executeSql", StringComparison.OrdinalIgnoreCase))
                 {
                     BuildConsole.Services.ActivityLog.Log(ch,
-                        $"Unsupported action '{req.Action}' — supported: executeSql (local SQL), runTest/uiTest (local manifest run). Ignoring.");
+                        $"Unsupported action '{req.Action}' — only executeSql is handled (test execution goes over #898 HTTP, not this protocol). Ignoring.");
                     return;
                 }
 

@@ -64,6 +64,12 @@ namespace BuildConsole.Services
 
             try
             {
+                // Pause-on-unset (Epic #803, extends #953/#961) — before resolving anything, make sure any
+                // {{NAME}} this step references whose Test Environment Variable is still <unset>/needsReview
+                // gets a real value (pause + prompt + resume, or a clear failure on dismissal), so the
+                // Resolve calls below never ship the literal "<unset>" downstream. No-op when nothing is unset.
+                await vars.PrepareAsync(string.IsNullOrWhiteSpace(manifest.BaseUrl) ? config.ApiBaseUrl : manifest.BaseUrl, test.GetRawText());
+
                 // Config placeholders ({{DEPLOY_URL}}/{{SECRET_KEY}}) first, then cross-step
                 // {{variable}} interpolation (#877) against values earlier steps extracted — so any
                 // {{...}} still present after config resolution is genuinely an extracted variable,

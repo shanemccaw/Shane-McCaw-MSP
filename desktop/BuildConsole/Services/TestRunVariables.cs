@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 
 namespace BuildConsole.Services
 {
@@ -54,6 +55,35 @@ namespace BuildConsole.Services
         /// before this class runs).</summary>
         private readonly Dictionary<string, string> _configVars = new(StringComparer.Ordinal);
 
+        /// <summary>
+        /// Pause-on-unset (this session, Epic #803, extends #953/#961) — the names of config
+        /// variables whose stored Test Environment Variable value is still the scanner's
+        /// <see cref="TestManifestVariableScanner.AutoDefaultValue"/> (<c>&lt;unset&gt;</c>) or
+        /// carries the <see cref="TestEnvVar.NeedsReview"/> flag, i.e. auto-added by the scanner
+        /// and never given a real value. These are populated in <see cref="SeedConfigVariables"/>.
+        /// <see cref="Resolve"/> REFUSES to substitute one of these (it would ship the literal
+        /// "&lt;unset&gt;" downstream and cause a confusing failure), treating it as unresolved
+        /// instead; <see cref="PrepareAsync"/> pauses the run and prompts for a real value before
+        /// the step runs, removing the name from here once filled.
+        /// </summary>
+        private readonly HashSet<string> _needsRealValue = new(StringComparer.Ordinal);
+
+        /// <summary>Names Shane declined to fill this run (dismissed the prompt or it couldn't be
+        /// shown). Not re-prompted again in this run; every step referencing one still fails clearly
+        /// via <see cref="Resolve"/>.</summary>
+        private readonly HashSet<string> _dismissed = new(StringComparer.Ordinal);
+
+        /// <summary>
+        /// Pause-on-unset bridge (mirrors PowerShellTestExecutor's device-code
+        /// <c>DeviceCodeInteraction</c> pattern): set by <c>MainWindow.RunManifestAsync</c> for
+        /// interactive Play-Test runs only. Given a <see cref="MissingVariablePrompt"/> it returns
+        /// the real value Shane typed into the non-blocking floaty, or <c>null</c> if he dismissed
+        /// it. Left <c>null</c> on headless/regression runs — those can't prompt, so an unset
+        /// variable simply fails the step clearly. Invoked on the UI thread (the delegate marshals),
+        /// and awaited without blocking it, so the app stays responsive while the floaty is up.
+        /// </summary>
+        public Func<MissingVariablePrompt, Task<string?>>? OnMissingVariable { get; set; }
+
         /// <summary>Snapshot of everything extracted so far — for diagnostics/telemetry only.</summary>
         public IReadOnlyDictionary<string, string> Values => _values;
 
@@ -67,15 +97,35 @@ namespace BuildConsole.Services
         public void SeedConfigVariables(IEnumerable<TestEnvVar>? configVars)
         {
             _configVars.Clear();
+            _needsRealValue.Clear();
             if (configVars == null) return;
             int count = 0;
+            int needReview = 0;
             foreach (var cv in configVars)
             {
                 if (cv == null || string.IsNullOrWhiteSpace(cv.Name)) continue;
-                _configVars[cv.Name.Trim()] = cv.Value ?? "";
+                string name = cv.Name.Trim();
+                _configVars[name] = cv.Value ?? "";
                 count++;
+
+                // Pause-on-unset — a var still carrying the scanner's <unset> default, or explicitly
+                // flagged needsReview, has no real value yet. Record it so Resolve refuses to ship the
+                // placeholder and PrepareAsync prompts for a real value at the step that first needs it.
+                // A duplicate name's LAST entry wins (mirrors the _configVars last-wins above).
+                if (cv.NeedsReview
+                    || string.Equals(cv.Value, TestManifestVariableScanner.AutoDefaultValue, StringComparison.Ordinal))
+                {
+                    _needsRealValue.Add(name);
+                    needReview++;
+                }
+                else
+                {
+                    _needsRealValue.Remove(name);
+                }
             }
-            ActivityLog.Log(ConfigChannel, $"seeded {count} Test Environment Variable(s) for this run.");
+            ActivityLog.Log(ConfigChannel,
+                $"seeded {count} Test Environment Variable(s) for this run"
+                + (needReview > 0 ? $"; {needReview} still unset/needsReview (will prompt on use)." : "."));
         }
 
         /// <summary>
@@ -97,9 +147,16 @@ namespace BuildConsole.Services
             string result = PlaceholderPattern.Replace(input, m =>
             {
                 string name = m.Groups[1].Value;
+                // Pause-on-unset — a config var whose stored value is still <unset>/needsReview has
+                // no real value yet. Skip it here (do NOT ship the placeholder text downstream) and
+                // fall through to an extracted value if one exists; otherwise it's genuinely missing
+                // and throws below. PrepareAsync normally fills/removes it before this runs, so a name
+                // still in _needsRealValue at resolution time means the prompt was dismissed or the run
+                // was non-interactive — either way, fail clearly instead of sending "<unset>".
+                bool configUnset = _needsRealValue.Contains(name);
                 // Git #953 — Test Environment Variables win first, matching {{DEPLOY_URL}}/
                 // {{SECRET_KEY}}'s "resolved before extracted values" precedence.
-                if (_configVars.TryGetValue(name, out var cval))
+                if (!configUnset && _configVars.TryGetValue(name, out var cval))
                 {
                     ActivityLog.Log(ConfigChannel, $"resolved {{{{{name}}}}} from Test Environment Variables -> \"{Preview(cval)}\"");
                     return cval;
@@ -119,7 +176,11 @@ namespace BuildConsole.Services
                 {
                     // Git #953 — a miss is logged on the config-vars channel too, so the fix
                     // ("set it in Settings > Test Environment Variables") is obvious from the log.
-                    ActivityLog.Log(ConfigChannel, $"MISSING {{{{{name}}}}} — not set in Settings > Test Environment Variables.");
+                    // Pause-on-unset — distinguish "exists but still <unset>/needsReview (and the
+                    // prompt was dismissed or this run is non-interactive)" from "never defined at all".
+                    ActivityLog.Log(ConfigChannel, _needsRealValue.Contains(name)
+                        ? $"MISSING {{{{{name}}}}} — its Test Environment Variable is still unset/needsReview (no real value provided); refusing to send the placeholder."
+                        : $"MISSING {{{{{name}}}}} — not set in Settings > Test Environment Variables.");
                     ActivityLog.Log(Channel, $"MISSING {{{{{name}}}}} — no Test Environment Variable and no earlier step extracted it; refusing to send the literal placeholder.");
                 }
                 throw new VariableNotResolvedException(
@@ -128,6 +189,122 @@ namespace BuildConsole.Services
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// Pause-on-unset gate. Called by every executor at the top of each step, BEFORE the step's
+        /// synchronous <see cref="Resolve"/> calls run, with the raw text(s) that step will resolve
+        /// (its JSON, selector/value, cmdlet, …). For each distinct <c>{{NAME}}</c> that references a
+        /// Test Environment Variable still <c>&lt;unset&gt;</c>/needsReview — and that no earlier step
+        /// has extracted a real value for, and that Shane hasn't already declined this run — the run is
+        /// PAUSED here and <see cref="OnMissingVariable"/> is awaited (a non-blocking floaty). On a real
+        /// value: it's stored so it wins for this step AND every later reference in this run, saved back
+        /// to the Settings store with its needsReview flag cleared (exactly as if Shane had set it in
+        /// Settings), and the run resumes. On dismissal (or a non-interactive run with no bridge): the
+        /// name is left unresolved so the subsequent <see cref="Resolve"/> throws a
+        /// <see cref="VariableNotResolvedException"/> naming it — a clear per-step failure, never a hang.
+        /// Cheap no-op when nothing is unset (the common case) — returns before scanning.
+        /// </summary>
+        public async Task PrepareAsync(params string?[]? inputs)
+        {
+            if (_needsRealValue.Count == 0 || inputs == null) return;
+
+            // Distinct, in-order placeholder names across all inputs that still need a real value.
+            var toPrompt = new List<string>();
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var input in inputs)
+            {
+                if (string.IsNullOrEmpty(input) || input.IndexOf("{{", StringComparison.Ordinal) < 0) continue;
+                foreach (Match m in PlaceholderPattern.Matches(input))
+                {
+                    string name = m.Groups[1].Value;
+                    if (!seen.Add(name)) continue;
+                    if (!_needsRealValue.Contains(name)) continue; // already has a real value
+                    if (_values.ContainsKey(name)) continue;       // an earlier step extracted a real value
+                    if (_dismissed.Contains(name)) continue;       // Shane already declined it this run
+                    toPrompt.Add(name);
+                }
+            }
+            if (toPrompt.Count == 0) return;
+
+            foreach (var name in toPrompt)
+            {
+                string current = _configVars.TryGetValue(name, out var c) ? c : "";
+                ActivityLog.Log(ConfigChannel,
+                    $"PAUSE run — Test Environment Variable {{{{{name}}}}} is still \"{Preview(current)}\" (unset/needsReview); pausing this step to prompt for a real value.");
+
+                if (OnMissingVariable == null)
+                {
+                    // Non-interactive run (headless remote trigger / scheduled sweep): can't prompt.
+                    // Leave it flagged so Resolve fails the step clearly instead of shipping "<unset>".
+                    ActivityLog.Log(ConfigChannel,
+                        $"run is non-interactive — cannot prompt for {{{{{name}}}}}; the step will FAIL clearly (set it in Settings > Test Environment Variables).");
+                    _dismissed.Add(name);
+                    continue;
+                }
+
+                string? entered;
+                try
+                {
+                    entered = await OnMissingVariable(new MissingVariablePrompt
+                    {
+                        Name = name,
+                        CurrentValue = current,
+                    });
+                }
+                catch (Exception ex)
+                {
+                    ActivityLog.Log(ConfigChannel,
+                        $"could not show the prompt for {{{{{name}}}}} ({ex.Message}); the step will FAIL clearly.");
+                    _dismissed.Add(name);
+                    continue;
+                }
+
+                if (!string.IsNullOrWhiteSpace(entered)
+                    && !string.Equals(entered, TestManifestVariableScanner.AutoDefaultValue, StringComparison.Ordinal))
+                {
+                    _configVars[name] = entered;
+                    _needsRealValue.Remove(name);
+                    PersistConfigVar(name, entered);
+                    ActivityLog.Log(ConfigChannel,
+                        $"RESUME run — {{{{{name}}}}} set to \"{Preview(entered)}\" and saved to Test Environment Variables (needsReview cleared); continuing this step and any later {{{{{name}}}}} in this run.");
+                }
+                else
+                {
+                    _dismissed.Add(name);
+                    ActivityLog.Log(ConfigChannel,
+                        $"run will FAIL for this step — {{{{{name}}}}} left unset (prompt dismissed/empty); the step depending on it fails clearly.");
+                }
+            }
+        }
+
+        /// <summary>Persist a freshly-entered variable back to the real Settings "Test Environment
+        /// Variables" store — the SAME store/round-trip Settings and the scanner use
+        /// (<see cref="BuildConsoleSettings"/>). Updates an existing row in place (value + clears
+        /// <see cref="TestEnvVar.NeedsReview"/>) or adds a new reviewed row, then
+        /// <see cref="BuildConsoleSettings.Save"/>s. Best-effort: a store-write failure is logged but
+        /// never aborts the resumed run (the value is already live in <see cref="_configVars"/> for
+        /// this run regardless).</summary>
+        private static void PersistConfigVar(string name, string value)
+        {
+            try
+            {
+                var settings = BuildConsoleSettings.Load();
+                TestEnvVar? existing = null;
+                foreach (var v in settings.TestEnvironmentVariables)
+                {
+                    if (string.Equals(v.Name, name, StringComparison.Ordinal)) { existing = v; break; }
+                }
+                if (existing == null)
+                    settings.TestEnvironmentVariables.Add(new TestEnvVar { Name = name, Value = value, NeedsReview = false });
+                else { existing.Value = value; existing.NeedsReview = false; }
+                settings.Save();
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log(ConfigChannel,
+                    $"could not save Test Environment Variable {name} to settings.json ({ex.Message}); it is still live for THIS run.");
+            }
         }
 
         /// <summary>
@@ -312,6 +489,19 @@ namespace BuildConsole.Services
                 if (current.ValueKind == JsonValueKind.Array && index.Value < current.GetArrayLength())
                     WalkCollect(current[index.Value], tokens, i + 1, results);
             }
+        }
+
+        /// <summary>Pause-on-unset — the payload handed to <see cref="OnMissingVariable"/> describing the
+        /// one Test Environment Variable that needs a real value before the current step can run. The
+        /// floaty shows <see cref="Name"/> (and <see cref="CurrentValue"/>, typically the
+        /// <c>&lt;unset&gt;</c> placeholder) and returns whatever Shane types.</summary>
+        public sealed class MissingVariablePrompt
+        {
+            /// <summary>The variable name (as it appears inside <c>{{ }}</c>), e.g. <c>TEST_PORTAL_PASSWORD</c>.</summary>
+            public string Name { get; init; } = "";
+
+            /// <summary>The current stored value (usually the scanner's <c>&lt;unset&gt;</c> default) — shown as context.</summary>
+            public string CurrentValue { get; init; } = "";
         }
     }
 }

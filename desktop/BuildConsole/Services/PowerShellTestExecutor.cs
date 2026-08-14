@@ -169,13 +169,20 @@ namespace BuildConsole.Services
                 return Finish(label, sw, false, "powerShellVerify step is missing a non-empty 'afterStep' (the #877 variable an earlier step captured).",
                     "an earlier step's captured variable name", "empty", $"cmdlet: {cmdlet}");
 
+            // Pause-on-unset (Epic #803, extends #953/#961) — a config var can be referenced here via the
+            // cmdlet text OR via a bare afterStep (this executor wraps a brace-less afterStep as
+            // {{afterStep}} before resolving, e.g. GRAPH_TEST_TENANT_ID). Prompt for any still-<unset>/
+            // needsReview one before resolving, so a verification never runs against a "<unset>" ground
+            // truth. No-op when nothing is unset; a dismissal falls through to the clear failures below.
+            string afterStepToken = afterStep.Contains("{{", StringComparison.Ordinal) ? afterStep : "{{" + afterStep + "}}";
+            await vars.PrepareAsync(afterStepToken, cmdlet);
+
             // The app-reported value: resolve the earlier step's captured value through #877
             // interpolation. `afterStep` names the variable that step stored via its extract `as`.
             string appValue;
             try
             {
-                string token = afterStep.Contains("{{", StringComparison.Ordinal) ? afterStep : "{{" + afterStep + "}}";
-                appValue = vars.Resolve(token);
+                appValue = vars.Resolve(afterStepToken);
             }
             catch (VariableNotResolvedException)
             {
