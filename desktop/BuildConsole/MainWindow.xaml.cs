@@ -3033,16 +3033,27 @@ namespace BuildConsole
 
         // ── Git #815: live Output log + sync status indicator ──────────────────
         private const int MaxOutputLogChars = 200_000;
+        private BuildConsole.Services.PausableTextBoxLog? _outputPausableLog;
 
         private void AppendOutputLog(string line)
         {
-            if (OutputLogBox.Text == "[Output] Waiting for activity…") OutputLogBox.Clear();
-            OutputLogBox.AppendText(line + Environment.NewLine);
-            if (OutputLogBox.Text.Length > MaxOutputLogChars)
+            _outputPausableLog ??= new BuildConsole.Services.PausableTextBoxLog(OutputLogBox);
+            _outputPausableLog.Append(line + Environment.NewLine, text =>
             {
-                OutputLogBox.Text = OutputLogBox.Text.Substring(OutputLogBox.Text.Length - MaxOutputLogChars);
-            }
-            OutputLogBox.ScrollToEnd();
+                if (OutputLogBox.Text == "[Output] Waiting for activity…") OutputLogBox.Clear();
+                OutputLogBox.AppendText(text);
+                if (OutputLogBox.Text.Length > MaxOutputLogChars)
+                {
+                    OutputLogBox.Text = OutputLogBox.Text.Substring(OutputLogBox.Text.Length - MaxOutputLogChars);
+                }
+            });
+        }
+
+        private void OutputPauseToggle_Click(object sender, RoutedEventArgs e)
+        {
+            _outputPausableLog ??= new BuildConsole.Services.PausableTextBoxLog(OutputLogBox);
+            _outputPausableLog.Toggle();
+            OutputPauseButton.Content = _outputPausableLog.IsPaused ? "▶ Resume" : "⏸ Pause";
         }
 
         /// <summary>null = last poll succeeded (green "live"); a message = last poll failed (red, message shown + full text in the Output log).</summary>
@@ -4367,6 +4378,12 @@ namespace BuildConsole
             const string ch = BuildConsole.Services.ShaneAppProtocol.LogChannel;
             try
             {
+                // Stage: URI physically received (off the named pipe, or drained as a
+                // cold-start URI). Logged BEFORE parse so even a malformed/unroutable URI
+                // leaves a trace on the channel — a future failure is diagnosable from the
+                // log alone without another live repro.
+                BuildConsole.Services.ActivityLog.Log(ch, $"URI received: {uri}");
+
                 if (!BuildConsole.Services.ShaneAppProtocol.TryParse(uri, out var req, out var parseError))
                 {
                     BuildConsole.Services.ActivityLog.Log(ch, $"Ignored malformed shaneapp:// URI: {parseError}");
@@ -4375,12 +4392,30 @@ namespace BuildConsole
 
                 string src = string.IsNullOrWhiteSpace(req.Source) ? "unknown" : req.Source!;
                 BuildConsole.Services.ActivityLog.Log(ch,
-                    $"Invoked: action='{req.Action}' src='{src}' ref='{req.Ref ?? "(none)"}'.");
+                    $"Parsed: action='{req.Action}' src='{src}' ref='{req.Ref ?? "(none)"}'.");
+
+                // runTest / uiTest → run a whole test manifest IN-PROCESS through the same
+                // RunManifestAsync pipeline Play Test uses (MainWindow.ShaneAppRunTest.cs).
+                // This dispatch route was LOST when a concurrent executeSql-local-Postgres
+                // rewrite of this method won on rebase — leaving HandleShaneAppRunTestAsync
+                // defined but never called, so runTest fell through to the "unsupported
+                // action" branch below and returned WITHOUT writing a result envelope (the
+                // silent no-op Shane hit: window activated, poll loop hung forever). Restored
+                // here, ahead of the executeSql gate. HandleShaneAppRunTestAsync guarantees a
+                // result envelope on every path (including its own top-level catch).
+                if (string.Equals(req.Action, "runTest", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(req.Action, "uiTest", StringComparison.OrdinalIgnoreCase))
+                {
+                    BuildConsole.Services.ActivityLog.Log(ch,
+                        $"Routing action '{req.Action}' to in-process runTest handler (src='{src}').");
+                    await HandleShaneAppRunTestAsync(req, src, ch);
+                    return;
+                }
 
                 if (!string.Equals(req.Action, "executeSql", StringComparison.OrdinalIgnoreCase))
                 {
                     BuildConsole.Services.ActivityLog.Log(ch,
-                        $"Unsupported action '{req.Action}' — only executeSql is handled (test execution goes over #898 HTTP, not this protocol). Ignoring.");
+                        $"Unsupported action '{req.Action}' — only executeSql / runTest / uiTest are handled (other test execution goes over #898 HTTP, not this protocol). Ignoring (an unknown action has no known result path to write a failure envelope to).");
                     return;
                 }
 

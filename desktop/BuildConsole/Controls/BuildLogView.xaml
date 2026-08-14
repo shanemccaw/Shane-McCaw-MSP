@@ -93,6 +93,15 @@
                            HorizontalAlignment="Right"
                            Margin="0,0,12,0"/>
 
+                <!-- Pause/Resume live streaming so text can be selected/copied without it jumping. -->
+                <Button x:Name="PauseButton"
+                        DockPanel.Dock="Right"
+                        Content="⏸ Pause"
+                        Style="{StaticResource ChipButton}"
+                        VerticalAlignment="Center"
+                        Margin="0,0,10,0"
+                        Click="PauseToggle_Click"/>
+
             </DockPanel>
         </Border>
 

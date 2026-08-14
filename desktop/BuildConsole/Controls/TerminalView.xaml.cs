@@ -18,11 +18,13 @@ namespace BuildConsole.Controls
     {
         private const string RootWorkspacePath = @"C:\Source\ShaneMcCawConsulting\Shane-McCaw-MSP";
         private Process? _shell;
+        private Services.PausableTextBoxLog? _pausableLog;
 
         public TerminalView()
         {
             InitializeComponent();
             OutputBox.Text = $"BuildConsole Terminal — PowerShell in {RootWorkspacePath}\r\n";
+            _pausableLog = new Services.PausableTextBoxLog(OutputBox);
             StartShell();
             Unloaded += (_, _) => { try { if (_shell != null && !_shell.HasExited) _shell.Kill(); } catch { } };
         }
@@ -64,8 +66,13 @@ namespace BuildConsole.Controls
 
         private void AppendLine(string text)
         {
-            OutputBox.AppendText(text + "\r\n");
-            OutputBox.ScrollToEnd();
+            _pausableLog?.Append(text + "\r\n");
+        }
+
+        private void PauseToggle_Click(object sender, RoutedEventArgs e)
+        {
+            _pausableLog?.Toggle();
+            PauseButton.Content = _pausableLog is { IsPaused: true } ? "▶ Resume" : "⏸ Pause";
         }
 
         /// <summary>Set the command input text (called from MainWindow menu actions).</summary>

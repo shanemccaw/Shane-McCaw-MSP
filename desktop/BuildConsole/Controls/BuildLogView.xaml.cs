@@ -37,10 +37,12 @@ namespace BuildConsole.Controls
         private DispatcherTimer? _tailTimer;
         private int _currentId;
         private long _tailedLength;
+        private Services.PausableTextBoxLog _pausableLog = null!;
 
         public BuildLogView()
         {
             InitializeComponent();
+            _pausableLog = new Services.PausableTextBoxLog(RawLogBox);
         }
 
         /// <summary>Git #944 — a real running build's own local per-item record, matched to a live claude.exe process by launch --name (see LaunchItem), not by queue status.</summary>
@@ -183,6 +185,8 @@ namespace BuildConsole.Controls
             _currentId = id;
             _tailedLength = 0;
             RawLogBox.Clear();
+            _pausableLog.Reset();
+            PauseButton.Content = "⏸ Pause";
             LoadNow();
             UpdatePillHighlight();
 
@@ -209,6 +213,14 @@ namespace BuildConsole.Controls
         private void ClearLog_Click(object sender, RoutedEventArgs e)
         {
             RawLogBox.Clear();
+            _pausableLog.Reset();
+            PauseButton.Content = "⏸ Pause";
+        }
+
+        private void PauseToggle_Click(object sender, RoutedEventArgs e)
+        {
+            _pausableLog.Toggle();
+            PauseButton.Content = _pausableLog.IsPaused ? "▶ Resume" : "⏸ Pause";
         }
 
         private void LoadNow()
@@ -218,7 +230,7 @@ namespace BuildConsole.Controls
             {
                 if (!File.Exists(path))
                 {
-                    if (RawLogBox.Text.Length == 0) RawLogBox.Text = "(no log file yet — the watcher hasn't claimed this item, or it predates the log-file convention)";
+                    if (RawLogBox.Text.Length == 0 && !_pausableLog.IsPaused) RawLogBox.Text = "(no log file yet — the watcher hasn't claimed this item, or it predates the log-file convention)";
                     return;
                 }
                 using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
@@ -226,13 +238,12 @@ namespace BuildConsole.Controls
                 if (fs.Length <= _tailedLength) return;
                 fs.Seek(_tailedLength, SeekOrigin.Begin);
                 using var reader = new StreamReader(fs);
-                RawLogBox.AppendText(reader.ReadToEnd());
+                _pausableLog.Append(reader.ReadToEnd());
                 _tailedLength = fs.Length;
-                RawLogBox.ScrollToEnd();
             }
             catch (Exception ex)
             {
-                if (RawLogBox.Text.Length == 0) RawLogBox.Text = $"(couldn't read log: {ex.Message})";
+                if (RawLogBox.Text.Length == 0 && !_pausableLog.IsPaused) RawLogBox.Text = $"(couldn't read log: {ex.Message})";
             }
         }
     }

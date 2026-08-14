@@ -711,12 +711,23 @@
 
                         <TabItem Header="Output">
                             <!-- Git #815 - live activity log (startup sequence, every API call in/out) fed by Services/ActivityLog.cs, never the calling thread itself (BeginInvoke marshal onto the UI thread). -->
-                            <TextBox x:Name="OutputLogBox"
-                                     IsReadOnly="True"
-                                     Style="{StaticResource TerminalOutputBox}"
-                                     Text="[Output] Waiting for activity…"
-                                     VerticalScrollBarVisibility="Auto"
-                                     HorizontalScrollBarVisibility="Auto"/>
+                            <Grid>
+                                <TextBox x:Name="OutputLogBox"
+                                         IsReadOnly="True"
+                                         Style="{StaticResource TerminalOutputBox}"
+                                         Text="[Output] Waiting for activity…"
+                                         VerticalScrollBarVisibility="Auto"
+                                         HorizontalScrollBarVisibility="Auto"/>
+
+                                <!-- Pause/Resume live streaming so text can be selected/copied without it jumping. -->
+                                <Button x:Name="OutputPauseButton"
+                                        Content="⏸ Pause"
+                                        Style="{StaticResource ChipButton}"
+                                        HorizontalAlignment="Right"
+                                        VerticalAlignment="Top"
+                                        Margin="0,6,10,0"
+                                        Click="OutputPauseToggle_Click"/>
+                            </Grid>
                         </TabItem>
 
                         <TabItem Header="Issue Detail">
