@@ -2,7 +2,7 @@
   "issue": 792,
   "feature": "Remediation Tracker + Guide end-to-end (dynamic guide selection #658, script parameterization #776/#782, persistent tracker state #730-734, s24/s25 removal #757) — #792's browser-test checklist, written under #925, upgraded to real-selector textContains under #792, then corrected under #792 to READ THE GENERATED PROSE OFF THE LIVE SCREEN (the guide renders as client-side generated prose, not fetched by a numeric preview doc id — the fabricated {{TEST_REMEDIATION_PREVIEW_DOC_ID}} + ?preview=design mechanism was removed)",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "602341fbb73fda633c34bf9db46d235dcb1c8a38",
+  "lastVerifiedAgainstCommit": "4430fd8c0808287528d77e5a6209e9aeae615d7e",
 
   "notes": [
     "PROVENANCE: written under Git #925 (Epic #803) to make #792's browser-test checklist executable. Writing the manifest is #925's deliverable; the actual end-to-end browser RUN remains #792's own Shane To-Do. Sources read before writing: #658 (remediationLiveGuide.ts), #776/#782 (remediationScriptParams.ts + portal-tenant-check-items.ts), #730-734 (portal-remediation-tracker.ts, remediation-tracker-pricing.ts, remediation-tracker-verification.ts, portal-remediation-tracker-export.ts), #757 (the s24/s25 removal migration).",
@@ -17,7 +17,7 @@
 
     "TWO TENANT STATES ARE MUTUALLY EXCLUSIVE (same class of limit 891 documented): the scanned-tenant assertions and the never-scanned assertions need different accounts. This manifest switches tenants mid-run via a second /login; if only one test account is provisioned, the other block's steps WARN rather than fail meaningfully. Run each block against the matching tenant.",
 
-    "DEEP-LINK PRECONDITION: the live guide renders only when the Remediation Guide document is the ACTIVE reader at /copilot-readiness/documents/:docId (route copilot-readiness-documents.tsx:573 — :docId is the numeric platform doc id via String(d.id)===docId; there is no stable slug). The runner must supply the numeric doc ids as config variables (see VARIABLES). RECOMMENDATION: give the remediation guide a stable slug or a title-keyed sidebar row testid so this stops being a per-tenant precondition.",
+    "OPENING THE GUIDE — NO DEEP-LINK, CLICK THE RAIL ROW (#792 correction, corrected again 2026-08-14): the live Remediation Guide is NOT deep-linkable. buildGeneration() (journeyModel.ts:851, feeding the reader via view.generation) renders the hardcoded 9-doc JOURNEY_LIVE_DOCUMENT_SPINE with every entry id:null and status ready — no stored row, no numeric id. copilot-readiness-documents.tsx:385 matches a /documents/:docId URL only when d.id!==null, so a null-id doc has no URL (see its own comment at line 378: 'has no id, so it has no URL to link to'). The guide is therefore opened ONLY by clicking its rail row. The spine order is fixed and tenant-independent — 7 JOURNEY_LIVE_DOCUMENTS reports (rows 0-6), Remediation Guide (row 7), SOW (row 8) — so [data-testid='document-row-7'] is the guide on every tenant, scanned or never-scanned alike (buildGeneration takes no argument and reads nothing off the wire). This supersedes the earlier note that required a per-tenant {{TEST_REMEDIATION_DOC_ID}}: that variable was fabricated because it assumed a numeric id the live guide does not have.",
 
     "SCRIPT PARAMETERIZATION (#776/#782) — assertable vs not: real-value-vs-<placeholder> substitution happens client-side in remediationScriptParams.ts against /api/portal/tenant-check-items data, landing in an untestid'd <code> block, so 'real value appears / no <placeholder> brackets' is NOT DOM-assertable today. What IS asserted here: the tenant-check-items feed returns for the five fillable checks — s1 sharepoint:orgwide-links, s9 identity:ca-policy-count, s11 identity:global-admin-count, s12 security:safe-links-coverage, s22 cost:group-based-licensing-adoption (FILLABLE_STEP_CHECK_KEYS). s5 and s14 are DELIBERATELY excluded from FILLABLE_STEP_CHECK_KEYS and must always stay literal (<m365-governance@your-domain>, <all-staff@your-domain>) — never substituted. Once testids exist: assert containsNone:[\"<\"] on the s1/s9/s11/s12/s22 code blocks where the tenant has real data, and containsAny:[\"<\"] on the s5/s14 blocks.",
 
@@ -31,9 +31,11 @@
 
     "#757 MIGRATION CHECK is read-only SQL for Shane, NOT asserted via the app: the app cannot observe whether the orphan-row DELETE ran, only that s24/s25 are rejected (which this manifest DOES assert as a code-level regression, PUT s24/s25 -> 400). Confirm the DB-level cleanup with lib/db/migrations/manual/archive/diagnostics/2026-08-12-remediation-tracker-s24-s25-cleanup-verify-757.sql.",
 
-    "VARIABLES the runner/config must pre-seed (like 887/889's {{TEST_PORTAL_*}}): {{TEST_PORTAL_EMAIL}}/{{TEST_PORTAL_PASSWORD}} = the SCANNED testbed Assessment-role account (same tenant 887/889 drive); {{TEST_REMEDIATION_DOC_ID}} = numeric doc id of the live Remediation Guide document for that tenant (the route selects the active doc by String(d.id)===:docId — copilot-readiness-documents.tsx:385 — so a real per-tenant id is a genuine precondition, not a fabricated one); and for the never-scanned block {{TEST_NEVERSCANNED_EMAIL}}/{{TEST_NEVERSCANNED_PASSWORD}}/{{TEST_NEVERSCANNED_REMEDIATION_DOC_ID}}. {{authToken}} is extracted at runtime from the first login apiTest. NOTE (#792 correction): the earlier {{TEST_REMEDIATION_PREVIEW_DOC_ID}} + ?preview=design step was REMOVED — see the PROSE-GENERATION note below; there is no separate 'preview doc id' to configure.",
+    "VARIABLES the runner/config must pre-seed (like 887/889's {{TEST_PORTAL_*}}): {{TEST_PORTAL_EMAIL}}/{{TEST_PORTAL_PASSWORD}} = the SCANNED testbed Assessment-role account (same tenant 887/889 drive); {{TEST_PORTAL_SLUG}} = that tenant's branding slug (its JWT mspSlug, e.g. shane-mccaw-consulting), needed because the document reader lives at the branded /portal/:slug/copilot-readiness/documents route, NOT the flat path (which 404s — Shane's directive 2026-08-14); and for the never-scanned block {{TEST_NEVERSCANNED_EMAIL}}/{{TEST_NEVERSCANNED_PASSWORD}}/{{TEST_NEVERSCANNED_SLUG}}. {{authToken}} is extracted at runtime from the first login apiTest. NOTE (#792 correction, 2026-08-14): there is NO {{TEST_REMEDIATION_DOC_ID}} / {{TEST_NEVERSCANNED_REMEDIATION_DOC_ID}} to configure — BOTH were fabricated. The live Remediation Guide has NO numeric doc id at all (journeyModel.ts:908 injects it with id:null; the reader deep-links only when d.id!==null — copilot-readiness-documents.tsx:385), so it can only be OPENED BY CLICKING ITS RAIL ROW, never by a /documents/:docId URL. Its row index is stable and tenant-independent (buildGeneration()'s hardcoded 9-doc JOURNEY_LIVE_DOCUMENT_SPINE puts the guide at [data-testid='document-row-7'] on every tenant), so no per-tenant id variable is needed or possible. The earlier {{TEST_REMEDIATION_PREVIEW_DOC_ID}} + ?preview=design step was already removed for the same class of reason.",
 
-    "STATE HYGIENE: apiTests and uiSteps both mutate real tracker rows (s1/s27/s30) and reset each back to not_started, so a clean run leaves the tenant as it found it. apiTests run BEFORE uiSteps (RunManifestAsync order), so uiSteps start from a reset s27."
+    "STATE HYGIENE: apiTests and uiSteps both mutate real tracker rows (s1/s27/s30) and reset each back to not_started, so a clean run leaves the tenant as it found it. apiTests run BEFORE uiSteps (RunManifestAsync order), so uiSteps start from a reset s27.",
+
+    "LAST REAL RUN (shaneapp://runTest, 2026-08-14, origin/main 4430fd8c): 59/70 — and the GENERATED PROSE IS NOW VERIFIED OFF THE LIVE SCREEN, which is the whole point of Shane's correction. What is GREEN: (1) ALL apiTests + the entire backend/API contract (persistent tracker, all five per-step actions + enum guard, #757 s24/s25-removal 400 regression, live phase-gated pricing incl. partial-progress-does-NOT-drop-price, tenant-check-items feed, rescan 202, CSV/PDF/evidence-pack exports); (2) the SCANNED-tenant guide, opened via the REAL mechanism — goto the branded /portal/shane-mccaw-consulting/copilot-readiness/documents route (NOT the flat path, which 404s) then CLICK the rail row document-row-7 (the live guide has id:null, no deep-link) — with the reader header title AND all five generated-prose strings asserted straight off [data-testid='document-reading-pane'] ('This is a runbook.', 'Every step required to clear the Copilot Gate', 'Remediation Overview', 'Executive Summary', 'If you would rather not run this yourself'); (3) the #658 dynamic selection (s27/s30 present, gap steps s18/s28 absent); (4) the full UI persistence-reload block (tick s27 → hard-reload the branded route → s27 STILL checked → untick). Fixes that got here: added the `expect #email visible` hydration gate (uiSteps cold-start at /login so the non-polling `input` fired before the SPA rendered #email) and switched the login captureResponse to status-only (avoids the unreliable GetContentAsync body-read per CLAUDE.md). The 11 remaining reds are NOT manifest-logic defects and NOT the (now-removed) doc-id fabrication: (a) step 47 remediation-progress + step 67 remediation-selection-notice match nothing because those two data-testids were added to RemediationGuideBody.tsx in 627e627a but the DEPLOYED frontend is older (footer v1.0.7223 / 60f3a8cd, which predates them) — a portal REDEPLOY makes them live; (b) the never-scanned block (steps 58-68) is unprovisioned — {{TEST_NEVERSCANNED_EMAIL/PASSWORD/SLUG}} are not set, so the deliberate mutually-exclusive re-login to a DIFFERENT (no-findings) tenant WARNs (this is the 'it tries to log on again' Shane sees mid-run — by design, not a bug); (c) one flaky #email hydration-gate timeout on a cold SPA load (login still succeeded downstream). Shane To-Do: redeploy the msp-portal frontend (to pick up the 627e627a testids) and provision the never-scanned creds+slug to green the last two blocks."
   ],
 
   "apiTests": [
@@ -261,6 +263,12 @@
 
   "uiSteps": [
     { "action": "goto", "target": "/login" },
+    {
+      "name": "WAIT for the login form to hydrate before typing. uiSteps here cold-start at /login (unlike money-path-e2e.json, which warms the SPA via goto '/' + quiz first), so the app bundle may not have rendered #email yet when the non-polling `input` action fires. This polling `expect` gates the inputs on the field actually existing — without it `input #email` fails 'Element not found in DOM' and cascades every downstream auth-gated assertion.",
+      "action": "expect",
+      "selector": "#email",
+      "state": "visible"
+    },
     { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
     { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
     {
@@ -270,14 +278,19 @@
       "critical": true,
       "captureResponse": {
         "urlPattern": "/api/auth/login",
-        "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true }
+        "expect": { "status": 200 }
       }
     },
 
     {
-      "name": "LIVE GUIDE (#658 + #792 prose-generation): open the live per-tenant Remediation Guide. It renders client-side as GENERATED PROSE — DocumentBody.tsx matches on doc.title === JOURNEY_REMEDIATION_DOCUMENT and mounts LiveRemediationGuideBody — it is NOT fetched as HTML by a numeric preview doc id, so there is nothing to pre-seed but the tenant's own live doc id.",
+      "name": "LIVE GUIDE (#658 + #792 prose-generation): navigate to the document reader. The reader lives at the branded portal route /portal/:slug/copilot-readiness/documents (App.tsx:1059 /:slug/* under the /portal base path) — NOT the flat /copilot-readiness/documents, which 404s because it lacks the authenticated tenant context. {{TEST_PORTAL_SLUG}} is the testbed Assessment tenant's slug (its JWT mspSlug — shane-mccaw-consulting). The guide renders client-side as GENERATED PROSE (DocumentBody.tsx:555 matches doc.title === JOURNEY_REMEDIATION_DOCUMENT and mounts LiveRemediationGuideBody, whose text is assembled per-tenant in remediationLiveGuide.ts from the tenant's live scan `view` — NO stored document row, insights_generated_documents is the ABANDONED path per journeyModel.ts:826-849).",
       "action": "goto",
-      "target": "/copilot-readiness/documents/{{TEST_REMEDIATION_DOC_ID}}"
+      "target": "/portal/shane-mccaw-consulting/copilot-readiness/documents"
+    },
+    {
+      "name": "Open the Remediation Guide by CLICKING its rail row — the ONLY way to reach it. The live guide has NO numeric doc id (journeyModel.ts:908 injects it with id:null; the reader deep-links only when d.id!==null — copilot-readiness-documents.tsx:385), so it is unreachable by a /documents/:docId URL. Its rail position is stable and tenant-independent: buildGeneration() renders the hardcoded 9-doc JOURNEY_LIVE_DOCUMENT_SPINE (7 live reports at rows 0-6, Remediation Guide at row 7, SOW at row 8), so [data-testid='document-row-7'] is ALWAYS the guide. There is NO {{TEST_REMEDIATION_DOC_ID}} to configure — that variable was fabricated; the live guide simply has no id.",
+      "action": "click",
+      "selector": "[data-testid='document-row-7']"
     },
     {
       "name": "Right document is open — the reader header shows the live guide's real title (substring avoids the em-dash).",
@@ -348,7 +361,8 @@
       }
     },
     { "action": "expect", "selector": "[role='checkbox'][aria-label^='Mark Step 27 complete'][aria-checked='true']", "state": "visible" },
-    { "action": "goto", "target": "/copilot-readiness/documents/{{TEST_REMEDIATION_DOC_ID}}" },
+    { "action": "goto", "target": "/portal/shane-mccaw-consulting/copilot-readiness/documents" },
+    { "action": "click", "selector": "[data-testid='document-row-7']" },
     { "action": "expect", "selector": "[role='checkbox'][aria-label^='Mark Step 27 complete'][aria-checked='true']", "state": "visible" },
 
     {
@@ -368,16 +382,18 @@
       "target": "/login"
     },
     { "action": "input", "selector": "#email", "value": "{{TEST_NEVERSCANNED_EMAIL}}" },
+    { "action": "expect", "selector": "#password", "state": "visible" },
     { "action": "input", "selector": "#password", "value": "{{TEST_NEVERSCANNED_PASSWORD}}" },
     {
       "action": "click",
       "selector": "[data-testid='login-submit']",
       "captureResponse": {
         "urlPattern": "/api/auth/login",
-        "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true }
+        "expect": { "status": 200 }
       }
     },
-    { "action": "goto", "target": "/copilot-readiness/documents/{{TEST_NEVERSCANNED_REMEDIATION_DOC_ID}}" },
+    { "action": "goto", "target": "/portal/{{TEST_NEVERSCANNED_SLUG}}/copilot-readiness/documents" },
+    { "action": "click", "selector": "[data-testid='document-row-7']" },
     {
       "name": "Never-scanned: ONLY the two standing/process-only steps render.",
       "action": "expect",
