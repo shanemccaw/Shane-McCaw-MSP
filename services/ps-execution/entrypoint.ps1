@@ -655,6 +655,33 @@ $script:CmdletCatalog = @{
         PostFilter = { $null -ne $_.UtilizationPercent -and $_.UtilizationPercent -ge 90 }
         Session    = "exchange"
     }
+
+    # #754: compliance:audit-log-retention. Get-UnifiedAuditLogRetentionPolicy
+    # is the current, non-retired Security & Compliance cmdlet for reading
+    # EXPLICITLY configured unified audit log retention policies (Microsoft
+    # Learn, checked 2026-08-14: module ExchangeOnlineManagement,
+    # Connect-IPPSSession/Purview session — no Graph REST equivalent exists,
+    # same class of gap #212's DLP/label checks were built for). No parameters
+    # are required to list every policy in the org; default Session
+    # ("compliance") applies, matching every entry above #491.
+    #
+    # Deliberately NO PostFilter here (unlike get-dlp-policies/get-labels
+    # above): this cmdlet only reports policies an admin explicitly created.
+    # A tenant with ZERO custom policies is not necessarily non-compliant —
+    # Microsoft applies its own built-in default retention (1 year with
+    # Purview Audit (Premium)/E5, 90 days without it), which this cmdlet
+    # cannot reveal (no per-tenant licensing signal comes back with it). So
+    # the "below 90 days" judgment is left to the check's own severity_rules
+    # (see the 2026-08-14-audit-log-retention-check-754.sql migration) reading
+    # RetentionDuration off the returned policy objects, rather than filtered
+    # away here — the container stays a thin, honest data fetch for this
+    # check, the same posture #506/#491's "no PostFilter = raw tenant-wide
+    # list" precedent already established for checks where a container-side
+    # gap proxy would be guessing.
+    "get-audit-retention-policy" = @{
+        Cmdlet        = "Get-UnifiedAuditLogRetentionPolicy"
+        AllowedParams = @()
+    }
 }
 
 # --- Bearer-token check -------------------------------------------------------
