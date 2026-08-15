@@ -65,7 +65,7 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, monitorChecksTable, tenantsTable, type MonitorCheck } from "@workspace/db";
+import { db, monitorChecksTable, monitoringPackageChecksTable, tenantsTable, type MonitorCheck } from "@workspace/db";
 import { and, eq, like } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { requireAdmin, requireAdminOrIngestToken } from "../middlewares/requireAuth";
@@ -190,6 +190,48 @@ async function startCheckRun(opts: {
         // can re-apply the real mapping to the real response without re-fetching.
         includeItems: true,
       }));
+
+      // Fire-and-forget full-item detail collection (Git #1037a) — mirrors the
+      // consent.ts / msp-diagnostics.ts / workflow-executor.ts / sow-expiry-sweep.ts
+      // call sites (item-detail-collector.ts's NON-INTERFERENCE contract: own
+      // triggerId, own package, no tenant_monitor_profiles row, never throws).
+      // Every other real-scan trigger already fires this alongside the scoring
+      // run; Simulator Studio's manual/bulk run was the 4th/5th caller missing it,
+      // which is why tenant_check_item_details never got a row for a check run
+      // this way (Git #1037a).
+      //
+      // Unlike the other call sites, this run is a SINGLE check, not a package
+      // scan, so there is no "packageKey this scan just ran" to scope to.
+      // scopeToPackageKey is instead resolved from whichever active package (if
+      // any) actually links this checkKey — the same lookup admin-monitor-checks.ts
+      // uses to decide whether a check is package-referenced. A check that isn't
+      // linked to any package has nothing to scope detail collection to, so it is
+      // skipped rather than guessed at.
+      if (result.status !== "consent_revoked") {
+        void (async () => {
+          try {
+            const [pkgLink] = await db
+              .select({ packageKey: monitoringPackageChecksTable.packageKey })
+              .from(monitoringPackageChecksTable)
+              .where(eq(monitoringPackageChecksTable.checkKey, check.key))
+              .limit(1);
+            if (!pkgLink) return;
+            const { runItemDetailCollection } = await import("../lib/item-detail-collector.js");
+            const detail = await runItemDetailCollection({
+              tenantId,
+              customerId,
+              scopeToPackageKey: pkgLink.packageKey,
+              parallelToRunId: runId,
+            });
+            log.info(
+              { runId, checkKey: check.key, detailRunId: detail.runId, status: detail.status, itemsPersisted: detail.itemsPersisted },
+              "admin-monitor-check-runs: full-item detail collection finished",
+            );
+          } catch (detailErr) {
+            log.warn({ err: detailErr, runId, checkKey: check.key }, "admin-monitor-check-runs: full-item detail collection failed (non-fatal)");
+          }
+        })();
+      }
 
       // executeMonitorCheck never throws for a failed check — it returns a
       // status. Map its real statuses onto the run's terminal state so the UI
