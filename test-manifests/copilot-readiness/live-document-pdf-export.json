@@ -2,7 +2,7 @@
   "issue": 1043,
   "feature": "Live document PDF download, decoupled from insights-documents (Phase 1 of Epic #660 Share & Export)",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "PENDING",
+  "lastVerifiedAgainstCommit": "1208fe59",
 
   "notes": [
     "GIT #1043 (sub-issue of Epic #660, via #660's own build-plan comment). insights-documents / insightsGeneratedDocumentsTable / printTokensTable / portal-documents.ts are DEPRECATED for this feature and are not exercised here — this manifest covers the clean build against the live-rendered document set only.",
