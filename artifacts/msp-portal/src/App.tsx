@@ -112,6 +112,7 @@ import WarRoomLadderPage from "@/pages/war-room-ladder";
 import { WAR_ROOM_ROUTE_PATTERN } from "@/components/war-room/warRoomSections";
 import CopilotReadinessPage from "@/pages/copilot-readiness";
 import CopilotReadinessDocumentsPage from "@/pages/copilot-readiness-documents";
+import CopilotReadinessRemediationTrackerPage from "@/pages/copilot-readiness-remediation-tracker";
 import CopilotReadinessProposalPage from "@/pages/copilot-readiness-proposal";
 import CopilotReadinessCheckoutPage from "@/pages/copilot-readiness-checkout";
 import AssessmentShellPage from "@/pages/assessment-shell";
@@ -574,6 +575,12 @@ function SlugInnerSwitch() {
           a wildcard later cannot silently swallow the children. */}
       <Route path="/copilot-readiness/documents/:docId?">
         <ProtectedRoute component={CopilotReadinessDocumentsPage} />
+      </Route>
+      {/* The Remediation Tracker as its own destination (design's original
+          intent — see the page's own header comment), not only reachable as
+          one pane inside the documents reader above. */}
+      <Route path="/copilot-readiness/remediation-tracker">
+        <ProtectedRoute component={CopilotReadinessRemediationTrackerPage} />
       </Route>
       <Route path="/copilot-readiness/proposal">
         <ProtectedRoute component={CopilotReadinessProposalPage} />
