@@ -1683,7 +1683,7 @@ namespace BuildConsole.Controls
             // Build (title, chats) groups: real epics first, sorted alphabetically
             // (a stable top-level index, exactly like #984's alphabetical areas),
             // with "Unlinked" pinned last as the no-category bucket.
-            var groups = new List<(string Title, List<BoardChat> Chats)>();
+            var groups = new List<(string Title, int? GithubNumber, List<BoardChat> Chats)>();
             foreach (var grp in byEpic)
             {
                 var chatsInGroup = grp.OrderByDescending(c => c.UpdatedAt).ToList();
@@ -1693,18 +1693,19 @@ namespace BuildConsole.Controls
                     hiddenClosedChats += chatsInGroup.Count;
                     continue;
                 }
-                var title = epicById.TryGetValue(grp.Key, out var epic) ? epic.Title : $"Epic #{grp.Key}";
-                groups.Add((title, chatsInGroup));
+                var epicFound = epicById.TryGetValue(grp.Key, out var epic);
+                var title = epicFound ? epic.Title : $"Epic #{grp.Key}";
+                groups.Add((title, epicFound ? epic.GithubNumber : null, chatsInGroup));
             }
             if (hiddenClosedEpics > 0)
                 ActivityLog.Log("git-board.chats",
                     $"closed-epic filter hid {hiddenClosedEpics} closed epic(s) and their {hiddenClosedChats} nested chat(s) from the Chats panel (#839 convention)");
             groups.Sort((a, b) => string.Compare(a.Title, b.Title, StringComparison.OrdinalIgnoreCase));
             if (unlinked.Count > 0)
-                groups.Add(("Unlinked", unlinked.OrderByDescending(c => c.UpdatedAt).ToList()));
+                groups.Add(("Unlinked", null, unlinked.OrderByDescending(c => c.UpdatedAt).ToList()));
 
             int shown = 0;
-            foreach (var (title, chats) in groups)
+            foreach (var (title, githubNumber, chats) in groups)
             {
                 bool epicMatches = searching && title.Contains(search, StringComparison.OrdinalIgnoreCase);
                 var leaves = chats
@@ -1717,7 +1718,7 @@ namespace BuildConsole.Controls
                 // areas — see AreaBrushKey), so an epic keeps its colour session
                 // to session regardless of which other epics happen to be present.
                 string brushKey = AreaBrushKey(title);
-                var epicItem = BuildChatEpicHeader(title, leaves.Count, brushKey, searching);
+                var epicItem = BuildChatEpicHeader(title, githubNumber, leaves.Count, brushKey, searching);
                 foreach (var chat in leaves) epicItem.Items.Add(BuildChatLeaf(chat, brushKey));
                 ChatsTree.Items.Add(epicItem);
                 shown += leaves.Count;
@@ -1744,7 +1745,7 @@ namespace BuildConsole.Controls
         /// epic row: an 8×8 rounded colour chip, the epic title in that epic's accent
         /// colour, and a muted chat-count badge (e.g. "War Room  (6)"). The title is
         /// registered for #932's explicit-MaxWidth trimming.</summary>
-        private TreeViewItem BuildChatEpicHeader(string title, int chatCount, string brushKey, bool searching)
+        private TreeViewItem BuildChatEpicHeader(string title, int? githubNumber, int chatCount, string brushKey, bool searching)
         {
             var brush = GetBrush(brushKey);
             var sp = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 4, 0, 4) };
@@ -1770,6 +1771,22 @@ namespace BuildConsole.Controls
             };
             sp.Children.Add(titleBlock);
             _chatTitleBlocks.Add((titleBlock, EpicTitleWidthReserve));
+
+            // Real GitHub issue number, same "#NNN" convention as the Git Board
+            // rows and Build Watch slot headers — kept in its own untrimmed
+            // TextBlock (not part of titleBlock) so it stays visible even when
+            // CharacterEllipsis trims a long title.
+            if (githubNumber.HasValue)
+            {
+                sp.Children.Add(new TextBlock
+                {
+                    Text = $" #{githubNumber.Value}",
+                    FontSize = 11,
+                    Foreground = GetBrush("Subtext0Brush"),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(4, 0, 0, 0),
+                });
+            }
 
             sp.Children.Add(new TextBlock
             {
