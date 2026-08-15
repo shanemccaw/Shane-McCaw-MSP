@@ -65,6 +65,7 @@ import { useCopilotJourney } from "@/components/copilot-journey/useCopilotJourne
 import {
   documentPillar,
   withLiveDocuments,
+  type JourneyDocumentView,
   type JourneyView,
 } from "@/components/copilot-journey/journeyModel.ts";
 import {
@@ -92,17 +93,25 @@ const CHECKOUT_PATH = "/copilot-readiness/checkout";
 const REVEAL_PATH = "/copilot-readiness";
 
 /**
- * One endpoint, two pipelines server-side (#415): a document with stored
- * `htmlContent` still runs the platform's existing `buildHtmlDoc` +
- * `htmlToPdf` branded export; a live-rendered document (this screen's seven
- * "live spine" reports) has the server navigate the real, authenticated
- * Document Viewer URL with a single-use print token and print the actual
- * rendered page instead — see portal-documents.ts's
- * `GET /portal/insights-documents/:id/pdf` and insight-pdf.ts's
- * `renderLiveDocumentToPdf`. Nothing on this screen needs to know which
- * branch ran; both return the same `application/pdf` blob.
+ * A document with a real `id` (stored `htmlContent`) still downloads through
+ * the platform's existing branded `buildHtmlDoc` + `htmlToPdf` pipeline —
+ * see portal-documents.ts's `GET /portal/insights-documents/:id/pdf`.
  */
 const PDF_URL = "/api/portal/insights-documents";
+/**
+ * Git #1043 (Epic #660, Phase 1). A live-rendered document (this screen's
+ * seven "live spine" reports, `id: null` by design — journeyModel.ts) has no
+ * row and no numeric id to key the old endpoint on, so it downloads through
+ * this sibling instead, keyed by `docType`: the server mints a single-use
+ * print token (`documentPrintTokensTable`), navigates the real, authenticated
+ * Document Viewer URL with it, and prints the actual rendered page —
+ * see live-document-pdf.ts's `GET /portal/live-documents/:docType/pdf` and
+ * insight-pdf.ts's `renderLiveDocumentToPdf` (reused as-is, unmodified).
+ * Both endpoints return the same `application/pdf` blob; nothing on this
+ * screen needs to know which one ran beyond picking the right URL by
+ * whether the document has an `id`.
+ */
+const LIVE_PDF_URL = "/api/portal/live-documents";
 
 /** Below this the header's pillar strip is dropped before the title truncates. */
 const STRIP_COLLAPSE_PX = 1320;
@@ -384,6 +393,12 @@ export default function CopilotReadinessDocumentsPage() {
     if (docId) {
       const byId = documents.findIndex((d) => d.id !== null && String(d.id) === docId);
       if (byId >= 0) return byId;
+      // Git #1043: a live-rendered document has no numeric id (id: null by
+      // design), so the headless-print URL (buildLiveDocumentPrintUrl in
+      // portal-url.ts) keys its route segment on docType instead. Falls
+      // through to this only once the numeric-id match above misses.
+      const byDocType = documents.findIndex((d) => d.docType === docId);
+      if (byDocType >= 0) return byDocType;
     }
     if (manualIndex !== null && manualIndex < documents.length) return manualIndex;
     const firstReady = documents.findIndex((d) => d.status === "ready");
@@ -507,29 +522,30 @@ export default function CopilotReadinessDocumentsPage() {
 
   const [downloading, setDownloading] = useState(false);
   // A live-rendered document is PDF-eligible exactly like any other ready
-  // document (#415): the server mints a single-use print token, navigates the
-  // real Document Viewer route with it, and prints the actual rendered page —
-  // so the same `status === "ready"` gate the old htmlContent pipeline used
-  // is still the right (and only) gate. `isLiveRenderedDocument` no longer
-  // narrows this at all; it is what SELECTS the live pipeline server-side,
-  // not a reason to withhold the download.
-  const canDownload = !isPreview && activeDoc?.status === "ready" && activeDoc.id !== null;
+  // document (#415, wired for real in #1043): the server mints a single-use
+  // print token, navigates the real Document Viewer route with it, and prints
+  // the actual rendered page — so the same `status === "ready"` gate the old
+  // htmlContent pipeline used is still the right (and only) gate. Which
+  // endpoint downloadOne hits (by id vs. by docType) is an implementation
+  // detail, not a reason to withhold the download.
+  const canDownload = !isPreview && activeDoc?.status === "ready";
   const downloadable = useMemo(
-    () => (isPreview ? [] : documents.filter((d) => d.status === "ready" && d.id !== null)),
+    () => (isPreview ? [] : documents.filter((d) => d.status === "ready")),
     [documents, isPreview],
   );
 
   const downloadOne = useCallback(
-    async (id: number, title: string) => {
+    async (doc: JourneyDocumentView) => {
       // `silent`: the failure is reported once, by the caller, in words that say
       // the report is still readable here. The global toast would put the raw
       // server error ("Forbidden") beside it and make one failure look like two.
-      const res = await fetchWithAuth(`${PDF_URL}/${id}/pdf`, undefined, { silent: true });
-      if (!res.ok) throw new Error(`pdf ${id} → ${res.status}`);
+      const url = doc.id !== null ? `${PDF_URL}/${doc.id}/pdf` : `${LIVE_PDF_URL}/${doc.docType}/pdf`;
+      const res = await fetchWithAuth(url, undefined, { silent: true });
+      if (!res.ok) throw new Error(`pdf ${doc.id ?? doc.docType} → ${res.status}`);
       const blobUrl = URL.createObjectURL(await res.blob());
       const a = document.createElement("a");
       a.href = blobUrl;
-      a.download = `${title.replace(/[^a-zA-Z0-9 _-]/g, "").replace(/\s+/g, "-")}.pdf`;
+      a.download = `${doc.title.replace(/[^a-zA-Z0-9 _-]/g, "").replace(/\s+/g, "-")}.pdf`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -539,10 +555,10 @@ export default function CopilotReadinessDocumentsPage() {
   );
 
   const handleDownload = useCallback(async () => {
-    if (!activeDoc || activeDoc.id === null) return;
+    if (!activeDoc) return;
     setDownloading(true);
     try {
-      await downloadOne(activeDoc.id, activeDoc.title);
+      await downloadOne(activeDoc);
     } catch {
       toast.error("We could not build that PDF just now. The report is still open here.");
     } finally {
@@ -564,8 +580,7 @@ export default function CopilotReadinessDocumentsPage() {
     let done = 0;
     try {
       for (const doc of downloadable) {
-        if (doc.id === null) continue;
-        await downloadOne(doc.id, doc.title);
+        await downloadOne(doc);
         done += 1;
       }
       toast.success(`${done} ${done === 1 ? "report" : "reports"} downloaded.`);

@@ -3,17 +3,31 @@
  *
  * WHAT IS REAL HERE AND WHAT IS NOT
  * ---------------------------------
- * Two of the design's four items are wired to endpoints that exist:
+ * Two of the design's four items are wired to endpoints that exist. This
+ * component itself is a pure presentational menu — it takes
+ * `onDownloadCurrent`/`onDownloadAll` as plain callback props and never
+ * builds a URL itself; the actual routing lives in
+ * copilot-readiness-documents.tsx's `downloadOne`, which picks the right
+ * endpoint per document:
  *
- *   • "This report as PDF" → `GET /portal/insights-documents/:id/pdf`. For a
- *     document with stored HTML, the platform's existing branded export (the
- *     same `buildHtmlDoc` + `htmlToPdf` pipeline every other document
- *     download in the portal uses); for one of this screen's live-rendered
- *     reports, the server instead navigates the real Document Viewer URL
- *     with a single-use print token and prints the actual rendered page
- *     (#415) — both branches return the same PDF blob, so this menu does not
- *     need to know which one ran.
- *   • "Every ready report" → the same endpoint, once per ready report.
+ *   • A document with a real `id` (stored HTML) → `GET
+ *     /portal/insights-documents/:id/pdf`, the platform's existing branded
+ *     `buildHtmlDoc` + `htmlToPdf` export (#415).
+ *   • One of this screen's seven live-rendered reports (`id: null` by
+ *     design — journeyModel.ts) → `GET /portal/live-documents/:docType/pdf`
+ *     (Git #1043, Epic #660), keyed by docType since there is no row and no
+ *     numeric id to key the old endpoint on. The server mints a single-use
+ *     print token scoped to the docType, navigates the real Document Viewer
+ *     URL with it, and prints the actual rendered page — reusing
+ *     `renderLiveDocumentToPdf` (insight-pdf.ts) exactly as-is. This is a
+ *     clean build against the live-rendered document set, decoupled from
+ *     insights-documents/insightsGeneratedDocumentsTable/printTokensTable,
+ *     which are deprecated for this feature.
+ *   • "Every ready report" → each document's own correct endpoint above,
+ *     once per ready report.
+ *
+ * Both branches return the same `application/pdf` blob, so this menu does
+ * not need to know which one ran.
  *
  * The design's other two items hand a stranger a login-free link to the whole
  * set — one without commercial terms, one with the SOW attached. The platform

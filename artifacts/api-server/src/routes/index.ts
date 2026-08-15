@@ -15,6 +15,7 @@ import portalProfileRouter from "./portal-profile";
 import portalOnboardingRouter from "./portal-onboarding";
 import portalProjectsRouter from "./portal-projects";
 import portalDocumentsRouter from "./portal-documents";
+import liveDocumentPdfRouter from "./live-document-pdf";
 import portalBillingRouter from "./portal-billing";
 import portalMessagesRouter from "./portal-messages";
 import portalPresentationsRouter from "./portal-presentations";
@@ -267,6 +268,7 @@ router.use(portalOnboardingRouter);
 // was a strict subset of the surviving handler's — see the note on that route.
 router.use(portalProjectsRouter);
 router.use(portalDocumentsRouter);
+router.use(liveDocumentPdfRouter);
 router.use(portalBillingRouter);
 router.use(portalMessagesRouter);
 router.use(portalPresentationsRouter);

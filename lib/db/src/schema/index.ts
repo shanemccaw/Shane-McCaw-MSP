@@ -915,6 +915,28 @@ export const printTokensTable = pgTable("print_tokens", {
 export type InsertPrintToken = typeof printTokensTable.$inferInsert;
 export type PrintToken = typeof printTokensTable.$inferSelect;
 
+// Git #1043 (Epic #660, Phase 1). printTokensTable's sibling for the
+// Copilot Readiness journey's live-rendered documents (JOURNEY_LIVE_DOCUMENTS
+// in artifacts/msp-portal/src/components/copilot-journey/journeyTokens.ts) —
+// these documents have `id: null` by design (journeyModel.ts's
+// buildGeneration()/withLiveDocuments(), no row ever backs them), so
+// printTokensTable's NOT NULL documentId FK into insightsGeneratedDocumentsTable
+// structurally cannot scope a token to one of them. Keyed by docType instead —
+// no documentId column, nothing to reference. Same consumable-secret shape
+// (expiresAt = short-lived, usedAt = single-use) as printTokensTable.
+export const documentPrintTokensTable = pgTable("document_print_tokens", {
+  id: serial("id").primaryKey(),
+  token: text("token").notNull().unique(),
+  userId: integer("user_id").notNull().references(() => usersTable.id),
+  docType: text("doc_type").notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  usedAt: timestamp("used_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type InsertDocumentPrintToken = typeof documentPrintTokensTable.$inferInsert;
+export type DocumentPrintToken = typeof documentPrintTokensTable.$inferSelect;
+
 // Engagement Project Types (shown on Pricing page Track 02, used for SOW generation)
 export const engagementProjectsTable = pgTable("engagement_projects", {
   id: serial("id").primaryKey(),

@@ -3,7 +3,7 @@ import rateLimit from "express-rate-limit";
 import bcrypt from "bcryptjs";
 import crypto, { randomUUID } from "crypto";
 import jwt from "jsonwebtoken";
-import { db, usersTable, mspsTable, mspRefreshTokensTable, passwordResetTokensTable, impersonationTokensTable, accountSetupTokensTable, printTokensTable, mspAuditLogsTable, mspServiceAccountsTable, clientServicesTable, servicesTable, type MspRole } from "@workspace/db";
+import { db, usersTable, mspsTable, mspRefreshTokensTable, passwordResetTokensTable, impersonationTokensTable, accountSetupTokensTable, printTokensTable, documentPrintTokensTable, mspAuditLogsTable, mspServiceAccountsTable, clientServicesTable, servicesTable, type MspRole } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
 import type { CookieOptions } from "express";
 import { sendEmailFromTemplate, passwordResetEmail } from "../lib/mailer.ts";
@@ -1097,6 +1097,85 @@ router.post("/auth/print-exchange", async (req: Request, res: Response) => {
   res.json({
     accessToken: printSessionToken,
     documentId: record.documentId,
+    user: {
+      id: targetUser.id,
+      email: targetUser.email,
+      role: targetUser.role,
+      ...(mspClaims.mspRole !== null ? { mspRole: mspClaims.mspRole } : {}),
+      ...(mspClaims.mspId !== null ? { mspId: mspClaims.mspId } : {}),
+      ...(mspClaims.customerId !== null ? { customerId: mspClaims.customerId } : {}),
+    },
+  });
+});
+
+// Git #1043 (Epic #660, Phase 1). /auth/print-exchange's sibling for a
+// live-rendered document (JOURNEY_LIVE_DOCUMENTS) — those documents have
+// id: null by design, so a token scoped to one of them cannot carry a
+// documentId the way print_tokens does; document_print_tokens is keyed by
+// docType instead, minted by GET /portal/live-documents/:docType/pdf (see
+// live-document-pdf.ts). Same select → validate → consume → sign shape as
+// print-exchange, against the new table, echoing docType back instead of
+// documentId — deliberately a separate route rather than a shared/generic
+// "exchange a token table" helper, since print-exchange has no such
+// abstraction to extend.
+router.post("/auth/document-print-exchange", async (req: Request, res: Response) => {
+  const { token } = req.body as { token?: string };
+  if (!token) {
+    res.status(400).json({ error: "token is required" });
+    return;
+  }
+
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    res.status(500).json({ error: "Server misconfiguration" });
+    return;
+  }
+
+  const [record] = await db.select().from(documentPrintTokensTable)
+    .where(eq(documentPrintTokensTable.token, token))
+    .limit(1);
+
+  const printNow = new Date();
+
+  if (!record || record.usedAt || record.expiresAt < printNow) {
+    res.status(401).json({ error: "Invalid, expired, or already-used print token" });
+    return;
+  }
+
+  // Consume the token atomically — marks it as used so it cannot be replayed
+  await db.update(documentPrintTokensTable)
+    .set({ usedAt: printNow })
+    .where(eq(documentPrintTokensTable.id, record.id));
+
+  const [targetUser] = await db.select().from(usersTable)
+    .where(eq(usersTable.id, record.userId))
+    .limit(1);
+  if (!targetUser) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+
+  const mspClaims = await getMspClaims(targetUser.id);
+
+  const printJwtPayload = {
+    id: targetUser.id,
+    email: targetUser.email,
+    role: targetUser.role,
+    ...(mspClaims.mspRole !== null ? { mspRole: mspClaims.mspRole } : {}),
+    ...(mspClaims.mspId !== null ? { mspId: mspClaims.mspId } : {}),
+    ...(mspClaims.customerId !== null ? { customerId: mspClaims.customerId } : {}),
+  };
+
+  const printSessionToken = jwt.sign(printJwtPayload, secret, { expiresIn: "5m" });
+
+  log.info(
+    { userId: targetUser.id, docType: record.docType },
+    "document-print-exchange: token consumed, short-lived JWT issued",
+  );
+
+  res.json({
+    accessToken: printSessionToken,
+    docType: record.docType,
     user: {
       id: targetUser.id,
       email: targetUser.email,

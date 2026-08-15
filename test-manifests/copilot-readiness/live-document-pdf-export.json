@@ -1,0 +1,82 @@
+{
+  "issue": 1043,
+  "feature": "Live document PDF download, decoupled from insights-documents (Phase 1 of Epic #660 Share & Export)",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "PENDING",
+
+  "notes": [
+    "GIT #1043 (sub-issue of Epic #660, via #660's own build-plan comment). insights-documents / insightsGeneratedDocumentsTable / printTokensTable / portal-documents.ts are DEPRECATED for this feature and are not exercised here — this manifest covers the clean build against the live-rendered document set only.",
+    "NEW SURFACE COVERED: GET /api/portal/live-documents/:docType/pdf (live-document-pdf.ts) — mints a documentPrintTokensTable token, builds the docType-keyed print URL (buildLiveDocumentPrintUrl, portal-url.ts), and calls renderLiveDocumentToPdf (insight-pdf.ts, reused unmodified) to navigate the real Document Viewer route and print the actual rendered page. The 200/%PDF apiTest below is genuinely end-to-end: headless Chromium navigating that URL exercises the NEW /auth/document-print-exchange route and auth-context.tsx's new docPrintToken boot-effect branch too, not just the minting route in isolation.",
+    "Also covers the docId route-matching fallback added to copilot-readiness-documents.tsx (Git #1043): a live-rendered document has id:null by design (journeyModel.ts), so /copilot-readiness/documents/:docId now also matches a docType string, not just a numeric id. The uiSteps below deep-link by docType (copilot_readiness) and assert the correct report opened.",
+    "WHAT THIS MANIFEST DOES NOT ASSERT: full PDF visual/layout correctness (manual spot-check, same discipline as remediation-tracker-e2e.json's export.pdf/evidence-pack.pdf) — only that a real, non-empty %PDF comes back. Also does not assert the old id-based /api/portal/insights-documents/:id/pdf path, which is untouched by this change and already outside this manifest's scope.",
+    "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL, TEST_PORTAL_EMAIL, TEST_PORTAL_PASSWORD, TEST_PORTAL_SLUG (same designated testbed Assessment account every other copilot-readiness manifest uses).",
+    "LAST REAL RUN (shaneapp://runTest, 2026-08-14, worktree HEAD before this session's commit): 4/10 — HONEST RED, not a manifest defect. POST /api/auth/login (200, real bearer) and the negative controls (unknown docType, 404 as expected via the route's own 404 for the unmounted path) pass; GET /api/portal/live-documents/copilot_readiness/pdf 404s ('Cannot GET') and the deep-link UI steps fail to hydrate #email, because shaneapp://runTest executes against the DEPLOYED Replit origin (per CLAUDE.md's shaneapp-runtest-hits-deployed-build-not-worktree note), which does not yet carry this session's new route/schema/page changes — those exist only in this session's commit at run time. Same expected-red class as #1041/#1042's own undeployed-surface notes. SHANE TO-DO: run the manual SQL migration (lib/db/migrations/manual/2026-08-14-document-print-tokens-1043.sql), then redeploy api-server (new route + auth exchange) and msp-portal (docType fallback + export wiring) — once deployed, re-run this manifest for a real pass/fail."
+  ],
+
+  "apiTests": [
+    {
+      "name": "SETUP — log in as the designated testbed Assessment account to obtain a real bearer; extract it as {{authToken}}",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "GET /api/portal/live-documents/copilot_readiness/pdf — real end-to-end render: mints a documentPrintTokensTable token, navigates the live Document Viewer route with it (exercising /auth/document-print-exchange + auth-context.tsx's docPrintToken boot branch), waits on [data-print-ready=\"true\"], returns a real PDF.",
+      "method": "GET",
+      "path": "/api/portal/live-documents/copilot_readiness/pdf",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "containsAny": ["%PDF"] }
+    },
+    {
+      "name": "Unknown docType is refused (404), not silently rendered — proves the JOURNEY_LIVE_DOCUMENTS validation gate in live-document-pdf.ts is real, not a pass-through.",
+      "method": "GET",
+      "path": "/api/portal/live-documents/not_a_real_doc_type/pdf",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 404 }
+    },
+    {
+      "name": "No bearer token is rejected — same requireAuth contract as every other tenant-scoped portal route",
+      "method": "GET",
+      "path": "/api/portal/live-documents/copilot_readiness/pdf",
+      "expect": { "status": 401 }
+    }
+  ],
+
+  "uiSteps": [
+    { "action": "goto", "target": "/{{TEST_PORTAL_SLUG}}/login" },
+    {
+      "name": "WAIT for the login form to hydrate before typing — same cold-start gate every copilot-readiness manifest's login step documents.",
+      "action": "expect",
+      "selector": "#email",
+      "state": "visible"
+    },
+    { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
+    { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
+    {
+      "name": "Login — CRITICAL: a failed login makes the downstream deep-link assertion meaningless, so the run ABORTS here immediately on failure.",
+      "action": "click",
+      "selector": "[data-testid='login-submit']",
+      "critical": true,
+      "captureResponse": {
+        "urlPattern": "/api/auth/login",
+        "expect": { "status": 200 }
+      }
+    },
+
+    {
+      "name": "Git #1043's docId route-matching fallback: deep-link straight to the live-rendered Copilot Readiness report by docType (no numeric id exists for it — id:null by design), proving documents.findIndex's new d.docType branch actually resolves the intended document rather than falling through to firstReady.",
+      "action": "goto",
+      "target": "/{{TEST_PORTAL_SLUG}}/copilot-readiness/documents/copilot_readiness"
+    },
+    {
+      "name": "The reading pane's REAL DOM text confirms the docType-keyed deep link opened the Copilot Readiness report specifically, not just some default document (CLAUDE.md's textContains discipline — not a captureResponse).",
+      "action": "expect",
+      "selector": "[data-testid='active-document-title']",
+      "state": "visible",
+      "textContains": ["Copilot Readiness"]
+    }
+  ]
+}

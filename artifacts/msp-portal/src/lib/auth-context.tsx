@@ -179,6 +179,31 @@ async function exchangePrintToken(
   }
 }
 
+/**
+ * Git #1043 (Epic #660, Phase 1) — exchangePrintToken's sibling for a
+ * live-rendered document (JOURNEY_LIVE_DOCUMENTS), whose print URL carries
+ * `?docPrintToken=...` instead of `?printToken=...` (see
+ * buildLiveDocumentPrintUrl in portal-url.ts) because it is minted against
+ * documentPrintTokensTable, a different table keyed by docType rather than
+ * documentId. Same shape as exchangePrintToken; kept separate for the same
+ * reason exchangePrintToken is kept separate from exchangeImpersonationToken.
+ */
+async function exchangeDocumentPrintToken(
+  token: string,
+): Promise<{ accessToken: string; user: AuthUser } | null> {
+  try {
+    const res = await fetch("/api/auth/document-print-exchange", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token }),
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as { accessToken: string; user: AuthUser };
+  } catch {
+    return null;
+  }
+}
+
 // ── Context ───────────────────────────────────────────────────────────────────
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -425,6 +450,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           // visible/bookmarkable/retried.
           const url = new URL(window.location.href);
           url.searchParams.delete("printToken");
+          window.history.replaceState({}, "", url.toString());
+        } else {
+          setState((s) => ({ ...s, isLoading: false }));
+        }
+      });
+      return;
+    }
+
+    // Print entry point for a live-rendered document (Git #1043, Epic #660):
+    // same shape as the printToken branch above, but for a document keyed by
+    // docType rather than a numeric id (see buildLiveDocumentPrintUrl in
+    // portal-url.ts) — a distinct query param so this tab's URL is never
+    // ambiguous about which token table minted it.
+    const docPrintToken = params.get("docPrintToken");
+    if (docPrintToken) {
+      sessionStorage.removeItem(REFRESH_TOKEN_KEY);
+      sessionStorage.removeItem(REFRESH_EXPIRES_AT_KEY);
+
+      exchangeDocumentPrintToken(docPrintToken).then((data) => {
+        if (data) {
+          setState({
+            user: data.user,
+            accessToken: data.accessToken,
+            isLoading: false,
+            isRefreshing: false,
+            isExpiringSoon: false,
+            isImpersonating: false,
+          });
+          // Single-use and already consumed — strip it so it is never
+          // visible/bookmarkable/retried.
+          const url = new URL(window.location.href);
+          url.searchParams.delete("docPrintToken");
           window.history.replaceState({}, "", url.toString());
         } else {
           setState((s) => ({ ...s, isLoading: false }));

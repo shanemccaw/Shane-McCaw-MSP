@@ -107,3 +107,15 @@ export function buildAccountSetupUrl(token: string): string {
 export function buildPrintDocumentUrl(slug: string, documentId: number, printToken: string): string {
   return `${getMspPortalBaseUrl()}/${slug}/copilot-readiness/documents/${documentId}?printToken=${encodeURIComponent(printToken)}`;
 }
+
+/**
+ * Git #1043 (Epic #660, Phase 1) — buildPrintDocumentUrl's sibling for a
+ * live-rendered document (JOURNEY_LIVE_DOCUMENTS), which has no numeric id to
+ * key the route on. `docPrintToken` is a deliberately distinct query param
+ * from `printToken` (not a reused name) so AuthProvider's boot effect
+ * (msp-portal's auth-context.tsx) can tell which token table to exchange
+ * against without guessing from the URL shape.
+ */
+export function buildLiveDocumentPrintUrl(slug: string, docType: string, printToken: string): string {
+  return `${getMspPortalBaseUrl()}/${slug}/copilot-readiness/documents/${encodeURIComponent(docType)}?docPrintToken=${encodeURIComponent(printToken)}`;
+}
