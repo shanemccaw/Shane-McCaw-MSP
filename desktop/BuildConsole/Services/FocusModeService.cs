@@ -63,6 +63,12 @@ namespace BuildConsole.Services
 
         // board snapshot (issue -> milestone map + raw issues for suggestions)
         private Dictionary<int, int?> _issueToMilestone = new();
+        /// <summary>issue number -> its real parent epic (number) and that epic's own milestone number, from
+        /// GitHub's sub-issue graph. The queue filter resolves a build → issue → parent epic → epic's
+        /// milestone through this, because Shane milestones the EPIC, not each sub-issue (so a sub-issue's
+        /// own <c>MilestoneNumber</c> is null even though the build genuinely belongs to the epic's milestone).
+        /// Only issues that actually have a parent appear here.</summary>
+        private Dictionary<int, (int? EpicNumber, int? EpicMilestone)> _issueParentInfo = new();
         private List<GitBoardIssue> _issues = new();
         private List<FocusMilestone> _milestones = new();
         private List<BoardChat> _chats = new();
@@ -268,27 +274,77 @@ namespace BuildConsole.Services
 
         /// <summary>Build Queue: an item's GitHub issue must belong to the active milestone.
         /// Unattributable/local items (no or negative issue number) are NEVER hidden — hiding
-        /// the build that's actually running would defeat the point. Unknown positive issues
-        /// (closed / dropped off the OPEN-only board) are hidden while the map is warm.</summary>
-        public bool IsIssueInFocus(int? githubNumber)
+        /// the build that's actually running would defeat the point. Delegates to
+        /// <see cref="DescribeIssueFocus"/>, which traces the real chain build → issue → parent epic →
+        /// epic's milestone (see that method for why the sub-issue's own milestone alone isn't enough).</summary>
+        public bool IsIssueInFocus(int? githubNumber) => DescribeIssueFocus(githubNumber).Shown;
+
+        /// <summary>
+        /// The single source of truth for a queue item's focus decision: traces the REAL association
+        /// chain a build needs to match the active milestone —
+        ///   build → its GitHub issue number → that issue's parent epic → the epic's milestone —
+        /// and returns whether the item should be SHOWN (not hidden), the milestone it resolved to (if
+        /// any), and a short human-readable path for the per-queue-item focus log (so an over/under-
+        /// filtering regression is diagnosable straight from the feed).
+        ///
+        /// Why the chain, not just the issue's own milestone: Shane assigns a milestone to the EPIC, not
+        /// to each sub-issue. A queued build's sub-issue therefore carries <c>MilestoneNumber == null</c>
+        /// even though it genuinely belongs to its parent epic's milestone. #46 filtered on the sub-issue's
+        /// own (null) milestone, so <c>null == activeMilestone</c> hid every real on-milestone build — the
+        /// exact over-filtering this resolves. It still errs toward SHOWING when genuinely unattributable
+        /// (null/local number, a parent epic with no milestone of its own, or a cold board map), so an
+        /// actively-running build is never hidden out from under Shane.
+        /// </summary>
+        public (bool Shown, int? Milestone, string Path) DescribeIssueFocus(int? githubNumber)
         {
-            if (!IsActive) return true;
-            if (githubNumber is null || githubNumber.Value <= 0) return true;
-            if (_issueToMilestone.TryGetValue(githubNumber.Value, out var ms))
-                return ms == _state.ActiveMilestoneNumber;
-            return _issueToMilestone.Count == 0; // cold map: don't hide everything
+            if (!IsActive) return (true, null, "focus off");
+            if (githubNumber is null || githubNumber.Value <= 0)
+                return (true, null, "local/unnumbered build — never hidden");
+
+            int n = githubNumber.Value;
+            int? active = _state.ActiveMilestoneNumber;
+
+            bool onBoard = _issueToMilestone.TryGetValue(n, out var direct);
+
+            // 1) The issue carries its own milestone → match it directly.
+            if (onBoard && direct.HasValue)
+                return (direct == active, direct, $"#{n} milestone #{direct}");
+
+            // 2) No direct milestone — inherit from the real parent epic (the sub-issue graph).
+            if (_issueParentInfo.TryGetValue(n, out var pi) && pi.EpicNumber.HasValue)
+            {
+                if (pi.EpicMilestone.HasValue)
+                    return (pi.EpicMilestone == active, pi.EpicMilestone,
+                            $"#{n} → epic #{pi.EpicNumber} milestone #{pi.EpicMilestone}");
+                // Parent epic known but it carries no milestone of its own → unattributable, don't hide.
+                return (true, null, $"#{n} → epic #{pi.EpicNumber} (epic has no milestone) — not hidden");
+            }
+
+            // 3) On the board, no milestone, no parent epic → genuinely belongs to no milestone → hide while focused.
+            if (onBoard)
+                return (false, null, $"#{n} on board, no milestone / no parent epic → off-milestone");
+
+            // 4) Unknown to the warm open board (closed / dropped off / truncated). Don't hide on a cold
+            //    map; on a warm map an unknown positive issue is treated as off-milestone (pre-#46 behaviour).
+            return (_issueToMilestone.Count == 0, null,
+                    _issueToMilestone.Count == 0 ? $"#{n} unknown — board map cold, not hidden"
+                                                 : $"#{n} not on open board → off-milestone");
         }
 
         /// <summary>Strict "this issue genuinely belongs to the ACTIVE milestone" test. Unlike
         /// <see cref="IsIssueInFocus"/> — whose job is "should this be shown / not hidden", so it errs
         /// toward SHOWING (null/local numbers and a cold map both pass, since you never hide the running
-        /// build) — this returns true only on a positive, warm-map milestone match. The Focus checklist
-        /// band uses it to surface only on-milestone builds' progress, never a local/off-milestone build.</summary>
+        /// build) — this returns true only on a positive milestone match. Resolves through the SAME
+        /// build → issue → parent epic → milestone chain (via <see cref="DescribeIssueFocus"/>), so a
+        /// sub-issue build under the active epic's milestone is correctly recognised; the unattributable
+        /// cases (null milestone / cold map) resolve to a null milestone here and therefore fail the
+        /// strict positive-match test. The Focus checklist band uses it to surface only on-milestone
+        /// builds' progress, never a local/off-milestone build.</summary>
         public bool IsIssueInActiveMilestone(int? githubNumber)
         {
             if (!IsActive || githubNumber is null || githubNumber.Value <= 0) return false;
-            return _issueToMilestone.TryGetValue(githubNumber.Value, out var ms)
-                   && ms == _state.ActiveMilestoneNumber;
+            var d = DescribeIssueFocus(githubNumber);
+            return d.Milestone.HasValue && d.Milestone == _state.ActiveMilestoneNumber;
         }
 
         /// <summary>Chats tree: resolve the chat's issue (direct, or via its epic's issue number)
@@ -325,6 +381,15 @@ namespace BuildConsole.Services
             _issueToMilestone = _issues
                 .GroupBy(i => i.Number)
                 .ToDictionary(g => g.Key, g => g.First().MilestoneNumber);
+
+            // issue -> (parent epic, epic's milestone), for the build → issue → epic → milestone chain
+            // (only issues that genuinely have a parent epic).
+            _issueParentInfo = _issues
+                .Where(i => i.ParentNumber.HasValue)
+                .GroupBy(i => i.Number)
+                .ToDictionary(
+                    g => g.Key,
+                    g => (g.First().ParentNumber, g.First().ParentMilestoneNumber));
 
             _milestones = (milestoneInfos ?? new List<GitHubApiClient.GitHubMilestoneInfo>())
                 .Select(m => new FocusMilestone

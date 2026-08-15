@@ -105,6 +105,17 @@ namespace BuildConsole.Services
         /// <summary>The issue's real GitHub Milestone title, or null when it belongs to no milestone.</summary>
         public string? MilestoneTitle { get; set; }
         public int? MilestoneNumber { get; set; }
+        /// <summary>The number of this issue's real GitHub parent (the epic it's a sub-issue of), or null
+        /// when it has no parent. Straight from GraphQL's <c>parent</c> field on the sub-issues graph —
+        /// the same graph "Assign to Epic…" writes to. Focus Mode needs this because Shane assigns a
+        /// milestone to the EPIC, not to each sub-issue: a sub-issue carries <see cref="MilestoneNumber"/>
+        /// == null but genuinely belongs to its parent epic's milestone, so the queue filter must resolve
+        /// build → issue → parent epic → epic's milestone rather than trusting the sub-issue's own (null) one.</summary>
+        public int? ParentNumber { get; set; }
+        /// <summary>The parent epic's own real GitHub milestone number (null if the epic has none, or the
+        /// issue has no parent). Carried directly off the parent so the chain resolves even when the epic
+        /// itself isn't in the current OPEN-only board fetch.</summary>
+        public int? ParentMilestoneNumber { get; set; }
         /// <summary>subIssuesSummary.total straight from GraphQL — the real number of sub-issues.</summary>
         public int SubIssueCount { get; set; }
         /// <summary>GraphQL databaseId — the numeric REST id GitHub's sub_issues endpoint wants as `sub_issue_id` (NOT the issue Number). Populated by ListBoardIssuesAsync for Git #844.</summary>
@@ -480,6 +491,7 @@ namespace BuildConsole.Services
         number title state url body databaseId
         labels(first: 20) {{ nodes {{ name }} }}
         milestone {{ title number }}
+        parent {{ number milestone {{ number }} }}
         subIssuesSummary {{ total }}
       }}
     }}
@@ -501,6 +513,8 @@ namespace BuildConsole.Services
                             Labels = n.Labels?.Nodes?.Select(l => new GitHubLabel { Name = l.Name }).ToList() ?? new List<GitHubLabel>(),
                             MilestoneTitle = n.Milestone?.Title,
                             MilestoneNumber = n.Milestone?.Number,
+                            ParentNumber = n.Parent?.Number,
+                            ParentMilestoneNumber = n.Parent?.Milestone?.Number,
                             SubIssueCount = n.SubIssuesSummary?.Total ?? 0,
                             DatabaseId = n.DatabaseId,
                         });
@@ -563,11 +577,14 @@ namespace BuildConsole.Services
             public long DatabaseId { get; set; }
             public LabelConnection? Labels { get; set; }
             public MilestoneData? Milestone { get; set; }
+            public ParentData? Parent { get; set; }
             public SubIssuesSummaryData? SubIssuesSummary { get; set; }
         }
         private class LabelConnection { public List<LabelNode> Nodes { get; set; } = new(); }
         private class LabelNode { public string Name { get; set; } = ""; }
         private class MilestoneData { public string? Title { get; set; } public int? Number { get; set; } }
+        /// <summary>The GraphQL <c>parent</c> node — the epic this issue is a sub-issue of, plus that epic's own milestone (so the child's effective milestone resolves without the epic needing to be in the same fetch).</summary>
+        private class ParentData { public int? Number { get; set; } public MilestoneData? Milestone { get; set; } }
         private class SubIssuesSummaryData { public int Total { get; set; } }
     }
 }

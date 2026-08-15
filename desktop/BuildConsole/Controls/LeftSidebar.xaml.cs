@@ -1154,7 +1154,10 @@ namespace BuildConsole.Controls
             // only changes (deletes/merges with no open-issue side effect).
             var signature = System.Text.Json.JsonSerializer.Serialize(new
             {
-                Issues = issues.Select(i => new { i.Number, i.Title, i.State, i.SubIssueCount, i.MilestoneTitle }),
+                // ParentNumber/ParentMilestoneNumber included so a re-parent or an epic-milestone change
+                // (which leaves a sub-issue's own null MilestoneTitle untouched) still trips this guard and
+                // re-feeds Focus Mode's build → issue → epic → milestone map via UpdateBoardSnapshot below.
+                Issues = issues.Select(i => new { i.Number, i.Title, i.State, i.SubIssueCount, i.MilestoneTitle, i.ParentNumber, i.ParentMilestoneNumber }),
                 Milestones = milestoneInfos.Select(m => new { m.Number, m.Title, m.OpenIssues, m.ClosedIssues }),
             });
             if (!forceFresh && signature == _lastInProgressSignature) return;

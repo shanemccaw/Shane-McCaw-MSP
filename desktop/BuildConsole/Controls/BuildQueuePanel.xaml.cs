@@ -1054,10 +1054,28 @@ namespace BuildConsole.Controls
 
             // Focus Mode — hard-hide queue items whose issue isn't in the active milestone.
             // Unattributable / local items (no or negative issue number) are kept, so an
-            // actively-running build is never hidden out from under Shane.
-            items = items
-                .Where(i => BuildConsole.Services.FocusModeService.Instance.IsIssueInFocus(i.GithubNumber))
-                .ToList();
+            // actively-running build is never hidden out from under Shane. The decision traces the
+            // real chain build → issue → parent epic → epic's milestone (FocusModeService.
+            // DescribeIssueFocus) — a sub-issue build carries no milestone of its own but genuinely
+            // belongs to its parent epic's milestone, which #46 missed (the over-filtering bug).
+            //
+            // Per-item diagnostic log (only while focused, and RenderQueue only runs on a real
+            // data/filter/focus change — not every 15s poll — so this isn't spammy): for each item,
+            // what milestone it resolved to and whether it was shown or hidden. This makes a future
+            // over/under-filtering regression immediately diagnosable straight from the focus-mode feed.
+            var focus = BuildConsole.Services.FocusModeService.Instance;
+            if (focus.IsActive)
+            {
+                var kept = new List<QueueItem>(items.Count);
+                foreach (var i in items)
+                {
+                    var decision = focus.DescribeIssueFocus(i.GithubNumber);
+                    ActivityLog.Log("focus-mode",
+                        $"Queue filter [{_filter}] {i.Status} \"{TrimForLog(i.Title)}\" ({(i.GithubNumber.HasValue ? FormatIssueRef(i.GithubNumber.Value) : "no #")}) → {decision.Path}; {(decision.Shown ? "SHOWN" : "HIDDEN")} vs active milestone #{focus.ActiveMilestoneNumber}");
+                    if (decision.Shown) kept.Add(i);
+                }
+                items = kept;
+            }
 
             QueueTree.Visibility = Visibility.Visible;
             QueueEmptyText.Visibility = items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -1238,6 +1256,14 @@ namespace BuildConsole.Controls
         /// always positive), so it's displayed as "local #N" instead of the raw
         /// "#-N" to read clearly as not-a-real-issue at a glance.</summary>
         private static string FormatIssueRef(int n) => n < 0 ? $"local #{-n}" : $"#{n}";
+
+        /// <summary>Trim a queue title to a single short segment for the per-item focus-filter log line
+        /// (the full title can be a whole prompt's first 80 chars), so the diagnostic feed stays legible.</summary>
+        private static string TrimForLog(string? title)
+        {
+            var t = (title ?? "").Trim();
+            return t.Length > 48 ? t.Substring(0, 46) + "…" : t;
+        }
 
         private static readonly Dictionary<string, (string Icon, string Hex)> StatusStyle = new()
         {
