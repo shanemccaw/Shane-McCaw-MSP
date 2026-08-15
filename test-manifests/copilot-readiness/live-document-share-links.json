@@ -1,0 +1,91 @@
+{
+  "issue": 1044,
+  "feature": "Live document share links — review/purchasing (Phase 2 of Epic #660 Share & Export)",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "PENDING",
+
+  "notes": [
+    "GIT #1044 (sub-issue of Epic #660, via #660's own build-plan comment). quick_win_result_shares and any other old share mechanism are DEPRECATED for this feature and are not exercised here.",
+    "NEW SURFACE COVERED: POST /api/portal/live-documents/share (live-document-shares.ts) — mints a liveDocumentSharesTable token for the caller's own document set, in either variant. GET /api/public/live-document-shares/:token (same file) — no-auth, token-gated read of the live document set: pillar scores/stats/findings + AI narrative for every report in both variants, plus the SOW's real priced scope (via runSalesOfferEngineForTenant, same authority /portal/assessment/recommended-offers uses) in the purchasing variant only.",
+    "Also asserts the review variant does NOT carry an `offers` key at all (no pricing/commercial terms leak into that variant's response), and that an unknown/garbage token 404s and a revoked token is unreachable (structurally — this manifest cannot revoke a link itself without a DB write, so revocation is asserted at the schema/route level via code review, not exercised live here).",
+    "WHAT THIS MANIFEST DOES NOT ASSERT: the DocumentExportMenu.tsx UI click-through (minting via the real menu) — the two share MenuItems carry no data-testid, matching the same precedent live-document-pdf-export.json (#1043) already set of testing this menu's wiring via API contract rather than a menu click; also does not assert PDF/visual rendering of the new /shared-live-documents/:shareToken page (manual spot-check), and does not assert narrative PROSE content (Anthropic output is non-deterministic) — only that the endpoint returns a well-formed `sections` array per report.",
+    "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL, TEST_PORTAL_EMAIL, TEST_PORTAL_PASSWORD (same designated testbed Assessment account every other copilot-readiness manifest uses).",
+    "NOT YET RUN LIVE this session: this route only exists in this session's own worktree commit, and shaneapp://runTest executes against the DEPLOYED Replit origin (per CLAUDE.md's shaneapp-runtest-hits-deployed-build-not-worktree note) — same expected-red class #1041/#1042/#1043's own manifests document until Shane redeploys. SHANE TO-DO: run the manual SQL migration (lib/db/migrations/manual/2026-08-14-live-document-shares-1044.sql), then redeploy api-server (new routes) and msp-portal (DocumentExportMenu wiring + new public page) — once deployed, run this manifest for a real pass/fail."
+  ],
+
+  "apiTests": [
+    {
+      "name": "SETUP — log in as the designated testbed Assessment account to obtain a real bearer; extract it as {{authToken}}",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "POST /api/portal/live-documents/share {variant: review} mints a real token and a copyable shareUrl.",
+      "method": "POST",
+      "path": "/api/portal/live-documents/share",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "variant": "review" },
+      "expect": { "status": 200, "jsonPath": "$.token", "exists": true },
+      "extract": { "as": "reviewToken", "jsonPath": "$.token" }
+    },
+    {
+      "name": "GET /api/public/live-document-shares/{{reviewToken}} — no Authorization header at all, proving the token itself is the credential.",
+      "method": "GET",
+      "path": "/api/public/live-document-shares/{{reviewToken}}",
+      "expect": { "status": 200, "jsonPath": "$.variant", "equals": "review" }
+    },
+    {
+      "name": "The review variant carries the live pillar report set — real findings/scores, no pricing.",
+      "method": "GET",
+      "path": "/api/public/live-document-shares/{{reviewToken}}",
+      "expect": { "status": 200, "jsonPath": "$.reports", "exists": true }
+    },
+    {
+      "name": "The review variant's response has NO offers key at all — no pricing/commercial terms leak, per this issue's own explicit requirement.",
+      "method": "GET",
+      "path": "/api/public/live-document-shares/{{reviewToken}}",
+      "expect": { "status": 200, "jsonPath": "$.offers", "exists": false }
+    },
+    {
+      "name": "POST /api/portal/live-documents/share {variant: purchasing} mints a second, independent token.",
+      "method": "POST",
+      "path": "/api/portal/live-documents/share",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "variant": "purchasing" },
+      "expect": { "status": 200, "jsonPath": "$.token", "exists": true },
+      "extract": { "as": "purchasingToken", "jsonPath": "$.token" }
+    },
+    {
+      "name": "GET /api/public/live-document-shares/{{purchasingToken}} — purchasing variant additionally carries the SOW's real priced offers (runSalesOfferEngineForTenant, reused unmodified).",
+      "method": "GET",
+      "path": "/api/public/live-document-shares/{{purchasingToken}}",
+      "expect": { "status": 200, "jsonPath": "$.offers", "exists": true }
+    },
+    {
+      "name": "An unrecognized token is refused (404), not silently rendered as an empty set.",
+      "method": "GET",
+      "path": "/api/public/live-document-shares/not-a-real-token",
+      "expect": { "status": 404 }
+    },
+    {
+      "name": "POST /api/portal/live-documents/share with no bearer is rejected — same requireAuth contract as every other tenant-scoped portal route.",
+      "method": "POST",
+      "path": "/api/portal/live-documents/share",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "variant": "review" },
+      "expect": { "status": 401 }
+    },
+    {
+      "name": "POST /api/portal/live-documents/share with an invalid variant is rejected (400) — proves the variant enum is enforced server-side, not just by the client's own two menu items.",
+      "method": "POST",
+      "path": "/api/portal/live-documents/share",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "variant": "not-a-real-variant" },
+      "expect": { "status": 400 }
+    }
+  ]
+}

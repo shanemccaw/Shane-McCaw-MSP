@@ -13,7 +13,7 @@
  */
 
 import type { Request } from "express";
-import { db, mspsTable } from "@workspace/db";
+import { db, mspsTable, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 
 /**
@@ -74,4 +74,34 @@ export async function resolveMspIdOrZero(req: Request): Promise<number> {
  */
 export function resolveMspIdStrict(req: Request): number | null {
   return req.user?.mspId ?? null;
+}
+
+/**
+ * Resolve the msp's URL slug for a given portal user (users.id), via the
+ * users.mspId → msps.slug join.
+ *
+ * Git #1043 wrote this two-query lookup inline in live-document-pdf.ts to
+ * build a slug-prefixed portal URL; #1044 (same epic, #660) needed the exact
+ * same join for its own share-link mint route, so it is factored out here
+ * rather than duplicated a second time — #1043's own route below is
+ * refactored to call this too, so there is exactly one copy.
+ *
+ * Returns null when the user has no mspId, or no msps row matches it —
+ * callers should treat that as "could not resolve this user's MSP" and 500,
+ * same as both call sites already did with the inline version.
+ */
+export async function resolveMspSlugForUser(userId: number): Promise<string | null> {
+  const [userRow] = await db
+    .select({ mspId: usersTable.mspId })
+    .from(usersTable)
+    .where(eq(usersTable.id, userId))
+    .limit(1);
+  if (!userRow?.mspId) return null;
+
+  const [mspRow] = await db
+    .select({ slug: mspsTable.slug })
+    .from(mspsTable)
+    .where(eq(mspsTable.id, userRow.mspId))
+    .limit(1);
+  return mspRow?.slug ?? null;
 }

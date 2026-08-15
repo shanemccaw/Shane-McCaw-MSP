@@ -1,10 +1,10 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, usersTable, mspsTable, documentPrintTokensTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { db, documentPrintTokensTable } from "@workspace/db";
 import { randomBytes } from "crypto";
 import { requireAuth } from "../middlewares/requireAuth.ts";
 import { buildLiveDocumentPrintUrl } from "../lib/portal-url.ts";
 import { renderLiveDocumentToPdf } from "../lib/insight-pdf.ts";
+import { resolveMspSlugForUser } from "../lib/resolve-msp-id.ts";
 import { logger } from "../lib/logger.ts";
 
 const log = logger.child({ channel: "tenant.portal" });
@@ -41,12 +41,11 @@ router.get("/portal/live-documents/:docType/pdf", requireAuth, async (req: Reque
       return;
     }
 
-    const [userRow] = await db.select({ mspId: usersTable.mspId }).from(usersTable)
-      .where(eq(usersTable.id, userId)).limit(1);
-    const [mspRow] = userRow?.mspId
-      ? await db.select({ slug: mspsTable.slug }).from(mspsTable).where(eq(mspsTable.id, userRow.mspId)).limit(1)
-      : [];
-    if (!mspRow?.slug) {
+    // Git #1044 factored this two-query join out to resolve-msp-id.ts's
+    // resolveMspSlugForUser() (this route was its first caller) — reuse it
+    // rather than re-inlining it here.
+    const slug = await resolveMspSlugForUser(userId);
+    if (!slug) {
       log.error({ userId, docType }, "live document pdf: could not resolve MSP slug for user");
       res.status(500).json({ error: "Could not resolve your account for PDF export" });
       return;
@@ -63,7 +62,7 @@ router.get("/portal/live-documents/:docType/pdf", requireAuth, async (req: Reque
       expiresAt: new Date(Date.now() + 2 * 60 * 1000),
     });
 
-    const printUrl = buildLiveDocumentPrintUrl(mspRow.slug, docType, printToken);
+    const printUrl = buildLiveDocumentPrintUrl(slug, docType, printToken);
     let pdfBuffer: Buffer;
     try {
       pdfBuffer = await renderLiveDocumentToPdf(printUrl);

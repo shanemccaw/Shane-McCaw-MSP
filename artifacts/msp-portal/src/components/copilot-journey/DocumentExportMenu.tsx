@@ -30,11 +30,19 @@
  * not need to know which one ran.
  *
  * The design's other two items hand a stranger a login-free link to the whole
- * set — one without commercial terms, one with the SOW attached. The platform
- * has a share-link mechanism (`quick_win_result_shares`, used by the dashboard
- * export) but nothing that bundles an assessment's reports behind one token, and
- * no notion of a pricing-free variant. So those two are drawn and labelled
- * "Soon" rather than wired to a URL this screen would have to invent.
+ * set — one without commercial terms, one with the SOW attached. Git #1044
+ * (Epic #660, Phase 2) wired these for real: `POST
+ * /portal/live-documents/share` mints a token in a new, dedicated table
+ * (`liveDocumentSharesTable`), and `GET
+ * /public/live-document-shares/:token` renders the live document set behind
+ * it with no login — see `live-document-shares.ts` on the server for the
+ * full design. `quick_win_result_shares` (the platform's older share-link
+ * mechanism) is deliberately NOT reused: it is document-row-shaped and has
+ * no notion of a pricing-free variant, and was confirmed deprecated for this
+ * feature. This component itself still took no logic change for this —
+ * `onSendForReview`/`onSendToPurchasing` are plain callback props, same
+ * shape as `onDownloadCurrent`/`onDownloadAll`, with the actual minting and
+ * clipboard-copy living in `copilot-readiness-documents.tsx`.
  *
  * The design's own sublabel for the bulk download is "A single PDF set, in
  * reading order". There is no bundling endpoint, so the label here says what the
@@ -152,6 +160,8 @@ export function DocumentExportMenu({
   downloading,
   onDownloadCurrent,
   onDownloadAll,
+  onSendForReview,
+  onSendToPurchasing,
 }: {
   /** The open report's title — the design prints it under "This report as PDF". */
   readonly currentTitle: string;
@@ -167,6 +177,10 @@ export function DocumentExportMenu({
   readonly downloading: boolean;
   readonly onDownloadCurrent: () => void;
   readonly onDownloadAll: () => void;
+  /** Mints a "review" share link and copies it to the clipboard. */
+  readonly onSendForReview: () => void;
+  /** Mints a "purchasing" share link and copies it to the clipboard. */
+  readonly onSendToPurchasing: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [hovered, setHovered] = useState(false);
@@ -289,17 +303,21 @@ export function DocumentExportMenu({
           colour={BRAND.teal}
           icon={<Eye size={13} strokeWidth={1.9} />}
           title="Send for review"
-          badge="Soon"
           detail="Findings, scores and every report. No pricing, no commercial terms."
-          disabled
+          onClick={() => {
+            setOpen(false);
+            onSendForReview();
+          }}
         />
         <MenuItem
           colour={SEVERITY_ON_DARK.attention}
           icon={<ShoppingCart size={13} strokeWidth={1.9} />}
           title="Send to purchasing"
-          badge="Soon"
           detail="Adds the statement of work, the agreed scope and the totals."
-          disabled
+          onClick={() => {
+            setOpen(false);
+            onSendToPurchasing();
+          }}
         />
         <p
           style={{
@@ -311,8 +329,8 @@ export function DocumentExportMenu({
             color: INK.micro,
           }}
         >
-          Sharing a whole set outside your tenant is not switched on yet. Until it is, the PDFs above are
-          yours to forward.
+          Each link is a live, read-only view of this set — no login required, and it stays valid until
+          you ask us to revoke it.
         </p>
       </div>
     </div>

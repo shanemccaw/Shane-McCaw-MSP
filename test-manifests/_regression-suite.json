@@ -16,6 +16,7 @@
     "copilot-readiness/assessment-monitoring-rescan.json",
     "copilot-readiness/email-auth-setup.json",
     "copilot-readiness/live-document-pdf-export.json",
+    "copilot-readiness/live-document-share-links.json",
     "billing/retainer-signup.json",
     "billing/retainer-lifecycle.json",
     "billing/renewal-recurring.json",

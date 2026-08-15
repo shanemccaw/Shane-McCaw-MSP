@@ -937,6 +937,42 @@ export const documentPrintTokensTable = pgTable("document_print_tokens", {
 export type InsertDocumentPrintToken = typeof documentPrintTokensTable.$inferInsert;
 export type DocumentPrintToken = typeof documentPrintTokensTable.$inferSelect;
 
+// Git #1044 (Epic #660, Phase 2). A "share a link" token for the same
+// live-rendered document set documentPrintTokensTable prints — but shaped
+// for the opposite use case: not a single-use, minutes-lived secret that
+// authenticates a headless print tab as the real logged-in user, but a
+// long-lived, multi-view, revocable link the customer hands to someone who
+// has no portal login at all (their internal reviewer or purchasing team).
+// quick_win_result_shares (the platform's older share-link table) is
+// DEPRECATED for this feature and is not touched or reused here — see
+// live-document-shares.ts's own header for why.
+//
+// `customerId` here is a `users.id` FK (NOT a `tenants.id`, despite the
+// "customerId" name every other portal route uses for tenants — see
+// requireAuth.ts's AuthUser.customerId comment for that frozen, unrelated
+// naming). It is the logged-in CustomerUser who clicked "Send for review" /
+// "Send to purchasing" on their OWN document set — the same identity
+// documentPrintTokensTable.userId and printTokensTable.userId already key
+// on, just named per this issue's own schema spec.
+//
+// No `expiresAt`: a share link is handed to someone specifically so they can
+// come back to it (a purchasing approval can take weeks), and `revokedAt` is
+// the real, deliberate control a customer has over it — an invisible clock
+// running out underneath them would silently break a link they still think
+// is good. Revocation is a manual/future action; nothing in this build sets
+// it automatically.
+export const liveDocumentSharesTable = pgTable("live_document_shares", {
+  id: serial("id").primaryKey(),
+  token: text("token").notNull().unique(),
+  customerId: integer("customer_id").notNull().references(() => usersTable.id),
+  variant: text("variant", { enum: ["review", "purchasing"] }).notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  revokedAt: timestamp("revoked_at"),
+});
+
+export type InsertLiveDocumentShare = typeof liveDocumentSharesTable.$inferInsert;
+export type LiveDocumentShare = typeof liveDocumentSharesTable.$inferSelect;
+
 // Engagement Project Types (shown on Pricing page Track 02, used for SOW generation)
 export const engagementProjectsTable = pgTable("engagement_projects", {
   id: serial("id").primaryKey(),

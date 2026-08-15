@@ -45,6 +45,7 @@ import CustomerSowPage from "@/pages/customer-sow";
 import MspCustomerSowPage from "@/pages/msp-customer-sow";
 import MspSowPublicPage from "@/pages/msp-sow-public";
 import SharedDocumentPublicPage from "@/pages/shared-document-public";
+import SharedLiveDocumentsPublicPage from "@/pages/shared-live-documents-public";
 import SignupPage from "@/pages/signup";
 import SignupSuccessPage from "@/pages/signup-success";
 import AcceptInvitePage from "@/pages/accept-invite";
@@ -1002,6 +1003,11 @@ function Router() {
       {/* Public shared-document viewer — share token, no auth required */}
       <Route path="/shared-documents/:shareToken">
         <SharedDocumentPublicPage />
+      </Route>
+
+      {/* Public live-document-set viewer (Git #1044) — share token, no auth required */}
+      <Route path="/shared-live-documents/:shareToken">
+        <SharedLiveDocumentsPublicPage />
       </Route>
 
       {/* Public invite accept — no auth required */}

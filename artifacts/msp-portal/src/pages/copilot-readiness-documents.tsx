@@ -595,6 +595,37 @@ export default function CopilotReadinessDocumentsPage() {
     }
   }, [downloadable, downloadOne]);
 
+  /**
+   * "Share a link" — Git #1044 (Epic #660, Phase 2). Mints a
+   * liveDocumentSharesTable token for the given variant and copies the
+   * resulting no-login link to the clipboard. Unlike the PDF export above,
+   * this is unavailable in preview (there is no real customerId to share).
+   */
+  const sendShareLink = useCallback(
+    async (variant: "review" | "purchasing") => {
+      if (isPreview) {
+        toast.error("Sharing a link is not available in the design preview.");
+        return;
+      }
+      try {
+        const res = await fetchWithAuth(
+          "/api/portal/live-documents/share",
+          { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ variant }) },
+          { silent: true },
+        );
+        if (!res.ok) throw new Error(`share ${variant} → ${res.status}`);
+        const { shareUrl } = (await res.json()) as { shareUrl: string };
+        await navigator.clipboard.writeText(shareUrl);
+        toast.success(
+          variant === "review" ? "Review link copied to clipboard." : "Purchasing link copied to clipboard.",
+        );
+      } catch {
+        toast.error("We could not create that link just now. Please try again.");
+      }
+    },
+    [fetchWithAuth, isPreview],
+  );
+
   const cta = useHover();
   const closeBtn = useHover();
   const sheetBtn = useHover();
@@ -816,6 +847,8 @@ export default function CopilotReadinessDocumentsPage() {
               downloading={downloading}
               onDownloadCurrent={() => void handleDownload()}
               onDownloadAll={() => void handleDownloadAll()}
+              onSendForReview={() => void sendShareLink("review")}
+              onSendToPurchasing={() => void sendShareLink("purchasing")}
             />
 
             <button
