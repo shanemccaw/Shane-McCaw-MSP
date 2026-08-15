@@ -2,11 +2,11 @@
   "issue": 636,
   "feature": "Auto-login after set-password via signup-exchange token (Git #636, Epic: A. Core Assessment Product)",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "PENDING — see PLATFORM_BUILD.md Git #636 row for the real commit; not yet deployed at write time",
+  "lastVerifiedAgainstCommit": "2d53fbb2",
 
   "notes": [
     "HONESTY CAVEAT — same architectural wall as #987's money-path-e2e.json: a signupExchangeTokensTable token is minted ONLY inside POST /public/flow/set-password, which itself requires a real Stripe-paid checkout session (and, for a first-time buyer, the earlier Microsoft admin-consent OAuth callback that provisions the users row). Neither is drivable by BuildConsole's WebView2 + HTTP harness, so a genuine mint -> exchange -> real-session round trip cannot be fabricated here. What this manifest DOES cover honestly: /auth/signup-exchange's real guard behavior for a missing/invalid/expired/already-used token — the same negative-path shape print-exchange/document-print-exchange/impersonate-exchange all share, and the only part of this endpoint reachable without the payment+consent wall.",
-    "shaneapp://runTest couriers to the DEPLOYED BuildConsole/api-server instance, not this session's uncommitted worktree code — see the buildconsole-runtest memory. At the time this manifest was written, /auth/signup-exchange, the set-password token-mint, and the new signup_exchange_tokens table did not exist yet in the deployed build/DB (the manual migration is a Shane To-Do). The apiTests below are expected to fail against the currently-deployed build for that reason, not because the guard logic is wrong; re-run after Shane deploys and runs the migration to get a real green."
+    "shaneapp://runTest couriers to the DEPLOYED BuildConsole/api-server instance, not this session's uncommitted worktree code — see the buildconsole-runtest memory. RAN at commit 2d53fbb2: 0/2 passed, both 404 Cannot POST /api/auth/signup-exchange — the route, the set-password token-mint, and the new signup_exchange_tokens table did not exist yet in the deployed build/DB at that time (the manual migration is a Shane To-Do). This is the expected, honest result for undeployed code, not a guard-logic defect; re-run after Shane deploys and runs the migration to get a real green."
   ],
 
   "apiTests": [
