@@ -30,7 +30,6 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth-context";
@@ -47,6 +46,7 @@ import {
   type JourneyLiveDocument,
   type PillarKey,
 } from "./journeyTokens.ts";
+import { DocumentBodySkeleton } from "./DocumentBodySkeleton";
 import { LiveRemediationGuideBody, RemediationGuideBody } from "./RemediationGuideBody";
 import { LiveStatementOfWorkBody, StatementOfWorkBody } from "./StatementOfWorkBody";
 import { SOW_DOC_TYPE } from "./sowLiveScope.ts";
@@ -211,7 +211,15 @@ interface DocumentPayload {
   readonly htmlContent: string | null;
 }
 
-function LiveBody({ documentId, title }: { documentId: number; title: string }) {
+function LiveBody({
+  documentId,
+  title,
+  reduceMotion,
+}: {
+  documentId: number;
+  title: string;
+  reduceMotion: boolean;
+}) {
   const { fetchWithAuth, accessToken } = useAuth();
   const [html, setHtml] = useState<string | null>(null);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
@@ -323,9 +331,8 @@ function LiveBody({ documentId, title }: { documentId: number; title: string }) 
 
   if (state === "loading") {
     return (
-      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "40px 0", color: INK.micro }}>
-        <Loader2 className="size-4 animate-spin" />
-        <span style={{ fontSize: 14, fontWeight: 500 }}>Opening {title}…</span>
+      <div aria-busy="true" aria-label={`Opening ${title}…`} data-testid="document-loading-skeleton">
+        <DocumentBodySkeleton reduceMotion={reduceMotion} />
       </div>
     );
   }
@@ -657,7 +664,7 @@ export function DocumentBody({
             empty state rather than reconciling one report's body into another's
             card. Belt and braces with `LiveBody`'s own stale-response guard —
             the key alone would not help a retry that overlaps itself. */}
-        <LiveBody key={doc.id} documentId={doc.id} title={doc.title} />
+        <LiveBody key={doc.id} documentId={doc.id} title={doc.title} reduceMotion={reduceMotion} />
       </Card>
     );
   }

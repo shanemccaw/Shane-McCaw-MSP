@@ -98,6 +98,21 @@
 /* Spinners — the still-generating report and the Stripe confirmation overlay. */
 @keyframes cj-spin { to { transform: rotate(360deg); } }
 
+/* Document-body loading skeleton (DocumentBodySkeleton.tsx) — a background-
+   position sweep, same spirit as the Copilot orb's shimmer above but at a
+   realistic loading-skeleton speed rather than the orb's 26s identity mark. */
+@keyframes cj-doc-skeleton-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* The document-loading indeterminate progress bar — no literal percentage,
+   since a single document fetch has no real backend progress signal. */
+@keyframes cj-doc-skeleton-progress {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(350%); }
+}
+
 /* Checkout kickoff. Reads as the start of something rather than a receipt. */
 @keyframes cj-rise {
   from { opacity: 0; transform: translateY(10px); }
