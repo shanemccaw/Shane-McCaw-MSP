@@ -4,7 +4,9 @@ Instructions for Claude Code sessions working in this repository.
 
 ## Mandatory task planning
 
-Every session — including BuildConsole-launched build sessions — must create a `TodoWrite` task list breaking the planned work into concrete steps before making any code changes (before the first Read/Edit/Write/Bash aimed at the actual task). Keep it updated as steps complete. A `SessionStart` hook in `.claude/settings.json` injects a reminder of this at the start of every session; this section is the durable, always-loaded record of the same requirement.
+Every session — including BuildConsole-launched build sessions — must create a task list breaking the planned work into concrete steps before making any code changes (before the first Read/Edit/Write/Bash aimed at the actual task). Keep it updated as steps complete. A `SessionStart` hook in `.claude/settings.json` injects a reminder of this at the start of every session; this section is the durable, always-loaded record of the same requirement.
+
+**Do not use `TodoWrite`** — it is disabled for this session and will error. Use `TaskCreate`/`TaskUpdate` (and `TaskGet`/`TaskList`) instead if task tracking is genuinely useful for the work at hand.
 
 ## Mandatory session bookends
 
