@@ -6,7 +6,7 @@ Instructions for Claude Code sessions working in this repository.
 
 Every session — including BuildConsole-launched build sessions — must create a task list breaking the planned work into concrete steps before making any code changes (before the first Read/Edit/Write/Bash aimed at the actual task). Keep it updated as steps complete. A `SessionStart` hook in `.claude/settings.json` injects a reminder of this at the start of every session; this section is the durable, always-loaded record of the same requirement.
 
-**Do not use `TodoWrite`** — it is disabled for this session and will error. Use `TaskCreate`/`TaskUpdate` (and `TaskGet`/`TaskList`) instead if task tracking is genuinely useful for the work at hand.
+**Do not use `TodoWrite`** — it is disabled for this session and will error. There is no `TaskCreate`/`TaskUpdate`/`TaskGet`/`TaskList` tool in this environment either (confirmed via ToolSearch, not assumed from general docs — the only task-shaped tools present are `TaskOutput`/`TaskStop`, which retrieve/kill background tasks and are unrelated to planning checklists). Track the plan as plain free-form checkbox text (`- [ ] step`) in a normal message or scratch file, and update it as steps complete. This is also the mechanism BuildConsole's own checklist panel (local #28) detects — free-form checkbox text, not a structured tool call.
 
 ## Mandatory session bookends
 
