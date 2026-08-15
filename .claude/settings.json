@@ -16,6 +16,18 @@
           }
         ]
       }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":\"Reminder: BuildConsole checklist panel only mirrors literal - [ ] / - [x] marker lines as they stream past and has no memory of your plan. If you have an active free-form checklist for this session, re-print the FULL list now with [x] on every item completed so far, not just the ones still pending. Skip this if there is no active checklist for the current work.\"}}'",
+            "timeout": 5
+          }
+        ]
+      }
     ]
   }
 }
