@@ -2,7 +2,7 @@
   "issue": 987,
   "feature": "Money-path E2E (consolidates #886–891) — setup → create/execute → verify login → teardown, one self-contained account-lifecycle flow",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "602341fbb73fda633c34bf9db46d235dcb1c8a38",
+  "lastVerifiedAgainstCommit": "6f991a3b",
 
   "notes": [
     "GIT #987 (Epic #803). This single manifest CONSOLIDATES the six money-path manifests — #886 assessment/home-quiz.json, #887 copilot-readiness/consent-scan-trigger.json, #888 copilot-readiness/verdict-pillars.json, #889 copilot-readiness/documents-screen.json, #890 copilot-readiness/sow-proposal.json, #891 copilot-readiness/checkout.json — into ONE create → use → verify → teardown lifecycle, restructuring the account lifecycle around every content/theme/honesty assertion those six already proved (none discarded; each is preserved and labelled with its origin issue below).",
@@ -54,14 +54,14 @@
     },
 
     {
-      "name": "CREATE — genuine public intake: POST /api/public/checkout-session (the exact call the quiz→details step fires) mints a brand-NEW checkout_sessions row + funnel lead for the assessment product, from scratch this run; extract the new sessionId. This is the 'go through the purchase flow / create' step the harness CAN genuinely drive (see the CREATE honesty caveat in notes for the consent+payment wall past this point).",
+      "name": "CREATE — genuine public intake: POST /api/public/checkout-session (the exact call the quiz→details step fires) mints a brand-NEW checkout_sessions row + funnel lead for the assessment product, from scratch this run; extract the new sessionId. This is the 'go through the purchase flow / create' step the harness CAN genuinely drive (see the CREATE honesty caveat in notes for the consent+payment wall past this point). Deliberately NOT {{TEST_PORTAL_EMAIL}} (Git #634 changed checkout-session to 409 already_has_account for that email — see the dedicated 409 test below) — checkout_sessions.email has no uniqueness constraint, so a fixed non-account probe address is safe to reuse every run.",
       "method": "POST",
       "path": "/api/public/checkout-session",
       "headers": { "Content-Type": "application/json" },
       "body": {
         "productSlug": "copilot-readiness-assessment",
         "fullName": "Regression Probe",
-        "email": "{{TEST_PORTAL_EMAIL}}",
+        "email": "money-path-e2e-probe@shanemccawconsulting.test",
         "company": "Money-Path E2E Testbed",
         "industry": "Technology",
         "seats": 1
@@ -75,6 +75,21 @@
       "path": "/api/public/flow/consent-status?sessionId={{sessionId}}",
       "headers": { "Content-Type": "application/json" },
       "expect": { "status": 200, "jsonPath": "$.sessionStatus", "exists": true }
+    },
+    {
+      "name": "CREATE (Git #634 negative path) — checkout-session now catches a returning customer at the FIRST step instead of only at set-password after payment: submitting the testbed Assessment account's own email (a real users row with a real passwordHash, proven by SETUP 3/3's login above) returns 409 already_has_account with a real portalUrl, and does NOT mint a new checkout session",
+      "method": "POST",
+      "path": "/api/public/checkout-session",
+      "headers": { "Content-Type": "application/json" },
+      "body": {
+        "productSlug": "copilot-readiness-assessment",
+        "fullName": "Regression Probe",
+        "email": "{{TEST_PORTAL_EMAIL}}",
+        "company": "Money-Path E2E Testbed",
+        "industry": "Technology",
+        "seats": 1
+      },
+      "expect": { "status": 409, "jsonPath": "$.error", "value": "already_has_account" }
     },
 
     {
