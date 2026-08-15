@@ -96,6 +96,28 @@ namespace BuildConsole.Services
         public string Timestamp { get; set; } = "";
     }
 
+    /// <summary>Git #911 — matches POST /api/admin/deploy/build-complete's response shape
+    /// (`{ ok, steps, restarting, pollUrl, note, error? }`). `restarting` true means the deferred
+    /// `kill 1` restart was scheduled and the connection is about to drop — poll deploy-status (#805)
+    /// for the new commit hash; do NOT treat this body as "the server is back".</summary>
+    public class BuildCompleteResult
+    {
+        public bool Ok { get; set; }
+        public bool Restarting { get; set; }
+        public string? Error { get; set; }
+        public string? Note { get; set; }
+        public List<BuildCompleteStep> Steps { get; set; } = new();
+    }
+
+    /// <summary>One step of #911's pipeline (apply schema SQL / git pull / restart). `command` is
+    /// present in the wire shape too but not needed here, so it's left off (extra JSON is ignored).</summary>
+    public class BuildCompleteStep
+    {
+        public string Label { get; set; } = "";
+        public bool Ok { get; set; }
+        public string Output { get; set; } = "";
+    }
+
     /// <summary>
     /// Git #898 — one claimed test-run request from GET /admin/deploy/test-run/next.
     /// RunId is null when nothing is pending (the poll's "nothing to do" answer);
@@ -274,6 +296,40 @@ namespace BuildConsole.Services
         /// <summary>Git #805 — NOT under api/admin/build-tracker/extension/*; this hits the standalone GET /api/internal/deploy-status endpoint (version.ts), the same versionInfo the platform's own GET /api/version already serves.</summary>
         public Task<DeployStatus?> GetDeployStatusAsync() => TrackAsync("GET internal/deploy-status", () =>
             _http.GetFromJsonAsync<DeployStatus>("api/internal/deploy-status", JsonOpts));
+
+        /// <summary>
+        /// Git #911 (Epic #803) — POST /api/admin/deploy/build-complete: the api-server runs the
+        /// real `git pull --ff-only` then schedules the deferred/detached `kill 1` restart so the
+        /// pulled commit is actually loaded. This is the SAME endpoint trigger-deploy-and-wait.ps1
+        /// drives by hand; PostBuildDeployPipeline fires it automatically on build completion. The
+        /// restart drops the connection AFTER this response flushes, so a returned body is NOT proof
+        /// the server is back — the caller must poll GetDeployStatusAsync() (#805) until commitHash
+        /// flips. `schemaSql` is normally null (this repo's rule: Shane supplies any CREATE/ALTER/
+        /// INSERT SQL by hand); passed through verbatim only when non-null.
+        ///
+        /// Deliberately does NOT throw on a non-2xx: #911 legitimately answers 500 with a JSON body
+        /// (git pull diverged / schema SQL rolled back) the caller needs to read, so the parsed body
+        /// is returned regardless of status. A hard connection failure (the restart dropping
+        /// mid-flush, or a non-JSON body) is caught and returned as a shaped Restarting result rather
+        /// than thrown, since the commit-hash flip is the real source of truth either way.
+        /// </summary>
+        public Task<BuildCompleteResult?> PostBuildCompleteAsync(string? schemaSql = null) =>
+            TrackAsync<BuildCompleteResult?>("POST admin/deploy/build-complete", async () =>
+            {
+                object body = schemaSql != null ? new { schemaSql } : new { };
+                var resp = await _http.PostAsJsonAsync("api/admin/deploy/build-complete", body);
+                try
+                {
+                    return await resp.Content.ReadFromJsonAsync<BuildCompleteResult>(JsonOpts)
+                           ?? new BuildCompleteResult { Ok = resp.IsSuccessStatusCode, Restarting = resp.IsSuccessStatusCode };
+                }
+                catch
+                {
+                    // Non-JSON / empty body (e.g. the connection dropped mid-flush on restart): don't
+                    // fail the pipeline — hand back a shaped result so it proceeds to poll #805.
+                    return new BuildCompleteResult { Ok = resp.IsSuccessStatusCode, Restarting = resp.IsSuccessStatusCode };
+                }
+            });
 
         /// <summary>
         /// Git #898 — polls GET /admin/deploy/test-run/next to atomically claim the

@@ -322,6 +322,21 @@ namespace BuildConsole.Services
         /// </summary>
         public int InteractiveIdleFinalizeSeconds { get; set; } = 15;
 
+        // ── Epic #803 — auto deploy+verify+test on build completion ───────────────
+        // When a queue-managed build finishes SUCCESSFULLY, BuildConsole automatically runs the
+        // deploy+verify+test pipeline that trigger-deploy-and-wait.ps1 used to require running by
+        // hand: POST /api/admin/deploy/build-complete (#911 — git pull --ff-only + kill 1 restart)
+        // -> poll GET /api/internal/deploy-status (#805) until the live commit hash flips (returning
+        // the real new live hash, not just a boolean) -> run the full regression suite -> surface the
+        // result via toast + the "Needs Attention" section. On by default so it's genuinely
+        // automatic; flip to false here to fall back to the manual .ps1 + manual test flow. Same
+        // local %AppData%\BuildConsole\settings.json store / field-initializer-as-default convention
+        // as every field above — a pre-existing settings.json (no "autoDeployOnBuildComplete" key)
+        // deserializes as true.
+
+        /// <summary>On by default: a successfully finished queue build auto-triggers the real deploy (#911 git pull + restart), waits for #805 to confirm the new commit hash is live, then runs the regression suite and surfaces the end-to-end result. Off = manual trigger-deploy-and-wait.ps1 + manual test flow.</summary>
+        public bool AutoDeployOnBuildComplete { get; set; } = true;
+
         private static string SettingsDir =>
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "BuildConsole");
 

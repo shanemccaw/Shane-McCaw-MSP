@@ -119,6 +119,13 @@ namespace BuildConsole
         private DispatcherTimer? _deployStatusTimer;
         private string? _lastSeenDeployCommitHash;
 
+        // ── Epic #803: auto deploy+verify+test on build completion ────────────────
+        // The missing automation between "a queue build finished" and "its code is live
+        // and tested". On QueueWatcherService.BuildFinished (success) it reuses the exact
+        // endpoints trigger-deploy-and-wait.ps1 drives (#911 build-complete + #805
+        // deploy-status), then runs the regression sweep and surfaces the result.
+        private BuildConsole.Services.PostBuildDeployPipeline? _postBuildDeploy;
+
         // ── Git #806: test manifest runner (Epic #803 Phase 2) ───────────────────
         private BuildConsole.Services.TestManifest? _loadedManifest;
 
@@ -292,6 +299,19 @@ namespace BuildConsole
                 // Git #898 — same "app is already open for the build queue" assumption:
                 // start listening for remote UI-test run requests too.
                 StartTestTriggerPoll();
+
+                // Epic #803 — auto deploy+verify+test on build completion. Reuses the exact
+                // endpoints trigger-deploy-and-wait.ps1 drives by hand (#911 build-complete +
+                // #805 deploy-status) and the in-process regression sweep, fired automatically
+                // off QueueWatcherService.BuildFinished (see QueueWatcher_BuildFinished) instead
+                // of requiring the .ps1 + a manual test run. Injected-delegate shape mirrors
+                // RegressionScheduleService above.
+                _postBuildDeploy = new BuildConsole.Services.PostBuildDeployPipeline(
+                    BuildConsole.Services.BuildTrackerConfig.FindRepoRoot() ?? "",
+                    () => _buildTrackerApi.PostBuildCompleteAsync(),
+                    () => _buildTrackerApi.GetDeployStatusAsync(),
+                    RunRegressionSuiteCollectAsync,
+                    SurfacePostBuildDeployOutcome);
             }
 
             // shaneapp://executeSql — the LOCAL protocol trigger (deliberately NOT
@@ -2931,6 +2951,15 @@ namespace BuildConsole
         private void QueueWatcher_BuildFinished(int queueItemId, string title, int exitCode)
         {
             _buildSound.Play();
+
+            // Epic #803 — automatically deploy the just-finished build and verify+test it end to
+            // end (build done -> #911 pull+restart -> poll #805 to the real new live commit hash ->
+            // regression sweep -> toast + Needs Attention). Fire-and-forget on the UI thread
+            // (BuildFinished already fires there, which the shared-WebView2 regression sweep needs);
+            // the pipeline gates itself on exit==0 and the AutoDeployOnBuildComplete setting, is
+            // single-flight, and never throws back to this handler.
+            if (_postBuildDeploy != null)
+                _ = _postBuildDeploy.OnBuildFinishedAsync(queueItemId, title, exitCode);
         }
 
         /// <summary>Git #834 / #954 — File > Settings selects the sidebar's Settings
@@ -4383,6 +4412,72 @@ namespace BuildConsole
             };
 
             ToastEngine.Show(title, body, hasFailure ? ToastKind.Error : ToastKind.Warning, duration: null, onClick: onClick);
+        }
+
+        /// <summary>Epic #803 — surfaces the auto deploy+verify+test pipeline's end-to-end outcome
+        /// through the SAME notification mechanisms a manifest run uses (#24 ToastEngine + the Build
+        /// Queue "Needs Attention" section, #54) rather than letting it complete silently. A fully
+        /// green run (deploy confirmed live + every manifest passed) shows a transient success toast
+        /// only; anything that needs eyes (deploy not confirmed, tests failed/errored, or the deploy
+        /// couldn't be proven to include this build's own commit) shows an error/warning toast AND
+        /// records a durable Needs-Attention row that stays until Shane addresses it. The real live
+        /// commit hash is always in the surfaced text so the deploy is independently verifiable. The
+        /// benign "already live, nothing to deploy" no-op is silent.</summary>
+        private void SurfacePostBuildDeployOutcome(BuildConsole.Services.PostBuildPipelineResult r)
+        {
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.BeginInvoke(new Action(() => SurfacePostBuildDeployOutcome(r)));
+                return;
+            }
+
+            // Server was already on this build's commit — nothing deployed, nothing to surface.
+            if (r.AlreadyLive) return;
+
+            string deployPart = r.DeployConfirmed
+                ? $"deploy live @ {r.NewCommit}" + (r.AdvancedToOwnCommit == false ? " (⚠ does NOT contain this build's commit)" : "")
+                : "deploy NOT confirmed";
+            string testPart = r.TestsRan ? $"tests {r.TestsPassed}/{r.TestsTotal} passed" : "tests not run";
+
+            // Fully green end to end — transient success toast, no durable attention item.
+            if (r.OverallOk && r.AdvancedToOwnCommit != false)
+            {
+                ToastEngine.Success("Build deployed & tested", $"{deployPart}; {testPart}.");
+                return;
+            }
+
+            string title = !r.DeployConfirmed
+                ? "Auto-deploy needs attention — deploy not confirmed"
+                : (r.TestsRan && r.TestsFailed > 0)
+                    ? $"Post-deploy tests failing ({r.TestsFailed})"
+                    : "Auto-deploy needs attention";
+
+            var bodySb = new System.Text.StringBuilder();
+            bodySb.Append($"Build '{r.BuildTitle}' (#{r.QueueItemId}): {deployPart}; {testPart}.");
+            if (!string.IsNullOrEmpty(r.Error)) bodySb.Append($" {r.Error}.");
+            if (r.FailedManifests.Count > 0) bodySb.Append($" Failing: {string.Join(", ", r.FailedManifests)}.");
+            string body = bodySb.ToString();
+
+            bool isFailure = !r.DeployConfirmed || (r.TestsRan && r.TestsFailed > 0);
+
+            // Durable row in the Build Queue "Needs Attention" section, keyed so a re-run for the same
+            // build updates in place rather than stacking. Clicking brings the app forward so Shane can
+            // inspect the Output log / test results, and clears the row like any other.
+            string attentionKey = $"post-build-deploy:{r.QueueItemId}";
+            Action onOpen = () =>
+            {
+                try { Activate(); } catch { /* window teardown */ }
+                BuildConsole.Services.ActivityLog.Log("testing.post-build-deploy",
+                    $"Needs-Attention opened for build #{r.QueueItemId} (deploy {r.OldCommit}->{r.NewCommit}, tests {r.TestsPassed}/{r.TestsTotal}).");
+            };
+            BuildQueuePanel.AddNeedsAttention(attentionKey, title, body, isFailure, onOpen);
+
+            Action onClick = () =>
+            {
+                onOpen();
+                BuildQueuePanel.ClearNeedsAttention(attentionKey);
+            };
+            ToastEngine.Show(title, body, isFailure ? ToastKind.Error : ToastKind.Warning, duration: null, onClick: onClick);
         }
 
         // ── Git #898 (Epic #803): remote UI-test trigger poll ────────────────────
