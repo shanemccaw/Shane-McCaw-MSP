@@ -2950,6 +2950,27 @@ describe("applyMapping — countWhere (#402)", () => {
     expect(vi.mocked(logger.warn)).not.toHaveBeenCalled();
   });
 
+  it("reads a {{...}} field whose own name contains spaces, like a usage-report CSV header (#753)", () => {
+    // getOneDriveUsageAccountDetail's real columns ("Last Activity Date", "Is
+    // Deleted") are single object keys that happen to contain spaces —
+    // resolvePathInData's literal-key-first lookup already reads these
+    // correctly, but expressionTopLevelPaths used to tokenize the mustache
+    // span with the same word-boundary regex as a dot-path, splitting "Last
+    // Activity Date" into "Last"/"Activity"/"Date" and finding none of them on
+    // the data — a false "the field name is wrong" warning on a predicate that
+    // was actually matching correctly.
+    const rows = [
+      { "Last Activity Date": "", "Is Deleted": "False" },
+      { "Last Activity Date": "2026-08-01", "Is Deleted": "False" },
+      { "Last Activity Date": "", "Is Deleted": "True" },
+    ];
+    const result = applyMapping(rows, [
+      { sourceField: "value", targetField: "n", transform: `countWhere('{{Last Activity Date}} == "" && {{Is Deleted}} == "False"')` },
+    ], []);
+    expect(result.n).toBe(1);
+    expect(vi.mocked(logger.warn)).not.toHaveBeenCalled();
+  });
+
   it("warns and evaluates over whole items when sourceField resolves on nothing", () => {
     const result = applyMapping(USERS, [
       { sourceField: "licenceDetails", targetField: "n", transform: "countWhere('{{accountEnabled}} == false')" },

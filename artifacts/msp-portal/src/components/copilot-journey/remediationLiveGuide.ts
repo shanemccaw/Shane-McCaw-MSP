@@ -112,21 +112,24 @@
  * words. Rendering a miss as "clean" would turn silence into a clean bill of
  * health.
  *
- * ══ 5. STEPS 18 AND 28 ARE ABSENCES, AND ARE EXCLUDED FOR NOW (#658) ══════════
+ * ══ 5. STEP 18 IS AN ABSENCE, AND IS EXCLUDED FOR NOW (#658) ═════════════════
  *
- * Audit log retention above 90 days, and OneDrive sync errors. #472 confirmed
- * against live data that no check anywhere in this platform reads either one —
- * not unscanned for this tenant, not gated behind a licence, simply not built.
+ * Audit log retention above 90 days. #472 confirmed against live data that no
+ * check anywhere in this platform reads it — not unscanned for this tenant,
+ * not gated behind a licence, simply not built. (Step 28, OneDrive sync
+ * errors, was the other confirmed absence; #753 built `onedrive:sync-errors`
+ * in the same session this comment was last touched, so s28 now lives in
+ * `STEP_CHECK_KEYS` and is no longer part of this section.)
  *
  * Because the guide is now built DYNAMICALLY from the tenant's real findings
  * (#658), a step with no check backing it cannot be honestly confirmed OR ruled
- * out per tenant, so both are HARD-EXCLUDED from the live guide for now — they
- * render for no tenant. This is TEMPORARY: #754 builds the audit-log-retention
- * check (s18) and #753 the OneDrive-sync check (s28); once either lands, that
- * step rejoins as an ordinary mapped step and this exclusion comes out. Their
- * `gap` evidence and honest "the platform measures nothing here" wording
- * (`STEP_CHECK_GAPS`) are kept intact so the moment they can be shown again,
- * they read as an absence rather than a check that looked and disapproved.
+ * out per tenant, so it is HARD-EXCLUDED from the live guide for now — it
+ * renders for no tenant. This is TEMPORARY: #754 builds the audit-log-retention
+ * check (s18); once it lands, the step rejoins as an ordinary mapped step and
+ * this exclusion comes out. Its `gap` evidence and honest "the platform
+ * measures nothing here" wording (`STEP_CHECK_GAPS`) are kept intact so the
+ * moment it can be shown again, it reads as an absence rather than a check
+ * that looked and disapproved.
  */
 
 import { COPILOT_GATE_TARGET, PILLARS, PILLAR_KEYS, type PillarKey } from "./journeyTokens.ts";
@@ -153,7 +156,7 @@ import {
  * order #472 lists them; the first key that produces evidence wins, and the
  * rest are still named so the reader can see the whole basis.
  *
- * ABSENT BY DESIGN: s18 and s28 (see `STEP_CHECK_GAPS`) and s27, s30
+ * ABSENT BY DESIGN: s18 (see `STEP_CHECK_GAPS`) and s27, s30
  * (see `PROCESS_ONLY_STEP_IDS`). A step id missing from all three maps is a
  * mistake, and `remediationLiveGuide.test.ts` fails on it.
  */
@@ -186,11 +189,12 @@ export const STEP_CHECK_KEYS: Readonly<Record<string, readonly string[]>> = {
   s22: ["cost:group-based-licensing-adoption"],
   s23: ["adoption:teams-activity-trend", "adoption:sharepoint-onedrive-trend"],
   s26: ["sharepoint:tenant-sharing-capability"],
+  s28: ["onedrive:sync-errors"],
   s29: ["sharepoint:inactive-sites", "teams:ownerless-teams", "governance:ownerless-groups"],
 };
 
 /**
- * The two steps no check in this platform measures — confirmed platform-wide by
+ * The one step no check in this platform measures — confirmed platform-wide by
  * #472, not "not in this tenant's scan package".
  *
  * The wording is the load-bearing part. It states an absence in our own
@@ -198,11 +202,13 @@ export const STEP_CHECK_KEYS: Readonly<Record<string, readonly string[]>> = {
  * way this can go wrong is reading as a silent fail. It does not apologise, and
  * it does not imply the step is optional.
  *
- * NOTE (#658): these two steps are currently EXCLUDED from the live guide
- * entirely (see `rendersInLiveGuide`) — a dynamic guide cannot honestly
- * include a step it can neither confirm nor rule out. This wording is kept
- * ready for the moment #754 (s18) / #753 (s28) land a real check and they can
- * be shown again.
+ * NOTE (#658): this step is currently EXCLUDED from the live guide entirely
+ * (see `rendersInLiveGuide`) — a dynamic guide cannot honestly include a step
+ * it can neither confirm nor rule out. This wording is kept ready for the
+ * moment #754 lands a real check and it can be shown again. (s28's own gap
+ * closed here in the same session #753 built `onedrive:sync-errors` — it now
+ * lives in `STEP_CHECK_KEYS` above and resolves to `finding`/`unconfirmed`
+ * like any other mapped step.)
  */
 export const STEP_CHECK_GAPS: Readonly<Record<string, string>> = {
   s18:
@@ -210,10 +216,6 @@ export const STEP_CHECK_GAPS: Readonly<Record<string, string>> = {
     "That is a gap in what we measure, not a finding about your configuration — nothing here says your retention " +
     "is too short, and nothing says it is sufficient. The action below is standard guidance and is worth running " +
     "on its own merits; the command in the verify line is what tells you where you actually stand.",
-  s28:
-    "No check this platform runs reads OneDrive sync health, so this step carries no figure from your tenant. " +
-    "Your sync error count is unmeasured by this assessment rather than found wanting — the script below is what " +
-    "produces the real number, and it is yours to run.",
 };
 
 /**
@@ -368,7 +370,7 @@ export const STEP_FILL_INS: Readonly<Record<string, string>> = {
  * The live script for a step, or `null` where the design's own script is already
  * fully generic and is used unchanged.
  *
- * A `null` here is a positive statement, not a hole: 18 of the 24 mapped scripts
+ * A `null` here is a positive statement, not a hole: 19 of the 25 mapped scripts
  * are used unchanged, including the ones that only LOOK hardcoded —
  * Step 8's three role GUIDs are Microsoft's universal built-in role template ids,
  * Step 15's sensitive-information-type names are Microsoft's own built-ins, and
@@ -787,15 +789,17 @@ export interface LiveRemediationStep extends RemediationStep {
  *   • `unconfirmed` — mapped, but no matching finding reached this document.
  *                     Does NOT render: the whole point of the rebuild is that a
  *                     step appears only when a real finding puts it on the list.
- *   • `gap`         — s18 and s28. HARD-EXCLUDED for now. No check exists to
- *                     confirm or rule these out per tenant, so they cannot be
- *                     selected honestly either way. TEMPORARY until #754 (audit
- *                     log retention, s18) and #753 (OneDrive sync, s28) land a
- *                     real check — at which point they resolve to `finding` /
- *                     `unconfirmed` like any mapped step and this line's `gap`
- *                     exclusion becomes dead. Explicitly excluded here rather
- *                     than left to `gap` rendering logic so the temporary nature
- *                     is visible at the selection site.
+ *   • `gap`         — s18. HARD-EXCLUDED for now. No check exists to confirm or
+ *                     rule it out per tenant, so it cannot be selected honestly
+ *                     either way. TEMPORARY until #754 (audit log retention,
+ *                     s18) lands a real check — at which point it resolves to
+ *                     `finding` / `unconfirmed` like any mapped step and this
+ *                     line's `gap` exclusion becomes dead. Explicitly excluded
+ *                     here rather than left to `gap` rendering logic so the
+ *                     temporary nature is visible at the selection site. (s28
+ *                     went through exactly this transition already — #753
+ *                     built `onedrive:sync-errors` and moved it into
+ *                     `STEP_CHECK_KEYS`, so it is no longer a `gap` step.)
  */
 export function rendersInLiveGuide(evidence: StepEvidence): boolean {
   return evidence.kind === "finding" || evidence.kind === "process";

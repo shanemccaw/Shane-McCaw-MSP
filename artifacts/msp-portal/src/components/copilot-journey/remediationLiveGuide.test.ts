@@ -20,7 +20,10 @@
  *      reproduces the design's own text verbatim, and the preview still renders
  *      all twenty-eight steps.
  *   5. Dynamic selection (#658): a live guide holds only finding-driven steps
- *      plus the two always-on process steps; gap steps (18, 28) never render.
+ *      plus the two always-on process steps; the one remaining gap step (18)
+ *      never renders. Step 28 stopped being a gap step when #753 built
+ *      `onedrive:sync-errors` — it is now an ordinary mapped step like any
+ *      other, resolving to `finding` or `unconfirmed` per tenant.
  */
 
 import assert from "node:assert/strict";
@@ -117,11 +120,11 @@ const THIN = view();
 
 /**
  * The opposite pole: a tenant carrying one real finding on the first mapped
- * check of every one of the 24 mapped steps, so the dynamic guide (#658) renders
- * all 24 mapped steps plus the two process steps (s27, s30) — 26 in total, with
- * the two gap steps (s18, s28) still excluded. Every finding lives in one pillar
- * because `stepEvidence` matches on `checkKey` across all pillars regardless of
- * where the finding sits.
+ * check of every one of the 25 mapped steps, so the dynamic guide (#658) renders
+ * all 25 mapped steps plus the two process steps (s27, s30) — 27 in total, with
+ * the one remaining gap step (s18) still excluded. Every finding lives in one
+ * pillar because `stepEvidence` matches on `checkKey` across all pillars
+ * regardless of where the finding sits.
  */
 const ALL_MAPPED_FIRST_KEYS = Object.values(STEP_CHECK_KEYS).map((keys) => keys[0]);
 const ALL_FINDINGS = view({
@@ -187,19 +190,20 @@ describe("step coverage", () => {
     }
   });
 
-  it("maps exactly #472's confirmed steps, 2 gaps and 2 process steps", () => {
+  it("maps exactly #472's confirmed steps (plus #753's s28), 1 gap and 2 process steps", () => {
     // TWENTY-FOUR, not the 23 #472's closing summary states. Its own final table
-    // lists steps 1–17, 19–23, 26 and 29 — that is 24 rows, and 24 + 2 gaps + 2
-    // process steps is exactly the 28 the guide now holds (Steps 24 and 25, the
+    // lists steps 1–17, 19–23, 26 and 29 — that is 24 rows (Steps 24 and 25, the
     // two adoption/rollout process steps, were removed in #757). The "23" is an
     // arithmetic slip in the issue's prose; the table it summarises is the
-    // mapping, and this assertion is what stops the slip being copied into the code.
-    assert.equal(Object.keys(STEP_CHECK_KEYS).length, 24);
+    // mapping. #753 built a real check for s28 (OneDrive sync errors), moving it
+    // from `STEP_CHECK_GAPS` into this map, so it now holds #472's 24 plus s28 —
+    // 25 — and 25 + 1 gap (s18) + 2 process steps is exactly the 28 the guide holds.
+    assert.equal(Object.keys(STEP_CHECK_KEYS).length, 25);
     assert.equal(
       Object.keys(STEP_CHECK_KEYS).length + Object.keys(STEP_CHECK_GAPS).length + PROCESS_ONLY_STEP_IDS.length,
       REMEDIATION_STEPS.length,
     );
-    assert.deepEqual(Object.keys(STEP_CHECK_GAPS).sort(), ["s18", "s28"]);
+    assert.deepEqual(Object.keys(STEP_CHECK_GAPS).sort(), ["s18"]);
     assert.deepEqual([...PROCESS_ONLY_STEP_IDS].sort(), ["s27", "s30"]);
   });
 
@@ -274,10 +278,10 @@ describe("buildLiveRemediationSteps", () => {
     assert.deepEqual(buildLiveRemediationSteps(v).map((s) => s.id), ["s1", "s2", "s27", "s30"]);
   });
 
-  it("renders all 24 mapped steps plus the 2 process steps when every mapped check has a finding", () => {
+  it("renders all 25 mapped steps plus the 2 process steps when every mapped check has a finding", () => {
     const live = buildLiveRemediationSteps(ALL_FINDINGS);
     assert.equal(live.length, Object.keys(STEP_CHECK_KEYS).length + PROCESS_ONLY_STEP_IDS.length);
-    assert.equal(live.length, 26);
+    assert.equal(live.length, 27);
   });
 
   it("preserves id, label, pillar, meta and catalogue order for the steps it renders", () => {
@@ -296,18 +300,40 @@ describe("buildLiveRemediationSteps", () => {
     }
   });
 
-  it("never renders the two gap steps (18, 28) on any tenant — excluded until #753/#754", () => {
+  it("never renders the remaining gap step (18) on any tenant — excluded until #754", () => {
     for (const v of [THIN, ALL_FINDINGS]) {
       const ids = buildLiveRemediationSteps(v).map((s) => s.id);
       assert.ok(!ids.includes("s18"), "s18 must not render (gap, #754)");
-      assert.ok(!ids.includes("s28"), "s28 must not render (gap, #753)");
     }
-    // Their gap wording and scripts are kept intact for when they can return —
-    // stepEvidence still classifies them as gaps.
+    // Its gap wording and script are kept intact for when it can return —
+    // stepEvidence still classifies it as a gap.
     assert.equal(stepEvidence("s18", ALL_FINDINGS.pillars).kind, "gap");
-    assert.equal(stepEvidence("s28", ALL_FINDINGS.pillars).kind, "gap");
     const preview = REMEDIATION_STEPS.find((s) => s.id === "s18");
     assert.ok(preview?.code?.script.includes("New-UnifiedAuditLogRetentionPolicy"));
+  });
+
+  it("s28 behaves like an ordinary mapped step now that #753 built a real check (onedrive:sync-errors)", () => {
+    // Unconfirmed (not a gap, not rendered) on a tenant with no matching finding...
+    assert.equal(stepEvidence("s28", THIN.pillars).kind, "unconfirmed");
+    assert.ok(!buildLiveRemediationSteps(THIN).map((s) => s.id).includes("s28"));
+    // ...and a real, rendered finding the moment one exists on its mapped check.
+    // Placed under "governance" — the real pillar onedrive:* checks bucket
+    // under (WAR_ROOM_PILLAR_CHECK_DOMAINS, api-server/war-room-pillar-stats.ts)
+    // — but stepEvidence matches checkKey across every pillar regardless.
+    const v = view({
+      pillars: PILLAR_KEYS.map((k) =>
+        k === "governance"
+          ? pillar(k, {
+              score: 40,
+              criticalCount: 1,
+              findings: [finding({ title: "214 OneDrive accounts show no recorded sync activity", checkKey: "onedrive:sync-errors" })],
+            })
+          : pillar(k),
+      ),
+    });
+    const evidence = stepEvidence("s28", v.pillars);
+    assert.equal(evidence.kind, "finding");
+    assert.ok(buildLiveRemediationSteps(v).map((s) => s.id).includes("s28"));
   });
 
   it("keeps the scripted count derivable off the rendered steps", () => {
@@ -380,7 +406,7 @@ describe("no Halden Materials data reaches a live tenant", () => {
 
   it("and on an all-findings tenant, where every mapped step renders", () => {
     // THIN renders only s27/s30, so the thin-tenant check alone no longer
-    // exercises the 24 mapped steps' prose. This runs the same fixture-marker
+    // exercises the 25 mapped steps' prose. This runs the same fixture-marker
     // sweep over a tenant where all of them are on screen.
     const text = liveText(ALL_FINDINGS);
     for (const marker of FIXTURE_MARKERS) {
@@ -490,7 +516,7 @@ describe("liveBlastRadius (#731)", () => {
 
   it("every rendered step carries a Blast Radius card either way", () => {
     const live = buildLiveRemediationSteps(ALL_FINDINGS);
-    assert.equal(live.length, 26);
+    assert.equal(live.length, 27);
     for (const s of live) {
       assert.ok(s.blastRadius.goesRight.length > 0, `${s.id} has no goesRight`);
       assert.ok(s.blastRadius.goesWrong.length > 0, `${s.id} has no goesWrong`);
@@ -637,18 +663,16 @@ describe("stepEvidence", () => {
     assert.ok(UNCONFIRMED_EVIDENCE_DETAIL.includes("neither confirmed nor ruled"));
   });
 
-  it("returns gap for Steps 18 and 28, and the wording is an absence not a verdict", () => {
-    for (const id of ["s18", "s28"]) {
-      const e = stepEvidence(id, withFinding);
-      assert.equal(e.kind, "gap");
-      if (e.kind !== "gap") continue;
+  it("returns gap for Step 18, and the wording is an absence not a verdict", () => {
+    const e = stepEvidence("s18", withFinding);
+    assert.equal(e.kind, "gap");
+    if (e.kind === "gap") {
       assert.ok(/No check this platform runs reads/.test(e.detail));
       assert.ok(!/fail|failing|breach|violation|non-compliant/i.test(e.detail));
     }
     // Step 18's line must not read as disapproval; it says explicitly that
     // nothing has been judged in either direction.
     assert.ok(STEP_CHECK_GAPS.s18.includes("nothing here says your retention"));
-    assert.ok(STEP_CHECK_GAPS.s28.includes("unmeasured by this assessment rather than found wanting"));
   });
 
   it("returns process for the two decision steps, and renders no evidence line", () => {

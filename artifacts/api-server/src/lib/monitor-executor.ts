@@ -895,7 +895,25 @@ const GRAMMAR_WORDS = new Set(["true", "false", "null", "contains", "olderThanDa
 function expressionTopLevelPaths(expression: string): string[] {
   const withoutLiterals = expression.replace(/'[^']*'/g, " ").replace(/"[^"]*"/g, " ");
   const out = new Set<string>();
-  for (const m of withoutLiterals.matchAll(/[A-Za-z_$][A-Za-z0-9_$]*(?:\.[A-Za-z0-9_$]+)*/g)) {
+  // {{...}} tokens are read as field paths VERBATIM (mirroring
+  // resolvePathInData's literal-key-first lookup, #753) before the generic
+  // identifier regex below ever sees them. A CSV usage-report header like
+  // "Last Activity Date" is a real, single object key containing spaces — the
+  // identifier regex alone would tokenize it into "Last"/"Activity"/"Date",
+  // none of which are ever present on the data, so `anyFieldPresent` always
+  // failed and countWhere logged "the field name is wrong" on every run of a
+  // check whose predicate reads report-style headers, even though the
+  // predicate itself (evalConditionGrammar) resolves the whole spaced key
+  // correctly. Consuming the {{...}} span here — keeping everything before
+  // its first "." as one head, same as the plain-identifier case below —
+  // fixes the false positive without changing behavior for any existing
+  // dot-path or bare-identifier expression.
+  const withoutMustache = withoutLiterals.replace(/\{\{([^{}]*)\}\}/g, (_match, inner: string) => {
+    const head = inner.trim().split(".")[0].trim();
+    if (head && !GRAMMAR_WORDS.has(head)) out.add(head);
+    return " ";
+  });
+  for (const m of withoutMustache.matchAll(/[A-Za-z_$][A-Za-z0-9_$]*(?:\.[A-Za-z0-9_$]+)*/g)) {
     const head = m[0].split(".")[0];
     if (!GRAMMAR_WORDS.has(head)) out.add(head);
   }
