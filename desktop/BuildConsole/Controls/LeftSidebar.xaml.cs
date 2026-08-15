@@ -1167,6 +1167,13 @@ namespace BuildConsole.Controls
             BuildConsole.Services.FocusModeService.Instance.UpdateBoardSnapshot(issues, milestoneInfos);
             RenderIssuesTree(_currentFilter == "Done" ? "All" : _currentFilter);
 
+            // Closed-epic filtering (RenderChatsTree signal B) reads this fresh
+            // open-issue set, so re-render the already-populated Chats tree from
+            // its cache now that _lastBoardIssues has changed — a just-closed
+            // epic drops out of Chats immediately instead of lingering until the
+            // next Chats poll. Cache-only (no network); no-op before chats load.
+            if (_lastBoardChats.Count > 0) { try { RenderChatsTree(); } catch { } }
+
             // Git #845 (Git Board Phase 7) — the board's own GraphQL fetch above
             // has no issue-dependency data, so blocked state is enriched in a
             // second pass via the real REST blocked_by endpoint (bounded
@@ -1630,15 +1637,65 @@ namespace BuildConsole.Controls
             var byEpic = focusChats.Where(c => c.EpicId.HasValue).GroupBy(c => c.EpicId!.Value);
             var unlinked = focusChats.Where(c => !c.EpicId.HasValue).ToList();
 
+            // Closed-epic filtering — mirror the Git Board's #839 convention
+            // ("done done get out of my view": closed items drop out of the
+            // default view) for the Chats panel too. A chat whose linked epic
+            // has closed on GitHub used to linger here (Shane's example: the
+            // closed EPIC "Copilot Readiness Scroll…"). Two independent, both
+            // reliable, signals decide "closed" — an epic group matching EITHER
+            // is hidden entirely, its nested chats along with it:
+            //
+            //   (A) The chat's EpicId isn't in _chatEpicById at all. The server's
+            //       GET /extension/board already filters `epics` to the OPEN set
+            //       (bt_epics.status != "closed"), so an EpicId that resolves to
+            //       no returned epic means the server considers that epic closed.
+            //       (These used to render as an orphan "Epic #<id>" fallback row.)
+            //
+            //   (B) The epic IS returned by the server (its LOCAL status still
+            //       reads open), but the SAME real GitHub state the Git Board
+            //       itself fetched (_lastBoardIssues, OPEN-only, per #839) shows
+            //       its GitHub issue is no longer open — i.e. the local bt_epics
+            //       row is lagging real GitHub state. This is the case that let
+            //       #343 leak through the server filter.
+            //
+            // Fail-open: signal (B) is only applied when we actually HAVE live
+            // board data (_lastBoardIssues non-empty — the board has loaded, a
+            // PAT is set, the fetch succeeded). With no live data we know nothing
+            // and hide nothing, so a chat is never wrongly removed for lack of
+            // knowledge; the next poll (once the board loads) removes it then.
+            var openGithubNumbers = _lastBoardIssues.Count > 0
+                ? new HashSet<int>(_lastBoardIssues.Where(i => !i.IsClosed).Select(i => i.Number))
+                : null;
+
+            bool IsEpicClosed(int epicId)
+            {
+                if (!epicById.TryGetValue(epicId, out var ep)) return true;               // (A)
+                return openGithubNumbers != null
+                    && ep.GithubNumber.HasValue
+                    && !openGithubNumbers.Contains(ep.GithubNumber.Value);                // (B)
+            }
+
+            int hiddenClosedEpics = 0, hiddenClosedChats = 0;
+
             // Build (title, chats) groups: real epics first, sorted alphabetically
             // (a stable top-level index, exactly like #984's alphabetical areas),
             // with "Unlinked" pinned last as the no-category bucket.
             var groups = new List<(string Title, List<BoardChat> Chats)>();
             foreach (var grp in byEpic)
             {
+                var chatsInGroup = grp.OrderByDescending(c => c.UpdatedAt).ToList();
+                if (IsEpicClosed(grp.Key))
+                {
+                    hiddenClosedEpics++;
+                    hiddenClosedChats += chatsInGroup.Count;
+                    continue;
+                }
                 var title = epicById.TryGetValue(grp.Key, out var epic) ? epic.Title : $"Epic #{grp.Key}";
-                groups.Add((title, grp.OrderByDescending(c => c.UpdatedAt).ToList()));
+                groups.Add((title, chatsInGroup));
             }
+            if (hiddenClosedEpics > 0)
+                ActivityLog.Log("git-board.chats",
+                    $"closed-epic filter hid {hiddenClosedEpics} closed epic(s) and their {hiddenClosedChats} nested chat(s) from the Chats panel (#839 convention)");
             groups.Sort((a, b) => string.Compare(a.Title, b.Title, StringComparison.OrdinalIgnoreCase));
             if (unlinked.Count > 0)
                 groups.Add(("Unlinked", unlinked.OrderByDescending(c => c.UpdatedAt).ToList()));

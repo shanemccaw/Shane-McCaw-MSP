@@ -1976,8 +1976,20 @@ router.patch("/admin/build-tracker/chats/:id", requireAdmin, async (req: Request
  * /extension/board's `chats` mapping above) isn't "assigned to an epic" in
  * the sense this action targets; only the chat's own epicId column is a
  * direct epic assignment.
+ *
+ * Auth: `ingestAuth`, NOT `requireAdmin`. This is a pure-local DB write — it
+ * clears the chat's own `epicId` column and touches nothing on GitHub (no PAT,
+ * no GitHub API call, no re-verification of the epic). It is BuildConsole's
+ * "Unassign from Epic" right-click, and BuildConsole authenticates with the
+ * static `BUILD_TRACKER_INGEST_TOKEN` Bearer token, exactly like its sibling
+ * "Assign to Epic" (POST /chats/ingest, also `ingestAuth`). Gating it behind
+ * `requireAdmin` (a real browser admin-session JWT) meant the desktop app's
+ * ingest token was rejected by requireAuth with `{"error":"Invalid or expired
+ * token"}` even though assign worked — the local bug this fixes. `ingestAuth`
+ * still falls through to the admin-session check, so a real admin cookie
+ * continues to work too.
  */
-router.post("/admin/build-tracker/chats/unassign-epic", requireAdmin, async (req: Request, res: Response) => {
+router.post("/admin/build-tracker/chats/unassign-epic", ingestAuth, async (req: Request, res: Response) => {
   const { conversation_id } = req.body as { conversation_id?: string };
   if (!conversation_id?.trim()) {
     res.status(400).json({ error: "conversation_id is required" });
@@ -1991,7 +2003,10 @@ router.post("/admin/build-tracker/chats/unassign-epic", requireAdmin, async (req
       .where(eq(btChatsTable.conversationId, id))
       .returning();
     if (!row) { res.status(404).json({ error: "not found" }); return; }
-    log.info({ conversationId: id }, "unassigned chat from epic");
+    log.info(
+      { conversationId: id, formerEpicId: null, localOnly: true },
+      "unassigned chat from epic (local-only DB write — no GitHub call)",
+    );
     res.json({ ...row, claudeUrl: claudeUrl(row.conversationId) });
   } catch (err) {
     log.error({ err, conversationId: id }, "POST /chats/unassign-epic failed");
