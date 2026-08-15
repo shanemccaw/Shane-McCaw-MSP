@@ -12,11 +12,19 @@ namespace BuildConsole.Services
     /// never free-form bullet lists in general (a plain "- do the thing" line is prose, not
     /// a checklist item). The markers we accept:
     ///   • Unicode ballot boxes:  ☐ (U+2610) unchecked, ☑ (U+2611) checked
-    ///   • Bare check marks:      ✓ (U+2713) / ✔ (U+2714)  → treated as "done"
-    ///   • Markdown task list:    "- [ ]" pending, "- [x]" / "- [X]" done (also "* [ ]", "1. [ ]")
+    ///   • Bare check marks:      ✓ (U+2713) / ✔ (U+2714) / ✅ (U+2705, the green-check emoji)
+    ///                            → treated as "done"
+    ///   • Markdown task list:    "- [ ]" pending, "- [x]" / "- [X]" done (also "* [ ]", "1. [ ]");
+    ///                            the box may also carry a check glyph itself: "- [✓]" / "- [✅]"
     ///
-    /// A ✓/✔ that leads a line is a "done" report; ☐ / "- [ ]" is a "pending" item. The
+    /// A ✓/✔/✅ that leads a line is a "done" report; ☐ / "- [ ]" is a "pending" item. The
     /// remaining text after the marker is the item label.
+    ///
+    /// WHY ✅ MATTERS (the "0/10 stuck pending" bug): agents very commonly print their plan once
+    /// as "- [ ]" (detected as pending here) but then RE-RENDER the completed lines with the ✅
+    /// emoji rather than a literal "[x]" — e.g. "- ✅ wire up auth" or "✅ wire up auth". ✅ is
+    /// U+2705, which is NOT ✓/✔ (U+2713/2714), so before this it fell through as Marker.None and
+    /// the item never flipped — hence a checklist that only ever grew and never ticked over.
     ///
     /// HONESTY NOTE — this is a text heuristic, not a task-identity oracle. See
     /// <see cref="Similarity"/> for exactly where the later "is this the same item, now
@@ -27,9 +35,11 @@ namespace BuildConsole.Services
         public enum Marker { None, Pending, Done }
 
         // Leading whitespace, an optional bullet/number prefix, then the marker itself.
-        // Markdown task-list form: "- [ ] text" / "* [x] text" / "1. [X] text".
+        // Markdown task-list form: "- [ ] text" / "* [x] text" / "1. [X] text". The box char
+        // may also be a check glyph the agent typed straight into the brackets: "- [✓] text",
+        // "- [✅] text" — any non-space box means "done" (see TryParse).
         private static readonly Regex MarkdownTask = new(
-            @"^\s*(?:[-*+]|\d+[.)])\s+\[(?<box>[ xX])\]\s+(?<text>\S.*)$",
+            @"^\s*(?:[-*+]|\d+[.)])\s+\[(?<box>[ xX✓✔✅])\]\s+(?<text>\S.*)$",
             RegexOptions.Compiled);
 
         // Unicode ballot boxes, optionally behind a bullet/number: "☐ text", "- ☑ text".
@@ -37,9 +47,11 @@ namespace BuildConsole.Services
             @"^\s*(?:(?:[-*+]|\d+[.)])\s+)?(?<box>[☐☑☒])\s*(?<text>\S.*)$",
             RegexOptions.Compiled);
 
-        // A leading bare check mark reporting completion: "✓ text", "✔ text", "- ✓ text".
+        // A leading bare check mark reporting completion: "✓ text", "✔ text", "✅ text",
+        // "- ✅ text". Includes ✅ (U+2705, the green-check emoji agents actually use most) and
+        // tolerates a trailing emoji variation selector (U+FE0F) after the mark.
         private static readonly Regex LeadingCheck = new(
-            @"^\s*(?:(?:[-*+]|\d+[.)])\s+)?(?<mark>[✓✔])\s*(?<text>\S.*)$",
+            @"^\s*(?:(?:[-*+]|\d+[.)])\s+)?(?<mark>[✓✔✅])\uFE0F?\s*(?<text>\S.*)$",
             RegexOptions.Compiled);
 
         /// <summary>
@@ -87,8 +99,9 @@ namespace BuildConsole.Services
         private static string CleanLabel(string raw)
         {
             var s = raw.Trim();
-            // Drop a trailing standalone check/box the agent tacks on after the text.
-            s = Regex.Replace(s, @"[\s☐☑☒✓✔\-–—:]+$", "");
+            // Drop a trailing standalone check/box the agent tacks on after the text
+            // (incl. ✅ and an emoji variation selector, e.g. "build the thing ✅").
+            s = Regex.Replace(s, @"[\s☐☑☒✓✔✅\uFE0F\-–—:]+$", "");
             // Peel matched **bold** / *italic* / `code` wrappers (leave inner text).
             s = s.Trim('*', '`', '_', ' ');
             return s.Trim();

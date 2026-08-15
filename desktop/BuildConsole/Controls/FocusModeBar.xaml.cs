@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
@@ -39,29 +38,19 @@ namespace BuildConsole.Controls
                 var svc = FocusModeService.Instance;
                 svc.StateChanged += OnStateChanged;
                 svc.DowntimeChanged += OnDowntimeChanged;
-                // The live checklist band reads #28's real shared tracker directly (no second parser)
-                // and re-renders whenever it changes (add / done-flip / remove / clear all bubble up as
-                // a PropertyChanged on the tracker's Summary/HasItems).
-                TaskChecklistViewModel.Shared.PropertyChanged += OnChecklistTrackerChanged;
                 Refresh();
                 RefreshDowntime();
-                RefreshChecklist();
             };
             Unloaded += (_, _) =>
             {
                 var svc = FocusModeService.Instance;
                 svc.StateChanged -= OnStateChanged;
                 svc.DowntimeChanged -= OnDowntimeChanged;
-                TaskChecklistViewModel.Shared.PropertyChanged -= OnChecklistTrackerChanged;
             };
         }
 
-        // Milestone activate/deactivate + board-map updates change what the band shows, so refresh it
-        // alongside the main strip.
-        private void OnStateChanged() => Dispatcher.Invoke(() => { Refresh(); RefreshChecklist(); });
+        private void OnStateChanged() => Dispatcher.Invoke(Refresh);
         private void OnDowntimeChanged() => Dispatcher.Invoke(RefreshDowntime);
-        private void OnChecklistTrackerChanged(object? sender, PropertyChangedEventArgs e)
-            => Dispatcher.Invoke(RefreshChecklist);
 
         // ----------------------------------------------------------------
         // Main strip
@@ -198,137 +187,6 @@ namespace BuildConsole.Controls
             };
             btn.Click += (_, _) => SuggestionActivated?.Invoke(s);
             return btn;
-        }
-
-        // ----------------------------------------------------------------
-        // Live task-checklist band (reuses #28's real detection/tracking)
-        // ----------------------------------------------------------------
-        private string _checklistSignature = "";
-
-        /// <summary>
-        /// Renders the SAME real checklist items #28 detects in Build Watch — read straight from the
-        /// shared <see cref="TaskChecklistViewModel"/> (no second parser) — as one compact column per
-        /// build that is genuinely tied to the active milestone. Only builds that actually reported
-        /// items appear (grouping over the tracker's rows), so an empty/placeholder column is never
-        /// shown. The whole band is hidden when focus is off or nothing on-milestone has been detected.
-        /// A signature guard skips the visual rebuild when nothing changed — the tracker fires
-        /// PropertyChanged on every ingest, most of which are dedup no-ops for what we display.
-        /// </summary>
-        private void RefreshChecklist()
-        {
-            var svc = FocusModeService.Instance;
-
-            if (!svc.IsActive)
-            {
-                ChecklistBand.Visibility = Visibility.Collapsed;
-                _checklistSignature = "";
-                return;
-            }
-
-            // Only builds genuinely tied to the active milestone (strict predicate — a local /
-            // off-milestone build's checklist stays hidden, matching Focus Mode's hard-filter spirit).
-            var groups = TaskChecklistViewModel.Shared.Items
-                .Where(it => svc.IsIssueInActiveMilestone(it.GithubNumber))
-                .GroupBy(it => it.QueueItemId)
-                .OrderBy(g => g.First().BuildLabel, StringComparer.OrdinalIgnoreCase)
-                .ToList();
-
-            if (groups.Count == 0)
-            {
-                ChecklistBand.Visibility = Visibility.Collapsed;
-                _checklistSignature = "";
-                return;
-            }
-
-            var sig = string.Join("|", groups.Select(g =>
-                g.Key + ":" + string.Join(",", g.Select(i => (i.Done ? "1" : "0") + i.Text))));
-            if (sig == _checklistSignature) { ChecklistBand.Visibility = Visibility.Visible; return; }
-            _checklistSignature = sig;
-
-            int totalDone = groups.Sum(g => g.Count(i => i.Done));
-            int total = groups.Sum(g => g.Count());
-            ChecklistSummary.Text = $"· {totalDone}/{total} step{(total == 1 ? "" : "s")} across {groups.Count} build{(groups.Count == 1 ? "" : "s")}";
-
-            ChecklistColumns.Children.Clear();
-            foreach (var g in groups)
-                ChecklistColumns.Children.Add(BuildChecklistColumn(g));
-            ChecklistBand.Visibility = Visibility.Visible;
-        }
-
-        /// <summary>One build's column — a bordered card headed by its build label + "done/total",
-        /// with its detected steps listed below (mirrors Build Watch's ☐ / green-✔ / strikethrough).</summary>
-        private UIElement BuildChecklistColumn(IGrouping<int, ChecklistItemViewModel> group)
-        {
-            var items = group.ToList();
-            int done = items.Count(i => i.Done);
-
-            var stack = new StackPanel { Width = 240 };
-
-            var header = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 3) };
-            header.Children.Add(new TextBlock
-            {
-                Text = items[0].BuildLabel,
-                FontSize = 10.5,
-                FontWeight = FontWeights.SemiBold,
-                Foreground = Res("MauveBrush"),
-                VerticalAlignment = VerticalAlignment.Center
-            });
-            header.Children.Add(new TextBlock
-            {
-                Text = $"  {done}/{items.Count}",
-                FontSize = 10,
-                Foreground = Res("Subtext0Brush"),
-                VerticalAlignment = VerticalAlignment.Center
-            });
-            stack.Children.Add(header);
-
-            foreach (var it in items)
-                stack.Children.Add(BuildChecklistRow(it));
-
-            return new Border
-            {
-                Background = Res("MantleBrush"),
-                BorderBrush = Res("Surface1Brush"),
-                BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(5),
-                Padding = new Thickness(9, 6, 9, 6),
-                Margin = new Thickness(0, 0, 8, 0),
-                VerticalAlignment = VerticalAlignment.Top,
-                Child = stack
-            };
-        }
-
-        /// <summary>One step row: hollow-box glyph while pending, a real green ✔ + strikethrough once
-        /// the agent reports it done — the exact visual language of #28's Task Checklist panel.</summary>
-        private UIElement BuildChecklistRow(ChecklistItemViewModel it)
-        {
-            var grid = new Grid { Margin = new Thickness(0, 2, 0, 0) };
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-
-            var glyph = new TextBlock
-            {
-                Text = it.Glyph,
-                FontSize = 11.5,
-                Margin = new Thickness(0, 0, 6, 0),
-                VerticalAlignment = VerticalAlignment.Top,
-                Foreground = it.Done ? Res("GreenBrush") : Res("Subtext1Brush")
-            };
-            Grid.SetColumn(glyph, 0);
-            grid.Children.Add(glyph);
-
-            var text = new TextBlock
-            {
-                Text = it.Text,
-                FontSize = 11,
-                TextWrapping = TextWrapping.Wrap,
-                Foreground = it.Done ? Res("Subtext1Brush") : Res("TextBrush"),
-                TextDecorations = it.Done ? TextDecorations.Strikethrough : null
-            };
-            Grid.SetColumn(text, 1);
-            grid.Children.Add(text);
-
-            return grid;
         }
 
         // ----------------------------------------------------------------

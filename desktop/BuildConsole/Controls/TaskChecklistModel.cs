@@ -148,9 +148,16 @@ namespace BuildConsole.Controls
         {
             if (string.IsNullOrWhiteSpace(taskId)) return false;
             var item = FindByTaskId(queueItemId, taskId);
-            if (item == null) return false;
-            if (deleted) { Items.Remove(item); Recompute(); return true; }
-            if (done && !item.Done) { item.Done = true; Recompute(); return true; }
+            if (item == null)
+            {
+                // The reliable path also logs its misses: a TaskUpdate for an id we never bound a row
+                // to (e.g. a task created before Build Watch attached) is a legitimate no-op, but if
+                // this fires while items sit stuck we want the id visible, not silent.
+                LogChecklist($"task-update MISS q{queueItemId}: taskId={taskId} done={done} deleted={deleted} — no bound row");
+                return false;
+            }
+            if (deleted) { LogChecklist($"task-update DELETE q{queueItemId}: taskId={taskId} '{Trunc(item.Text)}'"); Items.Remove(item); Recompute(); return true; }
+            if (done && !item.Done) { LogChecklist($"task-update DONE q{queueItemId}: taskId={taskId} '{Trunc(item.Text)}'"); item.Done = true; Recompute(); return true; }
             return false;
         }
 
@@ -177,23 +184,63 @@ namespace BuildConsole.Controls
 
         private bool IngestDone(int queueItemId, string buildLabel, int? githubNumber, string text)
         {
-            // Prefer flipping an existing PENDING item for this build; fall back to matching an
-            // already-done one (idempotent re-report) before creating anything new.
-            var pending = BestMatch(queueItemId, text, MatchThreshold, doneState: false);
-            if (pending != null)
+            // This is the "mark item done when the agent later reports it complete" half — the one
+            // that was silently failing (items stuck pending → the "0/10" symptom). It does a SINGLE
+            // pass over this build's items so every real comparison can be logged: what incoming
+            // "done" text was scored against which existing row, the score, and whether it cleared
+            // the bar — so a future detection miss is diagnosable straight from the log rather than
+            // guessed at. Decision semantics are unchanged from the old two-BestMatch form: prefer
+            // flipping the best PENDING match at/above MatchThreshold; else treat it as an idempotent
+            // re-report of an already-done row at/above DedupeThreshold; else record a fresh done row.
+            ChecklistItemViewModel? bestPending = null; double bestPendingScore = MatchThreshold;
+            ChecklistItemViewModel? bestDone = null; double bestDoneScore = DedupeThreshold;
+            int candidates = 0;
+
+            foreach (var item in Items)
             {
-                if (pending.Done) return false;
-                pending.Done = true;
+                if (item.QueueItemId != queueItemId) continue;
+                candidates++;
+                double score = ChecklistExtractor.Similarity(item.Text, text);
+                LogChecklist(
+                    $"done-match cmp {buildLabel} q{queueItemId}: incoming='{Trunc(text)}' " +
+                    $"vs {(item.Done ? "DONE   " : "pending")} '{Trunc(item.Text)}' " +
+                    $"score={score:0.00} (flip>={MatchThreshold:0.00}, dedupe>={DedupeThreshold:0.00}) " +
+                    $"=> {(!item.Done && score >= MatchThreshold ? "FLIP-CANDIDATE" : item.Done && score >= DedupeThreshold ? "already-done" : "no")}");
+                if (!item.Done && score >= bestPendingScore) { bestPendingScore = score; bestPending = item; }
+                if (item.Done && score >= bestDoneScore) { bestDoneScore = score; bestDone = item; }
+            }
+
+            if (bestPending != null)
+            {
+                if (bestPending.Done) return false;
+                bestPending.Done = true;
+                LogChecklist($"done-match FLIP {buildLabel} q{queueItemId}: '{Trunc(text)}' -> matched pending '{Trunc(bestPending.Text)}' score={bestPendingScore:0.00}");
                 return true;
             }
 
-            var already = BestMatch(queueItemId, text, DedupeThreshold, doneState: true);
-            if (already != null) return false; // same completed item reported again
+            if (bestDone != null)
+            {
+                LogChecklist($"done-match NOOP {buildLabel} q{queueItemId}: '{Trunc(text)}' already-done as '{Trunc(bestDone.Text)}' score={bestDoneScore:0.00}");
+                return false; // same completed item reported again
+            }
 
             // Reported complete with no pending counterpart we can confidently tie it to —
             // record it as an already-done row rather than dropping the signal.
+            LogChecklist($"done-match NEW {buildLabel} q{queueItemId}: '{Trunc(text)}' — no pending match among {candidates} item(s), adding as already-done row");
             Items.Add(new ChecklistItemViewModel(queueItemId, buildLabel, githubNumber, text, done: true));
             return true;
+        }
+
+        /// <summary>Diagnostic log for the mark-done path (Git #28 checklist detection), on the
+        /// <c>build-watch.checklist</c> channel so a "why did an item never tick over?" investigation
+        /// can read exactly what was compared against what, and why it did or didn't match.</summary>
+        private static void LogChecklist(string message) => Services.ActivityLog.Log("build-watch.checklist", message);
+
+        /// <summary>Trims a label to a short single-line form for the log (keeps comparisons readable).</summary>
+        private static string Trunc(string? s)
+        {
+            s = (s ?? "").Replace('\n', ' ').Replace('\r', ' ').Trim();
+            return s.Length <= 60 ? s : s.Substring(0, 57) + "...";
         }
 
         /// <summary>Highest-similarity item for the same build at/above <paramref name="minScore"/>, optionally restricted to a given done-state. Null if none clears the bar.</summary>
