@@ -20,14 +20,15 @@ namespace BuildConsole.Services
         public int MaxConcurrent { get; set; } = 8;
 
         /// <summary>
-        /// Optional direct Postgres connection string for the shaneapp://executeSql LOCAL
-        /// SQL path (<see cref="LocalSqlExecutor"/>) — a `postgres://…` URI or Npgsql
-        /// key/value form, the same connection string the api-server itself uses. Lets an
-        /// on-machine agent run SQL through BuildConsole's OWN local DB connection with zero
-        /// round-trip to the deployed dev api-server. When blank, the DATABASE_URL
-        /// environment variable is used instead; when neither is set, executeSql returns a
-        /// clear "not configured" result rather than running. NOT required for anything
-        /// else — the HTTP path (queue/board/manual SQL Runner) ignores it entirely.
+        /// DEPRECATED / no longer used. This once held a direct Postgres connection string
+        /// for an earlier <c>shaneapp://executeSql</c> design that opened its own local
+        /// Npgsql connection — a design that always failed "no local Postgres connection
+        /// string configured" because it was never set. <c>executeSql</c> now routes SQL
+        /// through the SAME pipe the manual SQL Runner uses
+        /// (<see cref="BuildTrackerApiClient.ExecuteSqlAsync"/> →
+        /// <c>POST /api/simulator/sql/execute</c>), so no separate connection string is
+        /// required. Kept only so an old config file carrying this key still deserializes
+        /// cleanly; nothing reads it anymore.
         /// </summary>
         public string DatabaseUrl { get; set; } = "";
 

@@ -7,7 +7,7 @@ genuinely remote/CI caller uses plain HTTP.**
 
 | Need | Surface | Why this one |
 |------|---------|--------------|
-| **Run SQL** | `shaneapp://executeSql` local protocol | SQL runs on BuildConsole's **own direct local Postgres connection** (zero round‑trip to the deployed app); a caller that isn't on this machine can't reach it. |
+| **Run SQL** | `shaneapp://executeSql` local protocol | SQL runs through the **same pipe the manual SQL Runner uses** (`POST /api/simulator/sql/execute` against the configured dev api‑server) — a local‑machine trigger, but the SQL itself goes over that already‑working HTTP path; a caller that isn't on this machine can't reach the trigger. **No local Postgres connection / connection string needed.** |
 | **Run a test manifest — local agent** | `shaneapp://runTest` local protocol | Runs the manifest **in‑process** through the same `RunManifestAsync` pipeline Play Test uses (ALL step types, not just uiSteps) — no HTTP hop, since the agent and BuildConsole are the same machine. |
 | **Run a test manifest — remote/CI caller** | Git #898 HTTP (`/api/admin/deploy/test-run`) | For a caller **not** on this machine. Any HTTP‑capable agent calls it directly. Unchanged by `runTest`. |
 | **Run a tenant scan + get per‑finding results back** | `shaneapp://runScan` local protocol *(landing under local #59)* | Triggers a real diagnostics run, **settles it to completion**, and hands back the full **per‑finding** envelope — so the agent can diff each engine observation against an independent PowerShell ground‑truth read of the same tenant fact, not merely confirm "the scan ran". The whole point is the **comparison** (see **§5** below). |
@@ -17,34 +17,36 @@ genuinely remote/CI caller uses plain HTTP.**
 
 ## 1. `shaneapp://executeSql` — local SQL trigger
 
-### Why a protocol and not HTTP
+### Why a protocol and not HTTP (for the trigger)
 UI test runs (#898) are exposed over HTTP because anything HTTP‑reachable can ask
-for one. SQL execution is kept **off** HTTP on purpose. Every agent that runs SQL
-(queue‑managed or Send‑to‑Builder) is **already on this machine**, so the SQL runs
-through BuildConsole's **own direct local Postgres connection**
-(`Services/LocalSqlExecutor`, Npgsql) — **zero round‑trip to the deployed dev
-api‑server** (which naps every ~15 min, #931). The connection string comes from
-BuildConsole's own local config (see **Connection string** below), so a caller
-that isn't on this machine — and doesn't have that config — can't reach it. That's
-the local‑context guarantee Shane wants for SQL. So the trigger is a
-**local‑machine handoff**, not a network endpoint.
+for one. The `executeSql` **trigger** is kept **off** HTTP on purpose: every agent
+that runs SQL (queue‑managed or Send‑to‑Builder) is **already on this machine**, so
+handing it the SQL is a **local‑machine handoff** (a named pipe), not a network
+endpoint — a caller that isn't on this machine, and doesn't have BuildConsole's
+config, can't reach it. That's the local‑context guarantee Shane wants for SQL.
 
-> The manual SQL Runner UI (`SqlRunnerView`, #896/#939) still uses the HTTP
-> `POST /api/simulator/sql/execute` path against the configured `apiBaseUrl` — it
-> has never held a local DB connection. This protocol is the first thing in
-> BuildConsole to talk to Postgres directly.
+The SQL **itself** then runs through the **exact same pipe the manual SQL Runner
+uses**: `LocalSqlExecutor` → `BuildTrackerApiClient.ExecuteSqlAsync` →
+`POST /api/simulator/sql/execute` against the configured `apiBaseUrl` dev
+api‑server. Shane's design intent, in his own words: *"you send the SQL through the
+pipe like the SQL Runner, no postgres needed."*
 
-### Connection string
-`LocalSqlExecutor` reads the Postgres connection string from, in order:
-1. a **`databaseUrl`** field in `scripts/build-queue-watcher.config.json` (next to
-   `apiBaseUrl` / `ingestToken`), or
-2. the **`DATABASE_URL`** environment variable.
+> **History / correction.** An earlier version of `LocalSqlExecutor` opened its
+> **own** direct Npgsql connection and required a `databaseUrl`/`DATABASE_URL` that
+> was never configured — so every `executeSql` call failed with *"no local Postgres
+> connection string configured."* That deviated from the design. `executeSql` now
+> reuses the SQL Runner's one already‑working HTTP path, so it succeeds the moment
+> the app is configured with `apiBaseUrl` + `ingestToken` — the same config the
+> queue/board/manual SQL Runner already need. Nothing new to set up.
 
-Use the same connection string the dev api‑server itself uses. A `postgres://` /
-`postgresql://` URI (Neon/Replit/Supabase style, with `?sslmode=require`) is
-accepted and converted to Npgsql form; an Npgsql key/value string is used as‑is.
-When **neither** is set, `executeSql` writes an `ok:false` result whose `error`
-says exactly that — it never silently no‑ops.
+### Configuration
+No separate SQL connection string is needed. `executeSql` works whenever the app is
+configured with **`apiBaseUrl`** + **`ingestToken`** in
+`scripts/build-queue-watcher.config.json` — the same config the manual SQL Runner,
+Build Queue, and Git Board already rely on. If the app isn't configured,
+`executeSql` writes an `ok:false` result whose `error` says exactly that — it never
+silently no‑ops. (A legacy `databaseUrl` key may still exist in the config; it is
+**no longer read** by anything.)
 
 ### The invocation contract
 
@@ -102,18 +104,20 @@ BuildConsole writes JSON to `resultRef` (or `<ref>.result.json`):
   per‑user named pipe (`Services/ShaneAppProtocol.cs`) and exits **without ever
   drawing a window** (WPF app → no console flash either).
 - The running instance handles it on the UI thread: read the temp file → run the
-  SQL through its own **direct local Postgres connection** (`LocalSqlExecutor`,
-  per‑statement, continue‑on‑error) → write the result envelope.
+  SQL through the **same SQL Runner pipe** (`LocalSqlExecutor` →
+  `BuildTrackerApiClient.ExecuteSqlAsync` → `POST /api/simulator/sql/execute`;
+  the server splits the script and returns one result per statement,
+  continue‑on‑error) → write the result envelope.
 - If **no** instance is running, the launch becomes a real cold start that handles
   the URI itself once it's up.
 
 ### Logging
 Every invocation lands on the **`sql-runner.protocol`** ActivityLog channel
 (watch it live in BuildConsole's Activity log) — the parse, the source/action/ref,
-the run (including the log‑safe local‑DB target — host/port/db/user, never the
-password), and the real outcome (statements ok/failed, elapsed ms, result path), or
-the exact reason it couldn't run (malformed URI, missing/empty/oversized payload,
-no `databaseUrl`/`DATABASE_URL` configured, or a connection failure).
+the run (including the configured `apiBaseUrl` the SQL Runner pipe targets), and the
+real outcome (statements ok/failed, elapsed ms, result path), or the exact reason it
+couldn't run (malformed URI, missing/empty/oversized payload, api‑server not
+configured, or an HTTP request failure).
 
 ### Design notes
 
@@ -568,9 +572,11 @@ motivation: *"if the agent could execute a scan on their own outside the UI path
 they could help debug and make my scanning engine better."*
 
 ### Why HTTP (unlike executeSql/runTest)
-`executeSql` runs on BuildConsole's own local Postgres; `runTest` runs a manifest
-in-process. Neither applies here: the scan engine (`runDiagnostics`) is Node/TS in
-the deployed api-server and can't run in-process. The ONLY way to run the REAL
+`executeSql` runs SQL through the SQL Runner's `POST /api/simulator/sql/execute`
+pipe; `runTest` runs a manifest in-process. Neither shape applies here: the scan
+engine (`runDiagnostics`) is Node/TS in the deployed api-server and can't run
+in-process, and there is no ingest-token SQL/manifest surface for a chosen-tenant
+scan. The ONLY way to run the REAL
 engine is the same authenticated api-server route the product uses — so runScan is a
 deliberate HTTP client (`Services/ScanRunnerClient.cs`) reusing the exact trigger,
 never a second scan implementation.

@@ -132,9 +132,10 @@ namespace BuildConsole
 
         // ── shaneapp://executeSql local protocol listener (SQL trigger) ──────────
         // The counterpart to #898's HTTP test-trigger, but a LOCAL-machine handoff
-        // (named pipe) rather than HTTP — SQL runs through this app's OWN direct local
-        // Postgres connection (LocalSqlExecutor), with zero round-trip to the deployed
-        // dev api-server; a caller lacking BuildConsole's local config can't reach it.
+        // (named pipe) rather than HTTP for the TRIGGER — the SQL itself then runs
+        // through the SAME pipe the manual SQL Runner uses (LocalSqlExecutor →
+        // BuildTrackerApiClient.ExecuteSqlAsync → POST /api/simulator/sql/execute), not a
+        // direct local Postgres connection; a caller lacking BuildConsole's config can't reach it.
         private BuildConsole.Services.ShaneAppProtocol? _shaneAppListener;
         /// <summary>Refuse pathologically large payload files (SQL scripts are tiny — this is a sanity ceiling, not a real limit).</summary>
         private const long ShaneAppMaxPayloadBytes = 2L * 1024 * 1024;
@@ -4532,10 +4533,10 @@ namespace BuildConsole
         /// <summary>
         /// Handles one shaneapp:// invocation on the UI thread: logs it (source,
         /// action, real outcome), reads the payload from the temp file the URI
-        /// pointed at (never inline in the URL), runs the SQL through THIS app's own
-        /// direct local Postgres connection (<see cref="BuildConsole.Services.LocalSqlExecutor"/>,
-        /// zero round-trip to the deployed api-server), and writes a JSON result
-        /// envelope back for the caller. Wrapped end-to-end so nothing escapes to crash
+        /// pointed at (never inline in the URL), runs the SQL through the SAME pipe the
+        /// manual SQL Runner uses (<see cref="BuildConsole.Services.LocalSqlExecutor"/> →
+        /// <c>BuildTrackerApiClient.ExecuteSqlAsync</c> → <c>POST /api/simulator/sql/execute</c>),
+        /// and writes a JSON result envelope back for the caller. Wrapped end-to-end so nothing escapes to crash
         /// the app; every branch logs on <see cref="BuildConsole.Services.ShaneAppProtocol.LogChannel"/>.
         /// </summary>
         private async System.Threading.Tasks.Task HandleShaneAppUriAsync(string uri)
@@ -4653,26 +4654,29 @@ namespace BuildConsole
                     return;
                 }
 
-                // Resolve BuildConsole's OWN direct local Postgres connection. shaneapp://
-                // executeSql runs SQL on this machine's DB connection (LocalSqlExecutor) with
-                // ZERO round-trip to the deployed dev api-server — the connection string comes
-                // from the `databaseUrl` config field or the DATABASE_URL env var. Unset ⇒ a
-                // clear "not configured" result, never a silent no-op.
-                var cfg = BuildConsole.Services.BuildTrackerConfig.Load();
-                if (!BuildConsole.Services.LocalSqlExecutor.TryResolveConnectionString(
-                        cfg.DatabaseUrl, out var connString, out var connSource, out var connError))
+                // shaneapp://executeSql routes SQL through the SAME pipe the manual SQL Runner
+                // uses: BuildTrackerApiClient.ExecuteSqlAsync → POST /api/simulator/sql/execute
+                // against the configured dev api-server (apiBaseUrl). There is NO separate local
+                // Postgres connection / connection string — that earlier design always failed
+                // "no local Postgres connection string configured". _buildTrackerApi is the exact
+                // same client the SQL Runner view is initialized with. Unconfigured ⇒ a clear
+                // "not configured" result, never a silent no-op.
+                if (_buildTrackerApi == null || !_buildTrackerApi.IsConfigured)
                 {
-                    BuildConsole.Services.ActivityLog.Log(ch, $"executeSql can't run — {connError}");
-                    WriteShaneAppResult(req, ok: false, error: connError, statements: null);
+                    const string notConfigured =
+                        "api-server not configured — set apiBaseUrl + ingestToken in scripts/build-queue-watcher.config.json " +
+                        "(executeSql uses the same POST /api/simulator/sql/execute path as the SQL Runner).";
+                    BuildConsole.Services.ActivityLog.Log(ch, $"executeSql can't run — {notConfigured}");
+                    WriteShaneAppResult(req, ok: false, error: notConfigured, statements: null);
                     return;
                 }
 
                 BuildConsole.Services.ActivityLog.Log(ch,
-                    $"executeSql running {sql.Length} char(s) of SQL from {req.Ref} (src='{src}') against local DB [{connSource}]…");
+                    $"executeSql running {sql.Length} char(s) of SQL from {req.Ref} (src='{src}') via SQL Runner pipe [{_buildTrackerApi.ConfiguredApiBaseUrl}]…");
                 var sw = System.Diagnostics.Stopwatch.StartNew();
                 try
                 {
-                    var statements = await BuildConsole.Services.LocalSqlExecutor.ExecuteAsync(connString, sql);
+                    var statements = await BuildConsole.Services.LocalSqlExecutor.ExecuteAsync(_buildTrackerApi, sql);
                     int failed = statements.Count(s => !s.Success);
                     int ok = statements.Count - failed;
                     string? firstError = failed > 0 ? statements.First(s => !s.Success).Error : null;
