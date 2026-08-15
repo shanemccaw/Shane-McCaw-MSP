@@ -3,23 +3,30 @@
  * own destination, not a pane inside the document reader.
  *
  * The tracker was designed in `Design/Remediation Tracker.dc.html` as a full
- * standalone page, but the only build that ever landed put it behind
- * `/copilot-readiness/documents/:docId` — one entry in an eight-report
- * switcher (see `copilot-readiness-documents.tsx`, which mounts
- * `LiveRemediationGuideBody` for `doc.title === JOURNEY_REMEDIATION_DOCUMENT`).
- * That is still a fully real, working way to open it, so it stays. This route
- * is a second, lighter entry point for the tracker specifically: no document
- * switcher, no PDF/export menu, no pillar strip — just the tracker itself
- * with enough chrome to say whose gate this is and to get back out.
+ * post-purchase project dashboard. The first build to land this route reused
+ * `LiveRemediationGuideBody` — document 8 of 9, the flat "Full Remediation
+ * Guide" runbook — which is a real, correct, separately-designed document
+ * that stays exactly as it is (see `copilot-readiness-documents.tsx`, which
+ * still mounts it for `doc.title === JOURNEY_REMEDIATION_DOCUMENT`), but was
+ * never the design this route was meant to render. This route now mounts
+ * `LiveRemediationTrackerBody` (`RemediationTrackerBody.tsx`) instead — the
+ * actual dashboard: digest, phase progress, the live Copilot Gate score, a
+ * 6-pillar strip, the same real steps grouped into 3 priced phases, an
+ * evidence pack, and a sticky "hire Shane for what's left" footer. See that
+ * file's own header for exactly what is reused unchanged (the step catalogue,
+ * script substitution, and the Guide's own `Step` row) versus deliberately
+ * left out (ShaneBot, a fake per-phase rescan button, an invented schedule).
+ *
+ * This page still owns only the outer chrome (back button, gate chip,
+ * tenant-name lookup, "All reports", sign out) and the two live fetches the
+ * body needs (`view`, and — inside `LiveRemediationTrackerBody` — the tracker
+ * state and the five fillable scripts' live parameters). Nothing here
+ * duplicates any of that.
  *
  * Renders outside AppShell, full-bleed, the same as the documents reader —
  * the shell would be covered either way. Dark theme, fixed regardless of the
  * portal's own light/dark toggle, for the same reason `journeyTokens.ts`
  * gives for the other three journey screens.
- *
- * DATA: `useCopilotJourney()` → `view`. `LiveRemediationGuideBody` does its
- * own fetch for the customer's tick state (#730) and the five fillable
- * scripts' live parameters (#782) — nothing here duplicates that.
  */
 
 import { useEffect, useState } from "react";
@@ -28,7 +35,7 @@ import { ArrowLeft } from "lucide-react";
 
 import { useAuth } from "@/lib/auth-context";
 
-import { LiveRemediationGuideBody } from "@/components/copilot-journey/RemediationGuideBody";
+import { LiveRemediationTrackerBody } from "@/components/copilot-journey/RemediationTrackerBody";
 import { useCopilotJourney } from "@/components/copilot-journey/useCopilotJourney.ts";
 import {
   BRAND,
@@ -269,23 +276,15 @@ export default function CopilotReadinessRemediationTrackerPage() {
           position: "relative",
           flex: "1 1 auto",
           overflowY: "auto",
-          padding: "34px 26px 90px",
+          padding: "24px 24px 34px",
         }}
       >
-        <div
-          style={{
-            maxWidth: 748,
-            margin: "0 auto",
-            background: "rgba(11,18,32,.94)",
-            border: "1px solid rgba(30,41,59,.95)",
-            borderRadius: RADIUS.card,
-            overflow: "hidden",
-            boxShadow: "0 20px 60px rgba(2,6,23,.55)",
-          }}
-        >
-          <div style={{ padding: "clamp(18px,4vw,58px)" }}>
-            <LiveRemediationGuideBody view={view} onOpenSow={handleOpenSow} />
-          </div>
+        <div style={{ maxWidth: 1080, margin: "0 auto" }}>
+          <LiveRemediationTrackerBody
+            view={view}
+            onOpenSow={handleOpenSow}
+            onOpenDocuments={() => navigate(DOCUMENTS_PATH)}
+          />
         </div>
       </div>
     </div>

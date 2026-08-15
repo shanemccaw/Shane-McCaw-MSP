@@ -623,7 +623,14 @@ function ActionPicker({
  * One step
  * ------------------------------------------------------------------ */
 
-function Step({
+/**
+ * Exported so `RemediationTrackerBody.tsx` (the dashboard-layout screen from
+ * `Design/Remediation Tracker.dc.html`) can render the exact same step row —
+ * checkbox, blast radius, code block, evidence, action picker — grouped by
+ * phase instead of by single pillar, without duplicating any of this file's
+ * per-step rendering or state logic.
+ */
+export function Step({
   step,
   status,
   verification,

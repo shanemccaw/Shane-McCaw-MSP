@@ -46,6 +46,15 @@
  * PREVIEW IS UNTOUCHED. `?preview=design` renders the design's Halden Materials
  * fixture against a tenant that does not exist; it keeps its own session-only
  * state and never calls this hook.
+ *
+ * PRICING RIDES THE SAME RESPONSE (#734). `GET /portal/remediation-tracker`
+ * also returns `pricing` — the live, phase-gated "hire Shane for what's left"
+ * figure, computed server-side by `computeRemediationTrackerPricing()` off the
+ * very same rows this hook turns into `statuses`/`verification`. It is
+ * exposed here as `pricing` rather than recomputed client-side so there is
+ * exactly one place that formula lives; a successful write re-pulls this GET
+ * (see `load`) because a single-step PUT response has no room to carry a
+ * figure that depends on every step's state, not just the one that changed.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -104,8 +113,41 @@ interface WireTrackerStep {
   readonly verifiedAt: string | null;
 }
 
+/**
+ * The live, phase-gated "hire Shane for what's left" pricing (#734), computed
+ * server-side by `computeRemediationTrackerPricing()` from the same rows the
+ * GET response already carries — see that function's own header for the
+ * formula (it is `Design/Remediation Tracker.dc.html`'s own `PILLAR_FEE`/
+ * `phaseFee`/`hire` logic, ported onto the real tracker columns). Mirrored
+ * here rather than imported for the same cross-app reason every other type on
+ * this hook is duplicated: msp-portal carries no dependency on api-server.
+ */
+export interface RemediationTrackerPhasePricing {
+  readonly phase: 1 | 2 | 3;
+  readonly pillars: readonly string[];
+  readonly ready: boolean;
+  readonly fee: number;
+  readonly feeDisplay: string;
+}
+
+export interface RemediationTrackerHirePricing {
+  readonly price: string;
+  readonly was: string;
+  readonly wasShow: boolean;
+  readonly saved: string;
+  readonly savedShow: boolean;
+  readonly cta: string;
+  readonly note: string;
+}
+
+export interface RemediationTrackerPricing {
+  readonly phases: readonly RemediationTrackerPhasePricing[];
+  readonly hire: RemediationTrackerHirePricing;
+}
+
 interface WireTrackerPayload {
   readonly steps?: readonly WireTrackerStep[];
+  readonly pricing?: RemediationTrackerPricing;
 }
 
 const STATUS_SET: ReadonlySet<string> = new Set(REMEDIATION_TRACKER_STEP_STATUS);
@@ -137,6 +179,13 @@ export interface RemediationTrackerState {
    * progress is not being saved rather than imply it is.
    */
   readonly error: string | null;
+  /**
+   * The live, phase-gated price for what's left (#734) — computed server-side
+   * from the same rows `statuses`/`verification` are built from. `null` until
+   * the first GET lands (or the caller has `enabled: false`), same convention
+   * `loaded` already uses for the rest of this hook.
+   */
+  readonly pricing: RemediationTrackerPricing | null;
   /** The checkbox: toggles between `completed` and `not_started`. */
   readonly toggleComplete: (stepId: string) => void;
   /** The action picker and its Undo: sets any status directly, including back to `not_started`. */
@@ -154,6 +203,7 @@ export function useRemediationTracker(options?: { readonly enabled?: boolean }):
   const [loaded, setLoaded] = useState(false);
   const [inFlight, setInFlight] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [pricing, setPricing] = useState<RemediationTrackerPricing | null>(null);
 
   // A passive mirror of `statuses`, kept current on every render. `toggleComplete`
   // reads it rather than nesting a second `setStatuses` call inside `write`'s own
@@ -177,43 +227,51 @@ export function useRemediationTracker(options?: { readonly enabled?: boolean }):
     tokenRef.current = accessToken;
   }, [accessToken]);
 
+  /**
+   * Shared by the mount load and the post-write refresh below: one GET
+   * populates `statuses`/`verification`/`pricing` together, since all three
+   * come off the same server-computed response and must never show a status
+   * from one snapshot beside a price from another.
+   */
+  const load = useCallback(async (): Promise<void> => {
+    try {
+      // `silent` for the same reason the journey's own fetches are: this
+      // surface renders its own "not being saved" line, and a global toast on
+      // top of it would double-report the same failure.
+      const res = await fetchRef.current(TRACKER_URL, undefined, { silent: true });
+      if (!res.ok) throw new Error(`remediation tracker ${res.status}`);
+      const body = (await res.json()) as WireTrackerPayload;
+      const nextStatuses = new Map<string, RemediationTrackerStepStatus>();
+      const nextVerification = new Map<string, RemediationTrackerVerification>();
+      for (const step of body?.steps ?? []) {
+        if (step.status !== "not_started" && isKnownStatus(step.status)) nextStatuses.set(step.stepId, step.status);
+        if (step.verificationState !== "unverified" && isKnownVerificationState(step.verificationState)) {
+          nextVerification.set(step.stepId, { state: step.verificationState, verifiedAt: step.verifiedAt });
+        }
+      }
+      setStatuses(nextStatuses);
+      setVerification(nextVerification);
+      setPricing(body?.pricing ?? null);
+      setError(null);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      setError(message);
+      reportClientEvent(tokenRef.current, "RemediationTrackerLoadFailed", message, JOURNEY_CHANNEL);
+    }
+  }, []);
+  const loadRef = useRef(load);
+  loadRef.current = load;
+
   useEffect(() => {
     if (!enabled) {
       setLoaded(true);
       return;
     }
     let cancelled = false;
-
     void (async () => {
-      try {
-        // `silent` for the same reason the journey's own fetches are: this
-        // surface renders its own "not being saved" line, and a global toast on
-        // top of it would double-report the same failure.
-        const res = await fetchRef.current(TRACKER_URL, undefined, { silent: true });
-        if (!res.ok) throw new Error(`remediation tracker ${res.status}`);
-        const body = (await res.json()) as WireTrackerPayload;
-        if (cancelled) return;
-        const nextStatuses = new Map<string, RemediationTrackerStepStatus>();
-        const nextVerification = new Map<string, RemediationTrackerVerification>();
-        for (const step of body?.steps ?? []) {
-          if (step.status !== "not_started" && isKnownStatus(step.status)) nextStatuses.set(step.stepId, step.status);
-          if (step.verificationState !== "unverified" && isKnownVerificationState(step.verificationState)) {
-            nextVerification.set(step.stepId, { state: step.verificationState, verifiedAt: step.verifiedAt });
-          }
-        }
-        setStatuses(nextStatuses);
-        setVerification(nextVerification);
-        setError(null);
-      } catch (e) {
-        if (cancelled) return;
-        const message = e instanceof Error ? e.message : String(e);
-        setError(message);
-        reportClientEvent(tokenRef.current, "RemediationTrackerLoadFailed", message, JOURNEY_CHANNEL);
-      } finally {
-        if (!cancelled) setLoaded(true);
-      }
+      await loadRef.current();
+      if (!cancelled) setLoaded(true);
     })();
-
     return () => {
       cancelled = true;
     };
@@ -262,6 +320,11 @@ export function useRemediationTracker(options?: { readonly enabled?: boolean }):
           );
           if (!res.ok) throw new Error(`remediation tracker save ${res.status}`);
           setError(null);
+          // Pricing is phase-gated and server-computed off every step's status,
+          // not just this one — a single PUT response has no room for it, so a
+          // successful write re-pulls the same GET the mount effect already
+          // uses rather than reimplementing the pricing formula client-side.
+          void loadRef.current();
         } catch (e) {
           const message = e instanceof Error ? e.message : String(e);
           // Roll back to what the server still holds. A status left standing
@@ -311,5 +374,5 @@ export function useRemediationTracker(options?: { readonly enabled?: boolean }):
     [write],
   );
 
-  return { statuses, verification, loaded, saving: inFlight > 0, error, toggleComplete, setAction };
+  return { statuses, verification, loaded, saving: inFlight > 0, error, pricing, toggleComplete, setAction };
 }
