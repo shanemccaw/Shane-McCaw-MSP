@@ -54,11 +54,15 @@
  * is scoped to exactly that purpose.
  *
  * ── What this deliberately does NOT do ────────────────────────────────────────
- *  - It does not log the buyer in. The flow runs on the marketing site; the
- *    portal is a different app with its own cookie scope, and inventing a
- *    cross-app token handoff is neither required by #438 nor safe to improvise.
- *    Setting the password completes the account; the buyer then signs in
- *    normally, and the done step says exactly that.
+ *  - Git #636: it now DOES auto-login the buyer. The flow runs on the
+ *    marketing site; the portal is a different app with its own cookie scope,
+ *    so this cannot just set a portal session cookie here — it mints a
+ *    single-use signupExchangeTokensTable token and appends it to the
+ *    returned portalUrl as ?signupToken=..., which the portal's own boot
+ *    effect (auth-context.tsx) exchanges (POST /auth/signup-exchange) for a
+ *    real session the moment that tab loads. Same cross-app handoff shape as
+ *    the existing impersonation_token/printToken/docPrintToken tokens, not an
+ *    improvised new mechanism.
  *  - It does not promote the Prospect's role or run paid provisioning. Those
  *    remain the known gap already documented in public-assessment-payment.ts.
  *  - It does not enrol MFA. #439 is deliberately a separate, final
@@ -69,7 +73,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import rateLimit from "express-rate-limit";
 import bcrypt from "bcryptjs";
-import { randomInt } from "crypto";
+import { randomBytes, randomInt } from "crypto";
 import {
   db,
   checkoutSessionsTable,
@@ -78,6 +82,7 @@ import {
   usersTable,
   mspDiagnosticRunsTable,
   mspDiagnosticFindingsTable,
+  signupExchangeTokensTable,
 } from "@workspace/db";
 import { and, desc, eq, gte, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -595,8 +600,26 @@ router.post("/public/flow/set-password", setPasswordLimiter, async (req: Request
     metadata: { checkoutSessionId: session.id },
   });
 
+  // Git #636 — mint a single-use, short-lived token (same 2-minute TTL as
+  // the print/document-print exchange tokens: comfortably longer than the
+  // redirect from this response to the portal tab loading, far shorter than
+  // any real session) so the portal's own boot effect can trade it for a
+  // real session the instant that tab lands — no separate manual login step
+  // right after the buyer has just proven their identity by setting a real
+  // password.
+  const signupToken = randomBytes(32).toString("hex");
+  await db.insert(signupExchangeTokensTable).values({
+    token: signupToken,
+    userId: user.id,
+    expiresAt: new Date(Date.now() + 2 * 60 * 1000),
+  });
+
   log.info({ sessionId: session.id, userId: user.id }, "flow set-password: account completed inline");
-  res.json({ ok: true, email, portalUrl: getMspPortalLandingUrl() });
+  res.json({
+    ok: true,
+    email,
+    portalUrl: `${getMspPortalLandingUrl()}?signupToken=${encodeURIComponent(signupToken)}`,
+  });
 });
 
 export default router;

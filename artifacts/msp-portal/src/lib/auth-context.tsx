@@ -204,6 +204,37 @@ async function exchangeDocumentPrintToken(
   }
 }
 
+/**
+ * Git #636 (Epic: A. Core Assessment Product) — auto-login after the
+ * marketing site's assessment flow sets the buyer's real password
+ * (POST /public/flow/set-password). Unlike the print-exchange siblings above,
+ * this trades for a REAL, ordinary session — /auth/signup-exchange responds
+ * with the same shape /auth/login itself does (accessToken/refreshToken/
+ * refreshExpiresAt/user), not the leaner accessToken-only shape print-exchange
+ * returns, since the boot effect applies it via applyTokens() rather than a
+ * raw setState.
+ */
+async function exchangeSignupToken(
+  token: string,
+): Promise<{ accessToken: string; refreshToken?: string; refreshExpiresAt?: string; user: AuthUser } | null> {
+  try {
+    const res = await fetch("/api/auth/signup-exchange", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token }),
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as {
+      accessToken: string;
+      refreshToken?: string;
+      refreshExpiresAt?: string;
+      user: AuthUser;
+    };
+  } catch {
+    return null;
+  }
+}
+
 // ── Context ───────────────────────────────────────────────────────────────────
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -482,6 +513,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           // visible/bookmarkable/retried.
           const url = new URL(window.location.href);
           url.searchParams.delete("docPrintToken");
+          window.history.replaceState({}, "", url.toString());
+        } else {
+          setState((s) => ({ ...s, isLoading: false }));
+        }
+      });
+      return;
+    }
+
+    // Auto-login entry point (Git #636): the marketing site's assessment
+    // flow lands the buyer's own new tab here with ?signupToken=... right
+    // after they set their real password. Unlike the print-token branches
+    // above, this is the buyer's real, ongoing session — applyTokens() (not
+    // a raw setState) so the refresh timer / "are you still there?" warning
+    // are set up exactly as they would be for a normal password login.
+    const signupToken = params.get("signupToken");
+    if (signupToken) {
+      sessionStorage.removeItem(REFRESH_TOKEN_KEY);
+      sessionStorage.removeItem(REFRESH_EXPIRES_AT_KEY);
+
+      exchangeSignupToken(signupToken).then((data) => {
+        if (data) {
+          applyTokens(data.accessToken, data.refreshToken, data.refreshExpiresAt);
+          // Single-use and already consumed — strip it so it is never
+          // visible/bookmarkable/retried.
+          const url = new URL(window.location.href);
+          url.searchParams.delete("signupToken");
           window.history.replaceState({}, "", url.toString());
         } else {
           setState((s) => ({ ...s, isLoading: false }));

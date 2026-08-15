@@ -3,7 +3,7 @@ import rateLimit from "express-rate-limit";
 import bcrypt from "bcryptjs";
 import crypto, { randomUUID } from "crypto";
 import jwt from "jsonwebtoken";
-import { db, usersTable, mspsTable, mspRefreshTokensTable, passwordResetTokensTable, impersonationTokensTable, accountSetupTokensTable, printTokensTable, documentPrintTokensTable, mspAuditLogsTable, mspServiceAccountsTable, clientServicesTable, servicesTable, type MspRole } from "@workspace/db";
+import { db, usersTable, mspsTable, mspRefreshTokensTable, passwordResetTokensTable, impersonationTokensTable, accountSetupTokensTable, printTokensTable, documentPrintTokensTable, signupExchangeTokensTable, mspAuditLogsTable, mspServiceAccountsTable, clientServicesTable, servicesTable, type MspRole } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
 import type { CookieOptions } from "express";
 import { sendEmailFromTemplate, passwordResetEmail } from "../lib/mailer.ts";
@@ -273,6 +273,51 @@ async function issueRefreshToken(
   return { rawToken, expiresAt };
 }
 
+/**
+ * Git #636 — the session-issuing block every real-login-equivalent endpoint
+ * needs, extracted out of /auth/login rather than duplicated a second time:
+ * getMspClaims -> buildUserPayload -> jwt.sign -> issueRefreshToken -> the
+ * AUTH_LOGIN event dispatch + audit log -> the refresh cookie + JSON
+ * response. /auth/login calls this with source left at its default so its
+ * own behavior/response shape is unchanged; /auth/signup-exchange passes its
+ * own source label so the audit trail still shows which door issued the
+ * session, while dispatching the same AUTH_LOGIN event type — this really is
+ * an ordinary login-equivalent session, not an impersonation-shaped grant.
+ */
+async function issueSessionForUser(
+  user: typeof usersTable.$inferSelect,
+  mfaSetupPending: boolean,
+  req: Request,
+  res: Response,
+  secret: string,
+  source = "auth.login",
+): Promise<void> {
+  const mspClaims = await getMspClaims(user.id);
+  const payload = buildUserPayload(user, mspClaims, mfaSetupPending);
+  const accessToken = jwt.sign(payload, secret, { expiresIn: ACCESS_TOKEN_TTL });
+  const { rawToken: refreshToken, expiresAt: refreshExpiresAt } = await issueRefreshToken(user.id, req);
+
+  void dispatchEvent({
+    eventType: EVENT_TYPES.AUTH_LOGIN,
+    actor: userActor(user.id, mspClaims.mspRole ?? "Free"),
+    source,
+    mspId: mspClaims.mspId,
+    customerId: mspClaims.customerId,
+    payload: { email: user.email, role: user.role },
+  });
+
+  void writeAuthAuditLog("AUTH_LOGIN", req, {
+    userId: user.id,
+    mspId: mspClaims.mspId,
+    customerId: mspClaims.customerId,
+    mspRole: mspClaims.mspRole,
+    metadata: { email: user.email },
+  });
+
+  res.cookie("refreshToken", refreshToken, cookieOpts());
+  res.json({ accessToken, refreshToken, refreshExpiresAt: refreshExpiresAt.toISOString(), user: payload });
+}
+
 router.post("/auth/login", loginLimiter, async (req: Request, res: Response) => {
   const { email, password } = req.body as { email?: string; password?: string };
 
@@ -369,30 +414,7 @@ router.post("/auth/login", loginLimiter, async (req: Request, res: Response) => 
   // administrator") response, which had no self-service way back in.
   const mfaSetupPending = mfaEnforcementActive(user.mfaEnforced);
 
-  const mspClaims = await getMspClaims(user.id);
-  const payload = buildUserPayload(user, mspClaims, mfaSetupPending);
-  const accessToken = jwt.sign(payload, secret, { expiresIn: ACCESS_TOKEN_TTL });
-  const { rawToken: refreshToken, expiresAt: refreshExpiresAt } = await issueRefreshToken(user.id, req);
-
-  void dispatchEvent({
-    eventType: EVENT_TYPES.AUTH_LOGIN,
-    actor: userActor(user.id, mspClaims.mspRole ?? "Free"),
-    source: "auth.login",
-    mspId: mspClaims.mspId,
-    customerId: mspClaims.customerId,
-    payload: { email: user.email, role: user.role },
-  });
-
-  void writeAuthAuditLog("AUTH_LOGIN", req, {
-    userId: user.id,
-    mspId: mspClaims.mspId,
-    customerId: mspClaims.customerId,
-    mspRole: mspClaims.mspRole,
-    metadata: { email: user.email },
-  });
-
-  res.cookie("refreshToken", refreshToken, cookieOpts());
-  res.json({ accessToken, refreshToken, refreshExpiresAt: refreshExpiresAt.toISOString(), user: payload });
+  await issueSessionForUser(user, mfaSetupPending, req, res, secret);
 });
 
 router.post("/auth/refresh", async (req: Request, res: Response) => {
@@ -1185,6 +1207,68 @@ router.post("/auth/document-print-exchange", async (req: Request, res: Response)
       ...(mspClaims.customerId !== null ? { customerId: mspClaims.customerId } : {}),
     },
   });
+});
+
+// Git #636 (Epic: A. Core Assessment Product). Auto-login a buyer straight
+// into the portal right after they set their real password
+// (POST /public/flow/set-password) — no separate manual login step
+// immediately after they've just proven their identity by setting a
+// password. Same select -> validate -> consume shape as print-exchange /
+// document-print-exchange, against signupExchangeTokensTable — but unlike
+// those two (which trade for a scoped, 5-minute print JWT), this trades for
+// a REAL, ordinary session via issueSessionForUser — the same session
+// /auth/login itself would issue, response shape included
+// (accessToken/refreshToken/refreshExpiresAt/user), not the leaner
+// accessToken-only shape print-exchange returns. mfaSetupPending is
+// recomputed the same way /auth/setup-password does for this exact
+// login-equivalent moment (Git #439) — a freshly-password-set account has no
+// enrollment yet.
+router.post("/auth/signup-exchange", async (req: Request, res: Response) => {
+  const { token } = req.body as { token?: string };
+  if (!token) {
+    res.status(400).json({ error: "token is required" });
+    return;
+  }
+
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    res.status(500).json({ error: "Server misconfiguration" });
+    return;
+  }
+
+  const [record] = await db.select().from(signupExchangeTokensTable)
+    .where(eq(signupExchangeTokensTable.token, token))
+    .limit(1);
+
+  const signupNow = new Date();
+
+  if (!record || record.usedAt || record.expiresAt < signupNow) {
+    res.status(401).json({ error: "Invalid, expired, or already-used signup token" });
+    return;
+  }
+
+  // Consume the token atomically — marks it as used so it cannot be replayed
+  await db.update(signupExchangeTokensTable)
+    .set({ usedAt: signupNow })
+    .where(eq(signupExchangeTokensTable.id, record.id));
+
+  const [targetUser] = await db.select().from(usersTable)
+    .where(eq(usersTable.id, record.userId))
+    .limit(1);
+  if (!targetUser) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+
+  const methods = await getActiveMfaMethods(targetUser.id);
+  const mfaSetupPending = methods.length === 0 && mfaEnforcementActive(targetUser.mfaEnforced);
+
+  log.info(
+    { userId: targetUser.id },
+    "signup-exchange: token consumed, real session issued",
+  );
+
+  await issueSessionForUser(targetUser, mfaSetupPending, req, res, secret, "auth.signup-exchange");
 });
 
 export async function seedAdminUser(): Promise<void> {

@@ -1,0 +1,32 @@
+{
+  "issue": 636,
+  "feature": "Auto-login after set-password via signup-exchange token (Git #636, Epic: A. Core Assessment Product)",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "PENDING — see PLATFORM_BUILD.md Git #636 row for the real commit; not yet deployed at write time",
+
+  "notes": [
+    "HONESTY CAVEAT — same architectural wall as #987's money-path-e2e.json: a signupExchangeTokensTable token is minted ONLY inside POST /public/flow/set-password, which itself requires a real Stripe-paid checkout session (and, for a first-time buyer, the earlier Microsoft admin-consent OAuth callback that provisions the users row). Neither is drivable by BuildConsole's WebView2 + HTTP harness, so a genuine mint -> exchange -> real-session round trip cannot be fabricated here. What this manifest DOES cover honestly: /auth/signup-exchange's real guard behavior for a missing/invalid/expired/already-used token — the same negative-path shape print-exchange/document-print-exchange/impersonate-exchange all share, and the only part of this endpoint reachable without the payment+consent wall.",
+    "shaneapp://runTest couriers to the DEPLOYED BuildConsole/api-server instance, not this session's uncommitted worktree code — see the buildconsole-runtest memory. At the time this manifest was written, /auth/signup-exchange, the set-password token-mint, and the new signup_exchange_tokens table did not exist yet in the deployed build/DB (the manual migration is a Shane To-Do). The apiTests below are expected to fail against the currently-deployed build for that reason, not because the guard logic is wrong; re-run after Shane deploys and runs the migration to get a real green."
+  ],
+
+  "apiTests": [
+    {
+      "name": "POST /auth/signup-exchange with no token body — 400, same shape as print-exchange's own guard",
+      "method": "POST",
+      "path": "/api/auth/signup-exchange",
+      "headers": { "Content-Type": "application/json" },
+      "body": {},
+      "expect": { "status": 400, "jsonPath": "$.error", "value": "token is required" }
+    },
+    {
+      "name": "POST /auth/signup-exchange with a bogus/never-issued token — 401, never a session",
+      "method": "POST",
+      "path": "/api/auth/signup-exchange",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "token": "0000000000000000000000000000000000000000000000000000000000000000" },
+      "expect": { "status": 401, "jsonPath": "$.error", "value": "Invalid, expired, or already-used signup token" }
+    }
+  ],
+
+  "uiSteps": []
+}

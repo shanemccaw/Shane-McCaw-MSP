@@ -937,6 +937,29 @@ export const documentPrintTokensTable = pgTable("document_print_tokens", {
 export type InsertDocumentPrintToken = typeof documentPrintTokensTable.$inferInsert;
 export type DocumentPrintToken = typeof documentPrintTokensTable.$inferSelect;
 
+// Git #636 — printTokensTable/documentPrintTokensTable's sibling for the
+// public assessment-flow "auto-login after set-password" exchange: mints a
+// single-use, short-lived token the moment a buyer sets their real password
+// (POST /public/flow/set-password), appended to the returned portalUrl as
+// ?signupToken=..., which the msp-portal boot effect then exchanges (POST
+// /auth/signup-exchange) for a REAL ordinary session via issueSessionForUser
+// — not a scoped/short-lived JWT the way print-exchange issues. Same
+// consumable-secret shape (expiresAt/usedAt) and same 2-minute TTL as
+// print_tokens/document_print_tokens (comfortably longer than the redirect
+// from set-password to the portal landing tab, far shorter than any real
+// session).
+export const signupExchangeTokensTable = pgTable("signup_exchange_tokens", {
+  id: serial("id").primaryKey(),
+  token: text("token").notNull().unique(),
+  userId: integer("user_id").notNull().references(() => usersTable.id),
+  expiresAt: timestamp("expires_at").notNull(),
+  usedAt: timestamp("used_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type InsertSignupExchangeToken = typeof signupExchangeTokensTable.$inferInsert;
+export type SignupExchangeToken = typeof signupExchangeTokensTable.$inferSelect;
+
 // Git #1044 (Epic #660, Phase 2). A "share a link" token for the same
 // live-rendered document set documentPrintTokensTable prints — but shaped
 // for the opposite use case: not a single-use, minutes-lived secret that
