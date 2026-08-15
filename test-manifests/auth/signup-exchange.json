@@ -2,11 +2,11 @@
   "issue": 636,
   "feature": "Auto-login after set-password via signup-exchange token (Git #636, Epic: A. Core Assessment Product)",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "2d53fbb2",
+  "lastVerifiedAgainstCommit": "a1463693",
 
   "notes": [
     "Git #1052 — the MINT step (POST /public/flow/set-password) remains unreachable by the harness: it requires a real Stripe-paid checkout session (and, for a first-time buyer, the earlier Microsoft admin-consent OAuth callback that provisions the users row) — the same architectural wall #987's money-path-e2e.json carves out. But that wall belongs to set-password, not to /auth/signup-exchange itself, which has zero dependency on Stripe or OAuth. The EXCHANGE endpoint's real happy path is therefore genuinely covered below via a dev-only testbed seed (POST /admin/testbed/seed-signup-token, Git #1052, same requireDevOrigin + requireAdminOrIngestToken pattern as #986's admin-testbed.ts routes) rather than fabricated — a real signupExchangeTokensTable row is inserted for the designated testbed Assessment account, then genuinely exchanged for a real session, and a second exchange with the same token is asserted to hit the real single-use guard. The two original guard-path tests below (missing/bogus token) are unchanged and still cover the endpoint's negative-path shape.",
-    "shaneapp://runTest couriers to the DEPLOYED BuildConsole/api-server instance, not this session's uncommitted worktree code — see the buildconsole-runtest memory."
+    "shaneapp://runTest couriers to the DEPLOYED BuildConsole/api-server instance, not this session's uncommitted worktree code — see the buildconsole-runtest memory. RAN at commit a1463693: 3/6 passed. The two original guard-path tests and the SETUP login step passed for real. The three new SEED/EXCHANGE/REPLAY steps failed with 404 Cannot POST /api/admin/testbed/seed-signup-token — the new route does not exist yet in the deployed build (this is undeployed worktree code, same expected honest result as #636's original row at 2d53fbb2). Shane To-Do: redeploy api-server, then re-run to get a real green on the happy-path sequence."
   ],
 
   "apiTests": [
