@@ -5,8 +5,8 @@
   "lastVerifiedAgainstCommit": "2d53fbb2",
 
   "notes": [
-    "HONESTY CAVEAT — same architectural wall as #987's money-path-e2e.json: a signupExchangeTokensTable token is minted ONLY inside POST /public/flow/set-password, which itself requires a real Stripe-paid checkout session (and, for a first-time buyer, the earlier Microsoft admin-consent OAuth callback that provisions the users row). Neither is drivable by BuildConsole's WebView2 + HTTP harness, so a genuine mint -> exchange -> real-session round trip cannot be fabricated here. What this manifest DOES cover honestly: /auth/signup-exchange's real guard behavior for a missing/invalid/expired/already-used token — the same negative-path shape print-exchange/document-print-exchange/impersonate-exchange all share, and the only part of this endpoint reachable without the payment+consent wall.",
-    "shaneapp://runTest couriers to the DEPLOYED BuildConsole/api-server instance, not this session's uncommitted worktree code — see the buildconsole-runtest memory. RAN at commit 2d53fbb2: 0/2 passed, both 404 Cannot POST /api/auth/signup-exchange — the route, the set-password token-mint, and the new signup_exchange_tokens table did not exist yet in the deployed build/DB at that time (the manual migration is a Shane To-Do). This is the expected, honest result for undeployed code, not a guard-logic defect; re-run after Shane deploys and runs the migration to get a real green."
+    "Git #1052 — the MINT step (POST /public/flow/set-password) remains unreachable by the harness: it requires a real Stripe-paid checkout session (and, for a first-time buyer, the earlier Microsoft admin-consent OAuth callback that provisions the users row) — the same architectural wall #987's money-path-e2e.json carves out. But that wall belongs to set-password, not to /auth/signup-exchange itself, which has zero dependency on Stripe or OAuth. The EXCHANGE endpoint's real happy path is therefore genuinely covered below via a dev-only testbed seed (POST /admin/testbed/seed-signup-token, Git #1052, same requireDevOrigin + requireAdminOrIngestToken pattern as #986's admin-testbed.ts routes) rather than fabricated — a real signupExchangeTokensTable row is inserted for the designated testbed Assessment account, then genuinely exchanged for a real session, and a second exchange with the same token is asserted to hit the real single-use guard. The two original guard-path tests below (missing/bogus token) are unchanged and still cover the endpoint's negative-path shape.",
+    "shaneapp://runTest couriers to the DEPLOYED BuildConsole/api-server instance, not this session's uncommitted worktree code — see the buildconsole-runtest memory."
   ],
 
   "apiTests": [
@@ -24,6 +24,40 @@
       "path": "/api/auth/signup-exchange",
       "headers": { "Content-Type": "application/json" },
       "body": { "token": "0000000000000000000000000000000000000000000000000000000000000000" },
+      "expect": { "status": 401, "jsonPath": "$.error", "value": "Invalid, expired, or already-used signup token" }
+    },
+    {
+      "name": "HAPPY-PATH SETUP — log in as the designated testbed Assessment account to resolve its real users.id",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.user.id", "exists": true },
+      "extract": { "as": "signupTestbedUserId", "jsonPath": "$.user.id" }
+    },
+    {
+      "name": "HAPPY-PATH SEED — Git #1052 dev-only testbed route mints a real, single-use signupExchangeTokensTable row for that user",
+      "method": "POST",
+      "path": "/api/admin/testbed/seed-signup-token",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}", "Content-Type": "application/json" },
+      "body": { "userId": "{{signupTestbedUserId}}" },
+      "expect": { "status": 200, "jsonPath": "$.token", "exists": true },
+      "extract": { "as": "signupHappyPathToken", "jsonPath": "$.token" }
+    },
+    {
+      "name": "HAPPY-PATH EXCHANGE — POST /auth/signup-exchange with the seeded token — 200, real session-issuing contract (accessToken/refreshToken/refreshExpiresAt/user)",
+      "method": "POST",
+      "path": "/api/auth/signup-exchange",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "token": "{{signupHappyPathToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true }
+    },
+    {
+      "name": "HAPPY-PATH SINGLE-USE — replaying the SAME seeded token — 401, proving the token was actually consumed, not just returned",
+      "method": "POST",
+      "path": "/api/auth/signup-exchange",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "token": "{{signupHappyPathToken}}" },
       "expect": { "status": 401, "jsonPath": "$.error", "value": "Invalid, expired, or already-used signup token" }
     }
   ],

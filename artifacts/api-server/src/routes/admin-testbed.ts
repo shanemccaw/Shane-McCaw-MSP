@@ -28,6 +28,14 @@
  *                                                    Launch Control's own
  *                                                    rollbackExecution() (NOT a
  *                                                    second undo mechanism)
+ *   POST /api/admin/testbed/seed-signup-token       — mint a real, single-use
+ *                                                    signupExchangeTokensTable
+ *                                                    row for an explicit userId
+ *                                                    (Git #1052), so the harness
+ *                                                    can drive /auth/signup-
+ *                                                    exchange's real happy path
+ *                                                    without the Stripe+OAuth
+ *                                                    mint wall
  *
  * Everything is logged loudly on the admin.testbed channel — what was reset /
  * torn down, from where, and an explicit record that the environment gate was
@@ -51,8 +59,11 @@ import {
   mspSubscriptionsTable,
   mspEventStoreTable,
   servicesTable,
+  usersTable,
+  signupExchangeTokensTable,
 } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
+import { randomBytes } from "crypto";
 import { requireAdminOrIngestToken } from "../middlewares/requireAuth";
 import { isReplitDevEnvironment, getStripeKey } from "../lib/stripe";
 import { dispatchMspStripeEvent } from "./msp-billing-webhook";
@@ -215,6 +226,82 @@ router.post(
       log.error({ err, customerId }, "admin-testbed: reset failed");
       res.status(500).json({
         error: err instanceof Error ? err.message : "Failed to reset testbed state",
+      });
+    }
+  },
+);
+
+// ── POST /admin/testbed/seed-signup-token ─────────────────────────────────────
+//
+// Git #1052 — mint a real, single-use signupExchangeTokensTable row for an
+// explicit userId, so /auth/signup-exchange's genuine happy path (token ->
+// real session via issueSessionForUser) can be driven end-to-end by the
+// headless harness. The MINT path #636 built for production
+// (POST /public/flow/set-password) requires a real Stripe-paid checkout
+// session — unreachable here, same wall as #987's money-path-e2e.json — but
+// that wall belongs to set-password, not to signup-exchange itself, which has
+// no Stripe/OAuth dependency of its own. This route is a dev-only alternate
+// mint path for testing that endpoint in isolation; set-password's own mint
+// logic (public-assessment-account.ts) is untouched.
+//
+// Same discipline as /admin/testbed/reset: an explicit userId (never a blind/
+// implicit target), same token-generation call site as every other
+// exchange-token mint (randomBytes(32).toString("hex")), same 2-minute TTL as
+// the print/document-print/signup exchange tokens.
+
+router.post(
+  "/admin/testbed/seed-signup-token",
+  requireDevOrigin,
+  requireAdminOrIngestToken(),
+  async (req: Request, res: Response): Promise<void> => {
+    const body = req.body as { userId?: number };
+    const userId =
+      typeof body?.userId === "number" && Number.isInteger(body.userId)
+        ? body.userId
+        : NaN;
+    if (!Number.isInteger(userId) || userId <= 0) {
+      res.status(400).json({
+        error:
+          "userId (a positive integer users.id) is required — seed-signup-token is scoped to one explicit user, never a blind/implicit target",
+      });
+      return;
+    }
+
+    try {
+      const [user] = await db
+        .select({ id: usersTable.id, email: usersTable.email })
+        .from(usersTable)
+        .where(eq(usersTable.id, userId))
+        .limit(1);
+      if (!user) {
+        res.status(404).json({ error: `No user found with id ${userId}` });
+        return;
+      }
+
+      const token = randomBytes(32).toString("hex");
+      await db.insert(signupExchangeTokensTable).values({
+        token,
+        userId: user.id,
+        expiresAt: new Date(Date.now() + 2 * 60 * 1000),
+      });
+
+      log.info(
+        {
+          action: "seed-signup-token",
+          gate: "dev-origin",
+          gatePassed: true,
+          userId: user.id,
+          userEmail: user.email,
+          ...describeOrigin(req),
+        },
+        `admin-testbed: SEEDED a signup-exchange token for user ${user.id} (${user.email})`,
+      );
+
+      res.json({ token });
+    } catch (err) {
+      log.error({ err, userId }, "admin-testbed: seed-signup-token failed");
+      res.status(500).json({
+        error: err instanceof Error ? err.message : "Failed to seed signup-exchange token",
       });
     }
   },
