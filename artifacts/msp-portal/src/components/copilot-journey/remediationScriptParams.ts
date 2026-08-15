@@ -374,3 +374,26 @@ export function applyLiveScriptParams(
       return null;
   }
 }
+
+/**
+ * Git #1042 — fills the `<your-tenant>` SharePoint-subdomain placeholder
+ * wherever it appears in a script, given the tenant's real SharePoint admin
+ * prefix (`GET /api/portal/tenant-check-items`'s `sharePointTenantPrefix`,
+ * resolved server-side the same way `resolveSharePointTenantRef` in
+ * monitor-executor.ts resolves it for the live SharePoint-admin check path).
+ *
+ * Deliberately separate from `applyLiveScriptParams` above: that function's
+ * per-step resolvers each read a specific CHECK's item data (s1's own site
+ * URLs already carry a real `<your-tenant>` value once any of those resolve),
+ * but the tenant's SharePoint prefix is a single tenant-wide fact, not tied to
+ * any one check's collection succeeding — s1's `<your-tenant>` fragments still
+ * need filling when `sharePointwide-links` never collected any usable items,
+ * and `LIVE_PRELUDE`'s connect block (rendered outside `LIVE_STEP_SCRIPTS`
+ * entirely — see `RemediationGuideBody.tsx`) needs the same fill with no step
+ * or check involved at all. Same discipline as everything else in this file:
+ * substitutes only when the prefix is really there, never fabricates one.
+ */
+export function applyLiveTenantDomain(script: string, sharePointTenantPrefix: string | null): string {
+  if (!sharePointTenantPrefix || !script.includes("<your-tenant>")) return script;
+  return script.split("<your-tenant>").join(sharePointTenantPrefix);
+}

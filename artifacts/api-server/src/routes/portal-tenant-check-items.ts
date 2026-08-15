@@ -39,6 +39,8 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 
 import { requireRole } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
+import { sharePointPrefixFromDomain } from "../lib/monitor-executor";
+import { getInitialDomainForTenant } from "../lib/graph";
 
 const log = logger.child({ channel: "engine.remediation-tracker" });
 
@@ -55,6 +57,28 @@ interface WireCheckItemDetail {
   readonly itemsOmitted: boolean;
   readonly itemsOmittedReason: string | null;
   readonly collectedAt: string;
+}
+
+/**
+ * The tenant's SharePoint admin prefix (the `contoso` in `contoso.sharepoint.com`
+ * / `contoso-admin.sharepoint.com`) — Git #1042. Reuses `sharePointPrefixFromDomain`
+ * (the same pure derivation `resolveSharePointTenantRef` in monitor-executor.ts
+ * applies for the live SharePoint-admin check path), fed by the same
+ * `tenants.domain` primary + Graph `/organization` fallback that path uses.
+ * Returns `null` — never a guess — when neither source yields a real initial
+ * domain, matching #782's own "only substitute a value that is really there"
+ * discipline.
+ */
+async function resolveSharePointTenantPrefix(tenantId: string, storedDomain: string | null): Promise<string | null> {
+  let prefix = sharePointPrefixFromDomain(storedDomain);
+  if (!prefix) {
+    const initialDomain = await getInitialDomainForTenant(tenantId);
+    prefix = sharePointPrefixFromDomain(initialDomain);
+  }
+  if (!prefix) {
+    log.debug({ tenantId }, "resolveSharePointTenantPrefix: no resolvable SharePoint prefix, leaving <your-tenant> placeholder");
+  }
+  return prefix;
 }
 
 /** tenants.id, off the JWT's `customerId` claim — same resolution every other route on this journey uses. */
@@ -127,15 +151,17 @@ router.get(
       // caller's own customerId, so a resolved tenantId can never belong to
       // another tenant.
       const [tenantRow] = await db
-        .select({ tenantId: tenantsTable.tenantId })
+        .select({ tenantId: tenantsTable.tenantId, domain: tenantsTable.domain })
         .from(tenantsTable)
         .where(eq(tenantsTable.id, customerId))
         .limit(1);
 
       if (!tenantRow) {
-        res.json({ items: {} });
+        res.json({ items: {}, sharePointTenantPrefix: null });
         return;
       }
+
+      const sharePointTenantPrefix = await resolveSharePointTenantPrefix(tenantRow.tenantId, tenantRow.domain);
 
       const rows = await db
         .selectDistinctOn(
@@ -162,7 +188,7 @@ router.get(
       const items: Record<string, WireCheckItemDetail> = {};
       for (const row of rows) items[row.checkKey] = toWire(row);
 
-      res.json({ items });
+      res.json({ items, sharePointTenantPrefix });
     } catch (err) {
       log.error({ err, customerId, checkKeys }, "GET /portal/tenant-check-items failed");
       res.status(500).json({ error: "Failed to load tenant check item details" });

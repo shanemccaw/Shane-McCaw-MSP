@@ -28,11 +28,20 @@ const FILLABLE_CHECK_KEYS: readonly string[] = Array.from(new Set(Object.values(
 
 interface WireTenantCheckItemsPayload {
   readonly items?: Readonly<Record<string, CheckItemDetail>>;
+  /** Git #1042 — the tenant's real SharePoint admin prefix, or `null` when unresolvable. */
+  readonly sharePointTenantPrefix?: string | null;
 }
 
 export interface TenantCheckItemsState {
   /** Keyed by check key. Empty until the first response lands. */
   readonly items: CheckItemsByKey;
+  /**
+   * The `contoso` in `contoso.sharepoint.com` / `contoso-admin.sharepoint.com`
+   * (Git #1042), for filling the `<your-tenant>` placeholder independent of
+   * any single check's item data. `null` until loaded, or when the tenant's
+   * domain can't be resolved — never a guess.
+   */
+  readonly sharePointTenantPrefix: string | null;
   /** True once a first payload has arrived — success or failure. */
   readonly loaded: boolean;
   /** Set when the fetch failed outright; `items` stays whatever it last held (empty on a first-load failure). */
@@ -46,6 +55,7 @@ export function useTenantCheckItems(options?: { readonly enabled?: boolean }): T
   const { fetchWithAuth, accessToken } = useAuth();
 
   const [items, setItems] = useState<CheckItemsByKey>(EMPTY_ITEMS);
+  const [sharePointTenantPrefix, setSharePointTenantPrefix] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -80,6 +90,7 @@ export function useTenantCheckItems(options?: { readonly enabled?: boolean }): T
         const body = (await res.json()) as WireTenantCheckItemsPayload;
         if (cancelled) return;
         setItems(body?.items ?? EMPTY_ITEMS);
+        setSharePointTenantPrefix(body?.sharePointTenantPrefix ?? null);
         setError(null);
       } catch (e) {
         if (cancelled) return;
@@ -96,5 +107,5 @@ export function useTenantCheckItems(options?: { readonly enabled?: boolean }): T
     };
   }, [enabled]);
 
-  return { items, loaded, error };
+  return { items, sharePointTenantPrefix, loaded, error };
 }

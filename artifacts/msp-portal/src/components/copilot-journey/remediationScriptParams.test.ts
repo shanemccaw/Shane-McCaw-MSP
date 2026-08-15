@@ -17,8 +17,14 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { FILLABLE_STEP_CHECK_KEYS, applyLiveScriptParams, type CheckItemDetail, type CheckItemsByKey } from "./remediationScriptParams.ts";
-import { LIVE_STEP_SCRIPTS } from "./remediationLiveGuide.ts";
+import {
+  FILLABLE_STEP_CHECK_KEYS,
+  applyLiveScriptParams,
+  applyLiveTenantDomain,
+  type CheckItemDetail,
+  type CheckItemsByKey,
+} from "./remediationScriptParams.ts";
+import { LIVE_STEP_SCRIPTS, LIVE_PRELUDE } from "./remediationLiveGuide.ts";
 import { REMEDIATION_STEPS, type RemediationCode } from "./previewRemediationGuide.ts";
 
 function ok(checkKey: string, items: readonly unknown[]): CheckItemDetail {
@@ -245,5 +251,29 @@ describe("applyLiveScriptParams — s22 cost:group-based-licensing-adoption", ()
       ]),
     };
     assert.equal(applyLiveScriptParams("s22", base, items), null);
+  });
+});
+
+describe("applyLiveTenantDomain - Git #1042", () => {
+  it("fills every <your-tenant> occurrence in s1's script when a prefix is known", () => {
+    const base = LIVE_STEP_SCRIPTS["s1"] as RemediationCode;
+    const script = applyLiveTenantDomain(base.script, "contoso");
+    assert.doesNotMatch(script, /<your-tenant>/);
+    assert.match(script, /https:\/\/contoso\.sharepoint\.com\/sites\/<site-1>/);
+  });
+
+  it("fills LIVE_PRELUDE's connect block", () => {
+    const script = applyLiveTenantDomain(LIVE_PRELUDE.code.script, "contoso");
+    assert.match(script, /Connect-SPOService -Url https:\/\/contoso-admin\.sharepoint\.com/);
+  });
+
+  it("leaves the script byte-unchanged when no prefix is known", () => {
+    const base = LIVE_STEP_SCRIPTS["s1"] as RemediationCode;
+    assert.equal(applyLiveTenantDomain(base.script, null), base.script);
+  });
+
+  it("leaves a script with no <your-tenant> placeholder byte-unchanged", () => {
+    const base = LIVE_STEP_SCRIPTS["s12"] as RemediationCode;
+    assert.equal(applyLiveTenantDomain(base.script, "contoso"), base.script);
   });
 });

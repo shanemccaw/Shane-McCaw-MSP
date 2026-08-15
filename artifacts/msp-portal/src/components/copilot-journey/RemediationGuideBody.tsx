@@ -57,7 +57,8 @@
  */
 
 import { useCallback, useMemo, useState } from "react";
-import { Check, Copy, Info, TriangleAlert } from "lucide-react";
+import { Link } from "wouter";
+import { Check, Copy, Info, Mail, TriangleAlert } from "lucide-react";
 
 import {
   BRAND,
@@ -103,7 +104,7 @@ import {
   type RemediationTrackerVerificationState,
 } from "./useRemediationTracker.ts";
 import { useTenantCheckItems, type TenantCheckItemsState } from "./useTenantCheckItems.ts";
-import { applyLiveScriptParams } from "./remediationScriptParams.ts";
+import { applyLiveScriptParams, applyLiveTenantDomain } from "./remediationScriptParams.ts";
 import type { JourneyView } from "./journeyModel.ts";
 import { PREVIEW_SIGNAL_COUNT, PREVIEW_TENANT } from "./journeyPreviewFixture.ts";
 
@@ -889,7 +890,14 @@ export function RemediationGuideBody({
     return liveSteps.map((step) => {
       if (!step.code) return step;
       const parametrized = applyLiveScriptParams(step.id, step.code, checkItems.items);
-      return parametrized ? { ...step, code: parametrized } : step;
+      const code = parametrized ?? step.code;
+      // Git #1042: `<your-tenant>` still needs filling even when
+      // `applyLiveScriptParams` found nothing usable to substitute (s1's
+      // sharepoint:orgwide-links collection can be empty while the tenant's
+      // SharePoint prefix is still known) — a second, independent pass.
+      const script = applyLiveTenantDomain(code.script, checkItems.sharePointTenantPrefix);
+      if (parametrized === null && script === code.script) return step;
+      return { ...step, code: { ...code, script } };
     });
   }, [liveSteps, checkItems, view]);
 
@@ -921,7 +929,17 @@ export function RemediationGuideBody({
   );
   const accent = reportAccent(null);
   const scannedOn = tenant.scannedOn ?? "";
-  const prelude = view ? LIVE_PRELUDE : REMEDIATION_PRELUDE;
+  // Git #1042: `LIVE_PRELUDE`'s connect block is rendered here directly, never
+  // through `applyLiveScriptParams`/`liveSteps` above — it isn't one of
+  // `LIVE_STEP_SCRIPTS`' five fillable steps, it's a standalone block this
+  // component reads straight off remediationLiveGuide.ts. Its own
+  // `<your-tenant>` fill needs the same independent `applyLiveTenantDomain`
+  // pass, not a ride on the step-substitution path.
+  const prelude = useMemo(() => {
+    if (!view) return REMEDIATION_PRELUDE;
+    const script = applyLiveTenantDomain(LIVE_PRELUDE.code.script, checkItems?.sharePointTenantPrefix ?? null);
+    return script === LIVE_PRELUDE.code.script ? LIVE_PRELUDE : { ...LIVE_PRELUDE, code: { ...LIVE_PRELUDE.code, script } };
+  }, [view, checkItems]);
 
   const byPillar = useMemo(() => {
     const map = new Map<PillarKey, (RemediationStep | LiveRemediationStep)[]>();
@@ -940,6 +958,20 @@ export function RemediationGuideBody({
   const closing = useMemo(
     () => resolveClosing(view === null, total, scripted),
     [view, total, scripted],
+  );
+  // Git #1041: the Email Authentication Setup page is a standalone page
+  // linked in from here, not a numbered remediation step (#658's
+  // STEP_CHECK_KEYS has no exchange:dkim-spf-dmarc-status entry, and the
+  // issue's own resolution is explicit that a standalone linked page is the
+  // intended shape). Shown only when this tenant's own findings actually
+  // carry the check's gap — never on the design preview, which has no real
+  // finding to be true or false about.
+  const hasEmailAuthGap = useMemo(
+    () =>
+      view
+        ? view.pillars.some((p) => p.findings.some((f) => f.checkKey === "exchange:dkim-spf-dmarc-status"))
+        : false,
+    [view],
   );
   const provenance = view
     ? buildProvenance(tenant.scannedOn, 0)
@@ -1248,6 +1280,43 @@ export function RemediationGuideBody({
           </p>
         ))}
       </div>
+
+      {/* Email Authentication Setup — Git #1041, standalone page, not a
+          numbered step (see hasEmailAuthGap above). */}
+      {hasEmailAuthGap ? (
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 11,
+            padding: "20px 22px",
+            border: `1px solid ${hexAlpha(BRAND.blue, 0.28)}`,
+            borderRadius: 12,
+            background: hexAlpha(BRAND.blue, 0.06),
+          }}
+        >
+          <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 15, fontWeight: 700, color: INK.headingDark }}>
+            <Mail size={16} strokeWidth={2.2} />
+            Email Authentication (SPF/DKIM/DMARC)
+          </span>
+          <p style={{ ...BODY, fontSize: 14, lineHeight: 1.6 }}>
+            Your scan found a gap in SPF, DKIM, or DMARC — the checks mailbox providers use to verify email sent from
+            your domain is genuinely from you. Step-by-step fix instructions, with your real domain filled in, are on
+            a dedicated page.
+          </p>
+          <Link
+            href="/email-auth-setup"
+            style={{
+              alignSelf: "flex-start",
+              fontSize: 12.5,
+              fontWeight: 600,
+              color: BRAND.blue,
+            }}
+          >
+            Fix email authentication →
+          </Link>
+        </div>
+      ) : null}
 
       {/* Handoff to the SOW */}
       <div

@@ -82,6 +82,13 @@ vi.mock("../lib/logger", () => {
   return { logger: { child, info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } };
 });
 
+// Never let a missing/unresolvable `tenants.domain` fall through to a real
+// Graph call in these unit tests — mocked per-test via `mockGetInitialDomain`.
+const mockGetInitialDomain = vi.fn(async (_tenantId: string) => null as string | null);
+vi.mock("../lib/graph", () => ({
+  getInitialDomainForTenant: (tenantId: string) => mockGetInitialDomain(tenantId),
+}));
+
 import router from "./portal-tenant-check-items";
 
 function makeApp(user: Record<string, unknown> | null) {
@@ -102,6 +109,8 @@ beforeEach(() => {
   mockDistinctOnResultsQueue = [];
   lastDistinctOnArgs = [];
   lastWhereArgs = [];
+  mockGetInitialDomain.mockReset();
+  mockGetInitialDomain.mockResolvedValue(null);
 });
 
 describe("GET /api/portal/tenant-check-items", () => {
@@ -122,11 +131,11 @@ describe("GET /api/portal/tenant-check-items", () => {
     const app = makeApp(CUSTOMER);
     const res = await request(app).get("/api/portal/tenant-check-items?checkKeys=identity:ca-policy-count");
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ items: {} });
+    expect(res.body).toEqual({ items: {}, sharePointTenantPrefix: null });
   });
 
   it("returns the most recent row per requested check key, keyed by checkKey, absent when never collected", async () => {
-    mockSelectResultsQueue.push([{ tenantId: "m365-tenant-guid" }]); // tenants lookup
+    mockSelectResultsQueue.push([{ tenantId: "m365-tenant-guid", domain: "contoso.onmicrosoft.com" }]); // tenants lookup
     const collectedAt = new Date("2026-08-10T12:00:00Z");
     mockDistinctOnResultsQueue.push([
       {
@@ -157,6 +166,8 @@ describe("GET /api/portal/tenant-check-items", () => {
     });
     // identity:global-admin-count was requested but never collected — absent, not null/error.
     expect(res.body.items["identity:global-admin-count"]).toBeUndefined();
+    // Git #1042: real .onmicrosoft.com stored domain resolves to its prefix.
+    expect(res.body.sharePointTenantPrefix).toBe("contoso");
   });
 
   it("rejects more than the per-call checkKeys ceiling", async () => {
@@ -164,5 +175,32 @@ describe("GET /api/portal/tenant-check-items", () => {
     const many = Array.from({ length: 26 }, (_, i) => `check:${i}`).join(",");
     const res = await request(app).get(`/api/portal/tenant-check-items?checkKeys=${many}`);
     expect(res.status).toBe(400);
+  });
+
+  describe("sharePointTenantPrefix resolution — Git #1042", () => {
+    it("falls back to the Graph /organization lookup when the stored domain is a vanity domain", async () => {
+      mockSelectResultsQueue.push([{ tenantId: "m365-tenant-guid", domain: "contoso.com" }]);
+      mockDistinctOnResultsQueue.push([]);
+      mockGetInitialDomain.mockResolvedValue("contoso.onmicrosoft.com");
+
+      const app = makeApp(CUSTOMER);
+      const res = await request(app).get("/api/portal/tenant-check-items?checkKeys=identity:ca-policy-count");
+
+      expect(res.status).toBe(200);
+      expect(res.body.sharePointTenantPrefix).toBe("contoso");
+      expect(mockGetInitialDomain).toHaveBeenCalledWith("m365-tenant-guid");
+    });
+
+    it("stays null — never a guess — when neither the stored domain nor the Graph lookup yields an initial domain", async () => {
+      mockSelectResultsQueue.push([{ tenantId: "m365-tenant-guid", domain: null }]);
+      mockDistinctOnResultsQueue.push([]);
+      mockGetInitialDomain.mockResolvedValue(null);
+
+      const app = makeApp(CUSTOMER);
+      const res = await request(app).get("/api/portal/tenant-check-items?checkKeys=identity:ca-policy-count");
+
+      expect(res.status).toBe(200);
+      expect(res.body.sharePointTenantPrefix).toBeNull();
+    });
   });
 });

@@ -185,11 +185,18 @@
     },
 
     {
-      "name": "Script-parameterization DATA feed (#776): tenant-check-items returns the collected items for all five FILLABLE checks (s1/s9/s11/s12/s22 read from these). $.items is the checkKey-keyed map remediationScriptParams.ts substitutes from.",
+      "name": "Script-parameterization DATA feed (#776): tenant-check-items returns the collected items for all five FILLABLE checks (s1/s9/s11/s12/s22 read from these). $.items is the checkKey-keyed map remediationScriptParams.ts substitutes from. $.sharePointTenantPrefix (#1042) is the same route's separate tenant-wide fact — resolveSharePointTenantPrefix's own field, present (string) or null (never a guess), used to fill s1's + LIVE_PRELUDE's `<your-tenant>` placeholders via applyLiveTenantDomain — a single 'exists' check only, since the field's real value depends on this tenant's own stored/Graph-resolved domain, not something the manifest can pin.",
       "method": "GET",
       "path": "/api/portal/tenant-check-items?checkKeys=sharepoint:orgwide-links,identity:ca-policy-count,identity:global-admin-count,security:safe-links-coverage,cost:group-based-licensing-adoption",
       "headers": { "Authorization": "Bearer {{authToken}}" },
       "expect": { "status": 200, "jsonPath": "$.items", "exists": true }
+    },
+    {
+      "name": "#1042: sharePointTenantPrefix key is present on the response body (either a real prefix string or JSON null — TryGetProperty resolves either way, so exists:true is the correct assertion for 'the route was actually extended', not a claim about which of the two it is) — proves $.sharePointTenantPrefix exists, not just that $.items still resolves.",
+      "method": "GET",
+      "path": "/api/portal/tenant-check-items?checkKeys=sharepoint:orgwide-links",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.sharePointTenantPrefix", "exists": true }
     },
     {
       "name": "tenant-check-items REQUIRES checkKeys: omitting it is a hard 400 (portal-tenant-check-items.ts) — the feed never silently returns everything.",
