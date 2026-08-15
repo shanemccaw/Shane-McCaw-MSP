@@ -30,6 +30,7 @@ import SecurityPage from "@/pages/security";
 import EventsPage from "@/pages/events";
 import AuditPage from "@/pages/audit";
 import DataRightsPage from "@/pages/data-rights";
+import EmailAuthSetupPage from "@/pages/email-auth-setup";
 import OffboardingPage from "@/pages/offboarding";
 import WebhooksPage from "@/pages/webhooks";
 import InitiateOnboardingPage from "@/pages/initiate-onboarding";
@@ -581,6 +582,12 @@ function SlugInnerSwitch() {
       </Route>
       <Route path="/copilot-readiness">
         <ProtectedRoute component={CopilotReadinessPage} />
+      </Route>
+      {/* Email Authentication Setup Instructions — Git #1041, sub-issue of
+          epic #647. Standalone customer self-service page linked in from the
+          live Remediation Guide document, not a numbered remediation step. */}
+      <Route path="/email-auth-setup">
+        <ProtectedRoute component={EmailAuthSetupPage} />
       </Route>
       {/* /assessment now serves the real, standard-AppShell assessment
           experience (real portal nav incl. Marketplace, same as every other

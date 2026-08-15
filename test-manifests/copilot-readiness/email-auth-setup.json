@@ -1,0 +1,75 @@
+{
+  "issue": 1041,
+  "feature": "Email Authentication Setup Instructions page (SPF/DKIM/DMARC) — customer self-service",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "PENDING",
+
+  "notes": [
+    "GIT #1041 (sub-issue of epic #647, Remediation Tracker). New standalone customer page at /email-auth-setup (branded route /portal/:slug/email-auth-setup, same SlugInnerSwitch every other customer page — App.tsx:338+), backed by GET /api/portal/email-auth-status (portal-email-auth-status.ts), which reads the tenant's latest exchange:dkim-spf-dmarc-status monitor profile out of tenant_monitor_profiles.extractedProperties. Linked in from the live Remediation Guide document (RemediationGuideBody.tsx's hasEmailAuthGap block), not a numbered remediation step — the issue's own resolution is explicit that a standalone linked page is the intended shape.",
+    "WHAT THIS MANIFEST CAN AND CANNOT ASSERT: the testbed Assessment tenant's real SPF/DKIM/DMARC configuration state is whatever it genuinely is at run time, not something this manifest controls or knows in advance. So the apiTests assert the CONTRACT (200, checked is a boolean, and when checked=true the three *Configured fields and domain are present) rather than a specific true/false value for any one record, and the uiSteps assert the page's ALWAYS-PRESENT elements (the h1 heading, which renders identically regardless of which gated sections show) rather than which of the SPF/DMARC/DKIM sections happen to be visible this run. Which sections are visible is genuinely state-dependent and correctly so — asserting a specific one would make the manifest lie the day the tenant's real DNS changes.",
+    "OUT OF SCOPE, confirmed via the issue's own explicit list and this build: no DNS registrar writes, no New-DkimSigningConfig/Set-DkimSigningConfig execution, no ps-execution container calls of any kind. Nothing in this manifest exercises a write path because the page itself has none.",
+    "LAST REAL RUN (shaneapp://runTest, 2026-08-14, worktree HEAD before this session's commit): 3/9 — HONEST RED, not a manifest defect. GET /api/portal/email-auth-status 404'd and the branded login route's #email never hydrated, because shaneapp://runTest executes against the DEPLOYED Replit origin (per CLAUDE.md's shaneapp-runtest-hits-deployed-build-not-worktree note), which does not yet carry this session's new route/page/link-in — those exist only in this uncommitted/unpushed worktree at run time. This is the expected, honest state for a brand-new endpoint and page that has not been deployed yet, same class of result as #776/#782's own undeployed-testid reds. SHANE TO-DO: redeploy the api-server (for GET /api/portal/email-auth-status) and msp-portal frontend (for /email-auth-setup and the RemediationGuideBody link-in) — once deployed, re-run this manifest for a real pass/fail on the actual page.",
+    "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL, TEST_PORTAL_EMAIL, TEST_PORTAL_PASSWORD, TEST_PORTAL_SLUG (same designated testbed Assessment account every other copilot-readiness manifest uses)."
+  ],
+
+  "apiTests": [
+    {
+      "name": "SETUP — log in as the designated testbed Assessment account to obtain a real bearer for the customer-role endpoint below; extract it as {{authToken}}",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "GET /api/portal/email-auth-status — real read against tenant_monitor_profiles, scoped to the caller's own tenant via the JWT's customerId. `checked` reflects whether the exchange:dkim-spf-dmarc-status check has ever run for this tenant.",
+      "method": "GET",
+      "path": "/api/portal/email-auth-status",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.checked", "exists": true },
+      "extract": { "as": "emailAuthChecked", "jsonPath": "$.checked" }
+    },
+    {
+      "name": "No customer identity on token is rejected — same 403 contract as the sibling tenant-check-items route, proving this isn't an open read",
+      "method": "GET",
+      "path": "/api/portal/email-auth-status",
+      "expect": { "status": 401 }
+    }
+  ],
+
+  "uiSteps": [
+    { "action": "goto", "target": "/{{TEST_PORTAL_SLUG}}/login" },
+    {
+      "name": "WAIT for the login form to hydrate before typing — same cold-start gate remediation-tracker-e2e.json's own login step documents (uiSteps here cold-start at /login, so the non-polling `input` action can fire before the SPA has rendered #email).",
+      "action": "expect",
+      "selector": "#email",
+      "state": "visible"
+    },
+    { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
+    { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
+    {
+      "name": "Login — CRITICAL: a failed login makes the downstream page-load assertion meaningless, so the run ABORTS here immediately on failure.",
+      "action": "click",
+      "selector": "[data-testid='login-submit']",
+      "critical": true,
+      "captureResponse": {
+        "urlPattern": "/api/auth/login",
+        "expect": { "status": 200 }
+      }
+    },
+
+    {
+      "name": "Navigate to the branded Email Authentication Setup page (/portal/:slug/email-auth-setup — SlugInnerSwitch, App.tsx, same route family as every other authenticated customer page).",
+      "action": "goto",
+      "target": "/{{TEST_PORTAL_SLUG}}/email-auth-setup"
+    },
+    {
+      "name": "The page's own heading renders regardless of which gated sections (SPF/DMARC/DKIM/all-configured/not-scanned) end up visible this run — a real DOM-text assertion, not a captureResponse (CLAUDE.md's textContains discipline).",
+      "action": "expect",
+      "selector": "h1",
+      "state": "visible",
+      "textContains": ["Email Authentication Setup"]
+    }
+  ]
+}
