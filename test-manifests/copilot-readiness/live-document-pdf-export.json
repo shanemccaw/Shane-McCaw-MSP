@@ -46,7 +46,7 @@
   ],
 
   "uiSteps": [
-    { "action": "goto", "target": "/{{TEST_PORTAL_SLUG}}/login" },
+    { "action": "goto", "target": "/portal/{{TEST_PORTAL_SLUG}}/login" },
     {
       "name": "WAIT for the login form to hydrate before typing — same cold-start gate every copilot-readiness manifest's login step documents.",
       "action": "expect",
@@ -69,7 +69,7 @@
     {
       "name": "Git #1043's docId route-matching fallback: deep-link straight to the live-rendered Copilot Readiness report by docType (no numeric id exists for it — id:null by design), proving documents.findIndex's new d.docType branch actually resolves the intended document rather than falling through to firstReady.",
       "action": "goto",
-      "target": "/{{TEST_PORTAL_SLUG}}/copilot-readiness/documents/copilot_readiness"
+      "target": "/portal/{{TEST_PORTAL_SLUG}}/copilot-readiness/documents/copilot_readiness"
     },
     {
       "name": "The reading pane's REAL DOM text confirms the docType-keyed deep link opened the Copilot Readiness report specifically, not just some default document (CLAUDE.md's textContains discipline — not a captureResponse).",
