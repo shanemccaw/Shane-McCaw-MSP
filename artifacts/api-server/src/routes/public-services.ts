@@ -5,6 +5,7 @@ import {
   workflowTemplateStepsTable,
   checkoutSessionsTable,
   resultsTemplatesTable,
+  usersTable,
   type ServiceAssociatedDocument,
 } from "@workspace/db";
 import { and, asc, eq, inArray, gte } from "drizzle-orm";
@@ -12,6 +13,7 @@ import { z } from "zod";
 import { resolveCatalogPricing, isServiceFree } from "../lib/catalog-pricing";
 import { ensureAssessmentFunnelLead } from "../lib/crm-pipeline";
 import { pushMarketingLeadToEngageBay } from "../lib/engagebay-marketing-lead";
+import { getMspPortalLandingUrl } from "../lib/portal-url.ts";
 
 const router: IRouter = Router();
 
@@ -175,6 +177,20 @@ router.post("/public/checkout-session", async (req: Request, res: Response) => {
 
   const { productSlug, fullName, email, company, industry, seats, ga4ClientId } = parsed.data;
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+  // Catch a returning customer with a real account as early as possible in the
+  // flow (before consent or payment), not just at set-password's final-step
+  // guard — a bookmarked/reused email here would otherwise pay twice.
+  const [existingUser] = await db
+    .select({ id: usersTable.id, passwordHash: usersTable.passwordHash })
+    .from(usersTable)
+    .where(eq(usersTable.email, email))
+    .limit(1);
+
+  if (existingUser?.passwordHash) {
+    res.status(409).json({ error: "already_has_account", portalUrl: getMspPortalLandingUrl() });
+    return;
+  }
 
   const [row] = await db
     .insert(checkoutSessionsTable)

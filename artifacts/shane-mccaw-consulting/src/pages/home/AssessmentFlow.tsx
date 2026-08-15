@@ -1052,7 +1052,14 @@ export function AssessmentFlow({ fee, productSlug, includes }: AssessmentFlowPro
         }),
       });
       if (!res.ok) {
-        const err = (await res.json().catch(() => ({}))) as { error?: string };
+        const err = (await res.json().catch(() => ({}))) as { error?: string; portalUrl?: string };
+        if (err.error === "already_has_account" && err.portalUrl) {
+          // Returning customer with a real password already set — send them to
+          // sign in now, before they grant consent or pay again, rather than
+          // letting them proceed and only finding out at set-password.
+          window.location.href = err.portalUrl;
+          return;
+        }
         setError(err.error ?? "We could not start your order. Please try again.");
         return;
       }
