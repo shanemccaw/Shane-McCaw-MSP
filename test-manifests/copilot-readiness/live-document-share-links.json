@@ -2,7 +2,7 @@
   "issue": 1044,
   "feature": "Live document share links — review/purchasing (Phase 2 of Epic #660 Share & Export)",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "PENDING",
+  "lastVerifiedAgainstCommit": "672593c9",
 
   "notes": [
     "GIT #1044 (sub-issue of Epic #660, via #660's own build-plan comment). quick_win_result_shares and any other old share mechanism are DEPRECATED for this feature and are not exercised here.",
