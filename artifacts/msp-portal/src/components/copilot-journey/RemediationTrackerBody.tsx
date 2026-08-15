@@ -11,9 +11,24 @@
  * route was supposed to render. `Design/Remediation Tracker.dc.html` is a
  * different screen: a live project dashboard for AFTER the SOW is signed —
  * progress against the schedule, the live Copilot Gate score, a 6-pillar
- * strip, the same 28 steps grouped into 3 priced phases instead of 6 flat
- * pillar sections, an evidence pack, and a sticky "hire Shane for what's
- * left" footer.
+ * strip, the tenant's real steps grouped into THEIR ACTUALLY SIGNED phases
+ * (not a fixed template), an evidence pack, and a sticky "hire Shane for
+ * what's left" footer.
+ *
+ * PHASES ARE REAL AND PER-TENANT, NOT THE DESIGN'S FIXED 3-PHASE TEMPLATE.
+ * The first version of this file grouped every tenant into the same fixed 3
+ * phases (Governance+Security / Compliance+Licensing / Adoption+Health) at
+ * the design's own Halden Materials dollar figures — correct for that one
+ * worked example, wrong for a real customer, who may have a different
+ * number of phases, different titles, and different real prices depending
+ * on what they actually signed. `useSignedRemediationScope()` reads the
+ * SAME `/api/portal/assessment/sow` payload the SOW Proposal and Checkout
+ * screens already read (`journeyScopeFromSow.ts`), filtered to
+ * `serverSelectedTitles` — the active document's own stored selection, so
+ * for an already-signed engagement this is the real, frozen scope. Each real
+ * phase's task list is every rendered step whose pillar matches the phase's
+ * own inferred pillar (`pillarShown`) — no separate phase-to-step mapping
+ * invented here, since the step catalogue is already pillar-tagged.
  *
  * NOTHING ABOUT THE STEPS THEMSELVES IS REBUILT. This file reuses, unchanged:
  *   - `buildLiveRemediationSteps()` / `applyLiveScriptParams()` /
@@ -22,13 +37,23 @@
  *     same steps, same scripts, same blast-radius copy the Guide renders.
  *   - `Step` (RemediationGuideBody.tsx, exported for exactly this) for the
  *     actual row: checkbox, evidence, blast radius, code block, action
- *     picker. Grouped here by PHASE instead of by single pillar; nothing
- *     about the row itself is different.
- *   - `useRemediationTracker()` for real, persisted status/verification AND
- *     (#734) the live phase-gated `pricing` the backend already computes off
- *     the design's own formula (see that hook's header).
+ *     picker. Grouped here by the tenant's real signed phase instead of by
+ *     single pillar; nothing about the row itself is different.
+ *   - `useRemediationTracker()` for real, persisted status/verification.
  *   - `useTenantCheckItems()` for the five fillable scripts' real per-item
  *     data, exactly as the Guide already threads it through.
+ *
+ * WHAT "PHASE FEE REMAINING" MEANS HERE, DELIBERATELY SIMPLER THAN THE
+ * DESIGN'S GATE. Each phase's real signed `priceUsd` is reduced in
+ * proportion to how many of its own steps are `verified` (never merely
+ * ticked — the honesty rule the rest of this tracker already holds to).
+ * The design's own formula (`remediation-tracker-pricing.ts`, still real and
+ * unmodified) additionally gates an entire phase's price at flat until
+ * EVERY step in it is resolved — a rule tied to that fixed 3-phase/2-pillar
+ * shape. Reproducing that exact gate per real, variable-length signed phase
+ * was not attempted here; this uses the simpler, still-honest continuous
+ * proportion instead. Worth Shane's review if the stricter all-or-nothing
+ * gate matters to him for the real phases too.
  *
  * WHAT THIS DOES NOT DO — DELIBERATE, NOT AN OVERSIGHT
  * ------------------------------------------------------
@@ -87,30 +112,15 @@ import {
 } from "./remediationLiveGuide.ts";
 import { Step } from "./RemediationGuideBody.tsx";
 import { applyLiveScriptParams, applyLiveTenantDomain } from "./remediationScriptParams.ts";
-import {
-  useRemediationTracker,
-  type RemediationTrackerPhasePricing,
-  type RemediationTrackerState,
-} from "./useRemediationTracker.ts";
+import { useRemediationTracker, type RemediationTrackerState } from "./useRemediationTracker.ts";
+import { useSignedRemediationScope, type SignedRemediationScope } from "./useSignedRemediationScope.ts";
 import { useTenantCheckItems, type TenantCheckItemsState } from "./useTenantCheckItems.ts";
+import type { JourneySowPhase } from "./journeyScopeFromSow.ts";
 
-/* ------------------------------------------------------------------ *
- * The 3-phase model — real, matches `remediation-tracker-pricing.ts`'s
- * `PHASE_PILLARS` (confirmed against the design file, #734) exactly. Two
- * pillars per phase, fixed.
- * ------------------------------------------------------------------ */
-
-interface PhaseDef {
-  readonly phase: 1 | 2 | 3;
-  readonly label: string;
-  readonly pillars: readonly PillarKey[];
+/** `"$" + Math.round(n).toLocaleString("en-US")` — same formatting the design/backend both use. */
+function money(n: number): string {
+  return `$${Math.round(n).toLocaleString("en-US")}`;
 }
-
-const PHASE_DEFS: readonly PhaseDef[] = [
-  { phase: 1, label: "Phase 1 · Governance & Security", pillars: ["governance", "security"] },
-  { phase: 2, label: "Phase 2 · Compliance & Licensing", pillars: ["compliance", "licensing"] },
-  { phase: 3, label: "Phase 3 · Adoption & Health", pillars: ["adoption", "health"] },
-];
 
 const CARD_BORDER = "rgba(30,41,59,.9)";
 const CARD_BG = "rgba(15,23,42,.4)";
@@ -405,22 +415,22 @@ function DigestCard({
 }
 
 /* ------------------------------------------------------------------ *
- * Phase progress — real ready/fee/task counts. No invented dates.
+ * Phase progress — real signed phase, real remaining fee, real task counts.
+ * No invented dates.
  * ------------------------------------------------------------------ */
 
-function PhaseProgressMiniCard({
-  def,
-  pricing,
-  done,
-  total,
-}: {
-  readonly def: PhaseDef;
-  readonly pricing: RemediationTrackerPhasePricing | undefined;
+interface PhaseProgress {
+  readonly phase: JourneySowPhase;
+  readonly steps: readonly LiveRemediationStep[];
   readonly done: number;
-  readonly total: number;
-}) {
-  const cleared = pricing ? pricing.fee < 1 : false;
-  const started = done > 0;
+  readonly verified: number;
+  /** `phase.priceUsd`, reduced in proportion to `verified / steps.length`. */
+  readonly feeRemaining: number;
+}
+
+function PhaseProgressMiniCard({ p }: { readonly p: PhaseProgress }) {
+  const cleared = p.steps.length > 0 && p.feeRemaining < 1;
+  const started = p.done > 0;
   const fg = cleared ? SEVERITY_ON_DARK.healthy : started ? BRAND.teal : INK.micro;
   const state = cleared ? "Certified" : started ? "In progress" : "Not started";
   return (
@@ -436,17 +446,15 @@ function PhaseProgressMiniCard({
         background: cleared ? hexAlpha(SEVERITY_ON_DARK.healthy, 0.06) : started ? hexAlpha(BRAND.teal, 0.05) : "rgba(2,6,23,.4)",
       }}
     >
-      <span style={{ fontSize: 11.5, fontWeight: 700, color: INK.headingDark }}>{def.label}</span>
+      <span style={{ fontSize: 11.5, fontWeight: 700, color: INK.headingDark }}>{p.phase.title}</span>
       <span style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-        <span style={{ fontSize: 11, fontWeight: 500, color: INK.bodyDark }}>
-          {pricing ? pricing.feeDisplay : "—"}
-        </span>
+        <span style={{ fontSize: 11, fontWeight: 500, color: INK.bodyDark }}>{money(p.feeRemaining)}</span>
         <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".12em", textTransform: "uppercase", color: fg, whiteSpace: "nowrap" }}>
           {state}
         </span>
       </span>
       <span style={{ fontSize: 10.5, fontWeight: 500, color: INK.micro }}>
-        {done} of {total} tasks
+        {p.done} of {p.steps.length} tasks
       </span>
     </div>
   );
@@ -601,12 +609,15 @@ export function RemediationTrackerBody({
   view,
   progress,
   checkItems,
+  scope,
   onOpenSow,
   onOpenDocuments,
 }: {
   readonly view: JourneyView;
   readonly progress: RemediationTrackerState;
   readonly checkItems: TenantCheckItemsState;
+  /** The tenant's real signed phases (see this file's own header) — never the fixed design template. */
+  readonly scope: SignedRemediationScope;
   readonly onOpenSow?: () => void;
   readonly onOpenDocuments?: () => void;
 }) {
@@ -670,6 +681,53 @@ export function RemediationTrackerBody({
     return { verified, drifted, blocked, open };
   }, [steps, statusOf, verificationOf]);
 
+  // One entry per REAL signed phase — its own steps (matched by pillar), its
+  // own real done/verified counts, its own remaining fee off its own real
+  // priceUsd. Phases the platform can't attribute to a pillar (no title
+  // pattern matched — see journeyScopeFromSow.ts's inferPillar) still show,
+  // with an empty task list rather than being silently dropped.
+  const phaseProgress = useMemo<readonly PhaseProgress[]>(() => {
+    return scope.phases.map((phase) => {
+      const phaseSteps = phase.pillarShown ? (byPillar.get(phase.pillarShown) ?? []) : [];
+      const done = phaseSteps.reduce((n, s) => (statusOf(s.id) !== "not_started" ? n + 1 : n), 0);
+      const verifiedN = phaseSteps.reduce((n, s) => (verificationOf(s.id) === "verified" ? n + 1 : n), 0);
+      const outstandingFraction = phaseSteps.length > 0 ? 1 - verifiedN / phaseSteps.length : 1;
+      return { phase, steps: phaseSteps, done, verified: verifiedN, feeRemaining: phase.priceUsd * outstandingFraction };
+    });
+  }, [scope.phases, byPillar, statusOf, verificationOf]);
+
+  const hire = useMemo(() => {
+    if (phaseProgress.length === 0) {
+      return {
+        price: "—",
+        was: "—",
+        wasShow: false,
+        saved: "—",
+        savedShow: false,
+        cta: "Hire Shane McCaw",
+        note: "Pricing appears once your signed scope loads.",
+      };
+    }
+    const fullUsd = phaseProgress.reduce((sum, p) => sum + p.phase.priceUsd, 0);
+    const remainingUsd = phaseProgress.reduce((sum, p) => sum + p.feeRemaining, 0);
+    const savedUsd = fullUsd - remainingUsd;
+    const cleared = remainingUsd < 1;
+    const saved = savedUsd > 1;
+    return {
+      price: money(remainingUsd),
+      was: money(fullUsd),
+      wasShow: saved,
+      saved: money(savedUsd),
+      savedShow: saved,
+      cta: cleared ? "Book your gate validation" : saved ? "Hire Shane for the rest" : "Hire Shane McCaw",
+      note: cleared
+        ? "Everything in your signed scope is verified. All that remains is the gate validation."
+        : saved
+          ? "Your quote drops as each task is verified by a real re-scan. Skipped tasks stay in scope — unresolved, not done."
+          : "Fixed-fee, per your signed scope. Tick tasks off yourself and this number comes down.",
+    };
+  }, [phaseProgress]);
+
   const evidenceRows = useMemo<readonly EvidenceRow[]>(() => {
     const rows: EvidenceRow[] = [];
     for (const step of steps) {
@@ -715,8 +773,6 @@ export function RemediationTrackerBody({
     [fetchWithAuth],
   );
 
-  const hire = progress.pricing?.hire ?? null;
-
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 26, paddingBottom: 96 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 12, flexWrap: "wrap" }}>
@@ -725,29 +781,44 @@ export function RemediationTrackerBody({
 
       <DigestCard verified={digest.verified} drifted={digest.drifted} blocked={digest.blocked} open={digest.open} />
 
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: 12,
-          padding: "18px 20px",
-          border: `1px solid ${CARD_BORDER}`,
-          borderRadius: 14,
-          background: "rgba(15,23,42,.5)",
-        }}
-      >
-        <span style={{ ...EYEBROW, color: INK.bodyDark }}>Phase progress</span>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 10 }}>
-          {PHASE_DEFS.map((def) => {
-            const phasePricing = progress.pricing?.phases.find((p) => p.phase === def.phase);
-            const phaseSteps = steps.filter((s) => def.pillars.includes(s.pillar));
-            const done = phaseSteps.reduce((n, s) => (statusOf(s.id) !== "not_started" ? n + 1 : n), 0);
-            return (
-              <PhaseProgressMiniCard key={def.phase} def={def} pricing={phasePricing} done={done} total={phaseSteps.length} />
-            );
-          })}
+      {scope.loaded && phaseProgress.length > 0 ? (
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 12,
+            padding: "18px 20px",
+            border: `1px solid ${CARD_BORDER}`,
+            borderRadius: 14,
+            background: "rgba(15,23,42,.5)",
+          }}
+        >
+          <span style={{ ...EYEBROW, color: INK.bodyDark }}>Phase progress</span>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 10 }}>
+            {phaseProgress.map((p) => (
+              <PhaseProgressMiniCard key={p.phase.id} p={p} />
+            ))}
+          </div>
         </div>
-      </div>
+      ) : scope.loaded ? (
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 4,
+            padding: "18px 20px",
+            border: `1px solid ${CARD_BORDER}`,
+            borderRadius: 14,
+            background: "rgba(15,23,42,.4)",
+          }}
+        >
+          <span style={{ fontSize: 13.5, fontWeight: 600, color: INK.bodyDarkStrong }}>No signed scope found yet</span>
+          <p style={{ margin: 0, fontSize: 12, fontWeight: 500, lineHeight: 1.55, color: INK.micro }}>
+            Every task below is still real and tracked — phase-by-phase pricing appears once a signed statement of
+            work is on file.
+          </p>
+        </div>
+      ) : null}
 
       <GateHero score={view.readinessScore} resolvedCount={resolvedCount} total={total} />
 
@@ -767,48 +838,74 @@ export function RemediationTrackerBody({
         })}
       </div>
 
-      {PHASE_DEFS.map((def) => {
-        const phaseSteps = steps.filter((s) => def.pillars.includes(s.pillar));
-        if (phaseSteps.length === 0) return null;
-        const phasePricing = progress.pricing?.phases.find((p) => p.phase === def.phase);
-        const done = phaseSteps.reduce((n, s) => (statusOf(s.id) !== "not_started" ? n + 1 : n), 0);
-        return (
-          <div key={def.phase} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
-              <span style={{ display: "flex", alignItems: "baseline", gap: 11, flexWrap: "wrap" }}>
-                <span style={{ fontSize: 17, fontWeight: 700, letterSpacing: "-0.015em", color: INK.headingDark }}>
-                  {def.label}
-                </span>
-              </span>
-              <span style={{ display: "flex", alignItems: "baseline", gap: 9 }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: BRAND.teal, ...TABULAR }}>
-                  {done} / {phaseSteps.length}
-                </span>
-                <span style={{ fontSize: 12, fontWeight: 700, color: phasePricing && phasePricing.fee < 1 ? SEVERITY_ON_DARK.healthy : INK.bodyDark, ...TABULAR }}>
-                  {phasePricing?.feeDisplay ?? "—"}
-                </span>
-                {phasePricing && phasePricing.fee < 1 ? (
-                  <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: ".12em", textTransform: "uppercase", color: SEVERITY_ON_DARK.healthy }}>
-                    Cleared
+      {phaseProgress.length > 0
+        ? // The normal case: one section per real signed phase.
+          phaseProgress.map((p) => {
+            if (p.steps.length === 0) return null;
+            const cleared = p.feeRemaining < 1;
+            return (
+              <div key={p.phase.id} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+                  <span style={{ display: "flex", alignItems: "baseline", gap: 11, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 17, fontWeight: 700, letterSpacing: "-0.015em", color: INK.headingDark }}>
+                      {p.phase.title}
+                    </span>
                   </span>
-                ) : null}
-              </span>
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
-              {phaseSteps.map((step) => (
-                <Step
-                  key={step.id}
-                  step={step}
-                  status={statusOf(step.id)}
-                  verification={verificationOf(step.id)}
-                  onToggleComplete={progress.toggleComplete}
-                  onSetAction={progress.setAction}
-                />
-              ))}
-            </div>
-          </div>
-        );
-      })}
+                  <span style={{ display: "flex", alignItems: "baseline", gap: 9 }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: BRAND.teal, ...TABULAR }}>
+                      {p.done} / {p.steps.length}
+                    </span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: cleared ? SEVERITY_ON_DARK.healthy : INK.bodyDark, ...TABULAR }}>
+                      {money(p.feeRemaining)}
+                    </span>
+                    {cleared ? (
+                      <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: ".12em", textTransform: "uppercase", color: SEVERITY_ON_DARK.healthy }}>
+                        Cleared
+                      </span>
+                    ) : null}
+                  </span>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+                  {p.steps.map((step) => (
+                    <Step
+                      key={step.id}
+                      step={step}
+                      status={statusOf(step.id)}
+                      verification={verificationOf(step.id)}
+                      onToggleComplete={progress.toggleComplete}
+                      onSetAction={progress.setAction}
+                    />
+                  ))}
+                </div>
+              </div>
+            );
+          })
+        : // No signed phase to group by yet (scope still loading, or genuinely
+          // none on file) — steps still render, grouped by pillar so the page
+          // is never blank while the real scope loads.
+          view.pillars.map((pillar) => {
+            const pillarSteps = byPillar.get(pillar.key) ?? [];
+            if (pillarSteps.length === 0) return null;
+            return (
+              <div key={pillar.key} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <span style={{ fontSize: 17, fontWeight: 700, letterSpacing: "-0.015em", color: INK.headingDark }}>
+                  {pillar.label}
+                </span>
+                <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+                  {pillarSteps.map((step) => (
+                    <Step
+                      key={step.id}
+                      step={step}
+                      status={statusOf(step.id)}
+                      verification={verificationOf(step.id)}
+                      onToggleComplete={progress.toggleComplete}
+                      onSetAction={progress.setAction}
+                    />
+                  ))}
+                </div>
+              </div>
+            );
+          })}
 
       {(progress.error !== null || progress.saving) ? (
         <span style={{ fontSize: 11.5, fontWeight: 600, color: progress.error !== null ? SEVERITY_ON_DARK.critical : INK.micro }}>
@@ -834,7 +931,7 @@ export function RemediationTrackerBody({
           <div style={{ display: "flex", flexDirection: "column", gap: 3, flex: "1 1 300px", minWidth: 260 }}>
             <span style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
               <span style={{ ...EYEBROW, color: BRAND.teal }}>Hand the rest to Shane</span>
-              {hire?.savedShow ? (
+              {hire.savedShow ? (
                 <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: SEVERITY_ON_DARK.healthy }}>
                   {hire.saved} removed by your own work
                 </span>
@@ -845,17 +942,15 @@ export function RemediationTrackerBody({
                 data-testid="remediation-tracker-hire-price"
                 style={{ fontSize: 26, fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1, color: INK.headingDark, ...TABULAR }}
               >
-                {hire?.price ?? "—"}
+                {hire.price}
               </span>
-              {hire?.wasShow ? (
+              {hire.wasShow ? (
                 <span style={{ fontSize: 13, fontWeight: 600, color: INK.deemphasised, textDecoration: "line-through", ...TABULAR }}>
                   {hire.was}
                 </span>
               ) : null}
             </span>
-            <span style={{ fontSize: 11.5, fontWeight: 500, lineHeight: 1.5, color: INK.bodyDark }}>
-              {hire?.note ?? "Fixed-fee, phase by phase. Tick tasks off yourself and this number comes down."}
-            </span>
+            <span style={{ fontSize: 11.5, fontWeight: 500, lineHeight: 1.5, color: INK.bodyDark }}>{hire.note}</span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 12, flex: "none", flexWrap: "wrap" }}>
             {onOpenSow ? (
@@ -877,7 +972,7 @@ export function RemediationTrackerBody({
                   whiteSpace: "nowrap",
                 }}
               >
-                <span style={{ fontSize: 13.5, fontWeight: 700, color: BRAND.white }}>{hire?.cta ?? "Hire Shane McCaw"}</span>
+                <span style={{ fontSize: 13.5, fontWeight: 700, color: BRAND.white }}>{hire.cta}</span>
               </button>
             ) : null}
             {onOpenDocuments ? (
@@ -923,11 +1018,13 @@ export function LiveRemediationTrackerBody({
 }) {
   const progress = useRemediationTracker();
   const checkItems = useTenantCheckItems();
+  const scope = useSignedRemediationScope();
   return (
     <RemediationTrackerBody
       view={view}
       progress={progress}
       checkItems={checkItems}
+      scope={scope}
       onOpenSow={onOpenSow}
       onOpenDocuments={onOpenDocuments}
     />
