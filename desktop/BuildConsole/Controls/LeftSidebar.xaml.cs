@@ -692,11 +692,10 @@ namespace BuildConsole.Controls
         // acts on the node it was opened from — no reliance on tree SelectedItem.
 
         /// <summary>Right-click menu for one manifest leaf. Run reuses the exact double-click run path
-        /// (LoadManifestLeaf → PlayTestRequested). View Run Diagram / View Raw JSON open the dedicated
-        /// ManifestViewerWindow (now landed) on its workflow-chart / raw-JSON view respectively. Edit opens
-        /// the manifest through the same
-        /// FileSelected → OpenFileTab path every other file uses (JSON lands in the Monaco editor), consistent
-        /// with Explorer's "Open". Copy Path / Reveal in Explorer mirror CreateExplorerContextMenu exactly.</summary>
+        /// (LoadManifestLeaf → PlayTestRequested). View Run Diagram / View Raw JSON / Edit all open the
+        /// dedicated ManifestViewerWindow — Edit and View Raw JSON both land on its (now-editable) JSON
+        /// view, View Run Diagram on its workflow-chart view. Copy Path / Reveal in Explorer mirror
+        /// CreateExplorerContextMenu exactly.</summary>
         private ContextMenu BuildManifestLeafContextMenu(TreeViewItem leafNode, string relativePath)
         {
             string manifestsDir = Path.Combine(RootWorkspacePath, "test-manifests");
@@ -725,9 +724,12 @@ namespace BuildConsole.Controls
             miRawJson.Click += (s, e) => OpenManifestViewerFromPath(fullPath, showChartFirst: false);
             cm.Items.Add(miRawJson);
 
-            // 4. Edit — open as a normal editor tab (Monaco for .json), the app's standard file-open path.
+            // 4. Edit — opens the Manifest Viewer's (now-editable, Git #1052-ish) Raw JSON view, which has
+            // a real Ctrl+S / Save button that validates and writes back to this exact file. The generic
+            // Monaco tab (FileSelected → OpenFileTab) has no save bridge at all for any file, so it was a
+            // dead end for "Edit" specifically — Shane: opening a manifest to edit it had no working save.
             var miEdit = new MenuItem { Header = "Edit" };
-            miEdit.Click += (s, e) => FileSelected?.Invoke(this, fullPath);
+            miEdit.Click += (s, e) => OpenManifestViewerFromPath(fullPath, showChartFirst: false);
             cm.Items.Add(miEdit);
 
             cm.Items.Add(new Separator());

@@ -6,6 +6,7 @@ using System.Reflection;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
 using System.Xml;
@@ -18,12 +19,14 @@ using ICSharpCode.AvalonEdit.Highlighting.Xshd;
 namespace BuildConsole
 {
     /// <summary>
-    /// Manifest viewer — a dedicated read-only window opened from the #952 steps flyout, giving one
-    /// selected test manifest two complementary views:
+    /// Manifest viewer — a dedicated window opened from the #952 steps flyout / manifest tree's "Edit"
+    /// and "View Raw JSON" actions, giving one selected test manifest two complementary views:
     ///
     ///   1. RAW JSON — the manifest's real bytes on disk (NOT a re-serialization of the parsed object),
     ///      shown in AvalonEdit with JSON syntax highlighting (JsonSyntax.xshd, same real library #939
-    ///      integrated for the SQL Runner) and collapsible object/array folding.
+    ///      integrated for the SQL Runner) and collapsible object/array folding. Editable: Ctrl+S or the
+    ///      header's Save button validates the text as real JSON (JsonDocument.Parse) before writing it
+    ///      back to <see cref="TestManifest.SourcePath"/> — invalid JSON is rejected, not silently saved.
     ///
     ///   2. WORKFLOW CHART — a native-WPF-Canvas flowchart (boxes + connecting arrows, no external
     ///      diagramming library) of the manifest's ACTUAL execution flow, in the real fixed phase order
@@ -35,7 +38,9 @@ namespace BuildConsole
     ///      summarization), and captureResponse / extract / textContains are surfaced as badges rather
     ///      than hidden (Shane: "nothing in my UI indicates that it's testing the API").
     ///
-    /// Pure viewing/display — no logging/telemetry wiring needed.
+    /// Every save attempt (success, validation failure, or write failure) is logged via
+    /// ActivityLog's "testing.manifest-edit" channel — this app's own activity log, not the
+    /// product's platform logging spine (this is desktop tooling, not artifacts/*).
     /// </summary>
     public partial class ManifestViewerWindow : Window
     {
@@ -72,9 +77,62 @@ namespace BuildConsole
             LoadRawJson();
             BuildLegend();
 
+            PreviewKeyDown += ManifestViewerWindow_PreviewKeyDown;
+
             // "View Run Diagram" opens straight on the chart; "View Raw JSON" (and the flyout button) on JSON.
             if (showChartFirst) ShowChartView();
             else ShowJsonView();
+        }
+
+        // ── Save (Git #1052-ish — the Raw JSON view was viewer-only despite being reachable
+        // via "Edit"; Ctrl+S did nothing and there was no Save button at all) ─────────────
+
+        /// <summary>Ctrl+S saves while the JSON view has focus, matching the OS-standard shortcut. Scoped to
+        /// the JSON panel — there's nothing to save from the read-only workflow chart view.</summary>
+        private void ManifestViewerWindow_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key != Key.S || Keyboard.Modifiers != ModifierKeys.Control) return;
+            if (JsonPanel.Visibility != Visibility.Visible) return;
+            e.Handled = true;
+            SaveJsonToDisk();
+        }
+
+        private void BtnSaveJson_Click(object sender, RoutedEventArgs e) => SaveJsonToDisk();
+
+        /// <summary>Validates the editor's real current text as JSON before writing anything — a manifest
+        /// broken by a stray comma or unclosed brace would silently break the next test run otherwise — then
+        /// writes it back to <see cref="TestManifest.SourcePath"/>, the same real file <see cref="LoadRawJson"/>
+        /// read it from. Feedback uses the app's standard ToastEngine (non-blocking, matches every other
+        /// success/error notification in BuildConsole) and every attempt is logged via ActivityLog.</summary>
+        private void SaveJsonToDisk()
+        {
+            string text = JsonEditor.Text;
+            string fileName = string.IsNullOrEmpty(_manifest.SourcePath)
+                ? "manifest.json"
+                : System.IO.Path.GetFileName(_manifest.SourcePath);
+
+            try
+            {
+                using var _ = JsonDocument.Parse(text);
+            }
+            catch (JsonException ex)
+            {
+                ToastEngine.Error("Invalid JSON — Not Saved", $"{fileName}: {ex.Message}");
+                ActivityLog.Log("testing.manifest-edit", $"save BLOCKED (invalid JSON) {_manifest.SourcePath}: {ex.Message}");
+                return;
+            }
+
+            try
+            {
+                File.WriteAllText(_manifest.SourcePath, text);
+                ToastEngine.Success("Manifest Saved", fileName);
+                ActivityLog.Log("testing.manifest-edit", $"saved {_manifest.SourcePath}");
+            }
+            catch (Exception ex)
+            {
+                ToastEngine.Error("Save Failed", $"Couldn't write {fileName}: {ex.Message}");
+                ActivityLog.Log("testing.manifest-edit", $"save FAILED {_manifest.SourcePath}: {ex.Message}");
+            }
         }
 
         // ── (1) Raw JSON view ───────────────────────────────────────────────
@@ -182,6 +240,7 @@ namespace BuildConsole
         {
             JsonPanel.Visibility = Visibility.Visible;
             ChartPanel.Visibility = Visibility.Collapsed;
+            BtnSaveJson.Visibility = Visibility.Visible;
             BtnViewJson.Style = (Style)FindResource("PrimaryButton");
             BtnViewChart.Style = (Style)FindResource("SecondaryButton");
         }
@@ -195,6 +254,7 @@ namespace BuildConsole
             }
             JsonPanel.Visibility = Visibility.Collapsed;
             ChartPanel.Visibility = Visibility.Visible;
+            BtnSaveJson.Visibility = Visibility.Collapsed;
             BtnViewJson.Style = (Style)FindResource("SecondaryButton");
             BtnViewChart.Style = (Style)FindResource("PrimaryButton");
         }

@@ -69,6 +69,9 @@
                                Foreground="{StaticResource Subtext0Brush}" TextTrimming="CharacterEllipsis"/>
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button x:Name="BtnSaveJson" Content="💾 Save" Margin="0,0,16,0"
+                            ToolTip="Save changes to the manifest file on disk (Ctrl+S)"
+                            Style="{StaticResource PrimaryButton}" Click="BtnSaveJson_Click"/>
                     <Button x:Name="BtnViewJson" Content="Raw JSON" Margin="0,0,8,0"
                             Style="{StaticResource PrimaryButton}" Click="BtnViewJson_Click"/>
                     <Button x:Name="BtnViewChart" Content="Workflow Chart"
@@ -87,7 +90,6 @@
                                        FontFamily="Cascadia Code, Consolas, Courier New"
                                        FontSize="13"
                                        Padding="8"
-                                       IsReadOnly="True"
                                        ShowLineNumbers="True"
                                        LineNumbersForeground="{StaticResource Surface2Brush}"
                                        WordWrap="False"
