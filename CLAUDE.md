@@ -8,6 +8,8 @@ Every session — including BuildConsole-launched build sessions — must create
 
 **Do not use `TodoWrite`** — it is disabled for this session and will error. There is no `TaskCreate`/`TaskUpdate`/`TaskGet`/`TaskList` tool in this environment either (confirmed via ToolSearch, not assumed from general docs — the only task-shaped tools present are `TaskOutput`/`TaskStop`, which retrieve/kill background tasks and are unrelated to planning checklists). Track the plan as plain free-form checkbox text (`- [ ] step`) in a normal message or scratch file, and update it as steps complete. This is also the mechanism BuildConsole's own checklist panel (local #28) detects — free-form checkbox text, not a structured tool call.
 
+**Restate the full list, don't just print it once.** BuildConsole's checklist panel (`ScanForChecklist` in `desktop/BuildConsole/BuildWatchWindow.xaml.cs`) has no memory of your plan — it only mirrors whatever `- [ ] ` / `- [x] ` marker lines actually stream past in the transcript, each time they appear. Printing the list once at the start and then never repeating it leaves every row stuck unchecked in the panel even as real work finishes, because there is nothing to re-scan. Re-print the entire checklist, with `[x]` on every item completed so far, at each meaningful milestone — after finishing a step, and again in any wrap-up/summary message — not only in the first message of the session.
+
 ## Mandatory session bookends
 
 This project tracks every work session in [PLATFORM_BUILD.md](PLATFORM_BUILD.md), so that even a session that crashes or gets abandoned mid-way leaves proof an attempt was made.
