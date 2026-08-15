@@ -1081,7 +1081,12 @@ namespace BuildConsole.Controls
                 return _cachedMilestoneInfos;
             }
 
-            _cachedMilestoneInfos = await client.GetMilestonesAsync();
+            // forceFresh must be fresh all the way down: pass it through as
+            // bypassCache so the GitHubApiClient ETag conditional is skipped too
+            // (otherwise GitHub can 304 us with a stale milestone-count body and the
+            // manual Refresh silently returns the old open/closed counts — the exact
+            // "progress bar stuck at 20/35" bug this closes; see GetConditionalAsync).
+            _cachedMilestoneInfos = await client.GetMilestonesAsync(bypassCache: forceFresh);
             _lastMilestonesFetchUtc = DateTime.UtcNow;
             return _cachedMilestoneInfos;
         }
@@ -1169,7 +1174,9 @@ namespace BuildConsole.Controls
             // Feed Focus Mode the real issue→milestone map + milestone counts (this is the
             // OPEN board fetch; the closed-view BuildBoardFromGitHub call deliberately does NOT
             // feed, so the filter map isn't overwritten with closed-only issues).
-            BuildConsole.Services.FocusModeService.Instance.UpdateBoardSnapshot(issues, milestoneInfos);
+            BuildConsole.Services.FocusModeService.Instance.UpdateBoardSnapshot(
+                issues, milestoneInfos,
+                trigger: forceFresh ? "manual Git refresh" : "board update");
             RenderIssuesTree(_currentFilter == "Done" ? "All" : _currentFilter);
 
             // Closed-epic filtering (RenderChatsTree signal B) reads this fresh

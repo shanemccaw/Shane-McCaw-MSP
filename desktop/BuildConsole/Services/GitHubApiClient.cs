@@ -197,11 +197,27 @@ namespace BuildConsole.Services
         /// goes through <see cref="HttpResponseMessage.EnsureSuccessStatusCode"/>,
         /// so callers' existing 404 catches (blocked_by / sub_issues / single
         /// issue) keep working exactly as before.
+        ///
+        /// <paramref name="bypassCache"/> — a deliberate, manual "Refresh right now"
+        /// (the Git Board Refresh button, forceFresh) OMITS the `If-None-Match`
+        /// header entirely so GitHub cannot answer 304 from a lagging ETag and hand
+        /// back a stale body. This closes the manual-refresh-did-nothing bug for
+        /// milestone open/closed counts: GitHub's milestones-list ETag can lag the
+        /// actual open_issues/closed_issues counters by seconds-to-minutes, so a
+        /// conditional re-GET after Shane closed issues would 304 and return the OLD
+        /// counts — which feed BOTH the Git Board milestone-node % AND Focus Mode's
+        /// progress bar (they share `milestoneInfos`). forceFresh already skipped the
+        /// LeftSidebar TTL cache + the repaint-signature guard, but NOT this deeper
+        /// static ETag cache; that gap is exactly what left "20/35" frozen after a
+        /// manual refresh. The fresh 200 body still refreshes the cache below, so the
+        /// next background (non-bypass) poll keeps its rate-limit-free 304 benefit.
+        /// One extra rate-limited GET per rare manual click is a fair trade.
         /// </summary>
-        private async Task<T?> GetConditionalAsync<T>(string path) where T : class
+        private async Task<T?> GetConditionalAsync<T>(string path, bool bypassCache = false) where T : class
         {
+            _conditionalCache.TryGetValue(path, out var cached);
             using var req = new HttpRequestMessage(HttpMethod.Get, path);
-            if (_conditionalCache.TryGetValue(path, out var cached))
+            if (!bypassCache && cached != null)
                 req.Headers.IfNoneMatch.Add(cached.ETag);
 
             var res = await _http.SendAsync(req);
@@ -321,11 +337,13 @@ namespace BuildConsole.Services
             public int ClosedIssues { get; set; }
         }
 
-        /// <summary>Git #875 — real open+closed counts per milestone, state=all so both open and fully-closed milestones come back.</summary>
-        public async Task<List<GitHubMilestoneInfo>> GetMilestonesAsync()
+        /// <summary>Git #875 — real open+closed counts per milestone, state=all so both open and fully-closed milestones come back.
+        /// <paramref name="bypassCache"/> (the manual Refresh button's forceFresh) skips the ETag conditional so GitHub can't 304 us
+        /// with a lagging milestone-count body — see <see cref="GetConditionalAsync{T}"/> for why that mattered for the progress bar.</summary>
+        public async Task<List<GitHubMilestoneInfo>> GetMilestonesAsync(bool bypassCache = false)
         {
             var milestones = await GetConditionalAsync<List<GitHubMilestoneInfo>>(
-                $"repos/{Owner}/{Repo}/milestones?state=all&per_page=100");
+                $"repos/{Owner}/{Repo}/milestones?state=all&per_page=100", bypassCache);
             return milestones ?? new List<GitHubMilestoneInfo>();
         }
 

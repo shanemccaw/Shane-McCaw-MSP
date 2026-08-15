@@ -195,7 +195,7 @@ namespace BuildConsole.Services
             // silently (no toast storm) — so a mature milestone's achievements aren't blank.
             var ms = _milestones.FirstOrDefault(m => m.Number == milestoneNumber);
             if (ms != null) MaybeAwardProgressAchievements(ms, silent: true);
-            RecomputeGame();
+            RecomputeGame($"milestone #{milestoneNumber} activated");
             RecomputeSuggestions();
             RaiseFilterChanged();
             RaiseStateChanged();
@@ -373,9 +373,14 @@ namespace BuildConsole.Services
         // Board snapshot ingestion (fed by LeftSidebar on every board refresh)
         // ================================================================
 
+        /// <summary><paramref name="trigger"/> — a short human tag for WHAT caused this board feed
+        /// (e.g. "manual Git refresh", "board update"), carried straight into the focus-mode progress
+        /// recalculation log so a stale-progress-bar report is diagnosable straight from the feed:
+        /// you can see the manual refresh arrive AND the old→new closed/total it produced.</summary>
         public void UpdateBoardSnapshot(
             IReadOnlyList<GitBoardIssue> issues,
-            IReadOnlyList<GitHubApiClient.GitHubMilestoneInfo> milestoneInfos)
+            IReadOnlyList<GitHubApiClient.GitHubMilestoneInfo> milestoneInfos,
+            string trigger = "board update")
         {
             _issues = issues?.ToList() ?? new();
             _issueToMilestone = _issues
@@ -402,7 +407,7 @@ namespace BuildConsole.Services
                 .OrderBy(m => m.Title, StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
-            RecomputeGame();
+            RecomputeGame(trigger);
             RecomputeSuggestions();
             RaiseStateChanged();
             if (IsActive) RaiseFilterChanged();
@@ -581,12 +586,25 @@ namespace BuildConsole.Services
         // Piece 5 — the game layer over REAL milestone data
         // ================================================================
 
-        private void RecomputeGame()
+        /// <summary>Recompute the honest progress/game layer off the freshest milestone snapshot.
+        /// <paramref name="trigger"/> names what caused this recompute (a manual Git refresh, a board
+        /// poll, milestone activation, …) and is logged with the old→new closed/total so a "the progress
+        /// bar didn't move after I refreshed" report is answerable straight from the focus-mode feed —
+        /// you can see whether the recalc even ran and whether the underlying counts actually changed.</summary>
+        private void RecomputeGame(string trigger = "recompute")
         {
+            // Snapshot the prior progress so the log can show the real old→new transition (this is the
+            // single point every focus progress-bar surface — the bar AND the immersive header — reads).
+            int priorProgClosed = Progress.Closed, priorProgTotal = Progress.Total;
+            int? priorProgMs = Progress.MilestoneNumber;
+
             var ms = _milestones.FirstOrDefault(m => m.Number == _state.ActiveMilestoneNumber);
             if (ms == null)
             {
                 Progress = new FocusProgress { Points = _state.Points };
+                if (_state.ActiveMilestoneNumber.HasValue)
+                    ActivityLog.Log("focus-mode",
+                        $"progress recompute [{trigger}] — active milestone #{_state.ActiveMilestoneNumber} not in the {_milestones.Count} milestone(s) this snapshot carried; progress cleared");
                 return;
             }
 
@@ -628,6 +646,16 @@ namespace BuildConsole.Services
             }
 
             Progress = BuildProgress(ms);
+
+            // Log every recompute of the focus progress bar with its trigger and the real old→new
+            // numbers, so "manual refresh didn't move the bar" is diagnosable: a CHANGED line proves
+            // fresh counts landed; an unchanged line with a manual-refresh trigger points straight at
+            // the data source (a stale ETag/cache upstream) rather than at this recompute.
+            bool changed = Progress.Closed != priorProgClosed || Progress.Total != priorProgTotal || priorProgMs != Progress.MilestoneNumber;
+            ActivityLog.Log("focus-mode",
+                $"progress {(changed ? "recalculated" : "recomputed (unchanged)")} [{trigger}]: '{ms.Title}' (#{ms.Number}) "
+                + $"{priorProgClosed}/{priorProgTotal} → {Progress.Closed}/{Progress.Total} ({Progress.Percent}%)");
+
             Save();
         }
 
