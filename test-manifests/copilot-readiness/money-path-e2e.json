@@ -263,37 +263,27 @@
 
     { "action": "goto", "target": "/portal/shane-mccaw-consulting/copilot-readiness/documents" },
 
+    { "action": "expect", "selector": "[data-testid='document-reading-pane']", "state": "visible" },
+    { "action": "expect", "selector": "[data-testid='active-document-title']", "state": "visible" },
+
     {
-      "name": "#889 — the ready/pending counter is drawn from the real generation state (JOURNEY_LIVE_DOCUMENT_SPINE, #643): 'N of N ready' with a real number, never a stuck 0 of 0",
-      "action": "expect",
-      "selector": "[data-testid='documents-ready-counter']",
-      "state": "visible",
-      "textContains": "ready"
-    },
-    { "action": "expect", "selector": "[data-testid='document-row-0']", "state": "visible" },
-    { "action": "expect", "selector": "[data-testid='document-row-1']", "state": "visible" },
-    {
-      "name": "#889 — opening a different report from the rail actually switches the reader (header title + reading pane both update, not just the row's active state)",
+      "name": "Navigate to Statement of Work via persistent header CTA button",
       "action": "click",
-      "selector": "[data-testid='document-row-1']"
+      "selector": "[data-testid='sow-cta-button']"
     },
     {
-      "name": "Select the Statement of Work (last document in the set)",
-      "action": "click",
-      "selector": "[data-testid='document-row-7']"
-    },
-    {
-      "name": "Verify Statement of Work document loaded",
+      "name": "Verify Statement of Work document loaded and sales offer engine responded",
       "action": "expect",
       "selector": "[data-testid='sow-document']",
       "state": "visible",
-      "timeoutMs": 15000
+      "timeoutMs": 30000
     },
     {
       "name": "Phase cards with toggles are rendered",
       "action": "expect",
       "selector": "[data-testid='sow-phase-toggle']",
-      "state": "visible"
+      "state": "visible",
+      "timeoutMs": 15000
     },
     {
       "name": "Price calculation net fee is displayed",

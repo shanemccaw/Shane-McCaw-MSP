@@ -144,14 +144,26 @@ namespace BuildConsole
             }
         }
 
+        /// <summary>Clicking the Deploy/Current version status bar item triggers immediate rebuild and deploy to bin\ShanesBuild.</summary>
+        private async void DeployStatus_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            await CheckVersionAsync();
+            await TriggerUpdateAsync(forceDeploy: true);
+        }
+
         /// <summary>Update button click — decides immediately-deploy vs defer based on the real Build Queue's active state.</summary>
         private async void BtnUpdate_Click(object sender, RoutedEventArgs e)
+        {
+            await TriggerUpdateAsync(forceDeploy: false);
+        }
+
+        private async Task TriggerUpdateAsync(bool forceDeploy = false)
         {
             if (_deployInvoked || _updatePending) return;
 
             BtnUpdate.IsEnabled = false; // no double-trigger while we check the queue
             ActivityLog.Log(VersionChannel,
-                $"Update requested: {VersionInfo.RunningVersion} → {(_currentBuild.HasValue ? VersionInfo.Format(_currentBuild.Value) : "current")}.");
+                $"Rebuild & Deploy requested (force={forceDeploy}): {VersionInfo.RunningVersion} → {(_currentBuild.HasValue ? VersionInfo.Format(_currentBuild.Value) : "latest local code")}.");
 
             // Freshen the queue snapshot so the clear/active decision is real, not
             // up-to-15s stale (RefreshAsync swallows its own errors).
@@ -159,7 +171,7 @@ namespace BuildConsole
 
             if (!BuildQueuePanel.HasActiveQueueItems)
             {
-                ActivityLog.Log(VersionChannel, "Build Queue clear — deploying now.");
+                ActivityLog.Log(VersionChannel, "Build Queue clear — rebuilding & deploying now.");
                 RunDeployScript();
                 return;
             }

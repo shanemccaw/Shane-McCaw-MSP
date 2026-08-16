@@ -2049,6 +2049,36 @@ namespace BuildConsole.Controls
                 IssueSelected?.Invoke(this, issue);
                 GitDetailTabRequested?.Invoke(this, issue);
             }
+            else if (tvi.Tag is GitHubIssueResult searchResult)
+            {
+                var searchIssue = new GitIssue
+                {
+                    IssueNumber = searchResult.Number,
+                    Title = searchResult.Title,
+                    RawTitle = searchResult.Title,
+                    Status = searchResult.IsClosed ? "CLOSED" : "OPEN",
+                    IsComplete = searchResult.Labels.Any(l => string.Equals(l.Name, "complete", StringComparison.OrdinalIgnoreCase)),
+                };
+                IssueSelected?.Invoke(this, searchIssue);
+                GitDetailTabRequested?.Invoke(this, searchIssue);
+            }
+            else if (tvi.Tag is GitBoardIssue boardIssue)
+            {
+                var bi = new GitIssue
+                {
+                    IssueNumber = boardIssue.Number,
+                    Title = boardIssue.Title,
+                    RawTitle = boardIssue.Title,
+                    Status = boardIssue.State,
+                    Body = boardIssue.Body,
+                    DatabaseId = boardIssue.DatabaseId,
+                    IsEpic = boardIssue.IsEpic,
+                    IsComplete = boardIssue.IsComplete,
+                    HasParentEpic = boardIssue.ParentNumber.HasValue,
+                };
+                IssueSelected?.Invoke(this, bi);
+                GitDetailTabRequested?.Invoke(this, bi);
+            }
         }
 
         /// <summary>
@@ -2847,7 +2877,22 @@ namespace BuildConsole.Controls
             p.Children.Add(statusBadge);
             p.Children.Add(titleBlock);
 
-            var tvi = new TreeViewItem { Header = p, Tag = result };
+            var gitIssue = new GitIssue
+            {
+                IssueNumber = result.Number,
+                Title = result.Title,
+                RawTitle = result.Title,
+                Status = result.IsClosed ? "CLOSED" : "OPEN",
+                IsBlocked = blocked,
+                IsComplete = result.Labels.Any(l => string.Equals(l.Name, "complete", StringComparison.OrdinalIgnoreCase)),
+            };
+
+            var tvi = new TreeViewItem { Header = p, Tag = gitIssue };
+            tvi.MouseLeftButtonUp += (s, e) =>
+            {
+                IssueSelected?.Invoke(this, gitIssue);
+                GitDetailTabRequested?.Invoke(this, gitIssue);
+            };
 
             var cm = new ContextMenu();
             var miOpen = new MenuItem { Header = "Open on GitHub" };

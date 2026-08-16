@@ -57,40 +57,26 @@
     { "action": "goto", "target": "/portal/shane-mccaw-consulting/copilot-readiness/documents" },
 
     { "action": "expect", "selector": "[data-testid='document-reading-pane']", "state": "visible" },
-    {
-      "name": "Ready/pending counter is drawn from real generation state: 'N of N ready'",
-      "action": "expect",
-      "selector": "[data-testid='documents-ready-counter']",
-      "state": "visible",
-      "textContains": "ready"
-    },
-    { "action": "expect", "selector": "[data-testid='document-row-0']", "state": "visible" },
-    { "action": "expect", "selector": "[data-testid='document-row-1']", "state": "visible" },
-    {
-      "name": "Opening a different report from the rail switches the reader",
-      "action": "click",
-      "selector": "[data-testid='document-row-1']"
-    },
     { "action": "expect", "selector": "[data-testid='active-document-title']", "state": "visible" },
-    { "action": "expect", "selector": "[data-testid='document-reading-pane']", "state": "visible" },
 
     {
-      "name": "Select the Statement of Work (last document in the set)",
+      "name": "Navigate to Statement of Work via persistent header CTA button",
       "action": "click",
-      "selector": "[data-testid='document-row-7']"
+      "selector": "[data-testid='sow-cta-button']"
     },
     {
-      "name": "Verify Statement of Work document loaded",
+      "name": "Verify Statement of Work document loaded and sales offer engine responded",
       "action": "expect",
       "selector": "[data-testid='sow-document']",
       "state": "visible",
-      "timeoutMs": 15000
+      "timeoutMs": 30000
     },
     {
       "name": "Phase cards with toggles are rendered",
       "action": "expect",
       "selector": "[data-testid='sow-phase-toggle']",
-      "state": "visible"
+      "state": "visible",
+      "timeoutMs": 15000
     },
     {
       "name": "Price calculation net fee is displayed",

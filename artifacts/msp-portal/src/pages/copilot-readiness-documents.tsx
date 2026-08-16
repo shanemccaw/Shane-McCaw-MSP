@@ -815,6 +815,7 @@ export default function CopilotReadinessDocumentsPage() {
                 that screen. */}
             <button
               type="button"
+              data-testid="sow-cta-button"
               onClick={handleOpenSow}
               {...cta.handlers}
               style={{

@@ -314,16 +314,9 @@ namespace BuildConsole.Services
                 await MainWindow.EnsureWebViewInitializedAsync(_webView);
                 _webView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true;
 
-                // Session isolation: delete auth cookies so test run starts unauthenticated
-                try
-                {
-                    _webView.CoreWebView2.CookieManager.DeleteAllCookies();
-                    ActivityLog.Log(Channel, "Cleared cookies for clean test execution.");
-                }
-                catch (Exception ex)
-                {
-                    ActivityLog.Log(Channel, $"CookieManager warning (non-fatal): {ex.Message}");
-                }
+                // Target-scoped session isolation: ensure clean logged-out baseline for the app origin being tested,
+                // NEVER touching replit.com, claude.ai, or other tabs in the shared profile.
+                await EnsureLoggedOutForOriginAsync(initialUrl);
 
                 if (!await NavigateAsync(initialUrl))
                 {
@@ -541,10 +534,25 @@ namespace BuildConsole.Services
             if (actionType == "goto")
             {
                 string target = ResolveGotoTarget(selector);
+                // If navigating to a login page, ensure we are logged out first so we don't get auto-redirected away
+                if (target.IndexOf("/login", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    await EnsureLoggedOutForOriginAsync(target);
+                }
+
                 actionPassed = await NavigateAsync(target);
                 actionDetail = actionPassed ? $"Navigated to {target}" : $"Navigation to {target} failed";
                 actionExpected = $"navigation to {target} succeeds";
                 actionActual = actionPassed ? "succeeded" : "failed (no NavigationCompleted success)";
+            }
+            else if (actionType == "logout" || actionType == "ensureloggedout")
+            {
+                string target = ResolveGotoTarget(selector);
+                await EnsureLoggedOutForOriginAsync(target);
+                actionPassed = true;
+                actionDetail = "Logged out / cleared session tokens";
+                actionExpected = "session tokens cleared";
+                actionActual = "cleared";
             }
             else if (actionType == "expect")
             {
@@ -957,6 +965,45 @@ namespace BuildConsole.Services
             }
 
             return target;
+        }
+
+        /// <summary>Ensures any existing authenticated session on the target app origin is cleanly logged out (clearing app cookies, storage, and firing server logout) without affecting other domains in the shared WebView2 profile.</summary>
+        private async Task EnsureLoggedOutForOriginAsync(string url)
+        {
+            if (_webView.CoreWebView2 == null) return;
+            try
+            {
+                if (Uri.TryCreate(url, UriKind.Absolute, out var targetUri))
+                {
+                    var originUrl = $"{targetUri.Scheme}://{targetUri.Authority}";
+                    var appCookies = await _webView.CoreWebView2.CookieManager.GetCookiesAsync(originUrl);
+                    foreach (var cookie in appCookies)
+                    {
+                        _webView.CoreWebView2.CookieManager.DeleteCookie(cookie);
+                    }
+
+                    try
+                    {
+                        await _webView.CoreWebView2.ExecuteScriptAsync(@$"
+(function() {{
+    try {{
+        if (window.location.origin === '{originUrl}') {{
+            localStorage.clear();
+            sessionStorage.clear();
+            fetch('/api/auth/logout', {{ method: 'POST' }}).catch(function(){{}});
+        }}
+    }} catch (_) {{}}
+}})();");
+                    }
+                    catch { }
+
+                    ActivityLog.Log(Channel, $"EnsureLoggedOut: cleared {appCookies.Count} cookie(s) and storage for '{originUrl}'.");
+                }
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log(Channel, $"EnsureLoggedOut warning: {ex.Message}");
+            }
         }
 
         /// <summary>Same JS find/highlight/click/input pattern AutomationRunnerWindow always used — unchanged behavior for manually-recorded steps.</summary>

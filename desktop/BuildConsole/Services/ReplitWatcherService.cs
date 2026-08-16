@@ -339,8 +339,17 @@ namespace BuildConsole.Services
                 return;
             }
 
-            // Give the IDE a moment to render its toolbar before we look for Run.
+            // Give the IDE a moment to render its toolbar and connect to the container.
             await Task.Delay(DashboardSettleMs);
+
+            // If loading the dashboard auto-started the Repl and the app is already responding, do not click Run!
+            if (await IsAppUpAsync(s.ReplitAppUrl))
+            {
+                _lastCheck = DateTime.Now;
+                Emit(ReplitWatcherState.Monitoring, "app is UP");
+                ActivityLog.Log(Channel, "Replit workspace loaded and app is already running — skipping Run button click.");
+                return;
+            }
 
             var (clicked, detail) = await ClickRunAsync(s.ReplitRunButtonSelector, targetWv);
             if (!clicked)
@@ -446,14 +455,16 @@ namespace BuildConsole.Services
             if (el) via = 'configured selector';
         }}
 
-        // Helper to ensure an element is a real button and NOT an accordion toggle header
+        // Helper to ensure an element is a real RUN button and NOT an accordion toggle or Stop button
         function isRealButton(node) {{
             if (!node || node.nodeType !== 1) return false;
             if (node.tagName !== 'BUTTON') return false;
             if (node.id && node.id.includes('AccordionControl')) return false;
             if (node.className && typeof node.className === 'string' && node.className.includes('accordionToggle')) return false;
             var aria = (node.getAttribute('aria-label') || '').toLowerCase();
+            var txt = (node.innerText || node.textContent || '').trim().toLowerCase();
             if (aria.includes('accordion') || aria.includes('collapse') || aria.includes('expand')) return false;
+            if (aria.includes('stop') || txt.includes('stop') || aria.includes('pause') || txt.includes('pause')) return false;
             return true;
         }}
 

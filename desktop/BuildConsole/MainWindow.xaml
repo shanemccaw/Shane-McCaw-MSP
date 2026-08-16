@@ -437,7 +437,9 @@
                 </StatusBarItem>
                 <Separator Grid.Column="7"/>
                 <StatusBarItem Grid.Column="8">
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
+                                Cursor="Hand" MouseLeftButtonUp="DeployStatus_Click"
+                                ToolTip="Click to rebuild &amp; redeploy latest local code to ShanesBuild">
                         <Ellipse x:Name="DeployDot" Width="8" Height="8"
                                  Fill="{StaticResource Surface2Brush}"
                                  Margin="0,0,6,0" VerticalAlignment="Center"/>
