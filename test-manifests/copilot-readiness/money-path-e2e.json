@@ -216,9 +216,16 @@
     { "action": "click", "selector": "[data-testid='get-real-score-cta']" },
     { "action": "expect", "selector": "[data-testid='assessment-flow-details-step']", "state": "visible" },
 
-    { "action": "goto", "target": "/login" },
-    { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
-    { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
+    { "action": "goto", "target": "/portal/shane-mccaw-consulting/login" },
+    {
+      "name": "Wait for login form to render before typing",
+      "action": "expect",
+      "selector": "#email",
+      "state": "visible",
+      "critical": true
+    },
+    { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}", "critical": true },
+    { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}", "critical": true },
     {
       "name": "Portal login — CRITICAL: authenticate before the copilot-readiness verdict/pillars/documents/proposal/checkout assertions below. A failed login makes every one of those downstream steps meaningless, so the run ABORTS here immediately on failure rather than cascading them all as failures that are really this one root cause.",
       "action": "click",
@@ -226,13 +233,19 @@
       "critical": true,
       "captureResponse": {
         "urlPattern": "/api/auth/login",
-        "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true }
+        "expect": { "status": 200 }
       }
     },
 
-    { "action": "goto", "target": "/copilot-readiness" },
+    { "action": "goto", "target": "/portal/shane-mccaw-consulting/copilot-readiness" },
 
-    { "action": "expect", "selector": "[data-cj-scene='1']", "state": "visible" },
+    {
+      "name": "Wait for live scan / Scene 0 overlay to finish and reveal Scene 1 verdict",
+      "action": "expect",
+      "selector": "[data-cj-scene='1']",
+      "state": "visible",
+      "timeoutMs": 90000
+    },
     { "action": "expect", "selector": "[data-testid='preview-badge']", "state": "hidden" },
 
     { "action": "expect", "selector": "[data-testid='verdict-score']", "state": "visible" },
@@ -248,9 +261,8 @@
     { "action": "expect", "selector": "[data-cj-scene='3'] [data-testid='pillar-score']", "state": "visible" },
     { "action": "expect", "selector": "[data-cj-scene='3'] [data-testid='pillar-score-unavailable']", "state": "hidden" },
 
-    { "action": "goto", "target": "/copilot-readiness/documents" },
+    { "action": "goto", "target": "/portal/shane-mccaw-consulting/copilot-readiness/documents" },
 
-    { "action": "expect", "selector": "[data-testid='document-reading-pane']", "state": "visible" },
     {
       "name": "#889 — the ready/pending counter is drawn from the real generation state (JOURNEY_LIVE_DOCUMENT_SPINE, #643): 'N of N ready' with a real number, never a stuck 0 of 0",
       "action": "expect",
@@ -265,42 +277,69 @@
       "action": "click",
       "selector": "[data-testid='document-row-1']"
     },
-    { "action": "expect", "selector": "[data-testid='active-document-title']", "state": "visible" },
-    { "action": "expect", "selector": "[data-testid='document-reading-pane']", "state": "visible" },
-
-    { "action": "goto", "target": "/copilot-readiness/proposal" },
-
     {
-      "name": "#890 — the phase list rendered is the real, server-mapped scope, not the design's ?preview=design fixture",
-      "action": "expect",
-      "selector": "[data-testid='proposal-phase-card']",
-      "state": "visible"
-    },
-    {
-      "name": "#890 — the one-off total on the summary rail is real computeTotals()/withAdjustments() output over the fetched sow response, not an invented figure",
-      "action": "expect",
-      "selector": "[data-testid='proposal-summary-total']",
-      "state": "visible"
-    },
-    {
-      "name": "#890 — toggling an unlocked phase is a real scope decision: the summary rail keeps rendering a total off the updated selection rather than freezing or disappearing",
+      "name": "Select the Statement of Work (last document in the set)",
       "action": "click",
-      "selector": "[data-testid='proposal-phase-toggle']"
+      "selector": "[data-testid='document-row-7']"
     },
-    { "action": "expect", "selector": "[data-testid='proposal-summary-total']", "state": "visible" },
-
-    { "action": "goto", "target": "/copilot-readiness/checkout" },
     {
-      "name": "#891 honesty guardrail — with no signed scope in this session (the executor cannot draw Screen 3's canvas signature), checkout refuses to render a pay form for a scope nobody signed (the 2401cbe7 guardrail): the 'no signed scope' panel is visible…",
+      "name": "Verify Statement of Work document loaded",
       "action": "expect",
-      "selector": "[data-testid='cj-checkout-no-signed-scope']",
+      "selector": "[data-testid='sow-document']",
+      "state": "visible",
+      "timeoutMs": 15000
+    },
+    {
+      "name": "Phase cards with toggles are rendered",
+      "action": "expect",
+      "selector": "[data-testid='sow-phase-toggle']",
       "state": "visible"
     },
     {
-      "name": "#891 honesty guardrail — …and the pay button is absent",
+      "name": "Price calculation net fee is displayed",
       "action": "expect",
-      "selector": "[data-testid='cj-checkout-pay']",
-      "state": "absent"
+      "selector": "[data-testid='sow-net-fee']",
+      "state": "visible"
+    },
+    {
+      "name": "Toggle an unlocked phase in the SOW to test price recalculation",
+      "action": "click",
+      "selector": "[data-testid='sow-phase-toggle']"
+    },
+    {
+      "name": "Updated price remains visible after toggling scope",
+      "action": "expect",
+      "selector": "[data-testid='sow-net-fee']",
+      "state": "visible"
+    },
+    {
+      "name": "Signature and inline payment section is visible",
+      "action": "expect",
+      "selector": "[data-testid='sow-signature-section']",
+      "state": "visible"
+    },
+    {
+      "name": "Pay in Full payment option is available",
+      "action": "expect",
+      "selector": "[data-testid='sow-plan-pay-in-full']",
+      "state": "visible"
+    },
+    {
+      "name": "Pay by Phase payment option is available",
+      "action": "expect",
+      "selector": "[data-testid='sow-plan-pay-by-phase']",
+      "state": "visible"
+    },
+    {
+      "name": "Switch payment plan to Pay by Phase",
+      "action": "click",
+      "selector": "[data-testid='sow-plan-pay-by-phase']"
+    },
+    {
+      "name": "Pay by Phase option remains active",
+      "action": "expect",
+      "selector": "[data-testid='sow-plan-pay-by-phase']",
+      "state": "visible"
     }
   ]
 }

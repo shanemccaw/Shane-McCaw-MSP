@@ -145,11 +145,14 @@ router.post(
   requireDevOrigin,
   requireAdminOrIngestToken(),
   async (req: Request, res: Response): Promise<void> => {
-    const body = req.body as { customerId?: number };
+    const body = req.body as { customerId?: number | string };
+    const rawCustomerId = body?.customerId;
     const customerId =
-      typeof body?.customerId === "number" && Number.isInteger(body.customerId)
-        ? body.customerId
-        : NaN;
+      typeof rawCustomerId === "number" && Number.isInteger(rawCustomerId)
+        ? rawCustomerId
+        : typeof rawCustomerId === "string" && /^\d+$/.test(rawCustomerId.trim())
+          ? parseInt(rawCustomerId.trim(), 10)
+          : NaN;
     if (!Number.isInteger(customerId) || customerId <= 0) {
       res.status(400).json({
         error:

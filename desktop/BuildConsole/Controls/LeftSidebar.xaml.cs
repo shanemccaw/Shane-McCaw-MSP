@@ -74,6 +74,7 @@ namespace BuildConsole.Controls
         public int? BlockedByNumber { get; set; }
         public string? BlockedByTitle { get; set; }
         public bool HasParentEpic { get; set; }
+        public bool IsComplete { get; set; }
         public string PriorityBadge => Priority switch
         {
             "HIGH" => "🔥",
@@ -1391,6 +1392,7 @@ namespace BuildConsole.Controls
                 RawTitle = it.Title,
                 Priority = it.IsTodo ? "HIGH" : "MED",
                 Status = it.IsClosed ? "CLOSED" : "OPEN",
+                IsComplete = it.IsComplete,
                 Body = it.Body,
                 DatabaseId = it.DatabaseId,
                 IsEpic = it.IsEpic,
@@ -1424,6 +1426,7 @@ namespace BuildConsole.Controls
                         RawTitle = it.Title,
                         Priority = it.IsTodo ? "HIGH" : "MED",
                         Status = it.IsClosed ? "CLOSED" : "OPEN",
+                        IsComplete = it.IsComplete,
                         SqlPath = DeriveSqlPath(it.Body),
                         Body = it.Body,
                         DatabaseId = it.DatabaseId,
@@ -2410,34 +2413,46 @@ namespace BuildConsole.Controls
             // real "priority" concept exists anywhere in Build Tracker, so
             // that fake menu item is gone rather than left as a no-op.
             var cm = new ContextMenu();
-            var miToggle = new MenuItem { Header = issue.Status == "CLOSED" ? "Remove 'complete' label" : "✓ Mark Complete" };
+
+            // 1. Label workflow: Mark Complete (Ready for Review)
+            var miToggle = new MenuItem { Header = issue.IsComplete ? "Remove 'complete' label" : "✓ Mark Complete (Ready for Review)" };
             miToggle.Click += async (s, e) =>
             {
                 if (_api == null) return;
                 try
                 {
-                    await _api.ToggleLabelAsync(issue.IssueNumber, "complete", issue.Status != "CLOSED");
+                    await _api.ToggleLabelAsync(issue.IssueNumber, "complete", !issue.IsComplete);
+                    ActivityLog.Log("git-board.label", $"#{issue.IssueNumber} complete label -> {!issue.IsComplete}");
+                    ToastEngine.Success("Git Board", $"Issue #{issue.IssueNumber} marked {(issue.IsComplete ? "incomplete" : "complete (Ready for Review)")}.");
                 }
-                catch { /* best-effort — next refresh will show the real state either way */ }
-                PopulateGitTrackerBoard();
+                catch (Exception ex)
+                {
+                    ActivityLog.Log("git-board.label", $"#{issue.IssueNumber} label toggle FAILED: {ex.Message}");
+                    ToastEngine.Error("Git Board", $"Couldn't toggle complete label on #{issue.IssueNumber}: {ex.Message}");
+                    return;
+                }
+                _lastInProgressSignature = null;
+                PopulateGitTrackerBoard(forceFresh: true);
             };
             cm.Items.Add(miToggle);
 
-            // Git #841 (Git Board Phase 3) — real GitHub issue state, not the
-            // `complete` label. Shane emphasized reopening specifically: this
-            // is the way a closed issue that shouldn't have been comes back
-            // into view (default board only shows real OPEN issues per #839).
+            // 2. Real GitHub Issue State: Close Issue / Reopen Issue
             var miState = new MenuItem { Header = issue.Status == "CLOSED" ? "↩ Reopen Issue" : "✕ Close Issue" };
             miState.Click += async (s, e) =>
             {
                 var settings = BuildConsole.Services.BuildConsoleSettings.Load();
-                if (!settings.HasGitHubPat) return;
+                if (!settings.HasGitHubPat)
+                {
+                    ToastEngine.Warning("Git Board", "GitHub PAT not configured — set one in Settings to close issues.");
+                    return;
+                }
                 bool closing = issue.Status != "CLOSED";
                 try
                 {
                     var client = new GitHubApiClient(settings.GitHubPat);
                     await client.SetIssueStateAsync(issue.IssueNumber, closing);
                     ActivityLog.Log("git-board.state-change", $"#{issue.IssueNumber} -> {(closing ? "closed" : "reopened")}");
+                    ToastEngine.Success("Git Board", $"Issue #{issue.IssueNumber} {(closing ? "closed" : "reopened")}.");
                 }
                 catch (Exception ex)
                 {
@@ -2447,7 +2462,9 @@ namespace BuildConsole.Controls
                 }
                 _lastInProgressSignature = null;
                 _boardShowsClosed = false;
-                PopulateGitTrackerBoard();
+                _lastBlockedEnrichUtc = DateTime.MinValue;
+                PopulateGitTrackerBoard(forceFresh: true);
+                RefreshGitStatus();
             };
             cm.Items.Add(miState);
 

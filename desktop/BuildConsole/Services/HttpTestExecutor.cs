@@ -65,10 +65,24 @@ namespace BuildConsole.Services
             try
             {
                 // Pause-on-unset (Epic #803, extends #953/#961) — before resolving anything, make sure any
-                // {{NAME}} this step references whose Test Environment Variable is still <unset>/needsReview
+                // {{NAME}} this step references in its actual url/headers/body whose Test Environment Variable is still <unset>/needsReview
                 // gets a real value (pause + prompt + resume, or a clear failure on dismissal), so the
                 // Resolve calls below never ship the literal "<unset>" downstream. No-op when nothing is unset.
-                await vars.PrepareAsync(string.IsNullOrWhiteSpace(manifest.BaseUrl) ? config.ApiBaseUrl : manifest.BaseUrl, test.GetRawText());
+                var inputsToPrepare = new List<string?>
+                {
+                    string.IsNullOrWhiteSpace(manifest.BaseUrl) ? config.ApiBaseUrl : manifest.BaseUrl,
+                    path
+                };
+                if (test.TryGetProperty("headers", out var hProp) && hProp.ValueKind == JsonValueKind.Object)
+                {
+                    foreach (var h in hProp.EnumerateObject())
+                        inputsToPrepare.Add(h.Value.GetString());
+                }
+                if (test.TryGetProperty("body", out var bProp))
+                {
+                    inputsToPrepare.Add(bProp.GetRawText());
+                }
+                await vars.PrepareAsync(inputsToPrepare.ToArray());
 
                 // Config placeholders ({{DEPLOY_URL}}/{{SECRET_KEY}}) first, then cross-step
                 // {{variable}} interpolation (#877) against values earlier steps extracted — so any

@@ -228,6 +228,7 @@ function SowPaymentPlanCard({
     <button
       type="button"
       role="radio"
+      data-testid={title === "Pay in Full" ? "sow-plan-pay-in-full" : "sow-plan-pay-by-phase"}
       aria-checked={selected}
       onClick={onSelect}
       disabled={disabled}

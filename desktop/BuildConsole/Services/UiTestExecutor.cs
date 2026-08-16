@@ -202,44 +202,40 @@ namespace BuildConsole.Services
         private const string Channel = "testing.ui-executor";
         /// <summary>Git #966 — dedicated channel for screenshot capture, per the task's `ActivityLog.Log("testing.screenshot", ...)` instruction (this app's logger.child({channel}) equivalent).</summary>
         private const string ScreenshotChannel = "testing.screenshot";
-        private const int CaptureResponseTimeoutMs = 5000;
-        private const int PostNavigationSettleMs = 1200;
-        private const int PostStepSettleMs = 1000;
-        private const int NavigationTimeoutMs = 15000;
+        private const int CaptureResponseTimeoutMs = 20000;
+        private const int PostNavigationSettleMs = 2000;
+        private const int PostStepSettleMs = 1200;
+        private const int NavigationTimeoutMs = 45000;
         /// <summary>Post-capture hang fix (Epic #803) — a hard ceiling on the best-effort #966/#977 WebView2
         /// screenshot capture. CoreWebView2.CapturePreviewAsync never completes when the control isn't in a
         /// renderable/composited state (a run triggered while BuildConsole is minimized/occluded/on a locked
         /// session), and it is the only await left in a step's post-capture path once the captureResponse wait
         /// has already timed out — so without this guard one un-renderable screenshot deadlocks the entire run
         /// forever (the try/catch around it cannot rescue a Task that never faults). Same
-        /// Task.WhenAny(work, Task.Delay(timeout)) shape navigation (15s) and captureResponse (5s) already use.</summary>
-        private const int ScreenshotTimeoutMs = 8000;
+        /// Task.WhenAny(work, Task.Delay(timeout)) shape navigation (45s) and captureResponse (20s) already use.</summary>
+        private const int ScreenshotTimeoutMs = 12000;
         /// <summary>Full-page screenshot support — bounds the JS scrollHeight query CaptureScreenshotAsync
         /// runs before every capture. Same hang class as ScreenshotTimeoutMs (ExecuteScriptAsync can stall
         /// when the control isn't in a renderable state) — guarded so a stuck height query degrades to a
         /// current-size capture instead of stalling the run.</summary>
-        private const int FullPageHeightQueryTimeoutMs = 3000;
+        private const int FullPageHeightQueryTimeoutMs = 5000;
         /// <summary>Full-page screenshot support — how long to let the page settle (reflow/repaint) after
         /// resizing the WebView2 control to the full scrollHeight and before CapturePreviewAsync runs, so
         /// the capture doesn't land mid-reflow and show a partially-laid-out page.</summary>
-        private const int FullPageResizeSettleMs = 150;
+        private const int FullPageResizeSettleMs = 250;
         /// <summary>Content-stream read hang guard (Epic #803) — a hard ceiling on EACH of the two awaits in
         /// <see cref="ReadResponseBodyAsync"/> (GetContentAsync, then ReadToEndAsync). A WebView2 content stream
         /// can stall indefinitely on either await (same hang class as the #803 screenshot/captureResponse cases),
         /// and once the captureResponse wait has resolved the body read is the last unguarded await that could
         /// deadlock a run — a never-completing Task never faults, so the method's try/catch cannot rescue it.
-        /// Same Task.WhenAny(work, Task.Delay(timeout)) shape captureResponse (5s)/navigation (15s)/screenshot (8s)
-        /// use; scaled to captureResponse's 5s since it reads that same captured response.</summary>
-        private const int ResponseBodyReadTimeoutMs = 5000;
+        /// Same Task.WhenAny(work, Task.Delay(timeout)) shape captureResponse (20s)/navigation (45s)/screenshot (12s)
+        /// use; scaled to captureResponse's 20s since it reads that same captured response.</summary>
+        private const int ResponseBodyReadTimeoutMs = 15000;
         /// <summary>Default bounded window an `expect` step polls the DOM for its condition (state and/or #1016
-        /// textContains) before failing, when the step declares no `timeoutMs` of its own. A few seconds, in
-        /// line with CaptureResponseTimeoutMs/ResponseBodyReadTimeoutMs — long enough to absorb the async
-        /// render/hydration that follows the prior action (the DOM the prior step touched often isn't settled
-        /// the instant that step returns), short enough that a genuinely-failing assertion still fails promptly.
-        /// Before this, `expect` checked the DOM exactly once (#1016) and a not-yet-rendered element/text failed
-        /// spuriously on a timing race the app would otherwise have won a few hundred ms later. Overridable per
+        /// textContains) before failing, when the step declares no `timeoutMs` of its own. Long enough to absorb
+        /// Replit compilation/cold-starts and async render/hydration that follows the prior action. Overridable per
         /// step via the manifest's uiSteps[].timeoutMs.</summary>
-        private const int ExpectPollTimeoutMs = 5000;
+        private const int ExpectPollTimeoutMs = 15000;
         /// <summary>Interval between DOM re-checks inside the `expect` poll loop (see <see cref="ExpectPollTimeoutMs"/>).
         /// ~250ms keeps the loop responsive — it succeeds within a poll of the condition genuinely becoming true —
         /// without hammering ExecuteScriptAsync.</summary>
@@ -259,6 +255,9 @@ namespace BuildConsole.Services
         /// consecutive steps at the same viewport don't redundantly resize, and so the run can restore
         /// the default afterward only when it actually left it.</summary>
         private ViewportSpec? _appliedViewport;
+
+        /// <summary>The base target URL passed to RunAsync, used to resolve relative goto steps.</summary>
+        private string _targetUrl = string.Empty;
 
         /// <summary>Git #966 — absolute directory this run's screenshots are written into
         /// (test-results/{issue}-{timestamp}/screenshots), or null when the caller supplied none (capture
@@ -293,26 +292,46 @@ namespace BuildConsole.Services
         /// opt-in; the flag now only affects the capture reason label.</param>
         public async Task<UiTestRunResult> RunAsync(string targetUrl, IReadOnlyList<Controls.AutomationAction> steps, TestRunVariables? vars = null, ViewportSpec? defaultViewport = null, string? screenshotDir = null)
         {
+            _targetUrl = targetUrl;
             _vars = vars ?? new TestRunVariables();
             _screenshotDir = string.IsNullOrWhiteSpace(screenshotDir) ? null : screenshotDir;
-            var result = new UiTestRunResult { TargetUrl = targetUrl, TotalSteps = steps.Count };
+
+            // If the manifest starts with a goto step, start directly at that destination
+            string initialUrl = targetUrl;
+            if (steps.Count > 0 && steps[0].ActionType.Equals("goto", StringComparison.OrdinalIgnoreCase))
+            {
+                initialUrl = ResolveGotoTarget(steps[0].Selector);
+            }
+
+            var result = new UiTestRunResult { TargetUrl = initialUrl, TotalSteps = steps.Count };
             _run = result;
 
-            Emit("START", $"Navigating to {targetUrl}", "INFO", "#89B4FA");
-            ActivityLog.Log(Channel, $"Navigating to {targetUrl} ({steps.Count} step(s)).");
+            Emit("START", $"Navigating to {initialUrl}", "INFO", "#89B4FA");
+            ActivityLog.Log(Channel, $"Navigating to {initialUrl} ({steps.Count} step(s)).");
 
             try
             {
-                await _webView.EnsureCoreWebView2Async();
+                await MainWindow.EnsureWebViewInitializedAsync(_webView);
                 _webView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true;
 
-                if (!await NavigateAsync(targetUrl))
+                // Session isolation: delete auth cookies so test run starts unauthenticated
+                try
+                {
+                    _webView.CoreWebView2.CookieManager.DeleteAllCookies();
+                    ActivityLog.Log(Channel, "Cleared cookies for clean test execution.");
+                }
+                catch (Exception ex)
+                {
+                    ActivityLog.Log(Channel, $"CookieManager warning (non-fatal): {ex.Message}");
+                }
+
+                if (!await NavigateAsync(initialUrl))
                 {
                     Emit("NAV FAIL", "Page failed to load or encountered HTTP error.", "ERROR", "#F38BA8");
-                    ActivityLog.Log(Channel, $"Navigation failed: {targetUrl}");
+                    ActivityLog.Log(Channel, $"Navigation failed: {initialUrl}");
                     // Git #966 — a failed navigation is still worth a screenshot (the error page WebView2 rendered
                     // is exactly what a human reviewer would want to see); captured as step 0.
-                    await CaptureScreenshotAsync(0, "navigation-failed", $"navigate {targetUrl}");
+                    await CaptureScreenshotAsync(0, "navigation-failed", $"navigate {initialUrl}");
                     result.Success = false;
                     result.StatusText = "❌ TEST FAILED (Navigation Error)";
                     return result;
@@ -548,7 +567,8 @@ namespace BuildConsole.Services
             }
             else
             {
-                (actionPassed, actionDetail) = await ExecuteClickOrInputAsync(actionType, selector, step.TagName, val);
+                int clickInputTimeoutMs = step.TimeoutMs is > 0 ? (int)step.TimeoutMs.Value : ExpectPollTimeoutMs;
+                (actionPassed, actionDetail) = await ExecuteClickOrInputAsync(actionType, selector, step.TagName, val, clickInputTimeoutMs, stepNumber);
                 actionExpected = $"{actionType} on '{selector}' executes without a DOM error";
                 actionActual = actionPassed ? "executed" : actionDetail;
             }
@@ -840,23 +860,81 @@ namespace BuildConsole.Services
         /// manifest's opening "goto /" right after this method's own initial navigation to that same URL) left
         /// NavigationCompleted never firing and the whole run deadlocked forever with no error. Navigate() is a
         /// direct native call that always performs a real navigation regardless of URL equality.</summary>
+        /// <summary>Git #832 — must call CoreWebView2.Navigate(url), NOT set _webView.Source. Source is a WPF
+        /// DependencyProperty, and WPF skips the property-changed callback (so never triggers navigation) when
+        /// the new value equals the current one — a goto step resolving to the already-loaded URL (e.g. a
+        /// manifest's opening "goto /" right after this method's own initial navigation to that same URL) left
+        /// NavigationCompleted never firing and the whole run deadlocked forever with no error. Navigate() is a
+        /// direct native call that always performs a real navigation regardless of URL equality.</summary>
         private async Task<bool> NavigateAsync(string url)
         {
-            var tcs = new TaskCompletionSource<bool>();
-            void NavHandler(object? s, CoreWebView2NavigationCompletedEventArgs args)
+            if (_webView.CoreWebView2 == null)
             {
-                _webView.NavigationCompleted -= NavHandler;
+                await _webView.EnsureCoreWebView2Async();
+            }
+
+            var tcs = new TaskCompletionSource<bool>();
+            void CoreNavHandler(object? s, CoreWebView2NavigationCompletedEventArgs args)
+            {
+                Detach();
+                if (!args.IsSuccess)
+                {
+                    ActivityLog.Log(Channel, $"NavigateAsync({url}) completed with error status: {args.WebErrorStatus} (http status {args.HttpStatusCode})");
+                }
+                else
+                {
+                    ActivityLog.Log(Channel, $"NavigateAsync({url}) completed successfully (http status {args.HttpStatusCode})");
+                }
                 tcs.TrySetResult(args.IsSuccess);
             }
 
-            _webView.NavigationCompleted += NavHandler;
-            _webView.CoreWebView2.Navigate(url);
+            void WpfNavHandler(object? s, CoreWebView2NavigationCompletedEventArgs args)
+            {
+                Detach();
+                if (!args.IsSuccess)
+                {
+                    ActivityLog.Log(Channel, $"NavigateAsync({url}) [WPF] completed with error status: {args.WebErrorStatus} (http status {args.HttpStatusCode})");
+                }
+                tcs.TrySetResult(args.IsSuccess);
+            }
+
+            void Detach()
+            {
+                try
+                {
+                    if (_webView.CoreWebView2 != null)
+                        _webView.CoreWebView2.NavigationCompleted -= CoreNavHandler;
+                }
+                catch { }
+                try
+                {
+                    _webView.NavigationCompleted -= WpfNavHandler;
+                }
+                catch { }
+            }
+
+            if (_webView.CoreWebView2 != null)
+                _webView.CoreWebView2.NavigationCompleted += CoreNavHandler;
+            _webView.NavigationCompleted += WpfNavHandler;
+
+            try
+            {
+                ActivityLog.Log(Channel, $"NavigateAsync: calling CoreWebView2.Navigate({url})");
+                _webView.CoreWebView2.Navigate(url);
+            }
+            catch (Exception ex)
+            {
+                Detach();
+                ActivityLog.Log(Channel, $"NavigateAsync({url}) exception: {ex.Message}");
+                return false;
+            }
 
             var completed = await Task.WhenAny(tcs.Task, Task.Delay(NavigationTimeoutMs));
             if (completed != tcs.Task)
             {
-                _webView.NavigationCompleted -= NavHandler;
-                ActivityLog.Log(Channel, $"Navigation to {url} timed out after {NavigationTimeoutMs}ms (NavigationCompleted never fired).");
+                Detach();
+                string currentSource = _webView.CoreWebView2?.Source ?? "unknown";
+                ActivityLog.Log(Channel, $"Navigation to {url} timed out after {NavigationTimeoutMs}ms (NavigationCompleted never fired). Current Source: '{currentSource}'");
                 return false;
             }
 
@@ -866,12 +944,24 @@ namespace BuildConsole.Services
         private string ResolveGotoTarget(string target)
         {
             if (Uri.TryCreate(target, UriKind.Absolute, out var abs)) return abs.ToString();
-            if (_webView.Source != null && Uri.TryCreate(_webView.Source, target, out var combined)) return combined.ToString();
+
+            // Try resolving against the base targetUrl first, then CoreWebView2's current location, then Source
+            string? baseStr = !string.IsNullOrWhiteSpace(_targetUrl) ? _targetUrl : _webView.CoreWebView2?.Source;
+            if (string.IsNullOrWhiteSpace(baseStr) || baseStr == "about:blank")
+                baseStr = _webView.Source?.ToString();
+
+            if (!string.IsNullOrWhiteSpace(baseStr) && Uri.TryCreate(baseStr, UriKind.Absolute, out var baseUri))
+            {
+                if (Uri.TryCreate(baseUri, target, out var combined))
+                    return combined.ToString();
+            }
+
             return target;
         }
 
         /// <summary>Same JS find/highlight/click/input pattern AutomationRunnerWindow always used — unchanged behavior for manually-recorded steps.</summary>
-        private async Task<(bool passed, string detail)> ExecuteClickOrInputAsync(string actionType, string selector, string tagName, string val)
+        /// <summary>Same JS find/highlight/click/input pattern AutomationRunnerWindow always used — runs a single attempt against the live DOM.</summary>
+        private async Task<(bool passed, string detail)> ExecuteClickOrInputOnceAsync(string actionType, string selector, string tagName, string val)
         {
             string script = $@"
 (function() {{
@@ -911,9 +1001,6 @@ namespace BuildConsole.Services
             string? error = null;
             try
             {
-                // ExecuteScriptAsync JSON-encodes whatever the script returns; since the script itself
-                // returns a JSON.stringify'd string, the raw result is a JSON string LITERAL whose
-                // deserialized value is the actual { success, error } object as text.
                 using var outerDoc = JsonDocument.Parse(resJson);
                 using var innerDoc = JsonDocument.Parse(outerDoc.RootElement.GetString() ?? "{}");
                 var root = innerDoc.RootElement;
@@ -928,6 +1015,39 @@ namespace BuildConsole.Services
             }
             string detail = passed ? $"Executed {actionType} on {selector}" : $"Element execution warning: {error ?? resJson}";
             return (passed, detail);
+        }
+
+        /// <summary>Polls the DOM for the target element to become available and execute the click or input action,
+        /// absorbing in-flight client-side redirects (e.g. /login -> /portal/login) or async route rendering.</summary>
+        private async Task<(bool passed, string detail)> ExecuteClickOrInputAsync(
+            string actionType, string selector, string tagName, string val, int timeoutMs, int stepNumber)
+        {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            int attempts = 0;
+            (bool passed, string detail) last = (false, string.Empty);
+            while (true)
+            {
+                attempts++;
+                last = await ExecuteClickOrInputOnceAsync(actionType, selector, tagName, val);
+                if (last.passed)
+                {
+                    sw.Stop();
+                    if (attempts > 1)
+                    {
+                        ActivityLog.Log(Channel, $"Step {stepNumber} {actionType} [{selector}]: element became available and executed after {sw.ElapsedMilliseconds}ms ({attempts} attempts)");
+                    }
+                    return last;
+                }
+
+                long remaining = timeoutMs - sw.ElapsedMilliseconds;
+                if (remaining <= 0)
+                {
+                    sw.Stop();
+                    ActivityLog.Log(Channel, $"Step {stepNumber} {actionType} [{selector}]: EXHAUSTED {timeoutMs}ms waiting for element ({attempts} attempts) — {last.detail}");
+                    return last;
+                }
+                await Task.Delay((int)Math.Min(ExpectPollIntervalMs, remaining));
+            }
         }
 
         /// <summary>Retry/polling wrapper around <see cref="EvaluateExpectOnceAsync"/>. Re-checks the live DOM

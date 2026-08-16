@@ -213,7 +213,7 @@ namespace BuildConsole
         }
 
         /// <summary>Called from controls (e.g. GitDetailView) to open history filtered to a specific issue.</summary>
-        public void EnsureTestHistoryWindowPublic(int issueFilter) => EnsureTestHistoryWindow(issueFilter);
+        public void EnsureTestHistoryWindowPublic(int? issueFilter = null) => EnsureTestHistoryWindow(issueFilter);
 
         public MainWindow()
         {
@@ -340,6 +340,7 @@ namespace BuildConsole
             _replitWatcher = new BuildConsole.Services.ReplitWatcherService(
                 ReplitWatcherWebView, EnsureWebViewInitializedAsync);
             _replitWatcher.StatusChanged += ReplitWatcher_StatusChanged;
+            _replitWatcher.OpenVisibleWorkspaceTab = OpenOrFocusReplitWorkspaceTabAsync;
             // Git #954 — the Replit watcher's "re-apply on save" hook moved onto the
             // Settings tab (SettingsTabView.ReplitWatcherSettingsChanged), wired per
             // tab instance in OpenSettingsTab; the sidebar no longer owns it.
@@ -1038,6 +1039,56 @@ namespace BuildConsole
             // inactivity; a periodic reload keeps it awake. Only the Replit
             // tab gets the toggle - it's the one use case asked for.
             OpenWebTab(url, title, glyph, offerKeepAlive: url.Contains("replit.com"));
+        }
+
+        public System.Threading.Tasks.Task<Microsoft.Web.WebView2.Wpf.WebView2?> OpenOrFocusReplitWorkspaceTabAsync()
+        {
+            if (!Dispatcher.CheckAccess())
+            {
+                return System.Threading.Tasks.Task.FromResult(Dispatcher.Invoke(OpenOrFocusReplitWorkspaceTabInternal));
+            }
+
+            return System.Threading.Tasks.Task.FromResult(OpenOrFocusReplitWorkspaceTabInternal());
+        }
+
+        private Microsoft.Web.WebView2.Wpf.WebView2? OpenOrFocusReplitWorkspaceTabInternal()
+        {
+            var s = BuildConsole.Services.BuildConsoleSettings.Load();
+            string url = !string.IsNullOrWhiteSpace(s.ReplitWorkspaceUrl)
+                ? s.ReplitWorkspaceUrl
+                : "https://replit.com/@shanemccaw/Shane-McCaw-Consulting";
+
+            // Check if already open
+            foreach (TabItem item in EditorTabs.Items)
+            {
+                if (item.Tag is string tagUrl && (tagUrl.Contains("replit.com") || string.Equals(tagUrl, url, StringComparison.OrdinalIgnoreCase)))
+                {
+                    EditorTabs.SelectedItem = item;
+                    if (item.Content is Grid g)
+                    {
+                        foreach (var child in g.Children)
+                        {
+                            if (child is Microsoft.Web.WebView2.Wpf.WebView2 existingWv)
+                                return existingWv;
+                        }
+                    }
+                }
+            }
+
+            // Open new visible web tab exactly like the ActivityBar button
+            OpenWebTab(url, "Replit Workspace", "\uE7B8", offerKeepAlive: true);
+
+            // Return the newly created tab's WebView2
+            if (EditorTabs.SelectedItem is TabItem selectedItem && selectedItem.Content is Grid grid)
+            {
+                foreach (var child in grid.Children)
+                {
+                    if (child is Microsoft.Web.WebView2.Wpf.WebView2 newWv)
+                        return newWv;
+                }
+            }
+
+            return null;
         }
 
         /// <summary>Git #864 — a Web Tools popout entry was clicked; opens exactly like a QuickNav icon.</summary>
@@ -2371,7 +2422,27 @@ namespace BuildConsole
             tip.Append("Replit idle watcher");
             tip.Append(status.LastCheck.HasValue ? $"\nLast check: {status.LastCheck:HH:mm:ss}" : "\nLast check: —");
             tip.Append(status.LastIntervention.HasValue ? $"\nLast wake: {status.LastIntervention:yyyy-MM-dd HH:mm:ss}" : "\nLast wake: never");
+            tip.Append("\n\nClick to check status and turn Replit on if down.");
             ReplitStatusText.ToolTip = tip.ToString();
+        }
+
+        private async void BtnReplitRefresh_Click(object sender, RoutedEventArgs e)
+        {
+            if (_replitWatcher == null) return;
+            BtnReplitRefresh.IsEnabled = false;
+            try
+            {
+                await _replitWatcher.CheckNowAndWakeIfDownAsync();
+            }
+            finally
+            {
+                BtnReplitRefresh.IsEnabled = true;
+            }
+        }
+
+        private void ReplitStatus_Click(object sender, MouseButtonEventArgs e)
+        {
+            BtnReplitRefresh_Click(sender, e);
         }
 
         /// <summary>Refresh icon next to the usage status text — triggers an immediate manual poll instead of waiting for the next scheduled cycle (Shane reports the automatic poll only lands ~25% of the time). Reuses the exact same polling logic as the timer via ClaudeUsageMeterService.ManualRefreshAsync; the service's own Polling-state emit (dot turns amber, "Checking claude.ai…" tooltip) is the in-progress feedback, so a click is never silent. Button is disabled for the duration so repeat clicks can't stack polls.</summary>
@@ -3285,7 +3356,7 @@ namespace BuildConsole
             }
         }
 
-        private static async System.Threading.Tasks.Task<bool> EnsureWebViewInitializedAsync(Microsoft.Web.WebView2.Wpf.WebView2 wv)
+        public static async System.Threading.Tasks.Task<bool> EnsureWebViewInitializedAsync(Microsoft.Web.WebView2.Wpf.WebView2 wv)
         {
             try
             {
@@ -4205,21 +4276,34 @@ namespace BuildConsole
                  _replitWatcher.CurrentStatus.State == BuildConsole.Services.ReplitWatcherState.Waking ||
                  _replitWatcher.CurrentStatus.State == BuildConsole.Services.ReplitWatcherState.Error))
             {
+                BuildConsole.Services.ActivityLog.Log("testing.manifest-runner",
+                    "Replit is currently down — attempting automatic wake before running manifest...");
                 BuildConsole.ToastEngine.Show(
-                    "Replit Not Responding",
-                    "Replit is currently down. Click here to open the Replit tab and wake it up.",
-                    BuildConsole.ToastKind.Warning,
-                    TimeSpan.FromSeconds(15),
-                    () => OpenWebTab(BuildConsole.Services.BuildConsoleSettings.Load().ReplitWorkspaceUrl, "Replit Workspace", "")
+                    "Waking Replit",
+                    "Replit is down. Automatically waking your Replit dev server now...",
+                    BuildConsole.ToastKind.Info,
+                    TimeSpan.FromSeconds(5)
                 );
 
-                return new BuildConsole.Services.ManifestRunResult
+                bool woke = await _replitWatcher.TriggerWakeAsync();
+                if (!woke)
                 {
-                    Issue = manifest.Issue,
-                    Feature = manifest.Feature,
-                    Mode = mode,
-                    StartedAt = DateTime.Now,
-                };
+                    BuildConsole.ToastEngine.Show(
+                        "Replit Not Responding",
+                        "Could not wake Replit automatically. Click here to open the workspace.",
+                        BuildConsole.ToastKind.Warning,
+                        TimeSpan.FromSeconds(15),
+                        () => OpenWebTab(BuildConsole.Services.BuildConsoleSettings.Load().ReplitWorkspaceUrl, "Replit Workspace", "")
+                    );
+
+                    return new BuildConsole.Services.ManifestRunResult
+                    {
+                        Issue = manifest.Issue,
+                        Feature = manifest.Feature,
+                        Mode = mode,
+                        StartedAt = DateTime.Now,
+                    };
+                }
             }
 
             BuildConsole.Services.ActivityLog.Log("testing.manifest-runner",

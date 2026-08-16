@@ -105,6 +105,9 @@ namespace BuildConsole.Services
 
         public event Action<ReplitWatcherStatus>? StatusChanged;
 
+        /// <summary>Delegate to open or focus the visible 'Replit Workspace' tab in MainWindow so the user can watch the wake sequence live.</summary>
+        public Func<Task<WebView2?>>? OpenVisibleWorkspaceTab { get; set; }
+
         public ReplitWatcherService(WebView2 webView, Func<WebView2, Task<bool>> ensureInitialized)
         {
             _webView = webView;
@@ -134,6 +137,82 @@ namespace BuildConsole.Services
 
             // Run one check immediately rather than waiting a whole interval.
             _ = TickAsync();
+        }
+
+        /// <summary>Triggers an immediate wake sequence to start Replit without waiting for a timer tick or grace period. Can be called when any health check or test runner determines Replit is down.</summary>
+        public async Task<bool> TriggerWakeAsync()
+        {
+            if (_busy)
+            {
+                ActivityLog.Log(Channel, "Wake/check already in progress — waiting for current operation.");
+                return CurrentStatus.State == ReplitWatcherState.Monitoring;
+            }
+
+            var s = BuildConsoleSettings.Load();
+            _busy = true;
+            try
+            {
+                if (!await _ensureInitialized(_webView) || _webView.CoreWebView2 == null)
+                {
+                    Emit(ReplitWatcherState.Error, "WebView2 not ready");
+                    return false;
+                }
+
+                ActivityLog.Log(Channel, "Replit down intervention triggered — driving Replit dashboard to turn app on...");
+                await WakeAsync(s);
+                return CurrentStatus.State == ReplitWatcherState.Monitoring;
+            }
+            catch (Exception ex)
+            {
+                Emit(ReplitWatcherState.Error, ex.Message);
+                ActivityLog.Log(Channel, $"TriggerWake failed: {ex.Message}");
+                return false;
+            }
+            finally
+            {
+                _busy = false;
+            }
+        }
+
+        /// <summary>Checks whether Replit is up immediately. If down, immediately launches the wake sequence to turn Replit on.</summary>
+        public async Task<bool> CheckNowAndWakeIfDownAsync()
+        {
+            if (_busy) return CurrentStatus.State == ReplitWatcherState.Monitoring;
+
+            var s = BuildConsoleSettings.Load();
+            _busy = true;
+            try
+            {
+                if (!await _ensureInitialized(_webView) || _webView.CoreWebView2 == null)
+                {
+                    Emit(ReplitWatcherState.Error, "WebView2 not ready");
+                    return false;
+                }
+
+                Emit(ReplitWatcherState.Checking, "checking app…");
+                bool up = await IsAppUpAsync(s.ReplitAppUrl);
+                _lastCheck = DateTime.Now;
+
+                if (up)
+                {
+                    Emit(ReplitWatcherState.Monitoring, "app up");
+                    return true;
+                }
+
+                ActivityLog.Log(Channel, "Replit determined DOWN — immediately initiating wake sequence.");
+                await WakeAsync(s);
+                return CurrentStatus.State == ReplitWatcherState.Monitoring;
+            }
+            catch (Exception ex)
+            {
+                Emit(ReplitWatcherState.Error, ex.Message);
+                ActivityLog.Log(Channel, $"CheckNowAndWakeIfDown failed: {ex.Message}");
+                return false;
+            }
+            finally
+            {
+                _busy = false;
+            }
         }
 
         private async Task TickAsync()
@@ -233,7 +312,27 @@ namespace BuildConsole.Services
         private async Task WakeAsync(BuildConsoleSettings s)
         {
             Emit(ReplitWatcherState.Waking, "opening Replit dashboard…");
-            if (!await NavigateAsync(s.ReplitWorkspaceUrl))
+
+            // Open or focus the visible Replit Workspace tab so the user can watch the wake sequence live
+            WebView2 targetWv = _webView;
+            if (OpenVisibleWorkspaceTab != null)
+            {
+                try
+                {
+                    var visibleWv = await OpenVisibleWorkspaceTab();
+                    if (visibleWv != null)
+                    {
+                        await _ensureInitialized(visibleWv);
+                        targetWv = visibleWv;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    ActivityLog.Log(Channel, $"Opening visible Replit tab warning: {ex.Message}");
+                }
+            }
+
+            if (!await NavigateAsync(s.ReplitWorkspaceUrl, targetWv))
             {
                 Emit(ReplitWatcherState.Error, "couldn't open Replit dashboard");
                 ActivityLog.Log(Channel, $"Wake failed — navigation to dashboard {s.ReplitWorkspaceUrl} failed.");
@@ -243,7 +342,7 @@ namespace BuildConsole.Services
             // Give the IDE a moment to render its toolbar before we look for Run.
             await Task.Delay(DashboardSettleMs);
 
-            var (clicked, detail) = await ClickRunAsync(s.ReplitRunButtonSelector);
+            var (clicked, detail) = await ClickRunAsync(s.ReplitRunButtonSelector, targetWv);
             if (!clicked)
             {
                 Emit(ReplitWatcherState.Error, "Run button not found — calibrate selector in Settings");
@@ -276,25 +375,26 @@ namespace BuildConsole.Services
         }
 
         /// <summary>Git #832 — must use CoreWebView2.Navigate(url), never set .Source (WPF skips the property-changed callback when the URL is unchanged, so a repeat check to the same URL would deadlock waiting for a NavigationCompleted that never fires).</summary>
-        private async Task<bool> NavigateAsync(string url)
+        private async Task<bool> NavigateAsync(string url, WebView2? wv = null)
         {
-            if (_webView.CoreWebView2 == null) return false;
+            var target = wv ?? _webView;
+            if (target.CoreWebView2 == null) return false;
 
             var tcs = new TaskCompletionSource<bool>();
             void NavHandler(object? sender, CoreWebView2NavigationCompletedEventArgs args)
             {
-                _webView.NavigationCompleted -= NavHandler;
+                target.NavigationCompleted -= NavHandler;
                 tcs.TrySetResult(args.IsSuccess);
             }
 
-            _webView.NavigationCompleted += NavHandler;
+            target.NavigationCompleted += NavHandler;
             try
             {
-                _webView.CoreWebView2.Navigate(url);
+                target.CoreWebView2.Navigate(url);
             }
             catch (Exception ex)
             {
-                _webView.NavigationCompleted -= NavHandler;
+                target.NavigationCompleted -= NavHandler;
                 ActivityLog.Log(Channel, $"Navigate({url}) threw: {ex.Message}");
                 return false;
             }
@@ -302,7 +402,7 @@ namespace BuildConsole.Services
             var completed = await Task.WhenAny(tcs.Task, Task.Delay(NavigationTimeoutMs));
             if (completed != tcs.Task)
             {
-                _webView.NavigationCompleted -= NavHandler;
+                target.NavigationCompleted -= NavHandler;
                 ActivityLog.Log(Channel, $"Navigate({url}) timed out after {NavigationTimeoutMs}ms.");
                 return false;
             }
@@ -332,22 +432,110 @@ namespace BuildConsole.Services
             return (title, text);
         }
 
-        /// <summary>Same querySelector→click JS-injection pattern UiTestExecutor uses, with a fallback that finds any button/anchor whose visible text is exactly "Run" when the configured selector matches nothing.</summary>
-        private async Task<(bool clicked, string detail)> ClickRunAsync(string selector)
+        /// <summary>Same querySelector→click JS-injection pattern UiTestExecutor uses, with multi-strategy fallback scoped specifically to the 'Project' workflow row, Replit's theme-positive button pills, aria-labels, and text variants.</summary>
+        private async Task<(bool clicked, string detail)> ClickRunAsync(string selector, WebView2? wv = null)
         {
             string script = $@"
 (function() {{
     try {{
-        var el = document.querySelector('{Escape(selector)}');
-        var via = 'selector';
+        var el = null;
+        var via = '';
+        var sel = '{Escape(selector)}'.trim();
+        if (sel) {{
+            try {{ el = document.querySelector(sel); }} catch (_) {{}}
+            if (el) via = 'configured selector';
+        }}
+
+        // Helper to ensure an element is a real button and NOT an accordion toggle header
+        function isRealButton(node) {{
+            if (!node || node.nodeType !== 1) return false;
+            if (node.tagName !== 'BUTTON') return false;
+            if (node.id && node.id.includes('AccordionControl')) return false;
+            if (node.className && typeof node.className === 'string' && node.className.includes('accordionToggle')) return false;
+            var aria = (node.getAttribute('aria-label') || '').toLowerCase();
+            if (aria.includes('accordion') || aria.includes('collapse') || aria.includes('expand')) return false;
+            return true;
+        }}
+
+        // Priority 1: Match button[aria-label=""Run workflow""] or button[aria-label*=""Run workflow""]
         if (!el) {{
-            var candidates = document.querySelectorAll('button, [role=button], a');
-            for (var i = 0; i < candidates.length; i++) {{
-                var label = (candidates[i].innerText || candidates[i].textContent || '').trim().toLowerCase();
-                if (label === 'run') {{ el = candidates[i]; via = 'text'; break; }}
+            var runButtons = Array.from(document.querySelectorAll('button[aria-label=""Run workflow""], button[aria-label*=""Run workflow"" i], button[aria-label=""Run Project"" i]'))
+                .filter(isRealButton);
+
+            if (runButtons.length === 1) {{
+                el = runButtons[0];
+                via = 'exact button[aria-label=""Run workflow""]';
+            }} else if (runButtons.length > 1) {{
+                // Find 'Project' label node and pick the button belonging to the same workflow container
+                var allTextNodes = Array.from(document.querySelectorAll('span, div, p'));
+                var projectLabel = allTextNodes.find(function(node) {{
+                    return node.children.length === 0 && (node.textContent || '').trim() === 'Project';
+                }});
+                if (projectLabel) {{
+                    var curr = projectLabel;
+                    while (curr && curr !== document.body && !el) {{
+                        var match = Array.from(curr.querySelectorAll('button[aria-label*=""workflow"" i], button[aria-label*=""run"" i]'))
+                            .find(isRealButton);
+                        if (match) {{
+                            el = match;
+                            via = 'Project row button[aria-label=""' + match.getAttribute('aria-label') + '""]';
+                            break;
+                        }}
+                        curr = curr.parentElement;
+                    }}
+                }}
+                if (!el) {{
+                    el = runButtons[0];
+                    via = 'first button[aria-label=""Run workflow""]';
+                }}
             }}
         }}
-        if (!el) return JSON.stringify({{ clicked: false, reason: 'no element matched selector or Run text' }});
+
+        // Priority 2: Look for SVG play button (triangle path) in the Project workflow row
+        if (!el) {{
+            var allTextNodes = Array.from(document.querySelectorAll('span, div, p'));
+            var projectLabel = allTextNodes.find(function(node) {{
+                return node.children.length === 0 && (node.textContent || '').trim() === 'Project';
+            }});
+            if (projectLabel) {{
+                var curr = projectLabel;
+                while (curr && curr !== document.body && !el) {{
+                    var candidates = Array.from(curr.querySelectorAll('button')).filter(isRealButton);
+                    for (var i = 0; i < candidates.length; i++) {{
+                        var btn = candidates[i];
+                        if (btn.querySelector('path[d*=""20.593""], path[d*=""8.145""], path[d*=""14.48""]') || 
+                            btn.classList.contains('_sdz_theme-positive') ||
+                            (btn.getAttribute('aria-label') || '').toLowerCase().includes('run')) {{
+                            el = btn;
+                            via = 'Project section play button (' + (btn.getAttribute('aria-label') || 'play SVG') + ')';
+                            break;
+                        }}
+                    }}
+                    curr = curr.parentElement;
+                }}
+            }}
+        }}
+
+        // Priority 3: Fallback across page buttons
+        if (!el) {{
+            var globalCandidates = Array.from(document.querySelectorAll('button')).filter(isRealButton);
+            for (var i = 0; i < globalCandidates.length; i++) {{
+                var btn = globalCandidates[i];
+                var aria = (btn.getAttribute('aria-label') || '').toLowerCase();
+                var txt = (btn.innerText || btn.textContent || '').trim().toLowerCase();
+                if (aria.includes('run workflow') || aria.includes('start workflow') || txt === 'run button' || txt === 'run') {{
+                    el = btn;
+                    via = 'global button (' + (btn.getAttribute('aria-label') || txt) + ')';
+                    break;
+                }}
+            }}
+        }}
+
+        if (!el) return JSON.stringify({{ clicked: false, reason: 'no real play/run button found in Project workflow' }});
+        
+        try {{ el.focus(); }} catch (_) {{}}
+        el.dispatchEvent(new MouseEvent('mousedown', {{ bubbles: true, cancelable: true }}));
+        el.dispatchEvent(new MouseEvent('mouseup', {{ bubbles: true, cancelable: true }}));
         el.click();
         return JSON.stringify({{ clicked: true, via: via }});
     }} catch (ex) {{
@@ -355,7 +543,7 @@ namespace BuildConsole.Services
     }}
 }})();";
 
-            var root = await EvalAsync(script);
+            var root = await EvalAsync(script, wv);
             if (root == null) return (false, "script returned nothing");
 
             bool clicked = root.Value.TryGetProperty("clicked", out var c)
@@ -371,11 +559,12 @@ namespace BuildConsole.Services
         }
 
         /// <summary>Runs a JS snippet whose own return value is a JSON.stringify string, and unwraps the double JSON encoding ExecuteScriptAsync applies — identical handling to UiTestExecutor.</summary>
-        private async Task<JsonElement?> EvalAsync(string script)
+        private async Task<JsonElement?> EvalAsync(string script, WebView2? wv = null)
         {
+            var target = wv ?? _webView;
             try
             {
-                string resJson = await _webView.ExecuteScriptAsync(script) ?? string.Empty;
+                string resJson = await target.ExecuteScriptAsync(script) ?? string.Empty;
                 using var outerDoc = JsonDocument.Parse(resJson);
                 string inner = outerDoc.RootElement.GetString() ?? "{}";
                 using var innerDoc = JsonDocument.Parse(inner);

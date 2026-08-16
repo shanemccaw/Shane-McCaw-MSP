@@ -470,7 +470,16 @@
                         <Ellipse x:Name="ReplitDot" Width="8" Height="8"
                                  Fill="{StaticResource Surface2Brush}"
                                  Margin="0,0,6,0" VerticalAlignment="Center"/>
-                        <TextBlock x:Name="ReplitStatusText" Text="Replit: off" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="ReplitStatusText" Text="Replit: off" VerticalAlignment="Center"
+                                   Cursor="Hand" MouseLeftButtonUp="ReplitStatus_Click"
+                                   ToolTip="Click to check and wake Replit now"/>
+                        <Button x:Name="BtnReplitRefresh"
+                                Style="{StaticResource IconButton}"
+                                ToolTip="Check Replit status &amp; wake if down"
+                                Click="BtnReplitRefresh_Click"
+                                Margin="4,0,0,0">
+                            <TextBlock Text="↻" FontSize="11" Foreground="{StaticResource Subtext0Brush}"/>
+                        </Button>
                     </StackPanel>
                 </StatusBarItem>
                 <Separator Grid.Column="11"/>

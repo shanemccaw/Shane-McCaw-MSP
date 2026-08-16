@@ -1,0 +1,142 @@
+{
+  "issue": 987,
+  "feature": "Money-path (Direct Login Debug) — skips quiz and starts directly at portal login through copilot-readiness journey",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "6f991a3b",
+
+  "notes": [
+    "Debug manifest: starts directly from /portal/shane-mccaw-consulting/login, bypassing the public home quiz and intake steps for fast iteration on the authenticated Copilot Readiness flow (verdict, pillars, documents, proposal, and checkout)."
+  ],
+
+  "uiSteps": [
+    { "action": "goto", "target": "/portal/shane-mccaw-consulting/login" },
+    {
+      "name": "Wait for login form to render",
+      "action": "expect",
+      "selector": "#email",
+      "state": "visible",
+      "critical": true
+    },
+    { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}", "critical": true },
+    { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}", "critical": true },
+    {
+      "name": "Portal login submit",
+      "action": "click",
+      "selector": "[data-testid='login-submit']",
+      "critical": true,
+      "captureResponse": {
+        "urlPattern": "/api/auth/login",
+        "expect": { "status": 200 }
+      }
+    },
+
+    { "action": "goto", "target": "/portal/shane-mccaw-consulting/copilot-readiness" },
+
+    {
+      "name": "Wait for live scan / Scene 0 overlay to finish and reveal Scene 1 verdict",
+      "action": "expect",
+      "selector": "[data-cj-scene='1']",
+      "state": "visible",
+      "timeoutMs": 90000
+    },
+    { "action": "expect", "selector": "[data-testid='preview-badge']", "state": "hidden" },
+
+    { "action": "expect", "selector": "[data-testid='verdict-score']", "state": "visible" },
+    { "action": "expect", "selector": "[data-testid='verdict-score-unavailable']", "state": "hidden" },
+
+    { "action": "expect", "selector": "[data-cj-scene='2'] [data-testid='pillar-headline']", "state": "visible" },
+    { "action": "expect", "selector": "[data-cj-scene='2'] [data-testid='pillar-headline-unavailable']", "state": "hidden" },
+    { "action": "expect", "selector": "[data-cj-scene='2'] [data-testid='pillar-score']", "state": "visible" },
+    { "action": "expect", "selector": "[data-cj-scene='2'] [data-testid='pillar-score-unavailable']", "state": "hidden" },
+
+    { "action": "expect", "selector": "[data-cj-scene='3'] [data-testid='pillar-headline']", "state": "visible" },
+    { "action": "expect", "selector": "[data-cj-scene='3'] [data-testid='pillar-headline-unavailable']", "state": "hidden" },
+    { "action": "expect", "selector": "[data-cj-scene='3'] [data-testid='pillar-score']", "state": "visible" },
+    { "action": "expect", "selector": "[data-cj-scene='3'] [data-testid='pillar-score-unavailable']", "state": "hidden" },
+
+    { "action": "goto", "target": "/portal/shane-mccaw-consulting/copilot-readiness/documents" },
+
+    { "action": "expect", "selector": "[data-testid='document-reading-pane']", "state": "visible" },
+    {
+      "name": "Ready/pending counter is drawn from real generation state: 'N of N ready'",
+      "action": "expect",
+      "selector": "[data-testid='documents-ready-counter']",
+      "state": "visible",
+      "textContains": "ready"
+    },
+    { "action": "expect", "selector": "[data-testid='document-row-0']", "state": "visible" },
+    { "action": "expect", "selector": "[data-testid='document-row-1']", "state": "visible" },
+    {
+      "name": "Opening a different report from the rail switches the reader",
+      "action": "click",
+      "selector": "[data-testid='document-row-1']"
+    },
+    { "action": "expect", "selector": "[data-testid='active-document-title']", "state": "visible" },
+    { "action": "expect", "selector": "[data-testid='document-reading-pane']", "state": "visible" },
+
+    {
+      "name": "Select the Statement of Work (last document in the set)",
+      "action": "click",
+      "selector": "[data-testid='document-row-7']"
+    },
+    {
+      "name": "Verify Statement of Work document loaded",
+      "action": "expect",
+      "selector": "[data-testid='sow-document']",
+      "state": "visible",
+      "timeoutMs": 15000
+    },
+    {
+      "name": "Phase cards with toggles are rendered",
+      "action": "expect",
+      "selector": "[data-testid='sow-phase-toggle']",
+      "state": "visible"
+    },
+    {
+      "name": "Price calculation net fee is displayed",
+      "action": "expect",
+      "selector": "[data-testid='sow-net-fee']",
+      "state": "visible"
+    },
+    {
+      "name": "Toggle an unlocked phase in the SOW to test price recalculation",
+      "action": "click",
+      "selector": "[data-testid='sow-phase-toggle']"
+    },
+    {
+      "name": "Updated price remains visible after toggling scope",
+      "action": "expect",
+      "selector": "[data-testid='sow-net-fee']",
+      "state": "visible"
+    },
+    {
+      "name": "Signature and inline payment section is visible",
+      "action": "expect",
+      "selector": "[data-testid='sow-signature-section']",
+      "state": "visible"
+    },
+    {
+      "name": "Pay in Full payment option is available",
+      "action": "expect",
+      "selector": "[data-testid='sow-plan-pay-in-full']",
+      "state": "visible"
+    },
+    {
+      "name": "Pay by Phase payment option is available",
+      "action": "expect",
+      "selector": "[data-testid='sow-plan-pay-by-phase']",
+      "state": "visible"
+    },
+    {
+      "name": "Switch payment plan to Pay by Phase",
+      "action": "click",
+      "selector": "[data-testid='sow-plan-pay-by-phase']"
+    },
+    {
+      "name": "Pay by Phase option remains active",
+      "action": "expect",
+      "selector": "[data-testid='sow-plan-pay-by-phase']",
+      "state": "visible"
+    }
+  ]
+}

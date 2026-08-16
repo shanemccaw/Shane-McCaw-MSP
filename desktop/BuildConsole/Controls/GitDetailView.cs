@@ -283,8 +283,28 @@ namespace BuildConsole.Controls
                 catch { }
             }
 
+            // Pre-fetch test history runs so test-manifests/*.json links show run status (never ran / passed / failed)
+            var latestTestRuns = new System.Collections.Generic.Dictionary<int, BuildConsole.Services.TestHistoryEntry>();
+            string? repoRoot = BuildConsole.Services.BuildTrackerConfig.FindRepoRoot();
+            if (repoRoot != null)
+            {
+                try
+                {
+                    var history = BuildConsole.Services.TestHistoryStore.ReadAll(repoRoot);
+                    foreach (var group in history.GroupBy(e => e.Issue))
+                    {
+                        latestTestRuns[group.Key] = group.OrderByDescending(e => e.StartedAt).First();
+                    }
+                }
+                catch { }
+            }
+
             // Body comes straight from the board's in-memory GitIssue.Body
-            AddBody(issue.Body, executedMigrations);
+            AddBody(issue.Body, executedMigrations, latestTestRuns);
+
+            // Populate side column with extracted SQL scripts and Test Manifests
+            RenderActionsColumn(_sideColumn, issue.Body, null, executedMigrations, latestTestRuns);
+            _sideColumn.Visibility = Visibility.Visible;
 
             var loading = Meta("Loading comments…");
             _mainColumn.Children.Add(loading);
@@ -307,7 +327,10 @@ namespace BuildConsole.Controls
                 if (comments.Count == 0)
                     _mainColumn.Children.Add(Meta("No comments yet."));
                 foreach (var c in comments)
-                    _mainColumn.Children.Add(CommentCard(c, executedMigrations));
+                    _mainColumn.Children.Add(CommentCard(c, executedMigrations, latestTestRuns));
+
+                // Re-populate side column with actions extracted from both body and comments
+                RenderActionsColumn(_sideColumn, issue.Body, comments.Select(c => c.Body ?? ""), executedMigrations, latestTestRuns);
 
                 ActivityLog.Log(Channel, $"issue #{issue.IssueNumber} opened ({comments.Count} comment(s))");
             }
@@ -329,7 +352,7 @@ namespace BuildConsole.Controls
 
         private void RenderSubIssueSection(Panel target, string header, List<GitHubSubIssue> subs, bool escalate)
         {
-            if (subs.Count == 0) return;
+            if (subs == null || subs.Count == 0) return;
             target.Children.Add(SectionHeader($"{header} ({subs.Count})", escalate));
             foreach (var s in subs)
                 target.Children.Add(SubIssueCard(s, escalate));
@@ -407,7 +430,7 @@ namespace BuildConsole.Controls
             return border;
         }
 
-        private void AddBody(string? markdown, System.Collections.Generic.HashSet<string>? executedMigrations = null)
+        private void AddBody(string? markdown, System.Collections.Generic.HashSet<string>? executedMigrations = null, System.Collections.Generic.Dictionary<int, BuildConsole.Services.TestHistoryEntry>? latestTestRuns = null)
         {
             if (string.IsNullOrWhiteSpace(markdown)) return;
 
@@ -421,7 +444,7 @@ namespace BuildConsole.Controls
                 Margin = new Thickness(0, 0, 0, 24),
             };
 
-            var tb = CreateLinkedTextBlock(markdown, 13, "TextBrush", executedMigrations);
+            var tb = CreateLinkedTextBlock(markdown, 13, "TextBrush", executedMigrations, latestTestRuns);
             tb.LineHeight = 20;
             border.Child = tb;
 
@@ -585,7 +608,7 @@ namespace BuildConsole.Controls
         }
 
 
-        private Border CommentCard(GitHubIssueComment comment, System.Collections.Generic.HashSet<string>? executedMigrations = null)
+        private Border CommentCard(GitHubIssueComment comment, System.Collections.Generic.HashSet<string>? executedMigrations = null, System.Collections.Generic.Dictionary<int, BuildConsole.Services.TestHistoryEntry>? latestTestRuns = null)
         {
             var border = new Border
             {
@@ -615,12 +638,12 @@ namespace BuildConsole.Controls
             });
 
             panel.Children.Add(headerPanel);
-            panel.Children.Add(CreateLinkedTextBlock(comment.Body ?? "", 12, "TextBrush", executedMigrations));
+            panel.Children.Add(CreateLinkedTextBlock(comment.Body ?? "", 12, "TextBrush", executedMigrations, latestTestRuns));
             border.Child = panel;
             return border;
         }
 
-        private TextBlock CreateLinkedTextBlock(string? text, double fontSize, string foregroundKey, System.Collections.Generic.HashSet<string>? executedMigrations = null)
+        private TextBlock CreateLinkedTextBlock(string? text, double fontSize, string foregroundKey, System.Collections.Generic.HashSet<string>? executedMigrations = null, System.Collections.Generic.Dictionary<int, BuildConsole.Services.TestHistoryEntry>? latestTestRuns = null)
         {
             var tb = new TextBlock
             {
@@ -644,47 +667,42 @@ namespace BuildConsole.Controls
                 var hyperlink = new Hyperlink(new Run(match.Value))
                 {
                     Foreground = GetBrush("BlueBrush"),
-                    TextDecorations = TextDecorations.Underline
+                    Cursor = Cursors.Hand,
+                    ToolTip = $"Click to open {match.Value} in editor"
                 };
-                
-                string fileName = match.Value;
 
+                string fileName = match.Value;
                 Func<System.Threading.Tasks.Task<string>> resolvePathAsync = async () =>
                 {
-                    string? repoRoot = BuildTrackerConfig.FindRepoRoot();
-                    if (repoRoot == null) return string.Empty;
-                    
-                    string fullPath = System.IO.Path.Combine(repoRoot, fileName.Replace("/", "\\"));
-                    if (!System.IO.File.Exists(fullPath))
+                    string fullPath = fileName;
+                    if (!System.IO.Path.IsPathRooted(fullPath))
                     {
-                        var mw = Application.Current.MainWindow as MainWindow;
-                        if (mw != null) mw.Cursor = System.Windows.Input.Cursors.Wait;
-                        try
+                        var repoRoot = BuildConsole.Services.BuildTrackerConfig.FindRepoRoot();
+                        if (repoRoot != null)
                         {
-                            fullPath = await System.Threading.Tasks.Task.Run(() => 
+                            string candidate = System.IO.Path.Combine(repoRoot, fileName);
+                            if (System.IO.File.Exists(candidate))
                             {
-                                var queue = new System.Collections.Generic.Queue<string>();
-                                queue.Enqueue(repoRoot);
-                                string target = System.IO.Path.GetFileName(fileName);
-                                while (queue.Count > 0)
+                                fullPath = candidate;
+                            }
+                            else
+                            {
+                                string targetName = System.IO.Path.GetFileName(fileName);
+                                try
                                 {
-                                    var current = queue.Dequeue();
-                                    try
-                                    {
-                                        foreach (var file in System.IO.Directory.GetFiles(current, target)) return file;
-                                        foreach (var dir in System.IO.Directory.GetDirectories(current))
-                                        {
-                                            var name = System.IO.Path.GetFileName(dir);
-                                            if (name == "node_modules" || name == ".git" || name == "bin" || name == "obj" || name == ".next") continue;
-                                            queue.Enqueue(dir);
-                                        }
-                                    }
-                                    catch { }
+                                    var found = await System.Threading.Tasks.Task.Run(() =>
+                                        System.IO.Directory.GetFiles(repoRoot, targetName, System.IO.SearchOption.AllDirectories)
+                                            .FirstOrDefault(f => !f.Contains("\\bin\\") && !f.Contains("\\obj\\") && !f.Contains("\\.git\\") && !f.Contains("\\node_modules\\"))
+                                    );
+                                    if (found != null) fullPath = found;
+                                    else fullPath = candidate;
                                 }
-                                return fullPath;
-                            });
+                                catch
+                                {
+                                    fullPath = candidate;
+                                }
+                            }
                         }
-                        finally { if (mw != null) mw.Cursor = System.Windows.Input.Cursors.Arrow; }
                     }
                     return fullPath;
                 };
@@ -737,10 +755,6 @@ namespace BuildConsole.Controls
                 // Migration run indicator for .sql files
                 if (fileName.EndsWith(".sql", StringComparison.OrdinalIgnoreCase))
                 {
-                    // Check all naming variants the DB might store:
-                    //   "2026-08-14-foo"      (no extension)
-                    //   "2026-08-14-foo.sql"  (filename + extension)
-                    //   full matched path      (e.g. lib/db/migrations/...sql)
                     string basename = System.IO.Path.GetFileNameWithoutExtension(fileName);
                     string justFilename = System.IO.Path.GetFileName(fileName);
                     bool isRan = executedMigrations != null &&
@@ -763,6 +777,71 @@ namespace BuildConsole.Controls
                     }
                 }
 
+                // Run indicator for test-manifest .json files
+                if (fileName.EndsWith(".json", StringComparison.OrdinalIgnoreCase) && (fileName.Contains("test-manifests/") || fileName.Contains("test-manifests\\")))
+                {
+                    int? manifestIssue = null;
+                    string? rRoot = BuildConsole.Services.BuildTrackerConfig.FindRepoRoot();
+                    if (rRoot != null)
+                    {
+                        string fullPath = System.IO.Path.Combine(rRoot, fileName.Replace("/", "\\"));
+                        if (!System.IO.File.Exists(fullPath))
+                        {
+                            string target = System.IO.Path.GetFileName(fileName);
+                            string mDir = System.IO.Path.Combine(rRoot, "test-manifests");
+                            if (System.IO.Directory.Exists(mDir))
+                            {
+                                var matchFile = System.IO.Directory.GetFiles(mDir, target, System.IO.SearchOption.AllDirectories).FirstOrDefault();
+                                if (matchFile != null) fullPath = matchFile;
+                            }
+                        }
+
+                        if (System.IO.File.Exists(fullPath))
+                        {
+                            try
+                            {
+                                var m = BuildConsole.Services.TestManifest.LoadFromFile(fullPath);
+                                if (m != null && m.Issue > 0) manifestIssue = m.Issue;
+                            }
+                            catch { }
+                        }
+                    }
+
+                    if (manifestIssue.HasValue && latestTestRuns != null && latestTestRuns.TryGetValue(manifestIssue.Value, out var lastRun))
+                    {
+                        if (lastRun.AllPassed)
+                        {
+                            var passRun = new Run($" ✅ [PASSED ({lastRun.Passed}/{lastRun.Total})]")
+                            {
+                                Foreground = GetBrush("GreenBrush"),
+                                FontWeight = FontWeights.Bold,
+                                ToolTip = $"Last run: {lastRun.StartedAt:yyyy-MM-dd HH:mm:ss} ({lastRun.Passed}/{lastRun.Total} passed)"
+                            };
+                            tb.Inlines.Add(passRun);
+                        }
+                        else
+                        {
+                            var failRun = new Run($" ❌ [FAILED ({lastRun.Passed}/{lastRun.Total})]")
+                            {
+                                Foreground = GetBrush("RedBrush"),
+                                FontWeight = FontWeights.Bold,
+                                ToolTip = $"Last run: {lastRun.StartedAt:yyyy-MM-dd HH:mm:ss} ({lastRun.Failed} failed)"
+                            };
+                            tb.Inlines.Add(failRun);
+                        }
+                    }
+                    else
+                    {
+                        var neverRan = new Run(" ⚠️ [NEVER RAN]")
+                        {
+                            Foreground = GetBrush("PeachBrush"),
+                            FontWeight = FontWeights.Bold,
+                            ToolTip = "No recorded runs in test-results/_history.jsonl"
+                        };
+                        tb.Inlines.Add(neverRan);
+                    }
+                }
+
                 lastIndex = match.Index + match.Length;
             }
 
@@ -774,15 +853,416 @@ namespace BuildConsole.Controls
             return tb;
         }
 
+        private void RenderActionsColumn(
+            Panel target, 
+            string? body, 
+            IEnumerable<string>? commentBodies, 
+            System.Collections.Generic.HashSet<string>? executedMigrations, 
+            System.Collections.Generic.Dictionary<int, BuildConsole.Services.TestHistoryEntry>? latestTestRuns)
+        {
+            target.Children.Clear();
+
+            var allText = (body ?? "") + "\n" + string.Join("\n", commentBodies ?? Enumerable.Empty<string>());
+            if (string.IsNullOrWhiteSpace(allText)) return;
+
+            var matches = System.Text.RegularExpressions.Regex.Matches(allText, @"(?:\w[\w\-\./\\]*)\.(?:sql|json)\b");
+            var sqlFiles = new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var testManifests = new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (System.Text.RegularExpressions.Match m in matches)
+            {
+                string val = m.Value;
+                if (val.EndsWith(".sql", StringComparison.OrdinalIgnoreCase))
+                {
+                    sqlFiles.Add(val);
+                }
+                else if (val.EndsWith(".json", StringComparison.OrdinalIgnoreCase) && 
+                         (val.Contains("test-manifests/") || val.Contains("test-manifests\\")))
+                {
+                    testManifests.Add(val);
+                }
+            }
+
+            string? repoRoot = BuildConsole.Services.BuildTrackerConfig.FindRepoRoot();
+
+            // 1. Render Test Manifests section
+            if (testManifests.Count > 0)
+            {
+                target.Children.Add(SectionHeader($"🧪 TEST MANIFESTS ({testManifests.Count})", escalate: false));
+
+                foreach (var manifestPath in testManifests)
+                {
+                    target.Children.Add(CreateTestManifestActionCard(manifestPath, repoRoot, latestTestRuns));
+                }
+            }
+
+            // 2. Render SQL Migrations section
+            if (sqlFiles.Count > 0)
+            {
+                target.Children.Add(SectionHeader($"🗄️ SQL MIGRATIONS ({sqlFiles.Count})", escalate: false));
+
+                foreach (var sqlPath in sqlFiles)
+                {
+                    target.Children.Add(CreateSqlActionCard(sqlPath, repoRoot, executedMigrations));
+                }
+            }
+
+            if (testManifests.Count == 0 && sqlFiles.Count == 0)
+            {
+                var emptyBorder = new Border
+                {
+                    Background = GetBrush("MantleBrush"),
+                    BorderBrush = GetBrush("Surface0Brush"),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(4),
+                    Padding = new Thickness(12),
+                    Margin = new Thickness(0, 0, 0, 8),
+                };
+                emptyBorder.Child = new TextBlock
+                {
+                    Text = "No SQL migrations or test manifests referenced in this issue.",
+                    FontSize = 11,
+                    Foreground = GetBrush("Subtext0Brush"),
+                    TextWrapping = TextWrapping.Wrap
+                };
+                target.Children.Add(emptyBorder);
+            }
+        }
+
+        private UIElement CreateTestManifestActionCard(string manifestPath, string? repoRoot, System.Collections.Generic.Dictionary<int, BuildConsole.Services.TestHistoryEntry>? latestTestRuns)
+        {
+            var card = new Border
+            {
+                Background = GetBrush("MantleBrush"),
+                BorderBrush = GetBrush("Surface0Brush"),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(4),
+                Padding = new Thickness(10),
+                Margin = new Thickness(0, 0, 0, 8),
+            };
+
+            var stack = new StackPanel();
+
+            // Header row: status badge
+            var headerRow = new DockPanel { Margin = new Thickness(0, 0, 0, 6) };
+
+            int? manifestIssue = null;
+            string fullPath = manifestPath;
+            if (repoRoot != null)
+            {
+                string candidate = System.IO.Path.Combine(repoRoot, manifestPath.Replace("/", "\\"));
+                if (System.IO.File.Exists(candidate))
+                {
+                    fullPath = candidate;
+                }
+                else
+                {
+                    string targetName = System.IO.Path.GetFileName(manifestPath);
+                    string mDir = System.IO.Path.Combine(repoRoot, "test-manifests");
+                    if (System.IO.Directory.Exists(mDir))
+                    {
+                        var matchFile = System.IO.Directory.GetFiles(mDir, targetName, System.IO.SearchOption.AllDirectories).FirstOrDefault();
+                        if (matchFile != null) fullPath = matchFile;
+                    }
+                }
+
+                if (System.IO.File.Exists(fullPath))
+                {
+                    try
+                    {
+                        var m = BuildConsole.Services.TestManifest.LoadFromFile(fullPath);
+                        if (m != null && m.Issue > 0) manifestIssue = m.Issue;
+                    }
+                    catch { }
+                }
+            }
+
+            Border badge;
+            if (manifestIssue.HasValue && latestTestRuns != null && latestTestRuns.TryGetValue(manifestIssue.Value, out var lastRun))
+            {
+                if (lastRun.AllPassed)
+                {
+                    badge = new Border
+                    {
+                        Background = GetBrush("GreenBrush", 0x25),
+                        CornerRadius = new CornerRadius(3),
+                        Padding = new Thickness(6, 2, 6, 2),
+                        HorizontalAlignment = HorizontalAlignment.Left,
+                        Child = new TextBlock
+                        {
+                            Text = $"✅ PASSED ({lastRun.Passed}/{lastRun.Total})",
+                            FontSize = 10,
+                            FontWeight = FontWeights.Bold,
+                            Foreground = GetBrush("GreenBrush")
+                        }
+                    };
+                }
+                else
+                {
+                    badge = new Border
+                    {
+                        Background = GetBrush("RedBrush", 0x25),
+                        CornerRadius = new CornerRadius(3),
+                        Padding = new Thickness(6, 2, 6, 2),
+                        HorizontalAlignment = HorizontalAlignment.Left,
+                        Child = new TextBlock
+                        {
+                            Text = $"❌ FAILED ({lastRun.Passed}/{lastRun.Total})",
+                            FontSize = 10,
+                            FontWeight = FontWeights.Bold,
+                            Foreground = GetBrush("RedBrush")
+                        }
+                    };
+                }
+            }
+            else
+            {
+                badge = new Border
+                {
+                    Background = GetBrush("PeachBrush", 0x25),
+                    CornerRadius = new CornerRadius(3),
+                    Padding = new Thickness(6, 2, 6, 2),
+                    HorizontalAlignment = HorizontalAlignment.Left,
+                    Child = new TextBlock
+                    {
+                        Text = "⚠️ NEVER RAN",
+                        FontSize = 10,
+                        FontWeight = FontWeights.Bold,
+                        Foreground = GetBrush("PeachBrush")
+                    }
+                };
+            }
+            headerRow.Children.Add(badge);
+            stack.Children.Add(headerRow);
+
+            // File name
+            var nameBlock = new TextBlock
+            {
+                Text = System.IO.Path.GetFileName(manifestPath),
+                FontSize = 12,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = GetBrush("TextBrush"),
+                TextWrapping = TextWrapping.Wrap,
+                ToolTip = manifestPath,
+                Margin = new Thickness(0, 0, 0, 2)
+            };
+            stack.Children.Add(nameBlock);
+
+            var pathBlock = new TextBlock
+            {
+                Text = manifestPath,
+                FontSize = 10,
+                Foreground = GetBrush("Subtext0Brush"),
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, 0, 8)
+            };
+            stack.Children.Add(pathBlock);
+
+            // Action buttons panel
+            var btnPanel = new WrapPanel { Margin = new Thickness(0, 2, 0, 0) };
+
+            var runBtn = new Button
+            {
+                Content = "▶ Run",
+                FontSize = 11,
+                FontWeight = FontWeights.SemiBold,
+                Padding = new Thickness(8, 3, 8, 3),
+                Margin = new Thickness(0, 0, 6, 4),
+                Cursor = Cursors.Hand
+            };
+            runBtn.Click += async (s, e) =>
+            {
+                if (System.IO.File.Exists(fullPath) && Application.Current.MainWindow is MainWindow mw)
+                {
+                    var manifest = BuildConsole.Services.TestManifest.LoadFromFile(fullPath);
+                    if (manifest != null) await mw.RunManifestPublicAsync(manifest);
+                }
+            };
+            btnPanel.Children.Add(runBtn);
+
+            var viewBtn = new Button
+            {
+                Content = "📄 View",
+                FontSize = 11,
+                Padding = new Thickness(8, 3, 8, 3),
+                Margin = new Thickness(0, 0, 6, 4),
+                Cursor = Cursors.Hand
+            };
+            viewBtn.Click += (s, e) =>
+            {
+                if (System.IO.File.Exists(fullPath) && Application.Current.MainWindow is MainWindow mw)
+                {
+                    mw.OpenFileTab(fullPath);
+                }
+            };
+            btnPanel.Children.Add(viewBtn);
+
+            var histBtn = new Button
+            {
+                Content = "🕒 History",
+                FontSize = 11,
+                Padding = new Thickness(8, 3, 8, 3),
+                Margin = new Thickness(0, 0, 6, 4),
+                Cursor = Cursors.Hand
+            };
+            histBtn.Click += (s, e) =>
+            {
+                if (Application.Current.MainWindow is MainWindow mw)
+                {
+                    if (manifestIssue.HasValue) mw.EnsureTestHistoryWindowPublic(manifestIssue.Value);
+                    else mw.EnsureTestHistoryWindowPublic();
+                }
+            };
+            btnPanel.Children.Add(histBtn);
+
+            stack.Children.Add(btnPanel);
+            card.Child = stack;
+            return card;
+        }
+
+        private UIElement CreateSqlActionCard(string sqlPath, string? repoRoot, System.Collections.Generic.HashSet<string>? executedMigrations)
+        {
+            var card = new Border
+            {
+                Background = GetBrush("MantleBrush"),
+                BorderBrush = GetBrush("Surface0Brush"),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(4),
+                Padding = new Thickness(10),
+                Margin = new Thickness(0, 0, 0, 8),
+            };
+
+            var stack = new StackPanel();
+
+            string basename = System.IO.Path.GetFileNameWithoutExtension(sqlPath);
+            string justFilename = System.IO.Path.GetFileName(sqlPath);
+            bool isRan = executedMigrations != null &&
+                         (executedMigrations.Contains(basename) ||
+                          executedMigrations.Contains(justFilename) ||
+                          executedMigrations.Contains(sqlPath) ||
+                          executedMigrations.Any(n => System.IO.Path.GetFileNameWithoutExtension(n).Equals(basename, StringComparison.OrdinalIgnoreCase)));
+
+            // Status badge
+            var headerRow = new DockPanel { Margin = new Thickness(0, 0, 0, 6) };
+            Border badge;
+            if (isRan)
+            {
+                badge = new Border
+                {
+                    Background = GetBrush("GreenBrush", 0x25),
+                    CornerRadius = new CornerRadius(3),
+                    Padding = new Thickness(6, 2, 6, 2),
+                    HorizontalAlignment = HorizontalAlignment.Left,
+                    Child = new TextBlock
+                    {
+                        Text = "✅ EXECUTED",
+                        FontSize = 10,
+                        FontWeight = FontWeights.Bold,
+                        Foreground = GetBrush("GreenBrush")
+                    }
+                };
+            }
+            else
+            {
+                badge = new Border
+                {
+                    Background = GetBrush("RedBrush", 0x25),
+                    CornerRadius = new CornerRadius(3),
+                    Padding = new Thickness(6, 2, 6, 2),
+                    HorizontalAlignment = HorizontalAlignment.Left,
+                    Child = new TextBlock
+                    {
+                        Text = "⚠️ NEEDS EXECUTION",
+                        FontSize = 10,
+                        FontWeight = FontWeights.Bold,
+                        Foreground = GetBrush("RedBrush")
+                    }
+                };
+            }
+            headerRow.Children.Add(badge);
+            stack.Children.Add(headerRow);
+
+            // Filename
+            var nameBlock = new TextBlock
+            {
+                Text = justFilename,
+                FontSize = 12,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = GetBrush("TextBrush"),
+                TextWrapping = TextWrapping.Wrap,
+                ToolTip = sqlPath,
+                Margin = new Thickness(0, 0, 0, 2)
+            };
+            stack.Children.Add(nameBlock);
+
+            var pathBlock = new TextBlock
+            {
+                Text = sqlPath,
+                FontSize = 10,
+                Foreground = GetBrush("Subtext0Brush"),
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, 0, 8)
+            };
+            stack.Children.Add(pathBlock);
+
+            string fullPath = sqlPath;
+            if (repoRoot != null)
+            {
+                string candidate = System.IO.Path.Combine(repoRoot, sqlPath.Replace("/", "\\"));
+                if (System.IO.File.Exists(candidate)) fullPath = candidate;
+                else
+                {
+                    try
+                    {
+                        var match = System.IO.Directory.GetFiles(repoRoot, justFilename, System.IO.SearchOption.AllDirectories)
+                            .FirstOrDefault(f => !f.Contains("\\bin\\") && !f.Contains("\\obj\\") && !f.Contains("\\.git\\"));
+                        if (match != null) fullPath = match;
+                    }
+                    catch { }
+                }
+            }
+
+            var btnPanel = new WrapPanel { Margin = new Thickness(0, 2, 0, 0) };
+            var openBtn = new Button
+            {
+                Content = "📄 Open File",
+                FontSize = 11,
+                Padding = new Thickness(8, 3, 8, 3),
+                Margin = new Thickness(0, 0, 6, 4),
+                Cursor = Cursors.Hand
+            };
+            openBtn.Click += (s, e) =>
+            {
+                if (System.IO.File.Exists(fullPath) && Application.Current.MainWindow is MainWindow mw)
+                {
+                    mw.OpenFileTab(fullPath);
+                }
+            };
+            btnPanel.Children.Add(openBtn);
+
+            stack.Children.Add(btnPanel);
+            card.Child = stack;
+            return card;
+        }
+
         private static string DisplayTitle(GitIssue gi)
             => !string.IsNullOrWhiteSpace(gi.RawTitle) ? gi.RawTitle : gi.Title;
 
-        private Brush GetBrush(string key)
+        private Brush GetBrush(string key, byte alpha = 255)
         {
             try
             {
-                if (TryFindResource(key) is Brush b) return b;
-                if (Application.Current != null && Application.Current.TryFindResource(key) is Brush appB) return appB;
+                Brush? b = null;
+                if (TryFindResource(key) is Brush found) b = found;
+                else if (Application.Current != null && Application.Current.TryFindResource(key) is Brush appB) b = appB;
+
+                if (b is SolidColorBrush scb)
+                {
+                    if (alpha == 255) return scb;
+                    var c = scb.Color;
+                    return new SolidColorBrush(Color.FromArgb(alpha, c.R, c.G, c.B));
+                }
+                if (b != null) return b;
             }
             catch { }
             return Brushes.Gray;

@@ -991,7 +991,7 @@ export function StatementOfWorkBody({
   );
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+    <div data-testid="sow-document" style={{ display: "flex", flexDirection: "column", gap: 24 }}>
       <div
         style={{
           display: "flex",
@@ -1203,6 +1203,7 @@ export function StatementOfWorkBody({
               <button
                 key={p.id}
                 type="button"
+                data-testid="sow-phase-toggle"
                 onClick={() => onTogglePhase(p.id)}
                 disabled={p.locked}
                 aria-pressed={on}
@@ -1473,7 +1474,7 @@ export function StatementOfWorkBody({
             <span style={{ fontSize: 12.5, fontWeight: 600, color: INK.bodyDark }}>
               {`${phaseCountLabel(totals.includedPhaseCount, totals.totalPhaseCount)} · ${resolveTimeline(isPreview, quotedWeeks)}`}
             </span>
-            <span style={{ fontSize: 22, fontWeight: 800, color: INK.headingDark, ...TABULAR }}>{money(netFee)}</span>
+            <span data-testid="sow-net-fee" style={{ fontSize: 22, fontWeight: 800, color: INK.headingDark, ...TABULAR }}>{money(netFee)}</span>
           </div>
           {credit > 0 ? (
             <span style={{ fontSize: 11.5, fontWeight: 500, color: SEVERITY_ON_DARK.healthy }}>
@@ -1521,6 +1522,7 @@ export function StatementOfWorkBody({
 
       {/* Signature */}
       <div
+        data-testid="sow-signature-section"
         style={{
           display: "flex",
           flexDirection: "column",

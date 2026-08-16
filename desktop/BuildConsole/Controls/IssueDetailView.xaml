@@ -57,57 +57,75 @@
             </DockPanel>
         </Border>
 
-        <!-- ── Real issue body + comment thread (Git #840 — fetched via GitHubApiClient GET /issues/{n} + GET /issues/{n}/comments) ── -->
-        <ScrollViewer Grid.Row="1"
-                      VerticalScrollBarVisibility="Auto"
-                      HorizontalScrollBarVisibility="Disabled"
-                      Padding="12">
-            <StackPanel x:Name="ContentPanel">
+        <!-- ── Real issue body + comment thread (Left) and Actions Column (Right) ── -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="4"/>
+                <ColumnDefinition Width="340" MinWidth="260"/>
+            </Grid.ColumnDefinitions>
 
-                <TextBlock x:Name="LoadingText"
-                           Text=""
-                           FontSize="12"
-                           Foreground="{StaticResource Subtext1Brush}"
-                           Visibility="Collapsed"/>
+            <ScrollViewer Grid.Column="0"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled"
+                          Padding="12">
+                <StackPanel x:Name="ContentPanel">
 
-                <TextBlock x:Name="EpicLabel"
-                           Text="PARENT EPIC"
-                           FontSize="10"
-                           FontWeight="SemiBold"
-                           Foreground="{StaticResource Subtext0Brush}"
-                           Margin="0,0,0,4"
-                           Visibility="Collapsed"/>
-                <TextBlock x:Name="EpicText"
-                           FontSize="12"
-                           Margin="0,0,0,16"
-                           Visibility="Collapsed"/>
+                    <TextBlock x:Name="LoadingText"
+                               Text=""
+                               FontSize="12"
+                               Foreground="{StaticResource Subtext1Brush}"
+                               Visibility="Collapsed"/>
 
-                <TextBlock x:Name="BodyLabel"
-                           Text="DESCRIPTION"
-                           FontSize="10"
-                           FontWeight="SemiBold"
-                           Foreground="{StaticResource Subtext0Brush}"
-                           Margin="0,0,0,4"
-                           Visibility="Collapsed"/>
-                <RichTextBox x:Name="BodyText"
-                             IsReadOnly="True"
-                             IsDocumentEnabled="True"
-                             BorderThickness="0"
-                             Background="Transparent"
-                             Margin="0,0,0,16"/>
+                    <TextBlock x:Name="EpicLabel"
+                               Text="PARENT EPIC"
+                               FontSize="10"
+                               FontWeight="SemiBold"
+                               Foreground="{StaticResource Subtext0Brush}"
+                               Margin="0,0,0,4"
+                               Visibility="Collapsed"/>
+                    <TextBlock x:Name="EpicText"
+                               FontSize="12"
+                               Margin="0,0,0,16"
+                               Visibility="Collapsed"/>
 
-                <TextBlock x:Name="CommentsLabel"
-                           Text="COMMENTS"
-                           FontSize="10"
-                           FontWeight="SemiBold"
-                           Foreground="{StaticResource Subtext0Brush}"
-                           Margin="0,0,0,4"
-                           Visibility="Collapsed"/>
+                    <TextBlock x:Name="BodyLabel"
+                               Text="DESCRIPTION"
+                               FontSize="10"
+                               FontWeight="SemiBold"
+                               Foreground="{StaticResource Subtext0Brush}"
+                               Margin="0,0,0,4"
+                               Visibility="Collapsed"/>
+                    <RichTextBox x:Name="BodyText"
+                                 IsReadOnly="True"
+                                 IsDocumentEnabled="True"
+                                 BorderThickness="0"
+                                 Background="Transparent"
+                                 Margin="0,0,0,16"/>
 
-                <ItemsControl x:Name="CommentsList"/>
+                    <TextBlock x:Name="CommentsLabel"
+                               Text="COMMENTS"
+                               FontSize="10"
+                               FontWeight="SemiBold"
+                               Foreground="{StaticResource Subtext0Brush}"
+                               Margin="0,0,0,4"
+                               Visibility="Collapsed"/>
 
-            </StackPanel>
-        </ScrollViewer>
+                    <ItemsControl x:Name="CommentsList"/>
+
+                </StackPanel>
+            </ScrollViewer>
+
+            <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Stretch" Background="{StaticResource Surface0Brush}"/>
+
+            <ScrollViewer Grid.Column="2"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled"
+                          Background="{StaticResource MantleBrush}"
+                          Padding="10">
+                <StackPanel x:Name="ActionsPanel"/>
+            </ScrollViewer>
+        </Grid>
 
         <!-- Empty state overlay -->
         <StackPanel x:Name="EmptyState"

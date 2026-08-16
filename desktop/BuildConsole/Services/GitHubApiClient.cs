@@ -124,6 +124,7 @@ namespace BuildConsole.Services
         /// <summary>Any issue with at least one sub-issue IS an Epic (Git #839) — no title-text convention.</summary>
         public bool IsEpic => SubIssueCount > 0;
         public bool IsClosed => string.Equals(State, "CLOSED", StringComparison.OrdinalIgnoreCase);
+        public bool IsComplete => Labels.Any(l => string.Equals(l.Name, "complete", StringComparison.OrdinalIgnoreCase));
         public bool IsTodo => Labels.Any(l => string.Equals(l.Name, "Shane To-Do", StringComparison.OrdinalIgnoreCase));
         public bool HasInFlightLabel => Labels.Any(l => string.Equals(l.Name, "in-flight", StringComparison.OrdinalIgnoreCase));
     }

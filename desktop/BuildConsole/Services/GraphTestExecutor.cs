@@ -100,7 +100,7 @@ namespace BuildConsole.Services
                 // Pause-on-unset (Epic #803, extends #953/#961) — ensure any {{NAME}} this step references
                 // whose Test Environment Variable is still <unset>/needsReview gets a real value before the
                 // Resolve calls below, rather than shipping "<unset>". No-op when nothing is unset.
-                await vars.PrepareAsync(test.GetRawText());
+                await vars.PrepareAsync(path, test.TryGetProperty("body", out var bEl) ? bEl.GetRawText() : null);
 
                 // Shared preflight: hard test-tenant guard + authProfile credential resolution +
                 // token fetch. Returns a ready-made failure TestStepResult (already logged) on any
@@ -193,7 +193,7 @@ namespace BuildConsole.Services
                 // Pause-on-unset (Epic #803, extends #953/#961) — prompt for any still-<unset>/needsReview
                 // Test Environment Variable this mail-poll step references (mailbox/matchSubject/matchFrom)
                 // before resolving it. No-op when nothing is unset.
-                await vars.PrepareAsync(test.GetRawText());
+                await vars.PrepareAsync(rawMailbox, matchSubject, matchFrom);
 
                 // Resolve the mailbox: {{TEST_MAILBOX_ID}} -> GRAPH_TEST_MAILBOX_ID (single source of
                 // truth for the one designated test mailbox), then #877 {{variable}} interpolation in
