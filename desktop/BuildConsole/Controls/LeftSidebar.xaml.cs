@@ -73,6 +73,7 @@ namespace BuildConsole.Controls
         public bool IsBlocked { get; set; }
         public int? BlockedByNumber { get; set; }
         public string? BlockedByTitle { get; set; }
+        public bool HasParentEpic { get; set; }
         public string PriorityBadge => Priority switch
         {
             "HIGH" => "🔥",
@@ -1393,6 +1394,7 @@ namespace BuildConsole.Controls
                 Body = it.Body,
                 DatabaseId = it.DatabaseId,
                 IsEpic = it.IsEpic,
+                HasParentEpic = it.ParentNumber != null,
             };
         }
 
@@ -1426,6 +1428,7 @@ namespace BuildConsole.Controls
                         Body = it.Body,
                         DatabaseId = it.DatabaseId,
                         IsEpic = it.IsEpic,
+                        HasParentEpic = it.ParentNumber != null,
                     });
                 }
                 return epic;
@@ -2147,6 +2150,54 @@ namespace BuildConsole.Controls
                         // milestone clickable" ask.
                         Tag = m
                     };
+                    
+                    var cmMilestone = new ContextMenu();
+                    var miNewEpic = new MenuItem { Header = "New Epic & Assign Loose Issues..." };
+                    miNewEpic.Click += async (s, e) =>
+                    {
+                        var looseBucket = m.Epics.FirstOrDefault(ep => ep.Title == "⚡ Issues");
+                        if (looseBucket == null || looseBucket.Issues.Count == 0)
+                        {
+                            ToastEngine.Error("Git Board", "No loose issues in this milestone to assign.");
+                            return;
+                        }
+
+                        // Open NewIssueDialog but with EPIC: prefilled
+                        var dialog = new NewIssueDialog(new List<GitBoardIssue>(), "EPIC: ");
+                        dialog.Owner = Application.Current.MainWindow;
+                        if (dialog.ShowDialog() != true) return;
+
+                        var newTitle = dialog.IssueTitle;
+                        var newBody = dialog.IssueBody;
+                        if (string.IsNullOrWhiteSpace(newTitle)) return;
+
+                        try
+                        {
+                            var settings = BuildConsole.Services.BuildConsoleSettings.Load();
+                            if (!settings.HasGitHubPat) return;
+                            var client = new GitHubApiClient(settings.GitHubPat);
+                            
+                            var created = await client.CreateIssueAsync(newTitle, newBody, m.GithubNumber);
+                            
+                            foreach (var li in looseBucket.Issues)
+                            {
+                                await client.AddSubIssueAsync(created.Number, li.DatabaseId);
+                            }
+
+                            ActivityLog.Log("git-board.new-epic", $"Created Epic #{created.Number} and assigned {looseBucket.Issues.Count} issues.");
+                            ToastEngine.Success("Git Board", $"Epic #{created.Number} created and loose issues assigned!");
+                            
+                            PopulateGitTrackerBoard();
+                        }
+                        catch (Exception ex)
+                        {
+                            ActivityLog.Log("git-board.error", $"Failed to create Epic: {ex.Message}");
+                            ToastEngine.Error("Git Board", $"Failed to create Epic: {ex.Message}");
+                        }
+                    };
+                    cmMilestone.Items.Add(miNewEpic);
+                    milestoneItem.ContextMenu = cmMilestone;
+
                     milestoneItem.Collapsed += (s, e) => { if (ReferenceEquals(e.OriginalSource, milestoneItem)) _collapsedNodeKeys.Add(milestoneKey); };
                     milestoneItem.Expanded += (s, e) => { if (ReferenceEquals(e.OriginalSource, milestoneItem)) _collapsedNodeKeys.Remove(milestoneKey); };
 
@@ -2300,6 +2351,22 @@ namespace BuildConsole.Controls
             p.Children.Add(prioBlock);
             p.Children.Add(numBlock);
 
+            bool showsNoParent = false;
+            if (!issue.IsEpic && !issue.HasParentEpic && issue.Status != "CLOSED")
+            {
+                var noParentBadge = new Border
+                {
+                    Background = GetBrush("PeachBrush"),
+                    CornerRadius = new CornerRadius(3),
+                    Padding = new Thickness(4, 1, 4, 1),
+                    Margin = new Thickness(0, 0, 6, 0),
+                    ToolTip = "No parent Epic"
+                };
+                noParentBadge.Child = new TextBlock { Text = "NO EPIC", FontSize = 9, FontWeight = FontWeights.Bold, Foreground = Brushes.Black };
+                p.Children.Add(noParentBadge);
+                showsNoParent = true;
+            }
+
             // Git #845 (Git Board Phase 7) — real still-OPEN blocked_by
             // dependency (EnrichBlockedStatusAsync), same red "Blocked" badge
             // styling as the search view's CreateSearchIssueHeader (#F38BA8).
@@ -2326,7 +2393,7 @@ namespace BuildConsole.Controls
             bool showsBlocked = issue.Status != "CLOSED" && issue.IsBlocked;
             _issueTitleBlocks.Add((titleBlock,
                 IssueTreeIndentPerLevel * 3 + IssueTreeChrome + IssuePriorityBadgeWidth + IssueNumberBadgeWidth
-                + (showsBlocked ? IssueBlockedBadgeWidth : 0)));
+                + (showsBlocked ? IssueBlockedBadgeWidth : 0) + (showsNoParent ? IssueBlockedBadgeWidth : 0)));
 
             var tvi = new TreeViewItem
             {

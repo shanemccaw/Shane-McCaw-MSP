@@ -441,9 +441,13 @@ namespace BuildConsole.Services
         /// The response's numeric `id` is what <see cref="AddSubIssueAsync"/>
         /// wants as `sub_issue_id` to attach the new issue under an epic.
         /// </summary>
-        public async Task<CreatedIssue> CreateIssueAsync(string title, string body)
+        public async Task<CreatedIssue> CreateIssueAsync(string title, string body, int? milestone = null)
         {
-            var res = await _http.PostAsJsonAsync($"repos/{Owner}/{Repo}/issues", new { title, body });
+            object payload = milestone.HasValue
+                ? new { title, body, milestone = milestone.Value }
+                : new { title, body };
+
+            var res = await _http.PostAsJsonAsync($"repos/{Owner}/{Repo}/issues", payload);
             if (!res.IsSuccessStatusCode)
             {
                 var errBody = await res.Content.ReadAsStringAsync();

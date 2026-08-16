@@ -28,12 +28,13 @@ namespace BuildConsole.Controls
     /// rule is about Claude Code sessions specifically — this app is
     /// Shane's own, talking to the same already-approved real dev DB path.
     /// </summary>
-    public partial class SqlRunnerView : UserControl
+    public partial class SqlDocumentView : UserControl
     {
         private BuildTrackerApiClient? _api;
 
-        /// <summary>Git #940 — the last successfully-rendered result set + the query that produced it, so "Send to Chat" can format exactly what's on screen.</summary>
-        private DataTable? _lastResultTable;
+        /// <summary>Git #940 — the last full statement list for Send to Chat and JSON view.</summary>
+        private System.Collections.Generic.List<SqlStatementResult>? _lastStatements;
+        private System.Collections.Generic.List<DataTable> _lastResultTables = new();
         private string _lastResultQuery = "";
 
         /// <summary>Git #940 — cap the markdown table so a huge result set never dumps an unbounded block into a chat composer.</summary>
@@ -47,7 +48,22 @@ namespace BuildConsole.Controls
         /// </summary>
         public event EventHandler<string>? SendToChatRequested;
 
-        public SqlRunnerView()
+        /// <summary>Raised when the user clicks the inline close button.</summary>
+        public event EventHandler? CloseRequested;
+
+        /// <summary>Shows or hides the inline Close button.</summary>
+        public bool IsInline
+        {
+            get => CloseInlineBtn.Visibility == Visibility.Visible;
+            set => CloseInlineBtn.Visibility = value ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        private void CloseInline_Click(object sender, RoutedEventArgs e)
+        {
+            CloseRequested?.Invoke(this, EventArgs.Empty);
+        }
+
+        public SqlDocumentView()
         {
             InitializeComponent();
             LoadSqlHighlighting();
@@ -80,11 +96,6 @@ namespace BuildConsole.Controls
         public void Initialize(BuildTrackerApiClient api)
         {
             _api = api;
-            if (api.IsConfigured)
-            {
-                ConnDot.Fill    = new SolidColorBrush(Color.FromRgb(0xA6, 0xE3, 0xA1));
-                ConnStatus.Text = "Ready";
-            }
         }
 
         public void SetSqlQuery(string sql)
@@ -112,21 +123,7 @@ namespace BuildConsole.Controls
             }
         }
 
-        private void Connect_Click(object sender, RoutedEventArgs e)
-        {
-            if (_api == null || !_api.IsConfigured)
-            {
-                ConnDot.Fill    = new SolidColorBrush(Color.FromRgb(0xE5, 0xA3, 0xA3));
-                ConnStatus.Text = "Not connected — see Settings";
-                return;
-            }
-            // There's no separate "connect" step — every Execute call is its
-            // own real round trip to the dev api-server's pooled connection
-            // (same as the browser extension). This just confirms config is present.
-            ConnDot.Fill    = new SolidColorBrush(Color.FromRgb(0xA6, 0xE3, 0xA1));
-            ConnStatus.Text = "Ready";
-            ExecStatus.Text = $"Connected to {_api.ConfiguredApiBaseUrl}";
-        }
+
 
         private async void Execute_Click(object sender, RoutedEventArgs e)
         {
@@ -154,22 +151,28 @@ namespace BuildConsole.Controls
             catch (Exception ex)
             {
                 ExecStatus.Text = $"Execute failed: {ex.Message}";
-                ResultsGrid.ItemsSource = null;
+                ResultsStack.Children.Clear();
                 RowCountLabel.Text = "Error";
-                _lastResultTable = null;
+                _lastResultTables.Clear();
+                _lastStatements = null;
+                CopyTableBtn.IsEnabled = false;
+                CopyJsonBtn.IsEnabled = false;
                 SendToChatButton.IsEnabled = false;
             }
         }
 
         /// <summary>
-        /// SSMS-style: one entry per statement in the script. Shows the LAST
-        /// statement that actually returned rows (the common case — a script
-        /// ending in a SELECT to eyeball the result), with a summary line
-        /// covering every statement's own success/failure so a mid-script
-        /// failure isn't silently hidden by a later one succeeding.
+        /// Shows every statement that returned rows as its own labeled DataGrid,
+        /// plus a summary covering all statement outcomes. Also populates the JSON
+        /// view and enables the copy buttons.
         /// </summary>
         private void RenderResults(System.Collections.Generic.List<SqlStatementResult> statements)
         {
+            _lastStatements = statements;
+            _lastResultTables.Clear();
+            ResultsStack.Children.Clear();
+            JsonView.Text = "";
+
             var failed = statements.Count(s => !s.Success);
             var succeeded = statements.Count - failed;
             var totalMs = statements.Sum(s => s.ExecutionMs);
@@ -177,9 +180,9 @@ namespace BuildConsole.Controls
             if (statements.Count == 0)
             {
                 ExecStatus.Text = "No statements found.";
-                ResultsGrid.ItemsSource = null;
                 RowCountLabel.Text = "0 rows";
-                _lastResultTable = null;
+                CopyTableBtn.IsEnabled = false;
+                CopyJsonBtn.IsEnabled = false;
                 SendToChatButton.IsEnabled = false;
                 return;
             }
@@ -187,49 +190,162 @@ namespace BuildConsole.Controls
             if (failed > 0)
             {
                 var firstError = statements.First(s => !s.Success);
-                ExecStatus.Text = $"{succeeded}/{statements.Count} statement(s) succeeded, {failed} failed ({totalMs}ms). First error (statement {firstError.StatementIndex + 1}): {firstError.Error}";
+                ExecStatus.Text = $"{succeeded}/{statements.Count} statement(s) succeeded, {failed} failed ({totalMs}ms). First error: {firstError.Error}";
             }
             else
             {
-                ExecStatus.Text = $"{succeeded} statement(s) succeeded ({totalMs}ms).";
+                ExecStatus.Text = $"{succeeded} statement{(succeeded == 1 ? "" : "s")} succeeded ({totalMs}ms).";
             }
 
-            var withRows = statements.LastOrDefault(s => s.Success && s.Fields.Count > 0);
-            if (withRows == null)
-            {
-                ResultsGrid.ItemsSource = null;
-                RowCountLabel.Text = failed > 0 ? "See status above" : "No rows returned";
-                _lastResultTable = null;
-                SendToChatButton.IsEnabled = false;
-                return;
-            }
+            // Build pretty JSON for the JSON view (all statements)
+            var jsonOpts = new JsonSerializerOptions { WriteIndented = true };
+            JsonView.Text = JsonSerializer.Serialize(statements, jsonOpts);
 
-            var table = new DataTable();
-            foreach (var field in withRows.Fields) table.Columns.Add(field, typeof(string));
-            foreach (var row in withRows.Rows)
+            // Build a DataGrid for EVERY statement that produced rows
+            var withRows = statements.Where(s => s.Success && s.Fields.Count > 0).ToList();
+            int totalRows = 0;
+
+            foreach (var stmt in withRows)
             {
-                var dr = table.NewRow();
-                foreach (var field in withRows.Fields)
+                var table = new DataTable();
+                foreach (var field in stmt.Fields) table.Columns.Add(field, typeof(string));
+                foreach (var row in stmt.Rows)
                 {
-                    dr[field] = row.TryGetValue(field, out var value) ? JsonElementToDisplayString(value) : "";
+                    var dr = table.NewRow();
+                    foreach (var field in stmt.Fields)
+                        dr[field] = row.TryGetValue(field, out var value) ? JsonElementToDisplayString(value) : "";
+                    table.Rows.Add(dr);
                 }
-                table.Rows.Add(dr);
+                _lastResultTables.Add(table);
+                totalRows += table.Rows.Count;
+
+                // Statement label (only shown when there are multiple result sets)
+                if (withRows.Count > 1)
+                {
+                    var label = new TextBlock
+                    {
+                        Text = $"Statement {stmt.StatementIndex + 1}  —  {table.Rows.Count} row{(table.Rows.Count == 1 ? "" : "s")}  ({stmt.ExecutionMs}ms)",
+                        FontSize = 11,
+                        FontWeight = FontWeights.SemiBold,
+                        Foreground = (Brush)FindResource("Subtext1Brush"),
+                        Margin = new Thickness(6, withRows.IndexOf(stmt) == 0 ? 6 : 16, 6, 4),
+                    };
+                    ResultsStack.Children.Add(label);
+                }
+
+                var grid = new DataGrid
+                {
+                    IsReadOnly = true,
+                    AutoGenerateColumns = true,
+                    BorderThickness = new Thickness(0),
+                    Margin = new Thickness(0, 0, 0, 0),
+                    MaxHeight = withRows.Count > 1 ? 320 : double.PositiveInfinity,
+                    ItemsSource = table.DefaultView,
+                };
+                // Right-click context menu
+                var ctxMenu = new ContextMenu();
+                var copyCell = new MenuItem { Header = "Copy Cell" };
+                copyCell.Click += (s, e) =>
+                {
+                    if (grid.CurrentCell.Item is DataRowView rv && grid.CurrentCell.Column != null)
+                    {
+                        var field = BoundFieldName(grid.CurrentCell.Column);
+                        if (field != null) Clipboard.SetText(rv[field]?.ToString() ?? "");
+                    }
+                };
+                var copyRow = new MenuItem { Header = "Copy Row" };
+                copyRow.Click += (s, e) =>
+                {
+                    if (grid.SelectedItem is DataRowView rv)
+                        Clipboard.SetText(string.Join(",", rv.Row.ItemArray.Select(v => EscapeCsvCell(v?.ToString() ?? ""))));
+                };
+                var copyAll = new MenuItem { Header = "Copy All as CSV" };
+                copyAll.Click += (s, e) => Clipboard.SetText(BuildCsv(table));
+                ctxMenu.Items.Add(copyCell);
+                ctxMenu.Items.Add(copyRow);
+                ctxMenu.Items.Add(new Separator());
+                ctxMenu.Items.Add(copyAll);
+                grid.ContextMenu = ctxMenu;
+                grid.PreviewMouseRightButtonDown += ResultsGrid_PreviewMouseRightButtonDown;
+                ResultsStack.Children.Add(grid);
             }
 
-            ResultsGrid.Columns.Clear();
-            ResultsGrid.AutoGenerateColumns = true;
-            ResultsGrid.ItemsSource = table.DefaultView;
-            RowCountLabel.Text = $"{withRows.RowCount} row{(withRows.RowCount == 1 ? "" : "s")}";
+            if (withRows.Count == 0)
+            {
+                var noRows = new TextBlock
+                {
+                    Text = failed > 0 ? "See error above." : "No rows returned.",
+                    FontSize = 12,
+                    Foreground = (Brush)FindResource("Subtext1Brush"),
+                    Margin = new Thickness(8),
+                };
+                ResultsStack.Children.Add(noRows);
+                RowCountLabel.Text = failed > 0 ? "Error" : "No rows";
+            }
+            else
+            {
+                RowCountLabel.Text = withRows.Count > 1
+                    ? $"{totalRows} rows ({withRows.Count} result sets)"
+                    : $"{totalRows} row{(totalRows == 1 ? "" : "s")}";
+            }
 
-            // Git #940 — cache exactly what's on screen and light up "Send to Chat"
-            // only when there are real rows to send.
-            _lastResultTable = table;
+            bool hasData = _lastResultTables.Any(t => t.Rows.Count > 0);
+            CopyTableBtn.IsEnabled = hasData;
+            CopyJsonBtn.IsEnabled = statements.Count > 0;
+            SendToChatButton.IsEnabled = hasData;
+
+            // Cache for Send-to-Chat (use first non-empty table)
             _lastResultQuery = QueryEditor.Text.Trim();
-            SendToChatButton.IsEnabled = table.Rows.Count > 0;
         }
 
         /// <summary>Git #940 — MainWindow calls this back after a send attempt to report the outcome inline (reuses the ExecStatus strip).</summary>
         public void ShowSendStatus(string message) => ExecStatus.Text = message;
+
+        // ── View toggle handlers ────────────────────────────────────────────────
+        private void ViewTableBtn_Click(object sender, RoutedEventArgs e)
+        {
+            ViewTableBtn.IsChecked = true;
+            ViewJsonBtn.IsChecked = false;
+            TableScrollView.Visibility = Visibility.Visible;
+            JsonView.Visibility = Visibility.Collapsed;
+        }
+
+        private void ViewJsonBtn_Click(object sender, RoutedEventArgs e)
+        {
+            ViewJsonBtn.IsChecked = true;
+            ViewTableBtn.IsChecked = false;
+            JsonView.Visibility = Visibility.Visible;
+            TableScrollView.Visibility = Visibility.Collapsed;
+        }
+
+        // ── Copy button handlers ────────────────────────────────────────────────
+        private void CopyTableBtn_Click(object sender, RoutedEventArgs e)
+        {
+            if (_lastResultTables.Count == 0) return;
+            if (_lastResultTables.Count == 1)
+            {
+                Clipboard.SetText(BuildCsv(_lastResultTables[0]));
+            }
+            else
+            {
+                var sb = new StringBuilder();
+                for (int i = 0; i < _lastResultTables.Count; i++)
+                {
+                    sb.AppendLine($"-- Statement {i + 1}");
+                    sb.AppendLine(BuildCsv(_lastResultTables[i]));
+                    sb.AppendLine();
+                }
+                Clipboard.SetText(sb.ToString().TrimEnd());
+            }
+            ExecStatus.Text = "Copied CSV to clipboard.";
+        }
+
+        private void CopyJsonBtn_Click(object sender, RoutedEventArgs e)
+        {
+            if (_lastStatements == null || _lastStatements.Count == 0) return;
+            Clipboard.SetText(JsonView.Text);
+            ExecStatus.Text = "Copied JSON to clipboard.";
+        }
 
         /// <summary>
         /// Git #940 — "Send to Chat": format the current result set as a readable
@@ -240,8 +356,8 @@ namespace BuildConsole.Controls
         /// </summary>
         private void SendToChat_Click(object sender, RoutedEventArgs e)
         {
-            var table = _lastResultTable;
-            if (table == null || table.Rows.Count == 0)
+            var table = _lastResultTables.FirstOrDefault(t => t.Rows.Count > 0);
+            if (table == null)
             {
                 ExecStatus.Text = "Nothing to send — run a query that returns rows first.";
                 return;
@@ -312,6 +428,7 @@ namespace BuildConsole.Controls
         // actually right-clicked.
         private void ResultsGrid_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
         {
+            if (sender is not DataGrid targetGrid) return;
             var source = e.OriginalSource as DependencyObject;
             while (source != null && source is not DataGridCell) source = VisualTreeHelper.GetParent(source);
             if (source is not DataGridCell cell) return;
@@ -320,8 +437,8 @@ namespace BuildConsole.Controls
             if (row == null) return;
 
             cell.Focus();
-            ResultsGrid.SelectedItem = row.Item;
-            ResultsGrid.CurrentCell = new DataGridCellInfo(row.Item, cell.Column);
+            targetGrid.SelectedItem = row.Item;
+            targetGrid.CurrentCell = new DataGridCellInfo(row.Item, cell.Column);
         }
 
         private static T? FindVisualParent<T>(DependencyObject child) where T : DependencyObject
@@ -335,27 +452,12 @@ namespace BuildConsole.Controls
         private static string? BoundFieldName(DataGridColumn column) =>
             (column as DataGridBoundColumn)?.Binding is Binding binding ? binding.Path.Path : null;
 
-        private void CopyCell_Click(object sender, RoutedEventArgs e)
-        {
-            var cellInfo = ResultsGrid.CurrentCell;
-            if (cellInfo.Item is not DataRowView rowView || cellInfo.Column == null) return;
-            var field = BoundFieldName(cellInfo.Column);
-            if (field == null) return;
-            Clipboard.SetText(rowView[field]?.ToString() ?? "");
-        }
-
-        private void CopyRow_Click(object sender, RoutedEventArgs e)
-        {
-            if (ResultsGrid.SelectedItem is not DataRowView rowView) return;
-            var values = rowView.Row.ItemArray.Select(v => v?.ToString() ?? "");
-            Clipboard.SetText(string.Join(",", values.Select(EscapeCsvCell)));
-        }
+        // CopyCell_Click / CopyRow_Click are now wired inline per-DataGrid in RenderResults.
 
         private void CopyAllCsv_Click(object sender, RoutedEventArgs e)
         {
-            var table = _lastResultTable;
-            if (table == null || table.Rows.Count == 0) return;
-            Clipboard.SetText(BuildCsv(table));
+            if (_lastResultTables.Count == 0) return;
+            Clipboard.SetText(BuildCsv(_lastResultTables[0]));
         }
 
         private static string BuildCsv(DataTable table)

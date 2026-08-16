@@ -45,6 +45,7 @@ namespace BuildConsole
 
         // ── Build Tracker API (shared by BuildQueuePanel + LeftSidebar's Issues board) ──
         private BuildConsole.Services.BuildTrackerApiClient? _buildTrackerApi;
+        public BuildConsole.Services.BuildTrackerApiClient? BuildTrackerApi => _buildTrackerApi;
         private BuildConsole.Services.QueueWatcherService? _queueWatcher;
 
         // ── Build completion sound (mute toggle: _Sound menu > Mute Completion Sound) ──
@@ -211,6 +212,9 @@ namespace BuildConsole
             EnsureTestHistoryWindow();
         }
 
+        /// <summary>Called from controls (e.g. GitDetailView) to open history filtered to a specific issue.</summary>
+        public void EnsureTestHistoryWindowPublic(int issueFilter) => EnsureTestHistoryWindow(issueFilter);
+
         public MainWindow()
         {
             InitializeComponent();
@@ -323,8 +327,7 @@ namespace BuildConsole
 
             BuildQueuePanel.Initialize(_buildTrackerApi, _queueWatcher);
             LeftSidebar.Initialize(_buildTrackerApi);
-            SqlRunnerView.Initialize(_buildTrackerApi);
-            WireSqlRunnerSendToChat(SqlRunnerView); // Git #940
+
             BuildLogView.Initialize(_buildTrackerApi);
 
             // Git #902 — Shane: "Replit shuts its dev mode down after ~10 min of
@@ -410,26 +413,21 @@ namespace BuildConsole
                     ? chat.ClaudeUrl
                     : null;
 
-            // Git #840 (Git Board Phase 2) — Shane: "I need to be able to...
-            // read their descriptions, comments, etc..." Clicking an issue in
-            // the Git Board tree opens the bottom panel's Issue Detail tab
-            // (index 4 — Build Log, Terminal, SQL Runner, Output, Issue
-            // Detail; the "Test Results" tab that used to sit at index 4 was
-            // retired by Git #857's dedicated TestRunnerWindow) and loads its
-            // real body/comment thread.
+            // Git #840 — clicking an issue now opens (or focuses) the native
+            // GitDetailView document tab — the same tab GitDetailTabRequested
+            // opens — so there is one source of truth for issue details.
+            // The bottom-panel IssueDetailView is no longer driven by issue
+            // clicks, eliminating the out-of-sync / duplicate fetch problem.
             LeftSidebar.IssueSelected += (s, issue) =>
             {
-                SetBottomPanel(true, 4);
-                IssueDetailView.LoadIssue(issue.IssueNumber);
+                var cached = LeftSidebar.BuildDetailIssue(issue.IssueNumber);
+                if (cached != null)
+                    OpenGitIssueDetailTab(cached);
+                else
+                    _ = OpenGitDetailByNumberAsync(issue.IssueNumber);
             };
 
-            // Git #921 (Epic #803) — Shane: "When I click a milestone, it should
-            // open a new Tab and show me all the Epics, Issues, and Shane To-Do
-            // in an ADHD friendly way... When I click on an epic... same thing...
-            // Clicking on an issue - same thing... but with Epic linked."
-            // Additive to the #840 side panel above (which still fires): these
-            // open (or focus) the native GitDetailView tab, reusing the same
-            // #893/#894 multi-pane editor tab infra every other tab uses.
+            // Git #921 (Epic #803) — milestone and epic clicks open document tabs.
             LeftSidebar.MilestoneTabRequested += (s, m) => OpenMilestoneDetailTab(m);
             LeftSidebar.GitDetailTabRequested += (s, issue) => OpenGitIssueDetailTab(issue);
 
@@ -486,8 +484,8 @@ namespace BuildConsole
             // Shane To-Do "Load SQL" -> real GitHub file content into the SQL Runner tab (index 2 in BottomTabs — Build Log, Terminal, SQL Runner, Output).
             LeftSidebar.SqlLoadRequested += (s, path) =>
             {
-                SetBottomPanel(true, 2);
-                SqlRunnerView.LoadFromGitHub(path);
+                var sqlDoc = OpenSqlRunnerTab();
+                sqlDoc.LoadFromGitHub(path);
             };
 
             // Git #806 (Epic #803 Phase 2) — tracks the manifest last loaded via the
@@ -964,12 +962,12 @@ namespace BuildConsole
         }
 
         /// <summary>
-        /// Git #940 — routes a SqlRunnerView's "Send to Chat" through the same
+        /// Git #940 — routes a SqlDocumentView's "Send to Chat" through the same
         /// shared active-chat injection path (#937). Applied to both the docked
         /// SQL Runner and each .sql file tab; reports the outcome back inline on
         /// the view's own status strip.
         /// </summary>
-        private void WireSqlRunnerSendToChat(Controls.SqlRunnerView view)
+        private void WireSqlRunnerSendToChat(Controls.SqlDocumentView view)
         {
             view.SendToChatRequested += async (s, text) =>
                 await SendTextToActiveClaudeChatAsync(
@@ -2601,7 +2599,6 @@ namespace BuildConsole
             };
             cm.Items.Add(miOpenExplorer);
 
-            tabItem.ContextMenu = cm;
             if (tabItem.Header is FrameworkElement feHeader)
             {
                 feHeader.ContextMenu = cm;
@@ -2625,12 +2622,85 @@ namespace BuildConsole
             OpenFileTab(filePath);
         }
 
+        public Controls.SqlDocumentView OpenSqlRunnerTab()
+        {
+            foreach (TabItem item in EditorTabs.Items)
+            {
+                if (item.Tag is string tagPath && tagPath == "scratch_sql_runner")
+                {
+                    EditorTabs.SelectedItem = item;
+                    return (Controls.SqlDocumentView)item.Content;
+                }
+            }
+
+            var headerPanel = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            var iconBlock = new TextBlock { Text = "🗄️", FontSize = 12, Margin = new Thickness(0, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center };
+            var titleBlock = new TextBlock { Text = "SQL Runner", FontSize = 13, Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center, Foreground = (Brush)FindResource("TextBrush") };
+            var closeBtn = new Button { Content = "✕", Style = (Style)FindResource("IconButton"), FontSize = 10, Padding = new Thickness(3, 1, 3, 1), Margin = new Thickness(4, 0, 0, 0), ToolTip = "Close Tab", VerticalAlignment = VerticalAlignment.Center };
+            
+            headerPanel.Children.Add(iconBlock);
+            headerPanel.Children.Add(titleBlock);
+            headerPanel.Children.Add(closeBtn);
+
+            var sqlViewer = new Controls.SqlDocumentView();
+            sqlViewer.Initialize(_buildTrackerApi);
+            WireSqlRunnerSendToChat(sqlViewer);
+
+            var newTab = new TabItem
+            {
+                Header = headerPanel,
+                Content = sqlViewer,
+                Tag = "scratch_sql_runner"
+            };
+
+            AttachTabContextMenu(newTab, EditorTabs);
+            AttachTabDragHandlers(newTab);
+
+            closeBtn.Click += (s, e) =>
+            {
+                Services.UiFadeHelper.FadeOut(newTab, onComplete: () =>
+                {
+                    EditorTabs.Items.Remove(newTab);
+                    if (EditorTabs.Items.Count > 0)
+                        EditorTabs.SelectedIndex = Math.Max(0, EditorTabs.Items.Count - 1);
+                });
+            };
+
+            EditorTabs.Items.Add(newTab);
+            EditorTabs.SelectedItem = newTab;
+            
+            ActiveDocTitleText.Text = " - SQL Runner";
+            
+            return sqlViewer;
+        }
+
         public void OpenFileTab(string filePath)
         {
             if (!File.Exists(filePath)) return;
 
             string fileName = Path.GetFileName(filePath);
             string ext = Path.GetExtension(filePath).ToLowerInvariant();
+
+            if (ext == ".sql")
+            {
+                var sqlViewer = OpenSqlRunnerTab();
+                try { sqlViewer.SetSqlQuery(File.ReadAllText(filePath)); } catch {}
+                return;
+            }
+
+            if (ext == ".json" && (filePath.Contains("\\test-manifests\\") || filePath.Contains("/test-manifests/")))
+            {
+                var manifest = BuildConsole.Services.TestManifest.LoadFromFile(filePath);
+                if (manifest != null)
+                {
+                    new BuildConsole.ManifestViewerWindow(manifest, false) { Owner = this }.Show();
+                    return;
+                }
+            }
 
             // Deduplicate if already open
             foreach (TabItem item in EditorTabs.Items)
@@ -2701,28 +2771,12 @@ namespace BuildConsole
             // Tab Content
             UIElement tabContent;
 
-            if (ext == ".sql")
+            // Rich HTML Viewer / Monaco Code Editor in WebView2
+            string fileText;
+            try
             {
-                // SQL Viewer tab
-                var sqlViewer = new Controls.SqlRunnerView();
-                WireSqlRunnerSendToChat(sqlViewer); // Git #940
-                try
-                {
-                    string sqlText = File.ReadAllText(filePath);
-                    sqlViewer.SetSqlQuery(sqlText);
-                }
-                catch { }
-
-                tabContent = sqlViewer;
+                fileText = File.ReadAllText(filePath);
             }
-            else
-            {
-                // Rich HTML Viewer / Monaco Code Editor in WebView2
-                string fileText;
-                try
-                {
-                    fileText = File.ReadAllText(filePath);
-                }
                 catch (Exception ex)
                 {
                     fileText = $"Error reading file: {ex.Message}";
@@ -2744,7 +2798,6 @@ namespace BuildConsole
                 };
 
                 tabContent = wv;
-            }
 
             var newTab = new TabItem
             {
@@ -3184,7 +3237,7 @@ namespace BuildConsole
 
         // ── Menu: SQL ─────────────────────────────────────────────────────────
         private void OpenSql_Click(object sender, RoutedEventArgs e)
-            => SetBottomPanel(true, tabIndex: 2);
+            => OpenSqlRunnerTab();
 
         // Git #816 — Shane: "the very first browser that opens is hard
         // stuck... that Claude works I'm logged in every time" (others
@@ -3473,8 +3526,66 @@ namespace BuildConsole
                 }
                 else if (type == "BT_LOAD_SQL")
                 {
-                    SetBottomPanel(true, tabIndex: 2);
-                    SqlRunnerView.SetSqlQuery(Str("sql") ?? "");
+                    var sqlText = Str("sql") ?? "";
+
+                    if (EditorTabs.SelectedItem is TabItem activeTab)
+                    {
+                        if (activeTab.Content is Microsoft.Web.WebView2.Wpf.WebView2 webView)
+                        {
+                            // It's a normal chat tab, split it
+                            activeTab.Content = null; // Detach so we can add to grid
+
+                            var grid = new Grid();
+                            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+                            Grid.SetColumn(webView, 0);
+                            grid.Children.Add(webView);
+
+                            var splitter = new GridSplitter
+                            {
+                                Width = 4,
+                                HorizontalAlignment = HorizontalAlignment.Center,
+                                VerticalAlignment = VerticalAlignment.Stretch,
+                                ResizeBehavior = GridResizeBehavior.PreviousAndNext
+                            };
+                            Grid.SetColumn(splitter, 1);
+                            grid.Children.Add(splitter);
+
+                            var inlineSql = new Controls.SqlDocumentView();
+                            inlineSql.Initialize(_buildTrackerApi);
+                            inlineSql.IsInline = true;
+                            inlineSql.SetSqlQuery(sqlText);
+                            WireSqlRunnerSendToChat(inlineSql);
+
+                            inlineSql.CloseRequested += (s, ev) =>
+                            {
+                                // Un-split: detach webView from grid and put back in tab
+                                grid.Children.Remove(webView);
+                                activeTab.Content = webView;
+                            };
+
+                            Grid.SetColumn(inlineSql, 2);
+                            grid.Children.Add(inlineSql);
+
+                            activeTab.Content = grid;
+                        }
+                        else if (activeTab.Content is Grid splitGrid && splitGrid.Children.Count == 3 && splitGrid.Children[2] is Controls.SqlDocumentView existingSql)
+                        {
+                            // Already split with an inline SQL runner
+                            existingSql.SetSqlQuery(sqlText);
+                        }
+                        else
+                        {
+                            // Fallback if not a chat tab
+                            OpenSqlRunnerTab().SetSqlQuery(sqlText);
+                        }
+                    }
+                    else
+                    {
+                        OpenSqlRunnerTab().SetSqlQuery(sqlText);
+                    }
                 }
             }
             catch { }
@@ -3528,7 +3639,7 @@ namespace BuildConsole
             BtnBuildRelease.IsEnabled = false;
             BtnBuildReleaseIcon.Text = "\uE72C"; // hourglass while running
             BuildConsole.Services.ActivityLog.Log("release-build", $"Starting: dotnet build --configuration Release ({projectDir})");
-            SetBottomPanel(true, tabIndex: 3); // Output tab
+            SetBottomPanel(true, tabIndex: 2); // Output tab
 
             var psi = new System.Diagnostics.ProcessStartInfo
             {
@@ -3763,7 +3874,30 @@ namespace BuildConsole
                 // release-within-bounds Click logic to the ancestor instead,
                 // silently breaking "close this tab" for the one click that
                 // started here.
-                if (e.OriginalSource is DependencyObject src && FindAncestorButton(src, tab) != null) return;
+                if (e.OriginalSource is DependencyObject src)
+                {
+                    if (FindAncestorButton(src, tab) != null) return;
+                    
+                    // Git #1035 continued — don't arm/capture if the user clicked inside 
+                    // the tab's CONTENT (e.g. a RichTextBox selecting text). The TabItem 
+                    // itself visually represents ONLY the header. If the clicked element 
+                    // isn't a visual descendant of the TabItem, it's in the ContentPresenter.
+                    bool isVisualDescendant = false;
+                    var current = src;
+                    while (current != null)
+                    {
+                        if (ReferenceEquals(current, tab)) { isVisualDescendant = true; break; }
+                        if (current is System.Windows.ContentElement ce)
+                        {
+                            current = System.Windows.LogicalTreeHelper.GetParent(ce);
+                        }
+                        else
+                        {
+                            current = System.Windows.Media.VisualTreeHelper.GetParent(current) ?? System.Windows.LogicalTreeHelper.GetParent(current);
+                        }
+                    }
+                    if (!isVisualDescendant) return;
+                }
 
                 _tabDragStartPoint = e.GetPosition(null);
                 _tabDragCandidate = tab;
@@ -3830,7 +3964,15 @@ namespace BuildConsole
             while (current != null && !ReferenceEquals(current, stopAt))
             {
                 if (current is Button b) return b;
-                current = System.Windows.Media.VisualTreeHelper.GetParent(current);
+                
+                if (current is System.Windows.ContentElement ce)
+                {
+                    current = System.Windows.LogicalTreeHelper.GetParent(ce);
+                }
+                else
+                {
+                    current = System.Windows.Media.VisualTreeHelper.GetParent(current) ?? System.Windows.LogicalTreeHelper.GetParent(current);
+                }
             }
             return null;
         }
@@ -4049,9 +4191,37 @@ namespace BuildConsole
         // #898 remote-trigger poll loop can POST the exact same result JSON back to the
         // api-server for a waiting Claude Code session to read. The two existing callers
         // (Run Tests / Run Regression Suite) ignore the return value, unchanged.
+        public async System.Threading.Tasks.Task<BuildConsole.Services.ManifestRunResult> RunManifestPublicAsync(BuildConsole.Services.TestManifest manifest)
+        {
+            return await RunManifestAsync(manifest, isRegression: false);
+        }
+
         private async System.Threading.Tasks.Task<BuildConsole.Services.ManifestRunResult> RunManifestAsync(BuildConsole.Services.TestManifest manifest, bool isRegression)
         {
             string mode = isRegression ? "regression" : "single";
+
+            if (_replitWatcher != null &&
+                (_replitWatcher.CurrentStatus.State == BuildConsole.Services.ReplitWatcherState.GracePeriod ||
+                 _replitWatcher.CurrentStatus.State == BuildConsole.Services.ReplitWatcherState.Waking ||
+                 _replitWatcher.CurrentStatus.State == BuildConsole.Services.ReplitWatcherState.Error))
+            {
+                BuildConsole.ToastEngine.Show(
+                    "Replit Not Responding",
+                    "Replit is currently down. Click here to open the Replit tab and wake it up.",
+                    BuildConsole.ToastKind.Warning,
+                    TimeSpan.FromSeconds(15),
+                    () => OpenWebTab(BuildConsole.Services.BuildConsoleSettings.Load().ReplitWorkspaceUrl, "Replit Workspace", "")
+                );
+
+                return new BuildConsole.Services.ManifestRunResult
+                {
+                    Issue = manifest.Issue,
+                    Feature = manifest.Feature,
+                    Mode = mode,
+                    StartedAt = DateTime.Now,
+                };
+            }
+
             BuildConsole.Services.ActivityLog.Log("testing.manifest-runner",
                 $"[{mode}] Running manifest for issue #{manifest.Issue} ({manifest.Feature}) — {manifest.ApiTests.Count} apiTests, {manifest.GraphTests.Count} graphTests, {manifest.PostGraphApiTests.Count} postGraphApiTests, {manifest.ZohoTests.Count} zohoTests, {manifest.UiSteps.Count} uiSteps, {manifest.PowerShellVerify.Count} powerShellVerify.");
 
@@ -4063,13 +4233,22 @@ namespace BuildConsole
                 StartedAt = DateTime.Now,
             };
 
-            // Git #810 (Epic #803 Phase 6), relocated by Git #857 into a dedicated window —
-            // apiTests/graphTests cards stream in live via HttpTestExecutor/GraphTestExecutor's
-            // own StepCompleted events (subscribed once per TestRunnerWindow instance), not
-            // pushed from here.
-            // A single run (Play Test / double-click / shaneapp / #898 remote) opens the window hidden
-            // off-screen; a regression sweep keeps it on-screen/background (see EnsureTestRunnerWindow).
-            var runner = EnsureTestRunnerWindow(background: !isRegression);
+            // Git #810 / #857 — single manual runs now come up on-screen (visible, unfocused)
+            // so you can watch progress without hunting through the taskbar. Regression sweeps
+            // stay background (off-screen) as before — they run unattended and have their own
+            // per-manifest toast if attention is needed.
+            var runner = EnsureTestRunnerWindow(background: false);
+            if (isRegression)
+            {
+                // Sweep: keep it on-screen/watchable but never steal focus.
+                runner.EnsureOnScreenBackground();
+            }
+            else
+            {
+                // Manual run: bring it on-screen immediately so it's watchable,
+                // but don't activate (don't steal focus from whatever Shane's doing).
+                runner.EnsureOnScreenBackground();
+            }
             runner.Clear();
             runner.SetSteps(manifest);
             runner.BeginRun(manifest.Issue, manifest.Feature, mode);

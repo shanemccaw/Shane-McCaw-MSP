@@ -254,11 +254,14 @@ router.post(
   requireDevOrigin,
   requireAdminOrIngestToken(),
   async (req: Request, res: Response): Promise<void> => {
-    const body = req.body as { userId?: number };
+    const body = req.body as { userId?: number | string };
+    const rawUserId = body?.userId;
     const userId =
-      typeof body?.userId === "number" && Number.isInteger(body.userId)
-        ? body.userId
-        : NaN;
+      typeof rawUserId === "number" && Number.isInteger(rawUserId)
+        ? rawUserId
+        : typeof rawUserId === "string" && /^\d+$/.test(rawUserId.trim())
+          ? parseInt(rawUserId.trim(), 10)
+          : NaN;
     if (!Number.isInteger(userId) || userId <= 0) {
       res.status(400).json({
         error:

@@ -207,7 +207,7 @@ namespace BuildConsole.Services
         /// </summary>
         public async Task PrepareAsync(params string?[]? inputs)
         {
-            if (_needsRealValue.Count == 0 || inputs == null) return;
+            if (inputs == null) return;
 
             // Distinct, in-order placeholder names across all inputs that still need a real value.
             var toPrompt = new List<string>();
@@ -219,9 +219,25 @@ namespace BuildConsole.Services
                 {
                     string name = m.Groups[1].Value;
                     if (!seen.Add(name)) continue;
-                    if (!_needsRealValue.Contains(name)) continue; // already has a real value
-                    if (_values.ContainsKey(name)) continue;       // an earlier step extracted a real value
-                    if (_dismissed.Contains(name)) continue;       // Shane already declined it this run
+
+                    // Built-in system placeholders are resolved directly by executors (e.g. HttpTestExecutor)
+                    if (string.Equals(name, "DEPLOY_URL", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(name, "SECRET_KEY", StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    // An earlier step in this run already extracted a real value
+                    if (_values.ContainsKey(name)) continue;
+
+                    // Check if Settings has a valid, non-empty, non-<unset> value that does not need review
+                    bool hasConfig = _configVars.TryGetValue(name, out var cfgVal)
+                                     && !string.IsNullOrWhiteSpace(cfgVal)
+                                     && !string.Equals(cfgVal, TestManifestVariableScanner.AutoDefaultValue, StringComparison.Ordinal)
+                                     && !_needsRealValue.Contains(name);
+                    if (hasConfig) continue;
+
+                    // User already dismissed the prompt for this name in this run
+                    if (_dismissed.Contains(name)) continue;
+
                     toPrompt.Add(name);
                 }
             }
@@ -231,7 +247,7 @@ namespace BuildConsole.Services
             {
                 string current = _configVars.TryGetValue(name, out var c) ? c : "";
                 ActivityLog.Log(ConfigChannel,
-                    $"PAUSE run — Test Environment Variable {{{{{name}}}}} is still \"{Preview(current)}\" (unset/needsReview); pausing this step to prompt for a real value.");
+                    $"PAUSE run — Test Environment Variable {{{{{name}}}}} is still \"{Preview(current)}\" (unset/unextracted/needsReview); pausing this step to prompt for a real value.");
 
                 if (OnMissingVariable == null)
                 {

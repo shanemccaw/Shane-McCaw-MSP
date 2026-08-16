@@ -846,6 +846,27 @@ export async function assignEpicToMilestone(epicId: number, milestoneId: number 
   flashMessage("Epic milestone assignment updated");
 }
 
+export async function createEpicFromLooseIssues(milestoneId: number, title: string): Promise<void> {
+  const looseIssues = state.issues.filter(
+    (i) => i.epicId === null && milestoneRowForRawId(i.milestoneId)?.id === milestoneId
+  );
+
+  if (looseIssues.length === 0) {
+    flashMessage("No loose issues found in this milestone", "error");
+    return;
+  }
+
+  const epic = await createEpic(title);
+  if (!epic) return;
+
+  await assignEpicToMilestone(epic.id, milestoneId);
+
+  const promises = looseIssues.map((issue) => updateIssue(issue.id, { epicId: epic.id }, true));
+  await Promise.all(promises);
+
+  flashMessage(`Created Epic "${title}" and assigned ${looseIssues.length} issue(s)`);
+}
+
 function flashMessage(msg: string, tone: "success" | "error" = "success") {
   set({ message: msg, messageTone: tone });
   setTimeout(() => set({ message: null }), tone === "error" ? 6000 : 3000);

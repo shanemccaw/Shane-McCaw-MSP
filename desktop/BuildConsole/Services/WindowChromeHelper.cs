@@ -81,6 +81,12 @@ namespace BuildConsole.Services
                 int darkMode = 1;
                 DwmSetWindowAttribute(hwnd, 20, ref darkMode, sizeof(int)); // DWMWA_USE_IMMERSIVE_DARK_MODE
                 DwmSetWindowAttribute(hwnd, 19, ref darkMode, sizeof(int)); // Fallback for older Win10 builds
+
+                int roundedValue = 2; // DWMWCP_ROUND
+                DwmSetWindowAttribute(hwnd, 33, ref roundedValue, sizeof(int)); // DWMWA_WINDOW_CORNER_PREFERENCE
+
+                int micaValue = 2; // DWMSBT_MAINWINDOW
+                DwmSetWindowAttribute(hwnd, 38, ref micaValue, sizeof(int)); // DWMWA_SYSTEMBACKDROP_TYPE
             }
             catch { }
 

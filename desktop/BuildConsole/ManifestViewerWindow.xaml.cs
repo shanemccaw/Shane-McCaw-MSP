@@ -97,6 +97,14 @@ namespace BuildConsole
             SaveJsonToDisk();
         }
 
+        private async void BtnRunManifest_Click(object sender, RoutedEventArgs e)
+        {
+            if (Owner is MainWindow mw)
+            {
+                await mw.RunManifestPublicAsync(_manifest);
+            }
+        }
+
         private void BtnSaveJson_Click(object sender, RoutedEventArgs e) => SaveJsonToDisk();
 
         /// <summary>Validates the editor's real current text as JSON before writing anything — a manifest

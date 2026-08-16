@@ -34,7 +34,7 @@ import {
   unlinkedChats, createIssue, createChat, updateEpic, deleteEpic, cycleIssueStatus,
   deleteIssue, updateChat, deleteChat, epicsForMilestone, estimateMilestoneHours,
   formatIssueAge, trimMilestoneToCapacity, syncFromGitHub, assignEpicToMilestone,
-  epicIsUnassigned, milestoneProgress, setChatTriageActive,
+  epicIsUnassigned, milestoneProgress, setChatTriageActive, createEpicFromLooseIssues
 } from "./buildTrackerStore";
 import { EPIC_STATUS_COLOR, ISSUE_STATUS_COLOR, ISSUE_STATUS_LABEL, EPIC_STATUS_LABEL } from "./buildTrackerTypes";
 import { STATUS_COLOR, STATUS_LABEL } from "../project-management/ProjectManagementBody";
@@ -194,6 +194,7 @@ function IssueNode({
           : <span style={{ width: 10 }} />
         }
         <GitPullRequest size={11} color={ISSUE_STATUS_COLOR[issue.status]} style={{ flex: "none" }} />
+        {issue.epicId === null && <AlertCircle size={10} color={ACCENT.amber} style={{ flex: "none" }} title="No parent Epic" />}
         <span style={{ fontSize: 12, color: isSelected ? TEXT.strong : TEXT.body, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {issue.githubNumber ? `#${issue.githubNumber} ` : ""}{issue.title}
         </span>
@@ -685,6 +686,15 @@ export function BuildTrackerExplorer() {
       {
         label: "Edit Milestone...",
         onSelect: () => selectMilestone(milestone.id)
+      },
+      {
+        label: "New Epic & Assign Loose Issues...",
+        onSelect: () => {
+          const title = window.prompt(`New Epic title to group loose issues in "${milestone.title}":`);
+          if (title?.trim()) {
+            void createEpicFromLooseIssues(milestone.id, title.trim());
+          }
+        }
       },
       {
         label: "Trim Capacity (Fit to 5 Days)",

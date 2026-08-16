@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Documents;
 using BuildConsole.Services;
 
 namespace BuildConsole.Controls
@@ -30,7 +31,14 @@ namespace BuildConsole.Controls
     public class GitDetailView : UserControl
     {
         private const string Channel = "git-board.detail-tab";
-        private readonly StackPanel _root;
+        private readonly Grid _root;
+        private readonly StackPanel _mainColumn;
+        private readonly StackPanel _sideColumn;
+
+        // Stored context so the Refresh button can re-run LoadIssue.
+        private GitIssue? _loadedIssue;
+        private int? _loadedLinkedEpicNumber;
+        private string? _loadedLinkedEpicTitle;
 
         /// <summary>
         /// Raised when Shane clicks any issue/epic card inside a detail tab — a
@@ -43,7 +51,18 @@ namespace BuildConsole.Controls
 
         public GitDetailView()
         {
-            _root = new StackPanel { Margin = new Thickness(18, 16, 18, 24) };
+            _root = new Grid { Margin = new Thickness(18, 16, 18, 24) };
+            _root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            _root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(350) });
+
+            _mainColumn = new StackPanel { Margin = new Thickness(0, 0, 24, 0) };
+            Grid.SetColumn(_mainColumn, 0);
+
+            _sideColumn = new StackPanel { Visibility = Visibility.Collapsed };
+            Grid.SetColumn(_sideColumn, 1);
+
+            _root.Children.Add(_mainColumn);
+            _root.Children.Add(_sideColumn);
             Content = new ScrollViewer
             {
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
@@ -56,21 +75,23 @@ namespace BuildConsole.Controls
         // ── Milestone tab ──────────────────────────────────────────────────
         public void LoadMilestone(GitMilestone m)
         {
-            _root.Children.Clear();
+            _mainColumn.Children.Clear();
+            _sideColumn.Children.Clear();
+            _sideColumn.Visibility = Visibility.Visible;
             AddHeaderRow("🎯", m.Title, m.GithubNumber);
 
             if (m.HasRealCounts)
             {
-                var counts = new WrapPanel { Margin = new Thickness(0, 0, 0, 6) };
+                var counts = new WrapPanel { Margin = new Thickness(0, 0, 0, 16) };
                 counts.Children.Add(CountPill($"{m.OpenIssues} open", "GreenBrush"));
                 counts.Children.Add(CountPill($"{m.ClosedIssues} done", "BlueBrush"));
                 counts.Children.Add(CountPill($"{m.TotalCount} total", "Subtext0Brush"));
                 counts.Children.Add(CountPill(m.ProgressStr, "PeachBrush"));
-                _root.Children.Add(counts);
+                _mainColumn.Children.Add(counts);
             }
             else
             {
-                _root.Children.Add(Meta("Live open/closed counts aren't available for this bucket (no real GitHub milestone behind it)."));
+                _mainColumn.Children.Add(Meta("Live open/closed counts aren't available for this bucket (no real GitHub milestone behind it)."));
             }
 
             // The board already splits every milestone's OPEN items into three
@@ -80,13 +101,13 @@ namespace BuildConsole.Controls
             var issuesBucket = m.Epics.FirstOrDefault(b => b.Title.Contains("Issues"));
             var todoBucket = m.Epics.FirstOrDefault(b => b.Title.Contains("To-Do"));
 
-            RenderGitIssueSection("EPICS", epicsBucket?.Issues, escalate: false);
-            RenderGitIssueSection("ISSUES", issuesBucket?.Issues, escalate: false);
-            RenderGitIssueSection("SHANE TO-DO", todoBucket?.Issues, escalate: true);
+            RenderGitIssueSection(_sideColumn, "EPICS", epicsBucket?.Issues, escalate: false);
+            RenderGitIssueSection(_sideColumn, "ISSUES", issuesBucket?.Issues, escalate: false);
+            RenderGitIssueSection(_sideColumn, "SHANE TO-DO", todoBucket?.Issues, escalate: true);
 
             int total = (epicsBucket?.Issues.Count ?? 0) + (issuesBucket?.Issues.Count ?? 0) + (todoBucket?.Issues.Count ?? 0);
             if (total == 0)
-                _root.Children.Add(Meta("Nothing open under this milestone right now."));
+                _sideColumn.Children.Add(Meta("Nothing open under this milestone right now."));
 
             ActivityLog.Log(Channel, $"milestone '{m.Title}' opened ({m.OpenIssues} open / {m.ClosedIssues} done, {total} open item(s))");
         }
@@ -94,13 +115,15 @@ namespace BuildConsole.Controls
         // ── Epic tab ───────────────────────────────────────────────────────
         public async void LoadEpic(GitIssue epic, ISet<int> todoNumbers)
         {
-            _root.Children.Clear();
+            _mainColumn.Children.Clear();
+            _sideColumn.Children.Clear();
+            _sideColumn.Visibility = Visibility.Visible;
             AddHeaderRow("⚡", DisplayTitle(epic), epic.IssueNumber);
-            _root.Children.Add(StatePill(epic.Status));
+            _mainColumn.Children.Add(StatePill(epic.Status));
             AddBody(epic.Body);
 
             var loading = Meta($"Loading assigned issues for #{epic.IssueNumber}…");
-            _root.Children.Add(loading);
+            _sideColumn.Children.Add(loading);
 
             var settings = BuildConsoleSettings.Load();
             if (!settings.HasGitHubPat)
@@ -116,22 +139,81 @@ namespace BuildConsole.Controls
                 // Real sub-issue graph (#910) — the epic's actual children, not
                 // the never-synced bt_issues.epic_id table.
                 var subs = await client.GetSubIssuesAsync(epic.IssueNumber);
-                _root.Children.Remove(loading);
+                _sideColumn.Children.Remove(loading);
 
                 // sub_issues carries no labels, so the "Shane To-Do" carve-out
                 // is cross-referenced against the board's known To-Do numbers
                 // (which DO carry labels). Closed children not on the OPEN board
                 // just fall into the main list — the best we can do without an
                 // N+1 per-child fetch.
-                var todo = subs.Where(s => todoNumbers.Contains(s.Number)).ToList();
-                var rest = subs.Where(s => !todoNumbers.Contains(s.Number)).ToList();
+                
+                var filterPanel = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 16, 0, 8) };
+                _sideColumn.Children.Add(filterPanel);
+                
+                var itemsContainer = new StackPanel();
+                _sideColumn.Children.Add(itemsContainer);
+                
+                string currentFilter = "Open";
+                Action renderSubs = null;
+                renderSubs = () => 
+                {
+                    itemsContainer.Children.Clear();
+                    filterPanel.Children.Clear();
+                    
+                    filterPanel.Children.Add(new TextBlock 
+                    { 
+                        Text = "ASSIGNED ISSUES", 
+                        FontSize = 11, 
+                        FontWeight = FontWeights.SemiBold, 
+                        Foreground = GetBrush("Subtext1Brush"), 
+                        VerticalAlignment = VerticalAlignment.Center,
+                        Margin = new Thickness(0, 0, 12, 0)
+                    });
+                    
+                    var filters = new[] { "Open", "Closed", "All" };
+                    foreach(var f in filters) 
+                    {
+                        var isSelected = f == currentFilter;
+                        var border = new Border 
+                        {
+                            Background = isSelected ? GetBrush("Surface2Brush") : GetBrush("Surface0Brush"),
+                            CornerRadius = new CornerRadius(12),
+                            Padding = new Thickness(10, 4, 10, 4),
+                            Margin = new Thickness(0, 0, 6, 0),
+                            Cursor = Cursors.Hand,
+                            Child = new TextBlock 
+                            { 
+                                Text = f, 
+                                FontSize = 11, 
+                                Foreground = isSelected ? GetBrush("TextBrush") : GetBrush("Subtext0Brush") 
+                            }
+                        };
+                        border.MouseLeftButtonUp += (s, e) => { currentFilter = f; renderSubs(); };
+                        filterPanel.Children.Add(border);
+                    }
+                    
+                    var filteredSubs = subs.Where(s => 
+                    {
+                        bool isOpen = !string.Equals(s.State, "closed", StringComparison.OrdinalIgnoreCase);
+                        if (currentFilter == "Open") return isOpen;
+                        if (currentFilter == "Closed") return !isOpen;
+                        return true;
+                    }).ToList();
+                    
+                    var todo = filteredSubs.Where(s => todoNumbers.Contains(s.Number)).ToList();
+                    var rest = filteredSubs.Where(s => !todoNumbers.Contains(s.Number)).ToList();
 
-                RenderSubIssueSection($"ASSIGNED ISSUES ({rest.Count})", rest, escalate: false);
-                RenderSubIssueSection("SHANE TO-DO", todo, escalate: true);
-                if (subs.Count == 0)
-                    _root.Children.Add(Meta("No sub-issues assigned to this epic yet."));
+                    RenderSubIssueSection(itemsContainer, $"OTHER ({rest.Count})", rest, escalate: false);
+                    RenderSubIssueSection(itemsContainer, "SHANE TO-DO", todo, escalate: true);
+                    
+                    if (filteredSubs.Count == 0)
+                        itemsContainer.Children.Add(Meta("No assigned issues match this filter."));
+                };
+                
+                renderSubs();
 
-                ActivityLog.Log(Channel, $"epic #{epic.IssueNumber} opened ({subs.Count} assigned, {todo.Count} to-do)");
+                int initialTodoCount = subs.Count(s => todoNumbers.Contains(s.Number));
+                ActivityLog.Log(Channel, $"epic #{epic.IssueNumber} opened ({subs.Count} assigned, {initialTodoCount} to-do)");
             }
             catch (Exception ex)
             {
@@ -143,22 +225,69 @@ namespace BuildConsole.Controls
         // ── Issue tab ──────────────────────────────────────────────────────
         public async void LoadIssue(GitIssue issue, int? linkedEpicNumber, string? linkedEpicTitle)
         {
-            _root.Children.Clear();
-            AddHeaderRow("📄", DisplayTitle(issue), issue.IssueNumber);
-            _root.Children.Add(StatePill(issue.Status));
+            // Store for refresh.
+            _loadedIssue = issue;
+            _loadedLinkedEpicNumber = linkedEpicNumber;
+            _loadedLinkedEpicTitle = linkedEpicTitle;
 
-            // Linked epic shown prominently, with a click-through back to that
-            // epic's own tab (OpenIssueNumberRequested → MainWindow).
+            _mainColumn.Children.Clear();
+            _sideColumn.Children.Clear();
+            _sideColumn.Visibility = Visibility.Collapsed;
+
+            // Header row with inline Refresh button
+            AddHeaderRow("📄", DisplayTitle(issue), issue.IssueNumber);
+
+            var refreshBtn = new Button
+            {
+                Content = "↻ Refresh",
+                FontSize = 11,
+                Padding = new Thickness(8, 3, 8, 3),
+                Margin = new Thickness(0, 0, 0, 10),
+                HorizontalAlignment = HorizontalAlignment.Left,
+                ToolTip = "Re-fetch migration status, comments and body",
+                Cursor = Cursors.Hand,
+            };
+            refreshBtn.Click += (s, e) =>
+            {
+                if (_loadedIssue != null)
+                    LoadIssue(_loadedIssue, _loadedLinkedEpicNumber, _loadedLinkedEpicTitle);
+            };
+            _mainColumn.Children.Add(refreshBtn);
+
+            _mainColumn.Children.Add(StatePill(issue.Status));
+
+            // Linked epic shown in a subtle call out box above the description.
             if (linkedEpicNumber.HasValue)
-                _root.Children.Add(LinkedEpicCard(linkedEpicNumber.Value, linkedEpicTitle));
+                _mainColumn.Children.Add(LinkedEpicCard(linkedEpicNumber.Value, linkedEpicTitle));
+
+            // Pre-fetch migration run status so .sql links in the body and
+            // comments can show ✅/⚠️ inline without a second round-trip per link.
+            var executedMigrations = new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (Application.Current.MainWindow is MainWindow mainWinForMigrations &&
+                mainWinForMigrations.BuildTrackerApi != null &&
+                mainWinForMigrations.BuildTrackerApi.IsConfigured)
+            {
+                try
+                {
+                    var res = await mainWinForMigrations.BuildTrackerApi.ExecuteSqlAsync("SELECT filename FROM simulator_migration_runs");
+                    var stmt = res.FirstOrDefault();
+                    if (stmt != null && stmt.Rows != null)
+                    {
+                        foreach (var row in stmt.Rows)
+                        {
+                            if (row.TryGetValue("filename", out var val) && val.ValueKind != System.Text.Json.JsonValueKind.Null)
+                                executedMigrations.Add(val.GetString() ?? "");
+                        }
+                    }
+                }
+                catch { }
+            }
 
             // Body comes straight from the board's in-memory GitIssue.Body
-            // (already fetched by ListBoardIssuesAsync) — deliberately NOT a
-            // second GetIssueAsync call, honouring "don't refetch what's cached."
-            AddBody(issue.Body);
+            AddBody(issue.Body, executedMigrations);
 
             var loading = Meta("Loading comments…");
-            _root.Children.Add(loading);
+            _mainColumn.Children.Add(loading);
 
             var settings = BuildConsoleSettings.Load();
             if (!settings.HasGitHubPat)
@@ -170,17 +299,15 @@ namespace BuildConsole.Controls
 
             try
             {
-                // Comments are the one piece nothing caches (#840 refetches them
-                // every click too), so this is the only network hit here.
                 var client = new GitHubApiClient(settings.GitHubPat);
                 var comments = await client.GetIssueCommentsAsync(issue.IssueNumber);
-                _root.Children.Remove(loading);
+                _mainColumn.Children.Remove(loading);
 
-                _root.Children.Add(SectionHeader($"COMMENTS ({comments.Count})", escalate: false));
+                _mainColumn.Children.Add(SectionHeader($"COMMENTS ({comments.Count})", escalate: false));
                 if (comments.Count == 0)
-                    _root.Children.Add(Meta("No comments yet."));
-                foreach (var c in comments) // GitHub returns these chronological already
-                    _root.Children.Add(CommentCard(c));
+                    _mainColumn.Children.Add(Meta("No comments yet."));
+                foreach (var c in comments)
+                    _mainColumn.Children.Add(CommentCard(c, executedMigrations));
 
                 ActivityLog.Log(Channel, $"issue #{issue.IssueNumber} opened ({comments.Count} comment(s))");
             }
@@ -192,20 +319,20 @@ namespace BuildConsole.Controls
         }
 
         // ── Section rendering ──────────────────────────────────────────────
-        private void RenderGitIssueSection(string header, List<GitIssue>? issues, bool escalate)
+        private void RenderGitIssueSection(Panel target, string header, List<GitIssue>? issues, bool escalate)
         {
             if (issues == null || issues.Count == 0) return;
-            _root.Children.Add(SectionHeader($"{header} ({issues.Count})", escalate));
+            target.Children.Add(SectionHeader($"{header} ({issues.Count})", escalate));
             foreach (var gi in issues)
-                _root.Children.Add(GitIssueCard(gi, escalate));
+                target.Children.Add(GitIssueCard(gi, escalate));
         }
 
-        private void RenderSubIssueSection(string header, List<GitHubSubIssue> subs, bool escalate)
+        private void RenderSubIssueSection(Panel target, string header, List<GitHubSubIssue> subs, bool escalate)
         {
             if (subs.Count == 0) return;
-            _root.Children.Add(SectionHeader($"{header} ({subs.Count})", escalate));
+            target.Children.Add(SectionHeader($"{header} ({subs.Count})", escalate));
             foreach (var s in subs)
-                _root.Children.Add(SubIssueCard(s, escalate));
+                target.Children.Add(SubIssueCard(s, escalate));
         }
 
         // ── Card / element builders (match #874 + #840 recipes) ────────────
@@ -240,7 +367,7 @@ namespace BuildConsole.Controls
                 TextWrapping = TextWrapping.Wrap,
                 VerticalAlignment = VerticalAlignment.Center,
             });
-            _root.Children.Add(row);
+            _mainColumn.Children.Add(row);
         }
 
         private Border CountPill(string text, string brushKey)
@@ -280,25 +407,25 @@ namespace BuildConsole.Controls
             return border;
         }
 
-        private void AddBody(string body)
+        private void AddBody(string? markdown, System.Collections.Generic.HashSet<string>? executedMigrations = null)
         {
-            var card = new Border
+            if (string.IsNullOrWhiteSpace(markdown)) return;
+
+            var border = new Border
             {
                 Background = GetBrush("MantleBrush"),
                 BorderBrush = GetBrush("Surface0Brush"),
                 BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(6),
-                Padding = new Thickness(12),
-                Margin = new Thickness(0, 0, 0, 4),
-                Child = new TextBlock
-                {
-                    Text = string.IsNullOrWhiteSpace(body) ? "(no description)" : body,
-                    FontSize = 12,
-                    Foreground = GetBrush("TextBrush"),
-                    TextWrapping = TextWrapping.Wrap,
-                },
+                Padding = new Thickness(16),
+                Margin = new Thickness(0, 0, 0, 24),
             };
-            _root.Children.Add(card);
+
+            var tb = CreateLinkedTextBlock(markdown, 13, "TextBrush", executedMigrations);
+            tb.LineHeight = 20;
+            border.Child = tb;
+
+            _mainColumn.Children.Add(border);
         }
 
         private TextBlock SectionHeader(string text, bool escalate)
@@ -331,7 +458,9 @@ namespace BuildConsole.Controls
             // board's GitBoardIssue), so an epic card just reads "⚡ epic" — its
             // real sub-issue list is one click away in the epic's own tab.
             var meta = gi.IsEpic ? "⚡ epic" : "issue";
-            return NavCard(gi.IssueNumber, DisplayTitle(gi), meta, gi.Status, escalate);
+            string status = gi.Status;
+            if (status != "CLOSED" && gi.IsBlocked) status = "BLOCKED";
+            return NavCard(gi.IssueNumber, DisplayTitle(gi), meta, status, escalate);
         }
 
         private Border SubIssueCard(GitHubSubIssue s, bool escalate)
@@ -348,7 +477,12 @@ namespace BuildConsole.Controls
         private Border NavCard(int number, string title, string meta, string status, bool escalate)
         {
             bool closed = string.Equals(status, "CLOSED", StringComparison.OrdinalIgnoreCase);
-            var normalBorder = escalate ? GetBrush("PeachBrush") : GetBrush("Surface0Brush");
+            bool blocked = string.Equals(status, "BLOCKED", StringComparison.OrdinalIgnoreCase);
+            
+            SolidColorBrush normalBorder;
+            if (blocked) normalBorder = (SolidColorBrush)GetBrush("RedBrush");
+            else if (closed) normalBorder = (SolidColorBrush)GetBrush("GreenBrush");
+            else normalBorder = (SolidColorBrush)GetBrush("PeachBrush");
 
             var card = new Border
             {
@@ -403,60 +537,55 @@ namespace BuildConsole.Controls
         {
             var card = new Border
             {
-                Background = GetBrush("MantleBrush"),
-                BorderBrush = GetBrush("MauveBrush"),
-                BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(6),
-                Padding = new Thickness(12),
-                Margin = new Thickness(0, 0, 0, 10),
+                Background = GetBrush("Surface0Brush"),
+                CornerRadius = new CornerRadius(4),
+                Padding = new Thickness(10, 6, 10, 6),
+                Margin = new Thickness(0, 0, 0, 12),
                 Cursor = Cursors.Hand,
                 ToolTip = $"Open Epic #{number} in its own tab",
+                HorizontalAlignment = HorizontalAlignment.Left
             };
 
-            var panel = new StackPanel();
+            var panel = new StackPanel { Orientation = Orientation.Horizontal };
             panel.Children.Add(new TextBlock
             {
-                Text = "⚡ LINKED EPIC",
-                FontSize = 11,
-                FontWeight = FontWeights.SemiBold,
-                Foreground = GetBrush("MauveBrush"),
-                Margin = new Thickness(0, 0, 0, 4),
+                Text = "Parent epic: ",
+                FontSize = 12,
+                Foreground = GetBrush("Subtext0Brush"),
+                VerticalAlignment = VerticalAlignment.Center
             });
 
-            var titleRow = new StackPanel { Orientation = Orientation.Horizontal };
-            titleRow.Children.Add(new Border
-            {
-                Background = GetBrush("Surface0Brush"),
-                CornerRadius = new CornerRadius(3),
-                Padding = new Thickness(4, 1, 4, 1),
-                Margin = new Thickness(0, 0, 8, 0),
-                VerticalAlignment = VerticalAlignment.Center,
-                Child = new TextBlock { Text = $"#{number}", FontSize = 11, FontWeight = FontWeights.Bold, Foreground = GetBrush("PeachBrush") },
-            });
-            titleRow.Children.Add(new TextBlock
-            {
-                Text = string.IsNullOrWhiteSpace(title) ? "(open to view)" : title,
-                FontSize = 13,
-                FontWeight = FontWeights.SemiBold,
-                Foreground = GetBrush("TextBrush"),
-                TextWrapping = TextWrapping.Wrap,
-                VerticalAlignment = VerticalAlignment.Center,
-            });
-            panel.Children.Add(titleRow);
             panel.Children.Add(new TextBlock
             {
-                Text = "click to jump to this epic →",
-                FontSize = 10,
-                Foreground = GetBrush("Subtext1Brush"),
-                Margin = new Thickness(0, 4, 0, 0),
+                Text = $"#{number}",
+                FontSize = 12,
+                FontWeight = FontWeights.Bold,
+                Foreground = GetBrush("MauveBrush"),
+                VerticalAlignment = VerticalAlignment.Center
             });
+
+            if (!string.IsNullOrEmpty(title))
+            {
+                panel.Children.Add(new TextBlock
+                {
+                    Text = $" — {title}",
+                    FontSize = 12,
+                    Foreground = GetBrush("Subtext0Brush"),
+                    VerticalAlignment = VerticalAlignment.Center
+                });
+            }
 
             card.Child = panel;
+
+            card.MouseEnter += (s, e) => card.Background = GetBrush("Surface1Brush");
+            card.MouseLeave += (s, e) => card.Background = GetBrush("Surface0Brush");
             card.MouseLeftButtonUp += (s, e) => OpenIssueNumberRequested?.Invoke(this, number);
+
             return card;
         }
 
-        private Border CommentCard(GitHubIssueComment comment)
+
+        private Border CommentCard(GitHubIssueComment comment, System.Collections.Generic.HashSet<string>? executedMigrations = null)
         {
             var border = new Border
             {
@@ -486,15 +615,163 @@ namespace BuildConsole.Controls
             });
 
             panel.Children.Add(headerPanel);
-            panel.Children.Add(new TextBlock
-            {
-                Text = comment.Body,
-                FontSize = 12,
-                Foreground = GetBrush("TextBrush"),
-                TextWrapping = TextWrapping.Wrap,
-            });
+            panel.Children.Add(CreateLinkedTextBlock(comment.Body ?? "", 12, "TextBrush", executedMigrations));
             border.Child = panel;
             return border;
+        }
+
+        private TextBlock CreateLinkedTextBlock(string? text, double fontSize, string foregroundKey, System.Collections.Generic.HashSet<string>? executedMigrations = null)
+        {
+            var tb = new TextBlock
+            {
+                FontSize = fontSize,
+                Foreground = GetBrush(foregroundKey),
+                TextWrapping = TextWrapping.Wrap
+            };
+
+            if (string.IsNullOrEmpty(text)) return tb;
+
+            var matches = System.Text.RegularExpressions.Regex.Matches(text, @"(?:\w[\w\-\./\\]*)\.(?:sql|cs|ts|tsx|json|xaml|ps1|cmd|md)\b");
+            int lastIndex = 0;
+
+            foreach (System.Text.RegularExpressions.Match match in matches)
+            {
+                if (match.Index > lastIndex)
+                {
+                    tb.Inlines.Add(new Run(text.Substring(lastIndex, match.Index - lastIndex)));
+                }
+
+                var hyperlink = new Hyperlink(new Run(match.Value))
+                {
+                    Foreground = GetBrush("BlueBrush"),
+                    TextDecorations = TextDecorations.Underline
+                };
+                
+                string fileName = match.Value;
+
+                Func<System.Threading.Tasks.Task<string>> resolvePathAsync = async () =>
+                {
+                    string? repoRoot = BuildTrackerConfig.FindRepoRoot();
+                    if (repoRoot == null) return string.Empty;
+                    
+                    string fullPath = System.IO.Path.Combine(repoRoot, fileName.Replace("/", "\\"));
+                    if (!System.IO.File.Exists(fullPath))
+                    {
+                        var mw = Application.Current.MainWindow as MainWindow;
+                        if (mw != null) mw.Cursor = System.Windows.Input.Cursors.Wait;
+                        try
+                        {
+                            fullPath = await System.Threading.Tasks.Task.Run(() => 
+                            {
+                                var queue = new System.Collections.Generic.Queue<string>();
+                                queue.Enqueue(repoRoot);
+                                string target = System.IO.Path.GetFileName(fileName);
+                                while (queue.Count > 0)
+                                {
+                                    var current = queue.Dequeue();
+                                    try
+                                    {
+                                        foreach (var file in System.IO.Directory.GetFiles(current, target)) return file;
+                                        foreach (var dir in System.IO.Directory.GetDirectories(current))
+                                        {
+                                            var name = System.IO.Path.GetFileName(dir);
+                                            if (name == "node_modules" || name == ".git" || name == "bin" || name == "obj" || name == ".next") continue;
+                                            queue.Enqueue(dir);
+                                        }
+                                    }
+                                    catch { }
+                                }
+                                return fullPath;
+                            });
+                        }
+                        finally { if (mw != null) mw.Cursor = System.Windows.Input.Cursors.Arrow; }
+                    }
+                    return fullPath;
+                };
+
+                hyperlink.Click += async (s, e) =>
+                {
+                    string fullPath = await resolvePathAsync();
+                    if (System.IO.File.Exists(fullPath) && Application.Current.MainWindow is MainWindow mWindow)
+                    {
+                        mWindow.OpenFileTab(fullPath);
+                    }
+                };
+
+                if (fileName.EndsWith(".json", StringComparison.OrdinalIgnoreCase) && (fileName.Contains("test-manifests/") || fileName.Contains("test-manifests\\")))
+                {
+                    var ctx = new ContextMenu();
+                    var viewItem = new MenuItem { Header = "View Test Manifest" };
+                    viewItem.Click += async (s, e) => {
+                        string fullPath = await resolvePathAsync();
+                        if (System.IO.File.Exists(fullPath) && Application.Current.MainWindow is MainWindow mWindow) mWindow.OpenFileTab(fullPath);
+                    };
+                    var runItem = new MenuItem { Header = "Run Test" };
+                    runItem.Click += async (s, e) => {
+                        string fullPath = await resolvePathAsync();
+                        if (System.IO.File.Exists(fullPath) && Application.Current.MainWindow is MainWindow mWindow) 
+                        {
+                            var manifest = BuildConsole.Services.TestManifest.LoadFromFile(fullPath);
+                            if (manifest != null) await mWindow.RunManifestPublicAsync(manifest);
+                        }
+                    };
+                    var historyItem = new MenuItem { Header = "History" };
+                    historyItem.Click += async (s, e) =>
+                    {
+                        string fullPath = await resolvePathAsync();
+                        if (System.IO.File.Exists(fullPath) && Application.Current.MainWindow is MainWindow mWindow)
+                        {
+                            var manifest = BuildConsole.Services.TestManifest.LoadFromFile(fullPath);
+                            if (manifest != null) mWindow.EnsureTestHistoryWindowPublic(manifest.Issue);
+                        }
+                    };
+                    ctx.Items.Add(viewItem);
+                    ctx.Items.Add(runItem);
+                    ctx.Items.Add(new Separator());
+                    ctx.Items.Add(historyItem);
+                    hyperlink.ContextMenu = ctx;
+                }
+
+                tb.Inlines.Add(hyperlink);
+
+                // Migration run indicator for .sql files
+                if (fileName.EndsWith(".sql", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Check all naming variants the DB might store:
+                    //   "2026-08-14-foo"      (no extension)
+                    //   "2026-08-14-foo.sql"  (filename + extension)
+                    //   full matched path      (e.g. lib/db/migrations/...sql)
+                    string basename = System.IO.Path.GetFileNameWithoutExtension(fileName);
+                    string justFilename = System.IO.Path.GetFileName(fileName);
+                    bool isRan = executedMigrations != null &&
+                                 (executedMigrations.Contains(basename) ||
+                                  executedMigrations.Contains(justFilename) ||
+                                  executedMigrations.Contains(fileName) ||
+                                  executedMigrations.Any(n => System.IO.Path.GetFileNameWithoutExtension(n).Equals(basename, StringComparison.OrdinalIgnoreCase)));
+                    if (isRan)
+                    {
+                        tb.Inlines.Add(new Run(" ✅"));
+                    }
+                    else
+                    {
+                        var warnRun = new Run(" ⚠️ [NEEDS EXECUTION]")
+                        {
+                            Foreground = GetBrush("RedBrush"),
+                            FontWeight = FontWeights.Bold
+                        };
+                        tb.Inlines.Add(warnRun);
+                    }
+                }
+
+                lastIndex = match.Index + match.Length;
+            }
+
+            if (lastIndex < text.Length)
+            {
+                tb.Inlines.Add(new Run(text.Substring(lastIndex)));
+            }
+
+            return tb;
         }
 
         private static string DisplayTitle(GitIssue gi)

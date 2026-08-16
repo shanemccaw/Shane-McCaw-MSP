@@ -5,9 +5,9 @@
     <!-- ══════════════════════════════════════════════════════════════════
          CATPPUCCIN MOCHA PALETTE
          ══════════════════════════════════════════════════════════════════ -->
-    <SolidColorBrush x:Key="CrustBrush"    Color="#11111B"/>
-    <SolidColorBrush x:Key="MantleBrush"   Color="#181825"/>
-    <SolidColorBrush x:Key="BaseBrush"     Color="#1E1E2E"/>
+    <SolidColorBrush x:Key="CrustBrush"    Color="#CC11111B"/>
+    <SolidColorBrush x:Key="MantleBrush"   Color="#CC181825"/>
+    <SolidColorBrush x:Key="BaseBrush"     Color="#661E1E2E"/>
     <SolidColorBrush x:Key="Surface0Brush" Color="#313244"/>
     <SolidColorBrush x:Key="Surface1Brush" Color="#45475A"/>
     <SolidColorBrush x:Key="Surface2Brush" Color="#585B70"/>
@@ -778,7 +778,7 @@
     <!-- ══════════════════════════════════════════════════════════════════
          DATA GRID
          ══════════════════════════════════════════════════════════════════ -->
-    <Style TargetType="{x:Type DataGrid}">
+    <Style TargetType="{x:Type DataGrid}" BasedOn="{StaticResource {x:Type DataGrid}}">
         <Setter Property="Background"               Value="{StaticResource BaseBrush}"/>
         <Setter Property="Foreground"               Value="{StaticResource TextBrush}"/>
         <Setter Property="BorderBrush"              Value="{StaticResource Surface0Brush}"/>
@@ -795,7 +795,7 @@
         <Setter Property="HeadersVisibility"        Value="Column"/>
     </Style>
 
-    <Style TargetType="{x:Type DataGridColumnHeader}">
+    <Style TargetType="{x:Type DataGridColumnHeader}" BasedOn="{StaticResource {x:Type DataGridColumnHeader}}">
         <Setter Property="Background"      Value="{StaticResource MantleBrush}"/>
         <Setter Property="Foreground"      Value="{StaticResource Subtext0Brush}"/>
         <Setter Property="BorderBrush"     Value="{StaticResource Surface0Brush}"/>
@@ -805,7 +805,7 @@
         <Setter Property="FontWeight"      Value="SemiBold"/>
     </Style>
 
-    <Style TargetType="{x:Type DataGridRow}">
+    <Style TargetType="{x:Type DataGridRow}" BasedOn="{StaticResource {x:Type DataGridRow}}">
         <Setter Property="Background" Value="Transparent"/>
         <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
         <Style.Triggers>
@@ -818,7 +818,7 @@
         </Style.Triggers>
     </Style>
 
-    <Style TargetType="{x:Type DataGridCell}">
+    <Style TargetType="{x:Type DataGridCell}" BasedOn="{StaticResource {x:Type DataGridCell}}">
         <Setter Property="Padding"          Value="8,4"/>
         <Setter Property="BorderThickness"  Value="0"/>
         <Setter Property="Background"       Value="Transparent"/>
@@ -834,14 +834,13 @@
     <!-- ══════════════════════════════════════════════════════════════════
          LIST BOX
          ══════════════════════════════════════════════════════════════════ -->
-    <Style TargetType="{x:Type ListBox}">
+    <Style TargetType="{x:Type ListBox}" BasedOn="{StaticResource {x:Type ListBox}}">
         <Setter Property="Background"      Value="Transparent"/>
         <Setter Property="BorderThickness" Value="0"/>
-        <Setter Property="Foreground"      Value="{StaticResource TextBrush}"/>
-        <Setter Property="Padding"         Value="0"/>
+        <Setter Property="Foreground"      Value="{StaticResource Subtext1Brush}"/>
     </Style>
 
-    <Style TargetType="{x:Type ListBoxItem}">
+    <Style TargetType="{x:Type ListBoxItem}" BasedOn="{StaticResource {x:Type ListBoxItem}}">
         <Setter Property="Background" Value="Transparent"/>
         <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
         <Setter Property="Padding"    Value="8,5"/>
@@ -864,12 +863,12 @@
         <Setter Property="Margin"     Value="8,2"/>
     </Style>
 
-    <Style TargetType="{x:Type GridSplitter}">
+    <Style TargetType="{x:Type GridSplitter}" BasedOn="{StaticResource {x:Type GridSplitter}}">
         <Setter Property="Background" Value="{StaticResource Surface0Brush}"/>
     </Style>
 
-    <Style TargetType="{x:Type StatusBar}">
-        <Setter Property="Background"      Value="{StaticResource MantleBrush}"/>
+    <Style TargetType="{x:Type StatusBar}" BasedOn="{StaticResource {x:Type StatusBar}}">
+        <Setter Property="Background"      Value="{StaticResource CrustBrush}"/>
         <Setter Property="Foreground"      Value="{StaticResource Subtext0Brush}"/>
         <Setter Property="BorderBrush"     Value="{StaticResource Surface0Brush}"/>
         <Setter Property="BorderThickness" Value="0,1,0,0"/>
@@ -879,7 +878,7 @@
         <Setter Property="Padding"         Value="0"/>
     </Style>
 
-    <Style TargetType="{x:Type StatusBarItem}">
+    <Style TargetType="{x:Type StatusBarItem}" BasedOn="{StaticResource {x:Type StatusBarItem}}">
         <Setter Property="Foreground"               Value="{StaticResource Subtext0Brush}"/>
         <Setter Property="Background"               Value="Transparent"/>
         <Setter Property="VerticalContentAlignment" Value="Center"/>

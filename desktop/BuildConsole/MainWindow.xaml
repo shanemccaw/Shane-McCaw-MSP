@@ -35,7 +35,7 @@
     <WindowChrome.WindowChrome>
         <shell:WindowChrome CaptionHeight="36"
                              ResizeBorderThickness="6"
-                             GlassFrameThickness="0"
+                             GlassFrameThickness="-1"
                              CornerRadius="0"
                              UseAeroCaptionButtons="False"/>
     </WindowChrome.WindowChrome>
@@ -705,9 +705,7 @@
                             <ctrl:TerminalView x:Name="TerminalView"/>
                         </TabItem>
 
-                        <TabItem Header="SQL Runner">
-                            <ctrl:SqlRunnerView x:Name="SqlRunnerView"/>
-                        </TabItem>
+
 
                         <TabItem Header="Output">
                             <!-- Git #815 - live activity log (startup sequence, every API call in/out) fed by Services/ActivityLog.cs, never the calling thread itself (BeginInvoke marshal onto the UI thread). -->

@@ -29,11 +29,16 @@
                                Foreground="{StaticResource PeachBrush}"/>
                 </Border>
 
-                <TextBlock x:Name="TitleLabel"
-                           Text="SELECT AN ISSUE"
-                           FontSize="12"
-                           Foreground="{StaticResource TextBrush}"
-                           VerticalAlignment="Center"/>
+                <TextBox x:Name="TitleLabel"
+                         Text="SELECT AN ISSUE"
+                         FontSize="12"
+                         Foreground="{StaticResource TextBrush}"
+                         VerticalAlignment="Center"
+                         IsReadOnly="True"
+                         BorderThickness="0"
+                         Background="Transparent"
+                         Padding="0"
+                         Margin="0,0,0,0"/>
 
                 <Border x:Name="StateBadge"
                         DockPanel.Dock="Right"
@@ -65,6 +70,18 @@
                            Foreground="{StaticResource Subtext1Brush}"
                            Visibility="Collapsed"/>
 
+                <TextBlock x:Name="EpicLabel"
+                           Text="PARENT EPIC"
+                           FontSize="10"
+                           FontWeight="SemiBold"
+                           Foreground="{StaticResource Subtext0Brush}"
+                           Margin="0,0,0,4"
+                           Visibility="Collapsed"/>
+                <TextBlock x:Name="EpicText"
+                           FontSize="12"
+                           Margin="0,0,0,16"
+                           Visibility="Collapsed"/>
+
                 <TextBlock x:Name="BodyLabel"
                            Text="DESCRIPTION"
                            FontSize="10"
@@ -72,12 +89,12 @@
                            Foreground="{StaticResource Subtext0Brush}"
                            Margin="0,0,0,4"
                            Visibility="Collapsed"/>
-                <TextBlock x:Name="BodyText"
-                           Text=""
-                           FontSize="12"
-                           Foreground="{StaticResource TextBrush}"
-                           TextWrapping="Wrap"
-                           Margin="0,0,0,16"/>
+                <RichTextBox x:Name="BodyText"
+                             IsReadOnly="True"
+                             IsDocumentEnabled="True"
+                             BorderThickness="0"
+                             Background="Transparent"
+                             Margin="0,0,0,16"/>
 
                 <TextBlock x:Name="CommentsLabel"
                            Text="COMMENTS"

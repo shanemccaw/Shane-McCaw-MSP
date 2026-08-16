@@ -101,6 +101,8 @@ namespace BuildConsole.Services
         private DateTime? _lastCheck;
         private DateTime? _lastIntervention;
 
+        public ReplitWatcherStatus CurrentStatus { get; private set; } = new ReplitWatcherStatus();
+
         public event Action<ReplitWatcherStatus>? StatusChanged;
 
         public ReplitWatcherService(WebView2 webView, Func<WebView2, Task<bool>> ensureInitialized)
@@ -393,13 +395,14 @@ namespace BuildConsole.Services
 
         private void Emit(ReplitWatcherState state, string message)
         {
-            StatusChanged?.Invoke(new ReplitWatcherStatus
+            CurrentStatus = new ReplitWatcherStatus
             {
                 State = state,
                 Message = message,
                 LastCheck = _lastCheck,
                 LastIntervention = _lastIntervention,
-            });
+            };
+            StatusChanged?.Invoke(CurrentStatus);
         }
     }
 }

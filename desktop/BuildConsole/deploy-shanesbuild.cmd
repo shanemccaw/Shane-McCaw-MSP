@@ -3,7 +3,7 @@ setlocal
 
 set "PROJECT_DIR=%~dp0"
 set "CONFIG=Release"
-set "BUILD_OUT=%PROJECT_DIR%bin\%CONFIG%\net7.0-windows"
+set "BUILD_OUT=%PROJECT_DIR%bin\%CONFIG%\net8.0-windows"
 set "OUT_DIR=%PROJECT_DIR%bin\ShanesBuild"
 
 echo === Cleaning obj ===

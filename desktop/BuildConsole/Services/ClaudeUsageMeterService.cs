@@ -632,6 +632,30 @@ namespace BuildConsole.Services
                 if (toFull > TimeSpan.Zero)
                     text += $" · ~{FormatCountdown(toFull)} to 100%";
             }
+
+            if (_percent.Value > 90)
+            {
+                try
+                {
+                    var easternZone = TimeZoneInfo.FindSystemTimeZoneById("Eastern Standard Time");
+                    var nowEt = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, easternZone);
+                    int daysUntilSunday = ((int)DayOfWeek.Sunday - (int)nowEt.DayOfWeek + 7) % 7;
+                    if (daysUntilSunday == 0 && nowEt.Hour >= 21)
+                    {
+                        daysUntilSunday = 7;
+                    }
+                    var nextSundayEt = nowEt.Date.AddDays(daysUntilSunday).AddHours(21);
+                    var nextSundayLocal = TimeZoneInfo.ConvertTime(nextSundayEt, easternZone, TimeZoneInfo.Local);
+                    var remaining = nextSundayLocal - DateTime.Now;
+                    
+                    if (remaining > TimeSpan.Zero)
+                    {
+                        text += $" - {FormatCountdown(remaining)} to reset (Resets Sunday 9pm ET)";
+                    }
+                }
+                catch { }
+            }
+
             return text;
         }
 

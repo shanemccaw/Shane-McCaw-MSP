@@ -23,11 +23,16 @@ namespace BuildConsole
         public string IssueBody => BodyBox.Text.Trim();
         public int? SelectedEpicNumber { get; private set; }
 
-        public NewIssueDialog(List<GitBoardIssue> epics)
+        public NewIssueDialog(List<GitBoardIssue> epics, string prefillTitle = "")
         {
             InitializeComponent();
             _epics = epics;
+            TitleBox.Text = prefillTitle;
             TitleBox.Focus();
+            if (!string.IsNullOrEmpty(prefillTitle))
+            {
+                TitleBox.CaretIndex = prefillTitle.Length;
+            }
         }
 
         private void BtnPickEpic_Click(object sender, RoutedEventArgs e)

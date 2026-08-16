@@ -16,7 +16,7 @@
     <WindowChrome.WindowChrome>
         <shell:WindowChrome CaptionHeight="36"
                              ResizeBorderThickness="6"
-                             GlassFrameThickness="0"
+                             GlassFrameThickness="-1"
                              CornerRadius="0"
                              UseAeroCaptionButtons="False"/>
     </WindowChrome.WindowChrome>
@@ -69,6 +69,9 @@
                                Foreground="{StaticResource Subtext0Brush}" TextTrimming="CharacterEllipsis"/>
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button x:Name="BtnRunManifest" Content="▶ Run Test" Margin="0,0,16,0"
+                            ToolTip="Execute this test manifest"
+                            Style="{StaticResource PrimaryButton}" Click="BtnRunManifest_Click"/>
                     <Button x:Name="BtnSaveJson" Content="💾 Save" Margin="0,0,16,0"
                             ToolTip="Save changes to the manifest file on disk (Ctrl+S)"
                             Style="{StaticResource PrimaryButton}" Click="BtnSaveJson_Click"/>
