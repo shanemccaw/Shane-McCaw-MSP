@@ -248,8 +248,12 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
     triggerEnabled: true,
     fanOutMode: "per_record",
     fanOutQuery:
-      "SELECT u.id AS \"clientId\", t.tenant_id AS \"tenantId\", 'core:security-baseline' AS \"packageKey\" " +
-      "FROM users u JOIN tenants t ON t.id = u.tenant_id " +
+      "SELECT u.id AS \"clientId\", t.tenant_id AS \"tenantId\", " +
+      "COALESCE(s.type_attributes->>'packageKey', 'core:security-baseline') AS \"packageKey\" " +
+      "FROM users u " +
+      "JOIN tenants t ON t.id = u.tenant_id " +
+      "LEFT JOIN client_services cs ON cs.client_user_id = u.id AND cs.status = 'active' " +
+      "LEFT JOIN services s ON s.id = cs.service_id " +
       "WHERE u.msp_role IN ('Free', 'Assessment') AND u.is_active = true " +
       "AND t.consent->'graph'->>'status' = 'granted'",
     graph: {
@@ -331,6 +335,141 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
             nodeType: "create_notification",
             label: "Rescan Issues",
             title: "Weekly retargeting rescan completed with issues",
+            body: "Package {{steps.get_pkg.packageLabel}} for {{steps.find_client.name}} finished with status {{steps.execute_pkg.runStatus}}. {{steps.execute_pkg.checksError}} check(s) failed, {{steps.execute_pkg.consentRevoked}} consent-revoked.",
+            type: "general",
+          },
+        },
+        {
+          id: "end",
+          type: "end",
+          position: { x: 300, y: 1040 },
+          data: { nodeType: "end", label: "Done" },
+        },
+      ],
+      edges: [
+        { id: "e1", source: "start", target: "find_client" },
+        { id: "e2", source: "find_client", target: "resolve_pkg" },
+        { id: "e3", source: "resolve_pkg", target: "get_pkg" },
+        { id: "e4", source: "get_pkg", target: "execute_pkg" },
+        { id: "e5", source: "execute_pkg", target: "branch" },
+        { id: "e6", source: "branch", target: "notify_ok", sourceHandle: "true" },
+        { id: "e7", source: "branch", target: "notify_fail", sourceHandle: "false" },
+        { id: "e8", source: "notify_ok", target: "end" },
+        { id: "e9", source: "notify_fail", target: "end" },
+      ],
+    },
+  },
+  // ── Weekly Copilot Assessment Rescan — Assessment-tier Tenants (Git #1058, part of #454) ──
+  {
+    name: "__system__: Weekly Copilot Assessment Rescan",
+    description:
+      "Weekly schedule-triggered rescan for Assessment-tier (paid) customers only, so the " +
+      "assessment dashboard can eventually show real score drift over time instead of a " +
+      "single stale snapshot from purchase time. Reuses the exact same monitor_execute_package " +
+      "scan engine runDiagnostics() calls internally (diagnostics-runner.ts -> monitor-executor.ts) " +
+      "— no new scan logic, no new backend engine, just the schedule + tenant filter wrapped " +
+      "around it, same discipline as 'Weekly Retargeting Rescan' below (which this is cloned " +
+      "from and does NOT modify). Per-record fan-out: the trigger's fan_out_query resolves each " +
+      "Assessment-tier customer's REAL purchased package by joining client_services -> services " +
+      "on the active purchase (type_attributes->>'packageKey'), falling back to " +
+      "'core:security-baseline' only when no active purchase resolves. Sunday 03:00 schedule, " +
+      "distinct from the retargeting workflow's Monday slot, and scoped to mspRole = 'Assessment' " +
+      "only (not 'Free') since this is paid-tier drift-tracking, not a pre-purchase nurture rescan. " +
+      "Deliberately passive: no remediation work, no alerting beyond the standard rescan-complete " +
+      "notification, and does NOT touch msp_subscriptions or any billing/monitoring_tier config — " +
+      "this is a pure Workflow Engine definition.",
+    triggerType: "schedule",
+    cron: "0 3 * * 0", // Every Sunday at 03:00 server time
+    triggerEnabled: true,
+    fanOutMode: "per_record",
+    fanOutQuery:
+      "SELECT u.id AS \"clientId\", t.tenant_id AS \"tenantId\", " +
+      "COALESCE(s.type_attributes->>'packageKey', 'core:security-baseline') AS \"packageKey\" " +
+      "FROM users u " +
+      "JOIN tenants t ON t.id = u.tenant_id " +
+      "LEFT JOIN client_services cs ON cs.client_user_id = u.id AND cs.status = 'active' " +
+      "LEFT JOIN services s ON s.id = cs.service_id " +
+      "WHERE u.msp_role = 'Assessment' AND u.is_active = true " +
+      "AND t.consent->'graph'->>'status' = 'granted'",
+    graph: {
+      nodes: [
+        {
+          id: "start",
+          type: "start",
+          position: { x: 300, y: 60 },
+          data: { nodeType: "start", label: "Weekly Schedule (Assessment-tier fan-out)" },
+        },
+        {
+          id: "find_client",
+          type: "find_object",
+          position: { x: 300, y: 200 },
+          data: {
+            nodeType: "find_object",
+            label: "Resolve Client Record",
+            objectType: "client",
+            fieldName: "id",
+            fieldValueExpr: "{{clientId}}",
+          },
+        },
+        {
+          id: "resolve_pkg",
+          type: "find_object",
+          position: { x: 300, y: 340 },
+          data: {
+            nodeType: "find_object",
+            label: "Resolve Monitoring Package",
+            objectType: "monitoring_package",
+            fieldName: "key",
+            fieldValueExpr: "{{packageKey}}",
+          },
+        },
+        {
+          id: "get_pkg",
+          type: "monitor_get_package",
+          position: { x: 300, y: 480 },
+          data: {
+            nodeType: "monitor_get_package",
+            label: "Load Package Metadata",
+            packageKey: "{{steps.resolve_pkg.packageKey}}",
+          },
+        },
+        {
+          id: "execute_pkg",
+          type: "monitor_execute_package",
+          position: { x: 300, y: 620 },
+          data: {
+            nodeType: "monitor_execute_package",
+            label: "Execute Monitor Checks",
+            packageKey: "{{steps.get_pkg.packageKey}}",
+            tenantId: "{{tenantId}}",
+          },
+        },
+        {
+          id: "branch",
+          type: "condition",
+          position: { x: 300, y: 760 },
+          data: { nodeType: "condition", label: "Checks Passed?", expression: "runStatus == 'completed'" },
+        },
+        {
+          id: "notify_ok",
+          type: "create_notification",
+          position: { x: 150, y: 900 },
+          data: {
+            nodeType: "create_notification",
+            label: "Rescan Complete",
+            title: "Weekly Copilot Assessment rescan complete",
+            body: "Package {{steps.get_pkg.packageLabel}} completed with {{steps.execute_pkg.checksOk}} of {{steps.execute_pkg.checksTotal}} checks passing for {{steps.find_client.name}}.",
+            type: "general",
+          },
+        },
+        {
+          id: "notify_fail",
+          type: "create_notification",
+          position: { x: 450, y: 900 },
+          data: {
+            nodeType: "create_notification",
+            label: "Rescan Issues",
+            title: "Weekly Copilot Assessment rescan completed with issues",
             body: "Package {{steps.get_pkg.packageLabel}} for {{steps.find_client.name}} finished with status {{steps.execute_pkg.runStatus}}. {{steps.execute_pkg.checksError}} check(s) failed, {{steps.execute_pkg.consentRevoked}} consent-revoked.",
             type: "general",
           },
