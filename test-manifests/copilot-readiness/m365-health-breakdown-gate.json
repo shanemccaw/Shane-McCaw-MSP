@@ -2,13 +2,15 @@
   "issue": 1099,
   "feature": "M365 Health: gate the Copilot Readiness Breakdown panel (TrendsRow.tsx, /m365-health page) behind Copilot Readiness Assessment purchase. Reuses the existing radar.packageKey coverage signal (pillar-coverage.ts) rather than a new entitlement flag — a customer whose latest completed scan's packageKey isn't 'assess:copilot-readiness' sees a locked/upsell card instead of an empty-data state. PillarGrid.tsx needed no change (Git #1098 already removed the Copilot pillar card from the base 6-pillar grid entirely).",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "e406486b6",
+  "lastVerifiedAgainstCommit": "PENDING_1108_FIX_COMMIT",
 
   "notes": [
     "GATE MECHANISM: TrendsRow.tsx computes `copilotEntitled = copilotPackageKey === COPILOT_READINESS_PACKAGE_KEY` ('assess:copilot-readiness', useM365HealthLive.ts), where copilotPackageKey is status.radar.packageKey from GET /api/portal/assessment/status — the same field/value pillar-coverage.ts already uses to decide per-pillar coverage for every other pillar on this page. No new backend endpoint or entitlement column was added; this is a client-side render-state change over an already-wired field.",
     "LOCKED STATE COULD NOT BE EXERCISED AGAINST LIVE DATA: verified via shaneapp://executeSql (2026-08-17) that only two customers in this environment have ever run diagnostics (customer_id=1, the TEST_PORTAL_EMAIL testbed tenant, and customer_id=3), and BOTH customers' every historical run — including the most recent — used packageKey 'assess:copilot-readiness'. There is no tenant in this environment whose latest completed run used a different package, so the locked-card branch (data-testid='copilot-readiness-locked') cannot be driven to 'visible' with real data right now. UI D2 below instead asserts the locked card is genuinely ABSENT for the real entitled testbed tenant (proving the gate doesn't false-positive-lock an entitled customer), and UI D3 asserts the entitled-state status text renders. The locked-card content itself was verified by direct code read + a clean tsc --noEmit, not a live UI assertion — documented honestly rather than faked.",
     "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL (the .replit.dev dev origin). TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD — same TESTBED Assessment-role account assessment-monitoring-rescan.json / money-path-e2e.json drive; confirmed via SQL to hold real assess:copilot-readiness scan history (customer_id=1).",
-    "LAST REAL RUN (shaneapp://runTest, 2026-08-17, commit e406486b6): 11/11 passed after fixing the goto target (see the step's own note) from the wrong flat '/portal/m365-health' guess to the real slug-scoped '/portal/shane-mccaw-consulting/m365-health' — the flat path 404s in App.tsx's own branded-404 fallback since /m365-health is registered inside SlugInnerSwitch, not the outer flat switch. D2 confirmed the locked card is absent and D3 confirmed the real entitled-state status text ('50% overall', a genuine live score) for this testbed tenant."
+    "LAST REAL RUN (shaneapp://runTest, 2026-08-17, commit e406486b6): 11/11 passed after fixing the goto target (see the step's own note) from the wrong flat '/portal/m365-health' guess to the real slug-scoped '/portal/shane-mccaw-consulting/m365-health' — the flat path 404s in App.tsx's own branded-404 fallback since /m365-health is registered inside SlugInnerSwitch, not the outer flat switch. D2 confirmed the locked card is absent and D3 confirmed the real entitled-state status text ('50% overall', a genuine live score) for this testbed tenant.",
+    "#1108 GATE-SCORE FALLBACK: TrendsRow.tsx's headline status line (D3) and HeroHealthScore's Copilot Readiness stat previously read only `copilotReadiness.overall.score`, which the server returns as an entirely-null object when the last completed run carried no tenantId — the sub-indicators need one, the gate engine doesn't. Both now read `status.copilotGate.score` first, falling back to `copilotReadiness.overall.score`, mirroring the fallback journeyModel.ts's buildJourneyView() already applies for /copilot-readiness. D4 below asserts the wire field the fix depends on (`copilotGate.score`) is present on the response — it is populated independently of `copilotReadiness` today for this testbed tenant (which does have a tenantId), so D4 passes whether or not the no-tenantId edge case is reproducible in this environment; the fix itself needs a live no-tenantId run to exercise the fallback branch specifically, which no tenant here currently has (documented honestly, not faked).",
+    "CACHING/STALENESS — investigated per the issue's open question and ruled out: /m365-health (useM365HealthLive.ts) and /copilot-readiness (useCopilotJourney.ts) both fetch GET /api/portal/assessment/status fresh via a plain useEffect on mount — neither uses React Query or any other cache layer, so there is no shared cache key/staleTime divergence between the two pages. The mismatch Shane saw is fully explained by the tenantId edge case above."
   ],
 
   "apiTests": [
@@ -28,6 +30,13 @@
       "headers": { "Authorization": "Bearer {{authToken}}" },
       "expect": { "status": 200, "jsonPath": "$.radar.packageKey", "value": "assess:copilot-readiness" },
       "extract": { "as": "radarPackageKey", "jsonPath": "$.radar.packageKey" }
+    },
+    {
+      "name": "D4 (#1108) — the response carries copilotGate.score, the field TrendsRow.tsx's and HeroHealthScore's gate-score-first fallback now reads before falling back to copilotReadiness.overall.score.",
+      "method": "GET",
+      "path": "/api/portal/assessment/status",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.copilotGate.score", "exists": true }
     }
   ],
 

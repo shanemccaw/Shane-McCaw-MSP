@@ -65,6 +65,15 @@ export interface HealthStatusSlice {
     licenseWaste: LicenseWasteSummary | null;
   };
   copilotReadiness: CopilotReadinessLive | null;
+  /**
+   * The engine's Copilot pillar score (#358) — same figure `copilotReadiness`
+   * is server-reconciled to when it's non-null. When the last completed run
+   * carried no `tenantId`, `copilotReadiness` comes back `null` entirely (its
+   * sub-indicators need one; the gate engine doesn't) while this stays
+   * populated — the gate-score-first fallback `journeyModel.ts`'s
+   * `buildJourneyView()` already applies for `/copilot-readiness` (#1108).
+   */
+  copilotGate?: { score: number | null } | null;
 }
 
 // ── Slice 2: mission-control overview (real findings + linked offers) ─────────
