@@ -221,6 +221,7 @@ export default defineConfig({
       "src/lib/__tests__/sharepoint-sharing.test.ts",
       "src/lib/chat-content-blocks.test.ts",
       "src/lib/shanebot-persona.test.ts",
+      "src/lib/shanebot-engine.test.ts",
       "src/lib/finding-rank-weight-414.test.ts",
       "src/lib/health-display-denominator-413.test.ts",
       "src/lib/pillar-denominator-spectrum-413.test.ts",

@@ -26,13 +26,10 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import {
   db,
-  mspsTable,
-  tenantsTable,
-  mspEventStoreTable,
   messagesTable,
   usersTable,
 } from "@workspace/db";
-import { eq, and, or, desc, count, gte, like } from "drizzle-orm";
+import { eq, and, or } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth.ts";
 import { anthropic, withAiAttribution } from "@workspace/integrations-anthropic-ai";
 import { resolveBillingMspId } from "../lib/ai-billing.ts";
@@ -41,9 +38,14 @@ import { createAuditLog } from "../lib/audit.ts";
 import { logger } from "../lib/logger.ts";
 import { resolveMspId } from "../lib/resolve-msp-id.ts";
 import { listRemediableOffers, type RemediableOffer } from "./portal-mission-control.ts";
-import { getShaneBotPersona, renderPersonaPrompt } from "../lib/shanebot-persona.ts";
 import {
-  SUGGESTED_REPLIES_INSTRUCTION,
+  buildGrounding,
+  resolveInstance,
+  assembleSystemPrompt,
+  type BotGrounding,
+  type BotInstanceConfig,
+} from "../lib/shanebot-engine.ts";
+import {
   buildAssistantContent,
   contentToText,
   hasSuggestedRepliesToken,
@@ -70,125 +72,19 @@ const costLog = logger.child({ channel: "engine.ai-cost-governance" });
 
 const router: IRouter = Router();
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-
-function relativeDate(d: Date): string {
-  const diffDays = Math.floor((Date.now() - d.getTime()) / 86_400_000);
-  if (diffDays === 0) return "today";
-  if (diffDays === 1) return "yesterday";
-  if (diffDays < 30) return `${diffDays} days ago`;
-  return d.toISOString().slice(0, 10);
-}
-
-// ── Grounded context builders ─────────────────────────────────────────────────
-
-interface GroundedContext {
-  identity: string;
-  summary: string;
-}
-
-async function buildMspContext(mspId: number): Promise<GroundedContext> {
-  const since7d = new Date(Date.now() - 7 * 86_400_000);
-
-  const [mspRow, customerStats, signalRows] = await Promise.all([
-    db.select({ name: mspsTable.name, status: mspsTable.status, slug: mspsTable.slug })
-      .from(mspsTable).where(eq(mspsTable.id, mspId)).limit(1),
-
-    db.select({ status: tenantsTable.status, n: count() })
-      .from(tenantsTable)
-      .where(eq(tenantsTable.mspId, mspId))
-      .groupBy(tenantsTable.status),
-
-    db.select({
-      eventType: mspEventStoreTable.eventType,
-      payload: mspEventStoreTable.payload,
-      occurredAt: mspEventStoreTable.occurredAt,
-    })
-      .from(mspEventStoreTable)
-      .where(
-        and(
-          eq(mspEventStoreTable.mspId, mspId),
-          like(mspEventStoreTable.eventType, "signal.%"),
-          gte(mspEventStoreTable.occurredAt, since7d),
-        ),
-      )
-      .orderBy(desc(mspEventStoreTable.occurredAt))
-      .limit(10),
-  ]);
-
-  const msp = mspRow[0];
-  if (!msp) return { identity: "MSP user", summary: "No MSP data found." };
-
-  const customerSummary = customerStats.map((r) => `${r.n} ${r.status}`).join(", ") || "no customers yet";
-
-  const recentSignals = signalRows.length === 0
-    ? "No signals fired in the last 7 days."
-    : signalRows.map((s) => {
-        const label = s.eventType.replace("signal.", "");
-        const ts = relativeDate(new Date(s.occurredAt));
-        const p = s.payload as Record<string, unknown> | null;
-        const customer = p?.customerName ?? p?.customerId ?? "unknown customer";
-        return `• ${label} — ${customer} (${ts})`;
-      }).join("\n");
-
-  return {
-    identity: `MSP operator for ${msp.name}`,
-    summary: `MSP: ${msp.name} (slug: ${msp.slug}, status: ${msp.status})\nCustomer breakdown: ${customerSummary}\n\nRecent signals (last 7 days):\n${recentSignals}`,
-  };
-}
-
-async function buildCustomerContext(customerId: number, mspId: number | null): Promise<GroundedContext> {
-  const since30d = new Date(Date.now() - 30 * 86_400_000);
-
-  const [customerRow, signalRows] = await Promise.all([
-    db.select({
-      name: tenantsTable.customerName,
-      domain: tenantsTable.domain,
-      status: tenantsTable.status,
-      tenantId: tenantsTable.tenantId,
-    })
-      .from(tenantsTable)
-      .where(eq(tenantsTable.id, customerId))
-      .limit(1),
-
-    mspId
-      ? db.select({
-          eventType: mspEventStoreTable.eventType,
-          occurredAt: mspEventStoreTable.occurredAt,
-        })
-          .from(mspEventStoreTable)
-          .where(
-            and(
-              eq(mspEventStoreTable.mspId, mspId),
-              eq(mspEventStoreTable.customerId, customerId),
-              like(mspEventStoreTable.eventType, "signal.%"),
-              gte(mspEventStoreTable.occurredAt, since30d),
-            ),
-          )
-          .orderBy(desc(mspEventStoreTable.occurredAt))
-          .limit(5)
-      : Promise.resolve([]),
-  ]);
-
-  const customer = customerRow[0];
-  if (!customer) return { identity: "customer user", summary: "No customer data found." };
-
-  const signalSummary = signalRows.length === 0
-    ? "No signals fired in the last 30 days."
-    : signalRows.map((s) => `• ${s.eventType.replace("signal.", "")} (${relativeDate(new Date(s.occurredAt))})`).join("\n");
-
-  return {
-    identity: `customer user for ${customer.name}`,
-    summary: `Customer: ${customer.name} (domain: ${customer.domain ?? "n/a"}, status: ${customer.status})\nTenant ID: ${customer.tenantId ?? "not set"}\n\nRecent signals (last 30 days):\n${signalSummary}`,
-  };
-}
+// ── Grounded context ──────────────────────────────────────────────────────────
+// Grounding is now the shared engine's `customer_entitlements` groundingSource
+// builder (shanebot-engine.ts, #1097) — the SAME engine ShaneBot Public's
+// live_catalog grounding lives in, so the two surfaces can't drift on how grounding
+// is built. The MSP/customer branching, signal formatting, and relative-date helper
+// all moved there verbatim; this route just asks the engine for the grounded
+// context for the shanebot_paid instance.
 
 // ── System prompt ─────────────────────────────────────────────────────────────
 
 function buildSystemPrompt(
-  identity: string,
-  contextSummary: string,
+  instance: BotInstanceConfig,
+  grounding: BotGrounding,
   remediableOffers: RemediableOffer[],
 ): string {
   // Only customers with at least one genuinely-eligible instant remediation get
@@ -219,14 +115,11 @@ REMEDIATION PROPOSAL RULES (follow exactly):
 - The marker does NOT run anything. It only surfaces a Confirm button the user must click themselves. NEVER say or imply that you have started, run, applied, scheduled, or completed a remediation — you cannot. Only the user's own confirmation click runs it.
 - If the user has not clearly asked to fix a specific listed item, do NOT emit the marker; just answer their question.`;
 
-  // Voice comes from the shared ShaneBot persona (#361) and NOTHING else in this
-  // prompt does — the grounding contract, escalation marker, and remediation
-  // rules below are unchanged and are not the persona module's business.
-  return `${renderPersonaPrompt(getShaneBotPersona("portal"))}
-
-You are talking to a ${identity}.
-
-Your job is to answer questions STRICTLY from the platform data provided below. Never fabricate numbers, statuses, dates, or events. If the answer is not in the provided data, say so clearly.
+  // Voice + the trailing suggested-replies instruction come from the shared engine
+  // (assembleSystemPrompt → persona + identity + body + chips). NOTHING safety-
+  // bearing moved there: the grounding contract, escalation marker, and remediation
+  // rules below are this route's own `body`, unchanged and in the same order.
+  const body = `Your job is to answer questions STRICTLY from the platform data provided below. Never fabricate numbers, statuses, dates, or events. If the answer is not in the provided data, say so clearly.
 
 You must NEVER:
 - Take any action yourself (cancel subscriptions, change billing, initiate refunds, modify configurations). The ONLY exception is offering an instant remediation from the explicit list below, if one is present — and even then you only *offer*; the user must click Confirm to run it.
@@ -236,10 +129,10 @@ You must NEVER:
 If you cannot answer confidently from the data below, output "[ESCALATE_TO_HUMAN]" on its own line at the end of your reply. This tells the system to route the question to a human — do not explain this to the user.
 
 === PLATFORM DATA FOR THIS SESSION ===
-${contextSummary}
-=== END PLATFORM DATA ===${remediationBlock}
+${grounding.summary}
+=== END PLATFORM DATA ===${remediationBlock}`;
 
-${SUGGESTED_REPLIES_INSTRUCTION}`;
+  return assembleSystemPrompt({ instance, identity: grounding.identity, body });
 }
 
 // ── Escalation helper ─────────────────────────────────────────────────────────
@@ -423,7 +316,12 @@ router.post(
     // null mspId, so reading it directly would leave the spend unattributed.
     const billingMspId = resolveBillingMspId(user) ?? mspId;
 
-    let groundedCtx: GroundedContext;
+    // ShaneBot Paid — grounded via the shared engine's customer_entitlements
+    // builder. The engine branches CustomerUser → own tenant, MSP staff → their
+    // MSP, and falls back for a user with no resolvable MSP context (the
+    // PlatformAdmin case is already rejected above).
+    const paidInstance = resolveInstance("shanebot_paid");
+    let groundedCtx: BotGrounding;
     // Instant remediations the AI is allowed to propose in this session. Only
     // ever non-empty for a CustomerUser on a testbed tenant with an eligible
     // sent offer — listRemediableOffers enforces the same gate the execute
@@ -432,15 +330,11 @@ router.post(
     try {
       if (isCustomerUser && customerId) {
         [groundedCtx, remediableOffers] = await Promise.all([
-          buildCustomerContext(customerId, mspId),
+          buildGrounding(paidInstance, { customerId, mspId, isCustomerUser }),
           listRemediableOffers(customerId),
         ]);
-      } else if (mspId) {
-        groundedCtx = await buildMspContext(mspId);
       } else {
-        // Non-admin user with no resolvable MSP context (e.g. a malformed/legacy
-        // account). The PlatformAdmin case is already rejected above.
-        groundedCtx = { identity: "platform user", summary: "Platform data temporarily unavailable." };
+        groundedCtx = await buildGrounding(paidInstance, { customerId, mspId, isCustomerUser });
       }
     } catch (err) {
       log.error({ err }, "support-chat: failed to build grounded context");
@@ -448,7 +342,7 @@ router.post(
       remediableOffers = [];
     }
 
-    const systemPrompt = buildSystemPrompt(groundedCtx.identity, groundedCtx.summary, remediableOffers);
+    const systemPrompt = buildSystemPrompt(paidInstance, groundedCtx, remediableOffers);
     const trimmedMessages = messages
       .slice(-20)
       .filter((m) => m.role === "user" || m.role === "assistant")

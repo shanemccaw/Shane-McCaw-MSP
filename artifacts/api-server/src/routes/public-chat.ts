@@ -33,16 +33,16 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import rateLimit from "express-rate-limit";
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
-import { and, asc, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import {
   db,
-  servicesTable,
   publicChatConversationsTable,
   type PublicChatStoredMessage,
 } from "@workspace/db";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { enqueueEscalationTicket } from "../lib/zoho-desk.ts";
 import { logger } from "../lib/logger.ts";
+import { buildGrounding, resolveInstance } from "../lib/shanebot-engine.ts";
 import {
   buildAssistantContent,
   contentToText,
@@ -69,78 +69,11 @@ const log = logger.child({ channel: "growth.public_chat" });
 const chatLimiter = rateLimit({ windowMs: 60_000, max: 20, standardHeaders: true, legacyHeaders: false });
 
 // ── Grounded catalog context ────────────────────────────────────────────────
-// A compact, real snapshot of the public services catalog, cached in-process so a
-// busy public endpoint doesn't re-query per turn. Grounding is pragmatic, not a full
-// RAG system — real names, taglines, categories, and pricing are enough for honest
-// answers.
-
-const CATALOG_TTL_MS = 5 * 60_000;
-let catalogCache: { summary: string; expires: number } | null = null;
-
-function formatPrice(priceCents: number | null, billingType: string | null): string {
-  if (priceCents == null || priceCents <= 0) return "pricing varies";
-  const dollars = Math.round(priceCents / 100).toLocaleString("en-US");
-  const suffix =
-    billingType === "subscription" || billingType === "recurring" || billingType === "monthly"
-      ? "/mo"
-      : "";
-  return `$${dollars}${suffix}`;
-}
-
-async function buildCatalogSummary(): Promise<string> {
-  const now = Date.now();
-  if (catalogCache && catalogCache.expires > now) return catalogCache.summary;
-
-  try {
-    const rows = await db
-      .select({
-        name: servicesTable.name,
-        tagline: servicesTable.tagline,
-        description: servicesTable.description,
-        category: servicesTable.category,
-        serviceType: servicesTable.serviceType,
-        billingType: servicesTable.billingType,
-        priceCents: servicesTable.priceCents,
-        isFreeOffering: servicesTable.isFreeOffering,
-      })
-      .from(servicesTable)
-      .where(eq(servicesTable.visibility, "public"))
-      .orderBy(asc(servicesTable.sortOrder), asc(servicesTable.createdAt))
-      .limit(60);
-
-    if (rows.length === 0) {
-      const fallback = FALLBACK_CATALOG_SUMMARY;
-      catalogCache = { summary: fallback, expires: now + CATALOG_TTL_MS };
-      return fallback;
-    }
-
-    const lines = rows.map((s) => {
-      const price = s.isFreeOffering ? "free" : formatPrice(s.priceCents, s.billingType);
-      const blurb = (s.tagline ?? s.description ?? "").replace(/\s+/g, " ").trim().slice(0, 160);
-      const cat = s.category ?? s.serviceType ?? "service";
-      return `• ${s.name} [${cat}] — ${price}${blurb ? ` — ${blurb}` : ""}`;
-    });
-
-    const summary = lines.join("\n");
-    catalogCache = { summary, expires: now + CATALOG_TTL_MS };
-    return summary;
-  } catch (err) {
-    log.error({ err }, "public-chat: failed to build catalog summary; using fallback");
-    return FALLBACK_CATALOG_SUMMARY;
-  }
-}
-
-// Degraded-mode grounding if the catalog query fails — the high-level shape of the
-// practice, so the assistant stays honest and useful rather than blank. No specific
-// prices are invented here (the model is told pricing "varies" and to say so).
-const FALLBACK_CATALOG_SUMMARY = [
-  "• Assessments — a review of your Microsoft 365 tenant's security, configuration, and health, delivered as a written findings report.",
-  "• Monitoring — ongoing, continuous monitoring of your M365 tenant against best-practice baselines (recurring).",
-  "• Quick-Start Packs — fixed-scope, fixed-price packages that stand up a specific M365 capability quickly.",
-  "• Projects — larger scoped engagements (migrations, governance rollouts, Power Platform, SharePoint).",
-  "• Retainer — an ongoing advisory/architecture relationship for continued support.",
-  "(Live pricing is temporarily unavailable — tell the visitor pricing varies and offer to take their request so it can be reviewed.)",
-].join("\n");
+// Grounding is now the shared engine's `live_catalog` groundingSource builder
+// (shanebot-engine.ts, #1097) — the SAME builder ShaneBot Paid's customer grounding
+// lives beside, so the two surfaces can never drift on how grounding is built. The
+// public bot's "actually live" source of truth (services.visibility === "public")
+// and the #1085 swap-point note both live there now, in one place.
 
 // ── Request schema ──────────────────────────────────────────────────────────
 // `content` accepts BOTH shapes: the legacy bare string (any widget build still
@@ -226,11 +159,11 @@ router.post("/public-chat", chatLimiter, async (req: Request, res: Response) => 
     // Call the model, grounded in the real catalog.
     let modelReply: string;
     try {
-      const catalogSummary = await buildCatalogSummary();
+      const grounding = await buildGrounding(resolveInstance("shanebot_public"));
       const response = await anthropic.messages.create({
         model: "claude-haiku-4-5",
         max_tokens: 900,
-        system: buildPublicChatSystemPrompt(catalogSummary),
+        system: buildPublicChatSystemPrompt(grounding.summary),
         messages: incoming.slice(-20).map((m) => ({ role: m.role, content: contentToText(m.content) })),
       });
       const block = response.content[0];

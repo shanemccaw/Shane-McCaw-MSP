@@ -4058,6 +4058,107 @@ export const insertPublicChatConversationSchema = createInsertSchema(publicChatC
 export type InsertPublicChatConversation = typeof publicChatConversationsTable.$inferInsert;
 export type PublicChatConversation = typeof publicChatConversationsTable.$inferSelect;
 
+// ── ShaneBot Engine Core — bot_instances + bot_conversations (#1097, epic #360) ──
+// The two foundational tables the shared ShaneBot engine (api-server
+// src/lib/shanebot-engine.ts) is built on. Deliberately sized for EXACTLY the two
+// permanent instances that will ever exist — shanebot_public and shanebot_paid —
+// NOT a generic bot-builder. The generic-engine scope lives in #365's history if a
+// real 3rd bot need ever materializes; it is not built speculatively here.
+//
+// The behavioral CONFIG of each instance (persona surface, grounding source,
+// allowed actions, cost owner) is code-canonical — it lives in shanebot-engine.ts
+// and is seeded into these rows to match. The engine reads the code definition, so
+// a chat route never hard-depends on a row being seeded. These rows exist for FK
+// integrity (bot_conversations.instanceId) and future admin visibility.
+
+/** How an instance authenticates its callers. */
+export const botAuthMode = ["public", "portal_authenticated"] as const;
+export type BotAuthMode = (typeof botAuthMode)[number];
+
+/**
+ * The grounding shape an instance uses. NOT a pluggable node-type registry — only
+ * these two hand-written builder functions will ever exist:
+ *   live_catalog          — the public site's live services catalog (shanebot_public)
+ *   customer_entitlements — the authenticated customer's own tenant data (shanebot_paid)
+ * Each maps to one builder in shanebot-engine.ts. Adding a value here without a
+ * matching builder is a deliberate no-op, not a config-driven extension point.
+ */
+export const botGroundingSource = ["live_catalog", "customer_entitlements"] as const;
+export type BotGroundingSource = (typeof botGroundingSource)[number];
+
+/** Who pays for an instance's model spend. */
+export const botCostOwner = ["platform", "msp"] as const;
+export type BotCostOwner = (typeof botCostOwner)[number];
+
+/**
+ * An action the model may request via a control token, gated PER-INSTANCE by
+ * allowedActions. The action_router in shanebot-engine.ts re-checks the emitting
+ * instance's allowedActions before anything fires — public ([]) can fire none.
+ */
+export const botAction = ["regenerate_document", "rerun_scan"] as const;
+export type BotAction = (typeof botAction)[number];
+
+export const botInstancesTable = pgTable("bot_instances", {
+  id: serial("id").primaryKey(),
+  slug: text("slug").notNull().unique(),
+  name: text("name").notNull(),
+  authMode: text("auth_mode", { enum: botAuthMode }).notNull(),
+  groundingSource: text("grounding_source", { enum: botGroundingSource }).notNull(),
+  // [] for public, ["regenerate_document","rerun_scan"] for paid. Every entry is a
+  // botAction value; the action_router re-validates membership at fire time.
+  allowedActions: jsonb("allowed_actions").$type<BotAction[]>().notNull().default([]),
+  costOwner: text("cost_owner", { enum: botCostOwner }).notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertBotInstanceSchema = createInsertSchema(botInstancesTable).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertBotInstance = typeof botInstancesTable.$inferInsert;
+export type BotInstance = typeof botInstancesTable.$inferSelect;
+
+/**
+ * One stored transcript turn. Content is an array of structured ChatContentBlock
+ * (the SAME shape both ShaneBot surfaces already use via chat-content-blocks.ts) —
+ * so the reserved `card` block type needs no future DDL to introduce.
+ */
+export interface BotConversationMessage {
+  role: (typeof publicChatMessageRole)[number];
+  content: ChatContentBlock[];
+  at: string;
+}
+
+// One row per chat session/thread. instanceId FKs bot_instances. The whole
+// transcript is re-upserted each turn (same pattern as public_chat_conversations).
+export const botConversationsTable = pgTable("bot_conversations", {
+  id: serial("id").primaryKey(),
+  instanceId: integer("instance_id")
+    .notNull()
+    .references(() => botInstancesTable.id),
+  // Client-generated stable id so multi-turn upserts land on one row. Text (not the
+  // pg uuid type) to tolerate any client value, same as public_chat_conversations.
+  sessionId: text("session_id").notNull().unique(),
+  transcript: jsonb("transcript").$type<BotConversationMessage[]>().notNull().default([]),
+  messageCount: integer("message_count").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (t) => [
+  index("bot_conversations_instance_idx").on(t.instanceId),
+  index("bot_conversations_updated_at_idx").on(t.updatedAt),
+]);
+
+export const insertBotConversationSchema = createInsertSchema(botConversationsTable).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertBotConversation = typeof botConversationsTable.$inferInsert;
+export type BotConversation = typeof botConversationsTable.$inferSelect;
+
 // ── Active Directory — Organizational Units (Phase 5, placeholder objects) ────
 // A real, creatable/browsable OU container node in the Active Directory tree.
 // No policy semantics yet — Shane: "OUs undefined right now, but put a
