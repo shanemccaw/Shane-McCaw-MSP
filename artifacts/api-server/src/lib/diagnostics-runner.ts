@@ -32,6 +32,7 @@ import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { executeMonitoringPackage, type CheckResult } from "./monitor-executor";
 import { emitWorkflowEvent } from "./workflow-executor";
+import { capturePillarDisplaySnapshots } from "./pillar-snapshot";
 import { generateCioNarrative } from "./cio-narrative-generator";
 import { evaluateDocGateCoverage } from "./doc-gate-coverage";
 import { resolveSeatFigures, type SeatFigures } from "./war-room-pillar-stats";
@@ -1019,6 +1020,22 @@ export async function runDiagnostics(opts: DiagnosticsRunOpts): Promise<Diagnost
       coverageBand: runCoverage.band,
       coveragePct: runCoverage.coveragePct,
       isAssessmentTriggered: opts.isAssessmentTriggered === true,
+    });
+
+    // Historize the customer-facing 0-100 pillar DISPLAY scores (Git #1106) at
+    // this same run-completed moment. Nobody was persisting these over time —
+    // only the raw per-engine scores (tenant_engine_snapshots) were — so a
+    // customer's real first-scan-to-today pillar trend was uncomputable.
+    // Fire-and-forget (same discipline as generateCioNarrative above and
+    // writeEngineSnapshot elsewhere): a snapshot failure must never fail or slow
+    // the run. Gated internally on coverageSufficient — a dark/partial run writes
+    // no fabricated history.
+    void capturePillarDisplaySnapshots({
+      runId,
+      customerId,
+      mspId,
+      packageKey,
+      coverageSufficient: runCoverage.proceed,
     });
 
     return { runId, status: finalStatus, checksTotal, checksOk, checksError, requiresScript, checksLicenseGap, findingsCount, documentId };

@@ -3580,6 +3580,36 @@ export const tenantEngineSnapshotsTable = pgTable("tenant_engine_snapshots", {
 export type InsertTenantEngineSnapshot = typeof tenantEngineSnapshotsTable.$inferInsert;
 export type TenantEngineSnapshot = typeof tenantEngineSnapshotsTable.$inferSelect;
 
+// Tenant Pillar Snapshots (Git #1106) — point-in-time history of the
+// CUSTOMER-FACING 0-100 pillar DISPLAY scores (getPillarCoverage() /
+// evaluatePillarDisplay()), one row per pillar per real scan. Deliberately a
+// SEPARATE table from tenant_engine_snapshots above: that one holds raw,
+// unbounded per-engine "Security Risk Points" (#1101) on a different scale with
+// existing raw-score consumers. This one holds the normalized 0-100 pillar
+// numbers the PillarGrid / HeroHealthScore / radar actually show a customer, so
+// their real first-scan-to-today trend can be charted. Written only when a scan
+// completes with sufficient coverage (coverageSufficient) — never on a
+// dark/partial run — so history never contains fabricated points.
+export const tenantPillarSnapshotsTable = pgTable("tenant_pillar_snapshots", {
+  id: serial("id").primaryKey(),
+  mspId: integer("msp_id").references(() => mspsTable.id, { onDelete: "set null" }),
+  customerId: integer("customer_id"), // tenants.id — same id-space + no-FK convention as tenant_engine_snapshots above
+  pillarKey: text("pillar_key").notNull(),
+  score: integer("score").notNull().default(0), // 0-100 display score
+  previousScore: integer("previous_score"),
+  delta: integer("delta"),
+  trendDirection: text("trend_direction"),
+  packageKey: text("package_key"),
+  runId: text("run_id"),
+  capturedAt: timestamp("captured_at").notNull().defaultNow(),
+}, (table) => ({
+  customerPillarCapturedIdx: index("tenant_pillar_snapshots_customer_pillar_captured_idx")
+    .on(table.customerId, table.pillarKey, table.capturedAt),
+}));
+
+export type InsertTenantPillarSnapshot = typeof tenantPillarSnapshotsTable.$inferInsert;
+export type TenantPillarSnapshot = typeof tenantPillarSnapshotsTable.$inferSelect;
+
 export const engineScoreSignalDeltasTable = pgTable("engine_score_signal_deltas", {
   id: serial("id").primaryKey(),
   historyId: integer("history_id").notNull().references(() => tenantEngineSnapshotsTable.id, { onDelete: "cascade" }),

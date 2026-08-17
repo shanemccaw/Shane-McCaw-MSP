@@ -57,6 +57,7 @@ import {
   wfDefinitionsTable,
   presentationDocViewsTable,
   checkoutSessionsTable,
+  tenantPillarSnapshotsTable,
   type CopilotAssessmentStateMap,
 } from "@workspace/db";
 
@@ -84,7 +85,7 @@ import { ensureFlowStripeCustomer } from "../lib/assessment-flow-rescan-addon.ts
 import { verifyCaptchaToken } from "../lib/captcha";
 import { getMspPortalBaseUrl } from "../lib/portal-url";
 import { randomUUID } from "crypto";
-import { getPillarCoverage } from "../lib/pillar-coverage";
+import { getPillarCoverage, PILLAR_LABELS, RADAR_PILLARS, type RadarPillar } from "../lib/pillar-coverage";
 // The executor's OWN package→ordered-checks resolver, reused verbatim so the
 // scan plan below can never disagree with what the run actually executes (#340).
 import { loadOrderedPackageChecks } from "../lib/monitor-executor";
@@ -554,6 +555,89 @@ router.get(
     } catch (err) {
       log.error({ err, customerId, userId }, "GET /portal/assessment/status failed");
       res.status(500).json({ error: "Failed to load assessment status" });
+    }
+  },
+);
+
+// ── Pillar display-score history (#1106) ─────────────────────────────────────
+//
+//   GET /api/portal/assessment/pillar-history
+//
+// The customer's real first-scan-to-today trend of the 0-100 pillar DISPLAY
+// scores — the same numbers PillarGrid / HeroHealthScore / the radar show live.
+// Served from tenant_pillar_snapshots, which pillar-snapshot.ts writes one row
+// per pillar each time a scan completes with sufficient coverage (the honesty
+// gate). Read-side only: this issue is the capture mechanism + this endpoint;
+// the frontend chart wiring is a separate, later concern.
+//
+// Deliberately a SEPARATE table/series from the raw-engine "Security Risk Points"
+// that /api/dashboard/resolve serves (#1101) — those are unbounded, lower-is-
+// better, non-customer-facing. No backfill: a tenant with no snapshots yet gets
+// empty `pillars` and renders "not enough history yet" downstream — never a
+// fabricated point.
+router.get(
+  "/portal/assessment/pillar-history",
+  // Same floor as /portal/assessment/status — the assessment wizard's own role.
+  requireRole("Assessment"),
+  async (req: Request, res: Response): Promise<void> => {
+    const customerId = resolveCustomerId(req);
+    if (customerId === null) {
+      res.status(403).json({ error: "No customer identity on token" });
+      return;
+    }
+
+    try {
+      const snapshots = await db
+        .select({
+          pillarKey: tenantPillarSnapshotsTable.pillarKey,
+          score: tenantPillarSnapshotsTable.score,
+          previousScore: tenantPillarSnapshotsTable.previousScore,
+          delta: tenantPillarSnapshotsTable.delta,
+          trendDirection: tenantPillarSnapshotsTable.trendDirection,
+          capturedAt: tenantPillarSnapshotsTable.capturedAt,
+        })
+        .from(tenantPillarSnapshotsTable)
+        .where(eq(tenantPillarSnapshotsTable.customerId, customerId))
+        // Oldest → newest so each pillar's points chart left-to-right without
+        // client-side re-sorting (matches resolveMetricHistory's contract).
+        .orderBy(asc(tenantPillarSnapshotsTable.capturedAt));
+
+      // Group into one series per pillar. Keep the RADAR_PILLARS order and only
+      // emit a pillar that genuinely has at least one recorded point — a pillar
+      // never scored for this tenant is absent, not a zero-line.
+      const byPillar = new Map<
+        string,
+        { t: string; score: number; previousScore: number | null; delta: number | null; trendDirection: string | null }[]
+      >();
+      for (const row of snapshots) {
+        const points = byPillar.get(row.pillarKey) ?? [];
+        points.push({
+          t: row.capturedAt.toISOString(),
+          score: row.score,
+          previousScore: row.previousScore,
+          delta: row.delta,
+          trendDirection: row.trendDirection,
+        });
+        byPillar.set(row.pillarKey, points);
+      }
+
+      const orderedKeys: string[] = [
+        ...RADAR_PILLARS.filter((p) => byPillar.has(p)),
+        // Any pillar key present in data but not in the known radar set (future-
+        // proofing) is appended after, so it's never silently dropped.
+        ...[...byPillar.keys()].filter((k) => !(RADAR_PILLARS as readonly string[]).includes(k)),
+      ];
+
+      const pillars = orderedKeys.map((key) => ({
+        pillar: key,
+        label: PILLAR_LABELS[key as RadarPillar] ?? key,
+        points: byPillar.get(key) ?? [],
+      }));
+
+      res.json({ pillars });
+    } catch (err) {
+      log.error({ err, customerId }, "GET /portal/assessment/pillar-history failed");
+      res.status(500).json({ error: "Failed to load pillar history" });
     }
   },
 );
