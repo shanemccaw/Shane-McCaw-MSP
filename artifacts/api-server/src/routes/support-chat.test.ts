@@ -31,6 +31,7 @@ vi.mock("@workspace/db", () => ({
     select: vi.fn().mockReturnThis(),
     from: vi.fn().mockReturnThis(),
     where: vi.fn().mockReturnThis(),
+    innerJoin: vi.fn().mockReturnThis(),
     limit: vi.fn().mockResolvedValue([]),
     groupBy: vi.fn().mockReturnThis(),
     orderBy: vi.fn().mockReturnThis(),
@@ -41,6 +42,25 @@ vi.mock("@workspace/db", () => ({
   mspsTable: { id: "id", name: "name", status: "status", slug: "slug" },
   tenantsTable: { id: "id", mspId: "msp_id", customerName: "customer_name", domain: "domain", status: "status", tenantId: "tenant_id" },
   mspEventStoreTable: { id: "id", mspId: "msp_id", customerId: "customer_id", eventType: "event_type", occurredAt: "occurred_at", payload: "payload" },
+  // #362 — customer_entitlements grounding: purchases (SOWs), subscription/
+  // billing status (sales-bundle assignments), and scan/monitoring state
+  // (diagnostic runs + findings), each scoped by customerId (+mspId).
+  mspSowsTable: {
+    customerId: "customer_id", mspId: "msp_id", title: "title", status: "status",
+    amountCents: "amount_cents", signedAt: "signed_at", chargeConfirmedAt: "charge_confirmed_at",
+    createdAt: "created_at",
+  },
+  mspSalesBundlesTable: { bundleId: "bundle_id", name: "name" },
+  mspSalesBundleAssignmentsTable: {
+    customerId: "customer_id", mspId: "msp_id", bundleId: "bundle_id", status: "status",
+    activatedAt: "activated_at", trialExpiresAt: "trial_expires_at", assignedAt: "assigned_at",
+  },
+  mspDiagnosticRunsTable: {
+    customerId: "customer_id", mspId: "msp_id", runId: "run_id", packageKey: "package_key",
+    status: "status", startedAt: "started_at", completedAt: "completed_at",
+    checksTotal: "checks_total", checksOk: "checks_ok", checksError: "checks_error", createdAt: "created_at",
+  },
+  mspDiagnosticFindingsTable: { runId: "run_id", severity: "severity", title: "title", createdAt: "created_at" },
   notificationsTable: { id: "id", userId: "user_id", title: "title", body: "body", type: "type", read: "read", linkPath: "link_path" },
   messagesTable: { id: "id", clientUserId: "client_user_id", senderUserId: "sender_user_id", body: "body", readByAdmin: "read_by_admin", readByClient: "read_by_client" },
   usersTable: { id: "id", role: "role", email: "email", mspId: "msp_id", tenantId: "tenant_id", mspRole: "msp_role", isActive: "is_active", canApprovePurchases: "can_approve_purchases" },

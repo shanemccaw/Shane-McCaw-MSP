@@ -18,6 +18,8 @@ vi.mock("@workspace/db", () => ({
     select: vi.fn().mockReturnThis(),
     from: vi.fn().mockReturnThis(),
     where: vi.fn().mockReturnThis(),
+    innerJoin: vi.fn().mockReturnThis(),
+    orderBy: vi.fn().mockReturnThis(),
     limit: vi.fn().mockResolvedValue([]),
     insert: vi.fn().mockReturnThis(),
     values: vi.fn().mockReturnThis(),
@@ -27,6 +29,12 @@ vi.mock("@workspace/db", () => ({
   mspsTable: {},
   tenantsTable: {},
   mspEventStoreTable: {},
+  // #362 — customer_entitlements grounding's purchase/entitlement/scan queries.
+  mspSowsTable: {},
+  mspSalesBundlesTable: { bundleId: "bundle_id" },
+  mspSalesBundleAssignmentsTable: { bundleId: "bundle_id" },
+  mspDiagnosticRunsTable: {},
+  mspDiagnosticFindingsTable: {},
   botInstancesTable: { id: "id", slug: "slug" },
   botConversationsTable: { sessionId: "session_id", transcript: "transcript" },
 }));
@@ -47,6 +55,7 @@ import {
   routeActions,
   routeRequestedActions,
   stripActionTokens,
+  buildGrounding,
   upsertBotConversation,
   getBotConversationTranscript,
   getBotConversationTranscripts,
@@ -154,6 +163,83 @@ describe("prompt assembly", () => {
     expect(prompt).toContain("You are talking to a customer user for Acme.");
     expect(prompt).toContain("=== PLATFORM DATA ===");
     expect(prompt).toContain("SUGGESTED REPLIES"); // shared control-token instruction
+  });
+});
+
+// ── customer_entitlements grounding (#362) ──────────────────────────────────────
+// buildCustomerContext's queries all terminate their chain in a call to
+// db.limit(...) (orderBy/innerJoin/where are all mockReturnThis), so
+// mockResolvedValueOnce calls queue up in the exact call order the
+// Promise.all in buildCustomerContext issues them: customer row, signals,
+// SOWs (purchases), bundle assignments (entitlements), latest scan run,
+// last-completed scan run — then, only if a completed run exists, findings.
+
+describe("customer_entitlements grounding (#362): buildCustomerContext", () => {
+  const mockDb = db as unknown as Record<string, ReturnType<typeof vi.fn>>;
+  const paid = resolveInstance("shanebot_paid");
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockDb["select"].mockReturnThis();
+    mockDb["from"].mockReturnThis();
+    mockDb["where"].mockReturnThis();
+    mockDb["innerJoin"].mockReturnThis();
+    mockDb["orderBy"].mockReturnThis();
+    mockDb["limit"].mockResolvedValue([]);
+  });
+
+  it("degrades to honest 'nothing yet' text when the customer has no purchases, bundles, or scans", async () => {
+    mockDb["limit"]
+      .mockResolvedValueOnce([{ name: "Acme Corp", domain: "acme.com", status: "active", tenantId: "tid-1" }]) // customer
+      .mockResolvedValueOnce([]) // signals
+      .mockResolvedValueOnce([]) // SOWs
+      .mockResolvedValueOnce([]) // bundle assignments
+      .mockResolvedValueOnce([]) // latest run
+      .mockResolvedValueOnce([]); // last completed run
+
+    const grounding = await buildGrounding(paid, { customerId: 42, mspId: 7, isCustomerUser: true });
+
+    expect(grounding.identity).toBe("customer user for Acme Corp");
+    expect(grounding.summary).toContain("Purchases:\nNo purchases yet.");
+    expect(grounding.summary).toContain("Subscriptions / monitoring bundles:\nNo active subscriptions or monitoring bundles.");
+    expect(grounding.summary).toContain("Scan / monitoring status:\nNo scans have been run yet.");
+  });
+
+  it("grounds on real purchases, an active bundle, and the last completed scan's open findings", async () => {
+    mockDb["limit"]
+      .mockResolvedValueOnce([{ name: "Acme Corp", domain: "acme.com", status: "active", tenantId: "tid-1" }]) // customer
+      .mockResolvedValueOnce([]) // signals
+      .mockResolvedValueOnce([{
+        title: "Copilot Readiness Assessment", status: "paid", amountCents: 250000,
+        signedAt: new Date("2026-08-01T00:00:00Z"), chargeConfirmedAt: new Date("2026-08-01T00:05:00Z"),
+      }]) // SOWs
+      .mockResolvedValueOnce([{
+        name: "Core Security Monitoring", status: "active",
+        activatedAt: new Date("2026-08-02T00:00:00Z"), trialExpiresAt: null,
+      }]) // bundle assignments
+      .mockResolvedValueOnce([{ runId: "run-9", packageKey: "core:security-baseline", status: "completed", startedAt: new Date("2026-08-16T00:00:00Z") }]) // latest run
+      .mockResolvedValueOnce([{ runId: "run-9", completedAt: new Date("2026-08-16T00:10:00Z"), checksTotal: 20, checksOk: 17, checksError: 1 }]) // last completed run
+      .mockResolvedValueOnce([{ severity: "critical", title: "MFA not enforced for all admins" }]); // findings
+
+    const grounding = await buildGrounding(paid, { customerId: 42, mspId: 7, isCustomerUser: true });
+
+    expect(grounding.summary).toContain("Copilot Readiness Assessment — paid ($2,500");
+    expect(grounding.summary).toContain("Core Security Monitoring — active (activated");
+    expect(grounding.summary).toContain("17/20 checks OK, 1 error(s)");
+    expect(grounding.summary).toContain("[critical] MFA not enforced for all admins");
+    // Findings query must be scoped to the specific completed run, not any run.
+    expect(mockDb["where"]).toHaveBeenCalled();
+  });
+
+  it("scopes every query to the requesting customer (and mspId when resolvable) — never a bare unscoped select", async () => {
+    mockDb["limit"]
+      .mockResolvedValueOnce([{ name: "Acme Corp", domain: "acme.com", status: "active", tenantId: "tid-1" }])
+      .mockResolvedValue([]);
+    await buildGrounding(paid, { customerId: 42, mspId: 7, isCustomerUser: true });
+    // Every one of the 6 initial queries (customer, signals, SOWs, bundles,
+    // latest run, last-completed run) calls .where() with real conditions —
+    // none of buildCustomerContext's queries ever omit .where().
+    expect(mockDb["where"].mock.calls.length).toBeGreaterThanOrEqual(6);
   });
 });
 

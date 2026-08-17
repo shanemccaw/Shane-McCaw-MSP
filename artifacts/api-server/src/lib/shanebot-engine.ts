@@ -48,6 +48,11 @@ import {
   mspsTable,
   tenantsTable,
   mspEventStoreTable,
+  mspSowsTable,
+  mspSalesBundlesTable,
+  mspSalesBundleAssignmentsTable,
+  mspDiagnosticRunsTable,
+  mspDiagnosticFindingsTable,
   botInstancesTable,
   botConversationsTable,
   type BotAction,
@@ -318,10 +323,82 @@ async function buildMspContext(mspId: number): Promise<BotGrounding> {
   };
 }
 
+// Every child query below is scoped by BOTH customerId (tenants.id — the
+// primary tenant boundary) AND, when resolvable, mspId as defense-in-depth —
+// the same double-scoping pattern msp-sow.ts/msp-sales-bundles.ts already use.
+// A customerId uniquely identifies one tenant, so this can never leak another
+// customer's purchases, entitlements, or scan data into the prompt.
+
+function formatPurchases(rows: Array<{
+  title: string;
+  status: string;
+  amountCents: number;
+  signedAt: Date | null;
+  chargeConfirmedAt: Date | null;
+}>): string {
+  if (rows.length === 0) return "No purchases yet.";
+  return rows.map((r) => {
+    const amount = `$${Math.round(r.amountCents / 100).toLocaleString("en-US")}`;
+    const dateLabel = r.chargeConfirmedAt
+      ? `paid ${relativeDate(new Date(r.chargeConfirmedAt))}`
+      : r.signedAt
+        ? `signed ${relativeDate(new Date(r.signedAt))}`
+        : "not yet signed";
+    return `• ${r.title} — ${r.status} (${amount}, ${dateLabel})`;
+  }).join("\n");
+}
+
+function formatEntitlements(rows: Array<{
+  name: string;
+  status: string;
+  activatedAt: Date | null;
+  trialExpiresAt: Date | null;
+}>): string {
+  if (rows.length === 0) return "No active subscriptions or monitoring bundles.";
+  return rows.map((r) => {
+    const activated = r.activatedAt ? `activated ${relativeDate(new Date(r.activatedAt))}` : "not yet activated";
+    const trial = r.trialExpiresAt ? `, trial expires ${relativeDate(new Date(r.trialExpiresAt))}` : "";
+    return `• ${r.name} — ${r.status} (${activated}${trial})`;
+  }).join("\n");
+}
+
+function formatScanStatus(
+  latestRun: { packageKey: string; status: string; startedAt: Date | null } | undefined,
+  lastCompleted: { completedAt: Date | null; checksTotal: number; checksOk: number; checksError: number } | undefined,
+  findings: Array<{ severity: string; title: string }>,
+): string {
+  if (!latestRun) return "No scans have been run yet.";
+  const lines = [
+    `Latest scan: ${latestRun.packageKey} — ${latestRun.status}${latestRun.startedAt ? ` (started ${relativeDate(new Date(latestRun.startedAt))})` : ""}`,
+  ];
+  if (lastCompleted) {
+    lines.push(
+      `Last completed scan: ${lastCompleted.completedAt ? relativeDate(new Date(lastCompleted.completedAt)) : "unknown date"} — ${lastCompleted.checksOk}/${lastCompleted.checksTotal} checks OK, ${lastCompleted.checksError} error(s)`,
+    );
+    lines.push(
+      findings.length === 0
+        ? "No open critical/warning findings."
+        : `Open findings:\n${findings.map((f) => `  • [${f.severity}] ${f.title}`).join("\n")}`,
+    );
+  } else {
+    lines.push("No completed scan yet.");
+  }
+  return lines.join("\n");
+}
+
 async function buildCustomerContext(customerId: number, mspId: number | null): Promise<BotGrounding> {
   const since30d = new Date(Date.now() - 30 * 86_400_000);
 
-  const [customerRow, signalRows] = await Promise.all([
+  const sowConditions = [eq(mspSowsTable.customerId, customerId)];
+  const bundleConditions = [eq(mspSalesBundleAssignmentsTable.customerId, customerId)];
+  const runConditions = [eq(mspDiagnosticRunsTable.customerId, customerId)];
+  if (mspId) {
+    sowConditions.push(eq(mspSowsTable.mspId, mspId));
+    bundleConditions.push(eq(mspSalesBundleAssignmentsTable.mspId, mspId));
+    runConditions.push(eq(mspDiagnosticRunsTable.mspId, mspId));
+  }
+
+  const [customerRow, signalRows, sowRows, bundleRows, latestRunRows, lastCompletedRows] = await Promise.all([
     db.select({
       name: tenantsTable.customerName,
       domain: tenantsTable.domain,
@@ -349,10 +426,78 @@ async function buildCustomerContext(customerId: number, mspId: number | null): P
           .orderBy(desc(mspEventStoreTable.occurredAt))
           .limit(5)
       : Promise.resolve([]),
+
+    // What the customer has actually purchased — signed/paid/pending SOWs.
+    db.select({
+      title: mspSowsTable.title,
+      status: mspSowsTable.status,
+      amountCents: mspSowsTable.amountCents,
+      signedAt: mspSowsTable.signedAt,
+      chargeConfirmedAt: mspSowsTable.chargeConfirmedAt,
+    })
+      .from(mspSowsTable)
+      .where(and(...sowConditions))
+      .orderBy(desc(mspSowsTable.createdAt))
+      .limit(10),
+
+    // Subscription/billing status — active monitoring-bundle assignments.
+    db.select({
+      name: mspSalesBundlesTable.name,
+      status: mspSalesBundleAssignmentsTable.status,
+      activatedAt: mspSalesBundleAssignmentsTable.activatedAt,
+      trialExpiresAt: mspSalesBundleAssignmentsTable.trialExpiresAt,
+    })
+      .from(mspSalesBundleAssignmentsTable)
+      .innerJoin(mspSalesBundlesTable, eq(mspSalesBundlesTable.bundleId, mspSalesBundleAssignmentsTable.bundleId))
+      .where(and(...bundleConditions))
+      .orderBy(desc(mspSalesBundleAssignmentsTable.assignedAt))
+      .limit(10),
+
+    // Scan/monitoring state — the most recent run regardless of status.
+    db.select({
+      runId: mspDiagnosticRunsTable.runId,
+      packageKey: mspDiagnosticRunsTable.packageKey,
+      status: mspDiagnosticRunsTable.status,
+      startedAt: mspDiagnosticRunsTable.startedAt,
+    })
+      .from(mspDiagnosticRunsTable)
+      .where(and(...runConditions))
+      .orderBy(desc(mspDiagnosticRunsTable.createdAt))
+      .limit(1),
+
+    // The most recent run that actually finished, for a checks/findings summary.
+    db.select({
+      runId: mspDiagnosticRunsTable.runId,
+      completedAt: mspDiagnosticRunsTable.completedAt,
+      checksTotal: mspDiagnosticRunsTable.checksTotal,
+      checksOk: mspDiagnosticRunsTable.checksOk,
+      checksError: mspDiagnosticRunsTable.checksError,
+    })
+      .from(mspDiagnosticRunsTable)
+      .where(and(...runConditions, inArray(mspDiagnosticRunsTable.status, ["completed", "partial"])))
+      .orderBy(desc(mspDiagnosticRunsTable.createdAt))
+      .limit(1),
   ]);
 
   const customer = customerRow[0];
   if (!customer) return { identity: "customer user", summary: "No customer data found." };
+
+  const lastCompleted = lastCompletedRows[0];
+  const findingRows = lastCompleted
+    ? await db.select({
+        severity: mspDiagnosticFindingsTable.severity,
+        title: mspDiagnosticFindingsTable.title,
+      })
+        .from(mspDiagnosticFindingsTable)
+        .where(
+          and(
+            eq(mspDiagnosticFindingsTable.runId, lastCompleted.runId),
+            inArray(mspDiagnosticFindingsTable.severity, ["critical", "warning"]),
+          ),
+        )
+        .orderBy(desc(mspDiagnosticFindingsTable.createdAt))
+        .limit(10)
+    : [];
 
   const signalSummary = signalRows.length === 0
     ? "No signals fired in the last 30 days."
@@ -360,7 +505,20 @@ async function buildCustomerContext(customerId: number, mspId: number | null): P
 
   return {
     identity: `customer user for ${customer.name}`,
-    summary: `Customer: ${customer.name} (domain: ${customer.domain ?? "n/a"}, status: ${customer.status})\nTenant ID: ${customer.tenantId ?? "not set"}\n\nRecent signals (last 30 days):\n${signalSummary}`,
+    summary: `Customer: ${customer.name} (domain: ${customer.domain ?? "n/a"}, status: ${customer.status})
+Tenant ID: ${customer.tenantId ?? "not set"}
+
+Purchases:
+${formatPurchases(sowRows)}
+
+Subscriptions / monitoring bundles:
+${formatEntitlements(bundleRows)}
+
+Scan / monitoring status:
+${formatScanStatus(latestRunRows[0], lastCompleted, findingRows)}
+
+Recent signals (last 30 days):
+${signalSummary}`,
   };
 }
 
