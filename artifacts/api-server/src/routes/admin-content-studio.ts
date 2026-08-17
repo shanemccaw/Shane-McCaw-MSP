@@ -63,7 +63,18 @@ router.patch("/admin/content-studio/posts/:id", requireAdmin, async (req: Reques
     const { body, scheduledFor } = req.body as { body?: string; scheduledFor?: string | null };
     const updateData: Partial<typeof contentPostsTable.$inferInsert> & { updatedAt: Date } = { updatedAt: new Date() };
     if (body !== undefined) updateData.body = body;
-    if (scheduledFor !== undefined) updateData.scheduledFor = scheduledFor ? new Date(scheduledFor) : null;
+    if (scheduledFor !== undefined) {
+      if (scheduledFor) {
+        const when = new Date(scheduledFor);
+        if (Number.isNaN(when.getTime())) {
+          res.status(400).json({ error: "Scheduled time is not a valid date" });
+          return;
+        }
+        updateData.scheduledFor = when;
+      } else {
+        updateData.scheduledFor = null;
+      }
+    }
     const [row] = await db.update(contentPostsTable).set(updateData).where(eq(contentPostsTable.id, id)).returning();
     if (!row) { res.status(404).json({ error: "Not found" }); return; }
     res.json(row);
