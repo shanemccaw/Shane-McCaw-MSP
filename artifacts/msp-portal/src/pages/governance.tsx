@@ -57,6 +57,9 @@ const METRIC_KEYS = [
   'compliance.externalInviteCount',
   'compliance.publicChannelCount',
   'governance.orphanedAccessPackageCount',
+  'governance.publicGroupCount',
+  'governance.publicTeamCount',
+  'compliance.eeeuSiteCount',
   'collaboration.teamsChannelCount',
   // Governance operations
   'governance.overdueAccessReviewCount',

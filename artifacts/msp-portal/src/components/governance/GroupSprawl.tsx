@@ -1,5 +1,5 @@
 import React from 'react';
-import { Users, UserMinus, Globe, FolderX, Package, MailWarning } from 'lucide-react';
+import { Users, UserMinus, Globe, FolderX, Package, MailWarning, UsersRound, AppWindow, FolderOpen } from 'lucide-react';
 import {
   ResolvedMetric,
   resolvedValue,
@@ -29,6 +29,9 @@ const SPRAWL_ROWS: {
   { key: 'compliance.externalInviteCount', label: 'External Invites', caption: 'Pending/recent external invitations', icon: MailWarning },
   { key: 'compliance.publicChannelCount', label: 'Public Channels', caption: 'Org-wide visible Teams channels', icon: Users },
   { key: 'governance.orphanedAccessPackageCount', label: 'Orphaned Access Packages', caption: 'Entitlement packages with no owner', icon: Package },
+  { key: 'governance.publicGroupCount', label: 'Public Groups', caption: 'M365 Groups discoverable/joinable by anyone', icon: UsersRound },
+  { key: 'governance.publicTeamCount', label: 'Public Teams', caption: 'Whole Teams discoverable/joinable by anyone', icon: AppWindow },
+  { key: 'compliance.eeeuSiteCount', label: 'SharePoint EEEU Sharing', caption: 'Sites shared with Everyone Except External Users', icon: FolderOpen },
 ];
 
 interface GroupSprawlProps {
@@ -59,7 +62,7 @@ export const GroupSprawl: React.FC<GroupSprawlProps> = ({ metrics }) => {
             const band = value != null ? riskCountBand(value) : null;
             const Icon = def.icon;
             return (
-              <li key={def.key} className="py-2.5 flex items-center justify-between gap-3">
+              <li key={def.key} data-testid={`sprawl-row-${def.key}`} className="py-2.5 flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 bg-secondary text-muted-foreground">
                     <Icon className="w-3.5 h-3.5" />

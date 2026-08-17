@@ -313,6 +313,34 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     smartBands: RISK_COUNT_BANDS,
   },
   {
+    // #1117: genuinely new check -- governance:public-groups-discoverable
+    // ships alongside this entry (2026-08-17-governance-public-groups-1117.sql).
+    key: "governance.publicGroupCount",
+    label: "Public Groups",
+    valueType: "count",
+    shape: "scalar",
+    sourceType: "monitor_profile",
+    sourceKey: "governance:public-groups-discoverable",
+    scope: "customer",
+    status: "available",
+    smartEligible: false,
+  },
+  {
+    // #1117: check itself shipped by #396 (2026-08-12-public-teams-
+    // discoverability-396.sql) but was deliberately left unwired to the
+    // metric registry as that migration's own follow-up scope -- this is
+    // that follow-up.
+    key: "governance.publicTeamCount",
+    label: "Public Teams",
+    valueType: "count",
+    shape: "scalar",
+    sourceType: "monitor_profile",
+    sourceKey: "governance:public-teams-discoverable",
+    scope: "customer",
+    status: "available",
+    smartEligible: false,
+  },
+  {
     key: "governance.accessReviewDriftCount",
     label: "Access Review Drift",
     valueType: "count",
@@ -704,6 +732,27 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     denominatorMetric: "compliance.sharePointSiteCount",
     sourceType: "monitor_profile",
     sourceKey: "compliance:overshared-sites",
+    scope: "customer",
+    status: "available",
+    smartEligible: true,
+    smartDefaultTarget: 0,
+    smartBands: RISK_COUNT_BANDS,
+  },
+  {
+    // #1117: check itself shipped by #357 (2026-08-03-sharepoint-per-site-
+    // eeeu-enumeration-357.sql) but that migration's own FOLLOW-UP section
+    // explicitly deferred "a metric-registry entry pointing a metric at
+    // sourceKey compliance:eeeu-site-sharing" as separate scope -- this is
+    // that follow-up. Note compliance.oversharedSiteCount above is UNCHANGED
+    // and still points at the older tenant-aggregate compliance:overshared-
+    // sites check, per #357's explicit "not a rewrite" decision.
+    key: "compliance.eeeuSiteCount",
+    label: "SharePoint EEEU Sharing",
+    valueType: "count",
+    shape: "scalar",
+    denominatorMetric: "compliance.sharePointSiteCount",
+    sourceType: "monitor_profile",
+    sourceKey: "compliance:eeeu-site-sharing",
     scope: "customer",
     status: "available",
     smartEligible: true,

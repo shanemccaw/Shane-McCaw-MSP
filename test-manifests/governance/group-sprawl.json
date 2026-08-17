@@ -1,0 +1,116 @@
+{
+  "issue": 1117,
+  "feature": "Governance: Add Public Groups, Public Teams, SharePoint EEEU to Group & Collaboration Sprawl (GroupSprawl.tsx, /governance page). Wires two already-existing-but-unregistered monitor checks (governance:public-teams-discoverable / #396, compliance:eeeu-site-sharing / #357) plus one genuinely new check (governance:public-groups-discoverable) into the metric registry and the GroupSprawl card.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "PENDING_1117_COMMIT",
+
+  "notes": [
+    "INVESTIGATION FINDING: the issue premise (net-new checks for all three) was only 1/3 right. governance:public-teams-discoverable (#396, 2026-08-12-public-teams-discoverability-396.sql) and compliance:eeeu-site-sharing (#357, 2026-08-03-sharepoint-per-site-eeeu-enumeration-357.sql) already exist in the monitor_checks catalog and already run daily -- both migrations own text deliberately deferred the metric-registry wiring as follow-up scope. Only governance:public-groups-discoverable is genuinely new (2026-08-17-governance-public-groups-1117.sql, this issue).",
+    "SHANE TO-DO: the new monitor_checks catalog row (governance:public-groups-discoverable) is not live until Shane runs lib/db/migrations/manual/2026-08-17-governance-public-groups-1117.sql by hand. Until then, POST /api/dashboard/resolve for governance.publicGroupCount resolves cleanly (status is not error -- the registry entry exists) but returns status not_available (no monitor_checks row yet). governance.publicTeamCount and compliance.eeeuSiteCount need no new migration -- their checks already run daily -- but need at least one completed scan against the target tenant to have collected data; until then they also resolve status not_available, which is the honest, expected state, not a bug.",
+    "WHY NOT A VALUE ASSERTION: none of apiTests below assert a specific numeric value for the three new metrics, on purpose -- whether the testbed tenant has zero or nonzero public groups/teams/EEEU sites is real tenant data that can change, and (per the note above) the underlying checks may not have collected data yet in this environment. The assertions instead prove the wiring is correct: the metric keys are recognized by the registry (never unknown metric) and the UI genuinely renders a row for each, reading resolvedValue the same way every other GroupSprawl row does.",
+    "JSONPATH LIMITATION: BuildConsole HttpTestExecutor jsonPath tokenizer only supports dot-propName (alnum/underscore) and bracket-N array-index segments -- it cannot address an object key that itself contains a literal dot, like the results object keyed by governance.publicGroupCount. So D1-D4 below assert via containsAny/containsNone against the raw response body text (documented, real limitation) rather than a structured jsonPath into a specific metric result.",
+    "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL (the .replit.dev dev origin). TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD -- same testbed Assessment-role account other manifests in this repo use (see m365-health-breakdown-gate.json)."
+  ],
+
+  "apiTests": [
+    {
+      "name": "SETUP -- log in as the designated TESTBED Assessment account; extract the bearer.",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "D1 -- POST /api/dashboard/resolve for all 3 new/newly-wired metric keys resolves 200 with no unknown-metric error for any of them -- proves all 3 registry entries (governance.publicGroupCount, governance.publicTeamCount, compliance.eeeuSiteCount) are real and recognized, whether or not their backing checks have collected data yet in this environment.",
+      "method": "POST",
+      "path": "/api/dashboard/resolve",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "metrics": ["governance.publicGroupCount", "governance.publicTeamCount", "compliance.eeeuSiteCount"] },
+      "expect": { "status": 200, "containsNone": ["unknown metric"] }
+    },
+    {
+      "name": "D2 -- the response echoes back a result entry keyed by governance.publicGroupCount (the net-new check metric).",
+      "method": "POST",
+      "path": "/api/dashboard/resolve",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "metrics": ["governance.publicGroupCount", "governance.publicTeamCount", "compliance.eeeuSiteCount"] },
+      "expect": { "status": 200, "containsAny": ["governance.publicGroupCount"] }
+    },
+    {
+      "name": "D3 -- the response echoes back a result entry keyed by governance.publicTeamCount (#396 now-wired check).",
+      "method": "POST",
+      "path": "/api/dashboard/resolve",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "metrics": ["governance.publicGroupCount", "governance.publicTeamCount", "compliance.eeeuSiteCount"] },
+      "expect": { "status": 200, "containsAny": ["governance.publicTeamCount"] }
+    },
+    {
+      "name": "D4 -- the response echoes back a result entry keyed by compliance.eeeuSiteCount (#357 now-wired check).",
+      "method": "POST",
+      "path": "/api/dashboard/resolve",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "metrics": ["governance.publicGroupCount", "governance.publicTeamCount", "compliance.eeeuSiteCount"] },
+      "expect": { "status": 200, "containsAny": ["compliance.eeeuSiteCount"] }
+    }
+  ],
+
+  "uiSteps": [
+    {
+      "name": "goto the real login URL (msp-portal outer WouterRouter has base=BASE_PATH=/portal).",
+      "action": "goto",
+      "target": "/portal/login"
+    },
+    {
+      "name": "WAIT for the login form to hydrate before typing.",
+      "action": "expect",
+      "selector": "#email",
+      "state": "visible"
+    },
+    { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
+    { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
+    {
+      "name": "Primary login -- CRITICAL: every downstream assertion needs a real authenticated session.",
+      "action": "click",
+      "selector": "[data-testid='login-submit']",
+      "critical": true,
+      "captureResponse": {
+        "urlPattern": "/api/auth/login",
+        "expect": { "status": 200 }
+      }
+    },
+    {
+      "name": "goto the real Governance page. Branded, slug-scoped route (App.tsx SlugInnerSwitch, base scoped to the slug, nested under the outer /portal base) -- same trap documented in m365-health-breakdown-gate.json for /m365-health.",
+      "action": "goto",
+      "target": "/portal/shane-mccaw-consulting/governance"
+    },
+    {
+      "name": "WAIT for the Group and Collaboration Sprawl card to render before asserting its new rows.",
+      "action": "expect",
+      "selector": "[data-testid='sprawl-row-governance.publicGroupCount']",
+      "state": "visible"
+    },
+    {
+      "name": "D5 -- the Public Groups row (net-new check) renders in the real DOM with its real label text.",
+      "action": "expect",
+      "selector": "[data-testid='sprawl-row-governance.publicGroupCount']",
+      "state": "visible",
+      "textContains": "Public Groups"
+    },
+    {
+      "name": "D6 -- the Public Teams row (#396, now wired) renders in the real DOM with its real label text.",
+      "action": "expect",
+      "selector": "[data-testid='sprawl-row-governance.publicTeamCount']",
+      "state": "visible",
+      "textContains": "Public Teams"
+    },
+    {
+      "name": "D7 -- the SharePoint EEEU row (#357, now wired) renders in the real DOM with its real label text.",
+      "action": "expect",
+      "selector": "[data-testid='sprawl-row-compliance.eeeuSiteCount']",
+      "state": "visible",
+      "textContains": "EEEU"
+    }
+  ]
+}
