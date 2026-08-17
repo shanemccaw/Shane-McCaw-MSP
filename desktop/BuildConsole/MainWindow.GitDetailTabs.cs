@@ -244,14 +244,7 @@ namespace BuildConsole
             AttachTabContextMenu(newTab, pane);
             AttachTabDragHandlers(newTab);
 
-            closeBtn.Click += (s, e) =>
-            {
-                var currentPane = newTab.Parent as TabControl ?? pane;
-                currentPane.Items.Remove(newTab);
-                if (currentPane.Items.Count > 0)
-                    currentPane.SelectedIndex = Math.Max(0, currentPane.Items.Count - 1);
-                CollapseEmptySplitPanes();
-            };
+            closeBtn.Click += (s, e) => CloseTab(newTab, pane);
 
             pane.Items.Add(newTab);
             pane.SelectedItem = newTab;

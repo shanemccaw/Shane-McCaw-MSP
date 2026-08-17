@@ -84,8 +84,8 @@ namespace BuildConsole.Services
             int port = s.SshPort > 0 ? s.SshPort : 22;
             var escapedCmd = command.Replace("\"", "\\\"");
 
-            // Build OpenSSH arguments
-            var args = $"-i \"{s.SshKeyPath}\" -p {port} -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 -o BatchMode=yes {target} \"{escapedCmd}\"";
+            // Build OpenSSH arguments (-n redirects stdin from null, -T disables tty allocation)
+            var args = $"-i \"{s.SshKeyPath}\" -p {port} -n -T -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 -o BatchMode=yes {target} \"{escapedCmd}\"";
 
             ActivityLog.Log(LogChannel, $"Executing over SSH ({target}): {command}");
             ShaneAppStreamService.Instance.AppendLine($"[SSH] > {command}", ShaneAppLogLevel.Info);
@@ -100,6 +100,7 @@ namespace BuildConsole.Services
                 {
                     FileName = sshExe,
                     Arguments = args,
+                    RedirectStandardInput = true,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     UseShellExecute = false,
@@ -127,6 +128,7 @@ namespace BuildConsole.Services
                 };
 
                 proc.Start();
+                try { proc.StandardInput.Close(); } catch { }
                 proc.BeginOutputReadLine();
                 proc.BeginErrorReadLine();
 
@@ -145,8 +147,8 @@ namespace BuildConsole.Services
                 }
 
                 result.ExitCode = proc.ExitCode;
-                result.Output = outSb.ToString().TrimEnd();
-                result.Error = errSb.ToString().TrimEnd();
+                result.Output = CleanSshText(outSb.ToString());
+                result.Error = CleanSshText(errSb.ToString());
 
                 if (result.Success)
                 {
@@ -170,21 +172,46 @@ namespace BuildConsole.Services
             return result;
         }
 
+        private static string CleanSshText(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return "";
+            var lines = text.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.RemoveEmptyEntries);
+            var clean = System.Linq.Enumerable.Where(lines, l =>
+                !l.Contains("Welcome to the Replit SSH Proxy", StringComparison.OrdinalIgnoreCase) &&
+                !l.Contains("docs.replit.com/replit-workspace/ssh", StringComparison.OrdinalIgnoreCase) &&
+                !l.StartsWith("From github.com", StringComparison.OrdinalIgnoreCase) &&
+                !l.Contains("* branch", StringComparison.OrdinalIgnoreCase) &&
+                !l.Contains("-> FETCH_HEAD", StringComparison.OrdinalIgnoreCase)
+            );
+            return string.Join("\n", clean).Trim();
+        }
+
         /// <summary>
-        /// Triggers a live deployment on Replit: git pull origin main, builds dependencies, and restarts services.
+        /// Triggers a live deployment on Replit: pulls latest main into the remote workspace.
         /// </summary>
         public async Task<SshCommandResult> DeployAsync(Action<string>? onOutput = null)
         {
             var s = BuildConsoleSettings.Load();
             var dir = string.IsNullOrWhiteSpace(s.SshRemoteDir) ? "/home/runner/workspace" : s.SshRemoteDir;
 
-            var deployScript = $"cd {dir} && git fetch origin main && git reset --hard origin/main && npm run build";
+            var deployScript = $"cd {dir} && (git pull --ff-only origin main || (git fetch origin main && git reset --hard origin/main))";
             ActivityLog.Log(LogChannel, $"Triggering SSH deploy in {dir}…");
             ShaneAppStreamService.Instance.BeginRun("SSH Deploy", $"Target: {dir}");
 
             var result = await ExecuteCommandAsync(deployScript, onOutput, timeoutSeconds: 180);
-            ShaneAppStreamService.Instance.EndRun(result.Success, result.Success ? "Deploy successful" : $"Deploy failed (exit code {result.ExitCode})");
+            ShaneAppStreamService.Instance.EndRun(result.Success, result.Success ? "Deploy pull successful" : $"Deploy pull failed (exit code {result.ExitCode})");
             return result;
+        }
+
+        /// <summary>
+        /// Triggers a deferred restart of the remote Replit container via PID 1 signal.
+        /// </summary>
+        public async Task<SshCommandResult> RestartServerAsync(Action<string>? onOutput = null)
+        {
+            var s = BuildConsoleSettings.Load();
+            var dir = string.IsNullOrWhiteSpace(s.SshRemoteDir) ? "/home/runner/workspace" : s.SshRemoteDir;
+            var restartScript = $"cd {dir} && ( sleep 2; kill 1 ) >/dev/null 2>&1 & echo 'restart scheduled'";
+            return await ExecuteCommandAsync(restartScript, onOutput, timeoutSeconds: 15);
         }
 
         /// <summary>
@@ -198,8 +225,15 @@ namespace BuildConsole.Services
             var res = await ExecuteCommandAsync($"git -C {dir} rev-parse HEAD", timeoutSeconds: 15);
             if (res.Success && !string.IsNullOrWhiteSpace(res.Output))
             {
-                var hash = res.Output.Trim().Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)[0];
-                return hash;
+                var lines = res.Output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                foreach (var line in lines)
+                {
+                    var trimmed = line.Trim();
+                    if (System.Text.RegularExpressions.Regex.IsMatch(trimmed, @"^[0-9a-fA-F]{7,40}$"))
+                    {
+                        return trimmed;
+                    }
+                }
             }
             return null;
         }

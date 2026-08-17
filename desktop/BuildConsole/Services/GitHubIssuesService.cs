@@ -160,6 +160,70 @@ namespace BuildConsole.Services
             }
         }
 
+        public static async Task<bool> AddLabelAsync(int issueNumber, string label)
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = "gh",
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true,
+            };
+            psi.ArgumentList.Add("issue");
+            psi.ArgumentList.Add("edit");
+            psi.ArgumentList.Add(issueNumber.ToString());
+            psi.ArgumentList.Add("--repo");
+            psi.ArgumentList.Add(Repo);
+            psi.ArgumentList.Add("--add-label");
+            psi.ArgumentList.Add(label);
+
+            using var proc = new Process { StartInfo = psi };
+            try
+            {
+                proc.Start();
+                await proc.WaitForExitAsync();
+                return proc.ExitCode == 0;
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("github", $"gh issue edit --add-label failed for #{issueNumber}: {ex.Message}");
+                return false;
+            }
+        }
+
+        public static async Task<bool> RemoveLabelAsync(int issueNumber, string label)
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = "gh",
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true,
+            };
+            psi.ArgumentList.Add("issue");
+            psi.ArgumentList.Add("edit");
+            psi.ArgumentList.Add(issueNumber.ToString());
+            psi.ArgumentList.Add("--repo");
+            psi.ArgumentList.Add(Repo);
+            psi.ArgumentList.Add("--remove-label");
+            psi.ArgumentList.Add(label);
+
+            using var proc = new Process { StartInfo = psi };
+            try
+            {
+                proc.Start();
+                await proc.WaitForExitAsync();
+                return proc.ExitCode == 0;
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("github", $"gh issue edit --remove-label failed for #{issueNumber}: {ex.Message}");
+                return false;
+            }
+        }
+
         private class OpenIssueNumberRow
         {
             public int Number { get; set; }

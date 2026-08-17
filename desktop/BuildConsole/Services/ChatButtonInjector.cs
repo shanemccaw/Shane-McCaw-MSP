@@ -106,6 +106,7 @@ namespace BuildConsole.Services
       effort: flags.effort || null,
       cwd: flags.cwd || null,
       mode: flags.mode || null,
+      chatUrl: window.location.href,
     });
   }
 
@@ -152,6 +153,7 @@ namespace BuildConsole.Services
       githubNumber: effectiveNumber,
       blockedByNumbers: blockedByNumbers,
       correlation: correlation,
+      chatUrl: window.location.href,
     });
   }
 

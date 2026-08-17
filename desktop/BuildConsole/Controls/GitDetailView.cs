@@ -142,8 +142,10 @@ namespace BuildConsole.Controls
             SetSideColumnVisibility(true, 280);
             AddHeaderRow("⚡", DisplayTitle(epic), epic.IssueNumber);
 
+            // Check if blocked
+            bool isBlocked = epic.IsBlocked || epic.BlockedByNumber.HasValue;
             var actionsRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 14) };
-            actionsRow.Children.Add(StatePill(epic.Status));
+            actionsRow.Children.Add(StatePill(epic.Status, isBlocked));
 
             int capturedEpicNumber = epic.IssueNumber;
             if (linkedChat != null && !string.IsNullOrEmpty(linkedChat.ClaudeUrl))
@@ -185,6 +187,14 @@ namespace BuildConsole.Controls
             }
 
             _mainColumn.Children.Add(actionsRow);
+
+            UIElement? blockedBanner = null;
+            if (isBlocked)
+            {
+                blockedBanner = CreateBlockedBanner(isEpic: true, epic.BlockedByNumber, epic.BlockedByTitle, isLabelBlockedOnly: epic.IsBlocked && !epic.BlockedByNumber.HasValue);
+                _mainColumn.Children.Add(blockedBanner);
+            }
+
             AddBody(epic.Body);
 
             var loading = Meta($"Loading assigned issues for #{epic.IssueNumber}…");
@@ -201,6 +211,35 @@ namespace BuildConsole.Controls
             try
             {
                 var client = new GitHubApiClient(settings.GitHubPat);
+                // Background check for live blocked status if not already known
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        var blocker = await client.GetOpenBlockedByAsync(epic.IssueNumber);
+                        if (blocker != null)
+                        {
+                            Dispatcher.Invoke(() =>
+                            {
+                                if (capturedEpicNumber != epic.IssueNumber) return;
+                                epic.IsBlocked = true;
+                                epic.BlockedByNumber = blocker.Number;
+                                epic.BlockedByTitle = blocker.Title;
+                                if (blockedBanner == null)
+                                {
+                                    blockedBanner = CreateBlockedBanner(isEpic: true, blocker.Number, blocker.Title);
+                                    int insertIdx = _mainColumn.Children.IndexOf(actionsRow) + 1;
+                                    if (insertIdx > 0 && insertIdx <= _mainColumn.Children.Count)
+                                        _mainColumn.Children.Insert(insertIdx, blockedBanner);
+                                    else
+                                        _mainColumn.Children.Add(blockedBanner);
+                                }
+                            });
+                        }
+                    }
+                    catch { }
+                });
+
                 // Real sub-issue graph (#910) — the epic's actual children, not
                 // the never-synced bt_issues.epic_id table.
                 var subs = await client.GetSubIssuesAsync(epic.IssueNumber);
@@ -345,7 +384,18 @@ namespace BuildConsole.Controls
             };
             _mainColumn.Children.Add(refreshBtn);
 
-            _mainColumn.Children.Add(StatePill(issue.Status));
+            // Check if blocked
+            bool isBlocked = issue.IsBlocked || issue.BlockedByNumber.HasValue;
+            var statePill = StatePill(issue.Status, isBlocked);
+            _mainColumn.Children.Add(statePill);
+
+            // Blocked Banner if blocked
+            UIElement? blockedBanner = null;
+            if (isBlocked)
+            {
+                blockedBanner = CreateBlockedBanner(isEpic: false, issue.BlockedByNumber, issue.BlockedByTitle, isLabelBlockedOnly: issue.IsBlocked && !issue.BlockedByNumber.HasValue);
+                _mainColumn.Children.Add(blockedBanner);
+            }
 
             // Linked epic shown in a subtle call out box above the description.
             if (linkedEpicNumber.HasValue)
@@ -366,6 +416,7 @@ namespace BuildConsole.Controls
 
                 var settings = BuildConsoleSettings.Load();
                 List<GitHubIssueComment> comments = new();
+                GitHubIssueResult? blocker = null;
                 string? errorMsg = null;
 
                 if (!settings.HasGitHubPat)
@@ -377,7 +428,11 @@ namespace BuildConsole.Controls
                     try
                     {
                         var client = new GitHubApiClient(settings.GitHubPat);
-                        comments = await client.GetIssueCommentsAsync(issue.IssueNumber);
+                        var commentsTask = client.GetIssueCommentsAsync(issue.IssueNumber);
+                        var blockerTask = client.GetOpenBlockedByAsync(issue.IssueNumber);
+                        await Task.WhenAll(commentsTask, blockerTask);
+                        comments = await commentsTask;
+                        blocker = await blockerTask;
                     }
                     catch (Exception ex)
                     {
@@ -388,6 +443,23 @@ namespace BuildConsole.Controls
                 Dispatcher.Invoke(() =>
                 {
                     if (_loadedIssue?.IssueNumber != issue.IssueNumber) return;
+
+                    // If blocker discovered on live fetch
+                    if (blocker != null)
+                    {
+                        issue.IsBlocked = true;
+                        issue.BlockedByNumber = blocker.Number;
+                        issue.BlockedByTitle = blocker.Title;
+                        if (blockedBanner == null)
+                        {
+                            blockedBanner = CreateBlockedBanner(isEpic: false, blocker.Number, blocker.Title);
+                            int insertIdx = _mainColumn.Children.IndexOf(statePill) + 1;
+                            if (insertIdx > 0 && insertIdx <= _mainColumn.Children.Count)
+                                _mainColumn.Children.Insert(insertIdx, blockedBanner);
+                            else
+                                _mainColumn.Children.Add(blockedBanner);
+                        }
+                    }
 
                     _mainColumn.Children.Remove(loading);
 
@@ -561,8 +633,10 @@ namespace BuildConsole.Controls
             };
         }
 
-        private UIElement StatePill(string status)
+        private UIElement StatePill(string status, bool isBlocked = false)
         {
+            var panel = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 10), HorizontalAlignment = HorizontalAlignment.Left };
+
             bool closed = string.Equals(status, "CLOSED", StringComparison.OrdinalIgnoreCase);
             var border = new Border
             {
@@ -571,8 +645,7 @@ namespace BuildConsole.Controls
                 BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(10),
                 Padding = new Thickness(9, 3, 9, 3),
-                Margin = new Thickness(0, 0, 0, 10),
-                HorizontalAlignment = HorizontalAlignment.Left,
+                Margin = new Thickness(0, 0, 8, 0),
                 Child = new TextBlock
                 {
                     Text = closed ? "CLOSED" : "OPEN",
@@ -581,7 +654,156 @@ namespace BuildConsole.Controls
                     Foreground = closed ? GetBrush("RedBrush") : GetBrush("GreenBrush"),
                 },
             };
-            return border;
+            panel.Children.Add(border);
+
+            if (isBlocked)
+            {
+                var blockedPill = new Border
+                {
+                    Background = new SolidColorBrush(Color.FromArgb(40, 243, 139, 168)),
+                    BorderBrush = GetBrush("RedBrush"),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(10),
+                    Padding = new Thickness(9, 3, 9, 3),
+                    Child = new TextBlock
+                    {
+                        Text = "🚫 BLOCKED",
+                        FontSize = 10,
+                        FontWeight = FontWeights.Bold,
+                        Foreground = GetBrush("RedBrush"),
+                    },
+                };
+                panel.Children.Add(blockedPill);
+            }
+
+            return panel;
+        }
+
+        private Border CreateBlockedBanner(bool isEpic, int? blockerNumber, string? blockerTitle, bool isLabelBlockedOnly = false)
+        {
+            var banner = new Border
+            {
+                Background = new SolidColorBrush(Color.FromArgb(28, 243, 139, 168)),
+                BorderBrush = GetBrush("RedBrush"),
+                BorderThickness = new Thickness(1.5),
+                CornerRadius = new CornerRadius(8),
+                Padding = new Thickness(14, 10, 14, 10),
+                Margin = new Thickness(0, 0, 0, 16),
+            };
+
+            var mainGrid = new Grid();
+            mainGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            mainGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+            // 1. Whammy Block Critter Mascot on the left
+            try
+            {
+                var whammyCritter = IssueChompAnimation.BuildWhammyElement(scale: 0.95);
+                whammyCritter.Margin = new Thickness(0, 0, 14, 0);
+                whammyCritter.VerticalAlignment = VerticalAlignment.Center;
+                whammyCritter.ToolTip = "Whammy: BLOCKED!";
+                whammyCritter.Cursor = Cursors.Hand;
+                Grid.SetColumn(whammyCritter, 0);
+                mainGrid.Children.Add(whammyCritter);
+            }
+            catch { }
+
+            var stack = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+            Grid.SetColumn(stack, 1);
+
+            // Header line
+            var headerRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 4) };
+            headerRow.Children.Add(new TextBlock
+            {
+                Text = "🚫 BLOCKED",
+                FontSize = 13,
+                FontWeight = FontWeights.Bold,
+                Foreground = GetBrush("RedBrush"),
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 8, 0),
+            });
+
+            headerRow.Children.Add(new TextBlock
+            {
+                Text = isEpic ? "This Epic is currently blocked and cannot proceed." : "This Issue is currently blocked and cannot proceed.",
+                FontSize = 12,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = GetBrush("TextBrush"),
+                VerticalAlignment = VerticalAlignment.Center,
+            });
+            stack.Children.Add(headerRow);
+
+            // Blocker details row
+            if (blockerNumber.HasValue)
+            {
+                var detailsPanel = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 4, 0, 0) };
+                detailsPanel.Children.Add(new TextBlock
+                {
+                    Text = "Blocked by: ",
+                    FontSize = 12,
+                    Foreground = GetBrush("Subtext0Brush"),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(0, 0, 6, 0),
+                });
+
+                // Clickable blocker card
+                var blockerCard = new Border
+                {
+                    Background = GetBrush("Surface0Brush"),
+                    BorderBrush = GetBrush("RedBrush"),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(4),
+                    Padding = new Thickness(8, 4, 10, 4),
+                    Cursor = Cursors.Hand,
+                    ToolTip = $"Click to open Blocker Issue #{blockerNumber.Value} in a new tab",
+                };
+
+                var cardContent = new StackPanel { Orientation = Orientation.Horizontal };
+                cardContent.Children.Add(new TextBlock
+                {
+                    Text = $"🔒 #{blockerNumber.Value}",
+                    FontSize = 12,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = GetBrush("RedBrush"),
+                    Margin = new Thickness(0, 0, 6, 0),
+                    VerticalAlignment = VerticalAlignment.Center,
+                });
+
+                if (!string.IsNullOrWhiteSpace(blockerTitle))
+                {
+                    cardContent.Children.Add(new TextBlock
+                    {
+                        Text = blockerTitle,
+                        FontSize = 12,
+                        FontWeight = FontWeights.Medium,
+                        Foreground = GetBrush("TextBrush"),
+                        VerticalAlignment = VerticalAlignment.Center,
+                    });
+                }
+
+                blockerCard.Child = cardContent;
+                blockerCard.MouseEnter += (s, e) => blockerCard.Background = GetBrush("Surface1Brush");
+                blockerCard.MouseLeave += (s, e) => blockerCard.Background = GetBrush("Surface0Brush");
+                blockerCard.MouseLeftButtonUp += (s, e) => OpenIssueNumberRequested?.Invoke(this, blockerNumber.Value);
+
+                detailsPanel.Children.Add(blockerCard);
+                stack.Children.Add(detailsPanel);
+            }
+            else
+            {
+                var labelNotice = new TextBlock
+                {
+                    Text = "Marked with the 'blocked' label. Resolve prerequisite dependencies before continuing.",
+                    FontSize = 12,
+                    Foreground = GetBrush("Subtext0Brush"),
+                    Margin = new Thickness(0, 2, 0, 0),
+                };
+                stack.Children.Add(labelNotice);
+            }
+
+            mainGrid.Children.Add(stack);
+            banner.Child = mainGrid;
+            return banner;
         }
 
         private UIElement RenderMarkdownBody(string? markdown, double baseFontSize = 13, System.Collections.Generic.HashSet<string>? executedMigrations = null, BuildConsole.Services.TestHistoryLookup? latestTestRuns = null)

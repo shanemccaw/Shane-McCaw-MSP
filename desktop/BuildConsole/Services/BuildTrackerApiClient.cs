@@ -28,6 +28,8 @@ namespace BuildConsole.Services
         public string? SessionId { get; set; }
         /// <summary>Git #826 — set by a Reply action: tells the watcher to launch this item with --resume &lt;this&gt; instead of a fresh session.</summary>
         public string? ResumeSessionId { get; set; }
+        /// <summary>The full Claude chat URL that queued this build request.</summary>
+        public string? ChatUrl { get; set; }
         /// <summary>Git #905 — the server's own `updatedAt` was already in the response (`GET /extension/queue` spreads the whole row), just never captured client-side; used to show "done {time}" on the new Completed tile.</summary>
         public DateTimeOffset? UpdatedAt { get; set; }
     }
@@ -512,7 +514,7 @@ namespace BuildConsole.Services
         private class SqlExecuteResponse { public List<SqlStatementResult> Statements { get; set; } = new(); }
 
         /// <summary>Git #814 — same POST the extension's "📋 Queue" button and background.js's queueBuild() already use, now called directly from the WPF app's own injected chat buttons. Git #826 added resumeSessionId — set by a Reply action so the watcher launches with --resume instead of a fresh session.</summary>
-        public Task<HttpResponseMessage> QueueBuildAsync(string title, string prompt, string? model, string? effort, string? cwd, int? githubNumber, List<int>? blockedByNumbers, string? resumeSessionId = null) =>
+        public Task<HttpResponseMessage> QueueBuildAsync(string title, string prompt, string? model, string? effort, string? cwd, int? githubNumber, List<int>? blockedByNumbers, string? resumeSessionId = null, string? chatUrl = null) =>
             TrackAsync($"POST queue \"{title}\"", () => _http.PostAsJsonAsync("api/admin/build-tracker/extension/queue", new
             {
                 title,
@@ -523,6 +525,7 @@ namespace BuildConsole.Services
                 githubNumber,
                 blockedByNumbers,
                 resumeSessionId,
+                chatUrl,
             }));
 
         /// <summary>Git #826 — sessionId (captured from this run's own stream-json output) is stored so a later Reply can resume this exact conversation.</summary>

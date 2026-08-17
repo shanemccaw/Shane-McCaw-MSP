@@ -36,12 +36,37 @@ namespace BuildConsole.Services
         private static readonly string LogDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "BuildConsole", "logs");
 
+        private static readonly string? WorkspaceLogDir;
+
+        static ActivityLog()
+        {
+            try
+            {
+                var dir = new DirectoryInfo(AppDomain.CurrentDomain.BaseDirectory);
+                while (dir != null)
+                {
+                    if (Directory.Exists(Path.Combine(dir.FullName, ".git")) ||
+                        File.Exists(Path.Combine(dir.FullName, ".git")) ||
+                        File.Exists(Path.Combine(dir.FullName, "Shane-McCaw-MSP.sln")))
+                    {
+                        WorkspaceLogDir = Path.Combine(dir.FullName, ".logs");
+                        break;
+                    }
+                    dir = dir.Parent;
+                }
+            }
+            catch { }
+        }
+
         public static void Attach(Dispatcher uiDispatcher) => _uiDispatcher = uiDispatcher;
 
-        /// <summary>The durable log file the current day's lines are appended to (so a
-        /// caller — or Shane — can point at exactly where to read the trail).</summary>
+        /// <summary>The durable log file the current day's lines are appended to in AppData.</summary>
         public static string CurrentLogFilePath =>
             Path.Combine(LogDir, $"activity-{DateTime.Now:yyyy-MM-dd}.log");
+
+        /// <summary>The durable log file in the repository .logs directory for AI agents and IDE inspection.</summary>
+        public static string? CurrentWorkspaceLogFilePath =>
+            WorkspaceLogDir != null ? Path.Combine(WorkspaceLogDir, $"activity-{DateTime.Now:yyyy-MM-dd}.log") : null;
 
         public static void Log(string channel, string message)
         {
@@ -70,8 +95,17 @@ namespace BuildConsole.Services
             {
                 lock (_fileGate)
                 {
+                    // 1. AppData per-day log
                     Directory.CreateDirectory(LogDir);
                     File.AppendAllText(CurrentLogFilePath, line + Environment.NewLine);
+
+                    // 2. Workspace repository .logs for local AI agents & tools
+                    if (WorkspaceLogDir != null)
+                    {
+                        Directory.CreateDirectory(WorkspaceLogDir);
+                        File.AppendAllText(Path.Combine(WorkspaceLogDir, $"activity-{DateTime.Now:yyyy-MM-dd}.log"), line + Environment.NewLine);
+                        File.AppendAllText(Path.Combine(WorkspaceLogDir, "activity-latest.log"), line + Environment.NewLine);
+                    }
                 }
             }
             catch

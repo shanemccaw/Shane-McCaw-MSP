@@ -63,3 +63,7 @@ scripts/build-queue-watcher.config.json
 # (test-results/{issue}-{timestamp}.json), written locally by BuildConsole
 # on every run; ephemeral output, never meant to be committed.
 test-results/
+
+# BuildConsole local activity and output logs
+.logs/
+*.log

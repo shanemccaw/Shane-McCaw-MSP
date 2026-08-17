@@ -139,13 +139,7 @@ namespace BuildConsole
             header.Children.Add(closeBtn);
 
             var tab = new TabItem { Tag = entry.Tag, Header = header, Content = content };
-            closeBtn.Click += (s, e) =>
-            {
-                var owner = tab.Parent as TabControl ?? pane;
-                owner.Items.Remove(tab);
-                if (owner.Items.Count > 0)
-                    owner.SelectedIndex = Math.Max(0, owner.Items.Count - 1);
-            };
+            closeBtn.Click += (s, e) => CloseTab(tab, pane);
             AttachTabContextMenu(tab, pane);
             AttachTabDragHandlers(tab);
             pane.Items.Add(tab);

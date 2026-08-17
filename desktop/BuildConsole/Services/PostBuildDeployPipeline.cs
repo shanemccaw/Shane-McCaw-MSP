@@ -196,19 +196,29 @@ namespace BuildConsole.Services
             string expectedShort = TryGit(_repoRoot, "rev-parse --short HEAD");
             string expectedFull = TryGit(_repoRoot, "rev-parse HEAD");
             result.ExpectedCommit = expectedShort;
-            ActivityLog.Log(Channel, $"[1/5] Build completed: #{queueItemId} '{title}' (exit 0). Local HEAD = {Short(expectedShort)}. Starting auto deploy+verify+test.");
+            ActivityLog.Log(Channel, $"[1/5] Build completed: #{queueItemId} '{title}' (exit 0). Local HEAD = {Short(expectedShort)}. ");
+            
+            // Read the CURRENT live commit BEFORE triggering (via SSH if enabled, else HTTP deploy-status).
+            var settings = BuildConsoleSettings.Load();
+            bool useSsh = settings.UseSshForDeploy && ReplitSshService.Instance.IsConfigured;
 
-            // Read the CURRENT live commit BEFORE triggering, exactly like trigger-deploy-and-wait.ps1.
             string oldHash;
             try
             {
-                var status = await _getDeployStatusAsync();
-                oldHash = status?.CommitHash ?? "";
+                if (useSsh)
+                {
+                    oldHash = (await ReplitSshService.Instance.GetRemoteCommitHashAsync()) ?? "";
+                }
+                else
+                {
+                    var status = await _getDeployStatusAsync();
+                    oldHash = status?.CommitHash ?? "";
+                }
             }
             catch (Exception ex)
             {
                 oldHash = "";
-                ActivityLog.Log(Channel, $"[1/5] Could not read current deploy-status before triggering ({ex.Message}) — proceeding; the hash flip / ancestry check is still the source of truth.");
+                ActivityLog.Log(Channel, $"[1/5] Could not read current deploy commit before triggering ({ex.Message}) — proceeding.");
             }
             result.OldCommit = oldHash;
 
@@ -227,11 +237,6 @@ namespace BuildConsole.Services
                 return result;
             }
 
-            // ── [2/5] Deploy the just-finished commit and CONFIRM it is genuinely live.
-            //
-            // Deliberate HYBRID mechanism split (see BUILD_LOG.md 2026-08-17) between what the
-            // concurrent SSH refactor (ReplitSshService) genuinely provides today and what it does
-            // not yet:
             //   • git PULL + build       → SSH when enabled+configured. ReplitSshService.DeployAsync
             //                              runs `git fetch origin main && git reset --hard origin/main
             //                              && npm run build` — a real, genuine pull+build. This is the
@@ -255,7 +260,7 @@ namespace BuildConsole.Services
             // an SSH `reset --hard origin/main`, #911's own `git pull --ff-only` is a harmless no-op and its
             // `kill 1` is what actually loads the commit. Once the SSH refactor adds a real detached
             // `kill 1` restart AND a startup-commit confirm, this whole block can move fully to SSH.
-            var settings = BuildConsoleSettings.Load();
+            settings = BuildConsoleSettings.Load();
             string newHash;
             string advNote = "";
             result.DeployTriggered = true;

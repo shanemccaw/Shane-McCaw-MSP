@@ -127,12 +127,7 @@ namespace BuildConsole
             AttachTabContextMenu(newTab, EditorTabs);
             AttachTabDragHandlers(newTab);
 
-            closeBtn.Click += (s, e) =>
-            {
-                EditorTabs.Items.Remove(newTab);
-                if (EditorTabs.Items.Count > 0)
-                    EditorTabs.SelectedIndex = Math.Max(0, EditorTabs.Items.Count - 1);
-            };
+            closeBtn.Click += (s, e) => CloseTab(newTab, EditorTabs);
 
             EditorTabs.Items.Add(newTab);
             EditorTabs.SelectedItem = newTab;

@@ -1830,6 +1830,7 @@ namespace BuildConsole.Controls
         {
             var it = _lastBoardIssues.FirstOrDefault(i => i.Number == number);
             if (it == null) return null;
+            var issueInTree = _milestones.SelectMany(m => m.Epics).SelectMany(e => e.Issues).FirstOrDefault(i => i.IssueNumber == number);
             return new GitIssue
             {
                 IssueNumber = it.Number,
@@ -1842,6 +1843,11 @@ namespace BuildConsole.Controls
                 DatabaseId = it.DatabaseId,
                 IsEpic = it.IsEpic,
                 HasParentEpic = it.ParentNumber != null,
+                ParentNumber = it.ParentNumber,
+                SubIssueCount = it.SubIssueCount,
+                IsBlocked = issueInTree?.IsBlocked ?? it.IsBlocked,
+                BlockedByNumber = issueInTree?.BlockedByNumber,
+                BlockedByTitle = issueInTree?.BlockedByTitle,
             };
         }
 

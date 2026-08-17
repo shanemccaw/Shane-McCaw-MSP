@@ -43,10 +43,13 @@ import {
   mspsTable,
   tenantsTable,
   mspEventStoreTable,
+  botInstancesTable,
+  botConversationsTable,
   type BotAction,
   type BotAuthMode,
   type BotCostOwner,
   type BotGroundingSource,
+  type BotConversationMessage,
 } from "@workspace/db";
 import { logger } from "./logger.ts";
 import { getShaneBotPersona, renderPersonaPrompt, type ShaneBotSurface } from "./shanebot-persona.ts";
@@ -354,6 +357,75 @@ async function buildCustomerContext(customerId: number, mspId: number | null): P
     identity: `customer user for ${customer.name}`,
     summary: `Customer: ${customer.name} (domain: ${customer.domain ?? "n/a"}, status: ${customer.status})\nTenant ID: ${customer.tenantId ?? "not set"}\n\nRecent signals (last 30 days):\n${signalSummary}`,
   };
+}
+
+// ── Conversation storage (#361) ───────────────────────────────────────────────
+// The shared transcript store both surfaces now target, replacing the earlier
+// plan to bolt structured storage onto each route's own message table
+// independently (public-chat.ts's public_chat_conversations, and whatever
+// support-chat.ts would otherwise have needed to grow). Route-owned business
+// metadata (public-chat's review queue: needsReview, contact capture, etc.)
+// stays exactly where it lives — this only carries the transcript itself, in
+// the same content-block shape (chat-content-blocks.ts) both routes already
+// produce.
+
+const instanceDbIdCache = new Map<BotSlug, number>();
+
+/**
+ * Resolve an instance's real bot_instances.id, for the bot_conversations FK.
+ * Cached in-process — the two rows are static once seeded. Throws (rather than
+ * silently no-op-ing) when the row isn't there yet, e.g. #1097's manual
+ * migration hasn't been run — callers already wrap conversation persistence in
+ * their own try/catch (a storage failure must never break the reply).
+ */
+async function resolveInstanceDbId(slug: BotSlug): Promise<number> {
+  const cached = instanceDbIdCache.get(slug);
+  if (cached != null) return cached;
+
+  const [row] = await db
+    .select({ id: botInstancesTable.id })
+    .from(botInstancesTable)
+    .where(eq(botInstancesTable.slug, slug))
+    .limit(1);
+  if (!row) {
+    throw new Error(
+      `shanebot-engine: no bot_instances row for slug "${slug}" — has #1097's manual migration been run?`,
+    );
+  }
+  instanceDbIdCache.set(slug, row.id);
+  return row.id;
+}
+
+/** Upsert a session's full transcript into bot_conversations, keyed by sessionId. */
+export async function upsertBotConversation(opts: {
+  slug: BotSlug;
+  sessionId: string;
+  transcript: BotConversationMessage[];
+}): Promise<void> {
+  const instanceId = await resolveInstanceDbId(opts.slug);
+  const messageCount = opts.transcript.length;
+  await db
+    .insert(botConversationsTable)
+    .values({
+      instanceId,
+      sessionId: opts.sessionId,
+      transcript: opts.transcript,
+      messageCount,
+    })
+    .onConflictDoUpdate({
+      target: botConversationsTable.sessionId,
+      set: { transcript: opts.transcript, messageCount, updatedAt: new Date() },
+    });
+}
+
+/** Read a session's transcript back out of bot_conversations, if it has one. */
+export async function getBotConversationTranscript(sessionId: string): Promise<BotConversationMessage[] | null> {
+  const [row] = await db
+    .select({ transcript: botConversationsTable.transcript })
+    .from(botConversationsTable)
+    .where(eq(botConversationsTable.sessionId, sessionId))
+    .limit(1);
+  return row?.transcript ?? null;
 }
 
 // ── System-prompt assembly ────────────────────────────────────────────────────

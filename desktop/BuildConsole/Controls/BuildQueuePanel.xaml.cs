@@ -38,6 +38,8 @@ namespace BuildConsole.Controls
         public event EventHandler<string?>? SyncError;
         /// <summary>Git #851 — Shane: "When clicking on an In-Flight Still Open issue, it should open the chat that is associated to that issue." MainWindow resolves the actual chat (via LeftSidebar.FindChatForIssue) and opens/focuses its tab, same as clicking a chat in the Chats tree.</summary>
         public event EventHandler<int>? IssueChatRequested;
+        /// <summary>Opens or focuses the Claude chat that created this Build Queue item.</summary>
+        public event EventHandler<QueueItem>? QueueItemChatRequested;
         public event EventHandler<int>? EpicSubIssueClicked;
         public event EventHandler? FullGitRefreshRequested;
         private bool _isPinned = true;
@@ -902,7 +904,10 @@ namespace BuildConsole.Controls
         /// <summary>Git #814 - Shane: "can you make the filters in the build queue work." Chips were Shane's own hardcoded demo XAML, never wired to anything.</summary>
         private List<QueueItem> ApplyFilter(List<QueueItem> items) => _filter switch
         {
-            "Active"   => items.Where(i => i.Status is "queued" or "running").ToList(),
+            "Active"   => items.Where(i =>
+                (i.Status is "queued" or "running") ||
+                (i.Status == "done" && i.GithubNumber.HasValue && i.GithubNumber.Value > 0 && _lastOpenIssueNumbers.Contains(i.GithubNumber.Value))
+            ).ToList(),
             "Done"     => items.Where(i => i.Status == "done").ToList(),
             "Canceled" => items.Where(i => i.Status == "canceled").ToList(),
             _          => items,
@@ -1502,6 +1507,16 @@ namespace BuildConsole.Controls
             // finished/failed/canceled item as a brand new row with the
             // same fields - queue rows aren't reset in place.
             var cm = new ContextMenu();
+
+            // 💬 Open Chat — opens/focuses the Claude chat that created this build request
+            var miOpenChat = new MenuItem { Header = "💬 Open Chat" };
+            miOpenChat.Click += (_, _) =>
+            {
+                QueueItemChatRequested?.Invoke(this, item);
+            };
+            cm.Items.Add(miOpenChat);
+            cm.Items.Add(new Separator());
+
             if (item.Status == "running")
             {
                 // Git — "Resume": unstick a BuildConsole-owned interactive build

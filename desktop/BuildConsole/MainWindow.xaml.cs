@@ -401,6 +401,7 @@ namespace BuildConsole
             // data (no separate fetch) and opens/focuses it exactly like
             // clicking the same chat in the Chats tree would.
             BuildQueuePanel.IssueChatRequested += (s, githubNumber) => OpenChatForIssue(githubNumber);
+            BuildQueuePanel.QueueItemChatRequested += (s, item) => OpenChatForQueueItem(item);
             BuildQueuePanel.EpicSubIssueClicked += async (s, githubNumber) => await OpenGitDetailByNumberAsync(githubNumber, sideBySide: true);
             BuildQueuePanel.FullGitRefreshRequested += (s, e) =>
             {
@@ -1812,12 +1813,7 @@ namespace BuildConsole
             closeBtn.Click += (s, e) =>
             {
                 keepAliveTimer?.Stop();
-                Services.UiFadeHelper.FadeOut(newTab, onComplete: () =>
-                {
-                    EditorTabs.Items.Remove(newTab);
-                    if (EditorTabs.Items.Count > 0)
-                        EditorTabs.SelectedIndex = Math.Max(0, EditorTabs.Items.Count - 1);
-                });
+                CloseTab(newTab);
             };
 
             AttachTabContextMenu(newTab, EditorTabs);
@@ -1977,17 +1973,7 @@ namespace BuildConsole
             };
             _chatTabs[newTab] = state;
 
-            closeBtn.Click += (s, e) =>
-            {
-                _chatTabs.Remove(newTab);
-                Services.UiFadeHelper.FadeOut(newTab, onComplete: () =>
-                {
-                    EditorTabs.Items.Remove(newTab);
-                    if (EditorTabs.Items.Count > 0)
-                        EditorTabs.SelectedIndex = Math.Max(0, EditorTabs.Items.Count - 1);
-                    PersistOpenChatTabs(); // Git #874 — a closed chat drops out of "Where you left off"
-                });
-            };
+            closeBtn.Click += (s, e) => CloseTab(newTab);
 
             AttachTabContextMenu(newTab, EditorTabs);
             AttachTabDragHandlers(newTab);
@@ -2093,14 +2079,8 @@ namespace BuildConsole
             var tab = new TabItem { Tag = HomeTabTag, Header = headerPanel, Content = home };
             closeBtn.Click += (s, e) =>
             {
-                var pane = tab.Parent as TabControl ?? EditorTabs;
-                Services.UiFadeHelper.FadeOut(tab, onComplete: () =>
-                {
-                    pane.Items.Remove(tab);
-                    if (_homeView == home) _homeView = null;
-                    if (pane.Items.Count > 0) pane.SelectedIndex = Math.Max(0, pane.Items.Count - 1);
-                    BuildConsole.Services.ActivityLog.Log("home-screen", "Home tab closed");
-                });
+                CloseTab(tab);
+                BuildConsole.Services.ActivityLog.Log("home-screen", "Home tab closed");
             };
 
             AttachTabContextMenu(tab, EditorTabs);
@@ -2195,6 +2175,99 @@ namespace BuildConsole
                 return;
             }
             OpenChatTab(chat, githubNumber);
+        }
+
+        private void OpenChatForQueueItem(BuildConsole.Services.QueueItem item)
+        {
+            // 1. Try resolving chat URL from ChatUrlStore
+            string? url = BuildConsole.Services.ChatUrlStore.GetChatUrl(item.Id, item.GithubNumber);
+            if (string.IsNullOrWhiteSpace(url))
+            {
+                url = item.ChatUrl;
+            }
+
+            if (!string.IsNullOrWhiteSpace(url))
+            {
+                OpenChatUrl(url, item.Title, item.GithubNumber);
+                return;
+            }
+
+            // 2. Fall back to resolving chat by GitHub issue number via LeftSidebar
+            if (item.GithubNumber.HasValue)
+            {
+                var chat = LeftSidebar.FindChatForIssue(item.GithubNumber.Value);
+                if (chat != null)
+                {
+                    OpenChatTab(chat, item.GithubNumber.Value);
+                    return;
+                }
+            }
+
+            // 3. Fall back to search for matching title in LeftSidebar's board chats
+            var fallbackChat = LeftSidebar.CurrentBoardChats?.FirstOrDefault(c =>
+                (item.GithubNumber.HasValue && c.IssueGithubNumber == item.GithubNumber.Value) ||
+                (!string.IsNullOrEmpty(c.Title) && item.Title.Contains(c.Title, StringComparison.OrdinalIgnoreCase)));
+            if (fallbackChat != null)
+            {
+                OpenChatTab(fallbackChat, item.GithubNumber ?? fallbackChat.IssueGithubNumber);
+                return;
+            }
+
+            ToastEngine.Warning("Open Chat", $"No Claude chat found for build '{item.Title}'.");
+        }
+
+        public void OpenChatUrl(string url, string? title = null, int? githubNumber = null)
+        {
+            if (string.IsNullOrWhiteSpace(url)) return;
+            url = url.Trim();
+            string convId = ExtractConversationId(url);
+
+            // 1. If tab is already open in any pane, activate and focus it
+            foreach (var kvp in _chatTabs)
+            {
+                if (kvp.Key.Tag is BuildConsole.Services.BoardChat existing &&
+                    (existing.ConversationId == convId || (!string.IsNullOrEmpty(existing.ClaudeUrl) && existing.ClaudeUrl.TrimEnd('/') == url.TrimEnd('/'))))
+                {
+                    var parentTabControl = kvp.Key.Parent as TabControl ?? EditorTabs;
+                    parentTabControl.SelectedItem = kvp.Key;
+                    return;
+                }
+            }
+
+            // 2. Check if LeftSidebar already knows this chat
+            var knownChat = LeftSidebar.CurrentBoardChats?.FirstOrDefault(c => c.ConversationId == convId || (!string.IsNullOrEmpty(c.ClaudeUrl) && c.ClaudeUrl.TrimEnd('/') == url.TrimEnd('/')));
+            if (knownChat != null)
+            {
+                OpenChatTab(knownChat, githubNumber ?? knownChat.IssueGithubNumber);
+                return;
+            }
+
+            // 3. Create fresh BoardChat instance and open tab
+            var newChat = new BuildConsole.Services.BoardChat
+            {
+                ConversationId = convId,
+                Title = title ?? (githubNumber.HasValue ? $"#{githubNumber.Value} Chat" : "Claude Chat"),
+                ClaudeUrl = url,
+                IssueGithubNumber = githubNumber
+            };
+            OpenChatTab(newChat, githubNumber);
+        }
+
+        private static string ExtractConversationId(string url)
+        {
+            if (string.IsNullOrWhiteSpace(url)) return Guid.NewGuid().ToString();
+            try
+            {
+                var uri = new Uri(url);
+                var segments = uri.AbsolutePath.Trim('/').Split('/');
+                var last = segments.LastOrDefault();
+                if (!string.IsNullOrWhiteSpace(last) && last != "chat")
+                {
+                    return last;
+                }
+            }
+            catch { }
+            return Guid.NewGuid().ToString();
         }
 
         /// <summary>
@@ -2736,6 +2809,27 @@ namespace BuildConsole
             // set at all).
             TabControl CurrentOwner() => tabItem.Parent as TabControl ?? ownerTabControl;
 
+            // 0a. Mark as In Progress (for Chat Tabs)
+            if (tabItem.Tag is BuildConsole.Services.BoardChat chat || _chatTabs.ContainsKey(tabItem))
+            {
+                var targetChat = (tabItem.Tag as BuildConsole.Services.BoardChat)
+                                 ?? _chatTabs.Keys.FirstOrDefault(k => k == tabItem)?.Tag as BuildConsole.Services.BoardChat;
+
+                var miInProgress = new MenuItem { Header = "✈️ Mark as In Progress" };
+                miInProgress.Click += async (s, e) =>
+                {
+                    await MarkChatTabInProgressAsync(tabItem, targetChat);
+                };
+                cm.Items.Add(miInProgress);
+                cm.Items.Add(new Separator());
+            }
+
+            // 0b. Rename Tab
+            var miRename = new MenuItem { Header = "Rename Tab...", InputGestureText = "F2" };
+            miRename.Click += (s, e) => RenameTab(tabItem);
+            cm.Items.Add(miRename);
+            cm.Items.Add(new Separator());
+
             // 1. Close
             var miClose = new MenuItem { Header = "Close", InputGestureText = "Ctrl+W" };
             miClose.Click += (s, e) => CloseTab(tabItem, CurrentOwner());
@@ -2749,9 +2843,8 @@ namespace BuildConsole
                 var others = owner.Items.OfType<TabItem>().Where(t => t != tabItem).ToList();
                 foreach (var t in others)
                 {
-                    owner.Items.Remove(t);
+                    CloseTab(t, owner);
                 }
-                CollapseEmptySplitPanes();
             };
             cm.Items.Add(miCloseOthers);
 
@@ -2766,10 +2859,9 @@ namespace BuildConsole
                     var itemsRight = owner.Items.OfType<TabItem>().Skip(idx + 1).ToList();
                     foreach (var t in itemsRight)
                     {
-                        owner.Items.Remove(t);
+                        CloseTab(t, owner);
                     }
                 }
-                CollapseEmptySplitPanes();
             };
             cm.Items.Add(miCloseRight);
 
@@ -2781,9 +2873,8 @@ namespace BuildConsole
                 var savedTabs = owner.Items.OfType<TabItem>().Where(t => !(t.Tag?.ToString()?.EndsWith("*") ?? false)).ToList();
                 foreach (var t in savedTabs)
                 {
-                    owner.Items.Remove(t);
+                    CloseTab(t, owner);
                 }
-                CollapseEmptySplitPanes();
             };
             cm.Items.Add(miCloseSaved);
 
@@ -2791,8 +2882,12 @@ namespace BuildConsole
             var miCloseAll = new MenuItem { Header = "Close All" };
             miCloseAll.Click += (s, e) =>
             {
-                CurrentOwner().Items.Clear();
-                CollapseEmptySplitPanes();
+                var owner = CurrentOwner();
+                var allTabs = owner.Items.OfType<TabItem>().ToList();
+                foreach (var t in allTabs)
+                {
+                    CloseTab(t, owner);
+                }
             };
             cm.Items.Add(miCloseAll);
 
@@ -2859,16 +2954,180 @@ namespace BuildConsole
             }
         }
 
-        private void CloseTab(TabItem tabItem, TabControl ownerTabControl)
+        public void RenameTab(TabItem tabItem)
         {
-            var owner = tabItem.Parent as TabControl ?? ownerTabControl;
+            string currentTitle = "";
+            TextBlock? titleBlock = null;
+            if (tabItem.Header is Panel panel)
+            {
+                titleBlock = panel.Children.OfType<TextBlock>().Skip(1).FirstOrDefault()
+                             ?? panel.Children.OfType<TextBlock>().FirstOrDefault();
+                if (titleBlock != null) currentTitle = titleBlock.Text;
+            }
+            else if (tabItem.Header is TextBlock tb)
+            {
+                titleBlock = tb;
+                currentTitle = tb.Text;
+            }
+            else if (tabItem.Header is string s)
+            {
+                currentTitle = s;
+            }
+
+            var dlg = new RenameTabDialog(currentTitle) { Owner = this };
+            if (dlg.ShowDialog() == true && !string.IsNullOrWhiteSpace(dlg.NewTabName))
+            {
+                string newName = dlg.NewTabName;
+                if (titleBlock != null)
+                {
+                    titleBlock.Text = newName;
+                    titleBlock.ToolTip = newName;
+                }
+                else if (tabItem.Header is string)
+                {
+                    tabItem.Header = newName;
+                }
+
+                if (tabItem.Tag is BuildConsole.Services.BoardChat chat)
+                {
+                    chat.Title = newName;
+                    PersistOpenChatTabs();
+                }
+
+                var currentOwner = tabItem.Parent as TabControl;
+                if (currentOwner?.SelectedItem == tabItem)
+                {
+                    ActiveDocTitleText.Text = $" - {newName}";
+                }
+
+                BuildConsole.Services.ActivityLog.Log("tabs", $"Renamed tab to '{newName}'");
+            }
+        }
+
+        private async System.Threading.Tasks.Task MarkChatTabInProgressAsync(TabItem tabItem, BuildConsole.Services.BoardChat? chat)
+        {
+            try
+            {
+                int? githubNumber = chat?.IssueGithubNumber;
+                if (githubNumber.HasValue)
+                {
+                    bool ok = await BuildConsole.Services.GitHubIssuesService.AddLabelAsync(githubNumber.Value, "in-flight");
+                    if (ok)
+                    {
+                        ToastEngine.Success("In-Progress", $"Issue #{githubNumber.Value} marked 'in-flight' on GitHub");
+                    }
+                    else
+                    {
+                        ToastEngine.Info("In-Progress", $"Marked chat tab as in-progress (gh label sync attempted)");
+                    }
+                }
+                else
+                {
+                    ToastEngine.Success("In-Progress", $"Chat '{chat?.Title ?? "Session"}' marked in-progress");
+                }
+
+                if (tabItem.Header is Panel panel)
+                {
+                    var titleBlock = panel.Children.OfType<TextBlock>().Skip(1).FirstOrDefault()
+                                     ?? panel.Children.OfType<TextBlock>().FirstOrDefault();
+                    if (titleBlock != null && !titleBlock.Text.StartsWith("✈"))
+                    {
+                        titleBlock.Text = "✈️ " + titleBlock.Text;
+                    }
+
+                    var bolt = panel.Children.OfType<Button>().FirstOrDefault(b => b.Content?.ToString() == "⚡");
+                    if (bolt != null)
+                    {
+                        bolt.Foreground = (Brush)FindResource("YellowBrush");
+                        bolt.ToolTip = "In Progress (Active in Focus Mode) — click to unmark";
+                    }
+                }
+
+                if (chat != null)
+                {
+                    if (!chat.Title.StartsWith("✈"))
+                    {
+                        chat.Title = "✈️ " + chat.Title;
+                    }
+                    if (!string.IsNullOrEmpty(chat.ConversationId) && !BuildConsole.Services.FocusModeService.Instance.IsChatInProgress(chat.ConversationId))
+                    {
+                        BuildConsole.Services.FocusModeService.Instance.ToggleChatInProgress(chat.ConversationId, chat.Title, chat.ClaudeUrl);
+                    }
+                }
+                if (_chatTabs.TryGetValue(tabItem, out var state))
+                {
+                    if (state.BuildStatusText != null)
+                    {
+                        state.BuildStatusText.Text = "In-Progress";
+                    }
+                }
+
+                PersistOpenChatTabs();
+
+                LeftSidebar.PopulateGitTrackerBoard();
+                LeftSidebar.PopulateChatsTree();
+                _ = BuildQueuePanel.RefreshAsync();
+
+                BuildConsole.Services.ActivityLog.Log("chat.status", $"Marked chat '{chat?.Title ?? tabItem.Tag?.ToString()}' as in-progress (in-flight)");
+            }
+            catch (Exception ex)
+            {
+                ToastEngine.Error("In-Progress", $"Failed to mark in-progress: {ex.Message}");
+            }
+        }
+
+        public void CloseTab(TabItem tabItem, TabControl? ownerTabControl = null)
+        {
+            var owner = (tabItem.Parent as TabControl)
+                        ?? ownerTabControl
+                        ?? new[] { EditorTabs, EditorTabs2, EditorTabs3, EditorTabs4 }.FirstOrDefault(p => p.Items.Contains(tabItem));
+
+            if (owner == null) return;
+
+            // Clean up tab tracking
+            if (_chatTabs.ContainsKey(tabItem))
+            {
+                _chatTabs.Remove(tabItem);
+                PersistOpenChatTabs();
+            }
+            if (_homeView != null && tabItem.Content == _homeView)
+            {
+                _homeView = null;
+            }
+
             Services.UiFadeHelper.FadeOut(tabItem, onComplete: () =>
             {
-                owner.Items.Remove(tabItem);
-                if (owner.Items.Count > 0)
+                // Re-resolve owner in case of pane drag
+                var currentOwner = (tabItem.Parent as TabControl)
+                                   ?? owner
+                                   ?? new[] { EditorTabs, EditorTabs2, EditorTabs3, EditorTabs4 }.FirstOrDefault(p => p.Items.Contains(tabItem));
+
+                if (currentOwner != null)
                 {
-                    owner.SelectedIndex = Math.Max(0, owner.Items.Count - 1);
+                    currentOwner.Items.Remove(tabItem);
+                    if (currentOwner.Items.Count > 0)
+                    {
+                        currentOwner.SelectedIndex = Math.Max(0, currentOwner.Items.Count - 1);
+                    }
+                    else
+                    {
+                        currentOwner.SelectedItem = null;
+                    }
                 }
+
+                // Explicitly detach and dispose content so WPF visual tree and native HWNDs never get stuck
+                if (tabItem.Content is Microsoft.Web.WebView2.Wpf.WebView2 wv)
+                {
+                    try { wv.Dispose(); } catch { }
+                }
+                tabItem.Content = null;
+                tabItem.Header = null;
+
+                if (EditorTabs.Items.Count == 0 && EditorTabs2.Items.Count == 0 && EditorTabs3.Items.Count == 0 && EditorTabs4.Items.Count == 0)
+                {
+                    ActiveDocTitleText.Text = "";
+                }
+
                 CollapseEmptySplitPanes();
             });
         }
@@ -2929,15 +3188,7 @@ namespace BuildConsole
             AttachTabContextMenu(newTab, EditorTabs);
             AttachTabDragHandlers(newTab);
 
-            closeBtn.Click += (s, e) =>
-            {
-                Services.UiFadeHelper.FadeOut(newTab, onComplete: () =>
-                {
-                    EditorTabs.Items.Remove(newTab);
-                    if (EditorTabs.Items.Count > 0)
-                        EditorTabs.SelectedIndex = Math.Max(0, EditorTabs.Items.Count - 1);
-                });
-            };
+            closeBtn.Click += (s, e) => CloseTab(newTab);
 
             EditorTabs.Items.Add(newTab);
             EditorTabs.SelectedItem = newTab;
@@ -3078,15 +3329,7 @@ namespace BuildConsole
             AttachTabContextMenu(newTab, EditorTabs);
             AttachTabDragHandlers(newTab);
 
-            closeBtn.Click += (s, e) =>
-            {
-                Services.UiFadeHelper.FadeOut(newTab, onComplete: () =>
-                {
-                    EditorTabs.Items.Remove(newTab);
-                    if (EditorTabs.Items.Count > 0)
-                        EditorTabs.SelectedIndex = Math.Max(0, EditorTabs.Items.Count - 1);
-                });
-            };
+            closeBtn.Click += (s, e) => CloseTab(newTab);
 
             EditorTabs.Items.Add(newTab);
             EditorTabs.SelectedItem = newTab;
@@ -3723,6 +3966,12 @@ namespace BuildConsole
                     // so we can find that exact element again to tag it with the
                     // real queue id (or reset it if the queue call fails).
                     string? correlation = Str("correlation");
+                    string? chatUrl = Str("chatUrl");
+                    int? githubNum = Int("githubNumber");
+                    if (!string.IsNullOrWhiteSpace(chatUrl))
+                    {
+                        BuildConsole.Services.ChatUrlStore.SetChatUrl(null, githubNum, chatUrl);
+                    }
                     if (_buildTrackerApi == null || !_buildTrackerApi.IsConfigured)
                     {
                         ToastEngine.Warning("Queue Build", "Not connected — see Settings.");
@@ -3746,7 +3995,7 @@ namespace BuildConsole
                     {
                         bool saved = PersistQueueRequestDuringPendingUpdate(
                             Str("title") ?? "Untitled", Str("prompt") ?? "", Str("model"), Str("effort"), Str("cwd"),
-                            Int("githubNumber"), blockedByNumbers);
+                            githubNum, blockedByNumbers, chatUrl: chatUrl);
                         // Unstick the injected button back to its clickable label (it was
                         // set to a disabled "In Progress..." on click) — nothing is in the
                         // live queue, so leaving it stuck would misrepresent reality.
@@ -3778,7 +4027,7 @@ namespace BuildConsole
                     }
 
                     var res = await _buildTrackerApi.QueueBuildAsync(
-                        Str("title") ?? "Untitled", Str("prompt") ?? "", Str("model"), Str("effort"), Str("cwd"), Int("githubNumber"), blockedByNumbers);
+                        Str("title") ?? "Untitled", Str("prompt") ?? "", Str("model"), Str("effort"), Str("cwd"), githubNum, blockedByNumbers, chatUrl: chatUrl);
 
                     // Git #931 — the dev api-server naps after ~15 min idle. Asleep, Replit's own
                     // "wake up the app" placeholder page (HTML, not JSON) comes back on this POST
@@ -3796,7 +4045,7 @@ namespace BuildConsole
                                 $"Queue Build: got HTML instead of JSON (status {(int)res.StatusCode}, content-type {res.Content.Headers.ContentType?.MediaType ?? "none"}) — dev server likely asleep (#931), retrying once after a brief wait");
                             await System.Threading.Tasks.Task.Delay(TimeSpan.FromSeconds(8));
                             res = await _buildTrackerApi.QueueBuildAsync(
-                                Str("title") ?? "Untitled", Str("prompt") ?? "", Str("model"), Str("effort"), Str("cwd"), Int("githubNumber"), blockedByNumbers);
+                                Str("title") ?? "Untitled", Str("prompt") ?? "", Str("model"), Str("effort"), Str("cwd"), githubNum, blockedByNumbers, chatUrl: chatUrl);
 
                             if (!res.IsSuccessStatusCode)
                             {
@@ -3847,6 +4096,10 @@ namespace BuildConsole
                             _chatButtonStatus[qid] = "In Progress...";
                             BuildConsole.Services.ActivityLog.Log("chat-button.status",
                                 $"queue #{qid} ({title}): queued -> In Progress... (now tracking)");
+                            if (!string.IsNullOrWhiteSpace(chatUrl))
+                            {
+                                BuildConsole.Services.ChatUrlStore.SetChatUrl(qid, githubNum, chatUrl);
+                            }
                             if (correlation != null)
                                 await RunScriptInAllChatWebViewsAsync($"window.__btTagQueued && window.__btTagQueued({JsLiteral(correlation)}, {qid});");
                         }

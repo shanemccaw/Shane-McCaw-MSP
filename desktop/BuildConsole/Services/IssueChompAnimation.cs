@@ -1053,7 +1053,19 @@ namespace BuildConsole.Services
             return canvas;
         }
 
-        private static (FrameworkElement element, RotateTransform malletTransform) BuildWhammyMascot()
+        public static FrameworkElement BuildWhammyElement(double scale = 1.0)
+        {
+            var (element, _) = BuildWhammyMascot();
+            return new Viewbox
+            {
+                Width = 74 * scale,
+                Height = 64 * scale,
+                Child = element,
+                Stretch = Stretch.Uniform
+            };
+        }
+
+        public static (FrameworkElement element, RotateTransform malletTransform) BuildWhammyMascot()
         {
             var canvas = new Canvas { Width = 74, Height = 64 };
 
