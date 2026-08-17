@@ -10,6 +10,7 @@
  */
 
 import { useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+import { Check, Copy } from "lucide-react";
 import { ACCENT, ACCENT_TEXT, FONT, LINE, PRIMARY_OVERLAY, SURFACE, TEXT } from "../../theme";
 
 // ── Section ────────────────────────────────────────────────────────────────
@@ -63,7 +64,21 @@ export function AdTileGrid({ children }: { children: ReactNode }) {
   );
 }
 
-export function AdTile({ label, value, hint, accent }: { label: string; value: string; hint?: string; accent?: string }) {
+export function AdTile({
+  label,
+  value,
+  hint,
+  accent,
+  copyValue,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  accent?: string;
+  copyValue?: string;
+}) {
+  const [copied, setCopied] = useState(false);
+  const textToCopy = copyValue ?? value;
   return (
     <div
       style={{
@@ -77,19 +92,44 @@ export function AdTile({ label, value, hint, accent }: { label: string; value: s
         gap: 3,
       }}
     >
-      <span
-        style={{
-          fontSize: 10.5,
-          letterSpacing: ".05em",
-          textTransform: "uppercase",
-          color: TEXT.label,
-          whiteSpace: "nowrap",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-        }}
-      >
-        {label}
-      </span>
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <span
+          style={{
+            flex: 1,
+            minWidth: 0,
+            fontSize: 10.5,
+            letterSpacing: ".05em",
+            textTransform: "uppercase",
+            color: TEXT.label,
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+        >
+          {label}
+        </span>
+        <button
+          onClick={async (e) => {
+            e.stopPropagation();
+            await navigator.clipboard.writeText(textToCopy);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+          }}
+          title={copied ? "Copied" : "Copy"}
+          style={{
+            flex: "none",
+            display: "flex",
+            alignItems: "center",
+            border: 0,
+            background: "transparent",
+            color: copied ? ACCENT_TEXT.green : TEXT.dim,
+            cursor: "pointer",
+            padding: 0,
+          }}
+        >
+          {copied ? <Check size={12} strokeWidth={2} /> : <Copy size={12} strokeWidth={1.8} />}
+        </button>
+      </div>
       <span
         style={{
           fontSize: 16,

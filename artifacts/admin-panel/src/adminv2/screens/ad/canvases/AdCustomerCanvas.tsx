@@ -216,7 +216,7 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
       <AdCanvasBody>
         <AdSection title="Profile">
           <AdTileGrid>
-            <AdTile label="Tenant GUID" value={customer.tenantId ? `${customer.tenantId.slice(0, 8)}…` : "none"} accent={customer.tenantId ? undefined : ACCENT_TEXT.danger} hint={customer.tenantUrl ?? undefined} />
+            <AdTile label="Tenant GUID" value={customer.tenantId ? `${customer.tenantId.slice(0, 8)}…` : "none"} accent={customer.tenantId ? undefined : ACCENT_TEXT.danger} hint={customer.tenantUrl ?? undefined} copyValue={customer.tenantId ?? undefined} />
             <AdTile label="Industry" value={customer.industry ?? "—"} />
             <AdTile label="Status" value={customer.status} />
             <AdTile
