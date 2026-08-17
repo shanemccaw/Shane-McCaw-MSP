@@ -87,6 +87,8 @@ export default function M365HealthPage() {
           <TrendsRow
             copilotReadiness={live.status?.copilotReadiness ?? null}
             metrics={live.metrics}
+            copilotPackageKey={live.status?.radar.packageKey ?? null}
+            onUnlockCopilotReadiness={() => navigate('/copilot-readiness/checkout')}
           />
 
           {/* CostAndRiskRow deliberately not rendered — Risk Reduction is

@@ -237,6 +237,15 @@ export const USAGE_METRICS: HeatmapMetricDef[] = [
 /** Cost Engine per-SKU waste distribution (real dollars/mo per SKU). */
 export const COST_BREAKDOWN_METRIC = "licensing.wasteEstimateBreakdown";
 
+/** The real monitoring_package_checks packageKey for the Copilot Readiness
+ * Assessment (confirmed live — see admin-simulator-assessments.test.ts's
+ * REAL_ASSESSMENT_SERVICES / REAL_PACKAGE_CHECKS, and portal-assessment.ts's
+ * debug-trigger-scan resolver). `radar.packageKey` equalling this value is
+ * the same "purchased/scanned Copilot Readiness" signal pillar-coverage.ts
+ * already uses to decide whether the Copilot pillar shows a score — reused
+ * here (Git #1099) rather than inventing a separate entitlement check. */
+export const COPILOT_READINESS_PACKAGE_KEY = "assess:copilot-readiness";
+
 /** Security Trends series — the real, history-capable security scalars.
  * resolveMetricHistory only serves customer-scope smart-eligible SCALAR
  * metrics, which constrains this set:

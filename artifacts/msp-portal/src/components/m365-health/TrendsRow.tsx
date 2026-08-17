@@ -6,6 +6,7 @@ import {
   Cloud,
   Bot,
   Activity,
+  Lock,
 } from 'lucide-react';
 import {
   ResolvedMetric,
@@ -13,6 +14,7 @@ import {
   resolvedHistory,
   USAGE_METRICS,
   SECURITY_TREND_METRICS,
+  COPILOT_READINESS_PACKAGE_KEY,
 } from './useM365HealthLive';
 import type { CopilotReadinessLive } from '@/components/assessment-test/types';
 
@@ -41,9 +43,18 @@ import type { CopilotReadinessLive } from '@/components/assessment-test/types';
  *     page's ScoreOverview.tsx already uses for the same class of metric.
  *   • Copilot Readiness breakdown — the three real sub-indicators behind the
  *     hero's overall readiness figure (copilot-readiness.ts: SharePoint/Teams
- *     overshare, sensitivity labels, DLP — 50/30/20 weighting). Every score is
- *     real or renders the honest "no data" state. Two honesty rules are
- *     enforced here, both from the backend module's own stated contract:
+ *     overshare, sensitivity labels, DLP — 50/30/20 weighting). Gated behind
+ *     the Copilot Readiness Assessment purchase (Git #1099): reuses the same
+ *     `radar.packageKey` coverage signal pillar-coverage.ts already applies to
+ *     every other pillar — a customer whose scanned package isn't
+ *     `COPILOT_READINESS_PACKAGE_KEY` sees a locked/upsell card linking to the
+ *     purchase flow instead of an empty-data state (no separate purchase flag
+ *     exists in the system; package coverage IS the entitlement signal). A
+ *     customer who HAS purchased it but hasn't scanned yet still gets the
+ *     honest "no data" state below, not the lock — those are genuinely
+ *     different states. Every score is real or renders the honest "no data"
+ *     state. Two honesty rules are enforced here, both from the backend
+ *     module's own stated contract:
  *       – a score is suffixed "%" ONLY when its `basis` is a true ratio;
  *         risk-band scores render "N/100" with an explicit "not a coverage %"
  *         caption, matching LabelCoverageCard.tsx / LabelAndDlpSection.tsx.
@@ -60,6 +71,11 @@ import type { CopilotReadinessLive } from '@/components/assessment-test/types';
 interface TrendsRowProps {
   copilotReadiness: CopilotReadinessLive | null;
   metrics: Record<string, ResolvedMetric>;
+  /** The customer's scanned monitoring package (status.radar.packageKey) —
+   * used to decide whether the Copilot Readiness Assessment was purchased. */
+  copilotPackageKey: string | null;
+  /** Navigate to the Copilot Readiness Assessment purchase flow. */
+  onUnlockCopilotReadiness: () => void;
 }
 
 const USAGE_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -141,7 +157,11 @@ const BASIS_NOTE: Record<'ratio' | 'risk_bands', string> = {
 export const TrendsRow: React.FC<TrendsRowProps> = ({
   copilotReadiness,
   metrics,
+  copilotPackageKey,
+  onUnlockCopilotReadiness,
 }) => {
+  const copilotEntitled = copilotPackageKey === COPILOT_READINESS_PACKAGE_KEY;
+
   // Real per-series daily history; a series with <2 points can't draw an
   // honest trend line and is offered as disabled.
   const trendSeries = SECURITY_TREND_METRICS.map((def) => ({
@@ -289,14 +309,39 @@ export const TrendsRow: React.FC<TrendsRowProps> = ({
             <Bot className="w-3.5 h-3.5 text-status-violet" />
             COPILOT READINESS BREAKDOWN
           </h4>
-          <span className="text-xs font-mono text-status-violet font-medium">
-            {copilotReadiness?.overall.score != null
-              ? `${copilotReadiness.overall.score}% overall`
-              : 'No data yet'}
+          <span
+            data-testid="copilot-readiness-status"
+            className="text-xs font-mono text-status-violet font-medium"
+          >
+            {!copilotEntitled
+              ? 'Locked'
+              : copilotReadiness?.overall.score != null
+                ? `${copilotReadiness.overall.score}% overall`
+                : 'No data yet'}
           </span>
         </div>
 
-        {copilotReadiness ? (
+        {!copilotEntitled ? (
+          <div
+            data-testid="copilot-readiness-locked"
+            className="my-auto text-center px-4 flex flex-col items-center gap-3"
+          >
+            <Lock className="w-5 h-5 text-muted-foreground" />
+            <p className="text-[11px] text-muted-foreground leading-relaxed">
+              The Copilot Readiness Assessment isn't part of your scanned
+              monitoring package. Purchase it to see SharePoint &amp; Teams
+              exposure, sensitivity label coverage, and DLP scored here.
+            </p>
+            <button
+              data-testid="copilot-readiness-unlock-btn"
+              onClick={onUnlockCopilotReadiness}
+              className="px-4 py-2 bg-status-violet/10 text-status-violet font-mono text-[11px] font-semibold rounded-lg border border-status-violet/30 hover:bg-status-violet/20 active:scale-95 transition-all flex items-center gap-2 cursor-pointer"
+            >
+              <Bot className="w-3.5 h-3.5" />
+              <span>View Copilot Readiness Assessment</span>
+            </button>
+          </div>
+        ) : copilotReadiness ? (
           <div className="space-y-4 my-auto">
             {READINESS_INDICATORS.map(({ key, label }) => {
               const indicator = copilotReadiness[key];
