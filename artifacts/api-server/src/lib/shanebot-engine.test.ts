@@ -25,7 +25,19 @@ vi.mock("@workspace/db", () => ({
     values: vi.fn().mockReturnThis(),
     onConflictDoUpdate: vi.fn().mockResolvedValue(undefined),
   },
-  servicesTable: {},
+  servicesTable: {
+    name: "name",
+    tagline: "tagline",
+    description: "description",
+    category: "category",
+    serviceType: "service_type",
+    billingType: "billing_type",
+    priceCents: "price_cents",
+    isFreeOffering: "is_free_offering",
+    visibility: "visibility",
+    sortOrder: "sort_order",
+    createdAt: "created_at",
+  },
   mspsTable: {},
   tenantsTable: {},
   mspEventStoreTable: {},
@@ -240,6 +252,64 @@ describe("customer_entitlements grounding (#362): buildCustomerContext", () => {
     // latest run, last-completed run) calls .where() with real conditions —
     // none of buildCustomerContext's queries ever omit .where().
     expect(mockDb["where"].mock.calls.length).toBeGreaterThanOrEqual(6);
+  });
+});
+
+// ── live_catalog grounding (#364) ────────────────────────────────────────────────
+// #1085 (Stale Content Audit) closed without ever establishing the "actually
+// reachable on the router" field #1097 anticipated, so `visibility='public'`
+// alone still drifts (MSP-tier rows whose only page, `/msp`, isn't routed yet —
+// #1088). The fix ANDs in an allowlist of `category` values confirmed live in
+// App.tsx. These tests prove the query carries BOTH filters, not just visibility.
+
+describe("live_catalog grounding (#364): buildGrounding(shanebot_public)", () => {
+  const mockDb = db as unknown as Record<string, ReturnType<typeof vi.fn>>;
+  const pub = resolveInstance("shanebot_public");
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockDb["select"].mockReturnThis();
+    mockDb["from"].mockReturnThis();
+    mockDb["where"].mockReturnThis();
+    mockDb["orderBy"].mockReturnThis();
+    mockDb["limit"].mockResolvedValue([]);
+  });
+
+  // A single test: buildLiveCatalogGrounding() caches its result in a module-level
+  // TTL cache, so a second buildGrounding() call in a later test would short-circuit
+  // on that cache (never touching mockDb again) and leave any queued
+  // mockResolvedValueOnce unconsumed — corrupting whichever unrelated test runs next.
+  it("filters on visibility='public' AND category IN the live-marketing allowlist (not visibility alone), and renders real rows", async () => {
+    mockDb["limit"].mockResolvedValueOnce([
+      {
+        name: "Copilot Readiness Assessment",
+        tagline: "Know before you roll out.",
+        description: null,
+        category: "assessment",
+        serviceType: "assessment",
+        billingType: "one_time",
+        priceCents: 150000,
+        isFreeOffering: false,
+      },
+    ]);
+
+    const grounding = await buildGrounding(pub);
+
+    expect(mockDb["where"]).toHaveBeenCalledTimes(1);
+    const whereArg = JSON.stringify(mockDb["where"].mock.calls[0]?.[0]);
+    expect(whereArg).toContain("visibility");
+    expect(whereArg).toContain("category");
+    // The allowlisted categories confirmed live against App.tsx's registered routes.
+    for (const cat of ["assessment", "project", "retainer", "monitoring", "config_pack"]) {
+      expect(whereArg).toContain(cat);
+    }
+    // MSP-tier categories (only page is /msp, unrouted pending #1088) must NOT be
+    // silently allowed through as if they were a live category.
+    expect(whereArg).not.toContain("platform_subscription");
+    expect(whereArg).not.toContain("msp_onboarding");
+
+    expect(grounding.summary).toContain("Copilot Readiness Assessment");
+    expect(grounding.summary).toContain("$1,500");
   });
 });
 

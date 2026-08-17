@@ -165,12 +165,36 @@ export async function buildGrounding(
 // full RAG system — real names, taglines, categories, and pricing are enough for
 // honest answers.
 //
-// SOURCE-OF-TRUTH NOTE (#1097 root cause): the "actually live on the site" signal
-// is `services.visibility === "public"`. This is the SINGLE place the public bot
-// decides what counts as live, so it can never drift from a second flag. #1085
-// (Stale Content Audit) is meant to establish a canonical "actually reachable on
-// the router" field; when it lands, swap the `.where(...)` filter HERE to read it
-// — do NOT reintroduce a parallel flag elsewhere that can also drift out of sync.
+// SOURCE-OF-TRUTH NOTE (#1097 root cause, resolved #364): #1085 (Stale Content
+// Audit) closed 2026-08-17 with zero comments, no linked PR/commit, and no new
+// schema field — its sub-issues (#1080/#1086/#1090/#1091) did route-restoration
+// and copy-drift auditing, but never established the canonical "actually
+// reachable on the router" field #1097 anticipated. So there is no field to
+// swap to. `services.visibility === "public"` alone is NOT enough: it's true for
+// rows whose only real page is `/msp` (category `platform_subscription` —
+// Free/Growth/Pro tiers — and `msp_onboarding`), which isn't a registered route
+// yet (`App.tsx` — deferred to open #1088), plus a handful of authenticated-
+// portal-only rows (e.g. `category` null "remediation" line items that only
+// ever surface inside a customer's msp-portal journey, and `Launch Control`,
+// an msp-portal add-on with no marketing page at all).
+//
+// Fix: gate on visibility AND an explicit allowlist of `category` values that
+// are confirmed (by reading `App.tsx`'s registered <Route> list) to have a live
+// public marketing page today. This is deliberately fail-closed — a category
+// not in the list is excluded until someone adds it here with a route to point
+// at, rather than fail-open on a denylist that has to guess every bad case.
+// `category` is an existing classification column already used elsewhere for
+// page-routing purposes — this is not a second parallel "visibility" flag, it's
+// the same flag plus the one additional fact (which page a category renders on)
+// that was actually missing. If #1085's promised field is ever built for real,
+// swap the `inArray` filter below for it and delete LIVE_MARKETING_CATEGORIES.
+const LIVE_MARKETING_CATEGORIES = [
+  "assessment", // /assessments + /assessments/:slug
+  "project", // /projects + /projects/:slug
+  "retainer", // /platform/retainer + /retainers/architect-*
+  "monitoring", // /monitoring
+  "config_pack", // /platform/quick-start
+] as const;
 
 const CATALOG_TTL_MS = 5 * 60_000;
 let catalogCache: { summary: string; expires: number } | null = null;
@@ -219,9 +243,14 @@ async function buildLiveCatalogGrounding(): Promise<BotGrounding> {
         isFreeOffering: servicesTable.isFreeOffering,
       })
       .from(servicesTable)
-      // See SOURCE-OF-TRUTH NOTE above — swap this filter for #1085's field when it
-      // lands; never add a second parallel "live" flag.
-      .where(eq(servicesTable.visibility, "public"))
+      // See SOURCE-OF-TRUTH NOTE above — visibility alone drifts (e.g. MSP tiers,
+      // whose only page isn't routed yet); the category allowlist closes that gap.
+      .where(
+        and(
+          eq(servicesTable.visibility, "public"),
+          inArray(servicesTable.category, LIVE_MARKETING_CATEGORIES),
+        ),
+      )
       .orderBy(asc(servicesTable.sortOrder), asc(servicesTable.createdAt))
       .limit(60);
 

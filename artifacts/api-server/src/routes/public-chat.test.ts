@@ -121,7 +121,7 @@ vi.mock("@workspace/db", () => ({
     update: vi.fn().mockReturnThis(),
     set: vi.fn().mockReturnThis(),
   },
-  servicesTable: { name: "name", visibility: "visibility", sortOrder: "sort_order", createdAt: "created_at" },
+  servicesTable: { name: "name", visibility: "visibility", category: "category", sortOrder: "sort_order", createdAt: "created_at" },
   publicChatConversationsTable: { id: "id", sessionId: "session_id" },
 }));
 
