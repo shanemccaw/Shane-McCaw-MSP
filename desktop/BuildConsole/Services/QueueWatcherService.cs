@@ -343,12 +343,38 @@ namespace BuildConsole.Services
                     if (!entry.Process.HasExited) continue;
                     int exitCode = entry.Process.ExitCode;
                     ActivityLog.Log("watcher", $"Finished: {entry.Title} (exit {exitCode})");
+
+                    // Report completion to the dev server (best-effort). This is a REMOTE
+                    // HTTP POST to the Replit dev server, which naps after ~15 min of
+                    // inactivity — so a build finishing while the server is asleep makes
+                    // this throw. It MUST NOT gate the local BuildFinished fan-out below:
+                    // that fan-out drives PostBuildDeployPipeline, whose own build-complete
+                    // POST is exactly what wakes the server and pulls the new commit. The
+                    // original bug (Epic #803/#911) was these two lines sharing one try —
+                    // a napping-server report failure silently skipped the whole
+                    // deploy+restart chain, so the git pull never happened even though the
+                    // build's own shaneapp://runTest tests still ran (against stale code).
                     try
                     {
                         await _api.MarkQueueItemCompleteAsync(id, exitCode, entry.SessionId);
+                        ActivityLog.Log("watcher", $"Reported completion of queue item {id} to the dev server.");
+                    }
+                    catch (Exception ex)
+                    {
+                        ActivityLog.Log("watcher", $"Couldn't report completion for queue item {id} to the dev server ({ex.Message}) — dev server likely napping; firing BuildFinished LOCALLY anyway so the deploy+test pipeline still runs (its own build-complete POST will wake the server).");
+                    }
+
+                    // Fire the local completion listeners REGARDLESS of the remote report
+                    // outcome above. Wrapped separately so a subscriber throwing can't take
+                    // down the reap loop, and so it always runs.
+                    try
+                    {
                         BuildFinished?.Invoke(id, entry.Title, exitCode);
                     }
-                    catch (Exception ex) { ActivityLog.Log("watcher", $"Couldn't report completion for queue item {id}: {ex.Message}"); }
+                    catch (Exception ex)
+                    {
+                        ActivityLog.Log("watcher", $"A BuildFinished handler threw for queue item {id}: {ex.Message}");
+                    }
                     // Keep an interactive build's output around for the Build
                     // Watch window to finish draining and to hold its slot in
                     // interactive-render mode (never double-rendering via a

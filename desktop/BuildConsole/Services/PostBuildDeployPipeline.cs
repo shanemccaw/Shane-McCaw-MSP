@@ -125,6 +125,12 @@ namespace BuildConsole.Services
         {
             try
             {
+                // Loud, unconditional "the listener actually fired" marker — the very first
+                // thing recorded so the durable log proves this code path was reached at all
+                // (Q1 of the Epic #803/#911 investigation: is the build-completion listener
+                // even firing?). Every early-return below logs its own reason too.
+                ActivityLog.Log(Channel, $"[fired] Build-completion listener fired for build #{queueItemId} '{title}' (exit {exitCode}). Durable log: {ActivityLog.CurrentLogFilePath}");
+
                 // Only a genuinely successful build should trigger a deploy of new code.
                 if (exitCode != 0)
                 {
@@ -222,6 +228,13 @@ namespace BuildConsole.Services
             try
             {
                 BuildCompleteResult? resp = await _triggerDeployAsync();
+
+                // Loud "real response received" marker — the ACTUAL body the endpoint
+                // returned (ok / restarting / per-step git-pull result), not just "sent it".
+                // This is the single most diagnostic line: it shows whether the server-side
+                // git pull genuinely ran and what it did, straight from the durable log.
+                ActivityLog.Log(Channel, $"[2/5] build-complete RESPONSE received: {DescribeDeployResponse(resp)}");
+
                 if (resp != null && !resp.Ok && !resp.Restarting)
                 {
                     // A real failure with no restart scheduled (e.g. git pull diverged). Don't poll — abort.
@@ -259,6 +272,21 @@ namespace BuildConsole.Services
             result.AdvancedToOwnCommit = VerifyAdvancedToOwnCommit(_repoRoot, expectedFull, expectedShort, newHash, out string advNote);
             result.AdvancementNote = advNote;
             ActivityLog.Log(Channel, $"[3/5] Deploy CONFIRMED LIVE: {Short(oldHash)} -> {Short(newHash)} in {result.DeployElapsedSeconds:F0}s. advancedToOwnCommit={FormatBool(result.AdvancedToOwnCommit)} (expected {Short(expectedShort)}; {advNote}).");
+
+            // Gate: the live commit changed (a real restart happened), but if we can PROVE
+            // it does not yet contain this build's own commit (server is behind it — the
+            // deploy flipped for some other reason, e.g. an unrelated restart, and our pull
+            // hasn't landed), we must NOT run tests against that stale code. This enforces
+            // the core intent — a genuine git-pull+restart to OUR commit before any test
+            // executes. A null verdict (couldn't resolve the live commit locally) is left to
+            // proceed, since the hash flip is still real evidence the server advanced.
+            if (result.AdvancedToOwnCommit == false)
+            {
+                result.Stage = "deploy-not-confirmed";
+                result.Error = $"live commit {Short(newHash)} does NOT contain this build's commit {Short(expectedShort)} (server is behind it) — {advNote}";
+                ActivityLog.Log(Channel, $"[3/5] Deploy advanced but NOT to this build's commit — {result.Error}. Tests skipped (never run against stale code).");
+                return result;
+            }
 
             // ── [4/5] Run tests (scoped to the build's matching issue manifest; skips full suite).
             var settings = BuildConsoleSettings.Load();
@@ -448,5 +476,18 @@ namespace BuildConsole.Services
             string.IsNullOrEmpty(hash) ? "?" : (hash.Length > 12 ? hash.Substring(0, 12) : hash);
 
         private static string FormatBool(bool? b) => b == null ? "unknown" : (b.Value ? "yes" : "NO");
+
+        /// <summary>Renders the real build-complete response — ok/restarting/error plus each
+        /// pipeline step's (git pull / restart) own ok+label — into one loud log-friendly line,
+        /// so the durable log shows exactly what the server-side deploy actually did.</summary>
+        private static string DescribeDeployResponse(BuildCompleteResult? resp)
+        {
+            if (resp == null) return "null (no body — treated as a restart-drop; will poll)";
+            string steps = (resp.Steps != null && resp.Steps.Count > 0)
+                ? " steps=[" + string.Join(", ", resp.Steps.ConvertAll(s => $"{s.Label}:{(s.Ok ? "ok" : "FAIL")}")) + "]"
+                : "";
+            string err = string.IsNullOrWhiteSpace(resp.Error) ? "" : $" error=\"{resp.Error}\"";
+            return $"ok={FormatBool(resp.Ok)} restarting={FormatBool(resp.Restarting)}{steps}{err}";
+        }
     }
 }
