@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
@@ -17,6 +19,107 @@ namespace BuildConsole.Services
     /// </summary>
     public static class IssueChompAnimation
     {
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+
+        private const int GWL_EXSTYLE = -20;
+        private const int WS_EX_TRANSPARENT = 0x00000020;
+        private const int WS_EX_TOOLWINDOW = 0x00000080;
+
+        private sealed class OverlaySession
+        {
+            public Window OverlayWindow { get; set; } = null!;
+            public Canvas Canvas { get; set; } = null!;
+
+            public void Close()
+            {
+                try
+                {
+                    OverlayWindow.Close();
+                }
+                catch { }
+            }
+        }
+
+        /// <summary>
+        /// Creates a borderless, transparent, topmost overlay Window sized and positioned precisely
+        /// over the main window. Because this is a separate top-level Win32 window, it renders completely
+        /// ABOVE WebView2 child HWNDs (solving WPF Airspace) without stealing focus or intercepting clicks.
+        /// </summary>
+        private static OverlaySession? CreateOverlay(Window mainWin, bool clipToBounds = false)
+        {
+            if (!mainWin.IsLoaded || mainWin.ActualWidth <= 0 || mainWin.ActualHeight <= 0) return null;
+
+            Point screenTopLeft;
+            try
+            {
+                screenTopLeft = mainWin.PointToScreen(new Point(0, 0));
+            }
+            catch
+            {
+                screenTopLeft = new Point(mainWin.Left, mainWin.Top);
+            }
+
+            var source = PresentationSource.FromVisual(mainWin);
+            double dpiX = source?.CompositionTarget?.TransformToDevice.M11 ?? 1.0;
+            double dpiY = source?.CompositionTarget?.TransformToDevice.M22 ?? 1.0;
+
+            double wpfLeft = screenTopLeft.X / dpiX;
+            double wpfTop = screenTopLeft.Y / dpiY;
+            double wpfWidth = mainWin.ActualWidth;
+            double wpfHeight = mainWin.ActualHeight;
+
+            var canvas = new Canvas
+            {
+                Width = wpfWidth,
+                Height = wpfHeight,
+                IsHitTestVisible = false,
+                ClipToBounds = clipToBounds,
+                Background = Brushes.Transparent,
+            };
+
+            var overlayWin = new Window
+            {
+                WindowStyle = WindowStyle.None,
+                AllowsTransparency = true,
+                Background = Brushes.Transparent,
+                Topmost = true,
+                ShowActivated = false,
+                ShowInTaskbar = false,
+                Focusable = false,
+                IsHitTestVisible = false,
+                ResizeMode = ResizeMode.NoResize,
+                Left = wpfLeft,
+                Top = wpfTop,
+                Width = wpfWidth,
+                Height = wpfHeight,
+                Owner = mainWin,
+                Content = canvas,
+            };
+
+            overlayWin.SourceInitialized += (s, e) =>
+            {
+                try
+                {
+                    var hwnd = new WindowInteropHelper(overlayWin).Handle;
+                    int exStyle = GetWindowLong(hwnd, GWL_EXSTYLE);
+                    SetWindowLong(hwnd, GWL_EXSTYLE, exStyle | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW);
+                }
+                catch { }
+            };
+
+            try
+            {
+                overlayWin.Show();
+                return new OverlaySession { OverlayWindow = overlayWin, Canvas = canvas };
+            }
+            catch
+            {
+                return null;
+            }
+        }
         private static readonly Random Rng = new();
 
         private static readonly string[] ChompPhrases =
@@ -74,12 +177,15 @@ namespace BuildConsole.Services
         private static void PlayInternal(FrameworkElement? targetElement, string title, bool isEpic)
         {
             if (Application.Current?.MainWindow is not Window mainWin) return;
-            if (mainWin.Content is not Grid rootGrid) return;
 
             mainWin.Dispatcher.Invoke(() =>
             {
                 try
                 {
+                    var session = CreateOverlay(mainWin, clipToBounds: false);
+                    if (session == null) return;
+                    var canvas = session.Canvas;
+
                     Point targetPos = new Point(mainWin.ActualWidth * 0.35, mainWin.ActualHeight * 0.45);
                     if (targetElement != null && targetElement.IsLoaded)
                     {
@@ -93,16 +199,6 @@ namespace BuildConsole.Services
 
                     targetPos.X = Math.Clamp(targetPos.X, 120, Math.Max(140, mainWin.ActualWidth - 200));
                     targetPos.Y = Math.Clamp(targetPos.Y, 90, Math.Max(110, mainWin.ActualHeight - 140));
-
-                    var canvas = new Canvas
-                    {
-                        Width = mainWin.ActualWidth,
-                        Height = mainWin.ActualHeight,
-                        IsHitTestVisible = false,
-                        ClipToBounds = false
-                    };
-                    Panel.SetZIndex(canvas, 30000);
-                    rootGrid.Children.Add(canvas);
 
                     // Floating target card
                     var issueCard = new Border
@@ -157,18 +253,22 @@ namespace BuildConsole.Services
                         };
                     }
 
-                    double critterScale = isEpic ? 2.2 : 1.0;
+                    double critterScale = isEpic ? 2.2 : 1.1;
                     var charTransform = new TransformGroup();
                     var charTranslate = new TranslateTransform();
-                    // Face LEFT (right-to-left animation)
+                    var charHopTranslate = new TranslateTransform();
+                    // Face LEFT (starts on far right, runs left across tabs to the left sidebar)
                     var charScaleTransform = new ScaleTransform(-critterScale, critterScale);
                     charTransform.Children.Add(charScaleTransform);
                     charTransform.Children.Add(charTranslate);
+                    charTransform.Children.Add(charHopTranslate);
                     character.RenderTransform = charTransform;
                     character.RenderTransformOrigin = new Point(0.5, 0.5);
 
-                    double startX = targetPos.X + (isEpic ? 320 : 220);
-                    double startY = targetPos.Y - (isEpic ? 50 : 30);
+                    // Start at the far RIGHT of the window (over the Build Queue panel)
+                    double winW = mainWin.ActualWidth;
+                    double startX = winW + 40;
+                    double startY = targetPos.Y - (isEpic ? 45 : 25);
                     Canvas.SetLeft(character, startX);
                     Canvas.SetTop(character, startY);
                     canvas.Children.Add(character);
@@ -198,26 +298,40 @@ namespace BuildConsole.Services
                     Canvas.SetTop(bubble, targetPos.Y - (isEpic ? 75 : 55));
                     canvas.Children.Add(bubble);
 
-                    // Step 1: Lunge in (Right to Left)
-                    var lungeX = new DoubleAnimation(0, isEpic ? -220 : -160, TimeSpan.FromMilliseconds(isEpic ? 420 : 350))
-                    {
-                        EasingFunction = new BackEase { Amplitude = 0.6, EasingMode = EasingMode.EaseOut }
-                    };
-                    charTranslate.BeginAnimation(TranslateTransform.XProperty, lungeX);
+                    // Step 1: Sprint across the ENTIRE screen (from right Build Queue panel across main tabs to left issue)
+                    double targetArrivalX = targetPos.X + (isEpic ? 35 : 25);
+                    double sprintDistance = targetArrivalX - startX;
+                    int sprintDuration = isEpic ? 800 : 700;
 
-                    // Step 2: Speech bubble pop
-                    var popOpacity = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(150)) { BeginTime = TimeSpan.FromMilliseconds(200) };
+                    var sprintX = new DoubleAnimation(0, sprintDistance, TimeSpan.FromMilliseconds(sprintDuration))
+                    {
+                        EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+                    };
+                    charTranslate.BeginAnimation(TranslateTransform.XProperty, sprintX);
+
+                    // Gallop / Bouncing hop while sprinting across the screen
+                    var hop = new DoubleAnimation(0, -18, TimeSpan.FromMilliseconds(110))
+                    {
+                        AutoReverse = true,
+                        RepeatBehavior = new RepeatBehavior(TimeSpan.FromMilliseconds(sprintDuration)),
+                        EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
+                    };
+                    charHopTranslate.BeginAnimation(TranslateTransform.YProperty, hop);
+
+                    // Step 2: Speech bubble pop right when arriving at the issue
+                    int bubblePopDelay = Math.Max(100, sprintDuration - 140);
+                    var popOpacity = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(150)) { BeginTime = TimeSpan.FromMilliseconds(bubblePopDelay) };
                     var popScale = new DoubleAnimation(0.2, isEpic ? 1.35 : 1.15, TimeSpan.FromMilliseconds(200))
                     {
-                        BeginTime = TimeSpan.FromMilliseconds(200),
+                        BeginTime = TimeSpan.FromMilliseconds(bubblePopDelay),
                         EasingFunction = new ElasticEase { Oscillations = 1, Springiness = 4 }
                     };
                     bubble.BeginAnimation(UIElement.OpacityProperty, popOpacity);
                     bubbleScale.BeginAnimation(ScaleTransform.ScaleXProperty, popScale);
                     bubbleScale.BeginAnimation(ScaleTransform.ScaleYProperty, popScale);
 
-                    // Step 3: Crunch & Burst
-                    int crunchDelay = isEpic ? 420 : 350;
+                    // Step 3: Crunch & Burst on arrival
+                    int crunchDelay = sprintDuration;
                     var crunchTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(crunchDelay) };
                     crunchTimer.Tick += (_, _) =>
                     {
@@ -241,14 +355,15 @@ namespace BuildConsole.Services
                     };
                     crunchTimer.Start();
 
-                    // Step 4: Victory exit (continue dashing to the Left)
-                    int exitDelay = isEpic ? 900 : 750;
+                    // Step 4: Victory exit (continue dashing off the screen to the Left)
+                    int exitDelay = sprintDuration + 550;
                     var exitTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(exitDelay) };
                     exitTimer.Tick += (_, _) =>
                     {
                         exitTimer.Stop();
 
-                        var exitX = new DoubleAnimation(isEpic ? -220 : -160, isEpic ? -520 : -380, TimeSpan.FromMilliseconds(450))
+                        double exitDistance = sprintDistance - (targetPos.X + 250);
+                        var exitX = new DoubleAnimation(sprintDistance, exitDistance, TimeSpan.FromMilliseconds(450))
                         {
                             EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn }
                         };
@@ -263,12 +378,12 @@ namespace BuildConsole.Services
                     exitTimer.Start();
 
                     // Step 5: Clean up canvas
-                    int totalDuration = isEpic ? 1550 : 1300;
+                    int totalDuration = sprintDuration + 1150;
                     var cleanupTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(totalDuration) };
                     cleanupTimer.Tick += (_, _) =>
                     {
                         cleanupTimer.Stop();
-                        rootGrid.Children.Remove(canvas);
+                        session.Close();
                     };
                     cleanupTimer.Start();
                 }
@@ -282,24 +397,16 @@ namespace BuildConsole.Services
         public static void PlayMilestoneParade(FrameworkElement? targetElement, string milestoneTitle)
         {
             if (Application.Current?.MainWindow is not Window mainWin) return;
-            if (mainWin.Content is not Grid rootGrid) return;
 
             mainWin.Dispatcher.Invoke(() =>
             {
                 try
                 {
+                    var session = CreateOverlay(mainWin, clipToBounds: false);
+                    if (session == null) return;
+                    var canvas = session.Canvas;
                     double winW = mainWin.ActualWidth;
                     double winH = mainWin.ActualHeight;
-
-                    var canvas = new Canvas
-                    {
-                        Width = winW,
-                        Height = winH,
-                        IsHitTestVisible = false,
-                        ClipToBounds = false
-                    };
-                    Panel.SetZIndex(canvas, 32000);
-                    rootGrid.Children.Add(canvas);
 
                     // 1. Grand Center Milestone Banner
                     var banner = new Border
@@ -445,7 +552,7 @@ namespace BuildConsole.Services
                     cleanupTimer.Tick += (_, _) =>
                     {
                         cleanupTimer.Stop();
-                        rootGrid.Children.Remove(canvas);
+                        session.Close();
                     };
                     cleanupTimer.Start();
                 }
@@ -459,12 +566,15 @@ namespace BuildConsole.Services
         public static void PlayWhammy(FrameworkElement? targetElement, string issueTitle, int? blockerNumber = null)
         {
             if (Application.Current?.MainWindow is not Window mainWin) return;
-            if (mainWin.Content is not Grid rootGrid) return;
 
             mainWin.Dispatcher.Invoke(() =>
             {
                 try
                 {
+                    var session = CreateOverlay(mainWin, clipToBounds: false);
+                    if (session == null) return;
+                    var canvas = session.Canvas;
+
                     Point targetPos = new Point(mainWin.ActualWidth * 0.35, mainWin.ActualHeight * 0.45);
                     if (targetElement != null && targetElement.IsLoaded)
                     {
@@ -478,16 +588,6 @@ namespace BuildConsole.Services
 
                     targetPos.X = Math.Clamp(targetPos.X, 140, Math.Max(160, mainWin.ActualWidth - 220));
                     targetPos.Y = Math.Clamp(targetPos.Y, 90, Math.Max(110, mainWin.ActualHeight - 140));
-
-                    var canvas = new Canvas
-                    {
-                        Width = mainWin.ActualWidth,
-                        Height = mainWin.ActualHeight,
-                        IsHitTestVisible = false,
-                        ClipToBounds = false
-                    };
-                    Panel.SetZIndex(canvas, 31000);
-                    rootGrid.Children.Add(canvas);
 
                     // Floating target card with red blocked border
                     var issueCard = new Border
@@ -556,14 +656,18 @@ namespace BuildConsole.Services
                     double whammyScale = 1.9;
                     var charTransform = new TransformGroup();
                     var charTranslate = new TranslateTransform();
-                    // Face LEFT (starts on right, runs left)
+                    var charHopTranslate = new TranslateTransform();
+                    // Face LEFT (starts on far right over Build Queue panel, charges left across tabs to the left sidebar)
                     var charScaleTransform = new ScaleTransform(-whammyScale, whammyScale);
                     charTransform.Children.Add(charScaleTransform);
                     charTransform.Children.Add(charTranslate);
+                    charTransform.Children.Add(charHopTranslate);
                     whammy.RenderTransform = charTransform;
                     whammy.RenderTransformOrigin = new Point(0.5, 0.5);
 
-                    double startX = targetPos.X + 280;
+                    // Start at the far RIGHT of the window (over the Build Queue panel)
+                    double winW = mainWin.ActualWidth;
+                    double startX = winW + 40;
                     double startY = targetPos.Y - 45;
                     Canvas.SetLeft(whammy, startX);
                     Canvas.SetTop(whammy, startY);
@@ -594,18 +698,32 @@ namespace BuildConsole.Services
                     Canvas.SetTop(bubble, targetPos.Y - 70);
                     canvas.Children.Add(bubble);
 
-                    // Step 1: Whammy charges in from the RIGHT
-                    var chargeX = new DoubleAnimation(0, -200, TimeSpan.FromMilliseconds(380))
+                    // Step 1: Whammy charges across the ENTIRE screen (from right Build Queue panel across main tabs to left issue)
+                    double targetArrivalX = targetPos.X + 45;
+                    double chargeDistance = targetArrivalX - startX;
+                    int chargeDuration = 800;
+
+                    var chargeX = new DoubleAnimation(0, chargeDistance, TimeSpan.FromMilliseconds(chargeDuration))
                     {
-                        EasingFunction = new BackEase { Amplitude = 0.5, EasingMode = EasingMode.EaseOut }
+                        EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
                     };
                     charTranslate.BeginAnimation(TranslateTransform.XProperty, chargeX);
 
-                    // Step 2: Speech bubble pop
-                    var popOpacity = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(120)) { BeginTime = TimeSpan.FromMilliseconds(180) };
+                    // Heavy stomping bounce while charging across the screen
+                    var stomp = new DoubleAnimation(0, -16, TimeSpan.FromMilliseconds(120))
+                    {
+                        AutoReverse = true,
+                        RepeatBehavior = new RepeatBehavior(TimeSpan.FromMilliseconds(chargeDuration)),
+                        EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
+                    };
+                    charHopTranslate.BeginAnimation(TranslateTransform.YProperty, stomp);
+
+                    // Step 2: Speech bubble pop right when arriving
+                    int bubblePopDelay = Math.Max(100, chargeDuration - 160);
+                    var popOpacity = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(120)) { BeginTime = TimeSpan.FromMilliseconds(bubblePopDelay) };
                     var popScale = new DoubleAnimation(0.2, 1.2, TimeSpan.FromMilliseconds(180))
                     {
-                        BeginTime = TimeSpan.FromMilliseconds(180),
+                        BeginTime = TimeSpan.FromMilliseconds(bubblePopDelay),
                         EasingFunction = new ElasticEase { Oscillations = 1, Springiness = 4 }
                     };
                     bubble.BeginAnimation(UIElement.OpacityProperty, popOpacity);
@@ -615,12 +733,12 @@ namespace BuildConsole.Services
                     // Step 3: Mallet Windup & Heavy SLAM!
                     var malletWindup = new DoubleAnimation(0, 45, TimeSpan.FromMilliseconds(200))
                     {
-                        BeginTime = TimeSpan.FromMilliseconds(180),
+                        BeginTime = TimeSpan.FromMilliseconds(bubblePopDelay),
                         EasingFunction = new BackEase { Amplitude = 1.2, EasingMode = EasingMode.EaseIn }
                     };
                     malletTransform.BeginAnimation(RotateTransform.AngleProperty, malletWindup);
 
-                    var slamTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(380) };
+                    var slamTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(chargeDuration) };
                     slamTimer.Tick += (_, _) =>
                     {
                         slamTimer.Stop();
@@ -682,7 +800,7 @@ namespace BuildConsole.Services
                     slamTimer.Start();
 
                     // Step 4: Mischievous Laugh & Dash off to the LEFT
-                    int exitDelay = 950;
+                    int exitDelay = chargeDuration + 600;
                     var exitTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(exitDelay) };
                     exitTimer.Tick += (_, _) =>
                     {
@@ -690,7 +808,8 @@ namespace BuildConsole.Services
 
                         bubbleText.Text = "HEHEHE! 😈";
 
-                        var exitX = new DoubleAnimation(-200, -560, TimeSpan.FromMilliseconds(480))
+                        double exitDistance = chargeDistance - (targetPos.X + 250);
+                        var exitX = new DoubleAnimation(chargeDistance, exitDistance, TimeSpan.FromMilliseconds(480))
                         {
                             EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn }
                         };
@@ -705,11 +824,12 @@ namespace BuildConsole.Services
                     exitTimer.Start();
 
                     // Step 5: Clean up
-                    var cleanupTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1650) };
+                    int totalDuration = chargeDuration + 1200;
+                    var cleanupTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(totalDuration) };
                     cleanupTimer.Tick += (_, _) =>
                     {
                         cleanupTimer.Stop();
-                        rootGrid.Children.Remove(canvas);
+                        session.Close();
                     };
                     cleanupTimer.Start();
                 }
@@ -1109,24 +1229,16 @@ namespace BuildConsole.Services
         public static void PlayMilestoneClosedParty(FrameworkElement? targetElement, string milestoneTitle)
         {
             if (Application.Current?.MainWindow is not Window mainWin) return;
-            if (mainWin.Content is not Grid rootGrid) return;
 
             mainWin.Dispatcher.Invoke(() =>
             {
                 try
                 {
+                    var session = CreateOverlay(mainWin, clipToBounds: true);
+                    if (session == null) return;
+                    var canvas = session.Canvas;
                     double winW = mainWin.ActualWidth;
                     double winH = mainWin.ActualHeight;
-
-                    var canvas = new Canvas
-                    {
-                        Width = winW,
-                        Height = winH,
-                        IsHitTestVisible = false,
-                        ClipToBounds = true
-                    };
-                    Panel.SetZIndex(canvas, 32000);
-                    rootGrid.Children.Add(canvas);
 
                     // ── 0. FULL-SCREEN DARK OVERLAY WITH FADE-IN ──
                     var overlay = new Border
@@ -1395,7 +1507,7 @@ namespace BuildConsole.Services
                     {
                         fadeOutTimer.Stop();
                         var fadeAll = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(800));
-                        fadeAll.Completed += (__, ___) => rootGrid.Children.Remove(canvas);
+                        fadeAll.Completed += (__, ___) => session.Close();
                         canvas.BeginAnimation(UIElement.OpacityProperty, fadeAll);
                     };
                     fadeOutTimer.Start();

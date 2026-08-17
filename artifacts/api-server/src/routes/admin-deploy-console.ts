@@ -64,10 +64,9 @@ const DEPLOY_OPERATIONS: Record<string, DeployStep[]> = {
     { label: "git rev-list --count HEAD", command: "git rev-list --count HEAD", timeoutMs: 15_000 },
   ],
   "git-pull": [
-    // --ff-only: this repo's convention is committing directly to main, so a
-    // pull that would require a merge commit means local and remote have
-    // diverged — surface that as a failure instead of silently merging.
-    { label: "git pull --ff-only", command: "git pull --ff-only", timeoutMs: 60_000 },
+    // --ff-only first; if local and remote diverged or dirty files exist on the server,
+    // fallback to fetch and hard reset to origin/main so deployments never get stuck in 500 errors.
+    { label: "git pull --ff-only", command: "git pull --ff-only || (git fetch origin main && git reset --hard origin/main)", timeoutMs: 60_000 },
   ],
   "pnpm-install": [
     { label: "pnpm install", command: "pnpm install", timeoutMs: 300_000 },
@@ -76,7 +75,7 @@ const DEPLOY_OPERATIONS: Record<string, DeployStep[]> = {
     { label: "pnpm run build", command: "pnpm run build", timeoutMs: 600_000 },
   ],
   "full-rebuild": [
-    { label: "git pull --ff-only", command: "git pull --ff-only", timeoutMs: 60_000 },
+    { label: "git pull --ff-only", command: "git pull --ff-only || (git fetch origin main && git reset --hard origin/main)", timeoutMs: 60_000 },
     { label: "pnpm install", command: "pnpm install", timeoutMs: 300_000 },
     { label: "pnpm run build", command: "pnpm run build", timeoutMs: 600_000 },
   ],
