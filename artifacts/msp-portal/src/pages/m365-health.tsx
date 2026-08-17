@@ -62,7 +62,7 @@ export default function M365HealthPage() {
             healthScore={live.healthScore}
             annualSavingsCents={licenseWaste?.annualCents ?? null}
             genuineFindings={live.status?.stats.genuineFindings ?? null}
-            copilotReadiness={live.status?.copilotGate?.score ?? live.status?.copilotReadiness?.overall.score ?? null}
+            copilotReadiness={live.status?.copilotReadiness?.overall.score ?? null}
             everScanned={Boolean(live.status?.scan.everScanned)}
             onSelectPillar={setSelectedPillarKey}
           />
@@ -86,7 +86,6 @@ export default function M365HealthPage() {
               and real adoption counts. */}
           <TrendsRow
             copilotReadiness={live.status?.copilotReadiness ?? null}
-            copilotGateScore={live.status?.copilotGate?.score ?? null}
             metrics={live.metrics}
             copilotPackageKey={live.status?.radar.packageKey ?? null}
             onUnlockCopilotReadiness={() => navigate('/copilot-readiness/checkout')}

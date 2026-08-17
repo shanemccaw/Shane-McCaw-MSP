@@ -70,14 +70,6 @@ import type { CopilotReadinessLive } from '@/components/assessment-test/types';
 
 interface TrendsRowProps {
   copilotReadiness: CopilotReadinessLive | null;
-  /**
-   * The engine's Copilot pillar score (status.copilotGate.score) — the same
-   * gate-score-first fallback journeyModel.ts's buildJourneyView() already
-   * applies for /copilot-readiness. When the last completed run carried no
-   * tenantId, copilotReadiness comes back null entirely (its sub-indicators
-   * need one; the gate engine doesn't) while this stays populated (#1108).
-   */
-  copilotGateScore: number | null;
   metrics: Record<string, ResolvedMetric>;
   /** The customer's scanned monitoring package (status.radar.packageKey) —
    * used to decide whether the Copilot Readiness Assessment was purchased. */
@@ -164,17 +156,11 @@ const BASIS_NOTE: Record<'ratio' | 'risk_bands', string> = {
 
 export const TrendsRow: React.FC<TrendsRowProps> = ({
   copilotReadiness,
-  copilotGateScore,
   metrics,
   copilotPackageKey,
   onUnlockCopilotReadiness,
 }) => {
   const copilotEntitled = copilotPackageKey === COPILOT_READINESS_PACKAGE_KEY;
-  // Gate-score-first, same fallback journeyModel.ts's buildJourneyView() uses
-  // for /copilot-readiness — copilotReadiness comes back null entirely (not
-  // just its overall.score) when the last completed run had no tenantId, but
-  // the gate engine doesn't need one so copilotGateScore stays populated.
-  const overallScore = copilotGateScore ?? copilotReadiness?.overall.score ?? null;
 
   // Real per-series daily history; a series with <2 points can't draw an
   // honest trend line and is offered as disabled.
@@ -329,8 +315,8 @@ export const TrendsRow: React.FC<TrendsRowProps> = ({
           >
             {!copilotEntitled
               ? 'Locked'
-              : overallScore != null
-                ? `${overallScore}% overall`
+              : copilotReadiness?.overall.score != null
+                ? `${copilotReadiness.overall.score}% overall`
                 : 'No data yet'}
           </span>
         </div>

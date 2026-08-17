@@ -1379,47 +1379,74 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     smartEligible: false,
   },
   {
+    // #1105: `adoption:email-activity-trend` (GET /reports/getEmailActivityUserDetail)
+    // was already collecting for every tenant, but its mapping's sourceField
+    // ("lastActivityDate") never matched the CSV's real literal header
+    // ("Last Activity Date"), so it silently produced 0 on every run since
+    // 2026-07-19. Fixed in 2026-08-17-adoption-active-user-counts-1105.sql,
+    // which also replaces the blank/non-blank predicate with a real
+    // `newerThanDays 7` check (Last Activity Date is NOT period-bounded on
+    // these reports, confirmed live). Live-verified non-zero via
+    // shaneapp://executeScan against the testbed tenant same session.
     key: "usage.exchangeActiveCount",
     label: "Exchange Active Users",
     valueType: "count",
     shape: "trend",
     sourceType: "monitor_profile",
-    sourceKey: "not_collected:exchange-active-users",
+    sourceKey: "adoption:email-activity-trend",
     scope: "customer",
-    status: "not_collected",
+    status: "available",
     smartEligible: false,
   },
   {
+    // #1105: `adoption:sharepoint-onedrive-trend` (GET /reports/getSharePointSiteUsageDetail)
+    // — same mapping-correctness fix as usage.exchangeActiveCount above. Honest
+    // caveat kept in the label's real meaning even though not in the string:
+    // this endpoint is PER-SITE, not per-user (the check's own name is a
+    // misnomer — it has never queried OneDrive), so the number is really
+    // "sites with a recently active owner", a proxy for SharePoint adoption
+    // rather than a deduplicated user count. Left on this check rather than
+    // repointed at the real per-user getSharePointActivityUserDetail endpoint
+    // because this check's storage/file-count columns are also consumed by
+    // cost tracking elsewhere — see the migration's own header for the full
+    // reasoning.
     key: "usage.sharePointActiveCount",
     label: "SharePoint Active Users",
     valueType: "count",
     shape: "trend",
     sourceType: "monitor_profile",
-    sourceKey: "not_collected:sharepoint-active-users",
+    sourceKey: "adoption:sharepoint-onedrive-trend",
     scope: "customer",
-    status: "not_collected",
+    status: "available",
     smartEligible: false,
   },
   {
+    // #1105: brand-new check (no prior OneDrive active-user coverage existed
+    // at all) — `onedrive:active-users`, GET /reports/getOneDriveUsageAccountDetail
+    // (period='D7'), countWhere Last Activity Date newerThanDays 7 && not
+    // deleted. Distinct from #753's onedrive:sync-errors (same endpoint,
+    // period='D30', staleness proxy — different purpose, different check).
     key: "usage.oneDriveActiveCount",
     label: "OneDrive Active Users",
     valueType: "count",
     shape: "trend",
     sourceType: "monitor_profile",
-    sourceKey: "not_collected:onedrive-active-users",
+    sourceKey: "onedrive:active-users",
     scope: "customer",
-    status: "not_collected",
+    status: "available",
     smartEligible: false,
   },
   {
+    // #1105: `adoption:teams-activity-trend` (GET /reports/getTeamsUserActivityUserDetail)
+    // — same mapping-correctness fix as the siblings above.
     key: "usage.teamsActiveCount",
     label: "Teams Active Users",
     valueType: "count",
     shape: "trend",
     sourceType: "monitor_profile",
-    sourceKey: "not_collected:teams-active-users",
+    sourceKey: "adoption:teams-activity-trend",
     scope: "customer",
-    status: "not_collected",
+    status: "available",
     smartEligible: false,
   },
 
