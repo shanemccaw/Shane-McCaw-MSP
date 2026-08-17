@@ -2,7 +2,7 @@
   "issue": 454,
   "feature": "Assessment Monitoring / weekly-rescan surface (Git #454, area:shane-mccaw-consulting) — access gate, real testbed rescan trigger, and the real weekly cron cadence. Written to be honest about the gap between the requested framing ('weekly re-scan gated behind a signed SOW') and what actually exists in code (see notes).",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "88c809d9e44f3e348aa9c13c8235aee677dcd5fc",
+  "lastVerifiedAgainstCommit": "74e6c8f1ea435aade90cfa284674d1104008b1ef",
 
   "notes": [
     "PROVENANCE / GIT #454. This manifest was written after a full source investigation of the 'Assessment Monitoring' product. The requested framing was: a weekly re-scan GATED BEHIND A SIGNED SOW, with a real scheduled trigger and a signed-SOW gate that blocks unentitled customers. GROUND TRUTH after reading the code: that exact feature — a weekly rescan whose gate is a *signed SOW* — DOES NOT EXIST as one unified mechanism. Rather than fabricate coverage for a gate/trigger that isn't there (which would violate this repo's test-honesty discipline), this manifest asserts the REAL, adjacent mechanisms that DO exist and documents each divergence in-line below. Sources read: seed-system-workflows.ts (the weekly cron workflow), workflow-executor.ts (triggerScheduledWorkflows + computeNextCronRun), sow-expiry-sweep.ts, portal-assessment.ts (debug-trigger-scan), diagnostics-runner.ts (runDiagnostics), portal-customer-engines.ts (the payment entitlement gate), sow-monitoring-addon.ts (pricing resolver), journeyPreviewFixture.ts (the 'tenant-monitoring' design fixture), admin-workflows.ts (the trigger-inspection endpoints), requireAuth.ts (the guards).",
