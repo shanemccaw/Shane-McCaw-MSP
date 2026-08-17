@@ -109,6 +109,39 @@ Shane's BuildConsole desktop app (`desktop/BuildConsole/`) reads both the label 
 - **Commit only your own changes, on your own commit.** Never let your work get swept into or bundled with an unrelated concurrent commit, and never sweep unrelated uncommitted changes you find in the working tree into your own commit — if you find unrelated dirty files that aren't yours, leave them alone and report them rather than committing them.
 - Commit message first line should be a plain descriptive name of the work (e.g. `Dashboard Metric Resolvers`, `resolveMspIdOrZero fix`) — no `IN FLIGHT`/`DONE` status prefixes in git history; those are for the session-naming convention used in chat, not commit messages.
 
+## Remote server access (SSH) — real, working, current
+
+Direct SSH access to the Replit dev server is real and confirmed working end
+to end (connection test, git fetch/pull, restart) — this supersedes any
+earlier assumption that a build session has no way to reach the live
+server or database directly. Implemented in
+`desktop/BuildConsole/Services/ReplitSshService.cs`.
+
+Real connection pattern:
+
+```
+ssh -i "$HOME\.ssh\replit" -p 22 -n -T -o StrictHostKeyChecking=accept-new <replUser>@<replHost> "<command>"
+```
+
+Remote repo path: `/home/runner/workspace`. The real host/user/key-path
+values are environment-specific — confirm them from BuildConsole Settings
+-> SSH & Remote (Replit) rather than hardcoding them.
+
+SSH is now the **preferred mechanism** for git-pull/restart operations,
+superseding the earlier HTTP-based #911/#805 deploy endpoints where SSH has
+confirmed replaced them (see #82/#87's migration to the SSH pull+build
+pre-step in `PostBuildDeployPipeline`).
+
+SSH also reaches the real database directly, not just git/build commands.
+This updates the Database section below: the old "no direct DB access,
+always write SQL for Shane" default is obsolete for the same reason
+`shaneapp://executeSql` made it obsolete — direct DB access via SSH is now
+a real, available option for a build session to self-verify against. Manual
+SQL handed to Shane remains the right fallback only for genuinely
+destructive/sensitive operations (irreversible bulk deletes,
+production-affecting changes, anything he'd reasonably want eyes-on first)
+— the same judgment call already established for `shaneapp://executeSql`.
+
 ## Database
 
 - **Default: self-verify SQL via `shaneapp://executeSql`, not "write it and stop."** This environment has no direct `DATABASE_URL` and BuildConsole-launched sessions historically deferred all live DB work to Shane's own SQL console — that rule is now obsolete. `shaneapp://executeSql` (confirmed working; see `desktop/BuildConsole/AGENT_PROTOCOLS.md` section 1) runs SQL through BuildConsole's own direct local Postgres connection with zero round-trip, closing the same loop test execution now closes via `shaneapp://runTest`. Where practical, a build session should run and verify its own SQL directly through that protocol — reads to confirm state, and writes/`ALTER`/`UPDATE`/`INSERT` that are a normal, reversible part of the task — and report the real result honestly, the same way it reports test pass/fail. Don't claim something is verified against live data unless it actually was, through the protocol.
