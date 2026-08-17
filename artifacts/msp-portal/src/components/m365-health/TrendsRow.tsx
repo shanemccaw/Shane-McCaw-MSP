@@ -30,6 +30,15 @@ import type { CopilotReadinessLive } from '@/components/assessment-test/types';
  *     history yet" empty state instead. Points are bucketed to one per day
  *     (last reading wins) so the chart reads as a daily trend, and NOTHING is
  *     interpolated or fabricated to fill gaps.
+ *     "Security Risk Points" (engine.securityScore) is an unbounded SUM of
+ *     impact weights over fired signals — higher is WORSE and it is NOT the
+ *     same figure or scale as the 0-100 Security pillar score shown elsewhere
+ *     on this page (Git #1101: the two were confusable when both were
+ *     labeled "Security Score" and only visible as raw numbers, e.g. pillar
+ *     52 vs this series reading 206). TREND_SERIES_NOTE below surfaces that
+ *     distinction in the UI when this series is active, mirroring the
+ *     "risk points accumulated · lower is better" disclosure the Architecture
+ *     page's ScoreOverview.tsx already uses for the same class of metric.
  *   • Copilot Readiness breakdown — the three real sub-indicators behind the
  *     hero's overall readiness figure (copilot-readiness.ts: SharePoint/Teams
  *     overshare, sensitivity labels, DLP — 50/30/20 weighting). Every score is
@@ -67,6 +76,14 @@ const TREND_SERIES_COLOR: Record<string, string> = {
   'engine.securityScore': 'var(--color-primary)',
   'security.highSeverityAlertCount': 'var(--color-status-red)',
   'identity.impossibleTravelCount': 'var(--color-status-amber)',
+};
+
+/** Disclosure shown under the chart only for series whose numbers could be
+ * mistaken for the 0-100 pillar scores shown elsewhere on this page (Git
+ * #1101). Series not listed here (plain counts) need no disclosure. */
+const TREND_SERIES_NOTE: Partial<Record<string, string>> = {
+  'engine.securityScore':
+    'Risk points accumulated from fired security signals · lower is better · not the 0-100 pillar score',
 };
 
 /** Bucket a raw {t,value} series to one point per calendar day (last reading
@@ -226,6 +243,12 @@ export const TrendsRow: React.FC<TrendsRowProps> = ({
           </div>
         )}
 
+        {activeSeries && TREND_SERIES_NOTE[activeSeries.def.key] && (
+          <p className="text-[9px] text-muted-foreground italic mt-1 leading-snug">
+            {TREND_SERIES_NOTE[activeSeries.def.key]}
+          </p>
+        )}
+
         <div className="grid grid-cols-3 gap-2 mt-3 text-[10px] font-mono text-muted-foreground">
           {trendSeries.map(({ def, buckets }) => {
             const drawable = buckets.length >= 2;
@@ -235,7 +258,11 @@ export const TrendsRow: React.FC<TrendsRowProps> = ({
                 key={def.key}
                 onClick={() => drawable && setActiveTrendKey(def.key)}
                 disabled={!drawable}
-                title={drawable ? def.label : `${def.label} — no history collected yet`}
+                title={
+                  drawable
+                    ? (TREND_SERIES_NOTE[def.key] ?? def.label)
+                    : `${def.label} — no history collected yet`
+                }
                 className={`flex items-center justify-center space-x-1 py-1 rounded border transition-colors ${
                   isActive
                     ? 'bg-muted border-border text-foreground font-bold'

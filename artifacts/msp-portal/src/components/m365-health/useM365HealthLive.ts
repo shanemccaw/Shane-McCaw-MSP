@@ -241,13 +241,17 @@ export const COST_BREAKDOWN_METRIC = "licensing.wasteEstimateBreakdown";
  * resolveMetricHistory only serves customer-scope smart-eligible SCALAR
  * metrics, which constrains this set:
  *   • engine.securityScore          → tenant_engine_snapshots ("security" engine
- *     rows — the same table engine_score_daily_rollup summarizes)
+ *     rows — the same table engine_score_daily_rollup summarizes). This is a
+ *     plain unbounded SUM of impact weights over fired (bad) signals — higher
+ *     is WORSE and it is NOT on the 0-100 pillar scale (see Git #1101). Do not
+ *     relabel this "Security Score" — that reads as the same figure as the
+ *     honest 0-100 pillar score shown elsewhere on this page and isn't.
  *   • security.highSeverityAlertCount / identity.impossibleTravelCount
  *     → tenant_monitor_profiles history (the Live Activity Monitor's 5-minute
  *       collection cadence writes these rows for consented tenants)
  * A brand-new customer genuinely has no rows yet → honest empty state. */
 export const SECURITY_TREND_METRICS: HeatmapMetricDef[] = [
-  { key: "engine.securityScore", label: "Security Score" },
+  { key: "engine.securityScore", label: "Security Risk Points" },
   { key: "security.highSeverityAlertCount", label: "High-Severity Alerts" },
   { key: "identity.impossibleTravelCount", label: "Impossible Travel" },
 ];
