@@ -37,12 +37,12 @@ import { eq } from "drizzle-orm";
 import {
   db,
   publicChatConversationsTable,
-  type PublicChatStoredMessage,
+  type BotConversationMessage,
 } from "@workspace/db";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { enqueueEscalationTicket } from "../lib/zoho-desk.ts";
 import { logger } from "../lib/logger.ts";
-import { buildGrounding, resolveInstance } from "../lib/shanebot-engine.ts";
+import { buildGrounding, resolveInstance, upsertBotConversation } from "../lib/shanebot-engine.ts";
 import {
   buildAssistantContent,
   contentToText,
@@ -194,14 +194,19 @@ router.post("/public-chat", chatLimiter, async (req: Request, res: Response) => 
     }
   }
 
-  // ── Persist the full transcript (every conversation, every outcome) ──────────
-  // Stored in the #361 content-block shape. No backfill is needed for rows
-  // written before this: `messages` is already jsonb (so no DDL either), and
-  // every read site goes through toContentBlocks(), which wraps a legacy bare
-  // string as a single text block.
+  // ── Persist (every conversation, every outcome) ──────────────────────────────
+  // Since #361, the TRANSCRIPT itself lives in the shared bot_conversations table
+  // (shanebot-engine.ts's upsertBotConversation — the same store support-chat.ts
+  // will target whenever it grows persistence), keyed by this session's sessionId.
+  // publicChatConversationsTable stays the review-queue's own table for its
+  // business metadata (needsReview, contact capture, escalation reason) — that
+  // never moved — but no longer carries the transcript; admin-public-chat.ts
+  // reads it back from bot_conversations. No backfill needed for old rows: they
+  // simply have no bot_conversations counterpart, and every read site already
+  // tolerates a missing/empty transcript.
   const stamp = new Date();
   const replyContent = buildAssistantContent(visibleReply, suggestedReplies);
-  const fullMessages: PublicChatStoredMessage[] = [
+  const fullMessages: BotConversationMessage[] = [
     ...incoming.map((m) => ({
       // Normalized on the way in, so a legacy-string turn echoed back by an old
       // widget build is re-persisted in the new shape rather than mixed in.
@@ -230,7 +235,6 @@ router.post("/public-chat", chatLimiter, async (req: Request, res: Response) => 
       await db
         .update(publicChatConversationsTable)
         .set({
-          messages: fullMessages,
           messageCount: fullMessages.length,
           needsReview: nextNeedsReview,
           reviewReason: nextReviewReason,
@@ -247,7 +251,6 @@ router.post("/public-chat", chatLimiter, async (req: Request, res: Response) => 
     } else {
       await db.insert(publicChatConversationsTable).values({
         sessionId,
-        messages: fullMessages,
         messageCount: fullMessages.length,
         needsReview: nextNeedsReview,
         reviewReason: nextReviewReason,
@@ -260,6 +263,10 @@ router.post("/public-chat", chatLimiter, async (req: Request, res: Response) => 
         userAgent,
       });
     }
+
+    // The transcript's real home (#361) — shared with ShaneBot Paid's future
+    // persistence, keyed by this same sessionId.
+    await upsertBotConversation({ slug: "shanebot_public", sessionId, transcript: fullMessages });
 
     // Real Zoho Desk ticket on a legitimate escalation (#726, part of #719) —
     // fires only on the turn that actually triggered it, mirroring

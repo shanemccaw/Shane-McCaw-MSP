@@ -132,11 +132,23 @@ vi.mock("../lib/logger.ts", () => ({
   },
 }));
 
+// upsertBotConversation (#361) is shanebot-engine.ts's own concern, covered by
+// shanebot-engine.test.ts's precise db mock — here it's spied so this file can
+// assert THIS route calls it correctly, without re-simulating the real
+// botInstancesTable/botConversationsTable query chain through the generic,
+// low-fidelity @workspace/db mock above. Everything else (buildGrounding,
+// resolveInstance) stays real.
+vi.mock("../lib/shanebot-engine.ts", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../lib/shanebot-engine.ts")>();
+  return { ...actual, upsertBotConversation: vi.fn().mockResolvedValue(undefined) };
+});
+
 import express from "express";
 import request from "supertest";
 import publicChatRouter from "./public-chat.ts";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { db } from "@workspace/db";
+import { upsertBotConversation } from "../lib/shanebot-engine.ts";
 
 function makeApp() {
   const app = express();
@@ -271,19 +283,24 @@ describe("POST /api/public-chat", () => {
       { type: "suggested_replies", options: ["What does it cost?", "How long does it take?"] },
     ]);
 
-    // Transcript is persisted in the new shape — both turns, blocks not strings.
-    const stored = insertPayload()?.messages as { role: string; content: unknown }[];
-    expect(stored).toEqual([
-      { role: "user", content: [{ type: "text", text: "What is the assessment?" }], at: expect.any(String) },
-      {
-        role: "assistant",
-        content: [
-          { type: "text", text: "The assessment reviews your tenant end to end." },
-          { type: "suggested_replies", options: ["What does it cost?", "How long does it take?"] },
-        ],
-        at: expect.any(String),
-      },
-    ]);
+    // Transcript is persisted in the new shape into bot_conversations (#361) —
+    // both turns, blocks not strings. Review metadata (needsReview etc.) still
+    // lands on public_chat_conversations, but the transcript itself moved.
+    expect(upsertBotConversation).toHaveBeenCalledWith({
+      slug: "shanebot_public",
+      sessionId: "sess-chips-1",
+      transcript: [
+        { role: "user", content: [{ type: "text", text: "What is the assessment?" }], at: expect.any(String) },
+        {
+          role: "assistant",
+          content: [
+            { type: "text", text: "The assessment reviews your tenant end to end." },
+            { type: "suggested_replies", options: ["What does it cost?", "How long does it take?"] },
+          ],
+          at: expect.any(String),
+        },
+      ],
+    });
   });
 
   it("accepts a block-shaped incoming turn and normalizes it for storage and the model", async () => {

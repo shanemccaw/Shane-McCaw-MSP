@@ -98,6 +98,7 @@ export default defineConfig({
       "src/tests/workflow-run-correlation.test.ts",
       "src/routes/support-chat.test.ts",
       "src/routes/public-chat.test.ts",
+      "src/routes/admin-public-chat.test.ts",
       "src/lib/__tests__/monitor-executor.test.ts",
       "src/lib/sensitivity-label-severity-rules-470.test.ts",
       "src/lib/cert-secret-expiration-541.test.ts",

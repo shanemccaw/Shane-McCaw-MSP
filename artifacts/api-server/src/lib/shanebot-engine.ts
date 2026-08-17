@@ -27,16 +27,21 @@
  *   5. action_router — parses model-emitted [ACTION:x] control tokens and gates
  *      each against the emitting instance's allowedActions BEFORE anything fires.
  *      Public ([]) can fire none.
+ *   6. Conversation storage (#361) — upsertBotConversation()/getBotConversation-
+ *      Transcript(s)() persist a session's structured-block transcript onto the
+ *      shared bot_conversations table, replacing the earlier plan to bolt
+ *      storage onto each route's own message table independently.
  *
  * What it deliberately does NOT own: each surface's route-specific SAFETY sections
  * — the public personal-topic HARD BOUNDARY (public-chat-guardrail.ts), the
  * remediation-proposal rules and escalation markers (support-chat.ts). Those stay
  * where they live; a shared module that also carried safety rules would be one
- * nobody dares edit. Folding the routes' persistence onto bot_conversations is
- * #361's migration, which this issue unblocks.
+ * nobody dares edit. Route-owned business metadata (public-chat's review queue:
+ * needsReview, contact capture, escalation reason) also stays on that route's own
+ * table — only the transcript itself moved here.
  */
 
-import { and, asc, count, desc, eq, gte, like } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray, like } from "drizzle-orm";
 import {
   db,
   servicesTable,
@@ -418,14 +423,48 @@ export async function upsertBotConversation(opts: {
     });
 }
 
-/** Read a session's transcript back out of bot_conversations, if it has one. */
+/**
+ * Read a session's transcript back out of bot_conversations, if it has one.
+ * Read paths (the admin queue) degrade to "no transcript" rather than throw —
+ * e.g. #1097's migration not run yet must not 500 the whole review queue, only
+ * leave it showing metadata with no preview/transcript.
+ */
 export async function getBotConversationTranscript(sessionId: string): Promise<BotConversationMessage[] | null> {
-  const [row] = await db
-    .select({ transcript: botConversationsTable.transcript })
-    .from(botConversationsTable)
-    .where(eq(botConversationsTable.sessionId, sessionId))
-    .limit(1);
-  return row?.transcript ?? null;
+  try {
+    const [row] = await db
+      .select({ transcript: botConversationsTable.transcript })
+      .from(botConversationsTable)
+      .where(eq(botConversationsTable.sessionId, sessionId))
+      .limit(1);
+    return row?.transcript ?? null;
+  } catch (err) {
+    log.error({ err, sessionId }, "shanebot-engine: failed to read bot_conversations transcript");
+    return null;
+  }
+}
+
+/**
+ * Batch-read transcripts for a page of sessions (the admin queue's list view) —
+ * one query rather than one per row. Same degrade-to-empty behavior as the
+ * single-session read above.
+ */
+export async function getBotConversationTranscripts(
+  sessionIds: string[],
+): Promise<Map<string, BotConversationMessage[]>> {
+  const map = new Map<string, BotConversationMessage[]>();
+  if (sessionIds.length === 0) return map;
+
+  try {
+    const rows = await db
+      .select({ sessionId: botConversationsTable.sessionId, transcript: botConversationsTable.transcript })
+      .from(botConversationsTable)
+      .where(inArray(botConversationsTable.sessionId, sessionIds))
+      .limit(sessionIds.length);
+    for (const row of rows) map.set(row.sessionId, row.transcript);
+  } catch (err) {
+    log.error({ err }, "shanebot-engine: failed to batch-read bot_conversations transcripts");
+  }
+  return map;
 }
 
 // ── System-prompt assembly ────────────────────────────────────────────────────
