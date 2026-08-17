@@ -443,10 +443,13 @@ namespace BuildConsole.Services
         /// regardless of whether it has sub-issues - so it registers plain
         /// leaf issues as epics too, not just ones with children.
         /// </summary>
-        public Task<HttpResponseMessage> SyncEpicAsync(int epicNumber) =>
+        public Task<HttpResponseMessage> SyncEpicAsync(int epicNumber, string? title = null, string? description = null, string? status = null) =>
             TrackAsync($"POST extension/sync-epic ({epicNumber})", () => _http.PostAsJsonAsync("api/admin/build-tracker/extension/sync-epic", new
             {
                 epicNumber,
+                title,
+                description,
+                status,
             }));
 
         /// <summary>Same file-content endpoint the extension's Shane-To-Do 🗄 button uses — reads a real migration file's text straight from GitHub, no local filesystem assumption.</summary>

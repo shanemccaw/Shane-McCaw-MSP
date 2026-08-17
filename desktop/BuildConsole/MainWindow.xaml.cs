@@ -519,6 +519,34 @@ namespace BuildConsole
                 sqlDoc.LoadFromGitHub(path);
             };
 
+            // "Assign Chat to Epic..." just linked a chat to an epic — if that
+            // chat already has an open tab, its TabItem.Tag (a BoardChat
+            // SNAPSHOT taken when the tab was opened) never picks up the new
+            // EpicId on its own; EditorTabs_SelectionChanged only re-reads the
+            // Tag on a TAB SWITCH, so the Build Queue "Issues in Epic" section
+            // was stuck stale/hidden until a full app restart rebuilt every
+            // tab from a fresh board fetch. Patch the open tab's Tag in place
+            // and, if it's the one currently on screen, re-feed the panel now.
+            LeftSidebar.ChatEpicAssigned += (s, e) =>
+            {
+                foreach (var kvp in _chatTabs)
+                {
+                    if (kvp.Key.Tag is BuildConsole.Services.BoardChat chat && chat.ConversationId == e.ConversationId)
+                    {
+                        chat.EpicId = e.EpicId;
+                        if (EditorTabs.SelectedItem == kvp.Key)
+                        {
+                            BuildQueuePanel.SetActiveChatEpic(
+                                e.EpicId,
+                                LeftSidebar.GetEpicGithubNumber(e.EpicId),
+                                LeftSidebar.GetEpicTitle(e.EpicId),
+                                force: true);
+                        }
+                        break;
+                    }
+                }
+            };
+
             // Git #806 (Epic #803 Phase 2) — tracks the manifest last loaded via the
             // Automation sidebar's Load Manifest button for Menu > Run > "Run Tests (Current Issue)".
             LeftSidebar.ManifestLoaded += (s, manifest) => _loadedManifest = manifest;

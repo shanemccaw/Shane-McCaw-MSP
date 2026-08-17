@@ -1887,21 +1887,39 @@ router.post("/admin/build-tracker/extension/set-issue-state", ingestAuth, async 
 });
 
 router.post("/admin/build-tracker/extension/sync-epic", ingestAuth, async (req: Request, res: Response) => {
-  if (!process.env.GITHUB_TOKEN) {
-    res.status(503).json({ error: "GITHUB_TOKEN is not set on this server" });
-    return;
-  }
-  const { epicNumber } = req.body as { epicNumber?: number };
+  const { epicNumber, title, description, status: incomingStatus } = req.body as {
+    epicNumber?: number;
+    title?: string;
+    description?: string;
+    status?: string;
+  };
   if (!Number.isInteger(epicNumber)) {
     res.status(400).json({ error: "epicNumber is required" });
     return;
   }
 
   try {
-    const ghEpic = await ghFetchIssue(epicNumber!);
+    let ghEpic: GitHubIssuePayload | null = null;
+    if (process.env.GITHUB_TOKEN) {
+      try {
+        ghEpic = await ghFetchIssue(epicNumber!);
+      } catch (fetchErr) {
+        log.warn({ fetchErr, epicNumber }, "sync-epic: live ghFetchIssue failed, checking fallback data");
+      }
+    }
+
     if (!ghEpic) {
-      res.status(404).json({ error: `Epic #${epicNumber} not found on GitHub` });
-      return;
+      if (title?.trim()) {
+        ghEpic = {
+          number: epicNumber!,
+          title: title.trim(),
+          body: description ?? "",
+          state: incomingStatus === "closed" ? "closed" : "open",
+        } as GitHubIssuePayload;
+      } else {
+        res.status(404).json({ error: `Epic #${epicNumber} not found on GitHub` });
+        return;
+      }
     }
 
     // If this epic is itself nested under another tracked epic, link it —
@@ -1919,7 +1937,9 @@ router.post("/admin/build-tracker/extension/sync-epic", ingestAuth, async (req: 
     }
     const epicId = await upsertEpicRow(ghEpic, ownParentEpicId);
 
-    const level1 = await ghFetchSubIssues(epicNumber!);
+    const level1 = process.env.GITHUB_TOKEN
+      ? await ghFetchSubIssues(epicNumber!).catch(() => [])
+      : [];
     let issuesUpserted = 0;
     let nestedEpicsUpserted = 0;
     const MAX_UPSERTS = 40;

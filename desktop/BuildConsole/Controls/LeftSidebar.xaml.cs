@@ -190,6 +190,19 @@ namespace BuildConsole.Controls
         public event EventHandler<GitIssue>? GitDetailTabRequested;
         /// <summary>Fired when Shane clicks "Load SQL" on a Shane To-Do item — MainWindow fetches the real text and hands it to SqlRunnerView.</summary>
         public event EventHandler<string>? SqlLoadRequested;
+        /// <summary>
+        /// Fired right after "Assign Chat to Epic..." successfully links a chat
+        /// (conversationId) to an epic (bt_epics id). An already-open chat tab's
+        /// TabItem.Tag holds a BoardChat SNAPSHOT taken when the tab was opened
+        /// — assigning an epic afterward never touches that snapshot, and the
+        /// Build Queue panel's "Issues in Epic" section only re-reads it on
+        /// EditorTabs.SelectionChanged (MainWindow.EditorTabs_SelectionChanged),
+        /// so without this the section stayed stuck on stale/no-epic state
+        /// until the app was restarted and every tab got rebuilt from a fresh
+        /// board fetch. MainWindow updates the matching open tab's Tag and, if
+        /// it's the active tab, re-feeds BuildQueuePanel immediately.
+        /// </summary>
+        public event EventHandler<(string ConversationId, int EpicId)>? ChatEpicAssigned;
         public event EventHandler<bool>? PinToggled;
         /// <summary>Git #954 (Epic #803) — raised when the user clicks a category in the sidebar's Settings nav list; MainWindow opens (or focuses) the native Settings tab scrolled to that section. The string is the category key (General / Credentials / TestEnvironment / ChatIntegration / WebTools / ReplitWatcher).</summary>
         public event EventHandler<string>? SettingsCategoryRequested;
@@ -3117,7 +3130,7 @@ namespace BuildConsole.Controls
                         ActivityLog.Log("git-board.assign-chat", $"epic #{issue.IssueNumber} not registered — auto-syncing from GitHub before assigning chat {conversationId}");
                         try
                         {
-                            var syncRes = await _api.SyncEpicAsync(issue.IssueNumber);
+                            var syncRes = await _api.SyncEpicAsync(issue.IssueNumber, issue.RawTitle, issue.Body, issue.Status);
                             if (!syncRes.IsSuccessStatusCode)
                             {
                                 var syncBody = await syncRes.Content.ReadAsStringAsync();
@@ -3158,6 +3171,7 @@ namespace BuildConsole.Controls
                         ActivityLog.Log("git-board.assign-chat", $"assigned chat {conversationId} ({chatUrl}) -> epic #{issue.IssueNumber} (bt_epics id {epic.Id})");
                         _lastBoardSignature = null;
                         PopulateChatsTree();
+                        ChatEpicAssigned?.Invoke(this, (conversationId, epic.Id));
                     }
                     catch (Exception ex)
                     {
