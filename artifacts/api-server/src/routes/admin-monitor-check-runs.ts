@@ -66,7 +66,7 @@
 
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, monitorChecksTable, monitoringPackageChecksTable, tenantsTable, type MonitorCheck } from "@workspace/db";
-import { and, eq, like } from "drizzle-orm";
+import { and, eq, inArray, like } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { requireAdmin, requireAdminOrIngestToken } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
@@ -292,6 +292,59 @@ async function startCheckRun(opts: {
   })();
 
   return { run, done };
+}
+
+// ── Explicit-key-list on-demand trigger (#425) ────────────────────────────────
+//
+// bulk-run's own domain-prefix filter (`like(key, "${domain}:%")`) is too
+// coarse for callers that need EXACTLY a named set of checks — e.g. #425's
+// post-consent DLP/Label scan, which must fire only
+// compliance:weak-dlp-policies / compliance:dlp-incidents /
+// compliance:missing-labels / compliance:label-errors, not every active
+// `compliance:*` check (the live catalog also has compliance:audit-log-
+// retention and compliance:eeeu-site-sharing under the same domain prefix —
+// confirmed via a live monitor_checks query before writing this, not
+// assumed). Reuses startCheckRun() for each key so this can never drift from
+// bulk-run's own execution path.
+//
+// Never throws — same "settles, never rejects" contract startCheckRun's own
+// `done` promise already guarantees per check; a caller that itself runs
+// fire-and-forget (consent.ts) relies on that.
+export async function triggerCheckRunsByKey(opts: {
+  customerId: number;
+  tenantId: string;
+  checkKeys: string[];
+  batchId?: string | null;
+}): Promise<{ started: string[]; skipped: Array<{ checkKey: string; reason: string }> }> {
+  const { customerId, tenantId, checkKeys, batchId = null } = opts;
+  if (checkKeys.length === 0) return { started: [], skipped: [] };
+
+  const checks = await db
+    .select()
+    .from(monitorChecksTable)
+    .where(and(inArray(monitorChecksTable.key, checkKeys), eq(monitorChecksTable.status, "active")));
+
+  const found = new Set(checks.map((c) => c.key));
+  const runnable = checks.filter((c) => !c.requiresCustomerScript);
+  const skipped: Array<{ checkKey: string; reason: string }> = [
+    ...checks
+      .filter((c) => c.requiresCustomerScript)
+      .map((c) => ({ checkKey: c.key, reason: "Collected by a customer-side script — no Graph endpoint to execute" })),
+    ...checkKeys.filter((k) => !found.has(k)).map((k) => ({ checkKey: k, reason: "Not found, or not an active monitor check" })),
+  ];
+
+  await Promise.all(
+    runnable.map(async (check) => {
+      try {
+        const { done } = await startCheckRun({ check, customerId, tenantId, batchId });
+        await done;
+      } catch (err) {
+        log.error({ err, checkKey: check.key, customerId }, "admin-monitor-check-runs: triggerCheckRunsByKey could not start a check");
+      }
+    }),
+  );
+
+  return { started: runnable.map((c) => c.key), skipped };
 }
 
 // ── Phase 4: failure classification ───────────────────────────────────────────

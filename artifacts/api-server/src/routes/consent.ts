@@ -172,6 +172,63 @@ function consentRow(record: TenantConsentRecord | undefined) {
   };
 }
 
+// The four DLP/Label monitor checks #425's on-demand scan fires — deliberately
+// an explicit list, not a domain-prefix filter: the live `compliance:` domain
+// also carries compliance:audit-log-retention and compliance:eeeu-site-sharing
+// (confirmed via a live monitor_checks query), which this scan must not touch.
+const DLP_LABEL_CHECK_KEYS = [
+  "compliance:weak-dlp-policies",
+  "compliance:dlp-incidents",
+  "compliance:missing-labels",
+  "compliance:label-errors",
+];
+
+/**
+ * #425 — completes the "Read Consent -> Write Consent -> Add App Reg to
+ * Group -> Run Scan" interface: once #249's provisioning chain reaches a real
+ * "provisioned" outcome for a tenant, fire the four DLP/Label checks
+ * on-demand rather than waiting for the next scheduled package run.
+ *
+ * `overallStatus === "provisioned"` is the ONLY status that triggers the
+ * scan. "blocked" (write-back not yet granted) and "failed" are the two
+ * outcomes the issue calls out explicitly, but "partially_provisioned" is
+ * excluded too: it means step 3 — assigning the group to the Purview DLP
+ * role group — did not complete, so the app-only DLP cmdlets these checks
+ * depend on would still fail with the same "not recognized" error #246
+ * documented. Running them on a partial provision would just reproduce that
+ * failure early rather than produce a real result.
+ *
+ * Called from BOTH the `graph` and `writeBack` consent success paths (each
+ * feeds it whatever outcome ITS OWN call to provisionDlpRoleGroupForTenant
+ * returned) — since the chain only reaches "provisioned" once both consents
+ * are actually in place, only the grant that completes it will ever see
+ * "provisioned" here, so the scan naturally fires once, not twice, when both
+ * consents land in the same session.
+ */
+async function triggerDlpComplianceScanIfProvisioned(
+  tenant: string,
+  customerId: number,
+  outcome: { overallStatus: string },
+): Promise<void> {
+  if (outcome.overallStatus !== "provisioned") {
+    log.info(
+      { tenant, customerId, overallStatus: outcome.overallStatus },
+      "consent: DLP role-group provisioning not fully complete — skipping on-demand DLP/Label scan",
+    );
+    return;
+  }
+  try {
+    const { triggerCheckRunsByKey } = await import("./admin-monitor-check-runs.ts");
+    const result = await triggerCheckRunsByKey({ customerId, tenantId: tenant, checkKeys: DLP_LABEL_CHECK_KEYS });
+    log.info(
+      { tenant, customerId, started: result.started, skipped: result.skipped },
+      "consent: on-demand DLP/Label scan triggered after DLP role-group provisioning",
+    );
+  } catch (err) {
+    log.warn({ err, tenant, customerId }, "consent: on-demand DLP/Label scan trigger failed (non-fatal)");
+  }
+}
+
 /** Returns the protocol+host base (e.g. "https://example.replit.app") from request headers. */
 function getHostBase(req: Request): string {
   const proto = req.headers["x-forwarded-proto"] ?? req.protocol;
@@ -997,6 +1054,10 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
       const { provisionDlpRoleGroupForTenant } = await import("../lib/dlp-role-group-provisioning.ts");
       const outcome = await provisionDlpRoleGroupForTenant(tenant, consentTenant.id, "consent.granted");
       log.info({ tenant, customerId: consentTenant.id, overallStatus: outcome.overallStatus }, "consent.granted: DLP role-group provisioning finished");
+      // #425 — write-back consent is commonly still missing at this point (see
+      // this block's own header above), so this usually no-ops here and fires
+      // for real from the writeBack callback below instead.
+      await triggerDlpComplianceScanIfProvisioned(tenant, consentTenant.id, outcome);
     } catch (err) {
       log.warn({ err, tenant }, "consent.granted: DLP role-group provisioning failed (non-fatal)");
     }
@@ -1443,6 +1504,26 @@ router.get("/admin/write-consent/callback", async (req: Request, res: Response) 
     entityId: tenant,
     metadata: { tenantId: tenant, customerId },
   });
+
+  // Fire-and-forget DLP/Label Purview role-group provisioning (#249, #246
+  // chunk C) — mirrors the exact same call in the `graph` consent path above
+  // (consent.ts's other callback), just fired from this grant instead. Must
+  // not delay this callback's own response, and must never fail the write
+  // consent grant itself. #249's chain is idempotent and live-state-checked,
+  // so firing it from both consent paths is safe by design; this is the
+  // grant that usually completes it, since the chain's own write-back gate
+  // (dlp-role-group-provisioning.ts's header) is keyed on exactly this
+  // consent (#425).
+  void (async () => {
+    try {
+      const { provisionDlpRoleGroupForTenant } = await import("../lib/dlp-role-group-provisioning.ts");
+      const outcome = await provisionDlpRoleGroupForTenant(tenant, customerId, "consent.granted");
+      log.info({ tenant, customerId, overallStatus: outcome.overallStatus }, "write-consent.granted: DLP role-group provisioning finished");
+      await triggerDlpComplianceScanIfProvisioned(tenant, customerId, outcome);
+    } catch (err) {
+      log.warn({ err, tenant, customerId }, "write-consent.granted: DLP role-group provisioning failed (non-fatal)");
+    }
+  })();
 
   log.info({ tenant, customerId }, "Tenant WRITE admin consent granted");
   endConsentCallback(
