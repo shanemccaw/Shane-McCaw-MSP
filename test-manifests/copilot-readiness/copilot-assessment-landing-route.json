@@ -1,0 +1,27 @@
+{
+  "feature": "CopilotAssessmentLanding — shared component reachable at both / and the new /LP/copilot-assessment route",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "015e272f",
+  "notes": [
+    "Git #1087 (scope narrowed: extraction + new route only, no redesign/copy changes). Home.tsx's",
+    "quiz/radar/lead-capture experience was extracted into artifacts/shane-mccaw-consulting/src/pages/",
+    "CopilotAssessmentLanding.tsx, a single shared component. Home.tsx now renders it unchanged at /,",
+    "and App.tsx registers a new /LP/copilot-assessment route rendering the same component.",
+    "",
+    "This manifest asserts BOTH mount points render the identical real DOM (same data-testid markers",
+    "already exercised by copilot-readiness/home-quiz-scoring.json for /) rather than re-asserting quiz",
+    "scoring math a second time here — that exact-score coverage stays in home-quiz-scoring.json per",
+    "discover-before-create (this file's own feature is route reachability, not scoring)."
+  ],
+  "uiSteps": [
+    { "action": "goto", "target": "/" },
+    { "action": "expect", "selector": "[data-testid='hero-headline']", "state": "visible" },
+    { "action": "expect", "selector": "[data-testid='quiz-option-A']", "state": "visible" },
+    { "action": "expect", "selector": "[data-testid='get-real-score-cta']", "state": "visible" },
+
+    { "action": "goto", "target": "/LP/copilot-assessment" },
+    { "action": "expect", "selector": "[data-testid='hero-headline']", "state": "visible" },
+    { "action": "expect", "selector": "[data-testid='quiz-option-A']", "state": "visible" },
+    { "action": "expect", "selector": "[data-testid='get-real-score-cta']", "state": "visible" }
+  ]
+}

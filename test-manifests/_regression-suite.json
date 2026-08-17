@@ -14,6 +14,7 @@
     "copilot-readiness/money-path-e2e.json",
     "copilot-readiness/remediation-tracker-e2e.json",
     "copilot-readiness/home-quiz-scoring.json",
+    "copilot-readiness/copilot-assessment-landing-route.json",
     "copilot-readiness/assessment-monitoring-rescan.json",
     "copilot-readiness/email-auth-setup.json",
     "copilot-readiness/live-document-pdf-export.json",
