@@ -45,7 +45,7 @@ router.get("/admin/observability/service-health", requireAdmin, async (req: Requ
       pool.query<{ status: string; n: string }>(`
         SELECT status, COUNT(*)::text AS n
         FROM outbound_webhook_deliveries
-        WHERE attempted_at > NOW() - INTERVAL '24 hours'
+        WHERE created_at > NOW() - INTERVAL '24 hours'
         GROUP BY status
       `),
       // Portal workflow run stats (last 24h)
