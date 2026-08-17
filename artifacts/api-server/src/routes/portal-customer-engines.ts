@@ -16,6 +16,7 @@
  * Routes:
  *   GET /api/portal/customer/sla-status
  *   GET /api/portal/customer/scope-status
+ *   GET /api/portal/customer/rescoring-status
  *   GET /api/portal/dashboard
  */
 
@@ -27,7 +28,7 @@ import { runSlaEngineForTenant, type SlaEngineOutput } from "../lib/sla-engine";
 import { runScopeCreepEngineForTenant, type ScopeCreepEngineOutput } from "../lib/scope-creep-engine";
 import { logger } from "../lib/logger";
 const log = logger.child({ channel: "tenant.portal" });
-import { db, tenantEngineSnapshotsTable, tenantsTable, clientServicesTable, servicesTable, projectsTable, kanbanTasksTable, invoicesTable, reportsTable, notificationsTable, messagesTable, mspSalesBundleAssignmentsTable, mspAuditLogsTable, assessmentSowAgreementsTable } from "@workspace/db";
+import { db, tenantEngineSnapshotsTable, tenantsTable, clientServicesTable, servicesTable, projectsTable, kanbanTasksTable, invoicesTable, reportsTable, notificationsTable, messagesTable, mspSalesBundleAssignmentsTable, mspAuditLogsTable, assessmentSowAgreementsTable, mspDiagnosticRunsTable, usersTable, wfTriggersTable, wfDefinitionsTable } from "@workspace/db";
 import { eq, desc, and, count, inArray, or, asc } from "drizzle-orm";
 import { createAuditLog } from "../lib/audit";
 import { getStripeKey } from "../lib/stripe";
@@ -250,6 +251,118 @@ router.get(
     } catch (err) {
       log.error({ err, customerId }, "portal-customer-engines: scope-status failed");
       res.status(500).json({ error: "Unable to load your project status right now. Please try again shortly." });
+    }
+  },
+);
+
+// ── GET /api/portal/customer/rescoring-status (Git #1048, epic #1045) ─────────
+//
+// Customer-facing summary of the Monitoring Engine's rescan state: last scan
+// date, next scheduled run, and a plain-language coverage label. Sourced
+// entirely from real execution data — `msp_diagnostic_runs` for the scan
+// itself, and the real `wf_triggers.next_run_at` row for the seeded
+// "__system__: Weekly Copilot Assessment Rescan" schedule (#1058) — no
+// internal engine names, check keys, or raw per-check failure breakdown are
+// ever returned, matching this file's existing sla-status/scope-status
+// discipline. Deliberately does NOT touch the rescan add-on purchase/checkout
+// flow (`assessment-flow-rescan-addon.ts`) — that is owned by the SOW/billing
+// pipeline; this route only reads whether the tenant is currently eligible
+// for the free weekly schedule (Assessment-tier, active user, Graph consent
+// granted — the same predicate `seed-system-workflows.ts`'s fan-out query
+// uses), never writes to it.
+const RESCAN_WORKFLOW_NAME = "__system__: Weekly Copilot Assessment Rescan";
+const COMPLETED_RESCAN_RUN_STATUSES = ["completed", "partial"] as const;
+
+type CoverageStatus = { status: "ok"; label: string; checksOk: number; checksTotal: number } | { status: "not_available"; reason: string };
+type NextRunStatus = { status: "ok"; expectedAt: Date } | { status: "not_available"; reason: string };
+type LastScanStatus = { status: "ok"; scannedAt: Date } | { status: "not_available"; reason: string };
+
+function coverageLabel(checksOk: number, checksTotal: number, checksLicenseGap: number): string {
+  if (checksTotal <= 0) return "Coverage pending";
+  const ratio = checksOk / checksTotal;
+  const base = ratio >= 0.95 ? "Full coverage" : ratio >= 0.7 ? "Partial coverage" : "Limited coverage";
+  return checksLicenseGap > 0 ? `${base} (some checks unavailable on your current Microsoft 365 licensing)` : base;
+}
+
+router.get(
+  "/portal/customer/rescoring-status",
+  requireRole("CustomerUser"),
+  async (req: Request, res: Response) => {
+    const customerId = req.user!.customerId;
+    if (!customerId) {
+      res.status(400).json({ error: "No customer account associated with this user" });
+      return;
+    }
+
+    try {
+      const [lastCompleted] = await db
+        .select({
+          completedAt: mspDiagnosticRunsTable.completedAt,
+          createdAt: mspDiagnosticRunsTable.createdAt,
+          checksOk: mspDiagnosticRunsTable.checksOk,
+          checksTotal: mspDiagnosticRunsTable.checksTotal,
+          checksLicenseGap: mspDiagnosticRunsTable.checksLicenseGap,
+        })
+        .from(mspDiagnosticRunsTable)
+        .where(
+          and(
+            eq(mspDiagnosticRunsTable.customerId, customerId),
+            inArray(mspDiagnosticRunsTable.status, [...COMPLETED_RESCAN_RUN_STATUSES]),
+          ),
+        )
+        .orderBy(desc(mspDiagnosticRunsTable.createdAt))
+        .limit(1);
+
+      const lastScan: LastScanStatus = lastCompleted
+        ? { status: "ok", scannedAt: lastCompleted.completedAt ?? lastCompleted.createdAt }
+        : { status: "not_available", reason: "never_scanned" };
+
+      const coverage: CoverageStatus = lastCompleted
+        ? {
+            status: "ok",
+            label: coverageLabel(lastCompleted.checksOk ?? 0, lastCompleted.checksTotal ?? 0, lastCompleted.checksLicenseGap ?? 0),
+            checksOk: lastCompleted.checksOk ?? 0,
+            checksTotal: lastCompleted.checksTotal ?? 0,
+          }
+        : { status: "not_available", reason: "never_scanned" };
+
+      // Eligibility for the free weekly rescan: same predicate as the seeded
+      // workflow's fan_out_query (mspRole='Assessment', active user, Graph
+      // consent granted) — mirrored here read-only, never re-derived into a
+      // second copy the workflow itself relies on.
+      const [tenantRow] = await db
+        .select({ consent: tenantsTable.consent })
+        .from(tenantsTable)
+        .where(eq(tenantsTable.id, customerId))
+        .limit(1);
+      const consentGranted = tenantRow?.consent?.graph?.status === "granted";
+
+      const [eligibleUser] = await db
+        .select({ id: usersTable.id })
+        .from(usersTable)
+        .where(and(eq(usersTable.tenantId, customerId), eq(usersTable.mspRole, "Assessment"), eq(usersTable.isActive, true)))
+        .limit(1);
+
+      const enrolledInWeeklyRescan = consentGranted && eligibleUser != null;
+
+      let nextScheduledRun: NextRunStatus = { status: "not_available", reason: "not_enrolled" };
+      if (enrolledInWeeklyRescan) {
+        const [trigger] = await db
+          .select({ nextRunAt: wfTriggersTable.nextRunAt, enabled: wfTriggersTable.enabled })
+          .from(wfTriggersTable)
+          .innerJoin(wfDefinitionsTable, eq(wfDefinitionsTable.id, wfTriggersTable.definitionId))
+          .where(and(eq(wfDefinitionsTable.name, RESCAN_WORKFLOW_NAME), eq(wfTriggersTable.type, "schedule")))
+          .limit(1);
+
+        nextScheduledRun = trigger?.enabled && trigger.nextRunAt
+          ? { status: "ok", expectedAt: trigger.nextRunAt }
+          : { status: "not_available", reason: "schedule_unavailable" };
+      }
+
+      res.json({ lastScan, nextScheduledRun, coverage });
+    } catch (err) {
+      log.error({ err, customerId }, "portal-customer-engines: rescoring-status failed");
+      res.status(500).json({ error: "Unable to load your monitoring status right now. Please try again shortly." });
     }
   },
 );
