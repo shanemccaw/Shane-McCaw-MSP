@@ -18,6 +18,7 @@ import {
   SUGGESTED_REPLIES_INSTRUCTION,
   buildAssistantContent,
   buildUserContent,
+  cardsFrom,
   contentToText,
   hasSuggestedRepliesToken,
   parseSuggestedReplies,
@@ -129,8 +130,8 @@ describe("toContentBlocks — legacy tolerance (why no backfill is needed)", () 
     expect(toContentBlocks(mixed)).toEqual([{ type: "text", text: "kept" }]);
   });
 
-  it("preserves the RESERVED card block verbatim on read (nothing writes it today)", () => {
-    const card = [{ type: "card" as const, cardType: "scan_progress", data: { pct: 40 } }];
+  it("preserves a card block verbatim on read (#366 Active Cards)", () => {
+    const card = [{ type: "card" as const, cardType: "invoice", data: { invoices: [] } }];
     expect(toContentBlocks(card)).toEqual(card);
   });
 });
@@ -155,6 +156,16 @@ describe("contentToText / suggestedRepliesFrom", () => {
     expect(suggestedRepliesFrom([{ type: "suggested_replies", options: ["a", "b"] }])).toEqual(["a", "b"]);
     expect(suggestedRepliesFrom("legacy row")).toEqual([]);
   });
+
+  it("cardsFrom pulls every card block out of content, and finds none on a legacy string (#366)", () => {
+    expect(
+      cardsFrom([
+        { type: "text", text: "here" },
+        { type: "card", cardType: "invoice", data: { invoices: [] } },
+      ]),
+    ).toEqual([{ cardType: "invoice", data: { invoices: [] } }]);
+    expect(cardsFrom("legacy row")).toEqual([]);
+  });
 });
 
 describe("buildAssistantContent / buildUserContent", () => {
@@ -169,15 +180,24 @@ describe("buildAssistantContent / buildUserContent", () => {
     ]);
   });
 
+  it("inserts card blocks between text and chips (#366)", () => {
+    expect(buildAssistantContent("your invoices:", ["anything else?"], [{ cardType: "invoice", data: { invoices: [] } }])).toEqual([
+      { type: "text", text: "your invoices:" },
+      { type: "card", cardType: "invoice", data: { invoices: [] } },
+      { type: "suggested_replies", options: ["anything else?"] },
+    ]);
+  });
+
   it("emits nothing for empty text with no chips", () => {
     expect(buildAssistantContent("")).toEqual([]);
     expect(buildUserContent("")).toEqual([]);
   });
 
   it("round-trips through the read helpers", () => {
-    const content = buildAssistantContent("hello", ["next?"]);
+    const content = buildAssistantContent("hello", ["next?"], [{ cardType: "score", data: { copilotReadiness: 44 } }]);
     expect(contentToText(content)).toBe("hello");
     expect(suggestedRepliesFrom(content)).toEqual(["next?"]);
+    expect(cardsFrom(content)).toEqual([{ cardType: "score", data: { copilotReadiness: 44 } }]);
   });
 });
 

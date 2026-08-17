@@ -10,7 +10,7 @@
 
 export type ChatTextBlock = { type: "text"; text: string };
 export type ChatSuggestedRepliesBlock = { type: "suggested_replies"; options: string[] };
-/** RESERVED for the deferred Active Cards issue — never written or rendered today. */
+/** Interactive data card (#366, shanebot_paid only) — cardType is "invoice" | "subscription" | "score" | "data-answer". */
 export type ChatCardBlock = { type: "card"; cardType: string; data: Record<string, unknown> };
 
 export type ChatContentBlock = ChatTextBlock | ChatSuggestedRepliesBlock | ChatCardBlock;
@@ -67,6 +67,15 @@ export function suggestedRepliesFrom(content: ChatMessageContent | null | undefi
     if (block.type === "suggested_replies") return block.options;
   }
   return [];
+}
+
+/** The data cards carried by a message, if any (#366). */
+export function cardsFrom(
+  content: ChatMessageContent | null | undefined,
+): Array<{ cardType: string; data: Record<string, unknown> }> {
+  return toContentBlocks(content)
+    .filter((b): b is ChatCardBlock => b.type === "card")
+    .map((b) => ({ cardType: b.cardType, data: b.data }));
 }
 
 /** Build a message's content from plain text, plus chips when the server offered them. */

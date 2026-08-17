@@ -1,0 +1,80 @@
+{
+  "issue": 366,
+  "feature": "ShaneBot Active Cards — invoice/subscription/score/data-answer cards rendered inline in ShaneBot Paid (support-chat.tsx), driven by card_router + customer_entitlements grounding's cardData (shanebot-engine.ts)",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "PENDING_FINAL_COMMIT",
+
+  "notes": [
+    "WHAT THIS COVERS: the real, deterministic surface of #366 — that POST /api/msp/support/chat is auth-gated, that a logged-in customer gets a real structured response (content block array), and that the support-chat UI's chat input/send/reply elements actually render and round-trip a real message through the real endpoint.",
+
+    "WHAT THIS DOES NOT COVER, AND WHY: whether a [SHOW_CARD:x] marker (and therefore an actual `{type:'card',...}` block) appears in any given reply is a live-model judgment call (claude-haiku-4-5 deciding, per-turn, whether the user's question warrants a card) — it cannot be forced or seeded, the same class of non-determinism already documented for /api/quiz/submit (MEMORY: quiz-scoring-no-deterministic-endpoint). A UI/API step asserting 'a card renders for this exact prompt' would be flaky by construction, so it is not attempted here. Instead: card_router's parse/gate/strip (parseRequestedCards/routeCards/routeRequestedCards/stripCardTokens), the customer_entitlements builder's cardData assembly (invoice/subscription/score/data-answer, real DB rows via invoicesTable/clientScoresTable), and the full propose-resolve-strip flow in the /msp/support/chat handler (including the 'no real data -> no card' drop path and the 'never for MSP staff' gate) all have full DETERMINISTIC unit coverage with a mocked model reply: artifacts/api-server/src/lib/shanebot-engine.test.ts and artifacts/api-server/src/routes/support-chat.test.ts (16 new tests added for #366, all passing). The ActiveCard React renderer + cardScrollTop auto-scroll wiring in support-chat.tsx are confirmed via `tsc --noEmit` (0 errors) and a clean `vite build`; there is no JSX-rendering test harness in this repo (msp-portal's `node --test` suite covers pure-logic files like warRoomCardScroll.ts, not component rendering), so this is the honest ceiling for that half without adding one.",
+
+    "ENV VARS (BuildConsole -> Settings -> Test Environment Variables): DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD (the same designated testbed portal account other msp-portal manifests use, e.g. billing/retainer-lifecycle.json, copilot-readiness/money-path-login-direct.json).",
+
+    "LIVE RUN RESULT (this session, via shaneapp://runTest against the deployed origin): all 4 apiTests passed for real (401 auth-gate, real login, both content-shape assertions against a REAL AI reply). The uiSteps login flow failed at '#email visible' — but this reproduces byte-for-byte (same selector, same failure) on the untouched, previously-proven copilot-readiness/money-path-login-direct.json run back-to-back in the same session, so it is a pre-existing environment condition (deployed msp-portal login page not rendering #email within the runner's 15s budget right now), not a defect in this manifest or in #366's code — same class of known redeploy-gap already documented on multiple other PLATFORM_BUILD.md rows. Also noted live: TEST_PORTAL_EMAIL currently resolves to an 'Assessment' mspRole account (not CustomerUser), so its real apiTests replies route through buildMspContext, not buildCustomerContext — confirming the auth+structure assertions above are real but explaining why no card is ever offered to THIS specific account regardless of prompt; a CustomerUser-role testbed account would be needed to ever see a live [SHOW_CARD:x] emission end-to-end, which per the note above is out of scope for deterministic assertion anyway.",
+
+    "logger channel for the endpoint under test: `engine.shanebot`."
+  ],
+
+  "apiTests": [
+    {
+      "name": "AUTH-GATE — POST /api/msp/support/chat with no Authorization header returns 401 (requireAuth), proving grounded platform data and card data are never reachable unauthenticated",
+      "method": "POST",
+      "path": "/api/msp/support/chat",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "messages": [{ "role": "user", "content": "hello" }] },
+      "expect": { "status": 401 }
+    },
+    {
+      "name": "SETUP — log in as the designated testbed portal account to obtain a real client bearer; extract it as {{authToken}}",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "STRUCTURE — an authenticated turn returns the real #361 structured content-block shape (buildAssistantContent's output), the same shape the client's cardsFrom()/suggestedRepliesFrom() read",
+      "method": "POST",
+      "path": "/api/msp/support/chat",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "messages": [{ "role": "user", "content": "What is my current plan status?" }] },
+      "expect": { "status": 200, "jsonPath": "$.content", "isArray": true }
+    },
+    {
+      "name": "STRUCTURE — the same real turn also returns the legacy flat reply field, for any client that hasn't moved to content blocks",
+      "method": "POST",
+      "path": "/api/msp/support/chat",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "messages": [{ "role": "user", "content": "What is my current plan status?" }] },
+      "expect": { "status": 200, "jsonPath": "$.reply", "exists": true }
+    }
+  ],
+
+  "uiSteps": [
+    { "action": "goto", "target": "/portal/shane-mccaw-consulting/login" },
+    { "name": "Wait for login form to render", "action": "expect", "selector": "#email", "state": "visible", "critical": true },
+    { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}", "critical": true },
+    { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}", "critical": true },
+    {
+      "name": "Portal login submit",
+      "action": "click",
+      "selector": "[data-testid='login-submit']",
+      "critical": true,
+      "captureResponse": { "urlPattern": "/api/auth/login", "expect": { "status": 200 } }
+    },
+
+    { "action": "goto", "target": "/portal/support" },
+    { "name": "Chat input renders", "action": "expect", "selector": "[data-testid='support-chat-input']", "state": "visible", "critical": true },
+    { "action": "input", "selector": "[data-testid='support-chat-input']", "value": "What is my current plan status?" },
+    { "name": "Send the message", "action": "click", "selector": "[data-testid='support-chat-send']" },
+    {
+      "name": "A real reply renders for the newest assistant turn (content is model-generated and not asserted verbatim — see notes on non-determinism)",
+      "action": "expect",
+      "selector": "[data-testid='support-chat-latest-reply']",
+      "state": "visible",
+      "timeoutMs": 30000
+    }
+  ]
+}

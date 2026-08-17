@@ -160,10 +160,31 @@ export function suggestedRepliesFrom(content: ChatMessageContent | null | undefi
   return [];
 }
 
-/** Build an assistant message's content: its visible text, plus chips if offered. */
-export function buildAssistantContent(text: string, suggestedReplies: string[] = []): ChatContentBlock[] {
+/** The card blocks carried by a content array, if any (#366). */
+export function cardsFrom(
+  content: ChatMessageContent | null | undefined,
+): Array<{ cardType: string; data: Record<string, unknown> }> {
+  return toContentBlocks(content)
+    .filter((b): b is Extract<ChatContentBlock, { type: "card" }> => b.type === "card")
+    .map((b) => ({ cardType: b.cardType, data: b.data }));
+}
+
+/**
+ * Build an assistant message's content: its visible text, any data cards
+ * (#366 — always server-resolved, real data), then chips if offered. Cards
+ * sit between text and chips so a reply reads as prose -> supporting data ->
+ * next-step suggestions.
+ */
+export function buildAssistantContent(
+  text: string,
+  suggestedReplies: string[] = [],
+  cards: Array<{ cardType: string; data: Record<string, unknown> }> = [],
+): ChatContentBlock[] {
   const blocks: ChatContentBlock[] = [];
   if (text) blocks.push({ type: "text", text });
+  for (const card of cards) {
+    blocks.push({ type: "card", cardType: card.cardType, data: card.data });
+  }
   if (suggestedReplies.length > 0) {
     blocks.push({ type: "suggested_replies", options: suggestedReplies });
   }

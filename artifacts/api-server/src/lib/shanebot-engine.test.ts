@@ -47,6 +47,9 @@ vi.mock("@workspace/db", () => ({
   mspSalesBundleAssignmentsTable: { bundleId: "bundle_id" },
   mspDiagnosticRunsTable: {},
   mspDiagnosticFindingsTable: {},
+  // #366 — Active Cards: invoice/score card data, both keyed by the login (users.id).
+  invoicesTable: {},
+  clientScoresTable: {},
   botInstancesTable: { id: "id", slug: "slug" },
   botConversationsTable: { sessionId: "session_id", transcript: "transcript" },
 }));
@@ -67,6 +70,10 @@ import {
   routeActions,
   routeRequestedActions,
   stripActionTokens,
+  parseRequestedCards,
+  routeCards,
+  routeRequestedCards,
+  stripCardTokens,
   buildGrounding,
   upsertBotConversation,
   getBotConversationTranscript,
@@ -75,20 +82,22 @@ import {
 import { db } from "@workspace/db";
 
 describe("BOT_INSTANCES — the two permanent instances", () => {
-  it("ShaneBot Public: unauthenticated, live_catalog, NO allowed actions, platform cost", () => {
+  it("ShaneBot Public: unauthenticated, live_catalog, NO allowed actions or cards, platform cost", () => {
     const pub = resolveInstance("shanebot_public");
     expect(pub.authMode).toBe("public");
     expect(pub.groundingSource).toBe("live_catalog");
     expect(pub.allowedActions).toEqual([]);
+    expect(pub.allowedCardTypes).toEqual([]);
     expect(pub.costOwner).toBe("platform");
     expect(pub.personaSurface).toBe("public");
   });
 
-  it("ShaneBot Paid: portal-authenticated, customer_entitlements, both actions, msp cost", () => {
+  it("ShaneBot Paid: portal-authenticated, customer_entitlements, both actions, all 4 card types, msp cost", () => {
     const paid = resolveInstance("shanebot_paid");
     expect(paid.authMode).toBe("portal_authenticated");
     expect(paid.groundingSource).toBe("customer_entitlements");
     expect(paid.allowedActions).toEqual(["regenerate_document", "rerun_scan"]);
+    expect(paid.allowedCardTypes).toEqual(["invoice", "subscription", "score", "data-answer"]);
     expect(paid.costOwner).toBe("msp");
     expect(paid.personaSurface).toBe("portal");
   });
@@ -155,6 +164,70 @@ describe("action_router: routeRequestedActions (parse + gate) and stripActionTok
     const stripped = stripActionTokens("Regenerating now. [ACTION:regenerate_document]");
     expect(stripped).toBe("Regenerating now.");
     expect(stripped).not.toMatch(/ACTION/);
+  });
+});
+
+// ── card_router (#366 Active Cards) — same shape as action_router above ─────────
+
+describe("card_router: parseRequestedCards", () => {
+  it("parses a single [SHOW_CARD:x] token", () => {
+    expect(parseRequestedCards("Here you go.\n[SHOW_CARD:invoice]")).toEqual(["invoice"]);
+  });
+
+  it("parses multiple, lowercases, de-dupes in first-seen order, and handles the hyphenated type", () => {
+    const text = "[SHOW_CARD:Invoice] then [SHOW_CARD:data-answer] and again [SHOW_CARD:invoice]";
+    expect(parseRequestedCards(text)).toEqual(["invoice", "data-answer"]);
+  });
+
+  it("returns [] when there is no token, and never throws on empty/undefined", () => {
+    expect(parseRequestedCards("just a normal reply")).toEqual([]);
+    expect(parseRequestedCards("")).toEqual([]);
+    // @ts-expect-error — defensively tolerant of a non-string at runtime.
+    expect(parseRequestedCards(undefined)).toEqual([]);
+  });
+});
+
+describe("card_router: routeCards — allowedCardTypes gate", () => {
+  const paid = resolveInstance("shanebot_paid");
+  const pub = resolveInstance("shanebot_public");
+
+  it("authorizes all 4 v1 card types on the paid instance", () => {
+    expect(routeCards(paid, ["invoice", "subscription", "score", "data-answer"])).toEqual([
+      { cardType: "invoice", authorized: true },
+      { cardType: "subscription", authorized: true },
+      { cardType: "score", authorized: true },
+      { cardType: "data-answer", authorized: true },
+    ]);
+  });
+
+  it("denies an unknown/hallucinated card type even on the paid instance", () => {
+    expect(routeCards(paid, ["billing-secrets"])).toEqual([
+      { cardType: "billing-secrets", authorized: false },
+    ]);
+  });
+
+  it("PUBLIC instance ([] allowedCardTypes) authorizes NOTHING", () => {
+    expect(routeCards(pub, ["invoice", "score"])).toEqual([
+      { cardType: "invoice", authorized: false },
+      { cardType: "score", authorized: false },
+    ]);
+  });
+});
+
+describe("card_router: routeRequestedCards (parse + gate) and stripCardTokens", () => {
+  it("parses tokens from model text and gates them for the instance", () => {
+    const paid = resolveInstance("shanebot_paid");
+    const text = "Here's your score.\n[SHOW_CARD:score] [SHOW_CARD:secret-internal-data]";
+    expect(routeRequestedCards(paid, text)).toEqual([
+      { cardType: "score", authorized: true },
+      { cardType: "secret-internal-data", authorized: false },
+    ]);
+  });
+
+  it("strips every [SHOW_CARD:x] token from the visible reply", () => {
+    const stripped = stripCardTokens("Here's your invoice. [SHOW_CARD:invoice]");
+    expect(stripped).toBe("Here's your invoice.");
+    expect(stripped).not.toMatch(/SHOW_CARD/);
   });
 });
 
@@ -252,6 +325,82 @@ describe("customer_entitlements grounding (#362): buildCustomerContext", () => {
     // latest run, last-completed run) calls .where() with real conditions —
     // none of buildCustomerContext's queries ever omit .where().
     expect(mockDb["where"].mock.calls.length).toBeGreaterThanOrEqual(6);
+  });
+
+  // ── #366 Active Cards: invoicesTable / clientScoresTable, keyed off userId ────
+
+  it("without a userId, skips the invoice/score queries entirely and cardData omits both", async () => {
+    mockDb["limit"]
+      .mockResolvedValueOnce([{ name: "Acme Corp", domain: "acme.com", status: "active", tenantId: "tid-1" }])
+      .mockResolvedValue([]);
+    const grounding = await buildGrounding(paid, { customerId: 42, mspId: 7, isCustomerUser: true, userId: null });
+    expect(grounding.cardData?.invoice).toBeUndefined();
+    expect(grounding.cardData?.score).toBeUndefined();
+    // Only the 6 tenant-scoped queries ran — no 7th/8th call consumed a queued value.
+    expect(mockDb["limit"].mock.calls.length).toBe(6);
+  });
+
+  it("with a userId, populates invoice/subscription/score cardData from real rows", async () => {
+    mockDb["limit"]
+      .mockResolvedValueOnce([{ name: "Acme Corp", domain: "acme.com", status: "active", tenantId: "tid-1" }]) // customer
+      .mockResolvedValueOnce([]) // signals
+      .mockResolvedValueOnce([]) // SOWs
+      .mockResolvedValueOnce([{
+        name: "Core Security Monitoring", status: "active",
+        activatedAt: new Date("2026-08-02T00:00:00Z"), trialExpiresAt: null,
+      }]) // bundle assignments
+      .mockResolvedValueOnce([]) // latest run
+      .mockResolvedValueOnce([]) // last completed run
+      .mockResolvedValueOnce([{
+        invoiceNumber: "INV-1001", description: "Monthly monitoring", amount: "199.00", currency: "usd",
+        status: "paid", dueDate: new Date("2026-08-01T00:00:00Z"), paidAt: new Date("2026-08-01T00:00:00Z"),
+      }]) // invoices
+      .mockResolvedValueOnce([{
+        identity: 80, security: 65, collaboration: 72, compliance: 58, copilotReadiness: 44,
+        updatedAt: new Date("2026-08-10T00:00:00Z"),
+      }]); // score
+
+    const grounding = await buildGrounding(paid, { customerId: 42, mspId: 7, isCustomerUser: true, userId: 10 });
+
+    expect(grounding.cardData?.invoice).toEqual({
+      invoices: [{
+        invoiceNumber: "INV-1001", description: "Monthly monitoring", amount: "$199.00", currency: "usd",
+        status: "paid", dueDate: "2026-08-01T00:00:00.000Z", paidAt: "2026-08-01T00:00:00.000Z",
+      }],
+    });
+    expect(grounding.cardData?.subscription).toEqual({
+      subscriptions: [{
+        name: "Core Security Monitoring", status: "active",
+        activatedAt: "2026-08-02T00:00:00.000Z", trialExpiresAt: null,
+      }],
+    });
+    expect(grounding.cardData?.score).toEqual({
+      identity: 80, security: 65, collaboration: 72, compliance: 58, copilotReadiness: 44,
+      updatedAt: "2026-08-10T00:00:00.000Z",
+    });
+    // data-answer is always populated (never undefined) — it's a rendering mode
+    // over the same entitlement facts, not a separate data source (#366's own scope note).
+    expect(grounding.cardData?.dataAnswer).toEqual({
+      subscriptions: [{
+        name: "Core Security Monitoring", status: "active",
+        activatedAt: "2026-08-02T00:00:00.000Z", trialExpiresAt: null,
+      }],
+      latestScan: null,
+      purchases: [],
+    });
+    expect(grounding.summary).toContain("INV-1001 — paid ($199.00 USD");
+    expect(grounding.summary).toContain("Identity 80, Security 65, Collaboration 72, Compliance 58, Copilot Readiness 44");
+  });
+
+  it("omits invoice/subscription/score cardData (but not dataAnswer) when there is no real data for them", async () => {
+    mockDb["limit"]
+      .mockResolvedValueOnce([{ name: "Acme Corp", domain: "acme.com", status: "active", tenantId: "tid-1" }])
+      .mockResolvedValue([]);
+    const grounding = await buildGrounding(paid, { customerId: 42, mspId: 7, isCustomerUser: true, userId: 10 });
+    expect(grounding.cardData?.invoice).toBeUndefined();
+    expect(grounding.cardData?.subscription).toBeUndefined();
+    expect(grounding.cardData?.score).toBeUndefined();
+    expect(grounding.cardData?.dataAnswer).toEqual({ subscriptions: [], latestScan: null, purchases: [] });
   });
 });
 

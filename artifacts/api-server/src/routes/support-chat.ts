@@ -55,6 +55,8 @@ import {
   assembleSystemPrompt,
   routeRequestedActions,
   stripActionTokens,
+  routeRequestedCards,
+  stripCardTokens,
   type BotGrounding,
   type BotInstanceConfig,
 } from "../lib/shanebot-engine.ts";
@@ -175,6 +177,34 @@ async function resolveScanPackageKey(customerId: number): Promise<string> {
   return pkgRow?.packageKey ?? "core:security-baseline";
 }
 
+// ── Card layer (#366) — Active Cards ──────────────────────────────────────────
+// shanebot-engine.ts's card_router only parses a [SHOW_CARD:x] token and gates
+// the TYPE against the instance's allowedCardTypes — it deliberately does not
+// resolve the actual data. That's this: pull the pre-built cardData off this
+// turn's own grounding result (real DB rows, queried fresh for this customer
+// earlier in this same request) and hand back only the type the model asked
+// for. Never null-coalesces to fabricated data — an unavailable type yields
+// no card at all, same "propose, never silently act" contract as the
+// remediation/action proposals above.
+function resolveCardData(
+  cardType: string,
+  cardData: BotGrounding["cardData"] | undefined,
+): Record<string, unknown> | null {
+  if (!cardData) return null;
+  switch (cardType) {
+    case "invoice":
+      return cardData.invoice ? (cardData.invoice as unknown as Record<string, unknown>) : null;
+    case "subscription":
+      return cardData.subscription ? (cardData.subscription as unknown as Record<string, unknown>) : null;
+    case "score":
+      return cardData.score ? (cardData.score as unknown as Record<string, unknown>) : null;
+    case "data-answer":
+      return cardData.dataAnswer ? (cardData.dataAnswer as unknown as Record<string, unknown>) : null;
+    default:
+      return null;
+  }
+}
+
 // ── System prompt ─────────────────────────────────────────────────────────────
 
 function buildSystemPrompt(
@@ -232,6 +262,24 @@ PLATFORM ACTION RULES (follow exactly):
 - Offer at most one action per reply.
 - If there is nothing eligible for that action, the Confirm button will not appear — still explain what you're offering, and let the user know if it turns out nothing was available.`;
 
+  // Active Cards (#366) — same gate as actionsBlock (a CustomerUser on their own
+  // tenant), since card data is resolved the same real-per-customer way actions
+  // are. The marker never carries data itself; it only tells the client which
+  // pre-resolved card (if any) to render alongside the reply.
+  const cardsBlock = !actionsEnabled
+    ? ""
+    : `
+
+=== DATA CARDS AVAILABLE ===
+When the user asks about their invoices or billing history, subscription/plan status, Copilot readiness score, or another question you can answer from the platform data above, you may show it as an interactive card instead of only describing it in prose. Append a marker on its own line, alone, after your written answer: [SHOW_CARD:invoice] for invoices/billing, [SHOW_CARD:subscription] for plan/subscription status, [SHOW_CARD:score] for their Copilot readiness score, or [SHOW_CARD:data-answer] for any other structured platform-data question.
+=== END DATA CARDS ===
+
+DATA CARD RULES (follow exactly):
+- Only request a card type that is actually relevant to what the user just asked.
+- Still answer briefly in your own words too — the card supplements your reply, it never replaces it.
+- Request at most one card per reply.
+- If there is no real data available for that card type, none will be shown — do not claim one is showing.`;
+
   // Voice + the trailing suggested-replies instruction come from the shared engine
   // (assembleSystemPrompt → persona + identity + body + chips). NOTHING safety-
   // bearing moved there: the grounding contract, escalation marker, and remediation
@@ -247,7 +295,7 @@ If you cannot answer confidently from the data below, output "[ESCALATE_TO_HUMAN
 
 === PLATFORM DATA FOR THIS SESSION ===
 ${grounding.summary}
-=== END PLATFORM DATA ===${remediationBlock}${actionsBlock}`;
+=== END PLATFORM DATA ===${remediationBlock}${actionsBlock}${cardsBlock}`;
 
   return assembleSystemPrompt({ instance, identity: grounding.identity, body });
 }
@@ -447,11 +495,11 @@ router.post(
     try {
       if (isCustomerUser && customerId) {
         [groundedCtx, remediableOffers] = await Promise.all([
-          buildGrounding(paidInstance, { customerId, mspId, isCustomerUser }),
+          buildGrounding(paidInstance, { customerId, mspId, isCustomerUser, userId: user.id }),
           listRemediableOffers(customerId),
         ]);
       } else {
-        groundedCtx = await buildGrounding(paidInstance, { customerId, mspId, isCustomerUser });
+        groundedCtx = await buildGrounding(paidInstance, { customerId, mspId, isCustomerUser, userId: user.id });
       }
     } catch (err) {
       log.error({ err }, "support-chat: failed to build grounded context");
@@ -562,6 +610,28 @@ router.post(
       }
     }
 
+    // Card proposal (#366) — Active Cards. Same "propose, never silently act"
+    // contract as proposedAction above: card_router only authorizes the TYPE
+    // against allowedCardTypes; the actual data comes from THIS turn's own
+    // groundedCtx.cardData (already queried fresh from the DB for this
+    // customer above), never from the model's text. A hallucinated/empty
+    // request yields no card at all.
+    let proposedCard: { cardType: string; data: Record<string, unknown> } | null = null;
+    if (isCustomerUser && customerId) {
+      for (const { cardType, authorized } of routeRequestedCards(paidInstance, fullReply)) {
+        if (!authorized) continue;
+        const data = resolveCardData(cardType, groundedCtx.cardData);
+        if (data) {
+          proposedCard = { cardType, data };
+          break;
+        }
+        log.warn(
+          { customerId, cardType, userId: user.id },
+          "support-chat: model requested a card with no real data available — dropping",
+        );
+      }
+    }
+
     // Suggested-reply chips (#361). Parsed and stripped like every other control
     // marker here — the raw token never reaches the user.
     const suggestedReplies = parseSuggestedReplies(fullReply);
@@ -575,17 +645,19 @@ router.post(
       );
     }
 
-    const visibleReply = stripActionTokens(
-      stripSuggestedReplies(
-        fullReply
-          .replace(/\[ESCALATE_TO_HUMAN\]/gi, "")
-          .replace(/\[PROPOSE_REMEDIATION:\s*\d+\s*\]/gi, ""),
+    const visibleReply = stripCardTokens(
+      stripActionTokens(
+        stripSuggestedReplies(
+          fullReply
+            .replace(/\[ESCALATE_TO_HUMAN\]/gi, "")
+            .replace(/\[PROPOSE_REMEDIATION:\s*\d+\s*\]/gi, ""),
+        ),
       ),
     );
 
     // The reply in the #361 structured shape. `reply` is still returned alongside
     // it for any client that hasn't moved over yet.
-    const replyContent = buildAssistantContent(visibleReply, suggestedReplies);
+    const replyContent = buildAssistantContent(visibleReply, suggestedReplies, proposedCard ? [proposedCard] : []);
 
     // Audit with correct AuditEvent shape
     const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
@@ -606,6 +678,7 @@ router.post(
         aiBillingMspId: billingMspId,
         proposedRemediationOfferId: proposedRemediation?.offerId ?? null,
         proposedAction: proposedAction?.action ?? null,
+        proposedCardType: proposedCard?.cardType ?? null,
         suggestedReplyCount: suggestedReplies.length,
       },
     });

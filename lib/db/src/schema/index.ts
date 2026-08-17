@@ -3986,13 +3986,13 @@ export const publicChatMessageRole = ["user", "assistant"] as const;
 //   text             — plain prose. Every reply has at least one.
 //   suggested_replies — tappable follow-up chips (#361). Emitted by the model as
 //                      a bracketed control token, parsed + stripped server-side.
-//   card             — RESERVED, UNUSED. Declared here ONLY so the persisted
-//                      shape never has to change again when the deferred Active
-//                      Cards issue lands. Nothing writes it, nothing renders it,
-//                      and no code should branch on it until that issue is built.
+//   card             — structured/interactive data card (#366, shanebot_paid
+//                      only). cardType is one of "invoice" | "subscription" |
+//                      "score" | "data-answer"; data is always resolved
+//                      server-side from real DB records scoped to the
+//                      requesting customer, never taken from the model.
 export type ChatTextBlock = { type: "text"; text: string };
 export type ChatSuggestedRepliesBlock = { type: "suggested_replies"; options: string[] };
-/** RESERVED for the deferred Active Cards issue — never written or rendered today. */
 export type ChatCardBlock = { type: "card"; cardType: string; data: Record<string, unknown> };
 
 export type ChatContentBlock = ChatTextBlock | ChatSuggestedRepliesBlock | ChatCardBlock;

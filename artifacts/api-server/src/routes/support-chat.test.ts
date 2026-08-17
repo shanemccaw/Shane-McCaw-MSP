@@ -72,6 +72,16 @@ vi.mock("@workspace/db", () => ({
   documentTypesTable: { key: "key", pipelineCategory: "pipeline_category", isActive: "is_active" },
   clientServicesTable: { clientUserId: "client_user_id", serviceId: "service_id", status: "status", id: "id" },
   servicesTable: { id: "id", typeAttributes: "type_attributes", fulfillmentTypeKey: "fulfillment_type_key" },
+  // #366 — Active Cards: invoice/score card data, both keyed by the login (users.id).
+  invoicesTable: {
+    clientUserId: "client_user_id", invoiceNumber: "invoice_number", description: "description",
+    amount: "amount", currency: "currency", status: "status", dueDate: "due_date", paidAt: "paid_at",
+    createdAt: "created_at",
+  },
+  clientScoresTable: {
+    clientId: "client_id", identity: "identity", security: "security", collaboration: "collaboration",
+    compliance: "compliance", copilotReadiness: "copilot_readiness", updatedAt: "updated_at",
+  },
 }));
 
 vi.mock("../lib/sse-channels.ts", () => ({
@@ -408,6 +418,83 @@ describe("POST /api/msp/support/chat", () => {
     expect(res.status).toBe(200);
     expect(res.body.proposedAction).toBeNull();
     expect(res.body.reply).not.toMatch(/\[ACTION:/i);
+  });
+
+  // ── #366: Active Cards (invoice / subscription / score / data-answer) ──────
+
+  it("surfaces a data card when the AI emits a valid [SHOW_CARD:x] marker and real data exists", async () => {
+    mockDbAny["limit"]
+      .mockResolvedValueOnce([{ name: "Acme Corp", domain: "acme.com", status: "active", tenantId: "tid-1" }]) // customer
+      .mockResolvedValueOnce([]) // signals
+      .mockResolvedValueOnce([]) // SOWs
+      .mockResolvedValueOnce([]) // bundle assignments
+      .mockResolvedValueOnce([]) // latest run
+      .mockResolvedValueOnce([]) // last completed run
+      .mockResolvedValueOnce([{
+        invoiceNumber: "INV-2002", description: "Monthly monitoring", amount: "349.00", currency: "usd",
+        status: "paid", dueDate: new Date("2026-08-01T00:00:00Z"), paidAt: new Date("2026-08-01T00:00:00Z"),
+      }]) // invoices
+      .mockResolvedValueOnce([]); // score
+    mockCreate.mockResolvedValueOnce({
+      content: [{ type: "text", text: "Here are your invoices.\n[SHOW_CARD:invoice]" }],
+    });
+
+    const app = makeApp();
+    const res = await request(app)
+      .post("/api/msp/support/chat")
+      .set("Authorization", `Bearer ${customerToken()}`)
+      .send({ messages: [{ role: "user", content: "Can I see my invoices?" }] });
+
+    expect(res.status).toBe(200);
+    expect(res.body.reply).not.toMatch(/\[SHOW_CARD:/i);
+    const cardBlock = (res.body.content as Array<Record<string, unknown>>).find((b) => b.type === "card");
+    expect(cardBlock).toEqual({
+      type: "card",
+      cardType: "invoice",
+      data: {
+        invoices: [{
+          invoiceNumber: "INV-2002", description: "Monthly monitoring", amount: "$349.00", currency: "usd",
+          status: "paid", dueDate: "2026-08-01T00:00:00.000Z", paidAt: "2026-08-01T00:00:00.000Z",
+        }],
+      },
+    });
+  });
+
+  it("drops the card when the AI requests one with no real data available", async () => {
+    // Default beforeEach mock: every `.limit()` resolves to [] — no invoices on file.
+    mockCreate.mockResolvedValueOnce({
+      content: [{ type: "text", text: "Let me check.\n[SHOW_CARD:invoice]" }],
+    });
+
+    const app = makeApp();
+    const res = await request(app)
+      .post("/api/msp/support/chat")
+      .set("Authorization", `Bearer ${customerToken()}`)
+      .send({ messages: [{ role: "user", content: "Can I see my invoices?" }] });
+
+    expect(res.status).toBe(200);
+    expect(res.body.reply).not.toMatch(/\[SHOW_CARD:/i);
+    const cardBlock = (res.body.content as Array<Record<string, unknown>>).find((b) => b.type === "card");
+    expect(cardBlock).toBeUndefined();
+  });
+
+  it("never surfaces a card for MSP staff, even if the AI emits a marker", async () => {
+    mockDbAny["limit"].mockResolvedValue([
+      { invoiceNumber: "INV-1", description: null, amount: "10.00", currency: "usd", status: "paid", dueDate: null, paidAt: null },
+    ]);
+    mockCreate.mockResolvedValueOnce({
+      content: [{ type: "text", text: "Here you go.\n[SHOW_CARD:invoice]" }],
+    });
+
+    const app = makeApp();
+    const res = await request(app)
+      .post("/api/msp/support/chat")
+      .set("Authorization", `Bearer ${makeToken()}`) // default: mspRole "MSPOperator", no customerId
+      .send({ messages: [{ role: "user", content: "show me the customer's invoices" }] });
+
+    expect(res.status).toBe(200);
+    const cardBlock = (res.body.content as Array<Record<string, unknown>>).find((b) => b.type === "card");
+    expect(cardBlock).toBeUndefined();
   });
 
   // ── #361: suggested-reply chips + content-block shape ──────────────────────

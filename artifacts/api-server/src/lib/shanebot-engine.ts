@@ -31,6 +31,11 @@
  *      Transcript(s)() persist a session's structured-block transcript onto the
  *      shared bot_conversations table, replacing the earlier plan to bolt
  *      storage onto each route's own message table independently.
+ *   7. card_router (#366) — parses model-emitted [SHOW_CARD:x] control tokens
+ *      and gates each against the emitting instance's allowedCardTypes, same
+ *      shape as action_router. customer_entitlements' builder also returns a
+ *      cardData payload (real DB rows, never model text) the caller resolves
+ *      an authorized request against.
  *
  * What it deliberately does NOT own: each surface's route-specific SAFETY sections
  * — the public personal-topic HARD BOUNDARY (public-chat-guardrail.ts), the
@@ -53,6 +58,8 @@ import {
   mspSalesBundleAssignmentsTable,
   mspDiagnosticRunsTable,
   mspDiagnosticFindingsTable,
+  invoicesTable,
+  clientScoresTable,
   botInstancesTable,
   botConversationsTable,
   type BotAction,
@@ -73,12 +80,17 @@ const log = logger.child({ channel: "engine.shanebot" });
 
 export type BotSlug = "shanebot_public" | "shanebot_paid";
 
+/** Active Cards (#366) — the four v1 card types. shanebot_paid only. */
+export type BotCardType = "invoice" | "subscription" | "score" | "data-answer";
+
 export interface BotInstanceConfig {
   slug: BotSlug;
   name: string;
   authMode: BotAuthMode;
   groundingSource: BotGroundingSource;
   allowedActions: BotAction[];
+  /** Card types this instance may show via card_router (#366). Public: none. */
+  allowedCardTypes: BotCardType[];
   costOwner: BotCostOwner;
   /** Which persona voice this instance renders (shanebot-persona.ts). */
   personaSurface: ShaneBotSurface;
@@ -91,6 +103,7 @@ export const BOT_INSTANCES: Record<BotSlug, BotInstanceConfig> = {
     authMode: "public",
     groundingSource: "live_catalog",
     allowedActions: [],
+    allowedCardTypes: [],
     costOwner: "platform",
     personaSurface: "public",
   },
@@ -100,6 +113,7 @@ export const BOT_INSTANCES: Record<BotSlug, BotInstanceConfig> = {
     authMode: "portal_authenticated",
     groundingSource: "customer_entitlements",
     allowedActions: ["regenerate_document", "rerun_scan"],
+    allowedCardTypes: ["invoice", "subscription", "score", "data-answer"],
     costOwner: "msp",
     personaSurface: "portal",
   },
@@ -119,11 +133,62 @@ export function resolvePersonaPrompt(instance: BotInstanceConfig): string {
 
 // ── Grounding ─────────────────────────────────────────────────────────────────
 
+// Active Cards (#366) structured payloads. Always resolved server-side from
+// real DB rows scoped to the requesting customer — the model only ever
+// requests a cardType via card_router below, never supplies data itself.
+export interface InvoiceCardData {
+  invoices: Array<{
+    invoiceNumber: string;
+    description: string | null;
+    amount: string;
+    currency: string;
+    status: string;
+    dueDate: string | null;
+    paidAt: string | null;
+  }>;
+}
+
+export interface SubscriptionCardData {
+  subscriptions: Array<{
+    name: string;
+    status: string;
+    activatedAt: string | null;
+    trialExpiresAt: string | null;
+  }>;
+}
+
+export interface ScoreCardData {
+  identity: number;
+  security: number;
+  collaboration: number;
+  compliance: number;
+  copilotReadiness: number;
+  updatedAt: string;
+}
+
+export interface DataAnswerCardData {
+  subscriptions: SubscriptionCardData["subscriptions"];
+  latestScan: { packageKey: string; status: string; startedAt: string | null } | null;
+  purchases: Array<{ title: string; status: string; amount: string; date: string | null }>;
+}
+
 export interface BotGrounding {
   /** One line describing who the model is talking to, for the prompt. */
   identity: string;
   /** The grounded data block the model must answer strictly from. */
   summary: string;
+  /**
+   * Structured card-ready payloads (#366), populated only by the
+   * customer_entitlements builder — undefined for live_catalog. One query
+   * pass builds both the prose summary and this, so card_router never has to
+   * re-query when the model requests a card.
+   */
+  cardData?: {
+    invoice?: InvoiceCardData;
+    subscription?: SubscriptionCardData;
+    score?: ScoreCardData;
+    dataAnswer?: DataAnswerCardData;
+  };
 }
 
 /** Context the customer_entitlements builder needs. Ignored by live_catalog. */
@@ -131,6 +196,8 @@ export interface CustomerEntitlementsContext {
   customerId: number | null;
   mspId: number | null;
   isCustomerUser: boolean;
+  /** users.id of the requesting login — invoicesTable/clientScoresTable key off this, not the tenant (#366). */
+  userId?: number | null;
 }
 
 /**
@@ -146,7 +213,7 @@ export async function buildGrounding(
       return buildLiveCatalogGrounding();
     case "customer_entitlements":
       return buildCustomerEntitlementsGrounding(
-        ctx ?? { customerId: null, mspId: null, isCustomerUser: false },
+        ctx ?? { customerId: null, mspId: null, isCustomerUser: false, userId: null },
       );
     default: {
       // Exhaustiveness guard: a new groundingSource enum value added without a
@@ -293,7 +360,7 @@ async function buildCustomerEntitlementsGrounding(
   ctx: CustomerEntitlementsContext,
 ): Promise<BotGrounding> {
   if (ctx.isCustomerUser && ctx.customerId) {
-    return buildCustomerContext(ctx.customerId, ctx.mspId);
+    return buildCustomerContext(ctx.customerId, ctx.mspId, ctx.userId ?? null);
   }
   if (ctx.mspId) {
     return buildMspContext(ctx.mspId);
@@ -391,6 +458,39 @@ function formatEntitlements(rows: Array<{
   }).join("\n");
 }
 
+function formatInvoices(rows: Array<{
+  invoiceNumber: string;
+  description: string | null;
+  amount: string;
+  currency: string;
+  status: string;
+  dueDate: Date | null;
+  paidAt: Date | null;
+}>): string {
+  if (rows.length === 0) return "No invoices on file.";
+  return rows.map((r) => {
+    const amount = `$${Number(r.amount).toFixed(2)} ${r.currency.toUpperCase()}`;
+    const dateLabel = r.paidAt
+      ? `paid ${relativeDate(new Date(r.paidAt))}`
+      : r.dueDate
+        ? `due ${relativeDate(new Date(r.dueDate))}`
+        : "no due date";
+    return `• ${r.invoiceNumber} — ${r.status} (${amount}, ${dateLabel})${r.description ? `: ${r.description}` : ""}`;
+  }).join("\n");
+}
+
+function formatScore(row: {
+  identity: number;
+  security: number;
+  collaboration: number;
+  compliance: number;
+  copilotReadiness: number;
+  updatedAt: Date;
+} | undefined): string {
+  if (!row) return "No Copilot readiness score on file yet.";
+  return `Identity ${row.identity}, Security ${row.security}, Collaboration ${row.collaboration}, Compliance ${row.compliance}, Copilot Readiness ${row.copilotReadiness} (as of ${relativeDate(new Date(row.updatedAt))})`;
+}
+
 function formatScanStatus(
   latestRun: { packageKey: string; status: string; startedAt: Date | null } | undefined,
   lastCompleted: { completedAt: Date | null; checksTotal: number; checksOk: number; checksError: number } | undefined,
@@ -415,7 +515,7 @@ function formatScanStatus(
   return lines.join("\n");
 }
 
-async function buildCustomerContext(customerId: number, mspId: number | null): Promise<BotGrounding> {
+async function buildCustomerContext(customerId: number, mspId: number | null, userId: number | null): Promise<BotGrounding> {
   const since30d = new Date(Date.now() - 30 * 86_400_000);
 
   const sowConditions = [eq(mspSowsTable.customerId, customerId)];
@@ -427,7 +527,7 @@ async function buildCustomerContext(customerId: number, mspId: number | null): P
     runConditions.push(eq(mspDiagnosticRunsTable.mspId, mspId));
   }
 
-  const [customerRow, signalRows, sowRows, bundleRows, latestRunRows, lastCompletedRows] = await Promise.all([
+  const [customerRow, signalRows, sowRows, bundleRows, latestRunRows, lastCompletedRows, invoiceRows, scoreRows] = await Promise.all([
     db.select({
       name: tenantsTable.customerName,
       domain: tenantsTable.domain,
@@ -506,6 +606,39 @@ async function buildCustomerContext(customerId: number, mspId: number | null): P
       .where(and(...runConditions, inArray(mspDiagnosticRunsTable.status, ["completed", "partial"])))
       .orderBy(desc(mspDiagnosticRunsTable.createdAt))
       .limit(1),
+
+    // Invoices (#366 Active Cards) — keyed by the LOGIN (invoicesTable.clientUserId),
+    // not the tenant, same scoping portal-billing.ts already uses for this table.
+    userId
+      ? db.select({
+          invoiceNumber: invoicesTable.invoiceNumber,
+          description: invoicesTable.description,
+          amount: invoicesTable.amount,
+          currency: invoicesTable.currency,
+          status: invoicesTable.status,
+          dueDate: invoicesTable.dueDate,
+          paidAt: invoicesTable.paidAt,
+        })
+          .from(invoicesTable)
+          .where(eq(invoicesTable.clientUserId, userId))
+          .orderBy(desc(invoicesTable.createdAt))
+          .limit(10)
+      : Promise.resolve([]),
+
+    // Copilot readiness score (#366 Active Cards) — also login-keyed (clientScoresTable.clientId).
+    userId
+      ? db.select({
+          identity: clientScoresTable.identity,
+          security: clientScoresTable.security,
+          collaboration: clientScoresTable.collaboration,
+          compliance: clientScoresTable.compliance,
+          copilotReadiness: clientScoresTable.copilotReadiness,
+          updatedAt: clientScoresTable.updatedAt,
+        })
+          .from(clientScoresTable)
+          .where(eq(clientScoresTable.clientId, userId))
+          .limit(1)
+      : Promise.resolve([]),
   ]);
 
   const customer = customerRow[0];
@@ -532,6 +665,70 @@ async function buildCustomerContext(customerId: number, mspId: number | null): P
     ? "No signals fired in the last 30 days."
     : signalRows.map((s) => `• ${s.eventType.replace("signal.", "")} (${relativeDate(new Date(s.occurredAt))})`).join("\n");
 
+  const scoreRow = scoreRows[0];
+
+  // Active Cards (#366) — structured payloads built from the SAME rows the
+  // prose summary above already fetched, so requesting a card never triggers
+  // a second query. A card type is omitted entirely (undefined) when there is
+  // no real data for it, so card_router can distinguish "genuinely nothing to
+  // show" from a hallucinated request.
+  const cardData: NonNullable<BotGrounding["cardData"]> = {
+    invoice: invoiceRows.length > 0
+      ? {
+          invoices: invoiceRows.map((r) => ({
+            invoiceNumber: r.invoiceNumber,
+            description: r.description,
+            amount: `$${Number(r.amount).toFixed(2)}`,
+            currency: r.currency,
+            status: r.status,
+            dueDate: r.dueDate ? r.dueDate.toISOString() : null,
+            paidAt: r.paidAt ? r.paidAt.toISOString() : null,
+          })),
+        }
+      : undefined,
+    subscription: bundleRows.length > 0
+      ? {
+          subscriptions: bundleRows.map((r) => ({
+            name: r.name,
+            status: r.status,
+            activatedAt: r.activatedAt ? r.activatedAt.toISOString() : null,
+            trialExpiresAt: r.trialExpiresAt ? r.trialExpiresAt.toISOString() : null,
+          })),
+        }
+      : undefined,
+    score: scoreRow
+      ? {
+          identity: scoreRow.identity,
+          security: scoreRow.security,
+          collaboration: scoreRow.collaboration,
+          compliance: scoreRow.compliance,
+          copilotReadiness: scoreRow.copilotReadiness,
+          updatedAt: scoreRow.updatedAt.toISOString(),
+        }
+      : undefined,
+    dataAnswer: {
+      subscriptions: bundleRows.map((r) => ({
+        name: r.name,
+        status: r.status,
+        activatedAt: r.activatedAt ? r.activatedAt.toISOString() : null,
+        trialExpiresAt: r.trialExpiresAt ? r.trialExpiresAt.toISOString() : null,
+      })),
+      latestScan: latestRunRows[0]
+        ? {
+            packageKey: latestRunRows[0].packageKey,
+            status: latestRunRows[0].status,
+            startedAt: latestRunRows[0].startedAt ? latestRunRows[0].startedAt.toISOString() : null,
+          }
+        : null,
+      purchases: sowRows.map((r) => ({
+        title: r.title,
+        status: r.status,
+        amount: `$${Math.round(r.amountCents / 100).toLocaleString("en-US")}`,
+        date: (r.chargeConfirmedAt ?? r.signedAt) ? (r.chargeConfirmedAt ?? r.signedAt)!.toISOString() : null,
+      })),
+    },
+  };
+
   return {
     identity: `customer user for ${customer.name}`,
     summary: `Customer: ${customer.name} (domain: ${customer.domain ?? "n/a"}, status: ${customer.status})
@@ -543,11 +740,18 @@ ${formatPurchases(sowRows)}
 Subscriptions / monitoring bundles:
 ${formatEntitlements(bundleRows)}
 
+Invoices:
+${formatInvoices(invoiceRows)}
+
+Copilot readiness score:
+${formatScore(scoreRow)}
+
 Scan / monitoring status:
 ${formatScanStatus(latestRunRows[0], lastCompleted, findingRows)}
 
 Recent signals (last 30 days):
 ${signalSummary}`,
+    cardData,
   };
 }
 
@@ -739,4 +943,65 @@ export function routeRequestedActions(instance: BotInstanceConfig, text: string)
 /** Remove every [ACTION:x] token from a reply before the user sees it. */
 export function stripActionTokens(text: string): string {
   return (text ?? "").replace(new RegExp(ACTION_TOKEN_RE_GLOBAL.source, "gi"), "").trim();
+}
+
+// ── card_router ───────────────────────────────────────────────────────────────
+// Active Cards (#366). Same "propose, never silently act" control-token shape
+// as action_router above, but for rendering a data card instead of firing an
+// action: the model requests one by emitting a token on its own line —
+//   [SHOW_CARD:invoice]   [SHOW_CARD:subscription]   [SHOW_CARD:score]   [SHOW_CARD:data-answer]
+// The router parses these, then gates EACH against the emitting instance's
+// allowedCardTypes. It does NOT resolve card data — the caller pulls that from
+// this same turn's BotGrounding.cardData (queried fresh from the DB, scoped to
+// the requesting customer), never from the model's own text. A hallucinated,
+// unknown, or unauthorized card type authorizes as false, same as action_router.
+
+const CARD_TOKEN_RE_GLOBAL = /\[SHOW_CARD:\s*([a-z-]+)\s*\]/gi;
+
+export interface RoutedCard {
+  /** The card type the model requested (lowercased). */
+  cardType: string;
+  /** True only if this instance's allowedCardTypes permits it. */
+  authorized: boolean;
+}
+
+/** Every distinct card type the model asked for, in first-seen order. */
+export function parseRequestedCards(text: string): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const re = new RegExp(CARD_TOKEN_RE_GLOBAL.source, "gi");
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text ?? "")) !== null) {
+    const cardType = m[1].toLowerCase();
+    if (!seen.has(cardType)) {
+      seen.add(cardType);
+      out.push(cardType);
+    }
+  }
+  return out;
+}
+
+/** Gate parsed card requests against the instance's allowedCardTypes. */
+export function routeCards(instance: BotInstanceConfig, requested: string[]): RoutedCard[] {
+  const allowed = new Set<string>(instance.allowedCardTypes);
+  return requested.map((cardType) => {
+    const authorized = allowed.has(cardType);
+    if (!authorized) {
+      log.warn(
+        { instance: instance.slug, cardType, allowedCardTypes: instance.allowedCardTypes },
+        "shanebot-engine: card request denied — not in this instance's allowedCardTypes",
+      );
+    }
+    return { cardType, authorized };
+  });
+}
+
+/** Parse + gate in one call. */
+export function routeRequestedCards(instance: BotInstanceConfig, text: string): RoutedCard[] {
+  return routeCards(instance, parseRequestedCards(text));
+}
+
+/** Remove every [SHOW_CARD:x] token from a reply before the user sees it. */
+export function stripCardTokens(text: string): string {
+  return (text ?? "").replace(new RegExp(CARD_TOKEN_RE_GLOBAL.source, "gi"), "").trim();
 }

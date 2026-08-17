@@ -29,8 +29,10 @@ import {
   buildContent,
   contentToText,
   suggestedRepliesFrom,
+  cardsFrom,
   type ChatMessageContent,
 } from "@/lib/chat-content-blocks";
+import { cardScrollTop } from "@/components/war-room/warRoomCardScroll";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -72,7 +74,7 @@ const STARTER_PROMPTS = [
 
 // ── Message bubble ────────────────────────────────────────────────────────────
 
-function MessageBubble({ message }: { message: ChatMessage }) {
+function MessageBubble({ message, testId }: { message: ChatMessage; testId?: string }) {
   const isUser = message.role === "user";
   const isSystem = message.role === "system";
   const text = contentToText(message.content);
@@ -89,7 +91,7 @@ function MessageBubble({ message }: { message: ChatMessage }) {
   }
 
   return (
-    <div className={`flex gap-3 ${isUser ? "flex-row-reverse" : "flex-row"}`}>
+    <div data-testid={testId} className={`flex gap-3 ${isUser ? "flex-row-reverse" : "flex-row"}`}>
       {/* Avatar */}
       <div
         className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center ${
@@ -218,6 +220,163 @@ function RemediationCard({
   );
 }
 
+// ── Active Cards (#366) ───────────────────────────────────────────────────────
+// Interactive data cards for the four v1 card types. `data` always came from a
+// real, customer-scoped DB record resolved server-side (shanebot-engine.ts's
+// card_router) — this layer only renders it, it never invents or reformats
+// numbers from the model's own text.
+
+function invoiceStatusVariant(status: string): "secondary" | "destructive" | "outline" {
+  if (status === "paid") return "secondary";
+  if (status === "overdue") return "destructive";
+  return "outline";
+}
+
+function InvoiceCardBody({ data }: { data: Record<string, unknown> }) {
+  const invoices = Array.isArray(data.invoices) ? (data.invoices as Array<Record<string, unknown>>) : [];
+  if (invoices.length === 0) {
+    return <p className="text-xs text-muted-foreground">No invoices on file.</p>;
+  }
+  return (
+    <div className="divide-y divide-border/60">
+      {invoices.map((inv, i) => (
+        <div key={i} className="py-2 flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-xs font-medium text-foreground truncate">{String(inv.invoiceNumber ?? "")}</p>
+            {inv.description ? (
+              <p className="text-[11px] text-muted-foreground truncate">{String(inv.description)}</p>
+            ) : null}
+          </div>
+          <div className="flex-shrink-0 text-right">
+            <p className="text-xs font-medium text-foreground">{String(inv.amount ?? "")}</p>
+            <Badge variant={invoiceStatusVariant(String(inv.status ?? ""))} className="text-[10px] mt-0.5">
+              {String(inv.status ?? "")}
+            </Badge>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SubscriptionCardBody({ data }: { data: Record<string, unknown> }) {
+  const subscriptions = Array.isArray(data.subscriptions) ? (data.subscriptions as Array<Record<string, unknown>>) : [];
+  if (subscriptions.length === 0) {
+    return <p className="text-xs text-muted-foreground">No active subscriptions or monitoring bundles.</p>;
+  }
+  return (
+    <div className="divide-y divide-border/60">
+      {subscriptions.map((sub, i) => (
+        <div key={i} className="py-2 flex items-center justify-between gap-3">
+          <p className="text-xs font-medium text-foreground truncate">{String(sub.name ?? "")}</p>
+          <Badge variant={sub.status === "active" ? "secondary" : "outline"} className="text-[10px] flex-shrink-0">
+            {String(sub.status ?? "")}
+          </Badge>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+const SCORE_PILLARS: Array<{ key: string; label: string }> = [
+  { key: "identity", label: "Identity" },
+  { key: "security", label: "Security" },
+  { key: "collaboration", label: "Collaboration" },
+  { key: "compliance", label: "Compliance" },
+  { key: "copilotReadiness", label: "Copilot Readiness" },
+];
+
+function ScoreCardBody({ data }: { data: Record<string, unknown> }) {
+  return (
+    <div className="flex flex-col gap-2">
+      {SCORE_PILLARS.map(({ key, label }) => {
+        const value = Math.max(0, Math.min(100, Number(data[key] ?? 0)));
+        return (
+          <div key={key} className="flex items-center gap-2">
+            <span className="text-[11px] text-muted-foreground w-28 flex-shrink-0">{label}</span>
+            <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
+              <div className="h-full rounded-full bg-primary" style={{ width: `${value}%` }} />
+            </div>
+            <span className="text-[11px] font-medium text-foreground w-7 text-right flex-shrink-0">{value}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function DataAnswerCardBody({ data }: { data: Record<string, unknown> }) {
+  const subscriptions = Array.isArray(data.subscriptions) ? (data.subscriptions as Array<Record<string, unknown>>) : [];
+  const latestScan = data.latestScan as Record<string, unknown> | null | undefined;
+  const purchases = Array.isArray(data.purchases) ? (data.purchases as Array<Record<string, unknown>>) : [];
+
+  return (
+    <div className="flex flex-col gap-3 text-xs">
+      <div>
+        <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1">Subscriptions</p>
+        {subscriptions.length === 0 ? (
+          <p className="text-muted-foreground">None active.</p>
+        ) : (
+          subscriptions.map((sub, i) => (
+            <div key={i} className="flex items-center justify-between py-0.5">
+              <span className="text-foreground">{String(sub.name ?? "")}</span>
+              <span className="text-muted-foreground">{String(sub.status ?? "")}</span>
+            </div>
+          ))
+        )}
+      </div>
+      <div>
+        <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1">Latest scan</p>
+        <p className="text-foreground">
+          {latestScan ? `${String(latestScan.packageKey ?? "")} — ${String(latestScan.status ?? "")}` : "No scans have been run yet."}
+        </p>
+      </div>
+      {purchases.length > 0 && (
+        <div>
+          <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1">Purchases</p>
+          {purchases.map((p, i) => (
+            <div key={i} className="flex items-center justify-between py-0.5">
+              <span className="text-foreground truncate">{String(p.title ?? "")}</span>
+              <span className="text-muted-foreground flex-shrink-0 ml-2">{String(p.amount ?? "")}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const CARD_TITLES: Record<string, string> = {
+  invoice: "Invoices",
+  subscription: "Subscription",
+  score: "Copilot Readiness Score",
+  "data-answer": "Your Data",
+};
+
+function ActiveCard({
+  cardType,
+  data,
+  cardRef,
+}: {
+  cardType: string;
+  data: Record<string, unknown>;
+  cardRef?: React.Ref<HTMLDivElement>;
+}) {
+  return (
+    <div
+      ref={cardRef}
+      className="ml-10 max-w-[78%] flex flex-col gap-2 px-3.5 py-3 bg-muted/40 border border-border rounded-xl"
+      data-testid={`active-card-${cardType}`}
+    >
+      <p className="text-xs font-semibold text-foreground">{CARD_TITLES[cardType] ?? "Details"}</p>
+      {cardType === "invoice" && <InvoiceCardBody data={data} />}
+      {cardType === "subscription" && <SubscriptionCardBody data={data} />}
+      {cardType === "score" && <ScoreCardBody data={data} />}
+      {cardType === "data-answer" && <DataAnswerCardBody data={data} />}
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function SupportChatPage() {
@@ -229,6 +388,8 @@ export default function SupportChatPage() {
   const [everEscalated, setEverEscalated] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const latestCardRef = useRef<HTMLDivElement>(null);
 
   // Initial greeting
   useEffect(() => {
@@ -243,8 +404,24 @@ export default function SupportChatPage() {
     setMessages([greeting]);
   }, [user?.name]);
 
-  // Auto-scroll to latest message
+  // Auto-scroll to latest message. When the newest turn carries a card
+  // (#366), land on it via the same scroll math War Room's briefing thread
+  // uses (warRoomCardScroll.ts's cardScrollTop) — top of the card if it fits
+  // the viewport, its bottom (where the interactive/later content is) if it
+  // doesn't — rather than always jumping straight to the very bottom.
   useEffect(() => {
+    const container = containerRef.current;
+    const cardEl = latestCardRef.current;
+    if (container && cardEl) {
+      const containerRect = container.getBoundingClientRect();
+      const cardRect = cardEl.getBoundingClientRect();
+      const offsetTop = cardRect.top - containerRect.top + container.scrollTop;
+      container.scrollTo({
+        top: cardScrollTop(offsetTop, cardEl.offsetHeight, container.clientHeight),
+        behavior: "smooth",
+      });
+      return;
+    }
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
@@ -443,10 +620,24 @@ export default function SupportChatPage() {
         </div>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto space-y-4 pb-4 min-h-0">
+        <div ref={containerRef} className="flex-1 overflow-y-auto space-y-4 pb-4 min-h-0">
           {messages.map((msg, i) => (
             <div key={msg.id} className="space-y-2">
-              <MessageBubble message={msg} />
+              <MessageBubble
+                message={msg}
+                testId={i === messages.length - 1 && msg.role === "assistant" ? "support-chat-latest-reply" : undefined}
+              />
+              {/* Data cards (#366) — rendered for every turn that carries one, not
+                  just the newest, so a card stays visible as history scrolls by. */}
+              {msg.role === "assistant" &&
+                cardsFrom(msg.content).map((card, ci) => (
+                  <ActiveCard
+                    key={`${msg.id}-card-${ci}`}
+                    cardType={card.cardType}
+                    data={card.data}
+                    cardRef={i === messages.length - 1 && ci === 0 ? latestCardRef : undefined}
+                  />
+                ))}
               {/* Chips only on the newest turn — older ones are answered history. */}
               {i === messages.length - 1 && msg.role === "assistant" && (
                 <SuggestedReplies
@@ -512,6 +703,7 @@ export default function SupportChatPage() {
           <div className="relative flex gap-2 items-end border border-border rounded-xl bg-muted/30 focus-within:border-primary/40 transition-colors p-2">
             <Textarea
               ref={textareaRef}
+              data-testid="support-chat-input"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
@@ -523,6 +715,7 @@ export default function SupportChatPage() {
             <div className="flex flex-col gap-1.5 flex-shrink-0">
               <Button
                 size="sm"
+                data-testid="support-chat-send"
                 onClick={() => void sendMessage(input)}
                 disabled={!input.trim() || sending}
                 className="h-8 px-3"
