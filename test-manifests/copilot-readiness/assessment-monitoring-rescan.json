@@ -13,7 +13,9 @@
 
     "DIVERGENCE 3 — 'TENANT MONITORING' IS A PRICED SOW ADD-ON LINE ITEM, NOT A RUNNING HOURLY ENGINE. The 'Six signal engines against your tenant every hour' copy (journeyPreviewFixture.ts / sow-monitoring-addon.ts) is self-documented IN THE CODE as marketing shorthand ('this is marketing shorthand, not a literal per-tier engine count'). resolveTenantMonitoringAddon() is a per-seat PRICING resolver over `services` rows (serviceType 'monitoring_tier'); it contains no entitlement/gate logic and fires no scan. There is no six-engine hourly rescan wired to a purchased monitoring SOW. Nothing here asserts an hourly-six-engine loop because none exists.",
 
-    "DIVERGENCE 4 — THE #454 DASHBOARD DRIFT VISUALIZATION IS UNBUILT. assessment-dashboard.tsx renders only the current-run snapshot: NO drift/trend/history/score-over-time, and ZERO data-testid attributes (grep-confirmed). The '#454 drift viz' half of the issue is not implemented, so there are NO uiSteps in this manifest — there is no stable, honestly-assertable DOM surface for drift. When the drift viz is built (score-over-time per pillar with data-testids), add uiSteps here asserting the real rendered series. Documented as an explicit gap rather than faked with guessed selectors.",
+    "DIVERGENCE 4 — RESOLVED under Git #1059. The #454 dashboard drift visualization described below as unbuilt now exists: a new GET /api/portal/assessment/history route (portal-assessment.ts) returns the customer's real tenant_monitor_profiles rows (checkKey/status/severityMatched/collectedAt) for a trailing 12-week window, additively fetched by assessment-dashboard.tsx (the pre-existing single-snapshot fetch is untouched) and rendered by a new AssessmentDriftChart.tsx (artifacts/msp-portal/src/components/charts/). Pillar grouping happens CLIENT-SIDE via warRoomPillarForCheckKey (warRoomScan.ts's WAR_ROOM_PILLAR_DOMAINS) — the server route deliberately returns raw rows, same discipline /portal/scan-plan already documents. Score per pillar per real rescan day is the % of that pillar's checks with status 'ok' that day — a real derivation, not a fabricated number. See DIVERGENCE 4B below for the apiTests/uiSteps added for this and the real-data honesty caveat.",
+
+    "DIVERGENCE 4B — #1059's DRIFT CHART DATA STATE IS NOT YET KNOWN/DETERMINISTIC. The weekly Copilot Assessment rescan (#1058) only just went live, so at the time #1059 was written most/all tenants — including the testbed account this manifest drives — have very few or zero real tenant_monitor_profiles rows yet. AssessmentDriftChart.tsx therefore has THREE mutually-exclusive real render states, each with its own data-testid: `assessment-drift-empty` (zero history rows), `assessment-drift-sparse` (fewer than 2 real rescan days, or no check maps to any pillar), `assessment-drift-chart` (>=2 real rescan days with pillar-mapped data — the actual chart renders). Which one is true for the testbed tenant right now cannot be predicted from source alone, so the uiStep below asserts elementwise OR across all three testids (a single CSS selector listing all three, comma-separated) rather than guessing one and risking a false red — the same honesty discipline this manifest already applies to the SOW-gate divergence above. The apiTests below assert the endpoint's real, count-independent contract (200 + points is an array) regardless of how many rows exist.",
 
     "WHAT A RE-SCAN ACTUALLY PRODUCES: all scan paths converge on runDiagnostics() (diagnostics-runner.ts), which INSERTS an msp_diagnostic_runs row (status pending -> running -> completed/failed/partial, with startedAt/completedAt) and writes findings rows, then emits a 'diagnostics.run_completed' workflow event. There is NO nextScanAt / scan_cadence / monitoring_enabled column anywhere; 'lastScanAt' shown in the portal is DERIVED from the most-recent completed run row. The RESCAN apiTests below assert the trigger creates a real, persisted, active run (runId + backend-computed checksTotal). ASYNC LIMIT (same as money-path-e2e.json / remediation-tracker-e2e.json): debug-trigger-scan returns 202 immediately and runDiagnostics runs in the background; the executor cannot await completion, so the post-scan score/finding DELTA ('genuinely updated results') is asserted at the trigger + persisted-active-run level, and the completed-scan delta is a polling follow-up for when the runner grows a poll primitive (cf. #877). Firing the trigger twice proves a fresh run row is minted each call (each returns its own new runId).",
 
@@ -21,7 +23,9 @@
 
     "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL (the .replit.dev dev origin serving /api). TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD (the designated TESTBED Assessment-role account — same account money-path-e2e.json + remediation-tracker-e2e.json drive; it must be isTestbed=true or the RESCAN block's 202 becomes a 403). SECRET_KEY (= BUILD_TRACKER_INGEST_TOKEN) — used ONLY to prove the strict admin surface REJECTS it. TEST_ADMIN_EMAIL / TEST_ADMIN_PASSWORD (a role='admin' account) — REQUIRED for the CADENCE block, because GET /api/admin/workflows/triggers is guarded by requireAdmin (strict: req.user.role==='admin'), which — unlike the requireAdminOrIngestToken testbed endpoints — does NOT honor the ingest token (requireAuth.ts:158,183). If TEST_ADMIN_EMAIL/PASSWORD are not provisioned, the admin login returns 401, {{adminToken}} stays unset, and every CADENCE step fails LOUDLY (by design — that failure means 'provision a testbed admin account', it is not a false negative about the cron). This is the manifest's one Shane To-Do.",
 
-    "AUTH-BOUNDARY FACTS asserted below (all real, all deterministic with the creds above): (1) anonymous (no bearer) -> 401 on the trigger, the scan-status read, and the SOW read (requireRole/requireAuth). (2) valid Assessment-role bearer -> 403 on the admin trigger-config surface (requireAdmin, wrong role). (3) the ingest token (SECRET_KEY) -> 401 on the admin trigger-config surface (requireAdmin runs requireAuth first and the ingest token is not a valid JWT) — proving the workflow-config surface is strictly admin-gated, NOT ingest-openable like the testbed reset endpoints. These three together are the honest, real answer to 'a caller without the right entitlement cannot trigger/read monitoring' — the entitlement that matters is testbed-flag + role + auth, not a signed SOW."
+    "AUTH-BOUNDARY FACTS asserted below (all real, all deterministic with the creds above): (1) anonymous (no bearer) -> 401 on the trigger, the scan-status read, and the SOW read (requireRole/requireAuth). (2) valid Assessment-role bearer -> 403 on the admin trigger-config surface (requireAdmin, wrong role). (3) the ingest token (SECRET_KEY) -> 401 on the admin trigger-config surface (requireAdmin runs requireAuth first and the ingest token is not a valid JWT) — proving the workflow-config surface is strictly admin-gated, NOT ingest-openable like the testbed reset endpoints. These three together are the honest, real answer to 'a caller without the right entitlement cannot trigger/read monitoring' — the entitlement that matters is testbed-flag + role + auth, not a signed SOW.",
+
+    "LAST REAL RUN (shaneapp://runTest, 2026-08-16/17, this commit — ran twice, same result both times, so the login-hydration failure below is a persistent-for-now environmental flake, not transient): 17-18/22-24 passed depending on run. GREEN: every pre-existing GATE/RESCAN/CADENCE apiTest, unchanged by this session's work. RED, both expected: (1) the two new DRIFT D1/D2 apiTests for GET /api/portal/assessment/history both 404 — the deployed api-server ({{DEPLOY_URL}}) predates this commit and has not been redeployed yet, so the new route genuinely does not exist there. This is the SAME class of gap #1058's own bookend and remediation-tracker-e2e.json's notes already document (new server code needs a real redeploy before shaneapp://runTest against the deployed origin can exercise it) — Shane To-Do: redeploy api-server, then this pair goes green. (2) the uiSteps aborted at the SAME pre-existing #email cold-start hydration timeout remediation-tracker-e2e.json already documents ('one flaky #email hydration-gate timeout on a cold SPA load') — the critical login step never got past #email becoming visible, so this manifest's own new DRIFT D3/D4 uiSteps (navigate to the dashboard, assert one of the three real chart states renders) never got a chance to run at all, green or red. Once api-server is redeployed AND a clean (non-flaky) uiSteps pass happens, re-run to get a real signal on D3/D4 — until then this manifest correctly reports red rather than a false green."
   ],
 
   "apiTests": [
@@ -118,6 +122,21 @@
     },
 
     {
+      "name": "DRIFT D1 (#1059) — anonymous (no bearer) cannot read weekly-rescan history: GET /portal/assessment/history without Authorization -> 401 (requireRole('Assessment'), same guard as the other Assessment routes above).",
+      "method": "GET",
+      "path": "/api/portal/assessment/history",
+      "headers": { "Content-Type": "application/json" },
+      "expect": { "status": 401 }
+    },
+    {
+      "name": "DRIFT D2 (#1059) — the real history endpoint returns its raw-points contract: 200 with $.points as an array. Count-independent on purpose (see DIVERGENCE 4B) — zero, one, or many real rows are all a valid, honest response this early after #1058 went live.",
+      "method": "GET",
+      "path": "/api/portal/assessment/history",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.points", "isArray": true }
+    },
+
+    {
       "name": "CADENCE C1 — the real weekly rescan cadence EXISTS as a Workflow-Engine schedule trigger: GET /admin/workflows/triggers (admin bearer) returns the seeded '__system__: Weekly Retargeting Rescan — Free/Assessment Tenants' definition on the wire. containsAny substring-matches the definition name in the real triggers list.",
       "method": "GET",
       "path": "/api/admin/workflows/triggers",
@@ -144,6 +163,39 @@
       "path": "/api/admin/workflows/triggers",
       "headers": { "Authorization": "Bearer {{adminToken}}" },
       "expect": { "status": 200, "containsAny": ["nextRunAt"] }
+    }
+  ],
+
+  "uiSteps": [
+    { "action": "goto", "target": "/login" },
+    {
+      "name": "WAIT for the login form to hydrate before typing (same cold-start hydration gate as remediation-tracker-e2e.json — this manifest's uiSteps also cold-start at /login).",
+      "action": "expect",
+      "selector": "#email",
+      "state": "visible"
+    },
+    { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
+    { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
+    {
+      "name": "Primary login — CRITICAL: every downstream assertion needs a real authenticated session.",
+      "action": "click",
+      "selector": "[data-testid='login-submit']",
+      "critical": true,
+      "captureResponse": {
+        "urlPattern": "/api/auth/login",
+        "expect": { "status": 200 }
+      }
+    },
+    {
+      "name": "DRIFT D3 (#1059) — navigate to the Assessment Results dashboard for the real, catalog-confirmed paid Assessment product slug 'copilot-readiness-assessment' (services.slug id 25, packageKey assess:copilot-readiness — confirmed in portal-assessment.ts and admin-simulator-assessments.test.ts). Flat route /assessment-results/:serviceSlug (App.tsx), not the branded /portal/:slug/* pattern the Remediation Guide uses.",
+      "action": "goto",
+      "target": "/assessment-results/copilot-readiness-assessment"
+    },
+    {
+      "name": "DRIFT D4 (#1059) — the drift chart section rendered SOME real state, not a blank/crashed panel. Per DIVERGENCE 4B, which of the three mutually-exclusive states (empty / sparse / real chart) is true for this tenant right now is not predictable from source alone this early after #1058 went live, so this asserts presence across all three via one comma-separated CSS selector rather than guessing a single one.",
+      "action": "expect",
+      "selector": "[data-testid='assessment-drift-empty'], [data-testid='assessment-drift-sparse'], [data-testid='assessment-drift-chart']",
+      "state": "visible"
     }
   ]
 }

@@ -44,6 +44,7 @@ import { AlertCircle, Download, RefreshCw, Loader2 } from "lucide-react";
 import AssessmentModulePanel from "@/components/assessment-modules/AssessmentModulePanel";
 import { PILLAR_FAMILY_MODULE_KEYS } from "@/components/assessment-modules/module-registry";
 import type { AssessmentResultsPayload } from "@/components/assessment-modules/module-registry";
+import { AssessmentDriftChart, type AssessmentHistoryPoint } from "@/components/charts/AssessmentDriftChart";
 import { toast } from "sonner";
 
 // ── Default module order for the `pillar_scored`/`copilot` families (or any
@@ -152,6 +153,31 @@ export default function AssessmentDashboardPage() {
   }, [serviceSlug, fetchWithAuth]);
 
   useEffect(() => { fetchResults(); }, [fetchResults]);
+
+  // ── Fetch real weekly-rescan history for drift visualization (#1059) ──────
+  // Additive: does not replace or touch the single-snapshot fetch above.
+  const [historyPoints, setHistoryPoints] = useState<AssessmentHistoryPoint[] | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    setHistoryLoading(true);
+    setHistoryError(null);
+
+    fetchWithAuth("/api/portal/assessment/history")
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`Server error ${res.status}`);
+        const data = (await res.json()) as { points: AssessmentHistoryPoint[] };
+        if (mounted) setHistoryPoints(data.points);
+      })
+      .catch((err: unknown) => {
+        if (mounted) setHistoryError(err instanceof Error ? err.message : "Unknown error");
+      })
+      .finally(() => { if (mounted) setHistoryLoading(false); });
+
+    return () => { mounted = false; };
+  }, [fetchWithAuth]);
 
   // ── Resolve which module keys to render ───────────────────────────────────
   // 1. If the product's results_templates row maps it to `framework_gap_list`
@@ -291,6 +317,15 @@ export default function AssessmentDashboardPage() {
               />
             ))}
           </div>
+        )}
+
+        {/* ── Drift over time (weekly rescan history, #1059) ── */}
+        {(!serviceError && telemetryStatus !== "in_progress") && (
+          <Card>
+            <CardContent className="pt-6">
+              <AssessmentDriftChart points={historyPoints} loading={historyLoading} error={historyError} />
+            </CardContent>
+          </Card>
         )}
       </div>
     </AppShell>

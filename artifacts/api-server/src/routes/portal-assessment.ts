@@ -47,6 +47,7 @@ import {
   mfaEnrollmentsTable,
   webauthnCredentialsTable,
   tenantsTable,
+  tenantMonitorProfilesTable,
   clientServicesTable,
   servicesTable,
   usersTable,
@@ -67,7 +68,7 @@ import {
  */
 const ASSESSMENT_DOC_WORKFLOW_NAME =
   "__system__: Assessment Document Generation — Service-Mapped, Sequenced SOW";
-import { eq, ne, and, desc, inArray, isNull, sql } from "drizzle-orm";
+import { eq, ne, and, desc, asc, gte, inArray, isNull, sql } from "drizzle-orm";
 import { requireRole, requireAdmin } from "../middlewares/requireAuth";
 import { fireWorkflowForDefinition } from "../lib/workflow-executor.ts";
 import jwt from "jsonwebtoken";
@@ -136,6 +137,10 @@ const COMPLETED_RUN_STATUSES = ["completed", "partial"] as const;
 
 // Document statuses that count as "finished generating, ready to review".
 const READY_DOC_STATUSES = ["approved", "delivered"] as const;
+
+// Trailing window /portal/assessment/history looks back — 12 weeks, matching
+// the weekly Copilot Assessment rescan's own cadence (#1058).
+const HISTORY_WINDOW_DAYS = 12 * 7;
 
 router.get(
   "/portal/assessment/status",
@@ -1105,6 +1110,80 @@ router.get(
     } catch (err) {
       log.error({ err, customerId }, "GET /portal/scan-plan failed");
       res.status(500).json({ error: "Failed to load scan plan" });
+    }
+  },
+);
+
+// ── Real weekly-rescan history for drift visualization (#1059, epic #454) ──────
+//
+//   GET /api/portal/assessment/history
+//
+// The customer's real per-check history off `tenant_monitor_profiles` — one row
+// per check per weekly rescan run (#1058, now live) — capped to a trailing
+// 12-week window (`HISTORY_WINDOW_DAYS` below; matches the rescan's own weekly
+// cadence, giving room for ~12 real points once rescans have been running a
+// while — no existing lookback-window convention in this codebase specifically
+// covers a weekly-cadence series, `pillar-trend.ts`'s PILLAR_TREND_WINDOW_DAYS
+// is 30 days for a DAILY-replay series, too short here to span even 5 weekly
+// runs).
+//
+// Deliberately returns RAW rows, not pillar-grouped or scored data: the
+// domain→pillar mapping lives in one place (msp-portal's warRoomScan.ts,
+// WAR_ROOM_PILLAR_DOMAINS) and a second copy here would be free to drift from
+// the one that renders the row — same discipline /portal/scan-plan above
+// already follows. No score is computed here either; the client derives
+// whatever it needs (e.g. ok-rate per pillar per run) from the real
+// status/severityMatched values.
+router.get(
+  "/portal/assessment/history",
+  requireRole("Assessment"),
+  async (req: Request, res: Response): Promise<void> => {
+    const customerId = resolveCustomerId(req);
+    if (customerId === null) {
+      res.status(403).json({ error: "No customer identity on token" });
+      return;
+    }
+
+    try {
+      // tenant_monitor_profiles.tenant_id is the Azure AD tenant GUID
+      // (tenants.tenantId), NOT msp_customers.id / tenants.id — same resolution
+      // pillar-trend.ts's getPillarScoreTrends() uses.
+      const [tenantRow] = await db
+        .select({ tenantId: tenantsTable.tenantId })
+        .from(tenantsTable)
+        .where(eq(tenantsTable.id, customerId))
+        .limit(1);
+
+      const tenantId = tenantRow?.tenantId ?? null;
+      if (!tenantId) {
+        // No Azure AD tenant resolved for this customer yet — a real,
+        // reportable state (e.g. pre-consent), not an error.
+        res.json({ points: [] });
+        return;
+      }
+
+      const windowStart = new Date(Date.now() - HISTORY_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+
+      const points = await db
+        .select({
+          checkKey: tenantMonitorProfilesTable.checkKey,
+          status: tenantMonitorProfilesTable.status,
+          severityMatched: tenantMonitorProfilesTable.severityMatched,
+          collectedAt: tenantMonitorProfilesTable.collectedAt,
+        })
+        .from(tenantMonitorProfilesTable)
+        .where(
+          and(
+            eq(tenantMonitorProfilesTable.tenantId, tenantId),
+            gte(tenantMonitorProfilesTable.collectedAt, windowStart),
+          ),
+        )
+        .orderBy(asc(tenantMonitorProfilesTable.collectedAt));
+
+      res.json({ points });
+    } catch (err) {
+      log.error({ err, customerId }, "GET /portal/assessment/history failed");
+      res.status(500).json({ error: "Failed to load assessment history" });
     }
   },
 );
