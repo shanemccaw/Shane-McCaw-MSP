@@ -536,11 +536,13 @@ namespace BuildConsole
                         chat.EpicId = e.EpicId;
                         if (EditorTabs.SelectedItem == kvp.Key)
                         {
+                            var assignedEpicGithubNumber = LeftSidebar.GetEpicGithubNumber(e.EpicId);
                             BuildQueuePanel.SetActiveChatEpic(
                                 e.EpicId,
-                                LeftSidebar.GetEpicGithubNumber(e.EpicId),
+                                assignedEpicGithubNumber,
                                 LeftSidebar.GetEpicTitle(e.EpicId),
                                 force: true);
+                            LeftSidebar.SetActiveEpicGithubNumber(assignedEpicGithubNumber);
                         }
                         break;
                     }
@@ -1187,14 +1189,21 @@ namespace BuildConsole
                 {
                     // Git #910 — the real GitHub epic number now goes along with the
                     // internal epicId/title, so BuildQueuePanel can fetch real sub-issues.
+                    var epicGithubNumber = chat.EpicId.HasValue ? LeftSidebar.GetEpicGithubNumber(chat.EpicId.Value) : null;
                     BuildQueuePanel.SetActiveChatEpic(
                         chat.EpicId,
-                        chat.EpicId.HasValue ? LeftSidebar.GetEpicGithubNumber(chat.EpicId.Value) : null,
+                        epicGithubNumber,
                         chat.EpicId.HasValue ? LeftSidebar.GetEpicTitle(chat.EpicId.Value) : null);
+                    // Shane: "I should be able to look at the Git Board Tree
+                    // View and know exactly what Epic I'm working" — same
+                    // signal, so the Git Board highlight tracks whichever
+                    // chat tab is on screen.
+                    LeftSidebar.SetActiveEpicGithubNumber(epicGithubNumber);
                 }
                 else
                 {
                     BuildQueuePanel.SetActiveChatEpic(null, null, null);
+                    LeftSidebar.SetActiveEpicGithubNumber(null);
                 }
             }
         }

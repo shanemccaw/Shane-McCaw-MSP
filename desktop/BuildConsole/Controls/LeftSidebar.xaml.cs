@@ -2370,8 +2370,38 @@ namespace BuildConsole.Controls
         /// (stable across rebuilds since those don't change from data
         /// updates), not by TreeViewItem instance, since the instances
         /// themselves are thrown away and recreated every render.
+        ///
+        /// Shane (follow-up): "make all Tree Nodes in the Git Board retracted
+        /// by default." Flipped the polarity of the SAME persistence idea —
+        /// this now tracks nodes MANUALLY EXPANDED (opt-in), defaulting every
+        /// node to collapsed, instead of tracking manually-collapsed nodes
+        /// against a default-expanded tree. Still keyed the same way, still
+        /// survives a full tree rebuild.
         /// </summary>
-        private readonly HashSet<string> _collapsedNodeKeys = new();
+        private readonly HashSet<string> _expandedNodeKeys = new();
+
+        /// <summary>
+        /// Shane: "when I am in Focus Mode on a Milestone with a lot of
+        /// Epics, I need the Epic I'm working to be more visually ahead...
+        /// I should be able to look at the Git Board Tree View and know
+        /// exactly what Epic I'm working." Fed by MainWindow whenever the
+        /// active editor tab's chat is tied to an epic (the SAME signal
+        /// BuildQueuePanel.SetActiveChatEpic already reacts to, and the SAME
+        /// one LeftSidebar.ChatEpicAssigned covers right after an
+        /// assignment) — the real GitHub issue number of that epic, or null
+        /// when no chat/epic is active. RenderIssuesTree force-expands the
+        /// path down to this epic (overriding the collapsed-by-default
+        /// change above) and gives its own node a distinct "🎯 WORKING"
+        /// treatment so it reads ahead of every other epic at a glance.
+        /// </summary>
+        private int? _activeEpicGithubNumber;
+
+        public void SetActiveEpicGithubNumber(int? githubNumber)
+        {
+            if (_activeEpicGithubNumber == githubNumber) return;
+            _activeEpicGithubNumber = githubNumber;
+            try { RenderIssuesTree(_currentFilter == "Done" ? "All" : _currentFilter); } catch { }
+        }
 
         // Git #938 (Epic #803) — the same explicit-MaxWidth truncation fix #932
         // landed on the Chats tree (see ApplyChatTitleMaxWidths), applied here to
@@ -2452,10 +2482,12 @@ namespace BuildConsole.Controls
                 if (filter == "Milestones" || filter == "All" || filter == "Priority")
                 {
                     string milestoneKey = $"m:{m.Title}";
+                    bool milestoneHasActiveEpic = _activeEpicGithubNumber.HasValue
+                        && m.Epics.Any(ebkt => ebkt.Issues.Any(ii => ii.IssueNumber == _activeEpicGithubNumber.Value));
                     var milestoneItem = new TreeViewItem
                     {
                         Header = CreateMilestoneHeader(m),
-                        IsExpanded = !_collapsedNodeKeys.Contains(milestoneKey),
+                        IsExpanded = milestoneHasActiveEpic || _expandedNodeKeys.Contains(milestoneKey),
                         // Git #921 (Epic #803) — tag the milestone node with its
                         // real data object so IssuesTree_SelectedItemChanged can
                         // route a click to its detail tab. Was untagged (a purely
@@ -2571,19 +2603,21 @@ namespace BuildConsole.Controls
 
                     milestoneItem.ContextMenu = cmMilestone;
 
-                    milestoneItem.Collapsed += (s, e) => { if (ReferenceEquals(e.OriginalSource, milestoneItem)) _collapsedNodeKeys.Add(milestoneKey); };
-                    milestoneItem.Expanded += (s, e) => { if (ReferenceEquals(e.OriginalSource, milestoneItem)) _collapsedNodeKeys.Remove(milestoneKey); };
+                    milestoneItem.Collapsed += (s, e) => { if (ReferenceEquals(e.OriginalSource, milestoneItem)) _expandedNodeKeys.Remove(milestoneKey); };
+                    milestoneItem.Expanded += (s, e) => { if (ReferenceEquals(e.OriginalSource, milestoneItem)) _expandedNodeKeys.Add(milestoneKey); };
 
                     foreach (var epicBucket in m.Epics)
                     {
                         string bucketKey = $"e:{m.Title}/{epicBucket.Title}";
+                        bool bucketHasActiveEpic = _activeEpicGithubNumber.HasValue
+                            && epicBucket.Issues.Any(ii => ii.IssueNumber == _activeEpicGithubNumber.Value);
                         var bucketItem = new TreeViewItem
                         {
                             Header = CreateEpicHeader(epicBucket),
-                            IsExpanded = !_collapsedNodeKeys.Contains(bucketKey)
+                            IsExpanded = bucketHasActiveEpic || _expandedNodeKeys.Contains(bucketKey)
                         };
-                        bucketItem.Collapsed += (s, e) => { if (ReferenceEquals(e.OriginalSource, bucketItem)) _collapsedNodeKeys.Add(bucketKey); };
-                        bucketItem.Expanded += (s, e) => { if (ReferenceEquals(e.OriginalSource, bucketItem)) _collapsedNodeKeys.Remove(bucketKey); };
+                        bucketItem.Collapsed += (s, e) => { if (ReferenceEquals(e.OriginalSource, bucketItem)) _expandedNodeKeys.Remove(bucketKey); };
+                        bucketItem.Expanded += (s, e) => { if (ReferenceEquals(e.OriginalSource, bucketItem)) _expandedNodeKeys.Add(bucketKey); };
 
                         if (epicBucket.Title == "⚡ Epics")
                         {
@@ -2766,6 +2800,8 @@ namespace BuildConsole.Controls
 
         private TreeViewItem CreateIssueHeader(GitIssue issue, int depth = 2)
         {
+            bool isActiveEpic = issue.IsEpic && _activeEpicGithubNumber.HasValue && issue.IssueNumber == _activeEpicGithubNumber.Value;
+
             var p = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 1, 0, 1) };
 
             var prioBlock = new TextBlock { Text = (issue.IsEpic ? "⚡" : issue.PriorityBadge) + " ", FontSize = 11 };
@@ -2783,14 +2819,33 @@ namespace BuildConsole.Controls
             {
                 Text = issue.Title,
                 FontSize = 11,
-                Foreground = issue.Status == "CLOSED" ? GetBrush("Subtext0Brush") : GetBrush("TextBrush"),
-                FontWeight = issue.IsEpic ? FontWeights.SemiBold : FontWeights.Normal,
+                Foreground = isActiveEpic ? GetBrush("GreenBrush") : issue.Status == "CLOSED" ? GetBrush("Subtext0Brush") : GetBrush("TextBrush"),
+                FontWeight = (issue.IsEpic || isActiveEpic) ? FontWeights.Bold : FontWeights.Normal,
                 TextDecorations = issue.Status == "CLOSED" ? TextDecorations.Strikethrough : null,
                 TextTrimming = TextTrimming.CharacterEllipsis
             };
 
             p.Children.Add(prioBlock);
             p.Children.Add(numBlock);
+
+            // Shane: "I need a way for the Epic I'm working to be more
+            // visually ahead... I should be able to look at the Git Board
+            // Tree View and know exactly what Epic I'm working." A badge
+            // matching the existing Blocked/No-Epic badge convention, plus
+            // the accent-green title above and the left-bar wrap below.
+            if (isActiveEpic)
+            {
+                var workingBadge = new Border
+                {
+                    Background = GetBrush("GreenBrush"),
+                    CornerRadius = new CornerRadius(3),
+                    Padding = new Thickness(4, 1, 4, 1),
+                    Margin = new Thickness(0, 0, 6, 0),
+                    ToolTip = "This is the epic tied to your currently active chat"
+                };
+                workingBadge.Child = new TextBlock { Text = "🎯 WORKING", FontSize = 9, FontWeight = FontWeights.Bold, Foreground = Brushes.Black };
+                p.Children.Add(workingBadge);
+            }
 
             bool showsNoParent = false;
             if (!issue.IsEpic && !issue.HasParentEpic && issue.Status != "CLOSED")
@@ -2833,15 +2888,32 @@ namespace BuildConsole.Controls
                 IssueTreeIndentPerLevel * (depth + 1) + IssueTreeChrome + IssuePriorityBadgeWidth + IssueNumberBadgeWidth
                 + (showsBlocked ? IssueBlockedBadgeWidth : 0) + (showsNoParent ? IssueBlockedBadgeWidth : 0)));
 
+            // Left accent bar + subtle background tint so the active epic
+            // reads ahead of every sibling epic even before you read its
+            // badge/title colour — the "more visually ahead" ask.
+            FrameworkElement header = p;
+            if (isActiveEpic)
+            {
+                header = new Border
+                {
+                    BorderBrush = GetBrush("GreenBrush"),
+                    BorderThickness = new Thickness(3, 0, 0, 0),
+                    Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1AA6E3A1")),
+                    Padding = new Thickness(6, 2, 4, 2),
+                    Margin = new Thickness(-6, 0, 0, 0),
+                    Child = p
+                };
+            }
+
             string nodeKey = $"issue:{issue.IssueNumber}";
             var tvi = new TreeViewItem
             {
-                Header = p,
+                Header = header,
                 Tag = issue,
-                IsExpanded = !_collapsedNodeKeys.Contains(nodeKey)
+                IsExpanded = isActiveEpic || _expandedNodeKeys.Contains(nodeKey)
             };
-            tvi.Collapsed += (s, e) => { if (ReferenceEquals(e.OriginalSource, tvi)) _collapsedNodeKeys.Add(nodeKey); };
-            tvi.Expanded += (s, e) => { if (ReferenceEquals(e.OriginalSource, tvi)) _collapsedNodeKeys.Remove(nodeKey); };
+            tvi.Collapsed += (s, e) => { if (ReferenceEquals(e.OriginalSource, tvi)) _expandedNodeKeys.Remove(nodeKey); };
+            tvi.Expanded += (s, e) => { if (ReferenceEquals(e.OriginalSource, tvi)) _expandedNodeKeys.Add(nodeKey); };
 
             // Real toggle - Shane: "Feel free to change anything to patch how I
             // actually work." This tree is live GitHub data now, so a purely
