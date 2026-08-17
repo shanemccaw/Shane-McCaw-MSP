@@ -95,18 +95,18 @@ namespace BuildConsole.Services
         private readonly string _repoRoot;
         private readonly Func<Task<BuildCompleteResult?>> _triggerDeployAsync;
         private readonly Func<Task<DeployStatus?>> _getDeployStatusAsync;
-        private readonly Func<Task<List<ManifestRunResult>>> _runTestsAsync;
+        private readonly Func<int?, Task<List<ManifestRunResult>>> _runTestsAsync;
         private readonly Action<PostBuildPipelineResult> _surfaceOutcome;
 
         private bool _busy;
         private bool _rerunPending;
-        private (int id, string title) _latest;
+        private (int id, string title, int? githubNumber) _latest;
 
         public PostBuildDeployPipeline(
             string repoRoot,
             Func<Task<BuildCompleteResult?>> triggerDeployAsync,
             Func<Task<DeployStatus?>> getDeployStatusAsync,
-            Func<Task<List<ManifestRunResult>>> runTestsAsync,
+            Func<int?, Task<List<ManifestRunResult>>> runTestsAsync,
             Action<PostBuildPipelineResult> surfaceOutcome)
         {
             _repoRoot = repoRoot;
@@ -121,7 +121,7 @@ namespace BuildConsole.Services
         /// landing mid-pipeline is coalesced into ONE follow-up run — a single deploy pulls the latest
         /// origin/main, so it covers any build that finished while we were busy), and never throws to
         /// the caller.</summary>
-        public async Task OnBuildFinishedAsync(int queueItemId, string title, int exitCode)
+        public async Task OnBuildFinishedAsync(int queueItemId, string title, int exitCode, int? githubNumber = null)
         {
             try
             {
@@ -141,7 +141,7 @@ namespace BuildConsole.Services
 
                 // Never run two pipelines at once — a deploy restart and the shared WebView2 regression
                 // sweep can't overlap. Remember the newest finished build and coalesce into one follow-up.
-                _latest = (queueItemId, title);
+                _latest = (queueItemId, title, githubNumber);
                 if (_busy)
                 {
                     _rerunPending = true;
@@ -155,8 +155,8 @@ namespace BuildConsole.Services
                     do
                     {
                         _rerunPending = false;
-                        var (id, t) = _latest;
-                        PostBuildPipelineResult result = await RunPipelineAsync(id, t);
+                        var (id, t, ghNum) = _latest;
+                        PostBuildPipelineResult result = await RunPipelineAsync(id, t, ghNum);
                         try { _surfaceOutcome(result); }
                         catch (Exception ex) { ActivityLog.Log(Channel, $"Surfacing pipeline outcome failed: {ex.Message}"); }
                     }
@@ -175,7 +175,7 @@ namespace BuildConsole.Services
             }
         }
 
-        private async Task<PostBuildPipelineResult> RunPipelineAsync(int queueItemId, string title)
+        private async Task<PostBuildPipelineResult> RunPipelineAsync(int queueItemId, string title, int? githubNumber)
         {
             var result = new PostBuildPipelineResult { QueueItemId = queueItemId, BuildTitle = title };
             var sw = Stopwatch.StartNew();
@@ -260,20 +260,34 @@ namespace BuildConsole.Services
             result.AdvancementNote = advNote;
             ActivityLog.Log(Channel, $"[3/5] Deploy CONFIRMED LIVE: {Short(oldHash)} -> {Short(newHash)} in {result.DeployElapsedSeconds:F0}s. advancedToOwnCommit={FormatBool(result.AdvancedToOwnCommit)} (expected {Short(expectedShort)}; {advNote}).");
 
-            // ── [4/5] Run the tests (full regression suite — the documented fallback since a single
-            //          manifest can't be reliably scoped from a queue item).
-            ActivityLog.Log(Channel, "[4/5] Tests triggered: running the full regression suite (_regression-suite.json) against the confirmed-live server…");
+            // ── [4/5] Run tests (scoped to the build's matching issue manifest; skips full suite).
+            var settings = BuildConsoleSettings.Load();
+            if (!settings.AutoRunTestsOnBuildComplete)
+            {
+                ActivityLog.Log(Channel, "[4/5] Auto-run tests is OFF in Settings — test execution skipped.");
+                result.Stage = "complete";
+                return result;
+            }
+
+            ActivityLog.Log(Channel, $"[4/5] Tests triggered: checking for test manifests scoped to build #{queueItemId} (issue {(githubNumber.HasValue ? $"#{githubNumber.Value}" : "none")})…");
             result.TestsTriggered = true;
             List<ManifestRunResult> runs;
             try
             {
-                runs = await _runTestsAsync();
+                runs = await _runTestsAsync(githubNumber);
             }
             catch (Exception ex)
             {
                 result.Stage = "tests-errored";
-                result.Error = $"regression suite threw: {ex.Message}";
+                result.Error = $"test execution threw: {ex.Message}";
                 ActivityLog.Log(Channel, $"[4/5] Tests ERRORED — {result.Error}.");
+                return result;
+            }
+
+            if (runs.Count == 0)
+            {
+                result.Stage = "complete";
+                ActivityLog.Log(Channel, $"[5/5] Pipeline DONE in {sw.Elapsed.TotalSeconds:F0}s (deploy {Short(oldHash)}->{Short(newHash)} confirmed live, no matching issue tests to run).");
                 return result;
             }
 
@@ -286,7 +300,7 @@ namespace BuildConsole.Services
             result.Stage = "complete";
 
             string failSummary = failed.Count > 0 ? $" — FAILING: {string.Join(", ", result.FailedManifests)}" : "";
-            ActivityLog.Log(Channel, $"[5/5] Tests completed: {result.TestsPassed}/{result.TestsTotal} manifest(s) passed{failSummary}. Pipeline DONE in {sw.Elapsed.TotalSeconds:F0}s (deploy {Short(oldHash)}->{Short(newHash)}, overallOk={FormatBool(result.OverallOk)}).");
+            ActivityLog.Log(Channel, $"[5/5] Scoped tests completed: {result.TestsPassed}/{result.TestsTotal} manifest(s) passed{failSummary}. Pipeline DONE in {sw.Elapsed.TotalSeconds:F0}s (deploy {Short(oldHash)}->{Short(newHash)}, overallOk={FormatBool(result.OverallOk)}).");
             return result;
         }
 

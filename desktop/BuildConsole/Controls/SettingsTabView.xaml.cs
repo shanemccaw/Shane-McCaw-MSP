@@ -47,7 +47,8 @@ namespace BuildConsole.Controls
 
             ScheduledRunEnabledCheck.IsChecked = savedSettings.ScheduledRegressionEnabled;
             ScheduledRunIntervalBox.Text = savedSettings.ScheduledRegressionIntervalHours.ToString();
-            ScheduledRunPushCheck.IsChecked = savedSettings.PushOnRegressionFailure;
+            AutoRunPostBuildTestsCheck.IsChecked = savedSettings.AutoRunTestsOnBuildComplete;
+            AutoRunFullSuiteFallbackCheck.IsChecked = savedSettings.AutoRunFullSuiteFallbackOnBuildComplete;
 
             BuildSoundPathBox.Text = savedSettings.BuildCompleteSoundPath;
 
@@ -57,6 +58,14 @@ namespace BuildConsole.Controls
             RunManifestVariableScan(showStatus: false);
             UpdateHealthDashboard();
             SelectCategory("TestEnvironment");
+        }
+
+        private void PostBuildTestOption_Changed(object sender, RoutedEventArgs e)
+        {
+            var settings = BuildConsoleSettings.Load();
+            settings.AutoRunTestsOnBuildComplete = AutoRunPostBuildTestsCheck.IsChecked == true;
+            settings.AutoRunFullSuiteFallbackOnBuildComplete = AutoRunFullSuiteFallbackCheck.IsChecked == true;
+            settings.Save();
         }
 
         public void Initialize(BuildTrackerApiClient? api)

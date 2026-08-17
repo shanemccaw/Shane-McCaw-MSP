@@ -572,6 +572,47 @@ namespace BuildConsole.Controls
             return border;
         }
 
+        private UIElement RenderMarkdownBody(string? markdown, double baseFontSize = 13, System.Collections.Generic.HashSet<string>? executedMigrations = null, System.Collections.Generic.Dictionary<int, BuildConsole.Services.TestHistoryEntry>? latestTestRuns = null)
+        {
+            if (string.IsNullOrWhiteSpace(markdown)) return new StackPanel();
+
+            var options = new MarkdownRenderer.RenderOptions
+            {
+                GetBrush = key => GetBrush(key),
+                BaseFontSize = baseFontSize,
+                OnIssueClick = issueNum => OpenIssueNumberRequested?.Invoke(this, issueNum),
+                OnUrlClick = url =>
+                {
+                    try
+                    {
+                        var psi = new System.Diagnostics.ProcessStartInfo
+                        {
+                            FileName = url,
+                            UseShellExecute = true
+                        };
+                        System.Diagnostics.Process.Start(psi);
+                    }
+                    catch { }
+                },
+                OnFileClick = async fileName =>
+                {
+                    var repoRoot = BuildConsole.Services.BuildTrackerConfig.FindRepoRoot();
+                    string fullPath = fileName;
+                    if (!System.IO.Path.IsPathRooted(fileName) && repoRoot != null)
+                    {
+                        fullPath = await System.Threading.Tasks.Task.Run(() => FastResolveFileInRepo(repoRoot, fileName) ?? fileName);
+                    }
+
+                    if (System.IO.File.Exists(fullPath) && Application.Current.MainWindow is MainWindow mWindow)
+                    {
+                        mWindow.OpenFileTab(fullPath);
+                    }
+                }
+            };
+
+            return MarkdownRenderer.Render(markdown, options);
+        }
+
         private void AddBody(string? markdown, System.Collections.Generic.HashSet<string>? executedMigrations = null, System.Collections.Generic.Dictionary<int, BuildConsole.Services.TestHistoryEntry>? latestTestRuns = null)
         {
             if (string.IsNullOrWhiteSpace(markdown)) return;
@@ -586,9 +627,7 @@ namespace BuildConsole.Controls
                 Margin = new Thickness(0, 0, 0, 24),
             };
 
-            var tb = CreateLinkedTextBlock(markdown, 13, "TextBrush", executedMigrations, latestTestRuns);
-            tb.LineHeight = 20;
-            border.Child = tb;
+            border.Child = RenderMarkdownBody(markdown, 13, executedMigrations, latestTestRuns);
 
             _mainColumn.Children.Add(border);
         }
@@ -780,7 +819,7 @@ namespace BuildConsole.Controls
             });
 
             panel.Children.Add(headerPanel);
-            panel.Children.Add(CreateLinkedTextBlock(comment.Body ?? "", 12, "TextBrush", executedMigrations, latestTestRuns));
+            panel.Children.Add(RenderMarkdownBody(comment.Body ?? "", 12, executedMigrations, latestTestRuns));
             border.Child = panel;
             return border;
         }

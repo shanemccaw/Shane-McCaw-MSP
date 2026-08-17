@@ -2,7 +2,7 @@ namespace BuildConsole.Services
 {
     /// <summary>
     /// Git #814 — Shane: "can I use it like the addon? with the UI elements
-    /// in the Chat?" Ports content.js's "Send to Builder" / "Queue" button
+    /// in the Chat?" Ports content.js's "Send to Builder" / "Queue" / "Edit" button
     /// bar (scanForCodeBlockButtons/buildCodeBlockButtonBar) into a script
     /// injected via CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync on
     /// every claude.ai WebView2 this app owns — same DOM-scanning approach,
@@ -11,9 +11,6 @@ namespace BuildConsole.Services
     /// WebMessageReceived handler can act on them directly (call the real
     /// API client, or Process.Start the same mybuilder:// URI the browser
     /// extension already uses — same OS-registered handler either way).
-    /// First pass: skips #783's "smart disabled state" (needs live
-    /// in-progress polling wired into the script) and #777's --blocked-by
-    /// smart validation UX beyond the alert — not browser/live-verified.
     /// </summary>
     public static class ChatButtonInjector
     {
@@ -28,11 +25,6 @@ namespace BuildConsole.Services
   function extractLeadingFlags(text) {
     const newlineIdx = text.indexOf("\n");
     const firstLine = newlineIdx === -1 ? text : text.slice(0, newlineIdx);
-    // Git #820 — [\w-] not \w alone, so a hyphenated flag name like
-    // --blocked-by actually matches (see content.js's same fix for the
-    // full story: this bug sent claude.exe an unstripped prompt starting
-    // with "--model", which its own arg parser rejected as an unknown
-    // option — "806 failed... exit 1").
     const flagRe = /--([\w-]+)\s+(\S+)/g;
     const flags = {};
     let matched;
@@ -55,25 +47,9 @@ namespace BuildConsole.Services
     window.chrome.webview.postMessage(JSON.stringify(Object.assign({ type: type }, payload)));
   }
 
-  // Git #942 — the app's bridge back onto the injected Queue buttons. Right
-  // after a Queue click the clicked button carries data-bt-correlation (a token
-  // the app echoes back so it can find the exact element that was clicked); once
-  // the app has the real queue item id from the POST it swaps that for
-  // data-bt-queue-id — and tags the block's OTHER bar's Queue button (same
-  // data-bt-block) with it too, so both bars live-update in lockstep. Every
-  // later status push finds its targets by that id. All three look elements up
-  // by attribute so they keep working even after the click handler's closure is
-  // long gone.
   var __btCorrSeq = 0;
   var __btBlockSeq = 0;
   window.__btTagQueued = function (correlation, queueId) {
-    // Git #942 follow-up — find the exact button that was clicked (by its
-    // correlation token), then tag EVERY Queue button belonging to the same
-    // source block, not just this one. buildButtonBar stamps both the top and
-    // bottom bars' Queue buttons with the same data-bt-block id, so the sibling
-    // bar's button (whichever one wasn't clicked) gets the real data-bt-queue-id
-    // too and can be found + live-updated later — before this fix it was never
-    // tagged at all and stayed stuck on its original "📋 Queue" label forever.
     var clicked = document.querySelector('[data-bt-correlation="' + correlation + '"]');
     if (!clicked) return;
     var block = clicked.dataset.btBlock;
@@ -89,39 +65,31 @@ namespace BuildConsole.Services
       el.textContent = "In Progress...";
     }
   };
+
   window.__btApplyStatus = function (queueId, label, mode) {
-    // querySelectorAll, not querySelector: __btTagQueued now stamps BOTH the top
-    // and bottom bars' Queue buttons for a block with the same data-bt-queue-id
-    // (Git #942 follow-up), so one status push updates every bar at once.
     var els = document.querySelectorAll('[data-bt-queue-id="' + queueId + '"]');
     for (var i = 0; i < els.length; i++) {
       var el = els[i];
       el.textContent = label;
-      // Git #942 follow-up — the "Send to Builder" button is this Queue button's
-      // immediate previous sibling in the same bar (buildButtonBar appends
-      // Send-to-Builder then Queue). Hide it once the block is queued/running/
-      // done so the bar isn't still offering "launch now" for an in-flight
-      // build; restore it only if the build fails and Queue reverts to its
-      // retry-able state.
-      var sendSib = el.previousElementSibling;
+      var bar = el.parentElement;
+      if (!bar) continue;
+      var sendSib = bar.querySelector(".bt-btn-send");
+      var editSib = bar.querySelector(".bt-btn-edit");
       if (mode === "failed") {
-        // Stays clickable on purpose: its existing click handler re-runs
-        // queueBuild(), which IS the retry (a brand new correlation -> new id).
         el.dataset.btFailed = "1";
         el.disabled = false;
         if (sendSib) sendSib.style.display = "";
+        if (editSib) editSib.style.display = "";
       } else {
-        // "In Progress..." and "Done" are both non-interactive terminal-ish states.
         delete el.dataset.btFailed;
         el.disabled = true;
         if (sendSib) sendSib.style.display = "none";
+        if (editSib) editSib.style.display = "none";
       }
     }
   };
+
   window.__btQueueFailed = function (correlation) {
-    // The queue POST itself failed (or the app isn't connected) — nothing was
-    // ever queued, so restore the button to its original clickable label
-    // rather than leaving it stuck disabled on "In Progress...".
     var el = document.querySelector('[data-bt-correlation="' + correlation + '"]');
     if (!el) return;
     delete el.dataset.btCorrelation;
@@ -153,19 +121,6 @@ namespace BuildConsole.Services
       }
       blockedByNumbers = nums;
     }
-    // Git #1034 — Shane: "I'm doing a lot of builds that dont need git... it's
-    // just noise. But I want to use the same queue... can we create our own
-    // customer numbering as a fallback? --notGit 2 --block-by 1 same type of
-    // thing." --notGit N declares this build as a LOCAL pseudo-issue N (Shane's
-    // own small per-session numbering, not a real GitHub issue) — encoded as
-    // githubNumber = -N so it can never collide with a real GitHub issue number
-    // (those are always positive), while still flowing through every existing
-    // githubNumber-keyed mechanism (queue grouping/nesting, chat-tab
-    // correlation, retry-upsert) unmodified. --block-by N[,N...] is the same
-    // idea for blockedByNumbers — a local-numbering-only sibling of the real
-    // --blocked-by flag above, negated the same way, so "--notGit 2 --block-by 1"
-    // queues local #2 blocked on local #1, entirely independent of any real
-    // GitHub issue.
     let effectiveNumber = referencedNumber;
     if (flags.notGit && /^\d+$/.test(flags.notGit)) {
       effectiveNumber = -parseInt(flags.notGit, 10);
@@ -183,13 +138,6 @@ namespace BuildConsole.Services
     const title = flags.title
       ? (numberLabel != null ? numberLabel + " — " + flags.title : flags.title)
       : (numberLabel != null ? numberLabel : rest.split("\n")[0].slice(0, 80));
-    // Git #942 — tag THIS exact button with a unique correlation token so the
-    // app can push the real queue id back onto it (via __btTagQueued) once the
-    // POST returns, then push live status onto that same element by id. It
-    // stays disabled on "In Progress..." until the app answers: __btTagQueued
-    // on success, or __btQueueFailed if the queue call failed. This same
-    // function is also the retry path — a "Failed: Retry" click re-enters here
-    // and re-queues under a fresh correlation/id (btFailed cleared below).
     const correlation = "btq-" + (++__btCorrSeq) + "-" + Date.now();
     btn.dataset.btCorrelation = correlation;
     delete btn.dataset.btFailed;
@@ -213,9 +161,13 @@ namespace BuildConsole.Services
 
   function buildButtonBar(kind, text, marginSide, referencedNumber, blockId) {
     const bar = document.createElement("div");
+    bar.className = "bt-button-bar bt-button-bar-" + marginSide;
+    bar.dataset.btBlock = blockId;
     bar.style.cssText = "display: flex; justify-content: flex-end; gap: 6px; margin-" + marginSide + ": 4px;";
+
     const btn = document.createElement("button");
     btn.type = "button";
+    btn.className = "bt-btn-send";
     btn.textContent = kind === "sql" ? "🗄 Load into SQL Runner" : "🚀 Send to Builder";
     btn.style.cssText =
       "padding: 3px 10px; border-radius: 5px; border: 1px solid #3b3b3b; background: #242424; " +
@@ -224,9 +176,11 @@ namespace BuildConsole.Services
     btn.addEventListener("mouseleave", function () { if (!btn.disabled) btn.style.background = "#242424"; });
     btn.addEventListener("click", function () { if (kind === "sql") loadIntoSqlRunner(text); else sendToBuilder(text); });
     bar.appendChild(btn);
+
     if (kind === "prompt") {
       const editBtn = document.createElement("button");
       editBtn.type = "button";
+      editBtn.className = "bt-btn-edit";
       editBtn.textContent = "✏️ Edit";
       editBtn.title = "Open in editor window to modify prompt and configure blockers before building";
       editBtn.style.cssText = btn.style.cssText;
@@ -242,13 +196,9 @@ namespace BuildConsole.Services
 
       const queueBtn = document.createElement("button");
       queueBtn.type = "button";
+      queueBtn.className = "bt-btn-queue";
       queueBtn.textContent = "📋 Queue";
-      // Git #942 — remembered so __btQueueFailed can restore it verbatim if the
-      // queue POST fails after the click already flipped it to "In Progress...".
       queueBtn.dataset.btOrigLabel = "📋 Queue";
-      // Git #942 follow-up — the shared per-block id (identical on this block's
-      // OTHER bar's Queue button) so __btTagQueued can find and tag both bars at
-      // once when either one's click resolves to a real queue id.
       queueBtn.dataset.btBlock = blockId;
       queueBtn.title = "Add to the build queue instead of launching now";
       queueBtn.style.cssText = btn.style.cssText;
@@ -263,16 +213,32 @@ namespace BuildConsole.Services
   function scan(root) {
     const blocks = root.querySelectorAll ? root.querySelectorAll("pre") : [];
     for (const pre of blocks) {
-      if (pre.dataset.btScanned || !pre.parentElement) continue;
-      pre.dataset.btScanned = "1";
+      if (!pre.parentElement) continue;
+      
+      // If already scanned and has its attached bar, don't duplicate
+      if (pre.dataset.btScanned && pre.previousElementSibling && pre.previousElementSibling.classList.contains("bt-button-bar")) {
+        continue;
+      }
+
       const text = (pre.innerText || pre.textContent || "").trim();
       if (!text) continue;
+
+      // Clean up any stale or duplicated adjacent button bars before inserting
+      while (pre.previousElementSibling && pre.previousElementSibling.classList.contains("bt-button-bar")) {
+        pre.previousElementSibling.remove();
+      }
+      while (pre.nextElementSibling && pre.nextElementSibling.classList.contains("bt-button-bar")) {
+        pre.nextElementSibling.remove();
+      }
+
+      pre.dataset.btScanned = "1";
       const kind = classifyCodeBlock(text);
       const referencedNumber = kind === "prompt" ? extractReferencedIssueNumber(text) : null;
-      // Git #942 follow-up — one id shared by BOTH bars built for this block, so
-      // a Queue click on either can tag the other with the same data-bt-queue-id.
       const blockId = "btb-" + (++__btBlockSeq);
+
+      // Top bar (above pre)
       pre.parentElement.insertBefore(buildButtonBar(kind, text, "bottom", referencedNumber, blockId), pre);
+      // Bottom bar (below pre)
       pre.parentElement.insertBefore(buildButtonBar(kind, text, "top", referencedNumber, blockId), pre.nextSibling);
     }
   }

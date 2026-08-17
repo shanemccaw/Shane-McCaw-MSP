@@ -281,6 +281,13 @@ namespace BuildConsole.Services
         /// <summary>When a scheduled run has any failing manifest/step, POST an admin web-push alert (server-side sendWebPushToAdmins, #727) naming the failure. A fully passing run is always silent regardless. On by default so an armed scheduler is actually actionable.</summary>
         public bool PushOnRegressionFailure { get; set; } = true;
 
+        // ── Post-Build Auto Test Verification ─────────────────────────────
+        /// <summary>When on, automatically runs the matching test manifest for a completed build's issue after deploy confirmation.</summary>
+        public bool AutoRunTestsOnBuildComplete { get; set; } = true;
+
+        /// <summary>Off by default: if a completed build has no specific matching issue manifest, should it fallback to running the entire full regression suite? (False = skip tests if no matching issue manifest).</summary>
+        public bool AutoRunFullSuiteFallbackOnBuildComplete { get; set; } = false;
+
         // ── Build completion sound ────────────────────────────────────────
         // Plays when a queue-managed build genuinely finishes (QueueWatcherService
         // TickAsync sees the process exit and reports completion). The mute

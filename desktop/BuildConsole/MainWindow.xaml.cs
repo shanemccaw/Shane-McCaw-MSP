@@ -321,7 +321,7 @@ namespace BuildConsole
                     BuildConsole.Services.BuildTrackerConfig.FindRepoRoot() ?? "",
                     () => _buildTrackerApi.PostBuildCompleteAsync(),
                     () => _buildTrackerApi.GetDeployStatusAsync(),
-                    RunRegressionSuiteCollectAsync,
+                    RunScopedManifestsAsync,
                     SurfacePostBuildDeployOutcome);
             }
 
@@ -3209,14 +3209,18 @@ namespace BuildConsole
         {
             _buildSound.Play();
 
-            // Epic #803 — automatically deploy the just-finished build and verify+test it end to
-            // end (build done -> #911 pull+restart -> poll #805 to the real new live commit hash ->
-            // regression sweep -> toast + Needs Attention). Fire-and-forget on the UI thread
-            // (BuildFinished already fires there, which the shared-WebView2 regression sweep needs);
-            // the pipeline gates itself on exit==0 and the AutoDeployOnBuildComplete setting, is
-            // single-flight, and never throws back to this handler.
+            // Automatically deploy the just-finished build and verify+test it end to
+            // end (build done -> pull+restart -> poll to new commit hash ->
+            // scoped issue manifest test -> toast + Needs Attention).
+            int? ghNum = null;
+            var m = System.Text.RegularExpressions.Regex.Match(title, @"#(\d+)");
+            if (m.Success && int.TryParse(m.Groups[1].Value, out var n))
+            {
+                ghNum = n;
+            }
+
             if (_postBuildDeploy != null)
-                _ = _postBuildDeploy.OnBuildFinishedAsync(queueItemId, title, exitCode);
+                _ = _postBuildDeploy.OnBuildFinishedAsync(queueItemId, title, exitCode, ghNum);
         }
 
         /// <summary>Git #834 / #954 — File > Settings selects the sidebar's Settings
@@ -4460,6 +4464,79 @@ namespace BuildConsole
                 }
                 results.Add(await RunManifestAsync(manifest, isRegression: true));
             }
+            return results;
+        }
+
+        /// <summary>
+        /// Runs only the specific test manifest(s) scoped to a build's issue number (e.g. #1057).
+        /// If no matching issue manifest exists, skips tests unless full-suite fallback is enabled in Settings.
+        /// </summary>
+        public async System.Threading.Tasks.Task<List<BuildConsole.Services.ManifestRunResult>> RunScopedManifestsAsync(int? issueNumber)
+        {
+            var results = new List<BuildConsole.Services.ManifestRunResult>();
+
+            string? repoRoot = BuildConsole.Services.BuildTrackerConfig.FindRepoRoot();
+            if (repoRoot == null)
+            {
+                BuildConsole.Services.ActivityLog.Log("testing.manifest-runner",
+                    "Run Scoped Manifests: no repo root found.");
+                return results;
+            }
+
+            string manifestsDir = Path.Combine(repoRoot, "test-manifests");
+            if (!Directory.Exists(manifestsDir))
+            {
+                BuildConsole.Services.ActivityLog.Log("testing.manifest-runner",
+                    $"Run Scoped Manifests: directory {manifestsDir} does not exist.");
+                return results;
+            }
+
+            var settings = BuildConsole.Services.BuildConsoleSettings.Load();
+
+            if (issueNumber.HasValue && issueNumber.Value > 0)
+            {
+                int targetIssue = issueNumber.Value;
+                var files = Directory.GetFiles(manifestsDir, "*.json", SearchOption.AllDirectories)
+                    .Where(f => !Path.GetFileName(f).Equals("_regression-suite.json", StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+
+                var matching = new List<BuildConsole.Services.TestManifest>();
+                foreach (var file in files)
+                {
+                    var manifest = BuildConsole.Services.TestManifest.LoadFromFile(file);
+                    if (manifest != null && manifest.Issue == targetIssue)
+                    {
+                        matching.Add(manifest);
+                    }
+                }
+
+                if (matching.Count > 0)
+                {
+                    BuildConsole.Services.ActivityLog.Log("testing.manifest-runner",
+                        $"Running {matching.Count} scoped manifest(s) for issue #{targetIssue}: {string.Join(", ", matching.Select(m => m.Feature))}");
+                    foreach (var manifest in matching)
+                    {
+                        results.Add(await RunManifestAsync(manifest, isRegression: true));
+                    }
+                    return results;
+                }
+                else
+                {
+                    BuildConsole.Services.ActivityLog.Log("testing.manifest-runner",
+                        $"No specific test manifest found for issue #{targetIssue} — skipping post-build test run.");
+                    return results;
+                }
+            }
+
+            if (settings.AutoRunFullSuiteFallbackOnBuildComplete)
+            {
+                BuildConsole.Services.ActivityLog.Log("testing.manifest-runner",
+                    "No issue number on build — running full regression suite per Settings fallback.");
+                return await RunRegressionSuiteCollectAsync();
+            }
+
+            BuildConsole.Services.ActivityLog.Log("testing.manifest-runner",
+                "No issue number on build and full-suite fallback is disabled — skipping tests.");
             return results;
         }
 

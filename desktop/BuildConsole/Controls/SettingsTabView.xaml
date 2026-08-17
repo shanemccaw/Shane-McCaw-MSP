@@ -269,6 +269,18 @@
                                 <TextBlock x:Name="TestEnvScanStatusText" Text="" FontSize="11"
                                            Foreground="{StaticResource BlueBrush}" Margin="0,0,0,12" TextWrapping="Wrap"/>
 
+                                <!-- Automation Options -->
+                                <Border Background="{StaticResource Surface0Brush}" CornerRadius="8" Padding="12,10" Margin="0,0,0,14">
+                                    <StackPanel>
+                                        <CheckBox x:Name="AutoRunPostBuildTestsCheck" Content="⚡ Auto-run matching test manifest when a build finishes deploying"
+                                                  FontSize="11.5" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" Margin="0,0,0,6"
+                                                  Checked="PostBuildTestOption_Changed" Unchecked="PostBuildTestOption_Changed"/>
+                                        <CheckBox x:Name="AutoRunFullSuiteFallbackCheck" Content="⚠️ Run full regression suite if build has no matching issue test (Off by default)"
+                                                  FontSize="11" Foreground="{StaticResource Subtext0Brush}" Margin="20,0,0,0"
+                                                  Checked="PostBuildTestOption_Changed" Unchecked="PostBuildTestOption_Changed"/>
+                                    </StackPanel>
+                                </Border>
+
                                 <!-- Dedicated Test Environment Variables Search -->
                                 <Border Background="{StaticResource Surface0Brush}" CornerRadius="8" Padding="10,6" Margin="0,0,0,14"
                                         BorderBrush="{StaticResource Surface1Brush}" BorderThickness="1">

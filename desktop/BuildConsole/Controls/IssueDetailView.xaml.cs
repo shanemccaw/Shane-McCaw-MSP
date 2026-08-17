@@ -652,212 +652,71 @@ namespace BuildConsole.Controls
                 FontSize = 12,
                 Foreground = GetBrush("TextBrush")
             };
-            var p = new Paragraph { Margin = new Thickness(0) };
 
             if (string.IsNullOrEmpty(text))
             {
-                doc.Blocks.Add(p);
+                doc.Blocks.Add(new Paragraph(new Run("(no description)")) { Margin = new Thickness(0) });
                 return doc;
             }
 
-            var matches = Regex.Matches(text, @"(?:\w[\w\-\./\\]*)\.(?:sql|cs|ts|tsx|json|xaml|ps1|cmd|md)\b");
-            int lastIndex = 0;
-
-            foreach (Match match in matches)
+            var options = new MarkdownRenderer.RenderOptions
             {
-                if (match.Index > lastIndex)
+                GetBrush = key => GetBrush(key),
+                BaseFontSize = 12,
+                OnIssueClick = async issueNum =>
                 {
-                    p.Inlines.Add(new Run(text.Substring(lastIndex, match.Index - lastIndex)));
-                }
-
-                var hyperlink = new Hyperlink(new Run(match.Value))
+                    if (Application.Current.MainWindow is MainWindow mWindow)
+                        await mWindow.OpenGitDetailByNumberAsync(issueNum, sideBySide: true);
+                },
+                OnUrlClick = url =>
                 {
-                    Foreground = GetBrush("BlueBrush"),
-                    TextDecorations = TextDecorations.Underline
-                };
-                
-                string fileName = match.Value;
-
-                Func<System.Threading.Tasks.Task<string>> resolvePathAsync = async () =>
+                    try
+                    {
+                        var psi = new System.Diagnostics.ProcessStartInfo { FileName = url, UseShellExecute = true };
+                        System.Diagnostics.Process.Start(psi);
+                    }
+                    catch { }
+                },
+                OnFileClick = async fileName =>
                 {
                     string? repoRoot = BuildTrackerConfig.FindRepoRoot();
-                    if (repoRoot == null) return string.Empty;
-                    
+                    if (repoRoot == null) return;
                     string fullPath = System.IO.Path.Combine(repoRoot, fileName.Replace("/", "\\"));
                     if (!System.IO.File.Exists(fullPath))
                     {
-                        var mw = Application.Current.MainWindow as MainWindow;
-                        if (mw != null) mw.Cursor = System.Windows.Input.Cursors.Wait;
-                        try
+                        fullPath = await System.Threading.Tasks.Task.Run(() =>
                         {
-                            fullPath = await System.Threading.Tasks.Task.Run(() => 
+                            var queue = new System.Collections.Generic.Queue<string>();
+                            queue.Enqueue(repoRoot);
+                            string target = System.IO.Path.GetFileName(fileName);
+                            while (queue.Count > 0)
                             {
-                                var queue = new System.Collections.Generic.Queue<string>();
-                                queue.Enqueue(repoRoot);
-                                string target = System.IO.Path.GetFileName(fileName);
-                                while (queue.Count > 0)
+                                var current = queue.Dequeue();
+                                try
                                 {
-                                    var current = queue.Dequeue();
-                                    try
+                                    foreach (var file in System.IO.Directory.GetFiles(current, target)) return file;
+                                    foreach (var dir in System.IO.Directory.GetDirectories(current))
                                     {
-                                        foreach (var file in System.IO.Directory.GetFiles(current, target)) return file;
-                                        foreach (var dir in System.IO.Directory.GetDirectories(current))
-                                        {
-                                            var name = System.IO.Path.GetFileName(dir);
-                                            if (name == "node_modules" || name == ".git" || name == "bin" || name == "obj" || name == ".next") continue;
-                                            queue.Enqueue(dir);
-                                        }
+                                        var name = System.IO.Path.GetFileName(dir);
+                                        if (name == "node_modules" || name == ".git" || name == "bin" || name == "obj" || name == ".next") continue;
+                                        queue.Enqueue(dir);
                                     }
-                                    catch { }
                                 }
-                                return fullPath;
-                            });
-                        }
-                        finally { if (mw != null) mw.Cursor = System.Windows.Input.Cursors.Arrow; }
+                                catch { }
+                            }
+                            return fullPath;
+                        });
                     }
-                    return fullPath;
-                };
 
-                hyperlink.Click += async (s, e) =>
-                {
-                    string fullPath = await resolvePathAsync();
                     if (System.IO.File.Exists(fullPath) && Application.Current.MainWindow is MainWindow mWindow)
                     {
                         mWindow.OpenFileTab(fullPath);
                     }
-                };
-
-                if (fileName.EndsWith(".json", StringComparison.OrdinalIgnoreCase) && (fileName.Contains("test-manifests/") || fileName.Contains("test-manifests\\")))
-                {
-                    var ctx = new ContextMenu();
-                    var viewItem = new MenuItem { Header = "View Test Manifest" };
-                    viewItem.Click += async (s, e) => {
-                        string fullPath = await resolvePathAsync();
-                        if (System.IO.File.Exists(fullPath) && Application.Current.MainWindow is MainWindow mWindow) mWindow.OpenFileTab(fullPath);
-                    };
-                    var runItem = new MenuItem { Header = "Run Test" };
-                    runItem.Click += async (s, e) => {
-                        string fullPath = await resolvePathAsync();
-                        if (System.IO.File.Exists(fullPath) && Application.Current.MainWindow is MainWindow mWindow) 
-                        {
-                            var manifest = BuildConsole.Services.TestManifest.LoadFromFile(fullPath);
-                            if (manifest != null) await mWindow.RunManifestPublicAsync(manifest);
-                        }
-                    };
-                    var historyItem = new MenuItem { Header = "History" };
-                    historyItem.Click += async (s, e) =>
-                    {
-                        string fullPath = await resolvePathAsync();
-                        if (System.IO.File.Exists(fullPath) && Application.Current.MainWindow is MainWindow mWindow)
-                        {
-                            var manifest = BuildConsole.Services.TestManifest.LoadFromFile(fullPath);
-                            if (manifest != null) mWindow.EnsureTestHistoryWindowPublic(manifest.Issue);
-                        }
-                    };
-                    ctx.Items.Add(viewItem);
-                    ctx.Items.Add(runItem);
-                    ctx.Items.Add(new Separator());
-                    ctx.Items.Add(historyItem);
-                    hyperlink.ContextMenu = ctx;
                 }
+            };
 
-                p.Inlines.Add(hyperlink);
-
-                if (fileName.EndsWith(".sql", StringComparison.OrdinalIgnoreCase))
-                {
-                    string basename = System.IO.Path.GetFileNameWithoutExtension(fileName);
-                    string justFilename = System.IO.Path.GetFileName(fileName);
-                    bool isRan = executedMigrations != null &&
-                                 (executedMigrations.Contains(basename) ||
-                                  executedMigrations.Contains(justFilename) ||
-                                  executedMigrations.Contains(fileName) ||
-                                  executedMigrations.Any(n => System.IO.Path.GetFileNameWithoutExtension(n).Equals(basename, StringComparison.OrdinalIgnoreCase)));
-                    if (isRan) 
-                    {
-                        p.Inlines.Add(new Run(" ✅"));
-                    }
-                    else 
-                    {
-                        var warnRun = new Run(" ⚠️ [NEEDS EXECUTION]");
-                        warnRun.Foreground = GetBrush("RedBrush");
-                        warnRun.FontWeight = FontWeights.Bold;
-                        p.Inlines.Add(warnRun);
-                    }
-                }
-
-                if (fileName.EndsWith(".json", StringComparison.OrdinalIgnoreCase) && (fileName.Contains("test-manifests/") || fileName.Contains("test-manifests\\")))
-                {
-                    int? manifestIssue = null;
-                    string? rRoot = BuildTrackerConfig.FindRepoRoot();
-                    if (rRoot != null)
-                    {
-                        string fullPath = System.IO.Path.Combine(rRoot, fileName.Replace("/", "\\"));
-                        if (!System.IO.File.Exists(fullPath))
-                        {
-                            string target = System.IO.Path.GetFileName(fileName);
-                            string mDir = System.IO.Path.Combine(rRoot, "test-manifests");
-                            if (System.IO.Directory.Exists(mDir))
-                            {
-                                var matchFile = System.IO.Directory.GetFiles(mDir, target, System.IO.SearchOption.AllDirectories).FirstOrDefault();
-                                if (matchFile != null) fullPath = matchFile;
-                            }
-                        }
-
-                        if (System.IO.File.Exists(fullPath))
-                        {
-                            try
-                            {
-                                var m = BuildConsole.Services.TestManifest.LoadFromFile(fullPath);
-                                if (m != null && m.Issue > 0) manifestIssue = m.Issue;
-                            }
-                            catch { }
-                        }
-                    }
-
-                    if (manifestIssue.HasValue && latestTestRuns != null && latestTestRuns.TryGetValue(manifestIssue.Value, out var lastRun))
-                    {
-                        if (lastRun.AllPassed)
-                        {
-                            var passRun = new Run($" ✅ [PASSED ({lastRun.Passed}/{lastRun.Total})]")
-                            {
-                                Foreground = GetBrush("GreenBrush"),
-                                FontWeight = FontWeights.Bold,
-                                ToolTip = $"Last run: {lastRun.StartedAt:yyyy-MM-dd HH:mm:ss} ({lastRun.Passed}/{lastRun.Total} passed)"
-                            };
-                            p.Inlines.Add(passRun);
-                        }
-                        else
-                        {
-                            var failRun = new Run($" ❌ [FAILED ({lastRun.Passed}/{lastRun.Total})]")
-                            {
-                                Foreground = GetBrush("RedBrush"),
-                                FontWeight = FontWeights.Bold,
-                                ToolTip = $"Last run: {lastRun.StartedAt:yyyy-MM-dd HH:mm:ss} ({lastRun.Failed} failed)"
-                            };
-                            p.Inlines.Add(failRun);
-                        }
-                    }
-                    else
-                    {
-                        var neverRan = new Run(" ⚠️ [NEVER RAN]")
-                        {
-                            Foreground = GetBrush("PeachBrush"),
-                            FontWeight = FontWeights.Bold,
-                            ToolTip = "No recorded runs in test-results/_history.jsonl"
-                        };
-                        p.Inlines.Add(neverRan);
-                    }
-                }
-
-                lastIndex = match.Index + match.Length;
-            }
-
-            if (lastIndex < text.Length)
-            {
-                p.Inlines.Add(new Run(text.Substring(lastIndex)));
-            }
-
-            doc.Blocks.Add(p);
+            var renderedElement = MarkdownRenderer.Render(text, options);
+            doc.Blocks.Add(new BlockUIContainer(renderedElement));
             return doc;
         }
     }
