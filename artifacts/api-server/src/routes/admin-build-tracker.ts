@@ -1452,6 +1452,41 @@ router.post("/admin/build-tracker/extension/queue", ingestAuth, async (req: Requ
         .returning();
     }
     res.status(201).json(row);
+
+    // Shane: "Anytime a build with a Git number is queued, you should also
+    // update the Git Issue with In-Flight label." Mirrors the SAME
+    // in-flight/complete convention CLAUDE.md's session bookends already
+    // apply by hand — this just fires it automatically the moment ANY
+    // queue action lands here (fresh queue, retry, or a Reply resume all
+    // POST this same route), so an issue reflects "actively queued/being
+    // worked" without Shane or an agent remembering to run `gh issue edit`.
+    // Fire-and-forget AFTER responding — GitHub label-sync latency must
+    // never delay the queue action itself — and fully non-fatal: a missing
+    // GITHUB_TOKEN or a rejected GitHub call just skips/logs, it never
+    // fails the build that's already been queued.
+    if (resolvedGithubNumber != null && process.env.GITHUB_TOKEN) {
+      void (async () => {
+        try {
+          const addRes = await ghFetch(`/repos/${GITHUB_OWNER}/${GITHUB_REPO_NAME}/issues/${resolvedGithubNumber}/labels`, {
+            method: "POST",
+            body: JSON.stringify({ labels: ["in-flight"] }),
+          });
+          if (!addRes.ok) {
+            log.warn({ status: addRes.status, githubNumber: resolvedGithubNumber }, "queue: couldn't add in-flight label (non-fatal)");
+          }
+          // "complete" means done-in-code-awaiting-review; a build going back
+          // into the queue (retry/reply) means it's no longer in that state.
+          const removeRes = await ghFetch(`/repos/${GITHUB_OWNER}/${GITHUB_REPO_NAME}/issues/${resolvedGithubNumber}/labels/${encodeURIComponent("complete")}`, {
+            method: "DELETE",
+          });
+          if (!removeRes.ok && removeRes.status !== 404) {
+            log.warn({ status: removeRes.status, githubNumber: resolvedGithubNumber }, "queue: couldn't remove complete label (non-fatal)");
+          }
+        } catch (err) {
+          log.warn({ err, githubNumber: resolvedGithubNumber }, "queue: in-flight label sync failed (non-fatal)");
+        }
+      })();
+    }
   } catch (err) {
     log.error({ err }, "POST /extension/queue failed");
     res.status(500).json({ error: "Failed to queue build" });
