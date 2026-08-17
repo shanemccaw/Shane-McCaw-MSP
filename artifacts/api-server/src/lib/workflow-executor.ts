@@ -72,7 +72,7 @@ import { generateScriptFromService, generateScriptFromDocument } from "./ps-scri
 import { fetchNewsHeadlines, DEFAULT_NEWS_PROMPT, CAMPAIGN_BRIEF_PROMPT } from "./news-fetcher.js";
 import { sendWebPushToAdmins } from "./web-push";
 import { sendPushNotifications } from "./push";
-import { broadcastAdminWorkflowEvent, broadcastPresentationPhaseGenProgress, broadcastPresentationPhaseGenComplete, broadcastPresentationPhaseGenError, broadcastPresentationDocsChange, broadcastPresentationProjectReady, broadcastPresentationEvent, broadcastProjectEvent, broadcastWorkflowRunProgress, broadcastWorkflowRunComplete, broadcastWorkflowRunError } from "./sse-channels";
+import { broadcastAdminWorkflowEvent, broadcastPresentationPhaseGenProgress, broadcastPresentationPhaseGenComplete, broadcastPresentationPhaseGenError, clearPresentationPhaseGenSSEState, broadcastPresentationDocsChange, broadcastPresentationProjectReady, broadcastPresentationEvent, broadcastProjectEvent, broadcastWorkflowRunProgress, broadcastWorkflowRunComplete, broadcastWorkflowRunError } from "./sse-channels";
 import { broadcastSowChangeForProject, broadcastDocsChangeForProject } from "./document-engine-sow";
 import { generateDocument } from "./document-engine.ts";
 import { generateSowDocument } from "./document-engine-sow.ts";
@@ -2551,8 +2551,10 @@ async function executeNode(
                     }
                   }
                   broadcastPresentationPhaseGenComplete(presId, phases as Parameters<typeof broadcastPresentationPhaseGenComplete>[1]);
+                  clearPresentationPhaseGenSSEState(presId);
                 } else if (emitEventType === "presentation.phase_gen.error") {
                   broadcastPresentationPhaseGenError(presId, String(mergedPayload.message ?? "An error occurred"));
+                  clearPresentationPhaseGenSSEState(presId);
                 }
               }
             } else {
@@ -9322,6 +9324,7 @@ async function executeWorkflowRunInner(
           const presId = typeof rawPresId === "number" ? rawPresId : typeof rawPresId === "string" ? parseInt(rawPresId, 10) : NaN;
           if (!isNaN(presId)) {
             broadcastPresentationPhaseGenError(presId, (output.error as string) ?? `Step failed: ${nodeId}`);
+            clearPresentationPhaseGenSSEState(presId);
           }
           await db.update(wfRunsTable).set({
             status: "failed", finishedAt: new Date(),
@@ -10035,6 +10038,7 @@ async function executeWorkflowRunInner(
     const presId = typeof rawPresId === "number" ? rawPresId : typeof rawPresId === "string" ? parseInt(rawPresId, 10) : NaN;
     if (!isNaN(presId)) {
       broadcastPresentationPhaseGenError(presId, errMsg);
+      clearPresentationPhaseGenSSEState(presId);
     }
     await db.update(wfRunsTable).set({ status: "failed", finishedAt: new Date(), errorMessage: errMsg, branchPath: branchPath as unknown as string[] }).where(eq(wfRunsTable.id, runId));
     if (runId != null) broadcastWorkflowRunError(String(runId), errMsg);

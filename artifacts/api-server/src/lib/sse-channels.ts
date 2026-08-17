@@ -119,6 +119,16 @@ export function replayPhaseGenState(presentationId: number, res: Response): void
   replayHubState("workflow.doc-pipeline", presentationId, res);
 }
 
+/**
+ * Drop the cached phase_gen replay state once a presentation's phase
+ * generation finishes (success or error) — mirrors clearDiagnosticsRunSSEState /
+ * clearWorkflowRunSSEState. Without this, sse-hub's module-level lastStateCache
+ * grows by one entry per presentationId ever phase-generated, forever (Git #130).
+ */
+export function clearPresentationPhaseGenSSEState(presentationId: number): void {
+  clearHubReplayState("workflow.doc-pipeline", presentationId);
+}
+
 // ── Admin-global workflow events SSE ── channel "workflow.run", scope = null ────
 // Global (unscoped) — distinct from kanban's projectId-scoped use of the same
 // channel, since scope null keys to "workflow.run:*".

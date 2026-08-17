@@ -948,6 +948,10 @@ export async function runDiagnostics(opts: DiagnosticsRunOpts): Promise<Diagnost
       requiresScript,
       findings: findingsCount,
     });
+    // Success path leaves the sse-hub replay cache entry behind unless cleared
+    // here too — only the catch-block error path below cleared it before,
+    // meaning every successful run left a permanent Map entry (Git #130).
+    clearDiagnosticsRunSSEState(runId);
 
     // Graded evaluable-check coverage for this run (see doc-gate-coverage.ts) —
     // the single decision shared by the CIO narrative trigger below AND the
