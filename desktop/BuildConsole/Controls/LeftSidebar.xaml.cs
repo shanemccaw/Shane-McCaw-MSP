@@ -2340,6 +2340,8 @@ namespace BuildConsole.Controls
             IssueStatOpen.Text = $"{openIssues} Pending";
             IssueStatClosed.Text = $"{closedIssues} Done";
 
+            var allKnownIssues = shownMilestones.SelectMany(sm => sm.Epics.SelectMany(e => e.Issues)).ToList();
+
             foreach (var m in shownMilestones)
             {
                 if (filter == "Milestones" || filter == "All" || filter == "Priority")
@@ -2424,8 +2426,6 @@ namespace BuildConsole.Controls
                     milestoneItem.Collapsed += (s, e) => { if (ReferenceEquals(e.OriginalSource, milestoneItem)) _collapsedNodeKeys.Add(milestoneKey); };
                     milestoneItem.Expanded += (s, e) => { if (ReferenceEquals(e.OriginalSource, milestoneItem)) _collapsedNodeKeys.Remove(milestoneKey); };
 
-                    var allMilestoneIssues = m.Epics.SelectMany(e => e.Issues).ToList();
-
                     foreach (var epicBucket in m.Epics)
                     {
                         string bucketKey = $"e:{m.Title}/{epicBucket.Title}";
@@ -2441,7 +2441,7 @@ namespace BuildConsole.Controls
                         {
                             // Epics bucket: top-level epics with their sub-issues nested beneath them
                             var topEpics = epicBucket.Issues
-                                .Where(e => e.ParentNumber == null || !allMilestoneIssues.Any(p => p.IssueNumber == e.ParentNumber))
+                                .Where(e => e.ParentNumber == null || !allKnownIssues.Any(p => p.IssueNumber == e.ParentNumber))
                                 .ToList();
 
                             foreach (var epicIssue in topEpics)
@@ -2451,7 +2451,7 @@ namespace BuildConsole.Controls
                                 if (filter == "Priority" && epicIssue.Priority != "HIGH") continue;
 
                                 var epicNode = CreateIssueHeader(epicIssue, depth: 2);
-                                PopulateIssueTreeHierarchy(epicNode.Items, allMilestoneIssues, epicIssue.IssueNumber, filter, depth: 3);
+                                PopulateIssueTreeHierarchy(epicNode.Items, allKnownIssues, epicIssue.IssueNumber, filter, depth: 3);
                                 bucketItem.Items.Add(epicNode);
                             }
                         }
@@ -2459,7 +2459,7 @@ namespace BuildConsole.Controls
                         {
                             // Issues bucket: standalone issues (not attached to an in-milestone epic), with any sub-issues nested
                             var standaloneIssues = epicBucket.Issues
-                                .Where(i => i.ParentNumber == null || !allMilestoneIssues.Any(p => p.IssueNumber == i.ParentNumber))
+                                .Where(i => i.ParentNumber == null || !allKnownIssues.Any(p => p.IssueNumber == i.ParentNumber))
                                 .ToList();
 
                             foreach (var issue in standaloneIssues)
@@ -2469,7 +2469,7 @@ namespace BuildConsole.Controls
                                 if (filter == "Priority" && issue.Priority != "HIGH") continue;
 
                                 var issueNode = CreateIssueHeader(issue, depth: 2);
-                                PopulateIssueTreeHierarchy(issueNode.Items, allMilestoneIssues, issue.IssueNumber, filter, depth: 3);
+                                PopulateIssueTreeHierarchy(issueNode.Items, allKnownIssues, issue.IssueNumber, filter, depth: 3);
                                 bucketItem.Items.Add(issueNode);
                             }
                         }
@@ -2477,7 +2477,7 @@ namespace BuildConsole.Controls
                         {
                             // Shane To-Do or custom buckets: top-level items with any sub-issues nested
                             var topItems = epicBucket.Issues
-                                .Where(i => i.ParentNumber == null || !allMilestoneIssues.Any(p => p.IssueNumber == i.ParentNumber))
+                                .Where(i => i.ParentNumber == null || !allKnownIssues.Any(p => p.IssueNumber == i.ParentNumber))
                                 .ToList();
 
                             foreach (var issue in topItems)
@@ -2487,7 +2487,7 @@ namespace BuildConsole.Controls
                                 if (filter == "Priority" && issue.Priority != "HIGH") continue;
 
                                 var issueNode = CreateIssueHeader(issue, depth: 2);
-                                PopulateIssueTreeHierarchy(issueNode.Items, allMilestoneIssues, issue.IssueNumber, filter, depth: 3);
+                                PopulateIssueTreeHierarchy(issueNode.Items, allKnownIssues, issue.IssueNumber, filter, depth: 3);
                                 bucketItem.Items.Add(issueNode);
                             }
                         }

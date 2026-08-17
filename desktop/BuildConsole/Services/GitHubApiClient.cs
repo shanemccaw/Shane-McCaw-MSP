@@ -118,11 +118,13 @@ namespace BuildConsole.Services
         public int? ParentMilestoneNumber { get; set; }
         /// <summary>subIssuesSummary.total straight from GraphQL — the real number of sub-issues.</summary>
         public int SubIssueCount { get; set; }
+        /// <summary>Numbers of sub-issues explicitly attached to this epic from GitHub GraphQL or sub_issues endpoint.</summary>
+        public List<int> ChildIssueNumbers { get; set; } = new();
         /// <summary>GraphQL databaseId — the numeric REST id GitHub's sub_issues endpoint wants as `sub_issue_id` (NOT the issue Number). Populated by ListBoardIssuesAsync for Git #844.</summary>
         public long DatabaseId { get; set; }
 
         /// <summary>Any issue with at least one sub-issue IS an Epic (Git #839) — no title-text convention.</summary>
-        public bool IsEpic => SubIssueCount > 0;
+        public bool IsEpic => SubIssueCount > 0 || ChildIssueNumbers.Count > 0;
         public bool IsClosed => string.Equals(State, "CLOSED", StringComparison.OrdinalIgnoreCase);
         public bool IsComplete => Labels.Any(l => string.Equals(l.Name, "complete", StringComparison.OrdinalIgnoreCase));
         public bool IsTodo => Labels.Any(l => string.Equals(l.Name, "Shane To-Do", StringComparison.OrdinalIgnoreCase));
@@ -516,6 +518,7 @@ namespace BuildConsole.Services
         milestone {{ title number }}
         parent {{ number milestone {{ number }} }}
         subIssuesSummary {{ total }}
+        subIssues(first: 50) {{ nodes {{ number }} }}
       }}
     }}
   }}
@@ -526,6 +529,7 @@ namespace BuildConsole.Services
                 {
                     foreach (var n in conn.Nodes)
                     {
+                        var childNums = n.SubIssues?.Nodes?.Select(s => s.Number).Where(num => num > 0).ToList() ?? new List<int>();
                         result.Add(new GitBoardIssue
                         {
                             Number = n.Number,
@@ -538,7 +542,8 @@ namespace BuildConsole.Services
                             MilestoneNumber = n.Milestone?.Number,
                             ParentNumber = n.Parent?.Number,
                             ParentMilestoneNumber = n.Parent?.Milestone?.Number,
-                            SubIssueCount = n.SubIssuesSummary?.Total ?? 0,
+                            SubIssueCount = Math.Max(n.SubIssuesSummary?.Total ?? 0, childNums.Count),
+                            ChildIssueNumbers = childNums,
                             DatabaseId = n.DatabaseId,
                         });
                     }
@@ -549,6 +554,57 @@ namespace BuildConsole.Services
                     ActivityLog.Log("git-board.data", $"issue list truncated at {result.Count} ({MaxPages} pages) — more exist for states {statesLiteral}");
                 if (!more) break;
                 after = conn!.PageInfo!.EndCursor;
+            }
+
+            // Post-processing pass: bidirectional parent-child reconciliation & milestone inheritance
+            var issueByNum = result.GroupBy(i => i.Number).ToDictionary(g => g.Key, g => g.First());
+
+            // 1. Text-based parent inference fallback (e.g. "Parent #454", "Epic #454", "Part of #454")
+            foreach (var issue in result)
+            {
+                if (!issue.ParentNumber.HasValue && !string.IsNullOrWhiteSpace(issue.Body))
+                {
+                    var m = System.Text.RegularExpressions.Regex.Match(issue.Body, @"(?:[Ee]pic|[Pp]art of|[Pp]arent|[Ss]ub-issue of)\s+#(\d+)");
+                    if (m.Success && int.TryParse(m.Groups[1].Value, out var parentNum) && parentNum != issue.Number)
+                    {
+                        issue.ParentNumber = parentNum;
+                    }
+                }
+            }
+
+            // 2. Parent's explicit ChildIssueNumbers -> link child's ParentNumber
+            foreach (var issue in result)
+            {
+                if (issue.ChildIssueNumbers.Count > 0)
+                {
+                    issue.SubIssueCount = Math.Max(issue.SubIssueCount, issue.ChildIssueNumbers.Count);
+                    foreach (var childNum in issue.ChildIssueNumbers)
+                    {
+                        if (issueByNum.TryGetValue(childNum, out var child))
+                        {
+                            child.ParentNumber ??= issue.Number;
+                        }
+                    }
+                }
+            }
+
+            // 3. Child's ParentNumber -> ensure parent recognizes child & inherits milestone
+            foreach (var issue in result)
+            {
+                if (issue.ParentNumber.HasValue && issueByNum.TryGetValue(issue.ParentNumber.Value, out var parent))
+                {
+                    if (!parent.ChildIssueNumbers.Contains(issue.Number))
+                    {
+                        parent.ChildIssueNumbers.Add(issue.Number);
+                        parent.SubIssueCount = Math.Max(parent.SubIssueCount, parent.ChildIssueNumbers.Count);
+                    }
+
+                    if (string.IsNullOrEmpty(issue.MilestoneTitle) && !string.IsNullOrEmpty(parent.MilestoneTitle))
+                    {
+                        issue.MilestoneTitle = parent.MilestoneTitle;
+                        issue.MilestoneNumber = parent.MilestoneNumber;
+                    }
+                }
             }
 
             return result;
@@ -602,6 +658,7 @@ namespace BuildConsole.Services
             public MilestoneData? Milestone { get; set; }
             public ParentData? Parent { get; set; }
             public SubIssuesSummaryData? SubIssuesSummary { get; set; }
+            public SubIssuesConnection? SubIssues { get; set; }
         }
         private class LabelConnection { public List<LabelNode> Nodes { get; set; } = new(); }
         private class LabelNode { public string Name { get; set; } = ""; }
@@ -609,5 +666,7 @@ namespace BuildConsole.Services
         /// <summary>The GraphQL <c>parent</c> node — the epic this issue is a sub-issue of, plus that epic's own milestone (so the child's effective milestone resolves without the epic needing to be in the same fetch).</summary>
         private class ParentData { public int? Number { get; set; } public MilestoneData? Milestone { get; set; } }
         private class SubIssuesSummaryData { public int Total { get; set; } }
+        private class SubIssuesConnection { public List<SubIssueNode> Nodes { get; set; } = new(); }
+        private class SubIssueNode { public int Number { get; set; } }
     }
 }
