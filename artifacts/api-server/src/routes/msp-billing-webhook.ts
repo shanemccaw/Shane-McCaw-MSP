@@ -28,7 +28,7 @@ import { db, mspsTable, mspSubscriptionsTable, usersTable, mspEventStoreTable, m
 import { eq, and, sql } from "drizzle-orm";
 import { getStripeKey } from "../lib/stripe.ts";
 import { enqueueZohoBooksInvoiceSync } from "../lib/zoho-books.ts";
-import { sendWebPushToAdmins } from "../lib/web-push.ts";
+import { fireEventRule } from "../lib/alert-engine.ts";
 import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "billing" });
 
@@ -438,14 +438,13 @@ async function handleCheckoutCompleted(
       .where(eq(servicesTable.id, serviceId))
       .limit(1);
     const amountDollars = ((session.amount_total ?? 0) / 100).toFixed(2);
-    void sendWebPushToAdmins({
-      title: `New MSP signup — $${amountDollars}`,
-      body: `${companyName} subscribed to ${service?.name ?? "the MSP platform"}`,
-      linkPath: `/dashboard`,
-      playSound: true,
-    });
+    // Route the sale notification through the configurable msp_alert_rules
+    // system (#665) instead of a direct push — same amount/product/customer
+    // info as before, now with admin-tunable severity/cooldown/channel.
+    const summary = `New MSP signup — $${amountDollars}: ${companyName} subscribed to ${service?.name ?? "the MSP platform"}.`;
+    await fireEventRule("purchase_completed", summary);
   } catch (err) {
-    log.warn({ err, mspId: msp.id }, "msp-billing-webhook: sale push notification failed (non-fatal)");
+    log.warn({ err, mspId: msp.id }, "msp-billing-webhook: sale alert notification failed (non-fatal)");
   }
 }
 

@@ -79,7 +79,7 @@ import { runDiagnostics } from "../lib/diagnostics-runner";
 import { generateSowDocument } from "../lib/document-engine-sow.ts";
 import { getStripeKey, getStripePublishableKey } from "../lib/stripe";
 import { isProductionEnvironment } from "../lib/env.ts";
-import { sendWebPushToAdmins } from "../lib/web-push.ts";
+import { fireEventRule } from "../lib/alert-engine.ts";
 import { ensureFlowStripeCustomer } from "../lib/assessment-flow-rescan-addon.ts";
 import { verifyCaptchaToken } from "../lib/captcha";
 import { getMspPortalBaseUrl } from "../lib/portal-url";
@@ -3667,12 +3667,11 @@ router.post("/portal/assessment/stripe/webhook", async (req: Request, res: Respo
       const productName = agreement.selectedWorkstreamTitles?.length
         ? agreement.selectedWorkstreamTitles.join(", ")
         : "Assessment SOW";
-      void sendWebPushToAdmins({
-        title: `New assessment sale — $${amountDollars}`,
-        body: `${agreement.signerName} — ${productName}`,
-        linkPath: `/dashboard`,
-        playSound: true,
-      });
+      // Route the sale notification through the configurable msp_alert_rules
+      // system (#665) instead of a direct push — same amount/product/customer
+      // info as before, now with admin-tunable severity/cooldown/channel.
+      const saleSummary = `New assessment sale — $${amountDollars}: ${agreement.signerName} — ${productName}.`;
+      await fireEventRule("purchase_completed", saleSummary);
     }
 
     // Coupon redemption — idempotent by checkout_session_id, exactly as

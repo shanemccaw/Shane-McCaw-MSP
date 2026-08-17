@@ -2622,10 +2622,15 @@ export const MSP_ALERT_CONDITION_TYPES = [
   "sla_breach",        // fulfillment_queue rows overdue past SLA
   "event_bus_backlog", // webhook delivery failures in last N minutes
   "job_failure_rate",  // background jobs failing at above-threshold rate
+  "purchase_completed",// discrete sale/checkout event — fired directly via
+                       // fireEventRule() (#665), never evaluated by the
+                       // polling evaluateRules() loop like the others above
 ] as const;
 export type MspAlertConditionType = typeof MSP_ALERT_CONDITION_TYPES[number];
 
-export const MSP_ALERT_SEVERITIES = ["warning", "critical"] as const;
+// "info" (#665): a completed sale is a neutral, non-alarming event — forcing it
+// into "warning"/"critical" would miscategorise it against every other rule.
+export const MSP_ALERT_SEVERITIES = ["warning", "critical", "info"] as const;
 export type MspAlertSeverity = typeof MSP_ALERT_SEVERITIES[number];
 
 export const mspAlertRulesTable = pgTable("msp_alert_rules", {

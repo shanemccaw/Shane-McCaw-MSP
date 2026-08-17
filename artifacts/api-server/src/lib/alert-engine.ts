@@ -349,6 +349,79 @@ function buildSummary(conditionType: string, value: number, windowMinutes: numbe
   }
 }
 
+// ── Event-triggered rules (#665) ──────────────────────────────────────────────
+
+/**
+ * Fire a single alert rule immediately in response to a discrete event, rather
+ * than waiting for the polling evaluateRules() loop to detect a threshold
+ * breach. Used for event-shaped conditions like "purchase_completed" that are a
+ * one-off occurrence, not a count-over-threshold — the rule's condition_type is
+ * never evaluated by getConditionValue(); this direct-fire path is the only way
+ * it ever produces an event.
+ *
+ * Reuses isInCooldown and deliverAlert verbatim, so cooldown/dedup and the
+ * email+push delivery machinery behave exactly like every polled rule. If the
+ * rule is disabled or not configured, this is a deliberate no-op — the admin's
+ * config is the single source of truth, with no hardcoded fallback.
+ */
+export async function fireEventRule(ruleKey: string, summary: string): Promise<void> {
+  try {
+    const ruleRes = await pool.query<{
+      id: number;
+      rule_key: string;
+      label: string;
+      severity: string;
+      delivery_email: boolean;
+      delivery_push: boolean;
+      cooldown_minutes: number;
+      deep_link_path: string | null;
+    }>(
+      `SELECT id, rule_key, label, severity, delivery_email, delivery_push, cooldown_minutes, deep_link_path
+       FROM msp_alert_rules WHERE rule_key = $1 AND enabled = true`,
+      [ruleKey],
+    );
+    const rule = ruleRes.rows[0];
+    if (!rule) return; // disabled or not configured — admin's call, no fallback
+
+    const inCooldown = await isInCooldown(rule.id, rule.cooldown_minutes);
+    if (inCooldown) return;
+
+    const evtRes = await pool.query<{ id: number }>(
+      `INSERT INTO msp_alert_events
+         (rule_id, rule_key, severity, condition_value, summary, deep_link_path,
+          delivered_email, delivered_push)
+       VALUES ($1,$2,$3,1,$4,$5,false,false)
+       RETURNING id`,
+      [rule.id, rule.rule_key, rule.severity, summary, rule.deep_link_path],
+    );
+    const eventId = evtRes.rows[0]?.id;
+    if (!eventId) return;
+
+    log.info(
+      { ruleKey: rule.rule_key, severity: rule.severity, eventId },
+      "alert-engine: event rule fired",
+    );
+
+    const { email, push } = await deliverAlert({
+      eventId,
+      ruleKey: rule.rule_key,
+      label: rule.label,
+      summary,
+      severity: rule.severity,
+      deepLinkPath: rule.deep_link_path,
+      deliveryEmail: rule.delivery_email,
+      deliveryPush: rule.delivery_push,
+    });
+
+    log.info(
+      { ruleKey: rule.rule_key, eventId, email, push },
+      "alert-engine: event rule delivered",
+    );
+  } catch (err) {
+    log.error({ err, ruleKey }, "alert-engine: event rule fire error");
+  }
+}
+
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /**
