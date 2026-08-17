@@ -100,6 +100,22 @@ namespace BuildConsole.Services
         // replaying every commit.
         public int LastSeenBuild { get; set; } = -1;
 
+        // ── Git Board manifest tree — "new manifest" tracking ────────────────
+        // Shane: "anytime a new test manifest is added, even if it's been ran
+        // by the agent... I need it bold so I can easily find it." Same
+        // bootstrap-sentinel shape as LastSeenBuild above: on the very first
+        // scan after this field ships, ManifestTrackingBootstrapped is false,
+        // so every manifest that already exists gets silently seeded into
+        // SeenManifestPaths WITHOUT being flagged new (an existing install's
+        // entire corpus shouldn't suddenly light up bold). From then on, a
+        // manifest path not yet in SeenManifestPaths is "new"; it's added to
+        // the set (persisted) the moment Shane actually opens it in the tree
+        // (LeftSidebar.LoadManifestLeaf) — NOT when an agent runs it, so a
+        // just-added-and-already-run manifest still reads as new until Shane
+        // himself looks at it.
+        public bool ManifestTrackingBootstrapped { get; set; } = false;
+        public List<string> SeenManifestPaths { get; set; } = new();
+
         public string GitHubPat { get; set; } = "";
 
         public bool HasGitHubPat => !string.IsNullOrWhiteSpace(GitHubPat);

@@ -453,6 +453,15 @@ namespace BuildConsole.Controls
             public string? Feature;
             public ManifestRunStatus RunStatus = ManifestRunStatus.NeverRun;
             public string RunSummary = "No runs yet";
+            /// <summary>
+            /// Shane: "anytime a new test manifest is added, even if it's
+            /// been ran by the agent... I need it bold or something so I
+            /// can easily find it." Deliberately independent of RunStatus —
+            /// a manifest an agent just ran and passed is still "new" until
+            /// Shane himself opens it once (see LoadManifestLeaf), not the
+            /// moment it gets a run result.
+            /// </summary>
+            public bool IsNew;
         }
 
         private List<ManifestEntry> _manifestEntries = new();
@@ -565,8 +574,30 @@ namespace BuildConsole.Controls
                 }
             }
 
+            // "New manifest" tracking — see BuildConsoleSettings.SeenManifestPaths
+            // for the full bootstrap story. Bootstrap only ever happens once
+            // (the flag flips true here on first run), so an existing install's
+            // whole corpus never floods bold on the day this shipped.
+            try
+            {
+                var settings = BuildConsoleSettings.Load();
+                if (!settings.ManifestTrackingBootstrapped)
+                {
+                    settings.SeenManifestPaths = entries.Select(e => e.RelativePath).ToList();
+                    settings.ManifestTrackingBootstrapped = true;
+                    settings.Save();
+                }
+                else
+                {
+                    var seen = new HashSet<string>(settings.SeenManifestPaths, StringComparer.OrdinalIgnoreCase);
+                    foreach (var e in entries) e.IsNew = !seen.Contains(e.RelativePath);
+                }
+            }
+            catch { /* display-only feature - a settings read/write failure should never block the list itself */ }
+
             _manifestEntries = entries;
-            ActivityLog.Log("testing.manifest-list", $"listed {entries.Count} manifest(s) in {manifestsDir}");
+            int newCount = entries.Count(e => e.IsNew);
+            ActivityLog.Log("testing.manifest-list", $"listed {entries.Count} manifest(s) in {manifestsDir}{(newCount > 0 ? $" ({newCount} new)" : "")}");
             RenderManifestTree();
         }
 
@@ -617,10 +648,14 @@ namespace BuildConsole.Controls
                 if (leaves.Count == 0) continue;
 
                 string brushKey = AreaBrushKey(group.Key);
+                int newCount = leaves.Count(l => l.IsNew);
                 var areaNode = new TreeViewItem
                 {
-                    Header = MakeAreaHeader(group.Key, leaves.Count, brushKey),
-                    IsExpanded = searching,   // collapsed by default; matches auto-expand while searching
+                    Header = MakeAreaHeader(group.Key, leaves.Count, brushKey, newCount),
+                    // collapsed by default; auto-expands while searching OR when
+                    // it's hiding a new manifest, so "bold so I can easily find
+                    // it" doesn't get defeated by the area itself being collapsed.
+                    IsExpanded = searching || newCount > 0,
                     ContextMenu = BuildAreaContextMenu(),   // area headers carry no manifest — just bulk expand/collapse
                 };
 
@@ -646,8 +681,10 @@ namespace BuildConsole.Controls
         }
 
         /// <summary>Git #984 — colored area row: a small color chip + the area name in the area's accent color +
-        /// a real count badge (e.g. "copilot-readiness (6)").</summary>
-        private FrameworkElement MakeAreaHeader(string area, int count, string brushKey)
+        /// a real count badge (e.g. "copilot-readiness (6)"). newCount &gt; 0 additionally appends an accent
+        /// "N NEW" badge so an unexpanded (or non-matching-newCount) area still surfaces that it's hiding a
+        /// manifest Shane hasn't opened yet.</summary>
+        private FrameworkElement MakeAreaHeader(string area, int count, string brushKey, int newCount = 0)
         {
             var brush = (Brush)FindResource(brushKey);
             var sp = new StackPanel { Orientation = Orientation.Horizontal };
@@ -676,6 +713,27 @@ namespace BuildConsole.Controls
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(4, 0, 0, 0),
             });
+
+            if (newCount > 0)
+            {
+                var newBadge = new Border
+                {
+                    Background = (Brush)FindResource("GreenBrush"),
+                    CornerRadius = new CornerRadius(3),
+                    Padding = new Thickness(4, 1, 4, 1),
+                    Margin = new Thickness(6, 0, 0, 0),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    ToolTip = "Manifest(s) added since you last opened them"
+                };
+                newBadge.Child = new TextBlock
+                {
+                    Text = newCount == 1 ? "1 NEW" : $"{newCount} NEW",
+                    FontSize = 9,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = Brushes.Black
+                };
+                sp.Children.Add(newBadge);
+            }
             return sp;
         }
 
@@ -744,12 +802,35 @@ namespace BuildConsole.Controls
             string tooltipText = leaf.IssueNumber.HasValue
                 ? $"#{leaf.IssueNumber.Value} · {leaf.Feature}\n{leaf.FileName}\n{leaf.RunSummary}"
                 : $"{leaf.FileName}\n{leaf.RunSummary}";
+            if (leaf.IsNew) tooltipText = "NEW — added since you last opened it\n" + tooltipText;
+
+            // Shane: "anytime a new test manifest is added, even if it's
+            // been ran by the agent... I need it bold or something so I can
+            // easily find it." Badge goes BEFORE the filename block (which
+            // must stay the LAST child so DockPanel's LastChildFill still
+            // gives it the remaining width to ellipsis-trim into).
+            if (leaf.IsNew)
+            {
+                var newBadge = new Border
+                {
+                    Background = (Brush)FindResource("GreenBrush"),
+                    CornerRadius = new CornerRadius(3),
+                    Padding = new Thickness(4, 1, 4, 1),
+                    Margin = new Thickness(0, 0, 6, 0),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    ToolTip = "Added since you last opened it"
+                };
+                newBadge.Child = new TextBlock { Text = "NEW", FontSize = 9, FontWeight = FontWeights.Bold, Foreground = Brushes.Black };
+                dp.Children.Add(newBadge);
+            }
 
             dp.Children.Add(new TextBlock
             {
                 Text = leaf.FileName,
                 FontSize = 11,
-                Foreground = (Brush)FindResource("TextBrush"),
+                // Deliberately keyed off IsNew alone, never RunStatus.
+                FontWeight = leaf.IsNew ? FontWeights.Bold : FontWeights.Normal,
+                Foreground = leaf.IsNew ? (Brush)FindResource("GreenBrush") : (Brush)FindResource("TextBrush"),
                 TextTrimming = TextTrimming.CharacterEllipsis,
                 VerticalAlignment = VerticalAlignment.Center,
                 ToolTip = tooltipText
@@ -803,7 +884,36 @@ namespace BuildConsole.Controls
             // MainWindow still tracks this as the loaded manifest for Menu > Run > "Run Tests (Current Issue)".
             ManifestLoaded?.Invoke(this, manifest);
 
+            MarkManifestSeen(fileName);
+
             return manifest;
+        }
+
+        /// <summary>
+        /// Shane's "new manifest" bold/badge treatment (see ManifestEntry.IsNew
+        /// / BuildConsoleSettings.SeenManifestPaths) clears the moment HE opens
+        /// the manifest here — not when an agent runs it — so a just-added,
+        /// already-run manifest still reads as new until he's actually looked
+        /// at it. No-ops (no write, no re-render) when the leaf wasn't new.
+        /// </summary>
+        private void MarkManifestSeen(string relativePath)
+        {
+            var entry = _manifestEntries.FirstOrDefault(e => e.RelativePath == relativePath);
+            if (entry == null || !entry.IsNew) return;
+
+            entry.IsNew = false;
+            try
+            {
+                var settings = BuildConsole.Services.BuildConsoleSettings.Load();
+                if (!settings.SeenManifestPaths.Contains(relativePath, StringComparer.OrdinalIgnoreCase))
+                {
+                    settings.SeenManifestPaths.Add(relativePath);
+                    settings.Save();
+                }
+            }
+            catch { /* display-only feature - a save failure just means it re-shows as new next scan */ }
+
+            RenderManifestTree();
         }
 
         /// <summary>Git #1017 — double-clicking a leaf feels like "select + Play Test" in one action: loads it
