@@ -140,9 +140,17 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "trend",
     sourceType: "monitor_profile",
-    sourceKey: "identity:failed-signins",
+    // Git #1110: `identity:failed-signins` names no row in the live
+    // monitor_checks catalog (confirmed 2026-08-17 via a live query of all
+    // check keys — only `identity:risky-signins` and `identity:signin-risk-
+    // policy` exist under `identity:*signin*`). No dedicated failed-signin-
+    // count check exists today, and `identity:risky-signins` is a distinct
+    // already-curated metric (identity.highRiskSigninCount), so not a
+    // genuine match. Same phantom-sourceKey class as #1103; retired to the
+    // honest not_collected: sentinel rather than guessed at a near-miss key.
+    sourceKey: "not_collected:failed-signins",
     scope: "customer",
-    status: "available",
+    status: "not_collected",
     smartEligible: false,
   },
   {
