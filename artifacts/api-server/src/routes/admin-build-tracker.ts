@@ -941,9 +941,22 @@ router.post("/admin/build-tracker/extension/quick-sync", ingestAuth, async (req:
   res.json({ updated, requested: numbers.length, failed });
 });
 
+/**
+ * Only a real 404 means "this issue doesn't exist" — a bad/expired
+ * GITHUB_TOKEN (401), a lapsed PAT scope or rate limit (403), or a GitHub
+ * 5xx all used to collapse into the same null-returned "not found on
+ * GitHub" response, which reads as "that issue number is wrong" when the
+ * issue is real and the actual cause is server-side auth/rate-limiting.
+ * Non-404 failures now throw with the real status + body so callers (and
+ * their error responses) say what actually happened.
+ */
 async function ghFetchIssue(number: number): Promise<GitHubIssuePayload | null> {
   const res = await ghFetch(`/repos/${GITHUB_OWNER}/${GITHUB_REPO_NAME}/issues/${number}`);
-  if (!res.ok) return null;
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`GitHub API returned HTTP ${res.status} fetching issue #${number}: ${body.slice(0, 300)}`);
+  }
   return (await res.json()) as GitHubIssuePayload;
 }
 
@@ -1142,7 +1155,7 @@ router.get("/admin/build-tracker/extension/issue-lookup", ingestAuth, async (req
     });
   } catch (err) {
     log.error({ err, number }, "GET /extension/issue-lookup failed");
-    res.status(500).json({ error: "Lookup failed" });
+    res.status(500).json({ error: err instanceof Error ? err.message : "Lookup failed" });
   }
 });
 
@@ -1934,7 +1947,7 @@ router.post("/admin/build-tracker/extension/sync-epic", ingestAuth, async (req: 
     res.json({ epicNumber, issuesUpserted, nestedEpicsUpserted, issuesFound: level1.length });
   } catch (err) {
     log.error({ err, epicNumber }, "POST /extension/sync-epic failed");
-    res.status(500).json({ error: "Epic sync failed" });
+    res.status(500).json({ error: err instanceof Error ? err.message : "Epic sync failed" });
   }
 });
 
