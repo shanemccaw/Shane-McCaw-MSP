@@ -34,6 +34,16 @@ namespace BuildConsole.Services
             "🎉 MILESTONE COMPLETED!", "🏆 SUPER VICTORY!", "🥳 PARADE TIME!", "🎊 MISSION ACCOMPLISHED!", "✨ WOOHOO!"
         };
 
+        private static readonly string[] WhammyPhrases =
+        {
+            "🛑 NO WHAMMY! STOP!",
+            "🔨 WHAMMY SMASH! BLOCKED!",
+            "🚫 NO WHAMMY, NO WHAMMY!",
+            "🛑 WHAMMY SAYS NO!",
+            "💥 BLOCKED BY WHAMMY!",
+            "😈 HEHEHE! BLOCKED!"
+        };
+
         private static readonly Color[] ConfettiColors =
         {
             Color.FromRgb(0xFA, 0xB3, 0x87), // Peach
@@ -443,6 +453,270 @@ namespace BuildConsole.Services
             });
         }
 
+        // ══════════════════════════════════════════════════════════════════════
+        // 4. WHAMMY SLAM (Blocked Issue Animation)
+        // ══════════════════════════════════════════════════════════════════════
+        public static void PlayWhammy(FrameworkElement? targetElement, string issueTitle, int? blockerNumber = null)
+        {
+            if (Application.Current?.MainWindow is not Window mainWin) return;
+            if (mainWin.Content is not Grid rootGrid) return;
+
+            mainWin.Dispatcher.Invoke(() =>
+            {
+                try
+                {
+                    Point targetPos = new Point(mainWin.ActualWidth * 0.35, mainWin.ActualHeight * 0.45);
+                    if (targetElement != null && targetElement.IsLoaded)
+                    {
+                        try
+                        {
+                            var screenPoint = targetElement.PointToScreen(new Point(targetElement.ActualWidth / 2, targetElement.ActualHeight / 2));
+                            targetPos = mainWin.PointFromScreen(screenPoint);
+                        }
+                        catch { }
+                    }
+
+                    targetPos.X = Math.Clamp(targetPos.X, 140, Math.Max(160, mainWin.ActualWidth - 220));
+                    targetPos.Y = Math.Clamp(targetPos.Y, 90, Math.Max(110, mainWin.ActualHeight - 140));
+
+                    var canvas = new Canvas
+                    {
+                        Width = mainWin.ActualWidth,
+                        Height = mainWin.ActualHeight,
+                        IsHitTestVisible = false,
+                        ClipToBounds = false
+                    };
+                    Panel.SetZIndex(canvas, 31000);
+                    rootGrid.Children.Add(canvas);
+
+                    // Floating target card with red blocked border
+                    var issueCard = new Border
+                    {
+                        Background = new SolidColorBrush(Color.FromRgb(0x1E, 0x1E, 0x2E)),
+                        BorderBrush = new SolidColorBrush(Color.FromRgb(0xF3, 0x8B, 0xA8)),
+                        BorderThickness = new Thickness(2),
+                        CornerRadius = new CornerRadius(8),
+                        Padding = new Thickness(14, 8, 14, 8),
+                        Effect = new DropShadowEffect
+                        {
+                            BlurRadius = 20,
+                            ShadowDepth = 2,
+                            Opacity = 0.8,
+                            Color = Color.FromRgb(0xF3, 0x8B, 0xA8)
+                        },
+                        RenderTransformOrigin = new Point(0.5, 0.5)
+                    };
+                    var cardTransform = new TransformGroup();
+                    var cardScale = new ScaleTransform(1, 1);
+                    var cardTranslate = new TranslateTransform();
+                    cardTransform.Children.Add(cardScale);
+                    cardTransform.Children.Add(cardTranslate);
+                    issueCard.RenderTransform = cardTransform;
+
+                    var cardStack = new StackPanel();
+                    var cardText = new TextBlock
+                    {
+                        Text = issueTitle.Length > 34 ? issueTitle.Substring(0, 31) + "…" : issueTitle,
+                        Foreground = new SolidColorBrush(Color.FromRgb(0xCD, 0xD6, 0xF4)),
+                        FontSize = 12.5,
+                        FontWeight = FontWeights.Bold
+                    };
+                    cardStack.Children.Add(cardText);
+
+                    if (blockerNumber.HasValue)
+                    {
+                        var blockerText = new TextBlock
+                        {
+                            Text = $"Blocked by #{blockerNumber.Value}",
+                            Foreground = new SolidColorBrush(Color.FromRgb(0xF3, 0x8B, 0xA8)),
+                            FontSize = 10.5,
+                            FontWeight = FontWeights.SemiBold,
+                            Margin = new Thickness(0, 2, 0, 0)
+                        };
+                        cardStack.Children.Add(blockerText);
+                    }
+
+                    issueCard.Child = cardStack;
+
+                    Canvas.SetLeft(issueCard, targetPos.X - 70);
+                    Canvas.SetTop(issueCard, targetPos.Y - 20);
+                    canvas.Children.Add(issueCard);
+
+                    // Whammy Mascot with articulated sledgehammer
+                    var (whammy, malletTransform) = BuildWhammyMascot();
+
+                    whammy.Effect = new DropShadowEffect
+                    {
+                        Color = Color.FromRgb(0xF3, 0x8B, 0xA8),
+                        BlurRadius = 22,
+                        ShadowDepth = 0,
+                        Opacity = 0.85
+                    };
+
+                    double whammyScale = 1.9;
+                    var charTransform = new TransformGroup();
+                    var charTranslate = new TranslateTransform();
+                    // Face LEFT (starts on right, runs left)
+                    var charScaleTransform = new ScaleTransform(-whammyScale, whammyScale);
+                    charTransform.Children.Add(charScaleTransform);
+                    charTransform.Children.Add(charTranslate);
+                    whammy.RenderTransform = charTransform;
+                    whammy.RenderTransformOrigin = new Point(0.5, 0.5);
+
+                    double startX = targetPos.X + 280;
+                    double startY = targetPos.Y - 45;
+                    Canvas.SetLeft(whammy, startX);
+                    Canvas.SetTop(whammy, startY);
+                    canvas.Children.Add(whammy);
+
+                    // Speech bubble with NO WHAMMY!
+                    var bubble = new Border
+                    {
+                        Background = new SolidColorBrush(Color.FromRgb(0xF3, 0x8B, 0xA8)),
+                        BorderBrush = new SolidColorBrush(Color.FromRgb(0x11, 0x11, 0x1B)),
+                        BorderThickness = new Thickness(1.5),
+                        CornerRadius = new CornerRadius(12),
+                        Padding = new Thickness(12, 6, 12, 6),
+                        Opacity = 0,
+                        RenderTransformOrigin = new Point(0.5, 0.5)
+                    };
+                    var bubbleScale = new ScaleTransform(0.2, 0.2);
+                    bubble.RenderTransform = bubbleScale;
+                    var bubbleText = new TextBlock
+                    {
+                        Text = WhammyPhrases[Rng.Next(WhammyPhrases.Length)],
+                        Foreground = new SolidColorBrush(Color.FromRgb(0x11, 0x11, 0x1B)),
+                        FontSize = 12.5,
+                        FontWeight = FontWeights.Black
+                    };
+                    bubble.Child = bubbleText;
+                    Canvas.SetLeft(bubble, targetPos.X - 45);
+                    Canvas.SetTop(bubble, targetPos.Y - 70);
+                    canvas.Children.Add(bubble);
+
+                    // Step 1: Whammy charges in from the RIGHT
+                    var chargeX = new DoubleAnimation(0, -200, TimeSpan.FromMilliseconds(380))
+                    {
+                        EasingFunction = new BackEase { Amplitude = 0.5, EasingMode = EasingMode.EaseOut }
+                    };
+                    charTranslate.BeginAnimation(TranslateTransform.XProperty, chargeX);
+
+                    // Step 2: Speech bubble pop
+                    var popOpacity = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(120)) { BeginTime = TimeSpan.FromMilliseconds(180) };
+                    var popScale = new DoubleAnimation(0.2, 1.2, TimeSpan.FromMilliseconds(180))
+                    {
+                        BeginTime = TimeSpan.FromMilliseconds(180),
+                        EasingFunction = new ElasticEase { Oscillations = 1, Springiness = 4 }
+                    };
+                    bubble.BeginAnimation(UIElement.OpacityProperty, popOpacity);
+                    bubbleScale.BeginAnimation(ScaleTransform.ScaleXProperty, popScale);
+                    bubbleScale.BeginAnimation(ScaleTransform.ScaleYProperty, popScale);
+
+                    // Step 3: Mallet Windup & Heavy SLAM!
+                    var malletWindup = new DoubleAnimation(0, 45, TimeSpan.FromMilliseconds(200))
+                    {
+                        BeginTime = TimeSpan.FromMilliseconds(180),
+                        EasingFunction = new BackEase { Amplitude = 1.2, EasingMode = EasingMode.EaseIn }
+                    };
+                    malletTransform.BeginAnimation(RotateTransform.AngleProperty, malletWindup);
+
+                    var slamTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(380) };
+                    slamTimer.Tick += (_, _) =>
+                    {
+                        slamTimer.Stop();
+
+                        // Mallet slams down hard (-75 deg)
+                        var malletSlam = new DoubleAnimation(45, -75, TimeSpan.FromMilliseconds(120))
+                        {
+                            EasingFunction = new BounceEase { Bounces = 1, Bounciness = 3 }
+                        };
+                        malletTransform.BeginAnimation(RotateTransform.AngleProperty, malletSlam);
+
+                        // Card Impact Shock & Jitter
+                        var cardJitterX = new DoubleAnimation(0, -8, TimeSpan.FromMilliseconds(40))
+                        {
+                            AutoReverse = true,
+                            RepeatBehavior = new RepeatBehavior(3)
+                        };
+                        var cardJitterY = new DoubleAnimation(0, 6, TimeSpan.FromMilliseconds(40))
+                        {
+                            AutoReverse = true,
+                            RepeatBehavior = new RepeatBehavior(3)
+                        };
+                        cardTranslate.BeginAnimation(TranslateTransform.XProperty, cardJitterX);
+                        cardTranslate.BeginAnimation(TranslateTransform.YProperty, cardJitterY);
+
+                        // Comic "🚫 BLOCKED!" Stamp appears on the card
+                        var stamp = new Border
+                        {
+                            Background = new SolidColorBrush(Color.FromRgb(0xF3, 0x8B, 0xA8)),
+                            CornerRadius = new CornerRadius(5),
+                            Padding = new Thickness(8, 3, 8, 3),
+                            BorderBrush = Brushes.White,
+                            BorderThickness = new Thickness(1.5),
+                            RenderTransformOrigin = new Point(0.5, 0.5),
+                            HorizontalAlignment = HorizontalAlignment.Center,
+                            Margin = new Thickness(0, 6, 0, 0)
+                        };
+                        var stampScale = new ScaleTransform(2.5, 2.5);
+                        stamp.RenderTransform = stampScale;
+                        stamp.Child = new TextBlock
+                        {
+                            Text = "🚫 BLOCKED!",
+                            FontWeight = FontWeights.Black,
+                            FontSize = 11,
+                            Foreground = new SolidColorBrush(Color.FromRgb(0x11, 0x11, 0x1B))
+                        };
+                        cardStack.Children.Add(stamp);
+
+                        var stampDrop = new DoubleAnimation(2.5, 1.0, TimeSpan.FromMilliseconds(160))
+                        {
+                            EasingFunction = new BounceEase { Bounces = 1, Bounciness = 2 }
+                        };
+                        stampScale.BeginAnimation(ScaleTransform.ScaleXProperty, stampDrop);
+                        stampScale.BeginAnimation(ScaleTransform.ScaleYProperty, stampDrop);
+
+                        // Impact Sparks & Warning icons
+                        SpawnWhammySparks(canvas, new Point(targetPos.X + 20, targetPos.Y + 10));
+                    };
+                    slamTimer.Start();
+
+                    // Step 4: Mischievous Laugh & Dash off to the LEFT
+                    int exitDelay = 950;
+                    var exitTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(exitDelay) };
+                    exitTimer.Tick += (_, _) =>
+                    {
+                        exitTimer.Stop();
+
+                        bubbleText.Text = "HEHEHE! 😈";
+
+                        var exitX = new DoubleAnimation(-200, -560, TimeSpan.FromMilliseconds(480))
+                        {
+                            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn }
+                        };
+                        var exitFade = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(420))
+                        {
+                            BeginTime = TimeSpan.FromMilliseconds(100)
+                        };
+                        charTranslate.BeginAnimation(TranslateTransform.XProperty, exitX);
+                        whammy.BeginAnimation(UIElement.OpacityProperty, exitFade);
+                        bubble.BeginAnimation(UIElement.OpacityProperty, exitFade);
+                    };
+                    exitTimer.Start();
+
+                    // Step 5: Clean up
+                    var cleanupTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1650) };
+                    cleanupTimer.Tick += (_, _) =>
+                    {
+                        cleanupTimer.Stop();
+                        rootGrid.Children.Remove(canvas);
+                    };
+                    cleanupTimer.Start();
+                }
+                catch { }
+            });
+        }
+
         private static void SpawnConfettiBurst(Canvas canvas, Point center, int particleCount = 22, bool isEpic = false)
         {
             for (int i = 0; i < particleCount; i++)
@@ -657,6 +931,624 @@ namespace BuildConsole.Services
             canvas.Children.Add(eye);
 
             return canvas;
+        }
+
+        private static (FrameworkElement element, RotateTransform malletTransform) BuildWhammyMascot()
+        {
+            var canvas = new Canvas { Width = 74, Height = 64 };
+
+            // 1. Little animated cape
+            var cape = new Path
+            {
+                Fill = new SolidColorBrush(Color.FromRgb(0x18, 0x18, 0x25)),
+                Stroke = new SolidColorBrush(Color.FromRgb(0xF3, 0x8B, 0xA8)),
+                StrokeThickness = 1.2,
+                Data = Geometry.Parse("M 20,24 Q 8,36 12,54 Q 28,48 30,34 Z")
+            };
+            canvas.Children.Add(cape);
+
+            // 2. Red Whammy Head & Body
+            var body = new Ellipse
+            {
+                Width = 42,
+                Height = 44,
+                Fill = new SolidColorBrush(Color.FromRgb(0xF3, 0x8B, 0xA8)),
+                Stroke = new SolidColorBrush(Color.FromRgb(0xD2, 0x0F, 0x39)),
+                StrokeThickness = 1.5
+            };
+            Canvas.SetLeft(body, 16);
+            Canvas.SetTop(body, 14);
+            canvas.Children.Add(body);
+
+            // Pointy Ears / Horns
+            var hornL = new Polygon
+            {
+                Points = new PointCollection { new Point(20, 18), new Point(14, 2), new Point(28, 14) },
+                Fill = new SolidColorBrush(Color.FromRgb(0xD2, 0x0F, 0x39))
+            };
+            var hornR = new Polygon
+            {
+                Points = new PointCollection { new Point(44, 14), new Point(56, 2), new Point(52, 18) },
+                Fill = new SolidColorBrush(Color.FromRgb(0xD2, 0x0F, 0x39))
+            };
+            canvas.Children.Add(hornL);
+            canvas.Children.Add(hornR);
+
+            // Cream Belly
+            var belly = new Ellipse
+            {
+                Width = 24,
+                Height = 22,
+                Fill = new SolidColorBrush(Color.FromRgb(0xF5, 0xE0, 0xDC))
+            };
+            Canvas.SetLeft(belly, 25);
+            Canvas.SetTop(belly, 30);
+            canvas.Children.Add(belly);
+
+            // Big expressive eyes
+            var eyeL = new Ellipse { Width = 9, Height = 10, Fill = Brushes.White };
+            var pupilL = new Ellipse { Width = 5, Height = 5, Fill = new SolidColorBrush(Color.FromRgb(0x11, 0x11, 0x1B)) };
+            Canvas.SetLeft(eyeL, 24);
+            Canvas.SetTop(eyeL, 20);
+            Canvas.SetLeft(pupilL, 25);
+            Canvas.SetTop(pupilL, 23);
+            canvas.Children.Add(eyeL);
+            canvas.Children.Add(pupilL);
+
+            var eyeR = new Ellipse { Width = 9, Height = 10, Fill = Brushes.White };
+            var pupilR = new Ellipse { Width = 5, Height = 5, Fill = new SolidColorBrush(Color.FromRgb(0x11, 0x11, 0x1B)) };
+            Canvas.SetLeft(eyeR, 39);
+            Canvas.SetTop(eyeR, 20);
+            Canvas.SetLeft(pupilR, 40);
+            Canvas.SetTop(pupilR, 23);
+            canvas.Children.Add(eyeR);
+            canvas.Children.Add(pupilR);
+
+            // Mischievous smirk/grin
+            var grin = new Path
+            {
+                Stroke = new SolidColorBrush(Color.FromRgb(0x11, 0x11, 0x1B)),
+                StrokeThickness = 2,
+                Data = Geometry.Parse("M 26,34 Q 37,42 46,33")
+            };
+            canvas.Children.Add(grin);
+
+            // 3. GIANT CARTOON MALLET / SLEDGEHAMMER
+            var malletCanvas = new Canvas { Width = 40, Height = 46 };
+            var malletRot = new RotateTransform(0, 8, 38);
+            malletCanvas.RenderTransform = malletRot;
+
+            // Wooden handle
+            var handle = new Rectangle
+            {
+                Width = 5,
+                Height = 32,
+                Fill = new SolidColorBrush(Color.FromRgb(0xDF, 0x8E, 0x1D)),
+                Stroke = new SolidColorBrush(Color.FromRgb(0x8C, 0x50, 0x07)),
+                StrokeThickness = 1,
+                RadiusX = 2,
+                RadiusY = 2
+            };
+            Canvas.SetLeft(handle, 6);
+            Canvas.SetTop(handle, 10);
+            malletCanvas.Children.Add(handle);
+
+            // Giant Mallet Head
+            var malletHead = new Border
+            {
+                Width = 24,
+                Height = 14,
+                Background = new SolidColorBrush(Color.FromRgb(0x58, 0x5B, 0x70)),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(0xBA, 0xC2, 0xDE)),
+                BorderThickness = new Thickness(1.5),
+                CornerRadius = new CornerRadius(3)
+            };
+            Canvas.SetLeft(malletHead, -3);
+            Canvas.SetTop(malletHead, 2);
+            malletCanvas.Children.Add(malletHead);
+
+            Canvas.SetLeft(malletCanvas, 42);
+            Canvas.SetTop(malletCanvas, 8);
+            canvas.Children.Add(malletCanvas);
+
+            return (canvas, malletRot);
+        }
+
+        private static void SpawnWhammySparks(Canvas canvas, Point center)
+        {
+            Color[] sparkColors = { Color.FromRgb(0xF3, 0x8B, 0xA8), Color.FromRgb(0xFA, 0xB3, 0x87), Color.FromRgb(0xF9, 0xE2, 0xAF), Colors.White };
+
+            for (int i = 0; i < 26; i++)
+            {
+                double angle = (i / 26.0) * 2 * Math.PI + (Rng.NextDouble() * 0.4 - 0.2);
+                double speed = Rng.Next(40, 140);
+                double destX = center.X + Math.Cos(angle) * speed;
+                double destY = center.Y + Math.Sin(angle) * speed;
+
+                FrameworkElement p;
+                if (i % 5 == 0)
+                {
+                    p = new TextBlock { Text = (i % 2 == 0) ? "🚫" : "💥", FontSize = 14 };
+                }
+                else
+                {
+                    p = new Border
+                    {
+                        Width = Rng.Next(5, 10),
+                        Height = Rng.Next(3, 7),
+                        Background = new SolidColorBrush(sparkColors[Rng.Next(sparkColors.Length)]),
+                        CornerRadius = new CornerRadius(2)
+                    };
+                }
+
+                var trans = new TranslateTransform();
+                p.RenderTransform = trans;
+                Canvas.SetLeft(p, center.X);
+                Canvas.SetTop(p, center.Y);
+                canvas.Children.Add(p);
+
+                var animX = new DoubleAnimation(0, destX - center.X, TimeSpan.FromMilliseconds(450)) { EasingFunction = new CircleEase { EasingMode = EasingMode.EaseOut } };
+                var animY = new DoubleAnimation(0, destY - center.Y + 20, TimeSpan.FromMilliseconds(500)) { EasingFunction = new CircleEase { EasingMode = EasingMode.EaseOut } };
+                var fade = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(400)) { BeginTime = TimeSpan.FromMilliseconds(120) };
+
+                trans.BeginAnimation(TranslateTransform.XProperty, animX);
+                trans.BeginAnimation(TranslateTransform.YProperty, animY);
+                p.BeginAnimation(UIElement.OpacityProperty, fade);
+            }
+        }
+
+        // ══════════════════════════════════════════════════════════════════════
+        // 5. MILESTONE CLOSED PARTY (Full-Screen Mega Celebration)
+        // ══════════════════════════════════════════════════════════════════════
+        private static readonly string[] PartyPhrases =
+        {
+            "🎉 WE DID IT!", "🏆 LEGENDARY!", "🥳 PARTY TIME!", "🎊 ABSOLUTE UNIT!",
+            "✨ HALL OF FAME!", "💎 PERFECTION!", "🔥 UNSTOPPABLE!", "👑 CROWNED!"
+        };
+
+        public static void PlayMilestoneClosedParty(FrameworkElement? targetElement, string milestoneTitle)
+        {
+            if (Application.Current?.MainWindow is not Window mainWin) return;
+            if (mainWin.Content is not Grid rootGrid) return;
+
+            mainWin.Dispatcher.Invoke(() =>
+            {
+                try
+                {
+                    double winW = mainWin.ActualWidth;
+                    double winH = mainWin.ActualHeight;
+
+                    var canvas = new Canvas
+                    {
+                        Width = winW,
+                        Height = winH,
+                        IsHitTestVisible = false,
+                        ClipToBounds = true
+                    };
+                    Panel.SetZIndex(canvas, 32000);
+                    rootGrid.Children.Add(canvas);
+
+                    // ── 0. FULL-SCREEN DARK OVERLAY WITH FADE-IN ──
+                    var overlay = new Border
+                    {
+                        Width = winW,
+                        Height = winH,
+                        Background = new SolidColorBrush(Color.FromArgb(0xCC, 0x11, 0x11, 0x1B)),
+                        Opacity = 0
+                    };
+                    canvas.Children.Add(overlay);
+                    var overlayFade = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(400));
+                    overlay.BeginAnimation(UIElement.OpacityProperty, overlayFade);
+
+                    // ── 1. DISCO / PARTY LIGHTS (rotating color washes) ──
+                    for (int li = 0; li < 6; li++)
+                    {
+                        var lightColor = ConfettiColors[li % ConfettiColors.Length];
+                        var spotlight = new Ellipse
+                        {
+                            Width = 350 + Rng.Next(200),
+                            Height = 350 + Rng.Next(200),
+                            Fill = new RadialGradientBrush(
+                                Color.FromArgb(0x55, lightColor.R, lightColor.G, lightColor.B),
+                                Colors.Transparent),
+                            Opacity = 0
+                        };
+                        Canvas.SetLeft(spotlight, Rng.Next(0, (int)winW - 200));
+                        Canvas.SetTop(spotlight, Rng.Next(0, (int)winH - 200));
+                        canvas.Children.Add(spotlight);
+
+                        var lightPulse = new DoubleAnimation(0, 0.7, TimeSpan.FromMilliseconds(600 + Rng.Next(400)))
+                        {
+                            AutoReverse = true,
+                            RepeatBehavior = new RepeatBehavior(TimeSpan.FromMilliseconds(7000)),
+                            BeginTime = TimeSpan.FromMilliseconds(200 + li * 180)
+                        };
+                        spotlight.BeginAnimation(UIElement.OpacityProperty, lightPulse);
+
+                        var lightDrift = new DoubleAnimation(0, Rng.Next(-80, 80), TimeSpan.FromMilliseconds(3000 + Rng.Next(2000)))
+                        {
+                            AutoReverse = true,
+                            RepeatBehavior = RepeatBehavior.Forever
+                        };
+                        var driftTrans = new TranslateTransform();
+                        spotlight.RenderTransform = driftTrans;
+                        driftTrans.BeginAnimation(TranslateTransform.XProperty, lightDrift);
+                    }
+
+                    // ── 2. GIANT GOLDEN TROPHY BANNER (center) ──
+                    var bannerBorder = new Border
+                    {
+                        Background = new LinearGradientBrush(
+                            Color.FromRgb(0xF9, 0xE2, 0xAF),
+                            Color.FromRgb(0xDF, 0x8E, 0x1D),
+                            new Point(0, 0), new Point(1, 1)),
+                        BorderBrush = new SolidColorBrush(Color.FromRgb(0xFF, 0xD7, 0x00)),
+                        BorderThickness = new Thickness(3),
+                        CornerRadius = new CornerRadius(16),
+                        Padding = new Thickness(30, 16, 30, 16),
+                        Opacity = 0,
+                        RenderTransformOrigin = new Point(0.5, 0.5),
+                        Effect = new DropShadowEffect
+                        {
+                            Color = Color.FromRgb(0xFF, 0xD7, 0x00),
+                            BlurRadius = 40,
+                            ShadowDepth = 0,
+                            Opacity = 0.9
+                        }
+                    };
+                    var bannerScale = new ScaleTransform(0.1, 0.1);
+                    bannerBorder.RenderTransform = bannerScale;
+                    var bannerStack = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center };
+                    bannerStack.Children.Add(new TextBlock
+                    {
+                        Text = "🏆",
+                        FontSize = 42,
+                        HorizontalAlignment = HorizontalAlignment.Center
+                    });
+                    bannerStack.Children.Add(new TextBlock
+                    {
+                        Text = "MILESTONE CLOSED!",
+                        FontSize = 22,
+                        FontWeight = FontWeights.Black,
+                        Foreground = new SolidColorBrush(Color.FromRgb(0x11, 0x11, 0x1B)),
+                        HorizontalAlignment = HorizontalAlignment.Center
+                    });
+                    bannerStack.Children.Add(new TextBlock
+                    {
+                        Text = milestoneTitle.Length > 40 ? milestoneTitle.Substring(0, 37) + "…" : milestoneTitle,
+                        FontSize = 16,
+                        FontWeight = FontWeights.Bold,
+                        Foreground = new SolidColorBrush(Color.FromArgb(0xCC, 0x11, 0x11, 0x1B)),
+                        HorizontalAlignment = HorizontalAlignment.Center,
+                        Margin = new Thickness(0, 4, 0, 0)
+                    });
+                    bannerStack.Children.Add(new TextBlock
+                    {
+                        Text = PartyPhrases[Rng.Next(PartyPhrases.Length)],
+                        FontSize = 14,
+                        FontWeight = FontWeights.SemiBold,
+                        Foreground = new SolidColorBrush(Color.FromArgb(0xAA, 0x11, 0x11, 0x1B)),
+                        HorizontalAlignment = HorizontalAlignment.Center,
+                        Margin = new Thickness(0, 6, 0, 0)
+                    });
+                    bannerBorder.Child = bannerStack;
+
+                    bannerBorder.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+                    double bw = bannerBorder.DesiredSize.Width;
+                    Canvas.SetLeft(bannerBorder, (winW - bw) / 2);
+                    Canvas.SetTop(bannerBorder, winH * 0.18);
+                    canvas.Children.Add(bannerBorder);
+
+                    // Banner slam-in
+                    var bannerOpacity = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(200)) { BeginTime = TimeSpan.FromMilliseconds(300) };
+                    var bannerPop = new DoubleAnimation(0.1, 1.1, TimeSpan.FromMilliseconds(500))
+                    {
+                        BeginTime = TimeSpan.FromMilliseconds(300),
+                        EasingFunction = new ElasticEase { Oscillations = 2, Springiness = 4 }
+                    };
+                    bannerBorder.BeginAnimation(UIElement.OpacityProperty, bannerOpacity);
+                    bannerScale.BeginAnimation(ScaleTransform.ScaleXProperty, bannerPop);
+                    bannerScale.BeginAnimation(ScaleTransform.ScaleYProperty, bannerPop);
+
+                    // ── 3. ALL CRITTERS DANCING ON STAGE ──
+                    double stageY = winH * 0.52;
+                    double stageStartX = (winW - 5 * 100) / 2;
+
+                    string[] partyEmojis = { "👑", "🎈", "🎉", "🎺", "⭐", "🥳", "💃", "🕺" };
+
+                    for (int i = 0; i < 5; i++)
+                    {
+                        var (critter, _) = BuildMascot(i);
+
+                        // Party hat / decoration above
+                        var decor = new TextBlock
+                        {
+                            Text = partyEmojis[i],
+                            FontSize = 18,
+                            Margin = new Thickness(16, -22, 0, 0)
+                        };
+                        if (critter is Canvas c) c.Children.Add(decor);
+
+                        double posX = stageStartX + i * 100;
+                        double baseScale = 2.0;
+
+                        var group = new TransformGroup();
+                        var scaleT = new ScaleTransform(baseScale, baseScale);
+                        var translateT = new TranslateTransform();
+                        group.Children.Add(scaleT);
+                        group.Children.Add(translateT);
+                        critter.RenderTransform = group;
+                        critter.RenderTransformOrigin = new Point(0.5, 1.0);
+                        critter.Opacity = 0;
+
+                        Canvas.SetLeft(critter, posX);
+                        Canvas.SetTop(critter, stageY);
+                        canvas.Children.Add(critter);
+
+                        int delay = 400 + i * 150;
+
+                        // Pop in from below
+                        var popIn = new DoubleAnimation(60, 0, TimeSpan.FromMilliseconds(400))
+                        {
+                            BeginTime = TimeSpan.FromMilliseconds(delay),
+                            EasingFunction = new BackEase { Amplitude = 0.8, EasingMode = EasingMode.EaseOut }
+                        };
+                        translateT.BeginAnimation(TranslateTransform.YProperty, popIn);
+                        var fadeIn = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(200)) { BeginTime = TimeSpan.FromMilliseconds(delay) };
+                        critter.BeginAnimation(UIElement.OpacityProperty, fadeIn);
+
+                        // DANCING! — continuous bounce / hop
+                        var danceY = new DoubleAnimation(0, -20 - Rng.Next(15), TimeSpan.FromMilliseconds(250 + Rng.Next(150)))
+                        {
+                            AutoReverse = true,
+                            RepeatBehavior = new RepeatBehavior(TimeSpan.FromMilliseconds(6500)),
+                            BeginTime = TimeSpan.FromMilliseconds(delay + 400),
+                            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+                        };
+                        translateT.BeginAnimation(TranslateTransform.YProperty, danceY);
+
+                        // Side-to-side sway
+                        var swayX = new DoubleAnimation(-12, 12, TimeSpan.FromMilliseconds(400 + Rng.Next(200)))
+                        {
+                            AutoReverse = true,
+                            RepeatBehavior = new RepeatBehavior(TimeSpan.FromMilliseconds(6500)),
+                            BeginTime = TimeSpan.FromMilliseconds(delay + 500)
+                        };
+                        translateT.BeginAnimation(TranslateTransform.XProperty, swayX);
+
+                        // Squash-and-stretch dance pulse
+                        var squashX = new DoubleAnimation(baseScale, baseScale * 1.15, TimeSpan.FromMilliseconds(200 + Rng.Next(100)))
+                        {
+                            AutoReverse = true,
+                            RepeatBehavior = new RepeatBehavior(TimeSpan.FromMilliseconds(6500)),
+                            BeginTime = TimeSpan.FromMilliseconds(delay + 400)
+                        };
+                        var squashY = new DoubleAnimation(baseScale, baseScale * 0.85, TimeSpan.FromMilliseconds(200 + Rng.Next(100)))
+                        {
+                            AutoReverse = true,
+                            RepeatBehavior = new RepeatBehavior(TimeSpan.FromMilliseconds(6500)),
+                            BeginTime = TimeSpan.FromMilliseconds(delay + 400)
+                        };
+                        scaleT.BeginAnimation(ScaleTransform.ScaleXProperty, squashX);
+                        scaleT.BeginAnimation(ScaleTransform.ScaleYProperty, squashY);
+                    }
+
+                    // ── 4. CONFETTI CANNON WAVES (multiple timed bursts) ──
+                    for (int wave = 0; wave < 8; wave++)
+                    {
+                        int waveDelay = 500 + wave * 450;
+                        var confettiTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(waveDelay) };
+                        confettiTimer.Tick += (_, _) =>
+                        {
+                            confettiTimer.Stop();
+                            double cx = Rng.Next(80, (int)(winW - 80));
+                            double cy = Rng.Next(60, (int)(winH * 0.5));
+                            SpawnConfettiBurst(canvas, new Point(cx, cy), 40, isEpic: true);
+                        };
+                        confettiTimer.Start();
+                    }
+
+                    // ── 5. RISING BALLOONS ──
+                    for (int b = 0; b < 14; b++)
+                    {
+                        int balloonDelay = 300 + b * 200;
+                        var balloonTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(balloonDelay) };
+                        balloonTimer.Tick += (_, _) =>
+                        {
+                            balloonTimer.Stop();
+                            SpawnBalloon(canvas, winW, winH);
+                        };
+                        balloonTimer.Start();
+                    }
+
+                    // ── 6. FIREWORK STARBURSTS ──
+                    for (int f = 0; f < 5; f++)
+                    {
+                        int fwDelay = 800 + f * 700;
+                        var fwTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(fwDelay) };
+                        fwTimer.Tick += (_, _) =>
+                        {
+                            fwTimer.Stop();
+                            SpawnFireworkBurst(canvas, new Point(
+                                Rng.Next(100, (int)(winW - 100)),
+                                Rng.Next(60, (int)(winH * 0.45))));
+                        };
+                        fwTimer.Start();
+                    }
+
+                    // ── 7. STREAMERS (falling ribbons from above) ──
+                    for (int s = 0; s < 20; s++)
+                    {
+                        int sDelay = 400 + s * 130;
+                        var sTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(sDelay) };
+                        sTimer.Tick += (_, _) =>
+                        {
+                            sTimer.Stop();
+                            SpawnStreamer(canvas, winW, winH);
+                        };
+                        sTimer.Start();
+                    }
+
+                    // ── 8. FADE OUT & CLEANUP ──
+                    var fadeOutTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(6200) };
+                    fadeOutTimer.Tick += (_, _) =>
+                    {
+                        fadeOutTimer.Stop();
+                        var fadeAll = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(800));
+                        fadeAll.Completed += (__, ___) => rootGrid.Children.Remove(canvas);
+                        canvas.BeginAnimation(UIElement.OpacityProperty, fadeAll);
+                    };
+                    fadeOutTimer.Start();
+                }
+                catch { }
+            });
+        }
+
+        private static void SpawnBalloon(Canvas canvas, double winW, double winH)
+        {
+            string[] balloonEmoji = { "🎈", "🎈", "🎈", "🎈", "🟡", "🟣", "🔵", "🟢", "🔴" };
+            var balloon = new TextBlock
+            {
+                Text = balloonEmoji[Rng.Next(balloonEmoji.Length)],
+                FontSize = 26 + Rng.Next(14),
+                Opacity = 0.85
+            };
+            double startX = Rng.Next(30, (int)(winW - 50));
+            Canvas.SetLeft(balloon, startX);
+            Canvas.SetTop(balloon, winH + 20);
+            canvas.Children.Add(balloon);
+
+            var riseT = new TranslateTransform();
+            balloon.RenderTransform = riseT;
+
+            var rise = new DoubleAnimation(0, -(winH + 80), TimeSpan.FromMilliseconds(3000 + Rng.Next(2000)))
+            {
+                EasingFunction = new SineEase { EasingMode = EasingMode.EaseIn }
+            };
+            var drift = new DoubleAnimation(0, Rng.Next(-60, 60), TimeSpan.FromMilliseconds(2500 + Rng.Next(1500)))
+            {
+                AutoReverse = true,
+                RepeatBehavior = RepeatBehavior.Forever
+            };
+            riseT.BeginAnimation(TranslateTransform.YProperty, rise);
+            riseT.BeginAnimation(TranslateTransform.XProperty, drift);
+
+            var fade = new DoubleAnimation(0.85, 0, TimeSpan.FromMilliseconds(600))
+            {
+                BeginTime = TimeSpan.FromMilliseconds(2800 + Rng.Next(1500))
+            };
+            balloon.BeginAnimation(UIElement.OpacityProperty, fade);
+        }
+
+        private static void SpawnFireworkBurst(Canvas canvas, Point center)
+        {
+            int rays = 16 + Rng.Next(8);
+            var sparkColor = ConfettiColors[Rng.Next(ConfettiColors.Length)];
+
+            for (int r = 0; r < rays; r++)
+            {
+                double angle = (r / (double)rays) * 2 * Math.PI;
+                double speed = 60 + Rng.Next(100);
+                double destX = center.X + Math.Cos(angle) * speed;
+                double destY = center.Y + Math.Sin(angle) * speed;
+
+                var sparkle = new Ellipse
+                {
+                    Width = 4 + Rng.Next(4),
+                    Height = 4 + Rng.Next(4),
+                    Fill = new SolidColorBrush(sparkColor)
+                };
+                Canvas.SetLeft(sparkle, center.X);
+                Canvas.SetTop(sparkle, center.Y);
+                canvas.Children.Add(sparkle);
+
+                var trans = new TranslateTransform();
+                sparkle.RenderTransform = trans;
+
+                var moveX = new DoubleAnimation(0, destX - center.X, TimeSpan.FromMilliseconds(500 + Rng.Next(300)))
+                {
+                    EasingFunction = new CircleEase { EasingMode = EasingMode.EaseOut }
+                };
+                var moveY = new DoubleAnimation(0, destY - center.Y + 30, TimeSpan.FromMilliseconds(600 + Rng.Next(300)))
+                {
+                    EasingFunction = new CircleEase { EasingMode = EasingMode.EaseOut }
+                };
+                var fade = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(400))
+                {
+                    BeginTime = TimeSpan.FromMilliseconds(300 + Rng.Next(200))
+                };
+                trans.BeginAnimation(TranslateTransform.XProperty, moveX);
+                trans.BeginAnimation(TranslateTransform.YProperty, moveY);
+                sparkle.BeginAnimation(UIElement.OpacityProperty, fade);
+            }
+
+            // Central flash
+            var flash = new Ellipse
+            {
+                Width = 30,
+                Height = 30,
+                Fill = new RadialGradientBrush(Colors.White, Colors.Transparent),
+                RenderTransformOrigin = new Point(0.5, 0.5)
+            };
+            Canvas.SetLeft(flash, center.X - 15);
+            Canvas.SetTop(flash, center.Y - 15);
+            canvas.Children.Add(flash);
+
+            var flashScale = new ScaleTransform(0.3, 0.3);
+            flash.RenderTransform = flashScale;
+            var flashPop = new DoubleAnimation(0.3, 3.0, TimeSpan.FromMilliseconds(300));
+            var flashFade = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(300));
+            flashScale.BeginAnimation(ScaleTransform.ScaleXProperty, flashPop);
+            flashScale.BeginAnimation(ScaleTransform.ScaleYProperty, flashPop);
+            flash.BeginAnimation(UIElement.OpacityProperty, flashFade);
+        }
+
+        private static void SpawnStreamer(Canvas canvas, double winW, double winH)
+        {
+            var color = ConfettiColors[Rng.Next(ConfettiColors.Length)];
+            double streamerWidth = 4 + Rng.Next(5);
+            double streamerHeight = 30 + Rng.Next(40);
+
+            var streamer = new Border
+            {
+                Width = streamerWidth,
+                Height = streamerHeight,
+                Background = new SolidColorBrush(color),
+                CornerRadius = new CornerRadius(streamerWidth / 2),
+                Opacity = 0.8
+            };
+            double startX = Rng.Next(20, (int)(winW - 20));
+            Canvas.SetLeft(streamer, startX);
+            Canvas.SetTop(streamer, -streamerHeight);
+            canvas.Children.Add(streamer);
+
+            var trans = new TransformGroup();
+            var translate = new TranslateTransform();
+            var rotate = new RotateTransform(Rng.Next(-30, 30));
+            trans.Children.Add(rotate);
+            trans.Children.Add(translate);
+            streamer.RenderTransform = trans;
+            streamer.RenderTransformOrigin = new Point(0.5, 0.5);
+
+            var fall = new DoubleAnimation(0, winH + streamerHeight + 20, TimeSpan.FromMilliseconds(2500 + Rng.Next(2000)))
+            {
+                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn }
+            };
+            var sway = new DoubleAnimation(0, Rng.Next(-50, 50), TimeSpan.FromMilliseconds(800 + Rng.Next(600)))
+            {
+                AutoReverse = true,
+                RepeatBehavior = RepeatBehavior.Forever
+            };
+            var spin = new DoubleAnimation(Rng.Next(-30, 30), Rng.Next(-180, 180), TimeSpan.FromMilliseconds(2000 + Rng.Next(1500)));
+            translate.BeginAnimation(TranslateTransform.YProperty, fall);
+            translate.BeginAnimation(TranslateTransform.XProperty, sway);
+            rotate.BeginAnimation(RotateTransform.AngleProperty, spin);
+
+            var fade = new DoubleAnimation(0.8, 0, TimeSpan.FromMilliseconds(500))
+            {
+                BeginTime = TimeSpan.FromMilliseconds(2200 + Rng.Next(1500))
+            };
+            streamer.BeginAnimation(UIElement.OpacityProperty, fade);
         }
     }
 }

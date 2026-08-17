@@ -579,7 +579,7 @@
                                      Background="{StaticResource Surface0Brush}"
                                      TextChanged="ManifestSearchBox_TextChanged"/>
                             <TextBlock IsHitTestVisible="False"
-                                       Text="Search tests (name or area)"
+                                       Text="Search tests (#git, name, area)"
                                        FontSize="12" Margin="8,0,0,0"
                                        VerticalAlignment="Center" HorizontalAlignment="Left"
                                        Foreground="{StaticResource Subtext1Brush}">

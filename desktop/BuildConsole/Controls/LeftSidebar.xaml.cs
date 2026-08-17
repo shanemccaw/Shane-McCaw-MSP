@@ -566,6 +566,7 @@ namespace BuildConsole.Controls
 
             string search = (ManifestSearchBox?.Text ?? "").Trim();
             bool searching = search.Length > 0;
+            string searchClean = search.TrimStart('#');
 
             ManifestFilesTree.Items.Clear();
 
@@ -579,8 +580,21 @@ namespace BuildConsole.Controls
                 bool areaMatches = searching && group.Key.Contains(search, StringComparison.OrdinalIgnoreCase);
 
                 var leaves = group
-                    .Where(e => !searching || areaMatches
-                                || e.FileName.Contains(search, StringComparison.OrdinalIgnoreCase))
+                    .Where(e =>
+                    {
+                        if (!searching) return true;
+                        if (areaMatches) return true;
+                        if (e.FileName.Contains(search, StringComparison.OrdinalIgnoreCase)) return true;
+                        if (!string.IsNullOrEmpty(e.Feature) && e.Feature.Contains(search, StringComparison.OrdinalIgnoreCase)) return true;
+                        if (e.IssueNumber.HasValue)
+                        {
+                            string issueStr = e.IssueNumber.Value.ToString();
+                            if (issueStr.Contains(searchClean, StringComparison.OrdinalIgnoreCase) ||
+                                ($"#{issueStr}").Contains(search, StringComparison.OrdinalIgnoreCase))
+                                return true;
+                        }
+                        return false;
+                    })
                     .OrderByDescending(e => e.CreatedUtc)
                     .ThenBy(e => e.FileName, StringComparer.OrdinalIgnoreCase)
                     .ToList();
@@ -692,6 +706,30 @@ namespace BuildConsole.Controls
             };
             dp.Children.Add(statusBlock);
 
+            if (leaf.IssueNumber.HasValue)
+            {
+                var issueBadge = new Border
+                {
+                    Background = (Brush)FindResource("Surface0Brush"),
+                    CornerRadius = new CornerRadius(3),
+                    Padding = new Thickness(4, 1, 4, 1),
+                    Margin = new Thickness(0, 0, 6, 0),
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                issueBadge.Child = new TextBlock
+                {
+                    Text = $"#{leaf.IssueNumber.Value}",
+                    FontSize = 10,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = (Brush)FindResource("PeachBrush")
+                };
+                dp.Children.Add(issueBadge);
+            }
+
+            string tooltipText = leaf.IssueNumber.HasValue
+                ? $"#{leaf.IssueNumber.Value} · {leaf.Feature}\n{leaf.FileName}\n{leaf.RunSummary}"
+                : $"{leaf.FileName}\n{leaf.RunSummary}";
+
             dp.Children.Add(new TextBlock
             {
                 Text = leaf.FileName,
@@ -699,7 +737,7 @@ namespace BuildConsole.Controls
                 Foreground = (Brush)FindResource("TextBrush"),
                 TextTrimming = TextTrimming.CharacterEllipsis,
                 VerticalAlignment = VerticalAlignment.Center,
-                ToolTip = $"{leaf.FileName}\n{leaf.RunSummary}"
+                ToolTip = tooltipText
             });
             return dp;
         }
@@ -1437,11 +1475,14 @@ namespace BuildConsole.Controls
         /// BlockedEnrichMinInterval regardless of how often the caller asks
         /// - the badge can be up to that stale, which is a fair trade for
         /// not burning the shared rate limit on redundant re-checks of
-        /// issues whose blocked state almost never actually changes minute
-        /// to minute.
+        /// <summary>
+        /// Git #845 (Git Board Phase 7) — real still-OPEN blocked_by dependency
+        /// check (EnrichBlockedStatusAsync), cached for 3 minutes so frequent
+        /// board polls (every 10s) don't spam GitHub's REST API.
         /// </summary>
         private DateTime _lastBlockedEnrichUtc = DateTime.MinValue;
         private static readonly TimeSpan BlockedEnrichMinInterval = TimeSpan.FromMinutes(3);
+        private HashSet<int>? _knownBlockedIssueNumbers;
 
         private async System.Threading.Tasks.Task EnrichBlockedStatusAsync(string pat)
         {
@@ -1454,6 +1495,7 @@ namespace BuildConsole.Controls
 
             var client = new GitHubApiClient(pat);
             using var gate = new System.Threading.SemaphoreSlim(6);
+            var newlyBlocked = new List<(GitIssue issue, int? blockerNumber)>();
 
             await System.Threading.Tasks.Task.WhenAll(openIssues.Select(async issue =>
             {
@@ -1461,15 +1503,54 @@ namespace BuildConsole.Controls
                 try
                 {
                     var blocker = await client.GetOpenBlockedByAsync(issue.IssueNumber);
-                    issue.IsBlocked = blocker != null;
+                    bool wasBlocked = issue.IsBlocked;
+                    issue.IsBlocked = blocker != null || issue.IsBlocked;
                     issue.BlockedByNumber = blocker?.Number;
                     issue.BlockedByTitle = blocker?.Title;
+
+                    if (issue.IsBlocked && _knownBlockedIssueNumbers != null && !_knownBlockedIssueNumbers.Contains(issue.IssueNumber))
+                    {
+                        lock (newlyBlocked)
+                        {
+                            newlyBlocked.Add((issue, blocker?.Number));
+                        }
+                    }
                 }
                 catch { /* best-effort — worst case this one issue just doesn't show a Blocked badge */ }
                 finally { gate.Release(); }
             }));
 
+            _knownBlockedIssueNumbers = openIssues.Where(i => i.IsBlocked).Select(i => i.IssueNumber).ToHashSet();
+
             RenderIssuesTree(_currentFilter == "Done" ? "All" : _currentFilter);
+
+            // If issues became blocked remotely (e.g. by Claude on GitHub), send in the Whammy!
+            if (newlyBlocked.Count > 0)
+            {
+                ActivityLog.Log("git-board.whammy", $"Detected {newlyBlocked.Count} issue(s) blocked remotely — sending in the Whammy!");
+                int delay = 0;
+                foreach (var (bIssue, blockerNum) in newlyBlocked)
+                {
+                    int curDelay = delay;
+                    var tvi = FindIssueTreeViewItem(IssuesTree.Items, bIssue.IssueNumber);
+                    string label = $"#{bIssue.IssueNumber} {bIssue.RawTitle}";
+                    if (curDelay == 0)
+                    {
+                        IssueChompAnimation.PlayWhammy(tvi, label, blockerNum);
+                    }
+                    else
+                    {
+                        var wTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(curDelay) };
+                        wTimer.Tick += (_, _) =>
+                        {
+                            wTimer.Stop();
+                            IssueChompAnimation.PlayWhammy(tvi, label, blockerNum);
+                        };
+                        wTimer.Start();
+                    }
+                    delay += 800;
+                }
+            }
         }
 
         /// <summary>
@@ -1598,6 +1679,7 @@ namespace BuildConsole.Controls
                         Priority = it.IsTodo ? "HIGH" : "MED",
                         Status = it.IsClosed ? "CLOSED" : "OPEN",
                         IsComplete = it.IsComplete,
+                        IsBlocked = it.IsBlocked,
                         SqlPath = DeriveSqlPath(it.Body),
                         Body = it.Body,
                         DatabaseId = it.DatabaseId,
@@ -2421,6 +2503,47 @@ namespace BuildConsole.Controls
                         }
                     };
                     cmMilestone.Items.Add(miNewEpicAssign);
+
+                    // ── Close Milestone ──────────────────────────────────────────
+                    if (m.GithubNumber.HasValue)
+                    {
+                        cmMilestone.Items.Add(new Separator());
+
+                        var miCloseMilestone = new MenuItem { Header = "🎉 Close Milestone…" };
+                        miCloseMilestone.Click += async (s, e) =>
+                        {
+                            var result = MessageBox.Show(
+                                $"Close milestone \"{m.Title}\"?\n\nThis will mark it as closed on GitHub and trigger a HUGE celebration!",
+                                "Close Milestone",
+                                MessageBoxButton.YesNo,
+                                MessageBoxImage.Question);
+
+                            if (result != MessageBoxResult.Yes) return;
+
+                            try
+                            {
+                                var settings = BuildConsole.Services.BuildConsoleSettings.Load();
+                                if (!settings.HasGitHubPat) return;
+                                var client = new GitHubApiClient(settings.GitHubPat);
+                                await client.CloseMilestoneAsync(m.GithubNumber.Value);
+                                ActivityLog.Log("git-board.close-milestone", $"Milestone \"{m.Title}\" (#{m.GithubNumber.Value}) closed!");
+                                ToastEngine.Success("🎉 Milestone Closed!", $"\"{m.Title}\" has been closed!");
+
+                                // 🎉🎊🥳 THE BIG PARTY! 🥳🎊🎉
+                                IssueChompAnimation.PlayMilestoneClosedParty(milestoneItem, m.Title);
+
+                                _lastInProgressSignature = null;
+                                PopulateGitTrackerBoard();
+                            }
+                            catch (Exception ex)
+                            {
+                                ActivityLog.Log("git-board.close-milestone", $"Failed to close milestone \"{m.Title}\": {ex.Message}");
+                                ToastEngine.Error("Git Board", $"Couldn't close milestone: {ex.Message}");
+                            }
+                        };
+                        cmMilestone.Items.Add(miCloseMilestone);
+                    }
+
                     milestoneItem.ContextMenu = cmMilestone;
 
                     milestoneItem.Collapsed += (s, e) => { if (ReferenceEquals(e.OriginalSource, milestoneItem)) _collapsedNodeKeys.Add(milestoneKey); };
@@ -2860,6 +2983,9 @@ namespace BuildConsole.Controls
                     var client = new GitHubApiClient(settings.GitHubPat);
                     await client.SetBlockedByAsync(issue.IssueNumber, blocker.Number);
                     ActivityLog.Log("git-board.set-blocked-by", $"#{issue.IssueNumber} set blocked by #{blocker.Number}");
+
+                    // Whammy Blocked Animation!
+                    IssueChompAnimation.PlayWhammy(tvi, $"#{issue.IssueNumber} {issue.RawTitle}", blocker.Number);
                 }
                 catch (Exception ex)
                 {

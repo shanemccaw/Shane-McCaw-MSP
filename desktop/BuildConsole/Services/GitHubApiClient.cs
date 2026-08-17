@@ -129,6 +129,7 @@ namespace BuildConsole.Services
         public bool IsComplete => Labels.Any(l => string.Equals(l.Name, "complete", StringComparison.OrdinalIgnoreCase));
         public bool IsTodo => Labels.Any(l => string.Equals(l.Name, "Shane To-Do", StringComparison.OrdinalIgnoreCase));
         public bool HasInFlightLabel => Labels.Any(l => string.Equals(l.Name, "in-flight", StringComparison.OrdinalIgnoreCase));
+        public bool IsBlocked => Labels.Any(l => string.Equals(l.Name, "blocked", StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>
@@ -431,6 +432,17 @@ namespace BuildConsole.Services
         public async Task SetIssueStateAsync(int number, bool close)
         {
             using var req = new HttpRequestMessage(HttpMethod.Patch, $"repos/{Owner}/{Repo}/issues/{number}")
+            {
+                Content = JsonContent.Create(new { state = close ? "closed" : "open" }),
+            };
+            var res = await _http.SendAsync(req);
+            res.EnsureSuccessStatusCode();
+        }
+
+        /// <summary>Closes (or reopens) a real GitHub milestone via `PATCH /repos/{o}/{r}/milestones/{n}`.</summary>
+        public async Task CloseMilestoneAsync(int milestoneNumber, bool close = true)
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Patch, $"repos/{Owner}/{Repo}/milestones/{milestoneNumber}")
             {
                 Content = JsonContent.Create(new { state = close ? "closed" : "open" }),
             };

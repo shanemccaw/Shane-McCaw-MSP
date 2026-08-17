@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
@@ -593,6 +594,56 @@ namespace BuildConsole
         }
 
         private void BtnClear_Click(object sender, RoutedEventArgs e) => Clear();
+
+        private void BtnEditTest_Click(object sender, RoutedEventArgs e)
+        {
+            if (_lastManifest != null)
+            {
+                var viewer = new ManifestViewerWindow(_lastManifest, showChartFirst: false) { Owner = this };
+                viewer.Show();
+                return;
+            }
+
+            // Fallback: if no manifest is currently loaded, allow picking one to view/edit
+            var repoRoot = AppDomain.CurrentDomain.BaseDirectory;
+            var testManifestsDir = System.IO.Path.Combine(repoRoot, "test-manifests");
+            if (!System.IO.Directory.Exists(testManifestsDir))
+            {
+                var parent = System.IO.Directory.GetParent(repoRoot)?.Parent?.Parent?.Parent?.FullName;
+                if (parent != null && System.IO.Directory.Exists(System.IO.Path.Combine(parent, "test-manifests")))
+                    testManifestsDir = System.IO.Path.Combine(parent, "test-manifests");
+            }
+
+            var ofd = new Microsoft.Win32.OpenFileDialog
+            {
+                Title = "Select Test Manifest to Edit",
+                Filter = "Test Manifests (*.json)|*.json|All Files (*.*)|*.*",
+                InitialDirectory = System.IO.Directory.Exists(testManifestsDir) ? testManifestsDir : repoRoot
+            };
+
+            if (ofd.ShowDialog() == true)
+            {
+                try
+                {
+                    var manifest = Services.TestManifest.LoadFromFile(ofd.FileName);
+                    var viewer = new ManifestViewerWindow(manifest, showChartFirst: false) { Owner = this };
+                    viewer.Show();
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Failed to load manifest: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+            }
+        }
+
+        private void StepsList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+        {
+            if (_lastManifest != null)
+            {
+                var viewer = new ManifestViewerWindow(_lastManifest, showChartFirst: false) { Owner = this };
+                viewer.Show();
+            }
+        }
 
         private void BtnRetry_Click(object sender, RoutedEventArgs e)
         {
