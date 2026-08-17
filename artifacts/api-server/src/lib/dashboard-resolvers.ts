@@ -94,8 +94,8 @@ import { getRecentEngineSnapshots } from "./tenant-engine-snapshots.ts";
 import { runSlaEngineForTenant } from "./sla-engine.ts";
 import { runScopeCreepEngineForTenant } from "./scope-creep-engine.ts";
 import { logger } from "./logger.ts";
-import { computeSkuCostBreakdown, centsToDollars } from "./cost-engine.ts";
-import { resolveLicenseWasteCounts } from "./license-waste-source.ts";
+import { computeSkuCostBreakdown, centsToDollars, lookupSkuMonthlyPriceCents } from "./cost-engine.ts";
+import { resolveLicenseWasteCounts, paidSeatFiguresFromLines } from "./license-waste-source.ts";
 import { evaluateDocGateCoverage } from "./doc-gate-coverage";
 
 const log = logger.child({ channel: "engine.dashboard" });
@@ -696,7 +696,26 @@ async function resolveMonitorAggregation(def: MetricDef, tenantId: string): Prom
         "no complete /subscribedSkus response with unused seats for this tenant (every seat assigned, or no such check collected)",
       );
     }
-    const breakdown = await computeSkuCostBreakdown(source.counts);
+    // #333/#1104: restrict to SKUs with a real non-zero price on file before
+    // pricing anything. Raw source.counts includes free/trial SKUs (e.g.
+    // FLOW_FREE, POWER_BI_STANDARD) whose $0 buckets would render then get
+    // filtered client-side, leaving a "broken/empty panel" with no honest
+    // reason why. paidSeatFiguresFromLines also reports what was excluded.
+    const priceBySku = new Map<string, number | null>();
+    for (const line of source.lines) {
+      if (priceBySku.has(line.skuPartNumber)) continue;
+      const { priceCents } = await lookupSkuMonthlyPriceCents({ skuPartNumber: line.skuPartNumber });
+      priceBySku.set(line.skuPartNumber, priceCents);
+    }
+    const figures = paidSeatFiguresFromLines(source.lines, priceBySku);
+    if (Object.keys(figures.paidCounts).length === 0) {
+      return notAvailable(
+        def,
+        "no_priced_waste",
+        "every unused seat is on an unpriced/free/trial SKU — no genuinely priced waste to report",
+      );
+    }
+    const breakdown = await computeSkuCostBreakdown(figures.paidCounts);
     const buckets = breakdown.lines.map((l) => ({
       label: l.displayName,
       value: l.priceKnown ? centsToDollars(l.totalMonthlyPriceCents as number) : 0,
@@ -712,6 +731,8 @@ async function resolveMonitorAggregation(def: MetricDef, tenantId: string): Prom
       // The arithmetic behind every bucket — bought vs assigned per SKU.
       seatLines: source.lines,
       totalEnabledSeats: source.totalEnabledSeats,
+      // #333/#1104: SKUs left out of the paid-only figures above, and why.
+      excludedUnpricedSkus: figures.excluded,
     });
   }
 
