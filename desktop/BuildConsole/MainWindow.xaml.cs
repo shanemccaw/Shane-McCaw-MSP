@@ -1881,13 +1881,40 @@ namespace BuildConsole
             });
             headerPanel.Children.Add(new TextBlock
             {
-                Text = chat.Title, FontSize = 13, Margin = new Thickness(0, 0, 8, 0),
+                Text = chat.Title, FontSize = 13, Margin = new Thickness(0, 0, 6, 0),
                 VerticalAlignment = VerticalAlignment.Center, Foreground = (Brush)FindResource("TextBrush")
             });
+
+            var boltBtn = new Button
+            {
+                Content = "⚡",
+                Style = (Style)FindResource("IconButton"),
+                FontSize = 11,
+                Padding = new Thickness(2, 0, 2, 0),
+                Margin = new Thickness(0, 0, 2, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+                Cursor = Cursors.Hand
+            };
+            void UpdateBoltAppearance()
+            {
+                bool inProgress = BuildConsole.Services.FocusModeService.Instance.IsChatInProgress(chat.ConversationId);
+                boltBtn.Foreground = inProgress ? (Brush)FindResource("YellowBrush") : (Brush)FindResource("Subtext0Brush");
+                boltBtn.ToolTip = inProgress
+                    ? "In Progress (Active in Focus Mode) — click to unmark"
+                    : "Mark as In Progress (keep accessible in Focus Mode)";
+            }
+            UpdateBoltAppearance();
+            boltBtn.Click += (s, e) =>
+            {
+                BuildConsole.Services.FocusModeService.Instance.ToggleChatInProgress(chat.ConversationId, chat.Title, chat.ClaudeUrl);
+                UpdateBoltAppearance();
+            };
+            headerPanel.Children.Add(boltBtn);
+
             var closeBtn = new Button
             {
                 Content = "✕", Style = (Style)FindResource("IconButton"), FontSize = 10,
-                Padding = new Thickness(3, 1, 3, 1), Margin = new Thickness(4, 0, 0, 0),
+                Padding = new Thickness(3, 1, 3, 1), Margin = new Thickness(2, 0, 0, 0),
                 ToolTip = "Close Tab", VerticalAlignment = VerticalAlignment.Center
             };
             headerPanel.Children.Add(closeBtn);
@@ -4979,10 +5006,37 @@ namespace BuildConsole
 
             // Capture the deferred review dialog (if any) so the toast click can pop it.
             Action? showReviewDialog = reviewResult?.ShowReviewDialog;
+            int? issueNum = runResult.Issue;
             Action openAction = () =>
             {
-                runner.RestoreToForeground();
-                showReviewDialog?.Invoke();
+                try
+                {
+                    if (runner != null && runner.IsLoaded)
+                    {
+                        runner.RestoreToForeground();
+                        showReviewDialog?.Invoke();
+                    }
+                    else
+                    {
+                        var freshRunner = EnsureTestRunnerWindow(background: false);
+                        freshRunner.RestoreToForeground();
+                        showReviewDialog?.Invoke();
+                    }
+                }
+                catch
+                {
+                    try
+                    {
+                        var freshRunner = EnsureTestRunnerWindow(background: false);
+                        freshRunner.RestoreToForeground();
+                    }
+                    catch { }
+                }
+
+                if (issueNum.HasValue)
+                {
+                    try { _ = OpenGitDetailByNumberAsync(issueNum.Value); } catch { }
+                }
             };
 
             // Durable fallback for the toast's auto-dismiss: ALSO record this result in the Build Queue
@@ -5054,7 +5108,26 @@ namespace BuildConsole
             string attentionKey = $"post-build-deploy:{r.QueueItemId}";
             Action onOpen = () =>
             {
-                try { Activate(); } catch { /* window teardown */ }
+                try
+                {
+                    Activate();
+                    if (r.FailedManifests.Count > 0)
+                    {
+                        var runnerWin = EnsureTestRunnerWindow(background: false);
+                        runnerWin.RestoreToForeground();
+                    }
+                    else
+                    {
+                        if (_buildWatch == null) ToggleBuildWatch();
+                        else _buildWatch.Activate();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    BuildConsole.Services.ActivityLog.Log("testing.post-build-deploy",
+                        $"Needs-Attention open action threw: {ex.Message}");
+                }
+
                 BuildConsole.Services.ActivityLog.Log("testing.post-build-deploy",
                     $"Needs-Attention opened for build #{r.QueueItemId} (deploy {r.OldCommit}->{r.NewCommit}, tests {r.TestsPassed}/{r.TestsTotal}).");
             };
@@ -5196,6 +5269,9 @@ namespace BuildConsole
         /// </summary>
         private void StartShaneAppProtocolListener()
         {
+            BuildConsole.Services.ShaneAppStreamService.Instance.Attach(Dispatcher);
+            BuildConsole.Services.ShaneAppStreamService.Instance.StatusChanged += () => Dispatcher.Invoke(UpdateTopShaneAppIndicator);
+
             if (_shaneAppListener != null) return;
             _shaneAppListener = new BuildConsole.Services.ShaneAppProtocol();
             _shaneAppListener.Start(uri =>
@@ -5212,6 +5288,26 @@ namespace BuildConsole
                 _ = Dispatcher.BeginInvoke(new Action(async () => await HandleShaneAppUriAsync(pending!)));
             }
         }
+
+        private void UpdateTopShaneAppIndicator()
+        {
+            var svc = BuildConsole.Services.ShaneAppStreamService.Instance;
+            if (svc.IsRunning)
+            {
+                TopShaneAppIndicator.Visibility = Visibility.Visible;
+                var label = string.IsNullOrWhiteSpace(svc.CurrentAction) ? "RUNNING" : svc.CurrentAction.ToUpperInvariant();
+                if (label.Length > 20) label = label.Substring(0, 18) + "…";
+                TopShaneAppIndicatorText.Text = label;
+                TopShaneAppIndicator.ToolTip = $"shaneapp:// is executing: {svc.CurrentAction} — Click to view live streaming console";
+            }
+            else
+            {
+                TopShaneAppIndicator.Visibility = Visibility.Collapsed;
+            }
+        }
+
+        private void TopShaneAppIndicator_Click(object sender, MouseButtonEventArgs e) => StreamingConsoleWindow.OpenOrFocus();
+        private void OpenStreamingConsole_Click(object sender, RoutedEventArgs e) => StreamingConsoleWindow.OpenOrFocus();
 
         /// <summary>
         /// Handles one shaneapp:// invocation on the UI thread: logs it (source,
@@ -5245,13 +5341,6 @@ namespace BuildConsole
 
                 // runTest / uiTest → run a whole test manifest IN-PROCESS through the same
                 // RunManifestAsync pipeline Play Test uses (MainWindow.ShaneAppRunTest.cs).
-                // This dispatch route was LOST when a concurrent executeSql-local-Postgres
-                // rewrite of this method won on rebase — leaving HandleShaneAppRunTestAsync
-                // defined but never called, so runTest fell through to the "unsupported
-                // action" branch below and returned WITHOUT writing a result envelope (the
-                // silent no-op Shane hit: window activated, poll loop hung forever). Restored
-                // here, ahead of the executeSql gate. HandleShaneAppRunTestAsync guarantees a
-                // result envelope on every path (including its own top-level catch).
                 if (string.Equals(req.Action, "runTest", StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(req.Action, "uiTest", StringComparison.OrdinalIgnoreCase))
                 {
@@ -5261,47 +5350,62 @@ namespace BuildConsole
                     return;
                 }
 
+                // runPowerShell / executePowerShell / powershell → run PowerShell script and stream live stdout/stderr
+                if (string.Equals(req.Action, "runPowerShell", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(req.Action, "executePowerShell", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(req.Action, "powershell", StringComparison.OrdinalIgnoreCase))
+                {
+                    BuildConsole.Services.ActivityLog.Log(ch,
+                        $"Routing action '{req.Action}' to in-process PowerShell handler (src='{src}').");
+                    await HandleShaneAppPowerShellAsync(req, src, ch);
+                    return;
+                }
+
                 // runScan → trigger the REAL Copilot Readiness scan/assessment engine against a testbed
                 // tenant over HTTP, reusing the exact trigger the customer UI calls (POST
                 // /api/portal/assessment/debug-trigger-scan → runDiagnostics), enforcing the #965
                 // isTestbed gate, and writing the real findings/scores/pillar breakdown to a result
-                // envelope (MainWindow.ShaneAppRunScan.cs). Like runTest, it guarantees an envelope on
-                // every path so an agent polling the result file never hangs.
+                // envelope (MainWindow.ShaneAppRunScan.cs).
                 if (string.Equals(req.Action, "runScan", StringComparison.OrdinalIgnoreCase))
                 {
                     BuildConsole.Services.ActivityLog.Log(ch,
                         $"Routing action '{req.Action}' to runScan handler (src='{src}').");
+                    BuildConsole.Services.ShaneAppStreamService.Instance.BeginRun("Tenant Scan", $"Source: {src}");
                     await HandleShaneAppRunScanAsync(req, src, ch);
+                    BuildConsole.Services.ShaneAppStreamService.Instance.EndRun(true, "Scan completed");
                     return;
                 }
 
                 // executeScan → trigger exactly ONE real monitor check by its monitor_checks key
-                // against a testbed tenant, reusing Simulator Studio's own per-check run endpoint
-                // in-process (MainWindow.ShaneAppExecuteScan.cs). The granular sibling of runScan
-                // (which runs the whole aggregate scan). Testbed-gated (#965) and guarantees a
-                // result envelope on every path (including its own top-level catch), so an agent's
-                // poll never hangs.
+                // against a testbed tenant.
                 if (string.Equals(req.Action, "executeScan", StringComparison.OrdinalIgnoreCase))
                 {
                     BuildConsole.Services.ActivityLog.Log(ch,
                         $"Routing action '{req.Action}' to in-process executeScan handler (src='{src}').");
+                    BuildConsole.Services.ShaneAppStreamService.Instance.BeginRun($"Monitor Check: {req.Ref}", $"Source: {src}");
                     await HandleShaneAppExecuteScanAsync(req, src, ch);
+                    BuildConsole.Services.ShaneAppStreamService.Instance.EndRun(true, "Check completed");
                     return;
                 }
 
                 if (!string.Equals(req.Action, "executeSql", StringComparison.OrdinalIgnoreCase))
                 {
                     BuildConsole.Services.ActivityLog.Log(ch,
-                        $"Unsupported action '{req.Action}' — only executeSql / runTest / uiTest / runScan / executeScan are handled (other test execution goes over #898 HTTP, not this protocol). Ignoring (an unknown action has no known result path to write a failure envelope to).");
+                        $"Unsupported action '{req.Action}' — only executeSql / runTest / uiTest / runPowerShell / runScan / executeScan are handled. Ignoring.");
                     return;
                 }
+
+                var stream = BuildConsole.Services.ShaneAppStreamService.Instance;
+                stream.BeginRun($"SQL: {System.IO.Path.GetFileName(req.Ref ?? "query.sql")}", $"Source: {src}");
 
                 // Design: the payload NEVER rides in the URL — the URI carries only a
                 // short ref to a temp file the caller wrote the real SQL into.
                 if (string.IsNullOrWhiteSpace(req.Ref))
                 {
                     BuildConsole.Services.ActivityLog.Log(ch, "executeSql called with no ref= payload file — nothing to run.");
+                    stream.AppendLine("[SQL ERROR] no ref= payload file supplied", BuildConsole.Services.ShaneAppLogLevel.Error);
                     WriteShaneAppResult(req, ok: false, error: "no ref= payload file supplied", statements: null);
+                    stream.EndRun(false, "no ref file supplied");
                     return;
                 }
 
@@ -5312,13 +5416,17 @@ namespace BuildConsole
                     if (!fi.Exists)
                     {
                         BuildConsole.Services.ActivityLog.Log(ch, $"executeSql payload file not found: {req.Ref}");
+                        stream.AppendLine($"[SQL ERROR] payload file not found: {req.Ref}", BuildConsole.Services.ShaneAppLogLevel.Error);
                         WriteShaneAppResult(req, ok: false, error: $"payload file not found: {req.Ref}", statements: null);
+                        stream.EndRun(false, "file not found");
                         return;
                     }
                     if (fi.Length > ShaneAppMaxPayloadBytes)
                     {
                         BuildConsole.Services.ActivityLog.Log(ch, $"executeSql payload file too large ({fi.Length} bytes > {ShaneAppMaxPayloadBytes}). Refusing.");
+                        stream.AppendLine($"[SQL ERROR] payload file too large ({fi.Length} bytes)", BuildConsole.Services.ShaneAppLogLevel.Error);
                         WriteShaneAppResult(req, ok: false, error: $"payload file too large ({fi.Length} bytes)", statements: null);
+                        stream.EndRun(false, "file too large");
                         return;
                     }
                     sql = await System.IO.File.ReadAllTextAsync(req.Ref!);
@@ -5326,36 +5434,39 @@ namespace BuildConsole
                 catch (Exception ex)
                 {
                     BuildConsole.Services.ActivityLog.Log(ch, $"executeSql couldn't read payload {req.Ref}: {ex.Message}");
+                    stream.AppendLine($"[SQL ERROR] couldn't read payload: {ex.Message}", BuildConsole.Services.ShaneAppLogLevel.Error);
                     WriteShaneAppResult(req, ok: false, error: $"couldn't read payload: {ex.Message}", statements: null);
+                    stream.EndRun(false, ex.Message);
                     return;
                 }
 
                 if (string.IsNullOrWhiteSpace(sql))
                 {
                     BuildConsole.Services.ActivityLog.Log(ch, $"executeSql payload {req.Ref} was empty — nothing to run.");
+                    stream.AppendLine("[SQL ERROR] payload was empty", BuildConsole.Services.ShaneAppLogLevel.Error);
                     WriteShaneAppResult(req, ok: false, error: "payload was empty", statements: null);
+                    stream.EndRun(false, "empty payload");
                     return;
                 }
 
                 // shaneapp://executeSql routes SQL through the SAME pipe the manual SQL Runner
                 // uses: BuildTrackerApiClient.ExecuteSqlAsync → POST /api/simulator/sql/execute
-                // against the configured dev api-server (apiBaseUrl). There is NO separate local
-                // Postgres connection / connection string — that earlier design always failed
-                // "no local Postgres connection string configured". _buildTrackerApi is the exact
-                // same client the SQL Runner view is initialized with. Unconfigured ⇒ a clear
-                // "not configured" result, never a silent no-op.
                 if (_buildTrackerApi == null || !_buildTrackerApi.IsConfigured)
                 {
                     const string notConfigured =
                         "api-server not configured — set apiBaseUrl + ingestToken in scripts/build-queue-watcher.config.json " +
                         "(executeSql uses the same POST /api/simulator/sql/execute path as the SQL Runner).";
                     BuildConsole.Services.ActivityLog.Log(ch, $"executeSql can't run — {notConfigured}");
+                    stream.AppendLine($"[SQL ERROR] {notConfigured}", BuildConsole.Services.ShaneAppLogLevel.Error);
                     WriteShaneAppResult(req, ok: false, error: notConfigured, statements: null);
+                    stream.EndRun(false, "api-server not configured");
                     return;
                 }
 
                 BuildConsole.Services.ActivityLog.Log(ch,
                     $"executeSql running {sql.Length} char(s) of SQL from {req.Ref} (src='{src}') via SQL Runner pipe [{_buildTrackerApi.ConfiguredApiBaseUrl}]…");
+                stream.AppendLine($"[SQL] Executing {sql.Length} chars of SQL from {req.Ref} on [{_buildTrackerApi.ConfiguredApiBaseUrl}]…", BuildConsole.Services.ShaneAppLogLevel.Sql);
+
                 var sw = System.Diagnostics.Stopwatch.StartNew();
                 try
                 {
@@ -5366,17 +5477,98 @@ namespace BuildConsole
                     WriteShaneAppResult(req, ok: failed == 0, error: firstError, statements: statements);
                     BuildConsole.Services.ActivityLog.Log(ch,
                         $"executeSql done in {sw.ElapsedMilliseconds}ms: {ok}/{statements.Count} statement(s) ok, {failed} failed. Result -> {BuildConsole.Services.ShaneAppProtocol.ResolveResultPath(req)}");
+
+                    foreach (var s in statements)
+                    {
+                        var lvl = s.Success ? BuildConsole.Services.ShaneAppLogLevel.Success : BuildConsole.Services.ShaneAppLogLevel.Error;
+                        var preview = s.StatementText.Length > 60 ? s.StatementText.Substring(0, 57) + "…" : s.StatementText;
+                        stream.AppendLine($"[SQL] Statement: {preview} -> {(s.Success ? "OK" : "FAIL")} ({s.RowCount} rows, {s.ExecutionMs}ms)" + (!string.IsNullOrWhiteSpace(s.Error) ? $" :: {s.Error}" : ""), lvl);
+                    }
+                    stream.EndRun(failed == 0, $"{ok}/{statements.Count} statements ok in {sw.ElapsedMilliseconds}ms");
                 }
                 catch (Exception ex)
                 {
                     WriteShaneAppResult(req, ok: false, error: ex.Message, statements: null);
                     BuildConsole.Services.ActivityLog.Log(ch, $"executeSql FAILED after {sw.ElapsedMilliseconds}ms: {ex.Message}");
+                    stream.AppendLine($"[SQL ERROR] {ex.Message}", BuildConsole.Services.ShaneAppLogLevel.Error);
+                    stream.EndRun(false, ex.Message);
                 }
             }
             catch (Exception ex)
             {
                 // Absolute backstop — a protocol invocation must never take the app down.
                 BuildConsole.Services.ActivityLog.Log(ch, $"shaneapp:// handler threw (swallowed): {ex.Message}");
+                BuildConsole.Services.ShaneAppStreamService.Instance.EndRun(false, ex.Message);
+            }
+        }
+
+        private async System.Threading.Tasks.Task HandleShaneAppPowerShellAsync(BuildConsole.Services.ShaneAppRequest req, string src, string ch)
+        {
+            var stream = BuildConsole.Services.ShaneAppStreamService.Instance;
+            stream.BeginRun($"PowerShell: {System.IO.Path.GetFileName(req.Ref ?? "script.ps1")}", $"Source: {src}");
+
+            try
+            {
+                string? scriptPath = req.Ref;
+                string? scriptText = null;
+
+                if (!string.IsNullOrWhiteSpace(scriptPath) && System.IO.File.Exists(scriptPath))
+                {
+                    scriptText = await System.IO.File.ReadAllTextAsync(scriptPath);
+                }
+                else
+                {
+                    scriptText = GetShaneAppQueryParam(req.Raw, "script") ?? req.Ref;
+                }
+
+                if (string.IsNullOrWhiteSpace(scriptText))
+                {
+                    stream.AppendLine("[PS ERROR] No PowerShell script content or ref= file found.", BuildConsole.Services.ShaneAppLogLevel.Error);
+                    WriteShaneAppResult(req, ok: false, error: "no script supplied", statements: null);
+                    stream.EndRun(false, "no script");
+                    return;
+                }
+
+                stream.AppendLine($"[PS] Executing PowerShell script ({scriptText.Length} chars)…", BuildConsole.Services.ShaneAppLogLevel.PowerShell);
+
+                var psi = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "powershell.exe",
+                    Arguments = $"-NoProfile -ExecutionPolicy Bypass -Command \"{scriptText.Replace("\"", "\\\"")}\"",
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+
+                using var proc = new System.Diagnostics.Process { StartInfo = psi };
+                proc.OutputDataReceived += (s, e) =>
+                {
+                    if (e.Data != null)
+                        stream.AppendLine(e.Data, BuildConsole.Services.ShaneAppLogLevel.PowerShell);
+                };
+                proc.ErrorDataReceived += (s, e) =>
+                {
+                    if (e.Data != null)
+                        stream.AppendLine(e.Data, BuildConsole.Services.ShaneAppLogLevel.Error);
+                };
+
+                proc.Start();
+                proc.BeginOutputReadLine();
+                proc.BeginErrorReadLine();
+
+                await proc.WaitForExitAsync();
+
+                bool ok = proc.ExitCode == 0;
+                stream.AppendLine($"[PS] Process exited with code {proc.ExitCode}", ok ? BuildConsole.Services.ShaneAppLogLevel.Success : BuildConsole.Services.ShaneAppLogLevel.Error);
+                WriteShaneAppResult(req, ok: ok, error: ok ? null : $"Exit code {proc.ExitCode}", statements: null);
+                stream.EndRun(ok, $"Exit code {proc.ExitCode}");
+            }
+            catch (Exception ex)
+            {
+                stream.AppendLine($"[PS ERROR] {ex.Message}", BuildConsole.Services.ShaneAppLogLevel.Error);
+                WriteShaneAppResult(req, ok: false, error: ex.Message, statements: null);
+                stream.EndRun(false, ex.Message);
             }
         }
 

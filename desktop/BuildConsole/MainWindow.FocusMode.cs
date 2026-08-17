@@ -32,6 +32,16 @@ namespace BuildConsole
                 _focusBar.MilestoneOpenRequested += OnFocusMilestoneOpen;
                 _focusBar.AchievementsRequested += OnFocusAchievementsRequested;
                 _focusBar.ImmersiveRequested += () => FocusModeService.Instance.EnterImmersive();
+                _focusBar.InProgressChatActivated += item =>
+                {
+                    var boardChat = LeftSidebar.FindChatByConversationId(item.ConversationId) ?? new BuildConsole.Services.BoardChat
+                    {
+                        ConversationId = item.ConversationId,
+                        Title = item.Title,
+                        ClaudeUrl = item.ClaudeUrl
+                    };
+                    OpenChatTab(boardChat, boardChat.IssueGithubNumber);
+                };
                 InsertFocusBar(_focusBar);
 
                 // Subscribe BEFORE Start(): a restored-active milestone fires FilterChanged from

@@ -181,6 +181,8 @@
                                 <Separator/>
                                 <!-- Git #968 (Epic #803) - chronological run history + per-manifest streaks, read from test-results/_history.jsonl -->
                                 <MenuItem Header="Test History…" Click="OpenTestHistory_Click"/>
+                                <Separator/>
+                                <MenuItem Header="ShaneApp Streaming Console…" Click="OpenStreamingConsole_Click"/>
                             </MenuItem>
 
                             <MenuItem Header="_Terminal" Click="OpenTerminal_Click">
@@ -294,6 +296,23 @@
                                 VerticalAlignment="Center"
                                 Margin="0,0,8,0"
                                 WindowChrome.IsHitTestVisibleInChrome="True">
+                        <!-- shaneapp:// live execution indicator badge in title bar -->
+                        <Border x:Name="TopShaneAppIndicator"
+                                Background="#33A6E3A1"
+                                BorderBrush="{StaticResource GreenBrush}"
+                                BorderThickness="1"
+                                CornerRadius="4"
+                                Padding="6,2"
+                                Margin="0,0,6,0"
+                                Cursor="Hand"
+                                Visibility="Collapsed"
+                                ToolTip="shaneapp:// is executing — Click to view live streaming console"
+                                MouseLeftButtonUp="TopShaneAppIndicator_Click">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="⚡" FontSize="11" Foreground="{StaticResource YellowBrush}" VerticalAlignment="Center" Margin="0,0,3,0"/>
+                                <TextBlock x:Name="TopShaneAppIndicatorText" Text="RUNNING" FontSize="10" FontWeight="Bold" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Border>
                         <Button Style="{StaticResource IconButton}"
                                 ToolTip="Toggle Primary Side Bar (Ctrl+B)"
                                 Click="ToggleSidebar_Click"

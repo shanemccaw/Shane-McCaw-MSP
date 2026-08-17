@@ -29,6 +29,8 @@ namespace BuildConsole.Controls
         public event Action? AchievementsRequested;
         /// <summary>The ⛶ Immersive button was clicked — MainWindow engages the full-screen immersive view.</summary>
         public event Action? ImmersiveRequested;
+        /// <summary>An in-progress chat chip was clicked in the bar — open/switch to that chat tab.</summary>
+        public event Action<PersistedInProgressChat>? InProgressChatActivated;
 
         public FocusModeBar()
         {
@@ -38,6 +40,7 @@ namespace BuildConsole.Controls
                 var svc = FocusModeService.Instance;
                 svc.StateChanged += OnStateChanged;
                 svc.DowntimeChanged += OnDowntimeChanged;
+                svc.InProgressChatsChanged += OnInProgressChatsChanged;
                 Refresh();
                 RefreshDowntime();
             };
@@ -46,11 +49,13 @@ namespace BuildConsole.Controls
                 var svc = FocusModeService.Instance;
                 svc.StateChanged -= OnStateChanged;
                 svc.DowntimeChanged -= OnDowntimeChanged;
+                svc.InProgressChatsChanged -= OnInProgressChatsChanged;
             };
         }
 
         private void OnStateChanged() => Dispatcher.Invoke(Refresh);
         private void OnDowntimeChanged() => Dispatcher.Invoke(RefreshDowntime);
+        private void OnInProgressChatsChanged() => Dispatcher.Invoke(RefreshInProgressChats);
 
         // ----------------------------------------------------------------
         // Main strip
@@ -65,6 +70,7 @@ namespace BuildConsole.Controls
             RightPanel.Visibility = active ? Visibility.Visible : Visibility.Collapsed;
 
             PopulatePicker(svc.Milestones);
+            RefreshInProgressChats();
 
             if (active)
             {
@@ -106,6 +112,53 @@ namespace BuildConsole.Controls
                 int hidden = svc.HiddenIssueCount();
                 HiddenText.Text = hidden > 0 ? $"{hidden} hidden" : "";
                 HiddenText.ToolTip = hidden > 0 ? $"{hidden} off-milestone issue(s) hidden by focus" : null;
+            }
+        }
+
+        private void RefreshInProgressChats()
+        {
+            var svc = FocusModeService.Instance;
+            var list = svc.InProgressChats;
+            if (list == null || list.Count == 0)
+            {
+                InProgressStrip.Visibility = Visibility.Collapsed;
+                InProgressList.Children.Clear();
+                return;
+            }
+
+            InProgressStrip.Visibility = Visibility.Visible;
+            InProgressList.Children.Clear();
+
+            foreach (var item in list)
+            {
+                var chip = new Border
+                {
+                    Background = (Brush)FindResource("Surface0Brush"),
+                    BorderBrush = (Brush)FindResource("Surface1Brush"),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(4),
+                    Padding = new Thickness(6, 2, 6, 2),
+                    Margin = new Thickness(0, 0, 6, 0),
+                    Cursor = Cursors.Hand,
+                    ToolTip = $"Click to open \"{item.Title}\""
+                };
+
+                var txt = new TextBlock
+                {
+                    Text = item.Title,
+                    FontSize = 10.5,
+                    Foreground = (Brush)FindResource("TextBrush"),
+                    MaxWidth = 130,
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                chip.Child = txt;
+                chip.MouseLeftButtonUp += (s, e) =>
+                {
+                    InProgressChatActivated?.Invoke(item);
+                };
+
+                InProgressList.Children.Add(chip);
             }
         }
 

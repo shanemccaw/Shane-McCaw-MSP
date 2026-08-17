@@ -15,12 +15,32 @@
                     BorderThickness="0,0,0,1"
                     Padding="12,8">
                 <DockPanel>
-                    <TextBlock x:Name="HeaderTitle"
-                               Text="CHATS"
-                               FontSize="11"
-                               FontWeight="SemiBold"
-                               Foreground="{StaticResource Subtext1Brush}"
-                               VerticalAlignment="Center"/>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock x:Name="HeaderTitle"
+                                   Text="CHATS"
+                                   FontSize="11"
+                                   FontWeight="SemiBold"
+                                   Foreground="{StaticResource Subtext1Brush}"
+                                   VerticalAlignment="Center"/>
+
+                        <!-- shaneapp:// protocol live execution indicator -->
+                        <Border x:Name="ShaneAppIndicator"
+                                Background="#33A6E3A1"
+                                BorderBrush="{StaticResource GreenBrush}"
+                                BorderThickness="1"
+                                CornerRadius="4"
+                                Padding="5,1"
+                                Margin="8,0,0,0"
+                                Cursor="Hand"
+                                Visibility="Collapsed"
+                                ToolTip="shaneapp:// is executing — Click to open live streaming console"
+                                MouseLeftButtonUp="ShaneAppIndicator_Click">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock x:Name="ShaneAppIndicatorDot" Text="●" FontSize="9" Foreground="{StaticResource GreenBrush}" Margin="0,0,3,0" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="ShaneAppIndicatorLabel" Text="RUNNING" FontSize="9.5" FontWeight="Bold" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
                     <StackPanel DockPanel.Dock="Right"
                                 Orientation="Horizontal"
                                 HorizontalAlignment="Right">

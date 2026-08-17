@@ -150,6 +150,22 @@
             <!-- ==== CENTRE: the live Claude build running the epic ==== -->
             <Border Grid.Column="1" Background="{StaticResource CrustBrush}">
                 <DockPanel>
+                    <!-- IN PROGRESS CHATS DOCK (quick switcher while in Focus mode) -->
+                    <Border x:Name="InProgressDock" DockPanel.Dock="Top" Background="{StaticResource MantleBrush}"
+                            BorderBrush="{StaticResource Surface0Brush}" BorderThickness="0,0,0,1" Padding="16,8"
+                            Visibility="Collapsed">
+                        <DockPanel>
+                            <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,12,0">
+                                <TextBlock Text="⚡" FontSize="12.5" Foreground="{StaticResource YellowBrush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                <TextBlock Text="IN PROGRESS" FontSize="10.5" FontWeight="Bold"
+                                           Foreground="{StaticResource YellowBrush}" VerticalAlignment="Center"/>
+                            </StackPanel>
+                            <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                                <WrapPanel x:Name="InProgressChips" VerticalAlignment="Center"/>
+                            </ScrollViewer>
+                        </DockPanel>
+                    </Border>
+
                     <Border DockPanel.Dock="Top" Padding="20,12,20,8"
                             BorderBrush="{StaticResource Surface0Brush}" BorderThickness="0,0,0,1">
                         <StackPanel>

@@ -119,6 +119,9 @@ namespace BuildConsole.Services
             }
         }
 
+        /// <summary>Chats marked as In Progress for quick access during Focus Mode.</summary>
+        public IReadOnlyList<PersistedInProgressChat> InProgressChats => _state.InProgressChats ?? (IReadOnlyList<PersistedInProgressChat>)Array.Empty<PersistedInProgressChat>();
+
         // ---- events (UI reacts on the same UI thread) ------------------
         /// <summary>Active milestone / points / progress / achievements changed — refresh the bar.</summary>
         public event Action? StateChanged;
@@ -131,6 +134,8 @@ namespace BuildConsole.Services
         /// <summary>The immersive full-screen view was engaged / dismissed — MainWindow shows or hides the
         /// window-covering overlay in response.</summary>
         public event Action? ImmersiveChanged;
+        /// <summary>Fired when the in-progress chat list is toggled/updated.</summary>
+        public event Action? InProgressChatsChanged;
         /// <summary>N real issue(s) just closed under the active milestone (a positive closed-count delta vs
         /// the persisted baseline, computed in <see cref="RecomputeGame"/>). Drives the immersive view's
         /// tasteful "issue closed" celebration. Honest caveat: it's the milestone's aggregate closed count
@@ -347,12 +352,49 @@ namespace BuildConsole.Services
             return d.Milestone.HasValue && d.Milestone == _state.ActiveMilestoneNumber;
         }
 
+        /// <summary>Checks whether a conversation is marked as In Progress.</summary>
+        public bool IsChatInProgress(string? conversationId)
+        {
+            if (string.IsNullOrWhiteSpace(conversationId)) return false;
+            return (_state.InProgressChats ??= new()).Any(c => string.Equals(c.ConversationId, conversationId, StringComparison.OrdinalIgnoreCase));
+        }
+
+        /// <summary>Toggles a chat between In Progress and normal.</summary>
+        public void ToggleChatInProgress(string conversationId, string title, string? claudeUrl)
+        {
+            if (string.IsNullOrWhiteSpace(conversationId)) return;
+            _state.InProgressChats ??= new();
+            var existing = _state.InProgressChats.FirstOrDefault(c => string.Equals(c.ConversationId, conversationId, StringComparison.OrdinalIgnoreCase));
+            if (existing != null)
+            {
+                _state.InProgressChats.Remove(existing);
+                ActivityLog.Log("focus-mode", $"Unmarked chat as In Progress: \"{title}\" ({conversationId})");
+            }
+            else
+            {
+                _state.InProgressChats.Add(new PersistedInProgressChat
+                {
+                    ConversationId = conversationId,
+                    Title = string.IsNullOrWhiteSpace(title) ? "Chat" : title,
+                    ClaudeUrl = claudeUrl ?? "",
+                    MarkedAtUtc = DateTime.UtcNow
+                });
+                ActivityLog.Log("focus-mode", $"Marked chat as In Progress: \"{title}\" ({conversationId})");
+            }
+            Save();
+            InProgressChatsChanged?.Invoke();
+            RaiseStateChanged();
+            RaiseFilterChanged();
+        }
+
         /// <summary>Chats tree: resolve the chat's issue (direct, or via its epic's issue number)
         /// then apply <see cref="IsIssueInFocus"/> semantics. Unlinked chats are hidden while
-        /// focused (they belong to no milestone), but never when the map is cold.</summary>
+        /// focused (they belong to no milestone), but chats marked In Progress are ALWAYS kept visible.</summary>
         public bool IsChatInFocus(BoardChat chat)
         {
-            if (!IsActive || _issueToMilestone.Count == 0) return true;
+            if (!IsActive) return true;
+            if (!string.IsNullOrEmpty(chat.ConversationId) && IsChatInProgress(chat.ConversationId)) return true;
+            if (_issueToMilestone.Count == 0) return true;
             int? num = chat.IssueGithubNumber
                 ?? (chat.EpicId.HasValue && _epicById.TryGetValue(chat.EpicId.Value, out var epic) ? epic.GithubNumber : null);
             if (num is null || num.Value <= 0) return false; // unlinked -> off-milestone
@@ -756,6 +798,7 @@ namespace BuildConsole.Services
                 _state.ClosedSamples ??= new();
                 _state.ClosedBaseline ??= new();
                 _state.TodoBaseline ??= new();
+                _state.InProgressChats ??= new();
             }
             catch (Exception ex)
             {

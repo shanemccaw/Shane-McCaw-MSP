@@ -24,6 +24,8 @@ namespace BuildConsole.Controls
         private QueueWatcherService? _watcher;
         private Func<IReadOnlyList<QueueItem>>? _queueItemsProbe;
         private Func<int, UIElement?>? _buildChatView;
+        private Func<BoardChat, UIElement?>? _buildChatViewForChat;
+        private Func<string, BoardChat?>? _findChatByConversationId;
         private Action<int>? _openMilestone;
         private Action? _openBuildWatch;
         private Action<FocusSuggestion>? _takeSuggestion;
@@ -35,6 +37,7 @@ namespace BuildConsole.Controls
         // transcript/empty state, and the transcript pump stays parked.
         private bool _chatMode;
         private int? _loadedChatIssue;
+        private string? _loadedInProgressConversationId;
         private DispatcherTimerLike? _refreshTimer;
         private DispatcherTimerLike? _pumpTimer;
 
@@ -66,6 +69,8 @@ namespace BuildConsole.Controls
             QueueWatcherService? watcher,
             Func<IReadOnlyList<QueueItem>> queueItemsProbe,
             Func<int, UIElement?> buildChatView,
+            Func<BoardChat, UIElement?> buildChatViewForChat,
+            Func<string, BoardChat?> findChatByConversationId,
             Action<int> openMilestone,
             Action openBuildWatch,
             Action<FocusSuggestion> takeSuggestion)
@@ -73,6 +78,8 @@ namespace BuildConsole.Controls
             _watcher = watcher;
             _queueItemsProbe = queueItemsProbe;
             _buildChatView = buildChatView;
+            _buildChatViewForChat = buildChatViewForChat;
+            _findChatByConversationId = findChatByConversationId;
             _openMilestone = openMilestone;
             _openBuildWatch = openBuildWatch;
             _takeSuggestion = takeSuggestion;
@@ -86,6 +93,7 @@ namespace BuildConsole.Controls
             if (_active) return;
             _active = true;
             FocusModeService.Instance.StateChanged += OnStateChanged;
+            FocusModeService.Instance.InProgressChatsChanged += OnInProgressChatsChanged;
 
             _refreshTimer = new DispatcherTimerLike(Dispatcher, TimeSpan.FromSeconds(3), RefreshLive);
             _pumpTimer = new DispatcherTimerLike(Dispatcher, TimeSpan.FromSeconds(1), PumpTranscript);
@@ -103,6 +111,7 @@ namespace BuildConsole.Controls
             if (!_active) return;
             _active = false;
             FocusModeService.Instance.StateChanged -= OnStateChanged;
+            FocusModeService.Instance.InProgressChatsChanged -= OnInProgressChatsChanged;
             _refreshTimer?.Stop(); _refreshTimer = null;
             _pumpTimer?.Stop(); _pumpTimer = null;
             CharacterLayer.Stop();
@@ -115,11 +124,13 @@ namespace BuildConsole.Controls
         }
 
         private void OnStateChanged() => Dispatcher.Invoke(() => { RefreshHeader(); RefreshChildren(); RefreshRail(); });
+        private void OnInProgressChatsChanged() => Dispatcher.Invoke(RefreshInProgressDock);
 
         /// <summary>The 3s "something changed" tick: builds/progress/rail (transcript has its own faster pump).</summary>
         private void RefreshLive()
         {
             RefreshHeader();
+            RefreshInProgressDock();
             RefreshBuilds();
             RefreshRail();
         }
@@ -127,6 +138,7 @@ namespace BuildConsole.Controls
         private void RefreshAll()
         {
             RefreshHeader();
+            RefreshInProgressDock();
             RefreshChildren();
             RefreshBuilds();
             RefreshRail();
@@ -493,6 +505,117 @@ namespace BuildConsole.Controls
             if (ChatHost.Child is IDisposable prev) { try { prev.Dispose(); } catch { } }
             ChatHost.Child = null;
             _loadedChatIssue = null;
+            _loadedInProgressConversationId = null;
+            RefreshInProgressDock();
+        }
+
+        // ================================================================
+        // In-Progress Chats Dock (quick access while in Focus mode)
+        // ================================================================
+        private void RefreshInProgressDock()
+        {
+            var svc = FocusModeService.Instance;
+            var list = svc.InProgressChats;
+            if (list == null || list.Count == 0)
+            {
+                InProgressDock.Visibility = Visibility.Collapsed;
+                InProgressChips.Children.Clear();
+                return;
+            }
+
+            InProgressDock.Visibility = Visibility.Visible;
+            InProgressChips.Children.Clear();
+
+            foreach (var item in list)
+            {
+                bool isSelected = string.Equals(_loadedInProgressConversationId, item.ConversationId, StringComparison.OrdinalIgnoreCase);
+                var chip = new Border
+                {
+                    Background = (Brush)FindResource(isSelected ? "Surface2Brush" : "Surface0Brush"),
+                    BorderBrush = (Brush)FindResource(isSelected ? "YellowBrush" : "Surface1Brush"),
+                    BorderThickness = new Thickness(isSelected ? 1.5 : 1),
+                    CornerRadius = new CornerRadius(5),
+                    Padding = new Thickness(8, 3, 6, 3),
+                    Margin = new Thickness(0, 0, 8, 4),
+                    Cursor = Cursors.Hand,
+                    ToolTip = $"Click to view \"{item.Title}\" in place while in Focus mode"
+                };
+
+                var sp = new StackPanel { Orientation = Orientation.Horizontal };
+                sp.Children.Add(new TextBlock
+                {
+                    Text = "⚡ ",
+                    FontSize = 11,
+                    Foreground = (Brush)FindResource("YellowBrush"),
+                    VerticalAlignment = VerticalAlignment.Center
+                });
+                sp.Children.Add(new TextBlock
+                {
+                    Text = item.Title,
+                    FontSize = 11.5,
+                    FontWeight = isSelected ? FontWeights.Bold : FontWeights.Normal,
+                    Foreground = (Brush)FindResource("TextBrush"),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    MaxWidth = 180,
+                    TextTrimming = TextTrimming.CharacterEllipsis
+                });
+
+                var unpinBtn = new Button
+                {
+                    Content = "✕",
+                    Style = (Style)FindResource("IconButton"),
+                    FontSize = 9,
+                    Padding = new Thickness(2, 0, 2, 0),
+                    Margin = new Thickness(6, 0, 0, 0),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    ToolTip = "Unmark as In Progress"
+                };
+                unpinBtn.Click += (s, e) =>
+                {
+                    e.Handled = true;
+                    svc.ToggleChatInProgress(item.ConversationId, item.Title, item.ClaudeUrl);
+                    if (isSelected) ExitChatMode();
+                };
+                sp.Children.Add(unpinBtn);
+
+                chip.Child = sp;
+                chip.MouseLeftButtonUp += (s, e) =>
+                {
+                    LoadChatByInProgress(item);
+                };
+
+                InProgressChips.Children.Add(chip);
+            }
+        }
+
+        private void LoadChatByInProgress(PersistedInProgressChat item)
+        {
+            if (_buildChatViewForChat == null) return;
+
+            var boardChat = _findChatByConversationId?.Invoke(item.ConversationId) ?? new BoardChat
+            {
+                ConversationId = item.ConversationId,
+                Title = item.Title,
+                ClaudeUrl = item.ClaudeUrl
+            };
+
+            if (string.IsNullOrWhiteSpace(boardChat.ClaudeUrl))
+            {
+                ToastEngine.Warning("In-Progress Chat", $"No Claude URL available for \"{item.Title}\".");
+                return;
+            }
+
+            var view = _buildChatViewForChat(boardChat);
+            if (view == null) return;
+
+            if (ChatHost.Child is IDisposable prev) { try { prev.Dispose(); } catch { } }
+            ChatHost.Child = view;
+            _loadedChatIssue = null;
+            _loadedInProgressConversationId = item.ConversationId;
+            EnterChatMode();
+            CentreStatusText.Text = $"· viewing in-progress: {item.Title}";
+            RefreshInProgressDock();
+            ActivityLog.Log("focus-mode", $"immersive: loaded in-progress chat \"{item.Title}\" ({item.ConversationId}) into centre panel");
         }
 
         // ================================================================

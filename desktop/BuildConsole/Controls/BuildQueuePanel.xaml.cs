@@ -1833,9 +1833,9 @@ namespace BuildConsole.Controls
         {
             if (AttentionList.SelectedItem is not ListBoxItem { Tag: NeedsAttentionItem item }) return;
             AttentionList.SelectedIndex = -1; // reset so the same/next row can be re-selected later
-            ClearNeedsAttention(item.Key);    // logs the "addressed" clear
             try { item.OnOpen?.Invoke(); }
             catch (Exception ex) { ActivityLog.Log(AttentionChannel, $"Open action for [{item.Key}] threw: {ex.Message}"); }
+            ClearNeedsAttention(item.Key);    // logs the "addressed" clear
         }
 
         /// <summary>Rebuilds the Needs Attention list + tile badge/accent from <see cref="_attentionItems"/>.</summary>

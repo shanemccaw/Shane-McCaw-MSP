@@ -342,6 +342,33 @@ namespace BuildConsole.Controls
             InitializeComponent();
             LoadWorkspaceExplorer(RootWorkspacePath);
             SetupGitWatcher();
+
+            ShaneAppStreamService.Instance.StatusChanged += OnShaneAppStatusChanged;
+        }
+
+        private void OnShaneAppStatusChanged()
+        {
+            Dispatcher.Invoke(() =>
+            {
+                var svc = ShaneAppStreamService.Instance;
+                if (svc.IsRunning)
+                {
+                    ShaneAppIndicator.Visibility = Visibility.Visible;
+                    var label = string.IsNullOrWhiteSpace(svc.CurrentAction) ? "RUNNING" : svc.CurrentAction.ToUpperInvariant();
+                    if (label.Length > 20) label = label.Substring(0, 18) + "…";
+                    ShaneAppIndicatorLabel.Text = label;
+                    ShaneAppIndicator.ToolTip = $"shaneapp:// is executing: {svc.CurrentAction} — Click to open live streaming console";
+                }
+                else
+                {
+                    ShaneAppIndicator.Visibility = Visibility.Collapsed;
+                }
+            });
+        }
+
+        private void ShaneAppIndicator_Click(object sender, MouseButtonEventArgs e)
+        {
+            StreamingConsoleWindow.OpenOrFocus();
         }
 
         // ── SETTINGS: sidebar category navigation (Git #954, Epic #803) ──────
@@ -2251,6 +2278,13 @@ namespace BuildConsole.Controls
             };
         }
 
+        /// <summary>Finds a cached BoardChat by its ConversationId (used by Focus mode in-progress switchers).</summary>
+        public BoardChat? FindChatByConversationId(string conversationId)
+        {
+            if (string.IsNullOrWhiteSpace(conversationId)) return null;
+            return _lastBoardChats.FirstOrDefault(c => string.Equals(c.ConversationId, conversationId, StringComparison.OrdinalIgnoreCase));
+        }
+
         /// <summary>Chats redesign (mirrors #984's MakeLeafHeader) — a chat leaf with a
         /// thin epic-coloured left bar + the chat title in muted Subtext1Brush. Title
         /// registered for #932's MaxWidth trim. Retains #828's "Assign to Epic..."
@@ -2268,12 +2302,28 @@ namespace BuildConsole.Controls
                 Margin = new Thickness(0, 1, 7, 1),
             }); // DockPanel.Dock defaults to Left → a full-height vertical bar
 
+            bool inProgress = BuildConsole.Services.FocusModeService.Instance.IsChatInProgress(chat.ConversationId);
+            if (inProgress)
+            {
+                var bolt = new TextBlock
+                {
+                    Text = "⚡",
+                    FontSize = 11,
+                    Foreground = GetBrush("YellowBrush"),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(0, 0, 4, 0),
+                    ToolTip = "Marked as In Progress (quickly accessible in Focus mode)"
+                };
+                dp.Children.Add(bolt);
+            }
+
             var titleBlock = new TextBlock
             {
                 Text = chat.Title,
                 FontSize = 12,
                 VerticalAlignment = VerticalAlignment.Center,
-                Foreground = GetBrush("Subtext1Brush"),
+                Foreground = inProgress ? GetBrush("YellowBrush") : GetBrush("Subtext1Brush"),
+                FontWeight = inProgress ? FontWeights.SemiBold : FontWeights.Normal,
                 TextTrimming = TextTrimming.CharacterEllipsis,
             };
             dp.Children.Add(titleBlock);
@@ -2291,10 +2341,24 @@ namespace BuildConsole.Controls
                 Margin = new Thickness(0, 1, 0, 1),
             };
 
+            var cm = new ContextMenu();
+
+            // In Progress toggle item
+            var miToggleProgress = new MenuItem
+            {
+                Header = inProgress ? "✓ ⚡ In Progress (Click to Unmark)" : "⚡ Mark as In Progress"
+            };
+            miToggleProgress.Click += (_, _) =>
+            {
+                BuildConsole.Services.FocusModeService.Instance.ToggleChatInProgress(chat.ConversationId, chat.Title, chat.ClaudeUrl);
+                RenderChatsTree();
+            };
+            cm.Items.Add(miToggleProgress);
+            cm.Items.Add(new Separator());
+
             // Git #828 — Shane: "I need a way to assign a chat to an epic in the WPF
             // app." Same POST /chats/ingest the extension's own "link this chat to
             // that epic" click already uses (Git #781), just reached from here.
-            var cm = new ContextMenu();
             var miAssign = new MenuItem { Header = "Assign to Epic..." };
             miAssign.Click += async (_, _) =>
             {

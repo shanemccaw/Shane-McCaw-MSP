@@ -125,6 +125,12 @@ namespace BuildConsole
                     return;
                 }
 
+                var stream = BuildConsole.Services.ShaneAppStreamService.Instance;
+                stream.BeginRun($"Web Test: #{manifest.Issue} {manifest.Feature}", $"File: {fileArg}, Source: {src}");
+                stream.AppendLine($"[TEST] Manifest resolved: {manifestPath}", BuildConsole.Services.ShaneAppLogLevel.Test);
+                int totalSteps = manifest.ApiTests.Count + manifest.GraphTests.Count + manifest.PostGraphApiTests.Count + manifest.ZohoTests.Count + manifest.UiSteps.Count + manifest.PowerShellVerify.Count;
+                stream.AppendLine($"[TEST] Issue #{manifest.Issue} — {manifest.Feature} (Total steps: {totalSteps}, UI: {manifest.UiSteps.Count}, PowerShell: {manifest.PowerShellVerify.Count})", BuildConsole.Services.ShaneAppLogLevel.Test);
+
                 _testTriggerBusy = true;
                 var sw = System.Diagnostics.Stopwatch.StartNew();
                 try
@@ -147,11 +153,15 @@ namespace BuildConsole
                     WriteShaneAppRunTestResult(req, fileArg, ok, error, manifestPath, result);
                     BuildConsole.Services.ActivityLog.Log(ch,
                         $"runTest done in {sw.ElapsedMilliseconds}ms: {passed}/{total} step(s) passed. Result -> {ResolveRunTestResultPath(req, fileArg!)}");
+
+                    stream.EndRun(ok, $"{passed}/{total} steps passed in {sw.ElapsedMilliseconds}ms");
                 }
                 catch (Exception ex)
                 {
                     WriteShaneAppRunTestResult(req, fileArg, ok: false, error: ex.Message, manifestPath: manifestPath, result: null);
                     BuildConsole.Services.ActivityLog.Log(ch, $"runTest FAILED after {sw.ElapsedMilliseconds}ms: {ex.Message}");
+                    stream.AppendLine($"[TEST ERROR] {ex.Message}", BuildConsole.Services.ShaneAppLogLevel.Error);
+                    stream.EndRun(false, ex.Message);
                 }
                 finally
                 {
@@ -167,6 +177,7 @@ namespace BuildConsole
                 // the normal path.
                 BuildConsole.Services.ActivityLog.Log(ch, $"runTest handler threw (backstop caught, writing failure envelope): {ex.Message}");
                 WriteShaneAppRunTestResult(req, fileArg, ok: false, error: $"runTest handler error: {ex.Message}", manifestPath: manifestPath, result: null);
+                BuildConsole.Services.ShaneAppStreamService.Instance.EndRun(false, ex.Message);
             }
         }
 

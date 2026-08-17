@@ -142,6 +142,14 @@ namespace BuildConsole.Services
         public int Total { get; set; }
     }
 
+    public class PersistedInProgressChat
+    {
+        public string ConversationId { get; set; } = "";
+        public string Title { get; set; } = "";
+        public string ClaudeUrl { get; set; } = "";
+        public DateTime MarkedAtUtc { get; set; } = DateTime.UtcNow;
+    }
+
     /// <summary>The whole persisted Focus Mode state (focus-mode.json). Additive,
     /// field-initialized defaults so an older/absent file round-trips cleanly.</summary>
     public class FocusPersistState
@@ -163,5 +171,8 @@ namespace BuildConsole.Services
         /// <summary>milestoneNumber -> last-seen open Shane-To-Do count, to fire the
         /// "inbox zero" achievement only on a real &gt;0 -&gt; 0 transition.</summary>
         public Dictionary<int, int> TodoBaseline { get; set; } = new();
+        /// <summary>Chats marked as In Progress (e.g. LinkedIn posts, ad-hoc tasks, side chats)
+        /// that remain quickly accessible in Focus and Focus Immersive modes.</summary>
+        public List<PersistedInProgressChat> InProgressChats { get; set; } = new();
     }
 }

@@ -17,7 +17,7 @@
 
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { db, btEpicsTable, btIssuesTable, btChatsTable, btBuildQueueTable } from "@workspace/db";
-import { eq, desc, asc, isNull, sql, and, inArray } from "drizzle-orm";
+import { eq, ne, desc, asc, isNull, sql, and, inArray } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 
@@ -600,6 +600,13 @@ router.post("/admin/build-tracker/chats/ingest", ingestAuth, async (req: Request
       ) {
         patch.issueId = incomingIssueId;
         patch.epicId = incomingIssueId ? null : incomingEpicId;
+        if (patch.epicId && force) {
+          // Explicit re-assignment: clear epicId on any other chat previously linked to this epic
+          await db
+            .update(btChatsTable)
+            .set({ epicId: null, updatedAt: new Date() })
+            .where(and(eq(btChatsTable.epicId, patch.epicId), ne(btChatsTable.id, row.id)));
+        }
       }
       if (Object.keys(patch).length > 0) {
         [row] = await db
@@ -624,6 +631,13 @@ router.post("/admin/build-tracker/chats/ingest", ingestAuth, async (req: Request
         epicId: incomingIssueId ? null : incomingEpicId,
       })
       .returning();
+
+    if (row.epicId) {
+      await db
+        .update(btChatsTable)
+        .set({ epicId: null, updatedAt: new Date() })
+        .where(and(eq(btChatsTable.epicId, row.epicId), ne(btChatsTable.id, row.id)));
+    }
 
     log.info({ conversationId: id, hadTitle: !!incomingTitle, linked: !!(incomingIssueId || incomingEpicId) }, "ingest: new chat stub created");
     res.status(201).json({ ...row, claudeUrl: claudeUrl(row.conversationId), created: true });
@@ -702,7 +716,8 @@ router.get("/admin/build-tracker/extension/board", ingestAuth, async (req: Reque
           epicId: btChatsTable.epicId,
           updatedAt: btChatsTable.updatedAt,
         })
-        .from(btChatsTable),
+        .from(btChatsTable)
+        .orderBy(desc(btChatsTable.updatedAt)),
       conversationId
         ? db.select().from(btChatsTable).where(eq(btChatsTable.conversationId, conversationId)).limit(1)
         : Promise.resolve([]),

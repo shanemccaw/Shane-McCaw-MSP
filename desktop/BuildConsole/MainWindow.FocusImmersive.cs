@@ -41,6 +41,8 @@ namespace BuildConsole
                     // panel IN PLACE (same WebView2 session the normal tabs use), staying
                     // immersive; this no longer exits to the normal tab bar.
                     buildChatView: BuildImmersiveChatView,
+                    buildChatViewForChat: BuildChatWebView,
+                    findChatByConversationId: LeftSidebar.FindChatByConversationId,
                     openMilestone: n => { FocusModeService.Instance.ExitImmersive(); OnFocusMilestoneOpen(n); },
                     openBuildWatch: OpenOrFocusBuildWatch,
                     takeSuggestion: s => { FocusModeService.Instance.ExitImmersive(); OnFocusSuggestionActivated(s); });

@@ -77,6 +77,12 @@
                             ToolTip="Your Focus achievements">
                         <TextBlock x:Name="AchvText" FontSize="10.5" Foreground="{StaticResource Subtext1Brush}"/>
                     </Border>
+                    <!-- In-Progress quick chats -->
+                    <StackPanel x:Name="InProgressStrip" Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0,0,0" Visibility="Collapsed">
+                        <TextBlock Text="⚡" FontSize="11" Foreground="{StaticResource YellowBrush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                        <TextBlock Text="In Progress:" FontSize="10" FontWeight="SemiBold" Foreground="{StaticResource YellowBrush}" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                        <StackPanel x:Name="InProgressList" Orientation="Horizontal" VerticalAlignment="Center"/>
+                    </StackPanel>
                 </StackPanel>
 
                 <!-- right: hidden count + exit -->
