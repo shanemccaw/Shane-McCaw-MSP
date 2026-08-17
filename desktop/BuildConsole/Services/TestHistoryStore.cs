@@ -28,6 +28,39 @@ namespace BuildConsole.Services
         public string ResultFile { get; set; } = "";
     }
 
+    /// <summary>
+    /// A manifest's real run history is keyed by whichever identity it
+    /// actually carries — a numeric GitHub `issue`, or a `feature` slug for
+    /// manifests under the newer area/feature-slug convention (CLAUDE.md's
+    /// discover-before-create rule) that were never filed as a single
+    /// issue. Looking up ONLY by issue number (the original shape of this
+    /// lookup) silently reads "never ran" for every feature-slug manifest
+    /// even after real, repeated, passing runs — issue never ran into by
+    /// LeftSidebar.PopulateManifestsList, which already did both lookups;
+    /// GitDetailView's issue-detail cards/inline badges did not.
+    /// </summary>
+    public sealed class TestHistoryLookup
+    {
+        public Dictionary<int, TestHistoryEntry> ByIssue { get; } = new();
+        public Dictionary<string, TestHistoryEntry> ByFeature { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+        public bool TryGetForManifest(int? issue, string? feature, out TestHistoryEntry? entry)
+        {
+            if (issue.HasValue && issue.Value > 0 && ByIssue.TryGetValue(issue.Value, out var byIssue))
+            {
+                entry = byIssue;
+                return true;
+            }
+            if (!string.IsNullOrEmpty(feature) && ByFeature.TryGetValue(feature, out var byFeature))
+            {
+                entry = byFeature;
+                return true;
+            }
+            entry = null;
+            return false;
+        }
+    }
+
     public static class TestHistoryStore
     {
         private const string Channel = "testing.history";

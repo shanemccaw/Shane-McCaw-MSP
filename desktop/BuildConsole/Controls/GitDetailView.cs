@@ -455,24 +455,36 @@ namespace BuildConsole.Controls
             return migrations;
         }
 
-        private static Dictionary<int, BuildConsole.Services.TestHistoryEntry>? _cachedLatestTestRuns;
+        private static BuildConsole.Services.TestHistoryLookup? _cachedLatestTestRuns;
         private static DateTime _testHistoryCacheTime = DateTime.MinValue;
 
-        private static Task<Dictionary<int, BuildConsole.Services.TestHistoryEntry>> GetOrFetchTestHistoryAsync()
+        private static Task<BuildConsole.Services.TestHistoryLookup> GetOrFetchTestHistoryAsync()
         {
             if (_cachedLatestTestRuns != null && (DateTime.UtcNow - _testHistoryCacheTime).TotalSeconds < 30)
                 return Task.FromResult(_cachedLatestTestRuns);
 
-            var dict = new Dictionary<int, BuildConsole.Services.TestHistoryEntry>();
+            var dict = new BuildConsole.Services.TestHistoryLookup();
             try
             {
                 string? repoRoot = BuildConsole.Services.BuildTrackerConfig.FindRepoRoot();
                 if (repoRoot != null)
                 {
                     var history = BuildConsole.Services.TestHistoryStore.ReadAll(repoRoot);
-                    foreach (var group in history.GroupBy(e => e.Issue))
+                    // Shane: "Test Manifests is showing as never ran but I've
+                    // ran it multiple times with pass." Root cause: this only
+                    // ever indexed runs by Issue, but a feature-slug manifest
+                    // (e.g. test-manifests/copilot-readiness/*-route.json)
+                    // carries Issue=0 and is tracked by its Feature string
+                    // instead — LeftSidebar.PopulateManifestsList already
+                    // does this dual lookup correctly (latestByIssue +
+                    // latestByFeature); this card/inline-badge path never did.
+                    foreach (var group in history.Where(e => e.Issue > 0).GroupBy(e => e.Issue))
                     {
-                        dict[group.Key] = group.OrderByDescending(e => e.StartedAt).First();
+                        dict.ByIssue[group.Key] = group.OrderByDescending(e => e.StartedAt).First();
+                    }
+                    foreach (var group in history.Where(e => !string.IsNullOrEmpty(e.Feature)).GroupBy(e => e.Feature))
+                    {
+                        dict.ByFeature[group.Key] = group.OrderByDescending(e => e.StartedAt).First();
                     }
                 }
             }
@@ -572,7 +584,7 @@ namespace BuildConsole.Controls
             return border;
         }
 
-        private UIElement RenderMarkdownBody(string? markdown, double baseFontSize = 13, System.Collections.Generic.HashSet<string>? executedMigrations = null, System.Collections.Generic.Dictionary<int, BuildConsole.Services.TestHistoryEntry>? latestTestRuns = null)
+        private UIElement RenderMarkdownBody(string? markdown, double baseFontSize = 13, System.Collections.Generic.HashSet<string>? executedMigrations = null, BuildConsole.Services.TestHistoryLookup? latestTestRuns = null)
         {
             if (string.IsNullOrWhiteSpace(markdown)) return new StackPanel();
 
@@ -613,7 +625,7 @@ namespace BuildConsole.Controls
             return MarkdownRenderer.Render(markdown, options);
         }
 
-        private void AddBody(string? markdown, System.Collections.Generic.HashSet<string>? executedMigrations = null, System.Collections.Generic.Dictionary<int, BuildConsole.Services.TestHistoryEntry>? latestTestRuns = null)
+        private void AddBody(string? markdown, System.Collections.Generic.HashSet<string>? executedMigrations = null, BuildConsole.Services.TestHistoryLookup? latestTestRuns = null)
         {
             if (string.IsNullOrWhiteSpace(markdown)) return;
 
@@ -789,7 +801,7 @@ namespace BuildConsole.Controls
         }
 
 
-        private Border CommentCard(GitHubIssueComment comment, System.Collections.Generic.HashSet<string>? executedMigrations = null, System.Collections.Generic.Dictionary<int, BuildConsole.Services.TestHistoryEntry>? latestTestRuns = null)
+        private Border CommentCard(GitHubIssueComment comment, System.Collections.Generic.HashSet<string>? executedMigrations = null, BuildConsole.Services.TestHistoryLookup? latestTestRuns = null)
         {
             var border = new Border
             {
@@ -913,7 +925,7 @@ namespace BuildConsole.Controls
             return direct;
         }
 
-        private TextBlock CreateLinkedTextBlock(string? text, double fontSize, string foregroundKey, System.Collections.Generic.HashSet<string>? executedMigrations = null, System.Collections.Generic.Dictionary<int, BuildConsole.Services.TestHistoryEntry>? latestTestRuns = null)
+        private TextBlock CreateLinkedTextBlock(string? text, double fontSize, string foregroundKey, System.Collections.Generic.HashSet<string>? executedMigrations = null, BuildConsole.Services.TestHistoryLookup? latestTestRuns = null)
         {
             var tb = new TextBlock
             {
@@ -1027,6 +1039,7 @@ namespace BuildConsole.Controls
                 if (fileName.EndsWith(".json", StringComparison.OrdinalIgnoreCase) && (fileName.Contains("test-manifests/") || fileName.Contains("test-manifests\\")))
                 {
                     int? manifestIssue = null;
+                    string? manifestFeature = null;
                     string? rRoot = BuildConsole.Services.BuildTrackerConfig.FindRepoRoot();
                     if (rRoot != null)
                     {
@@ -1048,12 +1061,13 @@ namespace BuildConsole.Controls
                             {
                                 var m = BuildConsole.Services.TestManifest.LoadFromFile(fullPath);
                                 if (m != null && m.Issue > 0) manifestIssue = m.Issue;
+                                if (m != null && !string.IsNullOrEmpty(m.Feature)) manifestFeature = m.Feature;
                             }
                             catch { }
                         }
                     }
 
-                    if (manifestIssue.HasValue && latestTestRuns != null && latestTestRuns.TryGetValue(manifestIssue.Value, out var lastRun))
+                    if (latestTestRuns != null && latestTestRuns.TryGetForManifest(manifestIssue, manifestFeature, out var lastRun) && lastRun != null)
                     {
                         if (lastRun.AllPassed)
                         {
@@ -1104,7 +1118,7 @@ namespace BuildConsole.Controls
             string? body, 
             IEnumerable<string>? commentBodies, 
             System.Collections.Generic.HashSet<string>? executedMigrations, 
-            System.Collections.Generic.Dictionary<int, BuildConsole.Services.TestHistoryEntry>? latestTestRuns,
+            BuildConsole.Services.TestHistoryLookup? latestTestRuns,
             int? linkedEpicNumber = null,
             string? linkedEpicTitle = null)
         {
@@ -1246,7 +1260,7 @@ namespace BuildConsole.Controls
             return card;
         }
 
-        private UIElement CreateTestManifestActionCard(string manifestPath, string? repoRoot, System.Collections.Generic.Dictionary<int, BuildConsole.Services.TestHistoryEntry>? latestTestRuns)
+        private UIElement CreateTestManifestActionCard(string manifestPath, string? repoRoot, BuildConsole.Services.TestHistoryLookup? latestTestRuns)
         {
             var card = new Border
             {
@@ -1264,6 +1278,7 @@ namespace BuildConsole.Controls
             var headerRow = new DockPanel { Margin = new Thickness(0, 0, 0, 6) };
 
             int? manifestIssue = null;
+            string? manifestFeature = null;
             string fullPath = manifestPath;
             if (repoRoot != null)
             {
@@ -1289,13 +1304,14 @@ namespace BuildConsole.Controls
                     {
                         var m = BuildConsole.Services.TestManifest.LoadFromFile(fullPath);
                         if (m != null && m.Issue > 0) manifestIssue = m.Issue;
+                        if (m != null && !string.IsNullOrEmpty(m.Feature)) manifestFeature = m.Feature;
                     }
                     catch { }
                 }
             }
 
             Border badge;
-            if (manifestIssue.HasValue && latestTestRuns != null && latestTestRuns.TryGetValue(manifestIssue.Value, out var lastRun))
+            if (latestTestRuns != null && latestTestRuns.TryGetForManifest(manifestIssue, manifestFeature, out var lastRun) && lastRun != null)
             {
                 if (lastRun.AllPassed)
                 {
