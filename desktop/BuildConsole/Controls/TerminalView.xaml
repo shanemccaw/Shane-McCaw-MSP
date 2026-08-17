@@ -24,7 +24,8 @@
                 <Button Content="git stash"   Style="{StaticResource ChipButton}" Click="Chip_Click" Tag="git stash"/>
                 <Button Content="git diff"    Style="{StaticResource ChipButton}" Click="Chip_Click" Tag="git diff"/>
                 <Button Content="git branch"  Style="{StaticResource ChipButton}" Click="Chip_Click" Tag="git branch -a"/>
-                <Button Content="dotnet build" Style="{StaticResource ChipButton}" Click="Chip_Click" Tag="dotnet build --configuration Release"/>
+                <Button Content="pnpm install" Style="{StaticResource ChipButton}" Click="Chip_Click" Tag="pnpm install"/>
+                <Button Content="pnpm build"   Style="{StaticResource ChipButton}" Click="Chip_Click" Tag="pnpm run build"/>
             </WrapPanel>
         </Border>
 
@@ -32,7 +33,7 @@
         <Grid Grid.Row="1">
             <TextBox x:Name="OutputBox"
                      Style="{StaticResource TerminalOutputBox}"
-                     Text="BuildConsole Terminal&#x0A;Type a command or click a chip above.&#x0A;&#x0A;C:\Source\ShaneMcCawConsulting\Shane-McCaw-MSP&gt; "
+                     Text="BuildConsole Terminal — commands run on the Replit dev server&#x0A;Type a command or click a chip above."
                      VerticalScrollBarVisibility="Auto"
                      IsReadOnly="True">
                 <!-- Git #945 — heavy-mouse-user right-click menu; no ContextMenu existed here before. -->
@@ -73,12 +74,13 @@
                            VerticalAlignment="Center"
                            Margin="0,0,8,0"/>
                 <!-- Send button -->
-                <Button DockPanel.Dock="Right"
+                <Button x:Name="SendButton"
+                        DockPanel.Dock="Right"
                         Content="&#xE768;"
                         FontFamily="Segoe MDL2 Assets"
                         FontSize="14"
                         Style="{StaticResource IconButton}"
-                        ToolTip="Run (Enter)"
+                        ToolTip="Run on the Replit server (Enter)"
                         Click="Send_Click"
                         Margin="6,0,0,0"/>
                 <!-- Command input -->

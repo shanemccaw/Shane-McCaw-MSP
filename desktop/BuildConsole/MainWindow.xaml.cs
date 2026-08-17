@@ -336,6 +336,7 @@ namespace BuildConsole
             LeftSidebar.Initialize(_buildTrackerApi);
 
             BuildLogView.Initialize(_buildTrackerApi);
+            TerminalView.Initialize(_buildTrackerApi);
 
             // Git #902 — Shane: "Replit shuts its dev mode down after ~10 min of
             // inactivity... Can we use WebView2 to watch the site. When it sees the

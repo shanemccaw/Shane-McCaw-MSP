@@ -32,6 +32,14 @@ namespace BuildConsole.Services
         public DateTimeOffset? UpdatedAt { get; set; }
     }
 
+    /// <summary>Matches POST /admin/simulator/deploy/console's real `{ ok, command, output }` response shape.</summary>
+    public class DeployConsoleResult
+    {
+        public bool Ok { get; set; }
+        public string Command { get; set; } = "";
+        public string Output { get; set; } = "";
+    }
+
     public class BlockedByInfo
     {
         public int Number { get; set; }
@@ -461,6 +469,25 @@ namespace BuildConsole.Services
         });
 
         private class FileContentResponse { public string Content { get; set; } = ""; }
+
+        /// <summary>
+        /// Shane: "the Terminal panel... is supposed to send the commands to
+        /// the Replit server." Real POST /admin/simulator/deploy/console —
+        /// the SAME free-text deploy-console endpoint the admin panel's own
+        /// floating console already uses (`admin-deploy-console.ts`): runs
+        /// the command verbatim via child_process.exec on the dev server
+        /// itself (cwd = repo root), gated by the same Bearer ingest-token
+        /// auth as everything else here. Not a local shell — a real command
+        /// executed on Replit, with real stdout/stderr returned.
+        /// </summary>
+        public Task<DeployConsoleResult> RunDeployConsoleCommandAsync(string command) => TrackAsync($"POST deploy/console \"{command}\"", async () =>
+        {
+            var res = await _http.PostAsJsonAsync("api/admin/simulator/deploy/console", new { command });
+            var body = await res.Content.ReadFromJsonAsync<DeployConsoleResult>(JsonOpts);
+            if (body != null) return body;
+            var raw = await res.Content.ReadAsStringAsync();
+            return new DeployConsoleResult { Ok = false, Command = command, Output = string.IsNullOrWhiteSpace(raw) ? $"HTTP {(int)res.StatusCode}" : raw };
+        });
 
         /// <summary>
         /// Real execute — POST /api/simulator/sql/execute, the SAME endpoint the
