@@ -145,7 +145,7 @@ const PILLAR_LABELS: Record<string, string> = {
   compliance: "Compliance",
   adoption: "Adoption",
   copilot: "Copilot Readiness",
-  architecture: "Architecture",
+  architecture: "Health",
   licensing: "Licensing",
   security: "Security",
 };

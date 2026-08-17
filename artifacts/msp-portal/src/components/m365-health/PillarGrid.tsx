@@ -4,7 +4,6 @@ import {
   Scale,
   FileCheck,
   Users,
-  Bot,
   Network,
   Receipt,
   ChevronRight,
@@ -17,8 +16,8 @@ import {
 } from './useM365HealthLive';
 
 /**
- * 7-pillar score cards — circular red→amber→green rings driven by the real
- * package-aware pillar scores (status.radar.pillars). The full 7-pillar
+ * 6-pillar score cards — circular red→amber→green rings driven by the real
+ * package-aware pillar scores (status.radar.pillars). The full 6-pillar
  * universe always renders in canonical order; a pillar the customer's scanned
  * package doesn't genuinely cover renders the honest "Not covered by this
  * scan" state — never a fabricated score. Ring color = the platform's shared
@@ -36,17 +35,17 @@ export interface PillarCardEntry {
   icon: React.ComponentType<{ className?: string }>;
 }
 
-/** The full, confirmed 7-pillar universe in canonical display order — same set
- * as /assessment's GAUGE_PILLARS (keys match the backend's real HealthPillar
- * keys plus "security"). */
+/** The full, confirmed 6-pillar universe in canonical display order (Copilot
+ * is tracked separately, not a health pillar — Git #1098). Keys match the
+ * backend's real HealthPillar keys plus "security"; "architecture" displays
+ * as "Health" per Shane's sign-off on #1098 (backend key/fields unchanged). */
 export const PILLAR_UNIVERSE: { key: string; fallbackLabel: string; icon: React.ComponentType<{ className?: string }> }[] = [
-  { key: 'security', fallbackLabel: 'Security', icon: Shield },
   { key: 'governance', fallbackLabel: 'Governance', icon: Scale },
+  { key: 'security', fallbackLabel: 'Security', icon: Shield },
   { key: 'compliance', fallbackLabel: 'Compliance', icon: FileCheck },
-  { key: 'adoption', fallbackLabel: 'Adoption', icon: Users },
-  { key: 'copilot', fallbackLabel: 'Copilot', icon: Bot },
-  { key: 'architecture', fallbackLabel: 'Architecture', icon: Network },
   { key: 'licensing', fallbackLabel: 'Licensing', icon: Receipt },
+  { key: 'adoption', fallbackLabel: 'Adoption', icon: Users },
+  { key: 'architecture', fallbackLabel: 'Health', icon: Network },
 ];
 
 export function buildPillarCards(pillars: HealthRadarPillar[]): PillarCardEntry[] {

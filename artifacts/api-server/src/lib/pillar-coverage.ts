@@ -116,7 +116,7 @@ export const PILLAR_LABELS: Record<RadarPillar, string> = {
   compliance: "Compliance",
   adoption: "Adoption",
   copilot: "Copilot Readiness",
-  architecture: "Architecture",
+  architecture: "Health",
   licensing: "Licensing",
   security: "Security",
 };
