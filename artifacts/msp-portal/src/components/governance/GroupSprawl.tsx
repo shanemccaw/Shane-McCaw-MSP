@@ -1,5 +1,5 @@
 import React from 'react';
-import { Users, UserMinus, Globe, FolderX, Package, MailWarning, UsersRound, AppWindow, FolderOpen } from 'lucide-react';
+import { Users, UserMinus, Globe, FolderX, MailWarning, UsersRound, AppWindow, FolderOpen } from 'lucide-react';
 import {
   ResolvedMetric,
   resolvedValue,
@@ -28,7 +28,6 @@ const SPRAWL_ROWS: {
   { key: 'compliance.guestUserCount', label: 'Guest Users', caption: 'External identities in your directory', icon: Globe },
   { key: 'compliance.externalInviteCount', label: 'External Invites', caption: 'Pending/recent external invitations', icon: MailWarning },
   { key: 'compliance.publicChannelCount', label: 'Public Channels', caption: 'Org-wide visible Teams channels', icon: Users },
-  { key: 'governance.orphanedAccessPackageCount', label: 'Orphaned Access Packages', caption: 'Entitlement packages with no owner', icon: Package },
   { key: 'governance.publicGroupCount', label: 'Public Groups', caption: 'M365 Groups discoverable/joinable by anyone', icon: UsersRound },
   { key: 'governance.publicTeamCount', label: 'Public Teams', caption: 'Whole Teams discoverable/joinable by anyone', icon: AppWindow },
   { key: 'compliance.eeeuSiteCount', label: 'SharePoint EEEU Sharing', caption: 'Sites shared with Everyone Except External Users', icon: FolderOpen },

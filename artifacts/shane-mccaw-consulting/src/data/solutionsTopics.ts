@@ -712,9 +712,11 @@ export const SOLUTIONS_TOPICS: SolutionTopic[] = [
       },
       // Every metric label below is a real, code-verified metric (lib/dashboard-registry/
       // src/metrics.ts: compliance.orphanedTeamCount, compliance.orphanedSiteCount,
-      // governance.overdueAccessReviewCount, governance.orphanedAccessPackageCount) and
-      // all four sit on the seeded "Compliance & Governance" customer dashboard tab
-      // layout (2026-07-19-customer-dashboard-category-tabs.sql). The trend note
+      // governance.overdueAccessReviewCount) and all three sit on the seeded
+      // "Compliance & Governance" customer dashboard tab layout
+      // (2026-07-19-customer-dashboard-category-tabs.sql). governance.orphanedAccessPackageCount
+      // was retired as a phantom sourceKey (Git #1118) and dropped from this panel.
+      // The trend note
       // reflects the real Drift Engine output shape (score + trendDirection,
       // drift-engine.ts). The counts themselves are illustrative — the panel carries
       // the same "Illustrative Example" badge and caption as Home's Mission Control
@@ -740,7 +742,6 @@ export const SOLUTIONS_TOPICS: SolutionTopic[] = [
           { label: "Orphaned Teams", count: 14 },
           { label: "Orphaned SharePoint Sites", count: 23 },
           { label: "Overdue Access Reviews", count: 6 },
-          { label: "Orphaned Access Packages", count: 0 },
         ],
         trendNote: "Drift Engine: trend rising since last scheduled evaluation",
         caption: "Example data — not your real score",
@@ -1337,9 +1338,10 @@ export const SOLUTIONS_TOPICS: SolutionTopic[] = [
       // Real registry metrics themed to this page's own coverage (metrics.ts:
       // compliance.orphanedTeamCount + compliance.publicChannelCount [Compliance
       // & Governance tab], drift.teamsPolicyDriftCount [Configuration Drift tab],
-      // governance.workflowFailureCount [lifecycle workflows]). Counts
-      // illustrative under the badge; Lifecycle Workflow Failures 0 = the
-      // healthy empty track.
+      // governance.publicTeamCount [real check, #396/#1117 -- not yet on a seeded
+      // tab layout]). Counts illustrative under the badge; Public Teams 0 = the
+      // healthy empty track. governance.workflowFailureCount was retired as a
+      // phantom sourceKey (Git #1118) and dropped from this panel.
       dashboard: {
         panelLabel: "Portal preview — Teams governance",
         ringLabel: "Governance pillar",
@@ -1351,7 +1353,7 @@ export const SOLUTIONS_TOPICS: SolutionTopic[] = [
           { label: "Orphaned Teams", count: 11 },
           { label: "Public Channels", count: 6 },
           { label: "Teams Policy Drift", count: 3 },
-          { label: "Lifecycle Workflow Failures", count: 0 },
+          { label: "Public Teams", count: 0 },
         ],
         trendNote: "Health Engine: adoption and structural signals correlated on each evaluation",
         caption: "Example data — not your real score",
