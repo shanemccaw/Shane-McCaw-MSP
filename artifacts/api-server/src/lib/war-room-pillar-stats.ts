@@ -431,15 +431,18 @@ export const WAR_ROOM_PILLAR_STAT_SPECS: Record<WarRoomPillarKey, readonly WarRo
   adoption: [],
 
   // "regulated, unlabelled" maps exactly onto the real missing-labels check. The
-  // other three replace file-scan / PHI-container / mailbox-DLP numbers nothing
+  // other two replace file-scan / PHI-container / mailbox-DLP numbers nothing
   // collects, with the real compliance checks nearest to what each described.
+  //
+  // `compliance.retentionDrift` (-> compliance.retentionDriftCount) was dropped
+  // here 2026-08-17 (#1103): its `compliance:retention-drift` sourceKey named no
+  // row in the live monitor_checks catalog and was retired to a `not_collected:`
+  // sentinel, which this spec's own guarding test refuses to back a stat with —
+  // a sentinel can never produce the number this card promises.
   compliance: [
     { id: "compliance.missingLabels", label: "missing sensitivity labels", unit: "count",
       source: { kind: "metric", metricKey: "compliance.missingLabelCount" },
       replaces: "40,480 regulated, unlabelled" },
-    { id: "compliance.retentionDrift", label: "retention policy drift", unit: "count",
-      source: { kind: "metric", metricKey: "compliance.retentionDriftCount" },
-      replaces: "184,000 files evaluated" },
     { id: "compliance.weakDlp", label: "weak DLP policies", unit: "count",
       source: { kind: "metric", metricKey: "compliance.weakDlpPolicyCount" },
       replaces: "1,412 mailboxes outside DLP" },

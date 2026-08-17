@@ -182,12 +182,12 @@ describe("no framework is graded, and the report says so", () => {
  * The real figures
  * ------------------------------------------------------------------ */
 
-describe("the four real compliance stats", () => {
-  it("states all four once, in the Summary, and nowhere else", () => {
+describe("the three real compliance stats", () => {
+  it("states all three once, in the Summary, and nowhere else", () => {
     const report = build(REAL_TENANT());
     assert.deepEqual(
       rowsOf(sectionNamed(report, "Compliance Posture Summary").blocks).map((r) => r.label),
-      ["Unlabelled content", "Data Loss Prevention", "Retention coverage", "External access"],
+      ["Unlabelled content", "Data Loss Prevention", "External access"],
     );
     assert.equal(rowsOf(sectionNamed(report, "Data Lifecycle & Records Management").blocks).length, 0);
   });
@@ -195,7 +195,7 @@ describe("the four real compliance stats", () => {
   it("carries each real value verbatim", () => {
     const rows = rowsOf(sectionNamed(build(REAL_TENANT()), "Compliance Posture Summary").blocks);
     assert.ok(rows[0].value.startsWith("40,480 "));
-    assert.ok(rows[3].value.startsWith("31 "));
+    assert.ok(rows[2].value.startsWith("31 "));
   });
 
   it("names the missing checks rather than showing a zero", () => {
@@ -390,8 +390,8 @@ describe("every pick names a real stat id on a real pillar", () => {
     for (const pick of __testables.SUMMARY_PICKS) assert.equal(pick.pillar, "compliance");
   });
 
-  it("picks all four of the card's real stats, none twice", () => {
+  it("picks all three of the card's real stats, none twice", () => {
     const ids = __testables.SUMMARY_PICKS.map((p) => p.statId);
-    assert.equal(new Set(ids).size, 4);
+    assert.equal(new Set(ids).size, 3);
   });
 });

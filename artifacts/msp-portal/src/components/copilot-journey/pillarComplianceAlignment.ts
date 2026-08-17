@@ -13,14 +13,16 @@
  * arrives from the wire; none is written down. The honesty machinery is
  * `liveReportBlocks.ts`, shared verbatim, and nothing about it is re-decided here.
  *
- * ── THE FOUR REAL FIGURES THIS REPORT HAS ────────────────────────────────────
- * `WAR_ROOM_PILLAR_STAT_SPECS.compliance` is four stats, all with a real check:
- * missing sensitivity labels (`compliance:missing-labels`), retention policy
- * drift (`compliance:retention-drift`), weak DLP policies
- * (`compliance:weak-dlp-policies`) and guest users
- * (`compliance:guest-users`).
+ * ── THE THREE REAL FIGURES THIS REPORT HAS ───────────────────────────────────
+ * `WAR_ROOM_PILLAR_STAT_SPECS.compliance` is three stats, all with a real check:
+ * missing sensitivity labels (`compliance:missing-labels`), weak DLP policies
+ * (`compliance:weak-dlp-policies`) and guest users (`compliance:guest-users`).
+ * A fourth, retention policy drift, was dropped 2026-08-17 (#1103): its
+ * `compliance:retention-drift` sourceKey named no row in the live monitor_checks
+ * catalog and was retired to a `not_collected:` sentinel rather than guessed at
+ * a near-miss key.
  *
- * Those four are genuinely live rather than historically stale: as of
+ * Those three are genuinely live rather than historically stale: as of
  * 2026-08-06 `compliance:weak-dlp-policies`, `compliance:dlp-incidents`,
  * `compliance:missing-labels` and `compliance:label-errors` are re-linked to the
  * `assess:copilot-readiness` package and newly wired into
@@ -45,10 +47,11 @@
  *   2. "Compliance Drift & Violations" is DROPPED entirely, and so is the
  *      Summary's "Compliance drift" row. Drift is a diff against a recorded
  *      baseline and there is none on a first scan — the same reasoning as the
- *      two reports before this one. `compliance:retention-drift` is NOT that: it
- *      is a real point-in-time count of retention coverage gaps, and it is
- *      stated below under its own honest label rather than as evidence of
- *      movement over time.
+ *      two reports before this one. Retention policy drift is not stated
+ *      elsewhere either: `compliance:retention-drift` names no real check
+ *      (confirmed absent from monitor_checks 2026-08-17, #1103), so unlike the
+ *      other three real figures it is not a case of "state it as a point-in-time
+ *      count instead" — there is nothing behind it to state.
  *   3. "Sensitivity & Labeling Compliance" is DROPPED as a section. Its one real
  *      claim is the unlabelled-content figure, which is `compliance:missing-
  *      labels` and leads the Summary; the other four rows need a per-category
@@ -116,17 +119,16 @@ export interface ComplianceAlignmentReport {
  * about them: what is unlabelled, what is unprotected, what has drifted, and who
  * from outside can reach any of it.
  *
- * All four of the compliance card's stats are here rather than split across two
+ * All three of the compliance card's stats are here rather than split across two
  * sections. The design splits them, but each of its later sections leans on a
  * per-category or per-workload breakdown that does not exist (see the header),
- * so splitting the four real figures to fill those headings would leave two
- * one-row sections and three empty ones. One honest table reads better and
+ * so splitting the three real figures to fill those headings would leave a
+ * one-row section and empty ones. One honest table reads better and
  * claims less.
  */
 const SUMMARY_PICKS: readonly StatPick[] = [
   { statId: "compliance.missingLabels", pillar: "compliance", label: "Unlabelled content", caption: "items carrying no sensitivity label" },
   { statId: "compliance.weakDlp", pillar: "compliance", label: "Data Loss Prevention", caption: "DLP policies configured too weakly to stop the leak they were written to stop" },
-  { statId: "compliance.retentionDrift", pillar: "compliance", label: "Retention coverage", caption: "places retention has drifted from the policy meant to apply" },
   { statId: "compliance.guests", pillar: "compliance", label: "External access", caption: "guest accounts holding standing access to your tenant" },
 ];
 
@@ -245,7 +247,7 @@ export function buildComplianceAlignmentReport(input: {
   // ── Data Lifecycle & Records Management ────────────────────────────────────
   //
   // Prose plus the compliance pillar's own real findings. No metric row: all
-  // four of this pillar's real figures lead the Summary, and the same number
+  // three of this pillar's real figures lead the Summary, and the same number
   // under two headings reads as two findings.
   sections.push({
     heading: SECTION_HEADINGS.lifecycle,
@@ -263,7 +265,7 @@ export function buildComplianceAlignmentReport(input: {
   //
   // ONE section for the whole document, on the same reasoning as its sibling
   // reports'. It matters more here than anywhere else in the set: the Purview
-  // checks behind three of this report's four figures are the ones most often
+  // checks behind two of this report's three figures are the ones most often
   // gated behind a licence tier, and `licenceGapDisclosure` refuses to name a
   // Purview SKU precisely because a `cmdlet_unavailable` cannot separate a
   // licensing gap from a missing role group.
@@ -299,7 +301,7 @@ export function buildComplianceAlignmentReport(input: {
   // licensing beyond the E5 uplift already identified" — a ranking and a
   // procurement claim, neither of which this report is in a position to make.
   const closing: string[] = [
-    "A sensitivity label is the only instruction Copilot obeys. It grounds on whatever a user can already reach and summarises it without knowing what it is, so labelling, retention and data-loss controls are not filing questions — they are the only mechanism that tells Copilot which of your content it may quote.",
+    "A sensitivity label is the only instruction Copilot obeys. It grounds on whatever a user can already reach and summarises it without knowing what it is, so labelling and data-loss controls are not filing questions — they are the only mechanism that tells Copilot which of your content it may quote.",
   ];
   if (typeof compliance?.score === "number") {
     closing.push(
@@ -314,7 +316,7 @@ export function buildComplianceAlignmentReport(input: {
         ? `Labels are the only instruction Copilot obeys at ${view.tenant.name}`
         : `Compliance posture for ${view.tenant.name}`,
     standfirst:
-      "This report evaluates your tenant's compliance posture across sensitivity labelling, retention, data-loss prevention and external access. Every finding traces to compliance telemetry surfaced in your own assessment. It does not grade your tenant against any regulatory framework — see the summary below for why that section is deliberately absent.",
+      "This report evaluates your tenant's compliance posture across sensitivity labelling, data-loss prevention and external access. Every finding traces to compliance telemetry surfaced in your own assessment. It does not grade your tenant against any regulatory framework — see the summary below for why that section is deliberately absent.",
     verdict: buildVerdict(compliance),
     sections,
     closing,

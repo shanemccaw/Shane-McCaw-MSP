@@ -61,8 +61,8 @@ import type { MetricResult } from "./dashboard-resolvers.ts";
 
 const ALL_SPECS: WarRoomStatSpec[] = WAR_ROOM_PILLAR_KEYS.flatMap((p) => [...WAR_ROOM_PILLAR_STAT_SPECS[p]]);
 
-describe("stat specs cover exactly the 24 producible callouts", () => {
-  it("has four stats for every pillar except adoption, which has none", () => {
+describe("stat specs cover exactly the 23 producible callouts", () => {
+  it("has four stats for every pillar except adoption (none) and compliance (three)", () => {
     expect(WAR_ROOM_PILLAR_KEYS).toHaveLength(7);
     for (const pillar of WAR_ROOM_PILLAR_KEYS) {
       // adoption is deliberately empty since #441: its four stats resolved
@@ -72,11 +72,16 @@ describe("stat specs cover exactly the 24 producible callouts", () => {
       // customers verbatim. Repointing them at the real `adoption:*` usage
       // reports would render row counts under "active users" captions, so the
       // gap is recorded in WAR_ROOM_UNPRODUCIBLE_STATS instead.
-      expect(WAR_ROOM_PILLAR_STAT_SPECS[pillar], `pillar ${pillar}`).toHaveLength(
-        pillar === "adoption" ? 0 : 4,
-      );
+      //
+      // compliance dropped one to three since #1103: `compliance.retentionDrift`
+      // resolved through `compliance:retention-drift`, which names no row in the
+      // live monitor_checks catalog — the same phantom-sourceKey bug class as
+      // #441, caught this time by the registry's own not_collected sentinel
+      // guard rather than reaching a customer first.
+      const expected = pillar === "adoption" ? 0 : pillar === "compliance" ? 3 : 4;
+      expect(WAR_ROOM_PILLAR_STAT_SPECS[pillar], `pillar ${pillar}`).toHaveLength(expected);
     }
-    expect(ALL_SPECS).toHaveLength(24);
+    expect(ALL_SPECS).toHaveLength(23);
   });
 
   it("gives every stat a unique id", () => {
@@ -88,11 +93,15 @@ describe("stat specs cover exactly the 24 producible callouts", () => {
     for (const spec of ALL_SPECS) {
       expect(spec.replaces.length, `spec ${spec.id}`).toBeGreaterThan(0);
     }
-    // The 24 surviving originals are accounted for exactly once. The other four
+    // The 23 surviving originals are accounted for exactly once. Four moved to
+    // WAR_ROOM_UNPRODUCIBLE_STATS when the adoption card emptied (#441)
     // ("1,631 daily active users", "22% meetings transcribed", "0 named
-    // champions", "64% files shared in chat") moved to
-    // WAR_ROOM_UNPRODUCIBLE_STATS when the adoption card emptied (#441).
-    expect(new Set(ALL_SPECS.map((s) => s.replaces)).size).toBe(24);
+    // champions", "64% files shared in chat"); "184,000 files evaluated" moved
+    // there too when compliance.retentionDrift was dropped (#1103) — it was
+    // always one of the original nine unproducible numbers (see this file's own
+    // header), just miscategorized as replaced until the phantom sourceKey was
+    // caught.
+    expect(new Set(ALL_SPECS.map((s) => s.replaces)).size).toBe(23);
   });
 });
 

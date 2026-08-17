@@ -151,12 +151,14 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "scalar",
     sourceType: "monitor_profile",
-    sourceKey: "identity:impossible-travel",
+    // #1103: `identity:impossible-travel` names no row in the live monitor_checks
+    // catalog (confirmed 2026-08-17) — no impossible-travel detection check
+    // exists at all today. Retired to the honest not_collected: sentinel rather
+    // than guessed at a near-miss key.
+    sourceKey: "not_collected:impossible-travel",
     scope: "customer",
-    status: "available",
-    smartEligible: true,
-    smartDefaultTarget: 0,
-    smartBands: RISK_COUNT_BANDS,
+    status: "not_collected",
+    smartEligible: false,
   },
   {
     // Global Admin sprawl — the identity:global-admin-count check counts real
@@ -239,9 +241,14 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "trend",
     sourceType: "monitor_profile",
-    sourceKey: "security:conditional-access-failures",
+    // #1103: `security:conditional-access-failures` names no row in the live
+    // monitor_checks catalog (confirmed 2026-08-17). The real CA checks
+    // (identity:ca-report-only, identity:ca-policy-count, identity:ca-legacy-
+    // auth-block, identity:ca-mfa-coverage, identity:ca-device-compliance) are
+    // policy-state snapshots, not a "failures" count — no genuine match.
+    sourceKey: "not_collected:conditional-access-failures",
     scope: "customer",
-    status: "available",
+    status: "not_collected",
     smartEligible: false,
   },
   {
@@ -261,9 +268,14 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "event-list",
     shape: "timeline",
     sourceType: "monitor_profile",
-    sourceKey: "audit:directory-role-changes",
+    // #1103: `audit:directory-role-changes` names no row in the live
+    // monitor_checks catalog (confirmed 2026-08-17) — `audit:` is not a real
+    // check-key domain at all. `identity:pim-permanent-roles` is a point-in-time
+    // count of permanent role assignments, not a role-CHANGE event list, so it
+    // is not a genuine match either.
+    sourceKey: "not_collected:privileged-role-changes",
     scope: "customer",
-    status: "available",
+    status: "not_collected",
     smartEligible: false,
   },
   {
@@ -499,12 +511,16 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "scalar",
     sourceType: "monitor_profile",
-    sourceKey: "security:low-score-controls",
+    // #1103: `security:low-score-controls` names no row in the live
+    // monitor_checks catalog (confirmed 2026-08-17). `security:secure-score-by-
+    // category` is the nearest real check, but it returns a per-category
+    // breakdown distribution (secureScoreByCategory), not a pre-computed COUNT
+    // of controls below a threshold — deriving that count would be a new
+    // aggregation, not a rename, so not repointed on a guess.
+    sourceKey: "not_collected:low-score-controls",
     scope: "customer",
-    status: "available",
-    smartEligible: true,
-    smartDefaultTarget: 0,
-    smartBands: RISK_COUNT_BANDS,
+    status: "not_collected",
+    smartEligible: false,
   },
 
   // ---- Compliance & Governance ------------------------------------------
@@ -562,9 +578,14 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "scalar",
     sourceType: "monitor_profile",
-    sourceKey: "compliance:label-policy-drift",
+    // #1103: `compliance:label-policy-drift` names no row in the live
+    // monitor_checks catalog (confirmed 2026-08-17). `compliance:label-errors`
+    // is a distinct real check already curated onto compliance.labelErrorCount
+    // above — it counts label DISTRIBUTION failures, not policy drift — so it
+    // is not a genuine match for this metric.
+    sourceKey: "not_collected:label-policy-drift",
     scope: "customer",
-    status: "available",
+    status: "not_collected",
     smartEligible: false,
   },
   {
@@ -573,9 +594,13 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "scalar",
     sourceType: "monitor_profile",
-    sourceKey: "compliance:retention-drift",
+    // #1103: `compliance:retention-drift` names no row in the live
+    // monitor_checks catalog (confirmed 2026-08-17). `governance:retention-
+    // policy-coverage` is the nearest real check, but it reports workload
+    // COVERAGE percentage, not policy drift/changes — not a genuine match.
+    sourceKey: "not_collected:retention-drift",
     scope: "customer",
-    status: "available",
+    status: "not_collected",
     smartEligible: false,
   },
   {
