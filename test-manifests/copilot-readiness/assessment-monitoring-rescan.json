@@ -28,7 +28,13 @@
 
     "LAST REAL RUN (shaneapp://runTest, 2026-08-16/17, this commit): first two runs (bare goto '/login') both hit the SAME wall — #email never rendered because '/login' 404s server-side. Root cause (Shane, live, 2026-08-16): msp-portal's outer WouterRouter has base=BASE_PATH='/portal' (App.tsx:135/1127), so every route including login is really served at /portal/*; a bare '/login' target 404s before the SPA mounts. Fixed both uiSteps goto targets to the real /portal-prefixed URLs. Third run, post-fix: 23/26 passed — login now succeeds and DRIFT D3's navigation to /portal/assessment-results/copilot-readiness-assessment succeeds. The 3 remaining reds are ALL the same expected class: (1)+(2) the two new DRIFT D1/D2 apiTests for GET /api/portal/assessment/history 404 — the deployed api-server ({{DEPLOY_URL}}) predates this commit, route doesn't exist there yet. (3) DRIFT D4's expect for the three chart-state testids finds none — the deployed msp-portal frontend likewise predates this commit, so AssessmentDriftChart.tsx isn't in the bundle it's serving yet. Both are the same 'new code needs a real redeploy before shaneapp://runTest against the deployed origin can exercise it' gap #1058's bookend and remediation-tracker-e2e.json's notes already document — not a defect in this manifest or the feature code. SHANE TO-DO: redeploy api-server + msp-portal, then re-run; all 3 should go green (D4's actual empty/sparse/chart state still depends on how much real tenant_monitor_profiles history exists for the testbed tenant by then — see DIVERGENCE 4B).",
 
-    "LAST REAL RUN (shaneapp://runTest, 2026-08-17, RESCORE/#1048 commit): 20/28 passed, 8 failed, exactly two independent, already-explainable classes — no new defect in this session's own feature code. (A) RESCORE E1-E4 (4 fails, all 404 'Cannot GET /api/portal/customer/rescoring-status') — the SAME 'deployed origin predates this commit' gap DIVERGENCE 4B/D1/D2 above already documents: the route exists in this commit's code (verified by a clean local tsc --noEmit and by directly querying the live dev DB via shaneapp://executeSql — wf_triggers.next_run_at for '__system__: Weekly Copilot Assessment Rescan' really is 2026-08-23T03:00:00Z, and the testbed tenant id=1 genuinely has Graph consent granted + an active Assessment user + a real 73/99-checksOk partial run — the exact values E2-E4 would assert once live), but {{DEPLOY_URL}} is still serving the pre-#1048 build. SHANE TO-DO: redeploy api-server, then re-run — all 4 should go green against the same real data already confirmed above. (B) the 4 uiSteps from 'input #email' through 'click login-submit' (4 fails) — #email never became visible/found within the 15s poll budget on THIS run, despite the /portal/login goto succeeding and the exact same selectors having passed cleanly in the prior LAST REAL RUN entry above with no code change to the login form in between. Read as environment/timing flake (WebView2 cold-start hydration, consistent with this manifest's own 'WAIT for the login form to hydrate' comment on that step) rather than a regression — nothing in this session touched Home.tsx/login markup. Not re-run again this session per the single-attempt-then-report-honestly discipline; a future session re-running this manifest should treat a repeat of exactly this failure shape as worth investigating, and a one-off as the flake it looks like here."
+    "LAST REAL RUN (shaneapp://runTest, 2026-08-17, RESCORE/#1048 commit): 20/28 passed, 8 failed, exactly two independent, already-explainable classes — no new defect in this session's own feature code. (A) RESCORE E1-E4 (4 fails, all 404 'Cannot GET /api/portal/customer/rescoring-status') — the SAME 'deployed origin predates this commit' gap DIVERGENCE 4B/D1/D2 above already documents: the route exists in this commit's code (verified by a clean local tsc --noEmit and by directly querying the live dev DB via shaneapp://executeSql — wf_triggers.next_run_at for '__system__: Weekly Copilot Assessment Rescan' really is 2026-08-23T03:00:00Z, and the testbed tenant id=1 genuinely has Graph consent granted + an active Assessment user + a real 73/99-checksOk partial run — the exact values E2-E4 would assert once live), but {{DEPLOY_URL}} is still serving the pre-#1048 build. SHANE TO-DO: redeploy api-server, then re-run — all 4 should go green against the same real data already confirmed above. (B) the 4 uiSteps from 'input #email' through 'click login-submit' (4 fails) — #email never became visible/found within the 15s poll budget on THIS run, despite the /portal/login goto succeeding and the exact same selectors having passed cleanly in the prior LAST REAL RUN entry above with no code change to the login form in between. Read as environment/timing flake (WebView2 cold-start hydration, consistent with this manifest's own 'WAIT for the login form to hydrate' comment on that step) rather than a regression — nothing in this session touched Home.tsx/login markup. Not re-run again this session per the single-attempt-then-report-honestly discipline; a future session re-running this manifest should treat a repeat of exactly this failure shape as worth investigating, and a one-off as the flake it looks like here.",
+
+    "PILLARS block (Git #1051, epic #1045) — 6-pillar resolver output coverage. GET /api/portal/assessment/status's $.radar.pillars is the same real, package-aware pillar array PillarGrid.tsx renders on /m365-health (via useM365HealthLive.ts); it is NOT padded to a fixed length server-side (pillar-coverage.ts's own comment: 'never padded with fabricated axes') — the array holds only pillars the customer's actual scanned package genuinely covers. PillarGrid.tsx client-side pads that array against its own fixed 6-key PILLAR_UNIVERSE (governance/security/compliance/licensing/adoption/architecture — 'copilot' deliberately excluded from the grid per #1098, tracked separately as Copilot Readiness) so exactly 6 cards always render, with an honest 'Not covered by this scan' state for any pillar the real data omits. Fixed a real stale-label bug found while writing this coverage: PillarGrid.tsx's own header literally read '7-Pillar Health Matrix' while only ever rendering 6 cards (RADAR_PILLARS on the backend is 7 incl. security, but the grid's PILLAR_UNIVERSE constant is 6 — copilot is excluded) — corrected to '6-Pillar Health Matrix' in the same commit as these tests, plus a matching stale '(all 7, honest coverage)' comment in m365-health.tsx. Added data-testid='pillar-grid' on the card grid container and data-testid='pillar-card-{key}' (6 real keys) on each card button — neither existed before this session.",
+
+    "NOT_AVAILABLE STATE HANDLING — honestly scoped, not silently skipped. GET /api/portal/customer/rescoring-status's three fields (lastScan/nextScheduledRun/coverage) each carry a real discriminated-union contract with a `not_available` branch and a `reason` (never_scanned | not_enrolled | schedule_unavailable — see portal-customer-engines.ts:276-278). The one provisioned testbed account ({{TEST_PORTAL_EMAIL}}) is deliberately kept enrolled + previously-scanned so RESCAN/DRIFT/CADENCE above all have real prior-run data to assert against — forcing it into a not_available state (e.g. revoking Graph consent, deleting its msp_diagnostic_runs rows) would break those other blocks' preconditions, and no second, deliberately-unenrolled/never-scanned test account with known credentials is currently provisioned. Verified the three reason strings are real (not speculative) by reading the route's own source directly, not by exercising them live. Genuinely exercising all three not_available branches end-to-end needs either a second dedicated never-scanned/unenrolled testbed account (a Shane To-Do to provision) or a DB-level toggle step this runner doesn't yet support — documented here rather than faked, matching this manifest's existing DIVERGENCE-note discipline.",
+
+    "DASHBOARD RENDER ACROSS BREAKPOINTS — not testable with the current runner, documented rather than skipped. UiTestExecutor.cs's action set is goto/click/input/expect/logout only (verified by reading the executor directly) — there is no resize/viewport/setWindowSize action, and shaneapp://runTest drives a fixed-size WebView2 window. The Mobile Breakpoint Pass (#1050) changes (MobileBottomTabBar's `md:hidden`, ShellStatusOverflowMenu's `lg:hidden`, HeroHealthScore's `flex-col sm:flex-row`) are real Tailwind breakpoints that only a genuine viewport resize can exercise; asserting them at the runner's one fixed width would not prove anything about the other breakpoints and would misrepresent coverage. What IS covered here instead: the PILLARS uiSteps below assert the pillar grid renders its real 6 cards at the runner's default (desktop-class) viewport — a real, if partial, dashboard-render assertion. Genuine cross-breakpoint coverage needs either a resize primitive added to UiTestExecutor.cs or a Playwright-based visual pass (see site-playwright-verification-recipe precedent used for the public marketing site) — out of scope for this session's runner-driven manifest."
   ],
 
   "apiTests": [
@@ -195,6 +201,42 @@
       "path": "/api/portal/customer/rescoring-status",
       "headers": { "Authorization": "Bearer {{authToken}}" },
       "expect": { "status": 200, "jsonPath": "$.coverage.label", "exists": true }
+    },
+    {
+      "name": "RESCORE E5 (#1048) — coverage.status carries the real 'ok' discriminant (not just a truthy label) for the testbed account's genuine prior-run history.",
+      "method": "GET",
+      "path": "/api/portal/customer/rescoring-status",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.coverage.status", "value": "ok" }
+    },
+    {
+      "name": "RESCORE E6 (#1048) — nextScheduledRun carries a real expectedAt date sourced from wf_triggers.next_run_at (see notes), not just a bare status flag.",
+      "method": "GET",
+      "path": "/api/portal/customer/rescoring-status",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.nextScheduledRun.expectedAt", "exists": true }
+    },
+
+    {
+      "name": "PILLARS F1 (#1051, epic #1045) — anonymous (no bearer) cannot read the pillar radar: GET /portal/assessment/status without Authorization -> 401 (requireRole('Assessment')).",
+      "method": "GET",
+      "path": "/api/portal/assessment/status",
+      "headers": { "Content-Type": "application/json" },
+      "expect": { "status": 401 }
+    },
+    {
+      "name": "PILLARS F2 (#1051) — the real resolver returns radar.pillars as an array (the exact contract PillarGrid.tsx/useM365HealthLive.ts consume — see pillar-coverage.ts's getPillarCoverage()).",
+      "method": "GET",
+      "path": "/api/portal/assessment/status",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.radar.pillars", "isArray": true }
+    },
+    {
+      "name": "PILLARS F3 (#1051) — for the testbed account's real completed-run history, at least one genuinely-covered pillar entry is present with a real numeric score (not an empty/padded array) — the same data PillarGrid.tsx's buildPillarCards() maps into the fixed 6-card universe.",
+      "method": "GET",
+      "path": "/api/portal/assessment/status",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.radar.pillars[0].score", "exists": true }
     }
   ],
 
@@ -232,6 +274,59 @@
       "action": "expect",
       "selector": "[data-testid='assessment-drift-empty'], [data-testid='assessment-drift-sparse'], [data-testid='assessment-drift-chart']",
       "state": "visible"
+    },
+    {
+      "name": "PILLARS G1 (#1051, epic #1045) — navigate to the real M365 Health dashboard (/m365-health, relative to the outer WouterRouter's base=/portal — same base-prefix fact DRIFT D3 above documents). This is the real, live-data page PillarGrid.tsx/HeroHealthScore.tsx render on, not a mock/structure-only variant.",
+      "action": "goto",
+      "target": "/portal/m365-health"
+    },
+    {
+      "name": "PILLARS G2 (#1051) — the pillar grid container rendered at all (real data loaded and PillarGrid mounted, not stuck on a loading/error state).",
+      "action": "expect",
+      "selector": "[data-testid='pillar-grid']",
+      "state": "visible"
+    },
+    {
+      "name": "PILLARS G3 (#1051) — governance card rendered (part of the fixed 6-pillar universe; UiTestExecutor's expect uses document.querySelector, a single-element match, so each pillar is asserted as its own step rather than one comma-joined selector that would only prove ONE of the six is present).",
+      "action": "expect",
+      "selector": "[data-testid='pillar-card-governance']",
+      "state": "visible"
+    },
+    {
+      "name": "PILLARS G4 (#1051) — security card rendered (present on the customer-facing radar/grid per RADAR_PILLARS = HEALTH_PILLARS + security; not double-counted into HEALTH_PILLARS itself — see pillar-coverage.ts).",
+      "action": "expect",
+      "selector": "[data-testid='pillar-card-security']",
+      "state": "visible"
+    },
+    {
+      "name": "PILLARS G5 (#1051) — compliance card rendered.",
+      "action": "expect",
+      "selector": "[data-testid='pillar-card-compliance']",
+      "state": "visible"
+    },
+    {
+      "name": "PILLARS G6 (#1051) — licensing card rendered.",
+      "action": "expect",
+      "selector": "[data-testid='pillar-card-licensing']",
+      "state": "visible"
+    },
+    {
+      "name": "PILLARS G7 (#1051) — adoption card rendered.",
+      "action": "expect",
+      "selector": "[data-testid='pillar-card-adoption']",
+      "state": "visible"
+    },
+    {
+      "name": "PILLARS G8 (#1051) — architecture card rendered (backend key `architecture`, displays as label 'Health' per Shane's #1098 sign-off; data-testid stays keyed to the real backend key so this assertion doesn't churn if the display label changes again).",
+      "action": "expect",
+      "selector": "[data-testid='pillar-card-architecture']",
+      "state": "visible"
+    },
+    {
+      "name": "PILLARS G9 (#1051) — copilot is confirmed genuinely absent from the grid (Git #1098 removed it from PillarGrid's PILLAR_UNIVERSE; it is tracked separately as Copilot Readiness in TrendsRow, not a health pillar). state:absent proves the exclusion is real in the live DOM, not just in source.",
+      "action": "expect",
+      "selector": "[data-testid='pillar-card-copilot']",
+      "state": "absent"
     }
   ]
 }

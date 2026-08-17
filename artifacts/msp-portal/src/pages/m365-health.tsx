@@ -67,7 +67,7 @@ export default function M365HealthPage() {
             onSelectPillar={setSelectedPillarKey}
           />
 
-          {/* 2. Pillar cards — directly below the hero (all 7, honest coverage) */}
+          {/* 2. Pillar cards — directly below the hero (all 6, honest coverage) */}
           <PillarGrid
             pillars={pillars}
             onSelectPillar={setSelectedPillarKey}

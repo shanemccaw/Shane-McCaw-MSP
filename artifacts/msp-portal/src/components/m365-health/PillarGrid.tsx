@@ -80,14 +80,17 @@ export const PillarGrid: React.FC<PillarGridProps> = ({
     <section className="mb-6">
       <div className="flex items-center justify-between mb-3 px-1">
         <h3 className="text-xs font-mono font-bold text-secondary-foreground/90 uppercase tracking-wider">
-          7-Pillar Health Matrix
+          6-Pillar Health Matrix
         </h3>
         <span className="text-[11px] font-mono text-muted-foreground">
           Scores reflect only what your scan genuinely covers
         </span>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
+      <div
+        className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4"
+        data-testid="pillar-grid"
+      >
         {cards.map((card) => {
           const IconComp = card.icon;
           const isSelected = selectedPillarKey === card.key;
@@ -102,6 +105,7 @@ export const PillarGrid: React.FC<PillarGridProps> = ({
             <button
               key={card.key}
               onClick={() => onSelectPillar(card.key)}
+              data-testid={`pillar-card-${card.key}`}
               className={`bg-card border border-border p-4 rounded-xl cursor-pointer transition-all duration-300 group flex flex-col items-center text-center ${
                 isSelected ? 'ring-2 ring-ring' : 'hover:-translate-y-1'
               } ${covered ? '' : 'opacity-70'}`}

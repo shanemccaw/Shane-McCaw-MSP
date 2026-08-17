@@ -10,7 +10,13 @@
  *
  * Auth: requireRole("CustomerUser") — MSP JWT with CustomerUser role — for
  * every route here EXCEPT GET /portal/dashboard, which is requireAuth (see the
- * note on that route).
+ * note on that route), and GET /portal/customer/rescoring-status, which is
+ * requireRole("Assessment") (Git #1051 fix) — its own eligibility query looks
+ * for a tenant's active mspRole='Assessment' user (the free weekly Copilot
+ * Assessment rescan's real audience per #1058), so gating the READ one tier
+ * above that at CustomerUser blocked the exact free-tier customers the route
+ * exists to inform — confirmed live via shaneapp://runTest against the real
+ * testbed Assessment account (403 before this fix).
  * The customer's own ID is read from the JWT claim (req.user.customerId).
  *
  * Routes:
@@ -286,7 +292,13 @@ function coverageLabel(checksOk: number, checksTotal: number, checksLicenseGap: 
 
 router.get(
   "/portal/customer/rescoring-status",
-  requireRole("CustomerUser"),
+  // Git #1051 fix — was requireRole("CustomerUser"), one tier above the route's
+  // real audience (see the file-level doc comment above): its eligibility query
+  // looks for an active mspRole='Assessment' user on the tenant, so a
+  // CustomerUser+ floor 403'd the free-tier Assessment customers this route
+  // exists to inform. Lowered to match /portal/assessment/status and
+  // /portal/scan-status's own Assessment floor (same data domain).
+  requireRole("Assessment"),
   async (req: Request, res: Response) => {
     const customerId = req.user!.customerId;
     if (!customerId) {
