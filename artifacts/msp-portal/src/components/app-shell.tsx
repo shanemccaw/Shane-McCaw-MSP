@@ -54,6 +54,7 @@ import {
   ComplianceCountSquare,
   OpenRequestsCountSquare,
   SidebarHealthCircle,
+  ShellStatusOverflowMenu,
 } from "@/components/shell-status-widgets";
 import {
   Activity,
@@ -1382,6 +1383,10 @@ function CustomerTopBar({
         <ServiceStatusIndicator />
         <ComplianceCountSquare />
         <OpenRequestsCountSquare />
+        {/* Mobile/tablet-only overflow — surfaces the same 4 widgets above in
+            a dropdown below `lg`, where they render `hidden` and would
+            otherwise be unreachable on a phone (#1050). */}
+        <ShellStatusOverflowMenu />
 
         {/* Search — ⌘K trigger. Visual/keyboard element only; no search backend
             yet (see CommandPalette wiring in AppShell). */}
@@ -1548,6 +1553,56 @@ function CustomerTopBar({
         </DropdownMenu>
       </div>
     </header>
+  );
+}
+
+// ── Mobile bottom tab bar (CustomerUser only) ─────────────────────────────────
+//
+// The full "My Portal" sidebar (13 items) doesn't fit a phone, and today
+// mobile users have to open the hamburger overlay for every navigation. This
+// collapses the 4 most-used destinations into a thumb-reachable bar, with a
+// "More" tab that opens the existing mobile sidebar overlay for everything
+// else (#1050).
+
+const MOBILE_TAB_ITEMS: Array<{ icon: React.ElementType; label: string; href: string }> = [
+  { icon: Activity, label: "Health", href: "/m365-health" },
+  { icon: ShieldAlert, label: "Security", href: "/security-overview" },
+  { icon: ClipboardCheck, label: "Compliance", href: "/compliance" },
+  { icon: Gift, label: "Offers", href: "/customer-offers" },
+];
+
+function MobileBottomTabBar({ onOpenMore }: { onOpenMore: () => void }) {
+  const [location] = useLocation();
+
+  return (
+    <nav
+      className="md:hidden shrink-0 border-t border-border bg-background/95 backdrop-blur flex items-stretch"
+      aria-label="Primary"
+    >
+      {MOBILE_TAB_ITEMS.map((item) => {
+        const active = location.startsWith(item.href);
+        return (
+          <Link key={item.href} href={item.href} className="flex-1">
+            <button
+              className={`w-full flex flex-col items-center justify-center gap-0.5 py-2 text-[10px] transition-colors ${
+                active ? "text-primary font-medium" : "text-muted-foreground"
+              }`}
+            >
+              <item.icon className="size-5" />
+              <span>{item.label}</span>
+            </button>
+          </Link>
+        );
+      })}
+      <button
+        className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 text-[10px] text-muted-foreground"
+        onClick={onOpenMore}
+        aria-label="More navigation"
+      >
+        <Menu className="size-5" />
+        <span>More</span>
+      </button>
+    </nav>
   );
 }
 
@@ -2090,6 +2145,7 @@ export function AppShell({ children, title, actions }: AppShellProps) {
               navigate={navigate}
             />
             {pageBody}
+            <MobileBottomTabBar onOpenMore={() => setMobileOpen(true)} />
           </div>
 
           {/* Non-blocking Docked Support Panel on the Right */}

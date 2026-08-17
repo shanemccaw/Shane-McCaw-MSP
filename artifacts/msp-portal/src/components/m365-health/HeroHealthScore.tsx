@@ -73,8 +73,9 @@ export const HeroHealthScore: React.FC<HeroHealthScoreProps> = ({
       </div>
       <HeartbeatTrace />
 
-      {/* Main Gauge + Headline */}
-      <div className="md:col-span-5 lg:col-span-4 flex items-center space-x-6">
+      {/* Main Gauge + Headline — stacks vertically below sm (ring above text)
+          so the ring never gets crushed next to the headline on a phone. */}
+      <div className="md:col-span-5 lg:col-span-4 flex flex-col sm:flex-row items-center sm:items-center gap-4 sm:gap-6 text-center sm:text-left">
         <div className="relative">
           <svg className="w-28 h-28 md:w-32 md:h-32 transform -rotate-90">
             {/* Track */}

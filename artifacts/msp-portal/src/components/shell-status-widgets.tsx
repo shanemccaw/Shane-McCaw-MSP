@@ -8,8 +8,15 @@
  */
 
 import { Link } from "wouter";
-import { AlertCircle, AlertTriangle, CheckCircle2, ShieldCheck, AlertOctagon, CircleDashed } from "lucide-react";
+import { AlertCircle, AlertTriangle, CheckCircle2, ShieldCheck, AlertOctagon, CircleDashed, MoreHorizontal } from "lucide-react";
 import { useShellStatus } from "@/lib/shell-status-context";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 type OverallStatus = "on_track" | "attention_needed" | "action_required";
 
@@ -97,6 +104,79 @@ export function OpenRequestsCountSquare() {
       value={slaStatus?.openRequests ?? null}
       title="Open service requests currently being tracked"
     />
+  );
+}
+
+/** Mobile/tablet overflow for the four status widgets above — below `lg`
+ * (Scope/Service) and `xl` (Compliance/Requests) those render `hidden` and
+ * are simply unreachable on a phone. This surfaces the same real values
+ * (same useShellStatus() source, no refetch) in a "⋯" dropdown instead. */
+export function ShellStatusOverflowMenu() {
+  const { scopeStatus, slaStatus, complianceFindingCount } = useShellStatus();
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          className="lg:hidden rounded-md p-2 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          aria-label="More status"
+          title="More status"
+        >
+          <MoreHorizontal className="size-4" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-64 p-2">
+        <DropdownMenuLabel className="text-xs text-muted-foreground">Status</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <div className="flex flex-col gap-1.5 p-1.5">
+          <OverflowStatusRow status={scopeStatus?.overall ?? null} label="Project Scope" headline={scopeStatus?.headline ?? null} />
+          <OverflowStatusRow status={slaStatus?.overall ?? null} label="Service Status" headline={slaStatus?.headline ?? null} />
+          <OverflowCountRow label="Compliance findings" value={complianceFindingCount} />
+          <OverflowCountRow label="Open requests" value={slaStatus?.openRequests ?? null} />
+        </div>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function OverflowStatusRow({
+  status,
+  label,
+  headline,
+}: {
+  status: OverallStatus | null;
+  label: string;
+  headline: string | null;
+}) {
+  if (!status) {
+    return (
+      <div className="flex items-center justify-between gap-2 text-xs">
+        <span className="text-muted-foreground">{label}</span>
+        <span className="inline-flex items-center gap-1 text-muted-foreground">
+          <CircleDashed className="size-3 animate-pulse" />
+          loading…
+        </span>
+      </div>
+    );
+  }
+  const { icon: Icon, className } = OVERALL_CONFIG[status];
+  return (
+    <div className="flex items-center justify-between gap-2 text-xs">
+      <span className="text-muted-foreground">{label}</span>
+      <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${className}`}>
+        <Icon className="size-3" />
+        {headline ?? status.replace(/_/g, " ")}
+      </span>
+    </div>
+  );
+}
+
+function OverflowCountRow({ label, value }: { label: string; value: number | null }) {
+  return (
+    <div className="flex items-center justify-between gap-2 text-xs">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="font-semibold text-foreground">{value ?? "—"}</span>
+    </div>
   );
 }
 
