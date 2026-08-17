@@ -1,0 +1,64 @@
+{
+  "feature": "Marketing site route re-registration (Git #1080) — restored Monitoring/Quick-Start Packs + full pre-#382 route list reachable, not 404",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "bde7ad892aa8fe453769ad6afe4b4e9178a0d587",
+  "notes": [
+    "Git #1080. Monitoring.tsx and Products.tsx (Quick-Start Packs) were fully deleted in 4c9ebfd3",
+    "and restored from 8224d2e7a. #382 had separately unregistered a wider route list from App.tsx",
+    "while leaving the page files on disk. This build re-registers all of it: /assessments + variants,",
+    "/assessment, /checkout/:slug, /how-it-works, /technical-overview, /onboarding, /pricing,",
+    "/services + 8 children, /projects + :slug, /platform/retainer, /retainers/architect-* x3,",
+    "/trust-security, /quiz, /monitoring, /platform/quick-start. /msp and /msp-terms stay deliberately",
+    "unregistered (deferred to #1088) and are NOT asserted here.",
+    "",
+    "Each step below asserts the route's own real static h1 copy renders (proves the SPA matched the",
+    "route and mounted the real page, not the 404 fallback whose own h1 reads 'This page took a long",
+    "lunch break.'). Routes with slug-dependent or otherwise non-static h1 content (/assessments,",
+    "/assessments/:slug, /assessment, /checkout/:slug, /onboarding) are intentionally NOT covered here",
+    "— their h1 text is data-driven (zone.label / service.tagline / link status) and can't be asserted",
+    "against a fixed string without also depending on live catalog/link data; documenting that honestly",
+    "rather than faking a check. Only representative service/retainer children (one each) are spot-",
+    "checked rather than all 8/3 — the routing mechanism is identical for the rest.",
+    "",
+    "Deployed-origin caveat (same class as #1058/#1059/#1087 prior rows): this manifest asserts against",
+    "{{DEPLOY_URL}}, which only reflects this commit once the marketing site is redeployed."
+  ],
+  "uiSteps": [
+    { "action": "goto", "target": "/monitoring" },
+    { "action": "expect", "selector": "h1", "state": "visible", "textContains": "Start Watching Continuously" },
+
+    { "action": "goto", "target": "/platform/quick-start" },
+    { "action": "expect", "selector": "h1", "state": "visible", "textContains": "We read first, then act" },
+    { "action": "expect", "selector": "[data-testid='pack-0']", "state": "visible" },
+
+    { "action": "goto", "target": "/how-it-works" },
+    { "action": "expect", "selector": "h1", "state": "visible", "textContains": "How a Shane McCaw Consulting Engagement Works" },
+
+    { "action": "goto", "target": "/technical-overview" },
+    { "action": "expect", "selector": "h1", "state": "visible", "textContains": "Technical Overview" },
+
+    { "action": "goto", "target": "/pricing" },
+    { "action": "expect", "selector": "h1", "state": "visible", "textContains": "Fixed prices, real scope" },
+
+    { "action": "goto", "target": "/services" },
+    { "action": "expect", "selector": "h1", "state": "visible", "textContains": "One architect" },
+
+    { "action": "goto", "target": "/services/copilot-ai" },
+    { "action": "expect", "selector": "h1", "state": "visible", "textContains": "Ready Before You Roll It Out" },
+
+    { "action": "goto", "target": "/projects" },
+    { "action": "expect", "selector": "h1", "state": "visible", "textContains": "with a real path forward" },
+
+    { "action": "goto", "target": "/platform/retainer" },
+    { "action": "expect", "selector": "h1", "state": "visible", "textContains": "NASA's Lead Architect" },
+
+    { "action": "goto", "target": "/retainers/architect-essentials" },
+    { "action": "expect", "selector": "h1", "state": "visible", "textContains": "for Mid-Market and Regulated Organizations" },
+
+    { "action": "goto", "target": "/trust-security" },
+    { "action": "expect", "selector": "h1", "state": "visible", "textContains": "real tenant data" },
+
+    { "action": "goto", "target": "/quiz" },
+    { "action": "expect", "selector": "h1", "state": "visible", "textContains": "self-reported" }
+  ]
+}
