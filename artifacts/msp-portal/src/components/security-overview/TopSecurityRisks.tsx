@@ -1,6 +1,6 @@
 import React from 'react';
 import { formatDistanceToNow } from 'date-fns';
-import { AlertOctagon, AlertTriangle, Info, ExternalLink, ShieldCheck, CircleDashed, Wrench } from 'lucide-react';
+import { AlertOctagon, AlertTriangle, Info, ExternalLink, ShieldCheck, CircleDashed } from 'lucide-react';
 import type { LiveFinding, LiveFindingSeverity } from '@/components/m365-health/useM365HealthLive';
 
 /**
@@ -10,29 +10,6 @@ import type { LiveFinding, LiveFindingSeverity } from '@/components/m365-health/
  * (never color alone). Honest empty states distinguish "never scanned" from
  * "scan came back clean".
  */
-
-/**
- * Prep for Launch Control write-action integration (#1068-1075/#1077, Git
- * #1113). `write_action_catalog` has no real join key against
- * `msp_diagnostic_findings`/`monitor_checks` today (no shared id, and
- * `templateId` is ~unpopulated — see #1113's issue comment for the schema
- * investigation), so this is a plain-text heuristic against the catalog's
- * known domains, not a real per-finding link. Visual-only chip, no
- * click handler — approximate by design.
- */
-const WRITE_ACTION_DOMAIN_KEYWORDS: RegExp[] = [
-  /\buser'?s? (sign-?in|account)s?\b/i,
-  /\bmfa\b|\bmulti-?factor\b|\bsign-?in sessions?\b/i,
-  /\blicens(e|ing|es)\b/i,
-  /\bgroup membership\b|\bgroups?\b/i,
-  /\bteams?\b/i,
-  /\bsharepoint\b|\bonedrive\b|\brecycle bin\b/i,
-];
-
-function hasLikelyWriteAction(finding: LiveFinding): boolean {
-  const text = `${finding.title} ${finding.checkLabel ?? ''}`;
-  return WRITE_ACTION_DOMAIN_KEYWORDS.some((re) => re.test(text));
-}
 
 interface TopSecurityRisksProps {
   findings: LiveFinding[];
@@ -74,10 +51,7 @@ export const TopSecurityRisks: React.FC<TopSecurityRisksProps> = ({
   const top = findings.slice(0, 5);
 
   return (
-    <div
-      data-testid="top-security-risks-widget"
-      className="bg-card rounded-xl p-6 border border-border shadow-md h-full flex flex-col"
-    >
+    <div className="bg-card rounded-xl p-6 border border-border shadow-md h-full flex flex-col">
       <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
         <AlertOctagon className="w-5 h-5 text-status-red" />
         Top Security Risks
@@ -115,17 +89,6 @@ export const TopSecurityRisks: React.FC<TopSecurityRisksProps> = ({
                     {formatDistanceToNow(new Date(finding.createdAt), { addSuffix: true })}
                   </p>
                 </div>
-
-                {hasLikelyWriteAction(finding) && (
-                  <span
-                    data-testid="finding-quick-fix-chip"
-                    title="A remediation action exists for this kind of finding (coming soon)"
-                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border font-mono text-[10px] font-semibold text-primary border-primary/30 bg-primary/10 flex-shrink-0"
-                  >
-                    <Wrench className="w-3 h-3" />
-                    QUICK FIX
-                  </span>
-                )}
 
                 <span className="p-1.5 text-muted-foreground opacity-60 group-hover:opacity-100 group-hover:text-primary transition-all">
                   <ExternalLink className="w-4 h-4" />

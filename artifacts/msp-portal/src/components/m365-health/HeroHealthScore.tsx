@@ -29,6 +29,9 @@ interface HeroHealthScoreProps {
   genuineFindings: number | null;
   copilotReadiness: number | null;
   everScanned: boolean;
+  /** #1107: true while a scan is genuinely running right now — swaps the
+   * pre-scan "runs after your first scan" copy for a "building live" one. */
+  scanRunning?: boolean;
   onSelectPillar: (pillarKey: string) => void;
 }
 
@@ -51,6 +54,7 @@ export const HeroHealthScore: React.FC<HeroHealthScoreProps> = ({
   genuineFindings,
   copilotReadiness,
   everScanned,
+  scanRunning = false,
   onSelectPillar,
 }) => {
   const [hoveredPillar, setHoveredPillar] = useState<HealthRadarPillar | null>(null);
@@ -105,6 +109,7 @@ export const HeroHealthScore: React.FC<HeroHealthScoreProps> = ({
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center">
             <span
+              data-testid="m365-health-score-value"
               className={`text-4xl md:text-5xl font-bold tracking-tight font-mono ${
                 band ? BAND_TEXT_CLASS[band] : 'text-muted-foreground'
               }`}
@@ -121,9 +126,11 @@ export const HeroHealthScore: React.FC<HeroHealthScoreProps> = ({
           <p className="text-secondary-foreground/90 text-xs md:text-sm mt-1 leading-relaxed">
             {pillars.length > 0
               ? `Average across the ${pillars.length} pillar${pillars.length === 1 ? '' : 's'} your scan covers`
-              : everScanned
-                ? 'Scan complete — no pillar coverage computed yet'
-                : 'Runs after your first tenant scan'}
+              : scanRunning
+                ? 'Scan in progress — pillar scores building live'
+                : everScanned
+                  ? 'Scan complete — no pillar coverage computed yet'
+                  : 'Runs after your first tenant scan'}
           </p>
           <div className="flex items-center space-x-2 mt-2">
             <span
@@ -138,7 +145,7 @@ export const HeroHealthScore: React.FC<HeroHealthScoreProps> = ({
               }`}
             >
               <BandIcon className="w-3 h-3" />
-              {band ? BAND_LABEL[band] : 'AWAITING SCAN'}
+              {band ? BAND_LABEL[band] : scanRunning ? 'SCANNING' : 'AWAITING SCAN'}
             </span>
           </div>
         </div>
@@ -209,7 +216,9 @@ export const HeroHealthScore: React.FC<HeroHealthScoreProps> = ({
             <span className="text-muted-foreground">
               {pillars.length > 0
                 ? `${pillars.length} of 7 pillars covered by your package`
-                : 'No pillar coverage yet'}
+                : scanRunning
+                  ? 'Scan in progress — building pillar coverage now'
+                  : 'No pillar coverage yet'}
             </span>
           </div>
 
@@ -256,7 +265,9 @@ export const HeroHealthScore: React.FC<HeroHealthScoreProps> = ({
             </>
           ) : (
             <div className="h-8 flex items-center text-[11px] text-muted-foreground">
-              Pillar scores appear here once your first scan completes.
+              {scanRunning
+                ? 'Scan in progress — pillar scores appear here as each pillar clears.'
+                : 'Pillar scores appear here once your first scan completes.'}
             </div>
           )}
         </div>

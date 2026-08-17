@@ -311,6 +311,20 @@ router.get(
       }
       const coverageRun = runCoverage?.proceed ? lastCompleted : null;
 
+      // #1107: while a first scan is genuinely running, `lastCompleted` (and so
+      // `coverageRun`) is null for the run's entire duration — `pillarCoverage`
+      // below stayed `[]` the whole time, which is why the customer-facing page
+      // showed a static pre-scan empty state instead of pillar scores building
+      // as checks land. `getPillarCoverage` itself is NOT completion-gated (it
+      // reads `tenant_monitor_profiles` rows that land the instant each check
+      // finishes — the same live computation `war-room-pillars` already relies
+      // on); only this route's own choice of which run to source it from was.
+      // Widen the source to the run currently being scanned whenever there is
+      // no completed+sufficient-coverage run yet, so a pillar can appear the
+      // moment it clears `evaluatePillarDisplay`'s own honesty floor rather
+      // than waiting for the run to finish.
+      const pillarSourceRun = coverageRun ?? (scanActive ? latestRun : null);
+
       let pillarCoverage: Awaited<ReturnType<typeof getPillarCoverage>> = [];
       let genuineFindings: number | null = null;
       let licenseWasteMonthlyCents: number | null = null;
@@ -346,19 +360,19 @@ router.get(
         "no completed scan for this customer yet — nothing has been measured",
       );
 
+      if (pillarSourceRun) {
+        pillarCoverage = await getPillarCoverage(pillarSourceRun.packageKey, customerId).catch((err) => {
+          log.warn({ err, customerId }, "GET /portal/assessment/status: pillar coverage computation failed");
+          return [];
+        });
+      }
+
       if (lastCompleted) {
         const runSummary = (lastCompleted.summary as Record<string, unknown> | null | undefined) ?? null;
         genuineFindings =
           runSummary != null
             ? Number(runSummary.criticalCount ?? 0) + Number(runSummary.warningCount ?? 0)
             : null;
-
-        if (coverageRun) {
-          pillarCoverage = await getPillarCoverage(coverageRun.packageKey, customerId).catch((err) => {
-            log.warn({ err, customerId }, "GET /portal/assessment/status: pillar coverage computation failed");
-            return [];
-          });
-        }
 
         if (coverageRun?.tenantId) {
           try {
@@ -502,7 +516,7 @@ router.get(
         // package has real monitoring_package_checks rows curated for it; never
         // padded with fabricated axes.
         radar: {
-          packageKey: coverageRun?.packageKey ?? null,
+          packageKey: pillarSourceRun?.packageKey ?? null,
           pillars: pillarCoverage,
         },
         // Real stat cards — every number traces to a completed run's own

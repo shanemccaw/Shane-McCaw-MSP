@@ -35,7 +35,7 @@
     "observability/dlq-schema-error-scan.json",
     "observability/schema-drift-guard.json",
     "copilot-readiness/m365-health-breakdown-gate.json",
-    "security-overview/alert-volume-drilldown.json",
-    "security-overview/top-security-risks-quick-fix-chip.json"
+    "copilot-readiness/m365-health-pillar-live-scan.json",
+    "security-overview/alert-volume-drilldown.json"
   ]
 }

@@ -1,0 +1,84 @@
+{
+  "issue": 1107,
+  "feature": "M365 Health: build pillar scores live during an in-progress scan (part of epic #1045). GET /api/portal/assessment/status's radar.pillars used to come ONLY from a completed run that cleared the doc-generation coverage floor (portal-assessment.ts's `coverageRun`) -- during an active first scan `pillarCoverage` stayed [] for the run's entire duration, which is why /m365-health showed a static pre-scan empty state instead of scores building as checks land. Fix widens the source to `pillarSourceRun = coverageRun ?? (scanActive ? latestRun : null)`, reusing `getPillarCoverage` (pillar-coverage.ts) verbatim -- it already computes live off tenant_monitor_profiles rows that land the instant each check finishes, the same mechanism war-room-pillars already relies on. useM365HealthLive.ts now polls status/overview/metrics while useScanStatus().data.active is true (previously one-shot on mount), and HeroHealthScore.tsx/PillarGrid.tsx take a `scanRunning` prop that swaps the static pre-scan copy for 'building live' / journeyModel.ts's own SCANNING_PILLAR_CHIP wording.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "PENDING_1107_FIX_COMMIT",
+
+  "notes": [
+    "MID-SCAN-WITH-NO-PRIOR-COMPLETED-RUN COULD NOT BE EXERCISED LIVE: verified via shaneapp://executeSql (2026-08-17) that the only two customers in this environment who have ever scanned (customer_id=1, the TEST_PORTAL_EMAIL testbed tenant, and customer_id=3) both already have a completed run clearing DOC_GATE_MIN_COVERAGE_PCT -- so `coverageRun` is non-null for both and `pillarSourceRun` resolves to it, not to the widened `latestRun` fallback this issue adds. There is no tenant in this environment on a genuine first-scan-with-nothing-completed-yet, so the NEW fallback branch itself is verified by code read (pillar-coverage.ts's getPillarCoverage is not completion-gated -- see the route's own comment) + a clean tsc --noEmit, not a live UI assertion -- documented honestly rather than faked, same class of gap as m365-health-breakdown-gate.json's #1099 locked-card note.",
+    "WHAT COULD BE VERIFIED LIVE: the testbed tenant (customer_id=1) genuinely has an ACTIVE run right now (msp_diagnostic_runs.status='running', confirmed via shaneapp://executeSql) alongside its real historical coverage-passing completed run -- a real, live case of `scan.active=true` AND `radar.pillars` non-empty at the same time. D1/D2 below assert exactly that combination, which exercises the regression this issue's fix must not introduce: HeroHealthScore/PillarGrid's real-score branch (`pillars.length > 0`) must keep winning over the new `scanRunning` copy branch, which only ever fires on the EMPTY-pillars path.",
+    "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD -- same testbed Assessment-role account m365-health-breakdown-gate.json / assessment-monitoring-rescan.json drive.",
+    "This manifest does not re-assert the Copilot Readiness Breakdown gate (#1099) or the copilotGate score fallback (#1108) -- see m365-health-breakdown-gate.json for those; this file is scoped to the pillar-grid/hero live-scan behaviour only."
+  ],
+
+  "apiTests": [
+    {
+      "name": "SETUP — log in as the designated TESTBED Assessment account; extract the bearer.",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "D1 — this testbed tenant has a genuinely active scan right now (confirmed live via shaneapp://executeSql against msp_diagnostic_runs). Proves scan.active reads true for the case this issue's fix targets.",
+      "method": "GET",
+      "path": "/api/portal/assessment/status",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.scan.active", "value": true }
+    },
+    {
+      "name": "D2 — radar.pillars is still real and non-empty for this tenant WHILE scan.active is true (D1) — the regression this fix must not introduce: an already-covered pillar must not go dark just because a new scan started. Backed by this tenant's own prior completed run clearing the coverage floor (coverageRun), not the new mid-scan fallback itself (see notes).",
+      "method": "GET",
+      "path": "/api/portal/assessment/status",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.radar.pillars", "exists": true },
+      "extract": { "as": "pillarCount", "jsonPath": "$.radar.pillars.length" }
+    }
+  ],
+
+  "uiSteps": [
+    {
+      "name": "goto the real login URL (msp-portal's outer WouterRouter has base=BASE_PATH='/portal').",
+      "action": "goto",
+      "target": "/portal/login"
+    },
+    {
+      "name": "WAIT for the login form to hydrate before typing.",
+      "action": "expect",
+      "selector": "#email",
+      "state": "visible"
+    },
+    { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
+    { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
+    {
+      "name": "Primary login — CRITICAL: every downstream assertion needs a real authenticated session.",
+      "action": "click",
+      "selector": "[data-testid='login-submit']",
+      "critical": true,
+      "captureResponse": {
+        "urlPattern": "/api/auth/login",
+        "expect": { "status": 200 }
+      }
+    },
+    {
+      "name": "goto the real M365 Health page — branded slug-scoped route (see m365-health-breakdown-gate.json's note on the flat-path 404 trap).",
+      "action": "goto",
+      "target": "/portal/shane-mccaw-consulting/m365-health"
+    },
+    {
+      "name": "D3 — the pillar grid renders (real DOM, not just a 200 response).",
+      "action": "expect",
+      "selector": "[data-testid='pillar-grid']",
+      "state": "visible"
+    },
+    {
+      "name": "D4 — the hero's real M365 Health score value renders — a genuine number, not the honest em-dash, since this tenant's coverage-passing completed run backs it regardless of the concurrent active scan (D1/D2).",
+      "action": "expect",
+      "selector": "[data-testid='m365-health-score-value']",
+      "state": "visible",
+      "textContains": ["0","1","2","3","4","5","6","7","8","9"]
+    }
+  ]
+}

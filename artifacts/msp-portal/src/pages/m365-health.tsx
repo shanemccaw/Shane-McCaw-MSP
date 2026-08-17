@@ -64,6 +64,7 @@ export default function M365HealthPage() {
             genuineFindings={live.status?.stats.genuineFindings ?? null}
             copilotReadiness={live.status?.copilotGate?.score ?? live.status?.copilotReadiness?.overall.score ?? null}
             everScanned={Boolean(live.status?.scan.everScanned)}
+            scanRunning={live.scanRunning}
             onSelectPillar={setSelectedPillarKey}
           />
 
@@ -72,6 +73,7 @@ export default function M365HealthPage() {
             pillars={pillars}
             onSelectPillar={setSelectedPillarKey}
             selectedPillarKey={selectedPillarKey ?? undefined}
+            scanRunning={live.scanRunning}
           />
 
           {/* 3. Intelligence Core — real radar, risk heatmap, per-SKU cost */}

@@ -36,12 +36,17 @@
  *
  * Every fetch is best-effort: a failed/forbidden call leaves its slice null
  * and the page renders the honest "no data" state for that element — never a
- * fabricated number. All requests are one-shot on mount: this is an overview
- * page, not a live wizard, and the underlying data changes on scan cadence,
- * not by the second.
+ * fabricated number. Requests fire once on mount, then again on scan cadence
+ * while a scan is genuinely running (#1107) — `useScanStatus()`'s shared
+ * `data.active`/`streamedRunId`, the same signals `useCopilotJourney` already
+ * polls off. `/api/portal/assessment/status`'s `radar.pillars` now builds
+ * incrementally mid-scan server-side (portal-assessment.ts's widened
+ * `pillarSourceRun`), so this hook has to keep re-fetching it while a scan is
+ * active or that live-building data would sit unseen until a manual reload.
  */
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
+import { useScanStatus } from "@/lib/scan-status-context";
 import type { CopilotReadinessLive, LicenseWasteSummary } from "@/components/assessment-test/types";
 
 // ── Slice 1: assessment status (radar + cost engine + copilot readiness) ──────
@@ -299,22 +304,49 @@ export interface M365HealthLive {
    * ALL covered pillars' real scores; null (honest em-dash) when no pillar is
    * covered yet. */
   healthScore: number | null;
+  /** #1107: true while a scan is genuinely running right now — off the same
+   * shared `useScanStatus()` signal `useCopilotJourney` reads for its Scene 0.
+   * Lets the hero/pillar cards say "building live" instead of a static
+   * pre-scan empty state while `pillars` is still filling in. */
+  scanRunning: boolean;
 }
+
+// #1107: same cadence class as useCopilotJourney's GENERATION_POLL_MS — the
+// underlying data changes on scan cadence, not by the second, so this only
+// needs to be fast enough that a customer watching the page mid-scan sees
+// each newly-covered pillar land within a few seconds of the check finishing.
+const SCAN_POLL_MS = 4_000;
 
 export function useM365HealthLive(): M365HealthLive {
   const { fetchWithAuth } = useAuth();
+  const scanStatus = useScanStatus();
 
   const [status, setStatus] = useState<HealthStatusSlice | null>(null);
   const [overview, setOverview] = useState<OverviewSlice | null>(null);
   const [metrics, setMetrics] = useState<Record<string, ResolvedMetric>>({});
   const [loaded, setLoaded] = useState(false);
 
+  // `fetchWithAuth` is rebuilt on every access-token refresh. Reading it
+  // through a ref keeps a refresh mid-scan from tearing down the polling
+  // machinery below — same discipline useCopilotJourney/useWarRoomPillarStats
+  // use for the identical reason.
+  const fetchRef = useRef(fetchWithAuth);
   useEffect(() => {
-    let cancelled = false;
+    fetchRef.current = fetchWithAuth;
+  }, [fetchWithAuth]);
 
+  const mountedRef = useRef(true);
+  useEffect(
+    () => () => {
+      mountedRef.current = false;
+    },
+    [],
+  );
+
+  const load = useCallback(async () => {
     const loadStatus = async () => {
       try {
-        const res = await fetchWithAuth("/api/portal/assessment/status", undefined, { silent: true });
+        const res = await fetchRef.current("/api/portal/assessment/status", undefined, { silent: true });
         if (!res.ok) return;
         const data = (await res.json()) as HealthStatusSlice;
         // Wire-boundary normalization — same guards as useAssessmentLiveStatus.
@@ -326,7 +358,7 @@ export function useM365HealthLive(): M365HealthLive {
         }
         if (data.stats.licenseWaste === undefined) data.stats.licenseWaste = null;
         if (data.copilotReadiness === undefined) data.copilotReadiness = null;
-        if (!cancelled) setStatus(data);
+        if (mountedRef.current) setStatus(data);
       } catch {
         // best-effort — the page renders honest empty states
       }
@@ -334,11 +366,11 @@ export function useM365HealthLive(): M365HealthLive {
 
     const loadOverview = async () => {
       try {
-        const res = await fetchWithAuth("/api/portal/mission-control/overview", undefined, { silent: true });
+        const res = await fetchRef.current("/api/portal/mission-control/overview", undefined, { silent: true });
         if (!res.ok) return; // 403 for Assessment-role viewers → honest empty
         const data = (await res.json()) as OverviewSlice;
         if (!Array.isArray(data.findings)) data.findings = [];
-        if (!cancelled) setOverview(data);
+        if (mountedRef.current) setOverview(data);
       } catch {
         // best-effort
       }
@@ -346,7 +378,7 @@ export function useM365HealthLive(): M365HealthLive {
 
     const loadMetrics = async () => {
       try {
-        const res = await fetchWithAuth(
+        const res = await fetchRef.current(
           "/api/dashboard/resolve",
           {
             method: "POST",
@@ -362,7 +394,7 @@ export function useM365HealthLive(): M365HealthLive {
         );
         if (!res.ok) return; // 403 for Assessment-role viewers → honest empty
         const data = (await res.json()) as { results?: Record<string, ResolvedMetric> };
-        if (!cancelled && data.results && typeof data.results === "object") {
+        if (mountedRef.current && data.results && typeof data.results === "object") {
           setMetrics(data.results);
         }
       } catch {
@@ -370,14 +402,35 @@ export function useM365HealthLive(): M365HealthLive {
       }
     };
 
-    void Promise.allSettled([loadStatus(), loadOverview(), loadMetrics()]).then(() => {
-      if (!cancelled) setLoaded(true);
-    });
+    await Promise.allSettled([loadStatus(), loadOverview(), loadMetrics()]);
+  }, []);
 
-    return () => {
-      cancelled = true;
-    };
-  }, [fetchWithAuth]);
+  useEffect(() => {
+    void load().then(() => {
+      if (mountedRef.current) setLoaded(true);
+    });
+  }, [load]);
+
+  // #1107: while a scan is genuinely running, keep re-fetching so the pillar
+  // coverage the widened /status route now returns mid-scan actually reaches
+  // this page instead of sitting unseen until a manual reload.
+  const scanRunning = Boolean(scanStatus.data?.active);
+  useEffect(() => {
+    if (!scanRunning) return;
+    const timer = setInterval(() => void load(), SCAN_POLL_MS);
+    return () => clearInterval(timer);
+  }, [scanRunning, load]);
+
+  // One more refetch the moment a streamed run reaches its terminal state —
+  // the first poll that can see that run's now-complete pillar coverage /
+  // findings batch, mirroring useCopilotJourney's identical transition.
+  const streamedRunId = scanStatus.streamedRunId;
+  const previousStreamedRunId = useRef<string | null>(streamedRunId);
+  useEffect(() => {
+    const was = previousStreamedRunId.current;
+    previousStreamedRunId.current = streamedRunId;
+    if (was && !streamedRunId) void load();
+  }, [streamedRunId, load]);
 
   const pillars = status?.radar.pillars ?? [];
   const healthScore =
@@ -385,7 +438,7 @@ export function useM365HealthLive(): M365HealthLive {
       ? Math.round(pillars.reduce((sum, p) => sum + p.score, 0) / pillars.length)
       : null;
 
-  return { loaded, status, overview, metrics, healthScore };
+  return { loaded, status, overview, metrics, healthScore, scanRunning };
 }
 
 // ── Shared display banding helpers ────────────────────────────────────────────

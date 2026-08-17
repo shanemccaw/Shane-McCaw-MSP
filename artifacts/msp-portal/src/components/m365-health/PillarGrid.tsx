@@ -14,6 +14,11 @@ import {
   BAND_COLOR_VAR,
   BAND_TEXT_CLASS,
 } from './useM365HealthLive';
+// #1107: the Reveal journey's own wording for "a scan is live and hasn't
+// reached this pillar's signals yet" — reused verbatim (not re-typed) so the
+// two surfaces read identically, per journeyModel.ts's own `stillScanning`
+// distinction.
+import { SCANNING_PILLAR_CHIP } from '@/components/copilot-journey/journeyModel.ts';
 
 /**
  * 6-pillar score cards — circular red→amber→green rings driven by the real
@@ -64,6 +69,9 @@ interface PillarGridProps {
   pillars: HealthRadarPillar[];
   onSelectPillar: (pillarKey: string) => void;
   selectedPillarKey?: string;
+  /** #1107: true while a scan is genuinely running right now — an uncovered
+   * pillar reads as "still scanning" instead of "not covered" while true. */
+  scanRunning?: boolean;
 }
 
 const RING_RADIUS = 34;
@@ -73,6 +81,7 @@ export const PillarGrid: React.FC<PillarGridProps> = ({
   pillars,
   onSelectPillar,
   selectedPillarKey,
+  scanRunning = false,
 }) => {
   const cards = buildPillarCards(pillars);
 
@@ -165,7 +174,9 @@ export const PillarGrid: React.FC<PillarGridProps> = ({
                     : band === 'amber'
                       ? 'Needs attention'
                       : 'At risk'
-                  : 'Not covered by this scan'}
+                  : scanRunning
+                    ? SCANNING_PILLAR_CHIP
+                    : 'Not covered by this scan'}
               </span>
             </button>
           );
