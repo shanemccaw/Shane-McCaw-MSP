@@ -49,7 +49,13 @@
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
-import type { LiveFinding, LiveFindingSeverity, OverviewSlice, ResolvedMetric } from "@/components/m365-health/useM365HealthLive";
+import type {
+  HealthStatusSlice,
+  LiveFinding,
+  LiveFindingSeverity,
+  OverviewSlice,
+  ResolvedMetric,
+} from "@/components/m365-health/useM365HealthLive";
 import { resolvedValue } from "@/components/m365-health/useM365HealthLive";
 
 export type TimeFrame = "24h" | "7d" | "30d";
@@ -190,6 +196,11 @@ export interface SecurityOverviewLive {
   setTimeframe: (tf: TimeFrame) => void;
 
   // Hero
+  /** The real 0-100 Security pillar display score (`status.radar.pillars`,
+   * same source `/m365-health`'s PillarGrid/HeroHealthScore use) — the
+   * headline metric (Git #1109). Null when the scanned package doesn't
+   * cover Security yet — honest "not covered", never a fabricated number. */
+  securityPillarScore: number | null;
   riskIndex: RiskIndexLive | null;
   securityStatus: { severity: EngineStripEntry["severity"]; statusLabel: string } | null;
   riskyUsers: LiveMetric;
@@ -331,6 +342,7 @@ export function useSecurityOverviewLive(): SecurityOverviewLive {
   const [timeframe, setTimeframe] = useState<TimeFrame>("7d");
   const [metrics, setMetrics] = useState<Record<string, MetricWithHistory>>({});
   const [overview, setOverview] = useState<OverviewSlice | null>(null);
+  const [status, setStatus] = useState<HealthStatusSlice | null>(null);
   const [engineStrip, setEngineStrip] = useState<EngineStripEntry[] | null>(null);
   const [engineHistory, setEngineHistory] = useState<EngineHistoryWire | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -378,6 +390,20 @@ export function useSecurityOverviewLive(): SecurityOverviewLive {
       }
     };
 
+    const loadStatus = async () => {
+      try {
+        const res = await fetchWithAuth("/api/portal/assessment/status", undefined, { silent: true });
+        if (!res.ok) return;
+        const data = (await res.json()) as HealthStatusSlice;
+        if (!data.radar || typeof data.radar !== "object" || !Array.isArray(data.radar.pillars)) {
+          data.radar = { packageKey: null, pillars: [] };
+        }
+        if (!cancelled) setStatus(data);
+      } catch {
+        // best-effort
+      }
+    };
+
     const loadEngines = async () => {
       try {
         const res = await fetchWithAuth("/api/portal/mission-control/engines", undefined, { silent: true });
@@ -408,7 +434,7 @@ export function useSecurityOverviewLive(): SecurityOverviewLive {
     };
 
     setRefreshing(true);
-    void Promise.allSettled([loadMetrics(), loadOverview(), loadEngines(), loadEngineHistory()]).then(() => {
+    void Promise.allSettled([loadMetrics(), loadOverview(), loadStatus(), loadEngines(), loadEngineHistory()]).then(() => {
       if (!cancelled) {
         setLoaded(true);
         setRefreshing(false);
@@ -474,6 +500,9 @@ export function useSecurityOverviewLive(): SecurityOverviewLive {
 
   const securityEntry = engineStrip?.find((e) => e.key === "security") ?? null;
 
+  const securityPillarScore =
+    status?.radar.pillars.find((p) => p.pillar === "security")?.score ?? null;
+
   const findings = overview?.findings ?? [];
 
   return {
@@ -483,6 +512,7 @@ export function useSecurityOverviewLive(): SecurityOverviewLive {
     timeframe,
     setTimeframe,
 
+    securityPillarScore,
     riskIndex,
     securityStatus: securityEntry
       ? { severity: securityEntry.severity, statusLabel: securityEntry.statusLabel }

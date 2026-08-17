@@ -3,13 +3,17 @@ import { formatDistanceToNow } from 'date-fns';
 import { Shield, ShieldCheck, AlertTriangle, AlertOctagon, CircleDashed, RefreshCw, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import type { LiveMetric, RiskIndexLive, TimeFrame } from './useSecurityOverviewLive';
 import type { OverviewSlice } from '@/components/m365-health/useM365HealthLive';
+import { scoreBand, BAND_TEXT_CLASS } from '@/components/m365-health/useM365HealthLive';
 
 /**
  * Hero band — real content section (restored per the pre-wiring mockup, now
  * wired to real data):
- *   • Security Risk Index — the latest REAL security engine score from
- *     tenant_engine_snapshots (higher is worse — labeled so), with the real
- *     delta vs the previous snapshot and the engine strip's severity badge.
+ *   • Security Score — the real 0-100 Security pillar display score
+ *     (status.radar.pillars, same source `/m365-health`'s PillarGrid /
+ *     HeroHealthScore use — Git #1109), band-colored and badged. The raw
+ *     unbounded security engine score (tenant_engine_snapshots) is demoted
+ *     to a secondary "Risk Index" line, clearly labeled higher-is-worse so
+ *     it's never mistaken for the pillar score.
  *   • Risky Users / Critical Findings / Warnings / Checks Passing — real
  *     monitor-check + diagnostics-run numbers, each with an honest "—" when
  *     not collected.
@@ -20,8 +24,8 @@ import type { OverviewSlice } from '@/components/m365-health/useM365HealthLive';
  */
 
 interface HeaderHeroBandProps {
+  securityPillarScore: number | null;
   riskIndex: RiskIndexLive | null;
-  securityStatus: { severity: 'good' | 'watch' | 'high' | 'info'; statusLabel: string } | null;
   riskyUsers: LiveMetric;
   summary: OverviewSlice['summary'] | null;
   lastScanAt: string | null;
@@ -32,16 +36,15 @@ interface HeaderHeroBandProps {
   isRefreshing: boolean;
 }
 
-const STATUS_BADGE_META = {
-  good: { icon: ShieldCheck, cls: 'bg-status-green/15 text-status-green border-status-green/30' },
-  watch: { icon: AlertTriangle, cls: 'bg-status-amber/15 text-status-amber border-status-amber/30' },
-  high: { icon: AlertOctagon, cls: 'bg-status-red/15 text-status-red border-status-red/30' },
-  info: { icon: CircleDashed, cls: 'bg-muted text-muted-foreground border-border' },
+const BAND_BADGE_META = {
+  green: { icon: ShieldCheck, label: 'HEALTHY', cls: 'bg-status-green/15 text-status-green border-status-green/30' },
+  amber: { icon: AlertTriangle, label: 'NEEDS ATTENTION', cls: 'bg-status-amber/15 text-status-amber border-status-amber/30' },
+  red: { icon: AlertOctagon, label: 'AT RISK', cls: 'bg-status-red/15 text-status-red border-status-red/30' },
 } as const;
 
 export const HeaderHeroBand: React.FC<HeaderHeroBandProps> = ({
+  securityPillarScore,
   riskIndex,
-  securityStatus,
   riskyUsers,
   summary,
   lastScanAt,
@@ -51,7 +54,10 @@ export const HeaderHeroBand: React.FC<HeaderHeroBandProps> = ({
   onRefresh,
   isRefreshing,
 }) => {
-  const badge = securityStatus ? STATUS_BADGE_META[securityStatus.severity] : null;
+  // Badge now driven by the same 0-100 pillar band as the headline number,
+  // not the raw engine severity — one metric, one badge (Git #1109).
+  const band = securityPillarScore != null ? scoreBand(securityPillarScore) : null;
+  const badge = band ? BAND_BADGE_META[band] : null;
   const BadgeIcon = badge?.icon ?? CircleDashed;
 
   // Risk index is higher-is-worse: a positive delta means risk went UP (red).
@@ -120,39 +126,42 @@ export const HeaderHeroBand: React.FC<HeaderHeroBandProps> = ({
             </button>
           </div>
 
-          {/* Risk Index — real security engine score, higher is worse */}
+          {/* Security Score — real 0-100 pillar display score, headline (Git #1109) */}
           <div className="flex flex-col items-end pl-4 border-l border-border">
             <span className="text-muted-foreground font-mono text-[10px] uppercase tracking-widest font-medium">
-              Security Risk Index
+              Security Score
             </span>
             <div className="flex items-center gap-2">
               <span
+                data-testid="security-overview-hero-score"
                 className={`text-4xl md:text-5xl font-bold font-mono ${
-                  securityStatus
-                    ? securityStatus.severity === 'high'
-                      ? 'text-status-red'
-                      : securityStatus.severity === 'watch'
-                        ? 'text-status-amber'
-                        : 'text-status-green'
-                    : 'text-muted-foreground'
+                  band ? BAND_TEXT_CLASS[band] : 'text-muted-foreground'
                 }`}
               >
-                {riskIndex ? riskIndex.score : '—'}
+                {securityPillarScore != null ? securityPillarScore : '—'}
               </span>
-              <DeltaIcon className={`w-6 h-6 stroke-[2.5] ${deltaCls}`} />
             </div>
             <div className="flex items-center gap-1.5 mt-1">
-              {securityStatus && badge && (
+              {badge && (
                 <span
                   className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold border ${badge.cls}`}
                 >
                   <BadgeIcon className="w-3 h-3" />
-                  {securityStatus.statusLabel.toUpperCase()}
+                  {badge.label}
                 </span>
               )}
               <span className="text-[10px] font-mono text-muted-foreground">
-                {riskIndex ? 'lower is better' : 'awaiting first engine run'}
+                {securityPillarScore != null ? 'of 100 · higher is better' : 'not covered by this scan'}
               </span>
+            </div>
+            {/* Secondary — raw engine risk points, demoted, clearly disambiguated */}
+            <div
+              data-testid="security-overview-hero-risk-index"
+              className="flex items-center gap-1 mt-1.5 text-[10px] font-mono text-muted-foreground"
+            >
+              <span>Risk Index {riskIndex ? riskIndex.score : '—'}</span>
+              <DeltaIcon className={`w-3 h-3 stroke-[2.5] ${deltaCls}`} />
+              <span>· risk points · higher is worse</span>
             </div>
           </div>
         </div>

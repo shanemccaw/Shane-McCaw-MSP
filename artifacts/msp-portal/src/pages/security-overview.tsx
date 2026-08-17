@@ -55,8 +55,8 @@ export default function SecurityOverviewPage() {
           <section className="grid grid-cols-1 lg:grid-cols-12 gap-4 md:gap-6">
             <div className="lg:col-span-8">
               <HeaderHeroBand
+                securityPillarScore={live.securityPillarScore}
                 riskIndex={live.riskIndex}
-                securityStatus={live.securityStatus}
                 riskyUsers={live.riskyUsers}
                 summary={live.summary}
                 lastScanAt={live.lastScanAt}

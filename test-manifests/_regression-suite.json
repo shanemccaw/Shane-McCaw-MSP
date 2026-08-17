@@ -36,6 +36,7 @@
     "observability/schema-drift-guard.json",
     "copilot-readiness/m365-health-breakdown-gate.json",
     "copilot-readiness/m365-health-pillar-live-scan.json",
-    "security-overview/alert-volume-drilldown.json"
+    "security-overview/alert-volume-drilldown.json",
+    "security-overview/hero-pillar-score.json"
   ]
 }
