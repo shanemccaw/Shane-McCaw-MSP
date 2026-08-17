@@ -25,7 +25,7 @@
 
     "AUTH-BOUNDARY FACTS asserted below (all real, all deterministic with the creds above): (1) anonymous (no bearer) -> 401 on the trigger, the scan-status read, and the SOW read (requireRole/requireAuth). (2) valid Assessment-role bearer -> 403 on the admin trigger-config surface (requireAdmin, wrong role). (3) the ingest token (SECRET_KEY) -> 401 on the admin trigger-config surface (requireAdmin runs requireAuth first and the ingest token is not a valid JWT) — proving the workflow-config surface is strictly admin-gated, NOT ingest-openable like the testbed reset endpoints. These three together are the honest, real answer to 'a caller without the right entitlement cannot trigger/read monitoring' — the entitlement that matters is testbed-flag + role + auth, not a signed SOW.",
 
-    "LAST REAL RUN (shaneapp://runTest, 2026-08-16/17, this commit — ran twice, same result both times, so the login-hydration failure below is a persistent-for-now environmental flake, not transient): 17-18/22-24 passed depending on run. GREEN: every pre-existing GATE/RESCAN/CADENCE apiTest, unchanged by this session's work. RED, both expected: (1) the two new DRIFT D1/D2 apiTests for GET /api/portal/assessment/history both 404 — the deployed api-server ({{DEPLOY_URL}}) predates this commit and has not been redeployed yet, so the new route genuinely does not exist there. This is the SAME class of gap #1058's own bookend and remediation-tracker-e2e.json's notes already document (new server code needs a real redeploy before shaneapp://runTest against the deployed origin can exercise it) — Shane To-Do: redeploy api-server, then this pair goes green. (2) the uiSteps aborted at the SAME pre-existing #email cold-start hydration timeout remediation-tracker-e2e.json already documents ('one flaky #email hydration-gate timeout on a cold SPA load') — the critical login step never got past #email becoming visible, so this manifest's own new DRIFT D3/D4 uiSteps (navigate to the dashboard, assert one of the three real chart states renders) never got a chance to run at all, green or red. Once api-server is redeployed AND a clean (non-flaky) uiSteps pass happens, re-run to get a real signal on D3/D4 — until then this manifest correctly reports red rather than a false green."
+    "LAST REAL RUN (shaneapp://runTest, 2026-08-16/17, this commit): first two runs (bare goto '/login') both hit the SAME wall — #email never rendered because '/login' 404s server-side. Root cause (Shane, live, 2026-08-16): msp-portal's outer WouterRouter has base=BASE_PATH='/portal' (App.tsx:135/1127), so every route including login is really served at /portal/*; a bare '/login' target 404s before the SPA mounts. Fixed both uiSteps goto targets to the real /portal-prefixed URLs. Third run, post-fix: 23/26 passed — login now succeeds and DRIFT D3's navigation to /portal/assessment-results/copilot-readiness-assessment succeeds. The 3 remaining reds are ALL the same expected class: (1)+(2) the two new DRIFT D1/D2 apiTests for GET /api/portal/assessment/history 404 — the deployed api-server ({{DEPLOY_URL}}) predates this commit, route doesn't exist there yet. (3) DRIFT D4's expect for the three chart-state testids finds none — the deployed msp-portal frontend likewise predates this commit, so AssessmentDriftChart.tsx isn't in the bundle it's serving yet. Both are the same 'new code needs a real redeploy before shaneapp://runTest against the deployed origin can exercise it' gap #1058's bookend and remediation-tracker-e2e.json's notes already document — not a defect in this manifest or the feature code. SHANE TO-DO: redeploy api-server + msp-portal, then re-run; all 3 should go green (D4's actual empty/sparse/chart state still depends on how much real tenant_monitor_profiles history exists for the testbed tenant by then — see DIVERGENCE 4B)."
   ],
 
   "apiTests": [
@@ -167,9 +167,13 @@
   ],
 
   "uiSteps": [
-    { "action": "goto", "target": "/login" },
     {
-      "name": "WAIT for the login form to hydrate before typing (same cold-start hydration gate as remediation-tracker-e2e.json — this manifest's uiSteps also cold-start at /login).",
+      "name": "goto the real login URL. msp-portal's outer WouterRouter has base=BASE_PATH ('/portal', App.tsx:135/1127) — every route, including /login, is really served at /portal/*. A bare goto '/login' (the class of target remediation-tracker-e2e.json/money-path-e2e.json's uiSteps also use) 404s server-side before the SPA ever mounts, so #email never renders — this is what this session's own two shaneapp://runTest runs hit (Shane confirmed the real path live, 2026-08-16).",
+      "action": "goto",
+      "target": "/portal/login"
+    },
+    {
+      "name": "WAIT for the login form to hydrate before typing (same cold-start hydration gate as remediation-tracker-e2e.json — this manifest's uiSteps also cold-start at login).",
       "action": "expect",
       "selector": "#email",
       "state": "visible"
@@ -187,9 +191,9 @@
       }
     },
     {
-      "name": "DRIFT D3 (#1059) — navigate to the Assessment Results dashboard for the real, catalog-confirmed paid Assessment product slug 'copilot-readiness-assessment' (services.slug id 25, packageKey assess:copilot-readiness — confirmed in portal-assessment.ts and admin-simulator-assessments.test.ts). Flat route /assessment-results/:serviceSlug (App.tsx), not the branded /portal/:slug/* pattern the Remediation Guide uses.",
+      "name": "DRIFT D3 (#1059) — navigate to the Assessment Results dashboard for the real, catalog-confirmed paid Assessment product slug 'copilot-readiness-assessment' (services.slug id 25, packageKey assess:copilot-readiness — confirmed in portal-assessment.ts and admin-simulator-assessments.test.ts). App.tsx registers this as /assessment-results/:serviceSlug (not the /portal/:tenantSlug/* branded pattern the Remediation Guide uses) — but that's still relative to the outer WouterRouter's base=/portal, so the real browser URL is /portal/assessment-results/copilot-readiness-assessment.",
       "action": "goto",
-      "target": "/assessment-results/copilot-readiness-assessment"
+      "target": "/portal/assessment-results/copilot-readiness-assessment"
     },
     {
       "name": "DRIFT D4 (#1059) — the drift chart section rendered SOME real state, not a blank/crashed panel. Per DIVERGENCE 4B, which of the three mutually-exclusive states (empty / sparse / real chart) is true for this tenant right now is not predictable from source alone this early after #1058 went live, so this asserts presence across all three via one comma-separated CSS selector rather than guessing a single one.",
