@@ -25,7 +25,7 @@ const router: IRouter = Router();
 // `htmlContent` is old content that can silently diverge from what's on screen
 // (e.g. sections since removed). Rather than ever serve that mismatch, these
 // docTypes are refused here.
-const LIVE_RENDERED_DOC_TYPES = new Set([
+export const LIVE_RENDERED_DOC_TYPES = new Set([
   "copilot_readiness",
   "security_posture_report",
   "governance_maturity_report",

@@ -64,6 +64,14 @@ vi.mock("@workspace/db", () => ({
   notificationsTable: { id: "id", userId: "user_id", title: "title", body: "body", type: "type", read: "read", linkPath: "link_path" },
   messagesTable: { id: "id", clientUserId: "client_user_id", senderUserId: "sender_user_id", body: "body", readByAdmin: "read_by_admin", readByClient: "read_by_client" },
   usersTable: { id: "id", role: "role", email: "email", mspId: "msp_id", tenantId: "tenant_id", mspRole: "msp_role", isActive: "is_active", canApprovePurchases: "can_approve_purchases" },
+  // #363 — action layer (regenerate document / rerun scan) eligibility lookups.
+  insightsGeneratedDocumentsTable: {
+    id: "id", mspCustomerId: "msp_customer_id", status: "status", docType: "doc_type",
+    projectId: "project_id", title: "title", createdAt: "created_at",
+  },
+  documentTypesTable: { key: "key", pipelineCategory: "pipeline_category", isActive: "is_active" },
+  clientServicesTable: { clientUserId: "client_user_id", serviceId: "service_id", status: "status", id: "id" },
+  servicesTable: { id: "id", typeAttributes: "type_attributes", fulfillmentTypeKey: "fulfillment_type_key" },
 }));
 
 vi.mock("../lib/sse-channels.ts", () => ({
@@ -86,6 +94,25 @@ vi.mock("./portal-mission-control.ts", () => ({
   listRemediableOffers: vi.fn().mockResolvedValue([]),
 }));
 
+// #363 — action layer. LIVE_RENDERED_DOC_TYPES is the only thing support-chat
+// imports from portal-documents.ts; mock the module so its heavy transitive
+// imports (insight-pdf.ts's PDF rendering) never load here. generateDocument/
+// generateSowDocument/runDiagnostics are the real regenerate/rescan functions
+// support-chat's action handlers call — their own modules pull in
+// workflow-executor.ts (and beyond), so they're mocked the same way.
+vi.mock("./portal-documents.ts", () => ({
+  LIVE_RENDERED_DOC_TYPES: new Set(["copilot_readiness"]),
+}));
+vi.mock("../lib/document-engine.ts", () => ({
+  generateDocument: vi.fn(),
+}));
+vi.mock("../lib/document-engine-sow.ts", () => ({
+  generateSowDocument: vi.fn(),
+}));
+vi.mock("../lib/diagnostics-runner.ts", () => ({
+  runDiagnostics: vi.fn(),
+}));
+
 // ── Import router after mocks ──────────────────────────────────────────────────
 
 import supportChatRouter from "./support-chat.ts";
@@ -93,6 +120,8 @@ import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { db } from "@workspace/db";
 import { broadcastNotification } from "../lib/sse-channels.ts";
 import { listRemediableOffers } from "./portal-mission-control.ts";
+import { generateDocument } from "../lib/document-engine.ts";
+import { runDiagnostics } from "../lib/diagnostics-runner.ts";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -105,6 +134,13 @@ function makeToken(overrides: Record<string, unknown> = {}): string {
     JWT_SECRET,
     { expiresIn: "1h" },
   );
+}
+
+function makeCustomerToken(overrides: Record<string, unknown> = {}): string {
+  return makeToken({
+    id: 10, email: "customer@co.com", role: "client",
+    mspRole: "CustomerUser", mspId: 1, customerId: 42, ...overrides,
+  });
 }
 
 function makeApp() {
@@ -294,6 +330,86 @@ describe("POST /api/msp/support/chat", () => {
     expect(res.body.reply).not.toMatch(/PROPOSE_REMEDIATION/i);
   });
 
+  // ── #363: action layer (regenerate document / rerun scan) ──────────────────
+
+  it("surfaces proposedAction:regenerate_document when the AI emits the marker and a document is eligible", async () => {
+    // Blanket `.limit()` resolution — same pattern the CustomerUser-escalation
+    // test above uses. Satisfies buildCustomerContext's own grounding queries
+    // (loosely — it just needs a truthy customerRow[0]) AND
+    // findRegenerableDocument's query, whose real fields this row also carries.
+    mockDbAny["limit"].mockResolvedValue([
+      { id: 501, docType: "security_posture_report", projectId: 5, title: "Security Posture Report", status: "delivered" },
+    ]);
+    mockCreate.mockResolvedValueOnce({
+      content: [{ type: "text", text: "I can regenerate your report now. Confirm below.\n[ACTION:regenerate_document]" }],
+    });
+
+    const app = makeApp();
+    const res = await request(app)
+      .post("/api/msp/support/chat")
+      .set("Authorization", `Bearer ${customerToken()}`)
+      .send({ messages: [{ role: "user", content: "Can you regenerate my report?" }] });
+
+    expect(res.status).toBe(200);
+    expect(res.body.proposedAction).toEqual({ action: "regenerate_document", label: 'Regenerate "Security Posture Report"' });
+    expect(res.body.reply).not.toMatch(/\[ACTION:/i);
+    expect(res.body.reply).toContain("Confirm");
+  });
+
+  it("surfaces proposedAction:rerun_scan when the AI emits the marker and scan history exists", async () => {
+    mockDbAny["limit"].mockResolvedValue([{ runId: "run-abc" }]);
+    mockCreate.mockResolvedValueOnce({
+      content: [{ type: "text", text: "I can re-run your scan now. Confirm below.\n[ACTION:rerun_scan]" }],
+    });
+
+    const app = makeApp();
+    const res = await request(app)
+      .post("/api/msp/support/chat")
+      .set("Authorization", `Bearer ${customerToken()}`)
+      .send({ messages: [{ role: "user", content: "Can you rerun my scan?" }] });
+
+    expect(res.status).toBe(200);
+    expect(res.body.proposedAction).toEqual({ action: "rerun_scan", label: "Re-run your latest scan" });
+    expect(res.body.reply).not.toMatch(/\[ACTION:/i);
+  });
+
+  it("drops the action proposal when nothing is eligible, even if the AI emits a marker", async () => {
+    // Default beforeEach mock: every `.limit()` resolves to [] — no document,
+    // no scan history.
+    mockCreate.mockResolvedValueOnce({
+      content: [{ type: "text", text: "Regenerating now.\n[ACTION:regenerate_document]" }],
+    });
+
+    const app = makeApp();
+    const res = await request(app)
+      .post("/api/msp/support/chat")
+      .set("Authorization", `Bearer ${customerToken()}`)
+      .send({ messages: [{ role: "user", content: "regenerate my report" }] });
+
+    expect(res.status).toBe(200);
+    expect(res.body.proposedAction).toBeNull();
+    expect(res.body.reply).not.toMatch(/\[ACTION:/i);
+  });
+
+  it("never surfaces an action proposal for MSP staff, even if the AI emits a marker", async () => {
+    mockDbAny["limit"].mockResolvedValue([
+      { id: 501, docType: "security_posture_report", projectId: 5, title: "Security Posture Report", status: "delivered" },
+    ]);
+    mockCreate.mockResolvedValueOnce({
+      content: [{ type: "text", text: "Regenerating now.\n[ACTION:regenerate_document]" }],
+    });
+
+    const app = makeApp();
+    const res = await request(app)
+      .post("/api/msp/support/chat")
+      .set("Authorization", `Bearer ${makeToken()}`) // default: mspRole "MSPOperator", no customerId
+      .send({ messages: [{ role: "user", content: "regenerate the customer's report" }] });
+
+    expect(res.status).toBe(200);
+    expect(res.body.proposedAction).toBeNull();
+    expect(res.body.reply).not.toMatch(/\[ACTION:/i);
+  });
+
   // ── #361: suggested-reply chips + content-block shape ──────────────────────
 
   it("parses [SUGGESTED_REPLIES], strips it from the visible reply, and returns a suggested_replies block", async () => {
@@ -437,5 +553,116 @@ describe("POST /api/msp/support/escalate", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(true);
+  });
+});
+
+// #363 — action layer confirm/execute endpoints. Both are CustomerUser-only,
+// self-service on the caller's OWN tenant — customerId always comes from the
+// authenticated JWT, never the request body, so there is nothing for a client
+// to spoof.
+
+describe("POST /api/msp/support/actions/regenerate-document", () => {
+  const mockDbAny = db as unknown as Record<string, ReturnType<typeof vi.fn>>;
+  const mockGenerate = generateDocument as ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockDbAny["select"].mockReturnThis();
+    mockDbAny["from"].mockReturnThis();
+    mockDbAny["where"].mockReturnThis();
+    mockDbAny["orderBy"].mockReturnThis();
+    mockDbAny["limit"].mockResolvedValue([]);
+  });
+
+  it("returns 403 for a non-CustomerUser", async () => {
+    const app = makeApp();
+    const res = await request(app)
+      .post("/api/msp/support/actions/regenerate-document")
+      .set("Authorization", `Bearer ${makeToken()}`);
+    expect(res.status).toBe(403);
+    expect(mockGenerate).not.toHaveBeenCalled();
+  });
+
+  it("returns 404 when there is no eligible document", async () => {
+    const app = makeApp();
+    const res = await request(app)
+      .post("/api/msp/support/actions/regenerate-document")
+      .set("Authorization", `Bearer ${makeCustomerToken()}`);
+    expect(res.status).toBe(404);
+    expect(mockGenerate).not.toHaveBeenCalled();
+  });
+
+  it("regenerates the caller's own current document and streams a done frame", async () => {
+    mockDbAny["limit"].mockResolvedValue([
+      {
+        id: 501, docType: "security_posture_report", projectId: 5, title: "Security Posture Report",
+        status: "delivered", pipelineCategory: "standalone", isActive: true,
+      },
+    ]);
+    mockGenerate.mockResolvedValue({ documentId: 501, htmlContent: "<p>ok</p>", costCents: 12, costStatus: "billed", reused: false });
+
+    const app = makeApp();
+    const res = await request(app)
+      .post("/api/msp/support/actions/regenerate-document")
+      .set("Authorization", `Bearer ${makeCustomerToken()}`);
+
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('"type":"done"');
+    expect(res.text).toContain('"documentId":501');
+    expect(mockGenerate).toHaveBeenCalledWith(
+      expect.objectContaining({ mspCustomerId: 42, projectId: 5, docTypeKey: "security_posture_report", forceRegenerate: true }),
+    );
+  });
+});
+
+describe("POST /api/msp/support/actions/rerun-scan", () => {
+  const mockDbAny = db as unknown as Record<string, ReturnType<typeof vi.fn>>;
+  const mockRunDiagnostics = runDiagnostics as ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockDbAny["select"].mockReturnThis();
+    mockDbAny["from"].mockReturnThis();
+    mockDbAny["where"].mockReturnThis();
+    mockDbAny["innerJoin"].mockReturnThis();
+    mockDbAny["orderBy"].mockReturnThis();
+    mockDbAny["limit"].mockResolvedValue([]);
+    mockDbAny["insert"].mockReturnThis();
+    mockDbAny["values"].mockReturnThis();
+    mockRunDiagnostics.mockResolvedValue(undefined);
+  });
+
+  it("returns 403 for a non-CustomerUser", async () => {
+    const app = makeApp();
+    const res = await request(app)
+      .post("/api/msp/support/actions/rerun-scan")
+      .set("Authorization", `Bearer ${makeToken()}`);
+    expect(res.status).toBe(403);
+    expect(mockRunDiagnostics).not.toHaveBeenCalled();
+  });
+
+  it("returns 404 when the caller's tenant cannot be resolved", async () => {
+    const app = makeApp();
+    const res = await request(app)
+      .post("/api/msp/support/actions/rerun-scan")
+      .set("Authorization", `Bearer ${makeCustomerToken()}`);
+    expect(res.status).toBe(404);
+    expect(mockRunDiagnostics).not.toHaveBeenCalled();
+  });
+
+  it("creates a pending run scoped to the caller's own tenant and fires runDiagnostics", async () => {
+    mockDbAny["limit"].mockResolvedValue([{ id: 42, mspId: 1, tenantId: "tenant-abc" }]);
+
+    const app = makeApp();
+    const res = await request(app)
+      .post("/api/msp/support/actions/rerun-scan")
+      .set("Authorization", `Bearer ${makeCustomerToken()}`);
+
+    expect(res.status).toBe(202);
+    expect(res.body.status).toBe("pending");
+    expect(res.body.runId).toBeTruthy();
+    expect(mockRunDiagnostics).toHaveBeenCalledWith(
+      expect.objectContaining({ customerId: 42, existingRunId: res.body.runId, isAssessmentTriggered: false }),
+    );
   });
 });

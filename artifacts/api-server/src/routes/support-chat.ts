@@ -28,8 +28,15 @@ import {
   db,
   messagesTable,
   usersTable,
+  insightsGeneratedDocumentsTable,
+  documentTypesTable,
+  mspDiagnosticRunsTable,
+  tenantsTable,
+  clientServicesTable,
+  servicesTable,
 } from "@workspace/db";
-import { eq, and, or } from "drizzle-orm";
+import { eq, and, or, desc, notInArray, sql } from "drizzle-orm";
+import { randomUUID } from "crypto";
 import { requireAuth } from "../middlewares/requireAuth.ts";
 import { anthropic, withAiAttribution } from "@workspace/integrations-anthropic-ai";
 import { resolveBillingMspId } from "../lib/ai-billing.ts";
@@ -38,10 +45,16 @@ import { createAuditLog } from "../lib/audit.ts";
 import { logger } from "../lib/logger.ts";
 import { resolveMspId } from "../lib/resolve-msp-id.ts";
 import { listRemediableOffers, type RemediableOffer } from "./portal-mission-control.ts";
+import { LIVE_RENDERED_DOC_TYPES } from "./portal-documents.ts";
+import { generateDocument } from "../lib/document-engine.ts";
+import { generateSowDocument } from "../lib/document-engine-sow.ts";
+import { runDiagnostics } from "../lib/diagnostics-runner.ts";
 import {
   buildGrounding,
   resolveInstance,
   assembleSystemPrompt,
+  routeRequestedActions,
+  stripActionTokens,
   type BotGrounding,
   type BotInstanceConfig,
 } from "../lib/shanebot-engine.ts";
@@ -70,6 +83,14 @@ const log = logger.child({ channel: "growth.booking" });
  */
 const costLog = logger.child({ channel: "engine.ai-cost-governance" });
 
+/**
+ * The action layer (#363). Shared with shanebot-engine.ts's action_router,
+ * which already logs proposal/authorization decisions under this same leaf —
+ * kept together so the whole propose→confirm→execute lifecycle for
+ * regenerate_document/rerun_scan traces on one channel.
+ */
+const actionLog = logger.child({ channel: "engine.shanebot" });
+
 const router: IRouter = Router();
 
 // ── Grounded context ──────────────────────────────────────────────────────────
@@ -80,12 +101,87 @@ const router: IRouter = Router();
 // all moved there verbatim; this route just asks the engine for the grounded
 // context for the shanebot_paid instance.
 
+// ── Action layer (#363) — regenerate document / rerun scan ───────────────────
+// shanebot-engine.ts's action_router only parses an [ACTION:x] token and gates
+// it against the emitting instance's allowedActions — it deliberately does not
+// resolve WHAT to regenerate/rerun (see that module's action_router header
+// comment: "the actual action handlers... are a later build"). That's this
+// section: resolve the requesting customer's own current eligible target,
+// fresh from the DB every time (never trusted from the model's token or an
+// earlier turn), then call the SAME real functions admin-document-generator.ts
+// and msp-diagnostics.ts already use — no new pipeline, no new abstraction.
+
+/** The customer's own most recent regenerable document, or null if none exists. */
+async function findRegenerableDocument(customerId: number): Promise<{
+  id: number;
+  docType: string;
+  projectId: number | null;
+  title: string;
+} | null> {
+  const [doc] = await db
+    .select({
+      id: insightsGeneratedDocumentsTable.id,
+      docType: insightsGeneratedDocumentsTable.docType,
+      projectId: insightsGeneratedDocumentsTable.projectId,
+      title: insightsGeneratedDocumentsTable.title,
+    })
+    .from(insightsGeneratedDocumentsTable)
+    .where(
+      and(
+        // mspCustomerId (tenants.id), NOT the sibling customerId column — that
+        // one is a users.id (which login generated it), not the tenant scope.
+        eq(insightsGeneratedDocumentsTable.mspCustomerId, customerId),
+        eq(insightsGeneratedDocumentsTable.status, "delivered"),
+        // Live-rendered doc types (portal-documents.ts) have no meaningful
+        // stored HTML to regenerate — refreshing what the customer actually
+        // sees for those is a rescan, not a regenerate.
+        notInArray(insightsGeneratedDocumentsTable.docType, [...LIVE_RENDERED_DOC_TYPES]),
+      ),
+    )
+    .orderBy(desc(insightsGeneratedDocumentsTable.createdAt))
+    .limit(1);
+  return doc ?? null;
+}
+
+/** Whether this customer has ever had a diagnostics run — "rerun" implies one already exists. */
+async function hasScanHistory(customerId: number): Promise<boolean> {
+  const [run] = await db
+    .select({ runId: mspDiagnosticRunsTable.runId })
+    .from(mspDiagnosticRunsTable)
+    .where(eq(mspDiagnosticRunsTable.customerId, customerId))
+    .limit(1);
+  return Boolean(run);
+}
+
+/**
+ * Same subscription-derived packageKey lookup msp-diagnostics.ts's manual
+ * rerun trigger uses (falls back to the always-present baseline package).
+ */
+async function resolveScanPackageKey(customerId: number): Promise<string> {
+  const [pkgRow] = await db
+    .select({ packageKey: sql<string | null>`${servicesTable.typeAttributes}->>'packageKey'` })
+    .from(usersTable)
+    .innerJoin(clientServicesTable, eq(clientServicesTable.clientUserId, usersTable.id))
+    .innerJoin(servicesTable, eq(servicesTable.id, clientServicesTable.serviceId))
+    .where(
+      and(
+        eq(usersTable.tenantId, customerId),
+        eq(servicesTable.fulfillmentTypeKey, "monitoring_subscription"),
+        eq(clientServicesTable.status, "active"),
+      ),
+    )
+    .orderBy(desc(clientServicesTable.id))
+    .limit(1);
+  return pkgRow?.packageKey ?? "core:security-baseline";
+}
+
 // ── System prompt ─────────────────────────────────────────────────────────────
 
 function buildSystemPrompt(
   instance: BotInstanceConfig,
   grounding: BotGrounding,
   remediableOffers: RemediableOffer[],
+  actionsEnabled: boolean,
 ): string {
   // Only customers with at least one genuinely-eligible instant remediation get
   // the propose capability. The marker never runs anything — it surfaces a
@@ -115,6 +211,27 @@ REMEDIATION PROPOSAL RULES (follow exactly):
 - The marker does NOT run anything. It only surfaces a Confirm button the user must click themselves. NEVER say or imply that you have started, run, applied, scheduled, or completed a remediation — you cannot. Only the user's own confirmation click runs it.
 - If the user has not clearly asked to fix a specific listed item, do NOT emit the marker; just answer their question.`;
 
+  // Same "propose, never silently act" shape as the remediation block above,
+  // for the two actions shanebot-engine.ts's action_router is allowed to
+  // authorize for this instance (regenerate_document, rerun_scan). Gated by
+  // `actionsEnabled` (this route only enables it for a CustomerUser on their
+  // own tenant) so an MSP-staff turn never even learns the tokens exist.
+  const actionsBlock = !actionsEnabled
+    ? ""
+    : `
+
+=== PLATFORM ACTIONS AVAILABLE ===
+You may offer to take ONE of the following actions, but ONLY when the user has clearly asked for it:
+- Regenerate their most recent report/document: if they ask to update, regenerate, refresh, or redo their report or document, explain in plain language what will happen, ask them to confirm, then append a marker on its very last line, alone: [ACTION:regenerate_document]
+- Re-run their latest scan: if they ask to rerun, redo, refresh, or recheck their scan or monitoring, explain in plain language what will happen, ask them to confirm, then append a marker on its very last line, alone: [ACTION:rerun_scan]
+=== END PLATFORM ACTIONS ===
+
+PLATFORM ACTION RULES (follow exactly):
+- Only offer an action when the user has clearly asked for it. Never offer one from an ambiguous, unrelated, or general question.
+- The marker does NOT run anything. It only surfaces a Confirm button the user must click themselves. NEVER say or imply that you have started, run, applied, or completed the action — you cannot. Only the user's own confirmation click runs it.
+- Offer at most one action per reply.
+- If there is nothing eligible for that action, the Confirm button will not appear — still explain what you're offering, and let the user know if it turns out nothing was available.`;
+
   // Voice + the trailing suggested-replies instruction come from the shared engine
   // (assembleSystemPrompt → persona + identity + body + chips). NOTHING safety-
   // bearing moved there: the grounding contract, escalation marker, and remediation
@@ -130,7 +247,7 @@ If you cannot answer confidently from the data below, output "[ESCALATE_TO_HUMAN
 
 === PLATFORM DATA FOR THIS SESSION ===
 ${grounding.summary}
-=== END PLATFORM DATA ===${remediationBlock}`;
+=== END PLATFORM DATA ===${remediationBlock}${actionsBlock}`;
 
   return assembleSystemPrompt({ instance, identity: grounding.identity, body });
 }
@@ -342,7 +459,12 @@ router.post(
       remediableOffers = [];
     }
 
-    const systemPrompt = buildSystemPrompt(paidInstance, groundedCtx, remediableOffers);
+    const systemPrompt = buildSystemPrompt(
+      paidInstance,
+      groundedCtx,
+      remediableOffers,
+      isCustomerUser && Boolean(customerId),
+    );
     const trimmedMessages = messages
       .slice(-20)
       .filter((m) => m.role === "user" || m.role === "assistant")
@@ -407,6 +529,39 @@ router.post(
       }
     }
 
+    // Action proposal (#363) — regenerate_document / rerun_scan. Only ever
+    // computed for a CustomerUser on their own tenant, matching the system
+    // prompt's actionsEnabled gate above, so an MSP-staff turn can never
+    // surface one even if the model somehow emitted a token. The router
+    // (shanebot-engine.ts) already authorized the token name against the
+    // instance's allowedActions; this re-validates there is an ACTUAL
+    // eligible target for THIS customer, fresh from the DB, before a Confirm
+    // button is ever shown — same "propose, never silently act" contract as
+    // proposedRemediation above. A hallucinated/ineligible request yields no
+    // proposal at all.
+    let proposedAction: { action: string; label: string } | null = null;
+    if (isCustomerUser && customerId) {
+      for (const { action, authorized } of routeRequestedActions(paidInstance, fullReply)) {
+        if (!authorized) continue;
+        if (action === "regenerate_document") {
+          const doc = await findRegenerableDocument(customerId);
+          if (doc) {
+            proposedAction = { action, label: `Regenerate "${doc.title}"` };
+            break;
+          }
+        } else if (action === "rerun_scan") {
+          if (await hasScanHistory(customerId)) {
+            proposedAction = { action, label: "Re-run your latest scan" };
+            break;
+          }
+        }
+        log.warn(
+          { customerId, action, userId: user.id },
+          "support-chat: model proposed an action with no eligible target — dropping proposal",
+        );
+      }
+    }
+
     // Suggested-reply chips (#361). Parsed and stripped like every other control
     // marker here — the raw token never reaches the user.
     const suggestedReplies = parseSuggestedReplies(fullReply);
@@ -420,10 +575,12 @@ router.post(
       );
     }
 
-    const visibleReply = stripSuggestedReplies(
-      fullReply
-        .replace(/\[ESCALATE_TO_HUMAN\]/gi, "")
-        .replace(/\[PROPOSE_REMEDIATION:\s*\d+\s*\]/gi, ""),
+    const visibleReply = stripActionTokens(
+      stripSuggestedReplies(
+        fullReply
+          .replace(/\[ESCALATE_TO_HUMAN\]/gi, "")
+          .replace(/\[PROPOSE_REMEDIATION:\s*\d+\s*\]/gi, ""),
+      ),
     );
 
     // The reply in the #361 structured shape. `reply` is still returned alongside
@@ -448,6 +605,7 @@ router.post(
         // The MSP actually billed — differs from mspId under impersonation.
         aiBillingMspId: billingMspId,
         proposedRemediationOfferId: proposedRemediation?.offerId ?? null,
+        proposedAction: proposedAction?.action ?? null,
         suggestedReplyCount: suggestedReplies.length,
       },
     });
@@ -470,6 +628,7 @@ router.post(
       suggestedReplies,
       escalated: shouldEscalate,
       proposedRemediation,
+      proposedAction,
     });
   },
 );
@@ -508,6 +667,155 @@ router.post(
     });
 
     res.json({ ok: true, message: "Your question has been sent to a human. You will hear back shortly." });
+  },
+);
+
+// ── POST /api/msp/support/actions/regenerate-document ────────────────────────
+// Confirmed execution of a [ACTION:regenerate_document] proposal (#363).
+// CustomerUser-only, self-service on their OWN tenant's own most recent
+// eligible document — the target is re-resolved here from scratch (never
+// trusted from the earlier proposal or the request body), so a stale or
+// tampered confirm click can never regenerate anything but the caller's own
+// current document. Calls the SAME generateDocument()/generateSowDocument()
+// admin-document-generator.ts uses — no new generation pipeline. Streams
+// progress back over SSE using the identical frame convention as that route's
+// own `stream:true` mode, so the chat UI can show a live indicator instead of
+// a silent wait.
+
+router.post(
+  "/msp/support/actions/regenerate-document",
+  requireAuth,
+  async (req: Request, res: Response) => {
+    const user = req.user!;
+    if (user.mspRole !== "CustomerUser" || !user.customerId) {
+      res.status(403).json({ error: "Not available for this account" });
+      return;
+    }
+    const customerId = user.customerId;
+
+    const doc = await findRegenerableDocument(customerId);
+    if (!doc) {
+      res.status(404).json({ error: "No document available to regenerate" });
+      return;
+    }
+
+    const [docTypeRow] = await db
+      .select({ pipelineCategory: documentTypesTable.pipelineCategory, isActive: documentTypesTable.isActive })
+      .from(documentTypesTable)
+      .where(eq(documentTypesTable.key, doc.docType))
+      .limit(1);
+    if (!docTypeRow || !docTypeRow.isActive) {
+      res.status(400).json({ error: "This document type can no longer be generated" });
+      return;
+    }
+
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.flushHeaders();
+    const sendSSE = (event: Record<string, unknown>): void => {
+      res.write(`data: ${JSON.stringify(event)}\n\n`);
+    };
+    sendSSE({ type: "phase", label: "Regenerating your document…", pct: 5 });
+    const onTextDelta = (text: string): void => {
+      sendSSE({ type: "delta", text });
+    };
+
+    try {
+      const result = docTypeRow.pipelineCategory === "pipeline_output"
+        ? await generateSowDocument({ mspCustomerId: customerId, projectId: doc.projectId ?? 0, docTypeKey: doc.docType, forceRegenerate: true })
+        : await generateDocument({ mspCustomerId: customerId, projectId: doc.projectId ?? 0, docTypeKey: doc.docType, forceRegenerate: true, onTextDelta });
+
+      actionLog.info(
+        { customerId, documentId: result.documentId, docType: doc.docType, userId: user.id },
+        "support-chat: chat-initiated document regeneration completed",
+      );
+      void createAuditLog({
+        actorUserId: user.id,
+        actorName: user.name ?? user.email,
+        actorRole: user.role,
+        actionType: "shanebot_action_regenerate_document",
+        entityType: "insights_generated_document",
+        entityId: result.documentId,
+        entityLabel: doc.title,
+        metadata: { customerId, docType: doc.docType },
+      });
+      sendSSE({ type: "done", payload: { documentId: result.documentId, docType: doc.docType, costCents: result.costCents } });
+    } catch (err) {
+      actionLog.error({ err, customerId, docType: doc.docType }, "support-chat: chat-initiated document regeneration failed");
+      sendSSE({ type: "error", message: "Regeneration failed. Please try again shortly." });
+    }
+    res.end();
+  },
+);
+
+// ── POST /api/msp/support/actions/rerun-scan ──────────────────────────────────
+// Confirmed execution of a [ACTION:rerun_scan] proposal (#363). Same ownership
+// discipline as regenerate-document above: customerId comes only from the
+// authenticated session, never the request body. Mirrors the customer-facing
+// shape of POST /msp/customers/:customerId/diagnostics/run (msp-diagnostics.ts)
+// — insert a pending run row, fire-and-forget the SAME runDiagnostics(), return
+// the runId immediately. The chat client streams live progress by opening the
+// EXISTING customer-permitted
+// GET /msp/customers/:customerId/diagnostics/runs/:runId/sse endpoint with the
+// returned runId — no new streaming mechanism needed for this action.
+
+router.post(
+  "/msp/support/actions/rerun-scan",
+  requireAuth,
+  async (req: Request, res: Response) => {
+    const user = req.user!;
+    if (user.mspRole !== "CustomerUser" || !user.customerId) {
+      res.status(403).json({ error: "Not available for this account" });
+      return;
+    }
+    const customerId = user.customerId;
+
+    try {
+      const [customer] = await db
+        .select({ id: tenantsTable.id, mspId: tenantsTable.mspId, tenantId: tenantsTable.tenantId })
+        .from(tenantsTable)
+        .where(eq(tenantsTable.id, customerId))
+        .limit(1);
+      if (!customer) {
+        res.status(404).json({ error: "Account not found" });
+        return;
+      }
+
+      const packageKey = await resolveScanPackageKey(customerId);
+      const runId = randomUUID();
+
+      await db.insert(mspDiagnosticRunsTable).values({
+        runId,
+        mspId: customer.mspId,
+        customerId,
+        tenantId: customer.tenantId ?? undefined,
+        packageKey,
+        status: "pending",
+        triggeredByUserId: user.id,
+      });
+
+      res.status(202).json({ runId, status: "pending", packageKey });
+
+      void runDiagnostics({ customerId, packageKey, existingRunId: runId, triggeredByUserId: user.id, isAssessmentTriggered: false })
+        .catch((err: unknown) => {
+          actionLog.error({ err, runId, customerId }, "support-chat: chat-initiated scan rerun failed");
+        });
+
+      void createAuditLog({
+        actorUserId: user.id,
+        actorName: user.name ?? user.email,
+        actorRole: user.role,
+        actionType: "shanebot_action_rerun_scan",
+        entityType: "msp_diagnostic_run",
+        entityId: runId,
+        entityLabel: packageKey,
+        metadata: { customerId, runId, packageKey },
+      });
+    } catch (err) {
+      actionLog.error({ err, customerId }, "support-chat: rerun-scan request failed");
+      if (!res.headersSent) res.status(500).json({ error: "Failed to start scan" });
+    }
   },
 );
 
