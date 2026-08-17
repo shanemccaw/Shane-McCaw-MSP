@@ -22,18 +22,40 @@ namespace BuildConsole.Services
         /// <summary>Discovered placeholder names that were already present in the store (left untouched).</summary>
         public List<string> AlreadyKnownNames { get; } = new();
 
-        /// <summary>Git #961 — discovered config placeholders (added OR already-known) that surfaced via a
+        /// <summary>Discovered config placeholders (added OR already-known) that surfaced via a
         /// <c>powerShellVerify[].afterStep</c> bare-name reference rather than literal <c>{{...}}</c> syntax.
         /// Reported distinctly on the scan channel because these are the names the old scanner missed
         /// entirely (e.g. <c>GRAPH_TEST_TENANT_ID</c> in <c>smoke/hello-world-powershell.json</c>).</summary>
         public List<string> AfterStepSourcedNames { get; } = new();
 
-        public string SummaryLine =>
-            !RepoRootFound
-                ? "Could not locate test-manifests/ — no repo root (Settings has the config path)."
-                : AddedNames.Count > 0
-                    ? $"Scanned {ManifestsScanned} manifest(s): added {AddedNames.Count} new variable(s) needing review — {string.Join(", ", AddedNames)}."
-                    : $"Scanned {ManifestsScanned} manifest(s): {DistinctConfigPlaceholders} placeholder(s), all already known — nothing added.";
+        /// <summary>Map of variable name to the relative manifest file paths (e.g. "smoke/hello-world-powershell.json") that reference it.</summary>
+        public Dictionary<string, List<string>> VariableManifestMap { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>Map of variable name to the distinct test areas (e.g. "smoke", "auth", "crm") that reference it.</summary>
+        public Dictionary<string, List<string>> VariableAreaMap { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>Names removed from the store because they are no longer referenced by any manifest.</summary>
+        public List<string> RemovedOrphanedNames { get; } = new();
+
+        public string SummaryLine
+        {
+            get
+            {
+                if (!RepoRootFound)
+                    return "Could not locate test-manifests/ — no repo root (Settings has the config path).";
+
+                var parts = new List<string>();
+                if (AddedNames.Count > 0)
+                    parts.Add($"added {AddedNames.Count} new ({string.Join(", ", AddedNames)})");
+                if (RemovedOrphanedNames.Count > 0)
+                    parts.Add($"pruned {RemovedOrphanedNames.Count} obsolete ({string.Join(", ", RemovedOrphanedNames)})");
+
+                if (parts.Count == 0)
+                    return $"Scanned {ManifestsScanned} manifest(s): {DistinctConfigPlaceholders} placeholder(s) — 100% in sync.";
+
+                return $"Scanned {ManifestsScanned} manifest(s): {string.Join(", ", parts)}.";
+            }
+        }
     }
 
     /// <summary>
@@ -112,7 +134,7 @@ namespace BuildConsole.Services
         /// placeholder is known) — the Settings section calls it on open and on the
         /// "Rescan Manifests" button.
         /// </summary>
-        public static ManifestVariableScanResult Scan(BuildConsoleSettings settings)
+        public static ManifestVariableScanResult Scan(BuildConsoleSettings settings, bool pruneOrphans = true)
         {
             var result = new ManifestVariableScanResult();
 
@@ -165,6 +187,10 @@ namespace BuildConsole.Services
                     var afterStepRefs = new HashSet<string>(StringComparer.Ordinal);
                     Walk(doc.RootElement, placeholders, extractNames, afterStepRefs);
 
+                    string relPath = Path.GetRelativePath(manifestsDir, file).Replace('\\', '/');
+                    string area = Path.GetDirectoryName(Path.GetRelativePath(manifestsDir, file))?.Replace('\\', '/') ?? "general";
+                    if (string.IsNullOrEmpty(area) || area == ".") area = "general";
+
                     // Per-manifest subtraction BEFORE the cross-file union: a name this
                     // manifest extracts for itself is a cross-step value, not config.
                     foreach (var name in placeholders)
@@ -175,6 +201,21 @@ namespace BuildConsole.Services
                         // Track distinctly if THIS manifest sourced the name via a bare afterStep
                         // (it survived exclusion + extract subtraction, so it's a real config var).
                         if (afterStepRefs.Contains(name)) afterStepSourced.Add(name);
+
+                        // Record manifest usage and area
+                        if (!result.VariableManifestMap.TryGetValue(name, out var mList))
+                        {
+                            mList = new List<string>();
+                            result.VariableManifestMap[name] = mList;
+                        }
+                        if (!mList.Contains(relPath)) mList.Add(relPath);
+
+                        if (!result.VariableAreaMap.TryGetValue(name, out var aList))
+                        {
+                            aList = new List<string>();
+                            result.VariableAreaMap[name] = aList;
+                        }
+                        if (!aList.Contains(area)) aList.Add(area);
                     }
                 }
                 result.ManifestsScanned++;
@@ -205,12 +246,27 @@ namespace BuildConsole.Services
                 changed = true;
             }
 
+            // Prune variables that are no longer referenced by any manifest
+            if (pruneOrphans && result.RepoRootFound && files.Length > 0)
+            {
+                var orphaned = settings.TestEnvironmentVariables
+                    .Where(v => !discovered.Contains(v.Name))
+                    .ToList();
+
+                if (orphaned.Count > 0)
+                {
+                    foreach (var o in orphaned)
+                    {
+                        settings.TestEnvironmentVariables.Remove(o);
+                        result.RemovedOrphanedNames.Add(o.Name);
+                    }
+                    changed = true;
+                }
+            }
+
             if (changed) settings.Save();
 
-            ActivityLog.Log(Channel,
-                result.AddedNames.Count > 0
-                    ? $"scanned {result.ManifestsScanned} manifest(s); {result.DistinctConfigPlaceholders} distinct config placeholder(s); added {result.AddedNames.Count} new (needsReview): {string.Join(", ", result.AddedNames)}."
-                    : $"scanned {result.ManifestsScanned} manifest(s); {result.DistinctConfigPlaceholders} distinct config placeholder(s); all already known — nothing added.");
+            ActivityLog.Log(Channel, result.SummaryLine);
 
             // Git #961 — report afterStep-sourced discoveries distinctly (these are the ones the old
             // literal-{{}}-only scanner missed): which came from a bare powerShellVerify[].afterStep, and

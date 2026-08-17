@@ -5,6 +5,7 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
 using BuildConsole.Services;
@@ -37,6 +38,8 @@ namespace BuildConsole.Controls
         public event EventHandler<string?>? SyncError;
         /// <summary>Git #851 — Shane: "When clicking on an In-Flight Still Open issue, it should open the chat that is associated to that issue." MainWindow resolves the actual chat (via LeftSidebar.FindChatForIssue) and opens/focuses its tab, same as clicking a chat in the Chats tree.</summary>
         public event EventHandler<int>? IssueChatRequested;
+        public event EventHandler<int>? EpicSubIssueClicked;
+        public event EventHandler? FullGitRefreshRequested;
         private bool _isPinned = true;
 
         /// <summary>
@@ -629,33 +632,18 @@ namespace BuildConsole.Controls
 
         // Git #829 — Shane: "I need the right panel to have another section
         // that shows me all the issues assigned to the chat I'm on."
-        // MainWindow calls this from EditorTabs_SelectionChanged whenever
-        // the active tab changes; null/null/null clears it (not a chat tab,
-        // or a chat with no linked epic).
         private int? _activeChatEpicId;
-
-        /// <summary>
-        /// Git #910 — Shane: "how long does it take now when I assign an
-        /// issue to a parent for it to show up in my right side panel under
-        /// it's parent?... 906, 908, 909 should be showing." It never would
-        /// have: this used to read the internal bt_issues.epic_id table
-        /// (server-side), a completely separate system from GitHub's real
-        /// sub-issue graph that "Assign to Epic..." (#844) actually writes
-        /// to - no sync connects the two, so it wasn't a timing issue, it
-        /// would never show up. Now fetches the epic's REAL sub-issues
-        /// directly (GitHubApiClient.GetSubIssuesAsync), same real-GitHub-
-        /// state principle #839/#874 established elsewhere in this app -
-        /// each GitHubSubIssue already carries its own real State, so the
-        /// old separate FetchRealIssueStatesAsync per-issue lookup this
-        /// used to need is gone entirely, not just redirected.
-        /// </summary>
+        private int? _activeChatEpicGithubNumber;
+        private string? _activeChatEpicTitle;
         private List<GitHubSubIssue> _lastEpicIssues = new();
         private string _epicFilter = "Open";
 
-        public async void SetActiveChatEpic(int? epicId, int? epicGithubNumber, string? epicTitle)
+        public async void SetActiveChatEpic(int? epicId, int? epicGithubNumber, string? epicTitle, bool force = false)
         {
-            if (epicId == _activeChatEpicId) return;
+            if (!force && epicId == _activeChatEpicId) return;
             _activeChatEpicId = epicId;
+            _activeChatEpicGithubNumber = epicGithubNumber;
+            _activeChatEpicTitle = epicTitle;
 
             if (epicId == null)
             {
@@ -699,8 +687,52 @@ namespace BuildConsole.Controls
             // The tab may have changed again while that fetch was in flight.
             if (_activeChatEpicId != epicId) return;
 
+            // Check if any sub-issues were closed since the last load
+            if (_lastEpicIssues != null && _lastEpicIssues.Count > 0)
+            {
+                var newlyClosed = _lastEpicIssues
+                    .Where(old => !IsRealClosed(old.State))
+                    .Where(old => issues.Any(cur => cur.Number == old.Number && IsRealClosed(cur.State)))
+                    .ToList();
+
+                if (newlyClosed.Count > 0)
+                {
+                    int delayMs = 0;
+                    foreach (var closedSub in newlyClosed)
+                    {
+                        int currentDelay = delayMs;
+                        string label = $"#{closedSub.Number} {closedSub.Title}";
+                        if (currentDelay == 0)
+                        {
+                            IssueChompAnimation.Play(null, label);
+                        }
+                        else
+                        {
+                            var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(currentDelay) };
+                            timer.Tick += (_, _) =>
+                            {
+                                timer.Stop();
+                                IssueChompAnimation.Play(null, label);
+                            };
+                            timer.Start();
+                        }
+                        delayMs += 400;
+                    }
+                }
+            }
+
             _lastEpicIssues = issues;
             RenderChatEpicIssues();
+        }
+
+        /// <summary>Forces a fresh fetch of the current chat's epic issues from GitHub.</summary>
+        public async System.Threading.Tasks.Task RefreshActiveChatEpicIssuesAsync()
+        {
+            if (_activeChatEpicId.HasValue && _activeChatEpicGithubNumber.HasValue)
+            {
+                SetActiveChatEpic(_activeChatEpicId, _activeChatEpicGithubNumber, _activeChatEpicTitle, force: true);
+            }
+            await System.Threading.Tasks.Task.CompletedTask;
         }
 
         private static bool IsRealClosed(string state) => string.Equals(state, "closed", StringComparison.OrdinalIgnoreCase);
@@ -754,7 +786,18 @@ namespace BuildConsole.Controls
                 };
                 Grid.SetColumn(titleBlock, 1);
                 panel.Children.Add(titleBlock);
-                ChatEpicIssuesList.Items.Add(new ListBoxItem { Content = panel, ToolTip = issue.HtmlUrl });
+                var lbi = new ListBoxItem
+                {
+                    Content = panel,
+                    ToolTip = $"#{issue.Number} — Click to open details side-by-side with chat",
+                    Cursor = Cursors.Hand
+                };
+                int capturedNum = issue.Number;
+                lbi.PreviewMouseLeftButtonUp += (s, e) =>
+                {
+                    EpicSubIssueClicked?.Invoke(this, capturedNum);
+                };
+                ChatEpicIssuesList.Items.Add(lbi);
             }
         }
 
@@ -907,7 +950,6 @@ namespace BuildConsole.Controls
             try
             {
                 var qBase = ApplyFilter(_lastItems);
-                int qShown = qBase.Count(i => focus.IsIssueInFocus(i.GithubNumber));
                 int ifShown = _lastInFlightIssues.Count(i => focus.IsIssueInFocus(i.Number));
                 int tdShown = _lastWaitingOnMeIssues.Count(i => focus.IsIssueInFocus(i.Number));
                 var cBase = _lastItems
@@ -915,7 +957,7 @@ namespace BuildConsole.Controls
                     .ToList();
                 int cShown = cBase.Count(i => focus.IsIssueInFocus(i.GithubNumber));
                 ActivityLog.Log("focus-mode", focus.IsActive
-                    ? $"Build Queue re-filtered — Queue {qShown}/{qBase.Count}, In-Flight {ifShown}/{_lastInFlightIssues.Count}, To-Do {tdShown}/{_lastWaitingOnMeIssues.Count}, Completed {cShown}/{cBase.Count} shown (rest hidden by focus); Sessions not milestone-attributable, left unfiltered"
+                    ? $"Build Queue re-filtered — In-Flight {ifShown}/{_lastInFlightIssues.Count}, To-Do {tdShown}/{_lastWaitingOnMeIssues.Count}, Completed {cShown}/{cBase.Count} shown; Queue ({qBase.Count}) & Sessions left completely unfiltered"
                     : $"Build Queue unfiltered — Queue {qBase.Count}, In-Flight {_lastInFlightIssues.Count}, To-Do {_lastWaitingOnMeIssues.Count}, Completed {cBase.Count} all shown");
             }
             catch { }
@@ -1052,30 +1094,9 @@ namespace BuildConsole.Controls
                     .ToList();
             }
 
-            // Focus Mode — hard-hide queue items whose issue isn't in the active milestone.
-            // Unattributable / local items (no or negative issue number) are kept, so an
-            // actively-running build is never hidden out from under Shane. The decision traces the
-            // real chain build → issue → parent epic → epic's milestone (FocusModeService.
-            // DescribeIssueFocus) — a sub-issue build carries no milestone of its own but genuinely
-            // belongs to its parent epic's milestone, which #46 missed (the over-filtering bug).
-            //
-            // Per-item diagnostic log (only while focused, and RenderQueue only runs on a real
-            // data/filter/focus change — not every 15s poll — so this isn't spammy): for each item,
-            // what milestone it resolved to and whether it was shown or hidden. This makes a future
-            // over/under-filtering regression immediately diagnosable straight from the focus-mode feed.
+            // Focus Mode — builds in the queue are NEVER filtered in focus mode (Shane request).
+            // All active and queued builds remain fully visible regardless of focus milestone.
             var focus = BuildConsole.Services.FocusModeService.Instance;
-            if (focus.IsActive)
-            {
-                var kept = new List<QueueItem>(items.Count);
-                foreach (var i in items)
-                {
-                    var decision = focus.DescribeIssueFocus(i.GithubNumber);
-                    ActivityLog.Log("focus-mode",
-                        $"Queue filter [{_filter}] {i.Status} \"{TrimForLog(i.Title)}\" ({(i.GithubNumber.HasValue ? FormatIssueRef(i.GithubNumber.Value) : "no #")}) → {decision.Path}; {(decision.Shown ? "SHOWN" : "HIDDEN")} vs active milestone #{focus.ActiveMilestoneNumber}");
-                    if (decision.Shown) kept.Add(i);
-                }
-                items = kept;
-            }
 
             QueueTree.Visibility = Visibility.Visible;
             QueueEmptyText.Visibility = items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -1649,11 +1670,18 @@ namespace BuildConsole.Controls
         private async void BtnRefreshGitHubTiles_Click(object sender, RoutedEventArgs e)
         {
             ActivityLog.Log("github.manual-refresh",
-                "Build Queue panel [manual Refresh click]: re-fetching the three GitHub tiles (In-Flight + To-Do + Completed) via gh CLI.");
+                "Build Queue panel [manual Refresh click]: re-fetching ALL GitHub components (Board + Issues in Epic + In-Flight + To-Do + Completed + Focus Progress).");
+            
+            FullGitRefreshRequested?.Invoke(this, EventArgs.Empty);
+
             await System.Threading.Tasks.Task.WhenAll(
+                RefreshActiveChatEpicIssuesAsync(),
                 RefreshInFlightIssuesAsync("manual Refresh click"),
                 RefreshWaitingOnMeAsync("manual Refresh click"),
-                RefreshCompletedAsync("manual Refresh click"));
+                RefreshCompletedAsync("manual Refresh click"),
+                RefreshAsync());
+
+            ToastEngine.Success("Git Sync", "Refreshed Git Board, epic issues, focus progress, and queue tiles!");
         }
 
         // Git #874 — In-Flight/Sessions/To-Do quiet tiles: collapsed by

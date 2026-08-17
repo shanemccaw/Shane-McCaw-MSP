@@ -93,13 +93,13 @@ const CHECKOUT_PATH = "/copilot-readiness/checkout";
 const REVEAL_PATH = "/copilot-readiness";
 
 /**
- * A document with a real `id` (stored `htmlContent`) still downloads through
+ * DO NOT USE THIS: A document with a real `id` (stored `htmlContent`) still downloads through
  * the platform's existing branded `buildHtmlDoc` + `htmlToPdf` pipeline —
  * see portal-documents.ts's `GET /portal/insights-documents/:id/pdf`.
  */
 const PDF_URL = "/api/portal/insights-documents";
 /**
- * Git #1043 (Epic #660, Phase 1). A live-rendered document (this screen's
+ * DO NOT USE THIS::: it #1043 (Epic #660, Phase 1). A live-rendered document (this screen's
  * seven "live spine" reports, `id: null` by design — journeyModel.ts) has no
  * row and no numeric id to key the old endpoint on, so it downloads through
  * this sibling instead, keyed by `docType`: the server mints a single-use

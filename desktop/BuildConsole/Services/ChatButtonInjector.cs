@@ -225,6 +225,21 @@ namespace BuildConsole.Services
     btn.addEventListener("click", function () { if (kind === "sql") loadIntoSqlRunner(text); else sendToBuilder(text); });
     bar.appendChild(btn);
     if (kind === "prompt") {
+      const editBtn = document.createElement("button");
+      editBtn.type = "button";
+      editBtn.textContent = "✏️ Edit";
+      editBtn.title = "Open in editor window to modify prompt and configure blockers before building";
+      editBtn.style.cssText = btn.style.cssText;
+      editBtn.addEventListener("mouseenter", function () { editBtn.style.background = "#2e2e2e"; });
+      editBtn.addEventListener("mouseleave", function () { editBtn.style.background = "#242424"; });
+      editBtn.addEventListener("click", function () {
+        post("BT_EDIT_BUILD", {
+          rawText: text,
+          referencedNumber: referencedNumber
+        });
+      });
+      bar.appendChild(editBtn);
+
       const queueBtn = document.createElement("button");
       queueBtn.type = "button";
       queueBtn.textContent = "📋 Queue";

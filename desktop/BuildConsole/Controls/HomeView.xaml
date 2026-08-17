@@ -1,54 +1,65 @@
 <UserControl x:Class="BuildConsole.Controls.HomeView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d"
+             d:DesignHeight="950" d:DesignWidth="1320">
 
-    <!-- Git #874 Home screen — native WPF landing tab that replaces the old
-         hardcoded (non-closable) claude.ai tab. Three roll-up sections in the
-         same ADHD "quiet tile / colored-icon row / announce-when-actionable"
-         visual language the Build Queue right panel (#874) uses: "Where you
-         left off" (persisted last-launch chat tabs), "Running now" (live queue,
-         same source as the Build Queue panel), "Done, waiting for you" (done
-         builds whose GitHub issue is still open). Rows are built in code-behind
-         (HomeView.xaml.cs) so each can carry its real BoardChat / GitHub-number
-         identity and click straight through to the originating chat tab.
-
-         ADHD-scroll redesign — Shane: "it's a very long scroll list. NOT ADHD
-         friendly." What's New used to dump its full raw commit list (14+ bullets)
-         always-visible at the top, forcing a long scroll before the actionable
-         sections. It now collapses to ONE quiet count-badge tile (exact same
-         #874 QuietTile ToggleButton the Build Queue's In-Flight/Completed tiles
-         use — collapsed by default, expands in place on click), so the common
-         case fits on one glance; the three actionable sections stay visible and
-         prominent with count badges + hairline separators between them. -->
     <UserControl.Resources>
-        <!-- Git #874 — the exact quiet count-badge tile from the Build Queue
-             panel (BuildQueuePanel.xaml). A ToggleButton so IsChecked IS the
-             expanded state; the attached content Visibility is toggled in
-             code-behind off Click. Rest state matches the app's ordinary
-             Mantle/Surface0 hover language ("quiet"). Same style, verbatim, so
-             the Home tab and the right panel read as one system. -->
-        <Style x:Key="QuietTile" TargetType="{x:Type ToggleButton}">
-            <Setter Property="Background"      Value="{StaticResource MantleBrush}"/>
-            <Setter Property="BorderBrush"     Value="{StaticResource Surface0Brush}"/>
+        <!-- ── Card and Interactive Styles ── -->
+        <Style x:Key="HomeCard" TargetType="{x:Type Border}">
+            <Setter Property="Background" Value="{StaticResource MantleBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource Surface0Brush}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Foreground"      Value="{StaticResource Subtext0Brush}"/>
-            <Setter Property="Padding"         Value="10,8"/>
-            <Setter Property="Cursor"          Value="Hand"/>
-            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="CornerRadius" Value="12"/>
+            <Setter Property="Padding" Value="15"/>
+            <Setter Property="Margin" Value="0,0,0,18"/>
+        </Style>
+
+        <Style x:Key="HomeCardHeader" TargetType="{x:Type TextBlock}">
+            <Setter Property="FontSize" Value="11.5"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Foreground" Value="{StaticResource Subtext0Brush}"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+
+        <Style x:Key="HomeRow" TargetType="{x:Type Border}">
+            <Setter Property="Background" Value="{StaticResource Surface0Brush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource Surface1Brush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Padding" Value="10,8"/>
+            <Setter Property="Margin" Value="0,0,0,6"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="{StaticResource Surface1Brush}"/>
+                    <Setter Property="BorderBrush" Value="{StaticResource BlueBrush}"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="QuickActionTile" TargetType="{x:Type Button}">
+            <Setter Property="Background" Value="{StaticResource Surface0Brush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource Surface1Brush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+            <Setter Property="Padding" Value="12,8"/>
+            <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Template">
                 <Setter.Value>
-                    <ControlTemplate TargetType="{x:Type ToggleButton}">
-                        <Border x:Name="Bd"
-                                Background="{TemplateBinding Background}"
+                    <ControlTemplate TargetType="{x:Type Button}">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="6"
-                                Padding="{TemplateBinding Padding}">
-                            <ContentPresenter/>
+                                CornerRadius="8" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource Surface0Brush}"/>
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource Surface1Brush}"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource BlueBrush}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -56,152 +67,553 @@
             </Setter>
         </Style>
 
-        <!-- Clickable roll-up row — same Mantle/Surface0 hover language as the
-             panel's QuietTile, so the whole page reads as one system. -->
-        <Style x:Key="HomeRow" TargetType="{x:Type Border}">
-            <Setter Property="Background" Value="{StaticResource MantleBrush}"/>
-            <Setter Property="BorderBrush" Value="{StaticResource Surface0Brush}"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="CornerRadius" Value="6"/>
-            <Setter Property="Padding" Value="10,8"/>
-            <Setter Property="Margin" Value="0,0,0,6"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Style.Triggers>
-                <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="Background" Value="{StaticResource Surface0Brush}"/>
-                </Trigger>
-            </Style.Triggers>
-        </Style>
-
-        <Style x:Key="HomeSectionHeader" TargetType="{x:Type TextBlock}">
-            <Setter Property="FontSize" Value="11"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Foreground" Value="{StaticResource Subtext1Brush}"/>
-            <Setter Property="VerticalAlignment" Value="Center"/>
-        </Style>
-
-        <!-- Hairline separator between the three actionable sections — the same
-             Surface0 divider weight the Build Queue panel puts between its
-             primary sections (#874), giving each section real visual breathing
-             room instead of one undifferentiated scroll. -->
-        <Style x:Key="HomeDivider" TargetType="{x:Type Border}">
-            <Setter Property="Height" Value="1"/>
+        <Style x:Key="QuietTile" TargetType="{x:Type ToggleButton}">
             <Setter Property="Background" Value="{StaticResource Surface0Brush}"/>
-            <Setter Property="Margin" Value="0,0,0,18"/>
+            <Setter Property="BorderBrush" Value="{StaticResource Surface1Brush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Foreground" Value="{StaticResource Subtext0Brush}"/>
+            <Setter Property="Padding" Value="10,8"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type ToggleButton}">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="8" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource Surface1Brush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
     </UserControl.Resources>
 
     <Border Background="{StaticResource BaseBrush}">
-        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-            <StackPanel MaxWidth="720" HorizontalAlignment="Left" Margin="24,20,24,28">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" Padding="24,18,24,28">
+            <StackPanel MaxWidth="1340" HorizontalAlignment="Stretch">
 
-                <!-- ── Hero ── -->
-                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                    <TextBlock Text="🏠" FontSize="22" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                    <TextBlock Text="Home" FontSize="22" FontWeight="Bold"
-                               Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
-                </StackPanel>
-                <TextBlock Text="Pick up where you left off — what's running, and what's waiting on you."
-                           FontSize="12" Foreground="{StaticResource Subtext1Brush}"
-                           TextWrapping="Wrap" Margin="0,0,0,18"/>
+                <!-- ══════════════════════════════════════════════════════════
+                     1. TOP HERO GREETING & DAILY COMPASS BAR
+                     ══════════════════════════════════════════════════════════ -->
+                <Grid Margin="0,0,0,22">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
 
-                <!-- ══ 0. WHAT'S NEW ══  (video-game-patch-notes style, now collapsed by default)
-                     Shows the real first-line commit titles for BuildConsole that
-                     landed since the last launch (VersionInfo.GetNewCommitTitles,
-                     reusing the same #992 git-commit-count build number). ADHD-scroll
-                     redesign: instead of dumping the whole bullet list inline (14+
-                     rows above everything actionable), this is now a single quiet
-                     count-badge tile — "N changes since you last looked" — collapsed
-                     by default, expanding in place on click to reveal the real full
-                     list. Same #874 QuietTile shape as the Build Queue panel's
-                     In-Flight/Completed tiles. The whole section stays Collapsed when
-                     there's nothing new (a launch with no new commits shows no box). -->
-                <StackPanel x:Name="WhatsNewSection" Margin="0,0,0,18" Visibility="Collapsed">
-                    <ToggleButton x:Name="WhatsNewTile" Style="{StaticResource QuietTile}" Click="WhatsNewTile_Click">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="✨" FontSize="13" VerticalAlignment="Center" Margin="0,0,8,0"
-                                       Foreground="#C6A0F6"/>
-                            <TextBlock Text="What's New" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                            <TextBlock x:Name="WhatsNewSummaryText" Text="" FontSize="11" Margin="6,0,0,0"
-                                       VerticalAlignment="Center" Foreground="{StaticResource Subtext1Brush}"/>
+                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                            <TextBlock Text="🚀" FontSize="26" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                            <TextBlock x:Name="GreetingText" Text="Good day, Shane!" FontSize="24" FontWeight="Bold"
+                                       Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
                         </StackPanel>
-                    </ToggleButton>
-                    <!-- Collapsed-by-default content, visually attached below the tile
-                         (BorderThickness 1,0,1,1 + CornerRadius 0,0,6,6) — exactly the
-                         #874 tile-content treatment. -->
-                    <Border x:Name="WhatsNewContent"
-                            Visibility="Collapsed"
-                            Background="{StaticResource MantleBrush}"
-                            BorderBrush="{StaticResource Surface0Brush}"
-                            BorderThickness="1,0,1,1"
-                            Padding="10,8"
-                            CornerRadius="0,0,6,6">
-                        <StackPanel>
-                            <TextBlock x:Name="WhatsNewVersionText" Text="" FontSize="10" Margin="0,0,0,6"
-                                       Foreground="{StaticResource Subtext1Brush}"/>
-                            <StackPanel x:Name="WhatsNewList"/>
+                        <TextBlock x:Name="MotivationSubtext"
+                                   Text="One clear step at a time. What would you like to focus on right now?"
+                                   FontSize="12.5" Foreground="{StaticResource Subtext0Brush}"/>
+                    </StackPanel>
+
+                    <!-- Fast Action Badges -->
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button x:Name="BtnQuickNewIssue" Style="{StaticResource QuickActionTile}" Margin="0,0,8,0" Click="BtnQuickNewIssue_Click">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="➕" FontSize="11.5" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="New Issue" FontSize="11.5" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="BtnQuickBuildWatch" Style="{StaticResource QuickActionTile}" Margin="0,0,8,0" Click="BtnQuickBuildWatch_Click">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="🖥️" FontSize="11.5" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="Build Watch" FontSize="11.5" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="BtnQuickTestRunner" Style="{StaticResource QuickActionTile}" Margin="0,0,8,0" Click="BtnQuickTestRunner_Click">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="🧪" FontSize="11.5" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="Test Runner" FontSize="11.5" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="BtnQuickReplit" Style="{StaticResource QuickActionTile}" Click="BtnQuickReplit_Click">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="🌐" FontSize="11.5" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="Replit" FontSize="11.5" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+
+                <!-- ══════════════════════════════════════════════════════════
+                     2. THREE-COLUMN ADHD DASHBOARD GRID WITH PEEKING MASCOTS
+                     ══════════════════════════════════════════════════════════ -->
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <!-- Column 1: Jump Back In & Active Workspace -->
+                        <ColumnDefinition Width="*" MinWidth="340" MaxWidth="440"/>
+                        <!-- Spacer -->
+                        <ColumnDefinition Width="20"/>
+                        <!-- Column 2: Suggested Next Step & Priority Work -->
+                        <ColumnDefinition Width="*" MinWidth="340" MaxWidth="460"/>
+                        <!-- Spacer -->
+                        <ColumnDefinition Width="20"/>
+                        <!-- Column 3: Mascot Companion & Momentum Corner -->
+                        <ColumnDefinition Width="320" MinWidth="290" MaxWidth="360"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- ───────────────────────────────────────────────────────
+                         COLUMN 1: JUMP BACK IN & ACTIVE WORKSPACE
+                         ─────────────────────────────────────────────────────── -->
+                    <StackPanel Grid.Column="0">
+
+                        <!-- 🦊 Active Focus Card with Peeking Top-Edge Fox -->
+                        <Grid Margin="0,0,0,18">
+                            <!-- Peeking Fox behind Card Top -->
+                            <Canvas HorizontalAlignment="Right" VerticalAlignment="Top" Width="55" Height="30" Margin="0,-22,18,0" IsHitTestVisible="False">
+                                <Canvas.RenderTransform>
+                                    <TranslateTransform x:Name="PeekFoxTranslate" X="0" Y="0"/>
+                                </Canvas.RenderTransform>
+                                <!-- Ears -->
+                                <Polygon Points="8,26 16,4 24,26" Fill="#F59E0B"/>
+                                <Polygon Points="12,24 16,10 20,24" Fill="#FDE68A"/>
+                                <Polygon Points="32,26 40,4 48,26" Fill="#F59E0B"/>
+                                <Polygon Points="36,24 40,10 44,24" Fill="#FDE68A"/>
+                                <!-- Head & Forehead -->
+                                <Ellipse Canvas.Left="6" Canvas.Top="14" Width="44" Height="28" Fill="#F59E0B"/>
+                                <!-- Little Eyes Looking Down -->
+                                <Ellipse Canvas.Left="16" Canvas.Top="20" Width="5" Height="6" Fill="#1E1E2E"/>
+                                <Ellipse Canvas.Left="17" Canvas.Top="21" Width="2" Height="2" Fill="#FFFFFF"/>
+                                <Ellipse Canvas.Left="35" Canvas.Top="20" Width="5" Height="6" Fill="#1E1E2E"/>
+                                <Ellipse Canvas.Left="36" Canvas.Top="21" Width="2" Height="2" Fill="#FFFFFF"/>
+                                <!-- White Snout Tip -->
+                                <Ellipse Canvas.Left="23" Canvas.Top="26" Width="10" Height="8" Fill="#FFFBEB"/>
+                                <Ellipse Canvas.Left="26" Canvas.Top="27" Width="4" Height="3" Fill="#1E1E2E"/>
+                                <!-- Little Paws Over Edge -->
+                                <Ellipse Canvas.Left="8" Canvas.Top="27" Width="10" Height="6" Fill="#FFFBEB"/>
+                                <Ellipse Canvas.Left="38" Canvas.Top="27" Width="10" Height="6" Fill="#FFFBEB"/>
+                            </Canvas>
+
+                            <Border x:Name="FocusHeroCard" Style="{StaticResource HomeCard}" Margin="0"
+                                    BorderBrush="{StaticResource BlueBrush}" Background="#1E2337">
+                                <StackPanel>
+                                    <Grid Margin="0,0,0,10">
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <TextBlock Text="🎯" FontSize="14" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                            <TextBlock Text="ACTIVE FOCUS EPIC" Style="{StaticResource HomeCardHeader}"
+                                                       Foreground="{StaticResource BlueBrush}"/>
+                                        </StackPanel>
+                                        <Border x:Name="FocusPointsPill" Background="{StaticResource Surface0Brush}"
+                                                CornerRadius="9" Padding="8,2" HorizontalAlignment="Right">
+                                            <TextBlock x:Name="FocusPointsText" Text="0 pts" FontSize="10.5"
+                                                       FontWeight="Bold" Foreground="{StaticResource YellowBrush}"/>
+                                        </Border>
+                                    </Grid>
+
+                                    <!-- Milestone Title & Progress -->
+                                    <TextBlock x:Name="FocusMilestoneTitle" Text="No milestone currently focused"
+                                               FontSize="13.5" FontWeight="Bold" Foreground="{StaticResource TextBrush}"
+                                               TextTrimming="CharacterEllipsis" Margin="0,0,0,8"/>
+
+                                    <!-- Progress Track -->
+                                    <Grid Margin="0,0,0,12">
+                                        <Border Background="{StaticResource Surface0Brush}" Height="6" CornerRadius="3">
+                                            <Border x:Name="FocusProgressBar" Background="{StaticResource GreenBrush}"
+                                                    Width="0" Height="6" CornerRadius="3" HorizontalAlignment="Left"/>
+                                        </Border>
+                                    </Grid>
+
+                                    <Grid>
+                                        <TextBlock x:Name="FocusProgressText" Text="Select a milestone to start focus"
+                                                   FontSize="11" Foreground="{StaticResource Subtext0Brush}"
+                                                   VerticalAlignment="Center"/>
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                            <Button x:Name="BtnImmersiveResume" Content="⛶ Immersive"
+                                                    Style="{StaticResource PrimaryButton}" Height="24" Padding="10,0"
+                                                    FontSize="11" FontWeight="SemiBold" Cursor="Hand" Margin="0,0,6,0"
+                                                    Click="BtnImmersiveResume_Click" ToolTip="Enter immersive distraction-free view"/>
+                                            <Button x:Name="BtnMilestoneDetail" Content="View Tab"
+                                                    Style="{StaticResource SecondaryButton}" Height="24" Padding="8,0"
+                                                    FontSize="11" Cursor="Hand" Click="BtnMilestoneDetail_Click"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+
+                        <!-- 🐦 Running Now Section with Scout Bird Cheer Mascot -->
+                        <Grid Margin="0,0,0,18">
+                            <!-- Scout Bird on Top-Right Corner -->
+                            <Canvas HorizontalAlignment="Right" VerticalAlignment="Top" Width="44" Height="28" Margin="0,-20,12,0" IsHitTestVisible="False">
+                                <Canvas.RenderTransform>
+                                    <TranslateTransform x:Name="BirdTranslate" X="0" Y="0"/>
+                                </Canvas.RenderTransform>
+                                <!-- Little Bird Body -->
+                                <Ellipse Canvas.Left="8" Canvas.Top="6" Width="24" Height="20" Fill="#60A5FA"/>
+                                <!-- Bird Belly -->
+                                <Ellipse Canvas.Left="12" Canvas.Top="12" Width="14" Height="12" Fill="#DBEAFE"/>
+                                <!-- Beak -->
+                                <Polygon Points="8,14 2,16 8,18" Fill="#F59E0B"/>
+                                <!-- Eye -->
+                                <Ellipse Canvas.Left="14" Canvas.Top="10" Width="4" Height="4" Fill="#1E1E2E"/>
+                                <Ellipse Canvas.Left="15" Canvas.Top="11" Width="1.5" Height="1.5" Fill="#FFFFFF"/>
+                                <!-- Wing -->
+                                <Path Data="M20,12 Q28,14 22,22 Z" Fill="#3B82F6"/>
+                                <!-- Megaphone -->
+                                <Polygon Points="4,11 -4,6 -4,22 4,17" Fill="#FBBF24"/>
+                            </Canvas>
+
+                            <Border Style="{StaticResource HomeCard}" Margin="0">
+                                <StackPanel>
+                                    <Grid Margin="0,0,0,10">
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <TextBlock Text="▶" FontSize="12" Margin="0,0,6,0" Foreground="#F2CA63" VerticalAlignment="Center"/>
+                                            <TextBlock Text="RUNNING NOW" Style="{StaticResource HomeCardHeader}"/>
+                                            <TextBlock x:Name="RunningCountText" Text="(0)" FontSize="11" Margin="6,0,0,0"
+                                                       VerticalAlignment="Center" Foreground="{StaticResource Subtext1Brush}"/>
+                                        </StackPanel>
+                                    </Grid>
+                                    <StackPanel x:Name="RunningList"/>
+                                    <TextBlock x:Name="RunningEmpty" Text="No active builds running right now."
+                                               FontSize="11" Foreground="{StaticResource Subtext1Brush}"
+                                               Margin="2,2,0,0" Visibility="Collapsed"/>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+
+                        <!-- Done, Waiting for You Section -->
+                        <Border Style="{StaticResource HomeCard}">
+                            <StackPanel>
+                                <Grid Margin="0,0,0,10">
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <TextBlock x:Name="DoneIcon" Text="✅" FontSize="12" Margin="0,0,6,0"
+                                                   Foreground="#7FAE91" VerticalAlignment="Center"/>
+                                        <TextBlock x:Name="DoneHeaderText" Text="DONE, WAITING FOR REVIEW" Style="{StaticResource HomeCardHeader}"/>
+                                        <TextBlock x:Name="DoneCountText" Text="(0)" FontSize="11" Margin="6,0,0,0"
+                                                   VerticalAlignment="Center" Foreground="{StaticResource Subtext1Brush}"/>
+                                    </StackPanel>
+                                </Grid>
+                                <StackPanel x:Name="DoneList"/>
+                                <TextBlock x:Name="DoneEmpty" Text="Nothing completed waiting for review."
+                                           FontSize="11" Foreground="{StaticResource Subtext1Brush}"
+                                           Margin="2,2,0,0" Visibility="Collapsed"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- 🐾 Where You Left Off with Diving Snoop Fox -->
+                        <Grid Margin="0,0,0,18">
+                            <Border Style="{StaticResource HomeCard}" Margin="0">
+                                <StackPanel>
+                                    <Grid Margin="0,0,0,10">
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <TextBlock Text="🕘" FontSize="12" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                            <TextBlock Text="RECENT CHATS" Style="{StaticResource HomeCardHeader}"/>
+                                            <TextBlock x:Name="LeftOffCountText" Text="(0)" FontSize="11" Margin="6,0,0,0"
+                                                       VerticalAlignment="Center" Foreground="{StaticResource Subtext1Brush}"/>
+                                        </StackPanel>
+                                    </Grid>
+                                    <StackPanel x:Name="LeftOffList"/>
+                                    <TextBlock x:Name="LeftOffEmpty" Text="No recent chats from your last session."
+                                               FontSize="11" Foreground="{StaticResource Subtext1Brush}"
+                                               Margin="2,2,0,0" Visibility="Collapsed"/>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+                    </StackPanel>
+
+                    <!-- ───────────────────────────────────────────────────────
+                         COLUMN 2: SUGGESTED NEXT STEP & PRIORITY WORK
+                         ─────────────────────────────────────────────────────── -->
+                    <StackPanel Grid.Column="2">
+
+                        <!-- 🐻 "What To Do Next" Card with Clarity Study Bear Mascot Reading a Book -->
+                        <Grid Margin="0,0,0,18">
+                            <!-- Cute Pastel Study Bear Resting & Reading -->
+                            <Canvas HorizontalAlignment="Right" VerticalAlignment="Top" Width="68" Height="42" Margin="0,-32,16,0" IsHitTestVisible="False">
+                                <Canvas.RenderTransform>
+                                    <TranslateTransform x:Name="BearTranslate" X="0" Y="0"/>
+                                </Canvas.RenderTransform>
+                                <!-- Bear Round Ears -->
+                                <Ellipse Canvas.Left="12" Canvas.Top="6" Width="10" Height="10" Fill="#C7D2FE"/>
+                                <Ellipse Canvas.Left="14" Canvas.Top="8" Width="6" Height="6" Fill="#E0E7FF"/>
+                                <Ellipse Canvas.Left="42" Canvas.Top="6" Width="10" Height="10" Fill="#C7D2FE"/>
+                                <Ellipse Canvas.Left="44" Canvas.Top="8" Width="6" Height="6" Fill="#E0E7FF"/>
+                                <!-- Bear Head & Fluffy Body -->
+                                <Ellipse Canvas.Left="10" Canvas.Top="10" Width="44" Height="30" Fill="#C7D2FE"/>
+                                <Ellipse Canvas.Left="8" Canvas.Top="22" Width="48" Height="22" Fill="#A5B4FC"/>
+                                <!-- Sweet Sleepy Eyes -->
+                                <Path Data="M20,20 Q24,23 28,20" Stroke="#312E81" StrokeThickness="1.5" Fill="Transparent"/>
+                                <Path Data="M36,20 Q40,23 44,20" Stroke="#312E81" StrokeThickness="1.5" Fill="Transparent"/>
+                                <!-- Cute Dark Nose -->
+                                <Ellipse Canvas.Left="30" Canvas.Top="22" Width="4" Height="3" Fill="#312E81"/>
+                                <!-- Tiny Open Book -->
+                                <Polygon Points="22,34 32,32 32,40 22,41" Fill="#FFFFFF"/>
+                                <Polygon Points="42,34 32,32 32,40 42,41" Fill="#F8FAFC"/>
+                                <Polygon Points="20,40 32,38 44,40 42,42 32,41 22,42" Fill="#D97706"/>
+                                <!-- Soft Paws holding book -->
+                                <Ellipse Canvas.Left="18" Canvas.Top="34" Width="6" Height="5" Fill="#C7D2FE"/>
+                                <Ellipse Canvas.Left="40" Canvas.Top="34" Width="6" Height="5" Fill="#C7D2FE"/>
+                            </Canvas>
+
+                            <Border Style="{StaticResource HomeCard}" Margin="0" BorderBrush="{StaticResource MauveBrush}" Background="#251F33">
+                                <StackPanel>
+                                    <Grid Margin="0,0,0,8">
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <TextBlock Text="⚡" FontSize="14" Margin="0,0,6,0" Foreground="{StaticResource MauveBrush}" VerticalAlignment="Center"/>
+                                            <TextBlock Text="WHAT TO DO NEXT (NO OVERWHELM)" Style="{StaticResource HomeCardHeader}"
+                                                       Foreground="{StaticResource MauveBrush}"/>
+                                        </StackPanel>
+                                        <Border x:Name="NextTaskBadge" Background="{StaticResource Surface0Brush}" CornerRadius="4" Padding="7,2" HorizontalAlignment="Right">
+                                            <TextBlock x:Name="NextTaskBadgeText" Text="⚡ Quick Win" FontSize="10" FontWeight="Bold" Foreground="{StaticResource PeachBrush}"/>
+                                        </Border>
+                                    </Grid>
+
+                                    <TextBlock x:Name="NextTaskTitle" Text="Loading top task…"
+                                               FontSize="13.5" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"
+                                               TextWrapping="Wrap" Margin="0,0,0,4"/>
+                                    <TextBlock x:Name="NextTaskSubtitle" Text="Resolved from your active milestone backlog"
+                                               FontSize="11" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,12"/>
+
+                                    <Button x:Name="BtnStartNextTask" Content="🚀 Jump into This Task"
+                                            Style="{StaticResource PrimaryButton}" Height="30" Padding="14,0"
+                                            FontSize="11.5" FontWeight="SemiBold" Cursor="Hand" HorizontalAlignment="Left"
+                                            Click="BtnStartNextTask_Click"/>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+
+                        <!-- 🐱 High Priority & Shane To-Dos with Clarity Sitting Cat Mascot -->
+                        <Grid Margin="0,0,0,18">
+                            <!-- Cute Purple Sitting Cat with Waving Tail -->
+                            <Canvas HorizontalAlignment="Right" VerticalAlignment="Top" Width="46" Height="36" Margin="0,-28,14,0" IsHitTestVisible="False">
+                                <Canvas.RenderTransform>
+                                    <TranslateTransform x:Name="CatTranslate" X="0" Y="0"/>
+                                </Canvas.RenderTransform>
+                                <!-- Pointy Cat Ears -->
+                                <Polygon Points="10,18 15,4 20,18" Fill="#D8B4FE"/>
+                                <Polygon Points="13,17 15,8 18,17" Fill="#F5D0FE"/>
+                                <Polygon Points="26,18 31,4 36,18" Fill="#D8B4FE"/>
+                                <Polygon Points="28,17 31,8 33,17" Fill="#F5D0FE"/>
+                                <!-- Cat Body & Back -->
+                                <Ellipse Canvas.Left="12" Canvas.Top="12" Width="22" Height="22" Fill="#D8B4FE"/>
+                                <Ellipse Canvas.Left="10" Canvas.Top="20" Width="26" Height="18" Fill="#C084FC"/>
+                                <!-- Cute Swishing Tail -->
+                                <Path x:Name="CatTail" Data="M34,30 Q44,22 42,12 Q40,8 36,10" Stroke="#C084FC" StrokeThickness="3" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent">
+                                    <Path.RenderTransform>
+                                        <RotateTransform x:Name="CatTailRotate" Angle="0" CenterX="34" CenterY="30"/>
+                                    </Path.RenderTransform>
+                                </Path>
+                            </Canvas>
+
+                            <Border Style="{StaticResource HomeCard}" Margin="0">
+                                <StackPanel>
+                                    <Grid Margin="0,0,0,10">
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <TextBlock Text="🔥" FontSize="13" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                            <TextBlock Text="SHANE TO-DO &amp; HIGH PRIORITY" Style="{StaticResource HomeCardHeader}"/>
+                                            <TextBlock x:Name="TodoCountText" Text="(0)" FontSize="11" Margin="6,0,0,0"
+                                                       VerticalAlignment="Center" Foreground="{StaticResource Subtext1Brush}"/>
+                                        </StackPanel>
+                                    </Grid>
+                                    <StackPanel x:Name="TodoList"/>
+                                    <TextBlock x:Name="TodoEmpty" Text="No pending high priority items."
+                                               FontSize="11" Foreground="{StaticResource Subtext1Brush}"
+                                               Margin="2,2,0,0" Visibility="Collapsed"/>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+
+                        <!-- Fast Tools & Workflows -->
+                        <Border Style="{StaticResource HomeCard}">
+                            <StackPanel>
+                                <TextBlock Text="🛠️ QUICK ACTIONS" Style="{StaticResource HomeCardHeader}" Margin="0,0,0,10"/>
+                                <UniformGrid Columns="2" Rows="2" Margin="0,0,0,4">
+                                    <Button x:Name="BtnNewEpicChat" Style="{StaticResource QuickActionTile}" Margin="0,0,4,6" Click="BtnNewEpicChat_Click">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="💬" FontSize="12" Margin="0,0,6,0"/>
+                                            <TextBlock Text="New Epic Chat" FontSize="11"/>
+                                        </StackPanel>
+                                    </Button>
+                                    <Button x:Name="BtnDeployNow" Style="{StaticResource QuickActionTile}" Margin="4,0,0,6" Click="BtnDeployNow_Click">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="⚡" FontSize="12" Margin="0,0,6,0"/>
+                                            <TextBlock Text="Rebuild &amp; Deploy" FontSize="11"/>
+                                        </StackPanel>
+                                    </Button>
+                                    <Button x:Name="BtnOpenGitBoard" Style="{StaticResource QuickActionTile}" Margin="0,0,4,0" Click="BtnOpenGitBoard_Click">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="📋" FontSize="12" Margin="0,0,6,0"/>
+                                            <TextBlock Text="Git Board" FontSize="11"/>
+                                        </StackPanel>
+                                    </Button>
+                                    <Button x:Name="BtnOpenSettings" Style="{StaticResource QuickActionTile}" Margin="4,0,0,0" Click="BtnOpenSettings_Click">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="⚙️" FontSize="12" Margin="0,0,6,0"/>
+                                            <TextBlock Text="Settings" FontSize="11"/>
+                                        </StackPanel>
+                                    </Button>
+                                </UniformGrid>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- What's New Collapsible Tile -->
+                        <StackPanel x:Name="WhatsNewSection" Margin="0,0,0,16" Visibility="Collapsed">
+                            <ToggleButton x:Name="WhatsNewTile" Style="{StaticResource QuietTile}" Click="WhatsNewTile_Click">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="✨" FontSize="13" VerticalAlignment="Center" Margin="0,0,8,0" Foreground="#C6A0F6"/>
+                                    <TextBlock Text="What's New" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="WhatsNewSummaryText" Text="" FontSize="11" Margin="6,0,0,0"
+                                               VerticalAlignment="Center" Foreground="{StaticResource Subtext1Brush}"/>
+                                </StackPanel>
+                            </ToggleButton>
+                            <Border x:Name="WhatsNewContent" Visibility="Collapsed" Background="{StaticResource Surface0Brush}"
+                                    BorderBrush="{StaticResource Surface1Brush}" BorderThickness="1,0,1,1" Padding="12,10" CornerRadius="0,0,7,7">
+                                <StackPanel>
+                                    <TextBlock x:Name="WhatsNewVersionText" Text="" FontSize="10" Margin="0,0,0,6"
+                                               Foreground="{StaticResource Subtext1Brush}"/>
+                                    <StackPanel x:Name="WhatsNewList"/>
+                                </StackPanel>
+                            </Border>
                         </StackPanel>
-                    </Border>
-                </StackPanel>
-
-                <!-- ══ 1. WHERE YOU LEFT OFF ══ -->
-                <StackPanel Margin="0,0,0,18">
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                        <TextBlock Text="🕘" FontSize="13" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                        <TextBlock Text="WHERE YOU LEFT OFF" Style="{StaticResource HomeSectionHeader}"/>
-                        <TextBlock x:Name="LeftOffCountText" Text="(0)" FontSize="11" Margin="6,0,0,0"
-                                   VerticalAlignment="Center" Foreground="{StaticResource Subtext1Brush}"/>
                     </StackPanel>
-                    <StackPanel x:Name="LeftOffList"/>
-                    <TextBlock x:Name="LeftOffEmpty" Text="No chat tabs were open when you last closed the app."
-                               FontSize="11" Foreground="{StaticResource Subtext1Brush}"
-                               TextWrapping="Wrap" Margin="2,2,0,0" Visibility="Collapsed"/>
-                </StackPanel>
 
-                <Border Style="{StaticResource HomeDivider}"/>
+                    <!-- ───────────────────────────────────────────────────────
+                         COLUMN 3: MASCOT COMPANION & MOMENTUM CORNER
+                         ─────────────────────────────────────────────────────── -->
+                    <StackPanel Grid.Column="4">
 
-                <!-- ══ 2. RUNNING NOW ══
-                     Stale-entry detection (Shane's screenshot bug): a "running" row
-                     whose UpdatedAt is ≥60 min old (or absent) is an orphan from a
-                     failed launch, not a live build — RenderRunning flags those with a
-                     ⚠ amber treatment + "likely stuck" subtitle + a ✕ clear button
-                     (cancels the queue item) instead of rendering them identically to a
-                     genuinely active build. -->
-                <StackPanel Margin="0,0,0,18">
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                        <TextBlock Text="▶" FontSize="13" VerticalAlignment="Center" Margin="0,0,6,0"
-                                   Foreground="#F2CA63"/>
-                        <TextBlock Text="RUNNING NOW" Style="{StaticResource HomeSectionHeader}"/>
-                        <TextBlock x:Name="RunningCountText" Text="(0)" FontSize="11" Margin="6,0,0,0"
-                                   VerticalAlignment="Center" Foreground="{StaticResource Subtext1Brush}"/>
+                        <!-- Interactive Hero Fox Mascot Card (Microsoft Clarity Style!) -->
+                        <Border x:Name="MascotCard" Style="{StaticResource HomeCard}" Background="#1E1E2E"
+                                BorderBrush="{StaticResource MauveBrush}" Cursor="Hand" MouseLeftButtonUp="MascotCard_Click"
+                                ToolTip="Click me for some cheer &amp; motivation!">
+                            <Grid ClipToBounds="True">
+                                <StackPanel HorizontalAlignment="Center" Margin="0,6,0,4">
+
+                                    <!-- Cute Fox Vector Graphic with Breathing Animation -->
+                                    <Canvas Width="104" Height="86" HorizontalAlignment="Center" Margin="0,0,0,8">
+                                        <Canvas.RenderTransform>
+                                            <TransformGroup>
+                                                <TranslateTransform x:Name="FoxTranslate" X="0" Y="0"/>
+                                                <RotateTransform x:Name="FoxRotate" Angle="0" CenterX="52" CenterY="42"/>
+                                            </TransformGroup>
+                                        </Canvas.RenderTransform>
+
+                                        <!-- Fox Ears -->
+                                        <Polygon Points="20,38 32,6 44,38" Fill="#F59E0B"/>
+                                        <Polygon Points="26,34 32,14 38,34" Fill="#FDE68A"/>
+                                        <Polygon Points="60,38 72,6 84,38" Fill="#F59E0B"/>
+                                        <Polygon Points="66,34 72,14 78,34" Fill="#FDE68A"/>
+
+                                        <!-- Fox Fluffy Head -->
+                                        <Ellipse Canvas.Left="16" Canvas.Top="22" Width="72" Height="54" Fill="#F59E0B"/>
+                                        <!-- White Cheek Fluffs -->
+                                        <Ellipse Canvas.Left="13" Canvas.Top="38" Width="38" Height="36" Fill="#FFFBEB"/>
+                                        <Ellipse Canvas.Left="53" Canvas.Top="38" Width="38" Height="36" Fill="#FFFBEB"/>
+
+                                        <!-- Snout -->
+                                        <Polygon Points="41,46 63,46 52,64" Fill="#FFFBEB"/>
+                                        <!-- Cute Black Nose -->
+                                        <Ellipse Canvas.Left="48" Canvas.Top="58" Width="8" Height="6" Fill="#1E1E2E"/>
+
+                                        <!-- Sparkling Big Eyes -->
+                                        <Ellipse Canvas.Left="31" Canvas.Top="38" Width="9" Height="10" Fill="#1E1E2E"/>
+                                        <Ellipse Canvas.Left="33" Canvas.Top="39" Width="3.5" Height="3.5" Fill="#FFFFFF"/>
+                                        <Ellipse Canvas.Left="64" Canvas.Top="38" Width="9" Height="10" Fill="#1E1E2E"/>
+                                        <Ellipse Canvas.Left="66" Canvas.Top="39" Width="3.5" Height="3.5" Fill="#FFFFFF"/>
+
+                                        <!-- Cute Pink Cheeks -->
+                                        <Ellipse Canvas.Left="21" Canvas.Top="48" Width="11" Height="7" Fill="#F472B6" Opacity="0.6"/>
+                                        <Ellipse Canvas.Left="72" Canvas.Top="48" Width="11" Height="7" Fill="#F472B6" Opacity="0.6"/>
+                                    </Canvas>
+
+                                    <!-- Mascot Speech Bubble -->
+                                    <Border Background="{StaticResource Surface0Brush}" CornerRadius="10"
+                                            Padding="11,9" Margin="0,2,0,5" MaxWidth="260">
+                                        <TextBlock x:Name="MascotQuoteText"
+                                                   Text="&quot;Take a deep breath. You're doing amazing! ✨&quot;"
+                                                   FontSize="11.5" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"
+                                                   TextAlignment="Center" TextWrapping="Wrap"/>
+                                    </Border>
+                                    <TextBlock Text="🐾 Click companion for good vibes" FontSize="10"
+                                               Foreground="{StaticResource Subtext1Brush}" HorizontalAlignment="Center"/>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+
+                        <!-- Momentum & Daily Focus Stats -->
+                        <Border Style="{StaticResource HomeCard}">
+                            <StackPanel>
+                                <TextBlock Text="🌟 FOCUS MOMENTUM" Style="{StaticResource HomeCardHeader}" Margin="0,0,0,12"/>
+
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <!-- Points -->
+                                    <Border Grid.Column="0" Background="{StaticResource Surface0Brush}" CornerRadius="8"
+                                            Padding="10,8" Margin="0,0,4,0">
+                                        <StackPanel HorizontalAlignment="Center">
+                                            <TextBlock Text="🏆 Points" FontSize="10" Foreground="{StaticResource Subtext0Brush}"/>
+                                            <TextBlock x:Name="StatPointsValue" Text="0" FontSize="18" FontWeight="Bold"
+                                                       Foreground="{StaticResource YellowBrush}"/>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <!-- Streak/Completed -->
+                                    <Border Grid.Column="1" Background="{StaticResource Surface0Brush}" CornerRadius="8"
+                                            Padding="10,8" Margin="4,0,0,0">
+                                        <StackPanel HorizontalAlignment="Center">
+                                            <TextBlock Text="🎯 Milestone" FontSize="10" Foreground="{StaticResource Subtext0Brush}"/>
+                                            <TextBlock x:Name="StatMilestonePercent" Text="0%" FontSize="18" FontWeight="Bold"
+                                                       Foreground="{StaticResource GreenBrush}"/>
+                                        </StackPanel>
+                                    </Border>
+                                </Grid>
+
+                                <!-- Claude Online API Status -->
+                                <Border Background="{StaticResource Surface0Brush}" CornerRadius="8" Padding="10,8">
+                                    <Grid>
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Ellipse x:Name="ClaudeStatusDot" Width="8" Height="8" Fill="{StaticResource GreenBrush}"
+                                                     Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                            <TextBlock Text="Claude Status:" FontSize="11" Foreground="{StaticResource Subtext0Brush}"
+                                                       VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                            <TextBlock x:Name="ClaudeStatusLabel" Text="Operational" FontSize="11"
+                                                       FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"
+                                                       VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                        <TextBlock Text="🟢" FontSize="10" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                    </Grid>
+                                </Border>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- System Pulse / Summary Tiles -->
+                        <Border Style="{StaticResource HomeCard}">
+                            <StackPanel>
+                                <TextBlock Text="📊 BOARD GLANCE" Style="{StaticResource HomeCardHeader}" Margin="0,0,0,10"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                    <TextBlock Text="• Active Epics:" FontSize="11.5" Foreground="{StaticResource Subtext0Brush}" Width="120"/>
+                                    <TextBlock x:Name="BoardEpicsCount" Text="--" FontSize="11.5" FontWeight="Bold" Foreground="{StaticResource TextBrush}"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                    <TextBlock Text="• Open Issues:" FontSize="11.5" Foreground="{StaticResource Subtext0Brush}" Width="120"/>
+                                    <TextBlock x:Name="BoardIssuesCount" Text="--" FontSize="11.5" FontWeight="Bold" Foreground="{StaticResource TextBrush}"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="• Active Milestones:" FontSize="11.5" Foreground="{StaticResource Subtext0Brush}" Width="120"/>
+                                    <TextBlock x:Name="BoardMilestonesCount" Text="--" FontSize="11.5" FontWeight="Bold" Foreground="{StaticResource TextBrush}"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
                     </StackPanel>
-                    <StackPanel x:Name="RunningList"/>
-                    <TextBlock x:Name="RunningEmpty" Text="Nothing building right now."
-                               FontSize="11" Foreground="{StaticResource Subtext1Brush}"
-                               TextWrapping="Wrap" Margin="2,2,0,0" Visibility="Collapsed"/>
-                </StackPanel>
-
-                <Border Style="{StaticResource HomeDivider}"/>
-
-                <!-- ══ 3. DONE, WAITING FOR YOU ══
-                     Announces itself (PeachBrush) once count > 0, exactly like the
-                     panel's Completed/To-Do tiles (#905/#874): a done build whose
-                     issue is still open is an action item (review + close). -->
-                <StackPanel Margin="0,0,0,4">
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                        <TextBlock x:Name="DoneIcon" Text="✅" FontSize="13" VerticalAlignment="Center"
-                                   Margin="0,0,6,0" Foreground="#7FAE91"/>
-                        <TextBlock x:Name="DoneHeaderText" Text="DONE, WAITING FOR YOU"
-                                   Style="{StaticResource HomeSectionHeader}"/>
-                        <TextBlock x:Name="DoneCountText" Text="(0)" FontSize="11" Margin="6,0,0,0"
-                                   VerticalAlignment="Center" Foreground="{StaticResource Subtext1Brush}"/>
-                    </StackPanel>
-                    <StackPanel x:Name="DoneList"/>
-                    <TextBlock x:Name="DoneEmpty" Text="Nothing done that still has an open GitHub issue."
-                               FontSize="11" Foreground="{StaticResource Subtext1Brush}"
-                               TextWrapping="Wrap" Margin="2,2,0,0" Visibility="Collapsed"/>
-                </StackPanel>
-
+                </Grid>
             </StackPanel>
         </ScrollViewer>
     </Border>

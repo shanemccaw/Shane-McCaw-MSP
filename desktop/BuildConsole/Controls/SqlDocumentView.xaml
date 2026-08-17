@@ -3,14 +3,102 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:avalonedit="http://icsharpcode.net/sharpdevelop/avalonedit">
 
+    <UserControl.Resources>
+        <Style x:Key="SegmentedToggleBtn" TargetType="{x:Type ToggleButton}">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{StaticResource Subtext0Brush}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="10,3"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type ToggleButton}">
+                        <Border x:Name="Bd"
+                                Background="{TemplateBinding Background}"
+                                BorderThickness="0"
+                                CornerRadius="6"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource BlueBrush}"/>
+                                <Setter Property="Foreground" Value="#11111B"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource Surface0Brush}"/>
+                                <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+                            </Trigger>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsChecked" Value="True"/>
+                                    <Condition Property="IsMouseOver" Value="True"/>
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource SapphireBrush}"/>
+                                <Setter Property="Foreground" Value="#11111B"/>
+                            </MultiTrigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
     <Grid Background="{StaticResource BaseBrush}">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>   <!-- top action toolbar -->
             <RowDefinition Height="*"/>      <!-- editor + results -->
-            <RowDefinition Height="Auto"/>   <!-- action bar -->
         </Grid.RowDefinitions>
 
+        <!-- ── Top Action Toolbar ── -->
+        <Border Grid.Row="0"
+                Background="{StaticResource MantleBrush}"
+                BorderBrush="{StaticResource Surface0Brush}"
+                BorderThickness="0,0,0,1"
+                Padding="8,6">
+            <DockPanel>
+                <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center">
+                    <Button Content="⚡ Execute  F5"
+                            Style="{StaticResource PrimaryButton}"
+                            Margin="0,0,8,0"
+                            Click="Execute_Click"/>
+                    <Button x:Name="SendToChatButton"
+                            Content="💬 Send to Chat"
+                            Padding="8,4"
+                            Margin="0,0,8,0"
+                            IsEnabled="False"
+                            ToolTip="Send these results into the currently active Claude.ai chat tab"
+                            Click="SendToChat_Click"/>
+                    <Button Content="Format"
+                            Padding="8,4"
+                            Margin="0,0,8,0"/>
+                    <Button Content="Clear"
+                            Padding="8,4"
+                            Margin="0,0,8,0"/>
+                    <!-- Close button (only visible when inline) -->
+                    <Button x:Name="CloseInlineBtn"
+                            Content="✕ Close"
+                            Style="{StaticResource IconButton}"
+                            Foreground="{StaticResource RedBrush}"
+                            Margin="0,0,8,0"
+                            Visibility="Collapsed"
+                            Click="CloseInline_Click"/>
+                </StackPanel>
+
+                <TextBlock x:Name="ExecStatus"
+                           DockPanel.Dock="Right"
+                           Text="Ready"
+                           FontSize="11"
+                           Foreground="{StaticResource Subtext1Brush}"
+                           VerticalAlignment="Center"
+                           HorizontalAlignment="Right"/>
+            </DockPanel>
+        </Border>
+
         <!-- ── Editor + Results ── -->
-        <Grid Grid.Row="0">
+        <Grid Grid.Row="1">
             <Grid.RowDefinitions>
                 <RowDefinition Height="2*"/>   <!-- query editor -->
                 <RowDefinition Height="4"/>    <!-- splitter -->
@@ -19,20 +107,7 @@
 
             <!-- Query editor -->
             <Grid Grid.Row="0">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
-                </Grid.RowDefinitions>
-                <Border Grid.Row="0"
-                        Background="{StaticResource MantleBrush}"
-                        Padding="6,4">
-                    <TextBlock Text="SQL Query"
-                               FontSize="11"
-                               FontWeight="SemiBold"
-                               Foreground="{StaticResource Subtext1Brush}"/>
-                </Border>
                 <avalonedit:TextEditor x:Name="QueryEditor"
-                                       Grid.Row="1"
                                        Background="{StaticResource CrustBrush}"
                                        Foreground="{StaticResource TextBrush}"
                                        FontFamily="Cascadia Code, Consolas, Courier New"
@@ -94,20 +169,20 @@
                                     IsEnabled="False"
                                     ToolTip="Copy all results as JSON"
                                     Click="CopyJsonBtn_Click"/>
-                            <Border CornerRadius="10"
-                                    Background="{StaticResource Surface0Brush}"
+                            <Border CornerRadius="8"
+                                    Background="{StaticResource MantleBrush}"
+                                    BorderBrush="{StaticResource Surface0Brush}"
+                                    BorderThickness="1"
                                     Padding="2">
                                 <StackPanel Orientation="Horizontal">
                                     <ToggleButton x:Name="ViewTableBtn"
                                                   Content="Table"
-                                                  Padding="10,3"
-                                                  FontSize="11"
+                                                  Style="{StaticResource SegmentedToggleBtn}"
                                                   IsChecked="True"
                                                   Click="ViewTableBtn_Click"/>
                                     <ToggleButton x:Name="ViewJsonBtn"
                                                   Content="JSON"
-                                                  Padding="10,3"
-                                                  FontSize="11"
+                                                  Style="{StaticResource SegmentedToggleBtn}"
                                                   IsChecked="False"
                                                   Click="ViewJsonBtn_Click"/>
                                 </StackPanel>
@@ -140,46 +215,5 @@
                                        Visibility="Collapsed"/>
             </Grid>
         </Grid>
-
-        <!-- ── Action bar ── -->
-        <Border Grid.Row="1"
-                Background="{StaticResource MantleBrush}"
-                BorderBrush="{StaticResource Surface0Brush}"
-                BorderThickness="0,1,0,0"
-                Padding="8,5">
-            <DockPanel>
-                <Button Content="⚡ Execute  F5"
-                        Style="{StaticResource PrimaryButton}"
-                        Margin="0,0,8,0"
-                        Click="Execute_Click"/>
-                <!-- Close button (only visible when inline) -->
-                <Button x:Name="CloseInlineBtn"
-                        Content="✕ Close"
-                        Style="{StaticResource IconButton}"
-                        Foreground="{StaticResource RedBrush}"
-                        Margin="0,0,8,0"
-                        Visibility="Collapsed"
-                        Click="CloseInline_Click"/>
-                <Button Content="Format"
-                        Padding="8,4"
-                        Margin="0,0,8,0"/>
-                <Button Content="Clear"
-                        Padding="8,4"/>
-                <Button x:Name="SendToChatButton"
-                        Content="💬 Send to Chat"
-                        Padding="8,4"
-                        Margin="8,0,0,0"
-                        IsEnabled="False"
-                        ToolTip="Send these results as a markdown table into the currently active Claude.ai chat tab"
-                        Click="SendToChat_Click"/>
-                <TextBlock x:Name="ExecStatus"
-                           DockPanel.Dock="Right"
-                           Text="Ready"
-                           FontSize="11"
-                           Foreground="{StaticResource Subtext1Brush}"
-                           VerticalAlignment="Center"
-                           HorizontalAlignment="Right"/>
-            </DockPanel>
-        </Border>
     </Grid>
 </UserControl>

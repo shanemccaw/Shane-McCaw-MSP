@@ -400,6 +400,8 @@
                                 <ColumnDefinition Width="Auto"/>  <!-- sep -->
                                 <ColumnDefinition Width="Auto"/>  <!-- Claude usage meter -->
                                 <ColumnDefinition Width="Auto"/>  <!-- sep -->
+                                <ColumnDefinition Width="Auto"/>  <!-- Claude online status (status.anthropic.com) -->
+                                <ColumnDefinition Width="Auto"/>  <!-- sep -->
                                 <ColumnDefinition Width="Auto"/>  <!-- clock -->
                             </Grid.ColumnDefinitions>
                         </Grid>
@@ -418,10 +420,10 @@
                 <StatusBarItem Grid.Column="2">
                     <TextBlock x:Name="UrlStatusText"
                                Text="https://claude.ai"
-                               Foreground="{StaticResource Subtext1Brush}"
-                               MaxWidth="520"
-                               TextTrimming="CharacterEllipsis"
-                               VerticalAlignment="Center"/>
+                               VerticalAlignment="Center"
+                               Foreground="{StaticResource Subtext0Brush}"
+                               MaxWidth="340"
+                               TextTrimming="CharacterEllipsis"/>
                 </StatusBarItem>
                 <StatusBarItem Grid.Column="4">
                     <TextBlock x:Name="ZoomText" Text="100%" VerticalAlignment="Center"/>
@@ -506,11 +508,29 @@
                     </StackPanel>
                 </StatusBarItem>
                 <Separator Grid.Column="13"/>
-                <StatusBarItem Grid.Column="14" Padding="6,0,10,0">
+                <!-- Claude Service Health Status (source: status.anthropic.com) -->
+                <StatusBarItem Grid.Column="14">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Ellipse x:Name="ClaudeOnlineDot" Width="8" Height="8"
+                                 Fill="{StaticResource Surface2Brush}"
+                                 Margin="0,0,6,0" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="ClaudeOnlineStatusText" Text="Status: --" VerticalAlignment="Center"
+                                   Cursor="Hand" MouseLeftButtonUp="ClaudeOnlineStatus_Click"
+                                   ToolTip="Claude system status (source: status.anthropic.com) — Click to open status page"/>
+                        <Button x:Name="BtnClaudeOnlineRefresh"
+                                Style="{StaticResource IconButton}"
+                                ToolTip="Refresh Claude system status now (source: status.anthropic.com)"
+                                Padding="4,0,0,0"
+                                Margin="4,0,0,0"
+                                Content="↻"
+                                Click="BtnClaudeOnlineRefresh_Click"/>
+                    </StackPanel>
+                </StatusBarItem>
+                <Separator Grid.Column="15"/>
+                <StatusBarItem Grid.Column="16" Padding="6,0,10,0">
                     <TextBlock x:Name="ClockText" Text="00:00:00" VerticalAlignment="Center"/>
                 </StatusBarItem>
             </StatusBar>
-
             <!-- ══════════════════════════════════════════════════════════════
                  MAIN LAYOUT GRID
                  ══════════════════════════════════════════════════════════════ -->

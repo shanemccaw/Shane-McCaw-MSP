@@ -69,6 +69,11 @@ namespace BuildConsole.Services
         public const string Channel = "startup";
 
         // Connection keys — must match the rows the view builds from Connections.
+        public const string KeySettings   = "settings";
+        public const string KeyWorkspace  = "workspace";
+        public const string KeyGit        = "git";
+        public const string KeyTests      = "tests";
+        public const string KeyReplit     = "replit";
         public const string KeyBoard      = "board";
         public const string KeyInProgress = "inprogress";
         public const string KeyQueue      = "queue";
@@ -82,6 +87,7 @@ namespace BuildConsole.Services
         private static readonly TimeSpan GlobalCap = TimeSpan.FromSeconds(20);
 
         private readonly BuildTrackerApiClient? _api;
+        private readonly ReplitWatcherService? _replitWatcher;
         private readonly List<StartupConnectionStatus> _ordered;
         private readonly Dictionary<string, StartupConnectionStatus> _byKey;
         private readonly object _gate = new();
@@ -96,11 +102,17 @@ namespace BuildConsole.Services
         /// <summary>Raised exactly once, when every connection has reached a terminal state (or the global cap fired). May fire on a background thread.</summary>
         public event Action? AllSettled;
 
-        public StartupConnectivityService(BuildTrackerApiClient? api)
+        public StartupConnectivityService(BuildTrackerApiClient? api, ReplitWatcherService? replitWatcher = null)
         {
             _api = api;
+            _replitWatcher = replitWatcher;
             _ordered = new List<StartupConnectionStatus>
             {
+                new StartupConnectionStatus(KeySettings,   "Settings & credentials"),
+                new StartupConnectionStatus(KeyWorkspace,  "Workspace files"),
+                new StartupConnectionStatus(KeyGit,        "Git branch & status"),
+                new StartupConnectionStatus(KeyTests,      "Test manifests"),
+                new StartupConnectionStatus(KeyReplit,     "Replit dev server"),
                 new StartupConnectionStatus(KeyBoard,      "GitHub board"),
                 new StartupConnectionStatus(KeyInProgress, "In-flight issues"),
                 new StartupConnectionStatus(KeyQueue,      "Build queue"),
@@ -111,20 +123,223 @@ namespace BuildConsole.Services
         }
 
         /// <summary>
-        /// Kicks off all probes. Returns immediately — progress arrives via events. The
-        /// four Build-Tracker-backed connections either probe live or, when Build Tracker
-        /// isn't configured on this machine, settle straight to Skipped (honest, not a
-        /// hang). The usage-meter row starts Connecting and is settled later by
-        /// <see cref="ReportUsageMeter"/>. A global-cap watchdog is armed either way.
+        /// Kicks off all subsystem probes. Returns immediately — progress arrives via events.
         /// </summary>
         public void Start()
         {
-            ActivityLog.Log(Channel, "startup connectivity: probing real launch connections…");
+            ActivityLog.Log(Channel, "startup connectivity: probing real launch connections & subsystems…");
 
-            // The real Claude usage meter is already polling (MainWindow started it); this
-            // row reflects that in-flight state until its StatusChanged reaches us.
+            // 1. Settings & credentials
+            _ = Task.Run(() =>
+            {
+                Transition(KeySettings, StartupConnectionState.Connecting, "validating config…");
+                var sw = Stopwatch.StartNew();
+                try
+                {
+                    var settings = BuildConsoleSettings.Load();
+                    bool hasPat = settings.HasGitHubPat;
+                    sw.Stop();
+                    string detail = hasPat ? "PAT ready" : "no PAT (Settings)";
+                    Transition(KeySettings, hasPat ? StartupConnectionState.Success : StartupConnectionState.Degraded, detail, sw.Elapsed);
+                }
+                catch (Exception ex)
+                {
+                    sw.Stop();
+                    Transition(KeySettings, StartupConnectionState.Failed, ex.Message, sw.Elapsed);
+                }
+            });
+
+            // 2. Local Workspace files
+            _ = Task.Run(() =>
+            {
+                Transition(KeyWorkspace, StartupConnectionState.Connecting, "scanning workspace…");
+                var sw = Stopwatch.StartNew();
+                try
+                {
+                    string? repoRoot = BuildTrackerConfig.FindRepoRoot();
+                    if (repoRoot != null && System.IO.Directory.Exists(repoRoot))
+                    {
+                        var dirCount = System.IO.Directory.GetDirectories(repoRoot).Length;
+                        sw.Stop();
+                        Transition(KeyWorkspace, StartupConnectionState.Success, $"{System.IO.Path.GetFileName(repoRoot)} ({dirCount} dirs)", sw.Elapsed);
+                    }
+                    else
+                    {
+                        sw.Stop();
+                        Transition(KeyWorkspace, StartupConnectionState.Degraded, "repo root not found", sw.Elapsed);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    sw.Stop();
+                    Transition(KeyWorkspace, StartupConnectionState.Failed, ex.Message, sw.Elapsed);
+                }
+            });
+
+            // 3. Git branch & status
+            _ = Task.Run(() =>
+            {
+                Transition(KeyGit, StartupConnectionState.Connecting, "checking git status…");
+                var sw = Stopwatch.StartNew();
+                try
+                {
+                    string? repoRoot = BuildTrackerConfig.FindRepoRoot();
+                    if (repoRoot != null && System.IO.Directory.Exists(System.IO.Path.Combine(repoRoot, ".git")))
+                    {
+                        var psi = new ProcessStartInfo
+                        {
+                            FileName = "git",
+                            Arguments = "status --porcelain -b",
+                            WorkingDirectory = repoRoot,
+                            RedirectStandardOutput = true,
+                            RedirectStandardError = true,
+                            UseShellExecute = false,
+                            CreateNoWindow = true
+                        };
+                        using var proc = Process.Start(psi);
+                        if (proc != null)
+                        {
+                            string outText = proc.StandardOutput.ReadToEnd();
+                            proc.WaitForExit(3000);
+                            sw.Stop();
+
+                            string branch = "main";
+                            int changed = 0;
+                            var lines = outText.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+                            foreach (var line in lines)
+                            {
+                                if (line.StartsWith("##"))
+                                {
+                                    string bLine = line.Substring(2).Trim();
+                                    int dots = bLine.IndexOf("...");
+                                    branch = dots > 0 ? bLine.Substring(0, dots) : bLine;
+                                }
+                                else if (line.Length >= 2)
+                                {
+                                    changed++;
+                                }
+                            }
+                            string detail = changed == 0 ? $"{branch} (clean)" : $"{branch} ({changed} uncommitted)";
+                            Transition(KeyGit, StartupConnectionState.Success, detail, sw.Elapsed);
+                        }
+                        else
+                        {
+                            sw.Stop();
+                            Transition(KeyGit, StartupConnectionState.Degraded, "git failed", sw.Elapsed);
+                        }
+                    }
+                    else
+                    {
+                        sw.Stop();
+                        Transition(KeyGit, StartupConnectionState.Skipped, "not a git repo", sw.Elapsed);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    sw.Stop();
+                    Transition(KeyGit, StartupConnectionState.Degraded, ex.Message, sw.Elapsed);
+                }
+            });
+
+            // 4. Test Manifests
+            _ = Task.Run(() =>
+            {
+                Transition(KeyTests, StartupConnectionState.Connecting, "indexing manifests…");
+                var sw = Stopwatch.StartNew();
+                try
+                {
+                    string? repoRoot = BuildTrackerConfig.FindRepoRoot();
+                    int count = 0;
+                    int historyCount = 0;
+                    if (repoRoot != null)
+                    {
+                        var dir = System.IO.Path.Combine(repoRoot, "test-manifests");
+                        if (System.IO.Directory.Exists(dir))
+                        {
+                            count = System.IO.Directory.GetFiles(dir, "*.json", System.IO.SearchOption.AllDirectories)
+                                .Count(f => !System.IO.Path.GetFileName(f).Equals("_regression-suite.json", StringComparison.OrdinalIgnoreCase));
+                        }
+                        var hist = TestHistoryStore.ReadAll(repoRoot);
+                        historyCount = hist.Count;
+                    }
+                    sw.Stop();
+                    string detail = count > 0 ? $"{count} manifests · {historyCount} test runs" : "no manifests found";
+                    Transition(KeyTests, StartupConnectionState.Success, detail, sw.Elapsed);
+                }
+                catch (Exception ex)
+                {
+                    sw.Stop();
+                    Transition(KeyTests, StartupConnectionState.Degraded, ex.Message, sw.Elapsed);
+                }
+            });
+
+            // 5. Replit dev server & services check / auto-start
+            _ = Task.Run(async () =>
+            {
+                Transition(KeyReplit, StartupConnectionState.Connecting, "checking services…");
+                var sw = Stopwatch.StartNew();
+                try
+                {
+                    var s = BuildConsoleSettings.Load();
+                    string appUrl = s.ReplitAppUrl;
+                    if (string.IsNullOrWhiteSpace(appUrl))
+                    {
+                        sw.Stop();
+                        Transition(KeyReplit, StartupConnectionState.Skipped, "no Replit URL configured", sw.Elapsed);
+                        return;
+                    }
+
+                    // Check if Replit services are already responding
+                    bool isUp = false;
+                    using (var http = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(3) })
+                    {
+                        try
+                        {
+                            var resp = await http.GetAsync(appUrl);
+                            isUp = (int)resp.StatusCode < 500;
+                        }
+                        catch { isUp = false; }
+                    }
+
+                    if (isUp)
+                    {
+                        sw.Stop();
+                        Transition(KeyReplit, StartupConnectionState.Success, "services running · app up", sw.Elapsed);
+                        return;
+                    }
+
+                    // If down, auto-start Replit services
+                    Transition(KeyReplit, StartupConnectionState.Connecting, "starting Replit services…");
+                    if (_replitWatcher != null)
+                    {
+                        bool wakeSuccess = await _replitWatcher.CheckNowAndWakeIfDownAsync();
+                        sw.Stop();
+                        if (wakeSuccess)
+                        {
+                            Transition(KeyReplit, StartupConnectionState.Success, "services started · app up", sw.Elapsed);
+                        }
+                        else
+                        {
+                            Transition(KeyReplit, StartupConnectionState.Degraded, "wake sequence completed", sw.Elapsed);
+                        }
+                    }
+                    else
+                    {
+                        sw.Stop();
+                        Transition(KeyReplit, StartupConnectionState.Degraded, "services down", sw.Elapsed);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    sw.Stop();
+                    Transition(KeyReplit, StartupConnectionState.Degraded, ex.Message, sw.Elapsed);
+                }
+            });
+
+            // 5. Claude usage meter (in-flight state)
             Transition(KeyUsage, StartupConnectionState.Connecting, "reading meter…");
 
+            // 6-9. Build Tracker endpoints
             if (_api == null || !_api.IsConfigured)
             {
                 foreach (var key in new[] { KeyBoard, KeyInProgress, KeyQueue, KeyDeploy })

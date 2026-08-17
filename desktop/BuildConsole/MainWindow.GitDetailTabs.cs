@@ -11,84 +11,84 @@ namespace BuildConsole
 {
     /// <summary>
     /// Git #921 (Epic #803) — the native, ADHD-friendly Git Board detail tabs.
-    /// Shane: "When I click a milestone, it should open a new Tab and show me
-    /// all the Epics, Issues, and Shane To-Do in an ADHD friendly way to
-    /// consume. When I click on an epic it should do the same thing... Clicking
-    /// on an issue - same thing... but with Epic linked."
-    ///
-    /// Split into its own partial-class file so it stays isolated from the
-    /// concurrently-edited MainWindow.xaml.cs. Every tab is a real editor
-    /// <see cref="TabItem"/> hosting a <see cref="GitDetailView"/>, built with
-    /// the exact same recipe as OpenFileTab's .sql branch (header StackPanel +
-    /// IconButton close + AttachTabContextMenu/AttachTabDragHandlers), so the
-    /// #893/#894 multi-pane drag/dock all keep working — this is just tab
-    /// content. Opens-or-focuses, keyed on the TabItem's string Tag.
+    /// Supports side-by-side split view so Shane can inspect issue descriptions
+    /// and comment threads simultaneously alongside active Claude chats.
+    /// When in side-by-side mode, clicking another issue replaces the previous document
+    /// in the secondary pane so tabs do not stack up.
     /// </summary>
     public partial class MainWindow
     {
         private const string GitDetailChannel = "git-board.detail-tab";
 
-        // ── Public entry points (LeftSidebar events wire straight to these) ──
+        // ── Public entry points (LeftSidebar / BuildQueuePanel events wire straight to these) ──
 
         /// <summary>Open (or focus) a milestone's detail tab: its real open/closed
         /// counts, then every Epic/Issue under it plus a distinct Shane To-Do
-        /// carve-out (all reused verbatim from the board's own #884/#875 bucket
-        /// split).</summary>
-        public void OpenMilestoneDetailTab(GitMilestone m)
+        /// carve-out.</summary>
+        public void OpenMilestoneDetailTab(GitMilestone m, bool sideBySide = false)
         {
+            TabControl targetPane = EditorTabs;
+            if (sideBySide)
+            {
+                ApplyGridForMode("SplitH");
+                targetPane = EditorTabs2;
+            }
+
             string key = $"git-detail:milestone:{m.Title}";
-            if (FocusExistingGitDetailTab(key)) return;
+            if (FocusExistingGitDetailTab(key, sideBySide ? targetPane : null)) return;
 
             var view = new GitDetailView();
-            view.OpenIssueNumberRequested += async (s, n) => await OpenGitDetailByNumberAsync(n);
+            view.OpenIssueNumberRequested += async (s, n) => await OpenGitDetailByNumberAsync(n, sideBySide);
             view.LoadMilestone(m);
-            AddGitDetailTab(key, "🎯", m.Title, view);
+            AddGitDetailTab(key, "🎯", m.Title, view, targetPane, replaceExistingInPane: sideBySide);
         }
 
-        /// <summary>Open (or focus) an epic or issue detail tab. Epic vs issue is
-        /// routed by the real <see cref="GitIssue.IsEpic"/> (a GitHub sub-issue
-        /// count &gt; 0, never a title convention): epics show their assigned
-        /// sub-issues, issues show their comment thread plus their linked
-        /// epic.</summary>
-        public void OpenGitIssueDetailTab(GitIssue issue)
+        /// <summary>Open (or focus) an epic or issue detail tab.
+        /// When <paramref name="sideBySide"/> is true, opens in the secondary pane
+        /// alongside the active chat, replacing any previous document in that pane.</summary>
+        public void OpenGitIssueDetailTab(GitIssue issue, bool sideBySide = false)
         {
+            TabControl targetPane = EditorTabs;
+            if (sideBySide)
+            {
+                ApplyGridForMode("SplitH");
+                targetPane = EditorTabs2;
+            }
+
             if (issue.IsEpic)
             {
                 string epicKey = $"git-detail:epic:{issue.IssueNumber}";
-                if (FocusExistingGitDetailTab(epicKey)) return;
+                if (FocusExistingGitDetailTab(epicKey, sideBySide ? targetPane : null)) return;
 
                 var view = new GitDetailView();
-                view.OpenIssueNumberRequested += async (s, n) => await OpenGitDetailByNumberAsync(n);
-                // sub_issues carry no labels, so the epic's Shane To-Do carve-out
-                // is cross-referenced against the board's known To-Do numbers
-                // (which DO carry labels), resolved from cached board data.
+                view.OpenIssueNumberRequested += async (s, n) => await OpenGitDetailByNumberAsync(n, sideBySide);
+                view.OpenOrCreateEpicChatRequested += (s, n) => OpenOrCreateEpicChat(n);
                 var todoNumbers = LeftSidebar.CurrentBoardIssues.Where(i => i.IsTodo).Select(i => i.Number).ToHashSet();
-                view.LoadEpic(issue, todoNumbers);
-                AddGitDetailTab(epicKey, "⚡", GitDetailDisplayTitle(issue), view);
+                var linkedChat = LeftSidebar.FindChatForIssue(issue.IssueNumber);
+                view.LoadEpic(issue, todoNumbers, linkedChat);
+                AddGitDetailTab(epicKey, "⚡", GitDetailDisplayTitle(issue), view, targetPane, replaceExistingInPane: sideBySide);
             }
             else
             {
                 string issueKey = $"git-detail:issue:{issue.IssueNumber}";
-                if (FocusExistingGitDetailTab(issueKey)) return;
+                if (FocusExistingGitDetailTab(issueKey, sideBySide ? targetPane : null)) return;
 
                 var view = new GitDetailView();
-                view.OpenIssueNumberRequested += async (s, n) => await OpenGitDetailByNumberAsync(n);
+                view.OpenIssueNumberRequested += async (s, n) => await OpenGitDetailByNumberAsync(n, sideBySide);
                 var (epicNumber, epicTitle) = ResolveLinkedEpic(issue);
                 view.LoadIssue(issue, epicNumber, epicTitle);
-                AddGitDetailTab(issueKey, "📄", GitDetailDisplayTitle(issue), view);
+                AddGitDetailTab(issueKey, "📄", GitDetailDisplayTitle(issue), view, targetPane, replaceExistingInPane: sideBySide);
             }
         }
 
         /// <summary>Tab-to-tab navigation: a card click inside any detail tab
         /// (a milestone child, an epic's assigned issue, or an issue's linked
-        /// epic) hands back a number here. Focus its tab if already open; else
-        /// resolve it from the cached board (no refetch), falling back to one
-        /// live GetIssueAsync only when the number isn't on the current OPEN
-        /// board (e.g. a closed linked epic).</summary>
-        public async Task OpenGitDetailByNumberAsync(int number)
+        /// epic) hands back a number here.</summary>
+        public async Task OpenGitDetailByNumberAsync(int number, bool sideBySide = false)
         {
-            if (FocusExistingGitDetailTab($"git-detail:epic:{number}") ||
-                FocusExistingGitDetailTab($"git-detail:issue:{number}"))
+            TabControl? targetPane = sideBySide ? EditorTabs2 : null;
+            if (FocusExistingGitDetailTab($"git-detail:epic:{number}", targetPane) ||
+                FocusExistingGitDetailTab($"git-detail:issue:{number}", targetPane))
                 return;
 
             // Cached board resolution first — same GitIssue shape the tree nodes
@@ -96,7 +96,7 @@ namespace BuildConsole
             var cached = LeftSidebar.BuildDetailIssue(number);
             if (cached != null)
             {
-                OpenGitIssueDetailTab(cached);
+                OpenGitIssueDetailTab(cached, sideBySide);
                 return;
             }
 
@@ -116,8 +116,6 @@ namespace BuildConsole
                     ActivityLog.Log(GitDetailChannel, $"open #{number} by number: not found on GitHub");
                     return;
                 }
-                // IsEpic is a real sub-issue count, not a label — one extra fetch
-                // to get it right for an off-board item.
                 var subs = await client.GetSubIssuesAsync(number);
                 var gi = new GitIssue
                 {
@@ -129,7 +127,7 @@ namespace BuildConsole
                     IsEpic = subs.Count > 0,
                 };
                 ActivityLog.Log(GitDetailChannel, $"open #{number} by number: resolved via live fetch ({(gi.IsEpic ? "epic" : "issue")})");
-                OpenGitIssueDetailTab(gi);
+                OpenGitIssueDetailTab(gi, sideBySide);
             }
             catch (Exception ex)
             {
@@ -139,10 +137,6 @@ namespace BuildConsole
 
         // ── Helpers ─────────────────────────────────────────────────────────
 
-        /// <summary>Shane's real convention is "Part of Epic #803" / "Epic #803"
-        /// in the issue body — parse that, then resolve the epic's title from the
-        /// cached board (null title if it isn't on the current OPEN board, in
-        /// which case the linked-epic card still links by number).</summary>
         private (int? number, string? title) ResolveLinkedEpic(GitIssue issue)
         {
             if (string.IsNullOrEmpty(issue.Body)) return (null, null);
@@ -152,25 +146,53 @@ namespace BuildConsole
             return (n, epic?.Title);
         }
 
-        /// <summary>Focus an already-open detail tab by its string Tag; true if
-        /// one existed. Mirrors OpenFileTab's own EditorTabs dedup scan.</summary>
-        private bool FocusExistingGitDetailTab(string dedupKey)
+        /// <summary>Focus an already-open detail tab by its string Tag across panes; true if one existed.</summary>
+        private bool FocusExistingGitDetailTab(string dedupKey, TabControl? targetPane = null)
         {
-            foreach (TabItem item in EditorTabs.Items)
+            if (targetPane != null)
             {
-                if (item.Tag is string tag && string.Equals(tag, dedupKey, StringComparison.Ordinal))
+                foreach (TabItem item in targetPane.Items)
                 {
-                    EditorTabs.SelectedItem = item;
-                    return true;
+                    if (item.Tag is string tag && string.Equals(tag, dedupKey, StringComparison.Ordinal))
+                    {
+                        targetPane.SelectedItem = item;
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            foreach (var pane in new[] { EditorTabs, EditorTabs2, EditorTabs3, EditorTabs4 })
+            {
+                foreach (TabItem item in pane.Items)
+                {
+                    if (item.Tag is string tag && string.Equals(tag, dedupKey, StringComparison.Ordinal))
+                    {
+                        pane.SelectedItem = item;
+                        return true;
+                    }
                 }
             }
             return false;
         }
 
-        /// <summary>Build and add the tab — same header/close/context-menu/drag
-        /// recipe as OpenFileTab, so multi-pane drag/dock keep working.</summary>
-        private void AddGitDetailTab(string dedupKey, string glyph, string title, GitDetailView view)
+        /// <summary>Build and add the tab to the specified target pane, optionally replacing existing git document tabs.</summary>
+        private void AddGitDetailTab(string dedupKey, string glyph, string title, GitDetailView view, TabControl? targetPane = null, bool replaceExistingInPane = false)
         {
+            var pane = targetPane ?? EditorTabs;
+
+            if (replaceExistingInPane)
+            {
+                var existingGitTabs = pane.Items.OfType<TabItem>()
+                    .Where(t => t.Tag is string tag && tag.StartsWith("git-detail:", StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+
+                foreach (var oldTab in existingGitTabs)
+                {
+                    pane.Items.Remove(oldTab);
+                }
+            }
+
             var headerPanel = new StackPanel
             {
                 Orientation = Orientation.Horizontal,
@@ -219,24 +241,107 @@ namespace BuildConsole
                 Content = view
             };
 
-            AttachTabContextMenu(newTab, EditorTabs);
+            AttachTabContextMenu(newTab, pane);
             AttachTabDragHandlers(newTab);
 
             closeBtn.Click += (s, e) =>
             {
-                EditorTabs.Items.Remove(newTab);
-                if (EditorTabs.Items.Count > 0)
-                    EditorTabs.SelectedIndex = Math.Max(0, EditorTabs.Items.Count - 1);
+                var currentPane = newTab.Parent as TabControl ?? pane;
+                currentPane.Items.Remove(newTab);
+                if (currentPane.Items.Count > 0)
+                    currentPane.SelectedIndex = Math.Max(0, currentPane.Items.Count - 1);
+                CollapseEmptySplitPanes();
             };
 
-            EditorTabs.Items.Add(newTab);
-            EditorTabs.SelectedItem = newTab;
+            pane.Items.Add(newTab);
+            pane.SelectedItem = newTab;
             ActiveDocTitleText.Text = $" - {title}";
 
-            ActivityLog.Log(GitDetailChannel, $"tab opened: {dedupKey}");
+            ActivityLog.Log(GitDetailChannel, $"tab opened ({pane.Name}): {dedupKey}");
+        }
+
+        public void OpenOrCreateEpicChat(int epicNumber)
+        {
+            var linkedChat = LeftSidebar.FindChatForIssue(epicNumber);
+            if (linkedChat != null && !string.IsNullOrEmpty(linkedChat.ClaudeUrl))
+            {
+                ActivityLog.Log(GitDetailChannel, $"open linked chat for epic #{epicNumber} -> {linkedChat.ClaudeUrl}");
+                OpenChatTab(linkedChat, epicNumber);
+            }
+            else
+            {
+                var settings = BuildConsoleSettings.Load();
+                if (!settings.HasEpicChatProjectUrl)
+                {
+                    ActivityLog.Log(GitDetailChannel, $"new chat for epic #{epicNumber} aborted — no New Chat Project URL configured");
+                    ToastEngine.Warning("New Epic Chat", "Set a \"New Chat Project URL\" in the Settings tab first.");
+                    return;
+                }
+                var baseUrl = settings.EpicChatProjectUrl.Trim();
+                if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out _))
+                {
+                    ActivityLog.Log(GitDetailChannel, $"new chat for epic #{epicNumber} aborted — invalid New Chat Project URL '{baseUrl}'");
+                    ToastEngine.Warning("New Epic Chat", "The configured New Chat Project URL isn't a valid URL.");
+                    return;
+                }
+                var pat = settings.GitHubPat?.Trim() ?? "";
+                var label = $"Epic #{epicNumber}";
+                var prefill = string.IsNullOrEmpty(pat) ? label : $"{pat}\r\n{label}";
+                var sep = baseUrl.Contains('?') ? "&" : "?";
+                var fullUrl = $"{baseUrl}{sep}bt_prefill={Uri.EscapeDataString(prefill)}";
+                ActivityLog.Log(GitDetailChannel, $"new chat for epic #{epicNumber} -> {baseUrl} (prefill 'Epic #{epicNumber}')");
+                OpenWebTab(fullUrl, $"Epic #{epicNumber} New Chat", "", injectPrefillPoll: true, associateEpicGithubNumber: epicNumber);
+            }
         }
 
         private static string GitDetailDisplayTitle(GitIssue gi)
             => !string.IsNullOrWhiteSpace(gi.RawTitle) ? gi.RawTitle : gi.Title;
+
+        /// <summary>Refreshes any open Git detail tabs (milestones, epics, issues) with fresh data from LeftSidebar.</summary>
+        public void RefreshOpenGitDetailTabs()
+        {
+            var panes = new[] { EditorTabs, EditorTabs2 };
+            foreach (var pane in panes)
+            {
+                if (pane == null) continue;
+                foreach (TabItem tab in pane.Items.OfType<TabItem>())
+                {
+                    if (tab.Content is GitDetailView view && tab.Tag is string tag)
+                    {
+                        if (tag.StartsWith("git-detail:milestone:", StringComparison.OrdinalIgnoreCase))
+                        {
+                            string mTitle = tag.Substring("git-detail:milestone:".Length);
+                            var m = LeftSidebar.CurrentMilestones.FirstOrDefault(ms => ms.Title.Equals(mTitle, StringComparison.OrdinalIgnoreCase));
+                            if (m != null) view.LoadMilestone(m);
+                        }
+                        else if (tag.StartsWith("git-detail:epic:", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (int.TryParse(tag.Substring("git-detail:epic:".Length), out int num))
+                            {
+                                var issue = LeftSidebar.BuildDetailIssue(num);
+                                if (issue != null)
+                                {
+                                    var todoNumbers = LeftSidebar.CurrentBoardIssues.Where(i => i.IsTodo).Select(i => i.Number).ToHashSet();
+                                    var linkedChat = LeftSidebar.FindChatForIssue(issue.IssueNumber);
+                                    view.LoadEpic(issue, todoNumbers, linkedChat);
+                                }
+                            }
+                        }
+                        else if (tag.StartsWith("git-detail:issue:", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (int.TryParse(tag.Substring("git-detail:issue:".Length), out int num))
+                            {
+                                var issue = LeftSidebar.BuildDetailIssue(num);
+                                if (issue != null)
+                                {
+                                    var (epicNumber, epicTitle) = ResolveLinkedEpic(issue);
+                                    view.LoadIssue(issue, epicNumber, epicTitle);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }

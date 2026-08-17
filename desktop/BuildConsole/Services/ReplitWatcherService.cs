@@ -332,22 +332,32 @@ namespace BuildConsole.Services
                 }
             }
 
-            if (!await NavigateAsync(s.ReplitWorkspaceUrl, targetWv))
+            // If the workspace tab is already open and on replit.com, DO NOT re-navigate/reload the page!
+            string currentSource = targetWv.CoreWebView2?.Source ?? "";
+            bool alreadyOnReplit = currentSource.Contains("replit.com", StringComparison.OrdinalIgnoreCase);
+
+            if (!alreadyOnReplit)
             {
-                Emit(ReplitWatcherState.Error, "couldn't open Replit dashboard");
-                ActivityLog.Log(Channel, $"Wake failed — navigation to dashboard {s.ReplitWorkspaceUrl} failed.");
-                return;
+                if (!await NavigateAsync(s.ReplitWorkspaceUrl, targetWv))
+                {
+                    Emit(ReplitWatcherState.Error, "couldn't open Replit dashboard");
+                    ActivityLog.Log(Channel, $"Wake failed — navigation to dashboard {s.ReplitWorkspaceUrl} failed.");
+                    return;
+                }
+                // Give the IDE a moment to render its toolbar and connect to the container.
+                await Task.Delay(DashboardSettleMs);
+            }
+            else
+            {
+                ActivityLog.Log(Channel, $"Replit workspace tab already loaded at '{currentSource}' — inspecting live session without re-navigating.");
             }
 
-            // Give the IDE a moment to render its toolbar and connect to the container.
-            await Task.Delay(DashboardSettleMs);
-
-            // If loading the dashboard auto-started the Repl and the app is already responding, do not click Run!
+            // If the app is already responding, do not click Run!
             if (await IsAppUpAsync(s.ReplitAppUrl))
             {
                 _lastCheck = DateTime.Now;
                 Emit(ReplitWatcherState.Monitoring, "app is UP");
-                ActivityLog.Log(Channel, "Replit workspace loaded and app is already running — skipping Run button click.");
+                ActivityLog.Log(Channel, "Replit workspace is open and app is already running — skipping Run button click.");
                 return;
             }
 

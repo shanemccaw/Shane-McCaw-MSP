@@ -57,6 +57,10 @@ namespace BuildConsole
         // ── Claude usage meter (background WebView2 poll of claude.ai/settings/usage) ──
         private BuildConsole.Services.ClaudeUsageMeterService? _usageMeter;
 
+        // ── Claude Online Status (polls Anthropic Statuspage https://status.anthropic.com/api/v2/status.json) ──
+        private BuildConsole.Services.ClaudeStatusService? _claudeOnlineService;
+        private DispatcherTimer? _claudeOnlineTimer;
+
         // ── Animated startup loading overlay — honest per-connection progress while the
         //    real launch connections (Build Tracker board / in-flight / queue / deploy +
         //    Claude usage meter) settle; fades to Home once all are done or timed out. ──
@@ -77,6 +81,9 @@ namespace BuildConsole
             public long TailedLength;
             /// <summary>Git #942 — the tab's own claude.ai WebView2 (ChatButtonInjector's script was injected into it); needed so a live button-status push can reach the exact view holding the button.</summary>
             public Microsoft.Web.WebView2.Wpf.WebView2 WebView = null!;
+            public Controls.SqlDocumentView? InlineSqlRunner;
+            public GridSplitter? SqlSplitter;
+            public ColumnDefinition? SqlColumn;
         }
         private readonly Dictionary<TabItem, ChatTabState> _chatTabs = new();
         /// <summary>Git #942 — queue item id -> last label pushed to that item's injected chat button ("In Progress..."/"Done"/"Failed: Retry"). Populated when BT_QUEUE_BUILD captures a real id; drained by PushChatButtonStatuses the moment an item hits a terminal state (done/failed/canceled) or leaves the queue, so nothing is polled forever. UI-thread only (event handler + DispatcherTimer), so no locking needed.</summary>
@@ -372,6 +379,14 @@ namespace BuildConsole
                         : System.Threading.Tasks.Task.FromResult(false));
             _regressionScheduler.ApplyConfig();
 
+            // Claude Online Status (status.anthropic.com) — polls Anthropic's public Statuspage
+            _claudeOnlineService = new BuildConsole.Services.ClaudeStatusService();
+            _claudeOnlineService.StatusChanged += ClaudeOnlineService_StatusChanged;
+            _claudeOnlineTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(60) };
+            _claudeOnlineTimer.Tick += async (_, _) => await _claudeOnlineService.CheckStatusAsync();
+            _claudeOnlineTimer.Start();
+            _ = _claudeOnlineService.CheckStatusAsync();
+
             // Git #815 — surfaces a failed poll as a real, visible signal
             // (status-bar QueueDot/QueueStatusText, previously unused
             // hardcoded XAML) instead of silent inline tree text nobody
@@ -385,6 +400,19 @@ namespace BuildConsole
             // data (no separate fetch) and opens/focuses it exactly like
             // clicking the same chat in the Chats tree would.
             BuildQueuePanel.IssueChatRequested += (s, githubNumber) => OpenChatForIssue(githubNumber);
+            BuildQueuePanel.EpicSubIssueClicked += async (s, githubNumber) => await OpenGitDetailByNumberAsync(githubNumber, sideBySide: true);
+            BuildQueuePanel.FullGitRefreshRequested += (s, e) =>
+            {
+                LeftSidebar.PopulateGitTrackerBoard(forceFresh: true);
+                LeftSidebar.PopulateChatsTree();
+                LeftSidebar.RefreshGitStatus();
+                LeftSidebar.PopulateManifestsList();
+                if (_homeView != null)
+                {
+                    _homeView.RenderDashboardState(LeftSidebar.CurrentBoardIssues, LeftSidebar.CurrentMilestones);
+                }
+                RefreshOpenGitDetailTabs();
+            };
 
             // Git #802 - Shane: "The Claude chats should open in their own
             // tabs. And if there is a build, that tab should split with the
@@ -442,10 +470,12 @@ namespace BuildConsole
 
             // Git #874 Home screen — capture the persisted open-chat-tabs snapshot
             // ONCE at launch (before this session opens/persists anything over it),
-            // open the native Home tab as the default first tab, and start the
+            // pre-load the Replit Workspace tab so it stays alive in memory,
+            // open the native Home tab as the default first focused tab, and start the
             // roll-up timer. RefreshHomeRollupAsync no-ops whenever the Home tab
             // isn't open, so there's no steady-state polling cost when it's closed.
             _chatTabsAtLaunch = BuildConsole.Services.BuildConsoleSettings.Load().OpenChatTabs ?? new();
+            try { OpenOrFocusReplitWorkspaceTabInternal(); } catch { }
             OpenHomeTab();
             // "What's New" patch notes — compute the real commit titles since the last
             // launch off the UI thread, then render into the (already-open) Home tab and
@@ -1941,6 +1971,38 @@ namespace BuildConsole
                 catch { /* best-effort — a failed cancel just leaves the row, never crashes the glance screen */ }
                 await RefreshHomeRollupAsync(force: true);
             };
+
+            // Fast actions & dashboard navigation
+            home.NewIssueRequested += (s, e) => _ = LeftSidebar.CreateNewIssueAsync();
+            home.BuildWatchRequested += (s, e) => ToggleBuildWatch();
+            home.TestRunnerRequested += (s, e) => EnsureTestRunnerWindow(background: false).Show();
+            home.ReplitRequested += (s, e) => OpenOrFocusReplitWorkspaceTabInternal();
+            home.ImmersiveFocusRequested += (s, e) => BuildConsole.Services.FocusModeService.Instance.EnterImmersive();
+            home.DeployRequested += async (s, e) => await TriggerUpdateAsync(forceDeploy: true);
+            home.GitBoardRequested += (s, e) => ActivityBar.SelectGitBoard();
+            home.SettingsRequested += (s, e) => OpenSettingsTab();
+            home.IssueDetailRequested += (s, issue) =>
+            {
+                var gitIssue = new BuildConsole.Controls.GitIssue
+                {
+                    IssueNumber = issue.Number,
+                    Title = issue.Title,
+                    RawTitle = issue.Title,
+                    Status = issue.State,
+                    Body = issue.Body,
+                    DatabaseId = issue.DatabaseId,
+                    IsEpic = issue.IsEpic,
+                    IsComplete = issue.IsComplete,
+                    HasParentEpic = issue.ParentNumber.HasValue,
+                };
+                OpenGitIssueDetailTab(gitIssue);
+            };
+            home.MilestoneDetailRequested += (s, milestoneNum) =>
+            {
+                var m = LeftSidebar.CurrentMilestones.FirstOrDefault(m => m.GithubNumber == milestoneNum);
+                if (m != null) OpenMilestoneDetailTab(m);
+            };
+
             _homeView = home;
 
             var headerPanel = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
@@ -1987,6 +2049,8 @@ namespace BuildConsole
             // Running/Done sections from the shared queue data (force = refresh the
             // open-issue set immediately rather than waiting for the 60s guard).
             home.RenderLeftOff(_chatTabsAtLaunch);
+            home.RenderDashboardState(LeftSidebar.CurrentBoardIssues, LeftSidebar.CurrentMilestones);
+            home.UpdateFocusState();
             // Re-render the "What's New" section from the launch-time cache (no-op /
             // stays collapsed until InitWhatsNewAsync has computed it, or when there's
             // nothing new). Reopening Home mid-session shows the same set.
@@ -2178,6 +2242,8 @@ namespace BuildConsole
 
             home.RenderRunning(running);
             home.RenderDoneWaiting(doneWaiting);
+            home.RenderDashboardState(LeftSidebar.CurrentBoardIssues, LeftSidebar.CurrentMilestones);
+            home.UpdateFocusState();
         }
 
         /// <summary>
@@ -2486,6 +2552,54 @@ namespace BuildConsole
             _startupConnectivity?.ReportUsageMeter(status);
         }
 
+        // ── Claude Online Status (source: status.anthropic.com) ─────────────────
+        private void ClaudeOnlineService_StatusChanged(object? sender, BuildConsole.Services.ClaudeStatusInfo info)
+        {
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.BeginInvoke(new Action(() => ClaudeOnlineService_StatusChanged(sender, info)));
+                return;
+            }
+
+            ClaudeOnlineDot.Fill = info.Health switch
+            {
+                BuildConsole.Services.ClaudeStatusHealth.Operational => DotReady,
+                BuildConsole.Services.ClaudeStatusHealth.Minor => DotLoading,
+                BuildConsole.Services.ClaudeStatusHealth.Major => DotError,
+                _ => (Brush)FindResource("Surface2Brush")
+            };
+
+            ClaudeOnlineStatusText.Text = info.Health switch
+            {
+                BuildConsole.Services.ClaudeStatusHealth.Operational => "Status: OK",
+                BuildConsole.Services.ClaudeStatusHealth.Minor => "Status: Degraded",
+                BuildConsole.Services.ClaudeStatusHealth.Major => "Status: Outage",
+                _ => "Status: --"
+            };
+
+            ClaudeOnlineStatusText.ToolTip = $"Claude Service Health: {info.Description}\nIndicator: {info.Indicator}\nSource: {info.PageUrl}\nLast Checked: {info.CheckedAt:HH:mm:ss}\n\nClick to open status page";
+        }
+
+        private async void BtnClaudeOnlineRefresh_Click(object sender, RoutedEventArgs e)
+        {
+            if (_claudeOnlineService == null) return;
+            BtnClaudeOnlineRefresh.IsEnabled = false;
+            try
+            {
+                await _claudeOnlineService.CheckStatusAsync();
+            }
+            finally
+            {
+                BtnClaudeOnlineRefresh.IsEnabled = true;
+            }
+        }
+
+        private void ClaudeOnlineStatus_Click(object sender, MouseButtonEventArgs e)
+        {
+            string url = _claudeOnlineService?.CurrentStatus?.PageUrl ?? "https://status.anthropic.com/";
+            OpenWebTab(url, "Claude Status", "\uE774");
+        }
+
         // ── Animated startup loading overlay ────────────────────────────────────
         /// <summary>
         /// Builds the StartupOverlay's honest per-connection rows and starts the real
@@ -2500,7 +2614,7 @@ namespace BuildConsole
         {
             if (StartupOverlay == null) return;
 
-            _startupConnectivity = new BuildConsole.Services.StartupConnectivityService(_buildTrackerApi);
+            _startupConnectivity = new BuildConsole.Services.StartupConnectivityService(_buildTrackerApi, _replitWatcher);
 
             // Build one row per real connection, in order, before any probe reports in.
             StartupOverlay.Initialize(_startupConnectivity.Connections);
@@ -2572,6 +2686,7 @@ namespace BuildConsole
                 {
                     owner.Items.Remove(t);
                 }
+                CollapseEmptySplitPanes();
             };
             cm.Items.Add(miCloseOthers);
 
@@ -2589,6 +2704,7 @@ namespace BuildConsole
                         owner.Items.Remove(t);
                     }
                 }
+                CollapseEmptySplitPanes();
             };
             cm.Items.Add(miCloseRight);
 
@@ -2602,6 +2718,7 @@ namespace BuildConsole
                 {
                     owner.Items.Remove(t);
                 }
+                CollapseEmptySplitPanes();
             };
             cm.Items.Add(miCloseSaved);
 
@@ -2610,6 +2727,7 @@ namespace BuildConsole
             miCloseAll.Click += (s, e) =>
             {
                 CurrentOwner().Items.Clear();
+                CollapseEmptySplitPanes();
             };
             cm.Items.Add(miCloseAll);
 
@@ -2678,14 +2796,29 @@ namespace BuildConsole
 
         private void CloseTab(TabItem tabItem, TabControl ownerTabControl)
         {
+            var owner = tabItem.Parent as TabControl ?? ownerTabControl;
             Services.UiFadeHelper.FadeOut(tabItem, onComplete: () =>
             {
-                ownerTabControl.Items.Remove(tabItem);
-                if (ownerTabControl.Items.Count > 0)
+                owner.Items.Remove(tabItem);
+                if (owner.Items.Count > 0)
                 {
-                    ownerTabControl.SelectedIndex = Math.Max(0, ownerTabControl.Items.Count - 1);
+                    owner.SelectedIndex = Math.Max(0, owner.Items.Count - 1);
                 }
+                CollapseEmptySplitPanes();
             });
+        }
+
+        public void CollapseEmptySplitPanes()
+        {
+            if (EditorTabs2.Items.Count == 0 && EditorTabs3.Items.Count == 0 && EditorTabs4.Items.Count == 0)
+            {
+                ApplyGridForMode("Single");
+            }
+            else if (EditorTabs.Items.Count == 0 && EditorTabs2.Items.Count > 0 && EditorTabs3.Items.Count == 0 && EditorTabs4.Items.Count == 0)
+            {
+                MoveAllTabsToTarget(EditorTabs2, EditorTabs);
+                ApplyGridForMode("Single");
+            }
         }
 
         private void LeftSidebar_FileSelected(object? sender, string filePath)
@@ -3446,7 +3579,63 @@ namespace BuildConsole
                 string? Str(string prop) => root.TryGetProperty(prop, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.String ? v.GetString() : null;
                 int? Int(string prop) => root.TryGetProperty(prop, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.Number ? v.GetInt32() : null;
 
-                if (type == "BT_SEND_TO_BUILDER")
+                if (type == "BT_EDIT_BUILD")
+                {
+                    string rawText = Str("rawText") ?? "";
+                    int? referencedNumber = Int("referencedNumber");
+                    var dialog = new EditBuildPromptDialog(rawText, referencedNumber, _buildTrackerApi, LeftSidebar.CurrentBoardIssues);
+                    dialog.Owner = this;
+                    if (dialog.ShowDialog() == true)
+                    {
+                        if (dialog.ActionChosen == EditBuildAction.SendToBuilder)
+                        {
+                            var q = new List<string>();
+                            void Add(string key, string? val) { if (!string.IsNullOrEmpty(val)) q.Add($"{key}={Uri.EscapeDataString(val)}"); }
+                            Add("q", dialog.FinalPrompt);
+                            Add("title", dialog.FinalTitle);
+                            Add("model", dialog.FinalModel);
+                            Add("effort", dialog.FinalEffort);
+                            Add("cwd", dialog.FinalCwd);
+                            Add("mode", dialog.FinalMode);
+                            var uri = $"mybuilder://open?{string.Join("&", q)}";
+                            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(uri) { UseShellExecute = true });
+                        }
+                        else if (dialog.ActionChosen == EditBuildAction.QueueBuild)
+                        {
+                            if (_buildTrackerApi == null || !_buildTrackerApi.IsConfigured)
+                            {
+                                ToastEngine.Warning("Queue Build", "Not connected — see Settings.");
+                                return;
+                            }
+                            if (_updatePending)
+                            {
+                                bool saved = PersistQueueRequestDuringPendingUpdate(
+                                    dialog.FinalTitle ?? "Untitled", dialog.FinalPrompt, dialog.FinalModel, dialog.FinalEffort, dialog.FinalCwd,
+                                    dialog.FinalGithubNumber, dialog.FinalBlockedByNumbers);
+                                if (saved)
+                                {
+                                    ToastEngine.Success("Queued after update", "Build request saved for after restart.");
+                                    try { await BuildQueuePanel.RefreshAsync(); } catch { }
+                                }
+                                return;
+                            }
+                            var res = await _buildTrackerApi.QueueBuildAsync(
+                                dialog.FinalTitle ?? "Untitled", dialog.FinalPrompt, dialog.FinalModel, dialog.FinalEffort, dialog.FinalCwd,
+                                dialog.FinalGithubNumber, dialog.FinalBlockedByNumbers);
+                            if (res.IsSuccessStatusCode)
+                            {
+                                ToastEngine.Success("Build Queued", $"Queued '{dialog.FinalTitle ?? "Build"}' successfully.");
+                                try { await BuildQueuePanel.RefreshAsync(); } catch { }
+                            }
+                            else
+                            {
+                                var body = await res.Content.ReadAsStringAsync();
+                                ToastEngine.Error("Queue Build", $"Failed to queue build: {body}");
+                            }
+                        }
+                    }
+                }
+                else if (type == "BT_SEND_TO_BUILDER")
                 {
                     var q = new List<string>();
                     void Add(string key, string? val) { if (!string.IsNullOrEmpty(val)) q.Add($"{key}={Uri.EscapeDataString(val)}"); }
@@ -3599,62 +3788,84 @@ namespace BuildConsole
                 {
                     var sqlText = Str("sql") ?? "";
 
-                    if (EditorTabs.SelectedItem is TabItem activeTab)
+                    // Find the chat tab that received this message or is currently selected
+                    ChatTabState? chatState = null;
+                    TabItem? chatTab = null;
+
+                    foreach (var kvp in _chatTabs)
                     {
-                        if (activeTab.Content is Microsoft.Web.WebView2.Wpf.WebView2 webView)
+                        if (kvp.Value.WebView?.CoreWebView2 == sender || ReferenceEquals(kvp.Value.WebView, sender))
                         {
-                            // It's a normal chat tab, split it
-                            activeTab.Content = null; // Detach so we can add to grid
+                            chatTab = kvp.Key;
+                            chatState = kvp.Value;
+                            break;
+                        }
+                    }
 
-                            var grid = new Grid();
-                            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-                            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-                            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-
-                            Grid.SetColumn(webView, 0);
-                            grid.Children.Add(webView);
-
-                            var splitter = new GridSplitter
+                    if (chatState == null)
+                    {
+                        foreach (var pane in new[] { EditorTabs, EditorTabs2, EditorTabs3, EditorTabs4 })
+                        {
+                            if (pane.SelectedItem is TabItem sel && _chatTabs.TryGetValue(sel, out var state))
                             {
-                                Width = 4,
-                                HorizontalAlignment = HorizontalAlignment.Center,
-                                VerticalAlignment = VerticalAlignment.Stretch,
-                                ResizeBehavior = GridResizeBehavior.PreviousAndNext
-                            };
-                            Grid.SetColumn(splitter, 1);
-                            grid.Children.Add(splitter);
+                                chatTab = sel;
+                                chatState = state;
+                                break;
+                            }
+                        }
+                    }
 
+                    if (chatState != null)
+                    {
+                        if (chatState.InlineSqlRunner != null)
+                        {
+                            chatState.InlineSqlRunner.SetSqlQuery(sqlText);
+                            if (chatState.SqlColumn != null)
+                                chatState.SqlColumn.Width = new GridLength(1, GridUnitType.Star);
+                        }
+                        else
+                        {
                             var inlineSql = new Controls.SqlDocumentView();
                             inlineSql.Initialize(_buildTrackerApi);
                             inlineSql.IsInline = true;
                             inlineSql.SetSqlQuery(sqlText);
                             WireSqlRunnerSendToChat(inlineSql);
 
-                            inlineSql.CloseRequested += (s, ev) =>
+                            var sqlCol = new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) };
+                            chatState.SplitGrid.ColumnDefinitions.Add(sqlCol);
+                            int colIndex = chatState.SplitGrid.ColumnDefinitions.Count - 1;
+
+                            var sqlSplitter = new GridSplitter
                             {
-                                // Un-split: detach webView from grid and put back in tab
-                                grid.Children.Remove(webView);
-                                activeTab.Content = webView;
+                                Width = 4,
+                                HorizontalAlignment = HorizontalAlignment.Left,
+                                VerticalAlignment = VerticalAlignment.Stretch,
+                                ResizeBehavior = GridResizeBehavior.PreviousAndNext
                             };
 
-                            Grid.SetColumn(inlineSql, 2);
-                            grid.Children.Add(inlineSql);
+                            Grid.SetColumn(sqlSplitter, colIndex);
+                            Grid.SetColumn(inlineSql, colIndex);
+                            chatState.SplitGrid.Children.Add(sqlSplitter);
+                            chatState.SplitGrid.Children.Add(inlineSql);
 
-                            activeTab.Content = grid;
-                        }
-                        else if (activeTab.Content is Grid splitGrid && splitGrid.Children.Count == 3 && splitGrid.Children[2] is Controls.SqlDocumentView existingSql)
-                        {
-                            // Already split with an inline SQL runner
-                            existingSql.SetSqlQuery(sqlText);
-                        }
-                        else
-                        {
-                            // Fallback if not a chat tab
-                            OpenSqlRunnerTab().SetSqlQuery(sqlText);
+                            chatState.InlineSqlRunner = inlineSql;
+                            chatState.SqlSplitter = sqlSplitter;
+                            chatState.SqlColumn = sqlCol;
+
+                            inlineSql.CloseRequested += (s, ev) =>
+                            {
+                                chatState.SplitGrid.Children.Remove(sqlSplitter);
+                                chatState.SplitGrid.Children.Remove(inlineSql);
+                                chatState.SplitGrid.ColumnDefinitions.Remove(sqlCol);
+                                chatState.InlineSqlRunner = null;
+                                chatState.SqlSplitter = null;
+                                chatState.SqlColumn = null;
+                            };
                         }
                     }
                     else
                     {
+                        // Fallback if triggered from a non-chat tab
                         OpenSqlRunnerTab().SetSqlQuery(sqlText);
                     }
                 }

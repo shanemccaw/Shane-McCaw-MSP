@@ -9,6 +9,7 @@
         WindowStartupLocation="CenterScreen"
         ShowInTaskbar="True"
         WindowStyle="None"
+        Background="#181825"
         StateChanged="Window_StateChanged">
 
     <!-- Git #1006 — same custom title bar treatment as MainWindow (Git #894):
@@ -31,9 +32,9 @@
          Normal window chrome (not the borderless #937 floaty shape) precisely
          because Shane wants a real, movable, resizable "watch on another monitor"
          window, not a small always-on-top sticky. -->
-    <DockPanel LastChildFill="True">
+    <DockPanel LastChildFill="True" Background="#181825">
         <Border DockPanel.Dock="Top"
-                Background="{StaticResource CrustBrush}"
+                Background="#11111B"
                 BorderBrush="{StaticResource Surface0Brush}"
                 BorderThickness="0,0,0,1"
                 Height="36">
@@ -58,7 +59,7 @@
                 </StackPanel>
             </Grid>
         </Border>
-    <Border Background="{StaticResource BaseBrush}">
+    <Border Background="#1E1E2E">
         <Grid Margin="8">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>

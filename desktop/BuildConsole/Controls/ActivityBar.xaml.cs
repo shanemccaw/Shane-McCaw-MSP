@@ -36,6 +36,7 @@ namespace BuildConsole.Controls
 
         /// <summary>Git #834 — File > Settings menu item routes here so it lands on the SAME SettingsView the cog icon already opens, instead of being a second, divergent path.</summary>
         public void SelectSettings() => BtnSettings.IsChecked = true;
+        public void SelectGitBoard() => BtnIssues.IsChecked = true;
 
         private void Btn_Checked(object sender, RoutedEventArgs e)
         {

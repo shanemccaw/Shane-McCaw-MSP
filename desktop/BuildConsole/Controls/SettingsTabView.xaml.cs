@@ -1,75 +1,64 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using BuildConsole.Services;
 
 namespace BuildConsole.Controls
 {
     /// <summary>
-    /// Git #954 (Epic #803) — the full native Settings tab. Every field, x:Name,
-    /// Click handler, and BuildConsoleSettings persistence path here was moved
-    /// verbatim from LeftSidebar's old in-sidebar SettingsView panel (#834 PAT,
-    /// #880 Zoho, #922 chat URL, #864 Web Tools, #953 Test Environment Variables,
-    /// #902 Replit watcher) — this is a layout/navigation change, not a functional
-    /// change to any setting. Hosted as a real editor TabItem via
-    /// MainWindow.OpenSettingsTab, reusing the #893/#894/#921 multi-pane tab infra.
-    ///
-    /// The sidebar's Settings view is now just a category nav list that opens (or
-    /// focuses) this tab and scrolls to a section via <see cref="ScrollToSection"/>.
+    /// Re-imagined Settings & Environment Management view:
+    /// - Comprehensive Test Environment Variables breakdown grouped by domain with live manifest references.
+    /// - Interactive variable cards with inline reveal, copy, quick-save, and manifest usage tags.
+    /// - Health status overview dashboard and category filter chips.
+    /// - Preserves all existing settings persistence, events, and navigation contracts.
     /// </summary>
     public partial class SettingsTabView : UserControl
     {
-        /// <summary>Git #902 — raised when the Replit idle watcher's Settings are saved, so MainWindow can re-apply them (start/stop, new interval) live without a restart. Rewired per-instance each time the tab opens (see MainWindow.OpenSettingsTab).</summary>
         public event EventHandler? ReplitWatcherSettingsChanged;
-
-        /// <summary>Git #967 — raised when the scheduled-runs settings are saved, so MainWindow can re-apply them (arm/disarm, new interval) live without a restart. Wired per tab instance in OpenSettingsTab, same lifecycle as <see cref="ReplitWatcherSettingsChanged"/>.</summary>
         public event EventHandler? ScheduleSettingsChanged;
+
+        private ManifestVariableScanResult? _lastScanResult;
+        private string _activeVarCategory = "All";
+        private string _varSearchQuery = "";
+        private readonly HashSet<string> _revealedVariables = new(StringComparer.OrdinalIgnoreCase);
 
         public SettingsTabView()
         {
             InitializeComponent();
 
-            // Git #834 — pre-fill the PAT box from the local store
-            // (%AppData%\BuildConsole\settings.json) so it round-trips visibly.
             var savedSettings = BuildConsoleSettings.Load();
             GitHubPatBox.Password = savedSettings.GitHubPat;
             ZohoApiTokenBox.Password = savedSettings.ZohoApiToken;
 
-            // Git #922 — pre-fill the epic-chat "New chat project URL" from the same store.
             EpicChatProjectUrlBox.Text = savedSettings.EpicChatProjectUrl;
 
-            // Git #902 — pre-fill the Replit idle watcher fields from the same store.
             ReplitWatcherEnabledCheck.IsChecked = savedSettings.ReplitWatcherEnabled;
             ReplitWatcherIntervalBox.Text = savedSettings.ReplitWatcherIntervalMinutes.ToString();
             ReplitRunSelectorBox.Text = savedSettings.ReplitRunButtonSelector;
             ReplitAppUrlBox.Text = savedSettings.ReplitAppUrl;
             ReplitWorkspaceUrlBox.Text = savedSettings.ReplitWorkspaceUrl;
 
-            // Git #973 — pre-fill the LinkedIn composer selector + URL from the same store.
             LinkedInComposerSelectorBox.Text = savedSettings.LinkedInComposerSelector;
             LinkedInComposeUrlBox.Text = savedSettings.LinkedInComposeUrl;
 
-            // Git #967 — pre-fill the scheduled-runs fields from the same store.
             ScheduledRunEnabledCheck.IsChecked = savedSettings.ScheduledRegressionEnabled;
             ScheduledRunIntervalBox.Text = savedSettings.ScheduledRegressionIntervalHours.ToString();
             ScheduledRunPushCheck.IsChecked = savedSettings.PushOnRegressionFailure;
 
-            // Build completion sound — pre-fill the custom path from the same store (blank = bundled default).
             BuildSoundPathBox.Text = savedSettings.BuildCompleteSoundPath;
 
-            // Git #864
             RenderWebToolsSettingsList();
 
-            // Git #953 / #961 — auto-discover manifest {{NAME}} placeholders and fill any
-            // gaps before rendering, so opening Settings (which shows the Test Environment
-            // section) always reflects the current manifests. RunManifestVariableScan re-renders.
+            // Run manifest variable scan & render environment
             RunManifestVariableScan(showStatus: false);
+            UpdateHealthDashboard();
+            SelectCategory("TestEnvironment");
         }
 
-        /// <summary>Fills the read-only Build Tracker API display from the shared
-        /// client MainWindow already built — same source of truth as before, when
-        /// LeftSidebar.Initialize populated these controls.</summary>
         public void Initialize(BuildTrackerApiClient? api)
         {
             if (api == null)
@@ -82,66 +71,739 @@ namespace BuildConsole.Controls
             ConfigPathText.Text = api.ConfigPath ?? "No scripts\\build-queue-watcher.config.json found — copy the .example template next to it and fill in apiBaseUrl/ingestToken.";
         }
 
-        /// <summary>Git #954 — scroll the tab to a named section (the sidebar's
-        /// category nav list hands the category key here via MainWindow). Falls
-        /// back to the top for an unknown key.</summary>
+        private string _activeCategory = "TestEnvironment";
+
         public void ScrollToSection(string? category)
         {
-            FrameworkElement? target = category switch
-            {
-                "General"         => SectionGeneral,
-                "Credentials"     => SectionCredentials,
-                "TestEnvironment" => SectionTestEnvironment,
-                "ChatIntegration" => SectionChatIntegration,
-                "WebTools"        => SectionWebTools,
-                "ReplitWatcher"   => SectionReplitWatcher,
-                "LinkedIn"        => SectionLinkedIn,
-                "BuildSound"      => SectionBuildSound,
-                _                 => null,
-            };
-            // Git #961 — opening the Test Environment section re-runs the manifest scan so a
-            // manifest added since the tab opened (existing-tab navigation) still gets picked up.
+            SelectCategory(category);
+        }
+
+        public void SelectCategory(string? category)
+        {
+            category = string.IsNullOrWhiteSpace(category) ? "TestEnvironment" : category;
+            _activeCategory = category;
+
+            // Hide all other pages, show only the selected category page
+            PageTestEnvironment.Visibility = category == "TestEnvironment" ? Visibility.Visible : Visibility.Collapsed;
+            PageCredentials.Visibility = category == "Credentials" ? Visibility.Visible : Visibility.Collapsed;
+            PageGeneral.Visibility = category == "General" ? Visibility.Visible : Visibility.Collapsed;
+            PageReplitWatcher.Visibility = category == "ReplitWatcher" ? Visibility.Visible : Visibility.Collapsed;
+            PageScheduledRun.Visibility = category == "ScheduledRun" ? Visibility.Visible : Visibility.Collapsed;
+            PageWebTools.Visibility = category == "WebTools" ? Visibility.Visible : Visibility.Collapsed;
+            PageChatIntegration.Visibility = category == "ChatIntegration" ? Visibility.Visible : Visibility.Collapsed;
+            PageBuildSound.Visibility = category == "BuildSound" ? Visibility.Visible : Visibility.Collapsed;
+            PageLinkedIn.Visibility = category == "LinkedIn" ? Visibility.Visible : Visibility.Collapsed;
+
+            // Update Left Navigation selection highlight
+            UpdateNavSelection(category);
+
             if (category == "TestEnvironment")
                 RunManifestVariableScan(showStatus: false);
 
-            if (target != null)
-                target.BringIntoView();
-            else
-                RootScroll.ScrollToTop();
+            // Always scroll cleanly to the top for the selected category page
+            RootScroll.ScrollToTop();
         }
 
-        // ── SETTINGS: GitHub PAT (Git #834) ──────────────────────────────────
+        private void UpdateNavSelection(string activeCategory)
+        {
+            var navItems = new (Border? Wrap, TextBlock? Text, string Key)[]
+            {
+                (NavWrapTestEnvironment, NavTextTestEnvironment, "TestEnvironment"),
+                (NavWrapCredentials, NavTextCredentials, "Credentials"),
+                (NavWrapGeneral, NavTextGeneral, "General"),
+                (NavWrapReplitWatcher, NavTextReplitWatcher, "ReplitWatcher"),
+                (NavWrapScheduledRun, NavTextScheduledRun, "ScheduledRun"),
+                (NavWrapWebTools, NavTextWebTools, "WebTools"),
+                (NavWrapChatIntegration, NavTextChatIntegration, "ChatIntegration"),
+                (NavWrapBuildSound, NavTextBuildSound, "BuildSound"),
+                (NavWrapLinkedIn, NavTextLinkedIn, "LinkedIn"),
+            };
+
+            foreach (var (wrap, text, key) in navItems)
+            {
+                if (wrap == null || text == null) continue;
+                bool isSelected = string.Equals(activeCategory, key, StringComparison.OrdinalIgnoreCase);
+
+                wrap.Background = isSelected
+                    ? (Brush)FindResource("BlueBrush")
+                    : Brushes.Transparent;
+
+                text.Foreground = isSelected
+                    ? (Brush)FindResource("CrustBrush")
+                    : (Brush)FindResource("TextBrush");
+
+                text.FontWeight = isSelected ? FontWeights.Bold : FontWeights.SemiBold;
+            }
+        }
+
+        private void NavButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn && btn.Tag is string category)
+            {
+                SelectCategory(category);
+            }
+        }
+
+        // ══════════════════════════════════════════════════════════════════════
+        // HEALTH DASHBOARD & TOP PILLS
+        // ══════════════════════════════════════════════════════════════════════
+        private void UpdateHealthDashboard()
+        {
+            var settings = BuildConsoleSettings.Load();
+
+            // Test Env Health
+            int totalVars = settings.TestEnvironmentVariables.Count;
+            int needsReview = settings.TestEnvironmentVariables.Count(v => v.NeedsReview || string.Equals(v.Value, TestManifestVariableScanner.AutoDefaultValue, StringComparison.Ordinal));
+            int configured = totalVars - needsReview;
+
+            if (needsReview > 0)
+            {
+                TestEnvHealthText.Text = $"{configured}/{totalVars} Configured ({needsReview} Needs Value)";
+                TestEnvHealthText.Foreground = (Brush)FindResource("PeachBrush");
+                TestEnvAlertPill.Visibility = Visibility.Visible;
+                TestEnvAlertCount.Text = $"{needsReview} Review";
+            }
+            else
+            {
+                TestEnvHealthText.Text = $"{totalVars} Ready";
+                TestEnvHealthText.Foreground = (Brush)FindResource("GreenBrush");
+                TestEnvAlertPill.Visibility = Visibility.Collapsed;
+            }
+
+            // GitHub PAT Health
+            bool hasPat = settings.HasGitHubPat;
+            GitHubPatHealthText.Text = hasPat ? "Configured" : "Missing Token";
+            GitHubPatHealthText.Foreground = (Brush)FindResource(hasPat ? "GreenBrush" : "PeachBrush");
+
+            // Zoho Health
+            bool hasZoho = !string.IsNullOrWhiteSpace(settings.ZohoApiToken);
+            ZohoTokenHealthText.Text = hasZoho ? "Configured" : "Not Set";
+            ZohoTokenHealthText.Foreground = (Brush)FindResource(hasZoho ? "GreenBrush" : "Subtext0Brush");
+
+            // Replit Watcher Health
+            bool replitActive = settings.ReplitWatcherEnabled;
+            ReplitWatcherHealthText.Text = replitActive ? "Active" : "Disabled";
+            ReplitWatcherHealthText.Foreground = (Brush)FindResource(replitActive ? "GreenBrush" : "Subtext0Brush");
+        }
+
+        private void TestEnvHealthBadge_Click(object sender, MouseButtonEventArgs e) => ScrollToSection("TestEnvironment");
+        private void GitHubPatBadge_Click(object sender, MouseButtonEventArgs e) => ScrollToSection("Credentials");
+        private void ZohoTokenBadge_Click(object sender, MouseButtonEventArgs e) => ScrollToSection("Credentials");
+        private void ReplitWatcherBadge_Click(object sender, MouseButtonEventArgs e) => ScrollToSection("ReplitWatcher");
+
+        // ══════════════════════════════════════════════════════════════════════
+        // SEARCH TEST ENVIRONMENT VARIABLES
+        // ══════════════════════════════════════════════════════════════════════
+        private void TestEnvSearchBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            _varSearchQuery = TestEnvSearchBox.Text.Trim();
+            if (TestEnvSearchPlaceholder != null)
+                TestEnvSearchPlaceholder.Visibility = string.IsNullOrEmpty(_varSearchQuery) ? Visibility.Visible : Visibility.Collapsed;
+            if (BtnClearTestEnvSearch != null)
+                BtnClearTestEnvSearch.Visibility = string.IsNullOrEmpty(_varSearchQuery) ? Visibility.Collapsed : Visibility.Visible;
+            RenderTestEnvVarsSettingsList();
+        }
+
+        private void BtnClearTestEnvSearch_Click(object sender, RoutedEventArgs e)
+        {
+            TestEnvSearchBox.Text = "";
+            _varSearchQuery = "";
+            if (TestEnvSearchPlaceholder != null)
+                TestEnvSearchPlaceholder.Visibility = Visibility.Visible;
+            if (BtnClearTestEnvSearch != null)
+                BtnClearTestEnvSearch.Visibility = Visibility.Collapsed;
+            RenderTestEnvVarsSettingsList();
+        }
+
+        private void SettingsSearchBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            _varSearchQuery = SettingsSearchBox.Text.Trim();
+            BtnClearSearch.Visibility = string.IsNullOrEmpty(_varSearchQuery) ? Visibility.Collapsed : Visibility.Visible;
+            if (TestEnvSearchBox != null && TestEnvSearchBox.Text != _varSearchQuery)
+            {
+                TestEnvSearchBox.Text = _varSearchQuery;
+            }
+            RenderTestEnvVarsSettingsList();
+        }
+
+        private void BtnClearSearch_Click(object sender, RoutedEventArgs e)
+        {
+            SettingsSearchBox.Text = "";
+            if (TestEnvSearchBox != null) TestEnvSearchBox.Text = "";
+            _varSearchQuery = "";
+            BtnClearSearch.Visibility = Visibility.Collapsed;
+            RenderTestEnvVarsSettingsList();
+        }
+
+        // ══════════════════════════════════════════════════════════════════════
+        // TEST ENVIRONMENT & MANIFEST VARIABLES (SUPERCHARGED)
+        // ══════════════════════════════════════════════════════════════════════
+        private void RunManifestVariableScan(bool showStatus)
+        {
+            var settings = BuildConsoleSettings.Load();
+            try
+            {
+                _lastScanResult = TestManifestVariableScanner.Scan(settings);
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log(TestManifestVariableScanner.Channel, $"scan failed: {ex.Message}");
+                if (showStatus && TestEnvScanStatusText != null)
+                    TestEnvScanStatusText.Text = "Scan failed — check Activity Log.";
+                RenderTestEnvVarsSettingsList();
+                UpdateHealthDashboard();
+                return;
+            }
+
+            RenderCategoryChips();
+            RenderTestEnvVarsSettingsList();
+            UpdateHealthDashboard();
+
+            if (showStatus && TestEnvScanStatusText != null && _lastScanResult != null)
+                TestEnvScanStatusText.Text = _lastScanResult.SummaryLine;
+        }
+
+        private void BtnRescanManifests_Click(object sender, RoutedEventArgs e)
+        {
+            RunManifestVariableScan(showStatus: true);
+            if (_lastScanResult != null)
+            {
+                if (_lastScanResult.AddedNames.Count > 0 || _lastScanResult.RemovedOrphanedNames.Count > 0)
+                {
+                    ToastEngine.Success("Manifest Sync", _lastScanResult.SummaryLine);
+                }
+                else
+                {
+                    ToastEngine.Info("Manifest Sync", _lastScanResult.SummaryLine);
+                }
+            }
+        }
+
+        private void BtnToggleAddVarCard_Click(object sender, RoutedEventArgs e)
+        {
+            AddVarCard.Visibility = AddVarCard.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible;
+            if (AddVarCard.Visibility == Visibility.Visible)
+            {
+                TestEnvVarNameBox.Focus();
+            }
+        }
+
+        private static string InferCategory(string varName, List<string>? areas)
+        {
+            string upper = varName.ToUpperInvariant();
+            if (upper.StartsWith("GRAPH_") || upper.StartsWith("TENANT_") || upper.StartsWith("M365_") || upper.StartsWith("MS_"))
+                return "Microsoft Graph";
+            if (upper.StartsWith("ZOHO_") || upper.StartsWith("CRM_"))
+                return "Zoho CRM";
+            if (upper.Contains("PASSWORD") || upper.Contains("PASS") || upper.Contains("SECRET") || upper.Contains("TOKEN") || upper.Contains("AUTH") || upper.Contains("CREDENTIAL"))
+                return "Auth & Security";
+            if (upper.Contains("STRIPE") || upper.Contains("BILLING") || upper.Contains("INVOICE") || upper.Contains("PAYMENT"))
+                return "Billing & Payments";
+            if (upper.Contains("MAIL") || upper.Contains("SMTP") || upper.Contains("EMAIL"))
+                return "Mailer";
+            if (upper.Contains("COPILOT") || upper.Contains("AI_") || upper.Contains("CLAUDE"))
+                return "AI & Copilot";
+            if (upper.Contains("ADMIN"))
+                return "Admin";
+            if (upper.Contains("SMOKE"))
+                return "Smoke";
+            if (upper.Contains("OBSERVABILITY") || upper.Contains("METRIC") || upper.Contains("LOG"))
+                return "Observability";
+
+            if (areas != null && areas.Count > 0)
+            {
+                string firstArea = areas[0].ToLowerInvariant();
+                if (firstArea.Contains("auth")) return "Auth & Security";
+                if (firstArea.Contains("crm")) return "Zoho CRM";
+                if (firstArea.Contains("billing")) return "Billing & Payments";
+                if (firstArea.Contains("mailer")) return "Mailer";
+                if (firstArea.Contains("copilot")) return "AI & Copilot";
+                if (firstArea.Contains("smoke")) return "Smoke";
+                if (firstArea.Contains("admin")) return "Admin";
+                if (firstArea.Contains("observability")) return "Observability";
+            }
+
+            return "General";
+        }
+
+        private static string GetCategoryIcon(string category) => category switch
+        {
+            "Microsoft Graph"    => "🏢",
+            "Zoho CRM"           => "☁️",
+            "Auth & Security"    => "🔐",
+            "Billing & Payments" => "💳",
+            "Mailer"             => "📧",
+            "AI & Copilot"       => "🤖",
+            "Admin"              => "🛡️",
+            "Smoke"              => "💨",
+            "Observability"      => "📊",
+            _                    => "📦"
+        };
+
+        private void RenderCategoryChips()
+        {
+            var settings = BuildConsoleSettings.Load();
+            EnvCategoryChipsPanel.Children.Clear();
+
+            var categoryCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            int needsReviewCount = 0;
+
+            foreach (var v in settings.TestEnvironmentVariables)
+            {
+                var areas = _lastScanResult?.VariableAreaMap.TryGetValue(v.Name, out var al) == true ? al : null;
+                string cat = InferCategory(v.Name, areas);
+                categoryCounts[cat] = categoryCounts.GetValueOrDefault(cat, 0) + 1;
+
+                if (v.NeedsReview || string.Equals(v.Value, TestManifestVariableScanner.AutoDefaultValue, StringComparison.Ordinal))
+                    needsReviewCount++;
+            }
+
+            // "All" chip
+            AddCategoryChip("All", $"All ({settings.TestEnvironmentVariables.Count})", isAlert: false);
+
+            // "Needs Review" chip
+            if (needsReviewCount > 0)
+            {
+                AddCategoryChip("NeedsReview", $"⚠️ Needs Review ({needsReviewCount})", isAlert: true);
+            }
+
+            // Categories
+            foreach (var kvp in categoryCounts.OrderBy(k => k.Key))
+            {
+                string icon = GetCategoryIcon(kvp.Key);
+                AddCategoryChip(kvp.Key, $"{icon} {kvp.Key} ({kvp.Value})", isAlert: false);
+            }
+        }
+
+        private void AddCategoryChip(string categoryKey, string label, bool isAlert)
+        {
+            bool isSelected = string.Equals(_activeVarCategory, categoryKey, StringComparison.OrdinalIgnoreCase);
+
+            var chip = new Border
+            {
+                Background = isSelected
+                    ? (Brush)FindResource(isAlert ? "PeachBrush" : "BlueBrush")
+                    : (Brush)FindResource("Surface0Brush"),
+                CornerRadius = new CornerRadius(12),
+                Padding = new Thickness(10, 4, 10, 4),
+                Margin = new Thickness(0, 0, 8, 6),
+                Cursor = Cursors.Hand,
+                Tag = categoryKey
+            };
+
+            var text = new TextBlock
+            {
+                Text = label,
+                FontSize = 11,
+                FontWeight = isSelected ? FontWeights.Bold : FontWeights.SemiBold,
+                Foreground = isSelected
+                    ? (Brush)FindResource("CrustBrush")
+                    : (Brush)FindResource(isAlert ? "PeachBrush" : "TextBrush")
+            };
+            chip.Child = text;
+
+            chip.MouseLeftButtonDown += (s, e) =>
+            {
+                _activeVarCategory = categoryKey;
+                RenderCategoryChips();
+                RenderTestEnvVarsSettingsList();
+            };
+
+            EnvCategoryChipsPanel.Children.Add(chip);
+        }
+
+        private void RenderTestEnvVarsSettingsList()
+        {
+            var settings = BuildConsoleSettings.Load();
+            TestEnvVarsSettingsList.Children.Clear();
+
+            var vars = settings.TestEnvironmentVariables.AsEnumerable();
+
+            // Category Filter
+            if (string.Equals(_activeVarCategory, "NeedsReview", StringComparison.OrdinalIgnoreCase))
+            {
+                vars = vars.Where(v => v.NeedsReview || string.Equals(v.Value, TestManifestVariableScanner.AutoDefaultValue, StringComparison.Ordinal));
+            }
+            else if (!string.Equals(_activeVarCategory, "All", StringComparison.OrdinalIgnoreCase))
+            {
+                vars = vars.Where(v =>
+                {
+                    var areas = _lastScanResult?.VariableAreaMap.TryGetValue(v.Name, out var al) == true ? al : null;
+                    return string.Equals(InferCategory(v.Name, areas), _activeVarCategory, StringComparison.OrdinalIgnoreCase);
+                });
+            }
+
+            // Search Filter
+            if (!string.IsNullOrWhiteSpace(_varSearchQuery))
+            {
+                vars = vars.Where(v =>
+                {
+                    if (v.Name.Contains(_varSearchQuery, StringComparison.OrdinalIgnoreCase)) return true;
+                    if (v.Value.Contains(_varSearchQuery, StringComparison.OrdinalIgnoreCase)) return true;
+                    if (_lastScanResult?.VariableManifestMap.TryGetValue(v.Name, out var manifests) == true)
+                    {
+                        if (manifests.Any(m => m.Contains(_varSearchQuery, StringComparison.OrdinalIgnoreCase))) return true;
+                    }
+                    return false;
+                });
+            }
+
+            var list = vars.ToList();
+
+            if (list.Count == 0)
+            {
+                TestEnvVarsSettingsList.Children.Add(new Border
+                {
+                    Background = (Brush)FindResource("Surface0Brush"),
+                    CornerRadius = new CornerRadius(8),
+                    Padding = new Thickness(20),
+                    Margin = new Thickness(0, 4, 0, 4),
+                    Child = new TextBlock
+                    {
+                        Text = "No test environment variables matched the current filter.",
+                        Foreground = (Brush)FindResource("Subtext0Brush"),
+                        FontSize = 12,
+                        HorizontalAlignment = HorizontalAlignment.Center
+                    }
+                });
+                return;
+            }
+
+            foreach (var v in list)
+            {
+                var card = BuildVariableCard(v);
+                TestEnvVarsSettingsList.Children.Add(card);
+            }
+        }
+
+        private FrameworkElement BuildVariableCard(TestEnvVar v)
+        {
+            var areas = _lastScanResult?.VariableAreaMap.TryGetValue(v.Name, out var al) == true ? al : null;
+            var manifests = _lastScanResult?.VariableManifestMap.TryGetValue(v.Name, out var ml) == true ? ml : new List<string>();
+
+            string category = InferCategory(v.Name, areas);
+            string icon = GetCategoryIcon(category);
+
+            bool isUnset = v.NeedsReview || string.Equals(v.Value, TestManifestVariableScanner.AutoDefaultValue, StringComparison.Ordinal) || string.IsNullOrEmpty(v.Value);
+            bool isRevealed = _revealedVariables.Contains(v.Name);
+
+            var card = new Border
+            {
+                Background = (Brush)FindResource("Surface0Brush"),
+                BorderBrush = (Brush)FindResource(isUnset ? "PeachBrush" : "Surface1Brush"),
+                BorderThickness = new Thickness(isUnset ? 1.5 : 1),
+                CornerRadius = new CornerRadius(8),
+                Padding = new Thickness(14, 12, 14, 12),
+                Margin = new Thickness(0, 0, 0, 10)
+            };
+
+            var mainStack = new StackPanel();
+
+            // ── TOP ROW: Name + Category Badge + Health Status ─────────────────
+            var topRow = new DockPanel { Margin = new Thickness(0, 0, 0, 8) };
+
+            var titleStack = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+            titleStack.Children.Add(new TextBlock
+            {
+                Text = v.Name,
+                FontFamily = new FontFamily("Consolas, Courier New, Segoe UI"),
+                FontSize = 13,
+                FontWeight = FontWeights.Bold,
+                Foreground = (Brush)FindResource(isUnset ? "PeachBrush" : "TextBrush"),
+                VerticalAlignment = VerticalAlignment.Center
+            });
+
+            // Category badge
+            titleStack.Children.Add(new Border
+            {
+                Background = (Brush)FindResource("BaseBrush"),
+                CornerRadius = new CornerRadius(4),
+                Padding = new Thickness(6, 2, 6, 2),
+                Margin = new Thickness(10, 0, 0, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+                Child = new TextBlock
+                {
+                    Text = $"{icon} {category}",
+                    FontSize = 10.5,
+                    FontWeight = FontWeights.SemiBold,
+                    Foreground = (Brush)FindResource("Subtext1Brush")
+                }
+            });
+            topRow.Children.Add(titleStack);
+
+            // Status Pill (Right side)
+            var statusPill = new Border
+            {
+                Background = (Brush)FindResource(isUnset ? "PeachBrush" : "GreenBrush"),
+                CornerRadius = new CornerRadius(10),
+                Padding = new Thickness(8, 2, 8, 2),
+                HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Center,
+                Child = new TextBlock
+                {
+                    Text = isUnset ? "⚠️ NEEDS VALUE" : "✅ CONFIGURED",
+                    FontSize = 9.5,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = (Brush)FindResource("CrustBrush")
+                }
+            };
+            DockPanel.SetDock(statusPill, Dock.Right);
+            topRow.Children.Add(statusPill);
+
+            mainStack.Children.Add(topRow);
+
+            // ── MANIFEST USAGE ROW ─────────────────────────────────────────────
+            if (manifests.Count > 0)
+            {
+                var manifestWrap = new WrapPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 8) };
+                manifestWrap.Children.Add(new TextBlock
+                {
+                    Text = "Used in: ",
+                    FontSize = 10,
+                    Foreground = (Brush)FindResource("Subtext0Brush"),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(0, 0, 4, 2)
+                });
+
+                foreach (var m in manifests)
+                {
+                    manifestWrap.Children.Add(new Border
+                    {
+                        Background = (Brush)FindResource("BaseBrush"),
+                        CornerRadius = new CornerRadius(4),
+                        Padding = new Thickness(5, 1, 5, 1),
+                        Margin = new Thickness(0, 0, 4, 2),
+                        Child = new TextBlock
+                        {
+                            Text = $"📄 {m}",
+                            FontSize = 9.5,
+                            Foreground = (Brush)FindResource("Subtext1Brush")
+                        }
+                    });
+                }
+                mainStack.Children.Add(manifestWrap);
+            }
+            else
+            {
+                mainStack.Children.Add(new TextBlock
+                {
+                    Text = "No test manifest currently references this variable directly.",
+                    FontSize = 10,
+                    Foreground = (Brush)FindResource("Subtext0Brush"),
+                    Margin = new Thickness(0, 0, 0, 8)
+                });
+            }
+
+            // ── VALUE EDIT ROW ────────────────────────────────────────────────
+            var editGrid = new Grid();
+            editGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            editGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            editGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            editGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            editGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            // Value Input
+            var valueBox = new TextBox
+            {
+                Height = 28,
+                FontSize = 12,
+                Margin = new Thickness(0, 0, 6, 0),
+                Text = isRevealed ? v.Value : MaskValue(v.Value)
+            };
+            if (!isRevealed)
+            {
+                valueBox.GotFocus += (s, e) =>
+                {
+                    valueBox.Text = v.Value;
+                };
+                valueBox.LostFocus += (s, e) =>
+                {
+                    if (!_revealedVariables.Contains(v.Name) && string.Equals(valueBox.Text, v.Value, StringComparison.Ordinal))
+                        valueBox.Text = MaskValue(v.Value);
+                };
+            }
+            Grid.SetColumn(valueBox, 0);
+            editGrid.Children.Add(valueBox);
+
+            // Reveal/Hide Eye Toggle
+            var revealBtn = new Button
+            {
+                Content = isRevealed ? "🔒" : "👁",
+                ToolTip = isRevealed ? "Mask Value" : "Reveal Value",
+                Style = (Style)FindResource("IconButton"),
+                Padding = new Thickness(8, 4, 8, 4),
+                Margin = new Thickness(0, 0, 4, 0),
+                FontSize = 11
+            };
+            revealBtn.Click += (s, e) =>
+            {
+                if (_revealedVariables.Contains(v.Name))
+                    _revealedVariables.Remove(v.Name);
+                else
+                    _revealedVariables.Add(v.Name);
+
+                RenderTestEnvVarsSettingsList();
+            };
+            Grid.SetColumn(revealBtn, 1);
+            editGrid.Children.Add(revealBtn);
+
+            // Copy Button
+            var copyBtn = new Button
+            {
+                Content = "📋",
+                ToolTip = "Copy to Clipboard",
+                Style = (Style)FindResource("IconButton"),
+                Padding = new Thickness(8, 4, 8, 4),
+                Margin = new Thickness(0, 0, 4, 0),
+                FontSize = 11
+            };
+            copyBtn.Click += (s, e) =>
+            {
+                try
+                {
+                    Clipboard.SetText(v.Value);
+                    ToastEngine.Success("Copied", $"Copied {v.Name} value to clipboard.");
+                }
+                catch { }
+            };
+            Grid.SetColumn(copyBtn, 2);
+            editGrid.Children.Add(copyBtn);
+
+            // Save Button
+            var saveBtn = new Button
+            {
+                Content = "Save",
+                Style = (Style)FindResource("PrimaryButton"),
+                Padding = new Thickness(14, 4, 14, 4),
+                Margin = new Thickness(0, 0, 4, 0),
+                FontSize = 11
+            };
+            saveBtn.Click += (s, e) =>
+            {
+                var newVal = valueBox.Text.Trim();
+                var set = BuildConsoleSettings.Load();
+                var match = set.TestEnvironmentVariables.Find(x => string.Equals(x.Name, v.Name, StringComparison.OrdinalIgnoreCase));
+                if (match != null)
+                {
+                    match.Value = newVal;
+                    if (!string.Equals(newVal, TestManifestVariableScanner.AutoDefaultValue, StringComparison.Ordinal) && !string.IsNullOrEmpty(newVal))
+                        match.NeedsReview = false;
+                    set.Save();
+                    ToastEngine.Success("Saved", $"Updated {v.Name}.");
+                    ActivityLog.Log(TestManifestVariableScanner.Channel, $"saved {v.Name}");
+                    RenderCategoryChips();
+                    RenderTestEnvVarsSettingsList();
+                    UpdateHealthDashboard();
+                }
+            };
+            Grid.SetColumn(saveBtn, 3);
+            editGrid.Children.Add(saveBtn);
+
+            // Delete Button
+            var deleteBtn = new Button
+            {
+                Content = "🗑",
+                ToolTip = "Delete Variable",
+                Style = (Style)FindResource("IconButton"),
+                Padding = new Thickness(8, 4, 8, 4),
+                FontSize = 11
+            };
+            deleteBtn.Click += (s, e) =>
+            {
+                var set = BuildConsoleSettings.Load();
+                set.TestEnvironmentVariables.RemoveAll(x => string.Equals(x.Name, v.Name, StringComparison.OrdinalIgnoreCase));
+                set.Save();
+                ToastEngine.Success("Removed", $"Deleted {v.Name}.");
+                ActivityLog.Log(TestManifestVariableScanner.Channel, $"removed {v.Name}");
+                RenderCategoryChips();
+                RenderTestEnvVarsSettingsList();
+                UpdateHealthDashboard();
+            };
+            Grid.SetColumn(deleteBtn, 4);
+            editGrid.Children.Add(deleteBtn);
+
+            mainStack.Children.Add(editGrid);
+            card.Child = mainStack;
+            return card;
+        }
+
+        private static string MaskValue(string? value)
+        {
+            if (string.IsNullOrEmpty(value) || value == TestManifestVariableScanner.AutoDefaultValue)
+                return value ?? "";
+            if (value.Length <= 4) return new string('•', value.Length);
+            return value.Substring(0, 2) + new string('•', Math.Min(value.Length - 2, 8));
+        }
+
+        private void BtnAddTestEnvVar_Click(object sender, RoutedEventArgs e)
+        {
+            var name = TestEnvVarNameBox.Text.Trim();
+            var value = TestEnvVarValueBox.Text.Trim();
+            if (string.IsNullOrWhiteSpace(name)) return;
+
+            var settings = BuildConsoleSettings.Load();
+            var existing = settings.TestEnvironmentVariables.Find(x => string.Equals(x.Name, name, StringComparison.OrdinalIgnoreCase));
+            if (existing != null)
+            {
+                existing.Value = value;
+                if (!string.Equals(value, TestManifestVariableScanner.AutoDefaultValue, StringComparison.Ordinal))
+                    existing.NeedsReview = false;
+            }
+            else
+            {
+                settings.TestEnvironmentVariables.Add(new TestEnvVar { Name = name, Value = value, NeedsReview = false });
+            }
+
+            settings.Save();
+            TestEnvVarNameBox.Text = "";
+            TestEnvVarValueBox.Text = "";
+            AddVarCard.Visibility = Visibility.Collapsed;
+
+            ToastEngine.Success("Added", $"Saved variable {name}.");
+            RenderCategoryChips();
+            RenderTestEnvVarsSettingsList();
+            UpdateHealthDashboard();
+        }
+
+        private void BtnCancelAddVar_Click(object sender, RoutedEventArgs e)
+        {
+            TestEnvVarNameBox.Text = "";
+            TestEnvVarValueBox.Text = "";
+            AddVarCard.Visibility = Visibility.Collapsed;
+        }
+
+        // ══════════════════════════════════════════════════════════════════════
+        // CREDENTIALS & INTEGRATIONS
+        // ══════════════════════════════════════════════════════════════════════
         private void BtnSaveGitHubPat_Click(object sender, RoutedEventArgs e)
         {
             var settings = BuildConsoleSettings.Load();
             settings.GitHubPat = GitHubPatBox.Password.Trim();
             settings.Save();
-            GitHubPatSavedText.Text = "Saved.";
+            GitHubPatSavedText.Text = "GitHub PAT saved successfully.";
+            UpdateHealthDashboard();
         }
 
-        // ── SETTINGS: Zoho API Token (Git #880) ──────────────────────────────
         private void BtnSaveZohoApiToken_Click(object sender, RoutedEventArgs e)
         {
             var settings = BuildConsoleSettings.Load();
             settings.ZohoApiToken = ZohoApiTokenBox.Password.Trim();
             settings.Save();
-            ZohoApiTokenSavedText.Text = "Saved.";
+            ZohoApiTokenSavedText.Text = "Zoho API token saved successfully.";
+            UpdateHealthDashboard();
         }
 
-        // ── SETTINGS: New Chat Project URL for epic right-click (Git #922) ────
         private void BtnSaveEpicChatProjectUrl_Click(object sender, RoutedEventArgs e)
         {
             var settings = BuildConsoleSettings.Load();
             settings.EpicChatProjectUrl = EpicChatProjectUrlBox.Text.Trim();
             settings.Save();
-            EpicChatProjectUrlSavedText.Text = "Saved.";
+            EpicChatProjectUrlSavedText.Text = "Project URL saved.";
         }
 
-        // ── SETTINGS: Replit Idle Watcher (Git #902) ─────────────────────────
         private void BtnSaveReplitWatcher_Click(object sender, RoutedEventArgs e)
         {
             var settings = BuildConsoleSettings.Load();
-
             settings.ReplitWatcherEnabled = ReplitWatcherEnabledCheck.IsChecked == true;
 
             if (int.TryParse(ReplitWatcherIntervalBox.Text.Trim(), out var mins) && mins >= 1)
@@ -156,19 +818,17 @@ namespace BuildConsole.Controls
             if (!string.IsNullOrWhiteSpace(ws)) settings.ReplitWorkspaceUrl = ws;
 
             settings.Save();
-            ReplitWatcherSavedText.Text = "Saved.";
+            ReplitWatcherSavedText.Text = "Watcher settings saved.";
             ActivityLog.Log("replit-watcher",
                 $"Settings saved — enabled={settings.ReplitWatcherEnabled}, every {settings.ReplitWatcherIntervalMinutes} min, selector='{settings.ReplitRunButtonSelector}'.");
 
-            // Let MainWindow re-apply live (start/stop, new interval) without a restart.
+            UpdateHealthDashboard();
             ReplitWatcherSettingsChanged?.Invoke(this, EventArgs.Empty);
         }
 
-        // ── SETTINGS: LinkedIn post pre-fill (Git #973) ──────────────────────
         private void BtnSaveLinkedIn_Click(object sender, RoutedEventArgs e)
         {
             var settings = BuildConsoleSettings.Load();
-
             var selector = LinkedInComposerSelectorBox.Text.Trim();
             if (!string.IsNullOrWhiteSpace(selector))
                 settings.LinkedInComposerSelector = selector;
@@ -178,16 +838,12 @@ namespace BuildConsole.Controls
                 settings.LinkedInComposeUrl = url;
 
             settings.Save();
-            LinkedInSavedText.Text = "Saved.";
-            ActivityLog.Log("linkedin.prefill",
-                $"settings saved — selector='{settings.LinkedInComposerSelector}', url='{settings.LinkedInComposeUrl}'.");
+            LinkedInSavedText.Text = "LinkedIn settings saved.";
         }
 
-        // ── SETTINGS: Scheduled regression runs (Git #967) ───────────────────
         private void BtnSaveScheduledRun_Click(object sender, RoutedEventArgs e)
         {
             var settings = BuildConsoleSettings.Load();
-
             settings.ScheduledRegressionEnabled = ScheduledRunEnabledCheck.IsChecked == true;
 
             if (int.TryParse(ScheduledRunIntervalBox.Text.Trim(), out var hours) && hours >= 1)
@@ -196,15 +852,14 @@ namespace BuildConsole.Controls
             settings.PushOnRegressionFailure = ScheduledRunPushCheck.IsChecked == true;
 
             settings.Save();
-            ScheduledRunSavedText.Text = "Saved.";
-            ActivityLog.Log("testing.scheduled-run",
-                $"Settings saved — enabled={settings.ScheduledRegressionEnabled}, every {settings.ScheduledRegressionIntervalHours}h, push-on-failure={settings.PushOnRegressionFailure}.");
-
-            // Let MainWindow re-apply live (arm/disarm, new interval) without a restart.
+            ScheduledRunSavedText.Text = "Schedule saved.";
+            UpdateHealthDashboard();
             ScheduleSettingsChanged?.Invoke(this, EventArgs.Empty);
         }
 
-        // ── SETTINGS: Web Tools (Git #864) ───────────────────────────────────
+        // ══════════════════════════════════════════════════════════════════════
+        // WEB TOOLS
+        // ══════════════════════════════════════════════════════════════════════
         private int _editingWebToolIndex = -1;
 
         private void RenderWebToolsSettingsList()
@@ -215,7 +870,7 @@ namespace BuildConsole.Controls
             for (int i = 0; i < settings.WebTools.Count; i++)
             {
                 var tool = settings.WebTools[i];
-                var row = new Grid { Margin = new Thickness(0, 0, 0, 4) };
+                var row = new Grid { Margin = new Thickness(0, 0, 0, 6) };
                 row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
                 row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
                 row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -223,7 +878,7 @@ namespace BuildConsole.Controls
                 var label = new TextBlock
                 {
                     Text = string.IsNullOrWhiteSpace(tool.Icon) ? $"{tool.Name} — {tool.Url}" : $"{tool.Icon} {tool.Name} — {tool.Url}",
-                    FontSize = 11,
+                    FontSize = 11.5,
                     TextTrimming = TextTrimming.CharacterEllipsis,
                     VerticalAlignment = VerticalAlignment.Center,
                     Foreground = (Brush)FindResource("TextBrush")
@@ -234,7 +889,7 @@ namespace BuildConsole.Controls
                 var editBtn = new Button
                 {
                     Content = "✏", FontSize = 10, Style = (Style)FindResource("IconButton"),
-                    Padding = new Thickness(4, 1, 4, 1), Margin = new Thickness(4, 0, 0, 0), Tag = i
+                    Padding = new Thickness(6, 2, 6, 2), Margin = new Thickness(4, 0, 0, 0), Tag = i
                 };
                 editBtn.Click += BtnEditWebTool_Click;
                 Grid.SetColumn(editBtn, 1);
@@ -243,7 +898,7 @@ namespace BuildConsole.Controls
                 var removeBtn = new Button
                 {
                     Content = "✕", FontSize = 10, Style = (Style)FindResource("IconButton"),
-                    Padding = new Thickness(4, 1, 4, 1), Margin = new Thickness(4, 0, 0, 0), Tag = i
+                    Padding = new Thickness(6, 2, 6, 2), Margin = new Thickness(4, 0, 0, 0), Tag = i
                 };
                 removeBtn.Click += BtnRemoveWebTool_Click;
                 Grid.SetColumn(removeBtn, 2);
@@ -273,10 +928,8 @@ namespace BuildConsole.Controls
             var settings = BuildConsoleSettings.Load();
             if (index < 0 || index >= settings.WebTools.Count) return;
 
-            var removed = settings.WebTools[index];
             settings.WebTools.RemoveAt(index);
             settings.Save();
-            ActivityLog.Log("web-tools.settings", $"removed \"{removed.Name}\"");
 
             _editingWebToolIndex = -1;
             BtnAddWebTool.Content = "Add Web Tool";
@@ -291,23 +944,19 @@ namespace BuildConsole.Controls
             if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(url)) return;
 
             var settings = BuildConsoleSettings.Load();
-
             if (_editingWebToolIndex >= 0 && _editingWebToolIndex < settings.WebTools.Count)
             {
                 var tool = settings.WebTools[_editingWebToolIndex];
                 tool.Name = name;
                 tool.Url = url;
                 tool.Icon = icon;
-                ActivityLog.Log("web-tools.settings", $"edited \"{name}\"");
             }
             else
             {
                 settings.WebTools.Add(new WebToolEntry { Name = name, Url = url, Icon = icon });
-                ActivityLog.Log("web-tools.settings", $"added \"{name}\"");
             }
 
             settings.Save();
-
             _editingWebToolIndex = -1;
             BtnAddWebTool.Content = "Add Web Tool";
             WebToolNameBox.Text = "";
@@ -316,229 +965,9 @@ namespace BuildConsole.Controls
             RenderWebToolsSettingsList();
         }
 
-        // ── SETTINGS: Test Environment Variables (Git #953) ──────────────────
-        // Add/edit/remove NAME=value pairs the manifest runner resolves {{NAME}}
-        // against (TestRunVariables.SeedConfigVariables). Same render/edit/remove
-        // shape as Web Tools above, values masked in the list since they're often
-        // secrets (TEST_PORTAL_PASSWORD etc).
-        private int _editingTestEnvVarIndex = -1;
-
-        private const string TestEnvVarsChannel = "testing.config-vars";
-
-        /// <summary>Git #961 — run the manifest scanner (auto-fills any newly-discovered
-        /// {{NAME}} placeholder with a &lt;unset&gt; default + needsReview flag, never touching
-        /// values Shane already set), then re-render the list. Called from the constructor,
-        /// from ScrollToSection when the Test Environment section opens, and from the "Rescan
-        /// Manifests" button. When <paramref name="showStatus"/>, writes a one-line result to
-        /// the status label next to the button.</summary>
-        private void RunManifestVariableScan(bool showStatus)
-        {
-            var settings = BuildConsoleSettings.Load();
-            ManifestVariableScanResult result;
-            try
-            {
-                result = TestManifestVariableScanner.Scan(settings);
-            }
-            catch (Exception ex)
-            {
-                // A scan failure must never take the Settings tab down — log and carry on
-                // showing whatever is already stored.
-                ActivityLog.Log(TestEnvVarsChannel, $"manifest scan failed: {ex.Message}");
-                if (showStatus && TestEnvScanStatusText != null)
-                    TestEnvScanStatusText.Text = "Scan failed — see Activity log.";
-                RenderTestEnvVarsSettingsList();
-                return;
-            }
-
-            RenderTestEnvVarsSettingsList();
-            if (showStatus && TestEnvScanStatusText != null)
-                TestEnvScanStatusText.Text = result.SummaryLine;
-        }
-
-        private void BtnRescanManifests_Click(object sender, RoutedEventArgs e)
-            => RunManifestVariableScan(showStatus: true);
-
-        private void RenderTestEnvVarsSettingsList()
-        {
-            var settings = BuildConsoleSettings.Load();
-            TestEnvVarsSettingsList.Children.Clear();
-
-            for (int i = 0; i < settings.TestEnvironmentVariables.Count; i++)
-            {
-                var v = settings.TestEnvironmentVariables[i];
-                var row = new Grid { Margin = new Thickness(0, 0, 0, 4) };
-                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-                row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-                row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-                // Git #961 — an unreviewed (auto-added) row announces itself: the value is shown
-                // in full (it's the harmless <unset> default, not a secret) alongside an orange
-                // "NEEDS REVIEW" tag and a plain-language "set X properly - current default is Y"
-                // line, matching #874's PeachBrush warning-color convention. Reviewed rows keep
-                // the masked NAME = •••••• single-line label (values there are often secrets).
-                var labelStack = new StackPanel { Orientation = Orientation.Vertical, VerticalAlignment = VerticalAlignment.Center };
-                Grid.SetColumn(labelStack, 0);
-
-                if (v.NeedsReview)
-                {
-                    var header = new StackPanel { Orientation = Orientation.Horizontal };
-                    header.Children.Add(new TextBlock
-                    {
-                        Text = $"{v.Name} = {v.Value}",
-                        FontSize = 11,
-                        TextTrimming = TextTrimming.CharacterEllipsis,
-                        VerticalAlignment = VerticalAlignment.Center,
-                        Foreground = (Brush)FindResource("TextBrush")
-                    });
-                    header.Children.Add(new Border
-                    {
-                        Background = (Brush)FindResource("PeachBrush"),
-                        CornerRadius = new CornerRadius(3),
-                        Padding = new Thickness(5, 1, 5, 1),
-                        Margin = new Thickness(8, 0, 0, 0),
-                        VerticalAlignment = VerticalAlignment.Center,
-                        Child = new TextBlock
-                        {
-                            Text = "NEEDS REVIEW",
-                            FontSize = 9,
-                            FontWeight = FontWeights.Bold,
-                            Foreground = (Brush)FindResource("CrustBrush")
-                        }
-                    });
-                    labelStack.Children.Add(header);
-                    labelStack.Children.Add(new TextBlock
-                    {
-                        Text = $"set {v.Name} properly — current default is {v.Value}",
-                        FontSize = 10,
-                        TextWrapping = TextWrapping.Wrap,
-                        Margin = new Thickness(0, 1, 0, 0),
-                        Foreground = (Brush)FindResource("PeachBrush")
-                    });
-                }
-                else
-                {
-                    labelStack.Children.Add(new TextBlock
-                    {
-                        Text = $"{v.Name} = {MaskValue(v.Value)}",
-                        FontSize = 11,
-                        TextTrimming = TextTrimming.CharacterEllipsis,
-                        VerticalAlignment = VerticalAlignment.Center,
-                        Foreground = (Brush)FindResource("TextBrush")
-                    });
-                }
-                row.Children.Add(labelStack);
-
-                var editBtn = new Button
-                {
-                    Content = "✏", FontSize = 10, Style = (Style)FindResource("IconButton"),
-                    Padding = new Thickness(4, 1, 4, 1), Margin = new Thickness(4, 0, 0, 0), Tag = i
-                };
-                editBtn.Click += BtnEditTestEnvVar_Click;
-                Grid.SetColumn(editBtn, 1);
-                row.Children.Add(editBtn);
-
-                var removeBtn = new Button
-                {
-                    Content = "✕", FontSize = 10, Style = (Style)FindResource("IconButton"),
-                    Padding = new Thickness(4, 1, 4, 1), Margin = new Thickness(4, 0, 0, 0), Tag = i
-                };
-                removeBtn.Click += BtnRemoveTestEnvVar_Click;
-                Grid.SetColumn(removeBtn, 2);
-                row.Children.Add(removeBtn);
-
-                TestEnvVarsSettingsList.Children.Add(row);
-            }
-        }
-
-        /// <summary>Never render a stored secret in full — show a short masked preview only.</summary>
-        private static string MaskValue(string? value)
-        {
-            if (string.IsNullOrEmpty(value)) return "(empty)";
-            if (value.Length <= 4) return new string('•', value.Length);
-            return value.Substring(0, 2) + new string('•', Math.Min(value.Length - 2, 8));
-        }
-
-        private void BtnEditTestEnvVar_Click(object sender, RoutedEventArgs e)
-        {
-            if (sender is not Button btn || btn.Tag is not int index) return;
-            var settings = BuildConsoleSettings.Load();
-            if (index < 0 || index >= settings.TestEnvironmentVariables.Count) return;
-
-            var v = settings.TestEnvironmentVariables[index];
-            TestEnvVarNameBox.Text = v.Name;
-            TestEnvVarValueBox.Text = v.Value;
-            _editingTestEnvVarIndex = index;
-            BtnAddTestEnvVar.Content = "Save Changes";
-        }
-
-        private void BtnRemoveTestEnvVar_Click(object sender, RoutedEventArgs e)
-        {
-            if (sender is not Button btn || btn.Tag is not int index) return;
-            var settings = BuildConsoleSettings.Load();
-            if (index < 0 || index >= settings.TestEnvironmentVariables.Count) return;
-
-            var removed = settings.TestEnvironmentVariables[index];
-            settings.TestEnvironmentVariables.RemoveAt(index);
-            settings.Save();
-            ActivityLog.Log(TestEnvVarsChannel, $"removed \"{removed.Name}\"");
-
-            _editingTestEnvVarIndex = -1;
-            BtnAddTestEnvVar.Content = "Add Variable";
-            TestEnvVarNameBox.Text = "";
-            TestEnvVarValueBox.Text = "";
-            RenderTestEnvVarsSettingsList();
-        }
-
-        private void BtnAddTestEnvVar_Click(object sender, RoutedEventArgs e)
-        {
-            var name = TestEnvVarNameBox.Text.Trim();
-            var value = TestEnvVarValueBox.Text;
-            if (string.IsNullOrWhiteSpace(name)) return;
-
-            var settings = BuildConsoleSettings.Load();
-
-            if (_editingTestEnvVarIndex >= 0 && _editingTestEnvVarIndex < settings.TestEnvironmentVariables.Count)
-            {
-                var v = settings.TestEnvironmentVariables[_editingTestEnvVarIndex];
-                v.Name = name;
-                v.Value = value;
-                // Git #961 — editing the value away from the auto-generated <unset> default
-                // clears the needs-review flag automatically.
-                if (!string.Equals(value, TestManifestVariableScanner.AutoDefaultValue, StringComparison.Ordinal))
-                    v.NeedsReview = false;
-                ActivityLog.Log(TestEnvVarsChannel, $"edited \"{name}\"");
-            }
-            else
-            {
-                // A repeat NAME edits the existing entry in place rather than adding a
-                // duplicate — SeedConfigVariables would let the last one win anyway, but
-                // keeping the store clean avoids a confusing double row in the list.
-                var existing = settings.TestEnvironmentVariables.Find(x => string.Equals(x.Name, name, StringComparison.Ordinal));
-                if (existing != null)
-                {
-                    existing.Value = value;
-                    // Git #961 — same auto-clear as the edit path above.
-                    if (!string.Equals(value, TestManifestVariableScanner.AutoDefaultValue, StringComparison.Ordinal))
-                        existing.NeedsReview = false;
-                    ActivityLog.Log(TestEnvVarsChannel, $"updated \"{name}\"");
-                }
-                else
-                {
-                    settings.TestEnvironmentVariables.Add(new TestEnvVar { Name = name, Value = value });
-                    ActivityLog.Log(TestEnvVarsChannel, $"added \"{name}\"");
-                }
-            }
-
-            settings.Save();
-
-            _editingTestEnvVarIndex = -1;
-            BtnAddTestEnvVar.Content = "Add Variable";
-            TestEnvVarNameBox.Text = "";
-            TestEnvVarValueBox.Text = "";
-            RenderTestEnvVarsSettingsList();
-        }
-
-        // ── SETTINGS: Build completion sound ─────────────────────────────────
+        // ══════════════════════════════════════════════════════════════════════
+        // BUILD SOUND
+        // ══════════════════════════════════════════════════════════════════════
         private System.Windows.Media.MediaPlayer? _testSoundPlayer;
 
         private void BtnBrowseBuildSound_Click(object sender, RoutedEventArgs e)
@@ -549,7 +978,9 @@ namespace BuildConsole.Controls
                 Title = "Choose Build Completion Sound",
             };
             if (dialog.ShowDialog() == true)
+            {
                 BuildSoundPathBox.Text = dialog.FileName;
+            }
         }
 
         private void BtnSaveBuildSound_Click(object sender, RoutedEventArgs e)
@@ -557,8 +988,7 @@ namespace BuildConsole.Controls
             var settings = BuildConsoleSettings.Load();
             settings.BuildCompleteSoundPath = BuildSoundPathBox.Text.Trim();
             settings.Save();
-            BuildSoundSavedText.Text = "Saved.";
-            ActivityLog.Log("build-sound", $"completion sound path set to '{(string.IsNullOrWhiteSpace(settings.BuildCompleteSoundPath) ? "(bundled default)" : settings.BuildCompleteSoundPath)}'.");
+            BuildSoundSavedText.Text = "Sound preference saved.";
         }
 
         private void BtnResetBuildSound_Click(object sender, RoutedEventArgs e)
@@ -567,38 +997,28 @@ namespace BuildConsole.Controls
             var settings = BuildConsoleSettings.Load();
             settings.BuildCompleteSoundPath = "";
             settings.Save();
-            BuildSoundSavedText.Text = "Reset to bundled default.";
-            ActivityLog.Log("build-sound", "completion sound path reset to bundled default.");
+            BuildSoundSavedText.Text = "Reset to bundled default sound.";
         }
 
         private void BtnTestBuildSound_Click(object sender, RoutedEventArgs e)
         {
-            // Test-play the path currently in the box (even if unsaved), not
-            // whatever's already persisted, so Browse -> Test previews before Save.
-            var candidate = BuildSoundPathBox.Text.Trim();
-            var path = string.IsNullOrWhiteSpace(candidate)
-                ? BuildCompletionSoundService.ResolveSoundPath(new BuildConsoleSettings())
-                : (System.IO.File.Exists(candidate) ? candidate : null);
-
-            if (path == null)
-            {
-                BuildSoundSavedText.Text = "File not found.";
-                return;
-            }
-
             try
             {
-                // Kept as a field, not a local — a local MediaPlayer can be garbage
-                // collected mid-playback since nothing else references it, cutting
-                // the test sound short.
-                _testSoundPlayer ??= new System.Windows.Media.MediaPlayer();
-                _testSoundPlayer.Open(new Uri(path, UriKind.Absolute));
-                _testSoundPlayer.Play();
+                var settings = BuildConsoleSettings.Load();
+                var path = BuildSoundPathBox.Text.Trim();
+                if (string.IsNullOrEmpty(path)) path = BuildCompletionSoundService.ResolveSoundPath(settings) ?? "";
+
+                if (!string.IsNullOrEmpty(path) && System.IO.File.Exists(path))
+                {
+                    _testSoundPlayer?.Close();
+                    _testSoundPlayer = new System.Windows.Media.MediaPlayer();
+                    _testSoundPlayer.Open(new Uri(path, UriKind.Absolute));
+                    _testSoundPlayer.Play();
+                }
             }
             catch (Exception ex)
             {
-                ActivityLog.Log("build-sound", $"Test playback failed ({path}): {ex.Message}");
-                BuildSoundSavedText.Text = "Couldn't play — see Activity log.";
+                BuildSoundSavedText.Text = $"Couldn't play sound: {ex.Message}";
             }
         }
     }

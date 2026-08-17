@@ -61,6 +61,9 @@ namespace BuildConsole.Controls
             "Untangling the git history…",
             "Polishing the pixels…",
             "Waking the dev server…",
+            "Calibrating ADHD focus shields…",
+            "Spinning up the Claude companion…",
+            "Checking test manifests…",
             "Counting the deploys…",
             "Bribing the rate limiter…",
         };
@@ -82,11 +85,14 @@ namespace BuildConsole.Controls
             ConnectionList.Children.Clear();
             _rows.Clear();
 
+            ProgressCounterText.Text = $"0/{connections.Count} ready";
+            ProgressBarFill.Width = 0;
+
             foreach (var c in connections)
             {
-                var grid = new Grid { Margin = new Thickness(0, 3, 0, 3) };
+                var grid = new Grid { Margin = new Thickness(0, 2.5, 0, 2.5) };
                 grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(18) });
-                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(126) });
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(145) });
                 grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
                 grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
@@ -103,7 +109,8 @@ namespace BuildConsole.Controls
                 {
                     Text = c.Label,
                     Foreground = Text,
-                    FontSize = 12,
+                    FontSize = 11.5,
+                    FontWeight = FontWeights.Medium,
                     VerticalAlignment = VerticalAlignment.Center
                 };
                 Grid.SetColumn(label, 1);
@@ -176,6 +183,25 @@ namespace BuildConsole.Controls
             row.Elapsed.Text = c.Elapsed.HasValue && c.State != StartupConnectionState.Skipped
                 ? FormatElapsed(c.Elapsed.Value)
                 : "";
+
+            // Update overall progress bar & counter
+            int settled = 0;
+            foreach (var r in _rows.Values)
+            {
+                if (r.Dot.Fill == Green || r.Dot.Fill == Yellow || r.Dot.Fill == Red || r.Label.Opacity < 0.9)
+                    settled++;
+            }
+
+            ProgressCounterText.Text = $"{settled}/{_rows.Count} ready";
+            if (_rows.Count > 0)
+            {
+                double targetWidth = ((double)settled / _rows.Count) * 454;
+                var anim = new DoubleAnimation(targetWidth, TimeSpan.FromMilliseconds(250))
+                {
+                    EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+                };
+                ProgressBarFill.BeginAnimation(FrameworkElement.WidthProperty, anim);
+            }
         }
 
         private static string StateWord(StartupConnectionState s) => s switch

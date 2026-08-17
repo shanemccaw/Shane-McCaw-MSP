@@ -6,6 +6,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Documents;
+using System.Threading.Tasks;
 using BuildConsole.Services;
 
 namespace BuildConsole.Controls
@@ -49,13 +50,18 @@ namespace BuildConsole.Controls
         /// </summary>
         public event EventHandler<int>? OpenIssueNumberRequested;
 
+        /// <summary>
+        /// Raised when the user clicks the quick link to open or create a Claude chat for this Epic.
+        /// </summary>
+        public event EventHandler<int>? OpenOrCreateEpicChatRequested;
+
         public GitDetailView()
         {
             _root = new Grid { Margin = new Thickness(18, 16, 18, 24) };
             _root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            _root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(350) });
+            _root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(0) });
 
-            _mainColumn = new StackPanel { Margin = new Thickness(0, 0, 24, 0) };
+            _mainColumn = new StackPanel { Margin = new Thickness(0) };
             Grid.SetColumn(_mainColumn, 0);
 
             _sideColumn = new StackPanel { Visibility = Visibility.Collapsed };
@@ -72,12 +78,28 @@ namespace BuildConsole.Controls
             };
         }
 
+        private void SetSideColumnVisibility(bool visible, double sideWidth = 280)
+        {
+            if (visible)
+            {
+                _root.ColumnDefinitions[1].Width = new GridLength(sideWidth);
+                _mainColumn.Margin = new Thickness(0, 0, 16, 0);
+                _sideColumn.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                _root.ColumnDefinitions[1].Width = new GridLength(0);
+                _mainColumn.Margin = new Thickness(0);
+                _sideColumn.Visibility = Visibility.Collapsed;
+            }
+        }
+
         // ── Milestone tab ──────────────────────────────────────────────────
         public void LoadMilestone(GitMilestone m)
         {
             _mainColumn.Children.Clear();
             _sideColumn.Children.Clear();
-            _sideColumn.Visibility = Visibility.Visible;
+            SetSideColumnVisibility(true, 300);
             AddHeaderRow("🎯", m.Title, m.GithubNumber);
 
             if (m.HasRealCounts)
@@ -113,13 +135,56 @@ namespace BuildConsole.Controls
         }
 
         // ── Epic tab ───────────────────────────────────────────────────────
-        public async void LoadEpic(GitIssue epic, ISet<int> todoNumbers)
+        public async void LoadEpic(GitIssue epic, ISet<int> todoNumbers, BoardChat? linkedChat = null)
         {
             _mainColumn.Children.Clear();
             _sideColumn.Children.Clear();
-            _sideColumn.Visibility = Visibility.Visible;
+            SetSideColumnVisibility(true, 280);
             AddHeaderRow("⚡", DisplayTitle(epic), epic.IssueNumber);
-            _mainColumn.Children.Add(StatePill(epic.Status));
+
+            var actionsRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 14) };
+            actionsRow.Children.Add(StatePill(epic.Status));
+
+            int capturedEpicNumber = epic.IssueNumber;
+            if (linkedChat != null && !string.IsNullOrEmpty(linkedChat.ClaudeUrl))
+            {
+                var chatBtn = new Button
+                {
+                    Content = $"💬 Open Assigned Chat ({(!string.IsNullOrEmpty(linkedChat.Title) ? linkedChat.Title : $"#{epic.IssueNumber}")})",
+                    Style = (Style)FindResource("PrimaryButton"),
+                    Height = 28,
+                    Padding = new Thickness(12, 0, 12, 0),
+                    Margin = new Thickness(8, 0, 0, 0),
+                    FontSize = 11,
+                    FontWeight = FontWeights.SemiBold,
+                    Cursor = Cursors.Hand,
+                    ToolTip = $"Jump to Claude chat linked to Epic #{epic.IssueNumber}"
+                };
+                chatBtn.Click += (s, e) => OpenOrCreateEpicChatRequested?.Invoke(this, capturedEpicNumber);
+                actionsRow.Children.Add(chatBtn);
+            }
+            else
+            {
+                var newChatBtn = new Button
+                {
+                    Content = $"💬➕ Start Claude Chat (Epic #{epic.IssueNumber})",
+                    Height = 28,
+                    Padding = new Thickness(12, 0, 12, 0),
+                    Margin = new Thickness(8, 0, 0, 0),
+                    FontSize = 11,
+                    FontWeight = FontWeights.SemiBold,
+                    Cursor = Cursors.Hand,
+                    Background = (Brush)FindResource("Surface0Brush"),
+                    Foreground = (Brush)FindResource("BlueBrush"),
+                    BorderBrush = (Brush)FindResource("BlueBrush"),
+                    BorderThickness = new Thickness(1),
+                    ToolTip = $"Create a new Claude chat prefilled with PAT and Epic #{epic.IssueNumber}"
+                };
+                newChatBtn.Click += (s, e) => OpenOrCreateEpicChatRequested?.Invoke(this, capturedEpicNumber);
+                actionsRow.Children.Add(newChatBtn);
+            }
+
+            _mainColumn.Children.Add(actionsRow);
             AddBody(epic.Body);
 
             var loading = Meta($"Loading assigned issues for #{epic.IssueNumber}…");
@@ -225,6 +290,32 @@ namespace BuildConsole.Controls
         // ── Issue tab ──────────────────────────────────────────────────────
         public async void LoadIssue(GitIssue issue, int? linkedEpicNumber, string? linkedEpicTitle)
         {
+            // Resolve parent epic if not passed in
+            if (!linkedEpicNumber.HasValue && Application.Current.MainWindow is MainWindow mwForEpic)
+            {
+                var boardIssue = mwForEpic.LeftSidebar?.CurrentBoardIssues.FirstOrDefault(i => i.Number == issue.IssueNumber);
+                if (boardIssue?.ParentNumber != null)
+                {
+                    linkedEpicNumber = boardIssue.ParentNumber.Value;
+                    var parentEpic = mwForEpic.LeftSidebar?.CurrentBoardIssues.FirstOrDefault(i => i.Number == linkedEpicNumber.Value);
+                    linkedEpicTitle = parentEpic?.Title;
+                }
+            }
+
+            if (!linkedEpicNumber.HasValue && !string.IsNullOrWhiteSpace(issue.Body))
+            {
+                var m = System.Text.RegularExpressions.Regex.Match(issue.Body, @"(?:[Ee]pic|[Pp]art of|[Pp]arent|[Ss]ub-issue of)\s+#(\d+)");
+                if (m.Success && int.TryParse(m.Groups[1].Value, out var n))
+                {
+                    linkedEpicNumber = n;
+                    if (Application.Current.MainWindow is MainWindow mwForEpic2)
+                    {
+                        var parentEpic = mwForEpic2.LeftSidebar?.CurrentBoardIssues.FirstOrDefault(i => i.Number == n);
+                        linkedEpicTitle = parentEpic?.Title;
+                    }
+                }
+            }
+
             // Store for refresh.
             _loadedIssue = issue;
             _loadedLinkedEpicNumber = linkedEpicNumber;
@@ -260,85 +351,136 @@ namespace BuildConsole.Controls
             if (linkedEpicNumber.HasValue)
                 _mainColumn.Children.Add(LinkedEpicCard(linkedEpicNumber.Value, linkedEpicTitle));
 
-            // Pre-fetch migration run status so .sql links in the body and
-            // comments can show ✅/⚠️ inline without a second round-trip per link.
-            var executedMigrations = new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            if (Application.Current.MainWindow is MainWindow mainWinForMigrations &&
-                mainWinForMigrations.BuildTrackerApi != null &&
-                mainWinForMigrations.BuildTrackerApi.IsConfigured)
-            {
-                try
-                {
-                    var res = await mainWinForMigrations.BuildTrackerApi.ExecuteSqlAsync("SELECT filename FROM simulator_migration_runs");
-                    var stmt = res.FirstOrDefault();
-                    if (stmt != null && stmt.Rows != null)
-                    {
-                        foreach (var row in stmt.Rows)
-                        {
-                            if (row.TryGetValue("filename", out var val) && val.ValueKind != System.Text.Json.JsonValueKind.Null)
-                                executedMigrations.Add(val.GetString() ?? "");
-                        }
-                    }
-                }
-                catch { }
-            }
-
-            // Pre-fetch test history runs so test-manifests/*.json links show run status (never ran / passed / failed)
-            var latestTestRuns = new System.Collections.Generic.Dictionary<int, BuildConsole.Services.TestHistoryEntry>();
-            string? repoRoot = BuildConsole.Services.BuildTrackerConfig.FindRepoRoot();
-            if (repoRoot != null)
-            {
-                try
-                {
-                    var history = BuildConsole.Services.TestHistoryStore.ReadAll(repoRoot);
-                    foreach (var group in history.GroupBy(e => e.Issue))
-                    {
-                        latestTestRuns[group.Key] = group.OrderByDescending(e => e.StartedAt).First();
-                    }
-                }
-                catch { }
-            }
-
-            // Body comes straight from the board's in-memory GitIssue.Body
-            AddBody(issue.Body, executedMigrations, latestTestRuns);
-
-            // Populate side column with extracted SQL scripts and Test Manifests
-            RenderActionsColumn(_sideColumn, issue.Body, null, executedMigrations, latestTestRuns);
-            _sideColumn.Visibility = Visibility.Visible;
+            // 1. Immediately render in-memory body and initial actions column (0ms latency)
+            AddBody(issue.Body, _cachedExecutedMigrations, _cachedLatestTestRuns);
+            RenderActionsColumn(_sideColumn, issue.Body, null, _cachedExecutedMigrations, _cachedLatestTestRuns, _loadedLinkedEpicNumber, _loadedLinkedEpicTitle);
 
             var loading = Meta("Loading comments…");
             _mainColumn.Children.Add(loading);
 
-            var settings = BuildConsoleSettings.Load();
-            if (!settings.HasGitHubPat)
+            // 2. Offload migration status, test history, and comments to background task
+            _ = Task.Run(async () =>
             {
-                loading.Text = "No GitHub PAT configured — set one in Settings (cog icon / File > Settings).";
-                ActivityLog.Log(Channel, $"issue #{issue.IssueNumber}: no GitHub PAT configured");
-                return;
-            }
+                var executedMigrations = await GetOrFetchMigrationsAsync();
+                var latestTestRuns = await GetOrFetchTestHistoryAsync();
 
+                var settings = BuildConsoleSettings.Load();
+                List<GitHubIssueComment> comments = new();
+                string? errorMsg = null;
+
+                if (!settings.HasGitHubPat)
+                {
+                    errorMsg = "No GitHub PAT configured — set one in Settings (cog icon / File > Settings).";
+                }
+                else
+                {
+                    try
+                    {
+                        var client = new GitHubApiClient(settings.GitHubPat);
+                        comments = await client.GetIssueCommentsAsync(issue.IssueNumber);
+                    }
+                    catch (Exception ex)
+                    {
+                        errorMsg = $"Couldn't load comments for #{issue.IssueNumber}: {ex.Message}";
+                    }
+                }
+
+                Dispatcher.Invoke(() =>
+                {
+                    if (_loadedIssue?.IssueNumber != issue.IssueNumber) return;
+
+                    _mainColumn.Children.Remove(loading);
+
+                    if (errorMsg != null)
+                    {
+                        _mainColumn.Children.Add(Meta(errorMsg));
+                        return;
+                    }
+
+                    _mainColumn.Children.Add(SectionHeader($"COMMENTS ({comments.Count})", escalate: false));
+                    if (comments.Count == 0)
+                        _mainColumn.Children.Add(Meta("No comments yet."));
+
+                    foreach (var c in comments)
+                        _mainColumn.Children.Add(CommentCard(c, executedMigrations, latestTestRuns));
+
+                    // Re-populate side column with actions extracted from both body and comments
+                    RenderActionsColumn(_sideColumn, issue.Body, comments.Select(c => c.Body ?? ""), executedMigrations, latestTestRuns, _loadedLinkedEpicNumber, _loadedLinkedEpicTitle);
+
+                    ActivityLog.Log(Channel, $"issue #{issue.IssueNumber} opened ({comments.Count} comment(s))");
+                });
+            });
+        }
+
+        private static HashSet<string>? _cachedExecutedMigrations;
+        private static DateTime _migrationsCacheTime = DateTime.MinValue;
+
+        private static async Task<HashSet<string>> GetOrFetchMigrationsAsync()
+        {
+            if (_cachedExecutedMigrations != null && (DateTime.UtcNow - _migrationsCacheTime).TotalSeconds < 30)
+                return _cachedExecutedMigrations;
+
+            var migrations = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             try
             {
-                var client = new GitHubApiClient(settings.GitHubPat);
-                var comments = await client.GetIssueCommentsAsync(issue.IssueNumber);
-                _mainColumn.Children.Remove(loading);
+                if (Application.Current?.Dispatcher != null)
+                {
+                    BuildTrackerApiClient? api = null;
+                    Application.Current.Dispatcher.Invoke(() =>
+                    {
+                        if (Application.Current.MainWindow is MainWindow mw && mw.BuildTrackerApi != null && mw.BuildTrackerApi.IsConfigured)
+                            api = mw.BuildTrackerApi;
+                    });
 
-                _mainColumn.Children.Add(SectionHeader($"COMMENTS ({comments.Count})", escalate: false));
-                if (comments.Count == 0)
-                    _mainColumn.Children.Add(Meta("No comments yet."));
-                foreach (var c in comments)
-                    _mainColumn.Children.Add(CommentCard(c, executedMigrations, latestTestRuns));
-
-                // Re-populate side column with actions extracted from both body and comments
-                RenderActionsColumn(_sideColumn, issue.Body, comments.Select(c => c.Body ?? ""), executedMigrations, latestTestRuns);
-
-                ActivityLog.Log(Channel, $"issue #{issue.IssueNumber} opened ({comments.Count} comment(s))");
+                    if (api != null)
+                    {
+                        using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(2));
+                        var res = await api.ExecuteSqlAsync("SELECT filename FROM simulator_migration_runs");
+                        var stmt = res.FirstOrDefault();
+                        if (stmt != null && stmt.Rows != null)
+                        {
+                            foreach (var row in stmt.Rows)
+                            {
+                                if (row.TryGetValue("filename", out var val) && val.ValueKind != System.Text.Json.JsonValueKind.Null)
+                                    migrations.Add(val.GetString() ?? "");
+                            }
+                        }
+                    }
+                }
             }
-            catch (Exception ex)
+            catch { }
+
+            _cachedExecutedMigrations = migrations;
+            _migrationsCacheTime = DateTime.UtcNow;
+            return migrations;
+        }
+
+        private static Dictionary<int, BuildConsole.Services.TestHistoryEntry>? _cachedLatestTestRuns;
+        private static DateTime _testHistoryCacheTime = DateTime.MinValue;
+
+        private static Task<Dictionary<int, BuildConsole.Services.TestHistoryEntry>> GetOrFetchTestHistoryAsync()
+        {
+            if (_cachedLatestTestRuns != null && (DateTime.UtcNow - _testHistoryCacheTime).TotalSeconds < 30)
+                return Task.FromResult(_cachedLatestTestRuns);
+
+            var dict = new Dictionary<int, BuildConsole.Services.TestHistoryEntry>();
+            try
             {
-                loading.Text = $"Couldn't load comments for #{issue.IssueNumber}: {ex.Message}";
-                ActivityLog.Log(Channel, $"issue #{issue.IssueNumber} load FAILED: {ex.Message}");
+                string? repoRoot = BuildConsole.Services.BuildTrackerConfig.FindRepoRoot();
+                if (repoRoot != null)
+                {
+                    var history = BuildConsole.Services.TestHistoryStore.ReadAll(repoRoot);
+                    foreach (var group in history.GroupBy(e => e.Issue))
+                    {
+                        dict[group.Key] = group.OrderByDescending(e => e.StartedAt).First();
+                    }
+                }
             }
+            catch { }
+
+            _cachedLatestTestRuns = dict;
+            _testHistoryCacheTime = DateTime.UtcNow;
+            return Task.FromResult(dict);
         }
 
         // ── Section rendering ──────────────────────────────────────────────
@@ -643,6 +785,95 @@ namespace BuildConsole.Controls
             return border;
         }
 
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _resolvedPathCache = new(StringComparer.OrdinalIgnoreCase);
+
+        private static string? FastResolveFileInRepo(string repoRoot, string fileName)
+        {
+            if (string.IsNullOrWhiteSpace(fileName)) return null;
+            if (System.IO.Path.IsPathRooted(fileName) && System.IO.File.Exists(fileName))
+                return fileName;
+
+            if (_resolvedPathCache.TryGetValue(fileName, out var cached) && System.IO.File.Exists(cached))
+                return cached;
+
+            // 1. Direct path check relative to repoRoot
+            string direct = System.IO.Path.Combine(repoRoot, fileName);
+            if (System.IO.File.Exists(direct))
+            {
+                _resolvedPathCache[fileName] = direct;
+                return direct;
+            }
+
+            // 2. Check common subdirectories directly without recursive scanning
+            string justName = System.IO.Path.GetFileName(fileName);
+            var commonDirs = new[]
+            {
+                "client/src", "client/src/components", "client/src/pages", "client/src/lib", "client",
+                "server", "server/routes", "server/services",
+                "desktop/BuildConsole/Controls", "desktop/BuildConsole/Services", "desktop/BuildConsole", "desktop",
+                "src", "src/components", "src/pages", "src/services",
+                "migrations", "test-manifests", "scripts", "docs"
+            };
+
+            foreach (var rel in commonDirs)
+            {
+                string candidate = System.IO.Path.Combine(repoRoot, rel, fileName);
+                if (System.IO.File.Exists(candidate))
+                {
+                    _resolvedPathCache[fileName] = candidate;
+                    return candidate;
+                }
+                string candidateByName = System.IO.Path.Combine(repoRoot, rel, justName);
+                if (System.IO.File.Exists(candidateByName))
+                {
+                    _resolvedPathCache[fileName] = candidateByName;
+                    return candidateByName;
+                }
+            }
+
+            // 3. Fast shallow/pruned breadth-first search (skips node_modules, .git, bin, obj, etc.)
+            try
+            {
+                var ignoredDirs = new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ".git", "node_modules", "bin", "obj", ".vs", ".gemini", "dist", "build", ".next", ".cache", "tmp", "temp"
+                };
+
+                var queue = new System.Collections.Generic.Queue<string>();
+                queue.Enqueue(repoRoot);
+
+                while (queue.Count > 0)
+                {
+                    string currentDir = queue.Dequeue();
+                    try
+                    {
+                        foreach (var file in System.IO.Directory.EnumerateFiles(currentDir, justName))
+                        {
+                            if (System.IO.File.Exists(file))
+                            {
+                                _resolvedPathCache[fileName] = file;
+                                return file;
+                            }
+                        }
+
+                        foreach (var subDir in System.IO.Directory.EnumerateDirectories(currentDir))
+                        {
+                            string dirName = System.IO.Path.GetFileName(subDir);
+                            if (!ignoredDirs.Contains(dirName) && !dirName.StartsWith("."))
+                            {
+                                queue.Enqueue(subDir);
+                            }
+                        }
+                    }
+                    catch { }
+                }
+            }
+            catch { }
+
+            _resolvedPathCache[fileName] = direct;
+            return direct;
+        }
+
         private TextBlock CreateLinkedTextBlock(string? text, double fontSize, string foregroundKey, System.Collections.Generic.HashSet<string>? executedMigrations = null, System.Collections.Generic.Dictionary<int, BuildConsole.Services.TestHistoryEntry>? latestTestRuns = null)
         {
             var tb = new TextBlock
@@ -674,37 +905,13 @@ namespace BuildConsole.Controls
                 string fileName = match.Value;
                 Func<System.Threading.Tasks.Task<string>> resolvePathAsync = async () =>
                 {
-                    string fullPath = fileName;
-                    if (!System.IO.Path.IsPathRooted(fullPath))
-                    {
-                        var repoRoot = BuildConsole.Services.BuildTrackerConfig.FindRepoRoot();
-                        if (repoRoot != null)
-                        {
-                            string candidate = System.IO.Path.Combine(repoRoot, fileName);
-                            if (System.IO.File.Exists(candidate))
-                            {
-                                fullPath = candidate;
-                            }
-                            else
-                            {
-                                string targetName = System.IO.Path.GetFileName(fileName);
-                                try
-                                {
-                                    var found = await System.Threading.Tasks.Task.Run(() =>
-                                        System.IO.Directory.GetFiles(repoRoot, targetName, System.IO.SearchOption.AllDirectories)
-                                            .FirstOrDefault(f => !f.Contains("\\bin\\") && !f.Contains("\\obj\\") && !f.Contains("\\.git\\") && !f.Contains("\\node_modules\\"))
-                                    );
-                                    if (found != null) fullPath = found;
-                                    else fullPath = candidate;
-                                }
-                                catch
-                                {
-                                    fullPath = candidate;
-                                }
-                            }
-                        }
-                    }
-                    return fullPath;
+                    if (System.IO.Path.IsPathRooted(fileName) && System.IO.File.Exists(fileName))
+                        return fileName;
+
+                    var repoRoot = BuildConsole.Services.BuildTrackerConfig.FindRepoRoot();
+                    if (repoRoot == null) return fileName;
+
+                    return await System.Threading.Tasks.Task.Run(() => FastResolveFileInRepo(repoRoot, fileName) ?? fileName);
                 };
 
                 hyperlink.Click += async (s, e) =>
@@ -858,12 +1065,18 @@ namespace BuildConsole.Controls
             string? body, 
             IEnumerable<string>? commentBodies, 
             System.Collections.Generic.HashSet<string>? executedMigrations, 
-            System.Collections.Generic.Dictionary<int, BuildConsole.Services.TestHistoryEntry>? latestTestRuns)
+            System.Collections.Generic.Dictionary<int, BuildConsole.Services.TestHistoryEntry>? latestTestRuns,
+            int? linkedEpicNumber = null,
+            string? linkedEpicTitle = null)
         {
             target.Children.Clear();
 
             var allText = (body ?? "") + "\n" + string.Join("\n", commentBodies ?? Enumerable.Empty<string>());
-            if (string.IsNullOrWhiteSpace(allText)) return;
+            if (string.IsNullOrWhiteSpace(allText))
+            {
+                SetSideColumnVisibility(false);
+                return;
+            }
 
             var matches = System.Text.RegularExpressions.Regex.Matches(allText, @"(?:\w[\w\-\./\\]*)\.(?:sql|json)\b");
             var sqlFiles = new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -885,7 +1098,7 @@ namespace BuildConsole.Controls
 
             string? repoRoot = BuildConsole.Services.BuildTrackerConfig.FindRepoRoot();
 
-            // 1. Render Test Manifests section
+            // 1. Render Test Manifests section if present
             if (testManifests.Count > 0)
             {
                 target.Children.Add(SectionHeader($"🧪 TEST MANIFESTS ({testManifests.Count})", escalate: false));
@@ -896,7 +1109,7 @@ namespace BuildConsole.Controls
                 }
             }
 
-            // 2. Render SQL Migrations section
+            // 2. Render SQL Migrations section if present
             if (sqlFiles.Count > 0)
             {
                 target.Children.Add(SectionHeader($"🗄️ SQL MIGRATIONS ({sqlFiles.Count})", escalate: false));
@@ -907,26 +1120,91 @@ namespace BuildConsole.Controls
                 }
             }
 
+            // If no action cards, collapse side column completely so issue details get full width
             if (testManifests.Count == 0 && sqlFiles.Count == 0)
             {
-                var emptyBorder = new Border
-                {
-                    Background = GetBrush("MantleBrush"),
-                    BorderBrush = GetBrush("Surface0Brush"),
-                    BorderThickness = new Thickness(1),
-                    CornerRadius = new CornerRadius(4),
-                    Padding = new Thickness(12),
-                    Margin = new Thickness(0, 0, 0, 8),
-                };
-                emptyBorder.Child = new TextBlock
-                {
-                    Text = "No SQL migrations or test manifests referenced in this issue.",
-                    FontSize = 11,
-                    Foreground = GetBrush("Subtext0Brush"),
-                    TextWrapping = TextWrapping.Wrap
-                };
-                target.Children.Add(emptyBorder);
+                SetSideColumnVisibility(false);
             }
+            else
+            {
+                SetSideColumnVisibility(true, 240);
+            }
+        }
+
+        private UIElement CreateParentItemActionCard(int number, string? title)
+        {
+            var card = new Border
+            {
+                Background = GetBrush("MantleBrush"),
+                BorderBrush = GetBrush("Surface0Brush"),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(4),
+                Padding = new Thickness(10),
+                Margin = new Thickness(0, 0, 0, 10),
+                Cursor = Cursors.Hand,
+                ToolTip = $"Click to open Parent Epic #{number} in its own tab"
+            };
+
+            var stack = new StackPanel();
+
+            var headerRow = new DockPanel { Margin = new Thickness(0, 0, 0, 6) };
+            var badge = new Border
+            {
+                Background = GetBrush("MauveBrush", 0x25),
+                CornerRadius = new CornerRadius(3),
+                Padding = new Thickness(6, 2, 6, 2),
+                HorizontalAlignment = HorizontalAlignment.Left,
+                Child = new TextBlock
+                {
+                    Text = "⚡ PARENT EPIC",
+                    FontSize = 10,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = GetBrush("MauveBrush")
+                }
+            };
+            headerRow.Children.Add(badge);
+            stack.Children.Add(headerRow);
+
+            var titlePanel = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 4) };
+            titlePanel.Children.Add(new TextBlock
+            {
+                Text = $"#{number}",
+                FontSize = 13,
+                FontWeight = FontWeights.Bold,
+                Foreground = GetBrush("MauveBrush"),
+                Margin = new Thickness(0, 0, 6, 0)
+            });
+
+            if (!string.IsNullOrWhiteSpace(title))
+            {
+                titlePanel.Children.Add(new TextBlock
+                {
+                    Text = title,
+                    FontSize = 12,
+                    FontWeight = FontWeights.SemiBold,
+                    Foreground = GetBrush("TextBrush"),
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                    MaxWidth = 220
+                });
+            }
+            stack.Children.Add(titlePanel);
+
+            var subtext = new TextBlock
+            {
+                Text = "Click to open parent epic details & sub-issues",
+                FontSize = 10,
+                Foreground = GetBrush("Subtext0Brush"),
+                Margin = new Thickness(0, 2, 0, 0)
+            };
+            stack.Children.Add(subtext);
+
+            card.Child = stack;
+
+            card.MouseEnter += (s, e) => { card.BorderBrush = GetBrush("MauveBrush"); card.Background = GetBrush("Surface0Brush"); };
+            card.MouseLeave += (s, e) => { card.BorderBrush = GetBrush("Surface0Brush"); card.Background = GetBrush("MantleBrush"); };
+            card.MouseLeftButtonUp += (s, e) => OpenIssueNumberRequested?.Invoke(this, number);
+
+            return card;
         }
 
         private UIElement CreateTestManifestActionCard(string manifestPath, string? repoRoot, System.Collections.Generic.Dictionary<int, BuildConsole.Services.TestHistoryEntry>? latestTestRuns)

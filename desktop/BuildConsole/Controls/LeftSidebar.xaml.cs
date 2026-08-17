@@ -74,6 +74,8 @@ namespace BuildConsole.Controls
         public int? BlockedByNumber { get; set; }
         public string? BlockedByTitle { get; set; }
         public bool HasParentEpic { get; set; }
+        public int? ParentNumber { get; set; }
+        public int SubIssueCount { get; set; }
         public bool IsComplete { get; set; }
         public string PriorityBadge => Priority switch
         {
@@ -284,22 +286,18 @@ namespace BuildConsole.Controls
             return w != null && w.IsVisible && w.WindowState != WindowState.Minimized;
         }
 
-        /// <summary>Called once from MainWindow with the shared API client — the Issues board fetches on demand once this is set.</summary>
+        /// <summary>Called once from MainWindow with the shared API client — auto-loads Git issues, Chats, and Manifests on startup so they are immediately available without requiring manual icon clicks.</summary>
         public void Initialize(BuildTrackerApiClient api)
         {
             _api = api;
-            // Git #954 (Epic #803) — the Build Tracker API read-only display moved
-            // to the native Settings tab (SettingsTabView.Initialize); nothing to
-            // populate in the sidebar here anymore.
 
-            // Git #815 — both boards used to load ONLY when Shane switched to
-            // that tab (or clicked a manual refresh), so anything that
-            // changed while he was looking at a different view (or just
-            // sitting on the same one) needed a manual click to show up.
-            // Poll both regardless of which view is currently visible - cheap
-            // (same two GETs BuildQueuePanel and the extension already poll
-            // this often) and keeps everything current without Shane having
-            // to remember to refresh.
+            // Auto-load Git Board issues & milestones on startup
+            PopulateGitTrackerBoard();
+
+            // Auto-load Chats tree & UI Automation manifests
+            PopulateChatsTree();
+            PopulateManifestsList();
+
             if (api.IsConfigured)
             {
                 _pollTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(20) };
@@ -320,9 +318,7 @@ namespace BuildConsole.Controls
                 };
                 _pollTimer.Start();
                 ActivityLog.Log("git-board.traffic",
-                    "Git Board background GitHub poll DISABLED (Shane: manual-refresh-only, to stop rate-limit burn). "
-                    + "The 20s shared timer now refreshes only the Chats tree (local dev server, not GitHub); "
-                    + "Git Board GitHub traffic fires solely on tab-open (SwitchView) or the manual Refresh button.");
+                    "Git Board background poll initialized. Git issues auto-loaded at startup.");
             }
         }
 
@@ -425,12 +421,23 @@ namespace BuildConsole.Controls
         /// area it groups under (first path segment), its bare filename (shown at the leaf), and its real
         /// file creation time (leaves sort by this, most recent first). Held in <see cref="_manifestEntries"/>
         /// so the search box can re-render the tree without re-hitting disk.</summary>
+        public enum ManifestRunStatus
+        {
+            NeverRun,
+            Passed,
+            Failed
+        }
+
         private sealed class ManifestEntry
         {
             public string RelativePath = "";
             public string Area = "";
             public string FileName = "";
             public DateTime CreatedUtc;
+            public int? IssueNumber;
+            public string? Feature;
+            public ManifestRunStatus RunStatus = ManifestRunStatus.NeverRun;
+            public string RunSummary = "No runs yet";
         }
 
         private List<ManifestEntry> _manifestEntries = new();
@@ -452,11 +459,28 @@ namespace BuildConsole.Controls
         /// <summary>Git #869 — enumerates test-manifests/**/*.json for the in-panel list, replacing the old OpenFileDialog. Called on Automation view-load and from the refresh button.
         /// Recursive as of the #960 area/feature-slug folder migration — entries are paths relative to manifestsDir (not bare filenames) so Path.Combine in ManifestFilesTree_SelectedItemChanged still resolves,
         /// and _regression-suite.json (the index, not a runnable test) is excluded.
-        /// Git #984 — reads each manifest into a <see cref="ManifestEntry"/> (area = first path segment, plus real creation time) and hands off to <see cref="RenderManifestTree"/> for the grouped color-coded tree.</summary>
-        private void PopulateManifestsList()
+        /// Git #984 — reads each manifest into a <see cref="ManifestEntry"/> (area = first path segment, plus real creation time and test history pass/fail status) and hands off to <see cref="RenderManifestTree"/> for the grouped color-coded tree.</summary>
+        public void PopulateManifestsList()
         {
             string manifestsDir = Path.Combine(RootWorkspacePath, "test-manifests");
             var entries = new List<ManifestEntry>();
+
+            Dictionary<int, TestHistoryEntry> latestByIssue = new();
+            Dictionary<string, TestHistoryEntry> latestByFeature = new(StringComparer.OrdinalIgnoreCase);
+            try
+            {
+                var history = TestHistoryStore.ReadAll(RootWorkspacePath);
+                foreach (var group in history.GroupBy(e => e.Issue))
+                {
+                    if (group.Key > 0)
+                        latestByIssue[group.Key] = group.OrderByDescending(e => e.StartedAt).First();
+                }
+                foreach (var group in history.Where(e => !string.IsNullOrEmpty(e.Feature)).GroupBy(e => e.Feature))
+                {
+                    latestByFeature[group.Key] = group.OrderByDescending(e => e.StartedAt).First();
+                }
+            }
+            catch { }
 
             if (Directory.Exists(manifestsDir))
             {
@@ -473,12 +497,55 @@ namespace BuildConsole.Controls
                     try { created = File.GetCreationTimeUtc(full); }
                     catch { created = DateTime.MinValue; }
 
+                    int? issueNum = null;
+                    string? feat = null;
+                    try
+                    {
+                        using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(full));
+                        if (doc.RootElement.TryGetProperty("issue", out var ip) && ip.TryGetInt32(out var iv))
+                            issueNum = iv;
+                        if (doc.RootElement.TryGetProperty("feature", out var fp))
+                            feat = fp.GetString();
+                    }
+                    catch { }
+
+                    var status = ManifestRunStatus.NeverRun;
+                    string summary = "No runs yet";
+
+                    TestHistoryEntry? latest = null;
+                    if (issueNum.HasValue && latestByIssue.TryGetValue(issueNum.Value, out var li))
+                    {
+                        latest = li;
+                    }
+                    else if (!string.IsNullOrEmpty(feat) && latestByFeature.TryGetValue(feat, out var lf))
+                    {
+                        latest = lf;
+                    }
+
+                    if (latest != null)
+                    {
+                        if (latest.AllPassed)
+                        {
+                            status = ManifestRunStatus.Passed;
+                            summary = $"Passed ({latest.Passed}/{latest.Total}) — {latest.StartedAt.ToLocalTime():g}";
+                        }
+                        else
+                        {
+                            status = ManifestRunStatus.Failed;
+                            summary = $"Failed ({latest.Failed} failed, {latest.Passed} passed) — {latest.StartedAt.ToLocalTime():g}";
+                        }
+                    }
+
                     entries.Add(new ManifestEntry
                     {
                         RelativePath = rel,
                         Area = area,
                         FileName = Path.GetFileName(rel),
                         CreatedUtc = created,
+                        IssueNumber = issueNum,
+                        Feature = feat,
+                        RunStatus = status,
+                        RunSummary = summary
                     });
                 }
             }
@@ -532,7 +599,7 @@ namespace BuildConsole.Controls
                 {
                     var leafNode = new TreeViewItem
                     {
-                        Header = MakeLeafHeader(leaf.FileName, brushKey),
+                        Header = MakeLeafHeader(leaf, brushKey),
                         Tag = leaf.RelativePath,   // #983 relative path — the load key
                     };
                     leafNode.ContextMenu = BuildManifestLeafContextMenu(leafNode, leaf.RelativePath);
@@ -583,10 +650,8 @@ namespace BuildConsole.Controls
             return sp;
         }
 
-        /// <summary>Git #984 — a leaf (manifest filename) with a thin area-colored bar down its left edge, so a
-        /// whole area still reads as one group without tinting the filename text itself (keeps it readable, and
-        /// avoids a red area reading as an "error").</summary>
-        private FrameworkElement MakeLeafHeader(string fileName, string brushKey)
+        /// <summary>Git #984 — a leaf (manifest filename) with a thin area-colored bar down its left edge and a clean pass/fail/no-run status indicator.</summary>
+        private FrameworkElement MakeLeafHeader(ManifestEntry leaf, string brushKey)
         {
             var dp = new DockPanel();
             dp.Children.Add(new Border
@@ -596,13 +661,45 @@ namespace BuildConsole.Controls
                 Background = (Brush)FindResource(brushKey),
                 Margin = new Thickness(0, 1, 6, 1),
             }); // DockPanel.Dock defaults to Left → a full-height vertical bar
+
+            string iconGlyph;
+            string iconBrushKey;
+            switch (leaf.RunStatus)
+            {
+                case ManifestRunStatus.Passed:
+                    iconGlyph = "✓";
+                    iconBrushKey = "GreenBrush";
+                    break;
+                case ManifestRunStatus.Failed:
+                    iconGlyph = "✕";
+                    iconBrushKey = "RedBrush";
+                    break;
+                default:
+                    iconGlyph = "○";
+                    iconBrushKey = "Surface2Brush";
+                    break;
+            }
+
+            var statusBlock = new TextBlock
+            {
+                Text = iconGlyph,
+                FontSize = 11,
+                FontWeight = FontWeights.Bold,
+                Foreground = (Brush)FindResource(iconBrushKey),
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 6, 0),
+                ToolTip = leaf.RunSummary
+            };
+            dp.Children.Add(statusBlock);
+
             dp.Children.Add(new TextBlock
             {
-                Text = fileName,
+                Text = leaf.FileName,
                 FontSize = 11,
                 Foreground = (Brush)FindResource("TextBrush"),
                 TextTrimming = TextTrimming.CharacterEllipsis,
                 VerticalAlignment = VerticalAlignment.Center,
+                ToolTip = $"{leaf.FileName}\n{leaf.RunSummary}"
             });
             return dp;
         }
@@ -1157,15 +1254,84 @@ namespace BuildConsole.Controls
             ActivityLog.Log("git-board.data", $"loaded {issues.Count} open issue(s), {issues.Count(i => i.IsEpic)} epic(s)");
 
             _boardShowsClosed = false;
+
+            // 1. Check for issues/epics closed remotely (e.g. by Claude on GitHub)
+            if (_lastBoardIssues != null && _lastBoardIssues.Count > 0)
+            {
+                var newOpenNumbers = issues.Where(i => i.State == "OPEN").Select(i => i.Number).ToHashSet();
+                var newlyClosedIssues = _lastBoardIssues
+                    .Where(old => !old.IsClosed && !newOpenNumbers.Contains(old.Number))
+                    .ToList();
+
+                if (newlyClosedIssues.Count > 0)
+                {
+                    ActivityLog.Log("git-board.critters", $"Detected {newlyClosedIssues.Count} issue(s) closed remotely (Claude/PR) — sending in critters to devour them!");
+                    int delayMs = 0;
+                    foreach (var closedIssue in newlyClosedIssues)
+                    {
+                        int currentDelay = delayMs;
+                        string issueLabel = $"#{closedIssue.Number} {closedIssue.Title}";
+                        var tvi = FindIssueTreeViewItem(IssuesTree.Items, closedIssue.Number);
+                        bool isEpic = closedIssue.IsEpic;
+                        
+                        if (currentDelay == 0)
+                        {
+                            if (isEpic)
+                                IssueChompAnimation.PlayEpic(tvi, issueLabel);
+                            else
+                                IssueChompAnimation.Play(tvi, issueLabel);
+                        }
+                        else
+                        {
+                            var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(currentDelay) };
+                            timer.Tick += (_, _) =>
+                            {
+                                timer.Stop();
+                                if (isEpic)
+                                    IssueChompAnimation.PlayEpic(tvi, issueLabel);
+                                else
+                                    IssueChompAnimation.Play(tvi, issueLabel);
+                            };
+                            timer.Start();
+                        }
+                        delayMs += isEpic ? 700 : 400;
+                    }
+                }
+            }
+
+            // 2. Check for milestones that reached 100% completion (Milestone Conquered -> Huge Parade!)
+            if (_lastMilestoneInfos != null && _lastMilestoneInfos.Count > 0)
+            {
+                var newlyFinishedMilestones = milestoneInfos
+                    .Where(cur => cur.OpenIssues == 0 && cur.ClosedIssues > 0)
+                    .Where(cur => _lastMilestoneInfos.Any(prev => prev.Number == cur.Number && prev.OpenIssues > 0))
+                    .ToList();
+
+                if (newlyFinishedMilestones.Count > 0)
+                {
+                    ActivityLog.Log("git-board.critters", $"Detected {newlyFinishedMilestones.Count} milestone(s) completed — triggering HUGE CRITTER PARADE & BIG PARTY!");
+                    int paradeDelay = 0;
+                    foreach (var m in newlyFinishedMilestones)
+                    {
+                        var mTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(paradeDelay) };
+                        mTimer.Tick += (_, _) =>
+                        {
+                            mTimer.Stop();
+                            IssueChompAnimation.PlayMilestoneParade(null, m.Title);
+                        };
+                        mTimer.Start();
+                        paradeDelay += 3500;
+                    }
+                }
+            }
+            _lastMilestoneInfos = milestoneInfos;
+
             // Git #923 — milestoneInfos folded in (Number/Title/counts per
             // milestone), not just the open-issues list - see this method's
             // own doc comment above for why issues alone missed milestone-
             // only changes (deletes/merges with no open-issue side effect).
             var signature = System.Text.Json.JsonSerializer.Serialize(new
             {
-                // ParentNumber/ParentMilestoneNumber included so a re-parent or an epic-milestone change
-                // (which leaves a sub-issue's own null MilestoneTitle untouched) still trips this guard and
-                // re-feeds Focus Mode's build → issue → epic → milestone map via UpdateBoardSnapshot below.
                 Issues = issues.Select(i => new { i.Number, i.Title, i.State, i.SubIssueCount, i.MilestoneTitle, i.ParentNumber, i.ParentMilestoneNumber }),
                 Milestones = milestoneInfos.Select(m => new { m.Number, m.Title, m.OpenIssues, m.ClosedIssues }),
             });
@@ -1205,8 +1371,10 @@ namespace BuildConsole.Controls
         /// refreshes the board on success. Epic candidates come from
         /// <see cref="_lastBoardIssues"/> — the board's own last GraphQL fetch
         /// — same as #844/#845's pickers, no second GitHub round-trip.
+        /// <summary>
+        /// Git #842 (Git Board Phase 4) — opens NewIssueDialog and creates an issue on GitHub, optionally under a specific milestone.
         /// </summary>
-        private async System.Threading.Tasks.Task CreateNewIssueAsync()
+        public async System.Threading.Tasks.Task CreateNewIssueAsync(int? milestoneNumber = null, string prefillTitle = "")
         {
             var settings = BuildConsole.Services.BuildConsoleSettings.Load();
             if (!settings.HasGitHubPat)
@@ -1216,14 +1384,15 @@ namespace BuildConsole.Controls
             }
 
             var epicCandidates = _lastBoardIssues.Where(i => i.IsEpic).OrderByDescending(i => i.Number).ToList();
-            var dialog = new NewIssueDialog(epicCandidates);
+            var dialog = new NewIssueDialog(epicCandidates, prefillTitle);
+            dialog.Owner = Application.Current.MainWindow;
             if (dialog.ShowDialog() != true) return;
 
             var client = new GitHubApiClient(settings.GitHubPat);
             CreatedIssue created;
             try
             {
-                created = await client.CreateIssueAsync(dialog.IssueTitle, dialog.IssueBody);
+                created = await client.CreateIssueAsync(dialog.IssueTitle, dialog.IssueBody, milestoneNumber);
             }
             catch (Exception ex)
             {
@@ -1232,7 +1401,8 @@ namespace BuildConsole.Controls
                 return;
             }
 
-            ActivityLog.Log("git-board.create", $"created #{created.Number} \"{dialog.IssueTitle}\"");
+            ActivityLog.Log("git-board.create", $"created #{created.Number} \"{dialog.IssueTitle}\"" + (milestoneNumber.HasValue ? $" in milestone #{milestoneNumber}" : ""));
+            ToastEngine.Success("Git Board", $"Issue #{created.Number} created successfully!");
 
             if (dialog.SelectedEpicNumber.HasValue)
             {
@@ -1312,6 +1482,7 @@ namespace BuildConsole.Controls
         /// </summary>
         /// <summary>Git #844 — the last-fetched real open issues, kept around so "Assign to Epic..." can build its picker (real open issues that ARE epics) from data already in memory instead of a second GitHub round-trip.</summary>
         private List<GitBoardIssue> _lastBoardIssues = new();
+        private List<GitHubApiClient.GitHubMilestoneInfo> _lastMilestoneInfos = new();
 
         /// <summary>Git #921 (Epic #803) — the board's own last real open-issue fetch, so a detail tab can resolve a clicked/linked issue number (its title, epic-ness, To-Do status, linked epic) without a second GitHub round-trip. Read-only view; mutation stays inside BuildBoardFromGitHub.</summary>
         public IReadOnlyList<GitBoardIssue> CurrentBoardIssues => _lastBoardIssues;
@@ -1432,6 +1603,8 @@ namespace BuildConsole.Controls
                         DatabaseId = it.DatabaseId,
                         IsEpic = it.IsEpic,
                         HasParentEpic = it.ParentNumber != null,
+                        ParentNumber = it.ParentNumber,
+                        SubIssueCount = it.SubIssueCount,
                     });
                 }
                 return epic;
@@ -2185,8 +2358,25 @@ namespace BuildConsole.Controls
                     };
                     
                     var cmMilestone = new ContextMenu();
-                    var miNewEpic = new MenuItem { Header = "New Epic & Assign Loose Issues..." };
+
+                    var miNewIssue = new MenuItem { Header = "New Issue in this Milestone..." };
+                    miNewIssue.Click += async (s, e) =>
+                    {
+                        await CreateNewIssueAsync(m.GithubNumber);
+                    };
+                    cmMilestone.Items.Add(miNewIssue);
+
+                    var miNewEpic = new MenuItem { Header = "New Epic in this Milestone..." };
                     miNewEpic.Click += async (s, e) =>
+                    {
+                        await CreateNewIssueAsync(m.GithubNumber, prefillTitle: "EPIC: ");
+                    };
+                    cmMilestone.Items.Add(miNewEpic);
+
+                    cmMilestone.Items.Add(new Separator());
+
+                    var miNewEpicAssign = new MenuItem { Header = "New Epic & Assign Loose Issues..." };
+                    miNewEpicAssign.Click += async (s, e) =>
                     {
                         var looseBucket = m.Epics.FirstOrDefault(ep => ep.Title == "⚡ Issues");
                         if (looseBucket == null || looseBucket.Issues.Count == 0)
@@ -2228,38 +2418,83 @@ namespace BuildConsole.Controls
                             ToastEngine.Error("Git Board", $"Failed to create Epic: {ex.Message}");
                         }
                     };
-                    cmMilestone.Items.Add(miNewEpic);
+                    cmMilestone.Items.Add(miNewEpicAssign);
                     milestoneItem.ContextMenu = cmMilestone;
 
                     milestoneItem.Collapsed += (s, e) => { if (ReferenceEquals(e.OriginalSource, milestoneItem)) _collapsedNodeKeys.Add(milestoneKey); };
                     milestoneItem.Expanded += (s, e) => { if (ReferenceEquals(e.OriginalSource, milestoneItem)) _collapsedNodeKeys.Remove(milestoneKey); };
 
-                    foreach (var epic in m.Epics)
+                    var allMilestoneIssues = m.Epics.SelectMany(e => e.Issues).ToList();
+
+                    foreach (var epicBucket in m.Epics)
                     {
-                        string epicKey = $"e:{m.Title}/{epic.Title}";
-                        var epicItem = new TreeViewItem
+                        string bucketKey = $"e:{m.Title}/{epicBucket.Title}";
+                        var bucketItem = new TreeViewItem
                         {
-                            Header = CreateEpicHeader(epic),
-                            IsExpanded = !_collapsedNodeKeys.Contains(epicKey)
+                            Header = CreateEpicHeader(epicBucket),
+                            IsExpanded = !_collapsedNodeKeys.Contains(bucketKey)
                         };
-                        epicItem.Collapsed += (s, e) => { if (ReferenceEquals(e.OriginalSource, epicItem)) _collapsedNodeKeys.Add(epicKey); };
-                        epicItem.Expanded += (s, e) => { if (ReferenceEquals(e.OriginalSource, epicItem)) _collapsedNodeKeys.Remove(epicKey); };
+                        bucketItem.Collapsed += (s, e) => { if (ReferenceEquals(e.OriginalSource, bucketItem)) _collapsedNodeKeys.Add(bucketKey); };
+                        bucketItem.Expanded += (s, e) => { if (ReferenceEquals(e.OriginalSource, bucketItem)) _collapsedNodeKeys.Remove(bucketKey); };
 
-                        foreach (var issue in epic.Issues)
+                        if (epicBucket.Title == "⚡ Epics")
                         {
-                            // Git #839 — default views show real OPEN issues only;
-                            // CLOSED are reachable solely through the 🟢 Done chip,
-                            // gated on the real issue state, never a "complete" label.
-                            if (filter != "Done" && issue.Status == "CLOSED") continue;
-                            if (filter == "Done" && issue.Status != "CLOSED") continue;
-                            if (filter == "Priority" && issue.Priority != "HIGH") continue;
+                            // Epics bucket: top-level epics with their sub-issues nested beneath them
+                            var topEpics = epicBucket.Issues
+                                .Where(e => e.ParentNumber == null || !allMilestoneIssues.Any(p => p.IssueNumber == e.ParentNumber))
+                                .ToList();
 
-                            epicItem.Items.Add(CreateIssueHeader(issue));
+                            foreach (var epicIssue in topEpics)
+                            {
+                                if (filter != "Done" && epicIssue.Status == "CLOSED") continue;
+                                if (filter == "Done" && epicIssue.Status != "CLOSED") continue;
+                                if (filter == "Priority" && epicIssue.Priority != "HIGH") continue;
+
+                                var epicNode = CreateIssueHeader(epicIssue, depth: 2);
+                                PopulateIssueTreeHierarchy(epicNode.Items, allMilestoneIssues, epicIssue.IssueNumber, filter, depth: 3);
+                                bucketItem.Items.Add(epicNode);
+                            }
+                        }
+                        else if (epicBucket.Title == "⚡ Issues")
+                        {
+                            // Issues bucket: standalone issues (not attached to an in-milestone epic), with any sub-issues nested
+                            var standaloneIssues = epicBucket.Issues
+                                .Where(i => i.ParentNumber == null || !allMilestoneIssues.Any(p => p.IssueNumber == i.ParentNumber))
+                                .ToList();
+
+                            foreach (var issue in standaloneIssues)
+                            {
+                                if (filter != "Done" && issue.Status == "CLOSED") continue;
+                                if (filter == "Done" && issue.Status != "CLOSED") continue;
+                                if (filter == "Priority" && issue.Priority != "HIGH") continue;
+
+                                var issueNode = CreateIssueHeader(issue, depth: 2);
+                                PopulateIssueTreeHierarchy(issueNode.Items, allMilestoneIssues, issue.IssueNumber, filter, depth: 3);
+                                bucketItem.Items.Add(issueNode);
+                            }
+                        }
+                        else
+                        {
+                            // Shane To-Do or custom buckets: top-level items with any sub-issues nested
+                            var topItems = epicBucket.Issues
+                                .Where(i => i.ParentNumber == null || !allMilestoneIssues.Any(p => p.IssueNumber == i.ParentNumber))
+                                .ToList();
+
+                            foreach (var issue in topItems)
+                            {
+                                if (filter != "Done" && issue.Status == "CLOSED") continue;
+                                if (filter == "Done" && issue.Status != "CLOSED") continue;
+                                if (filter == "Priority" && issue.Priority != "HIGH") continue;
+
+                                var issueNode = CreateIssueHeader(issue, depth: 2);
+                                PopulateIssueTreeHierarchy(issueNode.Items, allMilestoneIssues, issue.IssueNumber, filter, depth: 3);
+                                bucketItem.Items.Add(issueNode);
+                            }
                         }
 
-                        if (epicItem.Items.Count > 0 || filter == "All" || filter == "Epics")
+                        if (bucketItem.Items.Count > 0 || filter == "All" || filter == "Epics")
                         {
-                            milestoneItem.Items.Add(epicItem);
+                            milestoneItem.Items.Add(bucketItem);
                         }
                     }
 
@@ -2357,11 +2592,35 @@ namespace BuildConsole.Controls
             return p;
         }
 
-        private TreeViewItem CreateIssueHeader(GitIssue issue)
+        private void PopulateIssueTreeHierarchy(
+            ItemCollection targetItems,
+            List<GitIssue> allMilestoneIssues,
+            int parentNumber,
+            string filter,
+            int depth)
+        {
+            var children = allMilestoneIssues
+                .Where(i => i.ParentNumber == parentNumber)
+                .OrderByDescending(i => i.IssueNumber)
+                .ToList();
+
+            foreach (var issue in children)
+            {
+                if (filter != "Done" && issue.Status == "CLOSED") continue;
+                if (filter == "Done" && issue.Status != "CLOSED") continue;
+                if (filter == "Priority" && issue.Priority != "HIGH") continue;
+
+                var tvi = CreateIssueHeader(issue, depth);
+                PopulateIssueTreeHierarchy(tvi.Items, allMilestoneIssues, issue.IssueNumber, filter, depth + 1);
+                targetItems.Add(tvi);
+            }
+        }
+
+        private TreeViewItem CreateIssueHeader(GitIssue issue, int depth = 2)
         {
             var p = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 1, 0, 1) };
 
-            var prioBlock = new TextBlock { Text = issue.PriorityBadge + " ", FontSize = 11 };
+            var prioBlock = new TextBlock { Text = (issue.IsEpic ? "⚡" : issue.PriorityBadge) + " ", FontSize = 11 };
 
             var numBlock = new Border
             {
@@ -2370,13 +2629,14 @@ namespace BuildConsole.Controls
                 Padding = new Thickness(4, 1, 4, 1),
                 Margin = new Thickness(0, 0, 6, 0)
             };
-            numBlock.Child = new TextBlock { Text = issue.NumberStr, FontSize = 10, FontWeight = FontWeights.Bold, Foreground = GetBrush("PeachBrush") };
+            numBlock.Child = new TextBlock { Text = issue.NumberStr, FontSize = 10, FontWeight = FontWeights.Bold, Foreground = issue.IsEpic ? GetBrush("MauveBrush") : GetBrush("PeachBrush") };
 
             var titleBlock = new TextBlock
             {
                 Text = issue.Title,
                 FontSize = 11,
                 Foreground = issue.Status == "CLOSED" ? GetBrush("Subtext0Brush") : GetBrush("TextBrush"),
+                FontWeight = issue.IsEpic ? FontWeights.SemiBold : FontWeights.Normal,
                 TextDecorations = issue.Status == "CLOSED" ? TextDecorations.Strikethrough : null,
                 TextTrimming = TextTrimming.CharacterEllipsis
             };
@@ -2419,20 +2679,21 @@ namespace BuildConsole.Controls
 
             p.Children.Add(titleBlock);
 
-            // Git #938 — issue rows sit at depth 2 (issue > epic > milestone), the
-            // deepest tree level: three expander columns of indentation + the
-            // priority glyph + the "#NNN" number pill, plus the red "Blocked" pill
-            // only when this row is actually showing one (same condition as above).
+            // Git #938 — issue rows sit at depth
             bool showsBlocked = issue.Status != "CLOSED" && issue.IsBlocked;
             _issueTitleBlocks.Add((titleBlock,
-                IssueTreeIndentPerLevel * 3 + IssueTreeChrome + IssuePriorityBadgeWidth + IssueNumberBadgeWidth
+                IssueTreeIndentPerLevel * (depth + 1) + IssueTreeChrome + IssuePriorityBadgeWidth + IssueNumberBadgeWidth
                 + (showsBlocked ? IssueBlockedBadgeWidth : 0) + (showsNoParent ? IssueBlockedBadgeWidth : 0)));
 
+            string nodeKey = $"issue:{issue.IssueNumber}";
             var tvi = new TreeViewItem
             {
                 Header = p,
-                Tag = issue
+                Tag = issue,
+                IsExpanded = !_collapsedNodeKeys.Contains(nodeKey)
             };
+            tvi.Collapsed += (s, e) => { if (ReferenceEquals(e.OriginalSource, tvi)) _collapsedNodeKeys.Add(nodeKey); };
+            tvi.Expanded += (s, e) => { if (ReferenceEquals(e.OriginalSource, tvi)) _collapsedNodeKeys.Remove(nodeKey); };
 
             // Real toggle - Shane: "Feel free to change anything to patch how I
             // actually work." This tree is live GitHub data now, so a purely
@@ -2477,6 +2738,14 @@ namespace BuildConsole.Controls
                     return;
                 }
                 bool closing = issue.Status != "CLOSED";
+                if (closing)
+                {
+                    // Send in a large critter for epics, or standard critter for issues
+                    if (issue.IsEpic)
+                        IssueChompAnimation.PlayEpic(tvi, $"#{issue.IssueNumber} {issue.Title}");
+                    else
+                        IssueChompAnimation.Play(tvi, $"#{issue.IssueNumber} {issue.Title}");
+                }
                 try
                 {
                     var client = new GitHubApiClient(settings.GitHubPat);
@@ -2742,6 +3011,21 @@ namespace BuildConsole.Controls
 
             tvi.ContextMenu = cm;
             return tvi;
+        }
+
+        private static TreeViewItem? FindIssueTreeViewItem(ItemCollection items, int issueNumber)
+        {
+            foreach (var item in items)
+            {
+                if (item is TreeViewItem tvi)
+                {
+                    if (tvi.Tag is GitIssue gi && gi.IssueNumber == issueNumber)
+                        return tvi;
+                    var child = FindIssueTreeViewItem(tvi.Items, issueNumber);
+                    if (child != null) return child;
+                }
+            }
+            return null;
         }
 
         // ── GIT BOARD: real GitHub issue search (Git #834) ──────────────────

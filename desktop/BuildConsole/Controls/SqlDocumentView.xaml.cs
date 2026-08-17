@@ -201,105 +201,200 @@ namespace BuildConsole.Controls
             var jsonOpts = new JsonSerializerOptions { WriteIndented = true };
             JsonView.Text = JsonSerializer.Serialize(statements, jsonOpts);
 
-            // Build a DataGrid for EVERY statement that produced rows
-            var withRows = statements.Where(s => s.Success && s.Fields.Count > 0).ToList();
             int totalRows = 0;
 
-            foreach (var stmt in withRows)
+            for (int i = 0; i < statements.Count; i++)
             {
-                var table = new DataTable();
-                foreach (var field in stmt.Fields) table.Columns.Add(field, typeof(string));
-                foreach (var row in stmt.Rows)
-                {
-                    var dr = table.NewRow();
-                    foreach (var field in stmt.Fields)
-                        dr[field] = row.TryGetValue(field, out var value) ? JsonElementToDisplayString(value) : "";
-                    table.Rows.Add(dr);
-                }
-                _lastResultTables.Add(table);
-                totalRows += table.Rows.Count;
+                var stmt = statements[i];
+                int stmtNum = stmt.StatementIndex >= 0 ? stmt.StatementIndex + 1 : i + 1;
 
-                // Statement label (only shown when there are multiple result sets)
-                if (withRows.Count > 1)
+                if (stmt.Success && stmt.Fields.Count > 0)
                 {
+                    // Statement returned rows (SELECT, RETURNING, etc.)
+                    var table = new DataTable();
+                    foreach (var field in stmt.Fields) table.Columns.Add(field, typeof(string));
+                    foreach (var row in stmt.Rows)
+                    {
+                        var dr = table.NewRow();
+                        foreach (var field in stmt.Fields)
+                            dr[field] = row.TryGetValue(field, out var value) ? JsonElementToDisplayString(value) : "";
+                        table.Rows.Add(dr);
+                    }
+                    _lastResultTables.Add(table);
+                    totalRows += table.Rows.Count;
+
                     var label = new TextBlock
                     {
-                        Text = $"Statement {stmt.StatementIndex + 1}  —  {table.Rows.Count} row{(table.Rows.Count == 1 ? "" : "s")}  ({stmt.ExecutionMs}ms)",
+                        Text = $"Statement {stmtNum}  —  {table.Rows.Count} row{(table.Rows.Count == 1 ? "" : "s")}  ({stmt.ExecutionMs}ms)",
                         FontSize = 11,
                         FontWeight = FontWeights.SemiBold,
                         Foreground = (Brush)FindResource("Subtext1Brush"),
-                        Margin = new Thickness(6, withRows.IndexOf(stmt) == 0 ? 6 : 16, 6, 4),
+                        Margin = new Thickness(6, i == 0 ? 6 : 14, 6, 4),
                     };
                     ResultsStack.Children.Add(label);
-                }
 
-                var grid = new DataGrid
-                {
-                    IsReadOnly = true,
-                    AutoGenerateColumns = true,
-                    BorderThickness = new Thickness(0),
-                    Margin = new Thickness(0, 0, 0, 0),
-                    MaxHeight = withRows.Count > 1 ? 320 : double.PositiveInfinity,
-                    ItemsSource = table.DefaultView,
-                };
-                // Right-click context menu
-                var ctxMenu = new ContextMenu();
-                var copyCell = new MenuItem { Header = "Copy Cell" };
-                copyCell.Click += (s, e) =>
-                {
-                    if (grid.CurrentCell.Item is DataRowView rv && grid.CurrentCell.Column != null)
+                    var grid = new DataGrid
                     {
-                        var field = BoundFieldName(grid.CurrentCell.Column);
-                        if (field != null) Clipboard.SetText(rv[field]?.ToString() ?? "");
-                    }
-                };
-                var copyRow = new MenuItem { Header = "Copy Row" };
-                copyRow.Click += (s, e) =>
+                        IsReadOnly = true,
+                        AutoGenerateColumns = true,
+                        BorderThickness = new Thickness(0),
+                        Margin = new Thickness(0, 0, 0, 0),
+                        MaxHeight = statements.Count > 1 ? 320 : double.PositiveInfinity,
+                        ItemsSource = table.DefaultView,
+                    };
+                    // Right-click context menu
+                    var ctxMenu = new ContextMenu();
+                    var copyCell = new MenuItem { Header = "Copy Cell" };
+                    copyCell.Click += (s, e) =>
+                    {
+                        if (grid.CurrentCell.Item is DataRowView rv && grid.CurrentCell.Column != null)
+                        {
+                            var field = BoundFieldName(grid.CurrentCell.Column);
+                            if (field != null) Clipboard.SetText(rv[field]?.ToString() ?? "");
+                        }
+                    };
+                    var copyRow = new MenuItem { Header = "Copy Row" };
+                    copyRow.Click += (s, e) =>
+                    {
+                        if (grid.SelectedItem is DataRowView rv)
+                            Clipboard.SetText(string.Join(",", rv.Row.ItemArray.Select(v => EscapeCsvCell(v?.ToString() ?? ""))));
+                    };
+                    var copyAll = new MenuItem { Header = "Copy All as CSV" };
+                    copyAll.Click += (s, e) => Clipboard.SetText(BuildCsv(table));
+                    ctxMenu.Items.Add(copyCell);
+                    ctxMenu.Items.Add(copyRow);
+                    ctxMenu.Items.Add(new Separator());
+                    ctxMenu.Items.Add(copyAll);
+                    grid.ContextMenu = ctxMenu;
+                    grid.PreviewMouseRightButtonDown += ResultsGrid_PreviewMouseRightButtonDown;
+                    ResultsStack.Children.Add(grid);
+                }
+                else if (stmt.Success)
                 {
-                    if (grid.SelectedItem is DataRowView rv)
-                        Clipboard.SetText(string.Join(",", rv.Row.ItemArray.Select(v => EscapeCsvCell(v?.ToString() ?? ""))));
-                };
-                var copyAll = new MenuItem { Header = "Copy All as CSV" };
-                copyAll.Click += (s, e) => Clipboard.SetText(BuildCsv(table));
-                ctxMenu.Items.Add(copyCell);
-                ctxMenu.Items.Add(copyRow);
-                ctxMenu.Items.Add(new Separator());
-                ctxMenu.Items.Add(copyAll);
-                grid.ContextMenu = ctxMenu;
-                grid.PreviewMouseRightButtonDown += ResultsGrid_PreviewMouseRightButtonDown;
-                ResultsStack.Children.Add(grid);
+                    // Non-SELECT statement that succeeded (UPDATE, INSERT, DELETE, CREATE, etc.)
+                    var statusBorder = new Border
+                    {
+                        Background = (Brush)FindResource("MantleBrush"),
+                        BorderBrush = (Brush)FindResource("Surface0Brush"),
+                        BorderThickness = new Thickness(1),
+                        CornerRadius = new CornerRadius(6),
+                        Padding = new Thickness(12, 8, 12, 8),
+                        Margin = new Thickness(6, i == 0 ? 6 : 10, 6, 6)
+                    };
+                    var sp = new StackPanel();
+                    var row1 = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 4) };
+                    row1.Children.Add(new TextBlock { Text = "✅ ", FontSize = 12, VerticalAlignment = VerticalAlignment.Center });
+                    row1.Children.Add(new TextBlock
+                    {
+                        Text = $"Statement {stmtNum}: OK",
+                        FontWeight = FontWeights.Bold,
+                        FontSize = 12,
+                        Foreground = (Brush)FindResource("GreenBrush"),
+                        VerticalAlignment = VerticalAlignment.Center
+                    });
+
+                    string details = stmt.RowCount > 0
+                        ? $" — {stmt.RowCount} row{(stmt.RowCount == 1 ? "" : "s")} affected ({stmt.ExecutionMs}ms)"
+                        : $" — ({stmt.ExecutionMs}ms)";
+
+                    row1.Children.Add(new TextBlock
+                    {
+                        Text = details,
+                        FontSize = 12,
+                        Foreground = (Brush)FindResource("Subtext0Brush"),
+                        VerticalAlignment = VerticalAlignment.Center
+                    });
+                    sp.Children.Add(row1);
+
+                    if (!string.IsNullOrWhiteSpace(stmt.StatementText))
+                    {
+                        sp.Children.Add(new TextBlock
+                        {
+                            Text = stmt.StatementText.Trim(),
+                            FontFamily = new FontFamily("Cascadia Code, Consolas, Courier New"),
+                            FontSize = 11,
+                            Foreground = (Brush)FindResource("Subtext1Brush"),
+                            TextWrapping = TextWrapping.Wrap
+                        });
+                    }
+
+                    statusBorder.Child = sp;
+                    ResultsStack.Children.Add(statusBorder);
+                }
+                else
+                {
+                    // Statement failed
+                    var errorBorder = new Border
+                    {
+                        Background = (Brush)FindResource("MantleBrush"),
+                        BorderBrush = (Brush)FindResource("RedBrush"),
+                        BorderThickness = new Thickness(1),
+                        CornerRadius = new CornerRadius(6),
+                        Padding = new Thickness(12, 8, 12, 8),
+                        Margin = new Thickness(6, i == 0 ? 6 : 10, 6, 6)
+                    };
+                    var sp = new StackPanel();
+                    var row1 = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 4) };
+                    row1.Children.Add(new TextBlock { Text = "❌ ", FontSize = 12, VerticalAlignment = VerticalAlignment.Center });
+                    row1.Children.Add(new TextBlock
+                    {
+                        Text = $"Statement {stmtNum}: Failed ({stmt.ExecutionMs}ms)",
+                        FontWeight = FontWeights.Bold,
+                        FontSize = 12,
+                        Foreground = (Brush)FindResource("RedBrush"),
+                        VerticalAlignment = VerticalAlignment.Center
+                    });
+                    sp.Children.Add(row1);
+
+                    sp.Children.Add(new TextBlock
+                    {
+                        Text = stmt.Error ?? "Execution error",
+                        FontSize = 11.5,
+                        Foreground = (Brush)FindResource("RedBrush"),
+                        TextWrapping = TextWrapping.Wrap,
+                        Margin = new Thickness(0, 0, 0, 4)
+                    });
+
+                    if (!string.IsNullOrWhiteSpace(stmt.StatementText))
+                    {
+                        sp.Children.Add(new TextBlock
+                        {
+                            Text = stmt.StatementText.Trim(),
+                            FontFamily = new FontFamily("Cascadia Code, Consolas, Courier New"),
+                            FontSize = 11,
+                            Foreground = (Brush)FindResource("Subtext1Brush"),
+                            TextWrapping = TextWrapping.Wrap
+                        });
+                    }
+
+                    errorBorder.Child = sp;
+                    ResultsStack.Children.Add(errorBorder);
+                }
             }
 
-            if (withRows.Count == 0)
+            if (totalRows > 0)
             {
-                var noRows = new TextBlock
-                {
-                    Text = failed > 0 ? "See error above." : "No rows returned.",
-                    FontSize = 12,
-                    Foreground = (Brush)FindResource("Subtext1Brush"),
-                    Margin = new Thickness(8),
-                };
-                ResultsStack.Children.Add(noRows);
-                RowCountLabel.Text = failed > 0 ? "Error" : "No rows";
+                RowCountLabel.Text = _lastResultTables.Count > 1
+                    ? $"{totalRows} rows ({_lastResultTables.Count} result sets)"
+                    : $"{totalRows} row{(totalRows == 1 ? "" : "s")}";
+            }
+            else if (failed > 0)
+            {
+                RowCountLabel.Text = $"{failed} error{(failed == 1 ? "" : "s")}";
             }
             else
             {
-                RowCountLabel.Text = withRows.Count > 1
-                    ? $"{totalRows} rows ({withRows.Count} result sets)"
-                    : $"{totalRows} row{(totalRows == 1 ? "" : "s")}";
+                RowCountLabel.Text = $"{statements.Count} OK";
             }
 
             bool hasData = _lastResultTables.Any(t => t.Rows.Count > 0);
             CopyTableBtn.IsEnabled = hasData;
             CopyJsonBtn.IsEnabled = statements.Count > 0;
-            SendToChatButton.IsEnabled = hasData;
+            SendToChatButton.IsEnabled = statements.Any(s => s.Success);
 
-            // Cache for Send-to-Chat (use first non-empty table)
+            // Cache for Send-to-Chat
             _lastResultQuery = QueryEditor.Text.Trim();
         }
-
-        /// <summary>Git #940 — MainWindow calls this back after a send attempt to report the outcome inline (reuses the ExecStatus strip).</summary>
-        public void ShowSendStatus(string message) => ExecStatus.Text = message;
 
         // ── View toggle handlers ────────────────────────────────────────────────
         private void ViewTableBtn_Click(object sender, RoutedEventArgs e)
@@ -354,24 +449,56 @@ namespace BuildConsole.Controls
         /// hand it to MainWindow to inject into the active Claude.ai chat tab via
         /// #937's shared path. Never presses Enter — Shane reviews and sends.
         /// </summary>
+        /// <summary>Git #940 — MainWindow calls this back after a send attempt to report the outcome inline (reuses the ExecStatus strip).</summary>
+        public void ShowSendStatus(string message) => ExecStatus.Text = message;
+
         private void SendToChat_Click(object sender, RoutedEventArgs e)
         {
             var table = _lastResultTables.FirstOrDefault(t => t.Rows.Count > 0);
-            if (table == null)
+            if (table != null)
             {
-                ExecStatus.Text = "Nothing to send — run a query that returns rows first.";
-                return;
+                var text = BuildMarkdownForChat(table, _lastResultQuery);
+                ActivityLog.Log("sql-runner.send-to-chat", $"send-clicked: {table.Rows.Count} row(s), {table.Columns.Count} col(s)");
+                SendToChatRequested?.Invoke(this, text);
+            }
+            else if (_lastStatements != null && _lastStatements.Count > 0)
+            {
+                var text = BuildNonSelectMarkdownForChat(_lastStatements, _lastResultQuery);
+                ActivityLog.Log("sql-runner.send-to-chat", $"send-clicked: {_lastStatements.Count} statement(s)");
+                SendToChatRequested?.Invoke(this, text);
+            }
+            else
+            {
+                ExecStatus.Text = "Nothing to send — run a query first.";
+            }
+        }
+
+        private static string BuildNonSelectMarkdownForChat(List<SqlStatementResult> statements, string query)
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine($"SQL Runner execution result — {statements.Count} statement{(statements.Count == 1 ? "" : "s")}:");
+            sb.AppendLine();
+
+            foreach (var s in statements)
+            {
+                int idx = s.StatementIndex >= 0 ? s.StatementIndex + 1 : 1;
+                if (s.Success)
+                {
+                    string info = s.RowCount > 0 ? $"{s.RowCount} row(s) affected" : "OK";
+                    sb.AppendLine($"- ✅ **Statement {idx}**: {info} ({s.ExecutionMs}ms)");
+                }
+                else
+                {
+                    sb.AppendLine($"- ❌ **Statement {idx}**: Failed — {s.Error} ({s.ExecutionMs}ms)");
+                }
             }
 
-            var text = BuildMarkdownForChat(table, _lastResultQuery);
-            ActivityLog.Log("sql-runner.send-to-chat", $"send-clicked: {table.Rows.Count} row(s), {table.Columns.Count} col(s)");
-            SendToChatRequested?.Invoke(this, text);
+            return sb.ToString().TrimEnd();
         }
 
         /// <summary>
         /// Git #940 — renders a DataTable as a GitHub-flavored markdown table:
-        /// a context header (row count + the originating query in a fenced sql
-        /// block), then a header row, a separator row, and up to
+        /// a context header (row count), then a header row, a separator row, and up to
         /// <see cref="MaxSendRows"/> data rows with a truncation note if capped.
         /// Pipe/newline characters inside cells are escaped so they don't break
         /// the table layout in the chat.
@@ -386,13 +513,6 @@ namespace BuildConsole.Controls
             sb.AppendLine($"SQL Runner result — {total} row{(total == 1 ? "" : "s")}"
                           + (total > shown ? $" (showing first {shown})" : "") + ":");
             sb.AppendLine();
-            if (!string.IsNullOrWhiteSpace(query))
-            {
-                sb.AppendLine("```sql");
-                sb.AppendLine(query);
-                sb.AppendLine("```");
-                sb.AppendLine();
-            }
 
             sb.AppendLine("| " + string.Join(" | ", cols.Select(EscapeCell)) + " |");
             sb.AppendLine("| " + string.Join(" | ", cols.Select(_ => "---")) + " |");

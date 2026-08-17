@@ -6,24 +6,18 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
+using System.Windows.Threading;
 using BuildConsole.Services;
 
 namespace BuildConsole.Controls
 {
-    /// <summary>Git #874 Home screen — a click on a "Running now" / "Done, waiting for you"
-    /// row, carrying the real GitHub issue number so MainWindow can resolve and open the
-    /// originating chat tab (same FindChatForIssue → OpenChatTab path the Build Queue
-    /// panel's In-Flight rows already use, #851).</summary>
     public class HomeQueueClick : EventArgs
     {
         public int? GithubNumber { get; init; }
         public string Title { get; init; } = "";
     }
 
-    /// <summary>Home screen "clear stuck build" — a click on the ✕ of a stale/orphaned
-    /// "Running now" row, carrying the real queue item id so MainWindow can cancel it
-    /// (DELETE queue/{id} via the shared BuildTrackerApiClient.CancelQueueItemAsync — the
-    /// same action the Build Queue panel's right-click "✕ Cancel" uses) and refresh.</summary>
     public class HomeStuckItemClear : EventArgs
     {
         public int QueueItemId { get; init; }
@@ -32,47 +26,289 @@ namespace BuildConsole.Controls
     }
 
     /// <summary>
-    /// Git #874 Home screen — the native WPF landing tab that replaced the old
-    /// hardcoded (non-closable) claude.ai tab. Renders three real-data roll-up
-    /// sections and raises click-through events; MainWindow owns the data feed
-    /// (persisted last-launch chat tabs + the shared BuildTrackerApiClient queue
-    /// + GitHubIssuesService open-issue awareness) and the navigation (OpenChatTab
-    /// / FindChatForIssue). All three "moments" log on the home-screen channel:
-    /// open (MainWindow.OpenHomeTab), section render (here), and click-through
-    /// (here + MainWindow).
+    /// ADHD-Friendly Multi-Column Home Dashboard.
+    /// Provides zero-overwhelm glanceability, quick jump-in workflows,
+    /// live focus tracking, and a playful animal companion (Microsoft Clarity style).
     /// </summary>
     public partial class HomeView : UserControl
     {
-        /// <summary>"Where you left off" row clicked — reopen the persisted chat.</summary>
         public event EventHandler<PersistedChatTab>? ResumeChatRequested;
-        /// <summary>"Running now" row clicked — open the chat linked to that build's GitHub issue.</summary>
         public event EventHandler<HomeQueueClick>? RunningItemClicked;
-        /// <summary>"Done, waiting for you" row clicked — open the chat linked to that build's GitHub issue.</summary>
         public event EventHandler<HomeQueueClick>? DoneItemClicked;
-        /// <summary>A stale/orphaned "Running now" row's ✕ clicked — cancel that queue item and refresh.</summary>
         public event EventHandler<HomeStuckItemClear>? ClearStuckItemRequested;
+        public event EventHandler? NewIssueRequested;
+        public event EventHandler? BuildWatchRequested;
+        public event EventHandler? TestRunnerRequested;
+        public event EventHandler? ReplitRequested;
+        public event EventHandler? ImmersiveFocusRequested;
+        public event EventHandler? DeployRequested;
+        public event EventHandler? GitBoardRequested;
+        public event EventHandler? SettingsRequested;
+        public event EventHandler<GitBoardIssue>? IssueDetailRequested;
+        public event EventHandler<int>? MilestoneDetailRequested;
 
-        /// <summary>A "running" queue item whose last update is at least this old (or which has
-        /// no update timestamp at all) is treated as a stale orphan — the exact failure Shane
-        /// saw: builds queued during last night's network outage that never completed but still
-        /// report "running" hours later. An hour is comfortably longer than any genuine build.</summary>
         private const int StaleRunningMinutes = 60;
+        private readonly Random _rng = new();
+        private DispatcherTimer? _mascotTimer;
+        private GitBoardIssue? _recommendedTask;
 
-        public HomeView() => InitializeComponent();
+        private static readonly string[] MascotQuotes =
+        {
+            "\"Take a deep breath. You're doing amazing! ✨\"",
+            "\"One small step is all it takes to get in the groove! 🎯\"",
+            "\"Hydration check! Grab a quick sip of water ☕\"",
+            "\"You're crushing it! Let's conquer this next build 🚀\"",
+            "\"Zero rush. Work at your own rhythm today 🌿\"",
+            "\"Got a thought? Pop a quick issue on the board! 📝\"",
+            "\"Focus on just one card — everything else can wait 🐾\""
+        };
 
-        // ── Section 0: What's New (real commit titles since last launch, patch-notes style) ──
-        /// <summary>
-        /// Renders the "What's New" patch-notes bullets from the real commit titles
-        /// MainWindow computed via VersionInfo.GetNewCommitTitles (reusing the #992
-        /// git-commit-count build number). ADHD-scroll redesign: the section is now a
-        /// single collapsed-by-default quiet count-badge tile ("N changes since you last
-        /// looked"); the real full bullet list lives inside the attached content and only
-        /// shows once Shane clicks the tile — so a launch with 14+ new commits no longer
-        /// forces a long scroll past everything actionable. The whole section stays
-        /// collapsed (invisible) when there's nothing new. <paramref name="moreCount"/>
-        /// &gt; 0 means the list was capped and that many additional changes aren't shown
-        /// individually.
-        /// </summary>
+        public HomeView()
+        {
+            InitializeComponent();
+            SetDynamicGreeting();
+            StartMascotAnimation();
+
+            // Hook up Focus Mode service state updates
+            try
+            {
+                FocusModeService.Instance.StateChanged += UpdateFocusState;
+                UpdateFocusState();
+            }
+            catch { }
+
+            Unloaded += (_, _) =>
+            {
+                try { FocusModeService.Instance.StateChanged -= UpdateFocusState; } catch { }
+                _mascotTimer?.Stop();
+            };
+        }
+
+        private void SetDynamicGreeting()
+        {
+            int hour = DateTime.Now.Hour;
+            string timeOfDay = hour switch
+            {
+                < 12 => "Good morning",
+                < 17 => "Good afternoon",
+                _ => "Good evening"
+            };
+            GreetingText.Text = $"{timeOfDay}, Shane!";
+        }
+
+        private void StartMascotAnimation()
+        {
+            _mascotTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(16) };
+            _mascotTimer.Tick += (_, _) =>
+            {
+                // Occasional subtle message roll
+                if (_rng.NextDouble() < 0.4)
+                {
+                    MascotQuoteText.Text = MascotQuotes[_rng.Next(MascotQuotes.Length)];
+                }
+            };
+            _mascotTimer.Start();
+        }
+
+        private void MascotCard_Click(object sender, MouseButtonEventArgs e)
+        {
+            // Cheerful mascot bounce + quote roll
+            var bounceAnim = new DoubleAnimation(-10, 0, TimeSpan.FromSeconds(0.4))
+            {
+                EasingFunction = new BounceEase { Bounces = 2, Bounciness = 4 }
+            };
+            FoxTranslate.BeginAnimation(TranslateTransform.YProperty, bounceAnim);
+
+            var wiggleAnim = new DoubleAnimation(-8, 8, TimeSpan.FromSeconds(0.12))
+            {
+                AutoReverse = true,
+                RepeatBehavior = new RepeatBehavior(2),
+                EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
+            };
+            FoxRotate.BeginAnimation(RotateTransform.AngleProperty, wiggleAnim);
+
+            MascotQuoteText.Text = MascotQuotes[_rng.Next(MascotQuotes.Length)];
+        }
+
+        // ── Focus State Tracking ─────────────────────────────────────────────
+        public void UpdateFocusState()
+        {
+            var focus = FocusModeService.Instance;
+            if (focus.IsActive)
+            {
+                FocusMilestoneTitle.Text = focus.ActiveMilestoneTitle;
+                FocusHeroCard.BorderBrush = (Brush)FindResource("BlueBrush");
+                FocusPointsText.Text = $"{focus.Points} pts";
+                StatPointsValue.Text = $"{focus.Points}";
+
+                int total = focus.Progress.Total;
+                int closed = focus.Progress.Closed;
+                int pct = focus.Progress.Percent;
+
+                FocusProgressText.Text = $"{pct}% completed ({closed}/{total} issues)";
+                StatMilestonePercent.Text = $"{pct}%";
+
+                // Animate progress bar width smoothly
+                double targetWidth = Math.Max(0, Math.Min(260, (260.0 * pct) / 100.0));
+                FocusProgressBar.Width = targetWidth;
+
+                BtnImmersiveResume.Visibility = Visibility.Visible;
+                BtnMilestoneDetail.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                FocusMilestoneTitle.Text = "No milestone in active focus";
+                FocusProgressText.Text = "Pick a milestone in Git Board to engage focus";
+                FocusHeroCard.BorderBrush = (Brush)FindResource("Surface1Brush");
+                FocusProgressBar.Width = 0;
+                FocusPointsText.Text = "0 pts";
+                StatPointsValue.Text = "0";
+                StatMilestonePercent.Text = "--";
+
+                BtnImmersiveResume.Visibility = Visibility.Collapsed;
+            }
+        }
+
+        // ── Board State & Smart ADHD Suggestions ────────────────────────────
+        public void RenderDashboardState(IReadOnlyList<GitBoardIssue>? issues, IReadOnlyList<GitMilestone>? milestones)
+        {
+            if (issues == null) return;
+
+            // Update stats
+            int totalEpics = issues.Count(i => i.IsEpic);
+            int openIssues = issues.Count(i => !i.IsClosed);
+            int totalMilestones = milestones?.Count ?? 0;
+
+            BoardEpicsCount.Text = $"{totalEpics}";
+            BoardIssuesCount.Text = $"{openIssues}";
+            BoardMilestonesCount.Text = $"{totalMilestones}";
+
+            // Find top Shane To-Do items & recommended next task
+            var todos = issues
+                .Where(i => !i.IsClosed && (i.IsTodo || i.Labels.Any(l => string.Equals(l.Name, "Shane To-Do", StringComparison.OrdinalIgnoreCase))))
+                .OrderByDescending(i => i.Number)
+                .ToList();
+
+            TodoList.Children.Clear();
+            TodoCountText.Text = $"({todos.Count})";
+            TodoEmpty.Visibility = todos.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+
+            foreach (var item in todos.Take(6))
+            {
+                var captured = item;
+                TodoList.Children.Add(BuildRow(
+                    "🔥", "#FAB387",
+                    captured.Title,
+                    $"#{captured.Number}  ·  Shane To-Do  ·  click to open",
+                    $"Open issue #{captured.Number}",
+                    (_, _) => IssueDetailRequested?.Invoke(this, captured)));
+            }
+
+            // ── Top Priority "WHAT TO DO NEXT (NO OVERWHELM)" — Current Milestone Quick Win ──
+            var focus = FocusModeService.Instance;
+            int? activeMilestoneNumber = focus.IsActive ? focus.ActiveMilestoneNumber : null;
+            string activeMilestoneTitle = focus.IsActive ? focus.ActiveMilestoneTitle : "";
+
+            // Non-epic, open issues
+            var candidates = issues.Where(i => !i.IsClosed && !i.IsEpic).ToList();
+
+            // Filter to current milestone if active
+            List<GitBoardIssue> milestoneCandidates;
+            if (activeMilestoneNumber.HasValue)
+            {
+                milestoneCandidates = candidates.Where(i =>
+                    i.MilestoneNumber == activeMilestoneNumber.Value ||
+                    i.ParentMilestoneNumber == activeMilestoneNumber.Value ||
+                    focus.IsIssueInFocus(i.Number)).ToList();
+            }
+            else
+            {
+                milestoneCandidates = candidates;
+            }
+
+            // Pick fastest Quick Win (lowest estimated completion time, Shane To-Do prioritized)
+            _recommendedTask = milestoneCandidates
+                .OrderBy(i => EstimateIssueMinutes(i))
+                .ThenByDescending(i => i.IsTodo)
+                .ThenBy(i => i.Number)
+                .FirstOrDefault() ?? candidates.OrderBy(i => EstimateIssueMinutes(i)).FirstOrDefault();
+
+            if (_recommendedTask != null)
+            {
+                int estMins = EstimateIssueMinutes(_recommendedTask);
+                string estFormatted = FormatEstimate(estMins);
+
+                NextTaskBadgeText.Text = $"⚡ Quick Win ({estFormatted})";
+                NextTaskTitle.Text = $"#{_recommendedTask.Number} — {_recommendedTask.Title}";
+
+                string milestoneTag = !string.IsNullOrWhiteSpace(_recommendedTask.MilestoneTitle)
+                    ? _recommendedTask.MilestoneTitle
+                    : (!string.IsNullOrWhiteSpace(activeMilestoneTitle) ? activeMilestoneTitle : "Current Backlog");
+
+                NextTaskSubtitle.Text = $"🎯 Milestone: {milestoneTag}  ·  Est. {estFormatted}  ·  Fastest unblocked win";
+                BtnStartNextTask.Content = $"🚀 Jump into This Quick Win ({estFormatted})";
+                BtnStartNextTask.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                NextTaskBadgeText.Text = "🎉 Complete";
+                NextTaskTitle.Text = "All caught up on this milestone! 🚀";
+                NextTaskSubtitle.Text = "No open quick tasks remaining in the active milestone.";
+                BtnStartNextTask.Visibility = Visibility.Collapsed;
+            }
+        }
+
+        private static int EstimateIssueMinutes(GitBoardIssue issue)
+        {
+            string text = $"{issue.Title} {issue.Body}";
+
+            // 1. Explicit minute indicator e.g. "15m", "20 min", "est: 30 mins"
+            var mMin = System.Text.RegularExpressions.Regex.Match(text, @"(?i)(?:est\.?|estimate|time|takes|duration)?\s*[:~-]?\s*(\d+)\s*(?:m|min|mins|minutes)\b");
+            if (mMin.Success && int.TryParse(mMin.Groups[1].Value, out var mins) && mins > 0)
+                return mins;
+
+            // 2. Explicit hour indicator e.g. "1h", "2 hrs"
+            var mHr = System.Text.RegularExpressions.Regex.Match(text, @"(?i)(?:est\.?|estimate|time)?\s*[:~-]?\s*(\d+(?:\.\d+)?)\s*(?:h|hr|hrs|hours)\b");
+            if (mHr.Success && double.TryParse(mHr.Groups[1].Value, out var hrs) && hrs > 0)
+                return (int)(hrs * 60);
+
+            // 3. Label heuristics
+            if (issue.Labels.Any(l => l.Name.Contains("quick", StringComparison.OrdinalIgnoreCase) || l.Name.Contains("easy", StringComparison.OrdinalIgnoreCase)))
+                return 10;
+            if (issue.Labels.Any(l => l.Name.Contains("15m", StringComparison.OrdinalIgnoreCase)))
+                return 15;
+            if (issue.Labels.Any(l => l.Name.Contains("30m", StringComparison.OrdinalIgnoreCase)))
+                return 30;
+            if (issue.Labels.Any(l => l.Name.Contains("1h", StringComparison.OrdinalIgnoreCase)))
+                return 60;
+            if (issue.IsTodo)
+                return 15;
+            if (issue.Labels.Any(l => l.Name.Contains("bug", StringComparison.OrdinalIgnoreCase)))
+                return 20;
+
+            // 4. Text length heuristic
+            int len = (issue.Title ?? "").Length + (issue.Body ?? "").Length;
+            if (len < 100) return 15;
+            if (len < 300) return 25;
+            if (len < 800) return 40;
+            return 60;
+        }
+
+        private static string FormatEstimate(int minutes)
+        {
+            if (minutes < 60) return $"~{minutes}m";
+            int h = minutes / 60;
+            int m = minutes % 60;
+            return m > 0 ? $"~{h}h {m}m" : $"~{h}h";
+        }
+
+        private void BtnStartNextTask_Click(object sender, RoutedEventArgs e)
+        {
+            if (_recommendedTask != null)
+                IssueDetailRequested?.Invoke(this, _recommendedTask);
+        }
+
+        // ── Section 0: What's New ───────────────────────────────────────────
         public void RenderWhatsNew(string versionLabel, IReadOnlyList<string> titles, int moreCount = 0)
         {
             WhatsNewList.Children.Clear();
@@ -91,33 +327,23 @@ namespace BuildConsole.Controls
             if (moreCount > 0)
             {
                 var more = BuildBullet($"…and {moreCount} more change{(moreCount == 1 ? "" : "s")}");
-                // The "…and N more" line reads as a quiet aside, not another change.
                 ((TextBlock)((StackPanel)((Border)more).Child).Children[1]).FontStyle = FontStyles.Italic;
                 WhatsNewList.Children.Add(more);
             }
 
-            // Quiet one-line summary on the collapsed tile — the whole point of the
-            // redesign: glance the count, expand only if you actually want the detail.
             int total = titles.Count + moreCount;
             WhatsNewSummaryText.Text = $"{total} change{(total == 1 ? "" : "s")} since you last looked";
-            WhatsNewTile.IsChecked = false;                       // collapsed by default
+            WhatsNewTile.IsChecked = false;
             WhatsNewContent.Visibility = Visibility.Collapsed;
-
             WhatsNewSection.Visibility = Visibility.Visible;
-            ActivityLog.Log("home-screen", $"Rendered 'What's New' {versionLabel} — collapsed summary ({total} change{(total == 1 ? "" : "s")}, {titles.Count} shown{(moreCount > 0 ? $" +{moreCount} more" : "")})");
         }
 
-        /// <summary>Toggle the What's New full list open/closed in place (same #874 QuietTile
-        /// expand behavior the Build Queue panel's In-Flight/Completed tiles use).</summary>
         private void WhatsNewTile_Click(object sender, RoutedEventArgs e)
         {
             bool expand = WhatsNewTile.IsChecked == true;
             WhatsNewContent.Visibility = expand ? Visibility.Visible : Visibility.Collapsed;
-            if (expand)
-                ActivityLog.Log("home-screen", "Expanded 'What's New' full list");
         }
 
-        /// <summary>One light patch-notes bullet: a muted "•" glyph + the raw commit title (wraps, no click, no hover chrome — this is read-only, unlike the roll-up rows below).</summary>
         private Border BuildBullet(string text)
         {
             var dot = new TextBlock
@@ -131,10 +357,9 @@ namespace BuildConsole.Controls
             var body = new TextBlock
             {
                 Text = text,
-                FontSize = 12,
+                FontSize = 11.5,
                 Foreground = (Brush)FindResource("TextBrush"),
                 TextWrapping = TextWrapping.Wrap,
-                MaxWidth = 660,
                 VerticalAlignment = VerticalAlignment.Center,
             };
             var panel = new StackPanel { Orientation = Orientation.Horizontal };
@@ -143,68 +368,32 @@ namespace BuildConsole.Controls
             return new Border { Padding = new Thickness(0, 2, 0, 2), Child = panel };
         }
 
-        /// <summary>Focus Mode diagnostics — when a milestone is active and this Home section
-        /// actually hid something, record the shown/hidden split on the focus-mode channel so a
-        /// future regression (the filter silently not applying) is caught by comparing this against
-        /// what actually rendered. Silent off-focus and when nothing was hidden, to avoid noise on
-        /// the roll-up's normal ticks.</summary>
-        private static void LogFocusHidden(string section, int before, int after)
-        {
-            var focus = FocusModeService.Instance;
-            if (focus.IsActive && after < before)
-                ActivityLog.Log("focus-mode", $"Home '{section}' — {after} shown, {before - after} hidden by focus");
-        }
-
-        // ── Section 1: Where you left off (persisted last-launch chat tabs) ──
+        // ── Section 1: Where you left off ───────────────────────────────────
         public void RenderLeftOff(IReadOnlyList<PersistedChatTab> tabs)
         {
-            // Focus Mode — while a milestone is active, the Home tab only shows on-milestone work.
-            int beforeFocus = tabs.Count;
-            tabs = tabs.Where(t => FocusModeService.Instance.IsIssueInFocus(t.IssueGithubNumber)).ToList();
-            LogFocusHidden("Where you left off", beforeFocus, tabs.Count);
             LeftOffList.Children.Clear();
             LeftOffCountText.Text = $"({tabs.Count})";
             LeftOffEmpty.Visibility = tabs.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
 
-            foreach (var tab in tabs)
+            foreach (var tab in tabs.Take(5))
             {
                 var captured = tab;
                 string sub =
                     (tab.IssueGithubNumber.HasValue ? $"#{tab.IssueGithubNumber}  ·  " : "") +
-                    $"pane {tab.PaneIndex + 1}  ·  left off {tab.SavedAt.ToLocalTime():MMM d, h:mm tt}";
+                    $"pane {tab.PaneIndex + 1}  ·  {tab.SavedAt.ToLocalTime():MMM d, h:mm tt}";
 
                 LeftOffList.Children.Add(BuildRow(
                     "🕘", "#8FA6C4",
                     string.IsNullOrWhiteSpace(tab.Title) ? "(untitled chat)" : tab.Title,
                     sub,
                     string.IsNullOrWhiteSpace(tab.ClaudeUrl) ? null : tab.ClaudeUrl,
-                    (_, _) =>
-                    {
-                        ActivityLog.Log("home-screen",
-                            $"Click-through 'Where you left off' → resume chat \"{captured.Title}\"" +
-                            (captured.IssueGithubNumber.HasValue ? $" (#{captured.IssueGithubNumber})" : ""));
-                        ResumeChatRequested?.Invoke(this, captured);
-                    }));
+                    (_, _) => ResumeChatRequested?.Invoke(this, captured)));
             }
-
-            ActivityLog.Log("home-screen", $"Rendered 'Where you left off' ({tabs.Count})");
         }
 
-        // ── Section 2: Running now (live queue — same source as the Build Queue panel) ──
-        /// <summary>
-        /// Renders the live "running" queue rows, flagging stale orphans. A row whose last
-        /// update is ≥<see cref="StaleRunningMinutes"/> old (or which has no timestamp at all)
-        /// is rendered with a ⚠ amber treatment and a "no update in Xh — likely stuck"
-        /// subtitle instead of looking identical to a genuinely active build, and carries a
-        /// ✕ clear button that cancels the orphaned queue item. This is the exact bug Shane
-        /// hit: builds queued during a network outage that never completed but still say
-        /// "running" hours later, with no way to tell they're dead or to clear them.
-        /// </summary>
+        // ── Section 2: Running now ──────────────────────────────────────────
         public void RenderRunning(IReadOnlyList<QueueItem> running)
         {
-            int beforeFocus = running.Count;
-            running = running.Where(i => FocusModeService.Instance.IsIssueInFocus(i.GithubNumber)).ToList();
-            LogFocusHidden("Running now", beforeFocus, running.Count);
             RunningList.Children.Clear();
 
             int staleCount = 0;
@@ -215,157 +404,101 @@ namespace BuildConsole.Controls
                 if (stale) staleCount++;
 
                 string numPrefix = item.GithubNumber.HasValue ? $"#{item.GithubNumber}  ·  " : "";
-                string sub;
-                if (stale)
-                {
-                    sub = numPrefix + "⚠ " + StuckPhrase(item.UpdatedAt) + " — likely stuck";
-                }
-                else
-                {
-                    string when = item.UpdatedAt.HasValue ? $"  ·  updated {item.UpdatedAt.Value.ToLocalTime():MMM d, h:mm tt}" : "";
-                    sub = numPrefix + "running" + when;
-                }
+                string sub = stale
+                    ? numPrefix + "⚠ " + StuckPhrase(item.UpdatedAt) + " — likely stuck"
+                    : numPrefix + "running" + (item.UpdatedAt.HasValue ? $"  ·  {item.UpdatedAt.Value.ToLocalTime():MMM d, h:mm tt}" : "");
 
-                // Only stale rows get a clear (✕) affordance — an actively-running build
-                // must not be casually cancellable from a glance screen.
-                Action? onClear = null;
-                if (stale)
+                Action? onClear = stale ? () => ClearStuckItemRequested?.Invoke(this, new HomeStuckItemClear
                 {
-                    onClear = () =>
-                    {
-                        ActivityLog.Log("home-screen",
-                            $"Clear stuck 'Running now' item → cancel queue #{captured.Id}" +
-                            (captured.GithubNumber.HasValue ? $" (Git #{captured.GithubNumber})" : "") +
-                            $" \"{captured.Title}\"");
-                        ClearStuckItemRequested?.Invoke(this, new HomeStuckItemClear
-                        {
-                            QueueItemId = captured.Id,
-                            GithubNumber = captured.GithubNumber,
-                            Title = captured.Title,
-                        });
-                    };
-                }
+                    QueueItemId = captured.Id,
+                    GithubNumber = captured.GithubNumber,
+                    Title = captured.Title
+                }) : null;
 
                 RunningList.Children.Add(BuildRow(
                     stale ? "⚠" : "▶",
                     stale ? "#EE99A0" : "#F2CA63",
                     string.IsNullOrWhiteSpace(item.Title) ? "(untitled build)" : item.Title,
                     sub,
-                    item.GithubNumber.HasValue ? $"Open the chat linked to #{item.GithubNumber}" : null,
-                    (_, _) =>
-                    {
-                        ActivityLog.Log("home-screen",
-                            $"Click-through 'Running now' → chat for #{captured.GithubNumber} \"{captured.Title}\"");
-                        RunningItemClicked?.Invoke(this, new HomeQueueClick { GithubNumber = captured.GithubNumber, Title = captured.Title });
-                    },
+                    item.GithubNumber.HasValue ? $"Open chat for #{item.GithubNumber}" : null,
+                    (_, _) => RunningItemClicked?.Invoke(this, new HomeQueueClick { GithubNumber = captured.GithubNumber, Title = captured.Title }),
                     onClear: onClear,
                     stale: stale));
             }
 
-            // Count badge notes stuck orphans and turns amber, so the glance itself says
-            // "some of these aren't really running" without expanding anything.
-            if (staleCount > 0)
-            {
-                RunningCountText.Text = $"({running.Count}  ·  {staleCount} stuck)";
-                RunningCountText.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#EE99A0"));
-            }
-            else
-            {
-                RunningCountText.Text = $"({running.Count})";
-                RunningCountText.Foreground = (Brush)FindResource("Subtext1Brush");
-            }
-
+            RunningCountText.Text = staleCount > 0 ? $"({running.Count}  ·  {staleCount} stuck)" : $"({running.Count})";
             RunningEmpty.Visibility = running.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-
-            if (staleCount > 0)
-                ActivityLog.Log("home-screen", $"Flagged {staleCount} 'Running now' item{(staleCount == 1 ? "" : "s")} as likely stale/orphaned (no update ≥{StaleRunningMinutes}m)");
-
-            ActivityLog.Log("home-screen", $"Rendered 'Running now' ({running.Count}{(staleCount > 0 ? $", {staleCount} stuck" : "")})");
         }
 
-        /// <summary>A running item is stale when its last update is at least StaleRunningMinutes old — or when it carries no update timestamp at all, since then we can't confirm it's still alive.</summary>
         private static bool IsRunningStale(DateTimeOffset? updatedAt)
         {
             if (!updatedAt.HasValue) return true;
             return (DateTimeOffset.Now - updatedAt.Value).TotalMinutes >= StaleRunningMinutes;
         }
 
-        /// <summary>Human "no update in …" phrasing for a stale row's subtitle.</summary>
         private static string StuckPhrase(DateTimeOffset? updatedAt)
         {
             if (!updatedAt.HasValue) return "no recent activity";
             var age = DateTimeOffset.Now - updatedAt.Value;
-            if (age.TotalHours >= 24) { int d = (int)age.TotalDays; return $"no update in {d} day{(d == 1 ? "" : "s")}"; }
-            if (age.TotalHours >= 1) { int h = (int)age.TotalHours; return $"no update in {h}h"; }
-            int m = Math.Max(1, (int)age.TotalMinutes);
-            return $"no update in {m}m";
+            if (age.TotalHours >= 24) { int d = (int)age.TotalDays; return $"{d}d ago"; }
+            if (age.TotalHours >= 1) { int h = (int)age.TotalHours; return $"{h}h ago"; }
+            return $"{Math.Max(1, (int)age.TotalMinutes)}m ago";
         }
 
-        // ── Section 3: Done, waiting for you (done builds whose GitHub issue is still open) ──
+        // ── Section 3: Done, waiting for you ────────────────────────────────
         public void RenderDoneWaiting(IReadOnlyList<QueueItem> done)
         {
-            int beforeFocus = done.Count;
-            done = done.Where(i => FocusModeService.Instance.IsIssueInFocus(i.GithubNumber)).ToList();
-            LogFocusHidden("Done, waiting for you", beforeFocus, done.Count);
             DoneList.Children.Clear();
             DoneCountText.Text = $"({done.Count})";
             DoneEmpty.Visibility = done.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-            UpdateDoneAnnounce(done.Count);
 
             foreach (var item in done)
             {
                 var captured = item;
-                string when = item.UpdatedAt.HasValue ? item.UpdatedAt.Value.ToLocalTime().ToString("MMM d, h:mm tt") : "unknown time";
-                string sub = (item.GithubNumber.HasValue ? $"#{item.GithubNumber}  ·  " : "") + $"done {when}  ·  click to open chat";
+                string when = item.UpdatedAt.HasValue ? item.UpdatedAt.Value.ToLocalTime().ToString("MMM d, h:mm tt") : "recently";
+                string sub = (item.GithubNumber.HasValue ? $"#{item.GithubNumber}  ·  " : "") + $"done {when}  ·  click to review";
 
                 DoneList.Children.Add(BuildRow(
                     "✅", "#7FAE91",
                     string.IsNullOrWhiteSpace(item.Title) ? "(untitled build)" : item.Title,
                     sub,
-                    item.GithubNumber.HasValue ? $"Open the chat linked to #{item.GithubNumber}" : null,
-                    (_, _) =>
-                    {
-                        ActivityLog.Log("home-screen",
-                            $"Click-through 'Done, waiting for you' → chat for #{captured.GithubNumber} \"{captured.Title}\"");
-                        DoneItemClicked?.Invoke(this, new HomeQueueClick { GithubNumber = captured.GithubNumber, Title = captured.Title });
-                    }));
+                    item.GithubNumber.HasValue ? $"Open chat for #{item.GithubNumber}" : null,
+                    (_, _) => DoneItemClicked?.Invoke(this, new HomeQueueClick { GithubNumber = captured.GithubNumber, Title = captured.Title })));
             }
-
-            ActivityLog.Log("home-screen", $"Rendered 'Done, waiting for you' ({done.Count})");
         }
 
-        /// <summary>Git #874/#905 — the Done section announces itself with the app's PeachBrush accent once there's something to act on, matching the Build Queue panel's Completed/To-Do tiles; neutral at 0.</summary>
-        private void UpdateDoneAnnounce(int count)
+        public void UpdateClaudeStatus(string statusText, bool isOperational)
         {
-            if (count > 0)
-            {
-                var peach = (Brush)Application.Current.FindResource("PeachBrush");
-                DoneIcon.Foreground = peach;
-                DoneHeaderText.Foreground = peach;
-                DoneCountText.Foreground = peach;
-            }
-            else
-            {
-                DoneIcon.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#7FAE91"));
-                DoneHeaderText.ClearValue(TextBlock.ForegroundProperty);   // back to the HomeSectionHeader style's Subtext1
-                DoneCountText.Foreground = (Brush)Application.Current.FindResource("Subtext1Brush");
-            }
+            ClaudeStatusLabel.Text = statusText;
+            ClaudeStatusDot.Fill = isOperational
+                ? (Brush)FindResource("GreenBrush")
+                : (Brush)FindResource("RedBrush");
         }
 
-        /// <summary>
-        /// Builds one clickable roll-up row: colored icon + title (ellipsis) + subtitle, in
-        /// the shared HomeRow hover style. When <paramref name="onClear"/> is supplied a ✕
-        /// button is docked at the right (used only by stale "Running now" rows to cancel the
-        /// orphaned queue item); when <paramref name="stale"/> is set the row gets the amber
-        /// warning accent (border + subtitle color).
-        /// </summary>
+        // ── Fast Button Click Handlers ──────────────────────────────────────
+        private void BtnQuickNewIssue_Click(object sender, RoutedEventArgs e) => NewIssueRequested?.Invoke(this, EventArgs.Empty);
+        private void BtnQuickBuildWatch_Click(object sender, RoutedEventArgs e) => BuildWatchRequested?.Invoke(this, EventArgs.Empty);
+        private void BtnQuickTestRunner_Click(object sender, RoutedEventArgs e) => TestRunnerRequested?.Invoke(this, EventArgs.Empty);
+        private void BtnQuickReplit_Click(object sender, RoutedEventArgs e) => ReplitRequested?.Invoke(this, EventArgs.Empty);
+        private void BtnImmersiveResume_Click(object sender, RoutedEventArgs e) => ImmersiveFocusRequested?.Invoke(this, EventArgs.Empty);
+        private void BtnMilestoneDetail_Click(object sender, RoutedEventArgs e)
+        {
+            if (FocusModeService.Instance.ActiveMilestoneNumber is int num)
+                MilestoneDetailRequested?.Invoke(this, num);
+        }
+        private void BtnNewEpicChat_Click(object sender, RoutedEventArgs e) => NewIssueRequested?.Invoke(this, EventArgs.Empty);
+        private void BtnDeployNow_Click(object sender, RoutedEventArgs e) => DeployRequested?.Invoke(this, EventArgs.Empty);
+        private void BtnOpenGitBoard_Click(object sender, RoutedEventArgs e) => GitBoardRequested?.Invoke(this, EventArgs.Empty);
+        private void BtnOpenSettings_Click(object sender, RoutedEventArgs e) => SettingsRequested?.Invoke(this, EventArgs.Empty);
+
+        // ── Helper: Build Roll-up Row ────────────────────────────────────────
         private Border BuildRow(string icon, string iconHex, string title, string subtitle, string? tooltip, MouseButtonEventHandler onClick, Action? onClear = null, bool stale = false)
         {
             var iconBlock = new TextBlock
             {
                 Text = icon,
-                FontSize = 14,
-                Margin = new Thickness(0, 0, 10, 0),
+                FontSize = 13,
+                Margin = new Thickness(0, 0, 9, 0),
                 VerticalAlignment = VerticalAlignment.Center,
                 Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(iconHex)),
             };
@@ -375,7 +508,8 @@ namespace BuildConsole.Controls
             textStack.Children.Add(new TextBlock
             {
                 Text = title,
-                FontSize = 13,
+                FontSize = 12,
+                FontWeight = FontWeights.SemiBold,
                 Foreground = (Brush)FindResource("TextBrush"),
                 TextWrapping = TextWrapping.NoWrap,
                 TextTrimming = TextTrimming.CharacterEllipsis,
@@ -386,7 +520,7 @@ namespace BuildConsole.Controls
                 FontSize = 10,
                 Foreground = stale
                     ? new SolidColorBrush((Color)ColorConverter.ConvertFromString("#EE99A0"))
-                    : (Brush)FindResource("Subtext1Brush"),
+                    : (Brush)FindResource("Subtext0Brush"),
                 TextWrapping = TextWrapping.NoWrap,
                 TextTrimming = TextTrimming.CharacterEllipsis,
             });
@@ -399,22 +533,20 @@ namespace BuildConsole.Controls
                 var clearBtn = new Button
                 {
                     Content = "✕",
-                    FontSize = 11,
-                    Padding = new Thickness(5, 1, 5, 1),
-                    Margin = new Thickness(8, 0, 0, 0),
+                    FontSize = 10,
+                    Padding = new Thickness(4, 1, 4, 1),
+                    Margin = new Thickness(6, 0, 0, 0),
                     VerticalAlignment = VerticalAlignment.Center,
                     Cursor = Cursors.Hand,
-                    ToolTip = "Clear this stuck build (cancels the orphaned queue item)",
+                    ToolTip = "Clear stuck build",
                 };
                 if (TryFindResource("IconButton") is Style ib) clearBtn.Style = ib;
-                // The Button captures & handles the mouse-up, so clicking ✕ never also
-                // triggers the row's open-chat MouseLeftButtonUp below.
                 clearBtn.Click += (_, _) => onClear();
                 DockPanel.SetDock(clearBtn, Dock.Right);
                 panel.Children.Add(clearBtn);
             }
 
-            panel.Children.Add(textStack);   // LastChildFill — takes the remaining width
+            panel.Children.Add(textStack);
 
             var row = new Border { Style = (Style)FindResource("HomeRow"), Child = panel };
             if (stale)

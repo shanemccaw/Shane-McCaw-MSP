@@ -277,7 +277,7 @@ namespace BuildConsole
                 CornerRadius = new CornerRadius(6),
                 BorderBrush = _emptyBorder,
                 BorderThickness = new Thickness(1),
-                Background = (Brush)FindResource("MantleBrush"),
+                Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#181825")),
             };
 
             var grid = new Grid();
@@ -1714,7 +1714,7 @@ namespace BuildConsole
         private void Window_StateChanged(object sender, EventArgs e)
         {
             bool maximized = WindowState == WindowState.Maximized;
-            BtnMaximizeRestoreIcon.Text = maximized ? "" : "";
+            BtnMaximizeRestoreIcon.Text = maximized ? "\uE923" : "\uE922";
             BtnMaximizeRestore.ToolTip = maximized ? "Restore Down" : "Maximize";
         }
 

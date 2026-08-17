@@ -46,11 +46,12 @@ namespace BuildConsole.Controls
         private void SyncPauseToggleVisual(bool paused)
         {
             var accent = (Brush)Application.Current.FindResource("PeachBrush");
+            var runningAccent = (Brush)Application.Current.FindResource("GreenBrush");
             var quiet = (Brush)Application.Current.FindResource("Subtext1Brush");
 
-            PauseQueueIcon.Text = paused ? "▶" : "⏸";
+            PauseQueueIcon.Text = paused ? "\uE768" : "\uE769";
             PauseQueueLabel.Text = paused ? "Paused" : "Running";
-            PauseQueueIcon.Foreground = paused ? accent : quiet;
+            PauseQueueIcon.Foreground = paused ? accent : runningAccent;
             PauseQueueLabel.Foreground = paused ? accent : quiet;
             BtnPauseQueue.ToolTip = paused
                 ? "Queue paused — new items won't start. Click to resume."

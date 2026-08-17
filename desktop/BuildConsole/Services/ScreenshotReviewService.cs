@@ -253,6 +253,7 @@ namespace BuildConsole.Services
             if (!settings.HasGitHubPat) return $"issue #{issueNumber} left open (no GitHub PAT configured in Settings)";
             try
             {
+                IssueChompAnimation.Play(null, $"Issue #{issueNumber}");
                 await new GitHubApiClient(settings.GitHubPat).SetIssueStateAsync(issueNumber, close: true);
                 ActivityLog.Log(Channel, $"Closed GitHub issue #{issueNumber} on screenshot approval.");
                 return $"closed issue #{issueNumber}";
