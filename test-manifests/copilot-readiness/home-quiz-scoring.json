@@ -1,11 +1,15 @@
 {
-  "feature": "Home inline Copilot-readiness quiz — scoring / personalization correctness (result reflects the specific answers; distinct answer combinations produce distinct, exactly-computed scores/bands)",
+  "feature": "CopilotAssessmentLanding inline Copilot-readiness quiz — scoring / personalization correctness (result reflects the specific answers; distinct answer combinations produce distinct, exactly-computed scores/bands)",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "084daf9b7aa4114a48ac6b176ac2c9227226330a",
+  "lastVerifiedAgainstCommit": "TBD",
   "notes": [
-    "Route/feature: artifacts/shane-mccaw-consulting/src/pages/Home.tsx — the inline 7-question",
-    "Copilot-readiness quiz in the hero (data-testid quiz-option-A..D per option, quiz-result on the",
-    "final result card). This manifest asserts the RESULT GENUINELY REFLECTS THE SPECIFIC ANSWERS,",
+    "Route/feature: as of Git #1089, / now renders the restored multi-service Home.tsx (the free-",
+    "standing Mission Readiness / Continuous Monitoring page) — the inline quiz this manifest exercises",
+    "moved exclusively to /LP/copilot-assessment (artifacts/shane-mccaw-consulting/src/pages/",
+    "CopilotAssessmentLanding.tsx, extracted from the old Home.tsx by #1087). Every `goto` below was",
+    "repointed from / to /LP/copilot-assessment accordingly; the quiz markup/scoring logic itself is",
+    "unchanged (data-testid quiz-option-A..D per option, quiz-result on the final result card). This",
+    "manifest asserts the RESULT GENUINELY REFLECTS THE SPECIFIC ANSWERS,",
     "not merely that 'a result appeared' — and drives many distinct answer sets (uniform, mixed-per-",
     "pillar, and a context-exclusion probe) that must each produce a genuinely DIFFERENT, EXACTLY-",
     "computed score/band, so a regression in the scoring math fails loudly here.",
@@ -16,7 +20,7 @@
     "This file's feature is the quiz SCORING itself, so it is a separate manifest per discover-before-create.",
     "",
     "*** WHY THIS IS UI-DRIVEN AND NOT pure apiTests (the load-bearing honesty boundary) ***: the",
-    "ONLY deterministic quiz scoring in the whole product is CLIENT-SIDE. Home.tsx computes score+band",
+    "ONLY deterministic quiz scoring in the whole product is CLIENT-SIDE. CopilotAssessmentLanding.tsx computes score+band",
     "in-component from quizData.ts VALUES; NO network call fires on completion (the only quiz POST is a",
     "separate lead-capture, out of scope for scoring), so there is NO scoring endpoint to hit with an",
     "apiTests call. The server-side quiz path that DOES return a score+recommendedService",
@@ -34,15 +38,15 @@
     "at quiz.ts:496-501 — sum of five 0-10 category scores; cutoffs 16/26/36/46 — is genuinely testable,",
     "but only downstream of the non-deterministic AI total, so it is not reachable as pure input->output.)",
     "",
-    "SCORING MODEL (verified against src/pages/home/quizData.ts + Home.tsx:304-307, NOT assumed):",
+    "SCORING MODEL (verified against src/pages/home/quizData.ts + CopilotAssessmentLanding.tsx:304-307, NOT assumed):",
     "  VALUES = [0.18, 0.45, 0.7, 0.95] indexed by the chosen option (A/B/C/D).",
-    "  wedges = the 6 PILLAR answers (Home.tsx answers[1..6]) mapped through VALUES (unanswered -> 0.1).",
+    "  wedges = the 6 PILLAR answers (CopilotAssessmentLanding.tsx answers[1..6]) mapped through VALUES (unanswered -> 0.1).",
     "  score  = Math.round( (sum(wedges) / 6) * 100 ).",
     "  band   = score>=80 'Advanced' | >=60 'Established' | >=40 'Developing' | else 'Early'.",
     "  QUESTIONS[0] is the CONTEXT/seat-count question (pillar -1); answers[0] sets the cohort phrase",
     "  ONLY and does NOT affect score. There are 7 questions total, so 7 clicks complete the quiz and",
     "  flip `done` true (the result card renders only when done). Each click answers the CURRENT question",
-    "  and advances (Home.tsx pick()), so a combo is expressed as the ordered click sequence Q0,Q1..Q6.",
+    "  and advances (CopilotAssessmentLanding.tsx pick()), so a combo is expressed as the ordered click sequence Q0,Q1..Q6.",
     "",
     "EXACT COMBOS ASSERTED (each score is Math.round(sum(6 pillar VALUES)/6*100); Q0's answer is the",
     "first click and never enters the sum):",
@@ -67,8 +71,8 @@
     "HOW THE SPECIFIC SCORE IS ASSERTED (the load-bearing part): the framework's uiStep `expect` action",
     "asserts element STATE ONLY (visible/hidden/present/absent — see UiTestExecutor.EvaluateExpectAsync);",
     "it has no enforced DOM-text assertion (see the textContains caveat below). The score is dynamic text",
-    "inside quiz-result with no per-score testid, so Home.tsx exposes scoped data-score={score} /",
-    "data-band={band} attributes on the quiz-result div (Home.tsx:521). An ATTRIBUTE SELECTOR",
+    "inside quiz-result with no per-score testid, so CopilotAssessmentLanding.tsx exposes scoped data-score={score} /",
+    "data-band={band} attributes on the quiz-result div (CopilotAssessmentLanding.tsx:521). An ATTRIBUTE SELECTOR",
     "([data-testid='quiz-result'][data-score='57'][data-band='Developing']) then asserts the exact",
     "score+band via genuine element presence — a wrong/unchanged result makes that selector NOT match and",
     "the step fails.",
@@ -78,12 +82,12 @@
     "read it, so a textContains assertion is currently SILENTLY NOT ENFORCED. It is therefore intentionally",
     "NOT used as coverage here — the data-score/data-band attribute selector is the real assertion.",
     "",
-    "Each combo re-navigates with `goto /` to reset React state (fresh mount: step 0, answers all null) —",
+    "Each combo re-navigates with `goto /LP/copilot-assessment` to reset React state (fresh mount: step 0, answers all null) —",
     "there is no data-testid on the in-page 'Start over' button, and a fresh navigation is the cleanest",
     "reset."
   ],
   "uiSteps": [
-    { "action": "goto", "target": "/" },
+    { "action": "goto", "target": "/LP/copilot-assessment" },
     { "action": "expect", "selector": "[data-testid='quiz-option-A']", "state": "visible" },
 
     { "action": "click", "selector": "[data-testid='quiz-option-A']" },
@@ -97,7 +101,7 @@
     { "action": "expect", "selector": "[data-testid='quiz-result']", "state": "visible" },
     { "action": "expect", "selector": "[data-testid='quiz-result'][data-score='18'][data-band='Early']", "state": "visible" },
 
-    { "action": "goto", "target": "/" },
+    { "action": "goto", "target": "/LP/copilot-assessment" },
     { "action": "expect", "selector": "[data-testid='quiz-option-B']", "state": "visible" },
 
     { "action": "click", "selector": "[data-testid='quiz-option-B']" },
@@ -111,7 +115,7 @@
     { "action": "expect", "selector": "[data-testid='quiz-result']", "state": "visible" },
     { "action": "expect", "selector": "[data-testid='quiz-result'][data-score='45'][data-band='Developing']", "state": "visible" },
 
-    { "action": "goto", "target": "/" },
+    { "action": "goto", "target": "/LP/copilot-assessment" },
     { "action": "expect", "selector": "[data-testid='quiz-option-C']", "state": "visible" },
 
     { "action": "click", "selector": "[data-testid='quiz-option-C']" },
@@ -125,7 +129,7 @@
     { "action": "expect", "selector": "[data-testid='quiz-result']", "state": "visible" },
     { "action": "expect", "selector": "[data-testid='quiz-result'][data-score='70'][data-band='Established']", "state": "visible" },
 
-    { "action": "goto", "target": "/" },
+    { "action": "goto", "target": "/LP/copilot-assessment" },
     { "action": "expect", "selector": "[data-testid='quiz-option-D']", "state": "visible" },
 
     { "action": "click", "selector": "[data-testid='quiz-option-D']" },
@@ -139,7 +143,7 @@
     { "action": "expect", "selector": "[data-testid='quiz-result']", "state": "visible" },
     { "action": "expect", "selector": "[data-testid='quiz-result'][data-score='95'][data-band='Advanced']", "state": "visible" },
 
-    { "action": "goto", "target": "/" },
+    { "action": "goto", "target": "/LP/copilot-assessment" },
     { "action": "expect", "selector": "[data-testid='quiz-option-A']", "state": "visible" },
 
     { "action": "click", "selector": "[data-testid='quiz-option-A']" },
@@ -153,7 +157,7 @@
     { "action": "expect", "selector": "[data-testid='quiz-result']", "state": "visible" },
     { "action": "expect", "selector": "[data-testid='quiz-result'][data-score='57'][data-band='Developing']", "state": "visible" },
 
-    { "action": "goto", "target": "/" },
+    { "action": "goto", "target": "/LP/copilot-assessment" },
     { "action": "expect", "selector": "[data-testid='quiz-option-D']", "state": "visible" },
 
     { "action": "click", "selector": "[data-testid='quiz-option-D']" },
@@ -167,7 +171,7 @@
     { "action": "expect", "selector": "[data-testid='quiz-result']", "state": "visible" },
     { "action": "expect", "selector": "[data-testid='quiz-result'][data-score='78'][data-band='Established']", "state": "visible" },
 
-    { "action": "goto", "target": "/" },
+    { "action": "goto", "target": "/LP/copilot-assessment" },
     { "action": "expect", "selector": "[data-testid='quiz-option-D']", "state": "visible" },
 
     { "action": "click", "selector": "[data-testid='quiz-option-D']" },

@@ -35,7 +35,7 @@ export const ZONE_ASSIGNMENTS: Record<ZoneKey, string[]> = {
     'Compliance Framework Mapping Audit — SOC 2',
     'Compliance Framework Mapping Audit — NIST CSF',
     'Compliance Framework Mapping Audit — ISO 27001',
-    'Compliance Framework Mapping Audit — CMMC Level 1-2',
+    'Compliance Framework Mapping Audit — CMMC Level 1–2',
   ],
   data: [
     'Data Governance Assessment',
@@ -79,7 +79,7 @@ export const ASSESSMENT_TOPIC_SLUGS: Record<string, string> = {
   'Compliance Framework Mapping Audit — SOC 2': 'security-compliance',
   'Compliance Framework Mapping Audit — NIST CSF': 'security-compliance',
   'Compliance Framework Mapping Audit — ISO 27001': 'security-compliance',
-  'Compliance Framework Mapping Audit — CMMC Level 1-2': 'security-compliance',
+  'Compliance Framework Mapping Audit — CMMC Level 1–2': 'security-compliance',
   'Data Governance Assessment': 'governance',
   'Copilot Data Exposure Assessment': 'copilot',
   'SharePoint Assessment': 'sharepoint',

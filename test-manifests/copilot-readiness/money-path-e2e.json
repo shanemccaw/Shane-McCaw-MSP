@@ -2,9 +2,14 @@
   "issue": 987,
   "feature": "Money-path E2E (consolidates #886–891) — setup → create/execute → verify login → teardown, one self-contained account-lifecycle flow",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "6cb87e0f",
+  "lastVerifiedAgainstCommit": "TBD",
 
   "notes": [
+    "Git #1089: the uiSteps entry point moved from `goto /` to `goto /LP/copilot-assessment` — / now",
+    "renders the restored multi-service Home.tsx (Monitoring/Assessment/Retainer funnel), not the",
+    "quiz. CopilotAssessmentLanding.tsx (the quiz this flow drives) is otherwise unchanged and still",
+    "reachable, just no longer mounted at the bare domain root.",
+    "",
     "GIT #987 (Epic #803). This single manifest CONSOLIDATES the six money-path manifests — #886 assessment/home-quiz.json, #887 copilot-readiness/consent-scan-trigger.json, #888 copilot-readiness/verdict-pillars.json, #889 copilot-readiness/documents-screen.json, #890 copilot-readiness/sow-proposal.json, #891 copilot-readiness/checkout.json — into ONE create → use → verify → teardown lifecycle, restructuring the account lifecycle around every content/theme/honesty assertion those six already proved (none discarded; each is preserved and labelled with its origin issue below).",
 
     "PHASE → EXECUTOR-BUCKET MAPPING (MainWindow.RunManifestAsync runs phases in a FIXED order: apiTests → graphTests → postGraphApiTests → zohoTests → uiSteps → powerShellVerify, all sharing ONE #877 TestRunVariables store so an extracted value flows forward into every later phase). Setup + Create + Execute(API) + Verify all live in `apiTests` (they must be strictly ordered and precede teardown). Teardown lives in `postGraphApiTests` — because graphTests is empty it runs immediately after apiTests, i.e. AFTER verify. The preserved UI content assertions live in `uiSteps`. Every step's `name` is prefixed with its phase (SETUP/CREATE/EXECUTE/VERIFY/TEARDOWN) so a failure names its phase straight from the live log: apiTests/postGraphApiTests log on the `testing.api-executor` channel, uiSteps on `testing.ui-executor`.",
@@ -206,7 +211,7 @@
   ],
 
   "uiSteps": [
-    { "action": "goto", "target": "/" },
+    { "action": "goto", "target": "/LP/copilot-assessment" },
     { "action": "expect", "selector": "[data-testid='quiz-option-A']", "state": "visible" },
 
     { "action": "click", "selector": "[data-testid='quiz-option-A']" },

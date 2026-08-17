@@ -1,23 +1,24 @@
 {
-  "feature": "CopilotAssessmentLanding — shared component reachable at both / and the new /LP/copilot-assessment route",
+  "feature": "CopilotAssessmentLanding reachable at /LP/copilot-assessment; / renders the restored multi-service Home.tsx (Git #1089)",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "015e272f",
+  "lastVerifiedAgainstCommit": "TBD",
   "notes": [
-    "Git #1087 (scope narrowed: extraction + new route only, no redesign/copy changes). Home.tsx's",
-    "quiz/radar/lead-capture experience was extracted into artifacts/shane-mccaw-consulting/src/pages/",
-    "CopilotAssessmentLanding.tsx, a single shared component. Home.tsx now renders it unchanged at /,",
-    "and App.tsx registers a new /LP/copilot-assessment route rendering the same component.",
-    "",
-    "This manifest asserts BOTH mount points render the identical real DOM (same data-testid markers",
-    "already exercised by copilot-readiness/home-quiz-scoring.json for /) rather than re-asserting quiz",
-    "scoring math a second time here — that exact-score coverage stays in home-quiz-scoring.json per",
-    "discover-before-create (this file's own feature is route reachability, not scoring)."
+    "Git #1087 originally mounted CopilotAssessmentLanding.tsx at BOTH / and /LP/copilot-assessment.",
+    "Git #1089 restored the pre-7/27 multi-service Home.tsx (Monitoring calculator, paid/free",
+    "assessment split, retainers) to / from commit 8224d2e7a, wired against the reconciled Product",
+    "Catalog/useCatalog shapes confirmed in #1086/#1090/#1091. /LP/copilot-assessment keeps rendering",
+    "CopilotAssessmentLanding.tsx completely unchanged — App.tsx's route registration for it was not",
+    "touched. This manifest now asserts the SPLIT: / shows the restored Home's own real markers",
+    "(not the quiz), and /LP/copilot-assessment still shows the quiz markers exercised in more depth",
+    "by copilot-readiness/home-quiz-scoring.json (which moved its own goto targets to",
+    "/LP/copilot-assessment in this same #1089 pass) — no duplicate scoring coverage added here."
   ],
   "uiSteps": [
     { "action": "goto", "target": "/" },
-    { "action": "expect", "selector": "[data-testid='hero-headline']", "state": "visible" },
-    { "action": "expect", "selector": "[data-testid='quiz-option-A']", "state": "visible" },
-    { "action": "expect", "selector": "[data-testid='get-real-score-cta']", "state": "visible" },
+    { "action": "expect", "selector": "[data-testid='home-hero-badge']", "state": "visible", "textContains": "Built by a NASA M365 Architect" },
+    { "action": "expect", "selector": "#seat-count", "state": "visible" },
+    { "action": "expect", "selector": "#catalog", "state": "present" },
+    { "action": "expect", "selector": "[data-testid='quiz-option-A']", "state": "absent" },
 
     { "action": "goto", "target": "/LP/copilot-assessment" },
     { "action": "expect", "selector": "[data-testid='hero-headline']", "state": "visible" },
