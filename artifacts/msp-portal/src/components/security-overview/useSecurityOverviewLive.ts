@@ -93,7 +93,7 @@ interface EngineHistoryWire {
     trendDirection: string | null;
     source: string;
   }>;
-  signalDeltas: Array<{ label: string; direction: "fired" | "resolved"; date: string }>;
+  signalDeltas: Array<{ signalKey: string; label: string; direction: "fired" | "resolved"; date: string }>;
 }
 
 // ── Derived presentation types ────────────────────────────────────────────────
@@ -149,11 +149,20 @@ export interface SignInTrendLive {
   enoughHistory: boolean;
 }
 
+export interface AlertVolumeSignal {
+  signalKey: string;
+  label: string;
+  direction: "fired" | "resolved";
+}
+
 export interface AlertVolumeDay {
   day: string;
   fired: number;
   resolved: number;
   isToday: boolean;
+  /** The real signals (label + direction) that made up this day's counts —
+   * same changedSignalKeys data already collected, surfaced for drill-down. */
+  signals: AlertVolumeSignal[];
 }
 
 export interface AlertVolumeLive {
@@ -249,9 +258,13 @@ function bucketHistory(points: HistoryPoint[], timeframe: TimeFrame): TrendBucke
     .map(([key, b]) => ({ label: b.label, value: b.value, isCurrent: key === currentKey }));
 }
 
-/** Group engine-history signal deltas into per-day fired/resolved counts. */
+/** Group engine-history signal deltas into per-day fired/resolved counts,
+ * keeping the real per-signal (label + direction) list for drill-down. */
 function bucketSignalDeltas(deltas: EngineHistoryWire["signalDeltas"]): AlertVolumeDay[] {
-  const byDay = new Map<string, { fired: number; resolved: number; sortKey: number }>();
+  const byDay = new Map<
+    string,
+    { fired: number; resolved: number; sortKey: number; signals: AlertVolumeSignal[] }
+  >();
   for (const d of deltas) {
     const date = new Date(d.date);
     if (Number.isNaN(date.getTime())) continue;
@@ -260,9 +273,11 @@ function bucketSignalDeltas(deltas: EngineHistoryWire["signalDeltas"]): AlertVol
       fired: 0,
       resolved: 0,
       sortKey: new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime(),
+      signals: [],
     };
     if (d.direction === "resolved") entry.resolved += 1;
     else entry.fired += 1;
+    entry.signals.push({ signalKey: d.signalKey, label: d.label, direction: d.direction });
     byDay.set(key, entry);
   }
   const now = new Date();
@@ -274,6 +289,7 @@ function bucketSignalDeltas(deltas: EngineHistoryWire["signalDeltas"]): AlertVol
       fired: e.fired,
       resolved: e.resolved,
       isToday: key === todayKey,
+      signals: e.signals,
     }));
 }
 

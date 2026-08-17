@@ -1,6 +1,13 @@
 import React, { useState } from 'react';
-import { BellRing, CircleDashed, ShieldCheck } from 'lucide-react';
+import { BellRing, CircleDashed, ShieldCheck, TrendingUp, TrendingDown } from 'lucide-react';
 import type { AlertVolumeLive, AlertVolumeDay, LiveMetric } from './useSecurityOverviewLive';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
 
 /**
  * Daily Alert Volume — real per-day security signal activity from the
@@ -12,6 +19,11 @@ import type { AlertVolumeLive, AlertVolumeDay, LiveMetric } from './useSecurityO
  * (brand-new tenant — data accumulates naturally) from "history exists but
  * nothing changed in this window" (posture held steady — good news, said
  * plainly, not padded with fake bars).
+ *
+ * Clicking a day with signals (Git #1111) opens a drill-down Dialog listing
+ * the real per-signal label + direction that made up that day's count — the
+ * same changedSignalKeys data the aggregate bars already summarize, just not
+ * previously surfaced individually.
  */
 
 interface AlertVolumeCardProps {
@@ -24,6 +36,7 @@ type SeriesFilter = 'all' | 'fired' | 'resolved';
 export const AlertVolumeCard: React.FC<AlertVolumeCardProps> = ({ volume, activeAlerts }) => {
   const [filter, setFilter] = useState<SeriesFilter>('all');
   const [hoveredDay, setHoveredDay] = useState<AlertVolumeDay | null>(null);
+  const [drilldownDay, setDrilldownDay] = useState<AlertVolumeDay | null>(null);
 
   const maxTotal = Math.max(1, ...volume.days.map((d) => d.fired + d.resolved));
 
@@ -58,12 +71,25 @@ export const AlertVolumeCard: React.FC<AlertVolumeCardProps> = ({ volume, active
           <div className="flex-grow flex items-end gap-3 h-52 mb-4 pt-2">
             {volume.days.map((day, idx) => {
               const total = day.fired + day.resolved;
+              const hasSignals = day.signals.length > 0;
               return (
                 <div
                   key={idx}
+                  data-testid={`alert-volume-bar-${idx}`}
                   onMouseEnter={() => setHoveredDay(day)}
                   onMouseLeave={() => setHoveredDay(null)}
-                  className="flex-grow flex flex-col justify-end gap-1 h-full relative group cursor-pointer"
+                  onClick={() => hasSignals && setDrilldownDay(day)}
+                  role={hasSignals ? 'button' : undefined}
+                  tabIndex={hasSignals ? 0 : undefined}
+                  onKeyDown={(e) => {
+                    if (hasSignals && (e.key === 'Enter' || e.key === ' ')) {
+                      e.preventDefault();
+                      setDrilldownDay(day);
+                    }
+                  }}
+                  className={`flex-grow flex flex-col justify-end gap-1 h-full relative group ${
+                    hasSignals ? 'cursor-pointer' : 'cursor-default'
+                  }`}
                 >
                   {day.fired > 0 && (
                     <div
@@ -127,6 +153,7 @@ export const AlertVolumeCard: React.FC<AlertVolumeCardProps> = ({ volume, active
               <div className="font-mono text-[11px] text-primary bg-secondary/80 px-2.5 py-1 rounded border border-primary/30">
                 {hoveredDay.isToday ? 'Today' : hoveredDay.day}: {hoveredDay.fired} fired ·{' '}
                 {hoveredDay.resolved} resolved
+                {hoveredDay.signals.length > 0 && <span className="text-muted-foreground"> · click bar for details</span>}
               </div>
             )}
           </div>
@@ -152,6 +179,39 @@ export const AlertVolumeCard: React.FC<AlertVolumeCardProps> = ({ volume, active
           </div>
         </div>
       )}
+
+      <Dialog open={drilldownDay !== null} onOpenChange={(open) => !open && setDrilldownDay(null)}>
+        <DialogContent className="max-w-md" data-testid="alert-volume-drilldown-dialog">
+          <DialogHeader>
+            <DialogTitle>{drilldownDay?.isToday ? 'Today' : drilldownDay?.day}</DialogTitle>
+            <DialogDescription>
+              {drilldownDay?.fired ?? 0} fired · {drilldownDay?.resolved ?? 0} resolved
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-2 max-h-[50vh] overflow-y-auto">
+            {drilldownDay?.signals.map((signal, i) => (
+              <div
+                key={`${signal.signalKey}-${i}`}
+                className="flex items-center gap-2 text-sm bg-secondary/40 rounded-md px-3 py-2 border border-border"
+              >
+                {signal.direction === 'fired' ? (
+                  <TrendingUp className="w-4 h-4 text-status-red flex-shrink-0" />
+                ) : (
+                  <TrendingDown className="w-4 h-4 text-status-green flex-shrink-0" />
+                )}
+                <span className="flex-grow text-foreground">{signal.label}</span>
+                <span
+                  className={`font-mono text-[10px] uppercase ${
+                    signal.direction === 'fired' ? 'text-status-red' : 'text-status-green'
+                  }`}
+                >
+                  {signal.direction}
+                </span>
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

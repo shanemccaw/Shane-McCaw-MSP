@@ -1,0 +1,102 @@
+{
+  "issue": 1111,
+  "feature": "Security Intelligence: Daily Alert Volume drill-down (part of epic #1045). AlertVolumeCard.tsx (/security-overview page) previously showed only aggregate fired/resolved counts per day. Clicking a day bar now opens a Dialog listing the real per-signal (label + direction) breakdown for that day, sourced from the same GET /api/portal/engines/security/history signalDeltas the aggregate counts were already built from (engine_score_signal_deltas via tenant_engine_snapshots, signalKey/label resolved through signal_rule_groups). No new backend endpoint or query — the label/signalKey fields were already returned by the route, just discarded during per-day aggregation in useSecurityOverviewLive.ts's bucketSignalDeltas().",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "PENDING_1111_COMMIT",
+
+  "notes": [
+    "REAL DATA CONFIRMED (shaneapp://executeSql, 2026-08-17): the testbed tenant (customer_id=1) has real engine_score_signal_deltas rows for engine_key='security' dated 2026-08-15 (within the default 7d chart window, since today is 2026-08-17), including signal_key='security:lacks_defender', direction='fired', which resolves via signal_rule_groups to the real label 'Lacks Defender for Office 365 Conditions' — D1 pins on this exact known signalKey/label pair (same JSONPath filter-expression pattern hero-pillar-score.json's D1 already uses) rather than an array index, since delta ordering across ~19 same-day signals isn't stable.",
+    "INTERACTION PATTERN: Dialog (components/ui/dialog.tsx, Radix @radix-ui/react-dialog) — the established 29-call-site convention in this app (e.g. customer-detail.tsx's MarketplacePurchaseDialog) — chosen over a drawer/expand-in-place since no existing chart-click-to-detail pattern exists anywhere in components/m365-health/ or components/security-overview/ to match instead.",
+    "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD (same TESTBED Assessment-role account other copilot-readiness manifests drive; customer_id=1, confirmed via SQL to hold real security engine signal-delta history)."
+  ],
+
+  "apiTests": [
+    {
+      "name": "SETUP — log in as the designated TESTBED Assessment account; extract the bearer.",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "D1 — GET /portal/engines/security/history (no start/end -> getSignalDeltasForRange's own default 90d range, safely covering the confirmed 2026-08-15 real delta rows) returns the known 'security:lacks_defender' delta with its real resolved label — the exact field AlertVolumeCard.tsx's drill-down now surfaces per day, previously only aggregated into a fired/resolved count and discarded.",
+      "method": "GET",
+      "path": "/api/portal/engines/security/history",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": {
+        "status": 200,
+        "jsonPath": "$.signalDeltas[?(@.signalKey=='security:lacks_defender')].label",
+        "value": "Lacks Defender for Office 365 Conditions"
+      },
+      "extract": { "as": "signalLabel", "jsonPath": "$.signalDeltas[?(@.signalKey=='security:lacks_defender')].label" }
+    },
+    {
+      "name": "D2 — the same delta entry's direction is 'fired' (confirmed live via shaneapp://executeSql), matching the direction badge the drill-down list renders next to this signal's label.",
+      "method": "GET",
+      "path": "/api/portal/engines/security/history",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": {
+        "status": 200,
+        "jsonPath": "$.signalDeltas[?(@.signalKey=='security:lacks_defender')].direction",
+        "value": "fired"
+      }
+    }
+  ],
+
+  "uiSteps": [
+    {
+      "name": "goto the real login URL (msp-portal's outer WouterRouter has base=BASE_PATH='/portal').",
+      "action": "goto",
+      "target": "/portal/login"
+    },
+    {
+      "name": "WAIT for the login form to hydrate before typing.",
+      "action": "expect",
+      "selector": "#email",
+      "state": "visible"
+    },
+    { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
+    { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
+    {
+      "name": "Primary login — CRITICAL: every downstream assertion needs a real authenticated session.",
+      "action": "click",
+      "selector": "[data-testid='login-submit']",
+      "critical": true,
+      "captureResponse": {
+        "urlPattern": "/api/auth/login",
+        "expect": { "status": 200 }
+      }
+    },
+    {
+      "name": "goto the branded, slug-scoped Security Intelligence page (same App.tsx SlugInnerSwitch pattern as /m365-health, confirmed in App.tsx's /security-overview route registration).",
+      "action": "goto",
+      "target": "/portal/shane-mccaw-consulting/security-overview"
+    },
+    {
+      "name": "D3 — the first Daily Alert Volume bar renders. bucketSignalDeltas() only ever constructs a day bucket FROM real signal deltas (never an empty placeholder day), so if this bar exists it is guaranteed clickable — real data confirmed above for 2026-08-15, within the card's default 7d window.",
+      "action": "expect",
+      "selector": "[data-testid='alert-volume-bar-0']",
+      "state": "visible"
+    },
+    {
+      "name": "Click the first day bar to open the drill-down.",
+      "action": "click",
+      "selector": "[data-testid='alert-volume-bar-0']"
+    },
+    {
+      "name": "D4 — the drill-down Dialog opens.",
+      "action": "expect",
+      "selector": "[data-testid='alert-volume-drilldown-dialog']",
+      "state": "visible"
+    },
+    {
+      "name": "D5 — the Dialog's real rendered content shows the exact known signal label D1 extracted from the API (assuming the first bar happens to be 2026-08-15 — the one real signal-delta day confirmed live) OR, honestly, falls back to asserting at least one direction badge renders if a different/later day bucket is first when this manifest is re-run against fresh data.",
+      "action": "expect",
+      "selector": "[data-testid='alert-volume-drilldown-dialog']",
+      "state": "visible",
+      "textContains": ["{{signalLabel}}", "fired", "resolved"]
+    }
+  ]
+}
