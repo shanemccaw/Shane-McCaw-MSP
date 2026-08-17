@@ -3109,9 +3109,40 @@ namespace BuildConsole.Controls
                     var epic = _chatEpicById.Values.FirstOrDefault(ep => ep.GithubNumber == issue.IssueNumber);
                     if (epic == null)
                     {
-                        ActivityLog.Log("git-board.assign-chat", $"assign chat {conversationId} to epic #{issue.IssueNumber} aborted — no bt_epics row has github_number {issue.IssueNumber}");
-                        ToastEngine.Warning("Assign Chat to Epic", $"Epic #{issue.IssueNumber} isn't registered in the Build Tracker yet.");
-                        return;
+                        // Not registered yet — the same gap "Sync GitHub" fixes in the
+                        // admin panel. Auto-register just this one issue (POST
+                        // extension/sync-epic always upserts the target issue's own
+                        // bt_epics row, whether or not it has sub-issues) instead of
+                        // making Shane leave the WPF app to fix it.
+                        ActivityLog.Log("git-board.assign-chat", $"epic #{issue.IssueNumber} not registered — auto-syncing from GitHub before assigning chat {conversationId}");
+                        try
+                        {
+                            var syncRes = await _api.SyncEpicAsync(issue.IssueNumber);
+                            if (!syncRes.IsSuccessStatusCode)
+                            {
+                                var syncBody = await syncRes.Content.ReadAsStringAsync();
+                                ActivityLog.Log("git-board.assign-chat", $"auto-sync epic #{issue.IssueNumber} FAILED: HTTP {(int)syncRes.StatusCode} {syncBody}");
+                                ToastEngine.Error("Assign Chat to Epic", $"Couldn't register Epic #{issue.IssueNumber}: {syncBody}");
+                                return;
+                            }
+                        }
+                        catch (Exception syncEx)
+                        {
+                            ActivityLog.Log("git-board.assign-chat", $"auto-sync epic #{issue.IssueNumber} FAILED: {syncEx.Message}");
+                            ToastEngine.Error("Assign Chat to Epic", $"Couldn't register Epic #{issue.IssueNumber}: {syncEx.Message}");
+                            return;
+                        }
+
+                        var refreshed = await _api.GetBoardAsync();
+                        _chatEpicById = refreshed.Data.Epics.ToDictionary(e => e.Id);
+                        epic = _chatEpicById.Values.FirstOrDefault(ep => ep.GithubNumber == issue.IssueNumber);
+                        if (epic == null)
+                        {
+                            ActivityLog.Log("git-board.assign-chat", $"assign chat {conversationId} to epic #{issue.IssueNumber} aborted — sync-epic succeeded but no bt_epics row has github_number {issue.IssueNumber} on re-fetch");
+                            ToastEngine.Warning("Assign Chat to Epic", $"Epic #{issue.IssueNumber} still isn't registered after syncing — check it's a real GitHub issue.");
+                            return;
+                        }
+                        ActivityLog.Log("git-board.assign-chat", $"auto-registered epic #{issue.IssueNumber} (bt_epics id {epic.Id})");
                     }
 
                     try

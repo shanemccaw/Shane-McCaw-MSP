@@ -435,6 +435,20 @@ namespace BuildConsole.Services
                 conversation_id = conversationId,
             }));
 
+        /// <summary>
+        /// "Assign Chat to Epic" auto-register-on-miss: same
+        /// POST /extension/sync-epic the admin panel's "Sync GitHub" button
+        /// calls, scoped to one issue number. Always upserts the target
+        /// issue's own bt_epics row (line ~1907 of admin-build-tracker.ts),
+        /// regardless of whether it has sub-issues - so it registers plain
+        /// leaf issues as epics too, not just ones with children.
+        /// </summary>
+        public Task<HttpResponseMessage> SyncEpicAsync(int epicNumber) =>
+            TrackAsync($"POST extension/sync-epic ({epicNumber})", () => _http.PostAsJsonAsync("api/admin/build-tracker/extension/sync-epic", new
+            {
+                epicNumber,
+            }));
+
         /// <summary>Same file-content endpoint the extension's Shane-To-Do 🗄 button uses — reads a real migration file's text straight from GitHub, no local filesystem assumption.</summary>
         public Task<string> GetFileContentAsync(string path) => TrackAsync($"GET file-content {path}", async () =>
         {
