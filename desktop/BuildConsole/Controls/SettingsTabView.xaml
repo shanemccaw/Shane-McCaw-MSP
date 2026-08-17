@@ -181,6 +181,19 @@
                             </Button>
                         </Border>
 
+                        <!-- 6. SSH & Remote Execution -->
+                        <Border x:Name="NavWrapSshRemote" CornerRadius="6" Margin="0,0,0,4">
+                            <Button x:Name="NavBtnSshRemote" Style="{StaticResource IconButton}"
+                                    HorizontalContentAlignment="Stretch" Padding="10,9"
+                                    Tag="SshRemote" Click="NavButton_Click">
+                                <DockPanel LastChildFill="True">
+                                    <TextBlock Text="🖥️" FontSize="13" Width="24" TextAlignment="Left" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="NavTextSshRemote" Text="SSH &amp; Remote (Replit)" FontSize="12" FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
+                                </DockPanel>
+                            </Button>
+                        </Border>
+
                         <!-- 6. Web Tools -->
                         <Border x:Name="NavWrapWebTools" CornerRadius="6" Margin="0,0,0,4">
                             <Button x:Name="NavBtnWebTools" Style="{StaticResource IconButton}"
@@ -523,6 +536,86 @@
                                 <Button x:Name="BtnSaveScheduledRun" Content="Save Schedule" Style="{StaticResource PrimaryButton}"
                                         HorizontalAlignment="Left" Padding="16,5" Click="BtnSaveScheduledRun_Click"/>
                                 <TextBlock x:Name="ScheduledRunSavedText" Text="" FontSize="11" Foreground="{StaticResource GreenBrush}" Margin="0,6,0,0"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+
+                    <!-- ════════════════ 6. PAGE: SSH & REMOTE (REPLIT) ════════════════ -->
+                    <StackPanel x:Name="PageSshRemote" Visibility="Collapsed">
+                        <Border Background="{StaticResource MantleBrush}" BorderBrush="{StaticResource Surface0Brush}"
+                                BorderThickness="1" CornerRadius="10" Padding="20">
+                            <StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                    <TextBlock Text="🖥️" FontSize="16" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                    <TextBlock Text="SSH &amp; Remote Replit Execution" FontSize="15" FontWeight="Bold"
+                                               Foreground="{StaticResource PeachBrush}" VerticalAlignment="Center"/>
+                                </StackPanel>
+                                <TextBlock Text="Execute git deployments, builds, and commands directly on Replit over OpenSSH without relying on intermediate web API servers."
+                                           FontSize="11" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,14" TextWrapping="Wrap"/>
+
+                                <!-- SSH Private Key Card -->
+                                <Border Background="{StaticResource Surface0Brush}" CornerRadius="8" Padding="14" Margin="0,0,0,12">
+                                    <StackPanel>
+                                        <TextBlock Text="SSH Private Key File Path" FontSize="12" FontWeight="SemiBold"
+                                                   Foreground="{StaticResource TextBrush}" Margin="0,0,0,3"/>
+                                        <TextBlock Text="Path to your private key (e.g. ~/.ssh/replit or ~/.ssh/id_ed25519) whose public key is added in Replit."
+                                                   FontSize="10.5" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,8"/>
+                                        <Grid Margin="0,0,0,4">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBox x:Name="SshKeyPathBox" Grid.Column="0" Height="28" FontSize="12" Margin="0,0,8,0"
+                                                     VerticalContentAlignment="Center" TextChanged="SshField_TextChanged"/>
+                                            <Button x:Name="BtnBrowseSshKey" Grid.Column="1" Content="📁 Browse…"
+                                                    Style="{StaticResource SecondaryButton}" Padding="12,5"
+                                                    ToolTip="Browse for private key file" Click="BtnBrowseSshKey_Click"/>
+                                        </Grid>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- SSH Connection Details Card -->
+                                <Border Background="{StaticResource Surface0Brush}" CornerRadius="8" Padding="14" Margin="0,0,0,12">
+                                    <StackPanel>
+                                        <TextBlock Text="Connection Details" FontSize="12" FontWeight="SemiBold"
+                                                   Foreground="{StaticResource TextBrush}" Margin="0,0,0,8"/>
+                                        
+                                        <Grid Margin="0,0,0,8">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                                                <TextBlock Text="SSH Hostname / Server" FontSize="10.5" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,3"/>
+                                                <TextBox x:Name="SshHostBox" Height="28" FontSize="12" Text="ssh.replit.com"
+                                                         VerticalContentAlignment="Center" TextChanged="SshField_TextChanged"/>
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="1">
+                                                <TextBlock Text="SSH User / Repl Identifier" FontSize="10.5" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,3"/>
+                                                <TextBox x:Name="SshUserBox" Height="28" FontSize="12"
+                                                         VerticalContentAlignment="Center" TextChanged="SshField_TextChanged"/>
+                                            </StackPanel>
+                                        </Grid>
+
+                                        <TextBlock Text="Remote Working Directory" FontSize="10.5" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,3"/>
+                                        <TextBox x:Name="SshRemoteDirBox" Height="28" FontSize="12" Text="~/Shane-McCaw-MSP"
+                                                 VerticalContentAlignment="Center" Margin="0,0,0,12" TextChanged="SshField_TextChanged"/>
+
+                                        <CheckBox x:Name="UseSshForDeployCheck" Content="Use SSH for build-completion and automatic deployments"
+                                                  FontSize="11.5" Foreground="{StaticResource TextBrush}" IsChecked="True" Margin="0,0,0,6"/>
+                                        <CheckBox x:Name="UseSshForSqlCheck" Content="Use SSH for direct SQL execution / queries"
+                                                  FontSize="11.5" Foreground="{StaticResource TextBrush}" IsChecked="True"/>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- Actions & Test Button -->
+                                <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                    <Button x:Name="BtnSaveSshSettings" Content="Save SSH Settings" Style="{StaticResource PrimaryButton}"
+                                            Padding="18,6" Margin="0,0,10,0" Click="BtnSaveSshSettings_Click"/>
+                                    <Button x:Name="BtnTestSshConnection" Content="⚡ Test Connection" Style="{StaticResource SecondaryButton}"
+                                            Padding="14,6" Click="BtnTestSshConnection_Click"/>
+                                </StackPanel>
+                                <TextBlock x:Name="SshSettingsSavedText" Text="" FontSize="11" Foreground="{StaticResource GreenBrush}" Margin="0,8,0,0"/>
                             </StackPanel>
                         </Border>
                     </StackPanel>

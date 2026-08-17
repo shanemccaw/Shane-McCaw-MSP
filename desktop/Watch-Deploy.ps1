@@ -1,84 +1,59 @@
 # ============================================================
 #  Watch-Deploy.ps1
-#  Manually test & watch the git-pull + kill-1-restart + poll
-#  chain (real #911 build-complete + real #805 deploy-status
-#  endpoints), step by step, with verbose progress output.
+#  Direct SSH deployment runner & live watcher on Replit.
+#  Replaces blind HTTP REST polling with real-time SSH execution.
 # ============================================================
 
-$baseUrl = "https://ba888680-2595-412d-84fe-4e9aefc2688b-00-22rhgh0krunr4.picard.replit.dev"
-$token   = "e4cd1d817351c233cfcda3ef61ff5cbee1a49c61cbdd07f32ff1cb285d465d2f"
-$headers = @{ "Authorization" = "Bearer $token"; "Content-Type" = "application/json" }
+$sshKey = "$HOME\.ssh\replit"
+$sshHost = "ssh.replit.com"
+$remoteDir = "~/Shane-McCaw-MSP"
 
-function Get-RealDeployStatus {
+# Check if BuildConsole settings has a custom key or host
+$settingsPath = "$env:APPDATA\BuildConsole\settings.json"
+if (Test-Path $settingsPath) {
     try {
-        $resp = Invoke-RestMethod -Method Get -Uri "$baseUrl/api/internal/deploy-status" -Headers $headers -TimeoutSec 15
-        return $resp
-    } catch {
-        Write-Host "  [deploy-status] REQUEST FAILED: $($_.Exception.Message)" -ForegroundColor Red
-        return $null
-    }
+        $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json
+        if ($settings.sshKeyPath -and (Test-Path $settings.sshKeyPath)) { $sshKey = $settings.sshKeyPath }
+        if ($settings.sshHost) { $sshHost = $settings.sshHost }
+        if ($settings.sshUser) { $sshHost = "$($settings.sshUser)@$($settings.sshHost)" }
+        if ($settings.sshRemoteDir) { $remoteDir = $settings.sshRemoteDir }
+    } catch {}
 }
 
-Write-Host "=== STEP 1: Real commit hash BEFORE triggering ===" -ForegroundColor Cyan
-$before = Get-RealDeployStatus
-if ($null -eq $before) { Write-Host "Could not reach deploy-status at all. STOP -- this is a real endpoint-reachability problem, not a timing problem." -ForegroundColor Red; exit 1 }
-Write-Host "  commitHash: $($before.commitHash)"
-Write-Host "  timestamp:  $($before.timestamp)"
-$beforeHash = $before.commitHash
+if (Test-Path $sshKey) {
+    Write-Host "=== Direct SSH Deployment to Replit ($sshHost) ===" -ForegroundColor Cyan
+    Write-Host "  Using Key: $sshKey" -ForegroundColor DarkGray
+    Write-Host "  Directory: $remoteDir`n" -ForegroundColor DarkGray
 
-Write-Host "`n=== STEP 2: Triggering POST /admin/deploy/build-complete (git pull + kill 1) ===" -ForegroundColor Cyan
-$triggerStart = Get-Date
-try {
-    $triggerResp = Invoke-RestMethod -Method Post -Uri "$baseUrl/api/admin/deploy/build-complete" -Headers $headers -Body "{}" -TimeoutSec 30
-    Write-Host "  Trigger accepted. Real response:" -ForegroundColor Green
-    $triggerResp | ConvertTo-Json -Depth 5 | Write-Host
-} catch {
-    Write-Host "  TRIGGER FAILED: $($_.Exception.Message)" -ForegroundColor Red
-    if ($_.Exception.Response) {
-        Write-Host "  Real status code: $($_.Exception.Response.StatusCode.Value__)" -ForegroundColor Red
-        try {
-            $stream = $_.Exception.Response.GetResponseStream()
-            if ($stream) {
-                $reader = New-Object System.IO.StreamReader($stream)
-                $body = $reader.ReadToEnd()
-                Write-Host "  Server response body:" -ForegroundColor Yellow
-                Write-Host $body -ForegroundColor Yellow
-            }
-        } catch {}
+    # Step 1: Check current remote commit hash
+    Write-Host "--> Checking current remote commit hash..." -ForegroundColor Yellow
+    $beforeHash = ssh -i $sshKey -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 $sshHost "git -C $remoteDir rev-parse HEAD" 2>&1
+    Write-Host "  Current remote commit: $beforeHash" -ForegroundColor DarkGray
+
+    # Step 2: Trigger live git fetch + reset + build over SSH
+    Write-Host "`n--> Pulling latest code and building on Replit..." -ForegroundColor Yellow
+    $sw = [System.Diagnostics.Stopwatch]::StartNew()
+    
+    $deployCommand = "cd $remoteDir && git fetch origin main && git reset --hard origin/main && npm run build"
+    ssh -i $sshKey -o StrictHostKeyChecking=accept-new $sshHost $deployCommand
+
+    $sw.Stop()
+
+    # Step 3: Verify new remote commit hash
+    Write-Host "`n--> Verifying deployed commit..." -ForegroundColor Yellow
+    $afterHash = ssh -i $sshKey -o StrictHostKeyChecking=accept-new $sshHost "git -C $remoteDir rev-parse HEAD" 2>&1
+    
+    Write-Host "`n=== DEPLOY RESULT ===" -ForegroundColor Cyan
+    Write-Host "  Duration: $([math]::Round($sw.Elapsed.TotalSeconds, 1))s" -ForegroundColor DarkGray
+    Write-Host "  Before:   $beforeHash"
+    Write-Host "  After:    $afterHash" -ForegroundColor Green
+
+    if ($beforeHash -ne $afterHash) {
+        Write-Host "`n>>> SUCCESS: Code successfully updated and built on Replit! <<<" -ForegroundColor Green
+    } else {
+        Write-Host "`n>>> SUCCESS: Remote was already up to date on $afterHash. <<<" -ForegroundColor Green
     }
-    Write-Host "  This means the endpoint itself is the problem -- stop here, don't assume a timing issue." -ForegroundColor Yellow
-    exit 1
-}
-
-Write-Host "`n=== STEP 3: Polling deploy-status every 5s, watch it live ===" -ForegroundColor Cyan
-Write-Host "  (Connection may have dropped from the restart -- that's expected, keep polling.)" -ForegroundColor DarkGray
-
-$maxWaitSeconds = 180
-$elapsed = 0
-$changed = $false
-
-while ($elapsed -lt $maxWaitSeconds) {
-    Start-Sleep -Seconds 5
-    $elapsed += 5
-    $current = Get-RealDeployStatus
-    if ($null -eq $current) {
-        Write-Host "  [+${elapsed}s] server unreachable (likely mid-restart) — still waiting..." -ForegroundColor DarkYellow
-        continue
-    }
-    Write-Host "  [+${elapsed}s] real commitHash: $($current.commitHash)"
-    if ($current.commitHash -ne $beforeHash) {
-        Write-Host "`n  >>> HASH CHANGED — real restart genuinely completed. <<<" -ForegroundColor Green
-        $changed = $true
-        break
-    }
-}
-
-Write-Host "`n=== RESULT ===" -ForegroundColor Cyan
-if ($changed) {
-    $totalTime = (Get-Date) - $triggerStart
-    Write-Host "SUCCESS — deploy confirmed live. Total real time: $([math]::Round($totalTime.TotalSeconds))s" -ForegroundColor Green
-    Write-Host "Before: $beforeHash"
-    Write-Host "After:  $($current.commitHash)"
 } else {
-    Write-Host "TIMED OUT after ${maxWaitSeconds}s — hash never changed. Real conclusion: either the git pull/restart genuinely isn't happening server-side, or it's taking longer than $maxWaitSeconds seconds. This is the real data point to act on." -ForegroundColor Red
+    Write-Host "SSH Key not found at $sshKey." -ForegroundColor Yellow
+    Write-Host "Please configure your SSH key path in BuildConsole -> Settings -> SSH & Remote." -ForegroundColor DarkGray
 }

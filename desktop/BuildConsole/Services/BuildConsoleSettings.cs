@@ -142,6 +142,16 @@ namespace BuildConsole.Services
 
         public bool HasEpicChatProjectUrl => !string.IsNullOrWhiteSpace(EpicChatProjectUrl);
 
+        // ── Direct SSH / Remote Replit Execution ──────────────────────────────
+        public string SshKeyPath { get; set; } = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".ssh", "replit");
+        public string SshHost { get; set; } = "ssh.replit.com";
+        public string SshUser { get; set; } = "";
+        public string SshRemoteDir { get; set; } = "~/Shane-McCaw-MSP";
+        public bool UseSshForDeploy { get; set; } = true;
+        public bool UseSshForSql { get; set; } = true;
+
+        public bool HasSshConfig => !string.IsNullOrWhiteSpace(SshKeyPath) && !string.IsNullOrWhiteSpace(SshHost) && !string.IsNullOrWhiteSpace(SshUser);
+
         // ── Git #937 (Epic #803) — always-on-top Sticky Notes floaty ──────────
         // Shane: "a floaty sticky notes... take notes for... Then I should be
         // able to send what I note down into a Claude chat that I'm typing into

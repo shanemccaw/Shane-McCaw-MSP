@@ -54,6 +54,13 @@ namespace BuildConsole.Controls
 
             BuildSoundPathBox.Text = savedSettings.BuildCompleteSoundPath;
 
+            SshKeyPathBox.Text = savedSettings.SshKeyPath;
+            SshHostBox.Text = savedSettings.SshHost;
+            SshUserBox.Text = savedSettings.SshUser;
+            SshRemoteDirBox.Text = savedSettings.SshRemoteDir;
+            UseSshForDeployCheck.IsChecked = savedSettings.UseSshForDeploy;
+            UseSshForSqlCheck.IsChecked = savedSettings.UseSshForSql;
+
             RenderWebToolsSettingsList();
 
             // Run manifest variable scan & render environment
@@ -100,6 +107,7 @@ namespace BuildConsole.Controls
             PageGeneral.Visibility = category == "General" ? Visibility.Visible : Visibility.Collapsed;
             PageReplitWatcher.Visibility = category == "ReplitWatcher" ? Visibility.Visible : Visibility.Collapsed;
             PageScheduledRun.Visibility = category == "ScheduledRun" ? Visibility.Visible : Visibility.Collapsed;
+            PageSshRemote.Visibility = category == "SshRemote" ? Visibility.Visible : Visibility.Collapsed;
             PageWebTools.Visibility = category == "WebTools" ? Visibility.Visible : Visibility.Collapsed;
             PageChatIntegration.Visibility = category == "ChatIntegration" ? Visibility.Visible : Visibility.Collapsed;
             PageBuildSound.Visibility = category == "BuildSound" ? Visibility.Visible : Visibility.Collapsed;
@@ -124,6 +132,7 @@ namespace BuildConsole.Controls
                 (NavWrapGeneral, NavTextGeneral, "General"),
                 (NavWrapReplitWatcher, NavTextReplitWatcher, "ReplitWatcher"),
                 (NavWrapScheduledRun, NavTextScheduledRun, "ScheduledRun"),
+                (NavWrapSshRemote, NavTextSshRemote, "SshRemote"),
                 (NavWrapWebTools, NavTextWebTools, "WebTools"),
                 (NavWrapChatIntegration, NavTextChatIntegration, "ChatIntegration"),
                 (NavWrapBuildSound, NavTextBuildSound, "BuildSound"),
@@ -982,6 +991,83 @@ namespace BuildConsole.Controls
             ScheduledRunSavedText.Text = "Schedule saved.";
             UpdateHealthDashboard();
             ScheduleSettingsChanged?.Invoke(this, EventArgs.Empty);
+        }
+
+        // ══════════════════════════════════════════════════════════════════════
+        // SSH & REMOTE REPLIT EXECUTION
+        // ══════════════════════════════════════════════════════════════════════
+        private void BtnBrowseSshKey_Click(object sender, RoutedEventArgs e)
+        {
+            var dlg = new Microsoft.Win32.OpenFileDialog
+            {
+                Title = "Select SSH Private Key File",
+                Filter = "All Files (*.*)|*.*|Key Files (*.key;*.pem;id_*;replit)|*.key;*.pem;id_*;replit",
+                InitialDirectory = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".ssh")
+            };
+
+            if (dlg.ShowDialog() == true)
+            {
+                SshKeyPathBox.Text = dlg.FileName;
+            }
+        }
+
+        private void BtnSaveSshSettings_Click(object sender, RoutedEventArgs e)
+        {
+            var settings = BuildConsoleSettings.Load();
+            settings.SshKeyPath = SshKeyPathBox.Text.Trim();
+            settings.SshHost = SshHostBox.Text.Trim();
+            settings.SshUser = SshUserBox.Text.Trim();
+            settings.SshRemoteDir = SshRemoteDirBox.Text.Trim();
+            settings.UseSshForDeploy = UseSshForDeployCheck.IsChecked == true;
+            settings.UseSshForSql = UseSshForSqlCheck.IsChecked == true;
+            settings.Save();
+
+            SshSettingsSavedText.Foreground = (Brush)FindResource("GreenBrush");
+            SshSettingsSavedText.Text = $"✓ SSH settings saved ({DateTime.Now:HH:mm:ss})";
+            ToastEngine.Success("SSH Settings Saved", "Remote Replit SSH configuration has been persisted.");
+        }
+
+        private async void BtnTestSshConnection_Click(object sender, RoutedEventArgs e)
+        {
+            BtnTestSshConnection.IsEnabled = false;
+            SshSettingsSavedText.Text = "⏳ Testing SSH connection…";
+            SshSettingsSavedText.Foreground = (Brush)FindResource("PeachBrush");
+
+            try
+            {
+                // Save current settings first
+                BtnSaveSshSettings_Click(sender, e);
+
+                var (ok, msg, latency) = await ReplitSshService.Instance.TestConnectionAsync();
+                if (ok)
+                {
+                    SshSettingsSavedText.Text = $"✓ Connected in {latency}ms ({DateTime.Now:HH:mm:ss})";
+                    SshSettingsSavedText.Foreground = (Brush)FindResource("GreenBrush");
+                    ToastEngine.Success("SSH Connected", $"Successfully connected to Replit in {latency}ms.");
+                }
+                else
+                {
+                    SshSettingsSavedText.Text = $"✕ Connection failed: {msg}";
+                    SshSettingsSavedText.Foreground = (Brush)FindResource("RedBrush");
+                    ToastEngine.Warning("SSH Failed", msg);
+                }
+            }
+            catch (Exception ex)
+            {
+                SshSettingsSavedText.Text = $"✕ Error: {ex.Message}";
+                SshSettingsSavedText.Foreground = (Brush)FindResource("RedBrush");
+                ToastEngine.Warning("SSH Error", ex.Message);
+            }
+            finally
+            {
+                BtnTestSshConnection.IsEnabled = true;
+            }
+        }
+
+        private void SshField_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (SshSettingsSavedText != null)
+                SshSettingsSavedText.Text = "";
         }
 
         // ══════════════════════════════════════════════════════════════════════
