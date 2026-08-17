@@ -150,13 +150,14 @@ namespace BuildConsole.Services
                     double critterScale = isEpic ? 2.2 : 1.0;
                     var charTransform = new TransformGroup();
                     var charTranslate = new TranslateTransform();
-                    var charScaleTransform = new ScaleTransform(critterScale, critterScale);
+                    // Face LEFT (right-to-left animation)
+                    var charScaleTransform = new ScaleTransform(-critterScale, critterScale);
                     charTransform.Children.Add(charScaleTransform);
                     charTransform.Children.Add(charTranslate);
                     character.RenderTransform = charTransform;
                     character.RenderTransformOrigin = new Point(0.5, 0.5);
 
-                    double startX = targetPos.X - (isEpic ? 320 : 220);
+                    double startX = targetPos.X + (isEpic ? 320 : 220);
                     double startY = targetPos.Y - (isEpic ? 50 : 30);
                     Canvas.SetLeft(character, startX);
                     Canvas.SetTop(character, startY);
@@ -187,8 +188,8 @@ namespace BuildConsole.Services
                     Canvas.SetTop(bubble, targetPos.Y - (isEpic ? 75 : 55));
                     canvas.Children.Add(bubble);
 
-                    // Step 1: Lunge in
-                    var lungeX = new DoubleAnimation(0, isEpic ? 220 : 160, TimeSpan.FromMilliseconds(isEpic ? 420 : 350))
+                    // Step 1: Lunge in (Right to Left)
+                    var lungeX = new DoubleAnimation(0, isEpic ? -220 : -160, TimeSpan.FromMilliseconds(isEpic ? 420 : 350))
                     {
                         EasingFunction = new BackEase { Amplitude = 0.6, EasingMode = EasingMode.EaseOut }
                     };
@@ -230,14 +231,14 @@ namespace BuildConsole.Services
                     };
                     crunchTimer.Start();
 
-                    // Step 4: Victory exit
+                    // Step 4: Victory exit (continue dashing to the Left)
                     int exitDelay = isEpic ? 900 : 750;
                     var exitTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(exitDelay) };
                     exitTimer.Tick += (_, _) =>
                     {
                         exitTimer.Stop();
 
-                        var exitX = new DoubleAnimation(isEpic ? 220 : 160, isEpic ? 520 : 380, TimeSpan.FromMilliseconds(450))
+                        var exitX = new DoubleAnimation(isEpic ? -220 : -160, isEpic ? -520 : -380, TimeSpan.FromMilliseconds(450))
                         {
                             EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn }
                         };
@@ -367,21 +368,22 @@ namespace BuildConsole.Services
 
                         var transGroup = new TransformGroup();
                         var transX = new TranslateTransform();
-                        var scale = new ScaleTransform(1.6, 1.6);
+                        // Face LEFT (right-to-left parade)
+                        var scale = new ScaleTransform(-1.6, 1.6);
                         transGroup.Children.Add(scale);
                         transGroup.Children.Add(transX);
                         critter.RenderTransform = transGroup;
                         critter.RenderTransformOrigin = new Point(0.5, 0.5);
 
-                        double startPosX = -120 - (i * 90);
+                        double startPosX = winW + 120 + (i * 90);
                         Canvas.SetLeft(critter, startPosX);
                         Canvas.SetTop(critter, paradeY);
                         canvas.Children.Add(critter);
 
                         paradeMascots.Add((critter, transX, scale));
 
-                        // March across animation
-                        var march = new DoubleAnimation(0, winW + 300 + (i * 90), TimeSpan.FromMilliseconds(3200))
+                        // March across animation (Right to Left)
+                        var march = new DoubleAnimation(0, -(winW + 300 + (i * 90)), TimeSpan.FromMilliseconds(3200))
                         {
                             BeginTime = TimeSpan.FromMilliseconds(i * 120)
                         };

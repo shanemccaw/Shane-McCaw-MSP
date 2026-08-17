@@ -375,9 +375,20 @@
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*"/>
                                                 <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="Auto"/>
                                             </Grid.ColumnDefinitions>
-                                            <PasswordBox x:Name="GitHubPatBox" Grid.Column="0" Height="28" FontSize="12" Margin="0,0,8,0"/>
-                                            <Button x:Name="BtnSaveGitHubPat" Grid.Column="1" Content="Save Token"
+                                            <PasswordBox x:Name="GitHubPatBox" Grid.Column="0" Height="28" FontSize="12" Margin="0,0,8,0"
+                                                         PasswordChanged="GitHubPatBox_PasswordChanged"/>
+                                            <TextBox x:Name="GitHubPatPlainBox" Grid.Column="0" Height="28" FontSize="12" Margin="0,0,8,0"
+                                                     Visibility="Collapsed" TextChanged="GitHubPatPlainBox_TextChanged"/>
+                                            <Button x:Name="BtnToggleRevealGitHubPat" Grid.Column="1" Content="👁 Reveal"
+                                                    Style="{StaticResource IconButton}" Padding="10,5" Margin="0,0,8,0"
+                                                    ToolTip="Reveal/Hide token in plain text" Click="BtnToggleRevealGitHubPat_Click"/>
+                                            <Button x:Name="BtnCopyGitHubPat" Grid.Column="2" Content="📋 Copy"
+                                                    Style="{StaticResource IconButton}" Padding="10,5" Margin="0,0,8,0"
+                                                    ToolTip="Copy token to clipboard" Click="BtnCopyGitHubPat_Click"/>
+                                            <Button x:Name="BtnSaveGitHubPat" Grid.Column="3" Content="Save Token"
                                                     Style="{StaticResource PrimaryButton}" Padding="16,5" Click="BtnSaveGitHubPat_Click"/>
                                         </Grid>
                                         <TextBlock x:Name="GitHubPatSavedText" Text="" FontSize="11" Foreground="{StaticResource GreenBrush}"/>
@@ -395,9 +406,20 @@
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*"/>
                                                 <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="Auto"/>
                                             </Grid.ColumnDefinitions>
-                                            <PasswordBox x:Name="ZohoApiTokenBox" Grid.Column="0" Height="28" FontSize="12" Margin="0,0,8,0"/>
-                                            <Button x:Name="BtnSaveZohoApiToken" Grid.Column="1" Content="Save Token"
+                                            <PasswordBox x:Name="ZohoApiTokenBox" Grid.Column="0" Height="28" FontSize="12" Margin="0,0,8,0"
+                                                         PasswordChanged="ZohoApiTokenBox_PasswordChanged"/>
+                                            <TextBox x:Name="ZohoApiTokenPlainBox" Grid.Column="0" Height="28" FontSize="12" Margin="0,0,8,0"
+                                                     Visibility="Collapsed" TextChanged="ZohoApiTokenPlainBox_TextChanged"/>
+                                            <Button x:Name="BtnToggleRevealZohoToken" Grid.Column="1" Content="👁 Reveal"
+                                                    Style="{StaticResource IconButton}" Padding="10,5" Margin="0,0,8,0"
+                                                    ToolTip="Reveal/Hide token in plain text" Click="BtnToggleRevealZohoToken_Click"/>
+                                            <Button x:Name="BtnCopyZohoApiToken" Grid.Column="2" Content="📋 Copy"
+                                                    Style="{StaticResource IconButton}" Padding="10,5" Margin="0,0,8,0"
+                                                    ToolTip="Copy token to clipboard" Click="BtnCopyZohoApiToken_Click"/>
+                                            <Button x:Name="BtnSaveZohoApiToken" Grid.Column="3" Content="Save Token"
                                                     Style="{StaticResource PrimaryButton}" Padding="16,5" Click="BtnSaveZohoApiToken_Click"/>
                                         </Grid>
                                         <TextBlock x:Name="ZohoApiTokenSavedText" Text="" FontSize="11" Foreground="{StaticResource GreenBrush}"/>

@@ -32,7 +32,9 @@ namespace BuildConsole.Controls
 
             var savedSettings = BuildConsoleSettings.Load();
             GitHubPatBox.Password = savedSettings.GitHubPat;
+            GitHubPatPlainBox.Text = savedSettings.GitHubPat;
             ZohoApiTokenBox.Password = savedSettings.ZohoApiToken;
+            ZohoApiTokenPlainBox.Text = savedSettings.ZohoApiToken;
 
             EpicChatProjectUrlBox.Text = savedSettings.EpicChatProjectUrl;
 
@@ -784,13 +786,128 @@ namespace BuildConsole.Controls
         // ══════════════════════════════════════════════════════════════════════
         // CREDENTIALS & INTEGRATIONS
         // ══════════════════════════════════════════════════════════════════════
+        private void GitHubPatBox_PasswordChanged(object sender, RoutedEventArgs e)
+        {
+            if (GitHubPatPlainBox.Text != GitHubPatBox.Password)
+                GitHubPatPlainBox.Text = GitHubPatBox.Password;
+        }
+
+        private void GitHubPatPlainBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (GitHubPatBox.Password != GitHubPatPlainBox.Text)
+                GitHubPatBox.Password = GitHubPatPlainBox.Text;
+        }
+
+        private void BtnToggleRevealGitHubPat_Click(object sender, RoutedEventArgs e)
+        {
+            if (GitHubPatPlainBox.Visibility == Visibility.Visible)
+            {
+                GitHubPatPlainBox.Visibility = Visibility.Collapsed;
+                GitHubPatBox.Visibility = Visibility.Visible;
+                BtnToggleRevealGitHubPat.Content = "👁 Reveal";
+            }
+            else
+            {
+                GitHubPatPlainBox.Text = GitHubPatBox.Password;
+                GitHubPatBox.Visibility = Visibility.Collapsed;
+                GitHubPatPlainBox.Visibility = Visibility.Visible;
+                BtnToggleRevealGitHubPat.Content = "🔒 Hide";
+                GitHubPatPlainBox.Focus();
+                GitHubPatPlainBox.SelectAll();
+            }
+        }
+
+        private void BtnCopyGitHubPat_Click(object sender, RoutedEventArgs e)
+        {
+            string token = GitHubPatBox.Password.Trim();
+            if (string.IsNullOrEmpty(token))
+                token = BuildConsoleSettings.Load().GitHubPat;
+
+            if (string.IsNullOrEmpty(token))
+            {
+                GitHubPatSavedText.Foreground = (Brush)FindResource("PeachBrush");
+                GitHubPatSavedText.Text = "No GitHub PAT configured to copy.";
+                return;
+            }
+
+            try
+            {
+                Clipboard.SetText(token);
+                GitHubPatSavedText.Foreground = (Brush)FindResource("GreenBrush");
+                GitHubPatSavedText.Text = "✓ GitHub PAT copied to clipboard!";
+            }
+            catch (Exception ex)
+            {
+                GitHubPatSavedText.Foreground = (Brush)FindResource("RedBrush");
+                GitHubPatSavedText.Text = $"Failed to copy: {ex.Message}";
+            }
+        }
+
         private void BtnSaveGitHubPat_Click(object sender, RoutedEventArgs e)
         {
             var settings = BuildConsoleSettings.Load();
             settings.GitHubPat = GitHubPatBox.Password.Trim();
             settings.Save();
+            GitHubPatSavedText.Foreground = (Brush)FindResource("GreenBrush");
             GitHubPatSavedText.Text = "GitHub PAT saved successfully.";
             UpdateHealthDashboard();
+        }
+
+        private void ZohoApiTokenBox_PasswordChanged(object sender, RoutedEventArgs e)
+        {
+            if (ZohoApiTokenPlainBox.Text != ZohoApiTokenBox.Password)
+                ZohoApiTokenPlainBox.Text = ZohoApiTokenBox.Password;
+        }
+
+        private void ZohoApiTokenPlainBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (ZohoApiTokenBox.Password != ZohoApiTokenPlainBox.Text)
+                ZohoApiTokenBox.Password = ZohoApiTokenPlainBox.Text;
+        }
+
+        private void BtnToggleRevealZohoToken_Click(object sender, RoutedEventArgs e)
+        {
+            if (ZohoApiTokenPlainBox.Visibility == Visibility.Visible)
+            {
+                ZohoApiTokenPlainBox.Visibility = Visibility.Collapsed;
+                ZohoApiTokenBox.Visibility = Visibility.Visible;
+                BtnToggleRevealZohoToken.Content = "👁 Reveal";
+            }
+            else
+            {
+                ZohoApiTokenPlainBox.Text = ZohoApiTokenBox.Password;
+                ZohoApiTokenBox.Visibility = Visibility.Collapsed;
+                ZohoApiTokenPlainBox.Visibility = Visibility.Visible;
+                BtnToggleRevealZohoToken.Content = "🔒 Hide";
+                ZohoApiTokenPlainBox.Focus();
+                ZohoApiTokenPlainBox.SelectAll();
+            }
+        }
+
+        private void BtnCopyZohoApiToken_Click(object sender, RoutedEventArgs e)
+        {
+            string token = ZohoApiTokenBox.Password.Trim();
+            if (string.IsNullOrEmpty(token))
+                token = BuildConsoleSettings.Load().ZohoApiToken;
+
+            if (string.IsNullOrEmpty(token))
+            {
+                ZohoApiTokenSavedText.Foreground = (Brush)FindResource("PeachBrush");
+                ZohoApiTokenSavedText.Text = "No Zoho API token configured to copy.";
+                return;
+            }
+
+            try
+            {
+                Clipboard.SetText(token);
+                ZohoApiTokenSavedText.Foreground = (Brush)FindResource("GreenBrush");
+                ZohoApiTokenSavedText.Text = "✓ Zoho API token copied to clipboard!";
+            }
+            catch (Exception ex)
+            {
+                ZohoApiTokenSavedText.Foreground = (Brush)FindResource("RedBrush");
+                ZohoApiTokenSavedText.Text = $"Failed to copy: {ex.Message}";
+            }
         }
 
         private void BtnSaveZohoApiToken_Click(object sender, RoutedEventArgs e)
@@ -798,6 +915,7 @@ namespace BuildConsole.Controls
             var settings = BuildConsoleSettings.Load();
             settings.ZohoApiToken = ZohoApiTokenBox.Password.Trim();
             settings.Save();
+            ZohoApiTokenSavedText.Foreground = (Brush)FindResource("GreenBrush");
             ZohoApiTokenSavedText.Text = "Zoho API token saved successfully.";
             UpdateHealthDashboard();
         }
