@@ -76,11 +76,16 @@ namespace BuildConsole.Services
             }
 
             var sshExe = FindSshExe();
-            var target = string.IsNullOrWhiteSpace(s.SshUser) ? s.SshHost : $"{s.SshUser}@{s.SshHost}";
+            var target = s.SshHost.Trim();
+            if (!string.IsNullOrWhiteSpace(s.SshUser) && !target.Contains('@'))
+            {
+                target = $"{s.SshUser.Trim()}@{target}";
+            }
+            int port = s.SshPort > 0 ? s.SshPort : 22;
             var escapedCmd = command.Replace("\"", "\\\"");
 
             // Build OpenSSH arguments
-            var args = $"-i \"{s.SshKeyPath}\" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 -o BatchMode=yes {target} \"{escapedCmd}\"";
+            var args = $"-i \"{s.SshKeyPath}\" -p {port} -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 -o BatchMode=yes {target} \"{escapedCmd}\"";
 
             ActivityLog.Log(LogChannel, $"Executing over SSH ({target}): {command}");
             ShaneAppStreamService.Instance.AppendLine($"[SSH] > {command}", ShaneAppLogLevel.Info);
@@ -171,7 +176,7 @@ namespace BuildConsole.Services
         public async Task<SshCommandResult> DeployAsync(Action<string>? onOutput = null)
         {
             var s = BuildConsoleSettings.Load();
-            var dir = string.IsNullOrWhiteSpace(s.SshRemoteDir) ? "~/Shane-McCaw-MSP" : s.SshRemoteDir;
+            var dir = string.IsNullOrWhiteSpace(s.SshRemoteDir) ? "/home/runner/workspace" : s.SshRemoteDir;
 
             var deployScript = $"cd {dir} && git fetch origin main && git reset --hard origin/main && npm run build";
             ActivityLog.Log(LogChannel, $"Triggering SSH deploy in {dir}…");
@@ -188,7 +193,7 @@ namespace BuildConsole.Services
         public async Task<string?> GetRemoteCommitHashAsync()
         {
             var s = BuildConsoleSettings.Load();
-            var dir = string.IsNullOrWhiteSpace(s.SshRemoteDir) ? "~/Shane-McCaw-MSP" : s.SshRemoteDir;
+            var dir = string.IsNullOrWhiteSpace(s.SshRemoteDir) ? "/home/runner/workspace" : s.SshRemoteDir;
 
             var res = await ExecuteCommandAsync($"git -C {dir} rev-parse HEAD", timeoutSeconds: 15);
             if (res.Success && !string.IsNullOrWhiteSpace(res.Output))

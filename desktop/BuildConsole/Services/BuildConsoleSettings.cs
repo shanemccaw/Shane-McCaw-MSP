@@ -144,13 +144,14 @@ namespace BuildConsole.Services
 
         // ── Direct SSH / Remote Replit Execution ──────────────────────────────
         public string SshKeyPath { get; set; } = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".ssh", "replit");
-        public string SshHost { get; set; } = "ssh.replit.com";
-        public string SshUser { get; set; } = "";
-        public string SshRemoteDir { get; set; } = "~/Shane-McCaw-MSP";
+        public string SshHost { get; set; } = "ba888680-2595-412d-84fe-4e9aefc2688b-00-22rhgh0krunr4.picard.replit.dev";
+        public string SshUser { get; set; } = "ba888680-2595-412d-84fe-4e9aefc2688b";
+        public int SshPort { get; set; } = 22;
+        public string SshRemoteDir { get; set; } = "/home/runner/workspace";
         public bool UseSshForDeploy { get; set; } = true;
         public bool UseSshForSql { get; set; } = true;
 
-        public bool HasSshConfig => !string.IsNullOrWhiteSpace(SshKeyPath) && !string.IsNullOrWhiteSpace(SshHost) && !string.IsNullOrWhiteSpace(SshUser);
+        public bool HasSshConfig => !string.IsNullOrWhiteSpace(SshKeyPath) && !string.IsNullOrWhiteSpace(SshHost);
 
         // ── Git #937 (Epic #803) — always-on-top Sticky Notes floaty ──────────
         // Shane: "a floaty sticky notes... take notes for... Then I should be
