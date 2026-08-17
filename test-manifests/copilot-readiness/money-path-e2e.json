@@ -23,7 +23,11 @@
 
     "ENV VARS required in BuildConsole → Settings → Test Environment Variables: DEPLOY_URL (deployed origin serving both the marketing quiz at '/' and the portal at /login + /copilot-readiness — the same single origin all six source manifests targeted), SECRET_KEY (= BUILD_TRACKER_INGEST_TOKEN; the Bearer that satisfies requireAdminOrIngestToken on the #986 testbed endpoints and the #901 testbed-customers lookup, per requireAuth.ts), TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD (the designated testbed Assessment account), TEST_PORTAL_SLUG (portal branding slug for the login route). The testbed customerId (tenants.id) is NOT a config var — it is read live from the DB via GET /api/admin/baseline-templates/testbed-customers (the same proven #901 bootstrap), so the reset always targets a real testbed customer, never a guessed literal.",
 
-    "The #986 testbed endpoints are hard-gated to a real .replit.dev dev origin (requireDevOrigin, reusing isReplitDevEnvironment from stripe.ts); against a real deployment they 403 by design. Run this manifest against the .replit.dev dev origin. No raw DB access is used anywhere here — every clean/reset/rollback goes through the gated endpoints, per #987."
+    "The #986 testbed endpoints are hard-gated to a real .replit.dev dev origin (requireDevOrigin, reusing isReplitDevEnvironment from stripe.ts); against a real deployment they 403 by design. Run this manifest against the .replit.dev dev origin. No raw DB access is used anywhere here — every clean/reset/rollback goes through the gated endpoints, per #987.",
+
+    "CONSENT GROUND-TRUTH (this session, extends #900/#901 dual-verification): the EXECUTE consentStatus step only proves the PLATFORM'S OWN flag reads 'granted' — a scan-status DB value. The powerShellVerify step 'VERIFY (Graph ground truth) — write-app consent genuinely landed' independently confirms that claim against Microsoft Graph itself. Signed in as Shane's DELEGATED identity (PowerShellTestExecutor runs its OWN Connect-MgGraph -UseDeviceCode -ContextScope CurrentUser before every cmdlet — so the manifest cmdlet must NOT embed its own Connect / -TenantId / -Scopes; the executor owns the connection AND the #965 testbed gate), it resolves the write app's service principal by appId ({{MT_APP_WRITE_CLIENT_ID}}) IN THE CONNECTED TENANT and asserts it carries real appRoleAssignments or oauth2PermissionGrants: it returns 'granted' ONLY when the SP genuinely exists WITH grants, else 'NOT-FOUND'/'NO-GRANTS' which fail the exact-match against the platform's extracted {{appConsentStatus}}='granted'. Before the cmdlet runs, the executor auto-gates the connected tenant against the server's isTestbed=true allowlist (#965), so this can never read a real customer tenant. Precondition (Shane, once): Connect-MgGraph interactively as yourself with Application.Read.All (+ a directory read able to enumerate appRoleAssignments/oauth2 grants) so the cached delegated token is valid, and set MT_APP_WRITE_CLIENT_ID in Settings > Test Environment Variables (the #961 scan flags it needsReview with an <unset> default until you do). On a headless run with no cached delegated token this step fails clearly ('run Connect-MgGraph interactively once'), never hangs — the honest maximum, mirroring smoke/hello-world-powershell.json.",
+
+    "TEARDOWN OF THE WRITE-APP SP GRANTS — DELIBERATELY NOT ADDED HERE (honest reconciliation): the paired ask was to also REMOVE the write app's service-principal appRoleAssignments/oauth2 grants from the tenant BEFORE a consent-revocation teardown. It is NOT committed into this regression flow, for four reasons found by reading the executors directly, not assumed: (1) powerShellVerify is VERIFY-only — every entry REQUIRES an afterStep and its cmdlet is wrapped in `... | ConvertTo-Json` (a read), with no write/teardown semantics; (2) it is the LAST phase (apiTests->graphTests->postGraphApiTests->zohoTests->uiSteps->powerShellVerify), so a PowerShell teardown structurally cannot run BEFORE any other step in the flow; (3) there is NO consent-revocation step in this flow for it to precede — the platform's own PATCH /api/admin/consent/:tenantId/revoke merely flips a DB consent flag and never removes SP grants from Entra, and it is requireAdmin (unreachable with the ingest token) anyway; (4) MOST IMPORTANTLY, this money path performs NO in-run write-app consent GRANT (see the GRAPH-WRITE TEARDOWN note above — the scan is read-only), so the write app's appRoleAssignments/oauth2 grants in the testbed tenant are STANDING SHARED STATE that baseline-actions-powershell-verify.json (#901) and every write-action test depend on. Removing them here would strip the app-only WRITE consent those tests need and this flow never re-establishes it. A grant-teardown is only correct in a variant that FIRST performs a real in-run admin-consent grant (so cleanup removes ONLY what that run added). When that variant exists, the removal belongs in a real teardown/write phase (or a gated HTTP endpoint) placed BEFORE its revocation — e.g. for each Get-MgServicePrincipalAppRoleAssignment / Get-MgOauth2PermissionGrant on THAT run's SP, call Remove-MgServicePrincipalAppRoleAssignment / Remove-MgOauth2PermissionGrant, #965-gated exactly as the verify step here is. Committing a blind 'remove all grants for the write app SP' into the green regression suite would corrupt the shared testbed — so it is documented, not shipped."
   ],
 
   "apiTests": [
@@ -93,11 +97,12 @@
     },
 
     {
-      "name": "EXECUTE (#887 Scene-0 honesty) — the testbed tenant carries a real GRANTED Microsoft admin consent; the reveal's honesty contract requires a genuinely consented tenant, never the design's stand-in fixture",
+      "name": "EXECUTE (#887 Scene-0 honesty) — the testbed tenant carries a real GRANTED Microsoft admin consent; the reveal's honesty contract requires a genuinely consented tenant, never the design's stand-in fixture. Extracts the platform's OWN consentStatus flag as {{appConsentStatus}} so the powerShellVerify step below can diff that claim against real Microsoft Graph ground truth (the write app's service-principal grants actually present in the tenant), per #900/#901's dual-verification doctrine — 'the platform says granted' is only trusted once an independent delegated Graph read agrees.",
       "method": "GET",
       "path": "/api/portal/scan-status",
       "headers": { "Authorization": "Bearer {{authToken}}" },
-      "expect": { "status": 200, "jsonPath": "$.consentStatus", "value": "granted" }
+      "expect": { "status": 200, "jsonPath": "$.consentStatus", "value": "granted" },
+      "extract": { "as": "appConsentStatus", "jsonPath": "$.consentStatus" }
     },
     {
       "name": "EXECUTE (#887 live-scan trigger) — trigger the real tenant scan the way Scene 0's auto-trigger effect does; hard-gated server-side to testbed tenants, so a 202 here also proves the account is genuinely testbed-flagged, not just asserted client-side; extract the run id",
@@ -330,6 +335,16 @@
       "action": "expect",
       "selector": "[data-testid='sow-plan-pay-by-phase']",
       "state": "visible"
+    }
+  ],
+
+  "powerShellVerify": [
+    {
+      "name": "VERIFY (Graph ground truth) — write-app consent genuinely landed: the write app's service principal (appId {{MT_APP_WRITE_CLIENT_ID}}) exists in the connected testbed tenant AND carries real appRoleAssignments or oauth2 permission grants — the actual Entra state behind the platform's {{appConsentStatus}}='granted' flag, read as Shane's delegated identity (NOT the app's own client-credentials). Executor owns the delegated Connect-MgGraph + the #965 isTestbed gate; this cmdlet is a pure Graph READ that returns 'granted' only when the SP truly exists with grants, else 'NOT-FOUND'/'NO-GRANTS' (which fail the exact-match, flagging that the platform claimed consent the tenant does not actually reflect).",
+      "afterStep": "appConsentStatus",
+      "cmdlet": "$( $__sp = Get-MgServicePrincipal -Filter 'appId eq ''{{MT_APP_WRITE_CLIENT_ID}}''' -All -ErrorAction SilentlyContinue | Select-Object -First 1; if (-not $__sp) { 'NOT-FOUND' } else { $__ra = @(Get-MgServicePrincipalAppRoleAssignment -ServicePrincipalId $__sp.Id -All -ErrorAction SilentlyContinue); $__gr = @(Get-MgOauth2PermissionGrant -All -ErrorAction SilentlyContinue | Where-Object { $_.ClientId -eq $__sp.Id }); if ($__ra.Count -gt 0 -or $__gr.Count -gt 0) { 'granted' } else { 'NO-GRANTS' } } )",
+      "compareField": { "matchType": "exact" },
+      "timeoutMs": 90000
     }
   ]
 }
