@@ -616,11 +616,11 @@ router.get(
       }
 
       // Count customers with licensing waste detected across MSP's customer portfolio
-      // (via msp_customers → client_m365_profiles join)
+      // (via tenants → client_m365_profiles join, tenants.id is the real FK behind users.tenant_id)
       const result = await db.execute(sql`
         SELECT
-          COUNT(DISTINCT mc.id) AS total_customers,
-          COUNT(DISTINCT CASE WHEN (cmp.profile->>'hasLicensingWaste')::boolean = true THEN mc.id END) AS customers_with_waste,
+          COUNT(DISTINCT t.id) AS total_customers,
+          COUNT(DISTINCT CASE WHEN (cmp.profile->>'hasLicensingWaste')::boolean = true THEN t.id END) AS customers_with_waste,
           COALESCE(
             SUM(
               CASE WHEN (cmp.profile->>'hasLicensingWaste')::boolean = true
@@ -635,11 +635,11 @@ router.get(
               ELSE 0 END
             ), 0
           ) AS total_unused_licenses
-        FROM msp_customers mc
-        LEFT JOIN users u ON u.company = mc.name
+        FROM tenants t
+        LEFT JOIN users u ON u.tenant_id = t.id
         LEFT JOIN client_m365_profiles cmp ON cmp.client_id = u.id
-        WHERE mc.msp_id = ${mspId}
-          AND mc.status = 'active'
+        WHERE t.msp_id = ${mspId}
+          AND t.status = 'active'
       `);
 
       const row = (result as { rows: Array<Record<string, unknown>> }).rows[0] ?? {};
