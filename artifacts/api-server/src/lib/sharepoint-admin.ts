@@ -1,5 +1,5 @@
 import jwt from "jsonwebtoken";
-import { randomUUID } from "node:crypto";
+import { randomUUID, createPrivateKey } from "node:crypto";
 import { logger } from "./logger";
 
 const log = logger.child({ channel: "integration.sharepoint" });
@@ -145,6 +145,30 @@ export class SharePointAuthError extends Error {
 function buildClientAssertion(aadTenantId: string, clientId: string): string {
   const privateKey = process.env.MT_APP_CERT_PRIVATE_KEY!.replace(/\\n/g, "\n");
   const thumbprintHex = process.env.MT_APP_CERT_THUMBPRINT!.replace(/[:\s]/g, "");
+
+  // Pre-validate the PEM before handing it to jsonwebtoken. When
+  // MT_APP_CERT_PRIVATE_KEY is present (so the guards above pass) but its value
+  // is not a parseable private key — e.g. pasted without its newlines, truncated,
+  // or with the wrong content — jwt.sign() fails with the cryptic, source-less
+  // "secretOrPrivateKey must be an asymmetric key when using RS256" (Git #855),
+  // which gives no hint that this env var is the culprit. Parsing it here first
+  // turns that into an actionable error that names the exact env var and cause,
+  // so any future recurrence is self-diagnosing. Never logs/echoes the key value.
+  try {
+    createPrivateKey(privateKey);
+  } catch (err) {
+    const cause = err instanceof Error ? err.message : String(err);
+    log.error({ aadTenantId, cause }, "MT_APP_CERT_PRIVATE_KEY is not a parseable PEM private key");
+    throw new Error(
+      "MT_APP_CERT_PRIVATE_KEY is set but is not a parseable PEM private key " +
+        `(crypto.createPrivateKey failed: ${cause}). Expected the MT app registration ` +
+        "certificate's RSA private key in PEM form " +
+        "(-----BEGIN PRIVATE KEY----- … -----END PRIVATE KEY-----). Check the env value " +
+        "has real newlines (or literal \\n escapes) and was not truncated, and that it " +
+        "matches the certificate whose SHA-1 thumbprint is MT_APP_CERT_THUMBPRINT.",
+    );
+  }
+
   // x5t = base64url(raw SHA-1 thumbprint bytes). The thumbprint is stored/shown
   // as hex in the Azure portal; convert hex → bytes → base64url.
   const x5t = Buffer.from(thumbprintHex, "hex").toString("base64url");
