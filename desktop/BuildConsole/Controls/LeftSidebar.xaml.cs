@@ -1460,6 +1460,47 @@ namespace BuildConsole.Controls
                         delayMs += isEpic ? 700 : 400;
                     }
                 }
+
+                // 1b. Check for issues created remotely since the last fetch —
+                // Shane: "More work is added with new Issues created... this
+                // little guy should be grumpy, sad... Mo Work!" The exact
+                // mirror of the newlyClosedIssues check above (same guard
+                // against a false flood on the very first-ever board load),
+                // but a NEW issue never had a tree row before, so its tvi is
+                // always null — PlayMoWork falls back to a default on-screen
+                // position when targetElement is null, same as every other
+                // critter animation already handles.
+                var oldNumbers = _lastBoardIssues.Select(o => o.Number).ToHashSet();
+                var newlyCreatedIssues = issues
+                    .Where(cur => cur.State == "OPEN" && !oldNumbers.Contains(cur.Number))
+                    .ToList();
+
+                if (newlyCreatedIssues.Count > 0)
+                {
+                    ActivityLog.Log("git-board.critters", $"Detected {newlyCreatedIssues.Count} new issue(s) created remotely — sending in the grump. Mo' work...");
+                    int delayMs = 0;
+                    foreach (var newIssue in newlyCreatedIssues)
+                    {
+                        int currentDelay = delayMs;
+                        string issueLabel = $"#{newIssue.Number} {newIssue.Title}";
+
+                        if (currentDelay == 0)
+                        {
+                            IssueChompAnimation.PlayMoWork(null, issueLabel);
+                        }
+                        else
+                        {
+                            var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(currentDelay) };
+                            timer.Tick += (_, _) =>
+                            {
+                                timer.Stop();
+                                IssueChompAnimation.PlayMoWork(null, issueLabel);
+                            };
+                            timer.Start();
+                        }
+                        delayMs += 500;
+                    }
+                }
             }
 
             // 2. Check for milestones that reached 100% completion (Milestone Conquered -> Huge Parade!)
@@ -2396,12 +2437,12 @@ namespace BuildConsole.Controls
         /// </summary>
         public BoardChat? FindChatForIssue(int githubNumber)
         {
-            var direct = _lastBoardChats.FirstOrDefault(c => c.IssueGithubNumber == githubNumber);
+            var direct = _lastBoardChats.LastOrDefault(c => c.IssueGithubNumber == githubNumber);
             if (direct != null) return direct;
 
             var epic = _chatEpicById.Values.FirstOrDefault(e => e.GithubNumber == githubNumber);
             if (epic == null) return null;
-            return _lastBoardChats.FirstOrDefault(c => c.EpicId == epic.Id);
+            return _lastBoardChats.LastOrDefault(c => c.EpicId == epic.Id);
         }
 
         private void ChatsTree_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
@@ -3351,6 +3392,32 @@ namespace BuildConsole.Controls
                             return;
                         }
                         ActivityLog.Log("git-board.assign-chat", $"assigned chat {conversationId} ({chatUrl}) -> epic #{issue.IssueNumber} (bt_epics id {epic.Id})");
+
+                        // Update in-memory _lastBoardChats immediately so FindChatForIssue, OpenChat, and Git Detail View pick it up without delay
+                        foreach (var c in _lastBoardChats)
+                        {
+                            if (c.EpicId == epic.Id && c.ConversationId != conversationId)
+                            {
+                                c.EpicId = null;
+                            }
+                        }
+                        var targetChat = _lastBoardChats.FirstOrDefault(c => c.ConversationId == conversationId);
+                        if (targetChat != null)
+                        {
+                            targetChat.EpicId = epic.Id;
+                            targetChat.ClaudeUrl = chatUrl;
+                        }
+                        else
+                        {
+                            _lastBoardChats.Add(new BoardChat
+                            {
+                                ConversationId = conversationId,
+                                Title = $"Epic #{issue.IssueNumber}",
+                                EpicId = epic.Id,
+                                ClaudeUrl = chatUrl,
+                            });
+                        }
+
                         _lastBoardSignature = null;
                         PopulateChatsTree();
                         ChatEpicAssigned?.Invoke(this, (conversationId, epic.Id));

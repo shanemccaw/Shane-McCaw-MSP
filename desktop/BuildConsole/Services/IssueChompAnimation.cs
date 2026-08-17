@@ -17,7 +17,7 @@ namespace BuildConsole.Services
     /// 2. Epic Closed: A LARGE Giant Critter (2.2x scale with golden aura) swoops in for a MEGA CHOMP!
     /// 3. Milestone Closed: A HUGE 5-Critter Parade with balloons, streamers, party hats, and a massive confetti storm!
     /// </summary>
-    public static class IssueChompAnimation
+    public static partial class IssueChompAnimation
     {
         [DllImport("user32.dll", SetLastError = true)]
         private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
