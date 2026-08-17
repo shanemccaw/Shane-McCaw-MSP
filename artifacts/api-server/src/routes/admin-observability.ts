@@ -17,14 +17,18 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger";
-import { requireAdmin } from "../middlewares/requireAuth";
+import { requireAdmin, requireAdminOrIngestToken } from "../middlewares/requireAuth";
 
 const router: IRouter = Router();
 const log = logger.child({ channel: "notification" });
 
 // ── GET /api/admin/observability/service-health ───────────────────────────────
 
-router.get("/admin/observability/service-health", requireAdmin, async (req: Request, res: Response) => {
+// Guarded by requireAdminOrIngestToken (not bare requireAdmin), same pattern as
+// admin-monitor-check-runs.ts — this is a read-only diagnostic endpoint that
+// automated tooling (BuildConsole, Git #130 heap-saturation investigation) needs
+// to poll without a human admin session.
+router.get("/admin/observability/service-health", requireAdminOrIngestToken(), async (req: Request, res: Response) => {
   try {
     const [jobStats, dlqStats, webhookStats, portalWfStats, dbSizeStats, dbConnStats] = await Promise.all([
       // Background job queue stats
