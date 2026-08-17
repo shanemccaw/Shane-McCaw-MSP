@@ -10243,6 +10243,75 @@ export async function resumeWorkflowRun(
   }
 }
 
+// ── Fan-out (shared by the scheduled scanner AND manual "Run Now Live") ───────
+// A trigger's config can carry fan_out_mode ("per_record" | "batched") + a
+// fan_out_query SELECT. per_record fires one run per returned row; batched
+// fires a single run with all rows collected under `records`. Extracted here
+// (Git #1057) so the real fan-out behavior a schedule would produce is also
+// reachable from a manual "Run Now Live" fire, not just the 60s cron scanner.
+
+export function isFanOutConfigured(config: Record<string, unknown>): boolean {
+  const mode = config.fan_out_mode as string | undefined;
+  const query = config.fan_out_query as string | undefined;
+  return (mode === "per_record" || mode === "batched") && !!query;
+}
+
+function safeFanOutQuery(q: string): string | null {
+  const t = q.trim();
+  return /^SELECT\s+/i.test(t) && !t.includes(";") ? t : null;
+}
+
+export type FanOutResult = {
+  ok: boolean;
+  mode: "per_record" | "batched" | null;
+  runIds: number[];
+  rowCount: number;
+  error?: string;
+};
+
+export async function fireWorkflowFanOut(
+  definitionId: number,
+  triggerConfig: Record<string, unknown>,
+  triggerType: "manual" | "schedule" | "webhook" | "event",
+  triggerRef: string,
+): Promise<FanOutResult> {
+  const fanOutMode = triggerConfig.fan_out_mode as string | undefined;
+  const fanOutQuery = triggerConfig.fan_out_query as string | undefined;
+
+  if (!isFanOutConfigured(triggerConfig)) {
+    return { ok: false, mode: null, runIds: [], rowCount: 0, error: "not fan-out configured" };
+  }
+
+  const safeQ = safeFanOutQuery(fanOutQuery as string);
+  if (!safeQ) {
+    log.warn({ definitionId, triggerRef }, "wf-engine: fan_out_query rejected — must be a single SELECT with no semicolons");
+    return { ok: false, mode: fanOutMode as "per_record" | "batched", runIds: [], rowCount: 0, error: "fan_out_query rejected" };
+  }
+
+  try {
+    const records = await pool.query(safeQ);
+    if (fanOutMode === "per_record") {
+      const runIds: number[] = [];
+      for (const row of records.rows) {
+        const runId = await fireWorkflowForDefinition(definitionId, triggerType, triggerRef, row as Record<string, unknown>);
+        if (runId) runIds.push(runId);
+      }
+      log.info({ definitionId, triggerRef, rowCount: records.rowCount }, "wf-engine: per_record fan-out fired");
+      return { ok: true, mode: "per_record", runIds, rowCount: records.rowCount ?? 0 };
+    } else {
+      const runId = await fireWorkflowForDefinition(
+        definitionId, triggerType, triggerRef,
+        { records: records.rows as Record<string, unknown>[] },
+      );
+      log.info({ definitionId, triggerRef, rowCount: records.rowCount }, "wf-engine: batched fan-out fired");
+      return { ok: true, mode: "batched", runIds: runId ? [runId] : [], rowCount: records.rowCount ?? 0 };
+    }
+  } catch (err) {
+    log.warn({ err, definitionId, triggerRef }, "wf-engine: fan_out_query execution failed (non-fatal)");
+    return { ok: false, mode: fanOutMode as "per_record" | "batched", runIds: [], rowCount: 0, error: "fan_out_query execution failed" };
+  }
+}
+
 // ── Scheduled trigger scanner ─────────────────────────────────────────────────
 
 export async function triggerScheduledWorkflows(): Promise<void> {
@@ -10280,38 +10349,8 @@ export async function triggerScheduledWorkflows(): Promise<void> {
         continue;
       }
 
-      const fanOutMode  = trigger.config.fan_out_mode  as string | undefined;
-      const fanOutQuery = trigger.config.fan_out_query as string | undefined;
-
-      function safeFanOutQuery(q: string): string | null {
-        const t = q.trim();
-        return /^SELECT\s+/i.test(t) && !t.includes(";") ? t : null;
-      }
-
-      if ((fanOutMode === "per_record" || fanOutMode === "batched") && fanOutQuery) {
-        const safeQ = safeFanOutQuery(fanOutQuery);
-        if (!safeQ) {
-          log.warn({ triggerId: trigger.id }, "wf-engine: fan_out_query rejected — must be a single SELECT with no semicolons");
-        } else {
-          try {
-            const records = await pool.query(safeQ);
-            if (fanOutMode === "per_record") {
-              for (const row of records.rows) {
-                await fireWorkflowForDefinition(trigger.definition_id, "schedule", `trigger:${trigger.id}`, row as Record<string, unknown>);
-              }
-              log.info({ triggerId: trigger.id, rowCount: records.rowCount }, "wf-engine: per_record fan-out fired");
-            } else {
-              // batched: one run with all rows
-              await fireWorkflowForDefinition(
-                trigger.definition_id, "schedule", `trigger:${trigger.id}`,
-                { records: records.rows as Record<string, unknown>[] },
-              );
-              log.info({ triggerId: trigger.id, rowCount: records.rowCount }, "wf-engine: batched fan-out fired");
-            }
-          } catch (err) {
-            log.warn({ err, triggerId: trigger.id }, "wf-engine: fan_out_query execution failed (non-fatal)");
-          }
-        }
+      if (isFanOutConfigured(trigger.config)) {
+        await fireWorkflowFanOut(trigger.definition_id, trigger.config, "schedule", `trigger:${trigger.id}`);
       } else {
         const t0 = Date.now();
         const runId = await fireWorkflowForDefinition(

@@ -519,11 +519,26 @@ export async function removeDefinition(id: number): Promise<void> {
   }
 }
 
-export async function runNow(id: number): Promise<void> {
+/**
+ * `mode: "test"` (default) — one synthetic run, no fan-out.
+ * `mode: "live"` — real production fire: for a fan-out-configured trigger,
+ * runs the real fanOutQuery and fires one real run per row (or one batched
+ * run) exactly as the schedule would — same records, same side effects.
+ * Gated behind a real confirm() since it can trigger real scans/notifications
+ * against real tenants, not something to fire accidentally with one click.
+ */
+export async function runNow(id: number, mode: "live" | "test" = "test"): Promise<void> {
   if (!adminFetchRef) return;
+  if (mode === "live" && !window.confirm(
+    "Run Now Live fires the REAL scheduled fan-out right now — one real run per matching record, with real side effects (real scans, real notifications) against real tenants. This is not a simulation. Continue?",
+  )) return;
   try {
-    const { runId } = await runDefinition(adminFetchRef, id);
-    say(`Run started — #${runId}.`);
+    const result = await runDefinition(adminFetchRef, id, { mode });
+    if (result.runIds && result.runIds.length) {
+      say(`Live fan-out fired — ${result.runIds.length} run${result.runIds.length === 1 ? "" : "s"} started (${result.rowCount ?? result.runIds.length} record${(result.rowCount ?? result.runIds.length) === 1 ? "" : "s"}).`);
+    } else {
+      say(`Run started — #${result.runId}.`);
+    }
     await Promise.all([reloadRecentRuns(), state.selectedDefinitionId === id ? reloadDefinitionRuns(id) : Promise.resolve()]);
   } catch (err) {
     say(errText(err));

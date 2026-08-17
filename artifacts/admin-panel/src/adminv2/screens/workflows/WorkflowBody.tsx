@@ -101,8 +101,23 @@ function Header({ state, def }: { state: WorkflowState; def: DefinitionRow | nul
         </button>
       )}
       {def && (
-        <button onClick={() => void runNow(def.id)} disabled={!allowsManualTrigger(def)} title={allowsManualTrigger(def) ? "Run the published version now" : "Marked critical — manual runs disabled"} style={buttonStyle(false)}>
-          Run now
+        <button
+          onClick={() => void runNow(def.id, "test")}
+          disabled={!allowsManualTrigger(def)}
+          title={allowsManualTrigger(def) ? "One synthetic run, no fan-out — safe to click repeatedly" : "Marked critical — manual runs disabled"}
+          style={buttonStyle(false)}
+        >
+          Run Now Test
+        </button>
+      )}
+      {def && (
+        <button
+          onClick={() => void runNow(def.id, "live")}
+          disabled={!allowsManualTrigger(def)}
+          title={allowsManualTrigger(def) ? "Fires the REAL fan-out right now — real side effects, same as a schedule" : "Marked critical — manual runs disabled"}
+          style={buttonStyle(false)}
+        >
+          Run Now Live
         </button>
       )}
       <button onClick={() => void refreshAll()} style={buttonStyle(false)}>

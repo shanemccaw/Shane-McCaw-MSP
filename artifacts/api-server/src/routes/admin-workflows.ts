@@ -19,7 +19,7 @@
  * DELETE /api/admin/workflows/definitions/:id/triggers/:tid
  * PATCH  /api/admin/workflows/definitions/:id/triggers/:tid
  * GET    /api/admin/workflows/triggers               (every trigger, all definitions)
- * POST   /api/admin/workflows/definitions/:id/run   (manual trigger)
+ * POST   /api/admin/workflows/definitions/:id/run   (manual trigger; body.mode "live"|"test", default "test")
  * GET    /api/admin/workflows/runs
  * GET    /api/admin/workflows/runs/:id
  * POST   /api/admin/workflows/runs/:id/cancel
@@ -48,7 +48,7 @@ import { eq, and, desc, asc, count, sql, gte, lte, inArray } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 const log = logger.child({ channel: "workflow.run" });
-import { fireWorkflowForDefinition, computeNextCronRun, executeWorkflowRun, resumeWorkflowRun } from "../lib/workflow-executor";
+import { fireWorkflowForDefinition, fireWorkflowFanOut, isFanOutConfigured, computeNextCronRun, executeWorkflowRun, resumeWorkflowRun } from "../lib/workflow-executor";
 import { registerAdminWorkflowEventClient } from "../lib/sse-channels";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import crypto from "crypto";
@@ -997,6 +997,34 @@ router.post("/admin/workflows/definitions/:id/run", requireAdmin, async (req: Re
     const inputValues = (req.body.inputValues && typeof req.body.inputValues === "object")
       ? req.body.inputValues as Record<string, string | string[]>
       : undefined;
+
+    // "Run Now Live" (Git #1057) — for a definition with a real fan-out-configured
+    // trigger, fires the SAME fan-out a scheduled run would: one real run per
+    // fanOutQuery row (or one batched run), real side effects, not a simulation.
+    // A definition with no fan-out trigger has nothing to fan out, so it falls
+    // through unchanged to the single-fire path below — byte-for-byte the same
+    // request "Run Now Test" (mode omitted/"test") always took.
+    if (req.body.mode === "live") {
+      const triggers = await db
+        .select()
+        .from(wfTriggersTable)
+        .where(eq(wfTriggersTable.definitionId, defId))
+        .orderBy(asc(wfTriggersTable.createdAt));
+      const fanOutTrigger = triggers.find((t) => isFanOutConfigured(t.config as Record<string, unknown>));
+      if (fanOutTrigger) {
+        const result = await fireWorkflowFanOut(
+          defId, fanOutTrigger.config as Record<string, unknown>, "manual", `admin:manual:live:trigger:${fanOutTrigger.id}`,
+        );
+        if (!result.ok) {
+          return sendError(res, 422, result.error === "fan_out_query rejected"
+            ? "fan_out_query is invalid (must be a single SELECT with no semicolons)"
+            : "Fan-out query failed to execute");
+        }
+        return res.status(202).json({ mode: "live", fanOutMode: result.mode, runIds: result.runIds, rowCount: result.rowCount });
+      }
+      // No fan-out trigger configured — nothing to fan out, fall through.
+    }
+
     const runId = await fireWorkflowForDefinition(
       defId, "manual", `admin:manual`,
       req.body.payload ?? {},

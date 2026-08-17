@@ -109,8 +109,18 @@ export async function deleteDefinition(adminFetch: AdminFetch, id: number): Prom
   if (!res.ok) await readJson(res, "Failed to delete the workflow");
 }
 
-/** `POST .../run` — fires the published version (or `versionId`, if given) for real. */
-export async function runDefinition(adminFetch: AdminFetch, id: number, opts: { versionId?: number; payload?: Record<string, unknown> } = {}): Promise<{ runId: number }> {
+/**
+ * `POST .../run` — fires the published version (or `versionId`, if given).
+ * `mode: "test"` (default) — one synthetic run, no fan-out, current behavior.
+ * `mode: "live"` — for a fan-out-configured trigger, fires the SAME real
+ * fan-out a schedule would (one run per row / one batched run); identical to
+ * "test" when the definition has no fan-out trigger to fire.
+ */
+export async function runDefinition(
+  adminFetch: AdminFetch,
+  id: number,
+  opts: { versionId?: number; payload?: Record<string, unknown>; mode?: "live" | "test" } = {},
+): Promise<{ runId?: number; mode?: string; fanOutMode?: string | null; runIds?: number[]; rowCount?: number }> {
   const res = await json(adminFetch, `${BASE}/definitions/${id}/run`, "POST", opts);
   return readJson(res, "Failed to run the workflow");
 }
