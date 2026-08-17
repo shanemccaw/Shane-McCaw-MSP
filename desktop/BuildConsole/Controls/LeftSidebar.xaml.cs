@@ -40,6 +40,8 @@ namespace BuildConsole.Controls
         /// <summary>Git #921 — real open/closed issue counts straight from GetMilestonesAsync (GitHub's own milestone open_issues/closed_issues), shown as separate glanceable pills in the milestone tab. Both zero when <see cref="HasRealCounts"/> is false.</summary>
         public int OpenIssues { get; set; }
         public int ClosedIssues { get; set; }
+        public string State { get; set; } = "open";
+        public bool IsClosed => string.Equals(State, "closed", StringComparison.OrdinalIgnoreCase);
         public int ProgressPercent => TotalCount == 0 ? 0 : (CompletedCount * 100 / TotalCount);
         public string ProgressStr => $"{ProgressPercent}% ({CompletedCount}/{TotalCount})";
         public List<GitEpic> Epics { get; set; } = new();
@@ -1725,17 +1727,22 @@ namespace BuildConsole.Controls
                 // it). The synthetic "No Milestone" bucket has no such number —
                 // HasRealCounts stays false and CreateMilestoneHeader hides the
                 // badge rather than showing a fabricated total.
-                var milestoneNumber = list.FirstOrDefault()?.MilestoneNumber;
-                if (milestoneNumber.HasValue && milestoneInfoByNumber.TryGetValue(milestoneNumber.Value, out var info))
+                var milestoneNumber = list.FirstOrDefault(i => i.MilestoneNumber.HasValue)?.MilestoneNumber;
+                var info = (milestoneNumber.HasValue && milestoneInfoByNumber.TryGetValue(milestoneNumber.Value, out var foundInfo))
+                    ? foundInfo
+                    : milestoneInfos.FirstOrDefault(mi => string.Equals(mi.Title, g.Key, StringComparison.OrdinalIgnoreCase));
+
+                if (info != null)
                 {
                     milestone.TotalCount = info.OpenIssues + info.ClosedIssues;
                     milestone.CompletedCount = info.ClosedIssues;
                     milestone.HasRealCounts = true;
                     // Git #921 — carry the real number + raw open/closed counts so the milestone detail tab shows them as separate pills.
-                    milestone.GithubNumber = milestoneNumber.Value;
+                    milestone.GithubNumber = info.Number;
                     milestone.OpenIssues = info.OpenIssues;
                     milestone.ClosedIssues = info.ClosedIssues;
-                    seenMilestoneNumbers.Add(milestoneNumber.Value);
+                    milestone.State = info.State;
+                    seenMilestoneNumbers.Add(info.Number);
                 }
                 else
                 {
@@ -1752,9 +1759,11 @@ namespace BuildConsole.Controls
             // buckets under it — there's nothing OPEN to show), but visible,
             // with its real closed/total count so a fully-completed milestone
             // reads as "100% (12/12)" rather than not existing at all.
+            // Git #925 — Don't add CLOSED milestones to the active OPEN board.
             foreach (var mi in milestoneInfos)
             {
                 if (seenMilestoneNumbers.Contains(mi.Number)) continue;
+                if (mi.IsClosed && !_boardShowsClosed) continue;
                 _milestones.Add(new GitMilestone
                 {
                     Title = mi.Title,
@@ -1765,6 +1774,7 @@ namespace BuildConsole.Controls
                     GithubNumber = mi.Number,
                     OpenIssues = mi.OpenIssues,
                     ClosedIssues = mi.ClosedIssues,
+                    State = mi.State,
                 });
             }
 
@@ -2505,7 +2515,7 @@ namespace BuildConsole.Controls
                     cmMilestone.Items.Add(miNewEpicAssign);
 
                     // ── Close Milestone ──────────────────────────────────────────
-                    if (m.GithubNumber.HasValue)
+                    if (m.GithubNumber.HasValue && !m.IsClosed)
                     {
                         cmMilestone.Items.Add(new Separator());
 
@@ -2526,14 +2536,16 @@ namespace BuildConsole.Controls
                                 if (!settings.HasGitHubPat) return;
                                 var client = new GitHubApiClient(settings.GitHubPat);
                                 await client.CloseMilestoneAsync(m.GithubNumber.Value);
-                                ActivityLog.Log("git-board.close-milestone", $"Milestone \"{m.Title}\" (#{m.GithubNumber.Value}) closed!");
+                                ActivityLog.Log("git-board.close-milestone", $"Milestone \"{m.Title}\" (#{m.GithubNumber.Value}) closed on GitHub!");
                                 ToastEngine.Success("🎉 Milestone Closed!", $"\"{m.Title}\" has been closed!");
 
                                 // 🎉🎊🥳 THE BIG PARTY! 🥳🎊🎉
                                 IssueChompAnimation.PlayMilestoneClosedParty(milestoneItem, m.Title);
 
+                                // Invalidate cache & force fresh board fetch
+                                _cachedMilestoneInfos = null;
                                 _lastInProgressSignature = null;
-                                PopulateGitTrackerBoard();
+                                PopulateGitTrackerBoard(forceFresh: true);
                             }
                             catch (Exception ex)
                             {

@@ -335,6 +335,8 @@ namespace BuildConsole.Services
         {
             public int Number { get; set; }
             public string Title { get; set; } = "";
+            public string State { get; set; } = "open";
+            public bool IsClosed => string.Equals(State, "closed", StringComparison.OrdinalIgnoreCase);
             [JsonPropertyName("open_issues")]
             public int OpenIssues { get; set; }
             [JsonPropertyName("closed_issues")]
@@ -447,7 +449,11 @@ namespace BuildConsole.Services
                 Content = JsonContent.Create(new { state = close ? "closed" : "open" }),
             };
             var res = await _http.SendAsync(req);
-            res.EnsureSuccessStatusCode();
+            if (!res.IsSuccessStatusCode)
+            {
+                var err = await res.Content.ReadAsStringAsync();
+                throw new Exception($"GitHub API error ({(int)res.StatusCode}): {err}");
+            }
         }
 
         /// <summary>
