@@ -388,6 +388,9 @@ namespace BuildConsole
             _claudeOnlineTimer.Start();
             _ = _claudeOnlineService.CheckStatusAsync();
 
+            // Random Encouragement Critter — strolls across the screen periodically to cheer Shane on with milestone progress!
+            BuildConsole.Services.EncouragementService.Instance.Start();
+
             // Git #815 — surfaces a failed poll as a real, visible signal
             // (status-bar QueueDot/QueueStatusText, previously unused
             // hardcoded XAML) instead of silent inline tree text nobody
@@ -2593,12 +2596,17 @@ namespace BuildConsole
             DeployDot.Fill = DotReady;
         }
 
-        /// <summary>Git #805 — same visible-indicator pattern as Git #815's ReportSyncStatus: a failed poll turns the status-bar dot red with the error inline, PLUS the full text goes to the Output log, instead of failing silently.</summary>
         private void ReportDeployStatus(string error)
         {
             DeployDot.Fill = DotError;
             DeployStatusText.Text = $"Deploy sync error: {error}";
             BuildConsole.Services.ActivityLog.Log("deploy", $"FAILED: {error}");
+
+            // Proactively wake Replit via SSH / watcher if dev server is asleep or returned 502 / unreachable
+            if (_replitWatcher != null && (error.Contains("502") || error.Contains("unreachable") || error.Contains("dev server")))
+            {
+                _ = _replitWatcher.CheckNowAndWakeIfDownAsync();
+            }
         }
 
         /// <summary>Git #902 — renders the Replit idle watcher's live state in the status bar (dot + short text), with last-check / last-intervention times on the tooltip. Runs on the UI thread; the service raises this from UI-thread continuations already, but guard anyway.</summary>
@@ -3676,7 +3684,6 @@ namespace BuildConsole
             OutputPauseButton.Content = _outputPausableLog.IsPaused ? "▶ Resume" : "⏸ Pause";
         }
 
-        /// <summary>null = last poll succeeded (green "live"); a message = last poll failed (red, message shown + full text in the Output log).</summary>
         private void ReportSyncStatus(string? error)
         {
             if (error == null)
@@ -3689,6 +3696,12 @@ namespace BuildConsole
                 QueueDot.Fill = DotError;
                 QueueStatusText.Text = $"Sync error: {error}";
                 BuildConsole.Services.ActivityLog.Log("sync", $"FAILED: {error}");
+
+                // Proactively wake Replit via SSH / watcher if dev server is asleep or returned 502 / unreachable
+                if (_replitWatcher != null && (error.Contains("502") || error.Contains("unreachable") || error.Contains("dev server")))
+                {
+                    _ = _replitWatcher.CheckNowAndWakeIfDownAsync();
+                }
             }
         }
 
@@ -4211,6 +4224,9 @@ namespace BuildConsole
         // ── Menu: Help ────────────────────────────────────────────────────────
         private void OpenDevTools_Click(object sender, RoutedEventArgs e)
             => GetActiveWebView().CoreWebView2?.OpenDevToolsWindow();
+
+        private void CheerMeUp_Click(object sender, RoutedEventArgs e)
+            => BuildConsole.Services.EncouragementService.Instance.TriggerCheerNow();
 
         // ── Git #821: Release build button ───────────────────────────────────
         private System.Diagnostics.Process? _releaseBuildProcess;

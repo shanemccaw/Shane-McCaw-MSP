@@ -223,7 +223,10 @@ namespace BuildConsole.Controls
         private string _draft = "";
         public string Draft { get => _draft; set { if (SetProperty(ref _draft, value)) OnPropertyChanged(nameof(CanSend)); } }
 
-        public bool CanSend => Mode == ComposerMode.Interactive && !string.IsNullOrWhiteSpace(Draft);
+        public bool CanSend => (Mode is ComposerMode.Interactive or ComposerMode.Terminal) && !string.IsNullOrWhiteSpace(Draft);
+
+        private string _placeholderText = "Reply to Claude — Shift+Enter for a new line";
+        public string PlaceholderText { get => _placeholderText; set => SetProperty(ref _placeholderText, value); }
 
         private ComposerMode _mode = ComposerMode.ReadOnlyRunning;
         public ComposerMode Mode

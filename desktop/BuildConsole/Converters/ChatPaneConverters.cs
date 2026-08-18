@@ -47,14 +47,24 @@ namespace BuildConsole.Converters
             throw new NotSupportedException();
     }
 
-    /// <summary>Visible only when the bound ComposerMode equals the mode named in ConverterParameter.</summary>
+    /// <summary>Visible only when the bound ComposerMode equals the mode named in ConverterParameter (supports "InteractiveOrTerminal", comma/pipe separated values).</summary>
     public sealed class ComposerModeVisibilityConverter : IValueConverter
     {
         public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
         {
             if (value is not ComposerMode mode) return Visibility.Collapsed;
-            var target = Enum.Parse<ComposerMode>((string)parameter);
-            return mode == target ? Visibility.Visible : Visibility.Collapsed;
+            if (parameter is not string paramStr) return Visibility.Collapsed;
+
+            if (paramStr.Equals("InteractiveOrTerminal", StringComparison.OrdinalIgnoreCase))
+                return (mode is ComposerMode.Interactive or ComposerMode.Terminal) ? Visibility.Visible : Visibility.Collapsed;
+
+            var modes = paramStr.Split(new[] { ',', '|', ';' }, StringSplitOptions.RemoveEmptyEntries);
+            foreach (var m in modes)
+            {
+                if (Enum.TryParse<ComposerMode>(m.Trim(), ignoreCase: true, out var target) && mode == target)
+                    return Visibility.Visible;
+            }
+            return Visibility.Collapsed;
         }
 
         public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>

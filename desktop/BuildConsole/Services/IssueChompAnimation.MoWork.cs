@@ -47,19 +47,7 @@ namespace BuildConsole.Services
                     if (session == null) return;
                     var canvas = session.Canvas;
 
-                    Point targetPos = new Point(mainWin.ActualWidth * 0.35, mainWin.ActualHeight * 0.45);
-                    if (targetElement != null && targetElement.IsLoaded)
-                    {
-                        try
-                        {
-                            var screenPoint = targetElement.PointToScreen(new Point(targetElement.ActualWidth / 2, targetElement.ActualHeight / 2));
-                            targetPos = mainWin.PointFromScreen(screenPoint);
-                        }
-                        catch { }
-                    }
-
-                    targetPos.X = Math.Clamp(targetPos.X, 140, Math.Max(160, mainWin.ActualWidth - 220));
-                    targetPos.Y = Math.Clamp(targetPos.Y, 90, Math.Max(110, mainWin.ActualHeight - 140));
+                    Point targetPos = ComputeSpreadTargetPosition(mainWin, targetElement, isEpic: false);
 
                     // Floating "new issue" card — muted gray, not a celebration color
                     var issueCard = new Border
@@ -135,11 +123,10 @@ namespace BuildConsole.Services
                     Canvas.SetTop(bubble, targetPos.Y - 68);
                     canvas.Children.Add(bubble);
 
-                    // Step 1: a SLOW, heavy shuffle — deliberately much slower than every
-                    // other critter's sprint/charge (700-800ms) to read as dejected, not eager.
+                    // Step 1: a SLOW, heavy shuffle — deliberately slow and readable
                     double targetArrivalX = targetPos.X + 40;
                     double shuffleDistance = targetArrivalX - startX;
-                    int shuffleDuration = 1400;
+                    int shuffleDuration = 2400;
 
                     var shuffleX = new DoubleAnimation(0, shuffleDistance, TimeSpan.FromMilliseconds(shuffleDuration))
                     {
@@ -148,7 +135,7 @@ namespace BuildConsole.Services
                     charTranslate.BeginAnimation(TranslateTransform.XProperty, shuffleX);
 
                     // Low, heavy shuffle-hop — much smaller amplitude than the peppy critters' gallop
-                    var shuffleHop = new DoubleAnimation(0, -6, TimeSpan.FromMilliseconds(220))
+                    var shuffleHop = new DoubleAnimation(0, -6, TimeSpan.FromMilliseconds(260))
                     {
                         AutoReverse = true,
                         RepeatBehavior = new RepeatBehavior(TimeSpan.FromMilliseconds(shuffleDuration)),
@@ -158,8 +145,8 @@ namespace BuildConsole.Services
 
                     // Step 2: groan bubble pops on arrival
                     int bubblePopDelay = Math.Max(100, shuffleDuration - 200);
-                    var popOpacity = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(200)) { BeginTime = TimeSpan.FromMilliseconds(bubblePopDelay) };
-                    var popScale = new DoubleAnimation(0.2, 1.05, TimeSpan.FromMilliseconds(260))
+                    var popOpacity = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(250)) { BeginTime = TimeSpan.FromMilliseconds(bubblePopDelay) };
+                    var popScale = new DoubleAnimation(0.2, 1.05, TimeSpan.FromMilliseconds(300))
                     {
                         BeginTime = TimeSpan.FromMilliseconds(bubblePopDelay),
                         EasingFunction = new ElasticEase { Oscillations = 1, Springiness = 3 }
@@ -168,13 +155,13 @@ namespace BuildConsole.Services
                     bubbleScale.BeginAnimation(ScaleTransform.ScaleXProperty, popScale);
                     bubbleScale.BeginAnimation(ScaleTransform.ScaleYProperty, popScale);
 
-                    // Step 3: shoulders slump, a resigned puff of dust kicks up — no burst, no fanfare
+                    // Step 3: shoulders slump, a resigned puff of dust kicks up — lingers so it's readable
                     int slumpDelay = shuffleDuration;
                     var slumpTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(slumpDelay) };
                     slumpTimer.Tick += (_, _) =>
                     {
                         slumpTimer.Stop();
-                        var slump = new DoubleAnimation(grumpScale, grumpScale * 0.9, TimeSpan.FromMilliseconds(240))
+                        var slump = new DoubleAnimation(grumpScale, grumpScale * 0.9, TimeSpan.FromMilliseconds(300))
                         {
                             AutoReverse = true,
                             EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
@@ -184,32 +171,32 @@ namespace BuildConsole.Services
                     };
                     slumpTimer.Start();
 
-                    // Step 4: trudges off — slow fade, no victory dash
-                    int exitDelay = shuffleDuration + 700;
+                    // Step 4: trudges off — slow fade, lingering for a moment
+                    int exitDelay = shuffleDuration + 2000;
                     var exitTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(exitDelay) };
                     exitTimer.Tick += (_, _) =>
                     {
                         exitTimer.Stop();
                         double exitDistance = shuffleDistance - (targetPos.X + 220);
-                        var exitX = new DoubleAnimation(shuffleDistance, exitDistance, TimeSpan.FromMilliseconds(900))
+                        var exitX = new DoubleAnimation(shuffleDistance, exitDistance, TimeSpan.FromMilliseconds(1800))
                         {
                             EasingFunction = new SineEase { EasingMode = EasingMode.EaseIn }
                         };
-                        var exitFade = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(500))
+                        var exitFade = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(900))
                         {
-                            BeginTime = TimeSpan.FromMilliseconds(400)
+                            BeginTime = TimeSpan.FromMilliseconds(900)
                         };
                         charTranslate.BeginAnimation(TranslateTransform.XProperty, exitX);
                         grump.BeginAnimation(UIElement.OpacityProperty, exitFade);
                         bubble.BeginAnimation(UIElement.OpacityProperty, exitFade);
 
-                        var cardFade = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(600));
+                        var cardFade = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(900));
                         issueCard.BeginAnimation(UIElement.OpacityProperty, cardFade);
                     };
                     exitTimer.Start();
 
                     // Step 5: clean up
-                    int totalDuration = exitDelay + 1000;
+                    int totalDuration = exitDelay + 2000;
                     var cleanupTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(totalDuration) };
                     cleanupTimer.Tick += (_, _) =>
                     {

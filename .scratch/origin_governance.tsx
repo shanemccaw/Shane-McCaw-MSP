@@ -52,7 +52,6 @@ const METRIC_KEYS = [
   'identity.highRiskSigninCount',
   // Group / collaboration sprawl
   'compliance.orphanedTeamCount',
-  'governance.ownerlessGroupCount',
   'compliance.orphanedSiteCount',
   'compliance.guestUserCount',
   'compliance.externalInviteCount',

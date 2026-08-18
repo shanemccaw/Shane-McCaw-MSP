@@ -363,34 +363,54 @@
                         </Popup>
                     </StackPanel>
 
-                    <!-- RUNNING / IDLE / ERROR / etc pill -->
-                    <Border HorizontalAlignment="Right" VerticalAlignment="Center" CornerRadius="999" Padding="8,4,10,4"
-                            Background="{Binding PillFill}" BorderBrush="{Binding PillBorder}" BorderThickness="1"
-                            ToolTip="{Binding PillTooltip}">
-                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <Ellipse Width="6" Height="6" Fill="{Binding PillDot}" VerticalAlignment="Center">
-                                <Ellipse.Style>
-                                    <Style TargetType="Ellipse">
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding PillPulsing}" Value="True">
-                                                <DataTrigger.EnterActions>
-                                                    <BeginStoryboard x:Name="PillPulse">
-                                                        <Storyboard>
-                                                            <DoubleAnimation Storyboard.TargetProperty="Opacity" From="1" To="0.35" Duration="0:0:0.7" AutoReverse="True" RepeatBehavior="Forever"/>
-                                                        </Storyboard>
-                                                    </BeginStoryboard>
-                                                </DataTrigger.EnterActions>
-                                                <DataTrigger.ExitActions>
-                                                    <StopStoryboard BeginStoryboardName="PillPulse"/>
-                                                </DataTrigger.ExitActions>
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </Ellipse.Style>
-                            </Ellipse>
-                            <TextBlock Text="{Binding PillLabel}" FontSize="11.5" FontWeight="Bold" Foreground="{Binding PillText}" Margin="7,0,0,0"/>
-                        </StackPanel>
-                    </Border>
+                    <!-- Status pill & Dismiss button -->
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                        <Border VerticalAlignment="Center" CornerRadius="999" Padding="8,4,10,4"
+                                Background="{Binding PillFill}" BorderBrush="{Binding PillBorder}" BorderThickness="1"
+                                ToolTip="{Binding PillTooltip}">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <Ellipse Width="6" Height="6" Fill="{Binding PillDot}" VerticalAlignment="Center">
+                                    <Ellipse.Style>
+                                        <Style TargetType="Ellipse">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding PillPulsing}" Value="True">
+                                                    <DataTrigger.EnterActions>
+                                                        <BeginStoryboard x:Name="PillPulse">
+                                                            <Storyboard>
+                                                                <DoubleAnimation Storyboard.TargetProperty="Opacity" From="1" To="0.35" Duration="0:0:0.7" AutoReverse="True" RepeatBehavior="Forever"/>
+                                                            </Storyboard>
+                                                        </BeginStoryboard>
+                                                    </DataTrigger.EnterActions>
+                                                    <DataTrigger.ExitActions>
+                                                        <StopStoryboard BeginStoryboardName="PillPulse"/>
+                                                    </DataTrigger.ExitActions>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Ellipse.Style>
+                                </Ellipse>
+                                <TextBlock Text="{Binding PillLabel}" FontSize="11.5" FontWeight="Bold" Foreground="{Binding PillText}" Margin="7,0,0,0"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Dismiss button in header when done/terminal -->
+                        <Button Visibility="{Binding Mode, Converter={StaticResource ModeVis}, ConverterParameter=Terminal}"
+                                Click="DismissButton_Click" ToolTip="Dismiss this build from Build Watch"
+                                Margin="8,0,0,0" Height="24" Padding="8,0" Cursor="Hand"
+                                Background="{StaticResource Surface0Brush}" BorderBrush="{StaticResource Surface1Brush}" BorderThickness="1">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4">
+                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                </ControlTemplate>
+                            </Button.Template>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="✕" FontSize="10" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center"/>
+                                <TextBlock Text="Dismiss" FontSize="10.5" FontWeight="SemiBold" Foreground="{StaticResource Subtext0Brush}" Margin="4,0,0,0" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
                 </Grid>
             </Border>
 
@@ -461,8 +481,8 @@
                         Padding="{Binding ActualWidth, ElementName=Root, Converter={StaticResource FluidPad}, ConverterParameter='14,36'}">
                     <StackPanel>
 
-                        <!-- Interactive: real input shell -->
-                        <Border Visibility="{Binding Mode, Converter={StaticResource ModeVis}, ConverterParameter=Interactive}"
+                        <!-- Interactive / Continuation: real input shell remains available -->
+                        <Border Visibility="{Binding Mode, Converter={StaticResource ModeVis}, ConverterParameter=InteractiveOrTerminal}"
                                 BorderBrush="{StaticResource ChatPane.BorderStrong}" BorderThickness="1" CornerRadius="10" Background="{StaticResource ChatPane.Surface}"
                                 Padding="10,7,7,7">
                             <Grid>
@@ -475,7 +495,7 @@
                                       StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
                                       Width="15" Height="15" Stretch="Uniform" Margin="0,0,0,7" VerticalAlignment="Bottom"/>
                                 <Grid Grid.Column="1" Margin="10,0,0,0">
-                                    <TextBlock Text="Reply to Claude — Shift+Enter for a new line" Foreground="{StaticResource ChatPane.Muted7}"
+                                    <TextBlock Text="{Binding PlaceholderText}" Foreground="{StaticResource ChatPane.Muted7}"
                                                IsHitTestVisible="False" Padding="1,5" VerticalAlignment="Center"
                                                Visibility="{Binding Draft, Converter={StaticResource EmptyVis}}"
                                                FontSize="{Binding ActualWidth, ElementName=Root, Converter={StaticResource Fluid}, ConverterParameter='12,16.5'}"/>
@@ -488,7 +508,9 @@
                                              FontSize="{Binding ActualWidth, ElementName=Root, Converter={StaticResource Fluid}, ConverterParameter='12,16.5'}"/>
                                 </Grid>
                                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Bottom" Margin="6,0,0,0">
-                                    <Button x:Name="StopButton" Click="StopButton_Click" IsEnabled="{Binding CanStop}" Height="36" Padding="14,0" Margin="0,0,6,0"
+                                    <Button x:Name="StopButton" Click="StopButton_Click" IsEnabled="{Binding CanStop}"
+                                            Visibility="{Binding CanStop, Converter={StaticResource BoolVis}}"
+                                            Height="36" Padding="14,0" Margin="0,0,6,0"
                                             Background="{StaticResource ChatPane.DangerFill}" BorderBrush="{StaticResource ChatPane.DangerBorder}" BorderThickness="1"
                                             Cursor="Hand">
                                         <Button.Template>
@@ -532,20 +554,6 @@
                         <TextBlock Visibility="{Binding Mode, Converter={StaticResource ModeVis}, ConverterParameter=ReadOnlyRunning}"
                                    Text="Streaming output — read-only (not launched by this app instance)" Foreground="{StaticResource ChatPane.Muted6}"
                                    FontStyle="Italic" FontSize="12.5" Margin="2,4"/>
-
-                        <!-- Terminal: Dismiss row -->
-                        <Button Visibility="{Binding Mode, Converter={StaticResource ModeVis}, ConverterParameter=Terminal}"
-                                Click="DismissButton_Click" HorizontalAlignment="Right" Height="32" Padding="14,0" Cursor="Hand"
-                                Background="Transparent" BorderBrush="{StaticResource ChatPane.BorderStrong}" BorderThickness="1">
-                            <Button.Template>
-                                <ControlTemplate TargetType="Button">
-                                    <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6">
-                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                    </Border>
-                                </ControlTemplate>
-                            </Button.Template>
-                            <TextBlock Text="Dismiss" Foreground="{StaticResource ChatPane.Muted2}" FontWeight="SemiBold" FontSize="13"/>
-                        </Button>
 
                         <!-- Status footer -->
                         <Grid Margin="2,8,2,0">

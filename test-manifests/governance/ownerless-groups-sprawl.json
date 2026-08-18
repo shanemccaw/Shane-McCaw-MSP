@@ -1,0 +1,70 @@
+{
+  "issue": 1119,
+  "feature": "Governance page (/governance) Group & Collaboration Sprawl now surfaces the real governance:ownerless-groups check (signal.governance.ownerless-groups) as a registered dashboard metric ('Ownerless Groups'), distinct from the existing 'Ownerless Teams' row -- previously never registered in lib/dashboard-registry/src/metrics.ts, so only the raw ownerlessGroupCount property name was ever visible anywhere it surfaced.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "PENDING_1119_FIX_COMMIT",
+
+  "notes": [
+    "WIRING: new metric governance.ownerlessGroupCount (sourceType monitor_profile, sourceKey governance:ownerless-groups) registered in lib/dashboard-registry/src/metrics.ts. governance.tsx's METRIC_KEYS now includes it so useTopicHealthLive resolves it via POST /api/dashboard/resolve. GroupSprawl.tsx's SPRAWL_ROWS gained an 'Ownerless Groups' row right after 'Ownerless Teams'.",
+    "data-testid='sprawl-row-governance.ownerlessGroupCount' added to the new <li> (small, scoped addition alongside sibling rows, which also now carry sprawl-row-<metricKey> testids from this same edit).",
+    "D2 asserts the row renders SOME value (a real count or the honest em-dash) rather than requiring this shared dev tenant to have live ownerless-group data -- coverage state is a pre-existing property of the tenant's scan history, not something this change controls."
+  ],
+
+  "apiTests": [
+    {
+      "name": "SETUP — log in as the designated TESTBED Assessment account; extract the bearer.",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "D1 — POST /api/dashboard/resolve resolves governance.ownerlessGroupCount without erroring (registered metric, honest not_collected/available status either way).",
+      "method": "POST",
+      "path": "/api/dashboard/resolve",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "metricKeys": ["governance.ownerlessGroupCount"] },
+      "expect": { "status": 200, "jsonPath": "$.metrics['governance.ownerlessGroupCount']", "exists": true }
+    }
+  ],
+
+  "uiSteps": [
+    {
+      "name": "goto the real login URL (msp-portal's outer WouterRouter has base=BASE_PATH='/portal').",
+      "action": "goto",
+      "target": "/portal/login"
+    },
+    {
+      "name": "WAIT for the login form to hydrate before typing.",
+      "action": "expect",
+      "selector": "#email",
+      "state": "visible"
+    },
+    { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
+    { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
+    {
+      "name": "Primary login — CRITICAL: every downstream assertion needs a real authenticated session.",
+      "action": "click",
+      "selector": "[data-testid='login-submit']",
+      "critical": true,
+      "captureResponse": {
+        "urlPattern": "/api/auth/login",
+        "expect": { "status": 200 }
+      }
+    },
+    {
+      "name": "goto the real Governance page (branded, slug-scoped route inside SlugInnerSwitch).",
+      "action": "goto",
+      "target": "/portal/shane-mccaw-consulting/governance"
+    },
+    {
+      "name": "D2 — the new Ownerless Groups sprawl row renders with its human label, not the raw ownerlessGroupCount property name.",
+      "action": "expect",
+      "selector": "[data-testid='sprawl-row-governance.ownerlessGroupCount']",
+      "state": "visible",
+      "textContains": "Ownerless Groups"
+    }
+  ]
+}

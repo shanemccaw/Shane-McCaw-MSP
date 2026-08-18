@@ -319,6 +319,35 @@ namespace BuildConsole.Services
             }
         }
 
+        /// <summary>Removes the 'blocked' label and/or dependency link on GitHub to unblock the issue.</summary>
+        public async Task RemoveBlockedAsync(int issueNumber, int? blockingIssueNumber = null)
+        {
+            try
+            {
+                await _http.DeleteAsync($"repos/{Owner}/{Repo}/issues/{issueNumber}/labels/blocked");
+            }
+            catch { }
+
+            if (blockingIssueNumber.HasValue)
+            {
+                try
+                {
+                    var blocker = await _http.GetFromJsonAsync<GitHubIssueIdResult>(
+                        $"repos/{Owner}/{Repo}/issues/{blockingIssueNumber.Value}", JsonOpts);
+                    if (blocker != null)
+                    {
+                        var req = new HttpRequestMessage(HttpMethod.Delete,
+                            $"repos/{Owner}/{Repo}/issues/{issueNumber}/dependencies/blocked_by")
+                        {
+                            Content = JsonContent.Create(new { issue_id = blocker.Id })
+                        };
+                        await _http.SendAsync(req);
+                    }
+                }
+                catch { }
+            }
+        }
+
         /// <summary>
         /// Git #875 — Shane: "the progress on the Milestone node isnt right...
         /// it says 0%... I know I have things closed in all these current

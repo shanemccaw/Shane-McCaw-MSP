@@ -174,6 +174,70 @@ namespace BuildConsole.Services
             PlayInternal(targetElement, epicTitle, isEpic: true);
         }
 
+        private static int _critterSpawnSeq;
+        private static DateTime _lastCritterSpawnTime = DateTime.MinValue;
+
+        // Rich distribution of target coordinates across the ENTIRE window (top-left, center, top-right, bottom-left, bottom-right, etc.)
+        private static readonly (double xRatio, double yRatio)[] SpreadZones =
+        {
+            (0.30, 0.22), // Top-Left
+            (0.72, 0.25), // Top-Right
+            (0.48, 0.38), // Mid-Center
+            (0.26, 0.54), // Mid-Left
+            (0.74, 0.50), // Mid-Right
+            (0.52, 0.68), // Bottom-Center
+            (0.32, 0.76), // Bottom-Left
+            (0.70, 0.74), // Bottom-Right
+            (0.52, 0.20), // Center-Top
+            (0.40, 0.46), // Center-Left
+            (0.62, 0.34), // Upper-Mid-Right
+            (0.36, 0.62), // Lower-Mid-Left
+        };
+
+        internal static (Point targetPos, int seq) ComputeSpreadTargetPositionWithSeq(Window mainWin, FrameworkElement? targetElement, bool isEpic)
+        {
+            var now = DateTime.UtcNow;
+            if ((now - _lastCritterSpawnTime).TotalSeconds > 8)
+            {
+                _critterSpawnSeq = 0; // reset sequence after pause
+            }
+            _lastCritterSpawnTime = now;
+            int seq = _critterSpawnSeq++;
+
+            var zone = SpreadZones[seq % SpreadZones.Length];
+            double jitterX = (Rng.NextDouble() - 0.5) * 60;
+            double jitterY = (Rng.NextDouble() - 0.5) * 45;
+
+            double targetX = (mainWin.ActualWidth * zone.xRatio) + jitterX;
+            double targetY = (mainWin.ActualHeight * zone.yRatio) + jitterY;
+
+            // If a single targetElement was provided and it's not part of a rapid multi-spawn (seq == 0),
+            // we can place it near the element's Y, but still ensure X is out in the open view area.
+            if (targetElement != null && targetElement.IsLoaded && seq == 0)
+            {
+                try
+                {
+                    var screenPoint = targetElement.PointToScreen(new Point(targetElement.ActualWidth / 2, targetElement.ActualHeight / 2));
+                    var elementPoint = mainWin.PointFromScreen(screenPoint);
+                    targetY = elementPoint.Y;
+                    targetX = Math.Max(targetX, elementPoint.X + 60);
+                }
+                catch { }
+            }
+
+            double minX = isEpic ? 140 : 120;
+            double maxX = Math.Max(minX + 40, mainWin.ActualWidth - (isEpic ? 220 : 180));
+            double minY = isEpic ? 90 : 70;
+            double maxY = Math.Max(minY + 40, mainWin.ActualHeight - (isEpic ? 130 : 110));
+
+            return (new Point(Math.Clamp(targetX, minX, maxX), Math.Clamp(targetY, minY, maxY)), seq);
+        }
+
+        internal static Point ComputeSpreadTargetPosition(Window mainWin, FrameworkElement? targetElement, bool isEpic)
+        {
+            return ComputeSpreadTargetPositionWithSeq(mainWin, targetElement, isEpic).targetPos;
+        }
+
         private static void PlayInternal(FrameworkElement? targetElement, string title, bool isEpic)
         {
             if (Application.Current?.MainWindow is not Window mainWin) return;
@@ -186,19 +250,7 @@ namespace BuildConsole.Services
                     if (session == null) return;
                     var canvas = session.Canvas;
 
-                    Point targetPos = new Point(mainWin.ActualWidth * 0.35, mainWin.ActualHeight * 0.45);
-                    if (targetElement != null && targetElement.IsLoaded)
-                    {
-                        try
-                        {
-                            var screenPoint = targetElement.PointToScreen(new Point(targetElement.ActualWidth / 2, targetElement.ActualHeight / 2));
-                            targetPos = mainWin.PointFromScreen(screenPoint);
-                        }
-                        catch { }
-                    }
-
-                    targetPos.X = Math.Clamp(targetPos.X, 120, Math.Max(140, mainWin.ActualWidth - 200));
-                    targetPos.Y = Math.Clamp(targetPos.Y, 90, Math.Max(110, mainWin.ActualHeight - 140));
+                    var (targetPos, seq) = ComputeSpreadTargetPositionWithSeq(mainWin, targetElement, isEpic);
 
                     // Floating target card
                     var issueCard = new Border
@@ -254,24 +306,26 @@ namespace BuildConsole.Services
                     }
 
                     double critterScale = isEpic ? 2.2 : 1.1;
+                    double winW = mainWin.ActualWidth;
+
+                    // Alternate entry from Left or Right based on target quadrant / sequence
+                    bool enterFromLeft = (targetPos.X > winW * 0.52) || (seq % 2 == 1);
+                    double startX = enterFromLeft ? -50 : (winW + 50);
+                    double startY = targetPos.Y - (isEpic ? 45 : 25);
+                    Canvas.SetLeft(character, startX);
+                    Canvas.SetTop(character, startY);
+                    canvas.Children.Add(character);
+
                     var charTransform = new TransformGroup();
                     var charTranslate = new TranslateTransform();
                     var charHopTranslate = new TranslateTransform();
-                    // Face LEFT (starts on far right, runs left across tabs to the left sidebar)
-                    var charScaleTransform = new ScaleTransform(-critterScale, critterScale);
+                    // Face direction of sprint (+ScaleX faces right, -ScaleX faces left)
+                    var charScaleTransform = new ScaleTransform(enterFromLeft ? critterScale : -critterScale, critterScale);
                     charTransform.Children.Add(charScaleTransform);
                     charTransform.Children.Add(charTranslate);
                     charTransform.Children.Add(charHopTranslate);
                     character.RenderTransform = charTransform;
                     character.RenderTransformOrigin = new Point(0.5, 0.5);
-
-                    // Start at the far RIGHT of the window (over the Build Queue panel)
-                    double winW = mainWin.ActualWidth;
-                    double startX = winW + 40;
-                    double startY = targetPos.Y - (isEpic ? 45 : 25);
-                    Canvas.SetLeft(character, startX);
-                    Canvas.SetTop(character, startY);
-                    canvas.Children.Add(character);
 
                     // Speech bubble
                     var bubble = new Border
@@ -298,10 +352,10 @@ namespace BuildConsole.Services
                     Canvas.SetTop(bubble, targetPos.Y - (isEpic ? 75 : 55));
                     canvas.Children.Add(bubble);
 
-                    // Step 1: Sprint across the ENTIRE screen (from right Build Queue panel across main tabs to left issue)
-                    double targetArrivalX = targetPos.X + (isEpic ? 35 : 25);
+                    // Step 1: Sprint across the screen to target position
+                    double targetArrivalX = enterFromLeft ? (targetPos.X - (isEpic ? 35 : 25)) : (targetPos.X + (isEpic ? 35 : 25));
                     double sprintDistance = targetArrivalX - startX;
-                    int sprintDuration = isEpic ? 800 : 700;
+                    int sprintDuration = isEpic ? 1800 : 1500;
 
                     var sprintX = new DoubleAnimation(0, sprintDistance, TimeSpan.FromMilliseconds(sprintDuration))
                     {
@@ -310,7 +364,7 @@ namespace BuildConsole.Services
                     charTranslate.BeginAnimation(TranslateTransform.XProperty, sprintX);
 
                     // Gallop / Bouncing hop while sprinting across the screen
-                    var hop = new DoubleAnimation(0, -18, TimeSpan.FromMilliseconds(110))
+                    var hop = new DoubleAnimation(0, -18, TimeSpan.FromMilliseconds(180))
                     {
                         AutoReverse = true,
                         RepeatBehavior = new RepeatBehavior(TimeSpan.FromMilliseconds(sprintDuration)),
@@ -319,9 +373,9 @@ namespace BuildConsole.Services
                     charHopTranslate.BeginAnimation(TranslateTransform.YProperty, hop);
 
                     // Step 2: Speech bubble pop right when arriving at the issue
-                    int bubblePopDelay = Math.Max(100, sprintDuration - 140);
-                    var popOpacity = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(150)) { BeginTime = TimeSpan.FromMilliseconds(bubblePopDelay) };
-                    var popScale = new DoubleAnimation(0.2, isEpic ? 1.35 : 1.15, TimeSpan.FromMilliseconds(200))
+                    int bubblePopDelay = Math.Max(100, sprintDuration - 200);
+                    var popOpacity = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(200)) { BeginTime = TimeSpan.FromMilliseconds(bubblePopDelay) };
+                    var popScale = new DoubleAnimation(0.2, isEpic ? 1.35 : 1.15, TimeSpan.FromMilliseconds(250))
                     {
                         BeginTime = TimeSpan.FromMilliseconds(bubblePopDelay),
                         EasingFunction = new ElasticEase { Oscillations = 1, Springiness = 4 }
@@ -330,21 +384,21 @@ namespace BuildConsole.Services
                     bubbleScale.BeginAnimation(ScaleTransform.ScaleXProperty, popScale);
                     bubbleScale.BeginAnimation(ScaleTransform.ScaleYProperty, popScale);
 
-                    // Step 3: Crunch & Burst on arrival
-                    int crunchDelay = sprintDuration;
+                    // Step 3: Crunch & Burst on arrival (lingers briefly at card so it's readable)
+                    int crunchDelay = sprintDuration + 350;
                     var crunchTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(crunchDelay) };
                     crunchTimer.Tick += (_, _) =>
                     {
                         crunchTimer.Stop();
 
-                        var shrink = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(160))
+                        var shrink = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(250))
                         {
                             EasingFunction = new BackEase { Amplitude = 2.5, EasingMode = EasingMode.EaseIn }
                         };
                         cardScale.BeginAnimation(ScaleTransform.ScaleXProperty, shrink);
                         cardScale.BeginAnimation(ScaleTransform.ScaleYProperty, shrink);
 
-                        var gulp = new DoubleAnimation(critterScale, critterScale * 1.4, TimeSpan.FromMilliseconds(140))
+                        var gulp = new DoubleAnimation(critterScale, critterScale * 1.4, TimeSpan.FromMilliseconds(200))
                         {
                             AutoReverse = true,
                             EasingFunction = new BounceEase { Bounces = 1, Bounciness = 2 }
@@ -355,21 +409,24 @@ namespace BuildConsole.Services
                     };
                     crunchTimer.Start();
 
-                    // Step 4: Victory exit (continue dashing off the screen to the Left)
-                    int exitDelay = sprintDuration + 550;
+                    // Step 4: Victory exit (continue dashing forward off the screen after lingering)
+                    int exitDelay = sprintDuration + 1800;
                     var exitTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(exitDelay) };
                     exitTimer.Tick += (_, _) =>
                     {
                         exitTimer.Stop();
 
-                        double exitDistance = sprintDistance - (targetPos.X + 250);
-                        var exitX = new DoubleAnimation(sprintDistance, exitDistance, TimeSpan.FromMilliseconds(450))
+                        double exitDistance = enterFromLeft
+                            ? (sprintDistance + (winW - targetPos.X + 250))
+                            : (sprintDistance - (targetPos.X + 250));
+
+                        var exitX = new DoubleAnimation(sprintDistance, exitDistance, TimeSpan.FromMilliseconds(1100))
                         {
                             EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn }
                         };
-                        var exitFade = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(380))
+                        var exitFade = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(600))
                         {
-                            BeginTime = TimeSpan.FromMilliseconds(100)
+                            BeginTime = TimeSpan.FromMilliseconds(500)
                         };
                         charTranslate.BeginAnimation(TranslateTransform.XProperty, exitX);
                         character.BeginAnimation(UIElement.OpacityProperty, exitFade);
@@ -378,7 +435,7 @@ namespace BuildConsole.Services
                     exitTimer.Start();
 
                     // Step 5: Clean up canvas
-                    int totalDuration = sprintDuration + 1150;
+                    int totalDuration = exitDelay + 1300;
                     var cleanupTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(totalDuration) };
                     cleanupTimer.Tick += (_, _) =>
                     {
@@ -499,19 +556,19 @@ namespace BuildConsole.Services
 
                         paradeMascots.Add((critter, transX, scale));
 
-                        // March across animation (Right to Left)
-                        var march = new DoubleAnimation(0, -(winW + 300 + (i * 90)), TimeSpan.FromMilliseconds(3200))
+                        // March across animation (Right to Left) — slowed down for grand parade
+                        var march = new DoubleAnimation(0, -(winW + 300 + (i * 90)), TimeSpan.FromMilliseconds(5500))
                         {
-                            BeginTime = TimeSpan.FromMilliseconds(i * 120)
+                            BeginTime = TimeSpan.FromMilliseconds(i * 180)
                         };
                         transX.BeginAnimation(TranslateTransform.XProperty, march);
 
                         // Bouncing hop while marching
-                        var hop = new DoubleAnimation(1.6, 2.0, TimeSpan.FromMilliseconds(180))
+                        var hop = new DoubleAnimation(1.6, 2.0, TimeSpan.FromMilliseconds(240))
                         {
                             AutoReverse = true,
-                            RepeatBehavior = new RepeatBehavior(TimeSpan.FromMilliseconds(3000)),
-                            BeginTime = TimeSpan.FromMilliseconds(i * 120),
+                            RepeatBehavior = new RepeatBehavior(TimeSpan.FromMilliseconds(5200)),
+                            BeginTime = TimeSpan.FromMilliseconds(i * 180),
                             EasingFunction = new BounceEase { Bounces = 1, Bounciness = 2 }
                         };
                         scale.BeginAnimation(ScaleTransform.ScaleYProperty, hop);
@@ -520,7 +577,7 @@ namespace BuildConsole.Services
                     // 3. Huge Party Confetti & Fireworks Storm
                     for (int wave = 0; wave < 3; wave++)
                     {
-                        var waveTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(wave * 400 + 100) };
+                        var waveTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(wave * 600 + 200) };
                         waveTimer.Tick += (_, _) =>
                         {
                             waveTimer.Stop();
@@ -530,13 +587,13 @@ namespace BuildConsole.Services
                         waveTimer.Start();
                     }
 
-                    // 4. Milestone Banner Crunch by Lead Mascot (around 1200ms)
-                    var bannerChompTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1300) };
+                    // 4. Milestone Banner Crunch by Lead Mascot (around 2200ms)
+                    var bannerChompTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(2200) };
                     bannerChompTimer.Tick += (_, _) =>
                     {
                         bannerChompTimer.Stop();
 
-                        var bannerShrink = new DoubleAnimation(1.15, 0, TimeSpan.FromMilliseconds(250))
+                        var bannerShrink = new DoubleAnimation(1.15, 0, TimeSpan.FromMilliseconds(350))
                         {
                             EasingFunction = new BackEase { Amplitude = 2, EasingMode = EasingMode.EaseIn }
                         };
@@ -548,7 +605,7 @@ namespace BuildConsole.Services
                     bannerChompTimer.Start();
 
                     // 5. Cleanup
-                    var cleanupTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(3800) };
+                    var cleanupTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(6500) };
                     cleanupTimer.Tick += (_, _) =>
                     {
                         cleanupTimer.Stop();
@@ -575,19 +632,7 @@ namespace BuildConsole.Services
                     if (session == null) return;
                     var canvas = session.Canvas;
 
-                    Point targetPos = new Point(mainWin.ActualWidth * 0.35, mainWin.ActualHeight * 0.45);
-                    if (targetElement != null && targetElement.IsLoaded)
-                    {
-                        try
-                        {
-                            var screenPoint = targetElement.PointToScreen(new Point(targetElement.ActualWidth / 2, targetElement.ActualHeight / 2));
-                            targetPos = mainWin.PointFromScreen(screenPoint);
-                        }
-                        catch { }
-                    }
-
-                    targetPos.X = Math.Clamp(targetPos.X, 140, Math.Max(160, mainWin.ActualWidth - 220));
-                    targetPos.Y = Math.Clamp(targetPos.Y, 90, Math.Max(110, mainWin.ActualHeight - 140));
+                    Point targetPos = ComputeSpreadTargetPosition(mainWin, targetElement, isEpic: false);
 
                     // Floating target card with red blocked border
                     var issueCard = new Border
@@ -701,7 +746,7 @@ namespace BuildConsole.Services
                     // Step 1: Whammy charges across the ENTIRE screen (from right Build Queue panel across main tabs to left issue)
                     double targetArrivalX = targetPos.X + 45;
                     double chargeDistance = targetArrivalX - startX;
-                    int chargeDuration = 800;
+                    int chargeDuration = 1600;
 
                     var chargeX = new DoubleAnimation(0, chargeDistance, TimeSpan.FromMilliseconds(chargeDuration))
                     {
@@ -710,7 +755,7 @@ namespace BuildConsole.Services
                     charTranslate.BeginAnimation(TranslateTransform.XProperty, chargeX);
 
                     // Heavy stomping bounce while charging across the screen
-                    var stomp = new DoubleAnimation(0, -16, TimeSpan.FromMilliseconds(120))
+                    var stomp = new DoubleAnimation(0, -16, TimeSpan.FromMilliseconds(180))
                     {
                         AutoReverse = true,
                         RepeatBehavior = new RepeatBehavior(TimeSpan.FromMilliseconds(chargeDuration)),
@@ -719,9 +764,9 @@ namespace BuildConsole.Services
                     charHopTranslate.BeginAnimation(TranslateTransform.YProperty, stomp);
 
                     // Step 2: Speech bubble pop right when arriving
-                    int bubblePopDelay = Math.Max(100, chargeDuration - 160);
-                    var popOpacity = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(120)) { BeginTime = TimeSpan.FromMilliseconds(bubblePopDelay) };
-                    var popScale = new DoubleAnimation(0.2, 1.2, TimeSpan.FromMilliseconds(180))
+                    int bubblePopDelay = Math.Max(100, chargeDuration - 200);
+                    var popOpacity = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(180)) { BeginTime = TimeSpan.FromMilliseconds(bubblePopDelay) };
+                    var popScale = new DoubleAnimation(0.2, 1.2, TimeSpan.FromMilliseconds(240))
                     {
                         BeginTime = TimeSpan.FromMilliseconds(bubblePopDelay),
                         EasingFunction = new ElasticEase { Oscillations = 1, Springiness = 4 }
@@ -731,35 +776,35 @@ namespace BuildConsole.Services
                     bubbleScale.BeginAnimation(ScaleTransform.ScaleYProperty, popScale);
 
                     // Step 3: Mallet Windup & Heavy SLAM!
-                    var malletWindup = new DoubleAnimation(0, 45, TimeSpan.FromMilliseconds(200))
+                    var malletWindup = new DoubleAnimation(0, 45, TimeSpan.FromMilliseconds(320))
                     {
                         BeginTime = TimeSpan.FromMilliseconds(bubblePopDelay),
                         EasingFunction = new BackEase { Amplitude = 1.2, EasingMode = EasingMode.EaseIn }
                     };
                     malletTransform.BeginAnimation(RotateTransform.AngleProperty, malletWindup);
 
-                    var slamTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(chargeDuration) };
+                    var slamTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(chargeDuration + 200) };
                     slamTimer.Tick += (_, _) =>
                     {
                         slamTimer.Stop();
 
                         // Mallet slams down hard (-75 deg)
-                        var malletSlam = new DoubleAnimation(45, -75, TimeSpan.FromMilliseconds(120))
+                        var malletSlam = new DoubleAnimation(45, -75, TimeSpan.FromMilliseconds(180))
                         {
                             EasingFunction = new BounceEase { Bounces = 1, Bounciness = 3 }
                         };
                         malletTransform.BeginAnimation(RotateTransform.AngleProperty, malletSlam);
 
                         // Card Impact Shock & Jitter
-                        var cardJitterX = new DoubleAnimation(0, -8, TimeSpan.FromMilliseconds(40))
+                        var cardJitterX = new DoubleAnimation(0, -8, TimeSpan.FromMilliseconds(50))
                         {
                             AutoReverse = true,
-                            RepeatBehavior = new RepeatBehavior(3)
+                            RepeatBehavior = new RepeatBehavior(4)
                         };
-                        var cardJitterY = new DoubleAnimation(0, 6, TimeSpan.FromMilliseconds(40))
+                        var cardJitterY = new DoubleAnimation(0, 6, TimeSpan.FromMilliseconds(50))
                         {
                             AutoReverse = true,
-                            RepeatBehavior = new RepeatBehavior(3)
+                            RepeatBehavior = new RepeatBehavior(4)
                         };
                         cardTranslate.BeginAnimation(TranslateTransform.XProperty, cardJitterX);
                         cardTranslate.BeginAnimation(TranslateTransform.YProperty, cardJitterY);
@@ -787,7 +832,7 @@ namespace BuildConsole.Services
                         };
                         cardStack.Children.Add(stamp);
 
-                        var stampDrop = new DoubleAnimation(2.5, 1.0, TimeSpan.FromMilliseconds(160))
+                        var stampDrop = new DoubleAnimation(2.5, 1.0, TimeSpan.FromMilliseconds(220))
                         {
                             EasingFunction = new BounceEase { Bounces = 1, Bounciness = 2 }
                         };
@@ -799,8 +844,8 @@ namespace BuildConsole.Services
                     };
                     slamTimer.Start();
 
-                    // Step 4: Mischievous Laugh & Dash off to the LEFT
-                    int exitDelay = chargeDuration + 600;
+                    // Step 4: Mischievous Laugh & Dash off to the LEFT (lingers for a moment)
+                    int exitDelay = chargeDuration + 1800;
                     var exitTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(exitDelay) };
                     exitTimer.Tick += (_, _) =>
                     {
@@ -809,13 +854,13 @@ namespace BuildConsole.Services
                         bubbleText.Text = "HEHEHE! 😈";
 
                         double exitDistance = chargeDistance - (targetPos.X + 250);
-                        var exitX = new DoubleAnimation(chargeDistance, exitDistance, TimeSpan.FromMilliseconds(480))
+                        var exitX = new DoubleAnimation(chargeDistance, exitDistance, TimeSpan.FromMilliseconds(1100))
                         {
                             EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn }
                         };
-                        var exitFade = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(420))
+                        var exitFade = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(600))
                         {
-                            BeginTime = TimeSpan.FromMilliseconds(100)
+                            BeginTime = TimeSpan.FromMilliseconds(400)
                         };
                         charTranslate.BeginAnimation(TranslateTransform.XProperty, exitX);
                         whammy.BeginAnimation(UIElement.OpacityProperty, exitFade);
@@ -824,7 +869,7 @@ namespace BuildConsole.Services
                     exitTimer.Start();
 
                     // Step 5: Clean up
-                    int totalDuration = chargeDuration + 1200;
+                    int totalDuration = exitDelay + 1300;
                     var cleanupTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(totalDuration) };
                     cleanupTimer.Tick += (_, _) =>
                     {

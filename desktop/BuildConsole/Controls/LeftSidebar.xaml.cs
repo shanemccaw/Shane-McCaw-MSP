@@ -1556,6 +1556,11 @@ namespace BuildConsole.Controls
                 }
             }
             _lastMilestoneInfos = milestoneInfos;
+            if (milestoneInfos != null && milestoneInfos.Count > 0)
+            {
+                var activeM = milestoneInfos.FirstOrDefault(m => m.OpenIssues > 0) ?? milestoneInfos[0];
+                BuildConsole.Services.EncouragementService.Instance.UpdateMilestoneProgress(activeM.Title, activeM.OpenIssues, activeM.ClosedIssues);
+            }
 
             // Git #923 — milestoneInfos folded in (Number/Title/counts per
             // milestone), not just the open-issues list - see this method's
@@ -1689,6 +1694,7 @@ namespace BuildConsole.Controls
             var client = new GitHubApiClient(pat);
             using var gate = new System.Threading.SemaphoreSlim(6);
             var newlyBlocked = new List<(GitIssue issue, int? blockerNumber)>();
+            var newlyUnblocked = new List<(GitIssue issue, int? wasBlockedBy)>();
 
             await System.Threading.Tasks.Task.WhenAll(openIssues.Select(async issue =>
             {
@@ -1696,7 +1702,7 @@ namespace BuildConsole.Controls
                 try
                 {
                     var blocker = await client.GetOpenBlockedByAsync(issue.IssueNumber);
-                    bool wasBlocked = issue.IsBlocked;
+                    bool wasBlocked = _knownBlockedIssueNumbers != null && _knownBlockedIssueNumbers.Contains(issue.IssueNumber);
                     issue.IsBlocked = blocker != null || issue.IsBlocked;
                     issue.BlockedByNumber = blocker?.Number;
                     issue.BlockedByTitle = blocker?.Title;
@@ -1706,6 +1712,13 @@ namespace BuildConsole.Controls
                         lock (newlyBlocked)
                         {
                             newlyBlocked.Add((issue, blocker?.Number));
+                        }
+                    }
+                    else if (!issue.IsBlocked && wasBlocked)
+                    {
+                        lock (newlyUnblocked)
+                        {
+                            newlyUnblocked.Add((issue, blocker?.Number));
                         }
                     }
                 }
@@ -1740,6 +1753,34 @@ namespace BuildConsole.Controls
                             IssueChompAnimation.PlayWhammy(tvi, label, blockerNum);
                         };
                         wTimer.Start();
+                    }
+                    delay += 800;
+                }
+            }
+
+            // If issues became unblocked remotely (blocker resolved/unlinked), send in Sparky the Keymaster Bunny!
+            if (newlyUnblocked.Count > 0)
+            {
+                ActivityLog.Log("git-board.unblock", $"Detected {newlyUnblocked.Count} issue(s) unblocked — sending in Sparky the Keymaster Bunny!");
+                int delay = 0;
+                foreach (var (uIssue, wasBlockerNum) in newlyUnblocked)
+                {
+                    int curDelay = delay;
+                    var tvi = FindIssueTreeViewItem(IssuesTree.Items, uIssue.IssueNumber);
+                    string label = $"#{uIssue.IssueNumber} {uIssue.RawTitle}";
+                    if (curDelay == 0)
+                    {
+                        IssueChompAnimation.PlayUnblock(tvi, label, wasBlockerNum);
+                    }
+                    else
+                    {
+                        var uTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(curDelay) };
+                        uTimer.Tick += (_, _) =>
+                        {
+                            uTimer.Stop();
+                            IssueChompAnimation.PlayUnblock(tvi, label, wasBlockerNum);
+                        };
+                        uTimer.Start();
                     }
                     delay += 800;
                 }
@@ -2876,9 +2917,23 @@ namespace BuildConsole.Controls
                                 bucketItem.Items.Add(issueNode);
                             }
                         }
+                        else if (epicBucket.Title.Contains("Shane To-Do") || epicBucket.Title.Contains("To-Do"))
+                        {
+                            // Shane To-Do bucket: display ALL items marked for Shane directly, even if attached to an epic
+                            foreach (var issue in epicBucket.Issues)
+                            {
+                                if (filter != "Done" && issue.Status == "CLOSED") continue;
+                                if (filter == "Done" && issue.Status != "CLOSED") continue;
+                                if (filter == "Priority" && issue.Priority != "HIGH") continue;
+
+                                var issueNode = CreateIssueHeader(issue, depth: 2);
+                                PopulateIssueTreeHierarchy(issueNode.Items, allKnownIssues, issue.IssueNumber, filter, depth: 3);
+                                bucketItem.Items.Add(issueNode);
+                            }
+                        }
                         else
                         {
-                            // Shane To-Do or custom buckets: top-level items with any sub-issues nested
+                            // Custom buckets: top-level items with any sub-issues nested
                             var topItems = epicBucket.Issues
                                 .Where(i => i.ParentNumber == null || !allKnownIssues.Any(p => p.IssueNumber == i.ParentNumber))
                                 .ToList();
@@ -3315,6 +3370,34 @@ namespace BuildConsole.Controls
                 PopulateGitTrackerBoard();
             };
             cm.Items.Add(miSetBlockedBy);
+
+            if (issue.IsBlocked)
+            {
+                var miUnblock = new MenuItem { Header = "🔓 Remove Blocker (Unblock)" };
+                miUnblock.Click += async (s, e) =>
+                {
+                    var settings = BuildConsole.Services.BuildConsoleSettings.Load();
+                    if (!settings.HasGitHubPat) return;
+                    try
+                    {
+                        var client = new GitHubApiClient(settings.GitHubPat);
+                        await client.RemoveBlockedAsync(issue.IssueNumber, issue.BlockedByNumber);
+                        ActivityLog.Log("git-board.unblock", $"#{issue.IssueNumber} unblocked manually");
+
+                        // Sparky the Keymaster Bunny Unblock Animation!
+                        IssueChompAnimation.PlayUnblock(tvi, $"#{issue.IssueNumber} {issue.RawTitle}", issue.BlockedByNumber);
+                    }
+                    catch (Exception ex)
+                    {
+                        ActivityLog.Log("git-board.unblock", $"#{issue.IssueNumber} unblock FAILED: {ex.Message}");
+                        ToastEngine.Error("Unblock Issue", $"Couldn't unblock #{issue.IssueNumber}: {ex.Message}");
+                        return;
+                    }
+                    _lastInProgressSignature = null;
+                    PopulateGitTrackerBoard();
+                };
+                cm.Items.Add(miUnblock);
+            }
 
             // Git #922 (Epic #803) — Shane: "Right clicking on an epic that
             // does NOT have a chat associated should allow me to create a new

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Users, UserMinus, UserX, Globe, FolderX, MailWarning, UsersRound, AppWindow, FolderOpen } from 'lucide-react';
+import { Users, UserMinus, Globe, FolderX, MailWarning, UsersRound, AppWindow, FolderOpen } from 'lucide-react';
 import {
   ResolvedMetric,
   resolvedValue,
@@ -24,7 +24,6 @@ const SPRAWL_ROWS: {
   icon: React.ComponentType<{ className?: string }>;
 }[] = [
   { key: 'compliance.orphanedTeamCount', label: 'Ownerless Teams', caption: 'Teams with no active owner', icon: UserMinus },
-  { key: 'governance.ownerlessGroupCount', label: 'Ownerless Groups', caption: 'M365 Groups with no active owner (every Team has a Group, not every Group has a Team)', icon: UserX },
   { key: 'compliance.orphanedSiteCount', label: 'Orphaned SharePoint Sites', caption: 'Sites with no active owner', icon: FolderX },
   { key: 'compliance.guestUserCount', label: 'Guest Users', caption: 'External identities in your directory', icon: Globe },
   { key: 'compliance.externalInviteCount', label: 'External Invites', caption: 'Pending/recent external invitations', icon: MailWarning },

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
+using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -127,6 +128,11 @@ namespace BuildConsole
             public int QueueItemId;
             public int? GithubNumber;
             public string Title = "";
+            public string Prompt = "";
+            public string? Model;
+            public string? Effort;
+            public string? SessionId;
+            public List<int>? BlockedByNumbers;
             public SlotState State = SlotState.Empty;
             /// <summary>True while a Running slot is actually the #943 "VERIFYING…" hold (queue said failed with the -2 sentinel).</summary>
             public bool Verifying;
@@ -397,6 +403,7 @@ namespace BuildConsole
             {
                 var label = line.Trim('-', ' ');
                 AddParagraph(slot, string.IsNullOrWhiteSpace(label) ? "done" : label, ParagraphKind.Done);
+                SetSlotState(slot, SlotState.Done, 0);
                 return;
             }
 
@@ -468,11 +475,13 @@ namespace BuildConsole
             return false;
         }
 
-        /// <summary>Continuation test for a raw (unfenced) diff run — an add/remove/context/hunk/header line. The build's own "--- done" completion marker is explicitly excluded so it never gets swallowed as a removed line.</summary>
+        /// <summary>Continuation test for a raw (unfenced) diff run — an add/remove/context/hunk/header line. The build's own "--- done" completion marker and markdown lists/headings are explicitly excluded so they never get swallowed as a diff line.</summary>
         private static bool IsRawDiffBodyLine(string line)
         {
             if (line.Length == 0) return false;                                   // blank line ends a raw hunk
             if (line.StartsWith("--- done", StringComparison.Ordinal)) return false; // build-complete marker, not a diff line
+            if (line.StartsWith("- [ ]", StringComparison.Ordinal) || line.StartsWith("- [x]", StringComparison.Ordinal) || line.StartsWith("- [X]", StringComparison.Ordinal)) return false;
+            if (line.StartsWith("**", StringComparison.Ordinal) || line.StartsWith("##", StringComparison.Ordinal)) return false;
             char c = line[0];
             return c == '+' || c == '-' || c == ' ' || c == '@' || c == '\\'
                    || line.StartsWith("index ", StringComparison.Ordinal)
@@ -941,7 +950,14 @@ namespace BuildConsole
                     bool owned = _watcher?.OwnsInteractive(slot.QueueItemId) ?? false;
                     if (owned) slot.InteractiveBound = true;
 
-                    if (byId.TryGetValue(slot.QueueItemId, out var item))
+                    // Local process exit check: if our in-process watcher knows the process already exited,
+                    // mark it Done/Failed immediately rather than staying stuck in Running if the dev server
+                    // is napping or returning cached queue data.
+                    if (_watcher != null && _watcher.HasExited(slot.QueueItemId, out int localExitCode))
+                    {
+                        SetSlotState(slot, localExitCode == 0 ? SlotState.Done : SlotState.Failed, localExitCode);
+                    }
+                    else if (byId.TryGetValue(slot.QueueItemId, out var item))
                     {
                         ApplyItemStatusToSlot(slot, item);
                     }
@@ -1056,6 +1072,7 @@ namespace BuildConsole
                     slot.Verifying = verifying;
                     vm.Mode = slot.InteractiveBound ? ComposerMode.Interactive : ComposerMode.ReadOnlyRunning;
                     vm.CanStop = slot.InteractiveBound;
+                    vm.PlaceholderText = "Type to guide Claude mid-task — Shift+Enter for new line";
                     slot.CompletedAtUtc = null;
                     slot.Container.BorderBrush = _emptyBorder;
                     slot.Container.BorderThickness = new Thickness(1);
@@ -1076,6 +1093,7 @@ namespace BuildConsole
                     slot.Verifying = false;
                     vm.Mode = ComposerMode.Terminal;
                     vm.CanStop = false;
+                    vm.PlaceholderText = "Build complete — answer questions or send new directions…";
                     slot.Container.BorderBrush = _ringSuccess;
                     slot.Container.BorderThickness = new Thickness(3); // the "green overlay around the completed one"
                     ApplyPillTone(slot, "Success", exitCode.HasValue ? $"DONE ✓ (exit {exitCode})" : "DONE ✓", null, pulsing: false);
@@ -1087,6 +1105,7 @@ namespace BuildConsole
                     slot.Verifying = false;
                     vm.Mode = ComposerMode.Terminal;
                     vm.CanStop = false;
+                    vm.PlaceholderText = "Build failed — send corrective instructions or reply…";
                     slot.Container.BorderBrush = _ringDanger;
                     slot.Container.BorderThickness = new Thickness(3);
                     ApplyPillTone(slot, "Error", exitCode.HasValue ? $"FAILED (exit {exitCode})" : "FAILED", null, pulsing: false);
@@ -1098,6 +1117,7 @@ namespace BuildConsole
                     slot.Verifying = false;
                     vm.Mode = ComposerMode.Terminal;
                     vm.CanStop = false;
+                    vm.PlaceholderText = "Send instructions or resume this build…";
                     slot.Container.BorderBrush = _ringWarning;
                     slot.Container.BorderThickness = new Thickness(2);
                     ApplyPillTone(slot, "Warning", "NOT IN QUEUE",
@@ -1181,6 +1201,11 @@ namespace BuildConsole
             slot.QueueItemId = item.Id;
             slot.GithubNumber = item.GithubNumber;
             slot.Title = SafeTitle(item);
+            slot.Prompt = item.Prompt ?? "";
+            slot.Model = item.Model;
+            slot.Effort = item.Effort;
+            slot.SessionId = item.SessionId;
+            slot.BlockedByNumbers = item.BlockedByNumbers;
             slot.CompletedAtUtc = null;
             slot.TailedLength = 0;
             slot.Verifying = false;
@@ -1421,7 +1446,7 @@ namespace BuildConsole
         /// yields (re-posts itself at <see cref="DispatcherPriority.Background"/>). Keeps each pass short
         /// so input, layout and render stay responsive while a big backlog drains.
         /// </summary>
-        private const int RenderChunkBudget = 40;
+        private const int RenderChunkBudget = 150;
         /// <summary>
         /// Hard cap on a slot's un-rendered backlog. Beyond this the oldest surplus is dropped — it would
         /// only be rendered and then immediately trimmed off the far end of the ≤<see cref="MaxCardsPerSlot"/>
@@ -1547,6 +1572,7 @@ namespace BuildConsole
                 case InteractiveInputState.Working:
                     slot.Container.BorderBrush = _emptyBorder;
                     slot.Container.BorderThickness = new Thickness(1);
+                    slot.Pane.ViewModel.PlaceholderText = "Working — type below to steer it mid-task; Shift+Enter for new line";
                     ApplyPillTone(slot, "Running", "RUNNING", "Working — type below to steer it mid-task; text goes straight to its stdin.", pulsing: false);
                     slot.StatusLine!.ActivityText = "working…";
                     slot.StatusLine!.Spinning = true;
@@ -1555,6 +1581,7 @@ namespace BuildConsole
                 case InteractiveInputState.WaitingForInput:
                     slot.Container.BorderBrush = _ringWarning;
                     slot.Container.BorderThickness = new Thickness(3);
+                    slot.Pane.ViewModel.PlaceholderText = "Claude is waiting on your input — reply here…";
                     ApplyPillTone(slot, "Warning", "✋ NEEDS INPUT", "This build finished its turn and is waiting on you — reply to continue, or it wraps up on its own shortly.", pulsing: true);
                     slot.StatusLine!.ActivityText = "waiting for your input…";
                     slot.StatusLine!.Spinning = false;
@@ -1563,6 +1590,7 @@ namespace BuildConsole
                 case InteractiveInputState.Stopped:
                     slot.Container.BorderBrush = _ringMuted;
                     slot.Container.BorderThickness = new Thickness(2);
+                    slot.Pane.ViewModel.PlaceholderText = "Stopped — send guidance or corrective instructions to resume…";
                     ApplyPillTone(slot, "Idle", "⏸ PAUSED", "Interrupted — Send corrective guidance to redirect it, or Stop again to hard-kill.", pulsing: false);
                     slot.StatusLine!.ActivityText = "stopped — send guidance to resume…";
                     slot.StatusLine!.Spinning = false;
@@ -1570,18 +1598,100 @@ namespace BuildConsole
             }
         }
 
-        /// <summary>Send clicked / Enter pressed (raised by ChatSessionPane.SendRequested) — types the text into the running build's real stdin, echoes it as a user turn.</summary>
-        private void SendSlotInput(BuildWatchSlot slot, string text)
+        /// <summary>Send clicked / Enter pressed (raised by ChatSessionPane.SendRequested) — handles live stdin input or launches a seamless continuation build with --resume.</summary>
+        private async void SendSlotInput(BuildWatchSlot slot, string text)
         {
-            if (_watcher == null || string.IsNullOrWhiteSpace(text)) return;
-            _watcher.SendInput(slot.QueueItemId, text);
+            if (string.IsNullOrWhiteSpace(text)) return;
             AddUserMessage(slot, text);
-            // Reflect immediately: back to working; force a re-apply next poll.
-            slot.LastInteractiveState = null;
-            ApplyPillTone(slot, "Running", "RUNNING", "Working — type below to steer it mid-task; text goes straight to its stdin.", pulsing: false);
+
+            // 1. If the interactive process is actively running and alive, send straight to stdin
+            if (_watcher != null && _watcher.OwnsInteractive(slot.QueueItemId) && !_watcher.HasExited(slot.QueueItemId, out _))
+            {
+                _watcher.SendInput(slot.QueueItemId, text);
+                // Reflect immediately: back to working; force a re-apply next poll.
+                slot.LastInteractiveState = null;
+                slot.Pane.ViewModel.Mode = ComposerMode.Interactive;
+                slot.Pane.ViewModel.CanStop = true;
+                slot.Pane.ViewModel.PlaceholderText = "Working — type below to steer it mid-task; Shift+Enter for new line";
+                ApplyPillTone(slot, "Running", "RUNNING", "Working — type below to steer it mid-task; text goes straight to its stdin.", pulsing: false);
+                EnsureStatusLine(slot);
+                slot.StatusLine!.ActivityText = "working…";
+                slot.StatusLine!.Spinning = true;
+                return;
+            }
+
+            // 2. The process has exited (Done / Failed / Stale) or was not owned as interactive.
+            // Resume / continue the session seamlessly with Shane's directions!
+            string? sessionId = slot.SessionId ?? _watcher?.GetSessionId(slot.QueueItemId);
+            ActivityLog.Log("build-watch", $"Sending continuation/follow-up to queue #{slot.QueueItemId} (session: {sessionId ?? "fresh"}): {text}");
+
+            slot.State = SlotState.Running;
+            slot.CompletedAtUtc = null;
+            slot.Pane.ViewModel.Mode = ComposerMode.Interactive;
+            slot.Pane.ViewModel.CanStop = true;
+            slot.Pane.ViewModel.PlaceholderText = "Working — continuation in progress…";
+            slot.Container.BorderBrush = _emptyBorder;
+            slot.Container.BorderThickness = new Thickness(1);
+            ApplyPillTone(slot, "Running", "RESUMING…", "Launching continuation with your instructions…", pulsing: true);
             EnsureStatusLine(slot);
-            slot.StatusLine!.ActivityText = "working…";
+            slot.StatusLine!.ActivityText = "launching continuation…";
             slot.StatusLine!.Spinning = true;
+
+            if (_api != null)
+            {
+                try
+                {
+                    var res = await _api.QueueBuildAsync(
+                        $"Continue: {slot.Title}",
+                        text,
+                        slot.Model,
+                        slot.Effort,
+                        slot.Cwd,
+                        slot.GithubNumber,
+                        slot.BlockedByNumbers,
+                        resumeSessionId: sessionId);
+
+                    if (res.IsSuccessStatusCode)
+                    {
+                        var body = await res.Content.ReadFromJsonAsync<JsonElement>();
+                        if (body.TryGetProperty("id", out var newIdProp) && newIdProp.TryGetInt32(out int newQueueId))
+                        {
+                            int oldId = slot.QueueItemId;
+                            slot.QueueItemId = newQueueId;
+                            slot.Pane.SetChecklistBuild(newQueueId);
+                            slot.InteractiveCursor = 0;
+                            slot.LastOutputUtc = DateTime.UtcNow;
+
+                            if (_watcher != null)
+                            {
+                                try
+                                {
+                                    var claimed = await _api.ForceClaimQueueItemAsync(newQueueId);
+                                    _watcher.LaunchItemExplicit(claimed);
+                                    slot.InteractiveBound = _watcher.OwnsInteractive(newQueueId);
+                                }
+                                catch (Exception ex)
+                                {
+                                    ActivityLog.Log("build-watch", $"Couldn't force-launch continuation #{newQueueId}: {ex.Message}");
+                                }
+                            }
+                        }
+                    }
+                    else
+                    {
+                        var err = await res.Content.ReadAsStringAsync();
+                        ActivityLog.Log("build-watch", $"QueueBuild continuation failed: {err}");
+                        slot.StatusLine!.ActivityText = $"continuation failed: {err}";
+                        slot.StatusLine!.Spinning = false;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    ActivityLog.Log("build-watch", $"Continuation exception: {ex.Message}");
+                    slot.StatusLine!.ActivityText = $"error: {ex.Message}";
+                    slot.StatusLine!.Spinning = false;
+                }
+            }
         }
 
         /// <summary>Stop clicked (raised by ChatSessionPane.StopRequested) — soft interrupt (escalating to a hard kill in the watcher if unresponsive / on a repeat press). Optimistically shows the paused state right away.</summary>

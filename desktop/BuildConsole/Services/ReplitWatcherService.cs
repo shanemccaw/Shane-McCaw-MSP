@@ -308,9 +308,41 @@ namespace BuildConsole.Services
             return true;
         }
 
-        /// <summary>Drives the Replit dashboard to click Run, then polls the app URL until it comes back (or times out). Marks _lastIntervention the moment Run is actually clicked, regardless of outcome.</summary>
+        /// <summary>Wakes Replit via direct SSH if configured, falling back to driving the Replit dashboard in WebView2.</summary>
         private async Task WakeAsync(BuildConsoleSettings s)
         {
+            // 1. Prefer direct SSH wake if configured (instantaneous, headless, no fragile browser DOM selectors)
+            if (ReplitSshService.Instance.IsConfigured)
+            {
+                Emit(ReplitWatcherState.Waking, "waking Replit via direct SSH…");
+                ActivityLog.Log(Channel, "Attempting direct SSH wake and container restart…");
+                var sshRes = await ReplitSshService.Instance.RestartServerAsync();
+                if (sshRes.Success)
+                {
+                    _lastIntervention = DateTime.Now;
+                    ActivityLog.Log(Channel, $"SSH wake command dispatched successfully ({sshRes.DurationMs}ms). Waiting for app to respond…");
+                    bool backUpViaSsh = false;
+                    for (int i = 0; i < WakeMaxRechecks && !backUpViaSsh; i++)
+                    {
+                        Emit(ReplitWatcherState.Waking, $"woke via SSH — waiting for app ({i + 1}/{WakeMaxRechecks})");
+                        await Task.Delay(WakeRecheckIntervalMs);
+                        backUpViaSsh = await IsAppUpAsync(s.ReplitAppUrl);
+                    }
+                    if (backUpViaSsh)
+                    {
+                        _lastCheck = DateTime.Now;
+                        Emit(ReplitWatcherState.Monitoring, $"woke Repl via SSH at {_lastIntervention:HH:mm}");
+                        ActivityLog.Log(Channel, $"SSH Wake SUCCEEDED — app is back up (intervened at {_lastIntervention:HH:mm:ss}).");
+                        return;
+                    }
+                    ActivityLog.Log(Channel, "SSH restart command finished but app still down; falling back to WebView2 UI wake…");
+                }
+                else
+                {
+                    ActivityLog.Log(Channel, $"SSH wake attempt failed ({sshRes.Error}); falling back to WebView2 UI wake…");
+                }
+            }
+
             Emit(ReplitWatcherState.Waking, "opening Replit dashboard…");
 
             // Open or focus the visible Replit Workspace tab so the user can watch the wake sequence live

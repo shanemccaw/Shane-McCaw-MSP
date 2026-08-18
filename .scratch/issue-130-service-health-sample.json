@@ -1,0 +1,32 @@
+{
+  "issue": 130,
+  "feature": "Issue #130 heap saturation investigation - single service-health sample",
+  "baseUrl": "{{DEPLOY_URL}}",
+
+  "apiTests": [
+    {
+      "name": "log in as PlatformAdmin test account",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_ADMIN_EMAIL}}", "password": "{{TEST_ADMIN_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "adminToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "sample GET /api/admin/observability/service-health for process memory + uptime",
+      "method": "GET",
+      "path": "/api/admin/observability/service-health",
+      "headers": { "Authorization": "Bearer {{adminToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.system.process.memoryUsage.heapUsed", "exists": true },
+      "extract": [
+        { "as": "heapUsed", "jsonPath": "$.system.process.memoryUsage.heapUsed" },
+        { "as": "heapTotal", "jsonPath": "$.system.process.memoryUsage.heapTotal" },
+        { "as": "rss", "jsonPath": "$.system.process.memoryUsage.rss" },
+        { "as": "external", "jsonPath": "$.system.process.memoryUsage.external" },
+        { "as": "arrayBuffers", "jsonPath": "$.system.process.memoryUsage.arrayBuffers" },
+        { "as": "uptimeSeconds", "jsonPath": "$.system.process.uptimeSeconds" }
+      ]
+    }
+  ]
+}

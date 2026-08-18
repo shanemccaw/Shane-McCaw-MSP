@@ -300,23 +300,6 @@ export const DASHBOARD_METRICS: MetricDef[] = [
 
   // ---- Identity Governance ----------------------------------------------
   {
-    // #1119: real, catalogued scoring signal (signal.governance.ownerless-groups
-    // in docs/signals.json) that had never been registered as a dashboard
-    // metric, hence the raw ownerlessGroupCount property name being visible
-    // wherever Shane was seeing it.
-    key: "governance.ownerlessGroupCount",
-    label: "Ownerless Groups",
-    valueType: "count",
-    shape: "scalar",
-    sourceType: "monitor_profile",
-    sourceKey: "governance:ownerless-groups",
-    scope: "customer",
-    status: "available",
-    smartEligible: true,
-    smartDefaultTarget: 0,
-    smartBands: RISK_COUNT_BANDS,
-  },
-  {
     // #1117: genuinely new check -- governance:public-groups-discoverable
     // ships alongside this entry (2026-08-17-governance-public-groups-1117.sql).
     key: "governance.publicGroupCount",
@@ -370,6 +353,7 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     smartDefaultTarget: 0,
     smartBands: RISK_COUNT_BANDS,
   },
+
   // ---- Security & Defender ----------------------------------------------
   {
     key: "security.activeAlertCount",

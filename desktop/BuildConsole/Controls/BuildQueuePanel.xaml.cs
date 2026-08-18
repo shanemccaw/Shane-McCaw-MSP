@@ -77,6 +77,7 @@ namespace BuildConsole.Controls
         private List<QueueItem> _lastItems = new();
         /// <summary>Git #933 — Shane: "make Queued &amp; Running first and Default." Matches QueueFilterCombo's own SelectedIndex="0" in XAML; kept in sync here too so the very first RefreshAsync (which can render before the ComboBox's own SelectionChanged has necessarily fired) filters correctly from the start.</summary>
         private string _filter = "Active";
+        private readonly HashSet<int> _manuallyHiddenQueueIds = new();
 
         // Git #941 — Shane: "do the same '...' thing to the Completed and
         // To-Do fields." Same #932 lesson: CharacterEllipsis never engages
@@ -901,16 +902,13 @@ namespace BuildConsole.Controls
             }
         }
 
-        /// <summary>Git #814 - Shane: "can you make the filters in the build queue work." Chips were Shane's own hardcoded demo XAML, never wired to anything.</summary>
+        /// <summary>Git #814 - Active filter shows only currently queued and running builds (done items automatically fall off). Done/Canceled/All dropdown options show historical items.</summary>
         private List<QueueItem> ApplyFilter(List<QueueItem> items) => _filter switch
         {
-            "Active"   => items.Where(i =>
-                (i.Status is "queued" or "running") ||
-                (i.Status == "done" && i.GithubNumber.HasValue && i.GithubNumber.Value > 0 && _lastOpenIssueNumbers.Contains(i.GithubNumber.Value))
-            ).ToList(),
-            "Done"     => items.Where(i => i.Status == "done").ToList(),
-            "Canceled" => items.Where(i => i.Status == "canceled").ToList(),
-            _          => items,
+            "Active"   => items.Where(i => !_manuallyHiddenQueueIds.Contains(i.Id) && (i.Status is "queued" or "running")).ToList(),
+            "Done"     => items.Where(i => i.Status == "done" && !_manuallyHiddenQueueIds.Contains(i.Id)).ToList(),
+            "Canceled" => items.Where(i => i.Status == "canceled" && !_manuallyHiddenQueueIds.Contains(i.Id)).ToList(),
+            _          => items.Where(i => !_manuallyHiddenQueueIds.Contains(i.Id)).ToList(),
         };
 
         /// <summary>
@@ -1515,6 +1513,26 @@ namespace BuildConsole.Controls
                 QueueItemChatRequested?.Invoke(this, item);
             };
             cm.Items.Add(miOpenChat);
+
+            // ✓ Mark Complete (Hide) — available for any build (running, done, queued, failed, canceled) so Shane can mark it complete and hide it
+            var miMarkComplete = new MenuItem { Header = "✓ Mark Complete (Hide)" };
+            miMarkComplete.Click += async (_, _) =>
+            {
+                _manuallyHiddenQueueIds.Add(item.Id);
+                if (_api != null)
+                {
+                    try { await _api.MarkQueueItemCompleteAsync(item.Id, 0); }
+                    catch { }
+                }
+                if (item.Status == "running")
+                {
+                    _watcher?.TryStop(item.Id);
+                }
+                _watcher?.ReleaseInteractive(item.Id);
+                ActivityLog.Log("build-queue", $"Marked queue item #{item.Id} ({item.Title}) complete & hidden.");
+                await RefreshAsync();
+            };
+            cm.Items.Add(miMarkComplete);
             cm.Items.Add(new Separator());
 
             if (item.Status == "running")

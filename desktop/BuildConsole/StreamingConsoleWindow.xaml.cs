@@ -145,24 +145,27 @@ namespace BuildConsole
         {
             var sp = new StackPanel { Orientation = Orientation.Horizontal };
 
+            Brush SafeBrush(string key, Brush fallback) =>
+                (TryFindResource(key) as Brush) ?? (Application.Current?.TryFindResource(key) as Brush) ?? fallback;
+
             // Timestamp
             sp.Children.Add(new TextBlock
             {
                 Text = $"[{entry.Timestamp:HH:mm:ss.fff}] ",
-                Foreground = (Brush)FindResource("Subtext0Brush"),
+                Foreground = SafeBrush("Subtext0Brush", Brushes.Gray),
                 FontSize = 11
             });
 
             // Level Tag
             var tagBrush = entry.Level switch
             {
-                ShaneAppLogLevel.Success => (Brush)FindResource("GreenBrush"),
-                ShaneAppLogLevel.Error => (Brush)FindResource("RedBrush"),
-                ShaneAppLogLevel.Warning => (Brush)FindResource("YellowBrush"),
-                ShaneAppLogLevel.Sql => (Brush)FindResource("SkyBrush"),
-                ShaneAppLogLevel.PowerShell => (Brush)FindResource("MauveBrush"),
-                ShaneAppLogLevel.Test => (Brush)FindResource("BlueBrush"),
-                _ => (Brush)FindResource("Subtext1Brush")
+                ShaneAppLogLevel.Success => SafeBrush("GreenBrush", Brushes.LightGreen),
+                ShaneAppLogLevel.Error => SafeBrush("RedBrush", Brushes.Salmon),
+                ShaneAppLogLevel.Warning => SafeBrush("YellowBrush", Brushes.Khaki),
+                ShaneAppLogLevel.Sql => SafeBrush("SkyBrush", Brushes.SkyBlue),
+                ShaneAppLogLevel.PowerShell => SafeBrush("MauveBrush", Brushes.MediumPurple),
+                ShaneAppLogLevel.Test => SafeBrush("BlueBrush", Brushes.CornflowerBlue),
+                _ => SafeBrush("Subtext1Brush", Brushes.LightGray)
             };
 
             var tagText = $"[{entry.Level.ToString().ToUpperInvariant()}] ";
@@ -177,10 +180,10 @@ namespace BuildConsole
             // Message text
             var msgBrush = entry.Level switch
             {
-                ShaneAppLogLevel.Success => (Brush)FindResource("GreenBrush"),
-                ShaneAppLogLevel.Error => (Brush)FindResource("RedBrush"),
-                ShaneAppLogLevel.Warning => (Brush)FindResource("YellowBrush"),
-                _ => (Brush)FindResource("TextBrush")
+                ShaneAppLogLevel.Success => SafeBrush("GreenBrush", Brushes.LightGreen),
+                ShaneAppLogLevel.Error => SafeBrush("RedBrush", Brushes.Salmon),
+                ShaneAppLogLevel.Warning => SafeBrush("YellowBrush", Brushes.Khaki),
+                _ => SafeBrush("TextBrush", Brushes.White)
             };
 
             sp.Children.Add(new TextBlock

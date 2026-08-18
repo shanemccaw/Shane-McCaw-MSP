@@ -200,6 +200,7 @@
                             <MenuItem Header="_Help">
                                 <MenuItem Header="About BuildConsole"/>
                                 <MenuItem Header="Open DevTools"   Click="OpenDevTools_Click"/>
+                                <MenuItem Header="🎉 Cheer Me Up!" Click="CheerMeUp_Click" ToolTip="Send in a big encouragement critter with a cheer!"/>
                             </MenuItem>
 
                             <!-- Build-completion sound mute toggle. The completion event/log still

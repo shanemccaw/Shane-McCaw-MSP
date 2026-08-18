@@ -300,16 +300,12 @@ export const DASHBOARD_METRICS: MetricDef[] = [
 
   // ---- Identity Governance ----------------------------------------------
   {
-    // #1119: real, catalogued scoring signal (signal.governance.ownerless-groups
-    // in docs/signals.json) that had never been registered as a dashboard
-    // metric, hence the raw ownerlessGroupCount property name being visible
-    // wherever Shane was seeing it.
-    key: "governance.ownerlessGroupCount",
-    label: "Ownerless Groups",
+    key: "governance.orphanedAccessPackageCount",
+    label: "Orphaned Access Packages",
     valueType: "count",
     shape: "scalar",
     sourceType: "monitor_profile",
-    sourceKey: "governance:ownerless-groups",
+    sourceKey: "governance:orphaned-access-packages",
     scope: "customer",
     status: "available",
     smartEligible: true,
@@ -370,6 +366,53 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     smartDefaultTarget: 0,
     smartBands: RISK_COUNT_BANDS,
   },
+  {
+    key: "governance.activeEntitlementAssignmentCount",
+    label: "Active Entitlement Assignments",
+    valueType: "count",
+    shape: "scalar",
+    sourceType: "monitor_profile",
+    sourceKey: "governance:active-entitlement-assignments",
+    scope: "customer",
+    status: "available",
+    smartEligible: false,
+  },
+  {
+    key: "governance.entitlementPolicyDriftCount",
+    label: "Entitlement Policy Drift",
+    valueType: "event-list",
+    shape: "timeline",
+    sourceType: "monitor_profile",
+    sourceKey: "governance:entitlement-policy-drift",
+    scope: "customer",
+    status: "available",
+    smartEligible: false,
+  },
+  {
+    key: "governance.workflowDriftCount",
+    label: "Lifecycle Workflow Drift",
+    valueType: "event-list",
+    shape: "timeline",
+    sourceType: "monitor_profile",
+    sourceKey: "governance:lifecycle-workflow-drift",
+    scope: "customer",
+    status: "available",
+    smartEligible: false,
+  },
+  {
+    key: "governance.workflowFailureCount",
+    label: "Lifecycle Workflow Failures",
+    valueType: "count",
+    shape: "scalar",
+    sourceType: "monitor_profile",
+    sourceKey: "governance:lifecycle-workflow-failures",
+    scope: "customer",
+    status: "available",
+    smartEligible: true,
+    smartDefaultTarget: 0,
+    smartBands: RISK_COUNT_BANDS,
+  },
+
   // ---- Security & Defender ----------------------------------------------
   {
     key: "security.activeAlertCount",

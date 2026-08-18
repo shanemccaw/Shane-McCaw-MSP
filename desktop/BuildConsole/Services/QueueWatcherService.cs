@@ -135,6 +135,7 @@ namespace BuildConsole.Services
         private readonly object _gate = new();
         private DispatcherTimer? _timer;
         private bool _ticking;
+        private readonly List<(int Id, int ExitCode, string? SessionId)> _pendingCompletions = new();
 
         private const int MaxBufferedEvents = 4000;
         private const int MaxRetained = 32;
@@ -329,6 +330,27 @@ namespace BuildConsole.Services
             }
         }
 
+        /// <summary>Retries reporting completion for any build that finished while the dev server was asleep / returning 502.</summary>
+        private async Task RetryPendingCompletionsAsync()
+        {
+            if (_pendingCompletions.Count == 0) return;
+            var toRetry = _pendingCompletions.ToList();
+            foreach (var item in toRetry)
+            {
+                try
+                {
+                    await _api.MarkQueueItemCompleteAsync(item.Id, item.ExitCode, item.SessionId);
+                    _pendingCompletions.Remove(item);
+                    ActivityLog.Log("watcher", $"Delivered deferred completion for queue item {item.Id} to dev server.");
+                }
+                catch
+                {
+                    // Dev server still unreachable / napping — will retry on next tick
+                    break;
+                }
+            }
+        }
+
         private async Task TickAsync()
         {
             // A tick can take longer than 10s (network latency, a slow
@@ -337,6 +359,9 @@ namespace BuildConsole.Services
             _ticking = true;
             try
             {
+                await RetryPendingCompletionsAsync();
+
+                // ── 1. Reap processes that have exited ────────────────────────
                 foreach (var id in _running.Keys.ToList())
                 {
                     var entry = _running[id];
@@ -361,7 +386,8 @@ namespace BuildConsole.Services
                     }
                     catch (Exception ex)
                     {
-                        ActivityLog.Log("watcher", $"Couldn't report completion for queue item {id} to the dev server ({ex.Message}) — dev server likely napping; firing BuildFinished LOCALLY anyway so the deploy+test pipeline still runs (its own build-complete POST will wake the server).");
+                        _pendingCompletions.Add((id, exitCode, entry.SessionId));
+                        ActivityLog.Log("watcher", $"Couldn't report completion for queue item {id} to the dev server ({ex.Message}) — dev server likely napping; queued for retry on next tick.");
                     }
 
                     // Fire the local completion listeners REGARDLESS of the remote report
@@ -664,6 +690,23 @@ namespace BuildConsole.Services
         public bool OwnsInteractive(int id) =>
             (_running.TryGetValue(id, out var e) && e.Interactive) || _retained.ContainsKey(id);
 
+        /// <summary>Checks whether this queue id's process has exited locally (either currently retained or completed in _running).</summary>
+        public bool HasExited(int id, out int exitCode)
+        {
+            exitCode = 0;
+            if (_retained.TryGetValue(id, out var r))
+            {
+                exitCode = r.Process.ExitCode;
+                return true;
+            }
+            if (_running.TryGetValue(id, out var rn) && rn.Process.HasExited)
+            {
+                exitCode = rn.Process.ExitCode;
+                return true;
+            }
+            return false;
+        }
+
         /// <summary>The current three-state indicator value for a LIVE interactive build, or null if it isn't one we own and is still running (terminal/retained/legacy/foreign → the caller uses the queue-derived state instead).</summary>
         public InteractiveInputState? GetInteractiveState(int id)
         {
@@ -673,6 +716,17 @@ namespace BuildConsole.Services
             }
             return null;
         }
+
+        /// <summary>Returns the captured Claude session ID for a live or recently finished interactive build.</summary>
+        public string? GetSessionId(int id)
+        {
+            if (_running.TryGetValue(id, out var e) && !string.IsNullOrWhiteSpace(e.SessionId)) return e.SessionId;
+            if (_retained.TryGetValue(id, out var r) && !string.IsNullOrWhiteSpace(r.SessionId)) return r.SessionId;
+            return null;
+        }
+
+        /// <summary>Immediately launches a claimed queue item (e.g. when resuming or continuing an interactive session from Build Watch).</summary>
+        public void LaunchItemExplicit(QueueItem item) => LaunchItem(item);
 
         /// <summary>Approximate current context-window token usage for a live or just-exited (retained) interactive build — real numbers read from the CLI's own stream-json `usage` field, or null if unknown/not an interactive build/nothing seen yet.</summary>
         public long? GetContextTokens(int id)

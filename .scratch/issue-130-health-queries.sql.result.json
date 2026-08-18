@@ -1,0 +1,111 @@
+{
+  "ok": false,
+  "error": "column \u0022attempted_at\u0022 does not exist",
+  "action": "executeSql",
+  "source": "claude-code",
+  "ranAtUtc": "2026-08-17T15:39:40.3599075Z",
+  "statementCount": 6,
+  "statements": [
+    {
+      "StatementIndex": 0,
+      "StatementText": "SELECT status, COUNT(*)::text AS n\nFROM msp_job_queue\nWHERE created_at \u003E NOW() - INTERVAL \u002724 hours\u0027\nGROUP BY status;",
+      "Success": true,
+      "Rows": [
+        {
+          "status": "completed",
+          "n": "1"
+        },
+        {
+          "status": "failed",
+          "n": "1"
+        }
+      ],
+      "RowCount": 2,
+      "Fields": [
+        "status",
+        "n"
+      ],
+      "ExecutionMs": 2,
+      "Error": null
+    },
+    {
+      "StatementIndex": 1,
+      "StatementText": "SELECT (resolved_at IS NOT NULL) AS resolved, COUNT(*)::text AS n\nFROM msp_dlq_store\nWHERE created_at \u003E NOW() - INTERVAL \u00277 days\u0027\nGROUP BY resolved;",
+      "Success": true,
+      "Rows": [
+        {
+          "resolved": false,
+          "n": "5"
+        }
+      ],
+      "RowCount": 1,
+      "Fields": [
+        "resolved",
+        "n"
+      ],
+      "ExecutionMs": 2,
+      "Error": null
+    },
+    {
+      "StatementIndex": 2,
+      "StatementText": "SELECT status, COUNT(*)::text AS n\nFROM outbound_webhook_deliveries\nWHERE attempted_at \u003E NOW() - INTERVAL \u002724 hours\u0027\nGROUP BY status;",
+      "Success": false,
+      "Rows": [],
+      "RowCount": 0,
+      "Fields": [],
+      "ExecutionMs": 2,
+      "Error": "column \u0022attempted_at\u0022 does not exist"
+    },
+    {
+      "StatementIndex": 3,
+      "StatementText": "SELECT status, COUNT(*)::text AS n\nFROM portal_wf_runs\nWHERE created_at \u003E NOW() - INTERVAL \u002724 hours\u0027\nGROUP BY status;",
+      "Success": true,
+      "Rows": [],
+      "RowCount": 0,
+      "Fields": [
+        "status",
+        "n"
+      ],
+      "ExecutionMs": 2,
+      "Error": null
+    },
+    {
+      "StatementIndex": 4,
+      "StatementText": "SELECT pg_size_pretty(pg_database_size(current_database())) as size,\n       pg_database_size(current_database())::text as bytes;",
+      "Success": true,
+      "Rows": [
+        {
+          "size": "295 MB",
+          "bytes": "308998627"
+        }
+      ],
+      "RowCount": 1,
+      "Fields": [
+        "size",
+        "bytes"
+      ],
+      "ExecutionMs": 6,
+      "Error": null
+    },
+    {
+      "StatementIndex": 5,
+      "StatementText": "SELECT\n  (count(*)::float / NULLIF((SELECT setting::int FROM pg_settings WHERE name = \u0027max_connections\u0027), 0)) as saturation,\n  count(*)::text as active,\n  (SELECT setting FROM pg_settings WHERE name = \u0027max_connections\u0027)::text as max\nFROM pg_stat_activity;",
+      "Success": true,
+      "Rows": [
+        {
+          "saturation": 0.08035714285714286,
+          "active": "9",
+          "max": "112"
+        }
+      ],
+      "RowCount": 1,
+      "Fields": [
+        "saturation",
+        "active",
+        "max"
+      ],
+      "ExecutionMs": 6,
+      "Error": null
+    }
+  ]
+}

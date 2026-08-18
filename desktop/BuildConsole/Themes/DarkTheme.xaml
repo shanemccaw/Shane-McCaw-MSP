@@ -21,6 +21,14 @@
     <SolidColorBrush x:Key="RedBrush"      Color="#F38BA8"/>
     <SolidColorBrush x:Key="PeachBrush"    Color="#FAB387"/>
     <SolidColorBrush x:Key="YellowBrush"   Color="#F9E2AF"/>
+    <SolidColorBrush x:Key="SkyBrush"       Color="#89DCEB"/>
+    <SolidColorBrush x:Key="SapphireBrush"  Color="#74C7EC"/>
+    <SolidColorBrush x:Key="LavenderBrush"  Color="#B4BEFE"/>
+    <SolidColorBrush x:Key="TealBrush"      Color="#94E2D5"/>
+    <SolidColorBrush x:Key="PinkBrush"      Color="#F5C2E7"/>
+    <SolidColorBrush x:Key="FlamingoBrush"  Color="#F2CDCD"/>
+    <SolidColorBrush x:Key="RosewaterBrush" Color="#F5E0DC"/>
+    <SolidColorBrush x:Key="MaroonBrush"    Color="#EBA0AC"/>
 
     <!-- ══════════════════════════════════════════════════════════════════
          WINDOW
