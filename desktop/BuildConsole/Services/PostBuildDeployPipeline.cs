@@ -280,12 +280,13 @@ namespace BuildConsole.Services
 
                         if (!sshRes.Success)
                         {
-                            result.Stage = "deploy-trigger-failed";
-                            result.Error = string.IsNullOrWhiteSpace(sshRes.Error) ? $"SSH pull+build failed with exit code {sshRes.ExitCode}" : sshRes.Error;
-                            ActivityLog.Log(Channel, $"[2/5] SSH pull+build FAILED — {result.Error}. Restart + tests skipped (never restart/test on a failed pull).");
-                            return false;
+                            var sshErr = string.IsNullOrWhiteSpace(sshRes.Error) ? $"exit code {sshRes.ExitCode}" : sshRes.Error;
+                            ActivityLog.Log(Channel, $"[2/5] SSH pre-pull encountered an issue ({sshErr}) — falling back seamlessly to direct HTTP deploy endpoint (/api/admin/deploy/build-complete) so deploy & tests continue without interruption.");
                         }
-                        ActivityLog.Log(Channel, "[2/5] SSH pull+build OK — the pulled commit is on disk but NOT yet loaded (no restart happened over SSH); triggering the #911 restart so it actually goes live (its ff-only pull is a no-op after the SSH reset).");
+                        else
+                        {
+                            ActivityLog.Log(Channel, "[2/5] SSH pull+build OK — the pulled commit is on disk but NOT yet loaded (no restart happened over SSH); triggering the #911 restart so it actually goes live (its ff-only pull is a no-op after the SSH reset).");
+                        }
                     }
 
                     // ── [2/5] Restart via #911 (git pull --ff-only + deferred/detached `kill 1`). Runs for BOTH

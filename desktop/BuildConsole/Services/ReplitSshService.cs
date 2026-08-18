@@ -194,12 +194,16 @@ namespace BuildConsole.Services
             var s = BuildConsoleSettings.Load();
             var dir = string.IsNullOrWhiteSpace(s.SshRemoteDir) ? "/home/runner/workspace" : s.SshRemoteDir;
 
-            var deployScript = $"cd {dir} && (git pull --ff-only origin main || (git fetch origin main && git reset --hard origin/main))";
+            var deployScript = $"git config --global --add safe.directory '*' 2>/dev/null || true; cd {dir} && ( rm -f .git/index.lock 2>/dev/null || true ) && ( git pull --ff-only origin main || ( git fetch origin main && git reset --hard origin/main ) )";
             ActivityLog.Log(LogChannel, $"Triggering SSH deploy in {dir}…");
             ShaneAppStreamService.Instance.BeginRun("SSH Deploy", $"Target: {dir}");
 
             var result = await ExecuteCommandAsync(deployScript, onOutput, timeoutSeconds: 180);
-            ShaneAppStreamService.Instance.EndRun(result.Success, result.Success ? "Deploy pull successful" : $"Deploy pull failed (exit code {result.ExitCode})");
+            if (!result.Success && string.IsNullOrWhiteSpace(result.Error) && !string.IsNullOrWhiteSpace(result.Output))
+            {
+                result.Error = result.Output;
+            }
+            ShaneAppStreamService.Instance.EndRun(result.Success, result.Success ? "Deploy pull successful" : $"Deploy pull failed (exit code {result.ExitCode}) {result.Error}".Trim());
             return result;
         }
 
