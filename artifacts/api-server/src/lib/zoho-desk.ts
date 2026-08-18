@@ -238,6 +238,156 @@ async function addDeskComment(
   return { entity: "Comment", zohoId: String(body.id), ticketId };
 }
 
+// ── Customer-facing reads (Git #1158) ─────────────────────────────────────────
+// Powers the portal's in-portal ticket thread view. Unlike the write side
+// (queued + drained every 5 min), these are synchronous per-request GETs: a
+// customer opening "My Requests" needs the current ticket state now, not on the
+// next drain. Every read here is scoped to the caller's own Zoho Desk Contact
+// (resolved from their authenticated email) — the route layer enforces that a
+// customer can only ever see a ticket whose `contactId` is their own, so one
+// customer can never read another's ticket by guessing an id.
+
+function toStr(value: unknown): string | null {
+  if (value == null) return null;
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return null;
+}
+
+export interface CustomerTicketSummary {
+  id: string;
+  ticketNumber: string | null;
+  subject: string;
+  status: string | null; // Zoho's free-text status, e.g. "Open", "Closed"
+  statusType: string | null; // Zoho's coarse bucket: Open | On Hold | Escalated | Closed
+  createdTime: string | null;
+  modifiedTime: string | null;
+  webUrl: string | null;
+}
+
+export interface CustomerTicketThreadEntry {
+  id: string;
+  kind: "thread" | "comment";
+  // For threads: "in" = from the customer, "out" = a reply from support.
+  // Comments have no direction (they are agent-authored notes made public).
+  direction: "in" | "out" | null;
+  author: string | null;
+  isPublic: boolean;
+  content: string;
+  createdTime: string | null;
+}
+
+function mapTicketSummary(raw: Record<string, unknown>): CustomerTicketSummary {
+  return {
+    id: String(raw.id),
+    ticketNumber: toStr(raw.ticketNumber),
+    subject: toStr(raw.subject) ?? "(no subject)",
+    status: toStr(raw.status),
+    statusType: toStr(raw.statusType),
+    createdTime: toStr(raw.createdTime),
+    modifiedTime: toStr(raw.modifiedTime),
+    webUrl: toStr(raw.webUrl),
+  };
+}
+
+/**
+ * Resolves the caller's Zoho Desk Contact id from their email, or null when no
+ * Contact exists yet (a customer who has never opened a request). Returns null
+ * rather than throwing on "not found" so the list view can render an empty
+ * state instead of an error.
+ */
+export async function resolveDeskContactIdForEmail(email: string, mspId?: number): Promise<string | null> {
+  const normalizedEmail = email.trim().toLowerCase();
+  if (!normalizedEmail) return null;
+  const headers = await orgHeader(mspId);
+  return findDeskContactByEmail(normalizedEmail, headers, mspId);
+}
+
+/**
+ * Lists the tickets belonging to one Zoho Desk Contact, newest-modified first.
+ * `GET /desk/v1/contacts/{contactId}/tickets`. Returns [] when the contact has
+ * no tickets. Caller is responsible for having resolved contactId from the
+ * authenticated customer's own email — this function trusts the contactId it
+ * is given.
+ */
+export async function listDeskTicketsForContact(contactId: string, mspId?: number): Promise<CustomerTicketSummary[]> {
+  const headers = await orgHeader(mspId);
+  const body = (await zohoGet(
+    `${ZOHO_DESK_API_BASE_PATH}/contacts/${encodeURIComponent(contactId)}/tickets`,
+    { limit: 100, sortBy: "-modifiedTime" },
+    mspId,
+    headers,
+  )) as { data?: Array<Record<string, unknown>> };
+  const rows = Array.isArray(body.data) ? body.data : [];
+  return rows.filter((r) => r.id != null).map(mapTicketSummary);
+}
+
+/**
+ * Fetches one ticket ONLY if it belongs to the given contact. Returns:
+ *   - the summary when the ticket exists and its contactId matches,
+ *   - "foreign" when the ticket exists but belongs to a different contact,
+ *   - "missing" when the ticket doesn't exist.
+ * The route maps both "foreign" and "missing" to a 404 so ownership can't be
+ * probed by id.
+ */
+export async function getDeskTicketForContact(
+  ticketId: string,
+  contactId: string,
+  mspId?: number,
+): Promise<{ ownership: "owned"; ticket: CustomerTicketSummary } | { ownership: "foreign" | "missing" }> {
+  const record = await getDeskTicket(ticketId, mspId);
+  if (!record) return { ownership: "missing" };
+  const ticketContactId = toStr(record.contactId);
+  if (!ticketContactId || ticketContactId !== contactId) return { ownership: "foreign" };
+  return { ownership: "owned", ticket: mapTicketSummary(record) };
+}
+
+/**
+ * Returns a ticket's conversation timeline (threads + public comments) oldest
+ * first. `GET /desk/v1/tickets/{id}/conversations`. Ownership is NOT checked
+ * here — call getDeskTicketForContact() first and only call this once ownership
+ * is confirmed.
+ */
+export async function getDeskTicketThread(ticketId: string, mspId?: number): Promise<CustomerTicketThreadEntry[]> {
+  const headers = await orgHeader(mspId);
+  const body = (await zohoGet(
+    `${ZOHO_DESK_API_BASE_PATH}/tickets/${encodeURIComponent(ticketId)}/conversations`,
+    undefined,
+    mspId,
+    headers,
+  )) as { data?: Array<Record<string, unknown>> };
+  const rows = Array.isArray(body.data) ? body.data : [];
+
+  const entries: CustomerTicketThreadEntry[] = [];
+  for (const raw of rows) {
+    if (raw.id == null) continue;
+    const isComment = raw.type === "comment" || raw.commenter != null || raw.commentType != null;
+    const directionRaw = toStr(raw.direction)?.toLowerCase();
+    const direction = directionRaw === "in" || directionRaw === "out" ? directionRaw : null;
+    // Only surface public comments to the customer — private agent notes stay hidden.
+    const isPublic = isComment ? raw.isPublic === true : true;
+    if (isComment && !isPublic) continue;
+    const content =
+      toStr(raw.summary) ?? toStr(raw.content) ?? toStr(raw.plainText) ?? "";
+    const author =
+      toStr((raw.author as Record<string, unknown> | undefined)?.name) ??
+      toStr((raw.commenter as Record<string, unknown> | undefined)?.name) ??
+      toStr(raw.fromEmailAddress) ??
+      null;
+    entries.push({
+      id: String(raw.id),
+      kind: isComment ? "comment" : "thread",
+      direction,
+      author,
+      isPublic,
+      content,
+      createdTime: toStr(raw.createdTime) ?? toStr(raw.commentedTime),
+    });
+  }
+  entries.sort((a, b) => (a.createdTime ?? "").localeCompare(b.createdTime ?? ""));
+  return entries;
+}
+
 // ── Job-handler registration ─────────────────────────────────────────────────
 // One handler per write node type. jobType string === node type string, same
 // discipline #83/#85/#87 established — no mapping table to drift.

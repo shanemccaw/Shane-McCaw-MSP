@@ -56,6 +56,7 @@ import RunsPage from "@/pages/runs";
 import RunDetailPage from "@/pages/run-detail";
 import CustomerSlaPage from "@/pages/customer-sla";
 import CustomerScopePage from "@/pages/customer-scope";
+import CustomerRequestsPage from "@/pages/customer-requests";
 import SlaDashboardPage from "@/pages/sla-dashboard";
 import ScopeCreepDashboardPage from "@/pages/scope-creep-dashboard";
 import ScriptLibraryPage from "@/pages/scripts";
@@ -624,6 +625,9 @@ function SlugInnerSwitch() {
       </Route>
       <Route path="/customer-scope">
         <ProtectedRoute component={CustomerScopePage} />
+      </Route>
+      <Route path="/customer-requests">
+        <ProtectedRoute component={CustomerRequestsPage} />
       </Route>
       <Route path="/support">
         <ProtectedRoute component={SupportChatPage} />

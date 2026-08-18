@@ -8,6 +8,7 @@
     "auth/signup-exchange.json",
     "chat/escalation.json",
     "chat/escalation-push.json",
+    "portal/customer-requests.json",
     "chat/support-chat-active-cards.json",
     "crm/zoho-lead-and-invoice-sync.json",
     "crm/zoho-lead-field-verification.json",

@@ -85,6 +85,7 @@ import {
   GitBranch,
   History,
   LayoutDashboard,
+  LifeBuoy,
   ListTodo,
   Loader2,
   Lock,
@@ -623,6 +624,12 @@ const NAV_SECTIONS: NavSection[] = [
         icon: ShieldCheck,
         label: "Service Levels",
         href: "/customer-sla",
+        roles: ["CustomerUser"],
+      },
+      {
+        icon: LifeBuoy,
+        label: "My Requests",
+        href: "/customer-requests",
         roles: ["CustomerUser"],
       },
       {
