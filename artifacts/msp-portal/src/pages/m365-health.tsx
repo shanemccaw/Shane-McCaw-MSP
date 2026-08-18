@@ -56,13 +56,14 @@ export default function M365HealthPage() {
     <AppShell title="M365 Health">
       <div className="min-h-screen relative">
         <main className="relative max-w-[1440px] mx-auto px-4 sm:px-6 py-6 md:py-8 space-y-6">
-          {/* 1. Hero — real M365 Health score + real cost/findings/readiness stats */}
+          {/* 1. Hero — real M365 Health score + real cost/findings stats.
+              Copilot Readiness callout removed (#1137) — lives in TrendsRow's
+              gated Copilot Readiness Breakdown instead. */}
           <HeroHealthScore
             pillars={pillars}
             healthScore={live.healthScore}
             annualSavingsCents={licenseWaste?.annualCents ?? null}
             genuineFindings={live.status?.stats.genuineFindings ?? null}
-            copilotReadiness={live.status?.copilotGate?.score ?? live.status?.copilotReadiness?.overall.score ?? null}
             everScanned={Boolean(live.status?.scan.everScanned)}
             scanRunning={live.scanRunning}
             onSelectPillar={setSelectedPillarKey}

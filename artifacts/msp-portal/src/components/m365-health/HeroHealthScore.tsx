@@ -7,6 +7,7 @@ import {
   BAND_COLOR_VAR,
   BAND_TEXT_CLASS,
 } from './useM365HealthLive';
+import { PILLAR_UNIVERSE } from './PillarGrid';
 
 /**
  * Primary hero — the real M365 Health score: average of the pillars the
@@ -16,18 +17,20 @@ import {
  *
  * Stat columns are real too: Annual Cost Savings = the Cost Engine's real
  * license-waste annualCents (monthly seat-count × sku_price_reference list
- * price × 12); Copilot Readiness = the real weighted overall from
- * copilot-readiness.ts; Genuine Findings = the last completed run's real
+ * price × 12); Genuine Findings = the last completed run's real
  * critical+warning count. The mock "Risk Reduction %" stat was removed with
  * the rest of the fabricated hero copy ("+4%", "Top 8% of sector") — no real
- * historical/sector data source exists yet (backlogged for v2).
+ * historical/sector data source exists yet (backlogged for v2). The
+ * "Copilot Readiness" callout (and Copilot's entry in the pillar distribution
+ * below) was removed entirely (#1137) — Copilot isn't a health pillar on
+ * this report (#1098) and already has a real, gated home in TrendsRow's
+ * Copilot Readiness Breakdown (#1099).
  */
 interface HeroHealthScoreProps {
   pillars: HealthRadarPillar[];
   healthScore: number | null;
   annualSavingsCents: number | null;
   genuineFindings: number | null;
-  copilotReadiness: number | null;
   everScanned: boolean;
   /** #1107: true while a scan is genuinely running right now — swaps the
    * pre-scan "runs after your first scan" copy for a "building live" one. */
@@ -52,12 +55,19 @@ export const HeroHealthScore: React.FC<HeroHealthScoreProps> = ({
   healthScore,
   annualSavingsCents,
   genuineFindings,
-  copilotReadiness,
   everScanned,
   scanRunning = false,
   onSelectPillar,
 }) => {
   const [hoveredPillar, setHoveredPillar] = useState<HealthRadarPillar | null>(null);
+
+  // #1137: `pillars` is the raw backend radar.pillars, which still carries a
+  // "copilot" entry (HEALTH_PILLARS in health-engine.ts) — Copilot isn't a
+  // health pillar on this report (Git #1098), so filter to the same canonical
+  // 6-pillar universe PillarGrid.tsx already established before rendering.
+  const displayPillars = pillars.filter((p) =>
+    PILLAR_UNIVERSE.some((u) => u.key === p.pillar)
+  );
 
   // Gauge calculations
   const circumference = 2 * Math.PI * 58;
@@ -124,8 +134,8 @@ export const HeroHealthScore: React.FC<HeroHealthScoreProps> = ({
             M365 Health Score
           </h2>
           <p className="text-secondary-foreground/90 text-xs md:text-sm mt-1 leading-relaxed">
-            {pillars.length > 0
-              ? `Average across the ${pillars.length} pillar${pillars.length === 1 ? '' : 's'} your scan covers`
+            {displayPillars.length > 0
+              ? `Average across the ${displayPillars.length} pillar${displayPillars.length === 1 ? '' : 's'} your scan covers`
               : scanRunning
                 ? 'Scan in progress — pillar scores building live'
                 : everScanned
@@ -153,8 +163,11 @@ export const HeroHealthScore: React.FC<HeroHealthScoreProps> = ({
 
       {/* Key Metrics Columns & Distribution Bar */}
       <div className="md:col-span-7 lg:col-span-8 flex flex-col justify-between space-y-6">
-        {/* Top 3 real stats */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {/* Top real stats — Copilot Readiness removed from this hero (#1137):
+            Copilot isn't a health pillar on this report (#1098) and already
+            has its own gated home in TrendsRow's Copilot Readiness Breakdown
+            (#1099); this callout was a redundant, ungated duplicate. */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="border-l-2 border-status-green pl-4 py-1 bg-secondary/40 rounded-r-lg">
             <p className="text-[11px] font-mono text-muted-foreground tracking-wider uppercase">
               ANNUAL COST SAVINGS
@@ -184,20 +197,6 @@ export const HeroHealthScore: React.FC<HeroHealthScoreProps> = ({
                 : 'No completed scan yet'}
             </p>
           </div>
-
-          <div className="border-l-2 border-status-violet pl-4 py-1 bg-secondary/40 rounded-r-lg">
-            <p className="text-[11px] font-mono text-muted-foreground tracking-wider uppercase">
-              COPILOT READINESS
-            </p>
-            <p className="text-2xl font-bold text-status-violet font-mono mt-0.5">
-              {copilotReadiness != null ? `${copilotReadiness}%` : '—'}
-            </p>
-            <p className="text-[10px] text-secondary-foreground/80 mt-0.5">
-              {copilotReadiness != null
-                ? 'Weighted across data-governance checks'
-                : 'No readiness data yet'}
-            </p>
-          </div>
         </div>
 
         {/* Pillar Score Distribution Bar — real covered pillars only */}
@@ -224,20 +223,20 @@ export const HeroHealthScore: React.FC<HeroHealthScoreProps> = ({
                 )}
               </span>
             </span>
-            <span className="text-muted-foreground">
-              {pillars.length > 0
-                ? `${pillars.length} of 7 pillars covered by your package`
+            <span className="text-muted-foreground" data-testid="hero-pillar-distribution-count">
+              {displayPillars.length > 0
+                ? `${displayPillars.length} of ${PILLAR_UNIVERSE.length} pillars covered by your package`
                 : scanRunning
                   ? 'Scan in progress — building pillar coverage now'
                   : 'No pillar coverage yet'}
             </span>
           </div>
 
-          {pillars.length > 0 ? (
+          {displayPillars.length > 0 ? (
             <>
               {/* Segmented bar — equal-width segments, band-colored by score */}
               <div className="flex h-3 w-full space-x-1 rounded-full overflow-hidden bg-muted">
-                {pillars.map((pillar) => (
+                {displayPillars.map((pillar) => (
                   <button
                     key={pillar.pillar}
                     onClick={() => onSelectPillar(pillar.pillar)}
@@ -252,7 +251,7 @@ export const HeroHealthScore: React.FC<HeroHealthScoreProps> = ({
 
               {/* Interactive Legend */}
               <div className="flex flex-wrap items-center gap-1 pt-1 text-[10px] font-mono text-muted-foreground">
-                {pillars.map((p) => (
+                {displayPillars.map((p) => (
                   <button
                     key={p.pillar}
                     onClick={() => onSelectPillar(p.pillar)}

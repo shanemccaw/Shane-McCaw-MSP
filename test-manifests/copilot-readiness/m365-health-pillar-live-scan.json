@@ -80,6 +80,13 @@
       "selector": "[data-testid='m365-health-score-value']",
       "state": "visible",
       "textContains": ["0","1","2","3","4","5","6","7","8","9"]
+    },
+    {
+      "name": "D5 (#1137) — the hero's Pillar Score Distribution count no longer leaks Copilot as a 7th pillar. HeroHealthScore.tsx now filters radar.pillars through PillarGrid.tsx's own 6-key PILLAR_UNIVERSE (same universe D3's pillar-grid renders) before counting, so this reads 'of 6', never 'of 7'.",
+      "action": "expect",
+      "selector": "[data-testid='hero-pillar-distribution-count']",
+      "state": "visible",
+      "textContains": "of 6 pillars"
     }
   ]
 }
