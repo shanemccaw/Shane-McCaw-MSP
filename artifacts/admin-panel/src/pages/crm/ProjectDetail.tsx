@@ -1185,8 +1185,6 @@ export default function ProjectDetailPage() {
 
   const [spFolderCreating, setSpFolderCreating] = useState(false);
   const [automationFiring, setAutomationFiring] = useState(false);
-  const [sendingPresentation, setSendingPresentation] = useState(false);
-  const [presentationShareUrl, setPresentationShareUrl] = useState<string | null>(null);
   const [docAnalytics, setDocAnalytics] = useState<{
     presentationId: number | null;
     presentationStatus: string | null;
@@ -1560,27 +1558,6 @@ export default function ProjectDetailPage() {
       }
     } catch { /* silently ignore */ } finally {
       setDocAnalyticsLoading(false);
-    }
-  };
-
-  const handleSendPresentation = async () => {
-    if (!projectId) return;
-    setSendingPresentation(true);
-    try {
-      const res = await fetchWithAuth(`/api/admin/engagements/${projectId}/send-presentation`, { method: "POST" });
-      const data = await res.json() as { shareUrl?: string; error?: string };
-      if (res.ok && data.shareUrl) {
-        setPresentationShareUrl(data.shareUrl);
-        await navigator.clipboard.writeText(data.shareUrl).catch(() => undefined);
-        toast({ title: "Presentation link copied!", description: "Shareable link is now on your clipboard." });
-        void loadDocAnalytics();
-      } else {
-        toast({ title: "Failed to generate link", description: data.error ?? "Could not generate presentation link.", variant: "destructive" });
-      }
-    } catch {
-      toast({ title: "Network error", description: "Could not reach the server.", variant: "destructive" });
-    } finally {
-      setSendingPresentation(false);
     }
   };
 
@@ -2295,7 +2272,7 @@ export default function ProjectDetailPage() {
 
           {!docAnalyticsLoading && docAnalytics && docAnalytics.presentationId === null && (
             <div className="bg-card border border-border rounded-xl p-5 text-center">
-              <p className="text-xs text-muted-foreground">No presentation sent yet. Click <strong className="text-foreground">Send Presentation</strong> to generate a shareable link and start tracking engagement.</p>
+              <p className="text-xs text-muted-foreground">No presentation on file for this engagement yet.</p>
             </div>
           )}
 
@@ -2391,35 +2368,6 @@ export default function ProjectDetailPage() {
             )}
           </span>
           <div className="flex items-center gap-2">
-            {project.clientUserId != null && (
-              <button
-                onClick={() => void handleSendPresentation()}
-                disabled={sendingPresentation}
-                title={presentationShareUrl ?? undefined}
-                className="flex items-center gap-1.5 border border-primary/60 text-primary text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-primary/10 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                {sendingPresentation ? (
-                  <>
-                    <div className="w-3.5 h-3.5 border border-primary/40 border-t-primary rounded-full animate-spin" />
-                    Generating…
-                  </>
-                ) : presentationShareUrl ? (
-                  <>
-                    <svg className="w-3.5 h-3.5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                    </svg>
-                    Link Copied
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
-                    </svg>
-                    Send Presentation
-                  </>
-                )}
-              </button>
-            )}
             {project.clientUserId != null && (
               <button
                 onClick={() => void handleStartAutomation()}
