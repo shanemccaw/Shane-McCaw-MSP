@@ -184,12 +184,19 @@ export interface ZohoRequestOptions {
    * Desk-specific.
    */
   headers?: Record<string, string>;
+  /**
+   * Overrides the default www.zohoapis.com host. Needed for products (e.g.
+   * Zoho Desk) that live on their own host outside the unified zohoapis.com
+   * gateway CRM/Books/Projects share.
+   */
+  baseUrl?: string;
 }
 
 /**
- * Low-level request against www.zohoapis.com. `path` starts with `/` (e.g.
- * `/crm/v8/Leads`). On a 401 the token is force-refreshed and the request
- * retried exactly once; any further failure throws ZohoApiError.
+ * Low-level request against www.zohoapis.com (or opts.baseUrl, for products
+ * that don't route through it). `path` starts with `/` (e.g. `/crm/v8/Leads`).
+ * On a 401 the token is force-refreshed and the request retried exactly once;
+ * any further failure throws ZohoApiError.
  */
 export async function zohoFetch(
   method: "GET" | "POST" | "PUT" | "DELETE",
@@ -198,7 +205,7 @@ export async function zohoFetch(
 ): Promise<Record<string, unknown>> {
   const mspId = opts.mspId ?? ZOHO_DEFAULT_MSP_ID;
 
-  const url = new URL(`${ZOHO_API_BASE}${path}`);
+  const url = new URL(`${opts.baseUrl ?? ZOHO_API_BASE}${path}`);
   for (const [key, value] of Object.entries(opts.query ?? {})) {
     if (value !== undefined) url.searchParams.set(key, String(value));
   }
@@ -239,8 +246,9 @@ export async function zohoGet(
   query?: Record<string, string | number | undefined>,
   mspId?: number,
   headers?: Record<string, string>,
+  baseUrl?: string,
 ): Promise<Record<string, unknown>> {
-  return zohoFetch("GET", path, { query, mspId, headers });
+  return zohoFetch("GET", path, { query, mspId, headers, baseUrl });
 }
 
 export async function zohoPost(

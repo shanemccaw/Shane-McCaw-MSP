@@ -17,9 +17,10 @@
 // Projects' path-prefixed portal id — so every call here passes `headers`
 // through zohoFetch/zohoGet rather than a query param.
 //
-// Endpoints NOT live-verified — no Zoho Desk credentials or configured
-// Department in this environment (manual prerequisite, same category as
-// CRM's custom Lead fields).
+// #1162 (2026-08-18): live-tested by Shane for the first time end-to-end and
+// found every call 404ing. Root cause: this file assumed Desk sat on the same
+// www.zohoapis.com/desk/v1 gateway CRM/Books/Projects use. It doesn't — Desk's
+// real API root is desk.zoho.com/api/v1 (see ZOHO_DESK_API_HOST below).
 
 import { db, zohoConnectionTable, usersTable } from "@workspace/db";
 import { eq, and, isNull } from "drizzle-orm";
@@ -45,7 +46,13 @@ export {
   type ZohoDeskNodeSpec,
 };
 
-const ZOHO_DESK_API_BASE_PATH = "/desk/v1";
+// Unlike CRM/Books/Projects, Zoho Desk does NOT route through the unified
+// www.zohoapis.com gateway — its real API root is desk.zoho.com/api/v1 (or a
+// regional variant, e.g. desk.zoho.eu for EU-based orgs). Confirmed against
+// Zoho's own Desk API docs after #1162's live 404s traced back to this file
+// having assumed the zohoapis.com/desk/v1 shape every other product uses.
+const ZOHO_DESK_API_HOST = process.env.ZOHO_DESK_API_BASE_URL ?? "https://desk.zoho.com";
+const ZOHO_DESK_API_BASE_PATH = "/api/v1";
 
 // ── Organization id resolution ──────────────────────────────────────────────
 
@@ -55,7 +62,7 @@ interface ZohoDeskOrganizationsResponse {
 
 /**
  * Returns the cached zoho_connection.zohoDeskOrgId, or resolves it via
- * GET /desk/v1/organizations and caches the first one — single-org-per-MSP by
+ * GET /api/v1/organizations and caches the first one — single-org-per-MSP by
  * construction, same single-tenant shape zohoBooksOrgId/zohoPortalId assume.
  * Unlike those two, every subsequent Desk call needs this id as an `orgId`
  * HEADER, not a query param — see orgHeader() below.
@@ -64,7 +71,7 @@ export async function resolveZohoDeskOrgId(mspId: number = ZOHO_DEFAULT_MSP_ID):
   const connection = await getZohoConnection(mspId);
   if (connection?.zohoDeskOrgId) return connection.zohoDeskOrgId;
 
-  const body = (await zohoGet(`${ZOHO_DESK_API_BASE_PATH}/organizations`, undefined, mspId)) as ZohoDeskOrganizationsResponse;
+  const body = (await zohoGet(`${ZOHO_DESK_API_BASE_PATH}/organizations`, undefined, mspId, undefined, ZOHO_DESK_API_HOST)) as ZohoDeskOrganizationsResponse;
   const first = Array.isArray(body.data) ? body.data[0] : undefined;
   if (first?.id == null) {
     throw new Error("Zoho Desk: no organization found for this connection — confirm Zoho Desk is enabled for the account");
@@ -96,6 +103,7 @@ async function findDeskContactByEmail(email: string, headers: Record<string, str
     query: { email },
     headers,
     mspId,
+    baseUrl: ZOHO_DESK_API_HOST,
   })) as ZohoDeskContactsResponse;
   const first = Array.isArray(body.data) ? body.data[0] : undefined;
   return first?.id != null ? String(first.id) : null;
@@ -146,6 +154,7 @@ async function upsertDeskContact(
       headers,
       body: { email: normalizedEmail, lastName, ...(firstName ? { firstName } : {}) },
       mspId,
+      baseUrl: ZOHO_DESK_API_HOST,
     })) as { id?: string | number };
     if (body.id == null) throw new Error("Zoho Desk: contact create returned no id");
     contactId = String(body.id);
@@ -196,6 +205,7 @@ async function createDeskTicket(
       channel: "Email",
     },
     mspId,
+    baseUrl: ZOHO_DESK_API_HOST,
   })) as ZohoDeskTicketResponse;
   if (body.id == null) throw new Error("Zoho Desk: ticket create returned no id");
 
@@ -212,7 +222,7 @@ async function createDeskTicket(
 async function getDeskTicket(ticketId: string, mspId?: number): Promise<Record<string, unknown> | null> {
   const headers = await orgHeader(mspId);
   try {
-    const body = await zohoGet(`${ZOHO_DESK_API_BASE_PATH}/tickets/${encodeURIComponent(ticketId)}`, undefined, mspId, headers);
+    const body = await zohoGet(`${ZOHO_DESK_API_BASE_PATH}/tickets/${encodeURIComponent(ticketId)}`, undefined, mspId, headers, ZOHO_DESK_API_HOST);
     return body.id != null ? body : null;
   } catch (err) {
     if (err instanceof ZohoApiError && err.status === 404) return null;
@@ -233,6 +243,7 @@ async function addDeskComment(
     headers,
     body: { content, isPublic },
     mspId,
+    baseUrl: ZOHO_DESK_API_HOST,
   })) as { id?: string | number };
   if (body.id == null) throw new Error("Zoho Desk: comment create returned no id");
   return { entity: "Comment", zohoId: String(body.id), ticketId };
@@ -305,7 +316,7 @@ export async function resolveDeskContactIdForEmail(email: string, mspId?: number
 
 /**
  * Lists the tickets belonging to one Zoho Desk Contact, newest-modified first.
- * `GET /desk/v1/contacts/{contactId}/tickets`. Returns [] when the contact has
+ * `GET /api/v1/contacts/{contactId}/tickets`. Returns [] when the contact has
  * no tickets. Caller is responsible for having resolved contactId from the
  * authenticated customer's own email — this function trusts the contactId it
  * is given.
@@ -317,6 +328,7 @@ export async function listDeskTicketsForContact(contactId: string, mspId?: numbe
     { limit: 100, sortBy: "-modifiedTime" },
     mspId,
     headers,
+    ZOHO_DESK_API_HOST,
   )) as { data?: Array<Record<string, unknown>> };
   const rows = Array.isArray(body.data) ? body.data : [];
   return rows.filter((r) => r.id != null).map(mapTicketSummary);
@@ -344,7 +356,7 @@ export async function getDeskTicketForContact(
 
 /**
  * Returns a ticket's conversation timeline (threads + public comments) oldest
- * first. `GET /desk/v1/tickets/{id}/conversations`. Ownership is NOT checked
+ * first. `GET /api/v1/tickets/{id}/conversations`. Ownership is NOT checked
  * here — call getDeskTicketForContact() first and only call this once ownership
  * is confirmed.
  */
@@ -355,6 +367,7 @@ export async function getDeskTicketThread(ticketId: string, mspId?: number): Pro
     undefined,
     mspId,
     headers,
+    ZOHO_DESK_API_HOST,
   )) as { data?: Array<Record<string, unknown>> };
   const rows = Array.isArray(body.data) ? body.data : [];
 
