@@ -44,6 +44,7 @@
     "security-overview/license-gap-locked-finding.json",
     "marketplace/catalog-browse.json",
     "navigation/m365-health-pillar-group.json",
-    "copilot-readiness/customer-diagnostics-cost-savings.json"
+    "copilot-readiness/customer-diagnostics-cost-savings.json",
+    "copilot-readiness/customer-diagnostics-engagement-offer.json"
   ]
 }

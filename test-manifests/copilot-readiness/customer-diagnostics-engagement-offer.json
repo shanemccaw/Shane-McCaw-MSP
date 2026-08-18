@@ -1,0 +1,77 @@
+{
+  "issue": 1161,
+  "feature": "Customer Diagnostics: re-point the 'Engagement Offer' card at real Sales Engine offers (part of epic #1045, follow-up to #1155's investigation). The card previously read GET /api/portal/presentations/latest -> quick_win_presentations, which only ever gets a row from Shane manually clicking 'Send Presentation' in the admin panel -- no automation. sales-offer-engine.ts already auto-generates real draft sales_offers on diagnostics.run_completed, gated on severity/doc-coverage, and those already surface to customers via GET /api/portal/offers (the same endpoint the My Offers page at /customer-offers already uses). Re-pointed the card to that endpoint instead of building a second read path: shows the customer's most recent 'sent' sales_offers row (title/rationale/price), with a 'Review Offer' CTA that now navigates to /customer-offers (where accept/reject/checkout already lives) instead of the old /customer-sow/:id presentation-signing flow.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "PENDING_COMMIT",
+
+  "notes": [
+    "shaneapp://runTest / shaneapp://executeSql confirmed NOT reachable as tools in this plain-CLI session (checked via ToolSearch, not assumed) -- this manifest is written and typechecked but not executed this session, and the issue's own instruction to 'verify live that a real offer actually appears for this crappy-scoring tenant' could not be carried out here. Whoever next runs this via shaneapp://runTest should also confirm via shaneapp://executeSql whether the TESTBED account (TEST_PORTAL_EMAIL) has a real sales_offers row in state='sent' -- if the engine's severity-gating hasn't fired for that tenant, that is a separate bug in the engine's own trigger logic per the issue, not a defect in this card's wiring.",
+    "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD -- same testbed Assessment-role account other copilot-readiness manifests use.",
+    "D1/D2 assert the API shape only (offers array always present, each item's state field present when any exist) since this session could not confirm live DB state for the testbed tenant's sales_offers rows.",
+    "D3 asserts the section renders honestly either way -- a real sent offer's title, or the 'No pending offer' empty state -- proving the card no longer depends on the retired quick_win_presentations/manual Send Presentation path."
+  ],
+
+  "apiTests": [
+    {
+      "name": "SETUP — log in as the designated TESTBED Assessment account; extract the bearer.",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "D1 — GET /api/portal/offers returns 200 with an `offers` array (the card's real data source, not presentations/latest).",
+      "method": "GET",
+      "path": "/api/portal/offers",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.offers", "exists": true }
+    },
+    {
+      "name": "D2 — the same endpoint the My Offers page (/customer-offers) already drives is reachable for this account -- proves the card reuses the real customer-facing read path instead of a second one.",
+      "method": "GET",
+      "path": "/api/portal/offers",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200 }
+    }
+  ],
+
+  "uiSteps": [
+    {
+      "name": "goto the real login URL (msp-portal's outer WouterRouter has base=BASE_PATH='/portal').",
+      "action": "goto",
+      "target": "/portal/login"
+    },
+    {
+      "name": "WAIT for the login form to hydrate before typing.",
+      "action": "expect",
+      "selector": "#email",
+      "state": "visible"
+    },
+    { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
+    { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
+    {
+      "name": "Primary login — CRITICAL: every downstream assertion needs a real authenticated session.",
+      "action": "click",
+      "selector": "[data-testid='login-submit']",
+      "critical": true,
+      "captureResponse": {
+        "urlPattern": "/api/auth/login",
+        "expect": { "status": 200 }
+      }
+    },
+    {
+      "name": "goto the real Customer Diagnostics page (App.tsx route is flat '/customer-diagnostics').",
+      "action": "goto",
+      "target": "/portal/customer-diagnostics"
+    },
+    {
+      "name": "D3 — the Engagement Offer section renders real content sourced from sales_offers (either a real offer title, or the honest 'No pending offer' empty state) -- proves the retired quick_win_presentations path is gone.",
+      "action": "expect",
+      "selector": "[data-testid='engagement-offer-section']",
+      "state": "visible",
+      "textContains": ["No pending offer", "Review Offer"]
+    }
+  ]
+}

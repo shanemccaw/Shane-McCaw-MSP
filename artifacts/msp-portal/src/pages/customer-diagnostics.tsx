@@ -20,7 +20,6 @@ import {
   Boxes,
   CheckCircle2,
   ChevronDown,
-  ChevronRight,
   CircleDollarSign,
   ClipboardCheck,
   Cloud,
@@ -79,11 +78,14 @@ interface DiagnosticFinding {
   checkStatus?: string;
 }
 
-interface LatestPresentation {
+interface PendingEngagementOffer {
   id: number;
-  status: string;
-  totalPrice: number | null;
-  createdAt: string | null;
+  title: string;
+  rationale: string | null;
+  adjustedPriceCents: number;
+  expiresAt: string | null;
+  sentAt: string | null;
+  createdAt: string;
 }
 
 interface LicenseWaste {
@@ -107,27 +109,6 @@ function relativeDate(iso: string | null | undefined): string {
   if (diffDays < 30) return `${Math.floor(diffDays / 7)}w ago`;
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
-
-const PRESENTATION_STATUS: Record<
-  string,
-  { label: string; icon: React.ElementType; color: string }
-> = {
-  active: {
-    label: "Pending review",
-    icon: Clock,
-    color: "text-amber-400",
-  },
-  signed: {
-    label: "Agreement signed",
-    icon: CheckCircle2,
-    color: "text-green-400",
-  },
-  paid: {
-    label: "Engagement confirmed",
-    icon: CheckCircle2,
-    color: "text-primary",
-  },
-};
 
 // ── Finding severity config ───────────────────────────────────────────────────
 
@@ -354,11 +335,11 @@ export default function CustomerDiagnosticsPage() {
   const { fetchWithAuth } = useAuth();
   const [, navigate] = useLocation();
 
-  const [presentation, setPresentation] = useState<LatestPresentation | null | undefined>(
+  const [pendingOffer, setPendingOffer] = useState<PendingEngagementOffer | null | undefined>(
     undefined,
   );
   const [licenseWaste, setLicenseWaste] = useState<LicenseWaste | null>(null);
-  const [loadingPresentation, setLoadingPresentation] = useState(true);
+  const [loadingPendingOffer, setLoadingPendingOffer] = useState(true);
   const [loadingCostSavings, setLoadingCostSavings] = useState(true);
 
   // Real diagnostic findings from the Monitoring Package engine
@@ -403,17 +384,17 @@ export default function CustomerDiagnosticsPage() {
   useEffect(() => {
     let mounted = true;
 
-    fetchWithAuth("/api/portal/presentations/latest")
+    fetchWithAuth("/api/portal/offers")
       .then(async (res) => {
         if (!res.ok) return;
-        const data = (await res.json()) as { presentation: LatestPresentation | null };
-        if (mounted) setPresentation(data.presentation);
+        const data = (await res.json()) as { offers: (PendingEngagementOffer & { state: string })[] };
+        if (mounted) setPendingOffer(data.offers?.find((o) => o.state === "sent") ?? null);
       })
       .catch(() => {
-        if (mounted) setPresentation(null);
+        if (mounted) setPendingOffer(null);
       })
       .finally(() => {
-        if (mounted) setLoadingPresentation(false);
+        if (mounted) setLoadingPendingOffer(false);
       });
 
     fetchWithAuth("/api/portal/assessment/status")
@@ -486,10 +467,6 @@ export default function CustomerDiagnosticsPage() {
   const toggleGroup = (g: FindingGroup) =>
     setCollapsedOverrides((prev) => ({ ...prev, [g.key]: !isGroupCollapsed(g) }));
 
-  const presStatus = presentation
-    ? (PRESENTATION_STATUS[presentation.status] ?? PRESENTATION_STATUS.active)
-    : null;
-
   return (
     <AppShell title="Diagnostics & Offers">
       <div className="p-6 space-y-6 max-w-4xl mx-auto">
@@ -500,129 +477,61 @@ export default function CustomerDiagnosticsPage() {
           </p>
         </div>
 
-        {/* ── Pending offer / presentation ── */}
-        <div>
+        {/* ── Pending engagement offer (Sales Offer Engine) ── */}
+        <div data-testid="engagement-offer-section">
           <h3 className="text-sm font-semibold text-foreground mb-3">Engagement Offer</h3>
 
-          {loadingPresentation ? (
+          {loadingPendingOffer ? (
             <Skeleton className="h-28 w-full rounded-xl" />
-          ) : !presentation ? (
+          ) : !pendingOffer ? (
             <Card className="border-dashed">
               <CardContent className="flex flex-col items-center justify-center py-10 text-center gap-2">
                 <Zap className="size-8 text-muted-foreground/40" />
                 <p className="text-sm text-muted-foreground">No pending offer</p>
                 <p className="text-xs text-muted-foreground/60 max-w-sm">
-                  Once your MSP has reviewed your diagnostics and generated a proposal, it will
+                  Once we've reviewed your diagnostics and generated a recommendation, it will
                   appear here for your review.
                 </p>
               </CardContent>
             </Card>
           ) : (
-            <Card className={presentation.status === "paid" ? "border-primary/30" : ""}>
+            <Card>
               <CardContent className="py-5 px-5">
                 <div className="flex items-start justify-between gap-4 flex-wrap">
                   <div className="flex items-start gap-3">
-                    <div
-                      className={`size-9 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
-                        presentation.status === "paid"
-                          ? "bg-primary/15"
-                          : presentation.status === "signed"
-                          ? "bg-green-500/15"
-                          : "bg-amber-500/15"
-                      }`}
-                    >
-                      {presStatus && (
-                        <presStatus.icon
-                          className={`size-4 ${presStatus.color}`}
-                        />
-                      )}
+                    <div className="size-9 rounded-lg flex items-center justify-center shrink-0 mt-0.5 bg-amber-500/15">
+                      <Clock className="size-4 text-amber-400" />
                     </div>
                     <div>
-                      <p className="text-sm font-medium">
-                        {presentation.status === "paid"
-                          ? "Engagement Confirmed — Work has begun"
-                          : presentation.status === "signed"
-                          ? "Agreement Signed — Awaiting payment confirmation"
-                          : "Review & Sign Your Engagement Agreement"}
-                      </p>
+                      <p className="text-sm font-medium">{pendingOffer.title}</p>
                       <div className="flex items-center gap-3 mt-1 flex-wrap">
-                        {presentation.totalPrice != null && presentation.totalPrice > 0 && (
+                        {pendingOffer.adjustedPriceCents > 0 && (
                           <span className="text-xs text-muted-foreground font-medium">
-                            ${Number(presentation.totalPrice).toLocaleString("en-US", {
+                            ${(pendingOffer.adjustedPriceCents / 100).toLocaleString("en-US", {
                               minimumFractionDigits: 2,
                             })}
                           </span>
                         )}
-                        {presStatus && (
-                          <Badge
-                            className={`text-[10px] px-1.5 py-0 h-4 border ${
-                              presentation.status === "paid"
-                                ? "bg-primary/15 text-primary border-primary/30"
-                                : presentation.status === "signed"
-                                ? "bg-green-500/15 text-green-400 border-green-500/30"
-                                : "bg-amber-500/15 text-amber-400 border-amber-500/30"
-                            }`}
-                          >
-                            {presStatus.label}
-                          </Badge>
-                        )}
+                        <Badge className="text-[10px] px-1.5 py-0 h-4 border bg-amber-500/15 text-amber-400 border-amber-500/30">
+                          Pending review
+                        </Badge>
                         <span className="text-xs text-muted-foreground flex items-center gap-1">
                           <Clock className="size-3" />
-                          {relativeDate(presentation.createdAt)}
+                          {relativeDate(pendingOffer.sentAt ?? pendingOffer.createdAt)}
                         </span>
                       </div>
                     </div>
                   </div>
 
-                  {presentation.status === "active" && (
-                    <Button
-                      size="sm"
-                      className="gap-2 shrink-0"
-                      onClick={() => navigate(`/customer-sow/${presentation.id}`)}
-                    >
-                      <FileSignature className="size-3.5" />
-                      Review & Sign
-                    </Button>
-                  )}
-
-                  {presentation.status === "signed" && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="gap-2 shrink-0"
-                      onClick={() => navigate(`/customer-sow/${presentation.id}`)}
-                    >
-                      View Agreement
-                      <ChevronRight className="size-3.5" />
-                    </Button>
-                  )}
-
-                  {presentation.status === "paid" && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="gap-2 shrink-0"
-                      onClick={() => navigate(`/customer-sow/${presentation.id}`)}
-                    >
-                      View Details
-                      <ChevronRight className="size-3.5" />
-                    </Button>
-                  )}
+                  <Button
+                    size="sm"
+                    className="gap-2 shrink-0"
+                    onClick={() => navigate("/customer-offers")}
+                  >
+                    <FileSignature className="size-3.5" />
+                    Review Offer
+                  </Button>
                 </div>
-
-                {/* Paid engagement status message */}
-                {presentation.status === "paid" && (
-                  <div className="mt-4 flex items-start gap-2.5 rounded-lg bg-primary/10 border border-primary/20 px-4 py-3">
-                    <CheckCircle2 className="size-4 text-primary shrink-0 mt-0.5" />
-                    <div>
-                      <p className="text-xs font-semibold text-primary">Your engagement is confirmed</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        Work has begun on your Microsoft 365 modernisation. Check your active
-                        projects on your home dashboard for progress updates.
-                      </p>
-                    </div>
-                  </div>
-                )}
               </CardContent>
             </Card>
           )}
@@ -916,7 +825,7 @@ export default function CustomerDiagnosticsPage() {
         </div>
 
         {/* CTA to review offer */}
-        {presentation?.status === "active" && (
+        {pendingOffer && (
           <Card className="border border-primary/30 bg-primary/5">
             <CardContent className="flex items-center justify-between py-4 gap-4">
               <div className="flex items-center gap-3">
@@ -924,11 +833,11 @@ export default function CustomerDiagnosticsPage() {
                 <div>
                   <p className="text-sm font-semibold">You have a pending engagement offer</p>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    Review the scope, pricing, and sign the agreement to get started.
+                    Review the scope and pricing, then accept to get started.
                   </p>
                 </div>
               </div>
-              <Link href={`/customer-sow/${presentation.id}`}>
+              <Link href="/customer-offers">
                 <Button size="sm" className="gap-2 shrink-0">
                   Review Offer
                   <ArrowRight className="size-3.5" />
