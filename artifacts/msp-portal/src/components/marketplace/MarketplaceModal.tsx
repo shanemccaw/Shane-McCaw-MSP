@@ -59,7 +59,7 @@ export const MarketplaceModal: React.FC<MarketplaceModalProps> = ({
   return (
     <>
       {/* Glassmorphism Boutique Marketplace Card */}
-      <div className="bg-[#1e2020]/80 backdrop-blur-xl w-full max-w-6xl mx-auto flex flex-col rounded-2xl overflow-hidden shadow-2xl relative border border-white/10">
+      <div className="bg-[#1e2020]/80 backdrop-blur-xl w-full h-full max-w-6xl mx-auto flex flex-col min-h-0 rounded-2xl overflow-hidden shadow-2xl relative border border-white/10">
         {/* Boutique Header: brand title, search */}
         <header className="bg-[#282a2b] border-b border-white/5 flex flex-wrap justify-between items-center gap-3 w-full px-4 md:px-6 py-3.5 shadow-sm rounded-t-xl shrink-0">
           <span className="font-sans text-xl md:text-2xl font-bold text-[#a0c9ff] tracking-tight">
