@@ -1832,10 +1832,20 @@ namespace BuildConsole.Controls
             return tvi;
         }
 
+        private enum CritterMood
+        {
+            Normal,
+            Running,
+            WaitingForInput,
+            Blocked,
+            Done,
+            Failed
+        }
+
         private static SolidColorBrush HexBrush(string hex) =>
             new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex));
 
-        private static Canvas CreateCuteFoxVector()
+        private static Canvas CreateCuteFoxVector(CritterMood mood)
         {
             var canvas = new Canvas { Width = 36, Height = 30, ClipToBounds = false };
             canvas.Children.Add(new Polygon { Points = new PointCollection { new Point(5, 13), new Point(10, 1), new Point(15, 13) }, Fill = HexBrush("#F59E0B") });
@@ -1855,18 +1865,36 @@ namespace BuildConsole.Controls
             var nose = new Ellipse { Width = 3.5, Height = 2.5, Fill = HexBrush("#1E1E2E") };
             Canvas.SetLeft(nose, 16.2); Canvas.SetTop(nose, 21.5);
             canvas.Children.Add(nose);
-            var eyeL = new Ellipse { Width = 3.5, Height = 4.5, Fill = HexBrush("#1E1E2E") };
-            Canvas.SetLeft(eyeL, 9.5); Canvas.SetTop(eyeL, 13);
-            canvas.Children.Add(eyeL);
-            var eyeLh = new Ellipse { Width = 1.3, Height = 1.3, Fill = Brushes.White };
-            Canvas.SetLeft(eyeLh, 10.5); Canvas.SetTop(eyeLh, 13.5);
-            canvas.Children.Add(eyeLh);
-            var eyeR = new Ellipse { Width = 3.5, Height = 4.5, Fill = HexBrush("#1E1E2E") };
-            Canvas.SetLeft(eyeR, 23); Canvas.SetTop(eyeR, 13);
-            canvas.Children.Add(eyeR);
-            var eyeRh = new Ellipse { Width = 1.3, Height = 1.3, Fill = Brushes.White };
-            Canvas.SetLeft(eyeRh, 24); Canvas.SetTop(eyeRh, 13.5);
-            canvas.Children.Add(eyeRh);
+
+            if (mood == CritterMood.Blocked)
+            {
+                // Sweet peaceful closed sleepy eyes (˘ ˘)
+                canvas.Children.Add(new System.Windows.Shapes.Path { Data = Geometry.Parse("M9,15 Q11.2,18 13.5,15"), Stroke = HexBrush("#1E1E2E"), StrokeThickness = 1.4 });
+                canvas.Children.Add(new System.Windows.Shapes.Path { Data = Geometry.Parse("M22.5,15 Q24.8,18 27,15"), Stroke = HexBrush("#1E1E2E"), StrokeThickness = 1.4 });
+            }
+            else if (mood == CritterMood.Done)
+            {
+                // Happy curved eyes (^ ^)
+                canvas.Children.Add(new System.Windows.Shapes.Path { Data = Geometry.Parse("M9,16 Q11.2,13 13.5,16"), Stroke = HexBrush("#1E1E2E"), StrokeThickness = 1.4 });
+                canvas.Children.Add(new System.Windows.Shapes.Path { Data = Geometry.Parse("M22.5,16 Q24.8,13 27,16"), Stroke = HexBrush("#1E1E2E"), StrokeThickness = 1.4 });
+            }
+            else
+            {
+                // Big bright sparkling eyes
+                var eyeL = new Ellipse { Width = 3.5, Height = 4.5, Fill = HexBrush("#1E1E2E") };
+                Canvas.SetLeft(eyeL, 9.5); Canvas.SetTop(eyeL, 13);
+                canvas.Children.Add(eyeL);
+                var eyeLh = new Ellipse { Width = 1.3, Height = 1.3, Fill = Brushes.White };
+                Canvas.SetLeft(eyeLh, 10.5); Canvas.SetTop(eyeLh, 13.5);
+                canvas.Children.Add(eyeLh);
+                var eyeR = new Ellipse { Width = 3.5, Height = 4.5, Fill = HexBrush("#1E1E2E") };
+                Canvas.SetLeft(eyeR, 23); Canvas.SetTop(eyeR, 13);
+                canvas.Children.Add(eyeR);
+                var eyeRh = new Ellipse { Width = 1.3, Height = 1.3, Fill = Brushes.White };
+                Canvas.SetLeft(eyeRh, 24); Canvas.SetTop(eyeRh, 13.5);
+                canvas.Children.Add(eyeRh);
+            }
+
             var blushL = new Ellipse { Width = 4.5, Height = 2.5, Fill = HexBrush("#F472B6"), Opacity = 0.65 };
             Canvas.SetLeft(blushL, 6); Canvas.SetTop(blushL, 17);
             canvas.Children.Add(blushL);
@@ -1876,7 +1904,7 @@ namespace BuildConsole.Controls
             return canvas;
         }
 
-        private static Canvas CreateCuteBearVector()
+        private static Canvas CreateCuteBearVector(CritterMood mood)
         {
             var canvas = new Canvas { Width = 36, Height = 30, ClipToBounds = false };
             var earL = new Ellipse { Width = 7.5, Height = 7.5, Fill = HexBrush("#C7D2FE") };
@@ -1900,8 +1928,36 @@ namespace BuildConsole.Controls
             var nose = new Ellipse { Width = 3.5, Height = 2.5, Fill = HexBrush("#312E81") };
             Canvas.SetLeft(nose, 16.2); Canvas.SetTop(nose, 18);
             canvas.Children.Add(nose);
-            canvas.Children.Add(new System.Windows.Shapes.Path { Data = Geometry.Parse("M10,14 Q12.5,16.5 15,14"), Stroke = HexBrush("#312E81"), StrokeThickness = 1.3 });
-            canvas.Children.Add(new System.Windows.Shapes.Path { Data = Geometry.Parse("M21,14 Q23.5,16.5 26,14"), Stroke = HexBrush("#312E81"), StrokeThickness = 1.3 });
+
+            if (mood == CritterMood.Blocked)
+            {
+                // Sleepy curved eyes
+                canvas.Children.Add(new System.Windows.Shapes.Path { Data = Geometry.Parse("M10,14.5 Q12.5,17.5 15,14.5"), Stroke = HexBrush("#312E81"), StrokeThickness = 1.4 });
+                canvas.Children.Add(new System.Windows.Shapes.Path { Data = Geometry.Parse("M21,14.5 Q23.5,17.5 26,14.5"), Stroke = HexBrush("#312E81"), StrokeThickness = 1.4 });
+            }
+            else if (mood == CritterMood.Running || mood == CritterMood.WaitingForInput)
+            {
+                // Open alert bear eyes
+                var eyeL = new Ellipse { Width = 3.5, Height = 4.5, Fill = HexBrush("#312E81") };
+                Canvas.SetLeft(eyeL, 10.5); Canvas.SetTop(eyeL, 12.5);
+                canvas.Children.Add(eyeL);
+                var eyeLh = new Ellipse { Width = 1.2, Height = 1.2, Fill = Brushes.White };
+                Canvas.SetLeft(eyeLh, 11.5); Canvas.SetTop(eyeLh, 13);
+                canvas.Children.Add(eyeLh);
+                var eyeR = new Ellipse { Width = 3.5, Height = 4.5, Fill = HexBrush("#312E81") };
+                Canvas.SetLeft(eyeR, 22); Canvas.SetTop(eyeR, 12.5);
+                canvas.Children.Add(eyeR);
+                var eyeRh = new Ellipse { Width = 1.2, Height = 1.2, Fill = Brushes.White };
+                Canvas.SetLeft(eyeRh, 23); Canvas.SetTop(eyeRh, 13);
+                canvas.Children.Add(eyeRh);
+            }
+            else
+            {
+                // Peaceful calm curved eyes
+                canvas.Children.Add(new System.Windows.Shapes.Path { Data = Geometry.Parse("M10,14 Q12.5,16.5 15,14"), Stroke = HexBrush("#312E81"), StrokeThickness = 1.3 });
+                canvas.Children.Add(new System.Windows.Shapes.Path { Data = Geometry.Parse("M21,14 Q23.5,16.5 26,14"), Stroke = HexBrush("#312E81"), StrokeThickness = 1.3 });
+            }
+
             var blushL = new Ellipse { Width = 4.5, Height = 2.5, Fill = HexBrush("#F472B6"), Opacity = 0.55 };
             Canvas.SetLeft(blushL, 6.5); Canvas.SetTop(blushL, 17);
             canvas.Children.Add(blushL);
@@ -1911,7 +1967,7 @@ namespace BuildConsole.Controls
             return canvas;
         }
 
-        private static Canvas CreateCuteCatVector()
+        private static Canvas CreateCuteCatVector(CritterMood mood)
         {
             var canvas = new Canvas { Width = 36, Height = 30, ClipToBounds = false };
             canvas.Children.Add(new Polygon { Points = new PointCollection { new Point(5, 13), new Point(9, 2), new Point(14, 13) }, Fill = HexBrush("#D8B4FE") });
@@ -1921,25 +1977,43 @@ namespace BuildConsole.Controls
             var head = new Ellipse { Width = 25, Height = 19, Fill = HexBrush("#D8B4FE") };
             Canvas.SetLeft(head, 5.5); Canvas.SetTop(head, 8);
             canvas.Children.Add(head);
-            var eyeL = new Ellipse { Width = 3.5, Height = 4.5, Fill = HexBrush("#1E1E2E") };
-            Canvas.SetLeft(eyeL, 10); Canvas.SetTop(eyeL, 13);
-            canvas.Children.Add(eyeL);
-            var eyeLh = new Ellipse { Width = 1.3, Height = 1.3, Fill = Brushes.White };
-            Canvas.SetLeft(eyeLh, 11); Canvas.SetTop(eyeLh, 13.5);
-            canvas.Children.Add(eyeLh);
-            var eyeR = new Ellipse { Width = 3.5, Height = 4.5, Fill = HexBrush("#1E1E2E") };
-            Canvas.SetLeft(eyeR, 22.5); Canvas.SetTop(eyeR, 13);
-            canvas.Children.Add(eyeR);
-            var eyeRh = new Ellipse { Width = 1.3, Height = 1.3, Fill = Brushes.White };
-            Canvas.SetLeft(eyeRh, 23.5); Canvas.SetTop(eyeRh, 13.5);
-            canvas.Children.Add(eyeRh);
+
+            if (mood == CritterMood.Blocked)
+            {
+                // Sweet snoozing cat closed eyes (˘ ˘)
+                canvas.Children.Add(new System.Windows.Shapes.Path { Data = Geometry.Parse("M9.5,14 Q11.5,17 13.5,14"), Stroke = HexBrush("#1E1E2E"), StrokeThickness = 1.4 });
+                canvas.Children.Add(new System.Windows.Shapes.Path { Data = Geometry.Parse("M22,14 Q24,17 26,14"), Stroke = HexBrush("#1E1E2E"), StrokeThickness = 1.4 });
+            }
+            else if (mood == CritterMood.Done)
+            {
+                // Happy cat curved eyes (^ ^)
+                canvas.Children.Add(new System.Windows.Shapes.Path { Data = Geometry.Parse("M9.5,15.5 Q11.5,12.5 13.5,15.5"), Stroke = HexBrush("#1E1E2E"), StrokeThickness = 1.4 });
+                canvas.Children.Add(new System.Windows.Shapes.Path { Data = Geometry.Parse("M22,15.5 Q24,12.5 26,15.5"), Stroke = HexBrush("#1E1E2E"), StrokeThickness = 1.4 });
+            }
+            else
+            {
+                // Big round sparkling cat eyes
+                var eyeL = new Ellipse { Width = 3.5, Height = 4.5, Fill = HexBrush("#1E1E2E") };
+                Canvas.SetLeft(eyeL, 10); Canvas.SetTop(eyeL, 13);
+                canvas.Children.Add(eyeL);
+                var eyeLh = new Ellipse { Width = 1.3, Height = 1.3, Fill = Brushes.White };
+                Canvas.SetLeft(eyeLh, 11); Canvas.SetTop(eyeLh, 13.5);
+                canvas.Children.Add(eyeLh);
+                var eyeR = new Ellipse { Width = 3.5, Height = 4.5, Fill = HexBrush("#1E1E2E") };
+                Canvas.SetLeft(eyeR, 22.5); Canvas.SetTop(eyeR, 13);
+                canvas.Children.Add(eyeR);
+                var eyeRh = new Ellipse { Width = 1.3, Height = 1.3, Fill = Brushes.White };
+                Canvas.SetLeft(eyeRh, 23.5); Canvas.SetTop(eyeRh, 13.5);
+                canvas.Children.Add(eyeRh);
+            }
+
             canvas.Children.Add(new Polygon { Points = new PointCollection { new Point(16.5, 19.5), new Point(19.5, 19.5), new Point(18, 21.5) }, Fill = HexBrush("#F472B6") });
             canvas.Children.Add(new System.Windows.Shapes.Path { Data = Geometry.Parse("M3,18 L8,19 M3,21 L8,21"), Stroke = HexBrush("#C084FC"), StrokeThickness = 0.9 });
             canvas.Children.Add(new System.Windows.Shapes.Path { Data = Geometry.Parse("M28,19 L33,18 M28,21 L33,21"), Stroke = HexBrush("#C084FC"), StrokeThickness = 0.9 });
             return canvas;
         }
 
-        private static Canvas CreateCuteDuckVector()
+        private static Canvas CreateCuteDuckVector(CritterMood mood)
         {
             var canvas = new Canvas { Width = 36, Height = 30, ClipToBounds = false };
             var head = new Ellipse { Width = 23, Height = 19, Fill = HexBrush("#F8FAFC") };
@@ -1949,18 +2023,29 @@ namespace BuildConsole.Controls
             Canvas.SetLeft(cap, 10.5); Canvas.SetTop(cap, 2);
             canvas.Children.Add(cap);
             canvas.Children.Add(new System.Windows.Shapes.Path { Data = Geometry.Parse("M18,5 Q22,3 25,6 M18,5 Q22,6 26,9"), Stroke = HexBrush("#1E1E2E"), StrokeThickness = 1.2 });
-            var eyeL = new Ellipse { Width = 3.5, Height = 5, Fill = HexBrush("#1E1E2E") };
-            Canvas.SetLeft(eyeL, 11); Canvas.SetTop(eyeL, 10);
-            canvas.Children.Add(eyeL);
-            var eyeLh = new Ellipse { Width = 1.3, Height = 1.6, Fill = Brushes.White };
-            Canvas.SetLeft(eyeLh, 12); Canvas.SetTop(eyeLh, 11);
-            canvas.Children.Add(eyeLh);
-            var eyeR = new Ellipse { Width = 3.5, Height = 5, Fill = HexBrush("#1E1E2E") };
-            Canvas.SetLeft(eyeR, 19); Canvas.SetTop(eyeR, 10);
-            canvas.Children.Add(eyeR);
-            var eyeRh = new Ellipse { Width = 1.3, Height = 1.6, Fill = Brushes.White };
-            Canvas.SetLeft(eyeRh, 20); Canvas.SetTop(eyeRh, 11);
-            canvas.Children.Add(eyeRh);
+
+            if (mood == CritterMood.Blocked)
+            {
+                // Sleepy closed duck eyes (˘ ˘)
+                canvas.Children.Add(new System.Windows.Shapes.Path { Data = Geometry.Parse("M10.5,12 Q12.5,14.5 14.5,12"), Stroke = HexBrush("#1E1E2E"), StrokeThickness = 1.3 });
+                canvas.Children.Add(new System.Windows.Shapes.Path { Data = Geometry.Parse("M18.5,12 Q20.5,14.5 22.5,12"), Stroke = HexBrush("#1E1E2E"), StrokeThickness = 1.3 });
+            }
+            else
+            {
+                var eyeL = new Ellipse { Width = 3.5, Height = 5, Fill = HexBrush("#1E1E2E") };
+                Canvas.SetLeft(eyeL, 11); Canvas.SetTop(eyeL, 10);
+                canvas.Children.Add(eyeL);
+                var eyeLh = new Ellipse { Width = 1.3, Height = 1.6, Fill = Brushes.White };
+                Canvas.SetLeft(eyeLh, 12); Canvas.SetTop(eyeLh, 11);
+                canvas.Children.Add(eyeLh);
+                var eyeR = new Ellipse { Width = 3.5, Height = 5, Fill = HexBrush("#1E1E2E") };
+                Canvas.SetLeft(eyeR, 19); Canvas.SetTop(eyeR, 10);
+                canvas.Children.Add(eyeR);
+                var eyeRh = new Ellipse { Width = 1.3, Height = 1.6, Fill = Brushes.White };
+                Canvas.SetLeft(eyeRh, 20); Canvas.SetTop(eyeRh, 11);
+                canvas.Children.Add(eyeRh);
+            }
+
             var beak = new Ellipse { Width = 16, Height = 8, Fill = HexBrush("#F59E0B") };
             Canvas.SetLeft(beak, 10); Canvas.SetTop(beak, 16.5);
             canvas.Children.Add(beak);
@@ -1970,7 +2055,7 @@ namespace BuildConsole.Controls
             return canvas;
         }
 
-        private static Canvas CreateCuteBirdVector()
+        private static Canvas CreateCuteBirdVector(CritterMood mood)
         {
             var canvas = new Canvas { Width = 36, Height = 30, ClipToBounds = false };
             var body = new Ellipse { Width = 21, Height = 17, Fill = HexBrush("#60A5FA") };
@@ -1980,12 +2065,22 @@ namespace BuildConsole.Controls
             Canvas.SetLeft(belly, 11); Canvas.SetTop(belly, 12);
             canvas.Children.Add(belly);
             canvas.Children.Add(new Polygon { Points = new PointCollection { new Point(7.5, 14), new Point(2, 16), new Point(7.5, 18) }, Fill = HexBrush("#F59E0B") });
-            var eye = new Ellipse { Width = 3.5, Height = 3.5, Fill = HexBrush("#1E1E2E") };
-            Canvas.SetLeft(eye, 13.5); Canvas.SetTop(eye, 10.5);
-            canvas.Children.Add(eye);
-            var eyeH = new Ellipse { Width = 1.3, Height = 1.3, Fill = Brushes.White };
-            Canvas.SetLeft(eyeH, 14.5); Canvas.SetTop(eyeH, 11.5);
-            canvas.Children.Add(eyeH);
+
+            if (mood == CritterMood.Blocked)
+            {
+                // Sleepy closed curved eye
+                canvas.Children.Add(new System.Windows.Shapes.Path { Data = Geometry.Parse("M13,12 Q15,14.5 17,12"), Stroke = HexBrush("#1E1E2E"), StrokeThickness = 1.3 });
+            }
+            else
+            {
+                var eye = new Ellipse { Width = 3.5, Height = 3.5, Fill = HexBrush("#1E1E2E") };
+                Canvas.SetLeft(eye, 13.5); Canvas.SetTop(eye, 10.5);
+                canvas.Children.Add(eye);
+                var eyeH = new Ellipse { Width = 1.3, Height = 1.3, Fill = Brushes.White };
+                Canvas.SetLeft(eyeH, 14.5); Canvas.SetTop(eyeH, 11.5);
+                canvas.Children.Add(eyeH);
+            }
+
             canvas.Children.Add(new System.Windows.Shapes.Path { Data = Geometry.Parse("M18,12 Q25,14 19,20 Z"), Fill = HexBrush("#3B82F6") });
             return canvas;
         }
@@ -2002,11 +2097,22 @@ namespace BuildConsole.Controls
                 ClipToBounds = false
             };
 
+            // Detect blocked state
+            var blockerList = item.BlockedByNumbers ?? (item.BlockedByNumber.HasValue ? new List<int> { item.BlockedByNumber.Value } : new List<int>());
+            bool isBlocked = blockerList.Count > 0 || string.Equals(item.Status, "blocked", StringComparison.OrdinalIgnoreCase);
+
+            CritterMood mood = isBlocked ? CritterMood.Blocked :
+                (item.Status == "running" && interactiveState == InteractiveInputState.WaitingForInput) ? CritterMood.WaitingForInput :
+                (item.Status == "running") ? CritterMood.Running :
+                (item.Status == "done") ? CritterMood.Done :
+                (item.Status == "failed") ? CritterMood.Failed :
+                CritterMood.Normal;
+
             // Subtle gentle ambient float transform (NO bouncing or shaking!)
             var floatTrans = new TranslateTransform();
             container.RenderTransform = floatTrans;
 
-            var floatAnim = new DoubleAnimation(0, -1.2, TimeSpan.FromSeconds(2.8))
+            var floatAnim = new DoubleAnimation(0, isBlocked ? -0.8 : -1.2, TimeSpan.FromSeconds(isBlocked ? 3.2 : 2.8))
             {
                 AutoReverse = true,
                 RepeatBehavior = RepeatBehavior.Forever,
@@ -2018,11 +2124,11 @@ namespace BuildConsole.Controls
             int variant = Math.Abs((item.GithubNumber ?? item.Id) % 5);
             Canvas critter = variant switch
             {
-                0 => CreateCuteFoxVector(),
-                1 => CreateCuteBearVector(),
-                2 => CreateCuteCatVector(),
-                3 => CreateCuteDuckVector(),
-                _ => CreateCuteBirdVector()
+                0 => CreateCuteFoxVector(mood),
+                1 => CreateCuteBearVector(mood),
+                2 => CreateCuteCatVector(mood),
+                3 => CreateCuteDuckVector(mood),
+                _ => CreateCuteBirdVector(mood)
             };
 
             Canvas.SetLeft(critter, 3);
@@ -2030,28 +2136,29 @@ namespace BuildConsole.Controls
             container.Children.Add(critter);
 
             // Subtle glowing halo with gentle breathing shimmer
-            Color glowColor = item.Status switch
+            Color glowColor = mood switch
             {
-                "running" when interactiveState == InteractiveInputState.WaitingForInput => Color.FromRgb(0xF9, 0xE2, 0xAF),
-                "running" => Color.FromRgb(0x89, 0xB4, 0xFA),
-                "done" => Color.FromRgb(0xA6, 0xE3, 0xA1),
-                "failed" => Color.FromRgb(0xF3, 0x8B, 0xA8),
+                CritterMood.Blocked => Color.FromRgb(0xF3, 0x8B, 0xA8), // Soft Rose Red for blocked
+                CritterMood.WaitingForInput => Color.FromRgb(0xF9, 0xE2, 0xAF),
+                CritterMood.Running => Color.FromRgb(0x89, 0xB4, 0xFA),
+                CritterMood.Done => Color.FromRgb(0xA6, 0xE3, 0xA1),
+                CritterMood.Failed => Color.FromRgb(0xEB, 0xA0, 0xAC),
                 _ => Color.FromRgb(0xCB, 0xA6, 0xF7)
             };
 
             var glow = new DropShadowEffect
             {
                 Color = glowColor,
-                BlurRadius = item.Status == "running" ? 10 : 6,
+                BlurRadius = item.Status == "running" ? 10 : (isBlocked ? 7 : 6),
                 ShadowDepth = 0,
-                Opacity = item.Status == "running" ? 0.65 : 0.35
+                Opacity = item.Status == "running" ? 0.65 : 0.38
             };
             critter.Effect = glow;
 
             // Gentle shimmer pulse on the glow (calm and peaceful)
-            if (item.Status == "running")
+            if (item.Status == "running" || isBlocked)
             {
-                var shimmer = new DoubleAnimation(0.35, 0.85, TimeSpan.FromSeconds(2.2))
+                var shimmer = new DoubleAnimation(0.30, isBlocked ? 0.65 : 0.85, TimeSpan.FromSeconds(isBlocked ? 2.8 : 2.2))
                 {
                     AutoReverse = true,
                     RepeatBehavior = RepeatBehavior.Forever,
@@ -2060,8 +2167,22 @@ namespace BuildConsole.Controls
                 glow.BeginAnimation(DropShadowEffect.OpacityProperty, shimmer);
             }
 
-            // Status badges (clean and subtle)
-            if (item.Status == "running" && interactiveState == InteractiveInputState.WaitingForInput)
+            // Status badges (clean, smart, and subtle)
+            if (isBlocked)
+            {
+                var lockBadge = new Border
+                {
+                    Background = HexBrush("#F38BA8"),
+                    CornerRadius = new CornerRadius(5),
+                    Padding = new Thickness(3, 1, 3, 1),
+                    Effect = new DropShadowEffect { Color = Color.FromRgb(0xF3, 0x8B, 0xA8), BlurRadius = 4, ShadowDepth = 0 }
+                };
+                lockBadge.Child = new TextBlock { Text = "🔒", FontSize = 9 };
+                Canvas.SetLeft(lockBadge, 22);
+                Canvas.SetTop(lockBadge, -3);
+                container.Children.Add(lockBadge);
+            }
+            else if (item.Status == "running" && interactiveState == InteractiveInputState.WaitingForInput)
             {
                 var badge = new Border
                 {
