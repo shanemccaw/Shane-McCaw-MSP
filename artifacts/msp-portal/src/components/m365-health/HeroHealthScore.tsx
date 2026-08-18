@@ -205,13 +205,24 @@ export const HeroHealthScore: React.FC<HeroHealthScoreProps> = ({
           <div className="flex justify-between items-center text-xs font-mono">
             <span className="text-secondary-foreground/90 flex items-center space-x-1.5">
               <span>Pillar Score Distribution</span>
-              {hoveredPillar ? (
-                <span className="text-primary font-bold">
-                  ({hoveredPillar.label}: {hoveredPillar.score}/100)
-                </span>
-              ) : (
-                <Info className="w-3 h-3 text-muted-foreground" />
-              )}
+              {/* #1146: hover-detail text is absolutely-positioned over the Info
+                  icon (icon stays in-flow as a fixed-size placeholder) so
+                  swapping between them never changes this row's content
+                  width — that width change was reflowing the segmented bar
+                  below out from under the cursor, causing an onMouseLeave/
+                  onMouseEnter jitter loop. */}
+              <span className="relative inline-flex items-center w-3 h-3">
+                <Info
+                  className={`w-3 h-3 text-muted-foreground transition-opacity ${
+                    hoveredPillar ? 'opacity-0' : 'opacity-100'
+                  }`}
+                />
+                {hoveredPillar && (
+                  <span className="absolute left-0 top-1/2 -translate-y-1/2 text-primary font-bold whitespace-nowrap">
+                    ({hoveredPillar.label}: {hoveredPillar.score}/100)
+                  </span>
+                )}
+              </span>
             </span>
             <span className="text-muted-foreground">
               {pillars.length > 0
