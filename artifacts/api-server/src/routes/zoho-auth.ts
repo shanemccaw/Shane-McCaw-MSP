@@ -35,13 +35,17 @@ const router: IRouter = Router();
 
 // #1162: the connection was originally authorized with CRM-only scopes, so
 // every Zoho Desk call 403'd with SCOPE_MISMATCH once the base-URL bug (fixed
-// same issue) stopped masking it as a 404. ZohoDesk.tickets.ALL covers ticket
-// create/read/comment, ZohoDesk.contacts.ALL covers contact find-or-create,
-// ZohoDesk.basic.READ covers /organizations, ZohoDesk.search.READ covers the
+// same issue) stopped masking it as a 404. First attempt at this used a
+// "ZohoDesk." prefix (matching ZohoCRM/ZohoBooks/ZohoProjects) and Zoho
+// rejected it outright as "Invalid OAuth Scope" -- Desk breaks that
+// convention and uses a bare "Desk." prefix instead (confirmed against
+// Zoho's own Desk OAuth SDK docs). Desk.tickets.ALL covers ticket
+// create/read/comment, Desk.contacts.ALL covers contact find-or-create,
+// Desk.basic.READ covers /organizations, Desk.search.READ covers the
 // contacts/search lookup zoho-desk.ts's findDeskContactByEmail() uses.
 const DEFAULT_SCOPES =
   "ZohoCRM.modules.ALL,ZohoCRM.settings.ALL,ZohoCRM.org.READ," +
-  "ZohoDesk.tickets.ALL,ZohoDesk.contacts.ALL,ZohoDesk.basic.READ,ZohoDesk.search.READ";
+  "Desk.tickets.ALL,Desk.contacts.ALL,Desk.basic.READ,Desk.search.READ";
 
 // Single-use CSRF nonces minted by /start; the callback consumes them. The
 // admin gate on /start is what makes possession of a live nonce an
