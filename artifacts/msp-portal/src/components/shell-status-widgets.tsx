@@ -58,16 +58,19 @@ function StatusPill({
   );
 }
 
-/** Deliverable 1 — Project Scope, from GET /api/portal/customer/scope-status (Scope Creep Engine). */
+/** Deliverable 1 — Project Scope, from GET /api/portal/customer/scope-status (Scope Creep Engine).
+ * Full "Project Scope" label (not the bare "Scope" this used to show) so the
+ * pill is self-explanatory without relying on the hover tooltip — Git #1144. */
 export function ProjectScopeIndicator() {
   const { scopeStatus } = useShellStatus();
-  return <StatusPill status={scopeStatus?.overall ?? null} label="Scope" headline={scopeStatus?.headline ?? null} />;
+  return <StatusPill status={scopeStatus?.overall ?? null} label="Project Scope" headline={scopeStatus?.headline ?? null} />;
 }
 
-/** Deliverable 2 — Service Status, from GET /api/portal/customer/sla-status (SLA Engine). */
+/** Deliverable 2 — Service Status, from GET /api/portal/customer/sla-status (SLA Engine).
+ * Full "Service Status" label, same reasoning as ProjectScopeIndicator above — Git #1144. */
 export function ServiceStatusIndicator() {
   const { slaStatus } = useShellStatus();
-  return <StatusPill status={slaStatus?.overall ?? null} label="Service" headline={slaStatus?.headline ?? null} />;
+  return <StatusPill status={slaStatus?.overall ?? null} label="Service Status" headline={slaStatus?.headline ?? null} />;
 }
 
 function CountSquare({ label, value, title }: { label: string; value: number | null; title: string }) {
