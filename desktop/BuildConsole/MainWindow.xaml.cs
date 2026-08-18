@@ -5389,7 +5389,38 @@ namespace BuildConsole
             // panel's "Needs Attention" section, where it stays until Shane actually addresses it. Keyed by
             // issue+feature so a re-run of the same manifest updates its row instead of stacking duplicates.
             string attentionKey = $"{runResult.Issue}:{runResult.Feature}";
-            BuildQueuePanel.AddNeedsAttention(attentionKey, title, body, hasFailure, openAction);
+
+            var testDetailsSb = new System.Text.StringBuilder();
+            testDetailsSb.AppendLine($"=== TEST MANIFEST RUN REPORT ===");
+            testDetailsSb.AppendLine($"Issue: #{runResult.Issue}");
+            testDetailsSb.AppendLine($"Feature: {runResult.Feature}");
+            testDetailsSb.AppendLine($"Total Steps: {total}");
+            testDetailsSb.AppendLine($"Passed: {passed}");
+            testDetailsSb.AppendLine($"Failed: {total - passed}");
+            testDetailsSb.AppendLine();
+            if (hasFailure)
+            {
+                testDetailsSb.AppendLine($"=== FAILING STEPS ===");
+                foreach (var s in runResult.Steps.Where(st => !st.Passed))
+                {
+                    testDetailsSb.AppendLine($"• Step: {s.Label} ({s.Kind})");
+                    if (!string.IsNullOrEmpty(s.Detail)) testDetailsSb.AppendLine($"  Detail: {s.Detail}");
+                    if (!string.IsNullOrEmpty(s.Expected)) testDetailsSb.AppendLine($"  Expected: {s.Expected}");
+                    if (!string.IsNullOrEmpty(s.Actual)) testDetailsSb.AppendLine($"  Actual: {s.Actual}");
+                    if (!string.IsNullOrEmpty(s.Context)) testDetailsSb.AppendLine($"  Context: {s.Context}");
+                    if (!string.IsNullOrEmpty(s.ScreenshotPath)) testDetailsSb.AppendLine($"  Screenshot: {s.ScreenshotPath}");
+                    testDetailsSb.AppendLine();
+                }
+            }
+            if (needsReview)
+            {
+                testDetailsSb.AppendLine($"=== SCREENSHOT REVIEW ===");
+                testDetailsSb.AppendLine($"New baselines needed: {reviewResult?.NoBaseline ?? 0}");
+                testDetailsSb.AppendLine($"Visual diffs detected: {reviewResult?.Diffs ?? 0}");
+            }
+            string testDetails = testDetailsSb.ToString();
+
+            BuildQueuePanel.AddNeedsAttention(attentionKey, title, body, hasFailure, openAction, testDetails);
 
             // Clicking the toast addresses it just like clicking the section row does: open the Test Runner /
             // review dialog AND clear the durable item so it doesn't linger after Shane has looked.
@@ -5480,9 +5511,39 @@ namespace BuildConsole
 
             bool isFailure = !r.DeployConfirmed || (r.TestsRan && r.TestsFailed > 0);
 
+            // Construct full diagnostic details for the inspection window
+            var deployDetailsSb = new System.Text.StringBuilder();
+            deployDetailsSb.AppendLine($"=== AUTO DEPLOY & TEST REPORT ===");
+            deployDetailsSb.AppendLine($"Build: {r.BuildTitle} (Queue Item #{r.QueueItemId})");
+            deployDetailsSb.AppendLine($"Overall Status: {(r.OverallOk ? "SUCCESS" : "NEEDS ATTENTION")}");
+            deployDetailsSb.AppendLine($"Stage: {r.Stage}");
+            deployDetailsSb.AppendLine($"Deploy Confirmed: {(r.DeployConfirmed ? "YES" : "NO")}");
+            deployDetailsSb.AppendLine($"Old Live Commit: {r.OldCommit}");
+            deployDetailsSb.AppendLine($"Expected Commit: {r.ExpectedCommit}");
+            deployDetailsSb.AppendLine($"New Live Commit: {r.NewCommit}");
+            deployDetailsSb.AppendLine($"Advanced to Own Commit: {(r.AdvancedToOwnCommit == null ? "N/A" : r.AdvancedToOwnCommit.Value ? "YES" : "NO (⚠ Server behind build commit)")}");
+            if (!string.IsNullOrEmpty(r.AdvancementNote)) deployDetailsSb.AppendLine($"Advancement Note: {r.AdvancementNote}");
+            deployDetailsSb.AppendLine($"Deploy Elapsed Time: {r.DeployElapsedSeconds:F1}s");
+            deployDetailsSb.AppendLine();
+            deployDetailsSb.AppendLine($"=== TEST RESULTS ===");
+            deployDetailsSb.AppendLine($"Tests Ran: {(r.TestsRan ? "YES" : "NO")}");
+            deployDetailsSb.AppendLine($"Pass / Total: {r.TestsPassed} / {r.TestsTotal}");
+            deployDetailsSb.AppendLine($"Failed: {r.TestsFailed}");
+            if (r.FailedManifests.Count > 0)
+            {
+                deployDetailsSb.AppendLine($"Failed Manifests:");
+                foreach (var fm in r.FailedManifests) deployDetailsSb.AppendLine($"  - {fm}");
+            }
+            if (!string.IsNullOrEmpty(r.Error))
+            {
+                deployDetailsSb.AppendLine();
+                deployDetailsSb.AppendLine($"=== ERROR MESSAGE / LOG ===");
+                deployDetailsSb.AppendLine(r.Error);
+            }
+            string deployDetails = deployDetailsSb.ToString();
+
             // Durable row in the Build Queue "Needs Attention" section, keyed so a re-run for the same
-            // build updates in place rather than stacking. Clicking brings the app forward so Shane can
-            // inspect the Output log / test results, and clears the row like any other.
+            // build updates in place rather than stacking. Clicking pops the rich diagnostics window!
             string attentionKey = $"post-build-deploy:{r.QueueItemId}";
             Action onOpen = () =>
             {
@@ -5509,7 +5570,7 @@ namespace BuildConsole
                 BuildConsole.Services.ActivityLog.Log("testing.post-build-deploy",
                     $"Needs-Attention opened for build #{r.QueueItemId} (deploy {r.OldCommit}->{r.NewCommit}, tests {r.TestsPassed}/{r.TestsTotal}).");
             };
-            BuildQueuePanel.AddNeedsAttention(attentionKey, title, body, isFailure, onOpen);
+            BuildQueuePanel.AddNeedsAttention(attentionKey, title, body, isFailure, onOpen, deployDetails);
 
             Action onClick = () =>
             {

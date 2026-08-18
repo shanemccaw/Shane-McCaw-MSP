@@ -119,6 +119,7 @@ namespace BuildConsole.Controls
             public string Key = "";
             public string Title = "";
             public string Body = "";
+            public string Details = "";
             public bool IsFailure;
             public DateTime AtLocal;
             public Action? OnOpen;
@@ -2507,11 +2508,11 @@ namespace BuildConsole.Controls
         /// real address action (restore the Test Runner + pop the #975 review dialog); the row invokes it and
         /// then clears itself when Shane clicks it — the same thing the toast's own click does.
         /// </summary>
-        public void AddNeedsAttention(string key, string title, string body, bool isFailure, Action? onOpen)
+        public void AddNeedsAttention(string key, string title, string body, bool isFailure, Action? onOpen, string? details = null)
         {
             if (!Dispatcher.CheckAccess())
             {
-                Dispatcher.BeginInvoke(new Action(() => AddNeedsAttention(key, title, body, isFailure, onOpen)));
+                Dispatcher.BeginInvoke(new Action(() => AddNeedsAttention(key, title, body, isFailure, onOpen, details)));
                 return;
             }
 
@@ -2522,6 +2523,7 @@ namespace BuildConsole.Controls
                 Key = key,
                 Title = title,
                 Body = body,
+                Details = string.IsNullOrWhiteSpace(details) ? body : details,
                 IsFailure = isFailure,
                 AtLocal = DateTime.Now,
                 OnOpen = onOpen,
@@ -2552,16 +2554,22 @@ namespace BuildConsole.Controls
             RenderAttentionList();
         }
 
-        /// <summary>A row click addresses the item: invoke its open action (restore the Test Runner / pop the
-        /// #975 review dialog) and clear it from the section. Guards against the SelectionChanged that fires
-        /// while RenderAttentionList rebuilds the list (empty selection / non-item rows).</summary>
+        /// <summary>A row click pops the full diagnostic review window so Shane can see the exact failure details,
+        /// logs, and action buttons without prematurely clearing the item from the list.</summary>
         private void AttentionList_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (AttentionList.SelectedItem is not ListBoxItem { Tag: NeedsAttentionItem item }) return;
             AttentionList.SelectedIndex = -1; // reset so the same/next row can be re-selected later
-            try { item.OnOpen?.Invoke(); }
-            catch (Exception ex) { ActivityLog.Log(AttentionChannel, $"Open action for [{item.Key}] threw: {ex.Message}"); }
-            ClearNeedsAttention(item.Key);    // logs the "addressed" clear
+
+            var parentWin = Window.GetWindow(this);
+            var dlg = new NeedsAttentionDetailDialog(item.Title, item.Body, item.Details, item.IsFailure, item.AtLocal, item.OnOpen);
+            if (parentWin != null) dlg.Owner = parentWin;
+            dlg.ShowDialog();
+
+            if (dlg.DismissRequested)
+            {
+                ClearNeedsAttention(item.Key);
+            }
         }
 
         /// <summary>Rebuilds the Needs Attention list + tile badge/accent from <see cref="_attentionItems"/>.</summary>
@@ -2590,10 +2598,28 @@ namespace BuildConsole.Controls
         }
 
         /// <summary>One Needs Attention row — a failure (🔴) or screenshot-review (📷) glyph, the run title,
-        /// and a sub-line with the body + local time. Same single-column row shape as the To-Do/Completed
-        /// lists; Tag carries the item so a click can address + clear it.</summary>
+        /// body + local time, and a quick dismiss button. Clicking opens full diagnostics dialog.</summary>
         private ListBoxItem BuildAttentionRow(NeedsAttentionItem item)
         {
+            var dock = new DockPanel { LastChildFill = true, Margin = new Thickness(0, 2, 0, 2) };
+
+            var dismissBtn = new Button
+            {
+                Content = "✕",
+                FontSize = 10,
+                Padding = new Thickness(4, 1, 4, 1),
+                Margin = new Thickness(6, 0, 0, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+                ToolTip = "Dismiss from Needs Attention"
+            };
+            DockPanel.SetDock(dismissBtn, Dock.Right);
+            dismissBtn.Click += (s, e) =>
+            {
+                e.Handled = true;
+                ClearNeedsAttention(item.Key);
+            };
+            dock.Children.Add(dismissBtn);
+
             var panel = new StackPanel { Orientation = Orientation.Horizontal };
             panel.Children.Add(new TextBlock
             {
@@ -2620,7 +2646,9 @@ namespace BuildConsole.Controls
                 TextWrapping = TextWrapping.Wrap,
             });
             panel.Children.Add(textStack);
-            return new ListBoxItem { Content = panel, Tag = item, ToolTip = "Click to open the Test Runner / review and clear this item." };
+
+            dock.Children.Add(panel);
+            return new ListBoxItem { Content = dock, Tag = item, ToolTip = "Click to inspect failure diagnostics, logs, and options." };
         }
 
         /// <summary>Same "announce itself" pattern as UpdateToDoTileAppearance — a pending needs-attention
