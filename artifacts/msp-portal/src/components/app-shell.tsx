@@ -131,6 +131,10 @@ interface NavItem {
   label: string;
   href: string;
   roles?: MspRole[];
+  // Nested pillar items rendered indented under this item as a collapsible
+  // group (Git #1152 -- distinguishes the "M365 Health" rollup page from the
+  // "Health" pillar it previously sat flat next to under an identical label).
+  children?: NavItem[];
 }
 
 interface MspProfile {
@@ -544,48 +548,53 @@ const NAV_SECTIONS: NavSection[] = [
     label: "My Portal",
     items: [
       // M365 Health Suite — additive-for-now per Shane; reorganization into
-      // its own nav section is a deliberate, separate later step.
+      // its own nav section is a deliberate, separate later step. The 6
+      // pillars nest under the rollup page itself (Git #1152) so the "M365
+      // Health" label and the pillar formerly-Architecture "Health" label
+      // are never flat siblings that read as duplicates.
       {
         icon: Activity,
         label: "M365 Health",
         href: "/m365-health",
         roles: ["CustomerUser"],
-      },
-      {
-        icon: PILLAR_GLYPH.security,
-        label: "Security Intelligence",
-        href: "/security-overview",
-        roles: ["CustomerUser"],
-      },
-      {
-        icon: PILLAR_GLYPH.governance,
-        label: "Governance",
-        href: "/governance",
-        roles: ["CustomerUser"],
-      },
-      {
-        icon: PILLAR_GLYPH.compliance,
-        label: "Compliance",
-        href: "/compliance",
-        roles: ["CustomerUser"],
-      },
-      {
-        icon: PILLAR_GLYPH.adoption,
-        label: "Adoption",
-        href: "/adoption",
-        roles: ["CustomerUser"],
-      },
-      {
-        icon: Bot,
-        label: "Copilot",
-        href: "/copilot",
-        roles: ["CustomerUser"],
-      },
-      {
-        icon: PILLAR_GLYPH.health,
-        label: "Health",
-        href: "/architecture",
-        roles: ["CustomerUser"],
+        children: [
+          {
+            icon: PILLAR_GLYPH.security,
+            label: "Security Intelligence",
+            href: "/security-overview",
+            roles: ["CustomerUser"],
+          },
+          {
+            icon: PILLAR_GLYPH.governance,
+            label: "Governance",
+            href: "/governance",
+            roles: ["CustomerUser"],
+          },
+          {
+            icon: PILLAR_GLYPH.compliance,
+            label: "Compliance",
+            href: "/compliance",
+            roles: ["CustomerUser"],
+          },
+          {
+            icon: PILLAR_GLYPH.adoption,
+            label: "Adoption",
+            href: "/adoption",
+            roles: ["CustomerUser"],
+          },
+          {
+            icon: Bot,
+            label: "Copilot",
+            href: "/copilot",
+            roles: ["CustomerUser"],
+          },
+          {
+            icon: PILLAR_GLYPH.health,
+            label: "Health",
+            href: "/architecture",
+            roles: ["CustomerUser"],
+          },
+        ],
       },
       {
         icon: PILLAR_GLYPH.licensing,
@@ -888,6 +897,8 @@ function SidebarNavItem({
       : "text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
   ].join(" ");
 
+  const testId = `sidebar-nav-${item.href.replace(/^\//, "").replace(/\//g, "-")}`;
+
   // Marketplace opens as a real overlay dialog over the current page instead
   // of navigating away — intercept just this one item's click.
   if (item.href === "/marketplace") {
@@ -896,6 +907,7 @@ function SidebarNavItem({
         className={cls}
         title={collapsed ? item.label : undefined}
         onClick={() => openMarketplace()}
+        data-testid={testId}
       >
         <item.icon className="size-4 shrink-0" />
         {!collapsed && <span>{item.label}</span>}
@@ -905,11 +917,76 @@ function SidebarNavItem({
 
   return (
     <Link href={item.href}>
-      <button className={cls} title={collapsed ? item.label : undefined}>
+      <button className={cls} title={collapsed ? item.label : undefined} data-testid={testId}>
         <item.icon className="size-4 shrink-0" />
         {!collapsed && <span>{item.label}</span>}
       </button>
     </Link>
+  );
+}
+
+/**
+ * Renders a nav item with nested pillar children as a collapsible group
+ * (Git #1152). The parent row still links to its own page (e.g. "M365
+ * Health" -> /m365-health); the chevron is a separate sibling control, not
+ * nested inside the parent's own link/button.
+ *
+ * Collapsed (icon-only) sidebar has no room for indentation or labels, so
+ * grouping is dropped there and the parent + children render as a flat
+ * icon list, same as before this nesting existed.
+ */
+function SidebarNavGroup({
+  item,
+  collapsed,
+  visibleChildren,
+}: {
+  item: NavItem;
+  collapsed: boolean;
+  visibleChildren: NavItem[];
+}) {
+  const [open, setOpen] = useState(true);
+
+  if (collapsed) {
+    return (
+      <>
+        <SidebarNavItem item={item} collapsed={collapsed} />
+        {visibleChildren.map((child) => (
+          <SidebarNavItem key={child.href} item={child} collapsed={collapsed} />
+        ))}
+      </>
+    );
+  }
+
+  return (
+    <div>
+      <div className="flex items-center gap-0.5">
+        <div className="flex-1 min-w-0">
+          <SidebarNavItem item={item} collapsed={collapsed} />
+        </div>
+        {visibleChildren.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setOpen((o) => !o)}
+            className="shrink-0 p-1.5 rounded-md text-sidebar-foreground/40 hover:text-sidebar-foreground hover:bg-sidebar-accent/60 transition-colors"
+            aria-expanded={open}
+            aria-label={open ? `Collapse ${item.label} pillars` : `Expand ${item.label} pillars`}
+            data-testid="sidebar-m365-health-group-toggle"
+          >
+            <ChevronDown className={`size-3.5 transition-transform ${open ? "" : "-rotate-90"}`} />
+          </button>
+        )}
+      </div>
+      {open && visibleChildren.length > 0 && (
+        <div
+          className="ml-3 pl-2.5 border-l border-sidebar-border/60 space-y-0.5 mt-0.5"
+          data-testid="sidebar-m365-health-children"
+        >
+          {visibleChildren.map((child) => (
+            <SidebarNavItem key={child.href} item={child} collapsed={collapsed} />
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1916,9 +1993,18 @@ export function AppShell({ children, title, actions }: AppShellProps) {
                 </p>
               )}
               <div className="space-y-0.5">
-                {visibleItems.map((item) => (
-                  <SidebarNavItem key={item.href} item={item} collapsed={collapsed} />
-                ))}
+                {visibleItems.map((item) =>
+                  item.children && item.children.length > 0 ? (
+                    <SidebarNavGroup
+                      key={item.href}
+                      item={item}
+                      collapsed={collapsed}
+                      visibleChildren={item.children.filter(isVisible)}
+                    />
+                  ) : (
+                    <SidebarNavItem key={item.href} item={item} collapsed={collapsed} />
+                  ),
+                )}
               </div>
             </div>
           );

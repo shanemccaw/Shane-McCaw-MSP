@@ -1,0 +1,98 @@
+{
+  "issue": 1152,
+  "feature": "Left nav: distinguish \"M365 Health\" (the overall rollup page) from \"Health\" (the pillar, ex-Architecture) by nesting the 6 pillar items under an \"M365 Health\" collapsible group in app-shell.tsx, instead of both sitting flat with near-identical labels.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "PENDING",
+
+  "notes": [
+    "Selectors: every sidebar nav item now carries a stable data-testid derived from its href (`sidebar-nav-<href-without-slashes>`), e.g. `sidebar-nav-m365-health` for the parent and `sidebar-nav-architecture` for the pillar formerly labeled the same 'Health' -- the point of this fix is that these are no longer flat siblings sharing a near-identical label.",
+    "The group starts expanded by default; the toggle (`sidebar-m365-health-group-toggle`) collapses/expands the children wrapper (`sidebar-m365-health-children`).",
+    "Collapsed (icon-only) sidebar mode intentionally flattens the group back to a plain icon list (no room for indentation/labels there) -- not covered here since collapsed-sidebar toggling isn't itself part of this issue's scope."
+  ],
+
+  "uiSteps": [
+    {
+      "name": "goto the real login URL (msp-portal's outer WouterRouter has base=BASE_PATH='/portal').",
+      "action": "goto",
+      "target": "/portal/login"
+    },
+    { "action": "expect", "selector": "#email", "state": "visible" },
+    { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
+    { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
+    {
+      "name": "Primary login — CRITICAL: every downstream assertion needs a real authenticated CustomerUser session.",
+      "action": "click",
+      "selector": "[data-testid='login-submit']",
+      "critical": true,
+      "captureResponse": {
+        "urlPattern": "/api/auth/login",
+        "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true }
+      }
+    },
+
+    { "action": "goto", "target": "/portal/m365-health" },
+
+    {
+      "name": "the M365 Health parent nav item is visible and distinct from the pillar item below it",
+      "action": "expect",
+      "selector": "[data-testid='sidebar-nav-m365-health']",
+      "state": "visible",
+      "textContains": "M365 Health"
+    },
+    {
+      "name": "the group starts expanded — the Health pillar (ex-Architecture, /architecture) is visible nested underneath, with its own distinct testid from the M365 Health parent",
+      "action": "expect",
+      "selector": "[data-testid='sidebar-nav-architecture']",
+      "state": "visible",
+      "textContains": "Health"
+    },
+    {
+      "name": "the other 5 nested pillars are present in the children group too",
+      "action": "expect",
+      "selector": "[data-testid='sidebar-m365-health-children']",
+      "state": "visible",
+      "textContains": ["Security Intelligence", "Governance", "Compliance", "Adoption", "Copilot"]
+    },
+
+    {
+      "name": "collapse the group via its toggle",
+      "action": "click",
+      "selector": "[data-testid='sidebar-m365-health-group-toggle']"
+    },
+    {
+      "name": "children wrapper is now hidden — proves the toggle genuinely controls the DOM, not just a visual style",
+      "action": "expect",
+      "selector": "[data-testid='sidebar-m365-health-children']",
+      "state": "hidden"
+    },
+    {
+      "name": "the M365 Health parent link itself remains visible and still navigable while collapsed",
+      "action": "expect",
+      "selector": "[data-testid='sidebar-nav-m365-health']",
+      "state": "visible"
+    },
+
+    {
+      "name": "re-expand the group",
+      "action": "click",
+      "selector": "[data-testid='sidebar-m365-health-group-toggle']"
+    },
+    {
+      "name": "children wrapper is visible again",
+      "action": "expect",
+      "selector": "[data-testid='sidebar-m365-health-children']",
+      "state": "visible"
+    },
+
+    {
+      "name": "clicking the nested Health pillar link navigates to its own real route, distinct from the M365 Health rollup page",
+      "action": "click",
+      "selector": "[data-testid='sidebar-nav-architecture']"
+    },
+    {
+      "action": "expect",
+      "selector": "[data-testid='sidebar-nav-architecture']",
+      "state": "visible"
+    }
+  ]
+}
