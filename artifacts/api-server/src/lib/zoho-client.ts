@@ -255,14 +255,16 @@ export async function zohoPost(
   path: string,
   body: unknown,
   mspId?: number,
+  baseUrl?: string,
 ): Promise<Record<string, unknown>> {
-  return zohoFetch("POST", path, { body, mspId });
+  return zohoFetch("POST", path, { body, mspId, baseUrl });
 }
 
 export async function zohoPut(
   path: string,
   body: unknown,
   mspId?: number,
+  baseUrl?: string,
 ): Promise<Record<string, unknown>> {
-  return zohoFetch("PUT", path, { body, mspId });
+  return zohoFetch("PUT", path, { body, mspId, baseUrl });
 }

@@ -12,8 +12,11 @@
 // zoho_batch_drain (5 minutes). No delete nodes: Zoho is the system of
 // record and deletion stays a manual Zoho-side action.
 //
-// Endpoints NOT live-verified — no ZOHO credentials in this environment, same
-// caveat #83 shipped under.
+// #1162 (2026-08-18): found alongside Desk's identical bug in the same issue.
+// Never live-verified until now — this file assumed Projects sat on the same
+// www.zohoapis.com gateway CRM/Books use. It doesn't; Projects' real API root
+// is projectsapi.zoho.com/api/v3 (see ZOHO_PROJECTS_API_HOST in
+// zoho-projects-read.ts).
 
 import { zohoPost, zohoPut, ZohoApiError } from "./zoho-client.ts";
 import { registerZohoJobHandler } from "./zoho-batch-drain.ts";
@@ -22,6 +25,7 @@ import { logger } from "./logger";
 import {
   resolveZohoPortalId,
   zohoProjectsBasePath,
+  ZOHO_PROJECTS_API_HOST,
   listProjects,
   getProject,
   getTasklist,
@@ -90,7 +94,7 @@ export function sanitizeFields(fields: unknown): Record<string, unknown> {
 
 async function createProject(fields: Record<string, unknown>, mspId?: number): Promise<Record<string, unknown>> {
   const portalId = await resolveZohoPortalId(mspId);
-  const body = await zohoPost(`${zohoProjectsBasePath(portalId)}/projects/`, fields, mspId);
+  const body = await zohoPost(`${zohoProjectsBasePath(portalId)}/projects/`, fields, mspId, ZOHO_PROJECTS_API_HOST);
   const projects = body.projects;
   const rec = Array.isArray(projects) ? (projects[0] as Record<string, unknown> | undefined) : undefined;
   if (!rec || rec.id === undefined) throw new Error("Zoho Projects: project create returned no id");
@@ -99,13 +103,13 @@ async function createProject(fields: Record<string, unknown>, mspId?: number): P
 
 async function updateProject(projectId: string, fields: Record<string, unknown>, mspId?: number): Promise<Record<string, unknown>> {
   const portalId = await resolveZohoPortalId(mspId);
-  await zohoPut(`${zohoProjectsBasePath(portalId)}/projects/${encodeURIComponent(projectId)}/`, fields, mspId);
+  await zohoPut(`${zohoProjectsBasePath(portalId)}/projects/${encodeURIComponent(projectId)}/`, fields, mspId, ZOHO_PROJECTS_API_HOST);
   return { entity: "Project", action: "update", zohoId: projectId };
 }
 
 async function createTasklist(projectId: string, fields: Record<string, unknown>, mspId?: number): Promise<Record<string, unknown>> {
   const portalId = await resolveZohoPortalId(mspId);
-  const body = await zohoPost(`${zohoProjectsBasePath(portalId)}/projects/${encodeURIComponent(projectId)}/tasklists/`, fields, mspId);
+  const body = await zohoPost(`${zohoProjectsBasePath(portalId)}/projects/${encodeURIComponent(projectId)}/tasklists/`, fields, mspId, ZOHO_PROJECTS_API_HOST);
   const tasklists = body.tasklists;
   const rec = Array.isArray(tasklists) ? (tasklists[0] as Record<string, unknown> | undefined) : undefined;
   if (!rec || rec.id === undefined) throw new Error("Zoho Projects: tasklist create returned no id");
@@ -114,7 +118,7 @@ async function createTasklist(projectId: string, fields: Record<string, unknown>
 
 async function createTask(projectId: string, fields: Record<string, unknown>, mspId?: number): Promise<Record<string, unknown>> {
   const portalId = await resolveZohoPortalId(mspId);
-  const body = await zohoPost(`${zohoProjectsBasePath(portalId)}/projects/${encodeURIComponent(projectId)}/tasks/`, fields, mspId);
+  const body = await zohoPost(`${zohoProjectsBasePath(portalId)}/projects/${encodeURIComponent(projectId)}/tasks/`, fields, mspId, ZOHO_PROJECTS_API_HOST);
   const tasks = body.tasks;
   const rec = Array.isArray(tasks) ? (tasks[0] as Record<string, unknown> | undefined) : undefined;
   if (!rec || rec.id === undefined) throw new Error("Zoho Projects: task create returned no id");
@@ -123,13 +127,13 @@ async function createTask(projectId: string, fields: Record<string, unknown>, ms
 
 async function updateTask(projectId: string, taskId: string, fields: Record<string, unknown>, mspId?: number): Promise<Record<string, unknown>> {
   const portalId = await resolveZohoPortalId(mspId);
-  await zohoPut(`${zohoProjectsBasePath(portalId)}/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}/`, fields, mspId);
+  await zohoPut(`${zohoProjectsBasePath(portalId)}/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}/`, fields, mspId, ZOHO_PROJECTS_API_HOST);
   return { entity: "Task", action: "update", projectId, zohoId: taskId };
 }
 
 async function createMilestone(projectId: string, fields: Record<string, unknown>, mspId?: number): Promise<Record<string, unknown>> {
   const portalId = await resolveZohoPortalId(mspId);
-  const body = await zohoPost(`${zohoProjectsBasePath(portalId)}/projects/${encodeURIComponent(projectId)}/milestones/`, fields, mspId);
+  const body = await zohoPost(`${zohoProjectsBasePath(portalId)}/projects/${encodeURIComponent(projectId)}/milestones/`, fields, mspId, ZOHO_PROJECTS_API_HOST);
   const milestones = body.milestones;
   const rec = Array.isArray(milestones) ? (milestones[0] as Record<string, unknown> | undefined) : undefined;
   if (!rec || rec.id === undefined) throw new Error("Zoho Projects: milestone create returned no id");
@@ -138,7 +142,7 @@ async function createMilestone(projectId: string, fields: Record<string, unknown
 
 async function updateMilestone(projectId: string, milestoneId: string, fields: Record<string, unknown>, mspId?: number): Promise<Record<string, unknown>> {
   const portalId = await resolveZohoPortalId(mspId);
-  await zohoPut(`${zohoProjectsBasePath(portalId)}/projects/${encodeURIComponent(projectId)}/milestones/${encodeURIComponent(milestoneId)}/`, fields, mspId);
+  await zohoPut(`${zohoProjectsBasePath(portalId)}/projects/${encodeURIComponent(projectId)}/milestones/${encodeURIComponent(milestoneId)}/`, fields, mspId, ZOHO_PROJECTS_API_HOST);
   return { entity: "Milestone", action: "update", projectId, zohoId: milestoneId };
 }
 

@@ -22,6 +22,14 @@ import { logger } from "./logger";
 
 const log = logger.child({ channel: "integration.zoho" });
 
+// #1162: found alongside the Zoho Desk base-URL bug this same issue fixed.
+// Zoho Projects, like Desk, does NOT live on the unified www.zohoapis.com
+// gateway CRM/Books use -- its real API root is projectsapi.zoho.com/api/v3.
+// This file's own header still says "Endpoints NOT live-verified", same
+// caveat Desk's file carried before today -- never live-tested, so this
+// never surfaced until now.
+export const ZOHO_PROJECTS_API_HOST = process.env.ZOHO_PROJECTS_API_BASE_URL ?? "https://projectsapi.zoho.com";
+
 export type ZohoProjectsEnvelopeEntity = "Project" | "Tasklist" | "Task" | "Milestone";
 
 const ENVELOPE_KEY: Record<ZohoProjectsEnvelopeEntity, string> = {
@@ -37,7 +45,7 @@ interface ZohoPortalsResponse {
 
 /**
  * Returns the cached zoho_connection.zohoPortalId, or resolves it via
- * GET /projects/v3/portals/ (the account's accessible portals) and caches the
+ * GET /api/v3/portals/ (the account's accessible portals) and caches the
  * first one — this integration is single-portal-per-MSP by construction, same
  * single-tenant shape ZOHO_DEFAULT_MSP_ID already assumes for the connection
  * itself.
@@ -46,7 +54,7 @@ export async function resolveZohoPortalId(mspId: number = ZOHO_DEFAULT_MSP_ID): 
   const connection = await getZohoConnection(mspId);
   if (connection?.zohoPortalId) return connection.zohoPortalId;
 
-  const body = (await zohoGet("/projects/v3/portals/", undefined, mspId)) as ZohoPortalsResponse;
+  const body = (await zohoGet("/api/v3/portals/", undefined, mspId, undefined, ZOHO_PROJECTS_API_HOST)) as ZohoPortalsResponse;
   const first = Array.isArray(body.portals) ? body.portals[0] : undefined;
   if (!first || first.id === undefined || first.id === null) {
     throw new Error("Zoho Projects: no portal found for this connection — confirm Zoho Projects is enabled for the account");
@@ -62,9 +70,9 @@ export async function resolveZohoPortalId(mspId: number = ZOHO_DEFAULT_MSP_ID): 
   return portalId;
 }
 
-/** `/projects/v3/portal/{portal_id}` — the prefix every Zoho Projects call below builds on. */
+/** `/api/v3/portal/{portal_id}` — the prefix every Zoho Projects call below builds on. */
 export function zohoProjectsBasePath(portalId: string): string {
-  return `/projects/v3/portal/${encodeURIComponent(portalId)}`;
+  return `/api/v3/portal/${encodeURIComponent(portalId)}`;
 }
 
 function firstFromEnvelope(body: Record<string, unknown>, entity: ZohoProjectsEnvelopeEntity): Record<string, unknown> | null {
@@ -96,7 +104,7 @@ export interface ZohoProjectsListResult {
 export async function listProjects(params: { page?: number; perPage?: number; mspId?: number } = {}): Promise<ZohoProjectsListResult> {
   const portalId = await resolveZohoPortalId(params.mspId);
   const { index, range, page, perPage } = normalizeZohoProjectsPaging(params.page, params.perPage);
-  const body = await zohoGet(`${zohoProjectsBasePath(portalId)}/projects/`, { index, range }, params.mspId);
+  const body = await zohoGet(`${zohoProjectsBasePath(portalId)}/projects/`, { index, range }, params.mspId, undefined, ZOHO_PROJECTS_API_HOST);
   const records = listFromEnvelope(body, "Project");
   log.debug({ page, perPage, count: records.length }, "zoho-projects-read: listed projects");
   return { records, page, perPage };
@@ -104,7 +112,7 @@ export async function listProjects(params: { page?: number; perPage?: number; ms
 
 export async function getProject(projectId: string, mspId?: number): Promise<Record<string, unknown> | null> {
   const portalId = await resolveZohoPortalId(mspId);
-  const body = await zohoGet(`${zohoProjectsBasePath(portalId)}/projects/${encodeURIComponent(projectId)}/`, undefined, mspId);
+  const body = await zohoGet(`${zohoProjectsBasePath(portalId)}/projects/${encodeURIComponent(projectId)}/`, undefined, mspId, undefined, ZOHO_PROJECTS_API_HOST);
   return firstFromEnvelope(body, "Project");
 }
 
@@ -112,7 +120,7 @@ export async function getProject(projectId: string, mspId?: number): Promise<Rec
 
 export async function getTasklist(projectId: string, tasklistId: string, mspId?: number): Promise<Record<string, unknown> | null> {
   const portalId = await resolveZohoPortalId(mspId);
-  const body = await zohoGet(`${zohoProjectsBasePath(portalId)}/projects/${encodeURIComponent(projectId)}/tasklists/${encodeURIComponent(tasklistId)}/`, undefined, mspId);
+  const body = await zohoGet(`${zohoProjectsBasePath(portalId)}/projects/${encodeURIComponent(projectId)}/tasklists/${encodeURIComponent(tasklistId)}/`, undefined, mspId, undefined, ZOHO_PROJECTS_API_HOST);
   return firstFromEnvelope(body, "Tasklist");
 }
 
@@ -123,7 +131,7 @@ export async function listTasks(projectId: string, params: { page?: number; perP
   const { index, range, page, perPage } = normalizeZohoProjectsPaging(params.page, params.perPage);
   const query: Record<string, string | number | undefined> = { index, range };
   if (params.tasklistId) query.tasklist_id = params.tasklistId;
-  const body = await zohoGet(`${zohoProjectsBasePath(portalId)}/projects/${encodeURIComponent(projectId)}/tasks/`, query, params.mspId);
+  const body = await zohoGet(`${zohoProjectsBasePath(portalId)}/projects/${encodeURIComponent(projectId)}/tasks/`, query, params.mspId, undefined, ZOHO_PROJECTS_API_HOST);
   const records = listFromEnvelope(body, "Task");
   log.debug({ projectId, page, perPage, count: records.length }, "zoho-projects-read: listed tasks");
   return { records, page, perPage };
@@ -131,7 +139,7 @@ export async function listTasks(projectId: string, params: { page?: number; perP
 
 export async function getTask(projectId: string, taskId: string, mspId?: number): Promise<Record<string, unknown> | null> {
   const portalId = await resolveZohoPortalId(mspId);
-  const body = await zohoGet(`${zohoProjectsBasePath(portalId)}/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}/`, undefined, mspId);
+  const body = await zohoGet(`${zohoProjectsBasePath(portalId)}/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}/`, undefined, mspId, undefined, ZOHO_PROJECTS_API_HOST);
   return firstFromEnvelope(body, "Task");
 }
 
@@ -140,7 +148,7 @@ export async function getTask(projectId: string, taskId: string, mspId?: number)
 export async function listMilestones(projectId: string, params: { page?: number; perPage?: number; mspId?: number } = {}): Promise<ZohoProjectsListResult> {
   const portalId = await resolveZohoPortalId(params.mspId);
   const { index, range, page, perPage } = normalizeZohoProjectsPaging(params.page, params.perPage);
-  const body = await zohoGet(`${zohoProjectsBasePath(portalId)}/projects/${encodeURIComponent(projectId)}/milestones/`, { index, range }, params.mspId);
+  const body = await zohoGet(`${zohoProjectsBasePath(portalId)}/projects/${encodeURIComponent(projectId)}/milestones/`, { index, range }, params.mspId, undefined, ZOHO_PROJECTS_API_HOST);
   const records = listFromEnvelope(body, "Milestone");
   log.debug({ projectId, page, perPage, count: records.length }, "zoho-projects-read: listed milestones");
   return { records, page, perPage };
@@ -148,6 +156,6 @@ export async function listMilestones(projectId: string, params: { page?: number;
 
 export async function getMilestone(projectId: string, milestoneId: string, mspId?: number): Promise<Record<string, unknown> | null> {
   const portalId = await resolveZohoPortalId(mspId);
-  const body = await zohoGet(`${zohoProjectsBasePath(portalId)}/projects/${encodeURIComponent(projectId)}/milestones/${encodeURIComponent(milestoneId)}/`, undefined, mspId);
+  const body = await zohoGet(`${zohoProjectsBasePath(portalId)}/projects/${encodeURIComponent(projectId)}/milestones/${encodeURIComponent(milestoneId)}/`, undefined, mspId, undefined, ZOHO_PROJECTS_API_HOST);
   return firstFromEnvelope(body, "Milestone");
 }
