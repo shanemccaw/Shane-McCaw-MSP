@@ -1208,6 +1208,8 @@ namespace BuildConsole.Controls
 
             // Git #950 — biggest GithubNumber first (see SortForDisplay).
             foreach (var item in SortForDisplay(topLevel)) RenderOne(item, QueueTree);
+
+            UpdateCritterLoungeVisibility();
         }
 
         /// <summary>
@@ -1414,6 +1416,8 @@ namespace BuildConsole.Controls
 
                 QueueTree.Items.Add(new TreeViewItem { Header = panel, Tag = manifestPath });
             }
+
+            UpdateCritterLoungeVisibility();
         }
 
         /// <summary>
@@ -2316,6 +2320,7 @@ namespace BuildConsole.Controls
                 TileAttentionContent.Visibility = Visibility.Collapsed;
                 RefreshTestWatch();
             }
+            UpdateCritterLoungeVisibility();
         }
 
         public void RefreshTestWatch()
@@ -2434,6 +2439,7 @@ namespace BuildConsole.Controls
                 TileSessionsContent.Visibility = Visibility.Collapsed;
                 ApplyTitleMaxWidths(InFlightIssuesList, _inFlightTitleBlocks);
             }
+            UpdateCritterLoungeVisibility();
         }
 
         private void TileSessions_Click(object sender, RoutedEventArgs e)
@@ -2448,6 +2454,7 @@ namespace BuildConsole.Controls
                 TileInFlightContent.Visibility = Visibility.Collapsed;
                 ApplyTitleMaxWidths(ActiveSessionsList, _sessionsTitleBlocks);
             }
+            UpdateCritterLoungeVisibility();
         }
 
         private void TileToDo_Click(object sender, RoutedEventArgs e)
@@ -2464,6 +2471,7 @@ namespace BuildConsole.Controls
                 TileAttentionContent.Visibility = Visibility.Collapsed;
                 ApplyTitleMaxWidths(WaitingOnMeList, _toDoTitleBlocks);
             }
+            UpdateCritterLoungeVisibility();
         }
 
         private void TileCompleted_Click(object sender, RoutedEventArgs e)
@@ -2480,6 +2488,7 @@ namespace BuildConsole.Controls
                 TileAttentionContent.Visibility = Visibility.Collapsed;
                 ApplyTitleMaxWidths(CompletedIssuesList, _completedTitleBlocks);
             }
+            UpdateCritterLoungeVisibility();
         }
 
         // ── Needs Attention section (durable #54-toast fallback) ─────────────────
@@ -2498,6 +2507,28 @@ namespace BuildConsole.Controls
                 TileCompletedContent.Visibility = Visibility.Collapsed;
                 ApplyTitleMaxWidths(AttentionList, _attentionTitleBlocks);
             }
+            UpdateCritterLoungeVisibility();
+        }
+
+        /// <summary>
+        /// Automatically hides the bottom Critter Lounge animation when the Build Queue is full
+        /// (>= 3 items rendered, or any of the collapsible accordion sections are open) so it
+        /// never crowds the queue or causes unnecessary vertical scroll crunch.
+        /// </summary>
+        public void UpdateCritterLoungeVisibility()
+        {
+            if (CritterLounge == null) return;
+
+            int queueItemCount = QueueTree != null ? QueueTree.Items.Count : 0;
+            bool anyAccordionOpen = (TileTestWatch?.IsChecked == true) ||
+                                    (TileInFlight?.IsChecked == true) ||
+                                    (TileSessions?.IsChecked == true) ||
+                                    (TileToDo?.IsChecked == true) ||
+                                    (TileCompleted?.IsChecked == true) ||
+                                    (TileAttention?.IsChecked == true);
+
+            bool isFull = queueItemCount >= 3 || anyAccordionOpen;
+            CritterLounge.Visibility = isFull ? Visibility.Collapsed : Visibility.Visible;
         }
 
         /// <summary>
