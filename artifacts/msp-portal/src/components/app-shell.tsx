@@ -587,7 +587,7 @@ const NAV_SECTIONS: NavSection[] = [
       },
       {
         icon: Network,
-        label: "Architecture",
+        label: "Health",
         href: "/architecture",
         roles: ["CustomerUser"],
       },
