@@ -31,6 +31,49 @@
     <SolidColorBrush x:Key="MaroonBrush"    Color="#EBA0AC"/>
 
     <!-- ══════════════════════════════════════════════════════════════════
+         AMBIENCE — shared soft depth-shadows, muted accent glows, and
+         dark-to-dark gradient sheens for the whole-app polish pass.
+
+         Design constraints (Shane is ADHD, sensitive to bright/harsh light —
+         "Dark color. Bright hurts my eyes. Pinks are bad."): everything here
+         is deliberately LOW-intensity. Shadows are near-black at low opacity
+         (real layering, no glare). Glows are ShadowDepth=0 haloes in the
+         palette's already-muted COOL accents only — Blue #89B4FA, Green
+         #A6E3A1, Lavender #B4BEFE — at 0.20–0.34 opacity. No pinks, mauves,
+         reds, peaches or yellows are used as glow colours anywhere in the
+         persistent chrome. Gradients stay dark-to-dark (a whisper of top
+         light), never a bright-to-dark ramp. When in doubt: fainter.
+
+         These are Freezable resources shared by reference wherever a purely
+         static effect is wanted; interactive elements that animate a glow
+         in/out on hover/state use their own inline effect + storyboard so
+         the shared frozen instances are never mutated.
+         ══════════════════════════════════════════════════════════════════ -->
+    <!-- Depth shadows (near-black, drop below) -->
+    <DropShadowEffect x:Key="SoftRowShadow"   Color="#000000" BlurRadius="8"  ShadowDepth="1.5" Direction="270" Opacity="0.26"/>
+    <DropShadowEffect x:Key="SoftCardShadow"  Color="#000000" BlurRadius="16" ShadowDepth="3"   Direction="270" Opacity="0.34"/>
+
+    <!-- Muted accent glows (halo — ShadowDepth 0 — for genuinely active/important elements only) -->
+    <DropShadowEffect x:Key="BlueGlowFaint" Color="#89B4FA" BlurRadius="12" ShadowDepth="0" Opacity="0.22"/>
+    <DropShadowEffect x:Key="BlueGlowSoft"  Color="#89B4FA" BlurRadius="16" ShadowDepth="0" Opacity="0.32"/>
+    <DropShadowEffect x:Key="GreenGlowSoft" Color="#A6E3A1" BlurRadius="16" ShadowDepth="0" Opacity="0.30"/>
+
+    <!-- Per-instance ambient blue glow for CTA buttons — x:Shared="False" hands each
+         button its OWN effect instance so a hover storyboard animating one never
+         mutates the others. Rest state is a whisper (0.22); hover eases it warmer. -->
+    <DropShadowEffect x:Key="CtaAmbientGlow" x:Shared="False" Color="#89B4FA" BlurRadius="12" ShadowDepth="0" Opacity="0.22"/>
+
+    <!-- Dark-to-dark gradient sheens (a whisper of top light, no bright ramp) -->
+    <LinearGradientBrush x:Key="CardSheenBrush" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Color="#1F2030" Offset="0"/>
+        <GradientStop Color="#191926" Offset="1"/>
+    </LinearGradientBrush>
+    <LinearGradientBrush x:Key="FocusCardSheenBrush" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Color="#20263B" Offset="0"/>
+        <GradientStop Color="#1A1E2E" Offset="1"/>
+    </LinearGradientBrush>
+
+    <!-- ══════════════════════════════════════════════════════════════════
          WINDOW
          ══════════════════════════════════════════════════════════════════ -->
     <Style TargetType="{x:Type Window}">
@@ -361,15 +404,37 @@
         </Style.Triggers>
     </Style>
 
-    <!-- Primary / accent button -->
+    <!-- Primary / accent button — carries a whisper of blue glow at rest so a
+         real CTA reads as "lit", easing warmer/wider on hover rather than snapping. -->
     <Style x:Key="PrimaryButton" TargetType="{x:Type Button}" BasedOn="{StaticResource {x:Type Button}}">
         <Setter Property="Background"  Value="#3D62A0"/>
         <Setter Property="BorderBrush" Value="#4A74B8"/>
         <Setter Property="Foreground"  Value="#EFF1F5"/>
         <Setter Property="Padding"     Value="12,6"/>
+        <Setter Property="Effect"      Value="{StaticResource CtaAmbientGlow}"/>
         <Style.Triggers>
             <Trigger Property="IsMouseOver" Value="True">
                 <Setter Property="Background" Value="#4A74B8"/>
+                <Trigger.EnterActions>
+                    <BeginStoryboard>
+                        <Storyboard>
+                            <DoubleAnimation Storyboard.TargetProperty="(UIElement.Effect).(DropShadowEffect.Opacity)"
+                                             To="0.42" Duration="0:0:0.18"/>
+                            <DoubleAnimation Storyboard.TargetProperty="(UIElement.Effect).(DropShadowEffect.BlurRadius)"
+                                             To="18" Duration="0:0:0.18"/>
+                        </Storyboard>
+                    </BeginStoryboard>
+                </Trigger.EnterActions>
+                <Trigger.ExitActions>
+                    <BeginStoryboard>
+                        <Storyboard>
+                            <DoubleAnimation Storyboard.TargetProperty="(UIElement.Effect).(DropShadowEffect.Opacity)"
+                                             To="0.22" Duration="0:0:0.28"/>
+                            <DoubleAnimation Storyboard.TargetProperty="(UIElement.Effect).(DropShadowEffect.BlurRadius)"
+                                             To="12" Duration="0:0:0.28"/>
+                        </Storyboard>
+                    </BeginStoryboard>
+                </Trigger.ExitActions>
             </Trigger>
         </Style.Triggers>
     </Style>
@@ -482,6 +547,10 @@
                             BorderThickness="2,0,0,0"
                             Width="48"
                             Height="48">
+                        <!-- Soft blue aura on the active view's icon; eased in on select. -->
+                        <Border.Effect>
+                            <DropShadowEffect x:Name="ActiveGlow" Color="#89B4FA" BlurRadius="12" ShadowDepth="0" Opacity="0"/>
+                        </Border.Effect>
                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                     </Border>
                     <ControlTemplate.Triggers>
@@ -489,6 +558,24 @@
                             <Setter TargetName="Bd" Property="Background"  Value="{StaticResource Surface0Brush}"/>
                             <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource BlueBrush}"/>
                             <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+                            <Trigger.EnterActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="ActiveGlow"
+                                                         Storyboard.TargetProperty="Opacity"
+                                                         To="0.32" Duration="0:0:0.22"/>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.EnterActions>
+                            <Trigger.ExitActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="ActiveGlow"
+                                                         Storyboard.TargetProperty="Opacity"
+                                                         To="0" Duration="0:0:0.2"/>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.ExitActions>
                         </Trigger>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="Bd" Property="Background" Value="#15313244"/>
@@ -759,6 +846,11 @@
                             BorderThickness="0,2,0,0"
                             Padding="{TemplateBinding Padding}"
                             Height="{TemplateBinding Height}">
+                        <!-- Soft blue aura on the active tab; opacity is eased 0↔ on
+                             select so switching tabs glides instead of snapping. -->
+                        <Border.Effect>
+                            <DropShadowEffect x:Name="TabGlow" Color="#89B4FA" BlurRadius="14" ShadowDepth="0" Opacity="0"/>
+                        </Border.Effect>
                         <ContentPresenter ContentSource="Header"
                                           VerticalAlignment="Center"
                                           HorizontalAlignment="Center"/>
@@ -768,6 +860,24 @@
                             <Setter TargetName="Bd" Property="Background"  Value="{StaticResource BaseBrush}"/>
                             <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource BlueBrush}"/>
                             <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+                            <Trigger.EnterActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="TabGlow"
+                                                         Storyboard.TargetProperty="Opacity"
+                                                         To="0.4" Duration="0:0:0.25"/>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.EnterActions>
+                            <Trigger.ExitActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="TabGlow"
+                                                         Storyboard.TargetProperty="Opacity"
+                                                         To="0" Duration="0:0:0.2"/>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.ExitActions>
                         </Trigger>
                         <MultiTrigger>
                             <MultiTrigger.Conditions>

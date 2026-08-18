@@ -58,7 +58,8 @@
                         <Ellipse x:Name="QueueDot"
                                  Width="8" Height="8"
                                  Fill="{StaticResource BlueBrush}"
-                                 Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                 Margin="0,0,8,0" VerticalAlignment="Center"
+                                 Effect="{StaticResource BlueGlowFaint}"/>
                         <TextBlock Text="BUILD QUEUE"
                                    FontSize="11"
                                    FontWeight="SemiBold"

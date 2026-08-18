@@ -177,6 +177,43 @@ namespace BuildConsole
         private readonly Brush _pillSuccessTone;
         private bool _loaded;
 
+        // Whole-app polish pass — soft, low-intensity slot auras (Shane: bright hurts;
+        // no pink). A RUNNING slot gets a faint blue halo so a live build reads as
+        // "alive" (the running legend colour); a DONE slot gets a soft green halo that
+        // gently amplifies Shane's "green overlay around the completed one". Both are
+        // ShadowDepth=0 haloes at low opacity; Failed/Stale/Empty carry no glow at all
+        // so a red or stray aura never pulls the eye. Shared frozen instances — applied
+        // to many slots at once, never animated. See ApplySlotGlow.
+        private static readonly System.Windows.Media.Effects.DropShadowEffect _runningGlow = BuildGlow("#89B4FA", 12, 0.30);
+        private static readonly System.Windows.Media.Effects.DropShadowEffect _doneGlow    = BuildGlow("#34D399", 16, 0.32);
+
+        private static System.Windows.Media.Effects.DropShadowEffect BuildGlow(string hex, double blur, double opacity)
+        {
+            var fx = new System.Windows.Media.Effects.DropShadowEffect
+            {
+                Color = (Color)ColorConverter.ConvertFromString(hex),
+                BlurRadius = blur,
+                ShadowDepth = 0,
+                Opacity = opacity,
+            };
+            fx.Freeze();
+            return fx;
+        }
+
+        /// <summary>Applies the soft state-coloured aura to a slot's container from its current
+        /// <see cref="SlotState"/> — blue while Running, green when Done, none otherwise (so a
+        /// completed/failed/empty slot never keeps a stale glow). Idempotent; safe to call after
+        /// any state change.</summary>
+        private void ApplySlotGlow(BuildWatchSlot slot)
+        {
+            slot.Container.Effect = slot.State switch
+            {
+                SlotState.Running => _runningGlow,
+                SlotState.Done    => _doneGlow,
+                _                 => null,
+            };
+        }
+
         /// <summary>#1004 easter egg — during a longer-running quiet stretch, the activity line occasionally reads
         /// "Reticulating splines…" (Shane's nod to The Sims) instead of the plain "thinking…", plus a few sibling
         /// whimsies for variety. Weighted so the Sims classic is the one that surfaces most.</summary>
@@ -1099,6 +1136,15 @@ namespace BuildConsole
                     ApplyPillTone(slot, "Success", exitCode.HasValue ? $"DONE ✓ (exit {exitCode})" : "DONE ✓", null, pulsing: false);
                     slot.CompletedAtUtc ??= DateTime.UtcNow;
                     RemoveStatusLine(slot);
+                    // A build going green is a genuine achievement moment that had no
+                    // celebration before — reuse the existing single-critter chomp (the
+                    // gentlest tier), fired once per completion via the `changed` guard.
+                    // Null target → the animation places itself cleanly on the main window
+                    // rather than trying to map a slot on another monitor back onto it.
+                    if (changed)
+                    {
+                        try { IssueChompAnimation.Play(null, slot.Title); } catch { }
+                    }
                     break;
 
                 case SlotState.Failed:
@@ -1127,6 +1173,8 @@ namespace BuildConsole
                     RemoveStatusLine(slot);
                     break;
             }
+
+            ApplySlotGlow(slot);
 
             if (changed && newState is SlotState.Done or SlotState.Failed)
             {
@@ -1313,6 +1361,7 @@ namespace BuildConsole
             slot.EmptyText.Visibility = Visibility.Visible;
             slot.Container.BorderBrush = _emptyBorder;
             slot.Container.BorderThickness = new Thickness(1);
+            slot.Container.Effect = null; // a freed slot carries no aura
             ReflowSlotGrid(); // occupancy shrank — resize the grid to fit
         }
 
@@ -1572,6 +1621,7 @@ namespace BuildConsole
                 case InteractiveInputState.Working:
                     slot.Container.BorderBrush = _emptyBorder;
                     slot.Container.BorderThickness = new Thickness(1);
+                    slot.Container.Effect = _runningGlow; // actively working → blue aura
                     slot.Pane.ViewModel.PlaceholderText = "Working — type below to steer it mid-task; Shift+Enter for new line";
                     ApplyPillTone(slot, "Running", "RUNNING", "Working — type below to steer it mid-task; text goes straight to its stdin.", pulsing: false);
                     slot.StatusLine!.ActivityText = "working…";
@@ -1581,6 +1631,7 @@ namespace BuildConsole
                 case InteractiveInputState.WaitingForInput:
                     slot.Container.BorderBrush = _ringWarning;
                     slot.Container.BorderThickness = new Thickness(3);
+                    slot.Container.Effect = null; // calm while it waits — the warning border + pulsing pill carry attention
                     slot.Pane.ViewModel.PlaceholderText = "Claude is waiting on your input — reply here…";
                     ApplyPillTone(slot, "Warning", "✋ NEEDS INPUT", "This build finished its turn and is waiting on you — reply to continue, or it wraps up on its own shortly.", pulsing: true);
                     slot.StatusLine!.ActivityText = "waiting for your input…";
@@ -1590,6 +1641,7 @@ namespace BuildConsole
                 case InteractiveInputState.Stopped:
                     slot.Container.BorderBrush = _ringMuted;
                     slot.Container.BorderThickness = new Thickness(2);
+                    slot.Container.Effect = null; // paused → no aura
                     slot.Pane.ViewModel.PlaceholderText = "Stopped — send guidance or corrective instructions to resume…";
                     ApplyPillTone(slot, "Idle", "⏸ PAUSED", "Interrupted — Send corrective guidance to redirect it, or Stop again to hard-kill.", pulsing: false);
                     slot.StatusLine!.ActivityText = "stopped — send guidance to resume…";
@@ -1632,6 +1684,7 @@ namespace BuildConsole
             slot.Pane.ViewModel.PlaceholderText = "Working — continuation in progress…";
             slot.Container.BorderBrush = _emptyBorder;
             slot.Container.BorderThickness = new Thickness(1);
+            ApplySlotGlow(slot); // state is Running again → restore the blue aura (clears any stale green)
             ApplyPillTone(slot, "Running", "RESUMING…", "Launching continuation with your instructions…", pulsing: true);
             EnsureStatusLine(slot);
             slot.StatusLine!.ActivityText = "launching continuation…";

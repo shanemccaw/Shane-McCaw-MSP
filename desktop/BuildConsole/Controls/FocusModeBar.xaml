@@ -10,7 +10,8 @@
     <Border x:Name="RootBorder"
             Background="{StaticResource MantleBrush}"
             BorderBrush="{StaticResource Surface1Brush}"
-            BorderThickness="0,0,0,1">
+            BorderThickness="0,0,0,1"
+            Effect="{StaticResource SoftRowShadow}">
         <StackPanel>
             <!-- ===== main strip ===== -->
             <Grid Height="34" Margin="10,0">
@@ -44,6 +45,7 @@
                             VerticalAlignment="Center" Visibility="Collapsed">
                     <Border Background="{StaticResource Surface0Brush}" CornerRadius="4" Padding="8,2"
                             Cursor="Hand" MouseLeftButtonUp="ActiveTitle_Click"
+                            Effect="{StaticResource BlueGlowFaint}"
                             ToolTip="Open this milestone's detail tab">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock x:Name="ActiveTitle" FontWeight="SemiBold" FontSize="11.5"

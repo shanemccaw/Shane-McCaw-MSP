@@ -9,12 +9,15 @@
     <UserControl.Resources>
         <!-- ── Card and Interactive Styles ── -->
         <Style x:Key="HomeCard" TargetType="{x:Type Border}">
-            <Setter Property="Background" Value="{StaticResource MantleBrush}"/>
+            <!-- Dark-to-dark sheen + a soft near-black drop shadow give the cards real
+                 layering off the Base background without a single bright edge. -->
+            <Setter Property="Background" Value="{StaticResource CardSheenBrush}"/>
             <Setter Property="BorderBrush" Value="{StaticResource Surface0Brush}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="CornerRadius" Value="12"/>
             <Setter Property="Padding" Value="15"/>
             <Setter Property="Margin" Value="0,0,0,18"/>
+            <Setter Property="Effect" Value="{StaticResource SoftCardShadow}"/>
         </Style>
 
         <Style x:Key="HomeCardHeader" TargetType="{x:Type TextBlock}">
@@ -32,6 +35,7 @@
             <Setter Property="Padding" Value="10,8"/>
             <Setter Property="Margin" Value="0,0,0,6"/>
             <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Effect" Value="{StaticResource SoftRowShadow}"/>
             <Style.Triggers>
                 <Trigger Property="IsMouseOver" Value="True">
                     <Setter Property="Background" Value="{StaticResource Surface1Brush}"/>
@@ -54,12 +58,33 @@
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}"
                                 CornerRadius="8" Padding="{TemplateBinding Padding}">
+                            <Border.Effect>
+                                <DropShadowEffect x:Name="TileGlow" Color="#89B4FA" BlurRadius="12" ShadowDepth="0" Opacity="0"/>
+                            </Border.Effect>
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="Bd" Property="Background" Value="{StaticResource Surface1Brush}"/>
                                 <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource BlueBrush}"/>
+                                <Trigger.EnterActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="TileGlow"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             To="0.28" Duration="0:0:0.18"/>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.EnterActions>
+                                <Trigger.ExitActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="TileGlow"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             To="0" Duration="0:0:0.28"/>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.ExitActions>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -198,7 +223,8 @@
                             </Canvas>
 
                             <Border x:Name="FocusHeroCard" Style="{StaticResource HomeCard}" Margin="0"
-                                    BorderBrush="{StaticResource BlueBrush}" Background="#1E2337">
+                                    BorderBrush="{StaticResource BlueBrush}" Background="{StaticResource FocusCardSheenBrush}"
+                                    Effect="{StaticResource BlueGlowSoft}">
                                 <StackPanel>
                                     <Grid Margin="0,0,0,10">
                                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
@@ -580,7 +606,8 @@
                                     <Grid>
                                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                             <Ellipse x:Name="ClaudeStatusDot" Width="8" Height="8" Fill="{StaticResource GreenBrush}"
-                                                     Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                                     Margin="0,0,6,0" VerticalAlignment="Center"
+                                                     Effect="{StaticResource GreenGlowSoft}"/>
                                             <TextBlock Text="Claude Status:" FontSize="11" Foreground="{StaticResource Subtext0Brush}"
                                                        VerticalAlignment="Center" Margin="0,0,4,0"/>
                                             <TextBlock x:Name="ClaudeStatusLabel" Text="Operational" FontSize="11"
