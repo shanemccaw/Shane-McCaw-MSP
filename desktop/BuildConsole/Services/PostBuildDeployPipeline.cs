@@ -92,9 +92,8 @@ namespace BuildConsole.Services
     {
         private const string Channel = "testing.post-build-deploy";
 
-        // Match trigger-deploy-and-wait.ps1's defaults exactly: 300s deploy-flip timeout, 3s poll
-        // (the same cadence #805's own DispatcherTimer uses).
-        private const int DeployTimeoutSeconds = 300;
+        // 600s deploy-flip timeout (10 minutes) to absorb slow Replit compilation and Wi-Fi rate limits
+        private const int DeployTimeoutSeconds = 600;
         private const int PollIntervalSeconds = 3;
 
         private readonly string _repoRoot;
@@ -260,74 +259,91 @@ namespace BuildConsole.Services
             // an SSH `reset --hard origin/main`, #911's own `git pull --ff-only` is a harmless no-op and its
             // `kill 1` is what actually loads the commit. Once the SSH refactor adds a real detached
             // `kill 1` restart AND a startup-commit confirm, this whole block can move fully to SSH.
+            // ── [2/5] & [3/5] Deploy restart + confirm live under exclusive coordination lock
+            // Acquire the deploy lock so we NEVER restart the server while another build's tests are in flight.
             settings = BuildConsoleSettings.Load();
-            string newHash;
+            string newHash = "";
             string advNote = "";
             result.DeployTriggered = true;
 
-            if (settings.UseSshForDeploy && ReplitSshService.Instance.IsConfigured)
-            {
-                ActivityLog.Log(Channel, $"[2/5] SSH pre-pull: git fetch + reset --hard origin/main + build on {settings.SshHost} (RESTART + live-confirm still via #911/#805)…");
-                var sshRes = await ReplitSshService.Instance.DeployAsync(line =>
+            var deploySuccess = await TestQueueService.Instance.ExecuteDeployExclusiveAsync(
+                $"Build #{queueItemId} ({title})",
+                async () =>
                 {
-                    ActivityLog.Log(Channel, $"[SSH Deploy] {line}");
+                    if (settings.UseSshForDeploy && ReplitSshService.Instance.IsConfigured)
+                    {
+                        ActivityLog.Log(Channel, $"[2/5] SSH pre-pull: git fetch + reset --hard origin/main + build on {settings.SshHost} (RESTART + live-confirm still via #911/#805)…");
+                        var sshRes = await ReplitSshService.Instance.DeployAsync(line =>
+                        {
+                            ActivityLog.Log(Channel, $"[SSH Deploy] {line}");
+                        });
+
+                        if (!sshRes.Success)
+                        {
+                            result.Stage = "deploy-trigger-failed";
+                            result.Error = string.IsNullOrWhiteSpace(sshRes.Error) ? $"SSH pull+build failed with exit code {sshRes.ExitCode}" : sshRes.Error;
+                            ActivityLog.Log(Channel, $"[2/5] SSH pull+build FAILED — {result.Error}. Restart + tests skipped (never restart/test on a failed pull).");
+                            return false;
+                        }
+                        ActivityLog.Log(Channel, "[2/5] SSH pull+build OK — the pulled commit is on disk but NOT yet loaded (no restart happened over SSH); triggering the #911 restart so it actually goes live (its ff-only pull is a no-op after the SSH reset).");
+                    }
+
+                    // ── [2/5] Restart via #911 (git pull --ff-only + deferred/detached `kill 1`). Runs for BOTH
+                    //          the SSH-pre-pull path and the pure-HTTP path — this is the genuine restart that
+                    //          loads the pulled commit into a fresh process.
+                    ActivityLog.Log(Channel, $"[2/5] Deploy triggered: current live commit {Short(oldHash)}; POST /api/admin/deploy/build-complete (git pull --ff-only + kill 1 restart)…");
+                    try
+                    {
+                        BuildCompleteResult? resp = await _triggerDeployAsync();
+                        ActivityLog.Log(Channel, $"[2/5] build-complete RESPONSE received: {DescribeDeployResponse(resp)}");
+
+                        if (resp != null && !resp.Ok && !resp.Restarting)
+                        {
+                            result.Stage = "deploy-trigger-failed";
+                            result.Error = string.IsNullOrWhiteSpace(resp.Error)
+                                ? "build-complete reported failure with no restart scheduled"
+                                : resp.Error;
+                            ActivityLog.Log(Channel, $"[2/5] Deploy trigger FAILED — {result.Error}. No restart scheduled; aborting (tests skipped).");
+                            return false;
+                        }
+                        ActivityLog.Log(Channel, $"[2/5] Deploy accepted — restart scheduled.{(string.IsNullOrWhiteSpace(resp?.Note) ? "" : " " + resp!.Note)}");
+                    }
+                    catch (Exception ex)
+                    {
+                        ActivityLog.Log(Channel, $"[2/5] build-complete request did not return cleanly ({ex.Message}) — consistent with the server restarting. Proceeding to poll.");
+                    }
+
+                    // ── [3/5] Poll deploy-status until the live (server-STARTUP) commit hash flips (or provably
+                    //          contains our commit), or timeout. This #805 flip is the genuine restart proof —
+                    //          the only signal that confirms the new code is actually running, not just on disk.
+                    ActivityLog.Log(Channel, $"[3/5] Polling GET /api/internal/deploy-status every {PollIntervalSeconds}s until the commit changes from {Short(oldHash)} (timeout {DeployTimeoutSeconds}s)…");
+                    newHash = await PollUntilDeployedAsync(oldHash, expectedFull, expectedShort);
+                    result.DeployElapsedSeconds = sw.Elapsed.TotalSeconds;
+
+                    if (string.IsNullOrEmpty(newHash))
+                    {
+                        result.Stage = "deploy-not-confirmed";
+                        result.Error = $"deploy-status commit never changed from {Short(oldHash)} within {DeployTimeoutSeconds}s — either nothing new was pushed to origin/main to pull, or the restart did not complete";
+                        ActivityLog.Log(Channel, $"[3/5] Deploy NOT confirmed — {result.Error}. Tests skipped (never run against unconfirmed code).");
+                        return false;
+                    }
+
+                    result.NewCommit = newHash;
+                    result.DeployConfirmed = true;
+                    result.AdvancedToOwnCommit = VerifyAdvancedToOwnCommit(_repoRoot, expectedFull, expectedShort, newHash, out advNote);
+                    result.AdvancementNote = advNote;
+                    ActivityLog.Log(Channel, $"[3/5] Deploy CONFIRMED LIVE: {Short(oldHash)} -> {Short(newHash)} in {result.DeployElapsedSeconds:F0}s. advancedToOwnCommit={FormatBool(result.AdvancedToOwnCommit)} (expected {Short(expectedShort)}; {advNote}).");
+
+                    // Warmup check: ensure HTTP server is fully compiled and serving responses
+                    ActivityLog.Log(Channel, $"[3/5] Server startup confirmed on {Short(newHash)} — verifying full HTTP responsiveness before releasing deploy lock…");
+                    await WaitForServerWarmupAsync();
+                    return true;
                 });
 
-                if (!sshRes.Success)
-                {
-                    result.Stage = "deploy-trigger-failed";
-                    result.Error = string.IsNullOrWhiteSpace(sshRes.Error) ? $"SSH pull+build failed with exit code {sshRes.ExitCode}" : sshRes.Error;
-                    ActivityLog.Log(Channel, $"[2/5] SSH pull+build FAILED — {result.Error}. Restart + tests skipped (never restart/test on a failed pull).");
-                    return result;
-                }
-                ActivityLog.Log(Channel, "[2/5] SSH pull+build OK — the pulled commit is on disk but NOT yet loaded (no restart happened over SSH); triggering the #911 restart so it actually goes live (its ff-only pull is a no-op after the SSH reset).");
-            }
-
-            // ── [2/5] Restart via #911 (git pull --ff-only + deferred/detached `kill 1`). Runs for BOTH
-            //          the SSH-pre-pull path and the pure-HTTP path — this is the genuine restart that
-            //          loads the pulled commit into a fresh process.
-            ActivityLog.Log(Channel, $"[2/5] Deploy triggered: current live commit {Short(oldHash)}; POST /api/admin/deploy/build-complete (git pull --ff-only + kill 1 restart)…");
-            try
+            if (!deploySuccess)
             {
-                BuildCompleteResult? resp = await _triggerDeployAsync();
-                ActivityLog.Log(Channel, $"[2/5] build-complete RESPONSE received: {DescribeDeployResponse(resp)}");
-
-                if (resp != null && !resp.Ok && !resp.Restarting)
-                {
-                    result.Stage = "deploy-trigger-failed";
-                    result.Error = string.IsNullOrWhiteSpace(resp.Error)
-                        ? "build-complete reported failure with no restart scheduled"
-                        : resp.Error;
-                    ActivityLog.Log(Channel, $"[2/5] Deploy trigger FAILED — {result.Error}. No restart scheduled; aborting (tests skipped).");
-                    return result;
-                }
-                ActivityLog.Log(Channel, $"[2/5] Deploy accepted — restart scheduled.{(string.IsNullOrWhiteSpace(resp?.Note) ? "" : " " + resp!.Note)}");
-            }
-            catch (Exception ex)
-            {
-                ActivityLog.Log(Channel, $"[2/5] build-complete request did not return cleanly ({ex.Message}) — consistent with the server restarting. Proceeding to poll.");
-            }
-
-            // ── [3/5] Poll deploy-status until the live (server-STARTUP) commit hash flips (or provably
-            //          contains our commit), or timeout. This #805 flip is the genuine restart proof —
-            //          the only signal that confirms the new code is actually running, not just on disk.
-            ActivityLog.Log(Channel, $"[3/5] Polling GET /api/internal/deploy-status every {PollIntervalSeconds}s until the commit changes from {Short(oldHash)} (timeout {DeployTimeoutSeconds}s)…");
-            newHash = await PollUntilDeployedAsync(oldHash, expectedFull, expectedShort);
-            result.DeployElapsedSeconds = sw.Elapsed.TotalSeconds;
-
-            if (string.IsNullOrEmpty(newHash))
-            {
-                result.Stage = "deploy-not-confirmed";
-                result.Error = $"deploy-status commit never changed from {Short(oldHash)} within {DeployTimeoutSeconds}s — either nothing new was pushed to origin/main to pull, or the restart did not complete";
-                ActivityLog.Log(Channel, $"[3/5] Deploy NOT confirmed — {result.Error}. Tests skipped (never run against unconfirmed code).");
                 return result;
             }
-
-            result.NewCommit = newHash;
-            result.DeployConfirmed = true;
-            result.AdvancedToOwnCommit = VerifyAdvancedToOwnCommit(_repoRoot, expectedFull, expectedShort, newHash, out advNote);
-            result.AdvancementNote = advNote;
-            ActivityLog.Log(Channel, $"[3/5] Deploy CONFIRMED LIVE: {Short(oldHash)} -> {Short(newHash)} in {result.DeployElapsedSeconds:F0}s. advancedToOwnCommit={FormatBool(result.AdvancedToOwnCommit)} (expected {Short(expectedShort)}; {advNote}).");
 
             // Gate: the live commit changed (a real restart happened), but if we can PROVE
             // it does not yet contain this build's own commit (server is behind it — the
@@ -358,7 +374,10 @@ namespace BuildConsole.Services
             List<ManifestRunResult> runs;
             try
             {
-                runs = await _runTestsAsync(githubNumber);
+                runs = await TestQueueService.Instance.EnqueueAndRunAsync(
+                    $"Build #{queueItemId} Scoped Tests",
+                    "post-build-deploy",
+                    () => _runTestsAsync(githubNumber));
             }
             catch (Exception ex)
             {
@@ -420,6 +439,31 @@ namespace BuildConsole.Services
                 ActivityLog.Log(Channel, $"   … still {Short(current)} (unchanged).");
             }
             return "";
+        }
+
+        private async Task WaitForServerWarmupAsync(int maxWarmupSeconds = 60)
+        {
+            var deadline = DateTime.UtcNow.AddSeconds(maxWarmupSeconds);
+            int attempt = 0;
+            while (DateTime.UtcNow < deadline)
+            {
+                attempt++;
+                try
+                {
+                    var status = await _getDeployStatusAsync();
+                    if (status != null && !string.IsNullOrEmpty(status.CommitHash))
+                    {
+                        ActivityLog.Log(Channel, $"[3/5] Server responded healthy and ready on attempt #{attempt}.");
+                        return;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    ActivityLog.Log(Channel, $"   … waiting for server warmup ({ex.Message})");
+                }
+                await Task.Delay(2000);
+            }
+            ActivityLog.Log(Channel, $"[3/5] Server warmup check finished.");
         }
 
         /// <summary>Does the live commit demonstrably include this build's own commit — either it IS our

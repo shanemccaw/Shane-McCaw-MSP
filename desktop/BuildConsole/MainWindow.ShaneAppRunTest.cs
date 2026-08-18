@@ -117,44 +117,47 @@ namespace BuildConsole
                 // headless (no blocking device-code / screenshot-review modals). This flag is
                 // only ever touched on the UI thread (here and in TestTriggerTickAsync), and
                 // this check-and-set runs before any await, so it can't race that poll.
-                if (_testTriggerBusy)
-                {
-                    BuildConsole.Services.ActivityLog.Log(ch,
-                        $"runTest: a test run is already in progress — refusing concurrent run of '{fileArg}'. Retry shortly.");
-                    WriteShaneAppRunTestResult(req, fileArg, ok: false, error: "a test run is already in progress — retry shortly", manifestPath: manifestPath, result: null);
-                    return;
-                }
-
                 var stream = BuildConsole.Services.ShaneAppStreamService.Instance;
                 stream.BeginRun($"Web Test: #{manifest.Issue} {manifest.Feature}", $"File: {fileArg}, Source: {src}");
                 stream.AppendLine($"[TEST] Manifest resolved: {manifestPath}", BuildConsole.Services.ShaneAppLogLevel.Test);
                 int totalSteps = manifest.ApiTests.Count + manifest.GraphTests.Count + manifest.PostGraphApiTests.Count + manifest.ZohoTests.Count + manifest.UiSteps.Count + manifest.PowerShellVerify.Count;
                 stream.AppendLine($"[TEST] Issue #{manifest.Issue} — {manifest.Feature} (Total steps: {totalSteps}, UI: {manifest.UiSteps.Count}, PowerShell: {manifest.PowerShellVerify.Count})", BuildConsole.Services.ShaneAppLogLevel.Test);
 
-                _testTriggerBusy = true;
                 var sw = System.Diagnostics.Stopwatch.StartNew();
                 try
                 {
-                    BuildConsole.Services.ActivityLog.Log(ch,
-                        $"runTest running manifest #{manifest.Issue} ({manifest.Feature}) from {manifestPath} (src='{src}')…");
+                    await BuildConsole.Services.TestQueueService.Instance.EnqueueAndRunAsync(
+                        $"{fileArg} (#{manifest.Issue})",
+                        src,
+                        async () =>
+                        {
+                            _testTriggerBusy = true;
+                            try
+                            {
+                                BuildConsole.Services.ActivityLog.Log(ch,
+                                    $"runTest running manifest #{manifest.Issue} ({manifest.Feature}) from {manifestPath} (src='{src}')…");
 
-                    var result = await RunManifestAsync(manifest, isRegression: false);
+                                var result = await RunManifestAsync(manifest, isRegression: false);
 
-                    int total = result.Steps.Count;
-                    int passed = result.Steps.Count(s => s.Passed);
-                    // A step-ful run is "ok" only when every step passed. A step-less manifest
-                    // genuinely ran with nothing to assert — report ok, but leave the counts
-                    // at zero so the caller can tell it asserted nothing.
-                    bool ok = total == 0 || passed == total;
-                    string? error = total == 0
-                        ? null
-                        : (passed == total ? null : $"{total - passed} of {total} step(s) failed");
+                                int total = result.Steps.Count;
+                                int passed = result.Steps.Count(s => s.Passed);
+                                bool ok = total == 0 || passed == total;
+                                string? error = total == 0
+                                    ? null
+                                    : (passed == total ? null : $"{total - passed} of {total} step(s) failed");
 
-                    WriteShaneAppRunTestResult(req, fileArg, ok, error, manifestPath, result);
-                    BuildConsole.Services.ActivityLog.Log(ch,
-                        $"runTest done in {sw.ElapsedMilliseconds}ms: {passed}/{total} step(s) passed. Result -> {ResolveRunTestResultPath(req, fileArg!)}");
+                                WriteShaneAppRunTestResult(req, fileArg, ok, error, manifestPath, result);
+                                BuildConsole.Services.ActivityLog.Log(ch,
+                                    $"runTest done in {sw.ElapsedMilliseconds}ms: {passed}/{total} step(s) passed. Result -> {ResolveRunTestResultPath(req, fileArg!)}");
 
-                    stream.EndRun(ok, $"{passed}/{total} steps passed in {sw.ElapsedMilliseconds}ms");
+                                stream.EndRun(ok, $"{passed}/{total} steps passed in {sw.ElapsedMilliseconds}ms");
+                                return result;
+                            }
+                            finally
+                            {
+                                _testTriggerBusy = false;
+                            }
+                        });
                 }
                 catch (Exception ex)
                 {
@@ -162,10 +165,6 @@ namespace BuildConsole
                     BuildConsole.Services.ActivityLog.Log(ch, $"runTest FAILED after {sw.ElapsedMilliseconds}ms: {ex.Message}");
                     stream.AppendLine($"[TEST ERROR] {ex.Message}", BuildConsole.Services.ShaneAppLogLevel.Error);
                     stream.EndRun(false, ex.Message);
-                }
-                finally
-                {
-                    _testTriggerBusy = false;
                 }
             }
             catch (Exception ex)

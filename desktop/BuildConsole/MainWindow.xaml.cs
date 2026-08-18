@@ -226,6 +226,11 @@ namespace BuildConsole
         {
             InitializeComponent();
 
+            // Set dark background on XAML background webviews so they never flash white
+            ClaudeWebView.DefaultBackgroundColor = System.Drawing.Color.FromArgb(255, 24, 24, 37);
+            ReplitWatcherWebView.DefaultBackgroundColor = System.Drawing.Color.FromArgb(255, 24, 24, 37);
+            UsageMeterWebView.DefaultBackgroundColor = System.Drawing.Color.FromArgb(255, 24, 24, 37);
+
             // Build completion sound mute toggle — reflect the persisted state
             // (%AppData%\BuildConsole\settings.json) in the menu checkmark on launch.
             MuteCompletionSoundMenuItem.IsChecked = BuildConsole.Services.BuildConsoleSettings.Load().BuildCompleteSoundMuted;
@@ -1330,7 +1335,11 @@ namespace BuildConsole
         // does EnsureTestRunnerWindow/Clear/SetSteps/BeginRun itself), not a recording-only playback.
         private void LeftSidebar_PlayTestRequested(object? sender, BuildConsole.Services.TestManifest manifest)
         {
-            _ = RunManifestAsync(manifest, isRegression: false);
+            _ = BuildConsole.Services.TestQueueService.Instance.EnqueueAndRunAsync(
+                $"{manifest.Feature} (#{manifest.Issue})",
+                "sidebar-play",
+                () => RunManifestAsync(manifest, isRegression: false)
+            );
         }
 
         // "🔄 Retry" in TestRunnerWindow's header — mirrors LeftSidebar_PlayTestRequested exactly, just
@@ -1338,7 +1347,11 @@ namespace BuildConsole
         // can re-run a failed manifest without re-selecting it.
         private void TestRunnerWindow_RetryRequested(object? sender, BuildConsole.Services.TestManifest manifest)
         {
-            _ = RunManifestAsync(manifest, isRegression: false);
+            _ = BuildConsole.Services.TestQueueService.Instance.EnqueueAndRunAsync(
+                $"{manifest.Feature} (#{manifest.Issue})",
+                "test-runner-retry",
+                () => RunManifestAsync(manifest, isRegression: false)
+            );
         }
 
         private void Wv_WebMessageReceived(object? sender, Microsoft.Web.WebView2.Core.CoreWebView2WebMessageReceivedEventArgs e)
@@ -1573,8 +1586,11 @@ namespace BuildConsole
             headerPanel.Children.Add(titleBlock);
             headerPanel.Children.Add(closeBtn);
 
-            // WebView2 content
-            var wv = new Microsoft.Web.WebView2.Wpf.WebView2();
+            // WebView2 content with dark default background
+            var wv = new Microsoft.Web.WebView2.Wpf.WebView2
+            {
+                DefaultBackgroundColor = System.Drawing.Color.FromArgb(255, 24, 24, 37)
+            };
             wv.NavigationStarting  += WebView_NavigationStarting;
             wv.NavigationCompleted += WebView_NavigationCompleted;
             wv.SourceChanged       += WebView_SourceChanged;
@@ -1811,7 +1827,10 @@ namespace BuildConsole
                 urlBox.Text = wv.Source?.ToString() ?? string.Empty;
             };
 
-            var webContainer = new Grid();
+            var webContainer = new Grid
+            {
+                Background = (Brush)FindResource("BaseBrush")
+            };
             webContainer.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             webContainer.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
 
@@ -1851,7 +1870,10 @@ namespace BuildConsole
         /// </summary>
         public Microsoft.Web.WebView2.Wpf.WebView2 BuildChatWebView(BuildConsole.Services.BoardChat chat)
         {
-            var wv = new Microsoft.Web.WebView2.Wpf.WebView2();
+            var wv = new Microsoft.Web.WebView2.Wpf.WebView2
+            {
+                DefaultBackgroundColor = System.Drawing.Color.FromArgb(255, 24, 24, 37)
+            };
             wv.NavigationStarting  += WebView_NavigationStarting;
             wv.NavigationCompleted += WebView_NavigationCompleted;
             wv.SourceChanged       += WebView_SourceChanged;
@@ -3828,7 +3850,10 @@ namespace BuildConsole
             string userDataDir = Path.Combine(Path.GetTempPath(), "BuildConsole_WebView2");
             Directory.CreateDirectory(userDataDir);
             BuildConsole.Services.ActivityLog.Log("startup", $"Creating shared WebView2 environment ({userDataDir})…");
-            var env = await Microsoft.Web.WebView2.Core.CoreWebView2Environment.CreateAsync(null, userDataDir);
+            var options = new Microsoft.Web.WebView2.Core.CoreWebView2EnvironmentOptions(
+                additionalBrowserArguments: "--default-background-color=181825 --force-dark-mode"
+            );
+            var env = await Microsoft.Web.WebView2.Core.CoreWebView2Environment.CreateAsync(null, userDataDir, options);
             BuildConsole.Services.ActivityLog.Log("startup", "Shared WebView2 environment ready.");
             return env;
         }
@@ -3847,12 +3872,16 @@ namespace BuildConsole
         {
             try
             {
+                // Never flash bright white during initialization / loading
+                wv.DefaultBackgroundColor = System.Drawing.Color.FromArgb(255, 24, 24, 37);
+
                 if (wv.CoreWebView2 != null) return true;
 
                 var env = await GetSharedWebView2EnvironmentAsync();
                 await wv.EnsureCoreWebView2Async(env);
                 if (wv.CoreWebView2 != null)
                 {
+                    wv.DefaultBackgroundColor = System.Drawing.Color.FromArgb(255, 24, 24, 37);
                     wv.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true;
                     // Git #830 — Shane: "Is there a way to make push
                     // notifications from Claude.ai work in this WebView2
@@ -3865,6 +3894,12 @@ namespace BuildConsole
                     // works, same as a user clicking "Allow" once.
                     wv.CoreWebView2.PermissionRequested -= WebView_PermissionRequested;
                     wv.CoreWebView2.PermissionRequested += WebView_PermissionRequested;
+
+                    // Immediately enforce dark background on every document navigation so pages don't flash white before CSS loads
+                    await wv.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(
+                        "(() => { try { const setDark = () => { if (document.documentElement && !document.documentElement.style.backgroundColor) { document.documentElement.style.backgroundColor = '#181825'; } if (document.body && !document.body.style.backgroundColor) { document.body.style.backgroundColor = '#181825'; } }; setDark(); document.addEventListener('DOMContentLoaded', setDark); } catch (e) {} })();"
+                    );
+
                     return true;
                 }
             }
@@ -4769,12 +4804,20 @@ namespace BuildConsole
                 ToastEngine.Warning("Run Tests", "No manifest loaded — use Load Manifest in the Automation sidebar first.");
                 return;
             }
-            _ = RunManifestAsync(_loadedManifest, isRegression: false);
+            _ = BuildConsole.Services.TestQueueService.Instance.EnqueueAndRunAsync(
+                $"{_loadedManifest.Feature} (#{_loadedManifest.Issue})",
+                "menu-current-issue",
+                () => RunManifestAsync(_loadedManifest, isRegression: false)
+            );
         }
 
         private async void RunRegressionSuite_Click(object sender, RoutedEventArgs e)
         {
-            await RunRegressionSuiteCollectAsync();
+            await BuildConsole.Services.TestQueueService.Instance.EnqueueAndRunAsync(
+                "Regression Suite Sweep",
+                "menu-regression-suite",
+                () => RunRegressionSuiteCollectAsync()
+            );
         }
 
         // Git #967 (Epic #803) — the full-suite sweep, factored out of the menu handler so the
@@ -5018,6 +5061,10 @@ namespace BuildConsole
             }
 
             var config = BuildConsole.Services.BuildTrackerConfig.Load();
+            string targetBaseUrl = string.IsNullOrWhiteSpace(manifest.BaseUrl) ? config.ApiBaseUrl : manifest.BaseUrl;
+            targetBaseUrl = vars.Resolve(BuildConsole.Services.HttpTestExecutor.ResolvePlaceholders(targetBaseUrl, config));
+            await EnsureServerReadyWithProbeAsync(targetBaseUrl, "testing.manifest-runner", maxWaitSeconds: 90);
+
             var apiResults = await BuildConsole.Services.HttpTestExecutor.RunAsync(manifest, config, vars);
             runResult.AddRange(apiResults);
 
@@ -5355,6 +5402,38 @@ namespace BuildConsole
             ToastEngine.Show(title, body, hasFailure ? ToastKind.Error : ToastKind.Warning, duration: null, onClick: onClick);
         }
 
+        private static async System.Threading.Tasks.Task<bool> EnsureServerReadyWithProbeAsync(string baseUrl, string channel, int maxWaitSeconds = 90)
+        {
+            if (string.IsNullOrWhiteSpace(baseUrl)) return true;
+            string probeUrl = baseUrl.TrimEnd('/') + "/api/internal/deploy-status";
+            var deadline = DateTime.UtcNow.AddSeconds(maxWaitSeconds);
+            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(8) };
+
+            int attempt = 0;
+            while (DateTime.UtcNow < deadline)
+            {
+                attempt++;
+                try
+                {
+                    var resp = await client.GetAsync(probeUrl);
+                    if (resp.IsSuccessStatusCode)
+                    {
+                        BuildConsole.Services.ActivityLog.Log(channel, $"[Readiness Probe] Server ready on attempt #{attempt} (HTTP {(int)resp.StatusCode} OK): {baseUrl}");
+                        return true;
+                    }
+                    BuildConsole.Services.ActivityLog.Log(channel, $"[Readiness Probe] Attempt #{attempt} returned HTTP {(int)resp.StatusCode} (waiting for Replit compile / restart)…");
+                }
+                catch (Exception ex)
+                {
+                    BuildConsole.Services.ActivityLog.Log(channel, $"[Readiness Probe] Attempt #{attempt}: {ex.Message} (waiting for Replit startup / Wi-Fi connection)…");
+                }
+
+                await System.Threading.Tasks.Task.Delay(2500);
+            }
+            BuildConsole.Services.ActivityLog.Log(channel, $"[Readiness Probe] Timed out after {maxWaitSeconds}s — proceeding with manifest steps.");
+            return false;
+        }
+
         /// <summary>Epic #803 — surfaces the auto deploy+verify+test pipeline's end-to-end outcome
         /// through the SAME notification mechanisms a manifest run uses (#24 ToastEngine + the Build
         /// Queue "Needs Attention" section, #54) rather than letting it complete silently. A fully
@@ -5513,7 +5592,11 @@ namespace BuildConsole
 
                 BuildConsole.Services.ActivityLog.Log("testing.remote-trigger",
                     $"Running manifest #{manifest.Issue} ({manifest.Feature}) for remote test-run {runId}…");
-                var result = await RunManifestAsync(manifest, isRegression: false);
+                var result = await BuildConsole.Services.TestQueueService.Instance.EnqueueAndRunAsync(
+                    $"{manifest.Feature} (#{manifest.Issue})",
+                    $"remote-run-{runId}",
+                    () => RunManifestAsync(manifest, isRegression: false)
+                );
 
                 // Serialize with the SAME options WriteToFile uses (default PascalCase,
                 // WriteIndented) so what Claude Code reads back over HTTP is identical in

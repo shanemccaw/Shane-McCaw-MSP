@@ -205,20 +205,20 @@ namespace BuildConsole.Services
         private const int CaptureResponseTimeoutMs = 20000;
         private const int PostNavigationSettleMs = 2000;
         private const int PostStepSettleMs = 1200;
-        private const int NavigationTimeoutMs = 45000;
+        private const int NavigationTimeoutMs = 90000;
         /// <summary>Post-capture hang fix (Epic #803) — a hard ceiling on the best-effort #966/#977 WebView2
         /// screenshot capture. CoreWebView2.CapturePreviewAsync never completes when the control isn't in a
         /// renderable/composited state (a run triggered while BuildConsole is minimized/occluded/on a locked
         /// session), and it is the only await left in a step's post-capture path once the captureResponse wait
         /// has already timed out — so without this guard one un-renderable screenshot deadlocks the entire run
         /// forever (the try/catch around it cannot rescue a Task that never faults). Same
-        /// Task.WhenAny(work, Task.Delay(timeout)) shape navigation (45s) and captureResponse (20s) already use.</summary>
-        private const int ScreenshotTimeoutMs = 12000;
+        /// Task.WhenAny(work, Task.Delay(timeout)) shape navigation (90s) and captureResponse (20s) already use.</summary>
+        private const int ScreenshotTimeoutMs = 15000;
         /// <summary>Full-page screenshot support — bounds the JS scrollHeight query CaptureScreenshotAsync
         /// runs before every capture. Same hang class as ScreenshotTimeoutMs (ExecuteScriptAsync can stall
         /// when the control isn't in a renderable state) — guarded so a stuck height query degrades to a
         /// current-size capture instead of stalling the run.</summary>
-        private const int FullPageHeightQueryTimeoutMs = 5000;
+        private const int FullPageHeightQueryTimeoutMs = 8000;
         /// <summary>Full-page screenshot support — how long to let the page settle (reflow/repaint) after
         /// resizing the WebView2 control to the full scrollHeight and before CapturePreviewAsync runs, so
         /// the capture doesn't land mid-reflow and show a partially-laid-out page.</summary>
@@ -228,14 +228,14 @@ namespace BuildConsole.Services
         /// can stall indefinitely on either await (same hang class as the #803 screenshot/captureResponse cases),
         /// and once the captureResponse wait has resolved the body read is the last unguarded await that could
         /// deadlock a run — a never-completing Task never faults, so the method's try/catch cannot rescue it.
-        /// Same Task.WhenAny(work, Task.Delay(timeout)) shape captureResponse (20s)/navigation (45s)/screenshot (12s)
+        /// Same Task.WhenAny(work, Task.Delay(timeout)) shape captureResponse (20s)/navigation (90s)/screenshot (15s)
         /// use; scaled to captureResponse's 20s since it reads that same captured response.</summary>
-        private const int ResponseBodyReadTimeoutMs = 15000;
+        private const int ResponseBodyReadTimeoutMs = 20000;
         /// <summary>Default bounded window an `expect` step polls the DOM for its condition (state and/or #1016
         /// textContains) before failing, when the step declares no `timeoutMs` of its own. Long enough to absorb
-        /// Replit compilation/cold-starts and async render/hydration that follows the prior action. Overridable per
+        /// Replit compilation/cold-starts, slow Wi-Fi latency, and async render/hydration that follows the prior action. Overridable per
         /// step via the manifest's uiSteps[].timeoutMs.</summary>
-        private const int ExpectPollTimeoutMs = 15000;
+        private const int ExpectPollTimeoutMs = 30000;
         /// <summary>Interval between DOM re-checks inside the `expect` poll loop (see <see cref="ExpectPollTimeoutMs"/>).
         /// ~250ms keeps the loop responsive — it succeeds within a poll of the condition genuinely becoming true —
         /// without hammering ExecuteScriptAsync.</summary>
@@ -875,6 +875,28 @@ namespace BuildConsole.Services
         /// NavigationCompleted never firing and the whole run deadlocked forever with no error. Navigate() is a
         /// direct native call that always performs a real navigation regardless of URL equality.</summary>
         private async Task<bool> NavigateAsync(string url)
+        {
+            const int maxAttempts = 3;
+            for (int attempt = 1; attempt <= maxAttempts; attempt++)
+            {
+                if (attempt > 1)
+                {
+                    ActivityLog.Log(Channel, $"NavigateAsync: retrying navigation to {url} (attempt {attempt}/{maxAttempts}) after Wi-Fi / compile pause…");
+                    await Task.Delay(2500);
+                }
+
+                bool ok = await NavigateInternalAsync(url);
+                if (ok) return true;
+
+                if (attempt < maxAttempts)
+                {
+                    ActivityLog.Log(Channel, $"NavigateAsync({url}) attempt {attempt} failed; retrying in 2.5s…");
+                }
+            }
+            return false;
+        }
+
+        private async Task<bool> NavigateInternalAsync(string url)
         {
             if (_webView.CoreWebView2 == null)
             {

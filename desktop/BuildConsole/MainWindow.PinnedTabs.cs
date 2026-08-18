@@ -480,7 +480,10 @@ namespace BuildConsole
         /// (shared env, navigate-once #852 guard).</summary>
         private FrameworkElement CreatePinnedWebContent(string url)
         {
-            var wv = new Microsoft.Web.WebView2.Wpf.WebView2();
+            var wv = new Microsoft.Web.WebView2.Wpf.WebView2
+            {
+                DefaultBackgroundColor = System.Drawing.Color.FromArgb(255, 24, 24, 37)
+            };
             wv.NavigationStarting  += WebView_NavigationStarting;
             wv.NavigationCompleted += WebView_NavigationCompleted;
             wv.SourceChanged       += WebView_SourceChanged;
@@ -559,7 +562,10 @@ namespace BuildConsole
             navBar.Children.Add(btnRefresh);
             navBar.Children.Add(urlBox);
 
-            var container = new Grid();
+            var container = new Grid
+            {
+                Background = (Brush)FindResource("BaseBrush")
+            };
             container.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             container.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
             Grid.SetRow(navBar, 0);

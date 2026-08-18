@@ -260,6 +260,77 @@
                         </StackPanel>
                     </Border>
 
+                    <!-- ══ 2b. TEST WATCH — live tests running & queued tests ══ -->
+                    <StackPanel Margin="10,0,10,12">
+                        <ToggleButton x:Name="TileTestWatch" Style="{StaticResource QuietTile}" Click="TileTestWatch_Click">
+                            <DockPanel LastChildFill="True">
+                                <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center">
+                                    <TextBlock x:Name="TestWatchIcon" Text="🧪" FontSize="13" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                    <TextBlock x:Name="TestWatchLabel" Text="Test Watch" FontSize="11" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="TestWatchCountText" Text="(0)" FontSize="11" Margin="4,0,0,0" VerticalAlignment="Center" Foreground="{StaticResource Subtext1Brush}"/>
+                                </StackPanel>
+                                <Ellipse x:Name="TestWatchPulse" Width="7" Height="7" Fill="{StaticResource BlueBrush}" HorizontalAlignment="Right" VerticalAlignment="Center" Visibility="Collapsed" Margin="0,0,2,0"/>
+                            </DockPanel>
+                        </ToggleButton>
+                        <Border x:Name="TileTestWatchContent"
+                                Visibility="Collapsed"
+                                Background="{StaticResource MantleBrush}"
+                                BorderBrush="{StaticResource Surface0Brush}"
+                                BorderThickness="1,0,1,1"
+                                Padding="8"
+                                CornerRadius="0,0,6,6">
+                            <StackPanel>
+                                <!-- Currently Running / Deploying Status Card -->
+                                <Border Background="{StaticResource BaseBrush}"
+                                        BorderBrush="{StaticResource Surface0Brush}"
+                                        BorderThickness="1"
+                                        CornerRadius="5"
+                                        Padding="8,6"
+                                        Margin="0,0,0,8">
+                                    <StackPanel>
+                                        <DockPanel Margin="0,0,0,4">
+                                            <TextBlock Text="STATUS"
+                                                       FontSize="9"
+                                                       FontWeight="Bold"
+                                                       Foreground="{StaticResource Subtext0Brush}"
+                                                       DockPanel.Dock="Left"/>
+                                            <TextBlock x:Name="TestWatchActiveBadge"
+                                                       Text="IDLE"
+                                                       FontSize="9"
+                                                       FontWeight="Bold"
+                                                       Foreground="{StaticResource Subtext0Brush}"
+                                                       HorizontalAlignment="Right"/>
+                                        </DockPanel>
+                                        <TextBlock x:Name="TestWatchActiveText"
+                                                   Text="Idle — no active tests or deploys"
+                                                   FontSize="11"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{StaticResource TextBrush}"
+                                                   TextWrapping="Wrap"/>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- Queued Tests Section -->
+                                <TextBlock Text="QUEUED TESTS"
+                                           FontSize="9"
+                                           FontWeight="Bold"
+                                           Foreground="{StaticResource Subtext0Brush}"
+                                           Margin="2,0,0,4"/>
+                                <ListBox x:Name="TestWatchQueueList"
+                                         Background="Transparent"
+                                         BorderThickness="0"
+                                         MaxHeight="220"
+                                         ScrollViewer.VerticalScrollBarVisibility="Auto"/>
+                                <TextBlock x:Name="TestWatchEmptyText"
+                                           Text="No tests waiting in queue"
+                                           FontSize="10"
+                                           Foreground="{StaticResource Subtext0Brush}"
+                                           Margin="4,2,0,4"
+                                           FontStyle="Italic"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+
                     <!-- ══ 3. IN-FLIGHT — one quiet count-badge tile, collapsed by default ══
                          Git #874 - Shane: "In-Flight I reference only." Shrunk from a full
                          equal-weight tab (#866) to a quiet tile; expands in place on click

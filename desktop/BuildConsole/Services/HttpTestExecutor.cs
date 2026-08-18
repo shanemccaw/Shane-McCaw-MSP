@@ -97,49 +97,100 @@ namespace BuildConsole.Services
                 if (path.StartsWith("/admin/", StringComparison.OrdinalIgnoreCase))
                     ActivityLog.Log(Channel, $"WARN [{index + 1}/{total}] manifest path \"{path}\" is missing the \"/api\" prefix — the real route is \"/api{path}\"");
 
-                using var req = new HttpRequestMessage(new HttpMethod(method), url);
-                if (test.TryGetProperty("headers", out var headersEl) && headersEl.ValueKind == JsonValueKind.Object)
+                HttpRequestMessage CreateRequest()
                 {
-                    foreach (var h in headersEl.EnumerateObject())
-                        req.Headers.TryAddWithoutValidation(h.Name, vars.Resolve(ResolvePlaceholders(h.Value.GetString() ?? "", config)));
-                }
-                if (test.TryGetProperty("body", out var bodyEl))
-                    req.Content = new StringContent(vars.Resolve(ResolvePlaceholders(bodyEl.GetRawText(), config)), Encoding.UTF8, "application/json");
-
-                ActivityLog.Log(Channel, $"[{index + 1}/{total}] {method} {url}");
-                using var resp = await http.SendAsync(req);
-                string responseBody = await resp.Content.ReadAsStringAsync();
-
-                var expect = test.TryGetProperty("expect", out var e) ? e : default;
-                var (passed, detail, expected, actual) = EvaluateExpectation(expect, (int)resp.StatusCode, responseBody);
-
-                // #877 — extract a value out of this step's own response body for later steps to use.
-                if (test.TryGetProperty("extract", out var extractEl) && extractEl.ValueKind == JsonValueKind.Object)
-                {
-                    string? extractError = vars.Extract(extractEl, responseBody);
-                    if (extractError != null)
+                    var r = new HttpRequestMessage(new HttpMethod(method), url);
+                    if (test.TryGetProperty("headers", out var headersEl) && headersEl.ValueKind == JsonValueKind.Object)
                     {
-                        passed = false;
-                        detail = string.IsNullOrEmpty(detail) || detail == "ok" ? extractError : $"{detail}; {extractError}";
+                        foreach (var h in headersEl.EnumerateObject())
+                            r.Headers.TryAddWithoutValidation(h.Name, vars.Resolve(ResolvePlaceholders(h.Value.GetString() ?? "", config)));
+                    }
+                    if (test.TryGetProperty("body", out var bodyEl))
+                        r.Content = new StringContent(vars.Resolve(ResolvePlaceholders(bodyEl.GetRawText(), config)), Encoding.UTF8, "application/json");
+                    return r;
+                }
+
+                const int maxRetries = 4;
+                HttpResponseMessage? resp = null;
+                string responseBody = "";
+
+                for (int attempt = 0; attempt <= maxRetries; attempt++)
+                {
+                    try
+                    {
+                        using var req = CreateRequest();
+                        if (attempt == 0)
+                        {
+                            ActivityLog.Log(Channel, $"[{index + 1}/{total}] {method} {url}");
+                        }
+                        else
+                        {
+                            ActivityLog.Log(Channel, $"[{index + 1}/{total}] Retry {attempt}/{maxRetries}: {method} {url}");
+                        }
+
+                        resp = await http.SendAsync(req);
+                        responseBody = await resp.Content.ReadAsStringAsync();
+
+                        int statusCode = (int)resp.StatusCode;
+                        // Retry transient Replit compile/restart status codes or rate-limiting: 502, 503, 504, 429
+                        if ((statusCode == 502 || statusCode == 503 || statusCode == 504 || statusCode == 429) && attempt < maxRetries)
+                        {
+                            resp.Dispose();
+                            resp = null;
+                            int delayMs = 1500 * (int)Math.Pow(2, attempt) + Random.Shared.Next(200, 800);
+                            ActivityLog.Log(Channel, $"WARN [{index + 1}/{total}] Server returned HTTP {statusCode} (Replit compiling / rate limited) — retrying in {delayMs}ms (attempt {attempt + 1}/{maxRetries})…");
+                            await Task.Delay(delayMs);
+                            continue;
+                        }
+
+                        break;
+                    }
+                    catch (Exception ex) when ((ex is HttpRequestException || ex is TaskCanceledException || ex is System.IO.IOException) && attempt < maxRetries)
+                    {
+                        int delayMs = 1500 * (int)Math.Pow(2, attempt) + Random.Shared.Next(200, 800);
+                        ActivityLog.Log(Channel, $"WARN [{index + 1}/{total}] Network error ({ex.Message}) — retrying in {delayMs}ms (attempt {attempt + 1}/{maxRetries}) for flaky Wi-Fi / Replit restart…");
+                        await Task.Delay(delayMs);
                     }
                 }
 
-                string context = $"{method} {url} -> {(int)resp.StatusCode}; response body: {Truncate(responseBody, 500)}";
-
-                sw.Stop();
-                string? durationError = CheckMaxDuration(test, sw.ElapsedMilliseconds);
-                if (durationError != null)
+                if (resp == null)
                 {
-                    passed = false;
-                    detail = string.IsNullOrEmpty(detail) || detail == "ok" ? durationError : $"{detail}; {durationError}";
+                    throw new HttpRequestException($"Request failed after {maxRetries} retries against {url}");
                 }
 
-                ActivityLog.Log(Channel, (passed ? "PASS " : "FAIL ") + $"{method} {url} ({sw.ElapsedMilliseconds}ms) — {detail}");
-                return new TestStepResult
+                using (resp)
                 {
-                    Kind = "api", Label = label, Passed = passed, Detail = detail, DurationMs = sw.ElapsedMilliseconds,
-                    Expected = expected, Actual = actual, Context = context,
-                };
+                    var expect = test.TryGetProperty("expect", out var e) ? e : default;
+                    var (passed, detail, expected, actual) = EvaluateExpectation(expect, (int)resp.StatusCode, responseBody);
+
+                    // #877 — extract a value out of this step's own response body for later steps to use.
+                    if (test.TryGetProperty("extract", out var extractEl) && extractEl.ValueKind == JsonValueKind.Object)
+                    {
+                        string? extractError = vars.Extract(extractEl, responseBody);
+                        if (extractError != null)
+                        {
+                            passed = false;
+                            detail = string.IsNullOrEmpty(detail) || detail == "ok" ? extractError : $"{detail}; {extractError}";
+                        }
+                    }
+
+                    string context = $"{method} {url} -> {(int)resp.StatusCode}; response body: {Truncate(responseBody, 500)}";
+
+                    sw.Stop();
+                    string? durationError = CheckMaxDuration(test, sw.ElapsedMilliseconds);
+                    if (durationError != null)
+                    {
+                        passed = false;
+                        detail = string.IsNullOrEmpty(detail) || detail == "ok" ? durationError : $"{detail}; {durationError}";
+                    }
+
+                    ActivityLog.Log(Channel, (passed ? "PASS " : "FAIL ") + $"{method} {url} ({sw.ElapsedMilliseconds}ms) — {detail}");
+                    return new TestStepResult
+                    {
+                        Kind = "api", Label = label, Passed = passed, Detail = detail, DurationMs = sw.ElapsedMilliseconds,
+                        Expected = expected, Actual = actual, Context = context,
+                    };
+                }
             }
             catch (Exception ex)
             {

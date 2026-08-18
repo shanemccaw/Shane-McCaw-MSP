@@ -116,6 +116,8 @@ namespace BuildConsole
         {
             InitializeComponent();
 
+            RunnerWebView.DefaultBackgroundColor = System.Drawing.Color.FromArgb(255, 24, 24, 37);
+
             _stepsView = CollectionViewSource.GetDefaultView(_steps);
             _stepsView.GroupDescriptions.Add(new PropertyGroupDescription(nameof(StepListItem.Kind)));
             StepsList.ItemsSource = _stepsView;

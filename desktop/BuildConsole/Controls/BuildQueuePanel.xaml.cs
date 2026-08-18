@@ -10,6 +10,8 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
 using System.Windows.Threading;
+using Ellipse = System.Windows.Shapes.Ellipse;
+using Polygon = System.Windows.Shapes.Polygon;
 using BuildConsole.Services;
 
 namespace BuildConsole.Controls
@@ -190,6 +192,10 @@ namespace BuildConsole.Controls
             _ = RefreshInFlightIssuesAsync("initial load");
             _ = RefreshWaitingOnMeAsync("initial load");
             _ = RefreshCompletedAsync("initial load");
+
+            // Live Test Watch subscription
+            Services.TestQueueService.Instance.QueueChanged += () => Dispatcher.InvokeAsync(RefreshTestWatch);
+            RefreshTestWatch();
 
             if (!api.IsConfigured)
             {
@@ -1826,169 +1832,276 @@ namespace BuildConsole.Controls
             return tvi;
         }
 
-        private FrameworkElement? CreateQueueCardMascot(QueueItem item, InteractiveInputState? interactiveState)
+        private static SolidColorBrush HexBrush(string hex) =>
+            new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex));
+
+        private static Canvas CreateCuteFoxVector()
         {
-            var canvas = new Canvas
+            var canvas = new Canvas { Width = 36, Height = 30, ClipToBounds = false };
+            canvas.Children.Add(new Polygon { Points = new PointCollection { new Point(5, 13), new Point(10, 1), new Point(15, 13) }, Fill = HexBrush("#F59E0B") });
+            canvas.Children.Add(new Polygon { Points = new PointCollection { new Point(7, 12), new Point(10, 4), new Point(13, 12) }, Fill = HexBrush("#FDE68A") });
+            canvas.Children.Add(new Polygon { Points = new PointCollection { new Point(21, 13), new Point(26, 1), new Point(31, 13) }, Fill = HexBrush("#F59E0B") });
+            canvas.Children.Add(new Polygon { Points = new PointCollection { new Point(23, 12), new Point(26, 4), new Point(29, 12) }, Fill = HexBrush("#FDE68A") });
+            var head = new Ellipse { Width = 26, Height = 19, Fill = HexBrush("#F59E0B") };
+            Canvas.SetLeft(head, 5); Canvas.SetTop(head, 8);
+            canvas.Children.Add(head);
+            var cheekL = new Ellipse { Width = 13, Height = 11, Fill = HexBrush("#FFFBEB") };
+            Canvas.SetLeft(cheekL, 4); Canvas.SetTop(cheekL, 14);
+            canvas.Children.Add(cheekL);
+            var cheekR = new Ellipse { Width = 13, Height = 11, Fill = HexBrush("#FFFBEB") };
+            Canvas.SetLeft(cheekR, 19); Canvas.SetTop(cheekR, 14);
+            canvas.Children.Add(cheekR);
+            canvas.Children.Add(new Polygon { Points = new PointCollection { new Point(13, 17), new Point(23, 17), new Point(18, 24) }, Fill = HexBrush("#FFFBEB") });
+            var nose = new Ellipse { Width = 3.5, Height = 2.5, Fill = HexBrush("#1E1E2E") };
+            Canvas.SetLeft(nose, 16.2); Canvas.SetTop(nose, 21.5);
+            canvas.Children.Add(nose);
+            var eyeL = new Ellipse { Width = 3.5, Height = 4.5, Fill = HexBrush("#1E1E2E") };
+            Canvas.SetLeft(eyeL, 9.5); Canvas.SetTop(eyeL, 13);
+            canvas.Children.Add(eyeL);
+            var eyeLh = new Ellipse { Width = 1.3, Height = 1.3, Fill = Brushes.White };
+            Canvas.SetLeft(eyeLh, 10.5); Canvas.SetTop(eyeLh, 13.5);
+            canvas.Children.Add(eyeLh);
+            var eyeR = new Ellipse { Width = 3.5, Height = 4.5, Fill = HexBrush("#1E1E2E") };
+            Canvas.SetLeft(eyeR, 23); Canvas.SetTop(eyeR, 13);
+            canvas.Children.Add(eyeR);
+            var eyeRh = new Ellipse { Width = 1.3, Height = 1.3, Fill = Brushes.White };
+            Canvas.SetLeft(eyeRh, 24); Canvas.SetTop(eyeRh, 13.5);
+            canvas.Children.Add(eyeRh);
+            var blushL = new Ellipse { Width = 4.5, Height = 2.5, Fill = HexBrush("#F472B6"), Opacity = 0.65 };
+            Canvas.SetLeft(blushL, 6); Canvas.SetTop(blushL, 17);
+            canvas.Children.Add(blushL);
+            var blushR = new Ellipse { Width = 4.5, Height = 2.5, Fill = HexBrush("#F472B6"), Opacity = 0.65 };
+            Canvas.SetLeft(blushR, 25.5); Canvas.SetTop(blushR, 17);
+            canvas.Children.Add(blushR);
+            return canvas;
+        }
+
+        private static Canvas CreateCuteBearVector()
+        {
+            var canvas = new Canvas { Width = 36, Height = 30, ClipToBounds = false };
+            var earL = new Ellipse { Width = 7.5, Height = 7.5, Fill = HexBrush("#C7D2FE") };
+            Canvas.SetLeft(earL, 5); Canvas.SetTop(earL, 3);
+            canvas.Children.Add(earL);
+            var earLin = new Ellipse { Width = 4, Height = 4, Fill = HexBrush("#E0E7FF") };
+            Canvas.SetLeft(earLin, 6.8); Canvas.SetTop(earLin, 4.8);
+            canvas.Children.Add(earLin);
+            var earR = new Ellipse { Width = 7.5, Height = 7.5, Fill = HexBrush("#C7D2FE") };
+            Canvas.SetLeft(earR, 23.5); Canvas.SetTop(earR, 3);
+            canvas.Children.Add(earR);
+            var earRin = new Ellipse { Width = 4, Height = 4, Fill = HexBrush("#E0E7FF") };
+            Canvas.SetLeft(earRin, 25.2); Canvas.SetTop(earRin, 4.8);
+            canvas.Children.Add(earRin);
+            var head = new Ellipse { Width = 26, Height = 20, Fill = HexBrush("#C7D2FE") };
+            Canvas.SetLeft(head, 5); Canvas.SetTop(head, 7);
+            canvas.Children.Add(head);
+            var snout = new Ellipse { Width = 11, Height = 8, Fill = HexBrush("#E0E7FF") };
+            Canvas.SetLeft(snout, 12.5); Canvas.SetTop(snout, 16);
+            canvas.Children.Add(snout);
+            var nose = new Ellipse { Width = 3.5, Height = 2.5, Fill = HexBrush("#312E81") };
+            Canvas.SetLeft(nose, 16.2); Canvas.SetTop(nose, 18);
+            canvas.Children.Add(nose);
+            canvas.Children.Add(new System.Windows.Shapes.Path { Data = Geometry.Parse("M10,14 Q12.5,16.5 15,14"), Stroke = HexBrush("#312E81"), StrokeThickness = 1.3 });
+            canvas.Children.Add(new System.Windows.Shapes.Path { Data = Geometry.Parse("M21,14 Q23.5,16.5 26,14"), Stroke = HexBrush("#312E81"), StrokeThickness = 1.3 });
+            var blushL = new Ellipse { Width = 4.5, Height = 2.5, Fill = HexBrush("#F472B6"), Opacity = 0.55 };
+            Canvas.SetLeft(blushL, 6.5); Canvas.SetTop(blushL, 17);
+            canvas.Children.Add(blushL);
+            var blushR = new Ellipse { Width = 4.5, Height = 2.5, Fill = HexBrush("#F472B6"), Opacity = 0.55 };
+            Canvas.SetLeft(blushR, 25); Canvas.SetTop(blushR, 17);
+            canvas.Children.Add(blushR);
+            return canvas;
+        }
+
+        private static Canvas CreateCuteCatVector()
+        {
+            var canvas = new Canvas { Width = 36, Height = 30, ClipToBounds = false };
+            canvas.Children.Add(new Polygon { Points = new PointCollection { new Point(5, 13), new Point(9, 2), new Point(14, 13) }, Fill = HexBrush("#D8B4FE") });
+            canvas.Children.Add(new Polygon { Points = new PointCollection { new Point(7, 12), new Point(9, 5), new Point(12, 12) }, Fill = HexBrush("#F5D0FE") });
+            canvas.Children.Add(new Polygon { Points = new PointCollection { new Point(22, 13), new Point(27, 2), new Point(31, 13) }, Fill = HexBrush("#D8B4FE") });
+            canvas.Children.Add(new Polygon { Points = new PointCollection { new Point(24, 12), new Point(27, 5), new Point(29, 12) }, Fill = HexBrush("#F5D0FE") });
+            var head = new Ellipse { Width = 25, Height = 19, Fill = HexBrush("#D8B4FE") };
+            Canvas.SetLeft(head, 5.5); Canvas.SetTop(head, 8);
+            canvas.Children.Add(head);
+            var eyeL = new Ellipse { Width = 3.5, Height = 4.5, Fill = HexBrush("#1E1E2E") };
+            Canvas.SetLeft(eyeL, 10); Canvas.SetTop(eyeL, 13);
+            canvas.Children.Add(eyeL);
+            var eyeLh = new Ellipse { Width = 1.3, Height = 1.3, Fill = Brushes.White };
+            Canvas.SetLeft(eyeLh, 11); Canvas.SetTop(eyeLh, 13.5);
+            canvas.Children.Add(eyeLh);
+            var eyeR = new Ellipse { Width = 3.5, Height = 4.5, Fill = HexBrush("#1E1E2E") };
+            Canvas.SetLeft(eyeR, 22.5); Canvas.SetTop(eyeR, 13);
+            canvas.Children.Add(eyeR);
+            var eyeRh = new Ellipse { Width = 1.3, Height = 1.3, Fill = Brushes.White };
+            Canvas.SetLeft(eyeRh, 23.5); Canvas.SetTop(eyeRh, 13.5);
+            canvas.Children.Add(eyeRh);
+            canvas.Children.Add(new Polygon { Points = new PointCollection { new Point(16.5, 19.5), new Point(19.5, 19.5), new Point(18, 21.5) }, Fill = HexBrush("#F472B6") });
+            canvas.Children.Add(new System.Windows.Shapes.Path { Data = Geometry.Parse("M3,18 L8,19 M3,21 L8,21"), Stroke = HexBrush("#C084FC"), StrokeThickness = 0.9 });
+            canvas.Children.Add(new System.Windows.Shapes.Path { Data = Geometry.Parse("M28,19 L33,18 M28,21 L33,21"), Stroke = HexBrush("#C084FC"), StrokeThickness = 0.9 });
+            return canvas;
+        }
+
+        private static Canvas CreateCuteDuckVector()
+        {
+            var canvas = new Canvas { Width = 36, Height = 30, ClipToBounds = false };
+            var head = new Ellipse { Width = 23, Height = 19, Fill = HexBrush("#F8FAFC") };
+            Canvas.SetLeft(head, 6.5); Canvas.SetTop(head, 7);
+            canvas.Children.Add(head);
+            var cap = new Ellipse { Width = 15, Height = 7, Fill = HexBrush("#3B82F6") };
+            Canvas.SetLeft(cap, 10.5); Canvas.SetTop(cap, 2);
+            canvas.Children.Add(cap);
+            canvas.Children.Add(new System.Windows.Shapes.Path { Data = Geometry.Parse("M18,5 Q22,3 25,6 M18,5 Q22,6 26,9"), Stroke = HexBrush("#1E1E2E"), StrokeThickness = 1.2 });
+            var eyeL = new Ellipse { Width = 3.5, Height = 5, Fill = HexBrush("#1E1E2E") };
+            Canvas.SetLeft(eyeL, 11); Canvas.SetTop(eyeL, 10);
+            canvas.Children.Add(eyeL);
+            var eyeLh = new Ellipse { Width = 1.3, Height = 1.6, Fill = Brushes.White };
+            Canvas.SetLeft(eyeLh, 12); Canvas.SetTop(eyeLh, 11);
+            canvas.Children.Add(eyeLh);
+            var eyeR = new Ellipse { Width = 3.5, Height = 5, Fill = HexBrush("#1E1E2E") };
+            Canvas.SetLeft(eyeR, 19); Canvas.SetTop(eyeR, 10);
+            canvas.Children.Add(eyeR);
+            var eyeRh = new Ellipse { Width = 1.3, Height = 1.6, Fill = Brushes.White };
+            Canvas.SetLeft(eyeRh, 20); Canvas.SetTop(eyeRh, 11);
+            canvas.Children.Add(eyeRh);
+            var beak = new Ellipse { Width = 16, Height = 8, Fill = HexBrush("#F59E0B") };
+            Canvas.SetLeft(beak, 10); Canvas.SetTop(beak, 16.5);
+            canvas.Children.Add(beak);
+            var beakTop = new Ellipse { Width = 10, Height = 4, Fill = HexBrush("#FBBF24") };
+            Canvas.SetLeft(beakTop, 13); Canvas.SetTop(beakTop, 17.5);
+            canvas.Children.Add(beakTop);
+            return canvas;
+        }
+
+        private static Canvas CreateCuteBirdVector()
+        {
+            var canvas = new Canvas { Width = 36, Height = 30, ClipToBounds = false };
+            var body = new Ellipse { Width = 21, Height = 17, Fill = HexBrush("#60A5FA") };
+            Canvas.SetLeft(body, 7.5); Canvas.SetTop(body, 7.5);
+            canvas.Children.Add(body);
+            var belly = new Ellipse { Width = 12, Height = 10, Fill = HexBrush("#DBEAFE") };
+            Canvas.SetLeft(belly, 11); Canvas.SetTop(belly, 12);
+            canvas.Children.Add(belly);
+            canvas.Children.Add(new Polygon { Points = new PointCollection { new Point(7.5, 14), new Point(2, 16), new Point(7.5, 18) }, Fill = HexBrush("#F59E0B") });
+            var eye = new Ellipse { Width = 3.5, Height = 3.5, Fill = HexBrush("#1E1E2E") };
+            Canvas.SetLeft(eye, 13.5); Canvas.SetTop(eye, 10.5);
+            canvas.Children.Add(eye);
+            var eyeH = new Ellipse { Width = 1.3, Height = 1.3, Fill = Brushes.White };
+            Canvas.SetLeft(eyeH, 14.5); Canvas.SetTop(eyeH, 11.5);
+            canvas.Children.Add(eyeH);
+            canvas.Children.Add(new System.Windows.Shapes.Path { Data = Geometry.Parse("M18,12 Q25,14 19,20 Z"), Fill = HexBrush("#3B82F6") });
+            return canvas;
+        }
+
+        private static UIElement CreateQueueCardMascot(QueueItem item, InteractiveInputState? interactiveState)
+        {
+            var container = new Canvas
             {
-                Width = 44,
-                Height = 38,
-                Margin = new Thickness(6, 0, 2, 0),
+                Width = 42,
+                Height = 36,
+                Margin = new Thickness(4, 0, 2, 0),
                 VerticalAlignment = VerticalAlignment.Center,
                 HorizontalAlignment = HorizontalAlignment.Right,
                 ClipToBounds = false
             };
 
-            var transGroup = new TransformGroup();
-            var hopTrans = new TranslateTransform();
-            var tiltTrans = new RotateTransform(0, 22, 19);
-            transGroup.Children.Add(hopTrans);
-            transGroup.Children.Add(tiltTrans);
-            canvas.RenderTransform = transGroup;
+            // Subtle gentle ambient float transform (NO bouncing or shaking!)
+            var floatTrans = new TranslateTransform();
+            container.RenderTransform = floatTrans;
 
+            var floatAnim = new DoubleAnimation(0, -1.2, TimeSpan.FromSeconds(2.8))
+            {
+                AutoReverse = true,
+                RepeatBehavior = RepeatBehavior.Forever,
+                EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
+            };
+            floatTrans.BeginAnimation(TranslateTransform.YProperty, floatAnim);
+
+            // Select cute vector critter based on issue id/number (matching Home tab mascots)
+            int variant = Math.Abs((item.GithubNumber ?? item.Id) % 5);
+            Canvas critter = variant switch
+            {
+                0 => CreateCuteFoxVector(),
+                1 => CreateCuteBearVector(),
+                2 => CreateCuteCatVector(),
+                3 => CreateCuteDuckVector(),
+                _ => CreateCuteBirdVector()
+            };
+
+            Canvas.SetLeft(critter, 3);
+            Canvas.SetTop(critter, 3);
+            container.Children.Add(critter);
+
+            // Subtle glowing halo with gentle breathing shimmer
+            Color glowColor = item.Status switch
+            {
+                "running" when interactiveState == InteractiveInputState.WaitingForInput => Color.FromRgb(0xF9, 0xE2, 0xAF),
+                "running" => Color.FromRgb(0x89, 0xB4, 0xFA),
+                "done" => Color.FromRgb(0xA6, 0xE3, 0xA1),
+                "failed" => Color.FromRgb(0xF3, 0x8B, 0xA8),
+                _ => Color.FromRgb(0xCB, 0xA6, 0xF7)
+            };
+
+            var glow = new DropShadowEffect
+            {
+                Color = glowColor,
+                BlurRadius = item.Status == "running" ? 10 : 6,
+                ShadowDepth = 0,
+                Opacity = item.Status == "running" ? 0.65 : 0.35
+            };
+            critter.Effect = glow;
+
+            // Gentle shimmer pulse on the glow (calm and peaceful)
             if (item.Status == "running")
             {
-                if (interactiveState == InteractiveInputState.WaitingForInput)
-                {
-                    // Large Attention Bunny/Duck waving paws with bouncing ❓ question mark
-                    var bunny = new TextBlock { Text = "🐰", FontSize = 20 };
-                    Canvas.SetLeft(bunny, 8); Canvas.SetTop(bunny, 10);
-                    canvas.Children.Add(bunny);
-
-                    var qMark = new Border
-                    {
-                        Background = new SolidColorBrush(Color.FromRgb(0xF9, 0xE2, 0xAF)),
-                        CornerRadius = new CornerRadius(6),
-                        Padding = new Thickness(3, 1, 3, 1),
-                        Effect = new DropShadowEffect { Color = Color.FromRgb(0xF5, 0x9E, 0x0B), BlurRadius = 6, ShadowDepth = 0 }
-                    };
-                    qMark.Child = new TextBlock { Text = "❓", FontSize = 10 };
-                    Canvas.SetLeft(qMark, 16); Canvas.SetTop(qMark, -4);
-                    canvas.Children.Add(qMark);
-
-                    var pulse = new DoubleAnimation(0, -3.5, TimeSpan.FromMilliseconds(300))
-                    {
-                        AutoReverse = true,
-                        RepeatBehavior = RepeatBehavior.Forever,
-                        EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
-                    };
-                    hopTrans.BeginAnimation(TranslateTransform.YProperty, pulse);
-                }
-                else
-                {
-                    // Active Sprinting Mascots (Donald Sailor Duck, Builder Bunny, Astronaut, Running Cat)
-                    int variant = Math.Abs((item.GithubNumber ?? item.Id) % 4);
-
-                    if (variant == 0)
-                    {
-                        // 🦆 Sprinting Donald Duck in sailor cap with wind streak
-                        var duck = new TextBlock { Text = "🦆", FontSize = 20 };
-                        Canvas.SetLeft(duck, 10); Canvas.SetTop(duck, 10);
-                        canvas.Children.Add(duck);
-
-                        var cap = new TextBlock { Text = "🧢", FontSize = 11 };
-                        Canvas.SetLeft(cap, 18); Canvas.SetTop(cap, 2);
-                        canvas.Children.Add(cap);
-
-                        var wind = new TextBlock { Text = "💨", FontSize = 11, Opacity = 0.85 };
-                        Canvas.SetLeft(wind, -4); Canvas.SetTop(wind, 16);
-                        canvas.Children.Add(wind);
-                    }
-                    else if (variant == 1)
-                    {
-                        // 🐰 Sprinting Builder Bunny with hard hat
-                        var bunny = new TextBlock { Text = "🐰", FontSize = 20 };
-                        Canvas.SetLeft(bunny, 10); Canvas.SetTop(bunny, 10);
-                        canvas.Children.Add(bunny);
-
-                        var hat = new TextBlock { Text = "⛑️", FontSize = 11 };
-                        Canvas.SetLeft(hat, 16); Canvas.SetTop(hat, 2);
-                        canvas.Children.Add(hat);
-
-                        var wind = new TextBlock { Text = "💨", FontSize = 11, Opacity = 0.85 };
-                        Canvas.SetLeft(wind, -4); Canvas.SetTop(wind, 16);
-                        canvas.Children.Add(wind);
-                    }
-                    else if (variant == 2)
-                    {
-                        // 🚀 NASA Astronaut Critter with jetpack spark trail
-                        var astro = new TextBlock { Text = "👨‍🚀", FontSize = 20 };
-                        Canvas.SetLeft(astro, 10); Canvas.SetTop(astro, 8);
-                        canvas.Children.Add(astro);
-
-                        var sparks = new TextBlock { Text = "⚡", FontSize = 10, Foreground = new SolidColorBrush(Color.FromRgb(0x38, 0xBD, 0xF8)) };
-                        Canvas.SetLeft(sparks, -2); Canvas.SetTop(sparks, 16);
-                        canvas.Children.Add(sparks);
-                    }
-                    else
-                    {
-                        // 🐱 Fast Runner Cat with sweat/determination drops
-                        var cat = new TextBlock { Text = "🐱", FontSize = 20 };
-                        Canvas.SetLeft(cat, 10); Canvas.SetTop(cat, 10);
-                        canvas.Children.Add(cat);
-
-                        var sweat = new TextBlock { Text = "💦", FontSize = 9 };
-                        Canvas.SetLeft(sweat, 26); Canvas.SetTop(sweat, 2);
-                        canvas.Children.Add(sweat);
-
-                        var wind = new TextBlock { Text = "💨", FontSize = 11, Opacity = 0.85 };
-                        Canvas.SetLeft(wind, -4); Canvas.SetTop(wind, 16);
-                        canvas.Children.Add(wind);
-                    }
-
-                    // Energetic fast running sprint animation
-                    var runHop = new DoubleAnimation(0, -3.5, TimeSpan.FromMilliseconds(200))
-                    {
-                        AutoReverse = true,
-                        RepeatBehavior = RepeatBehavior.Forever,
-                        EasingFunction = new BounceEase { Bounces = 1, Bounciness = 1.8 }
-                    };
-                    hopTrans.BeginAnimation(TranslateTransform.YProperty, runHop);
-
-                    var runTilt = new DoubleAnimation(-5, 7, TimeSpan.FromMilliseconds(200))
-                    {
-                        AutoReverse = true,
-                        RepeatBehavior = RepeatBehavior.Forever,
-                        EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
-                    };
-                    tiltTrans.BeginAnimation(RotateTransform.AngleProperty, runTilt);
-                }
-            }
-            else if (item.Status == "done")
-            {
-                var cheerer = new TextBlock { Text = "🎉", FontSize = 13 };
-                Canvas.SetLeft(cheerer, 18); Canvas.SetTop(cheerer, 1);
-                canvas.Children.Add(cheerer);
-
-                var critter = new TextBlock { Text = "✨", FontSize = 18 };
-                Canvas.SetLeft(critter, 8); Canvas.SetTop(critter, 10);
-                canvas.Children.Add(critter);
-
-                var doneBob = new DoubleAnimation(0, -2.5, TimeSpan.FromSeconds(1.2))
+                var shimmer = new DoubleAnimation(0.35, 0.85, TimeSpan.FromSeconds(2.2))
                 {
                     AutoReverse = true,
                     RepeatBehavior = RepeatBehavior.Forever,
                     EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
                 };
-                hopTrans.BeginAnimation(TranslateTransform.YProperty, doneBob);
+                glow.BeginAnimation(DropShadowEffect.OpacityProperty, shimmer);
+            }
+
+            // Status badges (clean and subtle)
+            if (item.Status == "running" && interactiveState == InteractiveInputState.WaitingForInput)
+            {
+                var badge = new Border
+                {
+                    Background = HexBrush("#F9E2AF"),
+                    CornerRadius = new CornerRadius(5),
+                    Padding = new Thickness(3, 1, 3, 1),
+                    Effect = new DropShadowEffect { Color = Color.FromRgb(0xF5, 0x9E, 0x0B), BlurRadius = 4, ShadowDepth = 0 }
+                };
+                badge.Child = new TextBlock { Text = "💬", FontSize = 9 };
+                Canvas.SetLeft(badge, 22);
+                Canvas.SetTop(badge, -3);
+                container.Children.Add(badge);
+            }
+            else if (item.Status == "done")
+            {
+                var sparkle = new TextBlock
+                {
+                    Text = "✨",
+                    FontSize = 10,
+                    Foreground = HexBrush("#A6E3A1"),
+                    Effect = new DropShadowEffect { Color = Color.FromRgb(0xA6, 0xE3, 0xA1), BlurRadius = 4, ShadowDepth = 0 }
+                };
+                Canvas.SetLeft(sparkle, 26);
+                Canvas.SetTop(sparkle, -2);
+                container.Children.Add(sparkle);
             }
             else if (item.Status == "failed")
             {
-                var dizzy = new TextBlock { Text = "🩹", FontSize = 16 };
-                Canvas.SetLeft(dizzy, 12); Canvas.SetTop(dizzy, 10);
-                canvas.Children.Add(dizzy);
-            }
-            else
-            {
-                // Queued / Blocked
-                var blockerList = item.BlockedByNumbers ?? (item.BlockedByNumber.HasValue ? new List<int> { item.BlockedByNumber.Value } : new List<int>());
-                bool isBlocked = blockerList.Count > 0;
-
-                var waitIcon = new TextBlock { Text = isBlocked ? "🔒" : "⏳", FontSize = 16, Opacity = 0.85 };
-                Canvas.SetLeft(waitIcon, 12); Canvas.SetTop(waitIcon, 10);
-                canvas.Children.Add(waitIcon);
+                var mark = new TextBlock
+                {
+                    Text = "🩹",
+                    FontSize = 10,
+                    Opacity = 0.8
+                };
+                Canvas.SetLeft(mark, 24);
+                Canvas.SetTop(mark, -2);
+                container.Children.Add(mark);
             }
 
-            return canvas;
+            return container;
         }
 
         private void QueueTree_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
@@ -2063,12 +2176,138 @@ namespace BuildConsole.Controls
         // that these are full-width tiles with no MaxHeight cap, an open
         // list uses up real vertical room, so two open at once would just
         // push each other around instead of saving any scrolling.
+        private void TileTestWatch_Click(object sender, RoutedEventArgs e)
+        {
+            bool expand = TileTestWatch.IsChecked == true;
+            TileTestWatchContent.Visibility = expand ? Visibility.Visible : Visibility.Collapsed;
+            if (expand)
+            {
+                TileInFlight.IsChecked = false;
+                TileInFlightContent.Visibility = Visibility.Collapsed;
+                TileSessions.IsChecked = false;
+                TileSessionsContent.Visibility = Visibility.Collapsed;
+                TileToDo.IsChecked = false;
+                TileToDoContent.Visibility = Visibility.Collapsed;
+                TileCompleted.IsChecked = false;
+                TileCompletedContent.Visibility = Visibility.Collapsed;
+                TileAttention.IsChecked = false;
+                TileAttentionContent.Visibility = Visibility.Collapsed;
+                RefreshTestWatch();
+            }
+        }
+
+        public void RefreshTestWatch()
+        {
+            var svc = Services.TestQueueService.Instance;
+            var snapshot = svc.GetSnapshot();
+            bool isBusy = svc.IsBusy;
+            string status = svc.CurrentStatus;
+
+            int count = snapshot.Count + (isBusy ? 1 : 0);
+            TestWatchCountText.Text = $"({count})";
+
+            if (isBusy)
+            {
+                TestWatchIcon.Text = "🧪";
+                TestWatchLabel.Foreground = (Brush)FindResource("BlueBrush");
+                TestWatchPulse.Visibility = Visibility.Visible;
+                TestWatchActiveBadge.Text = status.StartsWith("Deploying", StringComparison.OrdinalIgnoreCase) ? "DEPLOYING" : "RUNNING";
+                TestWatchActiveBadge.Foreground = (Brush)FindResource("BlueBrush");
+                TestWatchActiveText.Text = status;
+            }
+            else
+            {
+                TestWatchIcon.Text = "🧪";
+                TestWatchLabel.Foreground = (Brush)FindResource("Subtext0Brush");
+                TestWatchPulse.Visibility = Visibility.Collapsed;
+                TestWatchActiveBadge.Text = "IDLE";
+                TestWatchActiveBadge.Foreground = (Brush)FindResource("Subtext0Brush");
+                TestWatchActiveText.Text = "Idle — no active tests or deploys";
+            }
+
+            TestWatchQueueList.Items.Clear();
+            if (snapshot.Count > 0)
+            {
+                TestWatchEmptyText.Visibility = Visibility.Collapsed;
+                int pos = 1;
+                foreach (var item in snapshot)
+                {
+                    var border = new Border
+                    {
+                        Background = (Brush)FindResource("BaseBrush"),
+                        BorderBrush = (Brush)FindResource("Surface0Brush"),
+                        BorderThickness = new Thickness(1),
+                        CornerRadius = new CornerRadius(4),
+                        Padding = new Thickness(8, 6, 8, 6),
+                        Margin = new Thickness(0, 0, 0, 4)
+                    };
+
+                    var sp = new StackPanel();
+                    var topRow = new DockPanel();
+
+                    var posBlock = new TextBlock
+                    {
+                        Text = $"#{pos} • {item.Status}",
+                        FontSize = 10,
+                        FontWeight = FontWeights.Bold,
+                        Foreground = (Brush)FindResource("PeachBrush"),
+                        VerticalAlignment = VerticalAlignment.Center
+                    };
+                    DockPanel.SetDock(posBlock, Dock.Left);
+                    topRow.Children.Add(posBlock);
+
+                    var timeBlock = new TextBlock
+                    {
+                        Text = item.EnqueuedAt.ToString("HH:mm:ss"),
+                        FontSize = 9,
+                        Foreground = (Brush)FindResource("Subtext0Brush"),
+                        HorizontalAlignment = HorizontalAlignment.Right,
+                        VerticalAlignment = VerticalAlignment.Center
+                    };
+                    topRow.Children.Add(timeBlock);
+                    sp.Children.Add(topRow);
+
+                    var nameBlock = new TextBlock
+                    {
+                        Text = item.ManifestFile,
+                        FontSize = 11,
+                        FontWeight = FontWeights.SemiBold,
+                        Foreground = (Brush)FindResource("TextBrush"),
+                        TextWrapping = TextWrapping.Wrap,
+                        Margin = new Thickness(0, 2, 0, 2)
+                    };
+                    sp.Children.Add(nameBlock);
+
+                    if (!string.IsNullOrEmpty(item.Source))
+                    {
+                        var srcBlock = new TextBlock
+                        {
+                            Text = $"Source: {item.Source}",
+                            FontSize = 9,
+                            Foreground = (Brush)FindResource("Subtext0Brush")
+                        };
+                        sp.Children.Add(srcBlock);
+                    }
+
+                    border.Child = sp;
+                    TestWatchQueueList.Items.Add(border);
+                    pos++;
+                }
+            }
+            else
+            {
+                TestWatchEmptyText.Visibility = isBusy ? Visibility.Collapsed : Visibility.Visible;
+            }
+        }
+
         private void TileInFlight_Click(object sender, RoutedEventArgs e)
         {
             bool expand = TileInFlight.IsChecked == true;
             TileInFlightContent.Visibility = expand ? Visibility.Visible : Visibility.Collapsed;
             if (expand)
             {
+                TileTestWatch.IsChecked = false;
+                TileTestWatchContent.Visibility = Visibility.Collapsed;
                 TileSessions.IsChecked = false;
                 TileSessionsContent.Visibility = Visibility.Collapsed;
                 ApplyTitleMaxWidths(InFlightIssuesList, _inFlightTitleBlocks);
@@ -2081,29 +2320,22 @@ namespace BuildConsole.Controls
             TileSessionsContent.Visibility = expand ? Visibility.Visible : Visibility.Collapsed;
             if (expand)
             {
+                TileTestWatch.IsChecked = false;
+                TileTestWatchContent.Visibility = Visibility.Collapsed;
                 TileInFlight.IsChecked = false;
                 TileInFlightContent.Visibility = Visibility.Collapsed;
                 ApplyTitleMaxWidths(ActiveSessionsList, _sessionsTitleBlocks);
             }
         }
 
-        // Git #941 — Shane: "collapse To-Do if I click To-Do collapse
-        // Completed and expand To-Do the rest of the length" — Completed and
-        // To-Do are mutually exclusive: expanding one force-collapses the
-        // other rather than letting both sit open at once, since removing
-        // their old MaxHeight="220" cap (see the XAML) means an open list
-        // now grows to its full natural height, using up "the rest of the
-        // length" of the panel — two open at once would just push each
-        // other off-screen instead of actually saving Shane any scrolling.
-        // Re-applying MaxWidths after expanding covers the case where the
-        // list's SizeChanged fires before the registered title blocks exist
-        // yet (first-ever expand of a freshly-rendered list).
         private void TileToDo_Click(object sender, RoutedEventArgs e)
         {
             bool expand = TileToDo.IsChecked == true;
             TileToDoContent.Visibility = expand ? Visibility.Visible : Visibility.Collapsed;
             if (expand)
             {
+                TileTestWatch.IsChecked = false;
+                TileTestWatchContent.Visibility = Visibility.Collapsed;
                 TileCompleted.IsChecked = false;
                 TileCompletedContent.Visibility = Visibility.Collapsed;
                 TileAttention.IsChecked = false;
@@ -2118,6 +2350,8 @@ namespace BuildConsole.Controls
             TileCompletedContent.Visibility = expand ? Visibility.Visible : Visibility.Collapsed;
             if (expand)
             {
+                TileTestWatch.IsChecked = false;
+                TileTestWatchContent.Visibility = Visibility.Collapsed;
                 TileToDo.IsChecked = false;
                 TileToDoContent.Visibility = Visibility.Collapsed;
                 TileAttention.IsChecked = false;
@@ -2134,6 +2368,8 @@ namespace BuildConsole.Controls
             TileAttentionContent.Visibility = expand ? Visibility.Visible : Visibility.Collapsed;
             if (expand)
             {
+                TileTestWatch.IsChecked = false;
+                TileTestWatchContent.Visibility = Visibility.Collapsed;
                 TileToDo.IsChecked = false;
                 TileToDoContent.Visibility = Visibility.Collapsed;
                 TileCompleted.IsChecked = false;
