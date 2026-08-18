@@ -345,17 +345,22 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     smartEligible: false,
   },
   {
+    // #1123 -- `governance:access-review-drift` names no row in the live
+    // monitor_checks catalog (confirmed 2026-08-18): 13 real `governance:*`
+    // keys exist, none matching. Nearest real key is
+    // `governance:access-review-completion` ("Access Review Completion
+    // Rate"), a different concept, not a genuine match. Same phantom-
+    // sourceKey class as #1103/#1110; retired to the honest not_collected:
+    // sentinel rather than repointed at a near-miss key.
     key: "governance.accessReviewDriftCount",
     label: "Access Review Drift",
     valueType: "count",
     shape: "scalar",
     sourceType: "monitor_profile",
-    sourceKey: "governance:access-review-drift",
+    sourceKey: "not_collected:access-review-drift",
     scope: "customer",
-    status: "available",
-    smartEligible: true,
-    smartDefaultTarget: 0,
-    smartBands: RISK_COUNT_BANDS,
+    status: "not_collected",
+    smartEligible: false,
   },
   {
     key: "governance.overdueAccessReviewCount",
