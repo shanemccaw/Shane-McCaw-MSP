@@ -1407,8 +1407,10 @@ function CustomerTopBar({
           <Search className="size-4" />
         </button>
 
-        {/* Notification bell — unchanged component */}
-        <NotificationBell />
+        {/* Notification bell — customer shell uses the customer-scoped
+            /api/portal/notifications/* endpoint family (#1140), not the
+            MSP-staff /api/msp/notifications/* family. */}
+        <NotificationBell endpointFamily="portal" />
 
         {/* Documents — opens the slide-in panel */}
         <button

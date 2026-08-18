@@ -83,7 +83,7 @@ function timeAgo(isoString: string): string {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function NotificationBell() {
+export function NotificationBell({ endpointFamily = "msp" }: { endpointFamily?: "msp" | "portal" }) {
   const { accessToken, fetchWithAuth } = useAuth();
   const [open, setOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -91,6 +91,10 @@ export function NotificationBell() {
   const [loading, setLoading] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const evtSourceRef = useRef<EventSource | null>(null);
+  const base = `/api/${endpointFamily}/notifications`;
+  // Portal (customer) read-all is POST; MSP-staff read-all is PATCH — see
+  // artifacts/api-server/src/routes/notifications.ts.
+  const readAllMethod = endpointFamily === "portal" ? "POST" : "PATCH";
 
   // ── Fetch initial notifications ──────────────────────────────────────────
   const fetchNotifications = useCallback(async () => {
@@ -98,8 +102,8 @@ export function NotificationBell() {
     setLoading(true);
     try {
       const [notifRes, countRes] = await Promise.all([
-        fetchWithAuth("/api/msp/notifications?limit=30"),
-        fetchWithAuth("/api/msp/notifications/unread-count"),
+        fetchWithAuth(`${base}?limit=30`),
+        fetchWithAuth(`${base}/unread-count`),
       ]);
       if (notifRes.ok) setNotifications((await notifRes.json()) as Notification[]);
       if (countRes.ok) {
@@ -109,14 +113,14 @@ export function NotificationBell() {
     } finally {
       setLoading(false);
     }
-  }, [accessToken, fetchWithAuth]);
+  }, [accessToken, fetchWithAuth, base]);
 
   useEffect(() => { void fetchNotifications(); }, [fetchNotifications]);
 
   // ── SSE connection for live updates ──────────────────────────────────────
   useEffect(() => {
     if (!accessToken) return;
-    const url = `/api/msp/notifications/stream?token=${encodeURIComponent(accessToken)}`;
+    const url = `${base}/stream?token=${encodeURIComponent(accessToken)}`;
     const es = new EventSource(url);
     evtSourceRef.current = es;
 
@@ -133,7 +137,7 @@ export function NotificationBell() {
     };
 
     return () => { es.close(); evtSourceRef.current = null; };
-  }, [accessToken]);
+  }, [accessToken, base]);
 
   // ── Close panel on outside click ─────────────────────────────────────────
   useEffect(() => {
