@@ -56,6 +56,7 @@ const METRIC_KEYS = [
   'compliance.guestUserCount',
   'compliance.externalInviteCount',
   'compliance.publicChannelCount',
+  'governance.orphanedAccessPackageCount',
   'governance.publicGroupCount',
   'governance.publicTeamCount',
   'compliance.eeeuSiteCount',
@@ -63,10 +64,14 @@ const METRIC_KEYS = [
   // Governance operations
   'governance.overdueAccessReviewCount',
   'governance.accessReviewDriftCount',
+  'governance.workflowFailureCount',
+  'governance.activeEntitlementAssignmentCount',
   // Trend (engine snapshot with real history) + timelines
   'engine.driftScore',
   'identity.privilegedRoleChangeCount',
   'drift.roleAssignmentDriftCount',
+  'governance.entitlementPolicyDriftCount',
+  'governance.workflowDriftCount',
 ];
 
 /** History opt-in — smart-eligible customer scalars with genuine per-point
@@ -74,6 +79,7 @@ const METRIC_KEYS = [
 const HISTORY_KEYS = [
   'engine.driftScore',
   'governance.overdueAccessReviewCount',
+  'governance.orphanedAccessPackageCount',
 ];
 
 const TOPIC_KEYWORDS = [
@@ -106,6 +112,7 @@ export default function GovernancePage() {
 
   const overdueReviews = resolvedValue(live.metrics['governance.overdueAccessReviewCount']);
   const globalAdmins = resolvedValue(live.metrics['identity.globalAdminCount']);
+  const workflowFailures = resolvedValue(live.metrics['governance.workflowFailureCount']);
 
   const heroStats: HeroStat[] = [
     {
@@ -121,6 +128,13 @@ export default function GovernancePage() {
       caption: '2–4 with break-glass is healthy',
       emptyCaption: 'No identity data yet',
       accent: 'blue',
+    },
+    {
+      label: 'Lifecycle Failures',
+      value: workflowFailures != null ? workflowFailures.toLocaleString() : null,
+      caption: 'Failed lifecycle workflows',
+      emptyCaption: 'No workflow data yet',
+      accent: workflowFailures != null && workflowFailures > 0 ? 'red' : 'green',
     },
     {
       label: 'Topic Findings',
@@ -154,12 +168,16 @@ export default function GovernancePage() {
           <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <MetricGrid
               title="GOVERNANCE OPERATIONS"
-              subtitle="Access-review checks"
+              subtitle="Entitlement & access-review checks"
               icon={ClipboardCheck}
               columns={2}
               tiles={[
                 { key: 'governance.overdueAccessReviewCount', label: 'Overdue Access Reviews', caption: 'Past their review deadline' },
                 { key: 'governance.accessReviewDriftCount', label: 'Access Review Drift', caption: 'Reviews drifting from baseline' },
+                { key: 'governance.workflowFailureCount', label: 'Lifecycle Failures', caption: 'Failed lifecycle workflows' },
+                // Active entitlement grants are normal inventory, not risk —
+                // a healthy tenant running access packages properly has many.
+                { key: 'governance.activeEntitlementAssignmentCount', label: 'Entitlement Assignments', caption: 'Active access-package grants', direction: 'neutral' },
               ]}
               metrics={live.metrics}
             />
@@ -168,6 +186,7 @@ export default function GovernancePage() {
               seriesDefs={[
                 { key: 'engine.driftScore', label: 'Drift Engine Score', color: 'var(--color-primary)' },
                 { key: 'governance.overdueAccessReviewCount', label: 'Overdue Reviews', color: 'var(--color-status-amber)' },
+                { key: 'governance.orphanedAccessPackageCount', label: 'Orphaned Packages', color: 'var(--color-status-red)' },
               ]}
               metrics={live.metrics}
             />
@@ -177,9 +196,11 @@ export default function GovernancePage() {
               sources={[
                 { key: 'identity.privilegedRoleChangeCount', tag: 'ROLE', tagClass: 'bg-status-red/15 text-status-red border-status-red/30' },
                 { key: 'drift.roleAssignmentDriftCount', tag: 'DRIFT', tagClass: 'bg-status-amber/15 text-status-amber border-status-amber/30' },
+                { key: 'governance.entitlementPolicyDriftCount', tag: 'ENTITLE', tagClass: 'bg-status-violet/15 text-status-violet border-status-violet/30' },
+                { key: 'governance.workflowDriftCount', tag: 'LIFECYCLE', tagClass: 'bg-status-blue/15 text-status-blue border-status-blue/30' },
               ]}
               metrics={live.metrics}
-              emptyCopy="Role audit events appear once the audit checks have collected data for your tenant."
+              emptyCopy="Role and entitlement audit events appear once the audit checks have collected data for your tenant."
             />
           </section>
 
