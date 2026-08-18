@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { usePushSubscription } from "@/lib/usePushSubscription";
+import { useAuth } from "@/contexts/AuthContext";
 
 /**
  * Git #858 — Shane: "Paste it into my admin playground page that I can
@@ -62,6 +63,7 @@ function parseBuildPromptBlock(raw: string): {
 }
 
 function QueueBuildSection() {
+  const { fetchWithAuth } = useAuth();
   const [raw, setRaw] = useState("");
   const [status, setStatus] = useState<{ tone: "idle" | "success" | "error"; message: string }>({
     tone: "idle",
@@ -78,9 +80,8 @@ function QueueBuildSection() {
     setSubmitting(true);
     setStatus({ tone: "idle", message: "" });
     try {
-      const res = await fetch("/api/admin/build-tracker/extension/queue", {
+      const res = await fetchWithAuth("/api/admin/build-tracker/extension/queue", {
         method: "POST",
-        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: `Git #${parsed.githubNumber}`,
