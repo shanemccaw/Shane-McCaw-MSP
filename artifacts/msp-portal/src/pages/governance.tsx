@@ -29,7 +29,7 @@ import { TopicHero, HeroStat } from '@/components/health-suite/TopicHero';
 import { MetricGrid } from '@/components/health-suite/MetricGrid';
 import { DailyTrendPanel } from '@/components/health-suite/DailyTrendPanel';
 import { EventTimelinePanel } from '@/components/health-suite/EventTimelinePanel';
-import { TopicFindings } from '@/components/health-suite/TopicFindings';
+import { TopGovernanceRisks } from '@/components/governance/TopGovernanceRisks';
 import { AutomationOpportunities } from '@/components/health-suite/AutomationOpportunities';
 import { TopicRemediationModal } from '@/components/health-suite/TopicRemediationModal';
 import {
@@ -103,7 +103,6 @@ export default function GovernancePage() {
 
   const allFindings = live.overview?.findings ?? [];
   const topicFindings = filterFindingsByTopic(allFindings, TOPIC_KEYWORDS);
-  const otherCount = allFindings.length - topicFindings.length;
 
   const overdueReviews = resolvedValue(live.metrics['governance.overdueAccessReviewCount']);
   const globalAdmins = resolvedValue(live.metrics['identity.globalAdminCount']);
@@ -184,14 +183,8 @@ export default function GovernancePage() {
             />
           </section>
 
-          {/* 4. Real topic findings */}
-          <TopicFindings
-            title="Top Governance Risks"
-            subtitle={
-              otherCount > 0
-                ? `Governance-related findings from your latest scan · ${otherCount} further finding${otherCount === 1 ? '' : 's'} from other pillars on M365 Health`
-                : 'Governance-related findings from your latest scan'
-            }
+          {/* 4. Real topic findings — ranked top 5, bespoke governance presentation (#1120) */}
+          <TopGovernanceRisks
             findings={topicFindings}
             loaded={live.loaded}
             emptyCopy="No governance-related findings — they appear after your first completed scan."

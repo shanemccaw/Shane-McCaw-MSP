@@ -38,6 +38,7 @@
     "copilot-readiness/m365-health-pillar-live-scan.json",
     "security-overview/alert-volume-drilldown.json",
     "security-overview/hero-pillar-score.json",
-    "governance/ownerless-groups-sprawl.json"
+    "governance/ownerless-groups-sprawl.json",
+    "governance/top-governance-risks.json"
   ]
 }

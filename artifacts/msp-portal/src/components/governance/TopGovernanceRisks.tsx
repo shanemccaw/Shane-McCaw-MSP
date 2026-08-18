@@ -1,79 +1,146 @@
 import React from 'react';
-import { GovernanceRisk, ThreatLandscapeInfo } from './types';
-import { AlertCircle, ChevronRight } from 'lucide-react';
+import { AlertOctagon, AlertTriangle, Info, ChevronRight, CheckCircle2 } from 'lucide-react';
+import {
+  TopicFinding,
+  TopicFindingSeverity,
+  SEVERITY_BADGE_CLASS,
+  SEVERITY_TEXT_CLASS,
+} from '@/components/health-suite/useTopicHealthLive';
+
+/**
+ * Bespoke "Top 5 Governance Risks" presentation for /governance — Git #1120.
+ * Ranks the page's real, already topic-scoped findings (from
+ * useTopicHealthLive's mission-control overview slice) by severity then
+ * recency and shows only the top 5 with numbered-rank styling, distinct from
+ * the generic filterable TopicFindings list other topic pages use. Same
+ * honesty rules as TopicFindings/IntelligenceSignals: severity uses status
+ * tokens with icon + label, no fake data, "Remediate" opens the real
+ * remediation surface.
+ */
+
+const SEVERITY_ICON: Record<TopicFindingSeverity, React.ComponentType<{ className?: string }>> = {
+  critical: AlertOctagon,
+  warning: AlertTriangle,
+  info: Info,
+};
+
+const SEVERITY_LABEL: Record<TopicFindingSeverity, string> = {
+  critical: 'Critical',
+  warning: 'Warning',
+  info: 'Info',
+};
+
+const SEVERITY_RANK: Record<TopicFindingSeverity, number> = {
+  critical: 0,
+  warning: 1,
+  info: 2,
+};
+
+const TOP_N = 5;
+
+function rankTopRisks(findings: TopicFinding[]): TopicFinding[] {
+  return [...findings]
+    .sort((a, b) => {
+      const severityDelta = SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity];
+      if (severityDelta !== 0) return severityDelta;
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    })
+    .slice(0, TOP_N);
+}
 
 interface TopGovernanceRisksProps {
-  risks: GovernanceRisk[];
-  threatInfo: ThreatLandscapeInfo;
-  onSelectRisk: (risk: GovernanceRisk) => void;
+  findings: TopicFinding[];
+  loaded: boolean;
+  /** Empty-list copy when the feed loaded but nothing matched this topic. */
+  emptyCopy: string;
+  onRemediateFinding: (finding: TopicFinding) => void;
 }
 
 export const TopGovernanceRisks: React.FC<TopGovernanceRisksProps> = ({
-  risks,
-  threatInfo,
-  onSelectRisk
+  findings,
+  loaded,
+  emptyCopy,
+  onRemediateFinding,
 }) => {
+  const topRisks = rankTopRisks(findings);
+  const criticalCount = findings.filter((f) => f.severity === 'critical').length;
+
   return (
-    <section className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-      {/* Top 5 Governance Risks */}
-      <div className="bg-card border border-border rounded-xl overflow-hidden flex flex-col justify-between">
+    <section data-testid="top-governance-risks" className="bg-card border border-border rounded-xl overflow-hidden">
+      <div className="bg-secondary/50 px-6 py-4 border-b border-border flex justify-between items-center">
         <div>
-          <div className="bg-[#282a2b] px-6 py-4 border-b border-white/5 flex justify-between items-center">
-            <h3 className="font-headline text-lg font-semibold text-[#e2e2e2] flex items-center gap-2">
-              <AlertCircle className="w-5 h-5 text-[#ef4444]" />
-              Top 5 Governance Risks
-            </h3>
-            <span className="font-mono text-[10px] font-semibold text-[#ef4444] bg-[#ef4444]/10 border border-[#ef4444]/30 px-2.5 py-1 rounded">
-              CRITICAL PRIORITY
-            </span>
-          </div>
-
-          <div className="divide-y divide-white/5">
-            {risks.map((risk) => (
-              <div
-                key={risk.id}
-                onClick={() => onSelectRisk(risk)}
-                className="p-4 flex items-start gap-4 hover:bg-white/5 transition-colors cursor-pointer group"
-              >
-                <span className="font-mono text-xs font-semibold text-[#479ef5] bg-[#479ef5]/10 border border-[#479ef5]/20 w-8 h-8 flex items-center justify-center rounded shrink-0 group-hover:bg-[#479ef5] group-hover:text-[#001c37] transition-all">
-                  {risk.rank}
-                </span>
-                <div className="flex-grow">
-                  <div className="flex justify-between items-center">
-                    <p className="font-body text-sm font-semibold text-[#e2e2e2] group-hover:text-[#479ef5] transition-colors">
-                      {risk.title}
-                    </p>
-                    <ChevronRight className="w-4 h-4 text-[#8a919d] group-hover:text-[#479ef5] group-hover:translate-x-0.5 transition-all" />
-                  </div>
-                  <p className="font-body text-xs text-[#8a919d] mt-1">
-                    {risk.description}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Visual Asset / Threat Landscape Column */}
-      <div className="relative rounded-xl overflow-hidden group min-h-[360px] flex flex-col justify-end border border-white/10">
-        <div className="absolute inset-0 bg-gradient-to-t from-[#121414] via-[#121414]/60 to-transparent z-10"></div>
-        <img
-          src={threatInfo.imageUrl}
-          alt="Threat Landscape Analysis render"
-          className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 opacity-90"
-        />
-        <div className="relative z-20 p-6">
-          <span className="inline-block font-mono text-[10px] text-[#479ef5] bg-[#479ef5]/10 border border-[#479ef5]/30 px-2.5 py-1 rounded mb-2">
-            INTELLIGENCE INSIGHT
-          </span>
-          <h3 className="font-headline text-2xl text-[#e2e2e2] font-bold">
-            {threatInfo.title}
+          <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
+            <AlertOctagon className="w-5 h-5 text-status-red" />
+            Top {TOP_N} Governance Risks
           </h3>
-          <p className="font-body text-sm text-[#c0c7d3] max-w-md mt-2 leading-relaxed">
-            {threatInfo.subtitle}
+          <p className="text-xs text-muted-foreground font-mono mt-0.5">
+            Ranked by severity, then most recent
           </p>
         </div>
+        {criticalCount > 0 && (
+          <span className="font-mono text-[10px] font-semibold text-status-red bg-status-red/10 border border-status-red/30 px-2.5 py-1 rounded shrink-0">
+            {criticalCount} CRITICAL
+          </span>
+        )}
+      </div>
+
+      <div className="divide-y divide-border">
+        {topRisks.length === 0 ? (
+          <div className="p-8 text-center text-xs font-mono text-muted-foreground">
+            {!loaded ? 'Loading findings…' : emptyCopy}
+          </div>
+        ) : (
+          topRisks.map((finding, index) => {
+            const SeverityIcon = SEVERITY_ICON[finding.severity];
+            return (
+              <div
+                key={finding.id}
+                onClick={() => onRemediateFinding(finding)}
+                className="p-4 flex items-start gap-4 hover:bg-secondary/40 transition-colors cursor-pointer group"
+              >
+                <span
+                  className={`font-mono text-xs font-bold w-8 h-8 flex items-center justify-center rounded-full shrink-0 border ${SEVERITY_BADGE_CLASS[finding.severity]}`}
+                >
+                  {index + 1}
+                </span>
+                <div className="flex-grow min-w-0">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-2 flex-wrap min-w-0">
+                      <SeverityIcon className={`w-4 h-4 shrink-0 ${SEVERITY_TEXT_CLASS[finding.severity]}`} />
+                      <p className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">
+                        {finding.title}
+                      </p>
+                      {finding.checkLabel && (
+                        <span className="text-[10px] font-mono text-muted-foreground border border-border rounded px-1.5 py-0.5 shrink-0">
+                          {finding.checkLabel}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span
+                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold border ${SEVERITY_BADGE_CLASS[finding.severity]}`}
+                      >
+                        {SEVERITY_LABEL[finding.severity]}
+                      </span>
+                      <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-primary group-hover:translate-x-0.5 transition-all" />
+                    </div>
+                  </div>
+                  {finding.description && (
+                    <p className="text-xs text-secondary-foreground/90 mt-1 leading-relaxed">
+                      {finding.description}
+                    </p>
+                  )}
+                  {finding.offer && (
+                    <p className="text-[11px] font-mono text-status-green mt-1 flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3" />
+                      Remediation offer available: {finding.offer.title}
+                    </p>
+                  )}
+                </div>
+              </div>
+            );
+          })
+        )}
       </div>
     </section>
   );
