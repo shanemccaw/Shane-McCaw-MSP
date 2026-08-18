@@ -944,6 +944,23 @@ namespace BuildConsole
             slot.StatusLine.Spinning = true;
             if (verifying) { slot.StatusLine.ActivityText = "verifying…"; return; }
 
+            // Check for active background subagents / workflows first — this takes
+            // priority over the generic "working…" / "thinking…" text so Shane can
+            // see background agents are in-flight and the build is NOT stuck/idle.
+            if (slot.InteractiveBound && _watcher != null)
+            {
+                var agents = _watcher.GetActiveSubagents(slot.QueueItemId);
+                if (agents.Count > 0)
+                {
+                    var label = agents.Count == 1
+                        ? $"⚡ running 1 background agent ({agents[0].Description})…"
+                        : $"⚡ {agents.Count} background agents working ({string.Join(", ", agents.Take(3).Select(a => a.Description))})…";
+                    slot.StatusLine.ActivityText = label;
+                    slot.EasterEggUntilUtc = DateTime.MinValue; // don't let an easter egg overwrite the subagent status
+                    return;
+                }
+            }
+
             var now = DateTime.UtcNow;
             if (now < slot.EasterEggUntilUtc) return; // let a rolled easter egg linger
 

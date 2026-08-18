@@ -78,6 +78,17 @@ namespace BuildConsole.Services
     /// Send-to-Builder sessions (#1001, ClaudeAgentsService) are a
     /// completely separate launch path and are never touched by any of this.
     /// </summary>
+
+    /// <summary>Describes one active background subagent or workflow in flight for an interactive build. Surfaced in Build Watch's status line so the user can see the build is not idle.</summary>
+    public sealed class SubagentActivityInfo
+    {
+        public string ToolUseId { get; init; } = "";
+        public string Description { get; init; } = "";
+        public string ToolName { get; init; } = "";
+        public DateTime StartedAtUtc { get; init; } = DateTime.UtcNow;
+        public TimeSpan Elapsed => DateTime.UtcNow - StartedAtUtc;
+    }
+
     public class QueueWatcherService
     {
         private class RunningEntry
@@ -109,6 +120,9 @@ namespace BuildConsole.Services
             /// <summary>Per-build copy of the idle-finalize grace in ms (0 = never auto-finalize).</summary>
             public int IdleFinalizeMs;
             public CancellationTokenSource? AutoFinalizeCts;
+
+            /// <summary>Active background subagents / workflows in flight for this build (tool_call registered, tool_result not yet landed). Guarded by the service _gate.</summary>
+            public readonly Dictionary<string, SubagentActivityInfo> ActiveSubagents = new();
 
             /// <summary>
             /// The BuildConsole-owned live STRUCTURED event stream the Build Watch window pulls
@@ -642,7 +656,7 @@ namespace BuildConsole.Services
             catch { /* file locked mid-write elsewhere — the structured buffer still carries it for Build Watch */ }
         }
 
-        /// <summary>Appends one structured event to the interactive build's live buffer the Build Watch window pulls (via <see cref="CopyEventsSince"/>), trimming the front once over <see cref="MaxBufferedEvents"/>. Guarded by _gate.</summary>
+        /// <summary>Appends one structured event to the interactive build's live buffer the Build Watch window pulls (via <see cref="CopyEventsSince"/>), trimming the front once over <see cref="MaxBufferedEvents"/>. Also maintains <see cref="RunningEntry.ActiveSubagents"/> so Build Watch can surface in-progress background agents. Guarded by _gate.</summary>
         private void AppendEvent(RunningEntry entry, InteractiveEvent ev)
         {
             lock (_gate)
@@ -651,8 +665,48 @@ namespace BuildConsole.Services
                 entry.TotalEmitted++;
                 int overflow = entry.Events.Count - MaxBufferedEvents;
                 if (overflow > 0) entry.Events.RemoveRange(0, overflow);
+
+                // Track background subagents: add on tool_call, remove when its tool_result lands.
+                if (ev.Kind == InteractiveEventKind.ToolCall && IsSubagentOrBackgroundTool(ev.ToolName))
+                {
+                    var key = ev.ToolUseId ?? Guid.NewGuid().ToString();
+                    entry.ActiveSubagents[key] = new SubagentActivityInfo
+                    {
+                        ToolUseId = key,
+                        Description = ev.CommandPreview ?? ev.ToolName ?? "subagent",
+                        ToolName = ev.ToolName ?? "Task",
+                        StartedAtUtc = DateTime.UtcNow
+                    };
+                }
+                else if (ev.Kind == InteractiveEventKind.ToolResult && !string.IsNullOrEmpty(ev.ResultForToolUseId))
+                {
+                    entry.ActiveSubagents.Remove(ev.ResultForToolUseId);
+                }
             }
         }
+
+        /// <summary>Returns true for tool names that represent a long-running background subagent or workflow the user should be aware of (e.g. Task, workflow).</summary>
+        public static bool IsSubagentOrBackgroundTool(string? name)
+        {
+            if (string.IsNullOrWhiteSpace(name)) return false;
+            return name.Equals("Task", StringComparison.OrdinalIgnoreCase)
+                || name.IndexOf("subagent", StringComparison.OrdinalIgnoreCase) >= 0
+                || name.Equals("workflow", StringComparison.OrdinalIgnoreCase)
+                || name.Equals("background_task", StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>Returns the currently active background subagents / workflows for this queue item (those whose tool_result hasn't landed yet), or an empty list. UI-thread safe.</summary>
+        public List<SubagentActivityInfo> GetActiveSubagents(int id)
+        {
+            lock (_gate)
+            {
+                if (_running.TryGetValue(id, out var entry) && entry.ActiveSubagents.Count > 0)
+                    return new List<SubagentActivityInfo>(entry.ActiveSubagents.Values);
+                return new List<SubagentActivityInfo>();
+            }
+        }
+
+
 
         /// <summary>A raw stderr line (not stream-json): tee it to the log FILE and, for an interactive build, surface it in the Build Watch render as an error-tinted text event.</summary>
         private void HandleStderr(RunningEntry entry, string data)
