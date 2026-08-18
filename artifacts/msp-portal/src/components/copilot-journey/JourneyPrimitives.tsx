@@ -32,7 +32,7 @@ import { SPARK_H, SPARK_W, sparkDelta, sparkPath, sparkTip } from "./revealMath.
  * Pillar glyphs
  * ------------------------------------------------------------------ */
 
-const PILLAR_GLYPH = {
+export const PILLAR_GLYPH = {
   // Sharing exposure — the design's own three-node share mark.
   governance: Share2,
   security: ShieldCheck,

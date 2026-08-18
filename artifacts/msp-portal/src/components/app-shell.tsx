@@ -71,7 +71,6 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  ClipboardCheck,
   CloudCog,
   Cog,
   Copy,
@@ -85,7 +84,6 @@ import {
   Gift,
   GitBranch,
   History,
-  KeyRound,
   LayoutDashboard,
   ListTodo,
   Loader2,
@@ -103,24 +101,22 @@ import {
   Plus,
   Receipt,
   Rocket,
-  Scale,
   Search,
   Send,
   Shield,
-  ShieldAlert,
   ShieldCheck,
   Sparkles,
   Store,
   Sun,
   Timer,
   Trash2,
-  TrendingUp,
   User,
   Users,
   Webhook,
   X,
   Zap,
 } from "lucide-react";
+import { PILLAR_GLYPH } from "@/components/copilot-journey/JourneyPrimitives";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -555,25 +551,25 @@ const NAV_SECTIONS: NavSection[] = [
         roles: ["CustomerUser"],
       },
       {
-        icon: ShieldAlert,
+        icon: PILLAR_GLYPH.security,
         label: "Security Intelligence",
         href: "/security-overview",
         roles: ["CustomerUser"],
       },
       {
-        icon: Scale,
+        icon: PILLAR_GLYPH.governance,
         label: "Governance",
         href: "/governance",
         roles: ["CustomerUser"],
       },
       {
-        icon: ClipboardCheck,
+        icon: PILLAR_GLYPH.compliance,
         label: "Compliance",
         href: "/compliance",
         roles: ["CustomerUser"],
       },
       {
-        icon: TrendingUp,
+        icon: PILLAR_GLYPH.adoption,
         label: "Adoption",
         href: "/adoption",
         roles: ["CustomerUser"],
@@ -585,13 +581,13 @@ const NAV_SECTIONS: NavSection[] = [
         roles: ["CustomerUser"],
       },
       {
-        icon: Network,
+        icon: PILLAR_GLYPH.health,
         label: "Health",
         href: "/architecture",
         roles: ["CustomerUser"],
       },
       {
-        icon: KeyRound,
+        icon: PILLAR_GLYPH.licensing,
         label: "Licensing",
         href: "/licensing",
         roles: ["CustomerUser"],
@@ -1556,8 +1552,8 @@ function CustomerTopBar({
 
 const MOBILE_TAB_ITEMS: Array<{ icon: React.ElementType; label: string; href: string }> = [
   { icon: Activity, label: "Health", href: "/m365-health" },
-  { icon: ShieldAlert, label: "Security", href: "/security-overview" },
-  { icon: ClipboardCheck, label: "Compliance", href: "/compliance" },
+  { icon: PILLAR_GLYPH.security, label: "Security", href: "/security-overview" },
+  { icon: PILLAR_GLYPH.compliance, label: "Compliance", href: "/compliance" },
   { icon: Gift, label: "Offers", href: "/customer-offers" },
 ];
 
