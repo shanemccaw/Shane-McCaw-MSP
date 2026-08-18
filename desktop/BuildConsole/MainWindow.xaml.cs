@@ -270,6 +270,10 @@ namespace BuildConsole
 
             InitializeResourceMonitor();
 
+            // Wire mouse and keyboard activity for Sailor Duck mascot idle tracking
+            PreviewMouseMove += (_, _) => SailorDuckLayer?.NotifyUserActivity();
+            PreviewMouseDown += (_, _) => SailorDuckLayer?.NotifyUserActivity();
+
             // Initial WebView2 events
             ClaudeWebView.NavigationStarting  += WebView_NavigationStarting;
             ClaudeWebView.NavigationCompleted += WebView_NavigationCompleted;
@@ -652,6 +656,17 @@ namespace BuildConsole
         // ── Window Preview Key Handlers for Ctrl+K and Ctrl+Tab ─────────────────
         private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
         {
+            SailorDuckLayer?.NotifyUserActivity();
+
+            // Ctrl+Shift+D: Summon Donald the Sailor Duck Mascot
+            if (e.Key == Key.D && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control && (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift)
+            {
+                e.Handled = true;
+                SailorDuckLayer?.SummonMascot();
+                ToastEngine.Success("Sailor Duck Mascot", "Quack! Ahoy Captain Shane! ⚓ (Ctrl+Shift+D)");
+                return;
+            }
+
             if (e.Key == Key.K && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
             {
                 e.Handled = true;
@@ -3535,8 +3550,22 @@ namespace BuildConsole
                 ghNum = n;
             }
 
+            if (exitCode == 0)
+            {
+                Dispatcher.BeginInvoke(() =>
+                {
+                    SailorDuckLayer?.TriggerCelebration($"⚓ {(ghNum.HasValue ? $"#{ghNum.Value} " : "")}BUILD COMPLETE! QUACK! 🎉");
+                });
+            }
+
             if (_postBuildDeploy != null)
                 _ = _postBuildDeploy.OnBuildFinishedAsync(queueItemId, title, exitCode, ghNum);
+        }
+
+        private void BtnSailorDuckMascot_Click(object sender, RoutedEventArgs e)
+        {
+            SailorDuckLayer?.SummonMascot();
+            ToastEngine.Success("Sailor Duck Mascot", "Quack! Ahoy Captain Shane! ⚓ (Ctrl+Shift+D)");
         }
 
         /// <summary>Git #834 / #954 — File > Settings selects the sidebar's Settings

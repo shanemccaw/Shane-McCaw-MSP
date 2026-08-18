@@ -7,6 +7,7 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using BuildConsole.Services;
 
@@ -1440,57 +1441,251 @@ namespace BuildConsole.Controls
 
         private TreeViewItem BuildQueueTreeItem(QueueItem item)
         {
-            var (icon, hex) = StatusStyle.TryGetValue(item.Status, out var s) ? s : ("•", "#CDD6F4");
-            var brush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex));
+            var card = new Border
+            {
+                Background = new SolidColorBrush(Color.FromRgb(0x18, 0x18, 0x25)),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(0x31, 0x32, 0x44)),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(6),
+                Padding = new Thickness(7, 5, 7, 5),
+                Margin = new Thickness(0, 1, 0, 2),
+                HorizontalAlignment = HorizontalAlignment.Stretch
+            };
 
-            var panel = new StackPanel { Orientation = Orientation.Horizontal };
-            panel.Children.Add(new TextBlock { Text = icon + " ", FontSize = 12, Foreground = brush, VerticalAlignment = VerticalAlignment.Center });
+            var mainStack = new StackPanel();
+
+            // ── Top Row: Status Badge + Issue # Badge + Running Critter ──
+            var topRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 3) };
+
+            var interactiveState = (item.Status == "running" && _watcher != null)
+                ? _watcher.GetInteractiveState(item.Id)
+                : null;
+
+            // Determine status pill appearance & critter icon
+            Border statusPill;
+            if (item.Status == "running")
+            {
+                if (interactiveState == InteractiveInputState.WaitingForInput)
+                {
+                    // Question / Needs Input Critter Badge
+                    statusPill = new Border
+                    {
+                        Background = new SolidColorBrush(Color.FromRgb(0x3E, 0x2C, 0x1A)),
+                        BorderBrush = new SolidColorBrush(Color.FromRgb(0xF9, 0xE2, 0xAF)),
+                        BorderThickness = new Thickness(1),
+                        CornerRadius = new CornerRadius(4),
+                        Padding = new Thickness(5, 1, 5, 1)
+                    };
+                    var pillStack = new StackPanel { Orientation = Orientation.Horizontal };
+                    var questionIcon = new TextBlock
+                    {
+                        Text = "❓ ✋ ",
+                        FontSize = 10,
+                        VerticalAlignment = VerticalAlignment.Center
+                    };
+                    var animTransform = new TranslateTransform();
+                    questionIcon.RenderTransform = animTransform;
+                    var pulseAnim = new DoubleAnimation(0, -2, TimeSpan.FromMilliseconds(300))
+                    {
+                        AutoReverse = true,
+                        RepeatBehavior = RepeatBehavior.Forever,
+                        EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
+                    };
+                    animTransform.BeginAnimation(TranslateTransform.YProperty, pulseAnim);
+
+                    pillStack.Children.Add(questionIcon);
+                    pillStack.Children.Add(new TextBlock
+                    {
+                        Text = "NEEDS INPUT",
+                        FontSize = 9.5,
+                        FontWeight = FontWeights.Bold,
+                        Foreground = new SolidColorBrush(Color.FromRgb(0xF9, 0xE2, 0xAF)),
+                        VerticalAlignment = VerticalAlignment.Center
+                    });
+                    statusPill.Child = pillStack;
+                }
+                else
+                {
+                    // Active Running / Sprinting Critter Badge
+                    statusPill = new Border
+                    {
+                        Background = new SolidColorBrush(Color.FromRgb(0x1D, 0x2E, 0x45)),
+                        BorderBrush = new SolidColorBrush(Color.FromRgb(0x89, 0xB4, 0xFA)),
+                        BorderThickness = new Thickness(1),
+                        CornerRadius = new CornerRadius(4),
+                        Padding = new Thickness(5, 1, 5, 1)
+                    };
+                    var pillStack = new StackPanel { Orientation = Orientation.Horizontal };
+                    var runnerIcon = new TextBlock
+                    {
+                        Text = "🐾 🏃 ",
+                        FontSize = 10,
+                        VerticalAlignment = VerticalAlignment.Center
+                    };
+                    var hopTrans = new TranslateTransform();
+                    runnerIcon.RenderTransform = hopTrans;
+                    var hopAnim = new DoubleAnimation(0, -2.5, TimeSpan.FromMilliseconds(220))
+                    {
+                        AutoReverse = true,
+                        RepeatBehavior = RepeatBehavior.Forever,
+                        EasingFunction = new BounceEase { Bounces = 1, Bounciness = 2 }
+                    };
+                    hopTrans.BeginAnimation(TranslateTransform.YProperty, hopAnim);
+
+                    pillStack.Children.Add(runnerIcon);
+                    pillStack.Children.Add(new TextBlock
+                    {
+                        Text = "RUNNING",
+                        FontSize = 9.5,
+                        FontWeight = FontWeights.Bold,
+                        Foreground = new SolidColorBrush(Color.FromRgb(0x89, 0xB4, 0xFA)),
+                        VerticalAlignment = VerticalAlignment.Center
+                    });
+                    statusPill.Child = pillStack;
+                }
+            }
+            else if (item.Status == "done")
+            {
+                statusPill = new Border
+                {
+                    Background = new SolidColorBrush(Color.FromRgb(0x1C, 0x35, 0x27)),
+                    BorderBrush = new SolidColorBrush(Color.FromRgb(0xA6, 0xE3, 0xA1)),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(4),
+                    Padding = new Thickness(5, 1, 5, 1)
+                };
+                var pillStack = new StackPanel { Orientation = Orientation.Horizontal };
+                pillStack.Children.Add(new TextBlock { Text = "✨ ", FontSize = 10, VerticalAlignment = VerticalAlignment.Center });
+                pillStack.Children.Add(new TextBlock
+                {
+                    Text = "DONE",
+                    FontSize = 9.5,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = new SolidColorBrush(Color.FromRgb(0xA6, 0xE3, 0xA1)),
+                    VerticalAlignment = VerticalAlignment.Center
+                });
+                statusPill.Child = pillStack;
+            }
+            else if (item.Status == "failed")
+            {
+                statusPill = new Border
+                {
+                    Background = new SolidColorBrush(Color.FromRgb(0x3A, 0x1E, 0x26)),
+                    BorderBrush = new SolidColorBrush(Color.FromRgb(0xF3, 0x8B, 0xA8)),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(4),
+                    Padding = new Thickness(5, 1, 5, 1)
+                };
+                var pillStack = new StackPanel { Orientation = Orientation.Horizontal };
+                pillStack.Children.Add(new TextBlock { Text = "✕ ", FontSize = 10, Foreground = new SolidColorBrush(Color.FromRgb(0xF3, 0x8B, 0xA8)), VerticalAlignment = VerticalAlignment.Center });
+                pillStack.Children.Add(new TextBlock
+                {
+                    Text = "FAILED",
+                    FontSize = 9.5,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = new SolidColorBrush(Color.FromRgb(0xF3, 0x8B, 0xA8)),
+                    VerticalAlignment = VerticalAlignment.Center
+                });
+                statusPill.Child = pillStack;
+            }
+            else
+            {
+                var blockerList = item.BlockedByNumbers ?? (item.BlockedByNumber.HasValue ? new List<int> { item.BlockedByNumber.Value } : new List<int>());
+                bool isBlocked = blockerList.Count > 0;
+
+                statusPill = new Border
+                {
+                    Background = new SolidColorBrush(isBlocked ? Color.FromRgb(0x3A, 0x1E, 0x26) : Color.FromRgb(0x21, 0x22, 0x34)),
+                    BorderBrush = new SolidColorBrush(isBlocked ? Color.FromRgb(0xF3, 0x8B, 0xA8) : Color.FromRgb(0x6C, 0x70, 0x86)),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(4),
+                    Padding = new Thickness(5, 1, 5, 1)
+                };
+                var pillStack = new StackPanel { Orientation = Orientation.Horizontal };
+                pillStack.Children.Add(new TextBlock { Text = isBlocked ? "🔒 " : "⏳ ", FontSize = 10, VerticalAlignment = VerticalAlignment.Center });
+                pillStack.Children.Add(new TextBlock
+                {
+                    Text = isBlocked ? "BLOCKED" : "QUEUED",
+                    FontSize = 9.5,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = new SolidColorBrush(isBlocked ? Color.FromRgb(0xF3, 0x8B, 0xA8) : Color.FromRgb(0xBA, 0xB4, 0xCD)),
+                    VerticalAlignment = VerticalAlignment.Center
+                });
+                statusPill.Child = pillStack;
+            }
+
+            topRow.Children.Add(statusPill);
+
+            if (item.GithubNumber.HasValue)
+            {
+                var numBadge = new Border
+                {
+                    Background = new SolidColorBrush(Color.FromRgb(0x28, 0x29, 0x3D)),
+                    BorderBrush = new SolidColorBrush(Color.FromRgb(0x45, 0x47, 0x5A)),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(4),
+                    Padding = new Thickness(4, 1, 4, 1),
+                    Margin = new Thickness(6, 0, 0, 0)
+                };
+                numBadge.Child = new TextBlock
+                {
+                    Text = FormatIssueRef(item.GithubNumber.Value),
+                    FontSize = 9.5,
+                    FontWeight = FontWeights.SemiBold,
+                    Foreground = (Brush)Application.Current.FindResource("PeachBrush")
+                };
+                topRow.Children.Add(numBadge);
+            }
+
+            mainStack.Children.Add(topRow);
+
+            // ── Second Row: Title Block ──
             var titleBlock = new TextBlock
             {
                 Text = item.Title,
-                FontSize = 12,
+                FontSize = 11.5,
+                FontWeight = FontWeights.Normal,
                 Foreground = (Brush)Application.Current.FindResource("TextBrush"),
-                VerticalAlignment = VerticalAlignment.Center,
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(1, 2, 1, 0)
             };
-            // Git #947 — Shane: "when I hover over the build number in the Queue
-            // ... a pretty custom bubble tooltip appears and gives me a very
-            // short description of what its building." The queue Title itself IS
-            // that description (e.g. "#946 — BuildLogView line wrapping", or the
-            // first line of the prompt when no --title was given), but it can run
-            // long (queueBuildFromBlock slices a prompt's first line to 80 chars,
-            // and a --title can be arbitrary), so it's trimmed to a single concise
-            // bubble line rather than dumping a wall of text on hover. Attached to
-            // the number/title block only (not the whole row), using the custom
-            // BubbleToolTip style from DarkTheme.xaml.
             AttachBubbleTooltip(titleBlock, item.Title);
-            panel.Children.Add(titleBlock);
-            var blockerList = item.BlockedByNumbers ?? (item.BlockedByNumber.HasValue ? new List<int> { item.BlockedByNumber.Value } : new List<int>());
-            if (blockerList.Count > 0 && item.Status == "queued")
+            mainStack.Children.Add(titleBlock);
+
+            // ── Third Row: Extra info (blocker details, exit code) ──
+            var blockers = item.BlockedByNumbers ?? (item.BlockedByNumber.HasValue ? new List<int> { item.BlockedByNumber.Value } : new List<int>());
+            if (blockers.Count > 0 && item.Status == "queued")
             {
-                panel.Children.Add(new TextBlock
+                mainStack.Children.Add(new TextBlock
                 {
-                    Text = $"  waiting on {string.Join(", ", blockerList.Select(FormatIssueRef))}",
+                    Text = $"waiting on {string.Join(", ", blockers.Select(FormatIssueRef))}",
                     FontSize = 10,
                     FontStyle = FontStyles.Italic,
-                    Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E5A3A3")),
-                    VerticalAlignment = VerticalAlignment.Center,
+                    Foreground = new SolidColorBrush(Color.FromRgb(0xF3, 0x8B, 0xA8)),
+                    Margin = new Thickness(1, 2, 0, 0)
                 });
             }
             if (item.Status == "failed" && item.ExitCode.HasValue)
             {
-                panel.Children.Add(new TextBlock
+                mainStack.Children.Add(new TextBlock
                 {
-                    Text = item.ExitCode == -2 ? "  orphaned by app restart — nothing was tracking it, use Retry" : $"  exit {item.ExitCode}",
+                    Text = item.ExitCode == -2 ? "orphaned by app restart — use Retry" : $"exit code {item.ExitCode}",
                     FontSize = 10,
                     Foreground = (Brush)Application.Current.FindResource("Subtext1Brush"),
-                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(1, 2, 0, 0)
                 });
             }
 
-            // Git #950 — Shane: "Everything should be collapsed by default."
-            // Nested blocked-by children (#799/#813) start hidden; Shane
-            // expands a row to see what's nested under it.
-            var tvi = new TreeViewItem { Header = panel, IsExpanded = false, Tag = item };
+            card.Child = mainStack;
+
+            var tvi = new TreeViewItem
+            {
+                Header = card,
+                IsExpanded = false,
+                Tag = item,
+                Padding = new Thickness(0),
+                Margin = new Thickness(0)
+            };
 
             // Git #801/#820 — Shane: "I need right click like. Stop. Retry.
             // Run Now." Mark Done was the original manual escape hatch (a

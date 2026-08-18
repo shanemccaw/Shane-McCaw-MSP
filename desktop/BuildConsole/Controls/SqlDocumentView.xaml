@@ -1,6 +1,7 @@
 <UserControl x:Class="BuildConsole.Controls.SqlDocumentView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ctrl="clr-namespace:BuildConsole.Controls"
              xmlns:avalonedit="http://icsharpcode.net/sharpdevelop/avalonedit">
 
     <UserControl.Resources>
@@ -107,8 +108,17 @@
 
             <!-- Query editor -->
             <Grid Grid.Row="0">
+                <!-- Ambient Sailor Duck Watermark when editor is sparse/empty -->
+                <ctrl:SailorDuckWatermarkControl x:Name="SqlDuckWatermark"
+                                                 MascotSize="220"
+                                                 WatermarkOpacity="0.18"
+                                                 CustomText="Captain Donald ready for queries! ⚓"
+                                                 HorizontalAlignment="Center"
+                                                 VerticalAlignment="Center"
+                                                 IsHitTestVisible="False"/>
+
                 <avalonedit:TextEditor x:Name="QueryEditor"
-                                       Background="{StaticResource CrustBrush}"
+                                       Background="Transparent"
                                        Foreground="{StaticResource TextBrush}"
                                        FontFamily="Cascadia Code, Consolas, Courier New"
                                        FontSize="13"

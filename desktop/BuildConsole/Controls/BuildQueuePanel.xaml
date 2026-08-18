@@ -1,6 +1,7 @@
 <UserControl x:Class="BuildConsole.Controls.BuildQueuePanel"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:BuildConsole.Controls"
              MinWidth="220">
 
     <UserControl.Resources>
@@ -122,6 +123,9 @@
                     </StackPanel>
                 </DockPanel>
             </Border>
+
+            <!-- ── Critter Lounge & Picnic/Party Ground ── -->
+            <local:CritterLoungeControl DockPanel.Dock="Bottom" x:Name="CritterLounge" Margin="0"/>
 
             <!-- Git #874 - Shane: "the two things out of all of I actually care about:
                  Build Queue, Open issue current associated to this chat. In-Flight I

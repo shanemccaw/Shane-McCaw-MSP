@@ -1,0 +1,39 @@
+<UserControl x:Class="BuildConsole.Controls.SailorDuckWatermarkControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             IsHitTestVisible="False"
+             Background="Transparent">
+
+    <!-- ══════════════════════════════════════════════════════════════════
+         SAILOR DUCK DOCUMENT WATERMARK & EMPTY STATE
+         A large, charming backdrop of Donald Duck in his sailboat for
+         empty document tabs, loading screens, and sparse documents.
+         ══════════════════════════════════════════════════════════════════ -->
+
+    <Grid x:Name="RootGrid" HorizontalAlignment="Center" VerticalAlignment="Center">
+        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+            <!-- Animated Donald in Sailboat Container -->
+            <Border x:Name="MascotContainer"
+                    Width="260" Height="260"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"/>
+
+            <!-- Optional Subtitle / Status Quip -->
+            <Border x:Name="QuipBadge"
+                    Background="{StaticResource Surface0Brush}"
+                    BorderBrush="{StaticResource BlueBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="14,6"
+                    Margin="0,12,0,0"
+                    HorizontalAlignment="Center">
+                <TextBlock x:Name="QuipText"
+                           Text="Ahoy! Smooth sailing on the codebase! ⛵"
+                           FontSize="12"
+                           FontWeight="Bold"
+                           Foreground="{StaticResource TextBrush}"
+                           HorizontalAlignment="Center"/>
+            </Border>
+        </StackPanel>
+    </Grid>
+</UserControl>

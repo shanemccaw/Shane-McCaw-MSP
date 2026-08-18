@@ -7,6 +7,7 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using BuildConsole.Services;
 
@@ -2665,6 +2666,87 @@ namespace BuildConsole.Controls
             try { RenderIssuesTree(_currentFilter == "Done" ? "All" : _currentFilter); } catch { }
         }
 
+        private void ActiveWorkingEpicBar_Click(object sender, MouseButtonEventArgs e)
+        {
+            LocateWorkingEpic();
+        }
+
+        /// <summary>
+        /// Expands all ancestor parent nodes leading to the active working epic node,
+        /// brings the active working node into view, selects it in the tree, and plays
+        /// a subtle pulse animation.
+        /// </summary>
+        public void LocateWorkingEpic()
+        {
+            if (!_activeEpicGithubNumber.HasValue) return;
+            int targetNumber = _activeEpicGithubNumber.Value;
+
+            var tvi = FindAndExpandIssueNode(IssuesTree.Items, targetNumber);
+            if (tvi != null)
+            {
+                tvi.IsSelected = true;
+                tvi.BringIntoView();
+                IssuesTree.Focus();
+
+                if (tvi.Header is UIElement elem)
+                {
+                    var trans = new ScaleTransform(1.0, 1.0);
+                    elem.RenderTransform = trans;
+                    elem.RenderTransformOrigin = new Point(0, 0.5);
+                    var anim = new DoubleAnimation(1.0, 1.12, TimeSpan.FromMilliseconds(160))
+                    {
+                        AutoReverse = true,
+                        RepeatBehavior = new RepeatBehavior(2)
+                    };
+                    trans.BeginAnimation(ScaleTransform.ScaleXProperty, anim);
+                    trans.BeginAnimation(ScaleTransform.ScaleYProperty, anim);
+                }
+            }
+            else
+            {
+                ToastEngine.Info("Git Board", $"Locating Epic #{targetNumber}...");
+            }
+        }
+
+        private TreeViewItem? FindAndExpandIssueNode(ItemCollection items, int issueNumber, List<TreeViewItem>? ancestors = null)
+        {
+            ancestors ??= new List<TreeViewItem>();
+
+            foreach (var item in items)
+            {
+                if (item is TreeViewItem tvi)
+                {
+                    bool isMatch = false;
+                    if (tvi.Tag is GitIssue gi && gi.IssueNumber == issueNumber) isMatch = true;
+                    else if (tvi.Tag is GitBoardIssue bi && bi.Number == issueNumber) isMatch = true;
+                    else if (tvi.Tag is GitHubIssueResult gr && gr.Number == issueNumber) isMatch = true;
+                    else if (tvi.Tag is GitMilestone gm && gm.GithubNumber == issueNumber) isMatch = true;
+
+                    if (isMatch)
+                    {
+                        // Expand all parent/ancestor nodes that own this WORKING node!
+                        foreach (var parent in ancestors)
+                        {
+                            parent.IsExpanded = true;
+                            if (parent.Tag is string key) _expandedNodeKeys.Add(key);
+                        }
+                        return tvi;
+                    }
+
+                    ancestors.Add(tvi);
+                    var child = FindAndExpandIssueNode(tvi.Items, issueNumber, ancestors);
+                    if (child != null)
+                    {
+                        tvi.IsExpanded = true;
+                        if (tvi.Tag is string key) _expandedNodeKeys.Add(key);
+                        return child;
+                    }
+                    ancestors.RemoveAt(ancestors.Count - 1);
+                }
+            }
+            return null;
+        }
+
         // Git #938 (Epic #803) — the same explicit-MaxWidth truncation fix #932
         // landed on the Chats tree (see ApplyChatTitleMaxWidths), applied here to
         // the Git Board (IssuesTree). CreateMilestoneHeader/CreateEpicHeader/
@@ -2738,6 +2820,17 @@ namespace BuildConsole.Controls
             IssueStatClosed.Text = $"{closedIssues} Done";
 
             var allKnownIssues = shownMilestones.SelectMany(sm => sm.Epics.SelectMany(e => e.Issues)).ToList();
+
+            if (_activeEpicGithubNumber.HasValue)
+            {
+                var activeIssue = allKnownIssues.FirstOrDefault(i => i.IssueNumber == _activeEpicGithubNumber.Value);
+                ActiveWorkingEpicBar.Visibility = Visibility.Visible;
+                ActiveWorkingEpicText.Text = $"WORKING: #{_activeEpicGithubNumber.Value} — {(activeIssue != null ? activeIssue.Title : "Active Epic")}";
+            }
+            else
+            {
+                ActiveWorkingEpicBar.Visibility = Visibility.Collapsed;
+            }
 
             foreach (var m in shownMilestones)
             {
@@ -3005,6 +3098,30 @@ namespace BuildConsole.Controls
             var titleBlock = new TextBlock { Text = m.Title, FontWeight = FontWeights.Bold, FontSize = 12, Foreground = GetBrush("TextBrush"), TextTrimming = TextTrimming.CharacterEllipsis };
             p.Children.Add(titleBlock);
 
+            bool containsActiveEpic = _activeEpicGithubNumber.HasValue
+                && m.Epics.Any(ebkt => ebkt.Issues.Any(ii => ii.IssueNumber == _activeEpicGithubNumber.Value));
+            if (containsActiveEpic)
+            {
+                var workingBadge = new Border
+                {
+                    Background = new SolidColorBrush(Color.FromRgb(0x1F, 0x35, 0x2B)),
+                    BorderBrush = GetBrush("GreenBrush"),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(4),
+                    Padding = new Thickness(6, 1, 6, 1),
+                    Margin = new Thickness(8, 0, 0, 0),
+                    ToolTip = "Contains your active WORKING epic"
+                };
+                workingBadge.Child = new TextBlock
+                {
+                    Text = "🎯 WORKING EPIC",
+                    FontSize = 9.5,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = GetBrush("GreenBrush")
+                };
+                p.Children.Add(workingBadge);
+            }
+
             // Git #875 — only a real GitHub milestone has a real completed/
             // total to show; the synthetic "No Milestone" bucket doesn't, so
             // it gets no badge at all rather than a fabricated "0%".
@@ -3032,7 +3149,8 @@ namespace BuildConsole.Controls
             // milestone has counts). Register the title for the shared MaxWidth pass.
             _issueTitleBlocks.Add((titleBlock,
                 IssueTreeIndentPerLevel * 1 + IssueTreeChrome + MilestoneEmojiWidth
-                + (m.HasRealCounts ? MilestoneBadgeWidth : 0)));
+                + (m.HasRealCounts ? MilestoneBadgeWidth : 0)
+                + (containsActiveEpic ? 90 : 0)));
             return p;
         }
 
@@ -3043,10 +3161,29 @@ namespace BuildConsole.Controls
             p.Children.Add(titleBlock);
             p.Children.Add(new TextBlock { Text = $" ({e.Issues.Count})", FontSize = 10, Foreground = GetBrush("Subtext0Brush"), Margin = new Thickness(4, 0, 0, 0) });
 
+            bool containsActiveEpic = _activeEpicGithubNumber.HasValue
+                && e.Issues.Any(ii => ii.IssueNumber == _activeEpicGithubNumber.Value);
+            if (containsActiveEpic)
+            {
+                var workingBadge = new Border
+                {
+                    Background = new SolidColorBrush(Color.FromRgb(0x1F, 0x35, 0x2B)),
+                    BorderBrush = GetBrush("GreenBrush"),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(3),
+                    Padding = new Thickness(4, 1, 4, 1),
+                    Margin = new Thickness(6, 0, 0, 0),
+                    ToolTip = "Contains your active WORKING epic"
+                };
+                workingBadge.Child = new TextBlock { Text = "🎯 WORKING", FontSize = 9, FontWeight = FontWeights.Bold, Foreground = GetBrush("GreenBrush") };
+                p.Children.Add(workingBadge);
+            }
+
             // Git #938 — epic rows sit at depth 1 (nested under a milestone): two
             // expander columns of indentation + the " (N)" issue-count suffix.
             _issueTitleBlocks.Add((titleBlock,
-                IssueTreeIndentPerLevel * 2 + IssueTreeChrome + EpicCountWidth));
+                IssueTreeIndentPerLevel * 2 + IssueTreeChrome + EpicCountWidth
+                + (containsActiveEpic ? 70 : 0)));
             return p;
         }
 

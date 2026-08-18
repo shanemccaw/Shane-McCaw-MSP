@@ -348,6 +348,16 @@
                                 Margin="4,0,0,0">
                             <TextBlock x:Name="BtnBuildReleaseIcon" Text="&#xE768;" FontFamily="Segoe MDL2 Assets" FontSize="12" Foreground="{StaticResource GreenBrush}"/>
                         </Button>
+
+                        <!-- Sailor Duck Mascot (Donald) Quick Trigger Button -->
+                        <Button x:Name="BtnSailorDuckMascot"
+                                Style="{StaticResource IconButton}"
+                                ToolTip="Sailor Duck Mascot (Donald in Sailboat) — Click to summon (Ctrl+Shift+D)"
+                                Click="BtnSailorDuckMascot_Click"
+                                Padding="6,4"
+                                Margin="4,0,0,0">
+                            <TextBlock Text="🦆" FontSize="13" VerticalAlignment="Center"/>
+                        </Button>
                     </StackPanel>
 
                     <!-- Git #894 - real minimize/maximize-restore/close, since WindowStyle="None"
@@ -1082,6 +1092,13 @@
                 </Grid>
             </Border>
         </Grid>
+
+        <!-- ══════════════════════════════════════════════════════════════
+             SAILOR DUCK MASCOT SCREEN LAYER (DONALD DUCK IN SAILBOAT)
+             Shane's primary mascot: sails across the screen on events/ambient,
+             rests in the center when idle, and reacts to clicks and celebrations.
+             ══════════════════════════════════════════════════════════════ -->
+        <ctrl:SailorDuckMascotLayer x:Name="SailorDuckLayer" Panel.ZIndex="15000" IsHitTestVisible="False"/>
 
         <!-- ══════════════════════════════════════════════════════════════
              ANIMATED STARTUP LOADING OVERLAY
