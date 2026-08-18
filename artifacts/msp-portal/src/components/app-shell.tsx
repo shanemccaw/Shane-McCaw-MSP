@@ -592,7 +592,6 @@ const NAV_SECTIONS: NavSection[] = [
         href: "/licensing",
         roles: ["CustomerUser"],
       },
-      },
       {
         icon: Zap,
         label: "Diagnostics & Offers",
