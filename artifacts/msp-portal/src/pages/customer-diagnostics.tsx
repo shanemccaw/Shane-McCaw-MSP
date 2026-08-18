@@ -703,7 +703,10 @@ export default function CustomerDiagnosticsPage() {
                   </CardHeader>
                   <CardContent className="space-y-4">
                     {Object.entries(categoryScores).map(([key, score]) => (
-                      <ScoreBar key={key} label={key} score={score} />
+                      // Map the raw category key to a human label (#1147) — same
+                      // PILLAR_LABELS mapping BenchmarkBar uses; ScoreBar
+                      // underscore-humanises + capitalises anything unmapped.
+                      <ScoreBar key={key} label={PILLAR_LABELS[key] ?? key} score={score} />
                     ))}
                   </CardContent>
                 </Card>

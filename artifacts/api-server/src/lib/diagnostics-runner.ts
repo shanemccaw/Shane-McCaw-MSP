@@ -90,7 +90,10 @@ function licenseGapFeatureOf(result: CheckResult): string {
  */
 export function buildFindingTitle(result: CheckResult): string {
   if (result.status === "consent_revoked") return "Consent Revoked — Check could not run";
-  if (result.status === "error") return `Check error: ${result.checkKey}`;
+  // Never surface the raw internal check key to a customer (#1147). The
+  // finding's description already carries a humanized, customer-safe reason
+  // (buildFindingDescription -> humanizeGraphError).
+  if (result.status === "error") return "This check couldn't complete";
   if (result.status === "requires_script") return "Requires customer-side script";
   if (result.status === "license_gap") return `Not checked — requires ${licenseGapFeatureOf(result)}`;
   // The matched rule's OWN sentence, whenever it has one (#408). Everything
@@ -179,62 +182,88 @@ function humanizeGraphError(raw: string | null | undefined): string {
   return "This check couldn't complete — an unexpected error occurred. Contact support if this persists.";
 }
 
-// ── Extracted-property description builder ────────────────────────────────────
+// ── Customer-facing check-key humaniser ───────────────────────────────────────
 
-/** Render extractedProperties as clean prose.
- *  Rules:
- *  - Array values → summarised as "N <label> found requiring review" using
- *    the sibling _count field (e.g. id_count) or the array's own length.
- *    The raw contents (GUIDs, URLs, IDs) are never rendered.
- *  - _count / _values suffix keys that back an array are skipped as raw values.
- *  - Booleans, numbers, short strings are rendered with a human-friendly label.
- */
-function describeExtractedProperties(props: Record<string, unknown>): string {
-  const parts: string[] = [];
-  // Keys whose value is an array — so we can suppress the sibling _count key
-  const arrayBases = new Set(
-    Object.entries(props)
-      .filter(([, v]) => Array.isArray(v))
-      .map(([k]) => k.replace(/_values?$/i, ""))
-  );
+/** Turn a raw internal check key (e.g. "compliance:eeeu-site-sharing") into a
+ *  plain, customer-safe label ("Compliance — EEEU Site Sharing"). This is only a
+ *  FALLBACK for the rare case a check has no human `label` threaded through from
+ *  its definition; the raw key itself must never reach a customer (#1147). */
+function humanizeCheckKey(checkKey: string): string {
+  const [rawCat, rawName] = checkKey.includes(":")
+    ? [checkKey.slice(0, checkKey.indexOf(":")), checkKey.slice(checkKey.indexOf(":") + 1)]
+    : ["", checkKey];
+  const titleCase = (s: string) =>
+    s
+      .replace(/[-_]+/g, " ")
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      // Keep short all-caps tokens (acronyms like EEEU/MFA/SSO/DNS) uppercased.
+      .map((w) => (w.length <= 4 && /^[a-z]+$/.test(w) && !COMMON_WORDS.has(w)
+        ? w.toUpperCase()
+        : w.charAt(0).toUpperCase() + w.slice(1)))
+      .join(" ");
+  const cat = rawCat ? titleCase(rawCat) : "";
+  const name = titleCase(rawName) || "Check";
+  return cat ? `${cat} — ${name}` : name;
+}
+const COMMON_WORDS = new Set(["site", "user", "team", "link", "role", "data", "risk", "scan", "auto"]);
 
-  for (const [k, v] of Object.entries(props)) {
-    if (k.startsWith("_")) continue; // internal metadata
+// ── Per-check customer-facing description templates (#1147) ────────────────────
+//
+// The old generic "dump whatever properties exist" builder leaked raw camelCase
+// property names, unstringified `[object Object]` values, and raw Graph/Teams
+// identifiers straight to the customer. That anti-pattern is gone: a check's
+// finding description now comes from a real, per-check human template, or — when
+// a check has no template yet — an honest "summary not available" fallback.
+// A generic property dump is NEVER customer-reachable.
 
-    if (Array.isArray(v)) {
-      // Summarise instead of dumping contents
-      const base = k.replace(/_values?$/i, "");
-      const count =
-        (props[`${base}_count`] as number | undefined) ??
-        (props[`_count`] as number | undefined) ??
-        v.length;
-      const label = base.replace(/_/g, " ").trim() || "item";
-      const noun = count === 1 ? label : label;
-      parts.push(`${count} ${noun}${count === 1 ? "" : "s"} found requiring review`);
-      continue;
+type DescriptionTemplate = (props: Record<string, unknown>) => string | null;
+
+/** Safe numeric read — returns null for objects, strings, arrays, NaN, etc.,
+ *  so a template can never accidentally stringify a nested object or identifier. */
+function asFiniteNumber(v: unknown): number | null {
+  return typeof v === "number" && Number.isFinite(v) ? v : null;
+}
+
+const CHECK_DESCRIPTION_TEMPLATES: Record<string, DescriptionTemplate> = {
+  // SharePoint over-sharing scan — the exact check that produced #1147's leak.
+  "compliance:eeeu-site-sharing": (props) => {
+    const scanned = asFiniteNumber(props.sitesScanned);
+    const overshared = asFiniteNumber(props.oversharedSiteCount) ?? 0;
+    const eeeu = asFiniteNumber(props.eeeuSiteCount) ?? 0;
+    const everyone = asFiniteNumber(props.everyoneSiteCount) ?? 0;
+    const anon = asFiniteNumber(props.anonymousLinkSiteCount) ?? 0;
+    const orgLink = asFiniteNumber(props.organizationLinkSiteCount) ?? 0;
+
+    const scannedPhrase =
+      scanned != null ? `We reviewed ${scanned} SharePoint site${scanned === 1 ? "" : "s"}. ` : "";
+    if (overshared <= 0) {
+      return `${scannedPhrase}None are shared more broadly than recommended.`;
     }
+    const breakdown: string[] = [];
+    if (eeeu > 0) breakdown.push(`${eeeu} shared with everyone in your organisation except external guests`);
+    if (everyone > 0) breakdown.push(`${everyone} shared with everyone, including guests`);
+    if (anon > 0) breakdown.push(`${anon} reachable through anonymous "anyone" links`);
+    if (orgLink > 0) breakdown.push(`${orgLink} shared through organisation-wide links`);
+    const detail = breakdown.length ? ` — ${breakdown.join("; ")}` : "";
+    return `${scannedPhrase}${overshared} site${overshared === 1 ? " is" : "s are"} shared more broadly than recommended${detail}. Review these sites' sharing settings to reduce overexposure.`;
+  },
+};
 
-    // Skip _count keys that correspond to a rendered array
-    if (k.endsWith("_count")) {
-      const base = k.slice(0, -"_count".length);
-      if (arrayBases.has(base)) continue;
-    }
-
-    // Scalar value — render cleanly
-    const label = k.replace(/_/g, " ").trim();
-    if (typeof v === "boolean") {
-      parts.push(`${label}: ${v ? "Yes" : "No"}`);
-    } else if (v !== null && v !== undefined) {
-      parts.push(`${label}: ${String(v)}`);
-    }
+/** Honest, customer-safe fallback for a check that has extracted data but no
+ *  per-check template yet. Never renders raw property values — that was the
+ *  whole #1147 defect. Better an honest "not available yet" than a raw dump. */
+function honestUntemplatedDescription(result: CheckResult): string {
+  if (result.status === "partial") {
+    return "Some items in this area couldn't be fully scanned. A readable summary for this check isn't available yet — this doesn't indicate a confirmed problem.";
   }
-
-  return parts.length > 0 ? parts.join(". ") : "No notable properties extracted.";
+  return "This check flagged items that need review. A readable summary for this check isn't available yet.";
 }
 
 // ── Main description builder ──────────────────────────────────────────────────
 
-function buildFindingDescription(result: CheckResult): string {
+export function buildFindingDescription(result: CheckResult): string {
   if (result.status === "consent_revoked") {
     return "Application consent has been revoked. No Graph API checks can run for this tenant until consent is re-established.";
   }
@@ -251,7 +280,19 @@ function buildFindingDescription(result: CheckResult): string {
   }
   const props = result.extractedProperties;
   if (props && Object.keys(props).length > 0) {
-    return describeExtractedProperties(props);
+    const template = CHECK_DESCRIPTION_TEMPLATES[result.checkKey];
+    if (template) {
+      const text = template(props);
+      if (text && text.trim()) return text.trim();
+    }
+    // No per-check template (or it declined) — honest fallback, NEVER a raw
+    // property dump (#1147). Logged so we can see which checks still need a
+    // real template written for them.
+    log.debug(
+      { checkKey: result.checkKey, status: result.status },
+      "diagnostics: no customer-facing description template for check — using honest fallback",
+    );
+    return honestUntemplatedDescription(result);
   }
   return "No issues detected for this check.";
 }
@@ -369,12 +410,13 @@ export function buildLicenseWasteFinding(
       : `${seats.unassigned} of ${seats.provisioned} paid license seats unassigned`;
   const description =
     dollars != null
-      ? `This tenant's own subscription data (checked via ${seats.checkKey}) shows ${seats.unassigned} paid, priced license seat(s) out of ${seats.provisioned} provisioned that nobody is assigned to — an estimated $${dollars.toLocaleString("en-US")} a year at list price. Free and trial SKUs are excluded; only seats with a real price on file are counted.`
-      : `This tenant's own subscription data (checked via ${seats.checkKey}) shows ${seats.unassigned} paid license seat(s) out of ${seats.provisioned} provisioned that nobody is assigned to. Free and trial SKUs are excluded; only seats with a real price on file are counted. No dollar figure could be priced for these seats.`;
+      ? `This tenant's own subscription data shows ${seats.unassigned} paid, priced license seat(s) out of ${seats.provisioned} provisioned that nobody is assigned to — an estimated $${dollars.toLocaleString("en-US")} a year at list price. Free and trial SKUs are excluded; only seats with a real price on file are counted.`
+      : `This tenant's own subscription data shows ${seats.unassigned} paid license seat(s) out of ${seats.provisioned} provisioned that nobody is assigned to. Free and trial SKUs are excluded; only seats with a real price on file are counted. No dollar figure could be priced for these seats.`;
 
   return {
     checkKey: DEFAULT_LICENSE_WASTE_CHECK_KEY,
-    checkLabel: DEFAULT_LICENSE_WASTE_CHECK_KEY,
+    // Human, customer-safe label — never the raw internal key (#1147).
+    checkLabel: "License Utilization",
     severity,
     title,
     description,
@@ -432,7 +474,7 @@ function buildReportHtml(opts: {
       <div style="border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin-bottom:12px;">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
           ${severityBadge(f.severity)}
-          <strong style="font-size:14px;">${f.checkLabel || f.checkKey}</strong>
+          <strong style="font-size:14px;">${f.checkLabel || humanizeCheckKey(f.checkKey)}</strong>
         </div>
         <p style="font-size:13px;color:#374151;margin:4px 0 8px;">${f.title}</p>
         <p style="font-size:12px;color:#6b7280;margin:0;">${f.description}</p>
@@ -685,11 +727,20 @@ export async function runDiagnostics(opts: DiagnosticsRunOpts): Promise<Diagnost
     // 3. Execute monitoring package
     const triggerId = `diag-run-${runId}`;
 
+    // The check DEFINITION's human `label` (customer-safe) only reaches us via
+    // the progress events — the returned CheckResult carries only the raw key.
+    // Capture it here so a finding's customer-facing `checkLabel` is the real
+    // label, never the raw internal key (#1147).
+    const checkLabelByKey = new Map<string, string>();
+
     const pkgResult = await executeMonitoringPackage({
       packageKey,
       tenantId: resolvedTenantId,
       triggerId,
       onProgress: (evt) => {
+        if (evt.checkLabel && evt.checkLabel.trim()) {
+          checkLabelByKey.set(evt.checkKey, evt.checkLabel.trim());
+        }
         broadcastDiagnosticsRunProgress(runId, {
           checkKey: evt.checkKey,
           checkLabel: evt.checkLabel,
@@ -729,7 +780,9 @@ export async function runDiagnostics(opts: DiagnosticsRunOpts): Promise<Diagnost
         mspId,
         customerId,
         checkKey: checkResult.checkKey,
-        checkLabel: checkResult.checkKey,
+        // Real human label from the check definition (via progress events);
+        // humanised key as an honest fallback — never the raw key (#1147).
+        checkLabel: checkLabelByKey.get(checkResult.checkKey) ?? humanizeCheckKey(checkResult.checkKey),
         severity,
         title,
         description,

@@ -51,7 +51,7 @@ vi.mock("./logger", () => {
   return { logger: log };
 });
 
-import { buildFindingTitle } from "./diagnostics-runner";
+import { buildFindingTitle, buildFindingDescription } from "./diagnostics-runner";
 
 /** A real matched-rule label, verbatim from the Governance sweep. */
 const GOVERNANCE_LABEL =
@@ -97,8 +97,11 @@ describe("#408 buildFindingTitle — the matched rule's own words reach the cust
     // purpose — a stale label must never mask a consent or execution failure.
     expect(buildFindingTitle(checkResult({ status: "consent_revoked", severityLabel: GOVERNANCE_LABEL })))
       .toBe("Consent Revoked — Check could not run");
+    // #1147 — an error title must NEVER embed the raw internal check key.
     expect(buildFindingTitle(checkResult({ status: "error", severityLabel: GOVERNANCE_LABEL })))
-      .toBe("Check error: governance:auto-labeling-coverage");
+      .toBe("This check couldn't complete");
+    expect(buildFindingTitle(checkResult({ status: "error" })))
+      .not.toContain("governance:auto-labeling-coverage");
     expect(buildFindingTitle(checkResult({ status: "requires_script", severityLabel: GOVERNANCE_LABEL })))
       .toBe("Requires customer-side script");
     expect(
@@ -116,5 +119,63 @@ describe("#408 buildFindingTitle — the matched rule's own words reach the cust
     expect(buildFindingTitle(checkResult({}))).toBe("Check passed");
     expect(buildFindingTitle(checkResult({ status: "partial" })))
       .toBe("Partial coverage — some items could not be scanned");
+  });
+});
+
+describe("#1147 buildFindingDescription — no raw property dump reaches the customer", () => {
+  // The exact extractedProperties shape from Shane's report — including a nested
+  // object (`sitesByHighestSharingLevel`) that the old generic builder rendered
+  // as the literal string "[object Object]".
+  const EEEU_PROPS = {
+    oversharedSiteCount: 1,
+    eeeuSiteCount: 1,
+    everyoneSiteCount: 0,
+    anonymousLinkSiteCount: 0,
+    organizationLinkSiteCount: 0,
+    sitesScanned: 93,
+    sitesByHighestSharingLevel: { eeeu: 1, everyone: 0 },
+  };
+
+  it("renders the SharePoint over-sharing check through its real human template", () => {
+    const desc = buildFindingDescription(
+      checkResult({ checkKey: "compliance:eeeu-site-sharing", status: "partial", extractedProperties: EEEU_PROPS }),
+    );
+    expect(desc).toContain("93 SharePoint sites");
+    expect(desc).toContain("1 site is shared more broadly than recommended");
+    // The precise leaks #1147 was filed about are gone:
+    expect(desc).not.toContain("[object Object]");
+    expect(desc).not.toContain("oversharedSiteCount");
+    expect(desc).not.toContain("sitesByHighestSharingLevel");
+  });
+
+  it("falls back to an honest 'not available yet' state for an un-templated check — never a raw dump", () => {
+    const desc = buildFindingDescription(
+      checkResult({
+        checkKey: "teams:channel-review",
+        status: "partial",
+        // A fan-out check's raw props: identifiers and a nested object that the
+        // old builder would have dumped verbatim.
+        extractedProperties: {
+          channelCount: 27,
+          firstChannelId: "19:5c658ac2cf1b4675a0ed8fc061ca6f3a@thread.skype",
+          id: ["19:5c658ac2cf1b4675a0ed8fc061ca6f3a@thread.skype"],
+          id_count: 27,
+          nested: { deep: "value" },
+        },
+      }),
+    );
+    expect(desc).toContain("isn't available yet");
+    // None of the raw identifiers / keys / object stringifications leak:
+    expect(desc).not.toContain("[object Object]");
+    expect(desc).not.toContain("thread.skype");
+    expect(desc).not.toContain("channelCount");
+    expect(desc).not.toContain("firstChannelId");
+  });
+
+  it("keeps the honest per-status messages that already existed", () => {
+    expect(buildFindingDescription(checkResult({ status: "consent_revoked" })))
+      .toContain("consent has been revoked");
+    expect(buildFindingDescription(checkResult({ status: "ok", extractedProperties: {} })))
+      .toBe("No issues detected for this check.");
   });
 });
