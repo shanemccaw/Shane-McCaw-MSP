@@ -120,7 +120,6 @@ import {
   Users,
   Webhook,
   X,
-  XCircle,
   Zap,
 } from "lucide-react";
 
@@ -1537,13 +1536,8 @@ function CustomerTopBar({
 
             <DropdownMenuSeparator />
 
-            <DropdownMenuItem
-              className="cursor-pointer gap-2 py-2 text-amber-600 dark:text-amber-400 focus:text-amber-600 focus:bg-amber-50 dark:focus:bg-amber-950/40"
-              onSelect={() => navigate("/coming-soon/cancel-service")}
-            >
-              <XCircle className="size-4" />
-              <span>Cancel Service</span>
-            </DropdownMenuItem>
+            {/* Cancel Service relocated into the Billing page (#1143) --
+                no longer one click away from the primary account menu. */}
             <DropdownMenuItem
               className="cursor-pointer gap-2 py-2 text-rose-600 dark:text-rose-400 focus:text-rose-600 focus:bg-rose-50 dark:focus:bg-rose-950/40"
               onSelect={onLogout}

@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import { useLocation } from "wouter";
 import { useAuth } from "@/lib/auth-context";
 import { AppShell } from "@/components/app-shell";
 import {
@@ -224,6 +225,7 @@ function SwitchIntervalDialog({
 
 export default function CustomerBillingPage() {
   const { user, fetchWithAuth } = useAuth();
+  const [, navigate] = useLocation();
 
   const isPlatformBilled = (user?.mspId ?? 0) === 1;
 
@@ -586,8 +588,30 @@ export default function CustomerBillingPage() {
               payingId={payingId}
             />
           </div>
-          
+
         </div>
+
+        {/* Cancel Service -- relocated here from the main account menu (#1143)
+            so it isn't one click away from the primary nav. Actual
+            cancellation flow implementation is separate/later; this still
+            routes to the coming-soon stub. */}
+        {isPlatformBilled && (
+          <div className="rounded-2xl border border-rose-200 dark:border-rose-900/50 bg-rose-50/40 dark:bg-rose-950/10 px-6 py-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <p className="text-base font-bold text-rose-700 dark:text-rose-400">Cancel Service</p>
+              <p className="text-sm text-rose-600/80 dark:text-rose-400/70 mt-1 max-w-xl">
+                Cancel your subscription and close your account with us.
+              </p>
+            </div>
+            <button
+              onClick={() => navigate("/coming-soon/cancel-service")}
+              className="inline-flex items-center gap-2 rounded-full border border-rose-300 dark:border-rose-800 px-5 py-2.5 text-sm font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-950/40 transition-colors"
+            >
+              <XCircle className="w-4 h-4" />
+              Cancel Service
+            </button>
+          </div>
+        )}
 
         {/* Dialogs */}
         {cancelTarget && (
