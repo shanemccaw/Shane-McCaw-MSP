@@ -201,7 +201,16 @@
 
                             <!-- ── Queue tree (populated live from GET /extension/queue — see code-behind) ── -->
                             <Grid>
-                                <TreeView x:Name="QueueTree" BorderThickness="0" Padding="0,4" SelectedItemChanged="QueueTree_SelectedItemChanged"/>
+                                <TreeView x:Name="QueueTree" BorderThickness="0" Padding="0,4" SelectedItemChanged="QueueTree_SelectedItemChanged">
+                                    <TreeView.ItemContainerStyle>
+                                        <Style TargetType="{x:Type TreeViewItem}" BasedOn="{StaticResource {x:Type TreeViewItem}}">
+                                            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+                                            <Setter Property="Padding" Value="0,2"/>
+                                            <Setter Property="Margin" Value="0,0,0,3"/>
+                                        </Style>
+                                    </TreeView.ItemContainerStyle>
+                                </TreeView>
                                 <TextBlock x:Name="QueueEmptyText"
                                            Text="Not connected — see Settings"
                                            FontSize="11"

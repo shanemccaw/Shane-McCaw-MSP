@@ -8,6 +8,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Windows.Media.Effects;
 using System.Windows.Threading;
 using BuildConsole.Services;
 
@@ -1447,101 +1448,64 @@ namespace BuildConsole.Controls
                 BorderBrush = new SolidColorBrush(Color.FromRgb(0x31, 0x32, 0x44)),
                 BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(6),
-                Padding = new Thickness(7, 5, 7, 5),
+                Padding = new Thickness(8, 6, 8, 6),
                 Margin = new Thickness(0, 1, 0, 2),
                 HorizontalAlignment = HorizontalAlignment.Stretch
             };
 
-            var mainStack = new StackPanel();
+            var mainStack = new StackPanel
+            {
+                VerticalAlignment = VerticalAlignment.Center
+            };
 
-            // ── Top Row: Status Badge + Issue # Badge + Running Critter ──
+            // ── Top Row: Status Badge + Issue # Badge ──
             var topRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 3) };
 
             var interactiveState = (item.Status == "running" && _watcher != null)
                 ? _watcher.GetInteractiveState(item.Id)
                 : null;
 
-            // Determine status pill appearance & critter icon
+            // Determine status pill appearance
             Border statusPill;
             if (item.Status == "running")
             {
                 if (interactiveState == InteractiveInputState.WaitingForInput)
                 {
-                    // Question / Needs Input Critter Badge
                     statusPill = new Border
                     {
                         Background = new SolidColorBrush(Color.FromRgb(0x3E, 0x2C, 0x1A)),
                         BorderBrush = new SolidColorBrush(Color.FromRgb(0xF9, 0xE2, 0xAF)),
                         BorderThickness = new Thickness(1),
                         CornerRadius = new CornerRadius(4),
-                        Padding = new Thickness(5, 1, 5, 1)
+                        Padding = new Thickness(6, 1.5, 6, 1.5)
                     };
-                    var pillStack = new StackPanel { Orientation = Orientation.Horizontal };
-                    var questionIcon = new TextBlock
+                    statusPill.Child = new TextBlock
                     {
-                        Text = "❓ ✋ ",
-                        FontSize = 10,
-                        VerticalAlignment = VerticalAlignment.Center
-                    };
-                    var animTransform = new TranslateTransform();
-                    questionIcon.RenderTransform = animTransform;
-                    var pulseAnim = new DoubleAnimation(0, -2, TimeSpan.FromMilliseconds(300))
-                    {
-                        AutoReverse = true,
-                        RepeatBehavior = RepeatBehavior.Forever,
-                        EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
-                    };
-                    animTransform.BeginAnimation(TranslateTransform.YProperty, pulseAnim);
-
-                    pillStack.Children.Add(questionIcon);
-                    pillStack.Children.Add(new TextBlock
-                    {
-                        Text = "NEEDS INPUT",
+                        Text = "❓ NEEDS INPUT",
                         FontSize = 9.5,
                         FontWeight = FontWeights.Bold,
                         Foreground = new SolidColorBrush(Color.FromRgb(0xF9, 0xE2, 0xAF)),
                         VerticalAlignment = VerticalAlignment.Center
-                    });
-                    statusPill.Child = pillStack;
+                    };
                 }
                 else
                 {
-                    // Active Running / Sprinting Critter Badge
                     statusPill = new Border
                     {
                         Background = new SolidColorBrush(Color.FromRgb(0x1D, 0x2E, 0x45)),
                         BorderBrush = new SolidColorBrush(Color.FromRgb(0x89, 0xB4, 0xFA)),
                         BorderThickness = new Thickness(1),
                         CornerRadius = new CornerRadius(4),
-                        Padding = new Thickness(5, 1, 5, 1)
+                        Padding = new Thickness(6, 1.5, 6, 1.5)
                     };
-                    var pillStack = new StackPanel { Orientation = Orientation.Horizontal };
-                    var runnerIcon = new TextBlock
+                    statusPill.Child = new TextBlock
                     {
-                        Text = "🐾 🏃 ",
-                        FontSize = 10,
-                        VerticalAlignment = VerticalAlignment.Center
-                    };
-                    var hopTrans = new TranslateTransform();
-                    runnerIcon.RenderTransform = hopTrans;
-                    var hopAnim = new DoubleAnimation(0, -2.5, TimeSpan.FromMilliseconds(220))
-                    {
-                        AutoReverse = true,
-                        RepeatBehavior = RepeatBehavior.Forever,
-                        EasingFunction = new BounceEase { Bounces = 1, Bounciness = 2 }
-                    };
-                    hopTrans.BeginAnimation(TranslateTransform.YProperty, hopAnim);
-
-                    pillStack.Children.Add(runnerIcon);
-                    pillStack.Children.Add(new TextBlock
-                    {
-                        Text = "RUNNING",
+                        Text = "▶ RUNNING",
                         FontSize = 9.5,
                         FontWeight = FontWeights.Bold,
                         Foreground = new SolidColorBrush(Color.FromRgb(0x89, 0xB4, 0xFA)),
                         VerticalAlignment = VerticalAlignment.Center
-                    });
-                    statusPill.Child = pillStack;
+                    };
                 }
             }
             else if (item.Status == "done")
@@ -1552,19 +1516,16 @@ namespace BuildConsole.Controls
                     BorderBrush = new SolidColorBrush(Color.FromRgb(0xA6, 0xE3, 0xA1)),
                     BorderThickness = new Thickness(1),
                     CornerRadius = new CornerRadius(4),
-                    Padding = new Thickness(5, 1, 5, 1)
+                    Padding = new Thickness(6, 1.5, 6, 1.5)
                 };
-                var pillStack = new StackPanel { Orientation = Orientation.Horizontal };
-                pillStack.Children.Add(new TextBlock { Text = "✨ ", FontSize = 10, VerticalAlignment = VerticalAlignment.Center });
-                pillStack.Children.Add(new TextBlock
+                statusPill.Child = new TextBlock
                 {
-                    Text = "DONE",
+                    Text = "✨ DONE",
                     FontSize = 9.5,
                     FontWeight = FontWeights.Bold,
                     Foreground = new SolidColorBrush(Color.FromRgb(0xA6, 0xE3, 0xA1)),
                     VerticalAlignment = VerticalAlignment.Center
-                });
-                statusPill.Child = pillStack;
+                };
             }
             else if (item.Status == "failed")
             {
@@ -1574,19 +1535,16 @@ namespace BuildConsole.Controls
                     BorderBrush = new SolidColorBrush(Color.FromRgb(0xF3, 0x8B, 0xA8)),
                     BorderThickness = new Thickness(1),
                     CornerRadius = new CornerRadius(4),
-                    Padding = new Thickness(5, 1, 5, 1)
+                    Padding = new Thickness(6, 1.5, 6, 1.5)
                 };
-                var pillStack = new StackPanel { Orientation = Orientation.Horizontal };
-                pillStack.Children.Add(new TextBlock { Text = "✕ ", FontSize = 10, Foreground = new SolidColorBrush(Color.FromRgb(0xF3, 0x8B, 0xA8)), VerticalAlignment = VerticalAlignment.Center });
-                pillStack.Children.Add(new TextBlock
+                statusPill.Child = new TextBlock
                 {
-                    Text = "FAILED",
+                    Text = "✕ FAILED",
                     FontSize = 9.5,
                     FontWeight = FontWeights.Bold,
                     Foreground = new SolidColorBrush(Color.FromRgb(0xF3, 0x8B, 0xA8)),
                     VerticalAlignment = VerticalAlignment.Center
-                });
-                statusPill.Child = pillStack;
+                };
             }
             else
             {
@@ -1599,19 +1557,16 @@ namespace BuildConsole.Controls
                     BorderBrush = new SolidColorBrush(isBlocked ? Color.FromRgb(0xF3, 0x8B, 0xA8) : Color.FromRgb(0x6C, 0x70, 0x86)),
                     BorderThickness = new Thickness(1),
                     CornerRadius = new CornerRadius(4),
-                    Padding = new Thickness(5, 1, 5, 1)
+                    Padding = new Thickness(6, 1.5, 6, 1.5)
                 };
-                var pillStack = new StackPanel { Orientation = Orientation.Horizontal };
-                pillStack.Children.Add(new TextBlock { Text = isBlocked ? "🔒 " : "⏳ ", FontSize = 10, VerticalAlignment = VerticalAlignment.Center });
-                pillStack.Children.Add(new TextBlock
+                statusPill.Child = new TextBlock
                 {
-                    Text = isBlocked ? "BLOCKED" : "QUEUED",
+                    Text = isBlocked ? "🔒 BLOCKED" : "⏳ QUEUED",
                     FontSize = 9.5,
                     FontWeight = FontWeights.Bold,
                     Foreground = new SolidColorBrush(isBlocked ? Color.FromRgb(0xF3, 0x8B, 0xA8) : Color.FromRgb(0xBA, 0xB4, 0xCD)),
                     VerticalAlignment = VerticalAlignment.Center
-                });
-                statusPill.Child = pillStack;
+                };
             }
 
             topRow.Children.Add(statusPill);
@@ -1624,7 +1579,7 @@ namespace BuildConsole.Controls
                     BorderBrush = new SolidColorBrush(Color.FromRgb(0x45, 0x47, 0x5A)),
                     BorderThickness = new Thickness(1),
                     CornerRadius = new CornerRadius(4),
-                    Padding = new Thickness(4, 1, 4, 1),
+                    Padding = new Thickness(5, 1.5, 5, 1.5),
                     Margin = new Thickness(6, 0, 0, 0)
                 };
                 numBadge.Child = new TextBlock
@@ -1676,7 +1631,26 @@ namespace BuildConsole.Controls
                 });
             }
 
-            card.Child = mainStack;
+            // ── 2-Column Card Grid (Full Width with Right-Spanning Mascot) ──
+            var cardGrid = new Grid
+            {
+                HorizontalAlignment = HorizontalAlignment.Stretch
+            };
+            cardGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            cardGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            Grid.SetColumn(mainStack, 0);
+            cardGrid.Children.Add(mainStack);
+
+            // Right-spanning large animated critter mascot
+            var mascot = CreateQueueCardMascot(item, interactiveState);
+            if (mascot != null)
+            {
+                Grid.SetColumn(mascot, 1);
+                cardGrid.Children.Add(mascot);
+            }
+
+            card.Child = cardGrid;
 
             var tvi = new TreeViewItem
             {
@@ -1684,7 +1658,9 @@ namespace BuildConsole.Controls
                 IsExpanded = false,
                 Tag = item,
                 Padding = new Thickness(0),
-                Margin = new Thickness(0)
+                Margin = new Thickness(0),
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                HorizontalContentAlignment = HorizontalAlignment.Stretch
             };
 
             // Git #801/#820 — Shane: "I need right click like. Stop. Retry.
@@ -1848,6 +1824,171 @@ namespace BuildConsole.Controls
             if (cm.Items.Count > 0) tvi.ContextMenu = cm;
 
             return tvi;
+        }
+
+        private FrameworkElement? CreateQueueCardMascot(QueueItem item, InteractiveInputState? interactiveState)
+        {
+            var canvas = new Canvas
+            {
+                Width = 44,
+                Height = 38,
+                Margin = new Thickness(6, 0, 2, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                ClipToBounds = false
+            };
+
+            var transGroup = new TransformGroup();
+            var hopTrans = new TranslateTransform();
+            var tiltTrans = new RotateTransform(0, 22, 19);
+            transGroup.Children.Add(hopTrans);
+            transGroup.Children.Add(tiltTrans);
+            canvas.RenderTransform = transGroup;
+
+            if (item.Status == "running")
+            {
+                if (interactiveState == InteractiveInputState.WaitingForInput)
+                {
+                    // Large Attention Bunny/Duck waving paws with bouncing ❓ question mark
+                    var bunny = new TextBlock { Text = "🐰", FontSize = 20 };
+                    Canvas.SetLeft(bunny, 8); Canvas.SetTop(bunny, 10);
+                    canvas.Children.Add(bunny);
+
+                    var qMark = new Border
+                    {
+                        Background = new SolidColorBrush(Color.FromRgb(0xF9, 0xE2, 0xAF)),
+                        CornerRadius = new CornerRadius(6),
+                        Padding = new Thickness(3, 1, 3, 1),
+                        Effect = new DropShadowEffect { Color = Color.FromRgb(0xF5, 0x9E, 0x0B), BlurRadius = 6, ShadowDepth = 0 }
+                    };
+                    qMark.Child = new TextBlock { Text = "❓", FontSize = 10 };
+                    Canvas.SetLeft(qMark, 16); Canvas.SetTop(qMark, -4);
+                    canvas.Children.Add(qMark);
+
+                    var pulse = new DoubleAnimation(0, -3.5, TimeSpan.FromMilliseconds(300))
+                    {
+                        AutoReverse = true,
+                        RepeatBehavior = RepeatBehavior.Forever,
+                        EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
+                    };
+                    hopTrans.BeginAnimation(TranslateTransform.YProperty, pulse);
+                }
+                else
+                {
+                    // Active Sprinting Mascots (Donald Sailor Duck, Builder Bunny, Astronaut, Running Cat)
+                    int variant = Math.Abs((item.GithubNumber ?? item.Id) % 4);
+
+                    if (variant == 0)
+                    {
+                        // 🦆 Sprinting Donald Duck in sailor cap with wind streak
+                        var duck = new TextBlock { Text = "🦆", FontSize = 20 };
+                        Canvas.SetLeft(duck, 10); Canvas.SetTop(duck, 10);
+                        canvas.Children.Add(duck);
+
+                        var cap = new TextBlock { Text = "🧢", FontSize = 11 };
+                        Canvas.SetLeft(cap, 18); Canvas.SetTop(cap, 2);
+                        canvas.Children.Add(cap);
+
+                        var wind = new TextBlock { Text = "💨", FontSize = 11, Opacity = 0.85 };
+                        Canvas.SetLeft(wind, -4); Canvas.SetTop(wind, 16);
+                        canvas.Children.Add(wind);
+                    }
+                    else if (variant == 1)
+                    {
+                        // 🐰 Sprinting Builder Bunny with hard hat
+                        var bunny = new TextBlock { Text = "🐰", FontSize = 20 };
+                        Canvas.SetLeft(bunny, 10); Canvas.SetTop(bunny, 10);
+                        canvas.Children.Add(bunny);
+
+                        var hat = new TextBlock { Text = "⛑️", FontSize = 11 };
+                        Canvas.SetLeft(hat, 16); Canvas.SetTop(hat, 2);
+                        canvas.Children.Add(hat);
+
+                        var wind = new TextBlock { Text = "💨", FontSize = 11, Opacity = 0.85 };
+                        Canvas.SetLeft(wind, -4); Canvas.SetTop(wind, 16);
+                        canvas.Children.Add(wind);
+                    }
+                    else if (variant == 2)
+                    {
+                        // 🚀 NASA Astronaut Critter with jetpack spark trail
+                        var astro = new TextBlock { Text = "👨‍🚀", FontSize = 20 };
+                        Canvas.SetLeft(astro, 10); Canvas.SetTop(astro, 8);
+                        canvas.Children.Add(astro);
+
+                        var sparks = new TextBlock { Text = "⚡", FontSize = 10, Foreground = new SolidColorBrush(Color.FromRgb(0x38, 0xBD, 0xF8)) };
+                        Canvas.SetLeft(sparks, -2); Canvas.SetTop(sparks, 16);
+                        canvas.Children.Add(sparks);
+                    }
+                    else
+                    {
+                        // 🐱 Fast Runner Cat with sweat/determination drops
+                        var cat = new TextBlock { Text = "🐱", FontSize = 20 };
+                        Canvas.SetLeft(cat, 10); Canvas.SetTop(cat, 10);
+                        canvas.Children.Add(cat);
+
+                        var sweat = new TextBlock { Text = "💦", FontSize = 9 };
+                        Canvas.SetLeft(sweat, 26); Canvas.SetTop(sweat, 2);
+                        canvas.Children.Add(sweat);
+
+                        var wind = new TextBlock { Text = "💨", FontSize = 11, Opacity = 0.85 };
+                        Canvas.SetLeft(wind, -4); Canvas.SetTop(wind, 16);
+                        canvas.Children.Add(wind);
+                    }
+
+                    // Energetic fast running sprint animation
+                    var runHop = new DoubleAnimation(0, -3.5, TimeSpan.FromMilliseconds(200))
+                    {
+                        AutoReverse = true,
+                        RepeatBehavior = RepeatBehavior.Forever,
+                        EasingFunction = new BounceEase { Bounces = 1, Bounciness = 1.8 }
+                    };
+                    hopTrans.BeginAnimation(TranslateTransform.YProperty, runHop);
+
+                    var runTilt = new DoubleAnimation(-5, 7, TimeSpan.FromMilliseconds(200))
+                    {
+                        AutoReverse = true,
+                        RepeatBehavior = RepeatBehavior.Forever,
+                        EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
+                    };
+                    tiltTrans.BeginAnimation(RotateTransform.AngleProperty, runTilt);
+                }
+            }
+            else if (item.Status == "done")
+            {
+                var cheerer = new TextBlock { Text = "🎉", FontSize = 13 };
+                Canvas.SetLeft(cheerer, 18); Canvas.SetTop(cheerer, 1);
+                canvas.Children.Add(cheerer);
+
+                var critter = new TextBlock { Text = "✨", FontSize = 18 };
+                Canvas.SetLeft(critter, 8); Canvas.SetTop(critter, 10);
+                canvas.Children.Add(critter);
+
+                var doneBob = new DoubleAnimation(0, -2.5, TimeSpan.FromSeconds(1.2))
+                {
+                    AutoReverse = true,
+                    RepeatBehavior = RepeatBehavior.Forever,
+                    EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
+                };
+                hopTrans.BeginAnimation(TranslateTransform.YProperty, doneBob);
+            }
+            else if (item.Status == "failed")
+            {
+                var dizzy = new TextBlock { Text = "🩹", FontSize = 16 };
+                Canvas.SetLeft(dizzy, 12); Canvas.SetTop(dizzy, 10);
+                canvas.Children.Add(dizzy);
+            }
+            else
+            {
+                // Queued / Blocked
+                var blockerList = item.BlockedByNumbers ?? (item.BlockedByNumber.HasValue ? new List<int> { item.BlockedByNumber.Value } : new List<int>());
+                bool isBlocked = blockerList.Count > 0;
+
+                var waitIcon = new TextBlock { Text = isBlocked ? "🔒" : "⏳", FontSize = 16, Opacity = 0.85 };
+                Canvas.SetLeft(waitIcon, 12); Canvas.SetTop(waitIcon, 10);
+                canvas.Children.Add(waitIcon);
+            }
+
+            return canvas;
         }
 
         private void QueueTree_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
