@@ -2,36 +2,22 @@ import React, { useState, useMemo } from 'react';
 import { ProductCard } from './ProductCard';
 import { ProductDetailModal } from './ProductDetailModal';
 import { SubscriptionsDrawer } from './SubscriptionsDrawer';
-import { Product, CategoryType } from './types';
-import { INITIAL_PRODUCTS } from './products';
-import { Search, X, SearchX, ArrowRight } from 'lucide-react';
+import { Product, CategoryFilter } from './types';
+import { useMarketplaceCatalog } from './useMarketplaceCatalog';
+import { Search, X, SearchX, ArrowRight, Loader2 } from 'lucide-react';
 
 interface MarketplaceModalProps {
-  selectedIds: string[];
-  onToggleSelectProduct: (productId: string) => void;
-  walletBalance: number;
-  billingCycle: 'monthly' | 'yearly';
-  setBillingCycle: (cycle: 'monthly' | 'yearly') => void;
-  onConfirmSubscriptions: () => void;
+  selectedIds: number[];
+  onToggleSelectProduct: (productId: number) => void;
 }
-
-const CATEGORIES: { id: CategoryType; label: string }[] = [
-  { id: 'All Products', label: 'All Products' },
-  { id: 'Intelligence', label: 'Intelligence' },
-  { id: 'Security', label: 'Security' },
-  { id: 'Automation', label: 'Automation' },
-  { id: 'Compliance', label: 'Compliance' },
-];
 
 export const MarketplaceModal: React.FC<MarketplaceModalProps> = ({
   selectedIds,
   onToggleSelectProduct,
-  walletBalance,
-  billingCycle,
-  setBillingCycle,
-  onConfirmSubscriptions,
 }) => {
-  const [activeCategory, setActiveCategory] = useState<CategoryType>('All Products');
+  const { data: products, isLoading, isError } = useMarketplaceCatalog();
+
+  const [activeCategory, setActiveCategory] = useState<CategoryFilter>('All Products');
   const [searchQuery, setSearchQuery] = useState('');
 
   // Selected Product Detail Modal state
@@ -40,119 +26,101 @@ export const MarketplaceModal: React.FC<MarketplaceModalProps> = ({
   // Subscriptions Drawer state
   const [isSubscriptionsDrawerOpen, setIsSubscriptionsDrawerOpen] = useState(false);
 
-  // Filter products based on search query and category
+  // Real category values present in the fetched catalog — no hardcoded taxonomy.
+  const categories = useMemo(() => {
+    const seen = new Set<string>();
+    (products ?? []).forEach((p) => {
+      if (p.category) seen.add(p.category);
+    });
+    return ['All Products', ...Array.from(seen).sort()];
+  }, [products]);
+
   const filteredProducts = useMemo(() => {
-    return INITIAL_PRODUCTS.filter((product) => {
-      // Search match
+    return (products ?? []).filter((product) => {
       const matchesSearch =
         searchQuery.trim() === '' ||
-        product.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        product.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        product.badge.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        product.category.toLowerCase().includes(searchQuery.toLowerCase());
+        product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (product.description ?? '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (product.tagline ?? '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (product.badge ?? '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (product.category ?? '').toLowerCase().includes(searchQuery.toLowerCase());
 
-      // Category match
-      let matchesCategory = true;
-      if (activeCategory !== 'All Products') {
-        matchesCategory = product.category === activeCategory;
-      }
+      const matchesCategory =
+        activeCategory === 'All Products' || product.category === activeCategory;
 
       return matchesSearch && matchesCategory;
     });
-  }, [searchQuery, activeCategory]);
+  }, [products, searchQuery, activeCategory]);
 
   const selectedProducts = useMemo(() => {
-    return INITIAL_PRODUCTS.filter((p) => selectedIds.includes(p.id));
-  }, [selectedIds]);
-
-  const totalMonthlyCost = useMemo(() => {
-    return selectedProducts.reduce((sum, p) => {
-      return sum + (billingCycle === 'yearly' ? p.priceYearly : p.priceMonthly);
-    }, 0);
-  }, [selectedProducts, billingCycle]);
+    return (products ?? []).filter((p) => selectedIds.includes(p.id));
+  }, [products, selectedIds]);
 
   return (
     <>
       {/* Glassmorphism Boutique Marketplace Card */}
       <div className="bg-[#1e2020]/80 backdrop-blur-xl w-full max-w-6xl mx-auto flex flex-col rounded-2xl overflow-hidden shadow-2xl relative border border-white/10">
-        {/* Boutique Header: brand title, search, billing cycle toggle */}
+        {/* Boutique Header: brand title, search */}
         <header className="bg-[#282a2b] border-b border-white/5 flex flex-wrap justify-between items-center gap-3 w-full px-4 md:px-6 py-3.5 shadow-sm rounded-t-xl shrink-0">
           <span className="font-sans text-xl md:text-2xl font-bold text-[#a0c9ff] tracking-tight">
-            Boutique Marketplace
+            Marketplace
           </span>
 
-          <div className="flex items-center gap-3">
-            <div className="relative group">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#c0c7d3] w-4 h-4 transition-colors group-focus-within:text-[#a0c9ff]" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search marketplace..."
-                className="bg-[#121414] border border-[#404752] rounded-lg pl-9 pr-3 py-1.5 text-xs md:text-sm text-[#e2e2e2] w-40 sm:w-56 lg:w-64 focus:ring-2 focus:ring-[#a0c9ff] focus:border-transparent focus:outline-none transition-all placeholder:text-[#8a919d]"
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#8a919d] hover:text-[#e2e2e2]"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
-
-            <div className="hidden lg:flex items-center bg-[#121414] p-0.5 rounded-lg border border-[#404752] text-xs font-mono">
+          <div className="relative group">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#c0c7d3] w-4 h-4 transition-colors group-focus-within:text-[#a0c9ff]" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search marketplace..."
+              className="bg-[#121414] border border-[#404752] rounded-lg pl-9 pr-3 py-1.5 text-xs md:text-sm text-[#e2e2e2] w-40 sm:w-56 lg:w-64 focus:ring-2 focus:ring-[#a0c9ff] focus:border-transparent focus:outline-none transition-all placeholder:text-[#8a919d]"
+            />
+            {searchQuery && (
               <button
-                onClick={() => setBillingCycle('monthly')}
-                className={`px-2.5 py-1 rounded-md transition-all ${
-                  billingCycle === 'monthly'
-                    ? 'bg-[#479ef5] text-[#001c37] font-semibold shadow-sm'
-                    : 'text-[#c0c7d3] hover:text-[#e2e2e2]'
-                }`}
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#8a919d] hover:text-[#e2e2e2]"
               >
-                Monthly
+                <X className="w-3.5 h-3.5" />
               </button>
-              <button
-                onClick={() => setBillingCycle('yearly')}
-                className={`px-2.5 py-1 rounded-md transition-all flex items-center gap-1 ${
-                  billingCycle === 'yearly'
-                    ? 'bg-[#479ef5] text-[#001c37] font-semibold shadow-sm'
-                    : 'text-[#c0c7d3] hover:text-[#e2e2e2]'
-                }`}
-              >
-                Yearly
-                <span className="text-[10px] px-1 py-0.2 bg-[#dab9ff] text-[#421871] rounded-full font-bold">
-                  -20%
-                </span>
-              </button>
-            </div>
+            )}
           </div>
         </header>
 
         {/* Category Pills */}
-        <div className="flex items-center gap-2 px-4 md:px-6 py-3 overflow-x-auto bg-[#1a1c1c]/60 border-b border-white/5">
-          {CATEGORIES.map((cat) => {
-            const isActive = activeCategory === cat.id;
-            return (
-              <button
-                key={cat.id}
-                onClick={() => setActiveCategory(cat.id)}
-                className={`px-3.5 py-1.5 rounded-full font-mono text-xs shrink-0 transition-all cursor-pointer ${
-                  isActive
-                    ? 'bg-[#5a3289] text-[#cda3ff] font-semibold shadow-sm'
-                    : 'bg-[#282a2b] border border-[#404752] text-[#c0c7d3] hover:text-white'
-                }`}
-              >
-                {cat.label}
-              </button>
-            );
-          })}
-        </div>
+        {categories.length > 1 && (
+          <div className="flex items-center gap-2 px-4 md:px-6 py-3 overflow-x-auto bg-[#1a1c1c]/60 border-b border-white/5">
+            {categories.map((cat) => {
+              const isActive = activeCategory === cat;
+              return (
+                <button
+                  key={cat}
+                  onClick={() => setActiveCategory(cat)}
+                  className={`px-3.5 py-1.5 rounded-full font-mono text-xs shrink-0 transition-all cursor-pointer ${
+                    isActive
+                      ? 'bg-[#5a3289] text-[#cda3ff] font-semibold shadow-sm'
+                      : 'bg-[#282a2b] border border-[#404752] text-[#c0c7d3] hover:text-white'
+                  }`}
+                >
+                  {cat}
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {/* Content Area */}
         <main className="flex-1 overflow-y-auto p-4 md:p-6 bg-[#1a1c1c]/60">
-          {/* Grid of Solutions */}
-          {filteredProducts.length > 0 ? (
+          {isLoading ? (
+            <div className="py-16 flex flex-col items-center justify-center text-center space-y-3">
+              <Loader2 className="w-6 h-6 text-[#a0c9ff] animate-spin" />
+              <p className="text-xs text-[#8a919d]">Loading marketplace...</p>
+            </div>
+          ) : isError ? (
+            <div className="py-16 flex flex-col items-center justify-center text-center space-y-3">
+              <p className="text-sm text-[#ffb4ab]">Couldn't load the marketplace catalog.</p>
+              <p className="text-xs text-[#8a919d]">Please try again shortly.</p>
+            </div>
+          ) : filteredProducts.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 pb-2">
               {filteredProducts.map((product) => {
                 const isSelected = selectedIds.includes(product.id);
@@ -163,7 +131,6 @@ export const MarketplaceModal: React.FC<MarketplaceModalProps> = ({
                     isSelected={isSelected}
                     onToggleSelect={onToggleSelectProduct}
                     onOpenDetails={setInspectProduct}
-                    billingCycle={billingCycle}
                   />
                 );
               })}
@@ -175,25 +142,31 @@ export const MarketplaceModal: React.FC<MarketplaceModalProps> = ({
                 <SearchX className="w-6 h-6" />
               </div>
               <h4 className="font-sans text-base font-semibold text-[#e2e2e2]">
-                No solutions found for "{searchQuery}"
+                {(products ?? []).length === 0
+                  ? 'No products available'
+                  : `No products found for "${searchQuery}"`}
               </h4>
-              <p className="text-xs text-[#8a919d] max-w-sm">
-                Try adjusting your search terms or select a different category above.
-              </p>
-              <button
-                onClick={() => {
-                  setSearchQuery('');
-                  setActiveCategory('All Products');
-                }}
-                className="px-4 py-1.5 rounded-lg bg-[#a0c9ff]/10 text-[#a0c9ff] text-xs font-semibold hover:bg-[#a0c9ff]/20 transition-colors"
-              >
-                Reset Filters
-              </button>
+              {(products ?? []).length > 0 && (
+                <>
+                  <p className="text-xs text-[#8a919d] max-w-sm">
+                    Try adjusting your search terms or select a different category above.
+                  </p>
+                  <button
+                    onClick={() => {
+                      setSearchQuery('');
+                      setActiveCategory('All Products');
+                    }}
+                    className="px-4 py-1.5 rounded-lg bg-[#a0c9ff]/10 text-[#a0c9ff] text-xs font-semibold hover:bg-[#a0c9ff]/20 transition-colors"
+                  >
+                    Reset Filters
+                  </button>
+                </>
+              )}
             </div>
           )}
         </main>
 
-        {/* Boutique Footer: subscriptions review CTA */}
+        {/* Boutique Footer: selection review CTA */}
         <footer className="bg-[#333535]/50 border-t border-white/5 px-4 md:px-6 py-3.5 flex flex-wrap items-center justify-end gap-3 shrink-0 rounded-b-xl">
           <button
             onClick={() => setIsSubscriptionsDrawerOpen(true)}
@@ -209,9 +182,7 @@ export const MarketplaceModal: React.FC<MarketplaceModalProps> = ({
               </span>
             )}
             <span>
-              {selectedIds.length > 0
-                ? `View Subscriptions ($${totalMonthlyCost}/mo)`
-                : 'View Subscriptions'}
+              {selectedIds.length > 0 ? 'View Selected Products' : 'View Selected'}
             </span>
             <ArrowRight className="w-4 h-4 text-[#001c37]" />
           </button>
@@ -225,19 +196,14 @@ export const MarketplaceModal: React.FC<MarketplaceModalProps> = ({
         onClose={() => setInspectProduct(null)}
         isSelected={inspectProduct ? selectedIds.includes(inspectProduct.id) : false}
         onToggleSelect={onToggleSelectProduct}
-        billingCycle={billingCycle}
       />
 
-      {/* Active Subscriptions Drawer / Review Modal */}
+      {/* Selected Products Drawer */}
       <SubscriptionsDrawer
         isOpen={isSubscriptionsDrawerOpen}
         onClose={() => setIsSubscriptionsDrawerOpen(false)}
         selectedProducts={selectedProducts}
         onRemoveProduct={onToggleSelectProduct}
-        billingCycle={billingCycle}
-        setBillingCycle={setBillingCycle}
-        walletBalance={walletBalance}
-        onConfirmSubscriptions={onConfirmSubscriptions}
       />
     </>
   );

@@ -1,27 +1,29 @@
 import React from 'react';
-import {
-  X,
-  CheckCircle2,
-  Star,
-  Building2,
-  ShieldAlert,
-  Zap,
-  BarChart3,
-  ShieldCheck,
-  Sparkles,
-  MessageSquare,
-  Lock,
-  Leaf,
-} from 'lucide-react';
+import { X, CheckCircle2, BarChart3, ShieldCheck, Sparkles, Repeat, Package } from 'lucide-react';
 import { Product } from './types';
+import { formatPrice, serviceTypeLabel } from './formatting';
 
 interface ProductDetailModalProps {
   product: Product | null;
   isOpen: boolean;
   onClose: () => void;
   isSelected: boolean;
-  onToggleSelect: (productId: string) => void;
-  billingCycle: 'monthly' | 'yearly';
+  onToggleSelect: (productId: number) => void;
+}
+
+function getIcon(serviceType: string | null) {
+  switch (serviceType) {
+    case 'assessment':
+      return <ShieldCheck className="w-8 h-8 text-[#dab9ff]" />;
+    case 'monitoring_tier':
+      return <BarChart3 className="w-8 h-8 text-[#a0c9ff]" />;
+    case 'micro_offer':
+      return <Sparkles className="w-8 h-8 text-[#a0c9ff]" />;
+    case 'retainer':
+      return <Repeat className="w-8 h-8 text-[#a0c9ff]" />;
+    default:
+      return <Package className="w-8 h-8 text-[#a0c9ff]" />;
+  }
 }
 
 export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
@@ -30,31 +32,8 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   onClose,
   isSelected,
   onToggleSelect,
-  billingCycle,
 }) => {
   if (!isOpen || !product) return null;
-
-  const currentPrice =
-    billingCycle === 'yearly' ? product.priceYearly : product.priceMonthly;
-
-  const getIcon = (iconName: string) => {
-    switch (iconName) {
-      case 'analytics':
-        return <BarChart3 className="w-8 h-8 text-[#a0c9ff]" />;
-      case 'shield':
-        return <ShieldCheck className="w-8 h-8 text-[#dab9ff]" />;
-      case 'sparkles':
-        return <Sparkles className="w-8 h-8 text-[#a0c9ff]" />;
-      case 'message':
-        return <MessageSquare className="w-8 h-8 text-[#a0c9ff]" />;
-      case 'lock':
-        return <Lock className="w-8 h-8 text-[#ffb4ab]" />;
-      case 'leaf':
-        return <Leaf className="w-8 h-8 text-[#dab9ff]" />;
-      default:
-        return <BarChart3 className="w-8 h-8 text-[#a0c9ff]" />;
-    }
-  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
@@ -63,14 +42,16 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
         <div className="flex items-center justify-between px-6 py-4 bg-[#282a2b] border-b border-white/5">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-[#121414] border border-white/10 flex items-center justify-center">
-              {getIcon(product.iconName)}
+              {getIcon(product.serviceType)}
             </div>
             <div>
               <span className="font-mono text-[10px] uppercase text-[#a0c9ff] tracking-wider font-semibold">
-                {product.category} • {product.badge}
+                {[serviceTypeLabel(product.serviceType), product.category, product.badge]
+                  .filter(Boolean)
+                  .join(' • ')}
               </span>
               <h3 className="font-sans text-lg font-bold text-[#e2e2e2]">
-                {product.title}
+                {product.name}
               </h3>
             </div>
           </div>
@@ -89,67 +70,43 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
             <h4 className="font-mono text-xs uppercase text-[#8a919d] tracking-wider mb-1">
               Overview
             </h4>
+            {product.tagline && (
+              <p className="text-sm text-[#a0c9ff] font-medium mb-1.5">{product.tagline}</p>
+            )}
             <p className="text-sm text-[#e2e2e2] leading-relaxed">
-              {product.description}
+              {product.description || 'No description available.'}
             </p>
           </div>
 
-          {/* Key Metrics row */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 bg-[#121414] p-3.5 rounded-xl border border-white/5">
+          {/* Key Features list */}
+          {product.deliverables.length > 0 && (
             <div>
-              <p className="font-mono text-[10px] text-[#8a919d] uppercase">Rating</p>
-              <div className="flex items-center gap-1 mt-0.5">
-                <Star className="w-3.5 h-3.5 fill-[#a0c9ff] text-[#a0c9ff]" />
-                <span className="text-sm font-bold text-[#e2e2e2]">
-                  {product.rating}
-                </span>
-                <span className="text-xs text-[#8a919d]">({product.reviewsCount})</span>
+              <h4 className="font-mono text-xs uppercase text-[#8a919d] tracking-wider mb-2.5">
+                Deliverables
+              </h4>
+              <div className="space-y-2">
+                {product.deliverables.map((deliverable, idx) => (
+                  <div
+                    key={idx}
+                    className="flex items-start gap-2.5 text-xs md:text-sm text-[#c0c7d3] bg-[#1e2020] p-2.5 rounded-lg border border-white/5"
+                  >
+                    <CheckCircle2 className="w-4 h-4 text-[#a0c9ff] shrink-0 mt-0.5" />
+                    <span>{deliverable}</span>
+                  </div>
+                ))}
               </div>
             </div>
-
-            <div>
-              <p className="font-mono text-[10px] text-[#8a919d] uppercase">Active Deployments</p>
-              <p className="text-sm font-bold text-[#e2e2e2] mt-0.5">
-                {product.activeTeams} Teams
-              </p>
-            </div>
-
-            <div className="col-span-2 sm:col-span-1">
-              <p className="font-mono text-[10px] text-[#8a919d] uppercase">Provider</p>
-              <p className="text-xs font-semibold text-[#a0c9ff] truncate mt-0.5">
-                {product.provider}
-              </p>
-            </div>
-          </div>
-
-          {/* Key Features list */}
-          <div>
-            <h4 className="font-mono text-xs uppercase text-[#8a919d] tracking-wider mb-2.5">
-              Capabilities & Features
-            </h4>
-            <div className="space-y-2">
-              {product.features.map((feature, idx) => (
-                <div
-                  key={idx}
-                  className="flex items-start gap-2.5 text-xs md:text-sm text-[#c0c7d3] bg-[#1e2020] p-2.5 rounded-lg border border-white/5"
-                >
-                  <CheckCircle2 className="w-4 h-4 text-[#a0c9ff] shrink-0 mt-0.5" />
-                  <span>{feature}</span>
-                </div>
-              ))}
-            </div>
-          </div>
+          )}
         </div>
 
         {/* Modal Footer */}
         <div className="p-4 bg-[#282a2b] border-t border-white/5 flex items-center justify-between">
           <div>
             <p className="font-mono text-[10px] text-[#8a919d] uppercase">
-              Subscription Cost
+              {product.priceCents == null ? 'Pricing' : 'Cost'}
             </p>
             <p className="font-sans text-xl font-bold text-[#e2e2e2]">
-              ${currentPrice}
-              <span className="text-xs text-[#c0c7d3] font-normal">/mo</span>
+              {formatPrice(product)}
             </p>
           </div>
 
@@ -170,7 +127,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                   : 'bg-[#479ef5] text-[#001c37] hover:bg-[#a0c9ff]'
               }`}
             >
-              {isSelected ? 'Remove Subscription' : 'Add to Subscriptions'}
+              {isSelected ? 'Remove Selection' : 'Add to Selection'}
             </button>
           </div>
         </div>

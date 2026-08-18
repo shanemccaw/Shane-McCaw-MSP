@@ -4,8 +4,8 @@
  * Renders MarketplaceModal inside a real Dialog overlay, driven by
  * MarketplaceContext. Mounted once at the app root (above the router) so it
  * sits on top of whatever page the user was on when they opened Marketplace,
- * rather than navigating away from it. Owns the same selection/wallet/billing
- * state MarketplacePage owns for the standalone /marketplace route — the two
+ * rather than navigating away from it. Owns the same selection state
+ * MarketplacePage owns for the standalone /marketplace route — the two
  * are independent instances of the same content component.
  */
 
@@ -16,18 +16,12 @@ import { useMarketplace } from "@/lib/marketplace-context";
 
 export function MarketplaceModalHost() {
   const { isOpen, close } = useMarketplace();
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [walletBalance] = useState(0);
-  const [billingCycle, setBillingCycle] = useState<"monthly" | "yearly">("monthly");
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
 
-  const handleToggleSelectProduct = (productId: string) => {
+  const handleToggleSelectProduct = (productId: number) => {
     setSelectedIds((prev) =>
       prev.includes(productId) ? prev.filter((id) => id !== productId) : [...prev, productId],
     );
-  };
-
-  const handleConfirmSubscriptions = () => {
-    setSelectedIds([]);
   };
 
   return (
@@ -37,10 +31,6 @@ export function MarketplaceModalHost() {
         <MarketplaceModal
           selectedIds={selectedIds}
           onToggleSelectProduct={handleToggleSelectProduct}
-          walletBalance={walletBalance}
-          billingCycle={billingCycle}
-          setBillingCycle={setBillingCycle}
-          onConfirmSubscriptions={handleConfirmSubscriptions}
         />
       </DialogContent>
     </Dialog>

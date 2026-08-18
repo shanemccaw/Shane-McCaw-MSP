@@ -1,22 +1,28 @@
 import React from 'react';
-import {
-  BarChart3,
-  ShieldCheck,
-  Sparkles,
-  MessageSquare,
-  Lock,
-  Leaf,
-  Check,
-  Info,
-} from 'lucide-react';
+import { BarChart3, ShieldCheck, Sparkles, Repeat, Package, Check, Info } from 'lucide-react';
 import { Product } from './types';
+import { formatPrice, serviceTypeLabel } from './formatting';
 
 interface ProductCardProps {
   product: Product;
   isSelected: boolean;
-  onToggleSelect: (productId: string) => void;
+  onToggleSelect: (productId: number) => void;
   onOpenDetails: (product: Product) => void;
-  billingCycle: 'monthly' | 'yearly';
+}
+
+function getIcon(serviceType: string | null) {
+  switch (serviceType) {
+    case 'assessment':
+      return <ShieldCheck className="w-7 h-7 text-[#dab9ff]" />;
+    case 'monitoring_tier':
+      return <BarChart3 className="w-7 h-7 text-[#a0c9ff]" />;
+    case 'micro_offer':
+      return <Sparkles className="w-7 h-7 text-[#a0c9ff]" />;
+    case 'retainer':
+      return <Repeat className="w-7 h-7 text-[#a0c9ff]" />;
+    default:
+      return <Package className="w-7 h-7 text-[#a0c9ff]" />;
+  }
 }
 
 export const ProductCard: React.FC<ProductCardProps> = ({
@@ -24,47 +30,27 @@ export const ProductCard: React.FC<ProductCardProps> = ({
   isSelected,
   onToggleSelect,
   onOpenDetails,
-  billingCycle,
 }) => {
-  const getIcon = (iconName: string) => {
-    switch (iconName) {
-      case 'analytics':
-        return <BarChart3 className="w-7 h-7 text-[#a0c9ff]" />;
-      case 'shield':
-        return <ShieldCheck className="w-7 h-7 text-[#dab9ff]" />;
-      case 'sparkles':
-        return <Sparkles className="w-7 h-7 text-[#a0c9ff]" />;
-      case 'message':
-        return <MessageSquare className="w-7 h-7 text-[#a0c9ff]" />;
-      case 'lock':
-        return <Lock className="w-7 h-7 text-[#ffb4ab]" />;
-      case 'leaf':
-        return <Leaf className="w-7 h-7 text-[#dab9ff]" />;
-      default:
-        return <BarChart3 className="w-7 h-7 text-[#a0c9ff]" />;
-    }
-  };
-
-  const currentPrice =
-    billingCycle === 'yearly' ? product.priceYearly : product.priceMonthly;
-
   return (
-    <div className="bg-[#1e2020] flex flex-col p-4 md:p-5 rounded-xl border border-white/5 h-full relative group">
+    <div
+      data-testid="marketplace-product-card"
+      className="bg-[#1e2020] flex flex-col p-4 md:p-5 rounded-xl border border-white/5 h-full relative group"
+    >
       {/* Top Bar: Icon & Badge */}
       <div className="flex justify-between items-start mb-4">
         <div
           onClick={() => onOpenDetails(product)}
           className="w-12 h-12 rounded-xl bg-[#121414] border border-white/10 flex items-center justify-center cursor-pointer hover:border-[#a0c9ff]/40 transition-colors"
         >
-          {getIcon(product.iconName)}
+          {getIcon(product.serviceType)}
         </div>
 
         <div className="flex items-center gap-2">
-          <span
-            className={`px-2.5 py-0.5 rounded-full font-mono text-[10px] font-semibold uppercase tracking-wider border ${product.colorTheme.badgeBg} ${product.colorTheme.badgeText} ${product.colorTheme.badgeBorder}`}
-          >
-            {product.badge}
-          </span>
+          {product.badge && (
+            <span className="px-2.5 py-0.5 rounded-full font-mono text-[10px] font-semibold uppercase tracking-wider border bg-[#a0c9ff]/10 text-[#a0c9ff] border-[#a0c9ff]/20">
+              {product.badge}
+            </span>
+          )}
           <button
             onClick={() => onOpenDetails(product)}
             title="View Details"
@@ -77,22 +63,23 @@ export const ProductCard: React.FC<ProductCardProps> = ({
 
       {/* Title */}
       <h3
+        data-testid="marketplace-product-name"
         onClick={() => onOpenDetails(product)}
         className="font-sans text-lg font-semibold text-[#e2e2e2] mb-1.5 cursor-pointer hover:text-[#a0c9ff] transition-colors"
       >
-        {product.title}
+        {product.name}
       </h3>
 
       {/* Description */}
       <p className="text-xs md:text-sm text-[#c0c7d3] flex-1 mb-5 leading-relaxed font-sans">
-        {product.description}
+        {product.tagline || product.description || ''}
       </p>
 
-      {/* Features preview tag */}
-      {product.accuracy && (
-        <div className="mb-4 inline-flex items-center gap-1.5 text-[11px] text-[#a0c9ff] bg-[#a0c9ff]/5 px-2 py-0.5 rounded border border-[#a0c9ff]/10">
-          <span className="w-1.5 h-1.5 rounded-full bg-[#a0c9ff] animate-pulse" />
-          {product.accuracy}
+      {/* Category / service type tag */}
+      {serviceTypeLabel(product.serviceType) && (
+        <div className="mb-4 inline-flex items-center gap-1.5 text-[11px] text-[#a0c9ff] bg-[#a0c9ff]/5 px-2 py-0.5 rounded border border-[#a0c9ff]/10 w-fit">
+          {serviceTypeLabel(product.serviceType)}
+          {product.category ? ` • ${product.category}` : ''}
         </div>
       )}
 
@@ -100,13 +87,10 @@ export const ProductCard: React.FC<ProductCardProps> = ({
       <div className="flex items-center justify-between mt-auto pt-3.5 border-t border-white/5">
         <div>
           <p className="font-mono text-[10px] text-[#8a919d] uppercase tracking-wider">
-            Starting at
+            {product.priceCents == null ? 'Pricing' : 'Starting at'}
           </p>
           <p className="font-sans text-lg md:text-xl font-bold text-[#e2e2e2]">
-            ${currentPrice}
-            <span className="text-xs text-[#c0c7d3] font-normal">
-              /{billingCycle === 'yearly' ? 'mo (annual)' : 'mo'}
-            </span>
+            {formatPrice(product)}
           </p>
         </div>
 

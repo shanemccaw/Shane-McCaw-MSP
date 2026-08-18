@@ -40,6 +40,7 @@
     "security-overview/hero-pillar-score.json",
     "governance/ownerless-groups-sprawl.json",
     "governance/top-governance-risks.json",
-    "security-overview/license-gap-locked-finding.json"
+    "security-overview/license-gap-locked-finding.json",
+    "marketplace/catalog-browse.json"
   ]
 }

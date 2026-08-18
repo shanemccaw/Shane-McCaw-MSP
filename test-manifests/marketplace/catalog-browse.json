@@ -1,0 +1,72 @@
+{
+  "issue": 1141,
+  "feature": "Marketplace: wire the customer-facing /marketplace page to the real GET /api/portal/marketplace/catalog endpoint (servicesTable), replacing the fully fabricated INITIAL_PRODUCTS placeholder data. Read-only styling pass per Shane's own scoping -- add-to-cart/checkout intentionally deferred to a later build.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "PENDING",
+
+  "notes": [
+    "GATE MECHANISM: none new -- reuses the existing requireRole('Assessment') floor on GET /api/portal/marketplace/catalog (portal-marketplace.ts), which was already built and already RBAC-scoped but had zero frontend consumers before this build. MarketplaceModal.tsx now fetches it via useMarketplaceCatalog.ts (React Query) instead of importing the deleted products.ts mock file.",
+    "Category pills are now derived live from whatever `category` values the fetched catalog actually contains -- no hardcoded taxonomy -- so D2 below only asserts against the real first product's name, not a specific category label that could drift.",
+    "Cart/checkout intentionally NOT covered here: SubscriptionsDrawer.tsx is a real-data selection review panel only ('Cart & checkout coming soon'), per Shane's explicit scoping for this pass. No apiTest hits a purchase/checkout endpoint.",
+    "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL, TEST_PORTAL_EMAIL, TEST_PORTAL_PASSWORD (same TESTBED account other portal manifests use)."
+  ],
+
+  "apiTests": [
+    {
+      "name": "SETUP -- log in as the designated TESTBED portal account; extract the bearer.",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "D1 -- GET /api/portal/marketplace/catalog returns the real, role-scoped servicesTable catalog (not a mock).",
+      "method": "GET",
+      "path": "/api/portal/marketplace/catalog",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.services", "exists": true },
+      "extract": { "as": "firstProductName", "jsonPath": "$.services[0].name" }
+    }
+  ],
+
+  "uiSteps": [
+    {
+      "name": "goto the real login URL (outer WouterRouter base='/portal').",
+      "action": "goto",
+      "target": "/portal/login"
+    },
+    { "action": "expect", "selector": "#email", "state": "visible" },
+    { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
+    { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
+    {
+      "name": "Primary login -- CRITICAL: every downstream assertion needs a real authenticated session.",
+      "action": "click",
+      "selector": "[data-testid='login-submit']",
+      "critical": true,
+      "captureResponse": {
+        "urlPattern": "/api/auth/login",
+        "expect": { "status": 200 }
+      }
+    },
+    {
+      "name": "goto the flat /marketplace route (registered in App.tsx's outer switch, not slug-scoped).",
+      "action": "goto",
+      "target": "/portal/marketplace"
+    },
+    {
+      "name": "D2 -- at least one real product card renders from the fetched catalog.",
+      "action": "expect",
+      "selector": "[data-testid='marketplace-product-card']",
+      "state": "visible"
+    },
+    {
+      "name": "D3 -- the rendered product name is the REAL first catalog entry's name from the API response, proving the DOM reflects live data and not the old fabricated INITIAL_PRODUCTS mock.",
+      "action": "expect",
+      "selector": "[data-testid='marketplace-product-name']",
+      "state": "visible",
+      "textContains": "{{firstProductName}}"
+    }
+  ]
+}

@@ -3,20 +3,14 @@ import { AppShell } from '@/components/app-shell';
 import { MarketplaceModal } from '@/components/marketplace/MarketplaceModal';
 
 export default function MarketplacePage() {
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [walletBalance, setWalletBalance] = useState(0);
-  const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
 
-  const handleToggleSelectProduct = (productId: string) => {
+  const handleToggleSelectProduct = (productId: number) => {
     setSelectedIds((prev) =>
       prev.includes(productId)
         ? prev.filter((id) => id !== productId)
         : [...prev, productId]
     );
-  };
-
-  const handleConfirmSubscriptions = () => {
-    setSelectedIds([]);
   };
 
   return (
@@ -25,10 +19,6 @@ export default function MarketplacePage() {
         <MarketplaceModal
           selectedIds={selectedIds}
           onToggleSelectProduct={handleToggleSelectProduct}
-          walletBalance={walletBalance}
-          billingCycle={billingCycle}
-          setBillingCycle={setBillingCycle}
-          onConfirmSubscriptions={handleConfirmSubscriptions}
         />
       </div>
     </AppShell>
