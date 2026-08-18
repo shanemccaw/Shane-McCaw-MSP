@@ -10,6 +10,8 @@ import { splitSqlStatements } from "../lib/sql-statement-splitter";
 // on a different page." This is his development server, not production.
 const requireDeployAccess = requireAdminOrIngestToken();
 import { exec, execSync } from "child_process";
+import fs from "fs";
+import path from "path";
 import { logger } from "../lib/logger";
 import { recordDeployRun } from "../lib/run-history";
 
@@ -43,6 +45,78 @@ function getWorkspaceRoot(): string {
   }
   cachedWorkspaceRoot = root;
   return root;
+}
+
+// Git #1139 — a stale `.git/index.lock` (left behind by a killed/crashed
+// concurrent git process, which happens with multiple concurrent Claude Code
+// sessions writing to the same repo) blocks every git subcommand identically,
+// so the existing `git pull --ff-only || (fetch + reset --hard)` fallback
+// can't recover from it — both branches fail the same way. This clears the
+// lock before a pull is attempted, but only when it's confident the lock is
+// genuinely stale, never as a blind `rm -f`:
+//
+//   1. If `.git/index.lock` doesn't exist, no-op.
+//   2. `index.lock` is created once when a git write op starts and removed
+//      when it ends — it's never touched mid-operation — so its mtime is
+//      effectively that process's start time, and age-since-mtime is
+//      approximately how long that op has been running.
+//   3. The git-pull step's own exec timeout is 60s, so any genuine
+//      concurrent pull/fetch/reset should finish well inside that. A lock
+//      younger than STALE_LOCK_THRESHOLD_MS (2x that timeout) is left
+//      alone — the pull attempt below fails naturally on it, same as today.
+//   4. A lock older than the threshold gets one more check: scan running
+//      processes for a live `git` process younger than the threshold. If
+//      one exists, treat the lock as still-real and leave it. If the `ps`
+//      scan itself fails/is unavailable, fall back to trusting the mtime
+//      check alone (already a conservative 2-minute bar).
+//   5. Only if both checks agree it's stale is the lock file removed, and
+//      that removal is logged so there's a visible record it happened.
+const STALE_LOCK_THRESHOLD_MS = 120_000;
+
+function clearStaleGitLockIfSafe(workspaceRoot: string): void {
+  const lockPath = path.join(workspaceRoot, ".git", "index.lock");
+  let stat: fs.Stats;
+  try {
+    stat = fs.statSync(lockPath);
+  } catch {
+    return; // no lock present — nothing to do
+  }
+
+  const ageMs = Date.now() - stat.mtimeMs;
+  if (ageMs < STALE_LOCK_THRESHOLD_MS) {
+    log.info({ lockPath, ageMs }, "admin-deploy-console: .git/index.lock present but fresh, leaving it alone");
+    return;
+  }
+
+  try {
+    const psOutput = execSync("ps -eo pid,etimes,args", { encoding: "utf8" });
+    const liveGitProcess = psOutput
+      .split("\n")
+      .some((line) => /\bgit\b/.test(line) && (() => {
+        const etimesMatch = line.trim().split(/\s+/)[1];
+        const etimesSec = etimesMatch ? Number(etimesMatch) : NaN;
+        return Number.isFinite(etimesSec) && etimesSec * 1000 < STALE_LOCK_THRESHOLD_MS;
+      })());
+    if (liveGitProcess) {
+      log.warn({ lockPath, ageMs }, "admin-deploy-console: .git/index.lock looks stale by age but a live git process was found — leaving it alone");
+      return;
+    }
+  } catch (err) {
+    log.warn(
+      { lockPath, ageMs, err: err instanceof Error ? err.message : String(err) },
+      "admin-deploy-console: ps cross-check failed, falling back to mtime-only staleness check",
+    );
+  }
+
+  try {
+    fs.unlinkSync(lockPath);
+    log.warn({ lockPath, ageMs }, "admin-deploy-console: cleared stale .git/index.lock before pull");
+  } catch (err) {
+    log.error(
+      { lockPath, ageMs, err: err instanceof Error ? err.message : String(err) },
+      "admin-deploy-console: failed to remove stale .git/index.lock",
+    );
+  }
 }
 
 interface DeployStep {
@@ -131,6 +205,12 @@ interface StepResult {
 }
 
 function runStep(step: DeployStep, workspaceRoot: string): Promise<StepResult> {
+  // Pre-flight: any step that starts with a `git pull` gets a chance to
+  // clear a stale index.lock first (Git #1139) — covers the whitelisted
+  // git-pull/full-rebuild steps and the free-text deploy console alike.
+  if (step.command.trim().startsWith("git pull")) {
+    clearStaleGitLockIfSafe(workspaceRoot);
+  }
   return new Promise((resolve) => {
     exec(
       step.command,

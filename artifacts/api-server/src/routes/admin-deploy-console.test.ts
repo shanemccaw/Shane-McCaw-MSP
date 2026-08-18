@@ -24,6 +24,8 @@ process.env["DATABASE_URL"] = "postgres://test";
 const mockExec = vi.hoisted(() => vi.fn());
 const mockDbQuery = vi.hoisted(() => vi.fn(async (_sql: string, _params?: unknown[]) => ({ rows: [], rowCount: 1 })));
 const mockExecSync = vi.hoisted(() => vi.fn(() => "/repo\n"));
+const mockStatSync = vi.hoisted(() => vi.fn());
+const mockUnlinkSync = vi.hoisted(() => vi.fn());
 
 // build-complete (#911) runs its schema SQL on a DEDICATED pooled connection
 // (`pool.connect()`), distinct from the `pool.query` run-history uses — so it
@@ -36,6 +38,12 @@ const mockConnect = vi.hoisted(() => vi.fn(async () => ({ query: mockClientQuery
 vi.mock("child_process", () => ({
   exec: mockExec,
   execSync: mockExecSync,
+}));
+
+vi.mock("fs", () => ({
+  default: { statSync: mockStatSync, unlinkSync: mockUnlinkSync },
+  statSync: mockStatSync,
+  unlinkSync: mockUnlinkSync,
 }));
 
 // Every completed run is recorded to simulator_run_history through
@@ -103,6 +111,12 @@ beforeEach(() => {
   mockClientRelease.mockClear();
   mockClientQuery.mockReset();
   mockClientQuery.mockResolvedValue({ rows: [], rowCount: 1 });
+  // Default: no .git/index.lock present — matches the real filesystem for
+  // every existing test in this file that doesn't care about Git #1139.
+  mockStatSync.mockReset().mockImplementation(() => {
+    throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+  });
+  mockUnlinkSync.mockReset();
 });
 
 /** The parameters of the run-history INSERT, if one was issued. */
@@ -264,6 +278,46 @@ describe("run history", () => {
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(true);
     expect(res.body.steps[0].output).toBe("## main...origin/main");
+  });
+});
+
+describe("stale .git/index.lock auto-clear (#1139)", () => {
+  it("leaves a fresh lock alone and does not delete it", async () => {
+    mockStatSync.mockReturnValue({ mtimeMs: Date.now() - 5_000 } as unknown as ReturnType<typeof mockStatSync>);
+    succeed("## main...origin/main");
+
+    const res = await request(buildApp()).post("/admin/simulator/deploy/git-pull").set("x-test-admin", "1");
+
+    expect(res.status).toBe(200);
+    expect(mockUnlinkSync).not.toHaveBeenCalled();
+  });
+
+  it("leaves a stale-by-age lock alone if a live git process is still running", async () => {
+    mockStatSync.mockReturnValue({ mtimeMs: Date.now() - 130_000 } as unknown as ReturnType<typeof mockStatSync>);
+    mockExecSync.mockImplementation(((cmd: unknown) =>
+      String(cmd).includes("ps -eo") ? "  1234   30 git pull origin main\n" : "/repo\n") as () => string);
+    succeed("## main...origin/main");
+
+    const res = await request(buildApp()).post("/admin/simulator/deploy/git-pull").set("x-test-admin", "1");
+
+    expect(res.status).toBe(200);
+    expect(mockUnlinkSync).not.toHaveBeenCalled();
+  });
+
+  it("clears a lock that is both old and has no live git process behind it, then proceeds with the pull", async () => {
+    mockStatSync.mockReturnValue({ mtimeMs: Date.now() - 130_000 } as unknown as ReturnType<typeof mockStatSync>);
+    mockExecSync.mockImplementation(((cmd: unknown) =>
+      String(cmd).includes("ps -eo") ? "  1234   9999 node server.js\n" : "/repo\n") as () => string);
+    succeed("## main...origin/main");
+
+    const res = await request(buildApp()).post("/admin/simulator/deploy/git-pull").set("x-test-admin", "1");
+
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(mockUnlinkSync).toHaveBeenCalledTimes(1);
+    expect(String(mockUnlinkSync.mock.calls[0]![0])).toContain("index.lock");
+    // the pull itself still runs after the lock is cleared
+    expect(String(mockExec.mock.calls[0]![0])).toContain("git pull --ff-only");
   });
 });
 
