@@ -106,10 +106,8 @@ import AdoptionPage from "@/pages/adoption";
 import CopilotPage from "@/pages/copilot";
 import ArchitecturePage from "@/pages/architecture";
 import LicensingPage from "@/pages/licensing";
-import WarRoomPage from "@/pages/war-room";
 import WarRoomRadarPage from "@/pages/war-room-radar";
 import WarRoomLadderPage from "@/pages/war-room-ladder";
-import { WAR_ROOM_ROUTE_PATTERN } from "@/components/war-room/warRoomSections";
 import CopilotReadinessPage from "@/pages/copilot-readiness";
 import CopilotReadinessDocumentsPage from "@/pages/copilot-readiness-documents";
 import CopilotReadinessRemediationTrackerPage from "@/pages/copilot-readiness-remediation-tracker";
@@ -530,16 +528,6 @@ function SlugInnerSwitch() {
       </Route>
       <Route path="/licensing">
         <ProtectedRoute component={LicensingPage} />
-      </Route>
-      {/* M365 War Room — full-screen Copilot readiness briefing, ported from the
-          Claude Design prototype. Owns the whole viewport, so it renders without
-          AppShell (its root is position:fixed) and carries its own exit control.
-          :section is optional so bare /war-room still opens on the hero prelude
-          (which is not one of the named stops) while every named stop is its own
-          deep-linkable URL — and so one route serves both, keeping the briefing
-          mounted across section changes rather than remounting it. */}
-      <Route path={WAR_ROOM_ROUTE_PATTERN}>
-        <ProtectedRoute component={WarRoomPage} />
       </Route>
       {/* The radar on its own, with none of the room around it — a reference
           surface for how large the diagram can actually get once the persona
