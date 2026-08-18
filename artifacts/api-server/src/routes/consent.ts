@@ -1525,6 +1525,23 @@ router.get("/admin/write-consent/callback", async (req: Request, res: Response) 
     }
   })();
 
+  // Fire-and-forget Global Reader directory-role assignment (#1130) — grants
+  // the READ app's service principal the tenant-wide Global Reader role using
+  // this write-back consent's elevated permission (RoleManagement.ReadWrite.
+  // Directory on the write app). Gated on exactly this `writeBack` grant, which
+  // is why it fires here and not from the `graph` (read) consent path. Same
+  // fire-and-forget contract as the DLP chain above: never delays this
+  // callback's response, never fails the consent grant, idempotent on re-run.
+  void (async () => {
+    try {
+      const { provisionGlobalReaderForTenant } = await import("../lib/global-reader-role-provisioning.ts");
+      const outcome = await provisionGlobalReaderForTenant(tenant, customerId, "consent.granted");
+      log.info({ tenant, customerId, overallStatus: outcome.overallStatus }, "write-consent.granted: Global Reader role provisioning finished");
+    } catch (err) {
+      log.warn({ err, tenant, customerId }, "write-consent.granted: Global Reader role provisioning failed (non-fatal)");
+    }
+  })();
+
   log.info({ tenant, customerId }, "Tenant WRITE admin consent granted");
   endConsentCallback(
     res,

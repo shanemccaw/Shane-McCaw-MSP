@@ -83,6 +83,15 @@ export const REQUIRED_MT_SCOPES = [
   "RecordsManagement.Read.All",
   "SharePointTenantSettings.Read.All",
   "Team.ReadBasic.All",
+  // #1130 Track A — read scopes the 5 Graph-REST orphaned checks (#1129) need
+  // to run: tenant organization/license state and verified-domain reads.
+  // TRANSCRIPTION NOTE (same as the whole array): Shane must also add these two
+  // permissions to the live READ app registration in Entra and re-consent — the
+  // /adminconsent flow grants whatever the manifest declares, and this array is
+  // a display mirror, not the grant itself. (No existing tenants had consented
+  // when this shipped, so there is nothing to force a re-consent on.)
+  "Organization.Read.All",
+  "Domain.Read.All",
 ] as const;
 
 export type MtScope = typeof REQUIRED_MT_SCOPES[number];
@@ -124,6 +133,17 @@ export const REQUIRED_WRITE_APP_PERMISSIONS: readonly string[] = [
   // group's OWNER, which is what lets that chain then add the read app's service
   // principal to the group it just created without a broader Group.ReadWrite.All.
   "Group.Create",
+  // Assign a built-in directory role to a principal — #1130's Global Reader
+  // grant (global-reader-role-provisioning.ts) assigns the READ app's service
+  // principal the tenant-wide Global Reader role via
+  // /roleManagement/directory/roleAssignments. This is the ONLY permission that
+  // makes that write possible, and it lives on the WRITE app deliberately so the
+  // READ app never carries a role-management write scope. TRANSCRIPTION NOTE
+  // (same caveat as the whole array above): Shane must add this permission to
+  // the live write app registration in Entra and admin-consent it — this array
+  // only mirrors the manifest for the assessment consent screen, it does not
+  // grant anything by itself.
+  "RoleManagement.ReadWrite.Directory",
 ];
 
 export function graphCredentialsPresent(): boolean {
