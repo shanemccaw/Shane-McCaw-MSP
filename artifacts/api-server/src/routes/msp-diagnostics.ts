@@ -773,7 +773,12 @@ router.get(
 
 router.get(
   "/portal/health-benchmark",
-  requireRole("CustomerUser"),
+  // requireAuth, not requireRole("CustomerUser") — every other customer-facing
+  // route in this file (diagnostics/latest, scripts/download, diagnostics/runs,
+  // assessment-results) only requires authentication. The stricter floor here
+  // silently 403'd Free-tier customers who already have real diagnostic data,
+  // which the frontend couldn't distinguish from "no data yet" (#1157).
+  requireAuth,
   async (req: Request, res: Response) => {
     try {
       const user = req.user!;
