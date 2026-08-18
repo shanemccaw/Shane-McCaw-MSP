@@ -29,6 +29,7 @@ export default defineConfig({
       "src/lib/tenant-signals-stabilization.test.ts",
       "src/lib/tenant-signals-customer-bridge.test.ts",
       "src/lib/build-tenant-profile.test.ts",
+      "src/lib/zoho-batch-drain-dlq-customer-notify-1166.test.ts",
       // #544 — namespaced mergedProfileByCheck + the scoping-pattern matcher
       // that must not re-fuse case-distinct keys the merge kept separate.
       "src/lib/merged-profile-by-check-544.test.ts",

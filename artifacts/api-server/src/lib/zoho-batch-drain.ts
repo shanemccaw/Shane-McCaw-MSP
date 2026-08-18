@@ -17,8 +17,59 @@ import { sql } from "drizzle-orm";
 import { logger } from "./logger";
 import { captureDlqFailure } from "./dlq.ts";
 import { captureException } from "./exception-tracker.ts";
+import { createNotification } from "./notification-center.ts";
 
 const log = logger.child({ channel: "integration.zoho" });
+
+/**
+ * A zoho.* job's payload carries `localUserId` only when it originated from an
+ * authenticated portal customer action (e.g. enqueueEscalationTicket() for a
+ * customer-submitted request, Git #1158) — anonymous/system-originated jobs
+ * (public-chat escalations, admin-authored writes) don't set it. That field is
+ * the only link back to a real customer since these jobs have no local
+ * "request" row of their own (see Git #1166).
+ */
+export function extractCustomerDlqContext(payload: Record<string, unknown>): { userId: number; subject: string } | null {
+  const userId = Number(payload.localUserId);
+  if (!Number.isFinite(userId)) return null;
+  const subject =
+    typeof payload.subject === "string" && payload.subject
+      ? payload.subject
+      : typeof payload.ticketId === "string" && payload.ticketId
+        ? `your update to request ${payload.ticketId}`
+        : "your request";
+  return { userId, subject };
+}
+
+/**
+ * Git #1166: a customer-originated zoho.* job that exhausts retries and lands
+ * in the DLQ previously vanished silently — the customer only ever saw the
+ * initial "submitted" success toast and had no way to learn it failed.
+ * Fires an in-portal (+ preference-gated email) notification via the existing
+ * notification-center.ts so the failure surfaces the same way any other
+ * customer-facing notification does. Best-effort: never lets a notification
+ * failure affect the drain's own DLQ bookkeeping.
+ */
+async function notifyCustomerOfDlqFailure(
+  payload: Record<string, unknown>,
+  mspId: number | null,
+): Promise<void> {
+  const ctx = extractCustomerDlqContext(payload);
+  if (!ctx) return;
+  try {
+    await createNotification({
+      title: "We couldn't submit your request",
+      body: `We were unable to complete ${ctx.subject} after repeated attempts. Our team has been notified. Please try again, or contact support directly if this continues.`,
+      category: "system",
+      severity: "critical",
+      linkPath: "/customer-requests",
+      recipient: { type: "customer_user", userId: ctx.userId },
+      mspId: mspId ?? undefined,
+    });
+  } catch (err) {
+    log.warn({ err, userId: ctx.userId }, "zoho-drain: failed to notify customer of DLQ'd request (non-fatal)");
+  }
+}
 
 export type ZohoJobHandler = (job: {
   jobId: string;
@@ -185,6 +236,7 @@ export async function handleZohoBatchDrain(
           customerId: row.customer_id ?? undefined,
         });
         captureDlqFailure(row.job_type, `No Zoho job handler registered for job type: ${row.job_type}`);
+        void notifyCustomerOfDlqFailure(row.payload, row.msp_id);
         failed++;
         log.warn({ jobId: row.job_id, jobType: row.job_type }, "zoho-drain: no handler — parked in DLQ");
         return;
@@ -227,6 +279,7 @@ export async function handleZohoBatchDrain(
             customerId: row.customer_id ?? undefined,
           });
           void captureException(err instanceof Error ? err : new Error(errorMessage), { channel: "integration.zoho", source: "dlq" });
+          void notifyCustomerOfDlqFailure(row.payload, row.msp_id);
           failed++;
           log.error({ jobId: row.job_id, jobType: row.job_type, errorMessage }, "zoho-drain: exhausted retries — parked in DLQ");
         } else {
