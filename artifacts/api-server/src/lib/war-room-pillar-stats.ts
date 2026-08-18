@@ -72,8 +72,11 @@
  *       ratio. These were replaced by four per-workload active-user counts on
  *       the stated basis that the adoption pillar's `usage:*` checks produce
  *       them; #441 established that `usage:` is not a real check-key domain, so
- *       the replacements were phantom too and the adoption card is now empty.
- *       See the `adoption: []` spec below for why they are not repointed.
+ *       those replacements were phantom too and the adoption card went empty.
+ *       #1105 closed the real gap (a mapping bug on three checks, plus a
+ *       brand-new fourth check) and #1115 re-pointed the adoption card's four
+ *       stats at the real `adoption:*`/`onedrive:*` checks — see the `adoption`
+ *       spec below.
  *   "files evaluated", "PHI containers labelled %" — no check counts scanned
  *       files or PHI containers.
  *   "managed endpoints", "device compliance %", "tickets a week" — no total
@@ -355,7 +358,7 @@ export interface WarRoomStatSpec {
 
 /**
  * The real stat callouts, in the order the cards render — four per pillar
- * except adoption, which is empty (see its own note).
+ * except compliance, which has three (see its own note).
  *
  * Every `metricKey` must be a real `DASHBOARD_METRICS` entry (lib/dashboard-
  * registry) whose `sourceKey` is a real `monitor_checks` key. That second half
@@ -405,30 +408,42 @@ export const WAR_ROOM_PILLAR_STAT_SPECS: Record<WarRoomPillarKey, readonly WarRo
       replaces: "25 / 2 Copilot owned / used" },
   ],
 
-  // EMPTY, and deliberately so since #441.
+  // Re-added #1115, closing the #441 gap. This card used to carry four
+  // "active <workload> users" stats, on the stated basis that they "are
+  // exactly what the adoption pillar's `usage:*` checks do produce". That
+  // basis was false: `usage:` is not a check-key domain in this platform's
+  // catalog and never has been, so all four resolved to `unknown_check_key`
+  // for every tenant, forever. They were not empty-because-unscanned; they
+  // were empty-because-misspelt, and the Copilot Readiness Report printed the
+  // four phantom keys to a paying customer as "not wired to a check in the
+  // catalogue".
   //
-  // This card used to carry four "active <workload> users" stats, on the stated
-  // basis that they "are exactly what the adoption pillar's `usage:*` checks do
-  // produce". That basis was false: `usage:` is not a check-key domain in this
-  // platform's catalog and never has been, so all four resolved to
-  // `unknown_check_key` for every tenant, forever. They were not empty-because-
-  // unscanned; they were empty-because-misspelt, and the Copilot Readiness
-  // Report printed the four phantom keys to a paying customer as "not wired to
-  // a check in the catalogue".
-  //
-  // They are NOT repointed at the real `adoption:*` activity checks. Those four
-  // (`adoption:teams-activity-trend`, `adoption:sharepoint-onedrive-trend`,
-  // `adoption:email-activity-trend`, `adoption:overall-active-rate`) are Graph
-  // usage-report DETAIL endpoints — one row per user, or per site — so a metric
-  // pointed at them falls through to `_itemCount` and renders the entire
-  // licensed roster under a caption reading "active users". That is the same
-  // trap this file already refuses for the Health card's `intune:*` stats, and
-  // it is worse here because the number would look plausible.
-  //
-  // The gap is recorded in WAR_ROOM_UNPRODUCIBLE_STATS below and needs a real
-  // check + mapping (DB-resident) to close, not a registry edit. Until then the
-  // card shows its real score, trend and findings and asserts no figure.
-  adoption: [],
+  // #1105 closed the actual gap: `adoption:teams-activity-trend`,
+  // `adoption:sharepoint-onedrive-trend` and `adoption:email-activity-trend`
+  // had a mapping-correctness bug (camelCase sourceField vs the CSV's literal
+  // header) that made them silently produce 0 forever — fixed to a real
+  // `newerThanDays 7 && not deleted` active-user count, live-verified
+  // non-zero. A brand-new `onedrive:active-users` check closed the fourth gap
+  // (no prior OneDrive per-user activity check existed at all). All four are
+  // now real `DASHBOARD_METRICS` entries (`usage.teamsActiveCount`,
+  // `usage.sharePointActiveCount`, `usage.oneDriveActiveCount`,
+  // `usage.exchangeActiveCount`) whose `sourceKey` names a real, scalar-
+  // producing check — not the DETAIL-endpoint trap this file already refuses
+  // for the Health card's `intune:*` stats.
+  adoption: [
+    { id: "adoption.teamsActive", label: "active Teams users", unit: "count",
+      source: { kind: "metric", metricKey: "usage.teamsActiveCount" },
+      replaces: "1,631 daily active users" },
+    { id: "adoption.sharePointActive", label: "active SharePoint users", unit: "count",
+      source: { kind: "metric", metricKey: "usage.sharePointActiveCount" },
+      replaces: "22% meetings transcribed" },
+    { id: "adoption.oneDriveActive", label: "active OneDrive users", unit: "count",
+      source: { kind: "metric", metricKey: "usage.oneDriveActiveCount" },
+      replaces: "0 named champions" },
+    { id: "adoption.exchangeActive", label: "active email users", unit: "count",
+      source: { kind: "metric", metricKey: "usage.exchangeActiveCount" },
+      replaces: "64% files shared in chat" },
+  ],
 
   // "regulated, unlabelled" maps exactly onto the real missing-labels check. The
   // other two replace file-scan / PHI-container / mailbox-DLP numbers nothing
@@ -526,13 +541,6 @@ export const WAR_ROOM_UNPRODUCIBLE_STATS: readonly string[] = [
   "% device compliance (no compliant/total device ratio check)",
   "tickets a week (no ticket source on the tenant assessment path)",
   "CA policies (identity:ca-policy-count has no DASHBOARD_METRICS entry)",
-  // #441. The four the adoption card used to claim. Listed individually because
-  // each needs its own real check, and because listing them here is the only
-  // record that the card is empty by decision rather than by neglect.
-  "active Teams users (no check counts ACTIVE users; adoption:teams-activity-trend is a per-user detail report)",
-  "active SharePoint users (adoption:sharepoint-onedrive-trend is a per-SITE usage report, not a user count)",
-  "active OneDrive users (no OneDrive per-user activity check exists at all)",
-  "active email users (no check counts ACTIVE users; adoption:email-activity-trend is a per-user detail report)",
   "Copilot session policies (not collected)",
   "test prompts returning PHI (no Copilot test-prompt harness)",
   "PHI exposure priced (nothing prices PHI exposure)",
