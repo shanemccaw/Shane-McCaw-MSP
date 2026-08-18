@@ -43,9 +43,20 @@ const router: IRouter = Router();
 // create/read/comment, Desk.contacts.ALL covers contact find-or-create,
 // Desk.basic.READ covers /organizations, Desk.search.READ covers the
 // contacts/search lookup zoho-desk.ts's findDeskContactByEmail() uses.
+//
+// Same gap confirmed live for Books and Projects while fixing Desk: neither
+// was ever granted its own scope either (zoho_connection.zoho_books_org_id
+// has never been populated; 18 real zoho_books_create_expense jobs on file,
+// none have ever reached a real Zoho Books API call to prove/disprove scope
+// -- they've all short-circuited on the separate, unrelated missing
+// ZOHO_BOOKS_AI_EXPENSE_ACCOUNT_ID env var). Adding both scopes now so a
+// single re-consent covers CRM/Desk/Books/Projects instead of yet another
+// round trip whenever Books' env var gets configured and this would
+// otherwise resurface as its own SCOPE_MISMATCH.
 const DEFAULT_SCOPES =
   "ZohoCRM.modules.ALL,ZohoCRM.settings.ALL,ZohoCRM.org.READ," +
-  "Desk.tickets.ALL,Desk.contacts.ALL,Desk.basic.READ,Desk.search.READ";
+  "Desk.tickets.ALL,Desk.contacts.ALL,Desk.basic.READ,Desk.search.READ," +
+  "ZohoBooks.fullaccess.all,ZohoProjects.projects.ALL";
 
 // Single-use CSRF nonces minted by /start; the callback consumes them. The
 // admin gate on /start is what makes possession of a live nonce an
