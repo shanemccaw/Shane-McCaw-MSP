@@ -1453,11 +1453,30 @@ namespace BuildConsole.Controls
 
         private TreeViewItem BuildQueueTreeItem(QueueItem item)
         {
+            var interactiveState = _watcher?.GetInteractiveState(item.Id);
+            bool isWaitingForInput = interactiveState == InteractiveInputState.WaitingForInput;
+
+            // Card box styling:
+            // - If asking a question / waiting for input: Yellow/Amber box & warm background!
+            // - If running: subtle blue-tinted border
+            // - If done: subtle green-tinted border
+            // - If failed: subtle red-tinted border
+            Color cardBorderColor = isWaitingForInput ? Color.FromRgb(0xF9, 0xE2, 0xAF) :
+                (item.Status == "running" ? Color.FromRgb(0x45, 0x5A, 0x82) :
+                (item.Status == "done" ? Color.FromRgb(0x2E, 0x52, 0x3E) :
+                (item.Status == "failed" ? Color.FromRgb(0x5A, 0x2A, 0x34) :
+                Color.FromRgb(0x31, 0x32, 0x44))));
+
+            Color cardBgColor = isWaitingForInput ? Color.FromRgb(0x23, 0x1E, 0x18) :
+                (item.Status == "running" ? Color.FromRgb(0x15, 0x19, 0x26) :
+                (item.Status == "done" ? Color.FromRgb(0x14, 0x20, 0x1A) :
+                Color.FromRgb(0x18, 0x18, 0x25)));
+
             var card = new Border
             {
-                Background = new SolidColorBrush(Color.FromRgb(0x18, 0x18, 0x25)),
-                BorderBrush = new SolidColorBrush(Color.FromRgb(0x31, 0x32, 0x44)),
-                BorderThickness = new Thickness(1),
+                Background = new SolidColorBrush(cardBgColor),
+                BorderBrush = new SolidColorBrush(cardBorderColor),
+                BorderThickness = new Thickness(isWaitingForInput ? 1.5 : 1),
                 CornerRadius = new CornerRadius(6),
                 Padding = new Thickness(8, 6, 8, 6),
                 Margin = new Thickness(0, 1, 0, 2),
@@ -1472,52 +1491,45 @@ namespace BuildConsole.Controls
             // ── Top Row: Status Badge + Issue # Badge ──
             var topRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 3) };
 
-            var interactiveState = (item.Status == "running" && _watcher != null)
-                ? _watcher.GetInteractiveState(item.Id)
-                : null;
-
             // Determine status pill appearance
             Border statusPill;
-            if (item.Status == "running")
+            if (isWaitingForInput)
             {
-                if (interactiveState == InteractiveInputState.WaitingForInput)
+                statusPill = new Border
                 {
-                    statusPill = new Border
-                    {
-                        Background = new SolidColorBrush(Color.FromRgb(0x3E, 0x2C, 0x1A)),
-                        BorderBrush = new SolidColorBrush(Color.FromRgb(0xF9, 0xE2, 0xAF)),
-                        BorderThickness = new Thickness(1),
-                        CornerRadius = new CornerRadius(4),
-                        Padding = new Thickness(6, 1.5, 6, 1.5)
-                    };
-                    statusPill.Child = new TextBlock
-                    {
-                        Text = "❓ NEEDS INPUT",
-                        FontSize = 9.5,
-                        FontWeight = FontWeights.Bold,
-                        Foreground = new SolidColorBrush(Color.FromRgb(0xF9, 0xE2, 0xAF)),
-                        VerticalAlignment = VerticalAlignment.Center
-                    };
-                }
-                else
+                    Background = new SolidColorBrush(Color.FromRgb(0x3E, 0x2C, 0x1A)),
+                    BorderBrush = new SolidColorBrush(Color.FromRgb(0xF9, 0xE2, 0xAF)),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(4),
+                    Padding = new Thickness(6, 1.5, 6, 1.5)
+                };
+                statusPill.Child = new TextBlock
                 {
-                    statusPill = new Border
-                    {
-                        Background = new SolidColorBrush(Color.FromRgb(0x1D, 0x2E, 0x45)),
-                        BorderBrush = new SolidColorBrush(Color.FromRgb(0x89, 0xB4, 0xFA)),
-                        BorderThickness = new Thickness(1),
-                        CornerRadius = new CornerRadius(4),
-                        Padding = new Thickness(6, 1.5, 6, 1.5)
-                    };
-                    statusPill.Child = new TextBlock
-                    {
-                        Text = "▶ RUNNING",
-                        FontSize = 9.5,
-                        FontWeight = FontWeights.Bold,
-                        Foreground = new SolidColorBrush(Color.FromRgb(0x89, 0xB4, 0xFA)),
-                        VerticalAlignment = VerticalAlignment.Center
-                    };
-                }
+                    Text = "❓ ASK QUESTION",
+                    FontSize = 9.5,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = new SolidColorBrush(Color.FromRgb(0xF9, 0xE2, 0xAF)),
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+            }
+            else if (item.Status == "running")
+            {
+                statusPill = new Border
+                {
+                    Background = new SolidColorBrush(Color.FromRgb(0x1D, 0x2E, 0x45)),
+                    BorderBrush = new SolidColorBrush(Color.FromRgb(0x89, 0xB4, 0xFA)),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(4),
+                    Padding = new Thickness(6, 1.5, 6, 1.5)
+                };
+                statusPill.Child = new TextBlock
+                {
+                    Text = "▶ RUNNING",
+                    FontSize = 9.5,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = new SolidColorBrush(Color.FromRgb(0x89, 0xB4, 0xFA)),
+                    VerticalAlignment = VerticalAlignment.Center
+                };
             }
             else if (item.Status == "done")
             {
@@ -2107,7 +2119,7 @@ namespace BuildConsole.Controls
             bool isBlocked = blockerList.Count > 0 || string.Equals(item.Status, "blocked", StringComparison.OrdinalIgnoreCase);
 
             CritterMood mood = isBlocked ? CritterMood.Blocked :
-                (item.Status == "running" && interactiveState == InteractiveInputState.WaitingForInput) ? CritterMood.WaitingForInput :
+                (interactiveState == InteractiveInputState.WaitingForInput) ? CritterMood.WaitingForInput :
                 (item.Status == "running") ? CritterMood.Running :
                 (item.Status == "done") ? CritterMood.Done :
                 (item.Status == "failed") ? CritterMood.Failed :
@@ -2187,7 +2199,7 @@ namespace BuildConsole.Controls
                 Canvas.SetTop(lockBadge, -3);
                 container.Children.Add(lockBadge);
             }
-            else if (item.Status == "running" && interactiveState == InteractiveInputState.WaitingForInput)
+            else if (interactiveState == InteractiveInputState.WaitingForInput)
             {
                 var badge = new Border
                 {

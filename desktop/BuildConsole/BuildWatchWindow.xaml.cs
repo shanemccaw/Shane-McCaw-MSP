@@ -987,10 +987,21 @@ namespace BuildConsole
                     bool owned = _watcher?.OwnsInteractive(slot.QueueItemId) ?? false;
                     if (owned) slot.InteractiveBound = true;
 
+                    var ist = (owned) ? _watcher!.GetInteractiveState(slot.QueueItemId) : null;
+
                     // Local process exit check: if our in-process watcher knows the process already exited,
                     // mark it Done/Failed immediately rather than staying stuck in Running if the dev server
                     // is napping or returning cached queue data.
-                    if (_watcher != null && _watcher.HasExited(slot.QueueItemId, out int localExitCode))
+                    if (ist == InteractiveInputState.WaitingForInput)
+                    {
+                        // The agent is asking a question / waiting on input — keep running and clear Done stamp!
+                        if (slot.State != SlotState.Running)
+                        {
+                            slot.State = SlotState.Running;
+                            slot.CompletedAtUtc = null;
+                        }
+                    }
+                    else if (_watcher != null && _watcher.HasExited(slot.QueueItemId, out int localExitCode))
                     {
                         SetSlotState(slot, localExitCode == 0 ? SlotState.Done : SlotState.Failed, localExitCode);
                     }
@@ -1025,10 +1036,7 @@ namespace BuildConsole
                     // Interactive overlay: while the queue still calls it running and
                     // we own the live process, surface the real working / paused /
                     // waiting-for-input sub-state and the chat input row.
-                    var ist = (slot.State == SlotState.Running && owned)
-                        ? _watcher!.GetInteractiveState(slot.QueueItemId)
-                        : null;
-                    if (ist.HasValue)
+                    if (ist.HasValue && slot.State == SlotState.Running)
                     {
                         ApplyInteractiveState(slot, ist.Value);
                     }
@@ -1632,9 +1640,9 @@ namespace BuildConsole
                     slot.Container.BorderBrush = _ringWarning;
                     slot.Container.BorderThickness = new Thickness(3);
                     slot.Container.Effect = null; // calm while it waits — the warning border + pulsing pill carry attention
-                    slot.Pane.ViewModel.PlaceholderText = "Claude is waiting on your input — reply here…";
-                    ApplyPillTone(slot, "Warning", "✋ NEEDS INPUT", "This build finished its turn and is waiting on you — reply to continue, or it wraps up on its own shortly.", pulsing: true);
-                    slot.StatusLine!.ActivityText = "waiting for your input…";
+                    slot.Pane.ViewModel.PlaceholderText = "Claude is asking a question — reply here…";
+                    ApplyPillTone(slot, "Warning", "❓ ASK QUESTION", "This build is waiting on you to answer a question — reply to continue.", pulsing: true);
+                    slot.StatusLine!.ActivityText = "asking a question — waiting for your reply…";
                     slot.StatusLine!.Spinning = false;
                     break;
 
@@ -1661,6 +1669,11 @@ namespace BuildConsole
             {
                 _watcher.SendInput(slot.QueueItemId, text);
                 // Reflect immediately: back to working; force a re-apply next poll.
+                slot.State = SlotState.Running;
+                slot.CompletedAtUtc = null;
+                slot.Container.BorderBrush = _emptyBorder;
+                slot.Container.BorderThickness = new Thickness(1);
+                slot.Container.Effect = _runningGlow;
                 slot.LastInteractiveState = null;
                 slot.Pane.ViewModel.Mode = ComposerMode.Interactive;
                 slot.Pane.ViewModel.CanStop = true;

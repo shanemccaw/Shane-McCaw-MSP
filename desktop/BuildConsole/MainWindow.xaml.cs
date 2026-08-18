@@ -2544,22 +2544,35 @@ namespace BuildConsole
                     continue;
                 }
 
+                var interactiveState = _queueWatcher?.GetInteractiveState(id);
+                bool isWaitingForInput = interactiveState == BuildConsole.Services.InteractiveInputState.WaitingForInput;
+
                 string label, mode;
                 bool terminal;
-                switch (item.Status)
+
+                if (isWaitingForInput)
                 {
-                    case "done":     label = "Done";           mode = "done";     terminal = true;  break;
-                    case "failed":
-                    case "canceled": label = "Failed: Retry";  mode = "failed";   terminal = true;  break;
-                    case "queued":
-                    case "running":
-                    default:         label = "In Progress..."; mode = "progress"; terminal = false; break;
+                    label = "❓ Ask Question";
+                    mode = "waiting";
+                    terminal = false; // still active and waiting for Shane's answer!
+                }
+                else
+                {
+                    switch (item.Status)
+                    {
+                        case "done":     label = "Done";           mode = "done";     terminal = true;  break;
+                        case "failed":
+                        case "canceled": label = "Failed: Retry";  mode = "failed";   terminal = true;  break;
+                        case "queued":
+                        case "running":
+                        default:         label = "In Progress..."; mode = "progress"; terminal = false; break;
+                    }
                 }
 
                 if (_chatButtonStatus[id] != label)
                 {
                     BuildConsole.Services.ActivityLog.Log("chat-button.status",
-                        $"queue #{id} ({item.Title}): {_chatButtonStatus[id]} -> {label} (status={item.Status})");
+                        $"queue #{id} ({item.Title}): {_chatButtonStatus[id]} -> {label} (status={item.Status}, waiting={isWaitingForInput})");
                     _chatButtonStatus[id] = label;
                     _ = PushChatButtonLabelAsync(id, label, mode);
                 }

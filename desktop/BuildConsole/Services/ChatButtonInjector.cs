@@ -75,13 +75,45 @@ namespace BuildConsole.Services
       if (!bar) continue;
       var sendSib = bar.querySelector(".bt-btn-send");
       var editSib = bar.querySelector(".bt-btn-edit");
-      if (mode === "failed") {
-        el.dataset.btFailed = "1";
+      if (mode === "waiting") {
+        el.dataset.btWaiting = "1";
+        delete el.dataset.btFailed;
         el.disabled = false;
+        el.style.borderColor = "#F9E2AF";
+        el.style.backgroundColor = "#3E2C1A";
+        el.style.color = "#F9E2AF";
+        if (sendSib) sendSib.style.display = "none";
+        if (editSib) editSib.style.display = "none";
+      } else if (mode === "progress") {
+        delete el.dataset.btWaiting;
+        delete el.dataset.btFailed;
+        el.disabled = true;
+        el.style.borderColor = "#89B4FA";
+        el.style.backgroundColor = "#1D2E45";
+        el.style.color = "#89B4FA";
+        if (sendSib) sendSib.style.display = "none";
+        if (editSib) editSib.style.display = "none";
+      } else if (mode === "done") {
+        delete el.dataset.btWaiting;
+        delete el.dataset.btFailed;
+        el.disabled = true;
+        el.style.borderColor = "#A6E3A1";
+        el.style.backgroundColor = "#1C3527";
+        el.style.color = "#A6E3A1";
+        if (sendSib) sendSib.style.display = "none";
+        if (editSib) editSib.style.display = "none";
+      } else if (mode === "failed") {
+        el.dataset.btFailed = "1";
+        delete el.dataset.btWaiting;
+        el.disabled = false;
+        el.style.borderColor = "#F38BA8";
+        el.style.backgroundColor = "#3A1E26";
+        el.style.color = "#F38BA8";
         if (sendSib) sendSib.style.display = "";
         if (editSib) editSib.style.display = "";
       } else {
         delete el.dataset.btFailed;
+        delete el.dataset.btWaiting;
         el.disabled = true;
         if (sendSib) sendSib.style.display = "none";
         if (editSib) editSib.style.display = "none";
