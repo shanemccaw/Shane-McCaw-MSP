@@ -86,13 +86,13 @@ interface LatestPresentation {
   createdAt: string | null;
 }
 
-interface QuizResult {
-  id: string;
-  totalScore: number | null;
-  tier: string | null;
-  categoryScores: Record<string, number> | null;
-  analysisText: string | null;
-  createdAt: string | null;
+interface LicenseWaste {
+  monthlyCents: number;
+  annualCents: number;
+  seatCount: number;
+  skuCount: number;
+  sourceCheckKey: string;
+  topSku: { displayName: string; count: number; monthlyCents: number } | null;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -107,33 +107,6 @@ function relativeDate(iso: string | null | undefined): string {
   if (diffDays < 30) return `${Math.floor(diffDays / 7)}w ago`;
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
-
-const TIER_STYLES: Record<string, { label: string; bg: string; text: string; bar: string }> = {
-  critical: {
-    label: "Critical",
-    bg: "bg-red-500/10 border-red-500/30",
-    text: "text-red-400",
-    bar: "bg-red-400",
-  },
-  high: {
-    label: "High Priority",
-    bg: "bg-amber-500/10 border-amber-500/30",
-    text: "text-amber-400",
-    bar: "bg-amber-400",
-  },
-  medium: {
-    label: "Moderate",
-    bg: "bg-yellow-500/10 border-yellow-500/30",
-    text: "text-yellow-400",
-    bar: "bg-yellow-400",
-  },
-  low: {
-    label: "Low Risk",
-    bg: "bg-green-500/10 border-green-500/30",
-    text: "text-green-400",
-    bar: "bg-green-400",
-  },
-};
 
 const PRESENTATION_STATUS: Record<
   string,
@@ -375,30 +348,6 @@ function BenchmarkBar({ data }: { data: BenchmarkPillar }) {
   );
 }
 
-// ── Score bar ──────────────────────────────────────────────────────────────────
-
-function ScoreBar({ label, score }: { label: string; score: number }) {
-  const pct = Math.min(100, Math.max(0, score));
-  const tierKey = pct < 30 ? "critical" : pct < 50 ? "high" : pct < 70 ? "medium" : "low";
-  const style = TIER_STYLES[tierKey];
-  return (
-    <div className="space-y-1.5">
-      <div className="flex items-center justify-between text-xs">
-        <span className="text-muted-foreground font-medium capitalize">
-          {label.replace(/_/g, " ")}
-        </span>
-        <span className={`font-semibold ${style.text}`}>{Math.round(pct)}%</span>
-      </div>
-      <div className="h-2 bg-muted rounded-full overflow-hidden">
-        <div
-          className={`h-full rounded-full transition-all duration-700 ${style.bar}`}
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-    </div>
-  );
-}
-
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function CustomerDiagnosticsPage() {
@@ -408,9 +357,9 @@ export default function CustomerDiagnosticsPage() {
   const [presentation, setPresentation] = useState<LatestPresentation | null | undefined>(
     undefined,
   );
-  const [quizResults, setQuizResults] = useState<QuizResult[]>([]);
+  const [licenseWaste, setLicenseWaste] = useState<LicenseWaste | null>(null);
   const [loadingPresentation, setLoadingPresentation] = useState(true);
-  const [loadingQuiz, setLoadingQuiz] = useState(true);
+  const [loadingCostSavings, setLoadingCostSavings] = useState(true);
 
   // Real diagnostic findings from the Monitoring Package engine
   const [latestRun, setLatestRun] = useState<DiagnosticRun | null>(null);
@@ -467,17 +416,15 @@ export default function CustomerDiagnosticsPage() {
         if (mounted) setLoadingPresentation(false);
       });
 
-    fetchWithAuth("/api/portal/quiz-results")
+    fetchWithAuth("/api/portal/assessment/status")
       .then(async (res) => {
         if (!res.ok) return;
-        const data = (await res.json()) as QuizResult | QuizResult[] | null;
-        if (!mounted) return;
-        if (Array.isArray(data)) setQuizResults(data);
-        else if (data) setQuizResults([data]);
+        const data = (await res.json()) as { stats?: { licenseWaste?: LicenseWaste | null } };
+        if (mounted) setLicenseWaste(data.stats?.licenseWaste ?? null);
       })
       .catch(() => {})
       .finally(() => {
-        if (mounted) setLoadingQuiz(false);
+        if (mounted) setLoadingCostSavings(false);
       });
 
     fetchWithAuth("/api/portal/diagnostics/latest")
@@ -509,10 +456,6 @@ export default function CustomerDiagnosticsPage() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const latestQuiz = quizResults[0] ?? null;
-  const categoryScores = latestQuiz?.categoryScores ?? {};
-  const hasScores = Object.keys(categoryScores).length > 0;
 
   // ── Diagnostic findings: grouped + triaged for scannability (#1154) ──────────
   // Hide "ok" findings, group the rest by checkKey domain, worst-severity-first.
@@ -867,99 +810,54 @@ export default function CustomerDiagnosticsPage() {
           )}
         </div>
 
-        {/* ── Quiz-based scores ── */}
-        <div>
-          <h3 className="text-sm font-semibold text-foreground mb-3">Assessment Scores</h3>
+        {/* ── Annual Cost Savings (real Cost Engine license-waste data, Git #1156) ── */}
+        <div data-testid="annual-cost-savings-section">
+          <h3 className="text-sm font-semibold text-foreground mb-3">Annual Cost Savings</h3>
 
-          {loadingQuiz ? (
-            <Skeleton className="h-64 w-full rounded-xl" />
-          ) : !latestQuiz ? (
+          {loadingCostSavings ? (
+            <Skeleton className="h-40 w-full rounded-xl" />
+          ) : !licenseWaste ? (
             <Card className="border-dashed">
-              <CardContent className="flex flex-col items-center justify-center py-12 text-center gap-2">
-                <AlertCircle className="size-8 text-muted-foreground/40" />
-                <p className="text-sm text-muted-foreground">No diagnostic completed yet</p>
+              <CardContent className="flex flex-col items-center justify-center py-10 text-center gap-2">
+                <CircleDollarSign className="size-8 text-muted-foreground/40" />
+                <p className="text-sm text-muted-foreground">No license waste data yet</p>
                 <p className="text-xs text-muted-foreground/60 max-w-sm">
-                  Your MSP will run a Microsoft 365 environment diagnostic. Results and findings
-                  will appear here once complete.
+                  Once your MSP completes a diagnostic scan, identified license waste in your
+                  Microsoft 365 tenant will appear here.
                 </p>
               </CardContent>
             </Card>
           ) : (
-            <div className="space-y-4">
-              {/* Summary card */}
-              {latestQuiz.tier && (
-                <Card
-                  className={`border ${TIER_STYLES[latestQuiz.tier]?.bg ?? "border-border"}`}
-                >
-                  <CardContent className="py-4 px-5">
-                    <div className="flex items-center justify-between flex-wrap gap-3">
-                      <div>
-                        <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-1">
-                          Overall Risk Level
-                        </p>
-                        <p
-                          className={`text-2xl font-extrabold ${TIER_STYLES[latestQuiz.tier]?.text ?? "text-foreground"}`}
-                        >
-                          {TIER_STYLES[latestQuiz.tier]?.label ?? latestQuiz.tier}
-                        </p>
-                      </div>
-                      {latestQuiz.totalScore != null && (
-                        <div className="text-right">
-                          <p className="text-xs text-muted-foreground font-medium">Compliance Score</p>
-                          <p className="text-2xl font-extrabold text-foreground">
-                            {Math.round(latestQuiz.totalScore)}
-                            <span className="text-sm text-muted-foreground font-normal">/100</span>
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                    {latestQuiz.createdAt && (
-                      <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
-                        <Clock className="size-3" />
-                        Assessment completed {relativeDate(latestQuiz.createdAt)}
+            <Card className="border-green-500/20 bg-green-500/5">
+              <CardContent className="py-5 px-5">
+                <div className="flex items-start justify-between gap-4 flex-wrap">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-1">
+                      Identified License Waste
+                    </p>
+                    <p className="text-3xl font-extrabold text-green-400" data-testid="annual-cost-savings-value">
+                      ${Math.round(licenseWaste.annualCents / 100).toLocaleString("en-US")}
+                      <span className="text-sm text-muted-foreground font-normal">/year</span>
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      ${Math.round(licenseWaste.monthlyCents / 100).toLocaleString("en-US")}/month
+                      across {licenseWaste.seatCount} unused seat{licenseWaste.seatCount === 1 ? "" : "s"}
+                      {" "}in {licenseWaste.skuCount} license{licenseWaste.skuCount === 1 ? "" : "s"}
+                    </p>
+                  </div>
+                  {licenseWaste.topSku && (
+                    <div className="text-right">
+                      <p className="text-xs text-muted-foreground font-medium">Biggest opportunity</p>
+                      <p className="text-sm font-semibold text-foreground">{licenseWaste.topSku.displayName}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {licenseWaste.topSku.count} seat{licenseWaste.topSku.count === 1 ? "" : "s"} · $
+                        {Math.round(licenseWaste.topSku.monthlyCents / 100).toLocaleString("en-US")}/mo
                       </p>
-                    )}
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Category breakdown */}
-              {hasScores && (
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm">Category Breakdown</CardTitle>
-                    <CardDescription className="text-xs">
-                      Compliance scores across your Microsoft 365 environment
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    {Object.entries(categoryScores).map(([key, score]) => (
-                      // Map the raw category key to a human label (#1147) — same
-                      // PILLAR_LABELS mapping BenchmarkBar uses; ScoreBar
-                      // underscore-humanises + capitalises anything unmapped.
-                      <ScoreBar key={key} label={PILLAR_LABELS[key] ?? key} score={score} />
-                    ))}
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Analysis text */}
-              {latestQuiz.analysisText && (
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm">Expert Analysis</CardTitle>
-                    <CardDescription className="text-xs">
-                      Key findings from your environment diagnostic
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap max-h-80 overflow-y-auto">
-                      {latestQuiz.analysisText}
                     </div>
-                  </CardContent>
-                </Card>
-              )}
-            </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
           )}
         </div>
 
