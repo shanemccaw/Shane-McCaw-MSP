@@ -375,6 +375,73 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     smartDefaultTarget: 0,
     smartBands: RISK_COUNT_BANDS,
   },
+  {
+    // #1122 -- appgov:cert-secret-expiration (fixed by #541) already fires
+    // live warnings but had no dashboard-registry metric at all. Metric key
+    // leaf mirrors the check's own mapping targetField
+    // (expiredPasswordCredentialCount) exactly, so pickMappedValueField's
+    // token-overlap match (dashboard-resolvers.ts) picks it unambiguously
+    // over the check's other three targetFields (passwordCredentialCount,
+    // keyCredentialCount, expiredKeyCredentialCount).
+    key: "governance.expiredPasswordCredentialCount",
+    label: "Expired App Secrets",
+    valueType: "count",
+    shape: "scalar",
+    sourceType: "monitor_profile",
+    sourceKey: "appgov:cert-secret-expiration",
+    scope: "customer",
+    status: "available",
+    smartEligible: true,
+    smartDefaultTarget: 0,
+    smartBands: RISK_COUNT_BANDS,
+  },
+  {
+    // #1122 -- same check as governance.expiredPasswordCredentialCount above,
+    // the certificate (keyCredentials) half of the same live-firing check.
+    key: "governance.expiredKeyCredentialCount",
+    label: "Expired App Certificates",
+    valueType: "count",
+    shape: "scalar",
+    sourceType: "monitor_profile",
+    sourceKey: "appgov:cert-secret-expiration",
+    scope: "customer",
+    status: "available",
+    smartEligible: true,
+    smartDefaultTarget: 0,
+    smartBands: RISK_COUNT_BANDS,
+  },
+  {
+    // #1122 -- appgov:stale-app-registrations (age-based per #551) had no
+    // dashboard-registry metric either. Key mirrors the check's real
+    // targetField exactly (appRegistrationsOver180dCount) for the same
+    // unambiguous-match reason as the two credential metrics above.
+    key: "governance.appRegistrationsOver180dCount",
+    label: "App Registrations Over 180 Days",
+    valueType: "count",
+    shape: "scalar",
+    sourceType: "monitor_profile",
+    sourceKey: "appgov:stale-app-registrations",
+    scope: "customer",
+    status: "available",
+    smartEligible: true,
+    smartDefaultTarget: 0,
+    smartBands: RISK_COUNT_BANDS,
+  },
+  {
+    // #1122 -- same check as governance.appRegistrationsOver180dCount above,
+    // the over-365-day (critical) band of the same age-based check.
+    key: "governance.appRegistrationsOver365dCount",
+    label: "App Registrations Over 365 Days",
+    valueType: "count",
+    shape: "scalar",
+    sourceType: "monitor_profile",
+    sourceKey: "appgov:stale-app-registrations",
+    scope: "customer",
+    status: "available",
+    smartEligible: true,
+    smartDefaultTarget: 0,
+    smartBands: RISK_COUNT_BANDS,
+  },
   // ---- Security & Defender ----------------------------------------------
   {
     key: "security.activeAlertCount",
