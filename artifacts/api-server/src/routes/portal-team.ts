@@ -2,7 +2,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import bcrypt from "bcryptjs";
 import { db, usersTable, mfaEnrollmentsTable, webauthnCredentialsTable, userSessionsTable, passwordResetTokensTable, mfaChallengesTable, webauthnChallengesTable, mfaBypassCodesTable } from "@workspace/db";
 import { eq, and, inArray, gte, isNull, sql, count } from "drizzle-orm";
-import { requireAuth, assertCustomerAccess } from "../middlewares/requireAuth.ts";
+import { requireAuth, assertCustomerAccess, type AuthUser } from "../middlewares/requireAuth.ts";
 import { revokeAllOtherSessions } from "../lib/session-tracking.ts";
 import { createAuditLog } from "../lib/audit.ts";
 import { getPortalBaseUrl, getMspPortalBaseUrl, buildAccountSetupUrl } from "../lib/portal-url.ts";
@@ -12,6 +12,47 @@ import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "tenant.portal" });
 
 const router: IRouter = Router();
+
+/**
+ * Authorization for a MUTATING /portal/team route (Git #1142).
+ *
+ * Before this existed every mutating route gated only on assertCustomerAccess,
+ * which enforces tenant isolation but NOT privilege within a tenant — so any
+ * plain CustomerUser could invite/suspend/reset-password/disable-MFA/unlock/
+ * emergency-bypass their own company's other users by direct API call. This
+ * closes that gap with two ordered gates:
+ *
+ *  1. Tenant isolation via assertCustomerAccess — the caller must be entitled to
+ *     touch this customer at all (own tenant for customer-tier users; in-MSP +
+ *     staff-scope for MSP staff; anything for PlatformAdmin).
+ *  2. Team-admin capability — a customer-tier user (CustomerUser/Free/Assessment)
+ *     must ADDITIONALLY carry the live `canManageTeam` flag. MSP staff
+ *     (MSPAdmin/MSPOperator) and PlatformAdmin manage customer teams by virtue
+ *     of their role and are not subject to the per-user flag. There is no
+ *     "CustomerAdmin" role in MSP_ROLES, so this per-user capability is the
+ *     elevated-customer distinction (mirrors usersTable.canApprovePurchases).
+ *
+ * The flag is read LIVE from the DB, never trusted from the JWT, so a revoke
+ * takes effect immediately without waiting for token refresh. Returns the HTTP
+ * status to answer with on denial, or null when the caller may proceed. Both
+ * denial reasons answer 403 and never leak which gate failed.
+ */
+async function denyIfCannotManageTeam(user: AuthUser, targetCustomerId: number): Promise<number | null> {
+  const allowed = await assertCustomerAccess(user, targetCustomerId);
+  if (!allowed) return 403;
+
+  const effectiveRole = user.role === "admin" ? "PlatformAdmin" : user.mspRole;
+  const isCustomerTier =
+    effectiveRole === "CustomerUser" || effectiveRole === "Free" || effectiveRole === "Assessment";
+  if (!isCustomerTier) return null; // MSP staff / PlatformAdmin — role is the gate
+
+  const [row] = await db
+    .select({ canManageTeam: usersTable.canManageTeam })
+    .from(usersTable)
+    .where(eq(usersTable.id, user.id))
+    .limit(1);
+  return row?.canManageTeam ? null : 403;
+}
 
 router.delete("/portal/team/:userId/sessions", requireAuth, async (req: Request, res: Response) => {
   const targetUserId = parseInt(req.params.userId as string, 10);
@@ -31,9 +72,9 @@ router.delete("/portal/team/:userId/sessions", requireAuth, async (req: Request,
     return;
   }
 
-  const allowed = await assertCustomerAccess(req.user!, targetMspUser.customerId);
-  if (!allowed) {
-    res.status(403).json({ error: "Access to this team member is not permitted" });
+  const denyStatus = await denyIfCannotManageTeam(req.user!, targetMspUser.customerId);
+  if (denyStatus) {
+    res.status(denyStatus).json({ error: "Access to this team member is not permitted" });
     return;
   }
 
@@ -46,6 +87,15 @@ router.post("/portal/team/invite", requireAuth, async (req: Request, res: Respon
   const inviterMspId = req.user!.mspId;
   if (!inviterCustomerId || !inviterMspId) {
     res.status(403).json({ error: "Only customer team members can invite teammates" });
+    return;
+  }
+
+  // Git #1142 — inviting a teammate is team management; gate on the caller's
+  // live canManageTeam capability (assertCustomerAccess against their own tenant
+  // always passes, so this is purely the privilege check).
+  const inviteDeny = await denyIfCannotManageTeam(req.user!, inviterCustomerId);
+  if (inviteDeny) {
+    res.status(inviteDeny).json({ error: "You do not have permission to manage your team" });
     return;
   }
 
@@ -224,9 +274,9 @@ router.patch("/portal/team/:userId/status", requireAuth, async (req: Request, re
     return;
   }
 
-  const allowed = await assertCustomerAccess(req.user!, targetMspUser.customerId);
-  if (!allowed) {
-    res.status(403).json({ error: "Access to this team member is not permitted" });
+  const denyStatus = await denyIfCannotManageTeam(req.user!, targetMspUser.customerId);
+  if (denyStatus) {
+    res.status(denyStatus).json({ error: "Access to this team member is not permitted" });
     return;
   }
 
@@ -278,9 +328,9 @@ router.patch("/portal/team/:userId/mfa-enforcement", requireAuth, async (req: Re
     return;
   }
 
-  const allowed = await assertCustomerAccess(req.user!, targetMspUser.customerId);
-  if (!allowed) {
-    res.status(403).json({ error: "Access to this team member is not permitted" });
+  const denyStatus = await denyIfCannotManageTeam(req.user!, targetMspUser.customerId);
+  if (denyStatus) {
+    res.status(denyStatus).json({ error: "Access to this team member is not permitted" });
     return;
   }
 
@@ -315,9 +365,9 @@ router.post("/portal/team/:userId/unlock", requireAuth, async (req: Request, res
     return;
   }
 
-  const allowed = await assertCustomerAccess(req.user!, targetMspUser.customerId);
-  if (!allowed) {
-    res.status(403).json({ error: "Access to this team member is not permitted" });
+  const denyStatus = await denyIfCannotManageTeam(req.user!, targetMspUser.customerId);
+  if (denyStatus) {
+    res.status(denyStatus).json({ error: "Access to this team member is not permitted" });
     return;
   }
 
@@ -357,9 +407,9 @@ router.post("/portal/team/:userId/reset-password", requireAuth, async (req: Requ
     return;
   }
 
-  const allowed = await assertCustomerAccess(req.user!, target.customerId);
-  if (!allowed) {
-    res.status(403).json({ error: "Access to this team member is not permitted" });
+  const denyStatus = await denyIfCannotManageTeam(req.user!, target.customerId);
+  if (denyStatus) {
+    res.status(denyStatus).json({ error: "Access to this team member is not permitted" });
     return;
   }
 
@@ -407,9 +457,9 @@ router.post("/portal/team/:userId/temp-password", requireAuth, async (req: Reque
     return;
   }
 
-  const allowed = await assertCustomerAccess(req.user!, target.customerId);
-  if (!allowed) {
-    res.status(403).json({ error: "Access to this team member is not permitted" });
+  const denyStatus = await denyIfCannotManageTeam(req.user!, target.customerId);
+  if (denyStatus) {
+    res.status(denyStatus).json({ error: "Access to this team member is not permitted" });
     return;
   }
 
@@ -448,9 +498,9 @@ router.post("/portal/team/:userId/reset-mfa", requireAuth, async (req: Request, 
     return;
   }
 
-  const allowed = await assertCustomerAccess(req.user!, target.customerId);
-  if (!allowed) {
-    res.status(403).json({ error: "Access to this team member is not permitted" });
+  const denyStatus = await denyIfCannotManageTeam(req.user!, target.customerId);
+  if (denyStatus) {
+    res.status(denyStatus).json({ error: "Access to this team member is not permitted" });
     return;
   }
 
@@ -515,9 +565,9 @@ router.post("/portal/team/:userId/emergency-bypass", requireAuth, async (req: Re
     return;
   }
 
-  const allowed = await assertCustomerAccess(req.user!, target.customerId);
-  if (!allowed) {
-    res.status(403).json({ error: "Access to this team member is not permitted" });
+  const denyStatus = await denyIfCannotManageTeam(req.user!, target.customerId);
+  if (denyStatus) {
+    res.status(denyStatus).json({ error: "Access to this team member is not permitted" });
     return;
   }
 

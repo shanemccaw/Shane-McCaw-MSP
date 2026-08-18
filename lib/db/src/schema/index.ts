@@ -90,6 +90,16 @@ export const usersTable = pgTable("users", {
   // purchase-charge approvals for their MSP. MSPAdmin can always approve
   // regardless of this flag. Checked live (not cached in the JWT).
   canApprovePurchases: boolean("can_approve_purchases").notNull().default(false),
+  // Grants a customer-tier team member (CustomerUser) permission to manage
+  // their own company's team roster via /portal/team — invite/suspend
+  // teammates, force password/MFA resets, unlock accounts, issue emergency
+  // MFA bypass codes. There is deliberately no "CustomerAdmin" role in
+  // MSP_ROLES (all customer employees share CustomerUser), so this per-user
+  // capability flag is the elevated-customer distinction, mirroring
+  // canApprovePurchases above. MSPAdmin/MSPOperator/PlatformAdmin acting on a
+  // customer's team bypass this — they gate on role, not this flag. Checked
+  // live in the route handler, NOT cached in the JWT (Git #1142).
+  canManageTeam: boolean("can_manage_team").notNull().default(false),
   // Requires an active MFA enrollment to log in. False by default so existing
   // users are never silently locked out; opted in explicitly via the
   // team-management toggle. Checked live at login, not cached in the JWT.
