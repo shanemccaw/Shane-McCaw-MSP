@@ -1,0 +1,76 @@
+{
+  "issue": 1132,
+  "feature": "Enhanced-tier findings whose check hit a real Microsoft Graph license gap (checkStatus='license_gap') now render a locked-state card (Lock icon, plain-language explanation, data-testid='license-gap-locked-card') instead of a blank/error-looking finding, reusing #1099's Copilot-readiness locked-card visual pattern (LicenseGapUpsellCard.tsx). Two real CTAs per Shane's confirmed hybrid (issue comment 2026-08-18): a self-serve link straight to Microsoft's own SKU pricing page (license-gap-purchase-links.ts, data-testid='license-gap-selfserve-link', never a resale), and a sales-assisted path (data-testid='license-gap-chat-cta') that opens ShaneBot with the migration intent pre-sent via the portal's existing useSupportChat()/sendMessage() mechanism, which always resolves the shanebot_paid instance server-side (route-keyed, no client instance selection needed). Wired into every findings render surface: TopicFindings.tsx (6 topic pages), IntelligenceSignals.tsx + RiskDetailDrawer.tsx (security-overview), TopicRemediationModal.tsx (governance/compliance/etc.), and MissionControl.tsx (dashboard home) — plus a compact Lock badge (in place of the severity chip) on the two Top-5 rank-list widgets (TopSecurityRisks.tsx, TopGovernanceRisks.tsx) whose detail drawer/modal shows the full card. portal-mission-control.ts's GET /overview mapper now resolves each license-gapped finding's tenant-tiered purchase recommendation (buildLicenseGapPurchase/recommendationForCheckKey) into a licenseGap field.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "PENDING_1132_FIX_COMMIT",
+
+  "notes": [
+    "REAL LIVE DATA CONFIRMED (shaneapp://executeSql, 2026-08-18): customer_id=1 (the TEST_PORTAL_EMAIL testbed tenant) has genuine checkStatus='license_gap' findings across all 3 license-gap-purchase-links.ts categories (identity:pim-eligible-roles, security:antiphishing-coverage, governance:retention-label-adoption, among ~18 other gapped check keys, 44-58 finding rows each across historical runs) — a real tier-3/consolidated-E7 recommendation case, not a hypothetical. Titles read e.g. 'Not checked — requires Microsoft Defender for Office 365' / 'requires Microsoft Entra ID P2 or Microsoft Entra ID Governance' / 'requires Microsoft Purview retention/eDiscovery capability'.",
+    "KNOWN, PRE-EXISTING GAP (same one documented in top-security-risks-quick-fix-chip.json and top-governance-risks.json, not introduced by this change): GET /api/portal/mission-control/overview is requireRole('CustomerUser'). The only standard test account (TEST_PORTAL_EMAIL/PASSWORD) is the pre-provisioned testbed 'Assessment' role, explicitly BELOW CustomerUser (requireAuth.ts ROLE_ORDER) — it gets a real 403 on this endpoint despite customer_id=1 (its own tenant) genuinely holding the license-gap findings above. This blocks live UI-driving of the locked card through the shared testbed account today. D1/UI D2-D3 below are marked non-critical for the same reason those two prior manifests already document — this is a test-infrastructure gap affecting the whole findings feed's live-data assertions, not specific to this feature. Fix: provision a CustomerUser-tier test account.",
+    "Server-side field shape (portal-mission-control.ts) and the client LicenseGapUpsellCard component were verified by direct code read + a clean tsc --noEmit on every touched file (both api-server and msp-portal packages) — not a live UI assertion for the locked-card's exact rendered content, documented honestly rather than faked given the account-tier gap above."
+  ],
+
+  "apiTests": [
+    {
+      "name": "SETUP — log in as the designated TESTBED Assessment account; extract the bearer.",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "D1 — GET /api/portal/mission-control/overview returns findings carrying the new licenseGap field. NOT CRITICAL: requireRole('CustomerUser') genuinely 403s the Assessment-tier test account today (pre-existing gap, see notes) — documents intended coverage for once a CustomerUser-tier test account exists.",
+      "method": "GET",
+      "path": "/api/portal/mission-control/overview",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.findings", "exists": true },
+      "critical": false
+    }
+  ],
+
+  "uiSteps": [
+    { "action": "goto", "target": "/portal/login" },
+    { "action": "expect", "selector": "#email", "state": "visible" },
+    { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
+    { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
+    {
+      "name": "Primary login — CRITICAL: every downstream assertion needs a real authenticated session.",
+      "action": "click",
+      "selector": "[data-testid='login-submit']",
+      "critical": true,
+      "captureResponse": {
+        "urlPattern": "/api/auth/login",
+        "expect": { "status": 200 }
+      }
+    },
+    {
+      "name": "goto the real Security Intelligence Overview page (branded, slug-scoped route) — customer_id=1's real license-gap findings should surface here via IntelligenceSignals.tsx once account-tier is fixed.",
+      "action": "goto",
+      "target": "/portal/shane-mccaw-consulting/security-overview"
+    },
+    {
+      "name": "D2 — present-if-reachable: a license-gap locked card renders with the Lock icon + explanation, instead of a blank/error finding. NOT CRITICAL for the same account-tier gap as D1 (see notes) — real license-gap findings genuinely exist for this tenant (confirmed via SQL), so this documents intended coverage.",
+      "action": "expect",
+      "selector": "[data-testid='license-gap-locked-card']",
+      "state": "present",
+      "critical": false
+    },
+    {
+      "name": "D3 — present-if-reachable: the self-serve Microsoft pricing-page link renders alongside the sales-assisted ShaneBot CTA (the confirmed hybrid). Not critical for the same reason as D2.",
+      "action": "expect",
+      "selector": "[data-testid='license-gap-selfserve-link']",
+      "state": "present",
+      "critical": false
+    },
+    {
+      "name": "D4 — present-if-reachable: the sales-assisted CTA renders. Not critical for the same reason as D2.",
+      "action": "expect",
+      "selector": "[data-testid='license-gap-chat-cta']",
+      "state": "present",
+      "textContains": "Talk to us about migrating",
+      "critical": false
+    }
+  ]
+}

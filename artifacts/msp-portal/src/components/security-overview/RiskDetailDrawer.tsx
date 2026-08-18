@@ -2,6 +2,7 @@ import React from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { X, ShieldAlert, Clock, ArrowRight, Info } from 'lucide-react';
 import type { LiveFinding } from '@/components/m365-health/useM365HealthLive';
+import { LicenseGapUpsellCard } from '@/components/LicenseGapUpsellCard';
 
 /**
  * Risk detail drawer — real finding detail from the diagnostics feed, with the
@@ -80,6 +81,20 @@ export const RiskDetailDrawer: React.FC<RiskDetailDrawerProps> = ({ finding, onC
             )}
           </div>
 
+          {/* #1132: locked state replaces the recommended-action/offer/execution
+              sections below entirely — a license-gapped check has nothing to
+              remediate until the tenant is licensed for it. */}
+          {finding.licenseGap ? (
+            <div className="border border-border rounded-xl overflow-hidden">
+              <LicenseGapUpsellCard
+                checkLabel={finding.checkLabel}
+                feature={finding.licenseGap.feature}
+                sku={finding.licenseGap.sku}
+                categoryLabel={finding.licenseGap.categoryLabel}
+              />
+            </div>
+          ) : (
+            <>
           {/* Real recommended action */}
           {(finding.action || finding.effort) && (
             <div className="bg-secondary/50 p-4 rounded-xl border border-primary/20 space-y-2">
@@ -131,17 +146,22 @@ export const RiskDetailDrawer: React.FC<RiskDetailDrawerProps> = ({ finding, onC
               </span>
             </div>
           )}
+            </>
+          )}
         </div>
 
-        {/* Honest execution-blocked state — same wording as m365-health */}
-        <div className="mt-5 p-3 bg-status-amber/5 border border-status-amber/30 rounded-xl text-xs text-secondary-foreground/90 flex items-start gap-2 leading-relaxed">
-          <ShieldAlert className="w-4 h-4 text-status-amber flex-shrink-0 mt-0.5" />
-          <span>
-            One-click automated remediation isn&apos;t enabled for this tenant yet — it becomes
-            available once your Microsoft&nbsp;365 app registration is configured. Nothing is
-            changed in your tenant from this screen.
-          </span>
-        </div>
+        {/* Honest execution-blocked state — same wording as m365-health. Not
+            relevant to a license-gapped finding (nothing to execute). */}
+        {!finding.licenseGap && (
+          <div className="mt-5 p-3 bg-status-amber/5 border border-status-amber/30 rounded-xl text-xs text-secondary-foreground/90 flex items-start gap-2 leading-relaxed">
+            <ShieldAlert className="w-4 h-4 text-status-amber flex-shrink-0 mt-0.5" />
+            <span>
+              One-click automated remediation isn&apos;t enabled for this tenant yet — it becomes
+              available once your Microsoft&nbsp;365 app registration is configured. Nothing is
+              changed in your tenant from this screen.
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );

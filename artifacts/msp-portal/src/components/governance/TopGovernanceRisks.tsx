@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlertOctagon, AlertTriangle, Info, ChevronRight, CheckCircle2 } from 'lucide-react';
+import { AlertOctagon, AlertTriangle, Info, ChevronRight, CheckCircle2, Lock } from 'lucide-react';
 import {
   TopicFinding,
   TopicFindingSeverity,
@@ -117,11 +117,18 @@ export const TopGovernanceRisks: React.FC<TopGovernanceRisksProps> = ({
                       )}
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
-                      <span
-                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold border ${SEVERITY_BADGE_CLASS[finding.severity]}`}
-                      >
-                        {SEVERITY_LABEL[finding.severity]}
-                      </span>
+                      {finding.licenseGap ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold border text-muted-foreground border-border bg-secondary/40">
+                          <Lock className="w-3 h-3" />
+                          LOCKED
+                        </span>
+                      ) : (
+                        <span
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold border ${SEVERITY_BADGE_CLASS[finding.severity]}`}
+                        >
+                          {SEVERITY_LABEL[finding.severity]}
+                        </span>
+                      )}
                       <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-primary group-hover:translate-x-0.5 transition-all" />
                     </div>
                   </div>

@@ -48,6 +48,7 @@ import { ConfigPackError, runConfigPackForCustomer } from "../lib/config-pack-or
 import { createAuditLog } from "../lib/audit";
 import { logger } from "../lib/logger";
 import { CUSTOMER_SAFE_ENGINES } from "../lib/customer-safe-engines";
+import { buildLicenseGapPurchase, recommendationForCheckKey } from "../lib/license-gap-purchase-links";
 
 const log = logger.child({ channel: "engine.dashboard" });
 
@@ -438,6 +439,17 @@ router.get(
         }
       }
 
+      // #1132: findings whose check hit a real license gap (diagnostics-runner.ts
+      // stamps checkStatus: "license_gap" on a Graph LicenseGapError) get a
+      // locked-state treatment client-side instead of rendering as a plain
+      // finding. The purchase recommendation is tiered tenant-wide (1/2/3
+      // gapped categories -> specific SKU or the E7 consolidation), so it's
+      // computed once over every gapped check this run, then resolved per
+      // finding below.
+      const licenseGapPurchase = buildLicenseGapPurchase(
+        findingRows.filter((f) => f.checkStatus === "license_gap").map((f) => f.checkKey),
+      );
+
       const findings = [...findingRows]
         .sort(
           (a, b) =>
@@ -447,6 +459,8 @@ router.get(
         .map((f) => {
           const signalKey = f.recommendation?.signalKey;
           const offer = signalKey ? offerBySignalKey.get(signalKey) : undefined;
+          const isLicenseGap = f.checkStatus === "license_gap";
+          const recommendation = isLicenseGap ? recommendationForCheckKey(licenseGapPurchase, f.checkKey) : null;
           return {
             id: f.id,
             checkLabel: f.checkLabel,
@@ -465,6 +479,15 @@ router.get(
                   adjustedPriceCents: offer.adjustedPriceCents,
                   state: offer.state,
                   instant: isTestbed && offer.serviceId != null && instantServiceIds.has(offer.serviceId),
+                }
+              : null,
+            licenseGap: isLicenseGap
+              ? {
+                  feature: typeof f.extractedProperties?._licenseGapFeature === "string"
+                    ? f.extractedProperties._licenseGapFeature
+                    : null,
+                  sku: recommendation ? { name: recommendation.sku.name, url: recommendation.sku.url } : null,
+                  categoryLabel: recommendation?.categoryLabels[0] ?? null,
                 }
               : null,
           };

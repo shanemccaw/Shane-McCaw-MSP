@@ -39,6 +39,7 @@
     "security-overview/alert-volume-drilldown.json",
     "security-overview/hero-pillar-score.json",
     "governance/ownerless-groups-sprawl.json",
-    "governance/top-governance-risks.json"
+    "governance/top-governance-risks.json",
+    "security-overview/license-gap-locked-finding.json"
   ]
 }

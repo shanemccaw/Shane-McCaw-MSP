@@ -80,6 +80,13 @@ export interface TopicFindingOffer {
   instant: boolean;
 }
 
+/** #1132: mirrors LiveFindingLicenseGap in useM365HealthLive.ts — see there. */
+export interface TopicFindingLicenseGap {
+  feature: string | null;
+  sku: { name: string; url: string } | null;
+  categoryLabel: string | null;
+}
+
 export interface TopicFinding {
   id: number;
   checkLabel: string | null;
@@ -91,6 +98,7 @@ export interface TopicFinding {
   action: string | null;
   createdAt: string;
   offer: TopicFindingOffer | null;
+  licenseGap: TopicFindingLicenseGap | null;
 }
 
 export interface TopicOverviewSlice {

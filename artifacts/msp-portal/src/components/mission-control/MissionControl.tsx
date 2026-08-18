@@ -35,6 +35,7 @@ import { useAuth } from "@/lib/auth-context";
 import { cn } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { ScoreRing, type ScoreRingColor } from "@/components/ui/score-ring";
+import { LicenseGapUpsellCard } from "@/components/LicenseGapUpsellCard";
 import {
   Dialog,
   DialogContent,
@@ -77,6 +78,13 @@ interface LinkedOffer {
   instant: boolean;
 }
 
+/** #1132: mirrors LiveFindingLicenseGap in m365-health/useM365HealthLive.ts — see there. */
+interface OverviewFindingLicenseGap {
+  feature: string | null;
+  sku: { name: string; url: string } | null;
+  categoryLabel: string | null;
+}
+
 interface OverviewFinding {
   id: number;
   checkLabel: string;
@@ -88,6 +96,7 @@ interface OverviewFinding {
   action: string | null;
   createdAt: string;
   offer: LinkedOffer | null;
+  licenseGap: OverviewFindingLicenseGap | null;
 }
 
 interface OverviewResponse {
@@ -317,6 +326,21 @@ export function MissionControl() {
   const modalFindings = overview && openSeverity ? overview.findings.filter((f) => f.severity === openSeverity) : [];
 
   function renderFinding(finding: OverviewFinding) {
+    if (finding.licenseGap) {
+      return (
+        <Card key={finding.id} className="overflow-hidden">
+          <div className="px-4 pt-3">
+            <p className="text-sm font-semibold">{finding.title}</p>
+          </div>
+          <LicenseGapUpsellCard
+            checkLabel={finding.checkLabel}
+            feature={finding.licenseGap.feature}
+            sku={finding.licenseGap.sku}
+            categoryLabel={finding.licenseGap.categoryLabel}
+          />
+        </Card>
+      );
+    }
     const offer = finding.offer;
     return (
       <div key={finding.id} className={cn(offer && "grid gap-3 md:grid-cols-2")}>

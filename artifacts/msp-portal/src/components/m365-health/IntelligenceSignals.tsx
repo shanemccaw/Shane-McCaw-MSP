@@ -14,8 +14,10 @@ import {
   TrendingUp,
   CircleDollarSign,
   Layers,
+  Lock,
 } from 'lucide-react';
 import { LiveFinding, LiveFindingSeverity } from './useM365HealthLive';
+import { LicenseGapUpsellCard } from '@/components/LicenseGapUpsellCard';
 
 /**
  * Cross-pillar intelligence signals — the real diagnostics findings feed from
@@ -240,6 +242,30 @@ export const IntelligenceSignals: React.FC<IntelligenceSignalsProps> = ({
                     {group.findings.map((finding) => {
                       const meta = SEVERITY_META[finding.severity];
                       const SeverityIcon = meta.icon;
+                      if (finding.licenseGap) {
+                        return (
+                          <div key={finding.id} data-testid={`finding-locked-${finding.id}`}>
+                            <div className="pl-12 pr-6 pt-3 flex items-center gap-2 flex-wrap">
+                              <p className="text-sm font-semibold text-foreground">{finding.title}</p>
+                              {finding.checkLabel && (
+                                <span className="text-[10px] font-mono text-muted-foreground border border-border rounded px-1.5 py-0.5">
+                                  {finding.checkLabel}
+                                </span>
+                              )}
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold border text-muted-foreground border-border">
+                                <Lock className="w-3 h-3" />
+                                Locked
+                              </span>
+                            </div>
+                            <LicenseGapUpsellCard
+                              checkLabel={finding.checkLabel}
+                              feature={finding.licenseGap.feature}
+                              sku={finding.licenseGap.sku}
+                              categoryLabel={finding.licenseGap.categoryLabel}
+                            />
+                          </div>
+                        );
+                      }
                       return (
                         <div
                           key={finding.id}

@@ -98,6 +98,19 @@ export interface LiveFindingOffer {
   instant: boolean;
 }
 
+/**
+ * #1132: a finding whose check hit a real Microsoft Graph license gap (the
+ * tenant isn't licensed for the feature the check reads). `sku`/`categoryLabel`
+ * are null only when this tenant's gapped check isn't one of the mapped
+ * license-gap-purchase-links.ts categories — still locked, just no self-serve
+ * link to show.
+ */
+export interface LiveFindingLicenseGap {
+  feature: string | null;
+  sku: { name: string; url: string } | null;
+  categoryLabel: string | null;
+}
+
 export interface LiveFinding {
   id: number;
   checkLabel: string | null;
@@ -109,6 +122,7 @@ export interface LiveFinding {
   action: string | null;
   createdAt: string;
   offer: LiveFindingOffer | null;
+  licenseGap: LiveFindingLicenseGap | null;
 }
 
 export interface OverviewSlice {

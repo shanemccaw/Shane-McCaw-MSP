@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { AlertOctagon, AlertTriangle, Info, Wrench, CheckCircle2 } from 'lucide-react';
+import { AlertOctagon, AlertTriangle, Info, Wrench, CheckCircle2, Lock } from 'lucide-react';
 import {
   TopicFinding,
   TopicFindingSeverity,
   SEVERITY_BADGE_CLASS,
   SEVERITY_TEXT_CLASS,
 } from './useTopicHealthLive';
+import { LicenseGapUpsellCard } from '@/components/LicenseGapUpsellCard';
 
 /**
  * Topic-scoped findings list — the real diagnostics findings feed from
@@ -100,6 +101,30 @@ export const TopicFindings: React.FC<TopicFindingsProps> = ({
         ) : (
           filtered.map((finding) => {
             const SeverityIcon = SEVERITY_ICON[finding.severity];
+            if (finding.licenseGap) {
+              return (
+                <div key={finding.id} data-testid={`finding-locked-${finding.id}`}>
+                  <div className="px-6 pt-3 flex items-center gap-2 flex-wrap">
+                    <p className="text-sm font-semibold text-foreground">{finding.title}</p>
+                    {finding.checkLabel && (
+                      <span className="text-[10px] font-mono text-muted-foreground border border-border rounded px-1.5 py-0.5">
+                        {finding.checkLabel}
+                      </span>
+                    )}
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold border text-muted-foreground border-border">
+                      <Lock className="w-3 h-3" />
+                      Locked
+                    </span>
+                  </div>
+                  <LicenseGapUpsellCard
+                    checkLabel={finding.checkLabel}
+                    feature={finding.licenseGap.feature}
+                    sku={finding.licenseGap.sku}
+                    categoryLabel={finding.licenseGap.categoryLabel}
+                  />
+                </div>
+              );
+            }
             return (
               <div
                 key={finding.id}

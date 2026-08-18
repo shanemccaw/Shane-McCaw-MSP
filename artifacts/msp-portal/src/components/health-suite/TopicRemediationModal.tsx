@@ -1,6 +1,7 @@
 import React from 'react';
 import { X, Wrench, ArrowRight, Clock, ShieldAlert, Info } from 'lucide-react';
 import { TopicFinding } from './useTopicHealthLive';
+import { LicenseGapUpsellCard } from '@/components/LicenseGapUpsellCard';
 
 /**
  * Shared remediation surface for the topic pages — the honest replacement for
@@ -58,6 +59,19 @@ export const TopicRemediationModal: React.FC<TopicRemediationModalProps> = ({
             )}
           </div>
 
+          {/* #1132: locked state replaces the rest of the modal — nothing to
+              remediate on a check the tenant isn't licensed to evaluate. */}
+          {finding.licenseGap ? (
+            <div className="border border-border rounded-xl overflow-hidden">
+              <LicenseGapUpsellCard
+                checkLabel={finding.checkLabel}
+                feature={finding.licenseGap.feature}
+                sku={finding.licenseGap.sku}
+                categoryLabel={finding.licenseGap.categoryLabel}
+              />
+            </div>
+          ) : (
+            <>
           {(finding.action || finding.effort) && (
             <div className="p-3 bg-secondary/50 rounded-xl border border-border space-y-1.5">
               {finding.action && (
@@ -119,6 +133,8 @@ export const TopicRemediationModal: React.FC<TopicRemediationModalProps> = ({
               this screen.
             </span>
           </div>
+            </>
+          )}
         </div>
 
         <div className="px-6 py-4 bg-secondary/50 border-t border-border flex justify-end">

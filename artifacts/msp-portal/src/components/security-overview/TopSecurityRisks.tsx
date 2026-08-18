@@ -1,6 +1,6 @@
 import React from 'react';
 import { formatDistanceToNow } from 'date-fns';
-import { AlertOctagon, AlertTriangle, Info, ExternalLink, ShieldCheck, CircleDashed, Wrench } from 'lucide-react';
+import { AlertOctagon, AlertTriangle, Info, ExternalLink, ShieldCheck, CircleDashed, Wrench, Lock } from 'lucide-react';
 import type { LiveFinding, LiveFindingSeverity } from '@/components/m365-health/useM365HealthLive';
 
 /**
@@ -99,13 +99,22 @@ export const TopSecurityRisks: React.FC<TopSecurityRisksProps> = ({
                   {String(idx + 1).padStart(2, '0')}
                 </span>
 
-                {/* Severity chip */}
-                <span
-                  className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border font-mono text-[10px] font-semibold ${meta.chip}`}
-                >
-                  <SeverityIcon className="w-3 h-3" />
-                  {meta.label}
-                </span>
+                {/* Severity chip — locked findings show a Lock chip instead
+                    (the row still opens RiskDetailDrawer, which renders the
+                    real locked-state card + upsell CTAs, #1132) */}
+                {finding.licenseGap ? (
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border font-mono text-[10px] font-semibold text-muted-foreground border-border bg-secondary/40">
+                    <Lock className="w-3 h-3" />
+                    LOCKED
+                  </span>
+                ) : (
+                  <span
+                    className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border font-mono text-[10px] font-semibold ${meta.chip}`}
+                  >
+                    <SeverityIcon className="w-3 h-3" />
+                    {meta.label}
+                  </span>
+                )}
 
                 {/* Real finding */}
                 <div className="flex-grow min-w-0">
