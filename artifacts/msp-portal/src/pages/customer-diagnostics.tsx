@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth-context";
 import { AppShell } from "@/components/app-shell";
@@ -17,14 +17,28 @@ import {
   AlertCircle,
   AlertTriangle,
   ArrowRight,
+  Boxes,
   CheckCircle2,
+  ChevronDown,
   ChevronRight,
+  CircleDollarSign,
+  ClipboardCheck,
+  Cloud,
   Clock,
   Download,
   FileSignature,
   Info,
+  KeyRound,
+  Laptop,
+  Layers,
   Loader2,
+  Mail,
+  MessageSquare,
+  ScrollText,
+  Share2,
   ShieldCheck,
+  Sparkles,
+  TrendingUp,
   Zap,
 } from "lucide-react";
 
@@ -157,6 +171,114 @@ function FindingBadge({ severity }: { severity: DiagnosticFinding["severity"] })
     <Badge variant="outline" className={`text-[10px] px-1.5 py-0 h-4 border ${cfg.bg} ${cfg.color}`}>
       {cfg.label}
     </Badge>
+  );
+}
+
+// ── Finding grouping by checkKey domain (#1154) ───────────────────────────────
+//
+// A real tenant's latest run returns ~50 actionable findings spanning ~11 check
+// domains, previously rendered as one flat list sorted only by the severity
+// string (which mis-orders "info" ahead of "warning"). We group by the checkKey
+// domain prefix (`identity:`, `security:`, `appgov:`, …) — the only stable
+// per-finding grouping the /api/portal/diagnostics/latest response already
+// carries — into collapsible, severity-rolled-up sections sorted
+// worst-severity-first, mirroring the #1102 Intelligence Signals redesign.
+// Presentation/IA only: no API or schema change.
+
+type ActionableSeverity = "critical" | "warning" | "info";
+
+const FINDING_SEVERITY_RANK: Record<ActionableSeverity, number> = {
+  critical: 0,
+  warning: 1,
+  info: 2,
+};
+
+const FINDING_CATEGORY_META: Record<string, { label: string; icon: React.ElementType }> = {
+  identity:   { label: "Identity & Access", icon: KeyRound },
+  security:   { label: "Security",          icon: ShieldCheck },
+  appgov:     { label: "App Governance",    icon: Boxes },
+  governance: { label: "Governance",        icon: ScrollText },
+  compliance: { label: "Compliance",        icon: ClipboardCheck },
+  copilot:    { label: "Copilot AI",        icon: Sparkles },
+  teams:      { label: "Teams",             icon: MessageSquare },
+  sharepoint: { label: "SharePoint",        icon: Share2 },
+  onedrive:   { label: "OneDrive",          icon: Cloud },
+  exchange:   { label: "Exchange",          icon: Mail },
+  adoption:   { label: "Adoption",          icon: TrendingUp },
+  cost:       { label: "Cost & Licensing",  icon: CircleDollarSign },
+  license:    { label: "Licensing",         icon: CircleDollarSign },
+  devices:    { label: "Devices",           icon: Laptop },
+  m365:       { label: "Microsoft 365",     icon: Layers },
+};
+
+/** The stable domain group for a finding — the checkKey prefix before the first ':'. */
+function findingDomainKey(checkKey: string): string {
+  const idx = checkKey.indexOf(":");
+  return idx > 0 ? checkKey.slice(0, idx) : "other";
+}
+
+/** Human label for a domain prefix that has no explicit entry in FINDING_CATEGORY_META. */
+function titleCasePrefix(prefix: string): string {
+  return (
+    prefix
+      .replace(/[-_]+/g, " ")
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(" ") || "Other"
+  );
+}
+
+function severityRank(severity: DiagnosticFinding["severity"]): number {
+  return FINDING_SEVERITY_RANK[severity as ActionableSeverity] ?? FINDING_SEVERITY_RANK.info;
+}
+
+interface FindingGroup {
+  key: string;
+  label: string;
+  icon: React.ElementType;
+  findings: DiagnosticFinding[];
+  counts: Record<ActionableSeverity, number>;
+  worstRank: number;
+}
+
+/**
+ * Bucket findings by checkKey domain, count severities per group, sort findings
+ * within a group critical→warning→info, and order groups worst-severity-first
+ * (ties broken by larger group first) so the tenant's biggest problem area leads.
+ */
+function groupDiagnosticFindings(findings: DiagnosticFinding[]): FindingGroup[] {
+  const byKey = new Map<string, DiagnosticFinding[]>();
+  for (const f of findings) {
+    const key = findingDomainKey(f.checkKey);
+    const bucket = byKey.get(key);
+    if (bucket) bucket.push(f);
+    else byKey.set(key, [f]);
+  }
+
+  const groups: FindingGroup[] = Array.from(byKey.entries()).map(([key, groupFindings]) => {
+    const counts: Record<ActionableSeverity, number> = { critical: 0, warning: 0, info: 0 };
+    for (const f of groupFindings) {
+      if (f.severity === "critical" || f.severity === "warning" || f.severity === "info") {
+        counts[f.severity]++;
+      }
+    }
+    const worstRank = Math.min(...groupFindings.map((f) => severityRank(f.severity)));
+    const meta = FINDING_CATEGORY_META[key] ?? { label: titleCasePrefix(key), icon: Layers };
+    return {
+      key,
+      label: meta.label,
+      icon: meta.icon,
+      findings: groupFindings
+        .slice()
+        .sort((a, b) => severityRank(a.severity) - severityRank(b.severity)),
+      counts,
+      worstRank,
+    };
+  });
+
+  return groups.sort(
+    (a, b) => a.worstRank - b.worstRank || b.findings.length - a.findings.length,
   );
 }
 
@@ -392,6 +514,35 @@ export default function CustomerDiagnosticsPage() {
   const categoryScores = latestQuiz?.categoryScores ?? {};
   const hasScores = Object.keys(categoryScores).length > 0;
 
+  // ── Diagnostic findings: grouped + triaged for scannability (#1154) ──────────
+  // Hide "ok" findings, group the rest by checkKey domain, worst-severity-first.
+  const actionableFindings = useMemo(
+    () => diagnosticFindings.filter((f) => f.severity !== "ok"),
+    [diagnosticFindings],
+  );
+  const findingGroups = useMemo(
+    () => groupDiagnosticFindings(actionableFindings),
+    [actionableFindings],
+  );
+  const findingTotals = useMemo(() => {
+    const t: Record<ActionableSeverity, number> = { critical: 0, warning: 0, info: 0 };
+    for (const f of actionableFindings) {
+      if (f.severity === "critical" || f.severity === "warning" || f.severity === "info") {
+        t[f.severity]++;
+      }
+    }
+    return t;
+  }, [actionableFindings]);
+
+  // Progressive disclosure: info-only groups start collapsed, groups carrying any
+  // critical/warning start open. `collapsedOverrides` records only the groups the
+  // user has explicitly toggled away from that default.
+  const [collapsedOverrides, setCollapsedOverrides] = useState<Record<string, boolean>>({});
+  const isGroupCollapsed = (g: FindingGroup) =>
+    collapsedOverrides[g.key] ?? g.worstRank === FINDING_SEVERITY_RANK.info;
+  const toggleGroup = (g: FindingGroup) =>
+    setCollapsedOverrides((prev) => ({ ...prev, [g.key]: !isGroupCollapsed(g) }));
+
   const presStatus = presentation
     ? (PRESENTATION_STATUS[presentation.status] ?? PRESENTATION_STATUS.active)
     : null;
@@ -570,8 +721,8 @@ export default function CustomerDiagnosticsPage() {
                 </CardContent>
               </Card>
 
-              {/* Findings list — hide ok findings to keep it actionable */}
-              {diagnosticFindings.filter(f => f.severity !== "ok").length === 0 ? (
+              {/* Findings — hide ok, group by domain, collapsible, worst-first (#1154) */}
+              {actionableFindings.length === 0 ? (
                 <Card className="border-green-500/20 bg-green-500/5">
                   <CardContent className="flex items-center gap-3 py-4 px-5">
                     <CheckCircle2 className="size-5 text-green-400 shrink-0" />
@@ -579,57 +730,137 @@ export default function CustomerDiagnosticsPage() {
                   </CardContent>
                 </Card>
               ) : (
-                <div className="space-y-2">
-                  {diagnosticFindings
-                    .filter(f => f.severity !== "ok")
-                    .map((f) => {
-                      const cfg = FINDING_SEVERITY_CONFIG[f.severity];
-                      const Icon = cfg.icon;
+                <div className="space-y-3">
+                  {/* Summary rollup — total to review + severity mix at a glance */}
+                  <div className="flex items-center justify-between gap-3 flex-wrap px-1">
+                    <p className="text-xs text-muted-foreground">
+                      {actionableFindings.length} finding{actionableFindings.length === 1 ? "" : "s"} to
+                      review across {findingGroups.length} area{findingGroups.length === 1 ? "" : "s"}
+                    </p>
+                    <div className="flex items-center gap-2">
+                      {(["critical", "warning", "info"] as ActionableSeverity[])
+                        .filter((sev) => findingTotals[sev] > 0)
+                        .map((sev) => {
+                          const cfg = FINDING_SEVERITY_CONFIG[sev];
+                          return (
+                            <Badge
+                              key={sev}
+                              variant="outline"
+                              className={`text-[10px] px-1.5 py-0 h-4 border ${cfg.bg} ${cfg.color}`}
+                            >
+                              {findingTotals[sev]} {cfg.label}
+                            </Badge>
+                          );
+                        })}
+                    </div>
+                  </div>
+
+                  {/* Collapsible domain groups */}
+                  <div className="space-y-2">
+                    {findingGroups.map((group) => {
+                      const collapsed = isGroupCollapsed(group);
+                      const GroupIcon = group.icon;
                       return (
-                        <div key={f.findingId} className={`rounded-xl border px-4 py-3 ${cfg.bg}`}>
-                          <div className="flex items-start gap-3">
-                            <Icon className={`size-4 ${cfg.color} shrink-0 mt-0.5`} />
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-2 flex-wrap mb-1">
-                                <p className="text-sm font-medium">{f.checkLabel || f.checkKey}</p>
-                                <FindingBadge severity={f.severity} />
-                              </div>
-                              <p className="text-xs text-muted-foreground">{f.title}</p>
-                              {f.description && (
-                                <p className="text-xs text-muted-foreground/70 mt-1">{f.description}</p>
-                              )}
-                              {cfg.riskFrame && (
-                                <p className={`text-[11px] font-medium mt-2 ${cfg.color}`}>
-                                  {cfg.riskFrame}
-                                </p>
-                              )}
-                              {f.checkStatus === "requires_script" && (
-                                <div className="mt-2">
-                                  <p className="text-xs text-muted-foreground/80">
-                                    This check needs a script run in your environment — download it here.
-                                    Results may take some time to appear after you run it.
-                                  </p>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="mt-2 h-7 text-xs"
-                                    disabled={downloadingScript === f.checkKey}
-                                    onClick={() => handleScriptDownload(f.checkKey)}
-                                  >
-                                    {downloadingScript === f.checkKey ? (
-                                      <Loader2 className="size-3 mr-1 animate-spin" />
-                                    ) : (
-                                      <Download className="size-3 mr-1" />
-                                    )}
-                                    Download script
-                                  </Button>
-                                </div>
-                              )}
+                        <div
+                          key={group.key}
+                          className="rounded-xl border border-border overflow-hidden"
+                        >
+                          <button
+                            type="button"
+                            onClick={() => toggleGroup(group)}
+                            aria-expanded={!collapsed}
+                            data-testid={`finding-group-${group.key}`}
+                            className="w-full flex items-center justify-between gap-3 px-4 py-2.5 bg-secondary/30 hover:bg-secondary/50 transition-colors text-left"
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <GroupIcon className="size-4 text-muted-foreground shrink-0" />
+                              <span className="text-sm font-semibold truncate">{group.label}</span>
+                              <span className="text-[10px] text-muted-foreground">
+                                {group.findings.length}
+                              </span>
                             </div>
-                          </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              {(["critical", "warning", "info"] as ActionableSeverity[])
+                                .filter((sev) => group.counts[sev] > 0)
+                                .map((sev) => {
+                                  const cfg = FINDING_SEVERITY_CONFIG[sev];
+                                  return (
+                                    <Badge
+                                      key={sev}
+                                      variant="outline"
+                                      className={`text-[10px] px-1.5 py-0 h-4 border ${cfg.bg} ${cfg.color}`}
+                                    >
+                                      {group.counts[sev]} {cfg.label}
+                                    </Badge>
+                                  );
+                                })}
+                              <ChevronDown
+                                className={`size-4 text-muted-foreground transition-transform ${
+                                  collapsed ? "-rotate-90" : ""
+                                }`}
+                              />
+                            </div>
+                          </button>
+
+                          {!collapsed && (
+                            <div className="p-2 space-y-2">
+                              {group.findings.map((f) => {
+                                const cfg = FINDING_SEVERITY_CONFIG[f.severity];
+                                const Icon = cfg.icon;
+                                return (
+                                  <div
+                                    key={f.findingId}
+                                    className={`rounded-lg border px-4 py-3 ${cfg.bg}`}
+                                  >
+                                    <div className="flex items-start gap-3">
+                                      <Icon className={`size-4 ${cfg.color} shrink-0 mt-0.5`} />
+                                      <div className="min-w-0 flex-1">
+                                        <div className="flex items-center gap-2 flex-wrap mb-1">
+                                          <p className="text-sm font-medium">{f.checkLabel || f.checkKey}</p>
+                                          <FindingBadge severity={f.severity} />
+                                        </div>
+                                        <p className="text-xs text-muted-foreground">{f.title}</p>
+                                        {f.description && (
+                                          <p className="text-xs text-muted-foreground/70 mt-1">{f.description}</p>
+                                        )}
+                                        {cfg.riskFrame && (
+                                          <p className={`text-[11px] font-medium mt-2 ${cfg.color}`}>
+                                            {cfg.riskFrame}
+                                          </p>
+                                        )}
+                                        {f.checkStatus === "requires_script" && (
+                                          <div className="mt-2">
+                                            <p className="text-xs text-muted-foreground/80">
+                                              This check needs a script run in your environment — download it here.
+                                              Results may take some time to appear after you run it.
+                                            </p>
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              className="mt-2 h-7 text-xs"
+                                              disabled={downloadingScript === f.checkKey}
+                                              onClick={() => handleScriptDownload(f.checkKey)}
+                                            >
+                                              {downloadingScript === f.checkKey ? (
+                                                <Loader2 className="size-3 mr-1 animate-spin" />
+                                              ) : (
+                                                <Download className="size-3 mr-1" />
+                                              )}
+                                              Download script
+                                            </Button>
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
                         </div>
                       );
                     })}
+                  </div>
                 </div>
               )}
             </div>
