@@ -1,7 +1,7 @@
 {
   "feature": "Customer Portal v2 -- isolated parallel build of the Overview (/portal-v2) and the six pillar dashboards (/portal-v2/:pillar) in the new navy/journeyTokens design language. Deliberately separate routes from the live /governance, /security-overview, /m365-health, /compliance, /adoption, /licensing pages, which this build does not touch. Data comes from GET /api/portal/assessment/war-room-pillars via components/portal-v2/usePortalV2Pillars.ts, which wraps the EXISTING components/war-room/useWarRoomPillarStats.ts hook rather than reimplementing fetching, retry/backoff or scoring. Pillar identity colours and the 82 gate constant come from components/copilot-journey/journeyTokens.ts (PILLARS, COPILOT_GATE_TARGET); components/ui/score-ring.tsx is reused verbatim, with .pv2-root redefining the --status-*/--muted tokens it reads so it resolves against the navy palette.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "393afe75",
+  "lastVerifiedAgainstCommit": "0bcfeb72",
 
   "notes": [
     "SCOPE: Overview + six pillar pages only. Change Control, SOPs & Runbooks, Risk Register, Microsoft Changes and Hold Windows are deliberately NOT built in this pass -- the existing implementations of the first four are MSP-operator-scoped (/api/msp/*, requireRole('MSPOperator') + resolveMspIdStrict) and reusing them from a customer page would leak cross-tenant data; they need new customer-scoped routes first.",
@@ -12,7 +12,8 @@
     "shaneapp://runTest hits the DEPLOYED build, not the local worktree -- the U* steps below only exercise the new pages once this commit is deployed to the dev server.",
     "RUN GREEN 2026-08-19: 21/21 against the deployed dev server at commit 393afe75 (deployed via trigger-deploy-and-wait.ps1, f101d5547 -> 393afe758, 47.5s). Real values observed on screen: Copilot gate '50 / 82', Governance severity chip 'Attention required' from a real score of 56 (>=50 and <60 per journeyTokens severityForScore), and the live /governance page still rendering its own 56 unchanged (U8, the isolation guarantee).",
     "AN EARLIER RUN OF THIS MANIFEST CAUGHT A REAL BUG, which is why the API assertions are shaped the way they are: `evaluation` is an OBJECT ({status, reason, ...}) and the first version of the v2 model declared it as a bare status string. tsc could not catch it because the type was self-declared. A4 now asserts the nested `.evaluation.status` path specifically so a regression that flattens it is caught here rather than in the UI.",
-    "SEPARATELY VERIFIED (scratch probe, not kept as steps): /portal-v2/adoption renders a real score with stats and an honest empty findings state, and /portal-v2/nonsense correctly falls through to NotFound rather than rendering an empty pillar shell."
+    "SEPARATELY VERIFIED (scratch probe, not kept as steps): /portal-v2/adoption renders a real score with stats and an honest empty findings state, and /portal-v2/nonsense correctly falls through to NotFound rather than rendering an empty pillar shell.",
+    "OV1-OV25 (2026-08-19, commit 0bcfeb72) ARE NOT YET RUN GREEN. They were written against the Overshared SharePoint drill-down added in that commit, but the dev server was still serving d7a08d04 and this session's permission gate blocked triggering trigger-deploy-and-wait.ps1, so the steps have never executed. Treat them as unverified until a run is recorded here — they are NOT a passing baseline. What IS verified at 0bcfeb72: tsc --noEmit clean, a full vite build clean, and 17/17 green on src/components/portal-v2/govOversharingData.test.ts, which pins the fixture arithmetic (124 sites / 95 links / 52 admins on site 0 / 43 Public / 16 pages) and the shared pager's window rule."
   ],
 
   "apiTests": [
