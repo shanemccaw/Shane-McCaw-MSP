@@ -128,19 +128,19 @@
       "textContains": "Security"
     },
     {
-      "name": "goto the Governance pillar detail page.",
+      "name": "goto the SECURITY pillar page. Governance now has a bespoke rebuilt dashboard, so Security is the pillar that still exercises the GENERIC pillar page -- which is exactly what needs regression cover, since the other five pillars all render through it.",
       "action": "goto",
-      "target": "/portal/shane-mccaw-consulting/portal-v2/governance"
+      "target": "/portal/shane-mccaw-consulting/portal-v2/security"
     },
     {
-      "name": "U5 -- the pillar detail page renders its heading from the real payload.",
+      "name": "U5 -- the generic pillar page renders its heading from the real payload.",
       "action": "expect",
       "selector": "[data-testid='pv2-pillar-heading']",
       "state": "visible",
-      "textContains": "Governance"
+      "textContains": "Security"
     },
     {
-      "name": "U6 -- the pillar page prints run provenance: which run the findings belong to, or an explicit statement that no completed run backs them. Either way it never implies numbers it does not have.",
+      "name": "U6 -- the generic pillar page prints run provenance: which run the findings belong to, or an explicit statement that no completed run backs them. Either way it never implies numbers it does not have.",
       "action": "expect",
       "selector": "[data-testid='pv2-provenance']",
       "state": "visible"
