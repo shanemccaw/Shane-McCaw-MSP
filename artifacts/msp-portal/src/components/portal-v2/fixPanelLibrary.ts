@@ -22,6 +22,7 @@
  */
 
 import { CMP_FIX_PLAYBOOKS } from "./cmpFixPlaybooks";
+import { LIC_FIX_PLAYBOOKS } from "./licFixPlaybooks";
 
 export interface FixManualStep {
   text: string;
@@ -265,15 +266,18 @@ export function fixFallback(key: string): FixPlaybook {
 /**
  * Resolve a fixKey to its playbook. Never returns null — see fixFallback.
  *
- * The Compliance set is merged in rather than inlined above because the
- * prototype assembles it differently: `complianceFixLibrary` is BUILT from
- * `CMP_FIXES` through a mapper that adds a Purview sign-in step and a re-scan
- * step to every entry (12256-12274). Keeping that mapper intact in its own
- * module is what stops those two steps being dropped the next time a compliance
- * playbook is edited.
+ * The per-pillar sets are merged in rather than inlined above because the
+ * prototype assembles each one differently: `complianceFixLibrary` (12256-12274)
+ * and `licFixLibrary` (12582-12599) are both BUILT from a per-fix array through
+ * a mapper that wraps every entry with a leading and a trailing manual step —
+ * and the wrapper text is NOT the same between them. Keeping each mapper intact
+ * in its own module is what stops those steps being dropped, or crossed over,
+ * the next time a playbook is edited.
  */
 export function playbookFor(key: string): FixPlaybook {
-  return FIX_PLAYBOOKS[key] ?? CMP_FIX_PLAYBOOKS[key] ?? fixFallback(key);
+  return (
+    FIX_PLAYBOOKS[key] ?? CMP_FIX_PLAYBOOKS[key] ?? LIC_FIX_PLAYBOOKS[key] ?? fixFallback(key)
+  );
 }
 
 /**

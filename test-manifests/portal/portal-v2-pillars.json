@@ -568,6 +568,202 @@
       "textContains": "View full risk register"
     },
     {
+      "name": "goto the rebuilt Licensing pillar dashboard.",
+      "action": "goto",
+      "target": "/portal/shane-mccaw-consulting/portal-v2/licensing"
+    },
+    {
+      "name": "L1 -- the hero leads with a FIGURE, not a health title. This pillar has no 'Licensing Health' heading and no status pill anywhere; a port that assumed the other three pillars' hero shape would have invented both.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-lic-on-table']",
+      "state": "visible",
+      "textContains": "$2,679"
+    },
+    {
+      "name": "L2 -- the ring carries a POSITIVE delta. Every other pillar's is red or muted; Licensing is the one that goes up.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-lic-score']",
+      "state": "visible",
+      "textContains": "71"
+    },
+    {
+      "name": "L3 -- the renewal stat renders the DATE, which is the deadline the largest recovery on the page depends on.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-lic-stat-next-renewal']",
+      "state": "visible",
+      "textContains": "14 March 2027"
+    },
+    {
+      "name": "L4 -- THE PILLAR'S ARGUMENT, on screen. Three buckets, not one savings number: money that leaves the bill next invoice, money that can only leave at renewal, and value that never leaves the bill at all.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-lic-buckets']",
+      "state": "visible",
+      "textContains": "Removable today"
+    },
+    {
+      "name": "L5 -- and the third bucket says 'value already paid' where the other two annualise. Annualising it would imply a saving that does not exist.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-lic-buckets']",
+      "state": "visible",
+      "textContains": "value already paid"
+    },
+    {
+      "name": "L6 -- the licence ledger renders with its real SKU part numbers.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-lic-sku-SPE_E5']",
+      "state": "visible",
+      "textContains": "38 unassigned seats on annual commitment"
+    },
+    {
+      "name": "L7 -- THE TOTALS ROW IS SUMMED, NOT STATED. 430 bought against 382 assigned against 323 active: the two gaps are the entire page. A hardcoded total would drift from the rows above it, which on a money page is the worst failure available.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-lic-ledger-total']",
+      "state": "visible",
+      "textContains": "$3,699/mo"
+    },
+    {
+      "name": "L8 -- a right-sized SKU shows an em dash rather than $0, so 'no waste' and 'zero dollars of waste' do not look like the same claim.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-lic-sku-AAD_PREMIUM']",
+      "state": "visible",
+      "textContains": "Right-sized"
+    },
+    {
+      "name": "L9 -- the recovery items carry monthly AND annualised figures on the collapsed row.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-lic-recovery']",
+      "state": "visible",
+      "textContains": "$27,360/yr"
+    },
+    {
+      "name": "L10 -- expand the largest recovery item.",
+      "action": "click",
+      "selector": "[data-testid='pv2-lic-item-LIC-01']",
+      "critical": true
+    },
+    {
+      "name": "L11 -- the expansion states the BILLING REALITY, which is what separates this pillar from a generic waste report.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-lic-recovery']",
+      "state": "visible",
+      "textContains": "Miss it and the same $27,360 commits again."
+    },
+    {
+      "name": "L12 -- THE GATE FROM A RECOVERY ITEM. The wrench opens a real playbook, one of thirteen transcribed for this pillar.",
+      "action": "click",
+      "selector": "[data-testid='pv2-lic-fix-lic-e5-unassigned']",
+      "critical": true
+    },
+    {
+      "name": "L13 -- it resolved to the named playbook, not the generic fallback.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-fix-panel']",
+      "state": "visible",
+      "textContains": "Lodge a renewal reduction for 26 unassigned E5 seats"
+    },
+    {
+      "name": "L14 -- take the manual route toward the CR gate.",
+      "action": "click",
+      "selector": "[data-testid='pv2-fix-route-manual']",
+      "critical": true
+    },
+    {
+      "name": "L15 -- arm the CR confirmation.",
+      "action": "click",
+      "selector": "[data-testid='pv2-cr-confirm']",
+      "critical": true
+    },
+    {
+      "name": "L16 -- submit it.",
+      "action": "click",
+      "selector": "[data-testid='pv2-cr-submit']",
+      "critical": true
+    },
+    {
+      "name": "L17 -- continue past the raised CR to the procedure.",
+      "action": "click",
+      "selector": "[data-testid='pv2-cr-continue']",
+      "critical": true
+    },
+    {
+      "name": "L18 -- THE WRAPPER STEP, AND IT IS NOT COMPLIANCE'S. Licensing's mapper prepends a commerce-versus-Graph note; Compliance's prepends a Purview sign-in. Both pillars wrap, the text differs, and sharing one wrapper would put the wrong sentence on eleven playbooks.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-fix-manual']",
+      "state": "visible",
+      "textContains": "quantity and subscription changes are commerce actions"
+    },
+    {
+      "name": "L19 -- and its closer names the savings ledger, where Compliance's names the evidence pack.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-fix-manual']",
+      "state": "visible",
+      "textContains": "added to the savings ledger with the date and who authorised it"
+    },
+    {
+      "name": "reset -- reload before the right column.",
+      "action": "goto",
+      "target": "/portal/shane-mccaw-consulting/portal-v2/licensing"
+    },
+    {
+      "name": "L20 -- the savings ledger records what has already been recovered, with who did it.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-lic-savings']",
+      "state": "visible",
+      "textContains": "Reclaimed 22 licences from disabled accounts"
+    },
+    {
+      "name": "L21 -- 'Why the waste recurs' is the pillar's structural claim: recovering the money once is one fix, stopping it recurring is a different one. Seven policy rows, each with its own wrench.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-lic-policy']",
+      "state": "visible",
+      "textContains": "Self-service purchase"
+    },
+    {
+      "name": "L22 -- a policy wrench opens its own playbook, distinct from the six recovery ones.",
+      "action": "click",
+      "selector": "[data-testid='pv2-lic-policy-fix-lic-self-service']",
+      "critical": true
+    },
+    {
+      "name": "L23 -- and it is the real one.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-fix-panel']",
+      "state": "visible",
+      "textContains": "Turn off self-service purchase"
+    },
+    {
+      "name": "reset -- reload before the provenance block.",
+      "action": "goto",
+      "target": "/portal/shane-mccaw-consulting/portal-v2/licensing"
+    },
+    {
+      "name": "L24 -- the provenance block is COLLAPSED on arrival, same as the drill-down's.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-lic-provenance']",
+      "state": "visible",
+      "textContains": "How the figures are derived"
+    },
+    {
+      "name": "L25 -- open it.",
+      "action": "click",
+      "selector": "[data-testid='pv2-lic-provenance-toggle']",
+      "critical": true
+    },
+    {
+      "name": "L26 -- this is the ONLY pillar hero carrying provenance, which the README places on drill-downs only. It names the one figure Graph cannot answer for.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-lic-provenance']",
+      "state": "visible",
+      "textContains": "Not exposed in Graph — MSCommerce module only."
+    },
+    {
+      "name": "L27 -- and the derived row that explains why there are three buckets rather than one number.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-lic-provenance']",
+      "state": "visible",
+      "textContains": "Billing term is what makes the three different."
+    },
+    {
       "name": "goto the rebuilt Compliance pillar dashboard.",
       "action": "goto",
       "target": "/portal/shane-mccaw-consulting/portal-v2/compliance"
