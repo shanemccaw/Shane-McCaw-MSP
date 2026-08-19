@@ -107,6 +107,59 @@
       "textContains": "Tenant health"
     },
     {
+      "name": "SHELL 1 -- the sidebar renders expanded by default (256px per the spec; the attribute is what the collapse toggle flips).",
+      "action": "expect",
+      "selector": "[data-testid='pv2-sidebar']",
+      "state": "visible",
+      "textContains": "Tenant Monitoring"
+    },
+    {
+      "name": "SHELL 2 -- the header's search TRIGGER is present with its Cmd-K affordance. It is a trigger, not an input -- the palette is what opens.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-search-trigger']",
+      "state": "visible",
+      "textContains": "Search everything"
+    },
+    {
+      "name": "SHELL 3 -- the account chip renders with name and role.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-account-chip']",
+      "state": "visible",
+      "textContains": "Jordan Diaz"
+    },
+    {
+      "name": "SHELL 4 -- the alerts tray is CLOSED until the bell is clicked.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-alerts-tray']",
+      "state": "absent"
+    },
+    {
+      "name": "SHELL 5 -- the collapse toggle exists (the panel-left button the spec calls for).",
+      "action": "expect",
+      "selector": "[data-testid='pv2-collapse-toggle']",
+      "state": "visible",
+      "textContains": "Collapse"
+    },
+    {
+      "name": "SHELL 6 -- collapsing the sidebar flips it to the 76px state and hides the label text.",
+      "action": "click",
+      "selector": "[data-testid='pv2-collapse-toggle']",
+      "critical": true
+    },
+    {
+      "name": "SHELL 7 -- collapsed: the two-line wordmark is gone (the brand mark stays), proving the expanded/collapsed branch really switched.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-sidebar']",
+      "state": "visible",
+      "textContains": "SM"
+    },
+    {
+      "name": "SHELL 8 -- restore the sidebar so later steps see the default state.",
+      "action": "click",
+      "selector": "[data-testid='pv2-collapse-toggle']",
+      "critical": true
+    },
+    {
       "name": "U2 -- all six pillar cards render. The governance card is asserted specifically; its presence proves PILLAR_KEYS drove the grid from the real payload.",
       "action": "expect",
       "selector": "[data-testid='pv2-pillar-card-governance']",

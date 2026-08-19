@@ -46,6 +46,21 @@ export default function PortalV2PillarPage() {
 
   return (
     <PortalV2Shell eyebrow="Pillar" title={pillar.label}>
+      {/* Page container — the shell's <main> carries no padding; each page owns
+          its width and rhythm, as the prototype does (line 274 / 393). */}
+      <div
+        style={{
+          position: "relative",
+          maxWidth: 1180,
+          margin: "0 auto",
+          padding: "28px 28px 56px",
+          display: "flex",
+          flexDirection: "column",
+          gap: 22,
+          minWidth: 0,
+          boxSizing: "border-box",
+        }}
+      >
       <Link
         href="/portal-v2"
         className="pv2-transition mb-5 inline-flex items-center gap-1.5 text-[11.5px] font-medium"
@@ -274,6 +289,7 @@ export default function PortalV2PillarPage() {
           </p>
         </div>
       )}
+      </div>
     </PortalV2Shell>
   );
 }

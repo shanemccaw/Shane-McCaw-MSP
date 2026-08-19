@@ -106,6 +106,67 @@ export default function PortalV2OverviewPage() {
 
   return (
     <PortalV2Shell eyebrow="Overview" title="Tenant health">
+      {/* Page container — prototype line 274. The shell's <main> carries no
+          padding of its own; each page owns its width and rhythm. */}
+      <div
+        style={{
+          position: "relative",
+          maxWidth: 1180,
+          margin: "0 auto",
+          padding: "28px 28px 110px",
+          display: "flex",
+          flexDirection: "column",
+          gap: 22,
+          minWidth: 0,
+          boxSizing: "border-box",
+        }}
+      >
+      {/* The Overview's own headline — prototype lines 277-281. The shell
+          carries no title band, so each page renders its heading itself. */}
+      <div
+        style={{
+          position: "relative",
+          display: "flex",
+          flexDirection: "column",
+          gap: 6,
+        }}
+      >
+        <span
+          style={{
+            fontSize: "9.5px",
+            fontWeight: 700,
+            letterSpacing: ".2em",
+            textTransform: "uppercase",
+            color: "#00B4D8",
+          }}
+        >
+          Tenant health · live
+        </span>
+        <h1
+          style={{
+            margin: 0,
+            fontSize: "23px",
+            fontWeight: 800,
+            letterSpacing: "-.015em",
+            color: "#f8fafc",
+            lineHeight: 1.3,
+          }}
+          data-testid="pv2-page-title"
+        >
+          Tenant health
+        </h1>
+        <div
+          style={{
+            fontSize: "13px",
+            color: "#94a3b8",
+            lineHeight: 1.5,
+            maxWidth: "74ch",
+          }}
+        >
+          Your six pillars, the Copilot gate, and what needs a decision first.
+        </div>
+      </div>
+
       {scanning && (
         <div
           className="mb-5 flex items-center gap-2.5 rounded-[10px] border px-4 py-3 text-[12.5px]"
@@ -332,6 +393,7 @@ export default function PortalV2OverviewPage() {
           </Panel>
         </div>
       )}
+      </div>
     </PortalV2Shell>
   );
 }
