@@ -39,7 +39,31 @@ export type PortalV2StatUnit = "count" | "percent" | "currency";
  * Why a pillar's score is or is not a number (#517). The three are rendered as
  * three different sentences — a bare null let all of them read as one shrug.
  */
-export type PortalV2Evaluation = "scored" | "insufficient_data" | "not_evaluated";
+export type PortalV2EvaluationStatus = "scored" | "insufficient_data" | "not_evaluated";
+
+/**
+ * The evaluation block as the server actually sends it — an OBJECT, not a bare
+ * status string. Confirmed against a real response from the deployed API:
+ *
+ *   "evaluation": { "score": 56, "evaluableSignalCount": 31,
+ *                   "minRequiredSignals": 2, "theoreticalMax": 163,
+ *                   "status": "scored",
+ *                   "reason": "scored from 31 evaluable governance signals" }
+ *
+ * Mirrors `PillarEvaluation` in api-server's lib/health-display.ts. `reason` is
+ * documented there as "short machine-stable explanation, safe to log and to
+ * surface as copy", which is why it is preferred over locally-written copy
+ * wherever it is present.
+ */
+export interface PortalV2Evaluation {
+  status: PortalV2EvaluationStatus;
+  /** Non-null ONLY when `status === "scored"`. */
+  score: number | null;
+  evaluableSignalCount: number;
+  minRequiredSignals: number;
+  theoreticalMax: number;
+  reason: string;
+}
 
 export interface PortalV2Stat {
   id: string;
@@ -76,6 +100,7 @@ export interface PortalV2PillarCard {
   enginePillar?: string;
   /** 0–100, higher = healthier. Null when no evaluable rule feeds it. */
   score: number | null;
+  /** The object described on PortalV2Evaluation — never a bare status string. */
   evaluation?: PortalV2Evaluation;
   rawRiskScore?: number;
   stats: PortalV2Stat[];
@@ -113,14 +138,25 @@ export interface PortalV2PillarView {
   readonly primary: string;
   readonly accent: string;
   readonly score: number | null;
-  readonly evaluation: PortalV2Evaluation;
+  readonly evaluation: PortalV2EvaluationStatus;
+  /**
+   * The server's own explanation for `evaluation`, when it sent one. Preferred
+   * over locally-written copy because it names the real signal counts.
+   */
+  readonly evaluationReason: string | null;
   /** Only meaningful when `score` is a number. */
   readonly severity: ReturnType<typeof severityForScore> | null;
+  /**
+   * The stats safe to show a customer: everything except our own wiring faults.
+   * This is what the grid renders.
+   */
   readonly stats: readonly PortalV2Stat[];
   /** Stats that resolved to a real number. */
   readonly resolvedStats: readonly PortalV2Stat[];
   /** Stats that genuinely could not be measured, with the reason preserved. */
   readonly unavailableStats: readonly PortalV2Stat[];
+  /** How many stats were withheld as OUR defect. Counted, never rendered as theirs. */
+  readonly withheldStatCount: number;
   readonly findings: readonly PortalV2Finding[];
   readonly findingCounts: { critical: number; warning: number };
   readonly trend: { series: number[]; window: string } | null;
@@ -142,7 +178,11 @@ export interface PortalV2UrgentItem {
 export interface PortalV2View {
   readonly pillars: readonly PortalV2PillarView[];
   /** The Copilot Gate card — the same engine number, kept separate on purpose. */
-  readonly gate: { score: number | null; evaluation: PortalV2Evaluation };
+  readonly gate: {
+    score: number | null;
+    evaluation: PortalV2EvaluationStatus;
+    reason: string | null;
+  };
   readonly urgent: readonly PortalV2UrgentItem[];
   readonly findingsRunId: string | null;
   readonly findingsRunStatus: string | null;
@@ -161,10 +201,12 @@ const EMPTY_PILLAR = (key: PillarKey): PortalV2PillarView => ({
   accent: PILLARS[key].accent,
   score: null,
   evaluation: "not_evaluated",
+  evaluationReason: null,
   severity: null,
   stats: [],
   resolvedStats: [],
   unavailableStats: [],
+  withheldStatCount: 0,
   findings: [],
   findingCounts: { critical: 0, warning: 0 },
   trend: null,
@@ -174,7 +216,7 @@ const EMPTY_PILLAR = (key: PillarKey): PortalV2PillarView => ({
 
 export const PORTAL_V2_VIEW_EMPTY: PortalV2View = {
   pillars: PILLAR_KEYS.map(EMPTY_PILLAR),
-  gate: { score: null, evaluation: "not_evaluated" },
+  gate: { score: null, evaluation: "not_evaluated", reason: null },
   urgent: [],
   findingsRunId: null,
   findingsRunStatus: null,
@@ -218,9 +260,13 @@ export function buildPortalV2View(payload: PortalV2Payload | null): PortalV2View
     if (!card) return EMPTY_PILLAR(key);
 
     const stats = Array.isArray(card.stats) ? card.stats : [];
+    const shownStats = stats.filter((s) => !isWiringFault(s));
     const findings = Array.isArray(card.findings) ? card.findings : [];
-    const evaluation: PortalV2Evaluation =
-      card.evaluation ?? (typeof card.score === "number" ? "scored" : "not_evaluated");
+    // `evaluation` is an object on the wire; read `.status` off it. Falling back
+    // to the score's own nullness keeps this correct against an older payload
+    // that predates #517 and sends no evaluation block at all.
+    const evaluation: PortalV2EvaluationStatus =
+      card.evaluation?.status ?? (typeof card.score === "number" ? "scored" : "not_evaluated");
 
     return {
       key,
@@ -229,12 +275,16 @@ export function buildPortalV2View(payload: PortalV2Payload | null): PortalV2View
       accent: PILLARS[key].accent,
       score: typeof card.score === "number" ? card.score : null,
       evaluation,
+      evaluationReason: card.evaluation?.reason ?? null,
       // Severity is a statement about a measured number. A pillar with no score
       // has no severity — never a red zero.
       severity: typeof card.score === "number" ? severityForScore(card.score) : null,
-      stats,
-      resolvedStats: stats.filter((s) => typeof s.value === "number"),
-      unavailableStats: stats.filter((s) => typeof s.value !== "number"),
+      // Withhold our own wiring faults from the customer-facing grid — see
+      // isWiringFault. They are counted below, not silently dropped.
+      stats: shownStats,
+      resolvedStats: shownStats.filter((s) => typeof s.value === "number"),
+      unavailableStats: shownStats.filter((s) => typeof s.value !== "number"),
+      withheldStatCount: stats.length - shownStats.length,
       findings,
       findingCounts: card.findingCounts ?? { critical: 0, warning: 0 },
       trend: card.trend ?? null,
@@ -247,7 +297,9 @@ export function buildPortalV2View(payload: PortalV2Payload | null): PortalV2View
   const gate = {
     score: typeof gateCard?.score === "number" ? gateCard.score : null,
     evaluation:
-      gateCard?.evaluation ?? (typeof gateCard?.score === "number" ? "scored" : "not_evaluated"),
+      gateCard?.evaluation?.status ??
+      (typeof gateCard?.score === "number" ? "scored" : "not_evaluated"),
+    reason: gateCard?.evaluation?.reason ?? null,
   };
 
   const urgent = pillars
@@ -289,8 +341,18 @@ export function isPillarKey(value: string | undefined): value is PillarKey {
  * The customer-facing sentence for a pillar that has no score. Deliberately
  * three different sentences, because they are three different facts.
  */
-export function evaluationNote(evaluation: PortalV2Evaluation, scanning: boolean): string {
+export function evaluationNote(
+  evaluation: PortalV2EvaluationStatus,
+  scanning: boolean,
+  /**
+   * The server's own `evaluation.reason`. Documented in health-display.ts as
+   * safe to surface as copy, and it names the real signal counts ("2 evaluable
+   * adoption signals, 2 required"), so it beats anything written here.
+   */
+  serverReason?: string | null,
+): string {
   if (scanning) return "A scan is running now. This pillar will resolve when it finishes.";
+  if (serverReason && serverReason.trim().length > 0) return serverReason;
   if (evaluation === "insufficient_data") {
     return "Not enough evaluable signal behind this pillar yet to state a score.";
   }
@@ -330,4 +392,31 @@ export function unavailableNote(stat: PortalV2Stat): string {
     default:
       return "Not available";
   }
+}
+
+/**
+ * Reasons that are OUR wiring fault, not a fact about the customer's tenant.
+ *
+ * Mirrors `WAR_ROOM_STAT_WIRING_FAULT_REASONS` in api-server's
+ * war-room-pillar-stats.ts, which exists so consumers classify identically.
+ * A real response from the deployed API carries these today — e.g.
+ * `governance.sites` resolves `unknown_check_key` because its
+ * `compliance:sharepoint-sites` key is not in the catalog.
+ *
+ * Printing "not wired to a check in the catalogue" to a customer states our own
+ * defect as though it were a gap in their environment, so these stats are
+ * dropped from the customer-facing grid entirely rather than rendered with a
+ * reason. They are still counted, so the page can say how many it withheld.
+ */
+const WIRING_FAULT_REASONS: readonly string[] = [
+  "unknown_check_key",
+  "unknown_metric_key",
+  "resolver_error",
+];
+
+export function isWiringFault(stat: PortalV2Stat): boolean {
+  return (
+    typeof stat.unavailableReason === "string" &&
+    WIRING_FAULT_REASONS.includes(stat.unavailableReason)
+  );
 }

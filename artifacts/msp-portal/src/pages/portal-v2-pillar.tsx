@@ -42,7 +42,7 @@ export default function PortalV2PillarPage() {
   if (!isPillarKey(params.pillar)) return <NotFound />;
 
   const pillar = view.pillars.find((p) => p.key === params.pillar)!;
-  const note = evaluationNote(pillar.evaluation, scanning);
+  const note = evaluationNote(pillar.evaluation, scanning, pillar.evaluationReason);
 
   return (
     <PortalV2Shell eyebrow="Pillar" title={pillar.label}>
@@ -173,6 +173,23 @@ export default function PortalV2PillarPage() {
                   <StatCallout key={s.id} stat={s} />
                 ))}
               </div>
+            )}
+
+            {/* Our own wiring faults are withheld from the grid rather than
+                printed as though they were a gap in the customer's tenant —
+                but the count is stated, so nothing is silently dropped. */}
+            {pillar.withheldStatCount > 0 && (
+              <p
+                className="mt-2.5 text-[10.5px]"
+                style={{ color: "var(--pv2-deemphasised)" }}
+                data-testid="pv2-stats-withheld"
+              >
+                {pillar.withheldStatCount} further callout
+                {pillar.withheldStatCount === 1 ? " is" : "s are"} not shown: the
+                platform has no check wired for{" "}
+                {pillar.withheldStatCount === 1 ? "it" : "them"} yet. That is ours
+                to fix, not a gap in your tenant.
+              </p>
             )}
           </div>
 

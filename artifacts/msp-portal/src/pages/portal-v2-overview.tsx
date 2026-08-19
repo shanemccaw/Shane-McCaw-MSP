@@ -226,7 +226,7 @@ export default function PortalV2OverviewPage() {
                             style={{ color: "var(--pv2-micro)" }}
                             data-testid={`pv2-pillar-note-${p.key}`}
                           >
-                            {evaluationNote(p.evaluation, scanning)}
+                            {evaluationNote(p.evaluation, scanning, p.evaluationReason)}
                           </p>
                         )}
 
@@ -247,7 +247,7 @@ export default function PortalV2OverviewPage() {
                       <ScoreBlock
                         score={p.score}
                         size={72}
-                        note={evaluationNote(p.evaluation, scanning)}
+                        note={evaluationNote(p.evaluation, scanning, p.evaluationReason)}
                       />
                     </div>
 

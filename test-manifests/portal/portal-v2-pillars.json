@@ -37,36 +37,36 @@
       "expect": { "status": 200, "jsonPath": "$.generatedAt", "exists": true }
     },
     {
-      "name": "A3 -- the governance card exists in the payload. journeyTokens' PILLAR_KEYS indexes straight into these cards, which is why the v2 pages can reuse the pillar identity map unchanged.",
+      "name": "A3 -- pillars[0] is governance. The array is emitted in WAR_ROOM_PILLAR_KEYS order (governance, licensing, adoption, compliance, health, security, copilot), and journeyTokens' PILLAR_KEYS indexes straight into these cards by name, which is why the v2 pages reuse the pillar identity map unchanged.",
       "method": "GET",
       "path": "/api/portal/assessment/war-room-pillars",
       "headers": { "Authorization": "Bearer {{authToken}}" },
       "expect": {
         "status": 200,
-        "jsonPath": "$.pillars[?(@.pillar=='governance')].pillar",
+        "jsonPath": "$.pillars[0].pillar",
+        "value": "governance"
+      }
+    },
+    {
+      "name": "A4 -- the governance card's `evaluation` is an OBJECT carrying a `status`, NOT a bare status string. This is the honest-null contract the v2 pages depend on, and asserting the nested path pins the real wire shape: a regression that flattened it back to a string would make every pillar render the wrong 'no data' copy. Asserted as exists, not as a value -- an honestly-unscored tenant must not fail this manifest.",
+      "method": "GET",
+      "path": "/api/portal/assessment/war-room-pillars",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": {
+        "status": 200,
+        "jsonPath": "$.pillars[0].evaluation.status",
         "exists": true
       }
     },
     {
-      "name": "A4 -- the governance card carries an `evaluation`. This is the honest-null contract the v2 pages depend on: it distinguishes 'measured and bad' from 'could not measure', so a missing score renders a stated reason instead of a red zero. Asserted as exists, not as a value -- see notes.",
+      "name": "A5 -- the copilot card rides in the SAME payload at index 6. The v2 Overview renders its score as the Copilot Gate against COPILOT_GATE_TARGET (82) rather than issuing a second request, because it is the same computePillarDisplayScore number the live surfaces use.",
       "method": "GET",
       "path": "/api/portal/assessment/war-room-pillars",
       "headers": { "Authorization": "Bearer {{authToken}}" },
       "expect": {
         "status": 200,
-        "jsonPath": "$.pillars[?(@.pillar=='governance')].evaluation",
-        "exists": true
-      }
-    },
-    {
-      "name": "A5 -- the copilot card is present in the SAME payload. The v2 Overview renders its score as the Copilot Gate against COPILOT_GATE_TARGET (82) rather than issuing a second request, because it is the same computePillarDisplayScore number.",
-      "method": "GET",
-      "path": "/api/portal/assessment/war-room-pillars",
-      "headers": { "Authorization": "Bearer {{authToken}}" },
-      "expect": {
-        "status": 200,
-        "jsonPath": "$.pillars[?(@.pillar=='copilot')].pillar",
-        "exists": true
+        "jsonPath": "$.pillars[6].pillar",
+        "value": "copilot"
       }
     }
   ],
