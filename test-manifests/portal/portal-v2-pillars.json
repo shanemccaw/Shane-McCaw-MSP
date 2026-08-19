@@ -1,0 +1,158 @@
+{
+  "feature": "Customer Portal v2 -- isolated parallel build of the Overview (/portal-v2) and the six pillar dashboards (/portal-v2/:pillar) in the new navy/journeyTokens design language. Deliberately separate routes from the live /governance, /security-overview, /m365-health, /compliance, /adoption, /licensing pages, which this build does not touch. Data comes from GET /api/portal/assessment/war-room-pillars via components/portal-v2/usePortalV2Pillars.ts, which wraps the EXISTING components/war-room/useWarRoomPillarStats.ts hook rather than reimplementing fetching, retry/backoff or scoring. Pillar identity colours and the 82 gate constant come from components/copilot-journey/journeyTokens.ts (PILLARS, COPILOT_GATE_TARGET); components/ui/score-ring.tsx is reused verbatim, with .pv2-root redefining the --status-*/--muted tokens it reads so it resolves against the navy palette.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "PENDING",
+
+  "notes": [
+    "SCOPE: Overview + six pillar pages only. Change Control, SOPs & Runbooks, Risk Register, Microsoft Changes and Hold Windows are deliberately NOT built in this pass -- the existing implementations of the first four are MSP-operator-scoped (/api/msp/*, requireRole('MSPOperator') + resolveMspIdStrict) and reusing them from a customer page would leak cross-tenant data; they need new customer-scoped routes first.",
+    "THE API TESTS ARE THE REAL CONTRACT ASSERTIONS. A1-A4 exercise GET /api/portal/assessment/war-room-pillars -- the exact endpoint and payload these pages render -- so they verify the data layer independently of whether the new UI has been deployed yet.",
+    "HONEST-NULL CONTRACT: the payload's per-pillar `score` is deliberately nullable and carries an `evaluation` of scored | insufficient_data | not_evaluated (#517). The v2 pages render three different sentences for those and NEVER a red zero for a missing score. A4 asserts the field exists rather than asserting a number, because asserting a number would make this manifest fail on an honestly-unscored tenant, which is the correct product behaviour.",
+    "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD -- the same testbed Assessment-role account m365-health-pillar-live-scan.json and m365-health-breakdown-gate.json drive.",
+    "UI ROUTE SHAPE: msp-portal's outer WouterRouter has base '/portal' and SlugScope nests a second router at '/{slug}', so the real URL is /portal/{slug}/portal-v2. Route order in App.tsx declares '/portal-v2' BEFORE '/portal-v2/:pillar' so the index is not swallowed by the param match.",
+    "shaneapp://runTest hits the DEPLOYED build, not the local worktree -- the U* steps below only exercise the new pages once this commit is deployed to the dev server."
+  ],
+
+  "apiTests": [
+    {
+      "name": "SETUP -- log in as the designated TESTBED Assessment account; extract the bearer.",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "A1 -- war-room-pillars responds 200 to a CustomerUser/Assessment bearer. This is the single endpoint every v2 page reads.",
+      "method": "GET",
+      "path": "/api/portal/assessment/war-room-pillars",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.pillars", "exists": true }
+    },
+    {
+      "name": "A2 -- the payload carries a generatedAt stamp, which the Overview and each pillar page print as provenance rather than implying the numbers are live-to-the-second.",
+      "method": "GET",
+      "path": "/api/portal/assessment/war-room-pillars",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.generatedAt", "exists": true }
+    },
+    {
+      "name": "A3 -- the governance card exists in the payload. journeyTokens' PILLAR_KEYS indexes straight into these cards, which is why the v2 pages can reuse the pillar identity map unchanged.",
+      "method": "GET",
+      "path": "/api/portal/assessment/war-room-pillars",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": {
+        "status": 200,
+        "jsonPath": "$.pillars[?(@.pillar=='governance')].pillar",
+        "exists": true
+      }
+    },
+    {
+      "name": "A4 -- the governance card carries an `evaluation`. This is the honest-null contract the v2 pages depend on: it distinguishes 'measured and bad' from 'could not measure', so a missing score renders a stated reason instead of a red zero. Asserted as exists, not as a value -- see notes.",
+      "method": "GET",
+      "path": "/api/portal/assessment/war-room-pillars",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": {
+        "status": 200,
+        "jsonPath": "$.pillars[?(@.pillar=='governance')].evaluation",
+        "exists": true
+      }
+    },
+    {
+      "name": "A5 -- the copilot card is present in the SAME payload. The v2 Overview renders its score as the Copilot Gate against COPILOT_GATE_TARGET (82) rather than issuing a second request, because it is the same computePillarDisplayScore number.",
+      "method": "GET",
+      "path": "/api/portal/assessment/war-room-pillars",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": {
+        "status": 200,
+        "jsonPath": "$.pillars[?(@.pillar=='copilot')].pillar",
+        "exists": true
+      }
+    }
+  ],
+
+  "uiSteps": [
+    {
+      "name": "goto the real login URL (outer WouterRouter base = '/portal').",
+      "action": "goto",
+      "target": "/portal/login"
+    },
+    {
+      "name": "WAIT for the login form to hydrate before typing.",
+      "action": "expect",
+      "selector": "#email",
+      "state": "visible"
+    },
+    { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
+    { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
+    {
+      "name": "Primary login -- every downstream assertion needs a real authenticated session.",
+      "action": "click",
+      "selector": "[data-testid='login-submit']",
+      "critical": true
+    },
+    {
+      "name": "goto the v2 Overview on its isolated, slug-scoped route.",
+      "action": "goto",
+      "target": "/portal/shane-mccaw-consulting/portal-v2"
+    },
+    {
+      "name": "U1 -- the v2 Overview renders its own shell (proves the isolated route resolves and did not fall through to NotFound).",
+      "action": "expect",
+      "selector": "[data-testid='pv2-page-title']",
+      "state": "visible",
+      "textContains": "Tenant health"
+    },
+    {
+      "name": "U2 -- all six pillar cards render. The governance card is asserted specifically; its presence proves PILLAR_KEYS drove the grid from the real payload.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-pillar-card-governance']",
+      "state": "visible",
+      "textContains": "Governance"
+    },
+    {
+      "name": "U3 -- the Health pillar card renders. Health is the one pillar whose engine key differs (backend 'architecture' displays as 'Health', Git #1098); this proves the v2 grid uses the display taxonomy, not the engine key.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-pillar-card-health']",
+      "state": "visible",
+      "textContains": "Health"
+    },
+    {
+      "name": "U4 -- the security pillar card renders. Security is deliberately NOT in HEALTH_PILLARS server-side (it is scored by security-engine.ts and recombined), so its presence here proves the v2 build reads the war-room payload rather than the health-engine pillar array.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-pillar-card-security']",
+      "state": "visible",
+      "textContains": "Security"
+    },
+    {
+      "name": "goto the Governance pillar detail page.",
+      "action": "goto",
+      "target": "/portal/shane-mccaw-consulting/portal-v2/governance"
+    },
+    {
+      "name": "U5 -- the pillar detail page renders its heading from the real payload.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-pillar-heading']",
+      "state": "visible",
+      "textContains": "Governance"
+    },
+    {
+      "name": "U6 -- the pillar page prints run provenance: which run the findings belong to, or an explicit statement that no completed run backs them. Either way it never implies numbers it does not have.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-provenance']",
+      "state": "visible"
+    },
+    {
+      "name": "U7 -- the live Governance page is UNTOUCHED by this build and still renders on its own route. This is the isolation guarantee.",
+      "action": "goto",
+      "target": "/portal/shane-mccaw-consulting/governance"
+    },
+    {
+      "name": "U8 -- confirm the live governance route did not 404 after the v2 routes were added.",
+      "action": "expect",
+      "selector": "body",
+      "state": "visible",
+      "textContains": "Governance"
+    }
+  ]
+}

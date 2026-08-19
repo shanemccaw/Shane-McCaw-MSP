@@ -78,6 +78,11 @@ import CustomerPrivacyPage from "@/pages/customer-privacy";
 import CustomerNotificationsPage from "@/pages/customer-notifications";
 import CustomerBillingPage from "@/pages/customer-billing";
 import NotFound from "@/pages/not-found";
+// Customer Portal v2 — isolated parallel build (Overview + six pillar pages).
+// Deliberately separate routes from the live /governance, /m365-health, …
+// pages, which are untouched. See components/portal-v2/.
+import PortalV2OverviewPage from "@/pages/portal-v2-overview";
+import PortalV2PillarPage from "@/pages/portal-v2-pillar";
 import ConsentDeclinedPage from "@/pages/consent-declined";
 import ConsentSuccessPage from "@/pages/consent-success";
 import ConsentTenantConflictPage from "@/pages/consent-tenant-conflict";
@@ -503,6 +508,21 @@ function SlugInnerSwitch() {
       <Route path="/overview-test">
         <ProtectedRoute component={OverviewTestPage} />
       </Route>
+      {/* ── Customer Portal v2 — isolated parallel build ──────────────────
+          Overview + the six pillar dashboards in the new navy/journeyTokens
+          design language, wired to the SAME real backend the live pages use
+          (GET /api/portal/assessment/war-room-pillars). Deliberately on their
+          own /portal-v2 prefix so nothing collides with /governance,
+          /m365-health, /security-overview, … which are untouched.
+          The specific "/portal-v2" route is declared BEFORE "/portal-v2/:pillar"
+          so the index does not get swallowed by the param match. */}
+      <Route path="/portal-v2">
+        <ProtectedRoute component={PortalV2OverviewPage} />
+      </Route>
+      <Route path="/portal-v2/:pillar">
+        <ProtectedRoute component={PortalV2PillarPage} />
+      </Route>
+
       {/* M365 Health Suite — 8 isolated, structure-only pages wired into the
           real AppShell, matching the /overview-test and /assessment-test
           precedent. Mock data only; real backend wiring is a later task. */}

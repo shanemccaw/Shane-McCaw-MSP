@@ -1,0 +1,78 @@
+/**
+ * portal-v2.css — the scoped palette for the isolated Customer Portal v2 build.
+ *
+ * WHY A SCOPE AND NOT A GLOBAL RETHEME
+ * ------------------------------------
+ * This build is deliberately parallel to the live portal: /governance,
+ * /m365-health and friends must keep rendering in the app's current Fluent 2
+ * neutral theme while these pages render in the new navy/Copilot-Reveal
+ * language. Redefining the app's tokens on :root would repaint every existing
+ * page. Everything here is therefore scoped to `.pv2-root`.
+ *
+ * WHY IT REDEFINES THE APP'S OWN TOKEN NAMES RATHER THAN INVENTING NEW ONES
+ * ------------------------------------------------------------------------
+ * `components/ui/score-ring.tsx` is reused verbatim (it is already used in ~11
+ * places and must not be duplicated). It reads `var(--color-status-*)` for the
+ * ring and `hsl(var(--muted))` for the track. Those resolve to the Fluent 2
+ * neutral values, which are wrong on a #020617 canvas. CSS custom properties
+ * substitute at computed-value time per element, so redeclaring `--status-*`
+ * and `--muted` on `.pv2-root` makes `--color-status-*` (declared by Tailwind
+ * as `hsl(var(--status-*))`) re-resolve against these values for everything
+ * inside the scope — the component itself is untouched.
+ *
+ * The severity hexes below are `SEVERITY_ON_DARK` from
+ * `components/copilot-journey/journeyTokens.ts`, converted to the raw
+ * space-separated HSL triplets this app's tokens are written in. journeyTokens
+ * stays the source of truth; these are the same colours in the format
+ * ScoreRing's `hsl()` wrapper needs.
+ */
+
+.pv2-root {
+  /* Severity — journeyTokens SEVERITY_ON_DARK, as HSL triplets.
+     critical #f87171 · attention #fbbf24 · healthy #34d399 */
+  --status-red: 0 91% 71%;
+  --status-amber: 43 96% 56%;
+  --status-green: 160 64% 52%;
+  /* INK.link #60a5fa — the journey's link/info blue. */
+  --status-blue: 213 94% 68%;
+  /* PILLARS.security.accent #A78BFA. */
+  --status-violet: 255 92% 76%;
+  /* PILLARS.licensing.accent #2DD4BF. */
+  --status-teal: 172 66% 50%;
+
+  /* The ScoreRing track. slate-800 #1e293b — reads as an unfilled groove on
+     the navy canvas rather than the light-grey it would be otherwise. */
+  --muted: 217 33% 17%;
+
+  /* Surfaces. BRAND.canvas #020617 and the handoff's panel/input values. */
+  --pv2-canvas: #020617;
+  --pv2-panel: #0b1524;
+  --pv2-raised: rgba(15, 23, 42, 0.5);
+  --pv2-input: #0b1a2e;
+  --pv2-border: rgba(30, 41, 59, 0.9);
+  --pv2-hairline: rgba(148, 163, 184, 0.12);
+
+  /* Ink — journeyTokens INK. */
+  --pv2-heading: #f8fafc;
+  --pv2-body: #cbd5e1;
+  --pv2-muted: #94a3b8;
+  --pv2-micro: #64748b;
+  --pv2-deemphasised: #475569;
+
+  background: var(--pv2-canvas);
+  color: var(--pv2-body);
+  min-height: 100vh;
+}
+
+/* Numerals are tabular everywhere in this language — journeyTokens TABULAR.
+   A score that reflows its own width as it changes reads as broken. */
+.pv2-num {
+  font-variant-numeric: tabular-nums;
+}
+
+/* The one sanctioned motion band: 150–260ms state transitions, no bounce.
+   journeyTokens MOTION.stateMinMs / stateMaxMs. */
+.pv2-transition {
+  transition-duration: 200ms;
+  transition-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
