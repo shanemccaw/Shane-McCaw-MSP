@@ -5,10 +5,19 @@ Implementation plan for `Design/design_handoff_customer_portal/` against
 `Customer Portal Shell.dc.html` (lines 6388–18121), and a full read of the
 target app's routing, theme, components and data layer.
 
-**Scope decision (from Shane, this session): the portal mounts under
-`/monitoring` inside msp-portal.** Every route below is namespaced accordingly.
+**Namespace: `/portal-v2` inside msp-portal.** Every route below is namespaced
+accordingly.
 
-No application code has been written. This document is the proposal.
+> **Superseded scoping note.** An earlier revision of this plan scoped the build
+> under `/monitoring`. That is stale — it predates the isolated build that is now
+> real and committed under `/portal-v2` (`50fa62af`, `393afe75`). `/portal-v2` is
+> the one true namespace; `/monitoring` should not reappear anywhere.
+
+**Status: Phases 1 and 2 are built and live-verified.** The Overview and all six
+pillar dashboards render real data from
+`GET /api/portal/assessment/war-room-pillars` on the deployed dev server
+(21/21 green, `test-manifests/portal/portal-v2-pillars.json`, commit
+`393afe75`). Everything from Phase 3 onward is still proposal.
 
 ---
 
@@ -51,21 +60,24 @@ see §5.
 - inner `<WouterRouter base={`/${slug}`}>` inside `SlugScope`
 
 Effective base is **`/portal/{slug}`**. Wouter *appends* nested bases, so inside
-the inner switch you write `/monitoring`, never `/portal/{slug}/monitoring`.
+the inner switch you write `/portal-v2`, never `/portal/{slug}/portal-v2`.
 Passing the prefix again yields `/portal/portal/{slug}` and silently breaks every
 match. App.tsx carries an explicit comment warning about this.
 
-So `/monitoring/governance` in code resolves to
-`https://…/portal/{slug}/monitoring/governance` in the browser. Deep links —
+So `/portal-v2/governance` in code resolves to
+`https://…/portal/{slug}/portal-v2/governance` in the browser. Deep links —
 which the README flags as a round-one requirement — come free from this.
+
+This is verified, not theoretical: the shipped routes are exactly this shape and
+the live test navigates `/portal/shane-mccaw-consulting/portal-v2/governance`.
 
 ### 1.2 Route idiom to copy
 
 The house form is the **children** form, not `component=`:
 
 ```tsx
-<Route path="/monitoring">
-  <ProtectedRoute component={MonitoringOverviewPage} />
+<Route path="/portal-v2">
+  <ProtectedRoute component={PortalV2OverviewPage} />
 </Route>
 ```
 
@@ -73,84 +85,109 @@ The house form is the **children** form, not `component=`:
 catch-all. `ProtectedRoute`'s own `component` prop is a different thing.
 
 Route **order matters** — wouter's `Switch` takes the first match. Declare
-`/monitoring/:pillar/:area` before `/monitoring/:pillar`, and both before
-`/monitoring`.
+`/portal-v2/:pillar/:area` before `/portal-v2/:pillar`, and both before
+`/portal-v2`. The shipped code already relies on this: `/portal-v2` is declared
+above `/portal-v2/:pillar` so the index is not swallowed by the param match.
 
-### 1.3 Proposed routes
+### 1.3 Routes
 
-| Route | Page component | Design key(s) |
-|---|---|---|
-| `/monitoring` | `monitoring-overview.tsx` | `overview` |
-| `/monitoring/copilot` | `monitoring-copilot.tsx` | `copilot` |
-| `/monitoring/:pillar` | `monitoring-pillar.tsx` | `governance` … `health` (6) |
-| `/monitoring/:pillar/:area` | `monitoring-finding.tsx` | `governance-*`, `security-*`, `compliance-*` |
-| `/monitoring/documents` | `monitoring-documents.tsx` | `documents` |
-| `/monitoring/documents/:docKey` | *(same page, expand-in-place)* | `docOpenKey` |
-| `/monitoring/change-control` | `monitoring-change-control.tsx` | `change-control` |
-| `/monitoring/change-control/:crCode` | *(same page, row expand)* | `ccExpanded` |
-| `/monitoring/runbooks` | `monitoring-runbooks.tsx` | `operate-runbooks` |
-| `/monitoring/runbooks/holds/:holdId` | *(same page, deep-link a hold)* | `HOLD_DEFS[].id` |
-| `/monitoring/remediation` | `monitoring-remediation.tsx` | `remediation` |
-| `/monitoring/sops` | `monitoring-sops.tsx` | `sop-hub` |
-| `/monitoring/sops/:category` | *(same page, filtered)* | `sop-incident-response`, `sop-security-drift`, `sop-mail-flow`, `sop-device-mgmt` |
-| `/monitoring/risk-register` | `monitoring-risk-register.tsx` | `risk-register` |
-| `/monitoring/microsoft-changes` | `monitoring-ms-changes.tsx` | `ms-changes` |
-| `/monitoring/projects` | `monitoring-projects.tsx` | `projects` |
-| `/monitoring/architect` | `monitoring-architect.tsx` | `retainer` |
+**Built** ✅ / proposed.
+
+| Route | Page component | Design key(s) | |
+|---|---|---|---|
+| `/portal-v2` | `portal-v2-overview.tsx` | `overview` | ✅ |
+| `/portal-v2/:pillar` | `portal-v2-pillar.tsx` | `governance` … `health` (6) | ✅ |
+| `/portal-v2/:pillar/:area` | `portal-v2-finding.tsx` | `governance-*`, `security-*`, `compliance-*` | |
+| `/portal-v2/copilot` | `portal-v2-copilot.tsx` | `copilot` | |
+| `/portal-v2/change-control` | `portal-v2-change-control.tsx` | `change-control` | |
+| `/portal-v2/change-control/:crCode` | *(same page, row expand)* | `ccExpanded` | |
+| `/portal-v2/runbooks` | `portal-v2-runbooks.tsx` | `operate-runbooks` | |
+| `/portal-v2/runbooks/holds/:holdId` | *(same page, deep-link a hold)* | `HOLD_DEFS[].id` | |
+| `/portal-v2/remediation` | `portal-v2-remediation.tsx` | `remediation` | |
+| `/portal-v2/sops` | `portal-v2-sops.tsx` | `sop-hub` | |
+| `/portal-v2/sops/:category` | *(same page, filtered)* | `sop-incident-response`, `sop-security-drift`, `sop-mail-flow`, `sop-device-mgmt` | |
+| `/portal-v2/risk-register` | `portal-v2-risk-register.tsx` | `risk-register` | |
+| `/portal-v2/microsoft-changes` | `portal-v2-ms-changes.tsx` | `ms-changes` | |
+| `/portal-v2/projects` | `portal-v2-projects.tsx` | `projects` | |
+| `/portal-v2/architect` | `portal-v2-architect.tsx` | `retainer` | |
+| `/portal-v2/documents` | `portal-v2-documents.tsx` | `documents` | |
+| `/portal-v2/documents/:docKey` | *(same page, expand-in-place)* | `docOpenKey` | |
 
 Settings pages (`alert-preferences`, `webhooks`, `billing`, `receipt`,
 `account-security`) are reached from the account menu in the design. **Do not
-rebuild them** — see §3.4; they already exist outside `/monitoring`.
+rebuild them** — see §3.4; they already exist outside `/portal-v2`.
 
-`:pillar` is validated against the existing six-key union, not a free string; an
-unknown pillar renders `NotFound`.
+`:pillar` is validated against the six-key union from `journeyTokens`, not a free
+string; an unknown pillar renders `NotFound`. Verified live —
+`/portal-v2/nonsense` falls through to `NotFound` rather than an empty shell.
 
-### 1.4 Collision to decide before writing routes
+### 1.4 The pillar-route collision — RESOLVED: supersede, but not yet
 
 msp-portal **already routes five of the six pillars at the top level**:
 `/governance`, `/compliance`, `/adoption`, `/licensing`, `/security-overview`,
 plus `/architecture` (labelled "Health") and `/m365-health` (the rollup). They
 are live pages with real components.
 
-Building `/monitoring/governance` therefore creates a **second** governance page.
-Options:
+`/portal-v2/governance` is therefore a **second** governance page, deliberately.
 
-1. **Supersede (recommended).** Build under `/monitoring/*`, reach parity, then
-   point the old routes at the new ones with `<Redirect>` and delete the old
-   pages in a follow-up. Keeps the design coherent and avoids a permanent fork.
-2. **Absorb.** Skip `/monitoring/*` for pillars and rebuild the existing pages
-   in place. Cheaper, but abandons the design's IA and the `/monitoring`
-   instruction.
-3. **Coexist.** Two governance pages indefinitely. Not recommended — it is how
-   the repo ended up with three separate renderings of pillar data already (§3.6).
+**Decision (Shane): supersede eventually — approval-gated.** The `/portal-v2`
+pages are built to full parity first, Shane reviews the finished result, and only
+on his explicit say-so do the old routes get redirected and the old pages
+retired.
 
-This is a decision for Shane, not one to make silently at the keyboard.
+Until that approval, the rule is absolute and applies to **every** phase below:
+
+> **Do not touch, redirect, or delete `/governance`, `/security-overview`,
+> `/m365-health`, `/compliance`, `/adoption`, `/licensing`, or their page
+> components.** They stay live and completely unmodified for the whole build.
+> Everything continues to go under `/portal-v2` in isolation.
+
+Two practical consequences worth stating, because they are easy to violate by
+accident:
+
+- **`App.tsx` edits stay purely additive** — new imports and new `<Route>`
+  blocks only. The Phase 1/2 commit is the precedent: +20 lines, zero existing
+  routes touched, verified by reading the staged diff before committing.
+- **Every phase's test manifest should keep an isolation assertion** — one step
+  that loads a live old route and confirms it still renders. The shipped manifest
+  does this (`U8` loads `/governance` and asserts its real content), and it is
+  what turns "we didn't mean to break it" into "we proved we didn't".
+
+The one thing that *does* legitimately reach the old pages is the app-wide
+retheme (§4). That changes how they look, not what they are — see §4.1 for why
+that is the intended reading of the theme decision and not a violation of this
+one.
 
 ---
 
 ## 2. File structure
 
+Built files are marked ✅ — they exist on `main` today and the names below are
+the real ones, not proposals.
+
 ```
 artifacts/msp-portal/src/
 ├── pages/
-│   ├── monitoring-overview.tsx
-│   ├── monitoring-pillar.tsx
-│   ├── monitoring-finding.tsx
-│   ├── monitoring-copilot.tsx
-│   ├── monitoring-documents.tsx
-│   ├── monitoring-change-control.tsx
-│   ├── monitoring-runbooks.tsx
-│   ├── monitoring-remediation.tsx
-│   ├── monitoring-sops.tsx
-│   ├── monitoring-risk-register.tsx
-│   ├── monitoring-ms-changes.tsx
-│   ├── monitoring-projects.tsx
-│   └── monitoring-architect.tsx
+│   ├── portal-v2-overview.tsx          ✅
+│   ├── portal-v2-pillar.tsx            ✅
+│   ├── portal-v2-finding.tsx
+│   ├── portal-v2-copilot.tsx
+│   ├── portal-v2-documents.tsx
+│   ├── portal-v2-change-control.tsx
+│   ├── portal-v2-runbooks.tsx
+│   ├── portal-v2-remediation.tsx
+│   ├── portal-v2-sops.tsx
+│   ├── portal-v2-risk-register.tsx
+│   ├── portal-v2-ms-changes.tsx
+│   ├── portal-v2-projects.tsx
+│   └── portal-v2-architect.tsx
 │
-├── components/monitoring/
-│   ├── shell/
-│   │   ├── MonitoringNav.tsx          # the design's grouped sidebar IA
-│   │   └── MonitoringLayout.tsx       # wraps AppShell, owns the nav + drawers
+├── components/portal-v2/
+│   ├── PortalV2Shell.tsx               ✅ own chrome + pillar nav, NOT AppShell
+│   ├── PortalV2Pieces.tsx              ✅ Panel/ScoreBlock/StatCallout/FindingRow/TrendLine
+│   ├── portalV2Model.ts                ✅ wire types + view model, no scoring
+│   ├── usePortalV2Pillars.ts           ✅ the one data seam
+│   ├── portal-v2.css                   ✅ (folds into index.css — see §4)
 │   ├── drilldown/
 │   │   ├── ProvenanceBlock.tsx        # Graph endpoint / what was read / when
 │   │   ├── EvidenceTable.tsx          # expandable rows, pager, filter
@@ -172,14 +209,14 @@ artifacts/msp-portal/src/
 │   │   ├── DocumentFilterSheet.tsx
 │   │   └── useDocumentFacets.ts       # counts exclude own group
 │   ├── palette/
-│   │   └── monitoringPaletteIndex.ts  # feeds the EXISTING command palette
+│   │   └── portalV2PaletteIndex.ts    # feeds the EXISTING command palette
 │   ├── shanebot/
-│   │   ├── SelectionChip.tsx
-│   │   └── ShaneBotPanel.tsx
+│   │   ├── SelectionChip.tsx          # Phase 7a
+│   │   └── ShaneBotPanel.tsx          # Phase 7a
 │   └── forms/
 │       └── FormDrawer.tsx             # the one openForm() primitive
 │
-└── lib/monitoring/
+└── lib/portal-v2/
     ├── fixtures/                      # ← the single swappable fixture layer
     │   ├── index.ts                   # one export surface; swap here for live
     │   ├── holds.ts                   # HOLD_DEFS
@@ -189,7 +226,7 @@ artifacts/msp-portal/src/
     │   ├── sops.ts                    # SOP_LIBRARY
     │   └── pillars.ts                 # per-pillar scores/trends/findings
     ├── types.ts                       # shared shapes
-    └── useMonitoringData.ts           # the seam: fixture ⟷ API
+    └── usePortalV2Data.ts             # the seam: fixture ⟷ API
 ```
 
 **Naming follows the house conventions**, verified against the repo: pages are
@@ -209,10 +246,15 @@ flag anywhere. Mocks are seeded straight into `useState`, and when a page goes
 live the import is deleted; 4 of the 11 `mockData.ts` files are already orphaned
 dead code from exactly that.
 
-So the seam has to be invented. `lib/monitoring/fixtures/index.ts` +
-`useMonitoringData.ts` is that seam: components consume the hook only, never a
+So the seam has to be invented. `lib/portal-v2/fixtures/index.ts` +
+`usePortalV2Data.ts` is that seam: components consume the hook only, never a
 fixture module directly, and the hook is the one file that flips from fixture to
 `fetchWithAuth`. That satisfies the rule and avoids the orphaning failure mode.
+
+**The shipped pillar pages already follow this and needed no fixture at all** —
+`usePortalV2Pillars.ts` is the seam, and it wraps the real endpoint directly. The
+fixture layer above is only for the systems whose backend does not exist yet
+(holds, documents), so it should shrink as those get real routes, not grow.
 
 **Leak guard:** `components/copilot-journey/liveReportFixtures.ts` exports
 `FIXTURE_LEAKS`, a list of fictional names that **5 test files assert never
@@ -277,7 +319,7 @@ and re-test both.
 | System | Why new |
 |---|---|
 | **Hold windows** (all of it) | The only design system with **zero** existing implementation. Repo-wide grep for `hold window` / `HOLD_DEFS` / `hold_window` hits only the design files. |
-| **Monitoring sidebar IA** | The design's grouped nav (Overview / My Architect / Projects / Pillars / Copilot / Operate / Standards & risk / Library) does not match `NAV_SECTIONS`. Build `MonitoringNav` rather than bending the global nav. |
+| **Portal v2 sidebar IA** | The design's grouped nav (Overview / My Architect / Projects / Pillars / Copilot / Operate / Standards & risk / Library) does not match `NAV_SECTIONS`. `PortalV2Shell` owns its own nav rather than bending the global one. Built ✅ with Overview + the six pillars only; the remaining groups get added as their phases land, never as dead rows. |
 | **Drill-down template** | `assessment-modules/*` render only a score bar + findings list + recommendations. No provenance, sparklines, evidence table, policy block or playbook links. Not the design's template. |
 | **Structured provenance block** | The data is all there (`monitor_checks.endpoint`, `tenant_monitor_profiles.collectedAt`, `tenant_check_item_details.items`) but is currently rendered as a **prose sentence** via `buildProvenance()` in `liveReportBlocks.ts:1129`. |
 | **Document library** | No price/ownership/facet/freshness model exists. See §5.4. |
@@ -291,7 +333,7 @@ and re-test both.
 The design lists five settings pages. Four already exist and are live:
 `webhooks`, customer billing + receipt, account security, notification
 preferences. Reach them from the account menu as the design does; do not clone
-them into `/monitoring`.
+them into `/portal-v2`.
 
 `ai-billing.tsx` is **AI-credit metering for an MSP** (token usage, top-ups,
 ledger) — *not* the design's customer billing page. Easy and costly to confuse.
@@ -411,39 +453,99 @@ Three further traps:
   generic monospace — and the design puts *every number, score, timer and date* in
   mono.
 
-### 4.3 Recommended mapping
+### 4.3 The mapping — RESOLVED: app-wide retheme
 
-Treat the design's palette as a **scoped monitoring theme**, not a global
-retheme. Add tokens under a `.monitoring-root` scope so `/monitoring` can be
-dark-and-slate while the rest of the portal stays Fluent 2 neutral, then decide
-separately whether to promote it app-wide.
+**Decision (Shane): retheme the app globally to the design's navy/slate palette.
+This IS the new portal — not a themed section living beside the old Fluent 2
+neutral pages.** The `.pv2-root` scoped theme built in Phase 1 was the
+provisional answer and is superseded; its values move onto the app's own tokens
+in `index.css`.
+
+Read this together with §1.4: the old pillar *routes and page components* stay
+untouched, but they will **inherit the new palette**, because that is what
+app-wide means. Changing how a page looks is not the same as changing what it is,
+and the decision is explicit that the old pages must not stay Fluent 2 neutral.
+
+**The honest caveat, and it is a real one.** A token retheme only moves the parts
+of the app that actually read tokens. This repo has a large amount of hardcoded
+colour that will *not* follow:
+
+- **1163 hardcoded `#0078D4` arbitrary-value class usages across 91 files.**
+- Whole feature folders written against literal hex rather than tokens —
+  `components/msp-portal/`, `components/msp-tenants/`, `components/assessment-test/`,
+  `components/m365-health/Header.tsx` (`#101419`, `#404752`, `#479ef5`, some with
+  `// @ts-nocheck`, some referencing CSS classes that do not exist).
+- `components/copilot-journey/` (87 files) is deliberately inline-style and reads
+  `journeyTokens` directly — it is *already* on the target palette, so it needs no
+  change, but it also will not respond to token edits.
+
+So the retheme lands in two parts, and the second is the long tail:
+
+1. **Tokens** (small, mechanical, reversible): rewrite the `:root` and `.dark`
+   colour blocks in `index.css`. Everything token-driven — shadcn primitives,
+   `ScoreRing`, cards, borders — moves in one commit.
+2. **Hardcoded-hex sweep** (large, per-file, ongoing): replace literal hex with
+   tokens, folder by folder. This is not a prerequisite for `/portal-v2` and
+   should not block it; it is the debt the retheme makes visible.
+
+Between (1) and (2) the app will look **partly rethemed**. That is expected and
+should be stated plainly rather than discovered — pages that were already
+token-clean will look right immediately; the folders listed above will look wrong
+until swept.
 
 | Design token | Map to | Action |
 |---|---|---|
-| canvas `#020617` | `--monitoring-canvas` | new, scoped |
-| panel `#0b1524` | `--monitoring-panel` | new, scoped |
-| input `#0b1a2e` | `--monitoring-input` | new, scoped |
+| canvas `#020617` | `--background` (`.dark`) | **retheme app-wide** |
+| panel `#0b1524` | `--card` / `--popover` (`.dark`) | **retheme app-wide** |
+| input `#0b1a2e` | `--input` surface (`.dark`) | **retheme app-wide** |
+| border `rgba(30,41,59,.9)` | `--border` (`.dark`) | **retheme app-wide** |
+| sidebar `#0b1524` | `--sidebar` + `--sidebar-*` (`.dark`) | **retheme app-wide** |
 | Governance `#3B82F6`/`#60a5fa` | `PILLAR_KEYS` colours in `journeyTokens.ts` | **already exact** |
 | Security `#8B5CF6`/`#a78bfa` | ditto | already exact |
 | Compliance `#F3F4F6`/`#cbd5e1` | ditto | already exact |
 | Licensing `#14B8A6`/`#2dd4bf` | ditto | already exact |
 | Adoption `#F97316`/`#fb923c` | ditto | already exact |
 | Health `#22C55E`/`#4ade80` | ditto | already exact |
-| red `#f87171` | `--status-red` | exists (recolour if scoped) |
-| amber `#fbbf24` | `--status-amber` | exists — repo value is **more muted** |
-| green `#34d399` | `--status-green` | exists |
-| info `#60a5fa` | `--status-blue` | exists |
-| teal `#22d3ee` | `--status-teal` | exists |
+| red `#f87171` | `--status-red` | **retheme** — repo value is more muted |
+| amber `#fbbf24` | `--status-amber` | **retheme** — repo value is more muted |
+| green `#34d399` | `--status-green` | **retheme** |
+| info `#60a5fa` | `--status-blue` | **retheme** |
+| teal `#22d3ee` | `--status-teal` | **retheme** |
+| Governance `#3B82F6`/`#60a5fa` | `PILLARS` in `journeyTokens.ts` | **already exact — do not duplicate** |
+| Security `#8B5CF6`/`#a78bfa` | ditto | already exact |
+| Compliance `#F3F4F6`/`#cbd5e1` | ditto | already exact |
+| Licensing `#14B8A6`/`#2dd4bf` | ditto | already exact |
+| Adoption `#F97316`/`#fb923c` | ditto | already exact |
+| Health `#22C55E`/`#4ade80` | ditto | already exact |
 | Inter 400–800 | `--app-font-sans` | reorder Inter first **+ add `;800`** to the Google Fonts URL |
 | `SF Mono`… | `--app-font-mono` | either load IBM Plex Mono or switch the stack |
-| radius 5–7 / 9–12 / 14 | `--radius-control/card/large` | repo is 4/6/8 — scoped override |
+| radius 5–7 / 9–12 / 14 | `--radius-control/card/large` | repo is 4/6/8 |
+
+Pillar identity colours stay in `journeyTokens.ts` and are **not** promoted to CSS
+tokens. They are a fixed identity axis that must never be severity-driven, and
+they are already consumed correctly by both `copilot-journey` and `/portal-v2`.
+Copying them into `index.css` would create a second source that can drift.
 
 There is **no `--success` and no `--warning`** token in msp-portal; semantics run
 through `--destructive` plus the six `--status-*`. And there is no
 `status-orange`/`pink`/`cyan` — anything else must be added to `@theme` first.
 
+**Every colour token needs TWO edits**: the raw HSL triplet on `:root` *and*
+`.dark`, plus a `--color-<name>: hsl(var(--<name>))` line inside `@theme inline`.
+Without the second, no `bg-*`/`text-*` utility is emitted at all.
+
 The living style guide at `pages/dev-style-guide.tsx` renders every token,
-variant, `ScoreRing` and card — use it to verify additions.
+variant, `ScoreRing` and card — it is the fastest way to eyeball the retheme, and
+should be the first page checked after the token commit.
+
+**Light mode.** msp-portal is light-default with a real per-account toggle
+(`lib/theme-context.tsx`, persisted via `/api/portal/theme-preference`). The
+design is dark-only, so it says nothing about light. The retheme therefore moves
+`.dark` onto the design's slate canvas and moves `:root` onto the brand's own
+light values (Off-White `#F7F9FC` + navy ink, per `_ds`), rather than stranding
+light mode on Fluent 2 neutral or deleting a feature the design simply did not
+cover. If Shane would rather the portal be dark-only, that is a smaller change
+than this one and can follow.
 
 ---
 
@@ -451,14 +553,21 @@ variant, `ScoreRing` and card — use it to verify additions.
 
 Ordered by severity. Each is evidenced against a real file.
 
-### 5.1 BLOCKER — the design's palette is not this app's palette
+### 5.1 ~~BLOCKER~~ RESOLVED — the design's palette is not this app's palette
 
 Covered in §4.2. The README presents its hexes as *the* spec and the `_ds/`
 bundle claims to be derived from this repo, but msp-portal is Fluent 2 neutral,
-light-default. **Recreating the design literally is a wholesale visual redesign
-of the portal, not a token addition.** Needs an explicit decision: scoped
-monitoring theme (recommended) vs. app-wide retheme vs. re-skin the design to
-Fluent 2.
+light-default. Recreating the design literally is a wholesale visual redesign of
+the portal, not a token addition.
+
+**Resolved (Shane): app-wide retheme to the design's navy/slate palette.** The
+design's palette wins; Fluent 2 neutral is the *old* palette being replaced and is
+no longer a reference for anything new. See §4.3 for the mapping and for the
+hardcoded-hex long tail this makes visible.
+
+Note the `_ds/` bundle is still stale in the other direction — it resolves the
+portal to Deep Navy `#0A2540`, while the handoff and the shipped build use slate
+`#020617`. Where they disagree, the handoff README and `journeyTokens.ts` win.
 
 ### 5.2 BLOCKER — the document library has no data model
 
@@ -542,15 +651,29 @@ the prototype's own state machine has defects found in the logic class:
 These need decisions, not transcription. The alerting contract (T-24, T-0, and
 early-clear) also has no existing channel wired — that is real backend work.
 
-### 5.6 SIGNIFICANT — ShaneBot's card taxonomy doesn't match
+### 5.6 ~~SIGNIFICANT~~ RESOLVED (split across two phases) — ShaneBot's card taxonomy doesn't match
 
 ShaneBot exists server-side: `lib/shanebot-engine.ts`,
 `BOT_INSTANCES.shanebot_paid`, with `allowedCardTypes` of
 `['invoice','subscription','score','data-answer']`. The design specifies
 `finding | fix | datum | ticket | escalate`. Only `datum`≈`data-answer` overlaps.
-Either extend the engine's taxonomy or re-map the design's cards — a decision,
-not a detail. Escalation is fine: `enqueueEscalationTicket` → Zoho Desk already
-matches the design.
+Escalation is fine: `enqueueEscalationTicket` → Zoho Desk already matches the
+design.
+
+**Resolved (Shane): do both, in that order, split across two phases.**
+
+- **Phase 7a — basic wire-in.** Connect only what exists *today*: the real
+  engine, the real Zoho Desk escalation path, and the four card types the engine
+  already supports. **Do not extend the taxonomy in this phase.** The point is to
+  get something real and testable in front of a user.
+- **Phase 9 — full upgrade.** Extend the taxonomy to the design's five cards,
+  plus whatever falls out of actually using 7a.
+
+The reasoning is worth preserving because it shapes how 7a should be built:
+**ShaneBot has never been exercised end-to-end by Shane.** Extending a taxonomy
+before anyone has used the thing would be designing against assumptions. Expect
+7a to generate real findings, and treat Phase 9's scope as partly unknown until
+it does — it is a placeholder for "what we learn", not a fixed spec.
 
 ### 5.7 MINOR — component primitives that fight the spec
 
@@ -594,7 +717,7 @@ than trusting the list.
   api-server lib, not a component.
 - **Logging**: any new route wires a `logger.child({ channel })` binding from the
   locked taxonomy. `engine.dashboard` is the closest existing leaf; a new
-  `engine.monitoring` leaf may be justified.
+  `engine.portal-v2` leaf may be justified.
 - **Test manifests** are mandatory for msp-portal changes:
   `test-manifests/{area}/{feature-slug}.json`, registered in
   `_regression-suite.json`, and actually **run** via `shaneapp://runTest` in the
@@ -611,32 +734,68 @@ than trusting the list.
 Sequenced so each phase is independently shippable and the risky decisions land
 before anything expensive is built on them.
 
-### Phase 0 — Decisions (no code)
+### Phase 0 — Decisions ✅ RESOLVED
 
-Blocking, all for Shane:
+All five are settled. They are recorded here as the standing basis for every
+phase below; none is an open question any more.
 
-1. **Theme** — scoped monitoring theme (recommended) vs. app-wide retheme vs.
-   re-skin to Fluent 2. (§5.1)
-2. **Pillar route collision** — supersede / absorb / coexist. (§1.4)
-3. **Document library** — is the purchasable catalogue in round one at all? It is
-   the only system needing new schema. (§5.2)
-4. Confirm `fetchWithAuth` over React Query. (§5.4)
+1. **Namespace** — `/portal-v2`. The earlier `/monitoring` scoping is stale and
+   must not reappear. (§1)
+2. **Theme** — **app-wide retheme** to the design's navy/slate palette. Not a
+   scoped section theme. (§4.3, §5.1)
+3. **Pillar route collision** — **supersede eventually, approval-gated.** Build
+   `/portal-v2` to full parity, Shane reviews, and only then do the old routes
+   get redirected. Until then the old routes and page components are untouched.
+   (§1.4)
+4. **Document library** — confirmed **last** (Phase 8). It is the only system
+   needing new schema. (§5.2)
+5. **ShaneBot** — **split.** Phase 7a wires in only what exists today; the full
+   taxonomy upgrade becomes the final phase. (§5.6)
 
-### Phase 1 — Shell and spine
+Two smaller ones already settled in code by the Phase 1/2 build:
 
-`MonitoringLayout` + `MonitoringNav` + the 13 routes wired to placeholder pages;
-the fixture layer and `useMonitoringData` seam; token additions from Phase 0's
-decision; "Halden Materials" added to `FIXTURE_LEAKS`. Ends with every route
-reachable and correctly deep-linkable.
+6. **`fetchWithAuth` over React Query**, matching the 140 files that use it. (§5.4)
+7. **Reuse `ScoreRing`**, don't fork it — token scoping makes it render correctly
+   on the new palette. (§3.1)
 
-### Phase 2 — Overview + the six pillar dashboards
+### Phase 1 — Shell and spine ✅ BUILT
 
-Reuse `ui/score-ring.tsx` and `journeyTokens.ts` pillar colours. Sparklines are
-the one gap — `copilot-journey` has `PillarSparkline`/`TrendSparkline` but they
-are inline-style/token-object based and won't inherit Tailwind tokens (and
-`PillarSparkline` needs `<JourneySvgDefs />` mounted once or it silently renders
-nothing). Decide: adapt them, or build one token-based sparkline in
-`components/monitoring/`.
+`PortalV2Shell` (own chrome, deliberately not `AppShell`) + the `/portal-v2` and
+`/portal-v2/:pillar` routes + the `usePortalV2Pillars` seam. Landed in `50fa62af`.
+
+Two carry-overs, neither blocking:
+
+- **The app-wide retheme** (§4.3) replaces the provisional `.pv2-root` scoped
+  theme. Doing it folds `portal-v2.css`'s values into `index.css`.
+- **"Halden Materials" → `FIXTURE_LEAKS`** is still outstanding, but only becomes
+  necessary when a phase actually introduces that fixture. The pillar pages
+  needed no fixture at all, so nothing has leaked yet.
+
+### Phase 2 — Overview + the six pillar dashboards ✅ BUILT
+
+Landed in `50fa62af` / `393afe75`, verified 21/21 live against the deployed dev
+server. Reuses `ui/score-ring.tsx` and `journeyTokens` pillar colours; the gate is
+the `copilot` card in the same payload, so no second request.
+
+**The sparkline question resolved itself**: a small token-free `TrendLine` in
+`PortalV2Pieces.tsx` renders the real `trend.series` the API already returns, so
+`PillarSparkline` was not adapted and `<JourneySvgDefs />` is not needed.
+
+Two findings from this phase that later phases must respect:
+
+- **`evaluation` is an object**, not a status string — `{status, reason,
+  evaluableSignalCount, minRequiredSignals, theoreticalMax, score}`. Read
+  `.status`, and prefer its `reason` for customer-facing copy. A self-declared
+  type made `tsc` pass while being wrong about the wire; only running the test
+  caught it.
+- **Withhold platform wiring faults.** Real responses carry
+  `unavailableReason: "unknown_check_key"`, which the server classifies as *our*
+  defect (`WAR_ROOM_STAT_WIRING_FAULT_REASONS`). Never print those to a customer
+  as a gap in their tenant — drop the callout and disclose the count.
+
+Known cosmetic gap: `ScoreRing` renders a `%` suffix, so scores read "56%" rather
+than the design's plain numeral. Left alone rather than forking the shared
+component; an optional `suffix` prop is the clean fix when it matters.
 
 ### Phase 3 — The drill-down template
 
@@ -673,23 +832,65 @@ Remediation reuses `remediation-tracker-pricing.ts` as-is. Respect the
 `status`/`verificationState` separation — only `reverifyRemediationTrackerSteps()`
 inside a real scan may set `verified`.
 
-### Phase 7 — Command palette + ShaneBot
+### Phase 7 — Command palette + ShaneBot basic wire-in
 
-Extend the existing palette rather than replacing it: add the design's ranking
-rules (exact → prefix → contains → sub/kind), the 14-cap, the indexed-count
-footer, coloured type labels, and the always-last `Ask ShaneBot: "<query>"` row.
-Then the selection chip and Active Cards, pending the §5.6 taxonomy decision.
+**7a is the last phase before Documents.** Two separable pieces:
+
+**Command palette.** Extend the existing `components/command-palette.tsx` rather
+than replacing it — it is already server-backed by
+`/api/portal/customer/search`, which is exactly the "needs a real search
+endpoint" item the README flags as out of scope. Add the design's ranking rules
+(exact → prefix → contains → sub/kind), the 14-cap, the indexed-count footer,
+coloured type labels, and the always-last `Ask ShaneBot: "<query>"` row so a
+search that finds nothing becomes a question rather than a dead end.
+
+**ShaneBot — basic wire-in only.** Build the selection chip and the chat panel
+against what is real today:
+
+- the existing engine (`lib/shanebot-engine.ts`, `BOT_INSTANCES.shanebot_paid`),
+- the existing Zoho Desk escalation (`enqueueEscalationTicket`), which already
+  matches the design,
+- **only the four card types the engine already supports** — `invoice`,
+  `subscription`, `score`, `data-answer`.
+
+> **Do not extend the card taxonomy in this phase.** No new Active Card types, no
+> `finding`/`fix`/`ticket` cards. Wire in what is real and testable, ship it, and
+> let real use tell us what Phase 9 should be.
 
 ### Phase 8 — Document library
 
-Last, because it is the only system needing new schema, and the one whose content
-is most incomplete (33 of 80+ written).
+Second to last, because it is the only system needing new schema, and the one
+whose content is most incomplete (33 of 80+ written).
 
-### Phase 9 — Copilot, Projects, My Architect
+### Phase 9 — ShaneBot full upgrade (final phase)
 
-`/monitoring/copilot` reuses the real gate constant. Projects reuses
-`buildGanttLayout`/`PhaseGanttChart`. My Architect's retainer-hours ledger is
-greenfield.
+Extend the engine's Active Card taxonomy to the design's five —
+`finding | fix | datum | ticket | escalate` — mapping `datum` onto the existing
+`data-answer` rather than duplicating it.
+
+**Scope here is deliberately provisional.** ShaneBot has never been driven
+end-to-end by Shane, so Phase 7a is the first real use it will ever get. Expect
+that to produce findings that change this phase's content. Treat the card
+taxonomy as the known part and reserve room for the rest; do not freeze a spec
+for it before 7a has been used.
+
+Grounding replies on documents, findings and SOWs stays out of scope — the README
+is right that it needs its own architecture proposal.
+
+### Phase 10 — Copilot, Projects, My Architect
+
+`/portal-v2/copilot` reuses the real gate constant (`COPILOT_GATE_TARGET`, mirrored
+server-side — change one, change and re-test both). Projects reuses
+`buildGanttLayout`/`PhaseGanttChart` from `copilot-journey/StatementOfWorkBody.tsx`.
+My Architect's retainer-hours ledger is greenfield — no ledger exists anywhere in
+the repo today.
+
+### After all phases — the supersede step (Shane-gated)
+
+Only once `/portal-v2` is at full parity **and Shane has explicitly approved the
+finished result**: redirect `/governance`, `/security-overview`, `/m365-health`,
+`/compliance`, `/adoption`, `/licensing` to their `/portal-v2` equivalents, then
+retire the old page components in a follow-up. Not before. See §1.4.
 
 ---
 
@@ -706,18 +907,24 @@ Carried from the README, plus what this analysis adds:
 - Document generation pipeline, versioning, freshness comparison.
 - **Added:** the T-24 / T-0 / early-clear notification transport.
 - **Added:** retainer-hours ledger schema.
-- **Added:** whether `/monitoring` supersedes the existing top-level pillar routes.
+- **Added:** the hardcoded-hex sweep the app-wide retheme makes visible (§4.3).
+  Not a prerequisite for `/portal-v2`; it should not block any phase.
 
 ---
 
 ## 8. Open questions for Shane
 
-1. Theme scope — is `/monitoring` allowed to look different from the rest of the
-   portal, or should the whole portal move to the slate palette? (§5.1)
-2. Do the new `/monitoring/*` pillar pages replace `/governance`, `/compliance`,
-   `/adoption`, `/licensing`, `/security-overview`, `/architecture`? (§1.4)
-3. Is the purchasable document library in round one, given it is the only system
-   requiring new schema? (§5.2)
-4. ShaneBot Active Card taxonomy — extend the engine, or re-map the design? (§5.6)
-5. The design's `_ds/` bundle is stale relative to the repo. Should it be
-   regenerated from the current `index.css` so future handoffs don't repeat this?
+The five that were here are **resolved** — see Phase 0. What remains:
+
+1. **The supersede sign-off itself.** Nothing redirects or retires an old pillar
+   route until Shane looks at finished `/portal-v2` and says go. That approval is
+   the gate, and it has not been given. (§1.4)
+2. **Light mode's fate.** The design is dark-only and says nothing about light,
+   but the portal has a real per-account light/dark toggle. §4.3 keeps light and
+   moves it onto the brand's own light values; dark-only would be a smaller,
+   separate change if that is what Shane wants.
+3. **The `_ds/` bundle is stale** relative to the repo — it resolves the portal to
+   navy `#0A2540`, the handoff uses slate `#020617`, and the repo was Fluent 2
+   neutral until this retheme. Worth regenerating from the post-retheme
+   `index.css` so the next handoff does not inherit the same three-way
+   disagreement.
