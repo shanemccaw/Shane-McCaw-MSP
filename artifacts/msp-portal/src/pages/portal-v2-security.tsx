@@ -1,0 +1,687 @@
+/**
+ * portal-v2-security.tsx — the Security pillar dashboard.
+ *
+ * A direct port of the prototype's `isSecurity` block
+ * (`Customer Portal Shell.dc.html` lines 528-676), read against its OWN markup
+ * rather than adapted from the Governance page.
+ *
+ * ── Security is not Governance repainted ───────────────────────────────────
+ * The instruction was to verify rather than assume structural similarity, and
+ * the two pillars differ in seven substantive ways, not just in palette:
+ *
+ *  1. A red CRITICAL HEADLINE sits between the top bar and the hero card
+ *     (proto 543-545) — "3 critical exposures need attention right now." at
+ *     20px/800. Governance has nothing in that slot.
+ *  2. The drift trend carries a VERDICT SENTENCE (566) above the chart.
+ *  3. The trend is drawn in RED, not the pillar's violet — the line reports how
+ *     the pillar is trending, not which pillar it is.
+ *  4. FOUR hero stats at `minmax(110px,1fr)`, against Governance's three at
+ *     `minmax(130px,1fr)`.
+ *  5. The score ring, its glow and the score numeral are red; Governance's are
+ *     its own blue. Only Critical Exposures prints its VALUE in the accent
+ *     colour — every other stat value in either pillar is #f8fafc.
+ *  6. The area cards are a different component: one "Security Categories" panel
+ *     with two anonymous rows of icon-ring + score + progress-bar cards, against
+ *     Governance's four named clusters of sparkline + delta + status-dot cards.
+ *  7. The all-resolved panel is at the BOTTOM here (663-672); on Governance it
+ *     is above the hero.
+ *
+ * Shared where genuinely shared, and only after checking: `PillarScanBar` (the
+ * two pillars' scan strips are byte-identical apart from the dot colour and the
+ * pillar name) and `DriftTrend` (same block, three real differences, all props).
+ *
+ * ── Carried over from the Governance pass ──────────────────────────────────
+ * The prototype's ⚠ glyph is a lucide icon here, per the README's "No emoji
+ * anywhere" rule winning over the markup — the same single deliberate deviation
+ * already agreed on Governance, applied consistently rather than re-litigated.
+ * The hero ring is bespoke for the same reason it is there: `ui/score-ring.tsx`
+ * renders a percentage with token-derived colours, and every axis of that
+ * conflicts with the design's 104-unit viewBox at 88px.
+ */
+
+import { Link } from "wouter";
+import {
+  AlertTriangle,
+  ClipboardList,
+  Key,
+  Lock,
+  Mail,
+  PartyPopper,
+  ShieldCheck,
+} from "lucide-react";
+
+import { PortalV2Shell } from "@/components/portal-v2/PortalV2Shell";
+import { PillarScanBar } from "@/components/portal-v2/PillarScanBar";
+import { DriftTrend, trendGeometry } from "@/components/portal-v2/DriftTrend";
+import {
+  SEC_AREA_ROW_1,
+  SEC_AREA_ROW_2,
+  SEC_CRITICAL_COUNT,
+  SEC_HERO,
+  SEC_HERO_STATS,
+  SEC_HISTORY,
+  SEC_STATUS,
+  secAreaGeometry,
+  type SecAreaLink,
+} from "@/components/portal-v2/secDashboardData";
+
+const MONO = "'SF Mono',Menlo,Consolas,monospace";
+const RED = "#f87171";
+
+/** `iconSvg` name → lucide glyph. Names map 1:1 per the handoff's asset note. */
+const AREA_ICON = {
+  lock: Lock,
+  key: Key,
+  "shield-check": ShieldCheck,
+  "clipboard-list": ClipboardList,
+  mail: Mail,
+} as const;
+
+export default function PortalV2SecurityPage() {
+  const trend = trendGeometry(SEC_HISTORY);
+  const ringR = 46;
+  const ringC = 2 * Math.PI * ringR;
+  const ringOffset = ringC - (SEC_HERO.score / 100) * ringC;
+
+  return (
+    <PortalV2Shell eyebrow="Pillar" title="Security">
+      <div
+        style={{
+          position: "relative",
+          maxWidth: 1180,
+          margin: "0 auto",
+          padding: "28px 28px 56px",
+          display: "flex",
+          flexDirection: "column",
+          gap: 22,
+          boxSizing: "border-box",
+        }}
+      >
+        {/* Page glow — proto 530. Violet at .16, against Governance's blue .18. */}
+        <div
+          style={{
+            position: "absolute",
+            left: "50%",
+            top: "-6%",
+            width: "min(1000px,150%)",
+            height: "56%",
+            transform: "translateX(-50%)",
+            filter: "blur(80px)",
+            opacity: 0.5,
+            pointerEvents: "none",
+            background:
+              "radial-gradient(ellipse at top, rgba(139,92,246,.16), rgba(2,6,23,0) 68%)",
+          }}
+        />
+
+        {/* ── Back link + risk-accepted strip — proto 532-542 ────────────── */}
+        <div
+          style={{
+            position: "relative",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 16,
+            flexWrap: "wrap",
+          }}
+        >
+          <Link
+            href="/portal-v2"
+            data-testid="pv2-sec-back"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              background: "none",
+              border: "none",
+              padding: 0,
+              cursor: "pointer",
+              fontSize: "11.5px",
+              fontWeight: 600,
+              color: "#64748b",
+              fontFamily: "inherit",
+            }}
+          >
+            ← Overview
+          </Link>
+
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              padding: "7px 14px",
+              border: "1px solid rgba(194,166,61,.25)",
+              borderRadius: 9,
+              background: "rgba(194,166,61,.05)",
+            }}
+          >
+            <span style={{ fontSize: "15px", fontWeight: 800, color: "#a89354", fontFamily: MONO }}>
+              {SEC_HERO.riskAccepted}
+            </span>
+            <span style={{ fontSize: "11.5px", color: "#94a3b8", whiteSpace: "nowrap" }}>
+              finding risk-accepted in Security
+            </span>
+            {/* `goRiskSec` (proto 540) navigates to the risk register pre-filtered
+                to Security. That page is Layer 2 work, so this stays a real
+                button with the spec's copy rather than a trimmed placeholder. */}
+            <button
+              type="button"
+              data-testid="pv2-sec-risk-register-link"
+              style={{
+                padding: 0,
+                border: "none",
+                background: "none",
+                fontFamily: "inherit",
+                cursor: "pointer",
+                fontSize: "11.5px",
+                fontWeight: 600,
+                color: "#c2a63d",
+                whiteSpace: "nowrap",
+              }}
+            >
+              View full risk register →
+            </button>
+          </div>
+        </div>
+
+        {/* ── The critical headline — proto 544-546. Governance has no such row. */}
+        <div
+          style={{
+            position: "relative",
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            flexWrap: "wrap",
+          }}
+        >
+          <span
+            style={{
+              fontSize: "20px",
+              fontWeight: 800,
+              letterSpacing: "-.01em",
+              color: RED,
+              lineHeight: 1.3,
+            }}
+            data-testid="pv2-sec-critical-headline"
+          >
+            {SEC_CRITICAL_COUNT} critical exposures need attention right now.
+          </span>
+        </div>
+
+        {/* ── Hero card — proto 548-622 ──────────────────────────────────── */}
+        <div
+          style={{
+            position: "relative",
+            overflow: "hidden",
+            display: "flex",
+            flexDirection: "column",
+            gap: 20,
+            padding: 24,
+            border: "1px solid rgba(30,41,59,.9)",
+            borderRadius: 14,
+            background: "linear-gradient(160deg, rgba(139,92,246,.1), rgba(15,23,42,.5))",
+          }}
+          data-testid="pv2-sec-hero"
+        >
+          <div
+            style={{
+              position: "absolute",
+              left: -60,
+              top: -90,
+              width: 320,
+              height: 320,
+              borderRadius: "50%",
+              background: "radial-gradient(circle, rgba(139,92,246,.26), rgba(2,6,23,0) 70%)",
+              pointerEvents: "none",
+            }}
+          />
+          <div
+            style={{
+              position: "absolute",
+              right: -40,
+              bottom: -100,
+              width: 280,
+              height: 280,
+              borderRadius: "50%",
+              background: "radial-gradient(circle, rgba(139,92,246,.13), rgba(2,6,23,0) 70%)",
+              pointerEvents: "none",
+            }}
+          />
+
+          <div
+            style={{
+              position: "relative",
+              display: "flex",
+              alignItems: "flex-start",
+              justifyContent: "space-between",
+              gap: 20,
+              flexWrap: "wrap",
+            }}
+          >
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <span
+                style={{
+                  fontSize: "19px",
+                  fontWeight: 800,
+                  letterSpacing: "-.01em",
+                  color: "#f8fafc",
+                  lineHeight: 1.25,
+                }}
+              >
+                {SEC_HERO.title}
+              </span>
+              <span style={{ fontSize: "12.5px", color: "#94a3b8", lineHeight: 1.5 }}>
+                {SEC_HERO.subtitle}
+              </span>
+              {/* Status pill — red at .1 background, against Governance's amber
+                  at .08. Both numbers are the prototype's own. */}
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  width: "fit-content",
+                  whiteSpace: "nowrap",
+                  padding: "4px 10px",
+                  border: "1px solid rgba(248,113,113,.4)",
+                  borderRadius: 5,
+                  background: "rgba(248,113,113,.1)",
+                }}
+                data-testid="pv2-sec-status-pill"
+              >
+                <AlertTriangle size={10} color={RED} aria-hidden="true" />
+                <span
+                  style={{
+                    fontSize: "10px",
+                    fontWeight: 700,
+                    letterSpacing: ".08em",
+                    textTransform: "uppercase",
+                    color: RED,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {SEC_HERO.statusLabel}
+                </span>
+              </span>
+            </div>
+
+            <DriftTrend
+              trend={trend}
+              gradientId="secTrendFill"
+              lineColor={RED}
+              dotColor={RED}
+              fillOpacity={0.3}
+              verdict={SEC_HERO.trendVerdict}
+              verdictColor={RED}
+              data-testid="pv2-sec-trend"
+            />
+          </div>
+
+          {/* Ring + FOUR stat cards — proto 596-620. */}
+          <div
+            style={{
+              position: "relative",
+              display: "grid",
+              gridTemplateColumns: "auto repeat(4,minmax(110px,1fr))",
+              alignItems: "stretch",
+              gap: 0,
+              minWidth: 0,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "2px 22px 2px 0" }}>
+              <div style={{ position: "relative", flex: "0 0 auto", width: 88, height: 88 }}>
+                <div
+                  style={{
+                    position: "absolute",
+                    inset: -18,
+                    borderRadius: "50%",
+                    background: "radial-gradient(circle, rgba(248,113,113,.32), rgba(2,6,23,0) 72%)",
+                    pointerEvents: "none",
+                  }}
+                />
+                <svg
+                  width={88}
+                  height={88}
+                  viewBox="0 0 104 104"
+                  style={{ transform: "rotate(-90deg)", position: "absolute", inset: 0 }}
+                  aria-hidden="true"
+                >
+                  <circle
+                    cx={52}
+                    cy={52}
+                    r={ringR}
+                    fill="none"
+                    stroke="rgba(148,163,184,.14)"
+                    strokeWidth={9}
+                  />
+                  <circle
+                    cx={52}
+                    cy={52}
+                    r={ringR}
+                    fill="none"
+                    stroke={RED}
+                    strokeWidth={9}
+                    strokeLinecap="round"
+                    strokeDasharray={ringC}
+                    strokeDashoffset={ringOffset}
+                  />
+                </svg>
+                <div
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 1,
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: "26px",
+                      fontWeight: 800,
+                      letterSpacing: "-.02em",
+                      color: RED,
+                      fontFamily: MONO,
+                    }}
+                    data-testid="pv2-sec-score"
+                  >
+                    {SEC_HERO.score}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: "9.5px",
+                      fontWeight: 700,
+                      color: RED,
+                      fontFamily: MONO,
+                    }}
+                  >
+                    {SEC_HERO.delta}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {SEC_HERO_STATS.map((s) => (
+              <div
+                key={s.label}
+                style={{
+                  position: "relative",
+                  overflow: "hidden",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 6,
+                  padding: "2px 16px",
+                  borderLeft: `2px solid ${s.accent}`,
+                  justifyContent: "center",
+                }}
+                data-testid={`pv2-sec-stat-${s.label.toLowerCase().replace(/\s+/g, "-")}`}
+              >
+                <div
+                  style={{
+                    position: "absolute",
+                    left: -30,
+                    top: -30,
+                    width: 110,
+                    height: 110,
+                    borderRadius: "50%",
+                    background: `radial-gradient(circle, ${s.accent}${s.orbAlpha}, rgba(2,6,23,0) 70%)`,
+                    pointerEvents: "none",
+                  }}
+                />
+                <span
+                  style={{
+                    position: "relative",
+                    fontSize: "10px",
+                    fontWeight: 600,
+                    letterSpacing: ".1em",
+                    textTransform: "uppercase",
+                    color: "#64748b",
+                    lineHeight: 1.25,
+                  }}
+                >
+                  {s.label}
+                </span>
+                <span
+                  style={{
+                    position: "relative",
+                    fontSize: "22px",
+                    fontWeight: 800,
+                    color: s.valueInAccent ? s.accent : "#f8fafc",
+                    letterSpacing: "-.02em",
+                    fontFamily: MONO,
+                  }}
+                >
+                  {s.value}
+                </span>
+                <span style={{ position: "relative", fontSize: "10.5px", color: "#64748b" }}>
+                  {s.sub}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* ── Scan strip — proto 624-628. Red dot, not Governance's green. ── */}
+        <PillarScanBar
+          dotColor={RED}
+          pillarLabel="Security"
+          scanNumber={SEC_HERO.scanNumber}
+          fixedSinceScan1={SEC_HERO.fixedSinceScan1}
+          lastScan={SEC_HERO.lastScan}
+          nextScan={SEC_HERO.nextScan}
+        />
+
+        {/* ── Security Categories — proto 630-661 ───────────────────────── */}
+        <div
+          style={{
+            position: "relative",
+            overflow: "hidden",
+            border: "1px solid rgba(30,41,59,.9)",
+            borderRadius: 14,
+            background: "linear-gradient(160deg, rgba(139,92,246,.05), rgba(15,23,42,.4))",
+            padding: 16,
+          }}
+          data-testid="pv2-sec-categories"
+        >
+          <div
+            style={{
+              position: "absolute",
+              left: -40,
+              top: -50,
+              width: 200,
+              height: 200,
+              borderRadius: "50%",
+              background: "radial-gradient(circle, rgba(139,92,246,.14), rgba(2,6,23,0) 70%)",
+              pointerEvents: "none",
+            }}
+          />
+          <div
+            style={{
+              position: "relative",
+              fontSize: "9.5px",
+              fontWeight: 700,
+              letterSpacing: ".2em",
+              textTransform: "uppercase",
+              color: "#64748b",
+              marginBottom: 12,
+            }}
+          >
+            Security Categories
+          </div>
+          <div style={{ position: "relative", display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "stretch", gap: 10 }}>
+              {SEC_AREA_ROW_1.map((a) => (
+                <AreaCard key={a.key} link={a} />
+              ))}
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "stretch", gap: 10 }}>
+              {SEC_AREA_ROW_2.map((a) => (
+                <AreaCard key={a.key} link={a} />
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* ── All-resolved — proto 663-672. At the BOTTOM on this pillar. ─── */}
+        {SEC_HERO.allResolved && (
+          <div
+            style={{
+              position: "relative",
+              overflow: "hidden",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 8,
+              textAlign: "center",
+              padding: "40px 24px",
+              border: "1px solid rgba(52,211,153,.3)",
+              borderRadius: 14,
+              background: "linear-gradient(160deg, rgba(52,211,153,.08), rgba(15,23,42,.5))",
+            }}
+          >
+            <PartyPopper size={34} color="#34d399" aria-hidden="true" />
+            <span style={{ fontSize: "18px", fontWeight: 800, color: "#f8fafc" }}>
+              Secure, within accepted risk
+            </span>
+            <span style={{ fontSize: "13px", color: "#94a3b8", maxWidth: 440, lineHeight: 1.5 }}>
+              Every open security finding is resolved. MFA, conditional access, OAuth apps, legacy
+              auth, and email security are all within your tenant baseline.
+            </span>
+          </div>
+        )}
+      </div>
+    </PortalV2Shell>
+  );
+}
+
+/**
+ * One Security Categories card — proto 641-654.
+ *
+ * The progress bar is INVERSE severity (`1 - score/max`), so Conditional Access
+ * at 17 renders empty and OAuth Apps at 1 renders nearly full. It reads as "how
+ * much of this area is already fine". `flex-grow` is severity-driven too, so the
+ * worst area is also the widest card.
+ */
+function AreaCard({ link }: { link: SecAreaLink }) {
+  const { progressPct, grow } = secAreaGeometry(link);
+  const Glyph = AREA_ICON[link.icon];
+
+  return (
+    <Link
+      href={`/portal-v2/security/${link.key.replace(/^security-/, "")}`}
+      data-testid={`pv2-sec-area-${link.key}`}
+      className="pv2-area-card"
+      style={{
+        // Security hovers to the PILLAR violet on every card (proto 641), where
+        // Governance hovers to each tile's own status colour. See portal-v2.css.
+        ["--pv2-area-hover" as string]: "rgba(139,92,246,.4)",
+        position: "relative",
+        overflow: "hidden",
+        display: "flex",
+        flexDirection: "column",
+        gap: 5,
+        textAlign: "left",
+        background: SEC_STATUS.wash,
+        border: `1px solid ${SEC_STATUS.c}38`,
+        borderRadius: 8,
+        padding: SEC_STATUS.pad,
+        cursor: "pointer",
+        fontFamily: "inherit",
+        flex: `${grow} 1 0`,
+        minWidth: 130,
+        textDecoration: "none",
+      }}
+    >
+      <div
+        style={{
+          position: "absolute",
+          right: -20,
+          top: -24,
+          width: 80,
+          height: 80,
+          borderRadius: "50%",
+          background: `radial-gradient(circle, ${SEC_STATUS.c}20, rgba(2,6,23,0) 70%)`,
+          pointerEvents: "none",
+        }}
+      />
+      <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 7 }}>
+        <span
+          style={{
+            position: "relative",
+            flex: "0 0 22px",
+            width: 22,
+            height: 22,
+            borderRadius: "50%",
+            border: `1px solid ${SEC_STATUS.c}40`,
+            background: `${SEC_STATUS.c}12`,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Glyph size={SEC_STATUS.icon} color={SEC_STATUS.c} aria-hidden="true" />
+        </span>
+        <span
+          style={{
+            position: "relative",
+            fontSize: `${SEC_STATUS.score}px`,
+            fontWeight: 800,
+            color: "#f8fafc",
+            letterSpacing: "-.02em",
+            fontFamily: MONO,
+          }}
+        >
+          {link.score}
+        </span>
+      </div>
+      <div
+        style={{
+          position: "relative",
+          fontSize: "10.5px",
+          fontWeight: 700,
+          color: "#e2e8f0",
+          textAlign: "left",
+          width: "100%",
+          lineHeight: 1.25,
+        }}
+      >
+        {link.label}
+      </div>
+      <div
+        style={{
+          position: "relative",
+          fontSize: "9.5px",
+          color: "#64748b",
+          textAlign: "left",
+          width: "100%",
+          lineHeight: 1.25,
+        }}
+      >
+        {link.sub}
+      </div>
+      <div
+        style={{
+          position: "relative",
+          height: 4,
+          borderRadius: 2,
+          background: "rgba(148,163,184,.14)",
+          overflow: "hidden",
+          marginTop: 2,
+        }}
+      >
+        <div
+          style={{
+            height: "100%",
+            borderRadius: 2,
+            width: `${progressPct}%`,
+            background: SEC_STATUS.c,
+            opacity: 0.8,
+          }}
+        />
+      </div>
+    </Link>
+  );
+}

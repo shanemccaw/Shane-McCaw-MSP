@@ -12,6 +12,8 @@
  * single-file change — the same rule the build plan states for every fixture.
  */
 
+import { trendGeometry } from "./DriftTrend";
+
 export type GovAreaStatus = "red" | "yellow" | "green";
 
 export interface GovAreaLink {
@@ -136,24 +138,12 @@ export const GOV_HERO = {
 } as const;
 
 /**
- * The sparkline geometry, transcribed from the prototype's own IIFE (7271-7282).
- * The ±3 headroom pad on the domain is what keeps the line off the frame edge.
+ * The sparkline geometry. The prototype writes this IIFE out once per pillar
+ * (7271-7282 for Governance, 15656-15666 for Security) byte-identically apart
+ * from the history array, so the body now lives in `DriftTrend.trendGeometry`
+ * and this is the Governance binding of it. The ±3 headroom pad on the domain is
+ * what keeps the line off the frame edge.
  */
 export function govTrendGeometry() {
-  const w = 280;
-  const h = 84;
-  const history = GOV_HERO.history;
-  const min = Math.min(...history) - 3;
-  const max = Math.max(...history) + 3;
-  const pts = history.map((v, i) => {
-    const x = (i / (history.length - 1)) * w;
-    const y = h - ((v - min) / (max - min || 1)) * h;
-    return { x: +x.toFixed(1), y: +y.toFixed(1) };
-  });
-  const line = pts.map((p) => `${p.x},${p.y}`).join(" ");
-  const area =
-    `M${pts[0].x},${h} L` +
-    pts.map((p) => `${p.x},${p.y}`).join(" L") +
-    ` L${pts[pts.length - 1].x},${h} Z`;
-  return { w, h, line, area, lastX: pts[pts.length - 1].x, lastY: pts[pts.length - 1].y };
+  return trendGeometry(GOV_HERO.history);
 }

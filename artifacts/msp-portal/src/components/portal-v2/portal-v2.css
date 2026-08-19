@@ -95,3 +95,23 @@
   transition-duration: 200ms;
   transition-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
+
+/* The pillar area/category cards' hover. The prototype expresses this as a
+   per-card `style-hover` string, which React has no equivalent for — hence a
+   class plus a custom property so each card still supplies its OWN value:
+
+     • Governance (line 11979) hovers to its TILE'S STATUS colour at `70`
+       (red/amber/green varies per tile),
+     • Security (line 641) hovers to the PILLAR'S violet at `rgba(139,92,246,.4)`
+       for every card regardless of status.
+
+   Those are genuinely different rules, so the colour is passed in rather than
+   derived here. `transition-colors` at 150ms is the README's motion band, and
+   the border is the only thing that moves — "depth is colour, not scale". */
+.pv2-area-card {
+  transition: border-color 150ms, background 150ms;
+}
+
+.pv2-area-card:hover {
+  border-color: var(--pv2-area-hover, rgba(148, 163, 184, 0.4));
+}

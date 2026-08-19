@@ -85,6 +85,7 @@ import PortalV2OverviewPage from "@/pages/portal-v2-overview";
 import PortalV2PillarPage from "@/pages/portal-v2-pillar";
 import PortalV2GovernancePage from "@/pages/portal-v2-governance";
 import PortalV2GovDetailPage from "@/pages/portal-v2-gov-detail";
+import PortalV2SecurityPage from "@/pages/portal-v2-security";
 import PortalV2GovOversharingPage from "@/pages/portal-v2-gov-oversharing";
 import PortalV2GovOversharingAllPage from "@/pages/portal-v2-gov-oversharing-all";
 import ConsentDeclinedPage from "@/pages/consent-declined";
@@ -545,6 +546,13 @@ function SlugInnerSwitch() {
       </Route>
       <Route path="/portal-v2/governance">
         <ProtectedRoute component={PortalV2GovernancePage} />
+      </Route>
+      {/* Security is the design's own composition too, and a materially
+          different one from Governance — see portal-v2-security.tsx's header for
+          the seven verified structural differences. Declared before the param
+          route for the same reason Governance is. */}
+      <Route path="/portal-v2/security">
+        <ProtectedRoute component={PortalV2SecurityPage} />
       </Route>
       <Route path="/portal-v2/:pillar">
         <ProtectedRoute component={PortalV2PillarPage} />

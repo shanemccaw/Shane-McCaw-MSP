@@ -477,6 +477,107 @@
       "textContains": "23,412 sites are shared externally"
     },
     {
+      "name": "goto the rebuilt Security pillar dashboard. Before this pass /portal-v2/security fell through to the generic API-driven portal-v2-pillar.tsx, not the design's own composition.",
+      "action": "goto",
+      "target": "/portal/shane-mccaw-consulting/portal-v2/security"
+    },
+    {
+      "name": "S1 -- the CRITICAL HEADLINE renders above the hero. Governance has nothing in this slot, so its presence is what proves the Security section was built from Security's own markup rather than copied from Governance's.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-sec-critical-headline']",
+      "state": "visible",
+      "textContains": "3 critical exposures need attention right now."
+    },
+    {
+      "name": "S2 -- the hero ring shows the design's own score, in the design's own bare-numeral mono rather than ScoreRing's percentage.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-sec-score']",
+      "state": "visible",
+      "textContains": "54"
+    },
+    {
+      "name": "S3 -- the status pill reads Critical, not Governance's amber 'Needs attention'.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-sec-status-pill']",
+      "state": "visible",
+      "textContains": "Critical"
+    },
+    {
+      "name": "S4 -- THE FINDING-COUNT TRAP, asserted on the card itself. The prototype's `const secFindingCount = 5` (15652) is OVERRIDDEN to 7 in renderVals (18028), and renderVals is the bag the template reads. The card must say 7; a build that transcribed the const would say 5, look entirely reasonable, and be wrong.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-sec-stat-security-findings']",
+      "state": "visible",
+      "textContains": "7"
+    },
+    {
+      "name": "S4b -- and Critical Exposures shows the count derived from the finding definitions' severities, not a hardcoded number.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-sec-stat-critical-exposures']",
+      "state": "visible",
+      "textContains": "Need action now"
+    },
+    {
+      "name": "S5 -- and the Secure Score card carries its real industry comparison, which Governance has no equivalent of.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-sec-hero']",
+      "state": "visible",
+      "textContains": "Industry avg 61"
+    },
+    {
+      "name": "S6 -- the drift trend carries Security's VERDICT SENTENCE. Governance's trend has no such line, which is why DriftTrend takes it as an optional prop rather than always rendering the row.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-sec-trend']",
+      "state": "visible",
+      "textContains": "Getting worse — 2 new exposures since scan 12"
+    },
+    {
+      "name": "S7 -- the shared scan strip renders with Security's own values and pillar name.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-pillar-scan-bar']",
+      "state": "visible",
+      "textContains": "fixed in Security since scan 1"
+    },
+    {
+      "name": "S8 -- the Security Categories panel renders, with its own title. Governance uses four NAMED clusters instead; this is one unnamed panel of two rows.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-sec-categories']",
+      "state": "visible",
+      "textContains": "Security Categories"
+    },
+    {
+      "name": "S9 -- the worst category carries its real score. Conditional Access at 17 is the max, which is what empties its progress bar and makes it the widest card.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-sec-area-security-ca']",
+      "state": "visible",
+      "textContains": "Conditional Access"
+    },
+    {
+      "name": "S10 -- all five categories are present, including the two that only appear in row 2.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-sec-area-security-email']",
+      "state": "visible",
+      "textContains": "Email Security"
+    },
+    {
+      "name": "S11 -- the risk-accepted strip names Security, not Governance. Both pillars carry this strip with the same styling and different copy, so a copy-paste port would show the wrong pillar name here and nowhere else.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-sec-risk-register-link']",
+      "state": "visible",
+      "textContains": "View full risk register"
+    },
+    {
+      "name": "S12 -- REGRESSION GUARD on extracting DriftTrend out of the Governance page: Governance's own trend must still render after the refactor.",
+      "action": "goto",
+      "target": "/portal/shane-mccaw-consulting/portal-v2/governance"
+    },
+    {
+      "name": "S13 -- Governance's trend is still there, still labelled, and still has no verdict line.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-gov-trend']",
+      "state": "visible",
+      "textContains": "Drift trend · last 10 scans"
+    },
+    {
       "name": "U7 -- the live Governance page is UNTOUCHED by this build and still renders on its own route. This is the isolation guarantee.",
       "action": "goto",
       "target": "/portal/shane-mccaw-consulting/governance"

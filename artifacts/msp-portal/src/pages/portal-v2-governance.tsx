@@ -38,6 +38,7 @@ import { AlertTriangle, PartyPopper } from "lucide-react";
 
 import { PortalV2Shell } from "@/components/portal-v2/PortalV2Shell";
 import { PillarScanBar } from "@/components/portal-v2/PillarScanBar";
+import { DriftTrend } from "@/components/portal-v2/DriftTrend";
 import {
   GOV_AREA_LINKS,
   GOV_CLUSTERS,
@@ -325,85 +326,21 @@ export default function PortalV2GovernancePage() {
                 </div>
 
                 {/* Trend sparkline — prototype lines 433-449, the SECOND child
-                    of the header row so it sits to the right of the title. */}
-                <div
-                  style={{
-                    flex: "1 1 260px",
-                    minWidth: 220,
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 4,
-                  }}
-                >
-                <span
-                  style={{
-                    fontSize: "9.5px",
-                    fontWeight: 700,
-                    letterSpacing: ".14em",
-                    textTransform: "uppercase",
-                    color: "#64748b",
-                  }}
-                >
-                  Drift trend · last 10 scans
-                </span>
-                {/* prototype line 435 — the svg and its baseline rule share a
-                    position:relative wrapper */}
-                <div style={{ position: "relative" }}>
-                <svg
-                  width="100%"
-                  height={trend.h}
-                  viewBox={`0 0 ${trend.w} ${trend.h}`}
-                  preserveAspectRatio="none"
-                  style={{ overflow: "visible", display: "block" }}
-                  aria-hidden="true"
-                >
-                  <defs>
-                    <linearGradient id="govTrendFill" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor={BLUE} stopOpacity={0.35} />
-                      <stop offset="100%" stopColor={BLUE} stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <path d={trend.area} fill="url(#govTrendFill)" />
-                  <polyline
-                    points={trend.line}
-                    fill="none"
-                    stroke={BLUE}
-                    strokeWidth={2}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    vectorEffect="non-scaling-stroke"
-                  />
-                </svg>
-                {/* The chart svg above is preserveAspectRatio="none" — a
-                    deliberately anisotropic scale (x by width/trend.w, y by 1) so
-                    the line spans the card's fluid width. Everything inside it
-                    inherits that scale, which stretched the end-point dot into an
-                    oval. So the dot sits in its own viewBox-less overlay, where
-                    1 user unit = 1 CSS px and r=3.5 is a true circle; cx is a
-                    percentage so it still tracks the stretched line's last point. */}
-                <svg
-                  width="100%"
-                  height={trend.h}
-                  style={{
-                    position: "absolute",
-                    top: 0,
-                    left: 0,
-                    overflow: "visible",
-                    display: "block",
-                    pointerEvents: "none",
-                  }}
-                  aria-hidden="true"
-                >
-                  <circle
-                    cx={`${(trend.lastX / trend.w) * 100}%`}
-                    cy={trend.lastY}
-                    r={3.5}
-                    fill="#60a5fa"
-                  />
-                </svg>
-                  <div style={{ height: 1, background: "rgba(148,163,184,.14)" }} />
-                </div>
-                </div>
+                    of the header row so it sits to the right of the title.
+                    Shared with Security via DriftTrend, which was extracted only
+                    after checking Security's own markup: same block, and the
+                    three things that differ — the verdict line, the colours and
+                    the gradient id — are props. Governance passes NO verdict:
+                    Security's trend sentence has no Governance counterpart, and
+                    rendering an empty one would change the block's height. */}
+                <DriftTrend
+                  trend={trend}
+                  gradientId="govTrendFill"
+                  lineColor={BLUE}
+                  dotColor="#60a5fa"
+                  fillOpacity={0.35}
+                  data-testid="pv2-gov-trend"
+                />
               </div>
 
               {/* Ring + 3 stat cards — lines 452-484 */}
@@ -655,7 +592,12 @@ function AreaTile({ tile }: { tile: (typeof GOV_AREA_LINKS)[number] }) {
     <Link
       href={`/portal-v2/governance/${tile.key.replace(/^governance-/, "")}`}
       data-testid={`pv2-gov-area-${tile.key}`}
+      className="pv2-area-card"
       style={{
+        // `ar.hoverCss` (prototype 11979) — each tile hovers to its OWN status
+        // colour at `70`, unlike Security where every card hovers to the pillar
+        // violet. The rule itself lives in portal-v2.css; only the value is here.
+        ["--pv2-area-hover" as string]: `${meta.c}70`,
         position: "relative",
         display: "flex",
         flexDirection: "column",
