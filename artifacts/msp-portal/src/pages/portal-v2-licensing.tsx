@@ -29,10 +29,14 @@
  * provenance-block markup. Both are the same values, so they are the same class
  * and the same shapes rather than near-copies.
  *
- * ── One prototype oddity kept verbatim ─────────────────────────────────────
- * The third recovery bucket says "£1,470-worth" — a pound sign on an otherwise
- * entirely dollar-denominated page (proto 3611). Copy is final, so it ships as
- * written rather than being silently corrected; flagged for Shane instead.
+ * ── The one sanctioned deviation from the prototype's copy ─────────────────
+ * The third recovery bucket reads "£1,470-worth" in the prototype (3611) — a
+ * pound sign on a page denominated in dollars everywhere else, including that
+ * same sentence's own "$1,470/mo" value. It was flagged rather than silently
+ * corrected, and Shane confirmed on 2026-08-19 that it should be "$". The
+ * "copy is final" rule was not bypassed here; it was overruled by the copy's
+ * owner, which is the only way it should ever move. Manifest step L5b asserts
+ * the corrected string so a future re-transcription cannot quietly undo it.
  */
 
 import { useState } from "react";

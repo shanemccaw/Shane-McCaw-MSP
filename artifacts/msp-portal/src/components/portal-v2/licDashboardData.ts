@@ -154,10 +154,14 @@ export const LIC_BUCKETS: readonly {
     value: "$1,470/mo",
     annual: "value already paid",
     when: "34 people waiting",
-    // NOTE: the "£1,470-worth" pound sign is the prototype's own (12311), in an
-    // otherwise entirely dollar-denominated page. Copy is final, so it is kept
-    // verbatim rather than silently corrected — flagged for Shane instead.
-    what: "Seats you are already paying for that nobody is using: 27 idle Copilot seats and 11 E5 licences held by disabled accounts. Reassigning changes nothing on the invoice and hands £1,470-worth of monthly capability to the 34 people currently on the request list.",
+    // THE ONE SANCTIONED DEVIATION FROM THE PROTOTYPE'S COPY. Line 12311 reads
+    // "£1,470-worth" — a pound sign on a page denominated in dollars
+    // everywhere else, including in this same sentence's own "$1,470/mo" value
+    // above it. It was flagged rather than silently corrected, and Shane
+    // confirmed on 2026-08-19 that it should be "$". Recorded here because
+    // "copy is final" otherwise forbids exactly this edit: the rule was not
+    // bypassed, it was overruled by the copy's owner.
+    what: "Seats you are already paying for that nobody is using: 27 idle Copilot seats and 11 E5 licences held by disabled accounts. Reassigning changes nothing on the invoice and hands $1,470-worth of monthly capability to the 34 people currently on the request list.",
   },
 ];
 

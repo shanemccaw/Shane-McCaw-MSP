@@ -610,6 +610,13 @@
       "textContains": "value already paid"
     },
     {
+      "name": "L5b -- THE ONE SANCTIONED COPY DEVIATION. The prototype writes '£1,470-worth' here (12311) on a page denominated in dollars everywhere else, including this sentence's own '$1,470/mo' value. It was flagged rather than silently corrected; Shane confirmed on 2026-08-19 that it should be '$'. Asserted so the correction cannot be lost to a future re-transcription from the prototype.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-lic-buckets']",
+      "state": "visible",
+      "textContains": "$1,470-worth of monthly capability"
+    },
+    {
       "name": "L6 -- the licence ledger renders with its real SKU part numbers.",
       "action": "expect",
       "selector": "[data-testid='pv2-lic-sku-SPE_E5']",
