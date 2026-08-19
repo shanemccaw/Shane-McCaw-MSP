@@ -54,6 +54,23 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* The scan-bar status dot's pulse. Verbatim from the prototype's own
+   @keyframes slowPulse (Customer Portal Shell.dc.html head <style>, line 28) —
+   2.6s, opacity .4 → 1 → .4. It is the only animation on the pillar page. */
+@keyframes pv2SlowPulse {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.pv2-slow-pulse {
+  animation: pv2SlowPulse 2.6s ease-in-out infinite;
+}
+
 /* The drill-down page's two-column layout. Verbatim from the prototype's own
    `.gov-grid` rule (Customer Portal Shell.dc.html head <style>, line 31) —
    1.7fr / 1fr with a 22px gutter, collapsing to one column under 900px. Written

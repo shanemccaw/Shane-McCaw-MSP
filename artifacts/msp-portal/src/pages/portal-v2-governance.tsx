@@ -37,6 +37,7 @@ import { Link } from "wouter";
 import { AlertTriangle, PartyPopper } from "lucide-react";
 
 import { PortalV2Shell } from "@/components/portal-v2/PortalV2Shell";
+import { PillarScanBar } from "@/components/portal-v2/PillarScanBar";
 import {
   GOV_AREA_LINKS,
   GOV_CLUSTERS,
@@ -128,7 +129,7 @@ export default function PortalV2GovernancePage() {
               fontFamily: "inherit",
             }}
           >
-            ← Tenant health
+            ← Overview
           </Link>
 
           <div
@@ -155,16 +156,26 @@ export default function PortalV2GovernancePage() {
             <span style={{ fontSize: "11.5px", color: "#94a3b8", whiteSpace: "nowrap" }}>
               finding risk-accepted in Governance
             </span>
-            <span
+            {/* Prototype line 404 — a real button, not a bare arrow. The risk
+                register is a later phase, so it does not navigate yet; the copy
+                is the spec's and must not be trimmed to match what is built. */}
+            <button
+              type="button"
+              data-testid="pv2-gov-risk-register-link"
               style={{
+                padding: 0,
+                border: "none",
+                background: "none",
+                fontFamily: "inherit",
+                cursor: "pointer",
                 fontSize: "11.5px",
                 fontWeight: 600,
                 color: "#c2a63d",
                 whiteSpace: "nowrap",
               }}
             >
-              →
-            </span>
+              View full risk register →
+            </button>
           </div>
         </div>
 
@@ -185,8 +196,10 @@ export default function PortalV2GovernancePage() {
             }}
           >
             <PartyPopper size={34} color="#34d399" aria-hidden="true" />
+            {/* Copy verbatim from prototype lines 414-415 — an earlier build
+                paraphrased both strings, which the "copy is final" rule forbids. */}
             <span style={{ fontSize: "18px", fontWeight: 800, color: "#f8fafc" }}>
-              Every governance finding is resolved
+              Secure, within accepted risk
             </span>
             <span
               style={{
@@ -197,7 +210,9 @@ export default function PortalV2GovernancePage() {
                 textAlign: "center",
               }}
             >
-              Nothing in this pillar needs a decision from you right now.
+              Every open governance finding is resolved. Sharing, identity, apps &amp; roles,
+              and devices are all within your tenant baseline — the risk-accepted item above
+              stays visible and tracked, not swept away.
             </span>
           </div>
         ) : (
@@ -244,7 +259,15 @@ export default function PortalV2GovernancePage() {
                 }}
               />
 
-              {/* Heading + status pill */}
+              {/* ── Hero header: TWO COLUMNS ─────────────────────────────
+                  Prototype lines 423-450. This row has exactly two flex
+                  children: the title column (which CONTAINS the status pill)
+                  and the trend block. An earlier build had the pill as a third
+                  sibling pushed right by space-between, which forced the trend
+                  out of the row and stacked it underneath with a dead gap. The
+                  pill belongs inside the title column; the trend is the second
+                  child, and its `flex:1 1 260px` is what makes it fill the
+                  right-hand side. */}
               <div
                 style={{
                   position: "relative",
@@ -266,50 +289,52 @@ export default function PortalV2GovernancePage() {
                     }}
                     data-testid="pv2-gov-heading"
                   >
-                    Governance
+                    {GOV_HERO.title}
                   </span>
                   <span style={{ fontSize: "12.5px", color: "#94a3b8", lineHeight: 1.5 }}>
-                    Who can reach what, and whether anyone is still accountable for it.
+                    {GOV_HERO.subtitle}
                   </span>
-                </div>
-                <span
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 6,
-                    width: "fit-content",
-                    padding: "4px 10px",
-                    border: "1px solid rgba(194,166,61,.4)",
-                    borderRadius: 5,
-                    background: "rgba(194,166,61,.08)",
-                  }}
-                >
-                  <AlertTriangle size={10} color="#c2a63d" aria-hidden="true" />
                   <span
                     style={{
-                      fontSize: "10px",
-                      fontWeight: 700,
-                      letterSpacing: ".08em",
-                      textTransform: "uppercase",
-                      color: "#c2a63d",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                      width: "fit-content",
+                      whiteSpace: "nowrap",
+                      padding: "4px 10px",
+                      border: "1px solid rgba(194,166,61,.4)",
+                      borderRadius: 5,
+                      background: "rgba(194,166,61,.08)",
                     }}
+                    data-testid="pv2-gov-status-pill"
                   >
-                    Needs attention
+                    <AlertTriangle size={10} color="#c2a63d" aria-hidden="true" />
+                    <span
+                      style={{
+                        fontSize: "10px",
+                        fontWeight: 700,
+                        letterSpacing: ".08em",
+                        textTransform: "uppercase",
+                        color: "#c2a63d",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {GOV_HERO.statusLabel}
+                    </span>
                   </span>
-                </span>
-              </div>
+                </div>
 
-              {/* Trend sparkline — lines 433-449 */}
-              <div
-                style={{
-                  position: "relative",
-                  flex: "1 1 260px",
-                  minWidth: 220,
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 4,
-                }}
-              >
+                {/* Trend sparkline — prototype lines 433-449, the SECOND child
+                    of the header row so it sits to the right of the title. */}
+                <div
+                  style={{
+                    flex: "1 1 260px",
+                    minWidth: 220,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 4,
+                  }}
+                >
                 <span
                   style={{
                     fontSize: "9.5px",
@@ -321,6 +346,9 @@ export default function PortalV2GovernancePage() {
                 >
                   Drift trend · last 10 scans
                 </span>
+                {/* prototype line 435 — the svg and its baseline rule share a
+                    position:relative wrapper */}
+                <div style={{ position: "relative" }}>
                 <svg
                   width="100%"
                   height={trend.h}
@@ -347,7 +375,9 @@ export default function PortalV2GovernancePage() {
                   />
                   <circle cx={trend.lastX} cy={trend.lastY} r={3.5} fill="#60a5fa" />
                 </svg>
-                <div style={{ height: 1, background: "rgba(148,163,184,.14)" }} />
+                  <div style={{ height: 1, background: "rgba(148,163,184,.14)" }} />
+                </div>
+                </div>
               </div>
 
               {/* Ring + 3 stat cards — lines 452-484 */}
@@ -505,51 +535,17 @@ export default function PortalV2GovernancePage() {
               </div>
             </div>
 
-            {/* ── Scan status bar — lines 487-491 ───────────────────── */}
-            <div
-              style={{
-                position: "relative",
-                padding: "12px 20px",
-                border: "1px solid rgba(30,41,59,.9)",
-                borderRadius: 12,
-                background: "rgba(15,23,42,.4)",
-                display: "flex",
-                alignItems: "center",
-                gap: 0,
-                flexWrap: "wrap",
-              }}
-            >
-              <span
-                style={{
-                  width: 6,
-                  height: 6,
-                  borderRadius: "50%",
-                  background: "#22C55E",
-                  marginRight: 11,
-                  flex: "0 0 6px",
-                }}
-              />
-              <span style={{ fontSize: "12px", color: "#94a3b8" }}>
-                Scan{" "}
-                <span style={{ fontWeight: 700, color: "#e2e8f0", fontFamily: MONO }}>
-                  {GOV_HERO.scanNumber}
-                </span>{" "}
-                ·{" "}
-                <span style={{ fontWeight: 700, color: "#34d399", fontFamily: MONO }}>
-                  {GOV_HERO.fixedSinceScan1}
-                </span>{" "}
-                fixed in Governance since scan 1
-              </span>
-              <span
-                style={{
-                  marginLeft: "auto",
-                  fontSize: "11.5px",
-                  color: "#475569",
-                }}
-              >
-                Last scan {GOV_HERO.lastScan} · next in {GOV_HERO.nextScan}
-              </span>
-            </div>
+            {/* ── Scan status bar — prototype lines 487-491 ─────────────
+                Shared with Security (623-627), which is byte-identical apart
+                from the dot colour and pillar name — see PillarScanBar. */}
+            <PillarScanBar
+              dotColor="#22C55E"
+              pillarLabel="Governance"
+              scanNumber={GOV_HERO.scanNumber}
+              fixedSinceScan1={GOV_HERO.fixedSinceScan1}
+              lastScan={GOV_HERO.lastScan}
+              nextScan={GOV_HERO.nextScan}
+            />
 
             {/* ── Area link cards — lines 493-523 ───────────────────── */}
             <div

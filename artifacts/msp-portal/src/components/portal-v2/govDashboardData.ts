@@ -96,29 +96,43 @@ export const GOV_HERO = {
   lastScan: "2 hours ago",
   nextScan: "22 hours",
   riskAccepted: 1,
+  /**
+   * The three hero stat tiles. Labels are stored in Title Case exactly as the
+   * prototype writes them (lines 468, 474, 480) — the uppercase appearance comes
+   * from `text-transform:uppercase` in the tile style, NOT from the data. Storing
+   * them pre-uppercased would bake a presentation decision into the content.
+   *
+   * Copy is final: "Overdue Access Reviews" (not "Access reviews overdue") and
+   * "Governance Findings" (not "Open findings").
+   */
   stats: [
     {
-      label: "Access reviews overdue",
+      label: "Overdue Access Reviews",
       value: "12",
       sub: "Oldest is 61 days overdue",
       accent: "#14B8A6",
       orbAlpha: "2e",
     },
     {
-      label: "Global administrators",
+      label: "Global Administrators",
       value: "6",
       sub: "1 added this week",
       accent: "#3B82F6",
       orbAlpha: "33",
     },
     {
-      label: "Open findings",
+      label: "Governance Findings",
       value: "7",
       sub: "From your latest scan",
       accent: "#8B5CF6",
       orbAlpha: "33",
     },
   ],
+  /** Hero card title and subtitle — prototype lines 425-426. */
+  title: "Governance Health",
+  subtitle: "Governance pillar score from your latest scan",
+  /** Status pill — prototype line 429. */
+  statusLabel: "Needs attention",
 } as const;
 
 /**
