@@ -83,6 +83,8 @@ import NotFound from "@/pages/not-found";
 // pages, which are untouched. See components/portal-v2/.
 import PortalV2OverviewPage from "@/pages/portal-v2-overview";
 import PortalV2PillarPage from "@/pages/portal-v2-pillar";
+import PortalV2GovernancePage from "@/pages/portal-v2-governance";
+import PortalV2GovDetailPage from "@/pages/portal-v2-gov-detail";
 import ConsentDeclinedPage from "@/pages/consent-declined";
 import ConsentSuccessPage from "@/pages/consent-success";
 import ConsentTenantConflictPage from "@/pages/consent-tenant-conflict";
@@ -518,6 +520,17 @@ function SlugInnerSwitch() {
           so the index does not get swallowed by the param match. */}
       <Route path="/portal-v2">
         <ProtectedRoute component={PortalV2OverviewPage} />
+      </Route>
+      {/* Governance is rebuilt to the design's own composition (hero ring +
+          trend + cluster area cards) and its drill-downs to the reference
+          drill-down template. Both are declared BEFORE the generic
+          "/portal-v2/:pillar" so the param route does not swallow them; the
+          other five pillars still fall through to the generic page. */}
+      <Route path="/portal-v2/governance/:area">
+        <ProtectedRoute component={PortalV2GovDetailPage} />
+      </Route>
+      <Route path="/portal-v2/governance">
+        <ProtectedRoute component={PortalV2GovernancePage} />
       </Route>
       <Route path="/portal-v2/:pillar">
         <ProtectedRoute component={PortalV2PillarPage} />

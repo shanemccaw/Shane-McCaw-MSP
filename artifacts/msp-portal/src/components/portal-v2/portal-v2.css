@@ -54,6 +54,24 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* The drill-down page's two-column layout. Verbatim from the prototype's own
+   `.gov-grid` rule (Customer Portal Shell.dc.html head <style>, line 31) —
+   1.7fr / 1fr with a 22px gutter, collapsing to one column under 900px. Written
+   as a class rather than Tailwind fractions because the ratio is the spec and
+   `grid-cols-[1.7fr_1fr]` would put the same number somewhere less obvious. */
+.pv2-gov-grid {
+  display: grid;
+  grid-template-columns: 1.7fr 1fr;
+  gap: 22px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .pv2-gov-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* The one sanctioned motion band: 150–260ms state transitions, no bounce.
    journeyTokens MOTION.stateMinMs / stateMaxMs. */
 .pv2-transition {

@@ -1,0 +1,145 @@
+/**
+ * govDashboardData.ts — the Governance pillar dashboard fixture.
+ *
+ * Transcribed verbatim from the prototype: `govAreaLinksRaw` (line 11079), the
+ * hero scalars (lines 7269-7287) and the status/tier builder (11946-11988).
+ *
+ * ── Design content, not tenant data ─────────────────────────────────────────
+ * These are the prototype's fictional figures. The pillar's REAL score already
+ * flows through `usePortalV2Pillars` on the overview and the generic pillar
+ * page; this dashboard is the design's own composition, and swapping these for
+ * live values is Phase 3 work. Keeping them in one module is what makes that a
+ * single-file change — the same rule the build plan states for every fixture.
+ */
+
+export type GovAreaStatus = "red" | "yellow" | "green";
+
+export interface GovAreaLink {
+  key: string;
+  label: string;
+  score: number;
+  prevScore: number;
+  sub: string;
+  icon: string;
+  cluster: string;
+  weight: string;
+  status: GovAreaStatus;
+}
+
+/**
+ * Status → colour, copy, and TIER. Severity drives size as well as colour: a red
+ * area is rendered large and grows 3×, a green one is small and grows 1×, so the
+ * grid itself reads as a severity map before any number is read.
+ *
+ * Note yellow's wash deliberately ignores its own `c` and uses amber
+ * #fbbf24/#f59e0b — that is the prototype's own inconsistency, preserved because
+ * the alternative is a visibly different gradient from the design.
+ */
+export const GOV_STATUS_META: Readonly<
+  Record<GovAreaStatus, { c: string; label: string; tier: "large" | "medium" | "small"; wash: string }>
+> = {
+  red: {
+    c: "#f87171",
+    label: "Not yet addressed",
+    tier: "large",
+    wash: "linear-gradient(160deg, #f8717112, rgba(15,23,42,.5))",
+  },
+  yellow: {
+    c: "#c2a63d",
+    label: "Partially addressed",
+    tier: "medium",
+    wash: "linear-gradient(135deg, #fbbf2426, #f59e0b14, rgba(15,23,42,.5))",
+  },
+  green: {
+    c: "#34d399",
+    label: "Fully covered",
+    tier: "small",
+    wash: "linear-gradient(160deg, #34d39910, rgba(15,23,42,.5))",
+  },
+};
+
+/** Cluster order — line 11990. */
+export const GOV_CLUSTERS: readonly string[] = [
+  "Sharing & Collaboration",
+  "Identity & Ownership",
+  "Apps & Roles",
+  "Devices",
+];
+
+/** The 14 area tiles, verbatim from `govAreaLinksRaw` (line 11079). */
+export const GOV_AREA_LINKS: readonly GovAreaLink[] = [
+  { key: "governance-oversharing", label: "Overshared SharePoint", score: 5, prevScore: 3, sub: "sites shared externally", icon: "mail", cluster: "Sharing & Collaboration", weight: "large", status: "red" },
+  { key: "governance-public-teams", label: "Public Teams", score: 4, prevScore: 4, sub: "joinable by anyone", icon: "users", cluster: "Sharing & Collaboration", weight: "medium", status: "red" },
+  { key: "governance-sharing-drift", label: "External Sharing Drift", score: 3, prevScore: 1, sub: "new shares since last scan", icon: "git-commit", cluster: "Sharing & Collaboration", weight: "small", status: "red" },
+  { key: "governance-channels", label: "Channel Governance", score: 12, prevScore: 15, sub: "private/shared flagged", icon: "shield-check", cluster: "Sharing & Collaboration", weight: "small", status: "yellow" },
+  { key: "governance-guests", label: "Guest Access Governance", score: 34, prevScore: 21, sub: "guests, up from 21", icon: "users", cluster: "Identity & Ownership", weight: "large", status: "yellow" },
+  { key: "governance-group-owners", label: "Group Ownership Governance", score: 26, prevScore: 26, sub: "groups need an owner", icon: "key", cluster: "Identity & Ownership", weight: "medium", status: "red" },
+  { key: "governance-team-owners", label: "Team Ownership Governance", score: 6, prevScore: 8, sub: "teams need an owner", icon: "key", cluster: "Identity & Ownership", weight: "small", status: "yellow" },
+  { key: "governance-orphaned-groups", label: "Orphaned Groups", score: 11, prevScore: 9, sub: "no active members", icon: "users", cluster: "Identity & Ownership", weight: "small", status: "red" },
+  { key: "governance-orphaned-teams", label: "Orphaned Teams", score: 5, prevScore: 5, sub: "no active members", icon: "users", cluster: "Identity & Ownership", weight: "small", status: "yellow" },
+  { key: "governance-app-access", label: "App Governance", score: 14, prevScore: 12, sub: "apps, service principals", icon: "clipboard-list", cluster: "Apps & Roles", weight: "large", status: "yellow" },
+  { key: "governance-pim", label: "Role Governance (PIM)", score: 4, prevScore: 4, sub: "standing roles, not JIT", icon: "key", cluster: "Apps & Roles", weight: "medium", status: "red" },
+  { key: "governance-device-inventory", label: "Device Inventory Governance", score: 212, prevScore: 205, sub: "devices tracked", icon: "smartphone", cluster: "Devices", weight: "small", status: "green" },
+  { key: "governance-device-lifecycle", label: "Device Lifecycle Governance", score: 17, prevScore: 14, sub: "past retirement age", icon: "smartphone", cluster: "Devices", weight: "medium", status: "yellow" },
+  { key: "governance-device-ownership", label: "Device Ownership Governance", score: 23, prevScore: 19, sub: "no assigned owner", icon: "smartphone", cluster: "Devices", weight: "medium", status: "red" },
+];
+
+/** Hero scalars — lines 7270-7287, 11383-11384, 17973, 18006-18007. */
+export const GOV_HERO = {
+  score: 62,
+  delta: "-4 this month",
+  history: [70, 71, 69, 67, 68, 66, 65, 63, 64, 62],
+  globalAdmins: 6,
+  findingCount: 7,
+  scanNumber: 14,
+  fixedSinceScan1: 9,
+  lastScan: "2 hours ago",
+  nextScan: "22 hours",
+  riskAccepted: 1,
+  stats: [
+    {
+      label: "Access reviews overdue",
+      value: "12",
+      sub: "Oldest is 61 days overdue",
+      accent: "#14B8A6",
+      orbAlpha: "2e",
+    },
+    {
+      label: "Global administrators",
+      value: "6",
+      sub: "1 added this week",
+      accent: "#3B82F6",
+      orbAlpha: "33",
+    },
+    {
+      label: "Open findings",
+      value: "7",
+      sub: "From your latest scan",
+      accent: "#8B5CF6",
+      orbAlpha: "33",
+    },
+  ],
+} as const;
+
+/**
+ * The sparkline geometry, transcribed from the prototype's own IIFE (7271-7282).
+ * The ±3 headroom pad on the domain is what keeps the line off the frame edge.
+ */
+export function govTrendGeometry() {
+  const w = 280;
+  const h = 84;
+  const history = GOV_HERO.history;
+  const min = Math.min(...history) - 3;
+  const max = Math.max(...history) + 3;
+  const pts = history.map((v, i) => {
+    const x = (i / (history.length - 1)) * w;
+    const y = h - ((v - min) / (max - min || 1)) * h;
+    return { x: +x.toFixed(1), y: +y.toFixed(1) };
+  });
+  const line = pts.map((p) => `${p.x},${p.y}`).join(" ");
+  const area =
+    `M${pts[0].x},${h} L` +
+    pts.map((p) => `${p.x},${p.y}`).join(" L") +
+    ` L${pts[pts.length - 1].x},${h} Z`;
+  return { w, h, line, area, lastX: pts[pts.length - 1].x, lastY: pts[pts.length - 1].y };
+}
