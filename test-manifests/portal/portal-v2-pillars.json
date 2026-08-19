@@ -146,6 +146,97 @@
       "state": "visible"
     },
     {
+      "name": "goto the rebuilt Governance pillar dashboard.",
+      "action": "goto",
+      "target": "/portal/shane-mccaw-consulting/portal-v2/governance"
+    },
+    {
+      "name": "G1 -- the Governance hero renders with the design's own score ring (a bare numeral in mono, not the shared ScoreRing's percentage).",
+      "action": "expect",
+      "selector": "[data-testid='pv2-gov-score']",
+      "state": "visible",
+      "textContains": "62"
+    },
+    {
+      "name": "G2 -- the cluster area-card grid renders. Governance deliberately has NO finding rows -- the prototype builds governanceRows but never renders them -- so the area grid IS the pillar's content.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-gov-areas']",
+      "state": "visible",
+      "textContains": "Sharing & Collaboration"
+    },
+    {
+      "name": "G3 -- an area tile links into the drill-down.",
+      "action": "click",
+      "selector": "[data-testid='pv2-gov-area-governance-sharing-drift']",
+      "critical": true
+    },
+    {
+      "name": "G4 -- the drill-down renders its heading from the page data.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-gd-heading']",
+      "state": "visible",
+      "textContains": "External Sharing Drift"
+    },
+    {
+      "name": "G5 -- the Graph/PowerShell provenance block is present (the drill-down template's second section).",
+      "action": "expect",
+      "selector": "[data-testid='pv2-gd-provenance']",
+      "state": "visible",
+      "textContains": "How this is gathered"
+    },
+    {
+      "name": "G6 -- the tenant-policy block renders with its real setting names.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-gd-policy']",
+      "state": "visible",
+      "textContains": "RequireAnonymousLinksExpireInDays"
+    },
+    {
+      "name": "CR1 -- THE GATE, END TO END. A wrench on a policy row opens the fix panel on that fixKey.",
+      "action": "click",
+      "selector": "[data-testid='pv2-gd-policy-fix-gov-drift-anon-expiry']",
+      "critical": true
+    },
+    {
+      "name": "CR2 -- the fix panel opened on the right playbook.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-fix-panel']",
+      "state": "visible",
+      "textContains": "How would you like to handle this?"
+    },
+    {
+      "name": "CR3 -- choosing the Graph route goes to the CHANGE REQUEST step, not straight to the change. This is the gate's whole point: nothing runs without a CR.",
+      "action": "click",
+      "selector": "[data-testid='pv2-fix-route-graph']",
+      "critical": true
+    },
+    {
+      "name": "CR4 -- the CR step states the contract in the design's own words.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-fix-panel']",
+      "state": "visible",
+      "textContains": "Nothing changes in your tenant without a change request behind it"
+    },
+    {
+      "name": "CR5 -- submit is GATED on the confirmation checkbox. Ticking it is what arms the button.",
+      "action": "click",
+      "selector": "[data-testid='pv2-cr-confirm']",
+      "critical": true
+    },
+    {
+      "name": "CR6 -- submit the change request.",
+      "action": "click",
+      "selector": "[data-testid='pv2-cr-submit']",
+      "critical": true
+    },
+    {
+      "name": "CR7 -- the CR is raised and the panel shows the approval + rollback state. End of the gate flow.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-cr-submitted']",
+      "state": "visible",
+      "textContains": "approved for this window"
+    },
+    {
       "name": "U7 -- the live Governance page is UNTOUCHED by this build and still renders on its own route. This is the isolation guarantee.",
       "action": "goto",
       "target": "/portal/shane-mccaw-consulting/governance"
