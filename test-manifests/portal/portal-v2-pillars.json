@@ -290,6 +290,191 @@
       "textContains": "approved for this window"
     },
     {
+      "name": "goto the Overshared SharePoint drill-down. Before this pass the route rendered NotFound: 13 of the 14 area tiles pointed at /portal-v2/governance/<area> and only sharing-drift existed in GOV_PAGES.",
+      "action": "goto",
+      "target": "/portal/shane-mccaw-consulting/portal-v2/governance/oversharing"
+    },
+    {
+      "name": "OV1 -- the page renders its own heading, not NotFound.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-ovr-heading']",
+      "state": "visible",
+      "textContains": "Overshared SharePoint"
+    },
+    {
+      "name": "OV2 -- the stat cards carry the prototype's real values, including the tenant setting name the whole finding hangs on.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-ovr-stats']",
+      "state": "visible",
+      "textContains": "ExternalUserAndGuestSharing"
+    },
+    {
+      "name": "OV3 -- Top Risks are COLLAPSED on arrival. This page puts them behind a rule-and-label toggle, unlike the V2 drill-down template which shows its Top risks panel open in the right column.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-ovr-top-risks']",
+      "state": "absent"
+    },
+    {
+      "name": "OV4 -- open Top Risks.",
+      "action": "click",
+      "selector": "[data-testid='pv2-ovr-top-risks-toggle']",
+      "critical": true
+    },
+    {
+      "name": "OV5 -- the risks are the prototype's own five, verbatim.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-ovr-top-risks']",
+      "state": "visible",
+      "textContains": "Anonymous links found with edit access, not just view"
+    },
+    {
+      "name": "OV6 -- the Affected Sites evidence list renders the written-out sites.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-ovr-sites']",
+      "state": "visible",
+      "textContains": "Client Deliverables (SharePoint)"
+    },
+    {
+      "name": "OV7 -- the visibility filter really filters, it does not just restyle. Under 'Public' the 124-site set drops to 43, which pulls sites off later pages onto page 1.",
+      "action": "click",
+      "selector": "[data-testid='pv2-ovr-site-filter-public']",
+      "critical": true
+    },
+    {
+      "name": "OV8 -- proof the window moved: 'HR Onboarding #9' is site id 8, which is on page 2 under 'All' and can only appear on page 1 once the three Private sites ahead of it are filtered out. Asserted positively rather than as an absence, because uiStep `expect` supports textContains / textPrefixOfAny only -- a 'contains none' field would be silently ignored and the step would pass on element presence alone.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-ovr-sites']",
+      "state": "visible",
+      "textContains": "HR Onboarding #9"
+    },
+    {
+      "name": "OV9 -- back to All.",
+      "action": "click",
+      "selector": "[data-testid='pv2-ovr-site-filter-all']",
+      "critical": true
+    },
+    {
+      "name": "OV10 -- expand a site row.",
+      "action": "click",
+      "selector": "[data-testid='pv2-ovr-site-0']",
+      "critical": true
+    },
+    {
+      "name": "OV11 -- the expanded row shows the real principal counts, not a placeholder. 4 named admins + 48 generated staff = 52.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-ovr-site-0-admins']",
+      "state": "visible",
+      "textContains": "alex.rivera@tenant.com"
+    },
+    {
+      "name": "OV12 -- open the per-site runbook. The site is Public, so the Convert-to-Private playbook is the one offered.",
+      "action": "click",
+      "selector": "[data-testid='pv2-ovr-runbook-convert']",
+      "critical": true
+    },
+    {
+      "name": "OV13 -- the runbook is the prototype's, verbatim, including the RCD step.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-ovr-convert-runbook']",
+      "state": "visible",
+      "textContains": "Restricted Content Discoverability"
+    },
+    {
+      "name": "OV14 -- and it carries the SYNTHESISED verification step buildStepRows appends to every runbook: a runbook is not complete when the work is done, only when the scan says it took.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-ovr-convert-runbook']",
+      "state": "visible",
+      "textContains": "Run verification scan"
+    },
+    {
+      "name": "OV15 -- Accept risk opens the accept-risk drawer, which is the ONE action in the portal that raises no change request because nothing changes in the tenant.",
+      "action": "click",
+      "selector": "[data-testid='pv2-ovr-site-accept-0']",
+      "critical": true
+    },
+    {
+      "name": "OV16 -- the drawer names the specific site and states what is being signed.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-accept-risk']",
+      "state": "visible",
+      "textContains": "I confirm I understand this risk and accept it on behalf of the organization."
+    },
+    {
+      "name": "reset -- reload the drill-down to clear the drawer before the CR-gate steps.",
+      "action": "goto",
+      "target": "/portal/shane-mccaw-consulting/portal-v2/governance/oversharing"
+    },
+    {
+      "name": "OV17 -- THE GATE FROM THIS PAGE. The wrench on the Sharing Capability stat card opens the fix panel on the prototype's own fixKey.",
+      "action": "click",
+      "selector": "[data-testid='pv2-ovr-stat-fix-sharing-capability']",
+      "critical": true
+    },
+    {
+      "name": "OV18 -- it resolves to the real playbook, not the generic fallback. The fallback's title is 'Apply the recommended change'; this one names the setting.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-fix-panel']",
+      "state": "visible",
+      "textContains": "Sharing Capability is set to ExternalUserAndGuestSharing"
+    },
+    {
+      "name": "OV19 -- and the Graph route from here still lands on the CHANGE REQUEST step, same as every other fix in the portal.",
+      "action": "click",
+      "selector": "[data-testid='pv2-fix-route-graph']",
+      "critical": true
+    },
+    {
+      "name": "OV20 -- the CR step, reached from the oversharing page's own stat card.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-fix-panel']",
+      "state": "visible",
+      "textContains": "Nothing changes in your tenant without a change request behind it"
+    },
+    {
+      "name": "reset -- reload to clear the fix panel before the second evidence list.",
+      "action": "goto",
+      "target": "/portal/shane-mccaw-consulting/portal-v2/governance/oversharing"
+    },
+    {
+      "name": "OV21 -- the SECOND evidence list. This page has two independently filtered and paginated lists side by side; the V2 drill-down template has one table.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-ovr-links']",
+      "state": "visible",
+      "textContains": "Q3_Contract_Draft.docx"
+    },
+    {
+      "name": "OV22 -- the sites list is paginated at 8 a page over 124 sites, so the pager renders rather than the page dumping every row.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-ovr-sites-pager']",
+      "state": "visible",
+      "textContains": "Page 1 of 16"
+    },
+    {
+      "name": "OV23 -- paging actually moves the window.",
+      "action": "click",
+      "selector": "[data-testid='pv2-ovr-sites-next']",
+      "critical": true
+    },
+    {
+      "name": "OV24 -- page 2 holds different rows.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-ovr-sites-pager']",
+      "state": "visible",
+      "textContains": "Page 2 of 16"
+    },
+    {
+      "name": "goto the enterprise-scale bulk list, governance-oversharing-full -- a THIRD template, not the drill-down and not the V2 page.",
+      "action": "goto",
+      "target": "/portal/shane-mccaw-consulting/portal-v2/governance/oversharing/all"
+    },
+    {
+      "name": "OV25 -- it renders the enterprise heading with the grouped total, and offers search/bulk-fix/export instead of an expandable list.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-ovrall-heading']",
+      "state": "visible",
+      "textContains": "23,412 sites are shared externally"
+    },
+    {
       "name": "U7 -- the live Governance page is UNTOUCHED by this build and still renders on its own route. This is the isolation guarantee.",
       "action": "goto",
       "target": "/portal/shane-mccaw-consulting/governance"

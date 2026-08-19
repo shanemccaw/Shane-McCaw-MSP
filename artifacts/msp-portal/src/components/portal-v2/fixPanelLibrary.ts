@@ -47,6 +47,13 @@ export interface FixPlaybook {
 const GOVERNANCE = "#3B82F6";
 
 /**
+ * The substitute `fixPanelData` (prototype 16727) puts on any playbook with no
+ * `sopRef` of its own: `fixPanelDataRaw.sopRef || '...'`. Several of the
+ * prototype's playbooks deliberately have none.
+ */
+const SOP_REF_UNNAMED = "Written procedure attached from the SOP library";
+
+/**
  * The governance playbooks wired for this build.
  *
  * Only the fixes the Governance pillar actually references are transcribed. The
@@ -86,6 +93,95 @@ export const FIX_PLAYBOOKS: Readonly<Record<string, FixPlaybook>> = {
     ],
     resultSummary:
       "Anonymous link expiry set to 30 days. Pre-change state held in the rollback vault for 90 days.",
+  },
+
+  /**
+   * The two playbooks the Overshared SharePoint drill-down's stat cards open —
+   * verbatim from the prototype's own `fixPanelLibrary` entries (16664-16698),
+   * not from `GOV_FIXES`.
+   *
+   * Neither carries a `sopRef` in the prototype. That is not an omission to fill
+   * in: `fixPanelData` (16727) substitutes "Written procedure attached from the
+   * SOP library" for any playbook without one, so the CR step still names a
+   * procedure. Inventing an SOP number here would put a reference on the change
+   * request that resolves to nothing.
+   */
+  "sharing-capability": {
+    key: "sharing-capability",
+    title: "Sharing Capability is set to ExternalUserAndGuestSharing",
+    pillarColor: GOVERNANCE,
+    description:
+      "Your tenant currently allows sharing with any external user, including anonymous access links. This is the most permissive setting available and is the root cause behind several of the oversharing findings on this page.",
+    canAutomate: true,
+    sopRef: SOP_REF_UNNAMED,
+    riskText:
+      "This changes sharing tenant-wide immediately — any site relying on broader external sharing will be restricted the moment this runs.",
+    rewardText:
+      "Closes the largest sharing gap in one action and brings this setting in line with your tenant baseline.",
+    manualSteps: [
+      {
+        text: "Go to portal.azure.com and sign in with a Global Administrator or SharePoint Administrator account.",
+        link: "https://portal.azure.com",
+      },
+      {
+        text: 'In the search bar at the top, type "SharePoint admin center" and click the result.',
+        link: "https://admin.microsoft.com/sharepoint",
+      },
+      { text: "In the left-hand menu, click Policies, then click Sharing." },
+      {
+        text: 'Under "External sharing", drag the slider from "Anyone" down to "New and existing guests" (this matches your tenant baseline).',
+      },
+      { text: "Click Save at the top of the page." },
+      { text: 'Come back to this screen and click "Re-scan" to confirm the change took effect.' },
+    ],
+    graphSteps: [
+      "Authenticating with Microsoft Graph",
+      "Reading current sharing capability setting",
+      "Applying ExistingExternalUserSharingOnly policy",
+      "Verifying policy applied tenant-wide",
+      "Triggering rescan",
+    ],
+    resultSummary:
+      "Sharing Capability changed from ExternalUserAndGuestSharing to ExistingExternalUserSharingOnly.",
+  },
+
+  "sharing-drift": {
+    key: "sharing-drift",
+    title: "Site sharing exceeds your tenant baseline policy",
+    pillarColor: GOVERNANCE,
+    description:
+      "This site’s own sharing policy was set wider than your tenant’s baseline at some point, likely by a site admin. That gap is what’s flagged as \"drift\" — the site is out of sync with the standard every other site follows.",
+    canAutomate: true,
+    sopRef: SOP_REF_UNNAMED,
+    riskText:
+      "This resets the site’s sharing policy — any custom exceptions configured on this site will be removed.",
+    rewardText:
+      "Realigns this site to your approved baseline and closes the drift finding immediately.",
+    manualSteps: [
+      {
+        text: "Go to portal.azure.com and sign in with a Global Administrator or SharePoint Administrator account.",
+        link: "https://portal.azure.com",
+      },
+      {
+        text: 'In the search bar at the top, type "SharePoint admin center" and click the result.',
+        link: "https://admin.microsoft.com/sharepoint",
+      },
+      { text: "In the left-hand menu, click Sites, then click Active sites." },
+      { text: "Click on the affected site’s name to open its settings panel." },
+      { text: "Click the Policies tab, then click Sharing." },
+      {
+        text: 'Select "Same as SharePoint and OneDrive" to inherit the tenant baseline, then click Save.',
+      },
+      { text: 'Come back to this screen and click "Re-scan" to confirm the change took effect.' },
+    ],
+    graphSteps: [
+      "Authenticating with Microsoft Graph",
+      "Reading site sharing policy",
+      "Resetting to tenant baseline",
+      "Verifying alignment",
+      "Triggering rescan",
+    ],
+    resultSummary: "Site sharing policy reset to inherit the tenant-wide baseline.",
   },
 
   "gov-orphan-teams-archive": {

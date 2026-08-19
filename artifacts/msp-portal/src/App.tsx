@@ -85,6 +85,8 @@ import PortalV2OverviewPage from "@/pages/portal-v2-overview";
 import PortalV2PillarPage from "@/pages/portal-v2-pillar";
 import PortalV2GovernancePage from "@/pages/portal-v2-governance";
 import PortalV2GovDetailPage from "@/pages/portal-v2-gov-detail";
+import PortalV2GovOversharingPage from "@/pages/portal-v2-gov-oversharing";
+import PortalV2GovOversharingAllPage from "@/pages/portal-v2-gov-oversharing-all";
 import ConsentDeclinedPage from "@/pages/consent-declined";
 import ConsentSuccessPage from "@/pages/consent-success";
 import ConsentTenantConflictPage from "@/pages/consent-tenant-conflict";
@@ -526,6 +528,18 @@ function SlugInnerSwitch() {
           drill-down template. Both are declared BEFORE the generic
           "/portal-v2/:pillar" so the param route does not swallow them; the
           other five pillars still fall through to the generic page. */}
+      {/* Overshared SharePoint is its own template, not a GOV_PAGES entry — the
+          prototype renders `governance-oversharing` from `isGovOversharingDetail`
+          and `governance-oversharing-full` from a third, bulk-list section. Both
+          are declared before "/portal-v2/governance/:area" so the param route
+          does not swallow them; "…/oversharing/all" precedes "…/oversharing" for
+          the same reason. */}
+      <Route path="/portal-v2/governance/oversharing/all">
+        <ProtectedRoute component={PortalV2GovOversharingAllPage} />
+      </Route>
+      <Route path="/portal-v2/governance/oversharing">
+        <ProtectedRoute component={PortalV2GovOversharingPage} />
+      </Route>
       <Route path="/portal-v2/governance/:area">
         <ProtectedRoute component={PortalV2GovDetailPage} />
       </Route>

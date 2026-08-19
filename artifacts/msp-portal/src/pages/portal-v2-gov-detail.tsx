@@ -31,6 +31,7 @@ import NotFound from "@/pages/not-found";
 import { PortalV2Shell } from "@/components/portal-v2/PortalV2Shell";
 import { FixPanel, useFixPanel } from "@/components/portal-v2/FixPanel";
 import { useFormDrawer } from "@/components/portal-v2/FormDrawer";
+import { useAcceptRisk } from "@/components/portal-v2/AcceptRiskPanel";
 import {
   GOV_MONO,
   GOV_SRC_META,
@@ -217,6 +218,34 @@ export default function PortalV2GovDetailPage() {
   const [expanded, setExpanded] = useState<number | null>(null);
   const [provOpen, setProvOpen] = useState(false);
 
+  const askShaneBot = (topic: string) =>
+    openForm({
+      kicker: "Ask ShaneBot",
+      title: "Ask about this finding",
+      intro: topic,
+      submitLabel: "Send to ShaneBot",
+      fields: [
+        {
+          id: "question",
+          label: "Your question",
+          kind: "textarea",
+          wide: true,
+          placeholder: "What would you like to know about this?",
+        },
+      ],
+      doneTitle: "Sent",
+      doneNote:
+        "ShaneBot has the finding and your tenant context. The reply appears in your chat panel.",
+    });
+
+  // The fix panel's "Accept it as a risk instead" route was calling an optional
+  // callback nobody supplied, which made it the one dead end in the CR gate.
+  // The drawer is shared with the Overshared SharePoint page.
+  const { openAcceptRisk, acceptRiskElement } = useAcceptRisk({
+    onConfirm: () => {},
+    onAskShaneBot: askShaneBot,
+  });
+
   if (!page) return <NotFound />;
 
   const gridCss = page.table.cols.map((c) => c.w).join(" ");
@@ -233,29 +262,31 @@ export default function PortalV2GovDetailPage() {
         provOpen={provOpen}
         setProvOpen={setProvOpen}
         onFix={openFixPanel}
-        onAskShaneBot={(topic) =>
-          openForm({
-            kicker: "Ask ShaneBot",
-            title: "Ask about this finding",
-            intro: topic,
-            submitLabel: "Send to ShaneBot",
-            fields: [
-              {
-                id: "question",
-                label: "Your question",
-                kind: "textarea",
-                wide: true,
-                placeholder: "What would you like to know about this?",
-              },
-            ],
-            doneTitle: "Sent",
-            doneNote:
-              "ShaneBot has the finding and your tenant context. The reply appears in your chat panel.",
-          })
-        }
+        onAskShaneBot={askShaneBot}
       />
 
-      {fixKey && <FixPanel fixKey={fixKey} onClose={closeFixPanel} />}
+      {fixKey && (
+        <FixPanel
+          fixKey={fixKey}
+          onClose={closeFixPanel}
+          onAskShaneBot={(playbook) =>
+            askShaneBot(
+              `Explain this finding to me before I approve the change: ${playbook.title}`,
+            )
+          }
+          onAcceptRisk={(playbook) => {
+            closeFixPanel();
+            openAcceptRisk({
+              title: playbook.title,
+              description: playbook.description,
+              details:
+                "Accepting instead of fixing suppresses this finding’s points in the pillar score and mutes its alerts, and puts it on the risk register with your name, a rationale and a review date. It stays visible as an accepted risk. No change request is raised because nothing changes in the tenant.",
+              kicker: "Accept instead of fixing",
+            });
+          }}
+        />
+      )}
+      {acceptRiskElement}
       {formElement}
     </PortalV2Shell>
   );
