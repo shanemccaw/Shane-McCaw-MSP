@@ -112,12 +112,29 @@
 }
 
 /*
- * Brand palette — Fluent 2, neutral (not blue-tinted):
- *   Dark bg      #1a1a1a  → HSL 0 0% 10.2%
- *   Dark layer1  #1f1f1f  → HSL 0 0% 12.2%
- *   Dark card    #242424  → HSL 0 0% 14.1%
- *   Dark elevated #2b2b2b → HSL 0 0% 16.9%
- *   Accent blue  #479ef5  → HSL 212 87% 64%
+ * Brand palette — the Customer Portal design language (navy / slate).
+ *
+ * REPLACED the previous Fluent 2 neutral palette (#1a1a1a / #242424 / #479ef5),
+ * which is retired and is no longer a reference for anything new. The values
+ * below are journeyTokens.ts's BRAND and the Customer Portal handoff's own
+ * surfaces, expressed as the raw HSL triplets this app's tokens use.
+ *
+ * NOTE FOR ANYONE CHASING A COLOUR THAT DIDN'T MOVE: a token retheme only
+ * repaints code that reads tokens. Literal hex in .tsx does not follow. There
+ * are ~1163 hardcoded #0078D4 usages plus whole folders written against literal
+ * hex (components/msp-portal/, msp-tenants/, assessment-test/,
+ * m365-health/Header.tsx). Those need a per-file sweep and are tracked in the
+ * build plan, not fixed here. components/copilot-journey/ is exempt — it reads
+ * journeyTokens directly and is already on this palette.
+ *
+ *   Dark canvas  #020617  → HSL 229 84% 5%    (slate-950, BRAND.canvas)
+ *   Dark panel   #0b1524  → HSL 216 53% 9%
+ *   Dark raised  #0f172a  → HSL 222 47% 11%   (slate-900)
+ *   Hairline     #1e293b  → HSL 217 33% 17%   (slate-800)
+ *   Deep Navy    #0A2540  → HSL 213 74% 15%   (light ink + chrome)
+ *   Off-White    #F7F9FC  → HSL 216 38% 98%   (light page)
+ *   Electric Blue #0078D4 → HSL 206 100% 42%  (primary)
+ *   Bright Teal  #00B4D8  → HSL 190 100% 42%  (accent)
  *   Status red   #e0554f  → HSL 3 68% 58%
  *   Status amber #d9a441  → HSL 40 65% 55%
  *   Status green #4caf7d  → HSL 149 36% 49%
@@ -135,74 +152,81 @@
   --elevate-1: rgba(0,0,0,.03);
   --elevate-2: rgba(0,0,0,.08);
 
-  /* Neutral off-white background (not blue-white) */
-  --background: 0 0% 98%;
-  --foreground: 0 0% 13%;
+  /* ── Brand light theme — Off-White + Deep Navy ────────────────────────
+     The design is dark-only and says nothing about light mode, but this app
+     has a real per-account light/dark toggle (lib/theme-context.tsx). Rather
+     than strand light on the retired Fluent 2 neutral palette, it moves onto
+     the brand's own light values: Off-White #F7F9FC page, Deep Navy #0A2540
+     ink and chrome, Electric Blue #0078D4 primary — the same four brand
+     colours journeyTokens' BRAND declares. */
 
-  /* Card — one step more distinct than background */
+  /* Off-White #F7F9FC */
+  --background: 216 38% 98%;
+  --foreground: 213 74% 15%;
+
   --card: 0 0% 100%;
-  --card-foreground: 0 0% 13%;
-  --card-border: 0 0% 88%;
+  --card-foreground: 213 74% 15%;
+  --card-border: 216 20% 92%;
 
-  /* Popovers */
   --popover: 0 0% 100%;
-  --popover-foreground: 0 0% 13%;
-  --popover-border: 0 0% 87%;
+  --popover-foreground: 213 74% 15%;
+  --popover-border: 216 20% 90%;
 
-  /* Primary — accent blue */
-  --primary: 212 87% 52%;
+  /* Primary — Electric Blue #0078D4 */
+  --primary: 206 100% 42%;
   --primary-foreground: 0 0% 100%;
 
-  /* Secondary */
-  --secondary: 0 0% 92%;
-  --secondary-foreground: 0 0% 13%;
+  --secondary: 213 30% 92%;
+  --secondary-foreground: 213 74% 15%;
 
-  /* Muted */
-  --muted: 0 0% 94%;
-  --muted-foreground: 0 0% 38%;
+  --muted: 213 20% 94%;
+  --muted-foreground: 213 30% 45%;
 
-  /* Accent — reuses status violet as the secondary accent category color */
-  --accent: 271 45% 52%;
+  /* Accent — Bright Teal #00B4D8 */
+  --accent: 190 100% 42%;
   --accent-foreground: 0 0% 100%;
 
-  /* Destructive — status red */
-  --destructive: 3 65% 50%;
+  --destructive: 0 72% 51%;
   --destructive-foreground: 0 0% 100%;
 
-  /* Status colors (functional only) */
-  --status-red: 3 65% 50%;
-  --status-amber: 40 70% 42%;
-  --status-green: 149 45% 36%;
-  --status-blue: 212 87% 52%;
-  --status-violet: 271 45% 52%;
-  --status-teal: 174 60% 36%;
+  /* Status — journeyTokens SEVERITY_ON_LIGHT.
+     critical #dc2626 · attention #d97706 · healthy #15803d */
+  --status-red: 0 72% 51%;
+  --status-amber: 32 94% 44%;
+  --status-green: 142 72% 29%;
+  --status-blue: 206 100% 42%;
+  --status-violet: 263 83% 58%;
+  --status-teal: 192 82% 31%;
 
-  /* Sidebar — layered one step darker than page background */
-  --sidebar: 0 0% 96%;
-  --sidebar-foreground: 0 0% 13%;
-  --sidebar-border: 0 0% 87%;
-  --sidebar-primary: 212 87% 52%;
+  /* Sidebar — Deep Navy chrome against the off-white page */
+  --sidebar: 213 74% 15%;
+  --sidebar-foreground: 0 0% 96%;
+  --sidebar-border: 213 40% 22%;
+  --sidebar-primary: 206 100% 52%;
   --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 0 0% 91%;
-  --sidebar-accent-foreground: 0 0% 13%;
-  --sidebar-ring: 212 87% 52%;
+  --sidebar-accent: 213 40% 22%;
+  --sidebar-accent-foreground: 0 0% 92%;
+  --sidebar-ring: 206 100% 52%;
 
-  /* Inputs */
-  --border: 0 0% 87%;
-  --input: 0 0% 87%;
-  --ring: 212 87% 52%;
+  --border: 216 20% 88%;
+  --input: 216 20% 88%;
+  --ring: 206 100% 42%;
 
-  /* Charts */
-  --chart-1: 212 87% 52%;
-  --chart-2: 271 45% 52%;
-  --chart-3: 0 0% 30%;
-  --chart-4: 40 70% 42%;
-  --chart-5: 3 65% 50%;
+  --chart-1: 206 100% 42%;
+  --chart-2: 190 100% 42%;
+  --chart-3: 213 74% 25%;
+  --chart-4: 32 94% 44%;
+  --chart-5: 0 72% 51%;
 
-  /* Typography */
-  --app-font-sans: 'Segoe UI', 'Inter', system-ui, sans-serif;
+  /* Typography — Inter FIRST. It was behind 'Segoe UI', so on Windows (which is
+     most of this product's users) Inter never actually rendered despite being
+     loaded. The design system is explicit that Inter is the sole typeface.
+     Mono falls back through faces that genuinely exist on the host: the
+     previously-declared 'IBM Plex Mono' is not loaded anywhere in this app, so
+     font-mono silently resolved to the generic default. */
+  --app-font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --app-font-serif: Georgia, serif;
-  --app-font-mono: 'IBM Plex Mono', monospace;
+  --app-font-mono: 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
   --radius: .375rem;
   --radius-control: .25rem;
   --radius-card: .375rem;
@@ -243,73 +267,85 @@
   --elevate-1: rgba(255,255,255,.04);
   --elevate-2: rgba(255,255,255,.09);
 
-  /* Neutral gray background — #1a1a1a, not navy */
-  --background: 0 0% 10.2%;
-  --foreground: 0 0% 94.1%;
+  /* ── Customer Portal design palette — slate/navy, NOT Fluent 2 neutral ──
+     The dark canvas of the Copilot Readiness journey and the Customer Portal
+     handoff: slate-950 #020617. journeyTokens.ts's BRAND.canvas is the literal
+     source; these are the same colours as raw HSL triplets, which is the form
+     this app's tokens take. Fluent 2 neutral (#1a1a1a / #242424 / #479ef5) was
+     the previous palette and is deliberately gone. */
 
-  /* Card — one layer lighter than background: #242424 */
-  --card: 0 0% 14.1%;
-  --card-foreground: 0 0% 94.1%;
-  --card-border: 0 0% 100% / .08;
+  /* Canvas — slate-950 #020617 */
+  --background: 229 84% 5%;
+  --foreground: 210 40% 98%;
 
-  --popover: 0 0% 14.1%;
-  --popover-foreground: 0 0% 94.1%;
-  --popover-border: 0 0% 100% / .08;
+  /* Panel — #0b1524, the handoff's card surface */
+  --card: 216 53% 9%;
+  --card-foreground: 210 40% 98%;
+  --card-border: 217 33% 17%;
 
-  /* Primary — accent blue #479ef5 */
-  --primary: 212 87% 64%;
-  --primary-foreground: 0 0% 10%;
+  --popover: 216 53% 9%;
+  --popover-foreground: 210 40% 98%;
+  --popover-border: 217 33% 17%;
 
-  /* Secondary — elevated surface #2b2b2b */
-  --secondary: 0 0% 16.9%;
-  --secondary-foreground: 0 0% 90%;
+  /* Primary — Electric Blue #0078D4, brightened for a dark surface */
+  --primary: 206 100% 52%;
+  --primary-foreground: 0 0% 100%;
 
-  --muted: 0 0% 16.9%;
-  --muted-foreground: 0 0% 54%;
+  /* Secondary — raised slate-900 #0f172a */
+  --secondary: 222 47% 11%;
+  --secondary-foreground: 213 27% 84%;
 
-  /* Accent — status violet, secondary category accent */
-  --accent: 271 51% 71%;
-  --accent-foreground: 0 0% 10%;
+  --muted: 217 33% 17%;
+  --muted-foreground: 215 20% 65%;
 
-  --destructive: 3 68% 58%;
-  --destructive-foreground: 0 0% 100%;
+  /* Accent — Bright Teal #00B4D8 */
+  --accent: 190 100% 42%;
+  --accent-foreground: 229 84% 5%;
 
-  /* Status colors (functional only) */
-  --status-red: 3 68% 58%;
-  --status-amber: 40 65% 55%;
-  --status-green: 149 36% 49%;
-  --status-blue: 212 87% 64%;
-  --status-violet: 271 51% 71%;
-  --status-teal: 174 55% 55%;
+  --destructive: 0 91% 71%;
+  --destructive-foreground: 229 84% 5%;
 
-  /* Sidebar / header layer — #1f1f1f, one step above page bg */
-  --sidebar: 0 0% 12.2%;
-  --sidebar-foreground: 0 0% 92%;
-  --sidebar-border: 0 0% 100% / .08;
-  --sidebar-primary: 212 87% 64%;
-  --sidebar-primary-foreground: 0 0% 10%;
-  --sidebar-accent: 0 0% 16.9%;
-  --sidebar-accent-foreground: 0 0% 90%;
-  --sidebar-ring: 212 87% 64%;
+  /* Status — journeyTokens SEVERITY_ON_DARK plus the journey's info/teal.
+     critical #f87171 · attention #fbbf24 · healthy #34d399 · link #60a5fa
+     · violet #a78bfa · teal #22d3ee */
+  --status-red: 0 91% 71%;
+  --status-amber: 43 96% 56%;
+  --status-green: 160 64% 52%;
+  --status-blue: 213 94% 68%;
+  --status-violet: 255 92% 76%;
+  --status-teal: 187 85% 53%;
 
-  --border: 0 0% 100% / .08;
-  --input: 0 0% 100% / .08;
-  --ring: 212 87% 64%;
+  /* Sidebar — the handoff's panel surface, one step off the canvas */
+  --sidebar: 216 53% 9%;
+  --sidebar-foreground: 213 27% 84%;
+  --sidebar-border: 217 33% 17%;
+  --sidebar-primary: 206 100% 52%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 222 47% 11%;
+  --sidebar-accent-foreground: 210 40% 98%;
+  --sidebar-ring: 206 100% 52%;
 
-  --chart-1: 212 87% 64%;
-  --chart-2: 271 51% 71%;
-  --chart-3: 0 0% 60%;
-  --chart-4: 40 65% 55%;
-  --chart-5: 3 68% 58%;
+  /* Hairlines — slate-800 #1e293b, the handoff's border value */
+  --border: 217 33% 17%;
+  --input: 214 61% 11%;
+  --ring: 206 100% 52%;
 
-  --shadow-2xs: 0px 1px 2px 0px rgba(0,0,0,.30);
-  --shadow-xs: 0px 1px 3px 0px rgba(0,0,0,.35);
-  --shadow-sm: 0px 1px 2px 0px rgba(0,0,0,.30), 0px 2px 4px -1px rgba(0,0,0,.25);
-  --shadow: 0px 1px 3px 0px rgba(0,0,0,.35), 0px 4px 6px -2px rgba(0,0,0,.25);
-  --shadow-md: 0px 4px 6px -1px rgba(0,0,0,.35), 0px 2px 4px -2px rgba(0,0,0,.25);
-  --shadow-lg: 0px 10px 15px -3px rgba(0,0,0,.35), 0px 4px 6px -4px rgba(0,0,0,.25);
-  --shadow-xl: 0px 20px 25px -5px rgba(0,0,0,.40), 0px 8px 10px -6px rgba(0,0,0,.25);
-  --shadow-2xl: 0px 25px 50px -12px rgba(0,0,0,.50);
+  --chart-1: 213 94% 68%;
+  --chart-2: 255 92% 76%;
+  --chart-3: 187 85% 53%;
+  --chart-4: 43 96% 56%;
+  --chart-5: 0 91% 71%;
+
+  /* Shadows — navy-tinted only, per the handoff. rgba(2,6,23,…) is the canvas
+     itself, so depth reads as the page receding rather than as grey haze. */
+  --shadow-2xs: 0px 1px 2px 0px rgba(2,6,23,.35);
+  --shadow-xs: 0px 1px 3px 0px rgba(2,6,23,.40);
+  --shadow-sm: 0px 1px 2px 0px rgba(2,6,23,.35), 0px 2px 4px -1px rgba(2,6,23,.30);
+  --shadow: 0px 1px 3px 0px rgba(2,6,23,.40), 0px 4px 6px -2px rgba(2,6,23,.30);
+  --shadow-md: 0px 4px 6px -1px rgba(2,6,23,.40), 0px 2px 4px -2px rgba(2,6,23,.30);
+  --shadow-lg: 0px 18px 44px -3px rgba(2,6,23,.55), 0px 4px 6px -4px rgba(2,6,23,.30);
+  --shadow-xl: 0px 24px 60px -5px rgba(2,6,23,.60), 0px 8px 10px -6px rgba(2,6,23,.30);
+  --shadow-2xl: 0px 30px 70px -12px rgba(2,6,23,.70);
 
   --sidebar-primary-border: hsl(var(--sidebar-primary));
   --sidebar-primary-border: hsl(from hsl(var(--sidebar-primary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
