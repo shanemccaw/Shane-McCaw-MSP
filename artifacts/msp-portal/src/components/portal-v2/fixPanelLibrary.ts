@@ -21,6 +21,8 @@
  * README's "no dead ends" rule applied to the gate itself.
  */
 
+import { CMP_FIX_PLAYBOOKS } from "./cmpFixPlaybooks";
+
 export interface FixManualStep {
   text: string;
   link?: string;
@@ -260,9 +262,18 @@ export function fixFallback(key: string): FixPlaybook {
   };
 }
 
-/** Resolve a fixKey to its playbook. Never returns null — see fixFallback. */
+/**
+ * Resolve a fixKey to its playbook. Never returns null — see fixFallback.
+ *
+ * The Compliance set is merged in rather than inlined above because the
+ * prototype assembles it differently: `complianceFixLibrary` is BUILT from
+ * `CMP_FIXES` through a mapper that adds a Purview sign-in step and a re-scan
+ * step to every entry (12256-12274). Keeping that mapper intact in its own
+ * module is what stops those two steps being dropped the next time a compliance
+ * playbook is edited.
+ */
 export function playbookFor(key: string): FixPlaybook {
-  return FIX_PLAYBOOKS[key] ?? fixFallback(key);
+  return FIX_PLAYBOOKS[key] ?? CMP_FIX_PLAYBOOKS[key] ?? fixFallback(key);
 }
 
 /**

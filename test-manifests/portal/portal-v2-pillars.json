@@ -567,6 +567,198 @@
       "textContains": "View full risk register"
     },
     {
+      "name": "goto the rebuilt Compliance pillar dashboard.",
+      "action": "goto",
+      "target": "/portal/shane-mccaw-consulting/portal-v2/compliance"
+    },
+    {
+      "name": "C1 -- the hero renders its own score. Compliance is the only pillar whose delta is a hardcoded literal rather than derived, because its last two scans are both 78.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-cmp-score']",
+      "state": "visible",
+      "textContains": "78"
+    },
+    {
+      "name": "C2 -- the status pill is a DOT plus a sentence fragment, not a warning glyph plus one word. No emoji substitution arises on this pillar at all.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-cmp-status-pill']",
+      "state": "visible",
+      "textContains": "Stable · 6 gaps open"
+    },
+    {
+      "name": "C3 -- the trend is labelled 'Gaps closed', NOT 'Drift trend', and its caption sits below the baseline rule where Security's verdict sits above the chart. Getting this wrong would put the right chart under the wrong claim.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-cmp-trend']",
+      "state": "visible",
+      "textContains": "Gaps closed · last 10 scans"
+    },
+    {
+      "name": "C4 -- and the caption itself, which is the pillar's thesis in one line.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-cmp-trend']",
+      "state": "visible",
+      "textContains": "Compliance improves by closing gaps, not by repelling attacks."
+    },
+    {
+      "name": "C5 -- the 'Why this pillar reads differently' panel. No other pillar explains itself, and its whole point is that nothing here is being exploited today.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-cmp-why']",
+      "state": "visible",
+      "textContains": "none of it can be fixed retroactively"
+    },
+    {
+      "name": "C6 -- the three scrutiny moments, including the one with no notice at all.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-cmp-why']",
+      "state": "visible",
+      "textContains": "A breach investigation"
+    },
+    {
+      "name": "C7 -- the scan strip is NOT the shared PillarScanBar: its dot does not pulse and its sentence ends 'none reopened'.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-cmp-scan-bar']",
+      "state": "visible",
+      "textContains": "gaps closed in Compliance since scan 1, none reopened"
+    },
+    {
+      "name": "C8 -- THE README IS RIGHT ABOUT THIS PILLAR. Governance and Security build a findings array no template consumes, so neither renders rows; Compliance genuinely does, and this is the section carrying them.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-cmp-gaps']",
+      "state": "visible",
+      "textContains": "12 mailboxes are not covered by any retention policy"
+    },
+    {
+      "name": "C9 -- each gap cites the obligation it touches, in mono, on the collapsed row.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-cmp-gaps']",
+      "state": "visible",
+      "textContains": "SOX §802 · 17 CFR 210.2-06"
+    },
+    {
+      "name": "C10 -- expand a gap.",
+      "action": "click",
+      "selector": "[data-testid='pv2-cmp-gap-CMP-03']",
+      "critical": true
+    },
+    {
+      "name": "C11 -- the expansion carries the obligation TEXT, which the collapsed row only cites by reference.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-cmp-gaps']",
+      "state": "visible",
+      "textContains": "non-rewritable, non-erasable form"
+    },
+    {
+      "name": "C12 -- and the evidence grid, keyed and valued.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-cmp-gaps']",
+      "state": "visible",
+      "textContains": "6 Global Administrators, 2 Compliance Administrators"
+    },
+    {
+      "name": "C13 -- THE GATE FROM A COMPLIANCE GAP. The wrench opens the fix panel on a REAL playbook, not the generic fallback -- these six exist in the prototype and are transcribed, unlike governance's four sharing-drift keys.",
+      "action": "click",
+      "selector": "[data-testid='pv2-cmp-fix-cmp-preservation-lock']",
+      "critical": true
+    },
+    {
+      "name": "C14 -- it resolved to the named playbook. The fallback's title is 'Apply the recommended change'.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-fix-panel']",
+      "state": "visible",
+      "textContains": "Apply Preservation Lock to the retention policy"
+    },
+    {
+      "name": "C15 -- take the MANUAL route. It is gated by the CR step exactly like the Graph route, which is the gate's whole point: a change is a change whoever's hands are on it.",
+      "action": "click",
+      "selector": "[data-testid='pv2-fix-route-manual']",
+      "critical": true
+    },
+    {
+      "name": "C16 -- the CR gate still applies to a compliance fix, same as every other pillar.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-fix-panel']",
+      "state": "visible",
+      "textContains": "Nothing changes in your tenant without a change request behind it"
+    },
+    {
+      "name": "C16a -- arm the CR confirmation.",
+      "action": "click",
+      "selector": "[data-testid='pv2-cr-confirm']",
+      "critical": true
+    },
+    {
+      "name": "C16b -- submit it.",
+      "action": "click",
+      "selector": "[data-testid='pv2-cr-submit']",
+      "critical": true
+    },
+    {
+      "name": "C16c -- continue past the raised CR to the procedure itself.",
+      "action": "click",
+      "selector": "[data-testid='pv2-cr-continue']",
+      "critical": true
+    },
+    {
+      "name": "C16d -- THE WRAPPER STEP, ASSERTED IN THE REAL DOM. The prototype does not store this step with the fix: `complianceFixLibrary` PREPENDS a Purview sign-in to every compliance playbook (12256-12274). A transcription that copied the per-fix `manual` array flat would drop it from all six playbooks and nothing on screen would look wrong.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-fix-manual']",
+      "state": "visible",
+      "textContains": "Sign in to the Microsoft Purview portal with a Compliance Administrator account"
+    },
+    {
+      "name": "C16e -- and the appended step at the other end of the same wrapper.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-fix-manual']",
+      "state": "visible",
+      "textContains": "export the evidence pack for your records"
+    },
+    {
+      "name": "reset -- reload before the remaining sections.",
+      "action": "goto",
+      "target": "/portal/shane-mccaw-consulting/portal-v2/compliance"
+    },
+    {
+      "name": "C17 -- Documented Policy Decisions are rendered IN FULL, with the rationale an auditor reads rather than just an 'accepted' badge. No other pillar has this section.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-cmp-decisions']",
+      "state": "visible",
+      "textContains": "classifies Teams chat as transitory communication rather than a record"
+    },
+    {
+      "name": "C18 -- each decision carries its four-field audit trail, including the risk-register reference.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-cmp-decisions']",
+      "state": "visible",
+      "textContains": "RR-2026-011"
+    },
+    {
+      "name": "C19 -- Obligations We Check Against renders, including the framework deliberately marked OUT of scope. Hiding it would misrepresent the scope as narrower than it was set.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-cmp-obligations']",
+      "state": "visible",
+      "textContains": "PCI DSS v4.0"
+    },
+    {
+      "name": "C20 -- and the out-of-scope row keeps its invitation to correct the scope.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-cmp-obligations']",
+      "state": "visible",
+      "textContains": "Tell us if that changed and every check re-evaluates."
+    },
+    {
+      "name": "C21 -- an area card that maps to a gap is interactive; clicking it opens that gap rather than navigating.",
+      "action": "click",
+      "selector": "[data-testid='pv2-cmp-area-compliance-audit-retention']",
+      "critical": true
+    },
+    {
+      "name": "C22 -- and the gap it points at is now expanded, showing its evidence.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-cmp-gaps']",
+      "state": "visible",
+      "textContains": "Anything before 20 February 2026 is already unavailable to search"
+    },
+    {
       "name": "S12 -- REGRESSION GUARD on extracting DriftTrend out of the Governance page: Governance's own trend must still render after the refactor.",
       "action": "goto",
       "target": "/portal/shane-mccaw-consulting/portal-v2/governance"

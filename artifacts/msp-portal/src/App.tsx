@@ -86,6 +86,7 @@ import PortalV2PillarPage from "@/pages/portal-v2-pillar";
 import PortalV2GovernancePage from "@/pages/portal-v2-governance";
 import PortalV2GovDetailPage from "@/pages/portal-v2-gov-detail";
 import PortalV2SecurityPage from "@/pages/portal-v2-security";
+import PortalV2CompliancePage from "@/pages/portal-v2-compliance";
 import PortalV2GovOversharingPage from "@/pages/portal-v2-gov-oversharing";
 import PortalV2GovOversharingAllPage from "@/pages/portal-v2-gov-oversharing-all";
 import ConsentDeclinedPage from "@/pages/consent-declined";
@@ -553,6 +554,12 @@ function SlugInnerSwitch() {
           route for the same reason Governance is. */}
       <Route path="/portal-v2/security">
         <ProtectedRoute component={PortalV2SecurityPage} />
+      </Route>
+      {/* Compliance is the pillar the README's "finding rows" line is actually
+          right about — it renders them, and three sections no other pillar has.
+          See portal-v2-compliance.tsx's header. */}
+      <Route path="/portal-v2/compliance">
+        <ProtectedRoute component={PortalV2CompliancePage} />
       </Route>
       <Route path="/portal-v2/:pillar">
         <ProtectedRoute component={PortalV2PillarPage} />
