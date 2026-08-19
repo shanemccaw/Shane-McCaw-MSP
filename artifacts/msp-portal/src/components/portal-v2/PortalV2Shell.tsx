@@ -31,6 +31,8 @@
 import { useState, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 
+import { useAuth } from "@/lib/auth-context";
+
 import {
   PILLAR_ICON_PATHS,
   PILLAR_ORDER,
@@ -185,6 +187,7 @@ export function PortalV2Shell({
   children: ReactNode;
 }) {
   const [location] = useLocation();
+  const { logout } = useAuth();
   const [expanded, setExpanded] = useState(true);
   const [alertsOpen, setAlertsOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
@@ -731,6 +734,33 @@ export function PortalV2Shell({
                 <div style={{ padding: "10px 10px", fontSize: "12px", color: "#64748b" }}>
                   Account settings arrive with the settings pages.
                 </div>
+                {/* Sign out is real today — the account menu is where the design
+                    puts it, and having it here gives a deterministic way to end
+                    a session. Without it the only sign-out affordance in the app
+                    is on the flat no-slug route and carries no test handle, which
+                    is why a persisted session makes login-first test runs flaky. */}
+                <button
+                  onClick={() => void logout()}
+                  data-testid="pv2-sign-out"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 9,
+                    width: "100%",
+                    padding: "8px 10px",
+                    borderRadius: 6,
+                    border: "none",
+                    background: "transparent",
+                    color: "#94a3b8",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                    textAlign: "left",
+                  }}
+                >
+                  Sign out
+                </button>
               </div>
             )}
           </div>
