@@ -1,7 +1,7 @@
 {
   "feature": "Customer Portal v2 -- isolated parallel build of the Overview (/portal-v2) and the six pillar dashboards (/portal-v2/:pillar) in the new navy/journeyTokens design language. Deliberately separate routes from the live /governance, /security-overview, /m365-health, /compliance, /adoption, /licensing pages, which this build does not touch. Data comes from GET /api/portal/assessment/war-room-pillars via components/portal-v2/usePortalV2Pillars.ts, which wraps the EXISTING components/war-room/useWarRoomPillarStats.ts hook rather than reimplementing fetching, retry/backoff or scoring. Pillar identity colours and the 82 gate constant come from components/copilot-journey/journeyTokens.ts (PILLARS, COPILOT_GATE_TARGET); components/ui/score-ring.tsx is reused verbatim, with .pv2-root redefining the --status-*/--muted tokens it reads so it resolves against the navy palette.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "2335caf9",
+  "lastVerifiedAgainstCommit": "19afb771",
 
   "notes": [
     "SCOPE: Overview + six pillar pages only. Change Control, SOPs & Runbooks, Risk Register, Microsoft Changes and Hold Windows are deliberately NOT built in this pass -- the existing implementations of the first four are MSP-operator-scoped (/api/msp/*, requireRole('MSPOperator') + resolveMspIdStrict) and reusing them from a customer page would leak cross-tenant data; they need new customer-scoped routes first.",
@@ -14,6 +14,7 @@
     "AN EARLIER RUN OF THIS MANIFEST CAUGHT A REAL BUG, which is why the API assertions are shaped the way they are: `evaluation` is an OBJECT ({status, reason, ...}) and the first version of the v2 model declared it as a bare status string. tsc could not catch it because the type was self-declared. A4 now asserts the nested `.evaluation.status` path specifically so a regression that flattens it is caught here rather than in the UI.",
     "SEPARATELY VERIFIED (scratch probe, not kept as steps): /portal-v2/adoption renders a real score with stats and an honest empty findings state, and /portal-v2/nonsense correctly falls through to NotFound rather than rendering an empty pillar shell.",
     "RUN GREEN 2026-08-19: 72/72 against the deployed dev server at commit 2335caf9 (deployed via trigger-deploy-and-wait.ps1, d7a08d041 -> 2335caf90, 41.7s), covering the 25 new OV* steps for the Overshared SharePoint drill-down. Real text observed on screen: the stat card reading 'SHARING CAPABILITY Enabled ExternalUserAndGuestSharing'; Top Risks genuinely ABSENT from the DOM before the toggle and present after ('Public Team exposes the entire site to anyone…'); site 0 expanding to its real 52 admins starting 'Alex Rivera alex.rivera@tenant.com'; the convert runbook rendering 'RUNBOOK · FULL TRANSPARENCY 1. Notify all site a…'; the accept-risk drawer titled 'Accept risk — Client Deliverables (SharePoint)'; the pager stepping 'Page 1 of 16 « ‹ 1 2 ··· 16 › »' to 'Page 2 of 16 « ‹ 1 2 3 ··· 16 › »'; and the bulk list heading '23,412 sites are shared externally…'. Also verified at that commit: tsc --noEmit clean, a full vite build clean, and 17/17 on src/components/portal-v2/govOversharingData.test.ts, which pins the fixture arithmetic (124 sites / 95 links / 52 admins on site 0 / 43 Public / 16 pages) and the shared pager's window rule.",
+    "RUN GREEN 2026-08-19: 87/87 against the deployed dev server at commit 19afb771 (deployed via trigger-deploy-and-wait.ps1, 2335caf90 -> 19afb7714, 45.9s), covering the 14 new S* steps for the rebuilt Security pillar hero. THIS MANIFEST CAUGHT A REAL REGRESSION ON THE FIRST RUN, which is the reason U5/U6 now point at Adoption: those two steps used /portal-v2/security as the GENERIC pillar page's exemplar, and rebuilding Security removed pv2-pillar-heading and pv2-provenance from that route. 85/87 with both failing, fixed by repointing, then 87/87. Real text observed on screen: '3 critical exposures need attention right now.'; the status pill reading 'CRITICAL' (not Governance's amber 'Needs attention'); 'SECURITY FINDINGS 7 From your latest scan' — the renderVals override, not the const's 5; the trend reading 'DRIFT TREND · LAST 10 SCANS Getting worse — 2 new exposures since scan 12'; 'Scan 14 · 4 fixed in Security since scan 1'; and 'SECURITY CATEGORIES 8 MFA Gaps users without MFA 17 Conditional Access…'. The DriftTrend extraction's regression guard also passed: pv2-gov-trend renders with the label alone and NO verdict line, confirming Governance did not inherit Security's sentence. Also verified at that commit: tsc --noEmit clean, a full vite build clean, and 27/27 across secDashboardData.test.ts + govOversharingData.test.ts.",
     "OBSERVED, NOT A REGRESSION, WORTH KNOWING: CR2 shows the fix panel reading 'Apply the recommended change' — the GENERIC FALLBACK — because govPages.ts's sharing-drift policy rows carry fixKeys (gov-drift-anon-expiry, gov-drift-default-permission, gov-drift-domain-allowlist, gov-drift-alert) that exist in neither FIX_PLAYBOOKS nor the prototype's GOV_FIXES. The gate still works end to end, which is what CR1-CR7 assert, but 'wrench fixes tied to NAMED playbooks' is currently only true on the oversharing page (OV18 asserts its real title). Writing those four playbooks is real outstanding work, not a test defect."
   ],
 
@@ -183,16 +184,16 @@
       "textContains": "Security"
     },
     {
-      "name": "goto the SECURITY pillar page. Governance now has a bespoke rebuilt dashboard, so Security is the pillar that still exercises the GENERIC pillar page -- which is exactly what needs regression cover, since the other five pillars all render through it.",
+      "name": "goto the ADOPTION pillar page. This step used to point at Security, which was the generic page's exemplar once Governance was rebuilt -- and Security's own rebuild broke it, which this manifest caught. The exemplar has to be a pillar that has NOT been rebuilt yet, so it moves down the Layer 1 list each pass: Governance -> Security -> Adoption. When the last of the six is rebuilt these two steps have no generic pillar left to cover and should be retired rather than repointed at a page that no longer exists.",
       "action": "goto",
-      "target": "/portal/shane-mccaw-consulting/portal-v2/security"
+      "target": "/portal/shane-mccaw-consulting/portal-v2/adoption"
     },
     {
       "name": "U5 -- the generic pillar page renders its heading from the real payload.",
       "action": "expect",
       "selector": "[data-testid='pv2-pillar-heading']",
       "state": "visible",
-      "textContains": "Security"
+      "textContains": "Adoption"
     },
     {
       "name": "U6 -- the generic pillar page prints run provenance: which run the findings belong to, or an explicit statement that no completed run backs them. Either way it never implies numbers it does not have.",
