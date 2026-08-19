@@ -10,6 +10,20 @@ Every session — including BuildConsole-launched build sessions — must create
 
 **Restate the full list, don't just print it once.** BuildConsole's checklist panel (`ScanForChecklist` in `desktop/BuildConsole/BuildWatchWindow.xaml.cs`) has no memory of your plan — it only mirrors whatever `- [ ] ` / `- [x] ` marker lines actually stream past in the transcript, each time they appear. Printing the list once at the start and then never repeating it leaves every row stuck unchecked in the panel even as real work finishes, because there is nothing to re-scan. Re-print the entire checklist, with `[x]` on every item completed so far, at each meaningful milestone — after finishing a step, and again in any wrap-up/summary message — not only in the first message of the session.
 
+## Customer Portal build — design source
+
+Design source: Design/design_handoff_customer_portal/
+- README.md is the spec. Read it before writing code.
+- The .dc.html files are design references, not code. Recreate them with this
+  repo's existing React + Vite + Tailwind v4 + shadcn/ui (new-york) + lucide-react
+  patterns. Ignore support.js entirely — do not port it.
+- The logic class at the bottom of Customer Portal Shell.dc.html holds the state
+  machine and data shapes. Read it; it is the specification.
+- Copy is final. Do not rewrite, shorten or "improve" any user-facing string.
+- No emoji, ever. Icons come from lucide-react.
+- Every number on screen comes from the data layer. Never hardcode a tenant number
+  in a component — put the fixture in one place so it can be swapped for real data.
+
 ## Mandatory session bookends
 
 This project tracks every work session in [PLATFORM_BUILD.md](PLATFORM_BUILD.md), so that even a session that crashes or gets abandoned mid-way leaves proof an attempt was made.
