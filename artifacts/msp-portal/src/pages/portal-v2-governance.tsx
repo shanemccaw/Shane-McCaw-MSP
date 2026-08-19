@@ -373,7 +373,33 @@ export default function PortalV2GovernancePage() {
                     strokeLinejoin="round"
                     vectorEffect="non-scaling-stroke"
                   />
-                  <circle cx={trend.lastX} cy={trend.lastY} r={3.5} fill="#60a5fa" />
+                </svg>
+                {/* The chart svg above is preserveAspectRatio="none" — a
+                    deliberately anisotropic scale (x by width/trend.w, y by 1) so
+                    the line spans the card's fluid width. Everything inside it
+                    inherits that scale, which stretched the end-point dot into an
+                    oval. So the dot sits in its own viewBox-less overlay, where
+                    1 user unit = 1 CSS px and r=3.5 is a true circle; cx is a
+                    percentage so it still tracks the stretched line's last point. */}
+                <svg
+                  width="100%"
+                  height={trend.h}
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    overflow: "visible",
+                    display: "block",
+                    pointerEvents: "none",
+                  }}
+                  aria-hidden="true"
+                >
+                  <circle
+                    cx={`${(trend.lastX / trend.w) * 100}%`}
+                    cy={trend.lastY}
+                    r={3.5}
+                    fill="#60a5fa"
+                  />
                 </svg>
                   <div style={{ height: 1, background: "rgba(148,163,184,.14)" }} />
                 </div>
