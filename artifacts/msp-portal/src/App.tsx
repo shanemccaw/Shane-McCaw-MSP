@@ -88,6 +88,7 @@ import PortalV2GovDetailPage from "@/pages/portal-v2-gov-detail";
 import PortalV2SecurityPage from "@/pages/portal-v2-security";
 import PortalV2CompliancePage from "@/pages/portal-v2-compliance";
 import PortalV2LicensingPage from "@/pages/portal-v2-licensing";
+import PortalV2AdoptionPage from "@/pages/portal-v2-adoption";
 import PortalV2GovOversharingPage from "@/pages/portal-v2-gov-oversharing";
 import PortalV2GovOversharingAllPage from "@/pages/portal-v2-gov-oversharing-all";
 import ConsentDeclinedPage from "@/pages/consent-declined";
@@ -567,6 +568,12 @@ function SlugInnerSwitch() {
           a wider container for the ledger table, and its own trend maths. */}
       <Route path="/portal-v2/licensing">
         <ProtectedRoute component={PortalV2LicensingPage} />
+      </Route>
+      {/* Adoption shares Licensing's frame but is a measurement page, not a
+          write-action one: four of its six plays cannot be automated at all,
+          and parking a play is explicitly NOT accepting a risk. */}
+      <Route path="/portal-v2/adoption">
+        <ProtectedRoute component={PortalV2AdoptionPage} />
       </Route>
       <Route path="/portal-v2/:pillar">
         <ProtectedRoute component={PortalV2PillarPage} />

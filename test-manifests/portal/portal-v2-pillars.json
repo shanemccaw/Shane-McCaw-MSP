@@ -187,16 +187,16 @@
       "textContains": "Security"
     },
     {
-      "name": "goto the ADOPTION pillar page. This step used to point at Security, which was the generic page's exemplar once Governance was rebuilt -- and Security's own rebuild broke it, which this manifest caught. The exemplar has to be a pillar that has NOT been rebuilt yet, so it moves down the Layer 1 list each pass: Governance -> Security -> Adoption. When the last of the six is rebuilt these two steps have no generic pillar left to cover and should be retired rather than repointed at a page that no longer exists.",
+      "name": "goto the HEALTH pillar page -- now the LAST pillar still rendering through the generic portal-v2-pillar.tsx. This step has moved down the Layer 1 list each pass: Governance -> Security -> Adoption -> Health, because the exemplar must be a pillar that has not been rebuilt yet. Security's rebuild broke it once and this manifest caught it; Adoption's rebuild was repointed proactively. WHEN HEALTH IS REBUILT (pillar 5 of 5) THESE TWO STEPS MUST BE RETIRED, not repointed -- there will be no pillar left rendering the generic page, and the generic page itself becomes dead code to delete rather than cover.",
       "action": "goto",
-      "target": "/portal/shane-mccaw-consulting/portal-v2/adoption"
+      "target": "/portal/shane-mccaw-consulting/portal-v2/health"
     },
     {
       "name": "U5 -- the generic pillar page renders its heading from the real payload.",
       "action": "expect",
       "selector": "[data-testid='pv2-pillar-heading']",
       "state": "visible",
-      "textContains": "Adoption"
+      "textContains": "Health"
     },
     {
       "name": "U6 -- the generic pillar page prints run provenance: which run the findings belong to, or an explicit statement that no completed run backs them. Either way it never implies numbers it does not have.",
@@ -568,6 +568,206 @@
       "selector": "[data-testid='pv2-sec-risk-register-link']",
       "state": "visible",
       "textContains": "View full risk register"
+    },
+    {
+      "name": "goto the rebuilt Adoption pillar dashboard.",
+      "action": "goto",
+      "target": "/portal/shane-mccaw-consulting/portal-v2/adoption"
+    },
+    {
+      "name": "A-1 -- the hero leads with a SENTENCE, not a score or a figure. Governance/Security/Compliance lead with a health title, Licensing with a dollar amount; this one opens with where you are.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-adp-headline']",
+      "state": "visible",
+      "textContains": "You have climbed 27 points in ten scans."
+    },
+    {
+      "name": "A-2 -- THE PILLAR'S DISPOSITION, stated on the page. Everything below has to be read through this sentence, which is why nothing here is coloured as danger.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-adp-hero']",
+      "state": "visible",
+      "textContains": "Nothing on this page is a risk and nothing here is failing."
+    },
+    {
+      "name": "A-3 -- the ring shows the score with a green positive delta.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-adp-score']",
+      "state": "visible",
+      "textContains": "88"
+    },
+    {
+      "name": "A-4 -- the parked strip says plainly that nothing is at risk. That clause is the difference between this pillar and every other one.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-adp-programme-record-link']",
+      "state": "visible",
+      "textContains": "Programme record"
+    },
+    {
+      "name": "A-5 -- the workload utilisation list renders, including the one at zero.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-adp-workloads']",
+      "state": "visible",
+      "textContains": "Licensed on 41 seats, never provisioned."
+    },
+    {
+      "name": "A-6 -- the department HEATMAP renders, a section no other pillar has.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-adp-matrix']",
+      "state": "visible",
+      "textContains": "Teams channels"
+    },
+    {
+      "name": "A-7 -- and its reading is stated rather than left to the reader, naming the three departments the plays start with.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-adp-matrix']",
+      "state": "visible",
+      "textContains": "Finance, Operations and Legal sit at the bottom of every column"
+    },
+    {
+      "name": "A-8 -- plays carry a now-to-target pair rather than a severity. Nothing on this pillar is graded as bad.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-adp-plays']",
+      "state": "visible",
+      "textContains": "60 weekly active · 40 using it in Word or Excel"
+    },
+    {
+      "name": "A-9 -- expand a PEOPLE play (ADP-01, canAutomate false).",
+      "action": "click",
+      "selector": "[data-testid='pv2-adp-play-ADP-01']",
+      "critical": true
+    },
+    {
+      "name": "A-10 -- its expansion carries 'Where the value is' rather than a risk statement.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-adp-plays']",
+      "state": "visible",
+      "textContains": "Where the value is"
+    },
+    {
+      "name": "A-11 -- open its playbook.",
+      "action": "click",
+      "selector": "[data-testid='pv2-adp-action-ADP-01']",
+      "critical": true
+    },
+    {
+      "name": "A-12 -- it resolved to the real playbook.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-fix-panel']",
+      "state": "visible",
+      "textContains": "Copilot enablement play"
+    },
+    {
+      "name": "A-13 -- THE PROPERTY THAT MAKES THIS PILLAR DIFFERENT. A people play has NO Graph route: `canAutomate: false` flows from the play through the mapper into the panel, so the automate button must be ABSENT. Forcing it true would put 'Automate via Microsoft Graph' on a training session.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-fix-route-graph']",
+      "state": "absent"
+    },
+    {
+      "name": "A-14 -- the manual route IS offered, and its first step says why there is nothing to automate.",
+      "action": "click",
+      "selector": "[data-testid='pv2-fix-route-manual']",
+      "critical": true
+    },
+    {
+      "name": "A-15 -- the CR gate still applies even to a people play.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-fix-panel']",
+      "state": "visible",
+      "textContains": "Nothing changes in your tenant without a change request behind it"
+    },
+    {
+      "name": "A-16 -- arm the CR confirmation.",
+      "action": "click",
+      "selector": "[data-testid='pv2-cr-confirm']",
+      "critical": true
+    },
+    {
+      "name": "A-17 -- submit it.",
+      "action": "click",
+      "selector": "[data-testid='pv2-cr-submit']",
+      "critical": true
+    },
+    {
+      "name": "A-18 -- continue to the procedure.",
+      "action": "click",
+      "selector": "[data-testid='pv2-cr-continue']",
+      "critical": true
+    },
+    {
+      "name": "A-19 -- ADOPTION'S OWN WRAPPER, and it is the BRANCHING one. Compliance prepends a Purview sign-in and Licensing a commerce note; Adoption prepends a different sentence depending on canAutomate, and this is the people-play branch.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-fix-manual']",
+      "state": "visible",
+      "textContains": "This is a people play, not a write action"
+    },
+    {
+      "name": "A-20 -- and its closer says adoption is reviewed monthly rather than confirmed by a re-scan.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-fix-manual']",
+      "state": "visible",
+      "textContains": "Adoption moves on a monthly rhythm, not on a re-scan"
+    },
+    {
+      "name": "reset -- reload, then take the OTHER branch.",
+      "action": "goto",
+      "target": "/portal/shane-mccaw-consulting/portal-v2/adoption"
+    },
+    {
+      "name": "A-21 -- expand the ENABLER play ADP-02 (canAutomate true).",
+      "action": "click",
+      "selector": "[data-testid='pv2-adp-play-ADP-02']",
+      "critical": true
+    },
+    {
+      "name": "A-22 -- open its playbook.",
+      "action": "click",
+      "selector": "[data-testid='pv2-adp-action-ADP-02']",
+      "critical": true
+    },
+    {
+      "name": "A-23 -- THE OTHER BRANCH. This one HAS a technical enabler, so the Graph route is offered where ADP-01's was absent. Same component, same pillar, opposite answer.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-fix-route-graph']",
+      "state": "visible"
+    },
+    {
+      "name": "reset -- reload before the parked cards.",
+      "action": "goto",
+      "target": "/portal/shane-mccaw-consulting/portal-v2/adoption"
+    },
+    {
+      "name": "A-24 -- parked plays are recorded in full, and state what parking costs in UPSIDE terms rather than as an accepted risk.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-adp-parked']",
+      "state": "visible",
+      "textContains": "Nothing degrades and nothing is exposed"
+    },
+    {
+      "name": "A-25 -- 'How far you have come' is the only positive-framed panel in the portal, and it is measured rather than asserted.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-adp-wins']",
+      "state": "visible",
+      "textContains": "Measured, not asserted"
+    },
+    {
+      "name": "A-26 -- the enablers panel carries the change-management scaffolding.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-adp-enablers']",
+      "state": "visible",
+      "textContains": "Champions network"
+    },
+    {
+      "name": "A-27 -- open the provenance block.",
+      "action": "click",
+      "selector": "[data-testid='pv2-adp-provenance-toggle']",
+      "critical": true
+    },
+    {
+      "name": "A-28 -- the derived row states that a PARKED play is excluded from the score rather than counted as a failure. That is the whole park-versus-accept distinction, made arithmetic.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-adp-provenance']",
+      "state": "visible",
+      "textContains": "a parked play is excluded rather than counted as failure"
     },
     {
       "name": "goto the rebuilt Licensing pillar dashboard.",

@@ -23,6 +23,7 @@
 
 import { CMP_FIX_PLAYBOOKS } from "./cmpFixPlaybooks";
 import { LIC_FIX_PLAYBOOKS } from "./licFixPlaybooks";
+import { ADP_FIX_PLAYBOOKS } from "./adpFixPlaybooks";
 
 export interface FixManualStep {
   text: string;
@@ -275,10 +276,33 @@ export function fixFallback(key: string): FixPlaybook {
  * the next time a playbook is edited.
  */
 export function playbookFor(key: string): FixPlaybook {
-  return (
-    FIX_PLAYBOOKS[key] ?? CMP_FIX_PLAYBOOKS[key] ?? LIC_FIX_PLAYBOOKS[key] ?? fixFallback(key)
-  );
+  return ALL_PLAYBOOKS[key] ?? fixFallback(key);
 }
+
+/**
+ * One merged lookup rather than a `??` chain that grows a link per pillar.
+ * The chain worked, but every new pillar had to remember to extend it, and a
+ * forgotten link fails SILENTLY — the wrench still opens a panel, just the
+ * generic one, which is exactly the failure already flagged on governance's
+ * sharing-drift keys. Ordered first-wins, matching the chain it replaces.
+ */
+const ALL_PLAYBOOKS: Readonly<Record<string, FixPlaybook>> = {
+  ...ADP_FIX_PLAYBOOKS,
+  ...LIC_FIX_PLAYBOOKS,
+  ...CMP_FIX_PLAYBOOKS,
+  ...FIX_PLAYBOOKS,
+};
+
+/** Every key with a real playbook. A test asserts no two pillars collide. */
+export const PLAYBOOK_KEYS: readonly string[] = Object.keys(ALL_PLAYBOOKS);
+
+/** The per-pillar sets, exported so a test can check for key collisions. */
+export const PLAYBOOK_SETS = {
+  core: FIX_PLAYBOOKS,
+  compliance: CMP_FIX_PLAYBOOKS,
+  licensing: LIC_FIX_PLAYBOOKS,
+  adoption: ADP_FIX_PLAYBOOKS,
+} as const;
 
 /**
  * The maintenance windows offered on the CR step. `emergency` is deliberately
