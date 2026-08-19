@@ -308,9 +308,38 @@ the reported `commitHash` **flipping** from what it was before. So the script:
    A dropped/failed connection here is expected and tolerated (per #911).
 3. Polls `GET /api/internal/deploy-status` every few seconds — treating the
    server being unreachable (mid-restart) as "keep waiting" — until the hash
-   **changes**, or a timeout.
+   **changes**.
 4. Prints old hash, new hash, and **real elapsed time**, so you know definitively
    the dev server is on your latest push before moving on to tests.
+
+### The wait is progress-aware, not a flat timeout
+
+`kill 1` reboots the whole Repl container, which re-runs the Run button: git
+pull, install, and a **full rebuild** before the server listens again. A large
+change (an app-wide retheme, say) makes that take many minutes. The original flat
+**300s** cap printed `TIMED OUT` over a ~10-minute deploy that had genuinely
+succeeded — worse than no check at all, because it reports a real success as a
+failure. So the wait now ends on the server's **observed state**:
+
+| Observation | Meaning | What the script does |
+|---|---|---|
+| Server unreachable | Restart/rebuild in progress | Keeps waiting, printing a heartbeat with real elapsed time so a long rebuild never looks hung. Bounded only by the `-TimeoutSeconds` backstop. |
+| Reachable, commit **flipped** | New process is live | **Success**, exit 0. |
+| Reachable, still the **old** commit for `-StallSeconds` straight | Not deploying | Stops **early** and says which: never went down = the restart never took effect; went down and came back on the same commit = it restarted but there was nothing new to pull. Any unreachable poll resets this window, so a rebuild that bounces the server never trips it. |
+
+Net effect: a genuinely failed deploy is reported **faster** than before (~3 min,
+not 5), while a genuinely slow one is allowed to finish instead of being called a
+failure.
+
+- `-TimeoutSeconds` — hard ceiling on the whole wait. Default **1800** (30 min),
+  deliberately generous; it is a backstop, not the normal way the wait ends.
+- `-StallSeconds` — how long the server may stay up on the old commit before we
+  conclude it isn't deploying. Default **180**. This is what actually ends a
+  failed run.
+- `-PollIntervalSeconds` — default 3 (unchanged).
+- `-HeartbeatSeconds` — default 15; minimum gap between "still waiting" lines, so
+  a 3s poll doesn't emit hundreds of identical lines during a long rebuild. Real
+  state changes (down, back up, hash flip) always print immediately.
 
 ### How to invoke it (PowerShell)
 
@@ -325,7 +354,15 @@ the reported `commitHash` **flipping** from what it was before. So the script:
 `$env:BUILD_TRACKER_INGEST_TOKEN`. Override either explicitly if needed:
 
 ```powershell
-.\trigger-deploy-and-wait.ps1 -ApiBaseUrl https://your-dev-server -TimeoutSeconds 240
+.\trigger-deploy-and-wait.ps1 -ApiBaseUrl https://your-dev-server
+```
+
+For an unusually heavy deploy (dependency changes on top of a large rebuild),
+raise the ceiling only — the stall window stays small, so a deploy that never
+starts is still reported in ~3 minutes rather than after the full hour:
+
+```powershell
+.\trigger-deploy-and-wait.ps1 -TimeoutSeconds 3600
 ```
 
 If a schema change must land with the deploy, pass CREATE/ALTER/INSERT-only SQL —
@@ -342,9 +379,14 @@ pull. Per this repo's DB rule, **only Shane supplies this SQL**:
   The dev server is provably on the new code.
 - **Exit 1** — either `build-complete` reported a real failure (e.g. `git pull`
   diverged, or the schema SQL rolled back — no restart was scheduled), **or** the
-  hash never flipped within the timeout (nothing new to pull, or the restart
-  didn't complete). Either way it says plainly the server is **not** confirmed on
-  new code, so you don't run tests against stale code by mistake.
+  hash never flipped. In the second case the red block now names *which* of the
+  three things happened rather than saying "timed out" for all of them:
+  `RESTARTED ON THE OLD COMMIT` (it restarted, nothing new was on origin/main),
+  `RESTART NEVER TOOK EFFECT` (the server never went down), or
+  `HARD CEILING HIT` (still rebuilding past `-TimeoutSeconds` — re-run with a
+  larger one; that ceiling is a backstop, not a verdict). Either way it says
+  plainly the server is **not** confirmed on new code, so you don't run tests
+  against stale code by mistake.
 
 ### Logging
 Server-side logging is already wired by both routes (`admin.deploy` and
