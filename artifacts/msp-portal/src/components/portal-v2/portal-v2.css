@@ -115,3 +115,66 @@
 .pv2-area-card:hover {
   border-color: var(--pv2-area-hover, rgba(148, 163, 184, 0.4));
 }
+
+/* The Overview's six-pillar row. `repeat(6,minmax(0,1fr))` with an 8px gutter
+   is the design's own value (Customer Portal Shell.dc.html line 443).
+
+   Round Three's changelog entry for this row is a BUG FIX we never inherited:
+   the round-one file carried a stray `margin-right:56px` on the same grid (old
+   shell line 335), which shrank the row and left blank space to the right of
+   the Health card. Our round-one build had rendered these as a responsive
+   `md:grid-cols-2 xl:grid-cols-3` Tailwind grid instead, so the margin bug
+   could not exist here - but neither could the six-across row the design has
+   always specified. This class brings the row to the design and keeps a
+   narrow-width fallback, which is the decision recorded against it.
+
+   The six-across band is gated on viewport rather than container width because
+   `.pv2-gov-grid` above already sets that precedent, and because the number
+   that matters is checkable: the page container is `max-width:1180px` with 28px
+   of padding a side, so a 1436px viewport (1180 + the 256px sidebar) yields
+   (1124 - 5*8) / 6 = 180.7px a card - the width the design's own strip card is
+   drawn at. Below that our cards fall under ~150px, where the severity chip and
+   the finding-count line stop fitting, so the row steps down rather than
+   scrolling. Removing a scroll floor rather than adding one is the same move
+   Round Two made on the Gantt rows.
+
+   NOTE, recorded rather than silently resolved: the design's six-across cards
+   are a COMPACT strip (`pillarStrip`, shell 8505-8522) - a 26px score, a delta,
+   a 10.5px label and a 10px sub, at `padding:10px 8px`. Ours are the richer
+   Panel card carrying the severity chip and finding counts. Only the ROW
+   geometry is brought across here; re-cutting the card's information design to
+   the strip is a separate question and has not been assumed. */
+.pv2-pillar-row {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+  min-width: 0;
+}
+
+@media (max-width: 1400px) {
+  .pv2-pillar-row {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+  }
+}
+
+@media (max-width: 820px) {
+  .pv2-pillar-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* The pillar card's padding. It belongs beside `.pv2-pillar-row` above rather
+   than in a `p-5` utility because the two are one decision: the card is only
+   tight because the row is six across, and the fallback padding only matters
+   at the widths where the row has already stepped down. Base is Tailwind's
+   `p-5` (20px), which is what this card carried before the row changed. */
+.pv2-pillar-card {
+  padding: 20px;
+}
+
+@media (min-width: 1401px) {
+  .pv2-pillar-card {
+    padding: 13px 11px;
+  }
+}

@@ -141,7 +141,14 @@ const SIDEBAR_COLLAPSED = 76;
  * `#f87171` at 'bad'; the literal expansions are used here because the stage
  * machinery is not ported.
  */
-const SIDEBAR_WASH =
+/**
+ * Exported because the prototype gives this exact value a SECOND name,
+ * `moduleWash` (19161), and uses it as the page background behind the three
+ * imported modules and the Settings page. `sidebarWash = sharedWash` at 8483
+ * proves they are one value, so the pages read this constant rather than
+ * restating the gradient and letting the two drift.
+ */
+export const SIDEBAR_WASH =
   "linear-gradient(180deg, #f8717118, #f871710a 55%, #f8717106 100%)";
 const TOPBAR_WASH =
   "linear-gradient(90deg, #f8717116, #f8717108 45%, rgba(2,6,23,.9) 100%)";
@@ -1001,9 +1008,32 @@ export function PortalV2Shell({
                   gap: 1,
                 }}
               >
-                <div style={{ padding: "10px 10px", fontSize: "12px", color: "#64748b" }}>
-                  Account settings arrive with the settings pages.
-                </div>
+                {/* Settings is reached from HERE, not the left nav — the
+                    prototype's account menu carries it (19243) and the nav
+                    does not. This replaces the placeholder note that stood
+                    here while the page did not exist. */}
+                <Link
+                  href="/portal-v2/settings"
+                  onClick={() => setAccountOpen(false)}
+                  data-testid="pv2-account-settings"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 9,
+                    width: "100%",
+                    padding: "8px 10px",
+                    borderRadius: 6,
+                    background: "transparent",
+                    color: "#94a3b8",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    fontFamily: "inherit",
+                    textAlign: "left",
+                    textDecoration: "none",
+                  }}
+                >
+                  Settings
+                </Link>
                 {/* Sign out is real today — the account menu is where the design
                     puts it, and having it here gives a deterministic way to end
                     a session. Without it the only sign-out affordance in the app

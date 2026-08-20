@@ -182,8 +182,11 @@ export default function PortalV2OverviewPage() {
         </div>
       )}
 
+      {/* The loading branch below puts its six skeletons on the SAME row
+          geometry the loaded state uses, so the pillar row does not reflow
+          from three columns to six the moment the payload lands. */}
       {!loaded ? (
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="pv2-pillar-row">
           {Array.from({ length: 6 }).map((_, i) => (
             <Skeleton key={i} className="h-40 rounded-[12px]" />
           ))}
@@ -251,7 +254,13 @@ export default function PortalV2OverviewPage() {
             <div className="mb-3 flex items-baseline justify-between">
               <PanelTitle>Pillars</PanelTitle>
             </div>
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {/* Six across, per the design's own grid (shell line 443), with a
+                narrow-width step-down. The columns are a named class rather
+                than Tailwind fractions for the same reason `.pv2-gov-grid` is:
+                the ratio IS the spec, and burying `repeat(6,minmax(0,1fr))`
+                inside `xl:grid-cols-6` would put the design's number somewhere
+                less obvious than the file that documents it. */}
+            <div className="pv2-pillar-row">
               {view.pillars.map((p) => (
                 <Link
                   key={p.key}
@@ -259,7 +268,12 @@ export default function PortalV2OverviewPage() {
                   data-testid={`pv2-pillar-card-${p.key}`}
                   className="pv2-transition block"
                 >
-                  <Panel className="h-full p-5 hover:brightness-110" accent={p.primary}>
+                  {/* Padding travels with the row's breakpoints rather than a
+                      fixed `p-5`, so it lives beside the columns it depends on.
+                      At six across the card is ~181px wide and 20px a side
+                      would leave 141px of content; the design's own strip card
+                      is drawn at `padding:10px 8px` for exactly that reason. */}
+                  <Panel className="pv2-pillar-card h-full hover:brightness-110" accent={p.primary}>
                     <div className="flex items-start justify-between gap-4">
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">

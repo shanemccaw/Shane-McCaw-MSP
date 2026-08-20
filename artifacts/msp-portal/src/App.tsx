@@ -96,6 +96,7 @@ import PortalV2GovOversharingPage from "@/pages/portal-v2-gov-oversharing";
 import PortalV2GovOversharingAllPage from "@/pages/portal-v2-gov-oversharing-all";
 import PortalV2ChangeControlPage from "@/pages/portal-v2-change-control";
 import PortalV2RunbooksPage from "@/pages/portal-v2-runbooks";
+import PortalV2SettingsPage from "@/pages/portal-v2-settings";
 import ConsentDeclinedPage from "@/pages/consent-declined";
 import ConsentSuccessPage from "@/pages/consent-success";
 import ConsentTenantConflictPage from "@/pages/consent-tenant-conflict";
@@ -618,6 +619,21 @@ function SlugInnerSwitch() {
       </Route>
       <Route path="/portal-v2/change-control">
         <ProtectedRoute component={PortalV2ChangeControlPage} />
+      </Route>
+      {/* Settings — reached from the account menu, not the left nav, which is
+          where the design puts it. Its four sections are a real deep link
+          rather than a state key: the prototype's own hash parser already
+          treats them that way (`bits[1] === 'settings'` sets `setSection` from
+          `bits[2]`, shell 20049), so "/portal-v2/settings/change" is the
+          faithful URL, not an invention. The section route is declared BEFORE
+          the bare one so the param match is tried first, and both precede
+          "/portal-v2/:pillar" for the same reason every specific route above
+          does. */}
+      <Route path="/portal-v2/settings/:section">
+        <ProtectedRoute component={PortalV2SettingsPage} />
+      </Route>
+      <Route path="/portal-v2/settings">
+        <ProtectedRoute component={PortalV2SettingsPage} />
       </Route>
       <Route path="/portal-v2/:pillar">
         <ProtectedRoute component={PortalV2PillarPage} />
