@@ -244,8 +244,20 @@ export default function PortalV2HealthPage() {
             <span style={{ fontSize: "11.5px", color: "#94a3b8", whiteSpace: "nowrap" }}>
               {HLT_HERO.acceptedStripSuffix}
             </span>
-            <button
-              type="button"
+            {/* Prototype 2921. NOTE THE PILLAR: this button calls `goRiskSec`,
+                not a Health equivalent — there is no `goRiskHealth` anywhere in
+                the prototype — so it opens the register filtered to SECURITY.
+                The visible consequence is that RSK-006, 'AD FS retained
+                alongside cloud authentication', which is a Health risk and is
+                what the copy beside this button is about, is filtered OUT by
+                the link meant to show it.
+
+                Reproduced as written, because the prototype is the
+                specification and a fourth handler would be an invention. It is
+                a one-word change to `pillar=Health` if Shane wants it, and it
+                is flagged in the build log rather than silently corrected. */}
+            <Link
+              href="/portal-v2/risk-register?pillar=Security"
               data-testid="pv2-hlt-risk-register-link"
               style={{
                 padding: 0,
@@ -257,10 +269,11 @@ export default function PortalV2HealthPage() {
                 fontWeight: 600,
                 color: "#cbd5e1",
                 whiteSpace: "nowrap",
+                textDecoration: "none",
               }}
             >
               Risk register →
-            </button>
+            </Link>
           </div>
         </div>
 

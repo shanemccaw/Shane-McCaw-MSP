@@ -1565,6 +1565,7 @@ const LINK_ROUTES: Record<string, string> = {
   "governance-drift": "/portal-v2/governance/sharing-drift",
   "change-control": "/portal-v2/change-control",
   "operate-runbooks": "/portal-v2/runbooks",
+  "risk-register": "/portal-v2/risk-register",
 };
 
 /** Key -> the page it should land on once that page exists. */
@@ -1580,7 +1581,6 @@ const LINK_ROUTES_PENDING: Record<string, string> = {
   // Layer 2 — operational pages not yet built by any session.
   "ms-changes": "/portal-v2",
   "sop-hub": "/portal-v2",
-  "risk-register": "/portal-v2",
 };
 
 function portalHrefFor(to: string): string {

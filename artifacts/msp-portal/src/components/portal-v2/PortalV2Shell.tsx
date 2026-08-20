@@ -30,7 +30,7 @@
 
 import { useState, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
-import { FileText, GitCommit, PlayCircle } from "lucide-react";
+import { FileText, GitCommit, PlayCircle, ShieldOff } from "lucide-react";
 
 import { useAuth } from "@/lib/auth-context";
 import { useHoldBadge } from "@/components/portal-v2/holds/useHoldBadge";
@@ -77,6 +77,35 @@ const OPERATE_ITEMS: ReadonlyArray<{
     testId: "pv2-nav-runbooks",
     badge: "holds",
     icon: PlayCircle,
+  },
+];
+
+/**
+ * The Standards & risk group — prototype 7239-7243.
+ *
+ * The prototype's group has THREE rows: SOPs & Runbooks, Risk Register and
+ * Microsoft Changes. Only the Risk Register has a page, so only it is listed —
+ * the same "never a row pointing at a route that does not exist" rule the
+ * Operate group follows. The other two join it when their pages land.
+ *
+ * The `title` is the prototype's verbatim, and it UNDER-DESCRIBES the page:
+ * it says "accepted risks", while the register actually carries all twelve
+ * risks across five statuses and defaults its status filter to "All statuses".
+ * Kept as written, because copy is final.
+ */
+const STANDARDS_ITEMS: ReadonlyArray<{
+  href: string;
+  label: string;
+  title: string;
+  testId: string;
+  icon: typeof ShieldOff;
+}> = [
+  {
+    href: "/portal-v2/risk-register",
+    label: "Risk Register",
+    title: "Risk Register — accepted risks, with the owner and the review date",
+    testId: "pv2-nav-risk-register",
+    icon: ShieldOff,
   },
 ];
 
@@ -167,6 +196,73 @@ function navItemStyle(isActive: boolean, expanded: boolean): React.CSSProperties
 }
 
 /** The group label + its hairline rule — prototype 122-125. */
+/**
+ * A nav group with no badge machinery — Standards & risk, and Library.
+ *
+ * Non-pillar rows are deliberately different from pillar ones: no coloured 26px
+ * tile, just a plain 15px glyph in an 18px box (prototype 7185-7194).
+ */
+function SimpleNavGroup({
+  label,
+  items,
+  location,
+  expanded,
+}: {
+  label: string;
+  items: ReadonlyArray<{
+    href: string;
+    label: string;
+    title: string;
+    testId: string;
+    icon: typeof ShieldOff;
+  }>;
+  location: string;
+  expanded: boolean;
+}) {
+  return (
+    <>
+      <GroupLabel label={label} expanded={expanded} />
+      {items.map((item) => {
+        const isActive = location === item.href || location.startsWith(`${item.href}/`);
+        const Glyph = item.icon;
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            title={item.title}
+            data-testid={item.testId}
+            style={navItemStyle(isActive, expanded)}
+          >
+            <span
+              style={{
+                flex: "0 0 18px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Glyph size={15} color={isActive ? "#60a5fa" : "#94a3b8"} />
+            </span>
+            {expanded && (
+              <span
+                style={{
+                  flex: 1,
+                  textAlign: "left",
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                {item.label}
+              </span>
+            )}
+          </Link>
+        );
+      })}
+    </>
+  );
+}
+
 function GroupLabel({ label, expanded }: { label: string; expanded: boolean }) {
   if (!expanded) {
     // Collapsed mode replaces each label with a 1px divider — prototype 127-129.
@@ -574,49 +670,23 @@ export function PortalV2Shell({
             );
           })}
 
-          {/* ── Library — prototype 7244-7246. A group of its own, added now
-              that /portal-v2/documents exists, per the same "never a dead row"
-              rule the Operate group follows. No badge machinery: the prototype
-              gives this group none. */}
-          <GroupLabel label="Library" expanded={expanded} />
+          {/* ── Standards & risk — prototype 7239-7243, then Library at
+              7244-7246. Both groups are badge-free, so they share one renderer;
+              Operate above keeps its own loop because only it carries the
+              hold-window badge. */}
+          <SimpleNavGroup
+            label="Standards & risk"
+            items={STANDARDS_ITEMS}
+            location={location}
+            expanded={expanded}
+          />
 
-          {LIBRARY_ITEMS.map((item) => {
-            const isActive = location === item.href || location.startsWith(`${item.href}/`);
-            const Glyph = item.icon;
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                title={item.title}
-                data-testid={item.testId}
-                style={navItemStyle(isActive, expanded)}
-              >
-                <span
-                  style={{
-                    flex: "0 0 18px",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <Glyph size={15} color={isActive ? "#60a5fa" : "#94a3b8"} />
-                </span>
-                {expanded && (
-                  <span
-                    style={{
-                      flex: 1,
-                      textAlign: "left",
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                    }}
-                  >
-                    {item.label}
-                  </span>
-                )}
-              </Link>
-            );
-          })}
+          <SimpleNavGroup
+            label="Library"
+            items={LIBRARY_ITEMS}
+            location={location}
+            expanded={expanded}
+          />
         </nav>
 
         {/* Collapse toggle — prototype 148-155. `panel-left` glyph. */}

@@ -157,11 +157,11 @@ export default function PortalV2GovernancePage() {
             <span style={{ fontSize: "11.5px", color: "#94a3b8", whiteSpace: "nowrap" }}>
               finding risk-accepted in Governance
             </span>
-            {/* Prototype line 404 — a real button, not a bare arrow. The risk
-                register is a later phase, so it does not navigate yet; the copy
-                is the spec's and must not be trimmed to match what is built. */}
-            <button
-              type="button"
+            {/* Prototype line 404, `goRiskGov` — a real button, not a bare
+                arrow. Now wired: the register exists, and the shell's `rrPillar`
+                state becomes a query parameter here. */}
+            <Link
+              href="/portal-v2/risk-register?pillar=Governance"
               data-testid="pv2-gov-risk-register-link"
               style={{
                 padding: 0,
@@ -173,10 +173,11 @@ export default function PortalV2GovernancePage() {
                 fontWeight: 600,
                 color: "#c2a63d",
                 whiteSpace: "nowrap",
+                textDecoration: "none",
               }}
             >
               View full risk register →
-            </button>
+            </Link>
           </div>
         </div>
 

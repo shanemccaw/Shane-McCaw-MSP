@@ -48,6 +48,7 @@
     "copilot-readiness/customer-diagnostics-engagement-offer.json",
     "portal/portal-v2-pillars.json",
     "portal/portal-v2-documents.json",
+    "portal/portal-v2-risk-register.json",
     "portal/change-control.json",
     "portal/runbooks-hold-windows.json"
   ]

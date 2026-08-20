@@ -263,8 +263,9 @@ export default function PortalV2CompliancePage() {
             <span style={{ fontSize: "11.5px", color: "#94a3b8", whiteSpace: "nowrap" }}>
               documented policy decisions on record
             </span>
-            <button
-              type="button"
+            {/* `goRiskCmp` (proto 3821) — pre-filtered to Compliance. */}
+            <Link
+              href="/portal-v2/risk-register?pillar=Compliance"
               data-testid="pv2-cmp-risk-register-link"
               style={{
                 padding: 0,
@@ -276,10 +277,11 @@ export default function PortalV2CompliancePage() {
                 fontWeight: 600,
                 color: "#cbd5e1",
                 whiteSpace: "nowrap",
+                textDecoration: "none",
               }}
             >
               View risk register →
-            </button>
+            </Link>
           </div>
         </div>
 

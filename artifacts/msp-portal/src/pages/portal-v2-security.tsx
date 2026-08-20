@@ -163,10 +163,10 @@ export default function PortalV2SecurityPage() {
               finding risk-accepted in Security
             </span>
             {/* `goRiskSec` (proto 540) navigates to the risk register pre-filtered
-                to Security. That page is Layer 2 work, so this stays a real
-                button with the spec's copy rather than a trimmed placeholder. */}
-            <button
-              type="button"
+                to Security. That page now exists, so this is wired: the shell's
+                `rrPillar` state becomes a query parameter here. */}
+            <Link
+              href="/portal-v2/risk-register?pillar=Security"
               data-testid="pv2-sec-risk-register-link"
               style={{
                 padding: 0,
@@ -178,10 +178,11 @@ export default function PortalV2SecurityPage() {
                 fontWeight: 600,
                 color: "#c2a63d",
                 whiteSpace: "nowrap",
+                textDecoration: "none",
               }}
             >
               View full risk register →
-            </button>
+            </Link>
           </div>
         </div>
 

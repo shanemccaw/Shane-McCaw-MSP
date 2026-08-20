@@ -1,0 +1,105 @@
+{
+  "feature": "Customer Portal v2 Layer 2 -- the Risk Register (/portal-v2/risk-register). Recreated from the prototype's own `isRiskRegister` block ('Customer Portal Shell.dc.html' 802-996), its RR_RISKS fixture (15152-15252) and its derivation (15253-15355). Twelve risks across five statuses, four stat cards whose numbers are summed from the fixture, an amber 'acceptances needing attention' band, five filter selects, and rows that expand in place into a full risk record with a 5x5 likelihood-by-impact matrix and, where one exists, the risk-based decision on record. Fixture extracted mechanically (riskRegisterData.ts); derivation hand-transcribed (riskRegisterModel.ts) and pinned by 47 unit assertions.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "PENDING",
+
+  "notes": [
+    "THE LOGIN BLOCK IS NOT OPTIONAL. /portal-v2/* sits behind ProtectedRoute; a probe that skips the five login steps hits the login screen and every assertion fails for a reason unrelated to the page.",
+    "UI ROUTE SHAPE: msp-portal's outer WouterRouter has base '/portal' and SlugScope nests a second router at '/{slug}', so the real URL is /portal/{slug}/portal-v2/risk-register. App.tsx declares it BEFORE '/portal-v2/:pillar'.",
+    "shaneapp://runTest hits the DEPLOYED build, not the local worktree.",
+
+    "WHY THE FILTER SELECTS ARE NOT DRIVEN HERE -- A REAL HARNESS LIMIT, NOT AN OMISSION. The five filters are native <select> elements, and the UI executor cannot change one. desktop/BuildConsole/Services/UiTestExecutor.cs:1055-1061 implements the `input` action by taking the `value` setter from HTMLTextAreaElement.prototype for a TEXTAREA and HTMLInputElement.prototype for EVERYTHING ELSE; invoking that brand-checked setter on a <select> throws 'Illegal invocation', which is caught at :1063 and retried for the full 30s window before failing. There is also no dedicated `select` action -- the dispatch chain at :534-582 handles only goto / logout / expect / click / input, and an unrecognised action falls through to :1053-1061 and SILENTLY PASSES while doing nothing. So a step with \"action\": \"select\" would report green having changed no state, which is worse than no coverage at all.",
+    "WHAT COVERS THE FILTERS INSTEAD: (a) the pillar filter IS driven for real below, because it is URL-addressable -- the page reads ?pillar= on mount, which is how the prototype's goRiskGov/goRiskSec/goRiskCmp entry points survive the move from shell state to real URLs; RR20-RR24 exercise it with `goto` and with a real click from two pillar pages. (b) The severity, status, owner and sort filters, their interactions, and the three reproduced defects are pinned by src/components/portal-v2/riskRegisterModel.test.ts (47 assertions, all green). That split is stated here rather than left implicit so nobody reads this manifest as full filter coverage.",
+    "SUGGESTED HARNESS FIX (BuildConsole work, not done here): give UiTestExecutor.cs:1056 a third branch -- `el.tagName === 'SELECT' ? window.HTMLSelectElement.prototype : ...` -- which would make `input` drive native dropdowns across the whole suite. Separately, the silent pass-through for unknown actions at :576-582 is worth a guard: a typo'd action currently reports success.",
+
+    "SIX BUTTONS ARE INERT BY DESIGN and are asserted PRESENT, never clicked: Export register (proto 809), Extend the review date (967), Withdraw acceptance (968), Remediate instead (969), Remediate this risk (976), Assign an owner (984). None carries an onClick in the prototype and no handler of any of those names exists in its 18k lines. Only the row toggle (873), Ask ShaneBot (935) and Accept this risk (980) are wired. Asserting they RENDER is the real assertion -- that the page was not 'improved' by inventing behaviour, and not trimmed to hide it.",
+
+    "RR27 PINS A PROTOTYPE DEFECT ON PURPOSE. The Health page's 'Risk register ->' button calls goRiskSec (proto 2921), not a Health equivalent -- there is no goRiskHealth anywhere in the prototype -- so it opens the register filtered to SECURITY. The visible consequence is that RSK-006 'AD FS retained alongside cloud authentication', a Health risk and the very thing the copy beside that button is about, is filtered OUT by the link meant to surface it. RR27 asserts that really happens. It is a one-word change to pillar=Health if Shane wants it; until he says so, the prototype is the specification.",
+
+    "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD."
+  ],
+
+  "apiTests": [
+    {
+      "name": "SETUP -- log in as the designated TESTBED account; extract the bearer.",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    }
+  ],
+
+  "uiSteps": [
+    { "name": "goto the real login URL (outer WouterRouter base = '/portal').", "action": "goto", "target": "/portal/login" },
+    { "name": "WAIT for the login form to hydrate before typing.", "action": "expect", "selector": "#email", "state": "visible" },
+    { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
+    { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
+    { "name": "Primary login -- every assertion below needs a real session.", "action": "click", "selector": "[data-testid='login-submit']", "critical": true },
+    { "name": "goto the Risk Register on its slug-scoped route.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/risk-register" },
+
+    { "name": "RR1 -- the page resolved to the register, not NotFound and not the param pillar route.", "action": "expect", "selector": "[data-testid='pv2-rr-heading']", "textContains": "Risk Register", "critical": true },
+
+    { "name": "RR2 -- stat card 1: twelve risks on the register, summed from the fixture.", "action": "expect", "selector": "[data-testid='pv2-rr-stats']", "textContains": "Risks on the register" },
+    { "name": "RR3 -- ...and its sub-line breaks the twelve down by status.", "action": "expect", "selector": "[data-testid='pv2-rr-stats']", "textContains": "3 open · 2 mitigating" },
+    { "name": "RR4 -- stat card 3: 19 points suppressed by the five acceptances.", "action": "expect", "selector": "[data-testid='pv2-rr-stats']", "textContains": "19 pts" },
+    { "name": "RR5 -- stat card 4: 34 points still counting. NOT 40 -- Closed RSK-003's 6 points belong to neither partition, so 19+34+6=59 is the whole register.", "action": "expect", "selector": "[data-testid='pv2-rr-stats']", "textContains": "34 pts" },
+    { "name": "RR6 -- the explainer states the same suppressed number with the other suffix, mid-sentence.", "action": "expect", "selector": "[data-testid='pv2-rr-explainer']", "textContains": "19 points are currently suppressed" },
+
+    { "name": "RR7 -- the amber band counts three acceptances needing attention.", "action": "expect", "selector": "[data-testid='pv2-rr-expiring']", "textContains": "Acceptances needing attention · 3" },
+    { "name": "RR8 -- RSK-005 is due (its review date falls in 2026).", "action": "expect", "selector": "[data-testid='pv2-rr-expiring-RSK-005']", "textContains": "Review due 30 November 2026" },
+    { "name": "RR9 -- RSK-010 likewise.", "action": "expect", "selector": "[data-testid='pv2-rr-expiring-RSK-010']", "textContains": "Review due 31 December 2026" },
+    { "name": "RR10 -- RSK-012 is EXPIRED, and its date is read from the risk's own review field rather than the literal the prototype restates in the derivation.", "action": "expect", "selector": "[data-testid='pv2-rr-expiring-RSK-012']", "textContains": "Acceptance expired 4 Jul 2026" },
+    { "name": "RR11 -- the three 2027 acceptances are excluded, so RSK-004 has no row in the band.", "action": "expect", "selector": "[data-testid='pv2-rr-expiring-RSK-004']", "state": "absent" },
+
+    { "name": "RR12 -- unfiltered, the register shows all twelve.", "action": "expect", "selector": "[data-testid='pv2-rr-count']", "textContains": "12 risks shown" },
+
+    { "name": "RR13 -- the default sort is heaviest first, so RSK-001 (weight 9) is the first row.", "action": "expect", "selector": "[data-testid='pv2-rr-table'] > div:nth-child(2)", "textContains": "Legacy authentication remains enabled tenant-wide" },
+    { "name": "RR14 -- and its score column reads as a NEGATIVE, with a real U+2212 minus sign.", "action": "expect", "selector": "[data-testid='pv2-rr-row-RSK-001']", "textContains": "−9 pts" },
+    { "name": "RR15 -- the Severity cell stacks BOTH severities under one header.", "action": "expect", "selector": "[data-testid='pv2-rr-row-RSK-001']", "textContains": "→ Critical" },
+
+    { "name": "RR16 -- row 0 is expanded on arrival, so the register opens on its heaviest risk rather than a wall of collapsed rows.", "action": "expect", "selector": "[data-testid='pv2-rr-open-RSK-001']", "state": "visible" },
+    { "name": "RR17 -- the expanded body carries the real risk record, not a summary.", "action": "expect", "selector": "[data-testid='pv2-rr-open-RSK-001']", "textContains": "1,106 sign-ins in the last 30 days bypassed multifactor entirely" },
+    { "name": "RR18 -- the score note restates what THIS risk costs, with its own number and its own pillar.", "action": "expect", "selector": "[data-testid='pv2-rr-scorenote-RSK-001']", "textContains": "Currently deducting 9 points from the Security pillar score, with alerting live." },
+    { "name": "RR19 -- the likelihood-by-impact matrix renders.", "action": "expect", "selector": "[data-testid='pv2-rr-matrix-RSK-001']", "state": "visible" },
+    { "name": "RR20 -- a Mitigating risk offers the three decisions, so the Accept button is live.", "action": "expect", "selector": "[data-testid='pv2-rr-accept-RSK-001']", "textContains": "Accept this risk" },
+    { "name": "RR21 -- and the two INERT cards beside it render exactly as designed rather than being trimmed away.", "action": "expect", "selector": "[data-testid='pv2-rr-actions-RSK-001']", "textContains": "Opens the fix path on its pillar page" },
+
+    { "name": "RR22 -- open an ACCEPTED risk. RSK-004 sits at index 4 under the default sort.", "action": "click", "selector": "[data-testid='pv2-rr-toggle-RSK-004']" },
+    { "name": "RR23 -- ONE ROW OPEN AT A TIME: opening RSK-004 closed RSK-001.", "action": "expect", "selector": "[data-testid='pv2-rr-open-RSK-001']", "state": "absent" },
+    { "name": "RR24 -- the decision on record names the register entry it was filed under.", "action": "expect", "selector": "[data-testid='pv2-rr-decision-RSK-004']", "textContains": "RR-2026-014" },
+    { "name": "RR25 -- ...its rationale, verbatim.", "action": "expect", "selector": "[data-testid='pv2-rr-decision-RSK-004']", "textContains": "Extending retention requires Audit Premium" },
+    { "name": "RR26 -- ...and the review date it holds until.", "action": "expect", "selector": "[data-testid='pv2-rr-decision-RSK-004']", "textContains": "1 March 2027" },
+    { "name": "RR27 -- an accepted risk's note says the points are NOT being deducted, and names how many.", "action": "expect", "selector": "[data-testid='pv2-rr-scorenote-RSK-004']", "textContains": "6 points are not being deducted" },
+    { "name": "RR28 -- an already-accepted risk offers no second decision, so the three-card action grid is absent.", "action": "expect", "selector": "[data-testid='pv2-rr-actions-RSK-004']", "state": "absent" },
+    { "name": "RR29 -- INERT BY DESIGN: 'Extend the review date' renders on the acceptance.", "action": "expect", "selector": "[data-testid='pv2-rr-extend-RSK-004']", "textContains": "Extend the review date" },
+    { "name": "RR30 -- INERT BY DESIGN: so does 'Withdraw acceptance'.", "action": "expect", "selector": "[data-testid='pv2-rr-withdraw-RSK-004']", "textContains": "Withdraw acceptance" },
+    { "name": "RR31 -- INERT BY DESIGN: and the header's 'Export register'.", "action": "expect", "selector": "[data-testid='pv2-rr-export']", "textContains": "Export register" },
+
+    { "name": "RR32 -- Ask ShaneBot IS wired; clicking it opens the drawer.", "action": "click", "selector": "[data-testid='pv2-rr-ask-RSK-004']" },
+    { "name": "RR33 -- and the drawer carries the risk-specific topic, not a generic prompt.", "action": "expect", "selector": "body", "textContains": "in plain terms, and tell me whether accepting it is defensible" },
+
+    { "name": "RR34 -- DEEP LINK: ?pillar=Governance is how goRiskGov survives the move from shell state to a URL.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/risk-register?pillar=Governance" },
+    { "name": "RR35 -- two Governance risks.", "action": "expect", "selector": "[data-testid='pv2-rr-count']", "textContains": "2 risks shown" },
+    { "name": "RR36 -- RSK-005 is one of them.", "action": "expect", "selector": "[data-testid='pv2-rr-row-RSK-005']", "state": "visible" },
+    { "name": "RR37 -- and RSK-001, a Security risk, is filtered out.", "action": "expect", "selector": "[data-testid='pv2-rr-row-RSK-001']", "state": "absent" },
+    { "name": "RR38 -- the four stat cards do NOT move with the filter; they are computed over the whole register.", "action": "expect", "selector": "[data-testid='pv2-rr-stats']", "textContains": "19 pts" },
+
+    { "name": "RR39 -- an unrecognised pillar is ignored rather than filtering everything away.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/risk-register?pillar=Nonsense" },
+    { "name": "RR40 -- ...so the register is whole.", "action": "expect", "selector": "[data-testid='pv2-rr-count']", "textContains": "12 risks shown" },
+
+    { "name": "RR41 -- the Security pillar page's link is wired now that this page exists.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/security" },
+    { "name": "RR42 -- click 'View full risk register'.", "action": "click", "selector": "[data-testid='pv2-sec-risk-register-link']" },
+    { "name": "RR43 -- it lands pre-filtered to Security: three risks.", "action": "expect", "selector": "[data-testid='pv2-rr-count']", "textContains": "3 risks shown" },
+
+    { "name": "RR44 -- DEFECT PINNED: the HEALTH page's risk-register link calls goRiskSec (proto 2921), not a Health equivalent. Go to Health.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/health" },
+    { "name": "RR45 -- click its 'Risk register' link.", "action": "click", "selector": "[data-testid='pv2-hlt-risk-register-link']" },
+    { "name": "RR46 -- it lands on SECURITY, not Health -- three risks, the Security count.", "action": "expect", "selector": "[data-testid='pv2-rr-count']", "textContains": "3 risks shown" },
+    { "name": "RR47 -- and RSK-006, the Health risk the copy beside that button is about, is filtered OUT by the link meant to surface it. Reproduced from the prototype, not introduced here.", "action": "expect", "selector": "[data-testid='pv2-rr-row-RSK-006']", "state": "absent" },
+
+    { "name": "RR48 -- the Standards & risk nav group exists, with its one row.", "action": "expect", "selector": "[data-testid='pv2-nav-risk-register']", "state": "visible" },
+    { "name": "RR49 -- and it navigates back to an unfiltered register.", "action": "click", "selector": "[data-testid='pv2-nav-risk-register']" },
+    { "name": "RR50 -- all twelve again.", "action": "expect", "selector": "[data-testid='pv2-rr-count']", "textContains": "12 risks shown" }
+  ]
+}

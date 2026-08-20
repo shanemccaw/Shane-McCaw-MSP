@@ -91,6 +91,7 @@ import PortalV2LicensingPage from "@/pages/portal-v2-licensing";
 import PortalV2AdoptionPage from "@/pages/portal-v2-adoption";
 import PortalV2HealthPage from "@/pages/portal-v2-health";
 import PortalV2DocumentsPage from "@/pages/portal-v2-documents";
+import PortalV2RiskRegisterPage from "@/pages/portal-v2-risk-register";
 import PortalV2GovOversharingPage from "@/pages/portal-v2-gov-oversharing";
 import PortalV2GovOversharingAllPage from "@/pages/portal-v2-gov-oversharing-all";
 import PortalV2ChangeControlPage from "@/pages/portal-v2-change-control";
@@ -597,6 +598,13 @@ function SlugInnerSwitch() {
           make it a system rather than a list. */}
       <Route path="/portal-v2/documents">
         <ProtectedRoute component={PortalV2DocumentsPage} />
+      </Route>
+      {/* Standards & risk — the Risk Register. Declared before
+          "/portal-v2/:pillar" like every other specific route. It reads
+          `?pillar=` on mount, which is how the prototype's goRiskGov/Sec/Cmp
+          entry points survive the move from shell state to real URLs. */}
+      <Route path="/portal-v2/risk-register">
+        <ProtectedRoute component={PortalV2RiskRegisterPage} />
       </Route>
       {/* Operate — Change Control. Declared BEFORE "/portal-v2/:pillar" so the
           param route does not swallow it, same reason as the pillar pages
