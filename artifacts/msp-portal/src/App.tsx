@@ -93,6 +93,7 @@ import PortalV2HealthPage from "@/pages/portal-v2-health";
 import PortalV2GovOversharingPage from "@/pages/portal-v2-gov-oversharing";
 import PortalV2GovOversharingAllPage from "@/pages/portal-v2-gov-oversharing-all";
 import PortalV2ChangeControlPage from "@/pages/portal-v2-change-control";
+import PortalV2RunbooksPage from "@/pages/portal-v2-runbooks";
 import ConsentDeclinedPage from "@/pages/consent-declined";
 import ConsentSuccessPage from "@/pages/consent-success";
 import ConsentTenantConflictPage from "@/pages/consent-tenant-conflict";
@@ -594,6 +595,11 @@ function SlugInnerSwitch() {
           above. Backed by the customer-scoped GET/POST
           /api/portal/change-control, NOT the MSPOperator-gated
           /api/msp/change-requests, which would serve every tenant of the MSP. */}
+      {/* Operate — Active Runbooks, including the hold-window panel. Declared
+          before "/portal-v2/:pillar" for the same reason as the rows above. */}
+      <Route path="/portal-v2/runbooks">
+        <ProtectedRoute component={PortalV2RunbooksPage} />
+      </Route>
       <Route path="/portal-v2/change-control">
         <ProtectedRoute component={PortalV2ChangeControlPage} />
       </Route>

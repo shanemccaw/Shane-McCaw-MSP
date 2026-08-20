@@ -30,9 +30,10 @@
 
 import { useState, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
-import { GitCommit } from "lucide-react";
+import { GitCommit, PlayCircle } from "lucide-react";
 
 import { useAuth } from "@/lib/auth-context";
+import { useHoldBadge } from "@/components/portal-v2/holds/useHoldBadge";
 
 import {
   PILLAR_ICON_PATHS,
@@ -57,6 +58,8 @@ const OPERATE_ITEMS: ReadonlyArray<{
   label: string;
   title: string;
   testId: string;
+  /** "holds" wires the hold-window badge; absent means no badge, which is most rows. */
+  badge?: "holds";
   icon: typeof GitCommit;
 }> = [
   {
@@ -66,6 +69,14 @@ const OPERATE_ITEMS: ReadonlyArray<{
       "Change Control — every tenant change with a request, an approval and a rollback point",
     testId: "pv2-nav-change-control",
     icon: GitCommit,
+  },
+  {
+    href: "/portal-v2/runbooks",
+    label: "Active Runbooks",
+    title: "Active Runbooks — procedures in progress, including hold windows",
+    testId: "pv2-nav-runbooks",
+    badge: "holds",
+    icon: PlayCircle,
   },
 ];
 
@@ -217,6 +228,7 @@ export function PortalV2Shell({
   const [expanded, setExpanded] = useState(true);
   const [alertsOpen, setAlertsOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
+  const holdBadge = useHoldBadge();
 
   const isOverview = location === "/portal-v2" || location === "/portal-v2/";
 
@@ -467,6 +479,9 @@ export function PortalV2Shell({
             const isActive =
               location === item.href || location.startsWith(`${item.href}/`);
             const Glyph = item.icon;
+            // Only Active Runbooks carries a badge, and only when a hold window
+            // needs a decision — see useHoldBadge for the README's reasoning.
+            const badge = item.badge === "holds" ? holdBadge : null;
             return (
               <Link
                 key={item.href}
@@ -497,6 +512,41 @@ export function PortalV2Shell({
                   >
                     {item.label}
                   </span>
+                )}
+                {/* Badge when expanded — prototype 7263-7265. */}
+                {expanded && badge?.label && (
+                  <span
+                    data-testid="pv2-nav-runbooks-badge"
+                    style={{
+                      flex: "0 0 auto",
+                      padding: "2px 7px",
+                      borderRadius: 5,
+                      border: `1px solid ${badge.urgent ? "rgba(96,165,250,.5)" : "rgba(148,163,184,.18)"}`,
+                      background: badge.urgent ? "rgba(96,165,250,.14)" : "transparent",
+                      color: badge.urgent ? "#93c5fd" : "#64748b",
+                      fontSize: "9.5px",
+                      fontWeight: 700,
+                      letterSpacing: ".04em",
+                      fontFamily: MONO,
+                    }}
+                  >
+                    {badge.label}
+                  </span>
+                )}
+                {/* Collapsed mode shows a 6px dot instead — prototype 7266-7267. */}
+                {!expanded && badge?.label && (
+                  <span
+                    data-testid="pv2-nav-runbooks-dot"
+                    style={{
+                      position: "absolute",
+                      top: 6,
+                      right: 8,
+                      width: 6,
+                      height: 6,
+                      borderRadius: "50%",
+                      background: badge.urgent ? "#60a5fa" : "#475569",
+                    }}
+                  />
                 )}
               </Link>
             );
