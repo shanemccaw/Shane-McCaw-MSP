@@ -147,7 +147,7 @@
       }
     },
     {
-      "name": "A5 -- DEFECT 3 GUARD + `closing` state. hold-admins is 21h out, so its badge must name a real calendar day rather than always saying 'tomorrow' off an hours threshold.",
+      "name": "A5 -- DEFECT 3 GUARD + `closing` state. hold-admins closes ~21h out, so its badge must name a real CALENDAR DAY rather than always saying 'tomorrow' off an hours threshold. The exact hour is deliberately NOT asserted: the seed sets the close moment relative to now and minutes elapse before this step runs, so pinning T-21h would fail on the clock rather than on the behaviour.",
       "method": "GET",
       "path": "/api/portal/runbooks",
       "headers": {
@@ -156,8 +156,8 @@
       "expect": {
         "status": 200,
         "containsAny": [
-          "T-21h · closes tomorrow",
-          "T-21h · closes today"
+          "closes tomorrow",
+          "closes today"
         ]
       }
     },
@@ -179,7 +179,7 @@
       }
     },
     {
-      "name": "A7 -- DEFECT 4 GUARD + `running` state. hold-private is 552h out, so its state is `running` and its readout must be in DAYS, matching the badge. A readout in hours beside a relaxed badge is the pairing this guards against.",
+      "name": "A7 -- DEFECT 4 GUARD + `running` state. hold-private is ~552h out, so its state is `running` and its readout must be in DAYS, matching the badge. Asserted as \"absence of an hours readout\" plus the Holding badge rather than an exact T-Nd, because the day count legitimately ticks down mid-run; the pairing this guards against is a relaxed badge beside an urgent hours figure.",
       "method": "GET",
       "path": "/api/portal/runbooks",
       "headers": {
@@ -188,10 +188,11 @@
       "expect": {
         "status": 200,
         "containsAny": [
-          "T-23d"
+          "Holding"
         ],
         "containsNone": [
-          "T-552h"
+          "T-552h",
+          "T-551h"
         ]
       }
     },

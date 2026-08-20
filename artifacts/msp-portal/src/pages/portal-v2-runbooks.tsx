@@ -104,8 +104,14 @@ export default function PortalV2RunbooksPage() {
             Active Runbooks
           </span>
           <span style={{ fontSize: "13px", color: "#94a3b8", lineHeight: 1.5 }}>
-            Every runbook in progress across the tenant, in one place — what&rsquo;s done, what&rsquo;s
-            left, and how long it&rsquo;s been running.
+            {/*
+              Straight apostrophes, not &rsquo;. The prototype's own bytes are
+              U+0027 (checked with od, not eyeballed), and copy is final — so
+              "improving" the typography here would be rewriting it. The
+              manifest asserts this string and caught the curly version.
+            */}
+            Every runbook in progress across the tenant, in one place — what's done, what's left,
+            and how long it's been running.
           </span>
         </div>
 
