@@ -30,7 +30,7 @@
 
 import { useState, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
-import { GitCommit, PlayCircle } from "lucide-react";
+import { FileText, GitCommit, PlayCircle } from "lucide-react";
 
 import { useAuth } from "@/lib/auth-context";
 import { useHoldBadge } from "@/components/portal-v2/holds/useHoldBadge";
@@ -77,6 +77,28 @@ const OPERATE_ITEMS: ReadonlyArray<{
     testId: "pv2-nav-runbooks",
     badge: "holds",
     icon: PlayCircle,
+  },
+];
+
+/**
+ * The Library group — prototype 7244-7246. Its own group in the prototype's
+ * `navGroupDefs`, not part of Operate, and currently one row: `file-text` →
+ * `FileText`. The prototype's `title` is kept verbatim, including its "84-
+ * document library" claim, which the page itself backs up.
+ */
+const LIBRARY_ITEMS: ReadonlyArray<{
+  href: string;
+  label: string;
+  title: string;
+  testId: string;
+  icon: typeof FileText;
+}> = [
+  {
+    href: "/portal-v2/documents",
+    label: "Documents",
+    title: "Documents — your deliverables, and the 84-document library",
+    testId: "pv2-nav-documents",
+    icon: FileText,
   },
 ];
 
@@ -547,6 +569,50 @@ export function PortalV2Shell({
                       background: badge.urgent ? "#60a5fa" : "#475569",
                     }}
                   />
+                )}
+              </Link>
+            );
+          })}
+
+          {/* ── Library — prototype 7244-7246. A group of its own, added now
+              that /portal-v2/documents exists, per the same "never a dead row"
+              rule the Operate group follows. No badge machinery: the prototype
+              gives this group none. */}
+          <GroupLabel label="Library" expanded={expanded} />
+
+          {LIBRARY_ITEMS.map((item) => {
+            const isActive = location === item.href || location.startsWith(`${item.href}/`);
+            const Glyph = item.icon;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                title={item.title}
+                data-testid={item.testId}
+                style={navItemStyle(isActive, expanded)}
+              >
+                <span
+                  style={{
+                    flex: "0 0 18px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Glyph size={15} color={isActive ? "#60a5fa" : "#94a3b8"} />
+                </span>
+                {expanded && (
+                  <span
+                    style={{
+                      flex: 1,
+                      textAlign: "left",
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {item.label}
+                  </span>
                 )}
               </Link>
             );

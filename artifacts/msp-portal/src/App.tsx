@@ -90,6 +90,7 @@ import PortalV2CompliancePage from "@/pages/portal-v2-compliance";
 import PortalV2LicensingPage from "@/pages/portal-v2-licensing";
 import PortalV2AdoptionPage from "@/pages/portal-v2-adoption";
 import PortalV2HealthPage from "@/pages/portal-v2-health";
+import PortalV2DocumentsPage from "@/pages/portal-v2-documents";
 import PortalV2GovOversharingPage from "@/pages/portal-v2-gov-oversharing";
 import PortalV2GovOversharingAllPage from "@/pages/portal-v2-gov-oversharing-all";
 import PortalV2ChangeControlPage from "@/pages/portal-v2-change-control";
@@ -589,6 +590,13 @@ function SlugInnerSwitch() {
           is Shane's call, not a side effect of finishing Layer 1. */}
       <Route path="/portal-v2/health">
         <ProtectedRoute component={PortalV2HealthPage} />
+      </Route>
+      {/* Library — the Document Library. Not a pillar, but declared here with
+          the rest of the specific routes so "/portal-v2/:pillar" cannot swallow
+          it. See portal-v2-documents.tsx for the four behavioural rules that
+          make it a system rather than a list. */}
+      <Route path="/portal-v2/documents">
+        <ProtectedRoute component={PortalV2DocumentsPage} />
       </Route>
       {/* Operate — Change Control. Declared BEFORE "/portal-v2/:pillar" so the
           param route does not swallow it, same reason as the pillar pages
