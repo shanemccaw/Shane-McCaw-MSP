@@ -99,7 +99,8 @@
     { "name": "RR47 -- and RSK-006, the Health risk the copy beside that button is about, is filtered OUT by the link meant to surface it. Reproduced from the prototype, not introduced here.", "action": "expect", "selector": "[data-testid='pv2-rr-row-RSK-006']", "state": "absent" },
 
     { "name": "RR48 -- the Standards & risk nav group exists, with its one row.", "action": "expect", "selector": "[data-testid='pv2-nav-risk-register']", "state": "visible" },
-    { "name": "RR49 -- and it navigates back to an unfiltered register.", "action": "click", "selector": "[data-testid='pv2-nav-risk-register']" },
-    { "name": "RR50 -- all twelve again.", "action": "expect", "selector": "[data-testid='pv2-rr-count']", "textContains": "12 risks shown" }
+    { "name": "RR49 -- click it FROM the Security-filtered register. This is client-side navigation via a wouter Link, so the page does NOT remount.", "action": "click", "selector": "[data-testid='pv2-nav-risk-register']" },
+    { "name": "RR50 -- CAUGHT A REAL BUG ON ITS FIRST RUN, and now guards the fix: a URL carrying no ?pillar= must render the unfiltered register. Before the fix this read '3 risks shown' -- the Security filter survived a client-side nav that had dropped the query string, so the same URL rendered two different pages depending on how you reached it.", "action": "expect", "selector": "[data-testid='pv2-rr-count']", "textContains": "12 risks shown" },
+    { "name": "RR51 -- and the row that was open under the old filter is not left open at the same ordinal: RSK-001, the heaviest risk, is row 0 again.", "action": "expect", "selector": "[data-testid='pv2-rr-open-RSK-001']", "state": "visible" }
   ]
 }

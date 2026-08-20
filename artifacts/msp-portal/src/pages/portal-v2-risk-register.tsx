@@ -39,11 +39,13 @@
  * ── Deep links ─────────────────────────────────────────────────────────────
  * The prototype enters this page from three pillar pages with a pillar
  * preselected and row 0 open (18014-18016). Those become `?pillar=Governance`
- * here, read on mount, because a shell that switches on `active` has in-memory
- * state where this build has a URL.
+ * here, because a shell that switches on `active` has in-memory state where
+ * this build has a URL. The seed is re-read whenever the query string changes,
+ * not only on mount — see the note on `lastSearch` below for why that is a
+ * correctness requirement rather than a nicety.
  */
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useSearch } from "wouter";
 import { ChevronDown } from "lucide-react";
 
@@ -107,28 +109,54 @@ const INERT_BTN: React.CSSProperties = {
   fontFamily: "inherit",
 };
 
+/**
+ * `?pillar=` stands in for the prototype's `goRiskGov`/`goRiskSec`/`goRiskCmp`,
+ * which set `rrPillar` and open row 0. An unrecognised value is ignored rather
+ * than filtering the register down to nothing.
+ */
+function seedFrom(search: string): RiskFilterState {
+  const wanted = new URLSearchParams(search).get("pillar");
+  const valid = RR_SELECTS.find((s) => s.key === "pillar")!.options;
+  return wanted && valid.includes(wanted)
+    ? { ...RR_DEFAULT_FILTERS, pillar: wanted }
+    : RR_DEFAULT_FILTERS;
+}
+
 export default function PortalV2RiskRegisterPage() {
   const search = useSearch();
 
-  /**
-   * `?pillar=` seeds the filter once, standing in for the prototype's
-   * `goRiskGov`/`goRiskSec`/`goRiskCmp`, which set the pillar and open row 0.
-   * An unrecognised value is ignored rather than filtering everything away.
-   */
-  const seeded = useMemo<RiskFilterState>(() => {
-    const wanted = new URLSearchParams(search).get("pillar");
-    const valid = RR_SELECTS.find((s) => s.key === "pillar")!.options;
-    return wanted && valid.includes(wanted)
-      ? { ...RR_DEFAULT_FILTERS, pillar: wanted }
-      : RR_DEFAULT_FILTERS;
-    // Seeded from the URL as it was on mount, deliberately: re-seeding on every
-    // change would fight the user's own use of the selects.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const [filters, setFilters] = useState<RiskFilterState>(seeded);
+  const [filters, setFilters] = useState<RiskFilterState>(() => seedFrom(search));
   // An INDEX into the filtered list, not a risk id — see the model's header.
   const [expanded, setExpanded] = useState<number | null>(RR_DEFAULT_EXPANDED);
+
+  /**
+   * Re-seed when, and only when, the QUERY STRING ITSELF changes.
+   *
+   * This is not belt-and-braces; without it the page is genuinely wrong, and
+   * the manifest caught it. A `goto` reloads the app and remounts, so a deep
+   * link seeds correctly — but the sidebar's own nav row is a wouter `<Link>`,
+   * which changes the path CLIENT-SIDE without remounting. Arriving at the
+   * register from the Health page (`?pillar=Security`) and then clicking
+   * "Risk Register" in the sidebar left the Security filter applied while the
+   * URL carried no `?pillar=` at all: the same URL rendered two different pages
+   * depending on how you got there, which makes the deep link non-idempotent.
+   *
+   * The prototype cannot arbitrate this — it has no URLs, and its nav sets
+   * `active` without touching `rrPillar`, so its filter does persist. But
+   * `?pillar=` is this build's carrier for `goRisk*`, and having introduced it,
+   * a URL with no pillar has to mean no pillar filter.
+   *
+   * Comparing against the last-seen search rather than running on every render
+   * is what keeps this from fighting the user's own use of the selects: those
+   * change `filters` without touching the URL, so this branch does not fire.
+   * `rrExpanded` resets to 0 alongside, exactly as goRiskGov/Sec/Cmp do.
+   */
+  const [lastSearch, setLastSearch] = useState(search);
+  if (search !== lastSearch) {
+    setLastSearch(search);
+    setFilters(seedFrom(search));
+    setExpanded(RR_DEFAULT_EXPANDED);
+  }
 
   const { openForm, formElement } = useFormDrawer();
 
