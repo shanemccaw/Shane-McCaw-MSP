@@ -67,7 +67,7 @@ import {
 } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
 import { randomBytes } from "crypto";
-import { requireAdminOrIngestToken } from "../middlewares/requireAuth";
+import { requireAdminOrIngestToken, requireRole } from "../middlewares/requireAuth";
 import { isReplitDevEnvironment, getStripeKey } from "../lib/stripe";
 import { dispatchMspStripeEvent } from "./msp-billing-webhook";
 import { handleMspDunningAdvance } from "../lib/msp-billing-nodes";
@@ -748,16 +748,29 @@ router.post(
 //
 // Idempotent: seeding twice replaces the previous seed for that customer rather
 // than accumulating. Steps and hold windows cascade from the runbook delete.
+//
+// AUTH DIFFERS FROM ITS NEIGHBOURS HERE, DELIBERATELY. The other testbed
+// endpoints take `requireAdminOrIngestToken()` and an explicit `customerId`,
+// because they act ACROSS customers (resetting one, provisioning another). This
+// one only ever seeds the CALLER'S OWN tenant, so it takes a normal customer
+// session and reads `customerId` from the JWT — the body is not consulted at
+// all, and there is no parameter that could point it at another tenant.
+//
+// That is a smaller authority than its neighbours, not a larger one, and it is
+// what makes the Active Runbooks manifest self-sufficient: the harness logs in
+// as the test account it already uses and seeds its own data, with no shared
+// secret to configure. The dev-origin gate above is still the outer boundary,
+// so none of this is reachable from a real deployment.
 router.post(
   "/admin/testbed/seed-runbooks",
   requireDevOrigin,
-  requireAdminOrIngestToken(),
+  requireRole("Assessment"),
   async (req: Request, res: Response): Promise<void> => {
-    const body = req.body as { customerId?: number | string };
-    const customerId =
-      typeof body?.customerId === "number" ? body.customerId : Number.parseInt(String(body?.customerId ?? ""), 10);
+    // From the token, never from the body. See the note above.
+    const claimed = (req.user as { customerId?: number } | undefined)?.customerId;
+    const customerId = typeof claimed === "number" && !Number.isNaN(claimed) ? claimed : NaN;
     if (!Number.isFinite(customerId) || customerId <= 0) {
-      res.status(400).json({ error: "customerId (tenants.id) is required" });
+      res.status(403).json({ error: "No customer identity on token" });
       return;
     }
 

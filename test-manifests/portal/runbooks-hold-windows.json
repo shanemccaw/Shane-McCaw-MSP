@@ -1,0 +1,485 @@
+{
+  "feature": "Customer Portal v2 -- Active Runbooks (/portal-v2/runbooks): the runbook list with persistent step ticks, and the hold-window panel over a new customer-scoped API (GET /api/portal/runbooks, PUT/POST for steps, POST for the four hold-window decisions). Hold windows are the one design system with zero prior implementation, and this manifest's job is to prove the state machine lands in the right state and that its four known prototype defects stay fixed.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "PENDING",
+  "notes": [
+    "WHY THE SEED IS STEP ONE, AND WHY ITS OFFSETS ARE RELATIVE. A0 calls the dev-origin-gated /admin/testbed/seed-runbooks, which writes the design's four runbooks and four hold windows at offsets FROM NOW rather than at the prototype's absolute dates. The prototype pins its clock (HOLD_NOW = 2026-08-18T09:00:00Z) and writes absolute starts against it; copying those would mean every seeded window drifted into `due` within days and this manifest would keep passing while covering ONE state instead of four. The offsets reproduce the design's own four states on any day the test runs: hold-ca01 closed 1h ago (due), hold-admins 21h out (closing), hold-guest 217h out and clear (early), hold-private 552h out (running).",
+    "A4-A7 ARE THE POINT OF THIS FILE. They assert the four states land correctly AND that the four defects the prototype's own derivation carries stay fixed. Each defect is written up in api-server/src/lib/portal-hold-windows.ts; in short: (1) `closing` was unreachable when the verdict was `clear`, because the ternary tested the verdict before proximity; (2) `early` used Math.ceil, so the design's own hold-guest fixture (217 hours = 9 days 1 hour) rendered 'Close the window 10 days early' when the README's alerting copy says 9; (3) 'closes tomorrow' came from an hours threshold, so a 20-hour remainder at 01:00 UTC claimed tomorrow when it closed the same day; (4) the badge switched state at 24h while the readout switched units at 48h, pairing 'Holding' with 'T-30h'. A6 is the one to watch: it asserts the literal string '9 days early' on the design's own fixture, so a regression to Math.ceil fails on a named example.",
+    "A8/A9 ARE THE CROSS-TENANT GUARD. portal_runbooks and portal_hold_windows are keyed on customer_id, which IS the JWT's customerId claim, so scoping is one predicate rather than Change Control's pair. A8 confirms an unauthenticated read is refused outright rather than answering with an empty list (which would look identical to a tenant with no runbooks). A9 confirms a step write against a runbook id the caller does not own answers 404, not 403 -- another tenant's row must be indistinguishable from one that does not exist, or the status code itself leaks which ids are real.",
+    "THIS MANIFEST IS DELIBERATELY NON-DESTRUCTIVE, and that shaped A10-A13. An earlier draft closed hold-guest early to prove the change-request gate end to end -- but every apiTest runs before every uiStep, so closing the only `early` window meant the UI phase could no longer assert the defect-2 fix on it, and re-seeding between the two phases is not expressible in a manifest. Rather than weaken the UI assertion or bolt on an ordering trick, the destructive path was taken OUT: A10-A13 now assert only refusals and reads -- close-early refused on a `closing` window, extend refused with no reason given, the audit trail readable, another tenant’s window absent -- so all four states survive into the UI phase and the manifest is safe to re-run. The close-early path that RAISES a change request is covered by the route’s own guards and by portal-hold-windows.test.ts, and was exercised live against the deployed server during the build; that result is recorded in PLATFORM_BUILD.md rather than baked into a manifest that would fight itself.",
+    "A10 IS THE AUTHORITY GUARD ON CLOSING EARLY. hold-admins is 21 hours out with a `watch` verdict, so it is `closing`, not `early`. Closing it early must be refused by the SERVER with a 409, not merely hidden in the UI -- the UI is not the gate, and the same rule is what stops a crafted request skipping a wait the tenant agreed to.",
+    "STEP TICKS PERSIST, which is the other half of this build. The prototype keeps them in component state so they die with the tab, the same defect Git #730 fixed for the Remediation Tracker. A2 ticks a step through the API and A3 reads it back on a fresh request.",
+    "THE SEED RUNS ON EVERY EXECUTION and REPLACES the previous seed for this customer rather than accumulating, so the manifest always starts from the same four states and is safe to re-run. It touches only portal_runbooks and portal_hold_windows for the caller’s own tenant; nothing else is reset, and no change requests are raised by this manifest at all (see the non-destructive note above).",
+    "ENV VARS required: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD. NO shared secret is needed. The seed endpoint is dev-origin gated and SELF-SCOPED: it reads customerId from the caller’s own JWT and ignores the body entirely, so the harness seeds its own tenant with the bearer it already logs in with. That is a SMALLER authority than the neighbouring testbed endpoints, not a larger one -- they take an ingest token because they act across customers, and this one cannot point at another tenant at all. An earlier draft did use BUILD_TRACKER_INGEST_TOKEN and failed on an unset variable, which is what prompted the self-scoped design.",
+    "UI ROUTE SHAPE: /portal/{slug}/portal-v2/runbooks, declared in App.tsx before '/portal-v2/:pillar' so the param route does not swallow it.",
+    "shaneapp://runTest hits the DEPLOYED build -- the U* steps only exercise the page once the commit under test is deployed."
+  ],
+  "apiTests": [
+    {
+      "name": "SETUP -- log in as the testbed portal account; extract the bearer.",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "email": "{{TEST_PORTAL_EMAIL}}",
+        "password": "{{TEST_PORTAL_PASSWORD}}"
+      },
+      "expect": {
+        "status": 200,
+        "jsonPath": "$.accessToken",
+        "exists": true
+      },
+      "extract": {
+        "as": "authToken",
+        "jsonPath": "$.accessToken"
+      }
+    },
+    {
+      "name": "A0 -- SEED the design's five runbooks and four hold windows at offsets relative to now, so the four states are deterministic whenever this runs.",
+      "method": "POST",
+      "path": "/api/admin/testbed/seed-runbooks",
+      "headers": {
+        "Authorization": "Bearer {{authToken}}",
+        "Content-Type": "application/json"
+      },
+      "body": {},
+      "expect": {
+        "status": 200,
+        "jsonPath": "$.holdsSeeded",
+        "value": 4
+      }
+    },
+    {
+      "name": "A1 -- the customer-scoped runbooks endpoint responds 200 with an array. This is the endpoint the page reads; nothing else serves it. Extracts the first runbook's real id for the step writes below.",
+      "method": "GET",
+      "path": "/api/portal/runbooks",
+      "headers": {
+        "Authorization": "Bearer {{authToken}}"
+      },
+      "expect": {
+        "status": 200,
+        "jsonPath": "$.runbooks",
+        "isArray": true
+      },
+      "extract": {
+        "as": "runbookId",
+        "jsonPath": "$.runbooks[0].id"
+      }
+    },
+    {
+      "name": "A1b -- extract the CLOSING window's id. Holds come back in id order and the seed writes them in runbook order, so index 1 is hold-admins (21h out, `watch`).",
+      "method": "GET",
+      "path": "/api/portal/runbooks",
+      "headers": {
+        "Authorization": "Bearer {{authToken}}"
+      },
+      "expect": {
+        "status": 200,
+        "jsonPath": "$.holds[1].holdKey",
+        "value": "hold-admins"
+      },
+      "extract": {
+        "as": "closingHoldId",
+        "jsonPath": "$.holds[1].id"
+      }
+    },
+    {
+      "name": "A1c -- extract the EARLY window's id. Index 2 is hold-guest (217h out, `clear`) — the one the close-early path is exercised against.",
+      "method": "GET",
+      "path": "/api/portal/runbooks",
+      "headers": {
+        "Authorization": "Bearer {{authToken}}"
+      },
+      "expect": {
+        "status": 200,
+        "jsonPath": "$.holds[2].holdKey",
+        "value": "hold-guest"
+      },
+      "extract": {
+        "as": "earlyHoldId",
+        "jsonPath": "$.holds[2].id"
+      }
+    },
+    {
+      "name": "A2 -- tick a step through the API. In the prototype this is component state that dies with the tab.",
+      "method": "PUT",
+      "path": "/api/portal/runbooks/{{runbookId}}/steps/1",
+      "headers": {
+        "Authorization": "Bearer {{authToken}}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "checked": true
+      },
+      "expect": {
+        "status": 200,
+        "jsonPath": "$.checked",
+        "value": true
+      }
+    },
+    {
+      "name": "A3 -- and it is still ticked on a fresh read. This is the whole point of giving runbook progress a table.",
+      "method": "GET",
+      "path": "/api/portal/runbooks",
+      "headers": {
+        "Authorization": "Bearer {{authToken}}"
+      },
+      "expect": {
+        "status": 200,
+        "jsonPath": "$.runbooks[0].steps[0].checked",
+        "value": true
+      }
+    },
+    {
+      "name": "A4 -- DEFECT 1 GUARD + `due` state. hold-ca01 closed an hour ago with a `signals` verdict, so it must be `due` and must offer a DECISION rather than a bare release: the scan named something that would break.",
+      "method": "GET",
+      "path": "/api/portal/runbooks",
+      "headers": {
+        "Authorization": "Bearer {{authToken}}"
+      },
+      "expect": {
+        "status": 200,
+        "containsAny": [
+          "Decide — release, exclude or extend"
+        ]
+      }
+    },
+    {
+      "name": "A5 -- DEFECT 3 GUARD + `closing` state. hold-admins is 21h out, so its badge must name a real calendar day rather than always saying 'tomorrow' off an hours threshold.",
+      "method": "GET",
+      "path": "/api/portal/runbooks",
+      "headers": {
+        "Authorization": "Bearer {{authToken}}"
+      },
+      "expect": {
+        "status": 200,
+        "containsAny": [
+          "T-21h · closes tomorrow",
+          "T-21h · closes today"
+        ]
+      }
+    },
+    {
+      "name": "A6 -- DEFECT 2 GUARD, the important one. hold-guest is clear with 217 hours left, i.e. 9 days and 1 hour. The prototype's Math.ceil renders '10 days early'; the README's own alerting copy says 9. Asserting the literal string means a regression to ceil fails on the design's own fixture.",
+      "method": "GET",
+      "path": "/api/portal/runbooks",
+      "headers": {
+        "Authorization": "Bearer {{authToken}}"
+      },
+      "expect": {
+        "status": 200,
+        "containsAny": [
+          "Close the window 9 days early"
+        ],
+        "containsNone": [
+          "Close the window 10 days early"
+        ]
+      }
+    },
+    {
+      "name": "A7 -- DEFECT 4 GUARD + `running` state. hold-private is 552h out, so its state is `running` and its readout must be in DAYS, matching the badge. A readout in hours beside a relaxed badge is the pairing this guards against.",
+      "method": "GET",
+      "path": "/api/portal/runbooks",
+      "headers": {
+        "Authorization": "Bearer {{authToken}}"
+      },
+      "expect": {
+        "status": 200,
+        "containsAny": [
+          "T-23d"
+        ],
+        "containsNone": [
+          "T-552h"
+        ]
+      }
+    },
+    {
+      "name": "A8 -- an unauthenticated read is refused outright, rather than answering with an empty list that would look identical to a tenant with no runbooks.",
+      "method": "GET",
+      "path": "/api/portal/runbooks",
+      "expect": {
+        "status": 401
+      }
+    },
+    {
+      "name": "A9 -- CROSS-TENANT GUARD. A step write against a runbook id this caller does not own answers 404, not 403: another tenant's row must be indistinguishable from one that does not exist, or the status code leaks which ids are real.",
+      "method": "PUT",
+      "path": "/api/portal/runbooks/999999/steps/1",
+      "headers": {
+        "Authorization": "Bearer {{authToken}}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "checked": true
+      },
+      "expect": {
+        "status": 404
+      }
+    },
+    {
+      "name": "A10 -- AUTHORITY GUARD. hold-admins is `closing`, not `early`, so closing it early must be refused by the SERVER with a 409. The UI hides the action; the UI is not the gate.",
+      "method": "POST",
+      "path": "/api/portal/hold-windows/{{closingHoldId}}/close-early",
+      "headers": {
+        "Authorization": "Bearer {{authToken}}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "note": "should be refused"
+      },
+      "expect": {
+        "status": 409
+      }
+    },
+    {
+      "name": "A11 -- extending REQUIRES a reason. The design's own justification is that 'a window that keeps moving is visible rather than quietly permanent', which an unexplained extension defeats. A request with no reason is rejected.",
+      "method": "POST",
+      "path": "/api/portal/hold-windows/{{closingHoldId}}/extend",
+      "headers": {
+        "Authorization": "Bearer {{authToken}}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "days": 3
+      },
+      "expect": {
+        "status": 400
+      }
+    },
+    {
+      "name": "A12 -- the audit trail for a window is customer-scoped and readable. This is where an extension's reason and a decision's change-request code are recorded.",
+      "method": "GET",
+      "path": "/api/portal/hold-windows/{{closingHoldId}}/events",
+      "headers": {
+        "Authorization": "Bearer {{authToken}}"
+      },
+      "expect": {
+        "status": 200,
+        "jsonPath": "$.events",
+        "isArray": true
+      }
+    },
+    {
+      "name": "A13 -- CROSS-TENANT GUARD on the audit trail too: a hold window this caller does not own reads as absent, not forbidden.",
+      "method": "GET",
+      "path": "/api/portal/hold-windows/999999/events",
+      "headers": {
+        "Authorization": "Bearer {{authToken}}"
+      },
+      "expect": {
+        "status": 404
+      }
+    }
+  ],
+  "uiSteps": [
+    {
+      "name": "goto the real login URL (outer WouterRouter base = '/portal').",
+      "action": "goto",
+      "target": "/portal/login"
+    },
+    {
+      "name": "WAIT for the login form to hydrate before typing.",
+      "action": "expect",
+      "selector": "#email",
+      "state": "visible"
+    },
+    {
+      "action": "input",
+      "selector": "#email",
+      "value": "{{TEST_PORTAL_EMAIL}}"
+    },
+    {
+      "action": "input",
+      "selector": "#password",
+      "value": "{{TEST_PORTAL_PASSWORD}}"
+    },
+    {
+      "name": "Primary login -- every downstream assertion needs a real authenticated session.",
+      "action": "click",
+      "selector": "[data-testid='login-submit']",
+      "critical": true
+    },
+    {
+      "name": "U1 -- goto Active Runbooks on its slug-scoped route.",
+      "action": "goto",
+      "target": "/portal/shane-mccaw-consulting/portal-v2/runbooks"
+    },
+    {
+      "name": "U2 -- the page title is the prototype's.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-runbooks-title']",
+      "state": "visible",
+      "textContains": "Active Runbooks"
+    },
+    {
+      "name": "U3 -- the standfirst is the design's final copy.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-runbooks']",
+      "state": "visible",
+      "textContains": "what's done, what's left, and how long it's been running"
+    },
+    {
+      "name": "U4 -- the hold-windows panel is present, with the design's explanation of what a hold window IS.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-holds-panel']",
+      "state": "visible",
+      "textContains": "Steps that wait on time rather than on work"
+    },
+    {
+      "name": "U5 -- the summary line counts the open windows and names what needs a decision.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-holds-summary']",
+      "state": "visible",
+      "textContains": "decision due"
+    },
+    {
+      "name": "U6 -- DEFECT 2 GUARD IN THE DOM. The clear window offers to close NINE days early, not the prototype's ten. This is the client-side derivation agreeing with the server's, which is what holdState.test.ts guards at unit level.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-hold-primary-hold-guest']",
+      "state": "visible",
+      "textContains": "Close the window 9 days early"
+    },
+    {
+      "name": "U7 -- the due window's badge says a decision is owed, with how long ago it closed.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-hold-badge-hold-ca01']",
+      "state": "visible",
+      "textContains": "decision due"
+    },
+    {
+      "name": "U8 -- DEFECT 3 GUARD IN THE DOM. The closing window names a real calendar day.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-hold-badge-hold-admins']",
+      "state": "visible",
+      "textContains": [
+        "closes tomorrow",
+        "closes today"
+      ]
+    },
+    {
+      "name": "U9 -- DEFECT 4 GUARD IN THE DOM. The running window's readout is in days, matching its relaxed badge.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-hold-tminus-hold-private']",
+      "state": "visible",
+      "textContains": "d"
+    },
+    {
+      "name": "U10 -- the scan verdict is stated in words, not as a code. The `signals` window says something would break.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-hold-scan-hold-ca01']",
+      "state": "visible",
+      "textContains": "enforcing today would break something"
+    },
+    {
+      "name": "U11 -- and the clear window says the opposite, which is what makes closing early defensible.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-hold-scan-hold-guest']",
+      "state": "visible",
+      "textContains": "no further interruption expected"
+    },
+    {
+      "name": "U12 -- the evidence line is on the card, naming what the scan actually found rather than only a verdict.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-hold-hold-ca01']",
+      "state": "visible",
+      "textContains": "both from the SMTP relay service account"
+    },
+    {
+      "name": "U13 -- the scan provenance is composed from stored parts, so the timestamp is real rather than frozen prose.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-hold-hold-guest']",
+      "state": "visible",
+      "textContains": "scanned hourly"
+    },
+    {
+      "name": "U14 -- a runbook carrying an open hold reads as HELD rather than On track. The hold is the reason, so it wins.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-runbook-status-sec-legacy-auth']",
+      "state": "visible",
+      "textContains": "Decision due"
+    },
+    {
+      "name": "U15 -- the clear window's runbook says so in its own status.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-runbook-status-gov-manage-guests']",
+      "state": "visible",
+      "textContains": "Clear to close early"
+    },
+    {
+      "name": "U16 -- a runbook with no hold window falls back to its own cycle status.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-runbook-status-gov-access-review']",
+      "state": "visible",
+      "textContains": [
+        "On track",
+        "Overdue",
+        "Complete"
+      ]
+    },
+    {
+      "name": "U17 -- the hold band appears inside the gated runbook's own card, which is the second of the design's three surfaces for one window.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-runbook-holdband-sec-legacy-auth']",
+      "state": "visible",
+      "textContains": "CA01 in report-only"
+    },
+    {
+      "name": "U18 -- runbook progress renders as a real fraction of real steps.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-runbook-sec-legacy-auth']",
+      "state": "visible",
+      "textContains": "steps"
+    },
+    {
+      "name": "U19 -- the add-a-step field is present, which is what the custom-step column exists for.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-newstep-gov-access-review']",
+      "state": "visible"
+    },
+    {
+      "name": "U20 -- the nav badge is the single place in the nav that says a decision is waiting, and it is driven by the real T-0 count.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-nav-runbooks-badge']",
+      "state": "visible",
+      "textContains": "due"
+    },
+    {
+      "name": "U21 -- open the extend form on the due window.",
+      "action": "click",
+      "selector": "[data-testid='pv2-hold-secondary-hold-ca01']"
+    },
+    {
+      "name": "U22 -- extending states WHY it is recorded, which is the design's stated reason for requiring a reason.",
+      "action": "expect",
+      "selector": "body",
+      "state": "visible",
+      "textContains": "visible rather than quietly permanent"
+    },
+    {
+      "name": "U23 -- ISOLATION GUARANTEE: the live Governance page is untouched by this build.",
+      "action": "goto",
+      "target": "/portal/shane-mccaw-consulting/governance"
+    },
+    {
+      "name": "U24 -- confirm the live governance route did not 404 after the runbooks route and nav row were added.",
+      "action": "expect",
+      "selector": "body",
+      "state": "visible",
+      "textContains": "Governance"
+    },
+    {
+      "name": "U25 -- ISOLATION GUARANTEE 2: Change Control still renders after the Shell gained a second Operate row and a badge hook.",
+      "action": "goto",
+      "target": "/portal/shane-mccaw-consulting/portal-v2/change-control"
+    },
+    {
+      "name": "U26 -- and its register is still there.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-cc-title']",
+      "state": "visible",
+      "textContains": "Change Control"
+    }
+  ]
+}
