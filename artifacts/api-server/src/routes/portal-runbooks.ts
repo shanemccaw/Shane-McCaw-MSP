@@ -87,6 +87,17 @@ const router: IRouter = Router();
 /** How many steps one runbook may hold. A guard against an accidental loop, not a product limit. */
 const MAX_STEPS_PER_RUNBOOK = 200;
 
+/**
+ * `governance` → `Governance`. The pillar is stored as a lowercase key (one of
+ * journeyTokens' six), but every customer-facing use of it in the design is
+ * title-cased. Only the first letter is touched, so a key that is already
+ * display-cased passes through unchanged.
+ */
+function titleCasePillar(pillar: string): string {
+  if (!pillar) return pillar;
+  return pillar.charAt(0).toUpperCase() + pillar.slice(1);
+}
+
 // ── Wire shapes ───────────────────────────────────────────────────────────────
 
 interface WireStep {
@@ -717,7 +728,11 @@ async function raiseHoldChangeRequest(opts: {
       },
       rollbackScriptSnippet: "",
       // The column added with this page — "Raised from", pointing at the window.
-      linkedFinding: `${opts.hold.pillar} · ${opts.hold.title}`,
+      // Title-cased: the pillar is stored as a lowercase key (`governance`) but
+      // the design writes this cell as "Governance · External Sharing Drift",
+      // and a customer reading their own register should not see the internal
+      // casing of a database column.
+      linkedFinding: `${titleCasePillar(opts.hold.pillar)} · ${opts.hold.title}`,
     })
     .returning({ id: mspChangeRequestsTable.id });
 
