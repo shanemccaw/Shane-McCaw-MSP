@@ -1,7 +1,7 @@
 {
   "feature": "Customer Portal v2 -- the Document Library (/portal-v2/documents), the fourth of the design handoff's five systems and the first non-pillar page in the v2 build. Recreated from 'Customer Portal Shell.dc.html': the isDocuments section (proto 5470-5679), the right slide-out filter drawer (5645-5679) and the derivation behind both (11487-11930). 33 documents -- 9 owned with full bodies (DOC-01..09) and 24 catalogue entries (DOC-10..33) -- of a stated library total of 84. The fixture (components/portal-v2/docLibraryData.ts) was EXTRACTED mechanically from the prototype rather than retyped; the derived behaviour (components/portal-v2/docLibraryModel.ts) was transcribed by hand and is what these steps and the unit test both aim at.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "PENDING",
+  "lastVerifiedAgainstCommit": "1d5c7fcc",
 
   "notes": [
     "SCOPE: the Document Library page only. It is a FIXTURE page -- there is no /api/portal/documents endpoint yet, so there is deliberately no API assertion here beyond the login that every /portal-v2/* probe needs. That is an honest statement of coverage, not an omission: the numbers on screen come from docLibraryData.ts, and the wiring pass that replaces it with real tenant data is where an endpoint assertion becomes possible.",
@@ -10,7 +10,8 @@
     "shaneapp://runTest hits the DEPLOYED build, not the local worktree -- these steps only exercise the new page once this commit is deployed to the dev server.",
     "DL18-DL22 ARE THE POINT OF THIS MANIFEST. A faceted search whose option counts are computed WITH their own group applied looks entirely normal until you tick one box and every sibling in that group reads 0. DL20 ticks Security and DL22 then asserts Governance still reads 4 -- the count it would return if Security were not ticked. Nothing else in the suite catches that, and no visual pass catches it either.",
     "ROW ORDER IS NOT ASSERTED BY SELECTOR ORDINAL EXCEPT AT DL27-DL31. Under no filter, all four sorts happen to put DOC-01 first (it is owned, Cross-pillar, a Report, and DOC-01), so a first-row assertion on the unfiltered list would pass under every sort and prove nothing. Filtering to 'Available to add' first makes the sorts genuinely diverge -- num puts DOC-10 first, pillar puts DOC-33 first, type puts DOC-23 first -- which is what DL29/DL30/DL31 assert. Full ordering across all 33 rows is covered by src/components/portal-v2/docLibraryModel.test.ts (34 assertions), not here.",
-    "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD -- the same testbed account portal-v2-pillars.json drives."
+    "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD -- the same testbed account portal-v2-pillars.json drives.",
+    "RUN GREEN 2026-08-19: 60/60 against the deployed dev server at commit 1d5c7fcc (deployed via desktop/BuildConsole/trigger-deploy-and-wait.ps1, 5065900c4 -> 1d5c7fcc6, 47.7s). Real text observed on screen, read back out of the result envelope rather than assumed: the Security pillar count read '6' and, with Security ticked, Governance still read '4' (DL27, the facet-count rule); the Availability count narrowed to '5' in the same breath (DL28); and the first catalogue row was 'Conditional Access Baseline' under Number, 'Board Briefing Pack' under Pillar and 'Copilot Licence Business Case' under Type -- three distinct answers from the same 24 rows, which is what makes DL40/DL42/DL44 evidence that the sort actually sorts rather than steps that would pass on any ordering."
   ],
 
   "apiTests": [
