@@ -61,6 +61,9 @@ import {
   servicesTable,
   usersTable,
   signupExchangeTokensTable,
+  portalRunbooksTable,
+  portalRunbookStepsTable,
+  portalHoldWindowsTable,
 } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
 import { randomBytes } from "crypto";
@@ -716,6 +719,254 @@ router.post(
       res.status(500).json({
         error: err instanceof Error ? err.message : "billing-simulate failed",
       });
+    }
+  },
+);
+
+// ── POST /admin/testbed/seed-runbooks ─────────────────────────────────────────
+//
+// Seeds one testbed customer's Active Runbooks page with the design prototype's
+// own four runbooks and four hold windows, so the page and its state machine can
+// be exercised against real rows rather than an empty state.
+//
+// WHY THE OFFSETS ARE RELATIVE TO NOW, AND WHY THAT MATTERS
+// ---------------------------------------------------------
+// The prototype pins its clock (`HOLD_NOW = 2026-08-18T09:00:00Z`) and writes
+// absolute start dates against it, which is what makes its four windows land in
+// four different states. Copying those absolute dates here would mean the seeded
+// windows drift into `due` within days and the test would silently stop covering
+// `running`, `closing` and `early` at all — passing while asserting nothing.
+//
+// So each window is seeded at the OFFSET FROM NOW that reproduces the
+// prototype's own state, and the four states are therefore deterministic
+// whenever the seed runs:
+//
+//   hold-ca01     closes  1h ago   verdict signals  ->  due
+//   hold-admins   closes 21h out   verdict watch    ->  closing
+//   hold-guest    closes 217h out  verdict clear    ->  early   (9 days saved)
+//   hold-private  closes 552h out  verdict watch    ->  running
+//
+// Idempotent: seeding twice replaces the previous seed for that customer rather
+// than accumulating. Steps and hold windows cascade from the runbook delete.
+router.post(
+  "/admin/testbed/seed-runbooks",
+  requireDevOrigin,
+  requireAdminOrIngestToken(),
+  async (req: Request, res: Response): Promise<void> => {
+    const body = req.body as { customerId?: number | string };
+    const customerId =
+      typeof body?.customerId === "number" ? body.customerId : Number.parseInt(String(body?.customerId ?? ""), 10);
+    if (!Number.isFinite(customerId) || customerId <= 0) {
+      res.status(400).json({ error: "customerId (tenants.id) is required" });
+      return;
+    }
+
+    const hours = (n: number) => new Date(Date.now() + n * 3_600_000);
+    /** `startedAt` for a window of `waitDays` that should close `closesInHours` from now. */
+    const startedFor = (waitDays: number, closesInHours: number) =>
+      new Date(hours(closesInHours).getTime() - waitDays * 86_400_000);
+    const dayString = (daysAgo: number) =>
+      new Date(Date.now() - daysAgo * 86_400_000).toISOString().slice(0, 10);
+
+    const RUNBOOKS = [
+      {
+        key: "gov-access-review",
+        title: "Access Review SOP",
+        context: "Governance · 12 access reviews are overdue",
+        pillar: "governance",
+        startedDaysAgo: 14,
+        cycleDays: 14,
+        steps: [
+          "Export the current access review configuration",
+          "Identify the 12 overdue reviews and their owners",
+          "Notify each owner with the review link and a deadline",
+          "Reassign any review whose owner has left",
+        ],
+        checkedThrough: 2,
+      },
+      {
+        key: "sec-legacy-auth",
+        title: "Block Legacy Authentication",
+        context: "Security · IMAP/POP3 tenant-wide",
+        pillar: "security",
+        startedDaysAgo: 21,
+        cycleDays: 21,
+        steps: [
+          "Inventory every account still using a legacy protocol",
+          "Move the SMTP relay service account to modern auth",
+          "Enable CA01 in report-only across all users",
+          "Enforce CA01 and block legacy authentication",
+        ],
+        checkedThrough: 3,
+        hold: {
+          key: "hold-ca01",
+          title: "CA01 in report-only — 7 day observation window",
+          gates: "Gates step 4 — enforce CA01 and block legacy authentication",
+          gatesStepPosition: 4,
+          waitDays: 7,
+          closesInHours: -1,
+          verdict: "signals" as const,
+          scanLine:
+            "2 sign-ins would have been blocked in the last 24 hours, both from the SMTP relay service account. Enforcing today breaks scan-to-email.",
+          scanSource: "Report-only sign-in logs",
+          scanCadence: "hourly",
+          why: "Report-only tells you what would break. Enforcing while a service account is still failing turns an observation into an outage.",
+        },
+      },
+      {
+        key: "gov-reduce-admins",
+        title: "Reduce Site Admins",
+        context: "Governance · Client Deliverables (SharePoint)",
+        pillar: "governance",
+        startedDaysAgo: 7,
+        cycleDays: 21,
+        steps: [
+          "List every site collection administrator",
+          "Agree the 2 admins to retain with the site owner",
+          "Give the other 9 notice, with the date",
+          "Remove all but the 2 retained admins",
+        ],
+        checkedThrough: 3,
+        hold: {
+          key: "hold-admins",
+          title: "Site admin notice period — 7 days",
+          gates: "Gates step 4 — remove all but the 2 retained admins",
+          gatesStepPosition: 4,
+          waitDays: 7,
+          closesInHours: 21,
+          verdict: "watch" as const,
+          scanLine:
+            "1 of the 9 admins being removed opened site settings yesterday. Worth a word before the window closes.",
+          scanSource: "Site admin activity",
+          scanCadence: "hourly",
+          why: "Nine people were given notice. Removing access before the notice expires is what generates the angry ticket.",
+        },
+      },
+      {
+        key: "gov-manage-guests",
+        title: "Manage Guest Access",
+        context: "Governance · Vendor Onboarding Packet",
+        pillar: "governance",
+        startedDaysAgo: 5,
+        cycleDays: 14,
+        steps: [
+          "Inventory all 34 guest accounts with last sign-in",
+          "Ask each site owner to confirm the guests they still need",
+          "Remove the invitations never accepted after 30 days",
+          "Chase the owners who have not responded",
+          "Remove the guests nobody confirmed",
+        ],
+        checkedThrough: 4,
+        hold: {
+          key: "hold-guest",
+          title: "Guest owner confirmation — 14 day window",
+          gates: "Gates step 5 — remove the guests nobody confirmed",
+          gatesStepPosition: 5,
+          waitDays: 14,
+          closesInHours: 217,
+          verdict: "clear" as const,
+          scanLine:
+            "No sign-in, no file access and no Teams activity from any of the 31 unconfirmed guests in 5 days. All 3 owners who intended to respond have responded.",
+          scanSource: "Guest activity and owner responses",
+          scanCadence: "hourly",
+          why: "The window exists to catch a guest who is quietly still working. Five days of complete silence answers that as well as fourteen would.",
+        },
+      },
+      {
+        key: "gov-convert-private",
+        title: "Convert Site to Private",
+        context: "Governance · Client Deliverables (SharePoint)",
+        pillar: "governance",
+        startedDaysAgo: 7,
+        cycleDays: 30,
+        steps: [
+          "Confirm the site is currently Public",
+          "Identify every member who would lose access",
+          "Notify the site owner with the conversion date",
+          "Give 30 days notice to the tenant",
+          "Convert the site to Private automatically",
+        ],
+        checkedThrough: 4,
+        hold: {
+          key: "hold-private",
+          title: "Owner notice — 30 days before automatic conversion",
+          gates: "Gates step 5 — convert the site to Private automatically",
+          gatesStepPosition: 5,
+          waitDays: 30,
+          closesInHours: 552,
+          verdict: "watch" as const,
+          scanLine:
+            "No owner response yet. 14 tenant members opened the site in the last week, so the conversion will be noticed when it happens.",
+          scanSource: "Site access and owner mailbox",
+          scanCadence: "daily",
+          why: "Thirty days is the notice period in your governance policy, not a technical constraint. It can be shortened by agreement.",
+        },
+      },
+    ];
+
+    try {
+      // Replace rather than accumulate. Steps and hold windows cascade.
+      await db.delete(portalRunbooksTable).where(eq(portalRunbooksTable.customerId, customerId));
+      await db.delete(portalHoldWindowsTable).where(eq(portalHoldWindowsTable.customerId, customerId));
+
+      let runbooksSeeded = 0;
+      let holdsSeeded = 0;
+
+      for (const rb of RUNBOOKS) {
+        const [inserted] = await db
+          .insert(portalRunbooksTable)
+          .values({
+            customerId,
+            runbookKey: rb.key,
+            title: rb.title,
+            context: rb.context,
+            pillar: rb.pillar,
+            startedOn: dayString(rb.startedDaysAgo),
+            cycleDays: rb.cycleDays,
+            status: "active",
+          })
+          .returning({ id: portalRunbooksTable.id });
+        runbooksSeeded += 1;
+
+        await db.insert(portalRunbookStepsTable).values(
+          rb.steps.map((text, i) => ({
+            runbookId: inserted.id,
+            position: i + 1,
+            text,
+            checked: i < rb.checkedThrough,
+            isCustom: false,
+            checkedAt: i < rb.checkedThrough ? new Date() : null,
+          })),
+        );
+
+        if (rb.hold) {
+          await db.insert(portalHoldWindowsTable).values({
+            customerId,
+            runbookId: inserted.id,
+            holdKey: rb.hold.key,
+            title: rb.hold.title,
+            gates: rb.hold.gates,
+            gatesStepPosition: rb.hold.gatesStepPosition,
+            pillar: rb.pillar,
+            startedAt: startedFor(rb.hold.waitDays, rb.hold.closesInHours),
+            waitDays: rb.hold.waitDays,
+            extendedDays: 0,
+            scanVerdict: rb.hold.verdict,
+            scanLine: rb.hold.scanLine,
+            scanSource: rb.hold.scanSource,
+            scanCadence: rb.hold.scanCadence,
+            scanAt: hours(-1),
+            why: rb.hold.why,
+          });
+          holdsSeeded += 1;
+        }
+      }
+
+      log.info({ customerId, runbooksSeeded, holdsSeeded }, "admin-testbed: seeded portal runbooks and hold windows");
+      res.json({ ok: true, customerId, runbooksSeeded, holdsSeeded });
+    } catch (err) {
+      log.error({ err, customerId }, "admin-testbed: seed-runbooks failed");
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }
   },
 );

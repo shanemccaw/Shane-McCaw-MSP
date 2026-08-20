@@ -98,11 +98,12 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, mspChangeRequestsTable, tenantsTable } from "@workspace/db";
+import { db, mspChangeRequestsTable } from "@workspace/db";
 import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { requireRole } from "../middlewares/requireAuth";
+import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope";
 import { logger } from "../lib/logger";
 import {
   CHANGE_CLASSES,
@@ -131,55 +132,12 @@ const log = logger.child({ channel: "tenant.portal" });
 
 const router: IRouter = Router();
 
-/** tenants.id, off the JWT's `customerId` claim — the same resolution every other customer-scoped route uses. */
-function resolveCustomerId(req: Request): number | null {
-  const id = (req.user as { customerId?: number } | undefined)?.customerId;
-  return typeof id === "number" && !isNaN(id) ? id : null;
-}
-
-interface CustomerScope {
-  readonly customerId: number;
-  readonly mspId: number;
-  /** The M365 tenant identifier — guaranteed non-blank by `resolveScope`. */
-  readonly tenantId: string;
-  readonly tenantName: string;
-  readonly primaryDomain: string;
-}
-
 /**
- * Resolves the caller's `customerId` to the pair of values the change-request
- * table is actually filterable by. Returns null — never a partial scope — when
- * the tenant row is missing, carries no `mspId`, or carries a blank
- * `tenantId`. See the header: a blank identifier used as a filter is a
- * cross-tenant read, so it must never reach a query.
+ * Both resolutions moved to `lib/portal-customer-scope.ts` when the Active
+ * Runbooks page needed the same pair — one implementation of a scoping rule is
+ * the point, and its header documents the two shapes and why they differ.
  */
-async function resolveScope(customerId: number): Promise<CustomerScope | null> {
-  const [tenant] = await db
-    .select({
-      id: tenantsTable.id,
-      mspId: tenantsTable.mspId,
-      tenantId: tenantsTable.tenantId,
-      customerName: tenantsTable.customerName,
-      domain: tenantsTable.domain,
-    })
-    .from(tenantsTable)
-    .where(eq(tenantsTable.id, customerId))
-    .limit(1);
-
-  if (!tenant) return null;
-  if (typeof tenant.mspId !== "number") return null;
-
-  const tenantId = (tenant.tenantId ?? "").trim();
-  if (!tenantId) return null;
-
-  return {
-    customerId,
-    mspId: tenant.mspId,
-    tenantId,
-    tenantName: (tenant.customerName ?? "").trim() || "Your organisation",
-    primaryDomain: (tenant.domain ?? "").trim(),
-  };
-}
+const resolveScope = resolveTenantScope;
 
 /** One change request, as the page consumes it. Deliberately narrower than the row. */
 interface WireChangeRequest {
@@ -202,6 +160,14 @@ interface WireChangeRequest {
   readonly canRollback: boolean;
   readonly executedAt: string | null;
   readonly backupVerified: boolean;
+  /**
+   * "Raised from" — the finding this change came out of, e.g. "Governance ·
+   * External Sharing Drift". NULL means raised directly, which the CR wizard's
+   * own submissions are. The page's expanded row has a cell for this and, until
+   * the column was added alongside the Active Runbooks build, nothing to put in
+   * it; hold-window decisions now populate it with the window they came from.
+   */
+  readonly linkedFinding: string | null;
   readonly createdAt: string;
 }
 
@@ -223,6 +189,7 @@ interface ChangeRequestRow {
   proposedPayload: unknown;
   executedAt: string | null;
   approvedBy: string | null;
+  linkedFinding: string | null;
   createdAt: Date;
 }
 
@@ -249,6 +216,7 @@ function toWire(row: ChangeRequestRow): WireChangeRequest {
     canRollback: canRollback(status),
     executedAt: row.executedAt,
     backupVerified: row.backupVerified,
+    linkedFinding: row.linkedFinding,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -358,6 +326,7 @@ router.get(
           proposedPayload: mspChangeRequestsTable.proposedPayload,
           executedAt: mspChangeRequestsTable.executedAt,
           approvedBy: mspChangeRequestsTable.approvedBy,
+          linkedFinding: mspChangeRequestsTable.linkedFinding,
           createdAt: mspChangeRequestsTable.createdAt,
         })
         .from(mspChangeRequestsTable)
