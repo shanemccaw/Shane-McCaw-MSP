@@ -30,171 +30,26 @@
 
 import { Fragment, useState, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
-import { Bell, FileText, GitCommit, PlayCircle, ShieldOff, Users } from "lucide-react";
 
 import { useAuth } from "@/lib/auth-context";
 import { useHoldBadge } from "@/components/portal-v2/holds/useHoldBadge";
+import {
+  PORTAL_V2_NAV,
+  isNavItemActive,
+  isNavSubActive,
+  type NavGlyph,
+  type NavGroup,
+  type NavItem,
+} from "@/components/portal-v2/portalV2Nav";
 
 import {
   PILLAR_ICON_PATHS,
-  PILLAR_ORDER,
   hexAlpha,
 } from "@/components/copilot-journey/journeyTokens";
 
 import "./portal-v2.css";
 
 const MONO = "'SF Mono',Menlo,Consolas,monospace";
-
-/**
- * The Operate group's nav rows — prototype 7232-7236. Icon names are the
- * prototype's own, resolved against the installed `lucide-react` rather than
- * assumed (BUILD_PLAN §5.8): `git-commit` → `GitCommit`.
- *
- * Grows one row at a time as its pages land — never a row pointing at a route
- * that does not exist.
- */
-const OPERATE_ITEMS: ReadonlyArray<{
-  href: string;
-  label: string;
-  title: string;
-  testId: string;
-  /** "holds" wires the hold-window badge; absent means no badge, which is most rows. */
-  badge?: "holds";
-  icon: typeof GitCommit;
-}> = [
-  {
-    href: "/portal-v2/change-control",
-    label: "Change Control",
-    title:
-      "Change Control — every tenant change with a request, an approval and a rollback point",
-    testId: "pv2-nav-change-control",
-    icon: GitCommit,
-  },
-  {
-    href: "/portal-v2/runbooks",
-    label: "Active Runbooks",
-    title: "Active Runbooks — procedures in progress, including hold windows",
-    testId: "pv2-nav-runbooks",
-    badge: "holds",
-    icon: PlayCircle,
-  },
-];
-
-/**
- * The GOVERNANCE group — Round Three's regroup.
- *
- * "The old 'Standards & risk' catch-all (7 mixed items) is split into two
- * groups: Governance — Ownership, Risk Register, Security Plan, PII Governance
- * — and Reference — SOPs & Runbooks, Microsoft Changes. Order is now Operate /
- * Governance / Reference / Library."
- *
- * The new shell's `navGroupDefs` confirms it: no "Standards & risk" remains,
- * and Governance carries `ownership` / `risk-register` / `security-plan` / `pii`
- * in that order.
- *
- * Two of the four are listed here, because two have pages. Security Plan and
- * PII Governance are not built, and the standing rule for this nav is "never a
- * row pointing at a route that does not exist" — the same rule that kept SOPs
- * and Microsoft Changes out of the old group. They join when their pages land.
- *
- * The Risk Register `title` is the prototype's verbatim, and it UNDER-DESCRIBES
- * the page: it says "accepted risks", while the register actually carries all
- * twelve risks across five statuses and defaults its status filter to "All
- * statuses". Kept as written, because copy is final.
- */
-const GOVERNANCE_ITEMS: ReadonlyArray<{
-  href: string;
-  label: string;
-  title: string;
-  testId: string;
-  icon: typeof ShieldOff;
-  subs?: ReadonlyArray<{ key: string; label: string; href: string }>;
-}> = [
-  {
-    href: "/portal-v2/ownership",
-    label: "Ownership",
-    title: "Ownership — four names against every service, change, control and freeze",
-    testId: "pv2-nav-ownership",
-    icon: Users,
-    // The prototype's eight sub-items are the object-type filter — shell 8823.
-    subs: [
-      { key: "all", label: "Everything", href: "/portal-v2/ownership" },
-      { key: "service", label: "Microsoft services", href: "/portal-v2/ownership/service" },
-      { key: "change", label: "Individual changes", href: "/portal-v2/ownership/change" },
-      { key: "cr", label: "Change requests", href: "/portal-v2/ownership/cr" },
-      { key: "control", label: "Compliance controls", href: "/portal-v2/ownership/control" },
-      { key: "freeze", label: "Freeze windows", href: "/portal-v2/ownership/freeze" },
-      { key: "incident", label: "Incidents", href: "/portal-v2/ownership/incident" },
-      { key: "announce", label: "Announcements", href: "/portal-v2/ownership/announce" },
-    ],
-  },
-  {
-    href: "/portal-v2/risk-register",
-    label: "Risk Register",
-    title: "Risk Register — accepted risks, with the owner and the review date",
-    testId: "pv2-nav-risk-register",
-    icon: ShieldOff,
-  },
-];
-
-/**
- * The REFERENCE group — the other half of Round Three's split.
- *
- * The new shell's Reference group has two rows, SOPs & Runbooks and Microsoft
- * Changes. Only Microsoft Changes has a page, so only it is listed, under the
- * same rule as Governance above.
- *
- * Its five sub-items are the prototype's own wave keys (shell 8843), which are
- * INDEX STRINGS — '0' … '4' — not slugs. They become readable URL segments
- * here, because "/portal-v2/ms-changes/2" would be a worse link than
- * "/portal-v2/ms-changes/q2" for something a customer is meant to be able to
- * send to a colleague. The labels are the design's verbatim.
- */
-const REFERENCE_ITEMS: ReadonlyArray<{
-  href: string;
-  label: string;
-  title: string;
-  testId: string;
-  icon: typeof ShieldOff;
-  subs?: ReadonlyArray<{ key: string; label: string; href: string }>;
-}> = [
-  {
-    href: "/portal-v2/ms-changes",
-    label: "Microsoft Changes",
-    title: "Microsoft Changes — message centre posts, read against your tenant",
-    testId: "pv2-nav-ms-changes",
-    icon: Bell,
-    subs: [
-      { key: "late-august", label: "Late August wave", href: "/portal-v2/ms-changes" },
-      { key: "september", label: "September wave", href: "/portal-v2/ms-changes/september" },
-      { key: "q2", label: "Q2 · Oct – Dec", href: "/portal-v2/ms-changes/q2" },
-      { key: "q3", label: "Q3 · Jan – Mar", href: "/portal-v2/ms-changes/q3" },
-      { key: "beyond", label: "Q4 and beyond", href: "/portal-v2/ms-changes/beyond" },
-    ],
-  },
-];
-
-/**
- * The Library group — prototype 7244-7246. Its own group in the prototype's
- * `navGroupDefs`, not part of Operate, and currently one row: `file-text` →
- * `FileText`. The prototype's `title` is kept verbatim, including its "84-
- * document library" claim, which the page itself backs up.
- */
-const LIBRARY_ITEMS: ReadonlyArray<{
-  href: string;
-  label: string;
-  title: string;
-  testId: string;
-  icon: typeof FileText;
-}> = [
-  {
-    href: "/portal-v2/documents",
-    label: "Documents",
-    title: "Documents — your deliverables, and the 84-document library",
-    testId: "pv2-nav-documents",
-    icon: FileText,
-  },
-];
 
 /** `sidebarWidth: expanded ? '256px' : '76px'` — prototype line 16972. */
 const SIDEBAR_EXPANDED = 256;
@@ -267,37 +122,55 @@ function navItemStyle(isActive: boolean, expanded: boolean): React.CSSProperties
   };
 }
 
-/** The group label + its hairline rule — prototype 122-125. */
 /**
- * A nav group with no badge machinery — Standards & risk, and Library.
- *
- * Non-pillar rows are deliberately different from pillar ones: no coloured 26px
- * tile, just a plain 15px glyph in an 18px box (prototype 7185-7194).
+ * A row's glyph. Two shapes because the design uses two — see `NavGlyph` in
+ * portalV2Nav.ts. Sizes are the prototype's: 18px for the solo Overview row,
+ * 14px inside a pillar's coloured tile, 15px for every plain row.
  */
-function SimpleNavGroup({
-  label,
-  items,
+function NavGlyphIcon({
+  glyph,
+  size,
+  color,
+}: {
+  glyph: NavGlyph;
+  size: number;
+  color: string;
+}) {
+  if (glyph.kind === "pillar") {
+    return <PillarGlyph pillar={glyph.pillar} color={color} size={size} />;
+  }
+  const Icon = glyph.icon;
+  return <Icon size={size} color={color} />;
+}
+
+/**
+ * The `plain` treatment — a 15px glyph in an 18px box (prototype 7185-7194),
+ * deliberately different from a pillar row's coloured 26px tile.
+ *
+ * This renders Operate, Governance, Reference and Library. Operate used to have
+ * its own copy of this loop purely because it carries the hold-window badge;
+ * the badge is handled here instead, so all four groups share one renderer and
+ * a new group is a registry entry rather than another loop.
+ */
+function PlainNavGroup({
+  group,
   location,
   expanded,
+  holdBadge,
 }: {
-  label: string;
-  items: ReadonlyArray<{
-    href: string;
-    label: string;
-    title: string;
-    testId: string;
-    icon: typeof ShieldOff;
-    subs?: ReadonlyArray<{ key: string; label: string; href: string }>;
-  }>;
+  group: NavGroup;
   location: string;
   expanded: boolean;
+  holdBadge: ReturnType<typeof useHoldBadge>;
 }) {
   return (
     <>
-      <GroupLabel label={label} expanded={expanded} />
-      {items.map((item) => {
-        const isActive = location === item.href || location.startsWith(`${item.href}/`);
-        const Glyph = item.icon;
+      {group.label !== null && <GroupLabel label={group.label} expanded={expanded} />}
+      {group.items.map((item) => {
+        const isActive = isNavItemActive(item, location);
+        // Badges are rare on purpose — the README calls the nav badge "the
+        // single place in the nav that says a decision is waiting".
+        const badge = item.badge === "holds" ? holdBadge : null;
         return (
           <Fragment key={item.href}>
             <Link
@@ -314,7 +187,11 @@ function SimpleNavGroup({
                   justifyContent: "center",
                 }}
               >
-                <Glyph size={15} color={isActive ? "#60a5fa" : "#94a3b8"} />
+                <NavGlyphIcon
+                  glyph={item.glyph}
+                  size={15}
+                  color={isActive ? "#60a5fa" : "#94a3b8"}
+                />
               </span>
               {expanded && (
                 <span
@@ -329,11 +206,161 @@ function SimpleNavGroup({
                   {item.label}
                 </span>
               )}
+              {/* Badge when expanded — prototype 7263-7265. */}
+              {expanded && badge?.label && (
+                <span
+                  data-testid="pv2-nav-runbooks-badge"
+                  style={{
+                    flex: "0 0 auto",
+                    padding: "2px 7px",
+                    borderRadius: 5,
+                    border: `1px solid ${badge.urgent ? "rgba(96,165,250,.5)" : "rgba(148,163,184,.18)"}`,
+                    background: badge.urgent ? "rgba(96,165,250,.14)" : "transparent",
+                    color: badge.urgent ? "#93c5fd" : "#64748b",
+                    fontSize: "9.5px",
+                    fontWeight: 700,
+                    letterSpacing: ".04em",
+                    fontFamily: MONO,
+                  }}
+                >
+                  {badge.label}
+                </span>
+              )}
+              {/* Collapsed mode shows a 6px dot instead — prototype 7266-7267. */}
+              {!expanded && badge?.label && (
+                <span
+                  data-testid="pv2-nav-runbooks-dot"
+                  style={{
+                    position: "absolute",
+                    top: 6,
+                    right: 8,
+                    width: 6,
+                    height: 6,
+                    borderRadius: "50%",
+                    background: badge.urgent ? "#60a5fa" : "#475569",
+                  }}
+                />
+              )}
             </Link>
             {item.subs && isActive && expanded && (
               <NavSubItems subs={item.subs} location={location} parentHref={item.href} />
             )}
           </Fragment>
+        );
+      })}
+    </>
+  );
+}
+
+/**
+ * The `solo` treatment — one row, no group label, an 18px pillar glyph.
+ * Overview only, and the only row in the nav matched exactly rather than by
+ * prefix (see `isNavItemActive`).
+ */
+function SoloNavItem({
+  item,
+  location,
+  expanded,
+}: {
+  item: NavItem;
+  location: string;
+  expanded: boolean;
+}) {
+  const isActive = isNavItemActive(item, location);
+  return (
+    <Link
+      href={item.href}
+      title={item.title}
+      data-testid={item.testId}
+      style={navItemStyle(isActive, expanded)}
+    >
+      <span
+        style={{
+          flex: "0 0 18px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <NavGlyphIcon glyph={item.glyph} size={18} color={isActive ? "#f1f5f9" : "#94a3b8"} />
+      </span>
+      {expanded && (
+        <span style={{ flex: 1, textAlign: "left", whiteSpace: "nowrap" }}>{item.label}</span>
+      )}
+    </Link>
+  );
+}
+
+/**
+ * The `pillars` treatment — a 26px coloured identity tile (prototype 7210) and
+ * a 2px right-edge bar on the active row. Kept as its own renderer because
+ * neither belongs on any other group's rows.
+ */
+function PillarNavGroup({
+  group,
+  location,
+  expanded,
+}: {
+  group: NavGroup;
+  location: string;
+  expanded: boolean;
+}) {
+  return (
+    <>
+      {group.label !== null && <GroupLabel label={group.label} expanded={expanded} />}
+      {group.items.map((item) => {
+        const isActive = isNavItemActive(item, location);
+        const primary = item.primary ?? "#60a5fa";
+        // Compliance's identity colour is near-white, so it takes a dimmer
+        // grey when inactive rather than glowing brighter than the active row.
+        const iconColor =
+          item.glyph.kind === "pillar" && item.glyph.pillar === "compliance" && !isActive
+            ? "#cbd5e1"
+            : isActive
+              ? primary
+              : "#94a3b8";
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            title={item.title}
+            data-testid={item.testId}
+            style={navItemStyle(isActive, expanded)}
+          >
+            {/* tileCss — prototype 7210 */}
+            <span
+              style={{
+                flex: "0 0 26px",
+                width: 26,
+                height: 26,
+                borderRadius: 5,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                background: hexAlpha(primary, 0.1),
+                border: `1px solid ${primary}33`,
+              }}
+            >
+              <NavGlyphIcon glyph={item.glyph} size={14} color={iconColor} />
+            </span>
+            {expanded && (
+              <span style={{ flex: 1, textAlign: "left", whiteSpace: "nowrap" }}>{item.label}</span>
+            )}
+            {isActive && (
+              <span
+                style={{
+                  position: "absolute",
+                  right: expanded ? 4 : 0,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  width: 2,
+                  height: 16,
+                  borderRadius: 1,
+                  background: primary,
+                }}
+              />
+            )}
+          </Link>
         );
       })}
     </>
@@ -379,9 +406,8 @@ function NavSubItems({
     <div style={{ display: "flex", flexDirection: "column", gap: 1, padding: "2px 0 6px" }}>
       {subs.map((sb) => {
         // The bare parent path IS the "all" sub-item, so it is active both at
-        // "/…/ownership" and at "/…/ownership/all".
-        const on =
-          location === sb.href || (sb.href === parentHref && location === `${parentHref}/all`);
+        // "/…/ownership" and at "/…/ownership/all" — see isNavSubActive.
+        const on = isNavSubActive(sb, parentHref, location);
         return (
           <Link
             key={sb.key}
@@ -681,196 +707,36 @@ export function PortalV2Shell({
           }}
           data-testid="pv2-nav"
         >
-          <Link
-            href="/portal-v2"
-            title="Overview"
-            data-testid="pv2-nav-overview"
-            style={navItemStyle(isOverview, expanded)}
-          >
-            <span
-              style={{
-                flex: "0 0 18px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <PillarGlyph pillar="copilot" color={isOverview ? "#f1f5f9" : "#94a3b8"} size={18} />
-            </span>
-            {expanded && <span style={{ flex: 1, textAlign: "left", whiteSpace: "nowrap" }}>Overview</span>}
-          </Link>
-
-          <GroupLabel label="Pillars" expanded={expanded} />
-
-          {PILLAR_ORDER.map((p) => {
-            const isActive = location === `/portal-v2/${p.key}` || location.startsWith(`/portal-v2/${p.key}/`);
-            const iconColor =
-              p.key === "compliance" && !isActive ? "#cbd5e1" : isActive ? p.primary : "#94a3b8";
-            return (
-              <Link
-                key={p.key}
-                href={`/portal-v2/${p.key}`}
-                title={p.label}
-                data-testid={`pv2-nav-${p.key}`}
-                style={navItemStyle(isActive, expanded)}
-              >
-                {/* tileCss — prototype 7210 */}
-                <span
-                  style={{
-                    flex: "0 0 26px",
-                    width: 26,
-                    height: 26,
-                    borderRadius: 5,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    background: hexAlpha(p.primary, 0.1),
-                    border: `1px solid ${p.primary}33`,
-                  }}
-                >
-                  <PillarGlyph pillar={p.key} color={iconColor} size={14} />
-                </span>
-                {expanded && (
-                  <span style={{ flex: 1, textAlign: "left", whiteSpace: "nowrap" }}>{p.label}</span>
-                )}
-                {isActive && (
-                  <span
-                    style={{
-                      position: "absolute",
-                      right: expanded ? 4 : 0,
-                      top: "50%",
-                      transform: "translateY(-50%)",
-                      width: 2,
-                      height: 16,
-                      borderRadius: 1,
-                      background: p.primary,
-                    }}
-                  />
-                )}
-              </Link>
-            );
-          })}
-
           {/*
-            ── Operate — prototype 7231-7236 ────────────────────────────────
-            Only the items that EXIST are listed, per BUILD_PLAN §3.3: "the
-            remaining groups get added as their phases land, never as dead
-            rows." Active Runbooks and Remediation Tracker join this group as
-            their own pages land.
-
-            Non-pillar nav items are deliberately different from pillar ones:
-            no coloured 26px tile, a plain 15px glyph in an 18px box, and
-            `navItemBaseCss(isActive, '#60a5fa')` — whose colour argument the
-            prototype never actually reads (7185-7194), so `navItemStyle` is
-            already the right shape.
-
-            The prototype's badge/dot machinery on these rows is driven purely
-            by hold windows ("1 due" on Active Runbooks) and is not reproduced
-            here, because no item in this group carries a badge yet.
+            ── The nav, rendered from the registry ──────────────────────────
+            Every row lives in portalV2Nav.ts, and a group declares which of the
+            three visual treatments it wants. This loop is the whole nav: adding
+            a page means appending one entry to that module rather than editing
+            this component, which is what lets the remaining parts of the portal
+            build run as concurrent agents without colliding here.
           */}
-          <GroupLabel label="Operate" expanded={expanded} />
-
-          {OPERATE_ITEMS.map((item) => {
-            const isActive =
-              location === item.href || location.startsWith(`${item.href}/`);
-            const Glyph = item.icon;
-            // Only Active Runbooks carries a badge, and only when a hold window
-            // needs a decision — see useHoldBadge for the README's reasoning.
-            const badge = item.badge === "holds" ? holdBadge : null;
+          {PORTAL_V2_NAV.map((group) => {
+            const key = group.label ?? group.items[0]?.href ?? group.render;
+            if (group.render === "solo") {
+              return group.items.map((item) => (
+                <SoloNavItem key={item.href} item={item} location={location} expanded={expanded} />
+              ));
+            }
+            if (group.render === "pillars") {
+              return (
+                <PillarNavGroup key={key} group={group} location={location} expanded={expanded} />
+              );
+            }
             return (
-              <Link
-                key={item.href}
-                href={item.href}
-                title={item.title}
-                data-testid={item.testId}
-                style={navItemStyle(isActive, expanded)}
-              >
-                <span
-                  style={{
-                    flex: "0 0 18px",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <Glyph size={15} color={isActive ? "#60a5fa" : "#94a3b8"} />
-                </span>
-                {expanded && (
-                  <span
-                    style={{
-                      flex: 1,
-                      textAlign: "left",
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                    }}
-                  >
-                    {item.label}
-                  </span>
-                )}
-                {/* Badge when expanded — prototype 7263-7265. */}
-                {expanded && badge?.label && (
-                  <span
-                    data-testid="pv2-nav-runbooks-badge"
-                    style={{
-                      flex: "0 0 auto",
-                      padding: "2px 7px",
-                      borderRadius: 5,
-                      border: `1px solid ${badge.urgent ? "rgba(96,165,250,.5)" : "rgba(148,163,184,.18)"}`,
-                      background: badge.urgent ? "rgba(96,165,250,.14)" : "transparent",
-                      color: badge.urgent ? "#93c5fd" : "#64748b",
-                      fontSize: "9.5px",
-                      fontWeight: 700,
-                      letterSpacing: ".04em",
-                      fontFamily: MONO,
-                    }}
-                  >
-                    {badge.label}
-                  </span>
-                )}
-                {/* Collapsed mode shows a 6px dot instead — prototype 7266-7267. */}
-                {!expanded && badge?.label && (
-                  <span
-                    data-testid="pv2-nav-runbooks-dot"
-                    style={{
-                      position: "absolute",
-                      top: 6,
-                      right: 8,
-                      width: 6,
-                      height: 6,
-                      borderRadius: "50%",
-                      background: badge.urgent ? "#60a5fa" : "#475569",
-                    }}
-                  />
-                )}
-              </Link>
+              <PlainNavGroup
+                key={key}
+                group={group}
+                location={location}
+                expanded={expanded}
+                holdBadge={holdBadge}
+              />
             );
           })}
-
-          {/* ── Round Three's group order: Operate / Governance / Reference /
-              Library. All three below are badge-free, so they share one
-              renderer; Operate above keeps its own loop because only it carries
-              the hold-window badge. */}
-          <SimpleNavGroup
-            label="Governance"
-            items={GOVERNANCE_ITEMS}
-            location={location}
-            expanded={expanded}
-          />
-
-          <SimpleNavGroup
-            label="Reference"
-            items={REFERENCE_ITEMS}
-            location={location}
-            expanded={expanded}
-          />
-
-          <SimpleNavGroup
-            label="Library"
-            items={LIBRARY_ITEMS}
-            location={location}
-            expanded={expanded}
-          />
         </nav>
 
         {/* Collapse toggle — prototype 148-155. `panel-left` glyph. */}

@@ -659,6 +659,20 @@ function SlugInnerSwitch() {
       <Route path="/portal-v2/ms-changes">
         <ProtectedRoute component={PortalV2MsChangesPage} />
       </Route>
+      {/* ═══════════════════════════════════════════════════════════════════
+          PORTAL-V2 ROUTE INSERTION POINT — ADD NEW /portal-v2 ROUTES ABOVE.
+
+          Add them ABOVE this marker, never below it. The "/portal-v2/:pillar"
+          route immediately after is a PARAM route: wouter matches in source
+          order, so anything declared after it is swallowed and renders the
+          pillar page instead of yours. Every specific route above is ordered
+          that way for this reason, and a two-segment route (".../ownership/
+          :type") goes above its own one-segment form for the same reason.
+
+          This marker exists so that the parts of the portal build running as
+          concurrent agents all append at ONE known line instead of each
+          choosing its own and conflicting. See PORTAL_V2_PARALLEL_PLAN.md.
+          ═══════════════════════════════════════════════════════════════════ */}
       <Route path="/portal-v2/:pillar">
         <ProtectedRoute component={PortalV2PillarPage} />
       </Route>
