@@ -1,0 +1,98 @@
+{
+  "feature": "Customer Portal v2 -- the SETTINGS page (/portal-v2/settings), recreated from the prototype's own `isSettings` section ('Customer Portal Shell.dc.html' 4345-4576). Four sections -- Ownership routing, Change control policy, People & roles, Departments -- each a real deep link under the same page. This page is NEW: the round-one handoff had no Settings page at all, so the Round Two entries that read as MOVES ('change control policy moved into Settings', 'People & roles moved from Ownership into Settings') are its first appearance rather than a relocation.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "PENDING",
+  "notes": [
+    "THE LOGIN BLOCK IS NOT OPTIONAL. /portal-v2/* sits behind ProtectedRoute.",
+    "UI ROUTE SHAPE: /portal/{slug}/portal-v2/settings/{section}. App.tsx declares '/portal-v2/settings/:section' BEFORE '/portal-v2/settings', and both before '/portal-v2/:pillar'.",
+    "shaneapp://runTest hits the DEPLOYED build, not the local worktree.",
+    "ROUND TWO, ITEM 3 IS A NO-OP AND SET6/SET7 RECORD WHY -- AND HOW WEAK THEY ARE. The changelog says two placeholder entries were removed from this nav, 'Scans and alerting' and 'Tenant and billing'. Both strings return ZERO hits in BOTH the round-one and the round-two shell, so there is no state of this design in which they were ever present. SET6/SET7 assert that no nav testid exists for either. Stated plainly: an `absent` assertion on a testid that has never existed passes trivially, so these two are a REINTRODUCTION GUARD, not evidence that a removal happened. They earn their place only because the nav is testid-per-section, so a future session adding one of these sections would have to add the matching testid and would turn them red.",
+    "THERE IS NO NEGATIVE TEXT ASSERTION IN THIS HARNESS. `textNotContains` does not exist -- UiTestExecutor.cs implements only `state`, `textContains` and `textPrefixOfAny`, and an unrecognised field on an expect step is silently ignored, which would degrade the step to a bare presence check that passes while asserting nothing. That is why SET6/SET7 assert an absent SELECTOR rather than absent TEXT.",
+    "AN ARRAY IN `textContains` IS ANY-OF, NOT ALL-OF. UiTestExecutor.cs:570 renders it as 'textContains any of [...]' and :1282 fails with 'text contained none of [...]'. Every all-of assertion in this manifest is therefore its own step; no step lists multiple phrases expecting all of them.",
+    "SELECTING A SECTION MUST NOT LEAVE SETTINGS. The prototype's `sn.go` is setState({ setSection }) -- it changes a field, not `active` (shell 19932). SET8-SET11 prove the equivalent here: navigating to a section keeps the page heading and the section nav on screen.",
+    "THE SETTINGS NAV KEEPS ITS LEFT BAR. Round Two's '↳' change names 'Change Control, Ownership, SOPs and Microsoft Changes sub-navigation'; this nav is none of those, and the prototype still draws it with border-left:2px solid #0078D4 (19933). No step here asserts a glyph, deliberately.",
+    "SET20-SET23 PIN A DERIVED SENTENCE, NOT A STATIC ONE. The master band's note interpolates the live signature count, so changing 'Signatures required' rewrites it. Asserting the sentence before AND after the change is what proves it is derived rather than two hardcoded strings.",
+    "NO `select` STEPS. UiTestExecutor.cs cannot drive a native <select> (it takes the value setter from HTMLInputElement.prototype and throws 'Illegal invocation'), and an unknown action silently PASSES. The Departments 'Set by group' form contains one, so that form is opened but not submitted here; the fallback select is covered by settingsModel.test.ts instead.",
+    "WHY THE NUMBERS ARE WHAT THEY ARE: the people foot reads '9 people · 7 at Halden, 2 outside' -- 'outside' folds MSP and External together (Shane McCaw and R. Court), which is the prototype's own arithmetic and the reason the copy says 'outside' rather than 'at the MSP'.",
+    "ENV VARS required: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD."
+  ],
+  "apiTests": [
+    {
+      "name": "SETUP -- log in as the designated TESTBED account; extract the bearer.",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    }
+  ],
+  "uiSteps": [
+    { "name": "goto the real login URL.", "action": "goto", "target": "/portal/login" },
+    { "name": "WAIT for the login form to hydrate.", "action": "expect", "selector": "#email", "state": "visible" },
+    { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
+    { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
+    { "name": "Primary login.", "action": "click", "selector": "[data-testid='login-submit']", "critical": true },
+
+    { "name": "goto Settings with NO section -- it must default rather than 404.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/settings" },
+    { "name": "SET1 -- the page resolved to Settings.", "action": "expect", "selector": "[data-testid='pv2-page-title']", "textContains": "Settings", "critical": true },
+    { "name": "SET2 -- the bare route defaults to Ownership routing, which is the prototype's own setSection seed.", "action": "expect", "selector": "[data-testid='pv2-set-routing-notify']", "state": "visible", "critical": true },
+
+    { "name": "SET3 -- the section nav renders.", "action": "expect", "selector": "[data-testid='pv2-set-nav']", "state": "visible" },
+    { "name": "SET4 -- ...listing all four built sections. Ownership routing.", "action": "expect", "selector": "[data-testid='pv2-set-nav']", "textContains": "Ownership routing" },
+    { "name": "SET5a -- ...Change control policy.", "action": "expect", "selector": "[data-testid='pv2-set-nav-change']", "textContains": "Change control policy" },
+    { "name": "SET5b -- ...People & roles.", "action": "expect", "selector": "[data-testid='pv2-set-nav-people']", "textContains": "People & roles" },
+    { "name": "SET5c -- ...Departments. Asserted as three SEPARATE steps: an array in textContains is ANY-of (UiTestExecutor.cs:570, :1282), so one step listing three phrases would pass on one of them.", "action": "expect", "selector": "[data-testid='pv2-set-nav-departments']", "textContains": "Departments" },
+    { "name": "SET6 -- the nav carries FOUR sections and no fifth: no testid exists for the first placeholder Round Two records as removed.", "action": "expect", "selector": "[data-testid='pv2-set-nav-scans']", "state": "absent" },
+    { "name": "SET7 -- nor for the second. See the note on this pair: it is a reintroduction guard, not proof of a removal that ever happened here.", "action": "expect", "selector": "[data-testid='pv2-set-nav-billing']", "state": "absent" },
+
+    { "name": "SET8 -- a routing rule states its LIVE consequence, not a description of itself.", "action": "expect", "selector": "[data-testid='pv2-set-routing-escalate']", "textContains": "marked with an hourglass on the matrix" },
+    { "name": "SET9 -- absent means ON, so all six seed live without the seed listing them.", "action": "expect", "selector": "[data-testid='pv2-set-routing-gap']", "textContains": "Live" },
+    { "name": "SET10 -- toggle one off.", "action": "click", "selector": "[data-testid='pv2-set-routing-gap']" },
+    { "name": "SET11 -- ...and it says Off, proving only an explicit false turns a rule off.", "action": "expect", "selector": "[data-testid='pv2-set-routing-gap']", "textContains": "Off" },
+
+    { "name": "SET12 -- SECTION SELECTION DOES NOT LEAVE SETTINGS: open Change control policy.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/settings/change" },
+    { "name": "SET13 -- the page heading is still Settings, not a Change Control page.", "action": "expect", "selector": "[data-testid='pv2-page-title']", "textContains": "Settings", "critical": true },
+    { "name": "SET14 -- ...and the section nav is still on screen beside it.", "action": "expect", "selector": "[data-testid='pv2-set-nav']", "state": "visible" },
+
+    { "name": "SET15 -- the master band renders and reads ON from the seed.", "action": "expect", "selector": "[data-testid='pv2-set-cc-master']", "textContains": "Change control is on", "critical": true },
+    { "name": "SET16 -- ...and its note states the live signature count IN the sentence.", "action": "expect", "selector": "[data-testid='pv2-set-cc-master']", "textContains": "2 signatures on the record" },
+    { "name": "SET17 -- the five gated actions render. The Fix panel...", "action": "expect", "selector": "[data-testid='pv2-set-cc-gate-fix']", "textContains": "Fix a finding" },
+    { "name": "SET18 -- ...and the Graph one, which is the widest of them.", "action": "expect", "selector": "[data-testid='pv2-set-cc-gate-graph']", "textContains": "Anything run via Microsoft Graph" },
+
+    { "name": "SET19 -- change the signature requirement to three.", "action": "click", "selector": "[data-testid='pv2-set-cc-approvals-3']" },
+    { "name": "SET20 -- THE MASTER SENTENCE REWRITES ITSELF. Proves it is derived, not two hardcoded strings.", "action": "expect", "selector": "[data-testid='pv2-set-cc-master']", "textContains": "3 signatures on the record", "critical": true },
+
+    { "name": "SET21 -- switch change control OFF.", "action": "click", "selector": "[data-testid='pv2-set-cc-toggle']" },
+    { "name": "SET22 -- the title flips...", "action": "expect", "selector": "[data-testid='pv2-set-cc-master']", "textContains": "Change control is off" },
+    { "name": "SET23 -- ...and the OFF copy still promises the record, which is the section's whole argument.", "action": "expect", "selector": "[data-testid='pv2-set-cc-master']", "textContains": "marked run without approval", "critical": true },
+    { "name": "SET24 -- switch it back on so the rest of the run starts from the seeded state.", "action": "click", "selector": "[data-testid='pv2-set-cc-toggle']" },
+
+    { "name": "SET25 -- the notification-rules table renders its seeded rows.", "action": "expect", "selector": "[data-testid='pv2-set-cc-notif']", "textContains": "Microsoft enforcement date approaching" },
+    { "name": "SET26 -- ...including the ONE row seeded Off, which is the design's own Off example.", "action": "expect", "selector": "[data-testid='pv2-set-cc-notif']", "textContains": "Freeze declared or lifted" },
+    { "name": "SET27 -- lead time is stated as a schedule, not a boolean -- the section's point about lead time.", "action": "expect", "selector": "[data-testid='pv2-set-cc-notif']", "textContains": "30 days ahead, then 7, then 1" },
+
+    { "name": "SET28 -- approver chips come from the RACI, and one is selected from the seed.", "action": "expect", "selector": "[data-testid='pv2-set-cc-approver-normal-dw']", "textContains": "Dan Whitlock" },
+    { "name": "SET29 -- the log renders its EMPTY state honestly rather than inventing rows.", "action": "expect", "selector": "[data-testid='pv2-set-cc-log']", "textContains": "Nothing yet this session" },
+
+    { "name": "SET30 -- open People & roles.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/settings/people" },
+    { "name": "SET31 -- the roster renders, with the seeded nine.", "action": "expect", "selector": "[data-testid='pv2-set-people-foot']", "textContains": "9 people", "critical": true },
+    { "name": "SET32 -- ...and 'outside' folds MSP and External together, which is the prototype's own arithmetic.", "action": "expect", "selector": "[data-testid='pv2-set-people-foot']", "textContains": "7 at Halden, 2 outside" },
+    { "name": "SET33 -- a person who is away shows the RETURN DATE verbatim, not a boolean.", "action": "expect", "selector": "[data-testid='pv2-set-person-away-marcus']", "textContains": "Back 22 September" },
+    { "name": "SET34 -- someone with cover names the deputy by first name.", "action": "expect", "selector": "[data-testid='pv2-set-person-deputy-priya']", "textContains": "Cover · Marcus" },
+    { "name": "SET35 -- someone without says so in red rather than showing an empty chip.", "action": "expect", "selector": "[data-testid='pv2-set-person-deputy-aisha']", "textContains": "No cover" },
+    { "name": "SET36 -- a Group is typed as one, not assumed to be a Person.", "action": "expect", "selector": "[data-testid='pv2-set-person-kind-desk']", "textContains": "Group" },
+
+    { "name": "SET37 -- add a person.", "action": "click", "selector": "[data-testid='pv2-set-person-add']" },
+    { "name": "SET38 -- the foot re-derives to ten, so the count is computed and not stored.", "action": "expect", "selector": "[data-testid='pv2-set-people-foot']", "textContains": "10 people", "critical": true },
+
+    { "name": "SET39 -- open Departments.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/settings/departments" },
+    { "name": "SET40 -- the unmapped headline is stated as a number of PEOPLE, not a percentage.", "action": "expect", "selector": "[data-testid='pv2-set-dept-engineering']", "state": "visible", "critical": true },
+    { "name": "SET41 -- a department read from the Entra attribute is labelled as such.", "action": "expect", "selector": "[data-testid='pv2-set-dept-engineering']", "textContains": "From the attribute" },
+    { "name": "SET42 -- ...and one pointed at a security group is labelled differently, which is the section's whole point.", "action": "expect", "selector": "[data-testid='pv2-set-dept-operations']", "textContains": "Set by group" },
+    { "name": "SET43 -- ...and names the group it reads.", "action": "expect", "selector": "[data-testid='pv2-set-dept-operations']", "textContains": "SG-Operations-All" },
+
+    { "name": "SET44 -- an unrecognised section segment falls back to the default rather than rendering nothing.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/settings/not-a-section" },
+    { "name": "SET45 -- ...proved by Ownership routing being on screen again.", "action": "expect", "selector": "[data-testid='pv2-set-routing-notify']", "state": "visible" }
+  ]
+}

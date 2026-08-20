@@ -1,0 +1,77 @@
+{
+  "feature": "Customer Portal v2 -- MICROSOFT CHANGES (/portal-v2/ms-changes), recreated from 'Microsoft Changes.dc.html', a file that did not exist in the round-one handoff. A density grid over eleven uneven time buckets grouped into five waves, the tenant's own freeze windows drawn over it, and ten Message Center posts read against the tenant rather than forwarded. Each post carries Microsoft's own words beside the tenant's answer, the Graph/PowerShell evidence behind that answer, and a written consequence of doing nothing.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "PENDING",
+  "notes": [
+    "THE LOGIN BLOCK IS NOT OPTIONAL. /portal-v2/* sits behind ProtectedRoute.",
+    "UI ROUTE SHAPE: /portal/{slug}/portal-v2/ms-changes/{wave}. App.tsx declares '/portal-v2/ms-changes/:wave' BEFORE '/portal-v2/ms-changes', and both before '/portal-v2/:pillar'.",
+    "shaneapp://runTest hits the DEPLOYED build, not the local worktree.",
+    "THE WAVE SLUGS ARE NOT THE PROTOTYPE'S KEYS. The prototype's wave keys are index STRINGS ('0'…'4', shell 8843). Readable slugs are used instead -- late-august / september / q2 / q3 / beyond -- because this is a URL a customer is meant to be able to send to a colleague. MSC18 pins the mapping so a future reindex cannot silently move a wave.",
+    "ROUND TWO, ITEM 6 AND WHAT IT DOES NOT COVER. The changelog de-scrolled 'the Change Control CR/Microsoft-changes Gantt rows'. The density ROWS here are the fluid repeat(11,1fr) shape with no min-width floor and no scroll wrapper, which is that change. The WAVE BAND above them KEEPS its overflow-x:auto + min-width:820px, because the prototype still carries both (Microsoft Changes.dc.html 165-166) and the changelog names the rows. Reproducing the band's scroll is faithful, not an oversight -- eleven month columns plus a 190px label genuinely need the width.",
+    "THE COUNTS ARE DERIVED FROM THE DENSITY FIXTURE, NOT STORED. Wave totals are 35 / 80 / 100 / 45 / 22, summed from six workload rows x eleven buckets. MSC6-MSC9 read them off the DOM, which is what proves the sum happens rather than being typed in.",
+    "A POST'S BUCKET IS NOT ITS MONTH. `month` indexes a twelve-month calendar; the density grid indexes eleven UNEVEN buckets (three fortnights, six months, two quarters). MC1042318 is month 1 and bucket 2. Deriving one from the other would put items in the wrong column; MSC14 pins that MC1042318 appears under the September wave and not the Late August one.",
+    "THERE IS NO NEGATIVE TEXT ASSERTION IN THIS HARNESS, and an array in `textContains` is ANY-of, not all-of (UiTestExecutor.cs:570, :1282). Every all-of assertion here is its own step.",
+    "NO `select` STEPS. UiTestExecutor.cs cannot drive a native <select>, and an unknown action silently PASSES. This page has none in the flow asserted here.",
+    "NOT BUILT, AND NOT ASSERTED: the 'Did this release?' retrospective, the seen-in-the-wild list, the per-group impact panel, and the thread / snooze / decision overlays. Each is its own subsystem in the prototype and none is named by the Round Two or Round Three changelog. Listed here so this manifest is not read as full module coverage.",
+    "ENV VARS required: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD."
+  ],
+  "apiTests": [
+    {
+      "name": "SETUP -- log in as the designated TESTBED account; extract the bearer.",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    }
+  ],
+  "uiSteps": [
+    { "name": "goto the real login URL.", "action": "goto", "target": "/portal/login" },
+    { "name": "WAIT for the login form to hydrate.", "action": "expect", "selector": "#email", "state": "visible" },
+    { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
+    { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
+    { "name": "Primary login.", "action": "click", "selector": "[data-testid='login-submit']", "critical": true },
+
+    { "name": "goto Microsoft Changes with NO wave -- it must default rather than 404.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/ms-changes" },
+    { "name": "MSC1 -- the page resolved, not NotFound and not the param pillar route.", "action": "expect", "selector": "[data-testid='pv2-page-title']", "textContains": "Microsoft Changes", "critical": true },
+
+    { "name": "MSC2 -- the density grid renders.", "action": "expect", "selector": "[data-testid='pv2-msc-grid']", "state": "visible", "critical": true },
+    { "name": "MSC3 -- all six workload rows are drawn. Exchange...", "action": "expect", "selector": "[data-testid='pv2-msc-row-Exchange']", "textContains": "Exchange Online & Apps" },
+    { "name": "MSC4 -- ...and Copilot, the last of them.", "action": "expect", "selector": "[data-testid='pv2-msc-row-Copilot']", "state": "visible" },
+    { "name": "MSC5 -- a workload row names itself in full rather than by key.", "action": "expect", "selector": "[data-testid='pv2-msc-row-SharePoint']", "textContains": "SharePoint & OneDrive" },
+
+    { "name": "MSC6 -- wave 1 header carries its SUMMED count, not a stored one.", "action": "expect", "selector": "[data-testid='pv2-msc-wave-late-august']", "textContains": "35", "critical": true },
+    { "name": "MSC7 -- ...and abbreviates its label, because it spans a single column.", "action": "expect", "selector": "[data-testid='pv2-msc-wave-late-august']", "textContains": "Late Aug" },
+    { "name": "MSC8 -- a wave spanning TWO columns keeps its full name instead.", "action": "expect", "selector": "[data-testid='pv2-msc-wave-september']", "textContains": "September wave" },
+    { "name": "MSC9 -- ...and its own summed count.", "action": "expect", "selector": "[data-testid='pv2-msc-wave-september']", "textContains": "80" },
+    { "name": "MSC10 -- the busiest wave sums to a hundred across three buckets.", "action": "expect", "selector": "[data-testid='pv2-msc-wave-q2']", "textContains": "100" },
+
+    { "name": "MSC11 -- the default wave is the first, and it has no post read against the tenant yet -- stated honestly rather than left blank.", "action": "expect", "selector": "[data-testid='pv2-msc-post-count']", "textContains": "No post in this wave has been read against your tenant yet", "critical": true },
+
+    { "name": "MSC12 -- switch to the September wave by URL.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/ms-changes/september" },
+    { "name": "MSC13 -- three posts are read against the tenant in this wave.", "action": "expect", "selector": "[data-testid='pv2-msc-post-count']", "textContains": "3 read against your tenant", "critical": true },
+    { "name": "MSC14 -- MC1042318 is in the SEPTEMBER wave. Its `month` is 1 (October); its BUCKET is 2. This step is why the two axes are kept separate.", "action": "expect", "selector": "[data-testid='pv2-msc-post-MC1042318']", "state": "visible", "critical": true },
+    { "name": "MSC15 -- the post leads with the tenant impact, not Microsoft's severity.", "action": "expect", "selector": "[data-testid='pv2-msc-post-MC1042318']", "textContains": "Hits you" },
+    { "name": "MSC16 -- ...and states the enforcement date in full.", "action": "expect", "selector": "[data-testid='pv2-msc-post-MC1042318']", "textContains": "1 October 2026" },
+    { "name": "MSC17 -- the what-stops-working band renders for a wave that has breaking changes.", "action": "expect", "selector": "[data-testid='pv2-msc-breaks']", "state": "visible" },
+    { "name": "MSC18 -- ...and counts them against the wave by name, which pins the slug-to-band mapping.", "action": "expect", "selector": "[data-testid='pv2-msc-breaks']", "textContains": "september wave" },
+
+    { "name": "MSC20 -- open MC1042318 in place. Everything below is inside the expanded body, so it doubles as proof the row starts collapsed.", "action": "click", "selector": "[data-testid='pv2-msc-toggle-MC1042318']" },
+    { "name": "MSC21 -- MICROSOFT'S WORDS and the TENANT'S ANSWER are both on screen. Microsoft's understatement first...", "action": "expect", "selector": "[data-testid='pv2-msc-post-MC1042318']", "textContains": "A small number of tenants still use Basic authentication", "critical": true },
+    { "name": "MSC22 -- ...and the tenant's specific, counted reply, which is the module's entire argument.", "action": "expect", "selector": "[data-testid='pv2-msc-post-MC1042318']", "textContains": "eleven accounts that authenticated over IMAP or SMTP AUTH", "critical": true },
+    { "name": "MSC23 -- the evidence names the real Graph call it was read from.", "action": "expect", "selector": "[data-testid='pv2-msc-post-MC1042318']", "textContains": "getEmailActivityUserDetail" },
+    { "name": "MSC24 -- ...and the real PowerShell one beside it.", "action": "expect", "selector": "[data-testid='pv2-msc-post-MC1042318']", "textContains": "Get-CASMailbox" },
+    { "name": "MSC25 -- ...with when it was read and how often it re-runs.", "action": "expect", "selector": "[data-testid='pv2-msc-post-MC1042318']", "textContains": "Re-runs nightly" },
+    { "name": "MSC26 -- the consequence of doing nothing is written out, not implied.", "action": "expect", "selector": "[data-testid='pv2-msc-post-MC1042318']", "textContains": "the nightly invoice export fails silently at 23:00", "critical": true },
+    { "name": "MSC27 -- the change request that already exists for it is named.", "action": "expect", "selector": "[data-testid='pv2-msc-post-MC1042318']", "textContains": "CR-0142" },
+    { "name": "MSC28 -- ...and the opt-out position is stated flatly, because there is not one.", "action": "expect", "selector": "[data-testid='pv2-msc-post-MC1042318']", "textContains": "The date is the date" },
+    { "name": "MSC29 -- THE SHARPEST POINT IN THE MODULE: Microsoft moved this date with no separate announcement.", "action": "expect", "selector": "[data-testid='pv2-msc-post-MC1042318']", "textContains": "you would never have been told it moved", "critical": true },
+
+    { "name": "MSC30 -- close it again, proving the row expands in place rather than navigating.", "action": "click", "selector": "[data-testid='pv2-msc-toggle-MC1042318']" },
+    { "name": "MSC31 -- the row is still on screen after collapsing.", "action": "expect", "selector": "[data-testid='pv2-msc-post-MC1042318']", "state": "visible" },
+
+    { "name": "MSC32 -- an unrecognised wave slug falls back to the first wave rather than rendering nothing.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/ms-changes/not-a-wave" },
+    { "name": "MSC33 -- ...proved by the empty-wave line being back.", "action": "expect", "selector": "[data-testid='pv2-msc-post-count']", "textContains": "No post in this wave has been read against your tenant yet" }
+  ]
+}

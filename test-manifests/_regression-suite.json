@@ -50,6 +50,9 @@
     "portal/portal-v2-documents.json",
     "portal/portal-v2-risk-register.json",
     "portal/change-control.json",
-    "portal/runbooks-hold-windows.json"
+    "portal/runbooks-hold-windows.json",
+    "portal/portal-v2-ownership.json",
+    "portal/portal-v2-settings.json",
+    "portal/portal-v2-ms-changes.json"
   ]
 }
