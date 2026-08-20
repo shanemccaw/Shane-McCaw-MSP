@@ -15,6 +15,31 @@
  * produces a list that can only ever narrow, and the README calls this out
  * explicitly — "counts are computed excluding the facet's own group so the
  * numbers behave like a real faceted search."
+ *
+ * ── WHAT IS REAL TODAY, and what is design-forward ─────────────────────────
+ * Shane, 2026-08-19, correcting the scope of this page after it was built:
+ * "for documents it's only the 9 in Copilot Readiness right now. The others
+ * were for future design."
+ *
+ * So of the 33 documents this page renders:
+ *  • The NINE OWNED documents (DOC-01..09) are real deliverables. They are the
+ *    Copilot Readiness Assessment's own output, plus the Gate Clearance plan
+ *    and its Statement of Work. Those exist as a product today.
+ *  • The TWENTY-FOUR CATALOGUE entries (DOC-10..33) are DESIGN-FORWARD. They
+ *    describe documents the platform intends to sell, not offerings that can
+ *    be bought and generated today. The prototype writes them out in full
+ *    because the page has to be designed against a populated catalogue, not
+ *    because those 24 products are live.
+ *
+ * The page is deliberately NOT changed on the back of that. It is a faithful
+ * recreation of the design, the design shows 33, and the catalogue's own copy
+ * is what makes the library read as a library rather than a folder of nine
+ * files. What this note exists to stop is the NEXT step: when this fixture is
+ * swapped for real tenant data, `DOC_CATALOG` must not be wired to a checkout,
+ * an order pipeline or an entitlement as though those 24 were purchasable SKUs.
+ * Nine have deliverables behind them. The other 24 need the product to exist
+ * first. See also `DOC_LIB_TOTAL = 84`, which is a design figure in exactly the
+ * same way and for the same reason.
  */
 
 import {
