@@ -440,7 +440,7 @@ button{font-family:inherit}
               <span style="font-size:9.5px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:#64748b">Tenant health by pillar</span>
               <span style="font-size:11.5px;color:#475569">We only grade you on what we actually assessed · scored {{ lastScan }}</span>
             </div>
-            <div style="display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;min-width:0;margin-right:56px">
+            <div style="display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;min-width:0">
               <sc-for list="{{ pillarStrip }}" as="p" hint-placeholder-count="6">
                 <button onClick="{{ p.go }}" style="{{ p.cardCss }}" style-hover="{{ p.cardHoverCss }}">
                   <div style="{{ p.glowCss }}"></div>
@@ -455,44 +455,94 @@ button{font-family:inherit}
             </div>
           </div>
 
-          <div style="position:relative;display:flex;flex-direction:column;gap:0;border:1px solid rgba(30,41,59,.9);border-radius:14px;background:rgba(15,23,42,.35);overflow:hidden">
-            <div style="display:flex;align-items:baseline;justify-content:space-between;gap:14px;flex-wrap:wrap;padding:16px 20px 4px">
-              <span style="font-size:9.5px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:#64748b">Most urgent — across all pillars</span>
-              <span style="font-size:11.5px;color:#475569">Ranked by impact ÷ effort</span>
+          <div style="position:relative;display:flex;flex-direction:column;gap:10px">
+            <div style="display:flex;flex-direction:column;gap:3px">
+              <span style="font-size:9.5px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:#64748b">Everything in motion</span>
+              <span style="font-size:11.5px;color:#475569">Every pipeline across the tenant, one line each. Findings are folded into the item that carries them — drill into any row for the full picture.</span>
             </div>
-            <sc-for list="{{ urgentItems }}" as="it" hint-placeholder-count="5">
-              <div style="{{ it.rowCss }}">
-                <sc-if value="{{ it.isTop }}" hint-placeholder-val="{{ false }}">
-                  <div style="{{ it.glowCss }}"></div>
-                </sc-if>
-                <span style="{{ it.rankCss }}">{{ it.rankLabel }}</span>
-                <span style="{{ it.accentCss }}"></span>
-                <sc-if value="{{ it.isTop }}" hint-placeholder-val="{{ false }}">
-                  <span style="{{ it.bigIconWrapCss }}" dangerouslySetInnerHTML="{{ it.bigIconHtml }}"></span>
-                </sc-if>
-                <div style="{{ it.bodyCss }}">
-                  <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
-                    <span style="{{ it.pillarLabelCss }}">{{ it.pillarLabel }}</span>
-                    <span onMouseEnter="{{ it.owner.enter }}" onMouseLeave="{{ it.owner.leave }}" onClick="{{ it.owner.click }}" title="{{ it.owner.name }}" style="{{ it.owner.css }}">{{ it.owner.init }}</span>
-                    <sc-if value="{{ it.hasSecondary }}" hint-placeholder-val="{{ false }}">
-                      <span style="{{ it.secondaryDotCss }}"></span>
-                      <span style="font-size:10.5px;font-weight:500;color:#64748b">also affects {{ it.secondaryLabel }}</span>
+            <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start">
+            <sc-for list="{{ overviewSections }}" as="s" hint-placeholder-count="6">
+              <div style="{{ s.cardCss }}">
+                <button onClick="{{ s.toggleGo }}" style="width:100%;display:flex;align-items:center;gap:10px;padding:13px 16px;border:none;background:none;cursor:pointer;font-family:inherit;text-align:left">
+                  <span dangerouslySetInnerHTML="{{ s.chevronHtml }}" style="display:flex;flex:0 0 auto;transform:rotate({{ s.chevDeg }}deg);transition:transform 180ms"></span>
+                  <span style="flex:1;font-size:12.5px;font-weight:700;color:#f1f5f9">{{ s.label }}</span>
+                  <span style="font-size:10.5px;color:#64748b;font-family:'SF Mono',Menlo,Consolas,monospace">{{ s.countLabel }}</span>
+                </button>
+                <sc-if value="{{ s.open }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;flex-direction:column;gap:2px;padding:0 16px 14px">
+                    <sc-if value="{{ s.isBar }}" hint-placeholder-val="{{ true }}">
+                      <sc-for list="{{ s.lanes }}" as="l" hint-placeholder-count="3">
+                        <button onClick="{{ l.go }}" style="display:grid;grid-template-columns:minmax(0,1fr) 108px;gap:10px;align-items:center;padding:7px 6px;border:none;border-top:1px solid rgba(30,41,59,.7);background:none;cursor:pointer;font-family:inherit;text-align:left;width:100%">
+                          <div style="display:flex;flex-direction:column;gap:1px;min-width:0">
+                            <span style="font-size:12px;font-weight:600;color:#e2e8f0;line-height:1.4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ l.title }}</span>
+                            <sc-if value="{{ l.hasNote }}" hint-placeholder-val="{{ false }}">
+                              <span style="font-size:10.5px;color:#64748b;line-height:1.4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ l.note }}</span>
+                            </sc-if>
+                          </div>
+                          <div style="min-width:0;display:flex;flex-direction:column;gap:3px">
+                            <sc-if value="{{ l.unscheduled }}" hint-placeholder-val="{{ false }}">
+                              <span style="justify-self:end;align-self:flex-end;font-size:9.5px;font-weight:700;color:#f87171;letter-spacing:.05em;text-transform:uppercase">Unscheduled</span>
+                            </sc-if>
+                            <sc-if value="{{ l.scheduled }}" hint-placeholder-val="{{ true }}">
+                              <div style="{{ l.wrapCss }}">
+                                <div style="{{ l.todayCss }}"></div>
+                                <div style="{{ l.barCss }}"></div>
+                              </div>
+                              <span style="align-self:flex-end;font-size:9.5px;color:#64748b;font-family:'SF Mono',Menlo,Consolas,monospace">{{ l.dateLabel }}</span>
+                            </sc-if>
+                          </div>
+                        </button>
+                      </sc-for>
                     </sc-if>
+                    <sc-if value="{{ s.isHold }}" hint-placeholder-val="{{ false }}">
+                      <sc-for list="{{ s.lanes }}" as="l" hint-placeholder-count="3">
+                        <button onClick="{{ l.go }}" style="display:grid;grid-template-columns:minmax(0,1fr) 90px 74px;gap:10px;align-items:center;padding:7px 6px;border:none;border-top:1px solid rgba(30,41,59,.7);background:none;cursor:pointer;font-family:inherit;text-align:left;width:100%">
+                          <div style="display:flex;flex-direction:column;gap:1px;min-width:0">
+                            <span style="font-size:12px;font-weight:600;color:#e2e8f0;line-height:1.4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ l.title }}</span>
+                            <sc-if value="{{ l.hasNote }}" hint-placeholder-val="{{ false }}">
+                              <span style="font-size:10.5px;color:#64748b;line-height:1.4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ l.note }}</span>
+                            </sc-if>
+                          </div>
+                          <div style="{{ l.trackCss }}"><div style="{{ l.fillCss }}"></div></div>
+                          <span style="{{ l.tMinusCss }};text-align:right;font-size:12px">{{ l.tMinus }}</span>
+                        </button>
+                      </sc-for>
+                    </sc-if>
+                    <sc-if value="{{ s.isProject }}" hint-placeholder-val="{{ false }}">
+                      <div style="display:grid;grid-template-columns:150px minmax(0,1fr);gap:12px;align-items:end;padding:6px 6px 4px">
+                        <span style="font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#475569">Phase</span>
+                        <div style="display:flex;align-items:flex-end">
+                          <sc-for list="{{ s.pjWeeks }}" as="w" hint-placeholder-count="8">
+                            <span style="{{ w.css }}">{{ w.label }}</span>
+                          </sc-for>
+                        </div>
+                      </div>
+                      <sc-for list="{{ s.pjRows }}" as="g" hint-placeholder-count="5">
+                        <div style="display:grid;grid-template-columns:150px minmax(0,1fr);gap:12px;align-items:center;padding:6px 6px;border-top:1px solid rgba(30,41,59,.7)">
+                          <div style="display:flex;flex-direction:column;gap:1px;min-width:0">
+                            <span style="font-size:12px;font-weight:600;color:#e2e8f0;line-height:1.35;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ g.title }}</span>
+                            <span style="font-size:9.5px;color:#64748b;font-family:'SF Mono',Menlo,Consolas,monospace">{{ g.dateLabel }}</span>
+                          </div>
+                          <div style="{{ g.trackCss }}">
+                            <div style="{{ g.todayCss }}"></div>
+                            <div style="{{ g.endCss }}"></div>
+                            <sc-if value="{{ g.hasSlip }}" hint-placeholder-val="{{ false }}">
+                              <div style="{{ g.slipCss }}"></div>
+                            </sc-if>
+                            <div style="{{ g.barCss }}">
+                              <div style="{{ g.fillCss }}"></div>
+                              <span style="{{ g.barTextCss }}">{{ g.barText }}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </sc-for>
+                    </sc-if>
+                    <button onClick="{{ s.link.go }}" style="align-self:flex-start;margin-top:8px;padding:0;border:none;background:none;font-family:inherit;cursor:pointer;font-size:11px;font-weight:700;color:#60a5fa">{{ s.link.label }}</button>
                   </div>
-                  <div style="{{ it.titleCss }}">{{ it.title }}</div>
-                  <div style="{{ it.whyCss }}">{{ it.why }}</div>
-                </div>
-                <div style="flex:0 0 auto;position:relative;display:flex;flex-direction:column;gap:5px;align-items:center">
-                  <button onClick="{{ it.action.go }}" style="{{ it.action.css }}" style-hover="{{ it.action.hoverCss }}">
-                    <sc-if value="{{ it.action.iconHtml }}" hint-placeholder-val="{{ false }}">
-                      <span dangerouslySetInnerHTML="{{ it.action.iconHtml }}" style="display:flex"></span>
-                    </sc-if>
-                    {{ it.action.label }}
-                  </button>
-                  <button onClick="{{ it.acceptRisk.go }}" style="{{ it.acceptRisk.css }}" style-hover="{{ it.acceptRisk.hoverCss }}">{{ it.acceptRisk.label }}</button>
-                </div>
+                </sc-if>
               </div>
             </sc-for>
+            </div>
           </div>
 
         </div>
@@ -7601,6 +7651,20 @@ class Component extends DCLogic {
       enter: () => {}, leave: () => {}, click: () => {}
     };
   }
+  ovToggle = (k) => this.setState(s => ({ ovOpen: { ...(s.ovOpen || { cc: true }), [k]: !((s.ovOpen || { cc: true })[k]) } }));
+  ovBar(startDay, endDay, winStart, winLen, tone) {
+    if (startDay === null || startDay === undefined) return { unscheduled: true, tone };
+    const clamp = x => Math.max(0, Math.min(100, x));
+    const left = clamp(((startDay - winStart) / winLen) * 100);
+    const rightRaw = clamp(((Math.max(endDay, startDay + Math.max(1, winLen * 0.015)) - winStart) / winLen) * 100);
+    const width = Math.max(1.5, rightRaw - left);
+    return {
+      unscheduled: false,
+      wrapCss: 'position:relative;height:22px;border-radius:5px;background:repeating-linear-gradient(90deg, rgba(148,163,184,.07) 0 1px, transparent 1px ' + ((7 / winLen) * 100).toFixed(2) + '%)',
+      todayCss: 'position:absolute;left:' + clamp(((0 - winStart) / winLen) * 100) + '%;top:-2px;bottom:-2px;width:1px;background:rgba(34,211,238,.5)',
+      barCss: 'position:absolute;top:3px;bottom:3px;left:' + left + '%;width:' + width + '%;border-radius:4px;background:' + tone + ';opacity:.85'
+    };
+  }
   raciChip(k, size) {
     const key = this.raciKeyFor(k), o = this.RACI_OWN[key], p = o.r ? this.RACI_PEOPLE[o.r] : null;
     const sz = size || 22;
@@ -8074,6 +8138,18 @@ class Component extends DCLogic {
       actions: [
         { label: 'Open configuration drift', sub: 'What moved, and whether a CR moved it', act: 'go:health' }
       ], related: ['cr-raise', 'sod'] }
+  ];
+  CR_PIPELINE = [
+    { id: 'CR-0117', title: 'Disable legacy authentication tenant-wide', stage: 'Deploying', start: -1, end: 0, tone: '#60a5fa', dateLabel: 'Deploying now', note: 'Closes the security finding on 1,106 MFA-bypassing sign-ins in the last 30 days.' },
+    { id: 'CR-0121', title: 'Bring 12 mailboxes into retention', stage: 'Deploying', start: -1, end: 0, tone: '#60a5fa', dateLabel: 'Deploying now', note: 'Closes the compliance retention-coverage gap.' },
+    { id: 'CR-0142', title: 'Enforce CA-014 tenant-wide (block legacy auth)', stage: 'Awaiting approval', start: 5, end: 5, tone: '#fbbf24', dateLabel: '25 Aug', note: 'Waiting on Dan Whitlock to sign.' },
+    { id: 'CR-0149', title: 'Convert Client Deliverables to private', stage: 'Blocked', start: null, end: null, tone: '#f87171', dateLabel: '', note: 'Nobody accountable yet — cannot be scheduled.' },
+    { id: 'CR-0147', title: 'Restrict Teams external access', stage: 'Draft', start: 13, end: 13, tone: '#94a3b8', dateLabel: '2 Sep', note: '' },
+  ];
+  MC_INCOMING = [
+    { id: 'MC1051144', title: 'Anonymous meeting join allowed by default', day: 6, tone: '#fbbf24', dateLabel: '26 Aug', note: 'Lands 4 days into the ERP go-live freeze — no opt-out.' },
+    { id: 'MC1039902', title: 'Conditional Access policy templates update', day: 16, tone: '#64748b', dateLabel: '5 Sep', note: 'Informational only, no action needed.' },
+    { id: 'MC1042318', title: 'Basic authentication permanently disabled in Exchange Online', day: 42, tone: '#f87171', dateLabel: '1 Oct', note: 'Enforced regardless of CR-0117 — Microsoft does not observe your change window.' },
   ];
   POLICY_DECISIONS = [
     { id: 'CMP-A1', state: 'live', pillar: 'Compliance', title: 'Teams chat retention set to 1 year rather than the 7-year records period',
@@ -8743,12 +8819,7 @@ class Component extends DCLogic {
         { key: 'remediation', label: 'Remediation Tracker', icon: 'check-circle', title: 'Remediation Tracker — findings being closed, and what closed them' },
         { key: 'policy-decisions', label: 'Policy Decisions', icon: 'file-text', title: 'Policy Decisions — gaps you have decided to live with, with an owner and a review date', badge: cmpPolicyDue ? cmpPolicyDue + ' due' : '' },
       ] },
-      { label: 'Standards & risk', items: [
-        { key: 'sop-hub', label: 'SOPs & Runbooks', icon: 'clipboard-list', title: 'SOPs & Runbooks — the procedure library, ours and yours', subs: [
-          { key: 'library', label: 'Library', title: 'Every procedure, ours and yours' },
-          { key: 'queue', label: 'Execution queue', title: 'What is running right now' },
-          { key: 'audit', label: 'Execution history', title: 'What ran, who ran it, what it changed' }
-        ] },
+      { label: 'Governance', items: [
         { key: 'ownership', label: 'Ownership', icon: 'users', title: 'Ownership — the four names against every service, change, control and freeze', subs: [
           { key: 'all', label: 'Everything', title: 'Every object with an owner' },
           { key: 'service', label: 'Microsoft services', title: 'Exchange, Teams, SharePoint, Entra, Purview, Copilot' },
@@ -8759,9 +8830,16 @@ class Component extends DCLogic {
           { key: 'incident', label: 'Incidents', title: 'Who runs it and who answers for it' },
           { key: 'announce', label: 'Announcements', title: 'Who writes it and who approves the wording' }
         ] },
+        { key: 'risk-register', label: 'Risk Register', icon: 'shield-off', title: 'Risk Register — accepted risks, with the owner and the review date' },
         { key: 'security-plan', label: 'Security Plan', icon: 'shield-check', title: 'Security Plan — the authoritative record of how this tenant must be run' },
         { key: 'pii', label: 'PII Governance', icon: 'scale', title: 'PII Governance — where personal data lives, who can reach it, and what moved', badge: piiNavBadge },
-        { key: 'risk-register', label: 'Risk Register', icon: 'shield-off', title: 'Risk Register — accepted risks, with the owner and the review date' },
+      ] },
+      { label: 'Reference', items: [
+        { key: 'sop-hub', label: 'SOPs & Runbooks', icon: 'clipboard-list', title: 'SOPs & Runbooks — the procedure library, ours and yours', subs: [
+          { key: 'library', label: 'Library', title: 'Every procedure, ours and yours' },
+          { key: 'queue', label: 'Execution queue', title: 'What is running right now' },
+          { key: 'audit', label: 'Execution history', title: 'What ran, who ran it, what it changed' }
+        ] },
         { key: 'ms-changes', label: 'Microsoft Changes', icon: 'bell', title: 'Microsoft Changes — message centre posts that affect your tenant', subs: [
           { key: '0', label: 'Late August wave', title: 'Landing 24 Aug – 6 Sep' },
           { key: '1', label: 'September wave', title: 'Landing 7 Sep – 4 Oct' },
@@ -17303,6 +17381,95 @@ class Component extends DCLogic {
       };
     });
 
+    // ── Overview "in motion" sections — one compact timeline per pipeline, folding
+    // urgent findings into the relevant lane instead of a separate ranked list.
+    const ovOpen = this.state.ovOpen || { cc: true };
+    const ovSecDef = (key, label, count, win, lanes, link, fullWidth) => ({
+      key, label, countLabel: count,
+      open: !!ovOpen[key],
+      toggleGo: () => this.ovToggle(key),
+      chevronHtml: { __html: iconSvg('chevron-down', '#64748b', 12) },
+      chevDeg: ovOpen[key] ? 180 : 0,
+      lanes,
+      isBar: true, isProject: false, isHold: false,
+      cardCss: 'border:1px solid rgba(30,41,59,.9);border-radius:12px;background:rgba(15,23,42,.35);overflow:hidden' + (fullWidth ? ';grid-column:1 / -1' : ''),
+      link
+    });
+    const crPipelineLanes = this.CR_PIPELINE.map(c => {
+      const bar = this.ovBar(c.start, c.end, -10, 26, c.tone);
+      const noteFull = c.stage + (c.note ? ' · ' + c.note : '');
+      return {
+        title: c.title, id: c.id, note: noteFull, hasNote: true,
+        dateLabel: c.dateLabel,
+        unscheduled: bar.unscheduled, scheduled: !bar.unscheduled,
+        wrapCss: bar.wrapCss, todayCss: bar.todayCss, barCss: bar.barCss,
+        go: () => this.setState({ active: 'change-control', ccView: 'register' })
+      };
+    });
+    const mcLanes = this.MC_INCOMING.map(m => {
+      const bar = this.ovBar(m.day, m.day, 0, 45, m.tone);
+      return {
+        title: m.title, id: m.id, note: m.note, hasNote: !!m.note,
+        dateLabel: m.dateLabel,
+        unscheduled: false, scheduled: true,
+        wrapCss: bar.wrapCss, todayCss: bar.todayCss, barCss: bar.barCss,
+        go: () => this.setState({ active: 'ms-changes' })
+      };
+    });
+    const holdLanes = holdCards.slice(0, 4).map(h => ({
+      title: h.title, note: h.gates, hasNote: !!h.gates,
+      badge: h.badge, badgeCss: h.badgeCss, tMinus: h.tMinus, tMinusCss: h.tMinusCss,
+      trackCss: h.trackCss, fillCss: h.fillCss,
+      go: () => this.setState({ active: 'operate-runbooks' })
+    }));
+    const pjOvWeeks = pjGanttWeeks;
+    const pjOvRows = pjGanttRows.slice(0, 5).map(g => ({
+      title: g.name, dateLabel: g.dates, trackCss: g.trackCss, todayCss: g.todayCss, endCss: g.endCss,
+      barCss: g.barCss, fillCss: g.fillCss, barTextCss: g.barTextCss, barText: g.barText,
+      hasSlip: g.hasSlip, slipCss: g.slipCss,
+      go: () => this.setState({ active: 'projects' })
+    }));
+    const acceptedLanes = rrAccepted.map(r => {
+      const bar = this.ovBar(-20, 220, -20, 240, '#c2a63d');
+      const on = r.accepted ? r.accepted.on : r.review;
+      const until = r.accepted ? r.accepted.until : r.review;
+      return {
+        title: r.title, id: r.id, note: 'Accepted by ' + (r.accepted ? r.accepted.by : r.owner) + ' until ' + until, hasNote: true,
+        dateLabel: on + ' → ' + until,
+        unscheduled: false, scheduled: true, wrapCss: bar.wrapCss, todayCss: bar.todayCss,
+        barCss: 'position:absolute;top:3px;bottom:3px;left:6%;width:80%;border-radius:4px;background:linear-gradient(90deg,#c2a63d,rgba(194,166,61,.15));opacity:.85',
+        go: () => this.setState({ active: 'risk-register' })
+      };
+    });
+    const pdLanesSrc = this.POLICY_DECISIONS;
+    const pdTone = { proposed: '#fbbf24', live: '#34d399', due: '#f97316', expired: '#f87171' };
+    const pdLanes = pdLanesSrc.map(d => {
+      const c = pdTone[d.state] || '#94a3b8';
+      const bar = this.ovBar(-300, 220, -300, 520, c);
+      return {
+        title: d.title, id: d.id, note: d.check, hasNote: !!d.check,
+        dateLabel: d.approved === 'Not yet signed' ? 'Awaiting approval' : d.approved + ' → ' + d.review,
+        unscheduled: d.approved === 'Not yet signed', scheduled: d.approved !== 'Not yet signed',
+        wrapCss: bar.wrapCss, todayCss: bar.todayCss,
+        barCss: 'position:absolute;top:3px;bottom:3px;left:56%;width:34%;border-radius:4px;background:linear-gradient(90deg,' + c + ',' + c + '30);opacity:.85',
+        go: () => this.setState({ active: 'policy-decisions' })
+      };
+    });
+    const overviewSections = [
+      ovSecDef('cc', 'Change control pipeline', this.CR_PIPELINE.length + ' CRs', null, crPipelineLanes, { label: 'Open the register →', go: () => this.setState({ active: 'change-control', ccView: 'register' }) }, false),
+      ovSecDef('mc', 'Microsoft changes incoming', this.MC_INCOMING.length + ' posts', null, mcLanes, { label: 'Open Microsoft Changes →', go: () => this.setState({ active: 'ms-changes' }) }, false),
+      ovSecDef('pj', 'Project & release schedule', pjOvRows.length + ' phases', null, [], { label: 'Open the full schedule →', go: () => this.setState({ active: 'projects' }) }, true),
+      ovSecDef('rb', 'Runbooks waiting on a clock', holdLanes.length + ' hold windows', null, holdLanes, { label: 'Open Active Runbooks →', go: () => this.setState({ active: 'operate-runbooks' }) }, false),
+      ovSecDef('rr', 'Accepted risks', acceptedLanes.length + ' accepted', null, acceptedLanes, { label: 'Open the risk register →', go: () => this.setState({ active: 'risk-register' }) }, false),
+      ovSecDef('pd', 'Policy decisions due for review', pdLanes.filter(d => d.title && (this.POLICY_DECISIONS.filter(x => x.state === 'due' || x.state === 'expired').length)).length + ' flagged', null, pdLanes, { label: 'Open Policy Decisions →', go: () => this.setState({ active: 'policy-decisions' }) }, true)
+    ];
+    overviewSections[2].pjRows = pjOvRows;
+    overviewSections[2].pjWeeks = pjOvWeeks;
+    overviewSections[2].isProject = true;
+    overviewSections[2].isBar = false;
+    overviewSections[3].isHold = true;
+    overviewSections[3].isBar = false;
+
     // Likelihood against impact, with every risk placed on it.
     const rrHeatBands = ['Closed out', 'Controls holding', 'Accepted, watched', 'Open, untouched', 'Past its date'];
     const rrHeatImpact = ['Minor', 'Moderate', 'Major', 'Severe'];
@@ -20666,6 +20833,7 @@ class Component extends DCLogic {
       ],
       pillarStrip,
       urgentItems,
+      overviewSections,
       sopCategories,
       onShaneBotClick: this.onShaneBotClick,
       shaneBotIconHtml: { __html: iconSvg('message-square', '#fff', 18) },

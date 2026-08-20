@@ -6,6 +6,8 @@ The authenticated customer portal for Shane McCaw MSP: the place a customer land
 
 The shell is `Customer Portal Shell.dc.html`. Navigation is a single `active` state key — there is no router in the prototype. Most pages are sections inside that one file, but **three modules are now separate design files imported by the shell**: `Ownership.dc.html`, `Change Control.dc.html`, and `Microsoft Changes.dc.html`. Treat them as the same product — the shell mounts them with data and callbacks passed as props — not as standalone pages.
 
+**Scope of this build: the Customer Portal Shell and its components only** (the four files above). `Copilot Readiness Reveal.dc.html` is included purely as background context — the pre-portal journey the customer arrives from — it is already built and is not part of this implementation task.
+
 ## Round Two updates (this pass)
 
 If you've already started implementing from Round One, these are the concrete changes to reconcile — a diff pass, not a rebuild:
@@ -17,6 +19,11 @@ If you've already started implementing from Round One, these are the concrete ch
 - **Sub-nav active-state accent changed** from a left vertical bar to a leading `↳` glyph on the active sub-item, across Change Control, Ownership, SOPs and Microsoft Changes sub-navigation.
 - **Horizontal scroll removed from several data displays** that were forcing `overflow-x:auto` at narrower viewport widths: the Projects Gantt chart and the 5-lane task board (board now wraps lanes with `auto-fit` instead of scrolling), and the Change Control CR/Microsoft-changes Gantt rows. These were all already built on fluid grid columns (`minmax(0,1fr)`); the fix was removing an unnecessary fixed `min-width` floor and its scroll wrapper. Some dense tables (the CR register, the notification-rules table) still assume a reasonably wide desktop viewport — flag if the target breakpoint needs them redesigned as cards instead.
 - **Bug fix:** Active Runbooks' step checklist was rendering blank labels — the row data used `text`/`textCss` but the template read `label`/`labelCss`. Fixed to read the correct field; no data shape change needed on your end, just confirms the field names (`text`, `checked`, `toggle`, `boxCss`, `checkIconHtml`, `textCss`) if you're modeling this list server-side.
+
+## Round Three updates (this pass)
+
+- **Left nav regrouped.** The old "Standards & risk" catch-all (7 mixed items) is split into two groups: **Governance** — Ownership, Risk Register, Security Plan, PII Governance — and **Reference** — SOPs & Runbooks, Microsoft Changes. Order is now Operate / Governance / Reference / Library.
+- **Overview pillar-card row fixed.** The six pillar cards on the tenant health overview sit in a `repeat(6, minmax(0,1fr))` grid; a stray `margin-right:56px` on that grid was shrinking the row and leaving blank space to the right of the Health card. Removed — the six cards now fill the row evenly.
 
 ## About the Design Files
 
@@ -57,9 +64,10 @@ The sidebar is the IA. Groups, in order:
 2. **My Architect**, **Projects** (ungrouped, above Pillars)
 3. **Pillars** — Governance, Security, Compliance, Licensing, Adoption, Health. Each renders a coloured icon tile; the active pillar shows a sub-item for the current drill-down page.
 4. **Copilot** — carries the gate score `41 / 82` as a live pill.
-5. **Operate** — Change Control, Active Runbooks, Remediation Tracker
-6. **Standards & risk** — SOPs & Runbooks, Risk Register, Microsoft Changes
-7. **Library** — Documents
+5. **Operate** — Change Control, Active Runbooks, Remediation Tracker, Policy Decisions
+6. **Governance** — Ownership, Risk Register, Security Plan, PII Governance
+7. **Reference** — SOPs & Runbooks, Microsoft Changes
+8. **Library** — Documents
 
 Group labels are 9.5px/700/`.12em` uppercase `#475569` with a hairline rule running to the panel edge. Collapsed mode replaces each label with a 1px divider and shows a 6px dot on any item carrying a badge.
 
@@ -213,7 +221,7 @@ No bitmaps. All graphics are inline SVG (stroke icons, score rings, sparklines, 
 | `Ownership.dc.html` | Ownership matrix module, imported by the shell (`people` / `onPeopleChange` props wire it to Settings) |
 | `Change Control.dc.html` | Change Control module, imported by the shell (`view` / `onView` props drive its sub-pages) |
 | `Microsoft Changes.dc.html` | Microsoft Changes module, imported by the shell |
-| `Copilot Readiness Reveal.dc.html` | The scroll narrative the customer arrives from, for context |
+| `Copilot Readiness Reveal.dc.html` | Reference only — the pre-portal journey the customer arrives from. Already built; not in scope for this task. |
 | `_ds/` | The bound Shane McCaw MSP design system (tokens + components) |
 | `support.js` | Prototype runtime only — ignore, do not port |
 
