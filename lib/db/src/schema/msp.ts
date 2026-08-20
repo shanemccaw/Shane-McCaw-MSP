@@ -13,6 +13,7 @@ import {
   serial,
   text,
   timestamp,
+  date,
   integer,
   boolean,
   jsonb,
@@ -3257,6 +3258,24 @@ export const mspChangeRequestsTable = pgTable("msp_change_requests", {
   rollbackScriptSnippet: text("rollback_script_snippet").notNull(),
   executedAt: text("executed_at"),
   approvedBy: text("approved_by"),
+  /**
+   * "Raised from" — the finding this change request came out of, e.g.
+   * "Governance · External Sharing Drift" (the design's `linked` field).
+   *
+   * Added because the customer portal's Change Control page has a cell for it
+   * and the table had no column, so the cell could only ever be blank. It is not
+   * decoration: the portal's central rule is that every fix routes through a
+   * change request, and this is the only thing that makes that traceable in the
+   * direction a customer reads it — from the change back to the problem it was
+   * raised to solve.
+   *
+   * Free text rather than a foreign key on purpose. A finding is not one row in
+   * one table: it may be a monitor check, a pillar drill-down area, or a hold
+   * window, and pinning this to any single one of those would make the other two
+   * unrepresentable. NULL means "raised directly", which is a real state — the
+   * wizard raises exactly those.
+   */
+  linkedFinding: text("linked_finding"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
@@ -3682,3 +3701,214 @@ export const remediationTrackerStepsTable = pgTable("remediation_tracker_steps",
 
 export type RemediationTrackerStep = typeof remediationTrackerStepsTable.$inferSelect;
 export type InsertRemediationTrackerStep = typeof remediationTrackerStepsTable.$inferInsert;
+
+// ── Portal v2: Active Runbooks and Hold Windows ───────────────────────────────
+//
+// The Customer Portal's Operate section. Both systems are GREENFIELD — BUILD_PLAN
+// §3.3 records that a repo-wide grep for "hold window" / HOLD_DEFS /
+// "hold_window" hit only the design files, and runbook progress was equally
+// unmodelled: the prototype keeps step ticks and customer-added steps in
+// component state (runbookCustomSteps, per-runbook *Checked arrays), which means
+// they die with the tab. That is the same defect Git #730 fixed for the
+// Remediation Tracker, and these tables are shaped after that fix.
+//
+// WHAT A HOLD WINDOW IS: a runbook step that gates the steps after it and waits
+// on ELAPSED TIME rather than on work — "enable CA01 in report-only, wait 7
+// days, then decide". The tenant is scanned while the window runs, so the window
+// can close early when the evidence says waiting adds nothing. See
+// api-server/src/lib/portal-hold-windows.ts for the derivation, which fixes four
+// real defects in the prototype's own state machine rather than porting them.
+//
+// SCOPING follows remediation_tracker_steps: customer_id is a tenants.id (the
+// JWT's customerId claim) carried WITHOUT a foreign key, matching the deliberate
+// choice msp_diagnostic_runs documents. Enum-ish columns are plain text with no
+// CHECK, the same convention remediation_tracker_steps.status and
+// msp_change_requests.status follow, so a vocabulary can be widened in code
+// without a migration.
+
+/** A runbook's lifecycle. Plain text, no CHECK — see the section note. */
+export const PORTAL_RUNBOOK_STATUS = ["active", "complete", "abandoned"] as const;
+export type PortalRunbookStatus = typeof PORTAL_RUNBOOK_STATUS[number];
+
+export const portalRunbooksTable = pgTable("portal_runbooks", {
+  id: serial("id").primaryKey(),
+  /** tenants.id — the JWT's customerId claim. No FK, matching remediation_tracker_steps. */
+  customerId: integer("customer_id").notNull(),
+  /** Stable key from the runbook catalogue, e.g. "gov-manage-guests" (prototype 16844-16850). */
+  runbookKey: text("runbook_key").notNull(),
+  title: text("title").notNull(),
+  /** The prototype's context line, e.g. "Governance · Vendor Onboarding Packet". */
+  context: text("context").notNull(),
+  /** One of journeyTokens' six PILLAR_KEYS. Text, not an enum, for the reason above. */
+  pillar: text("pillar").notNull(),
+  /**
+   * The day the runbook started. A DATE, not a timestamp: the page renders
+   * "Day 7 of 14", which is a whole-day count, and storing a time would invite
+   * an off-by-one at the boundary depending on the reader's zone.
+   */
+  startedOn: date("started_on").notNull(),
+  /** The runbook's expected duration in days — the "of 14" in "Day 7 of 14". */
+  cycleDays: integer("cycle_days").notNull(),
+  status: text("status", { enum: PORTAL_RUNBOOK_STATUS }).notNull().default("active"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("portal_runbooks_customer_id_idx").on(t.customerId),
+  uniqueIndex("portal_runbooks_customer_key_idx").on(t.customerId, t.runbookKey),
+]);
+
+export type PortalRunbook = typeof portalRunbooksTable.$inferSelect;
+export type InsertPortalRunbook = typeof portalRunbooksTable.$inferInsert;
+
+export const portalRunbookStepsTable = pgTable("portal_runbook_steps", {
+  id: serial("id").primaryKey(),
+  runbookId: integer("runbook_id").notNull().references(() => portalRunbooksTable.id, { onDelete: "cascade" }),
+  /** 1-based render order. Unique per runbook so a step cannot silently duplicate a slot. */
+  position: integer("position").notNull(),
+  text: text("text").notNull(),
+  checked: boolean("checked").notNull().default(false),
+  /**
+   * True for a step the CUSTOMER added through the page's "Add a step or
+   * sub-step…" field, false for one that came with the runbook. Kept distinct
+   * because the two are not the same claim: a catalogue step is part of an
+   * agreed procedure, a custom one is the customer's own note, and the prototype
+   * already renders them with different tick colours.
+   */
+  isCustom: boolean("is_custom").notNull().default(false),
+  /** When checked last became true. NULL whenever it is false — un-ticking clears it. */
+  checkedAt: timestamp("checked_at", { withTimezone: true }),
+  /** users.id of whoever last toggled it. Nullable for rows written by anything but a person. */
+  checkedByUserId: integer("checked_by_user_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("portal_runbook_steps_runbook_id_idx").on(t.runbookId),
+  uniqueIndex("portal_runbook_steps_runbook_position_idx").on(t.runbookId, t.position),
+]);
+
+export type PortalRunbookStep = typeof portalRunbookStepsTable.$inferSelect;
+export type InsertPortalRunbookStep = typeof portalRunbookStepsTable.$inferInsert;
+
+/**
+ * What the tenant scan found while the window has been running. This is the
+ * interesting part of the whole system and the thing the customer asked for:
+ *   • clear   — nothing would break; the window can close early.
+ *   • signals — enforcing today breaks something NAMED; do not release.
+ *   • watch   — something worth a look before close.
+ */
+export const PORTAL_HOLD_SCAN_VERDICT = ["clear", "signals", "watch"] as const;
+export type PortalHoldScanVerdict = typeof PORTAL_HOLD_SCAN_VERDICT[number];
+
+export const portalHoldWindowsTable = pgTable("portal_hold_windows", {
+  id: serial("id").primaryKey(),
+  /** tenants.id — the JWT's customerId claim. No FK, matching the tables above. */
+  customerId: integer("customer_id").notNull(),
+  /** The runbook this window gates. Cascades: a deleted runbook's windows are meaningless. */
+  runbookId: integer("runbook_id").references(() => portalRunbooksTable.id, { onDelete: "cascade" }),
+  /** Stable key from the design, e.g. "hold-ca01". */
+  holdKey: text("hold_key").notNull(),
+  title: text("title").notNull(),
+  /** The prose the card shows, e.g. "Gates step 4 — enforce CA01 and block legacy authentication". */
+  gates: text("gates").notNull(),
+  /**
+   * The step this window actually gates, as a real reference into
+   * portal_runbook_steps.position rather than only the prose above. The
+   * prototype has only the sentence, so "which step is blocked" was not
+   * machine-readable and releasing a window could not unblock anything.
+   */
+  gatesStepPosition: integer("gates_step_position"),
+  pillar: text("pillar").notNull(),
+  startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
+  /** The originally agreed wait. Extensions do NOT mutate this — see extendedDays. */
+  waitDays: integer("wait_days").notNull(),
+  /**
+   * Total days added by extensions, kept SEPARATE from waitDays so that "this
+   * window was agreed at 7 days and has since been extended twice" stays
+   * visible. The design is explicit about why: "Extending is recorded with a
+   * reason, so a window that keeps moving is visible rather than quietly
+   * permanent." The individual extensions are rows in
+   * portal_hold_window_events; this is their running total, denormalised so the
+   * close date is one column read.
+   */
+  extendedDays: integer("extended_days").notNull().default(0),
+  scanVerdict: text("scan_verdict", { enum: PORTAL_HOLD_SCAN_VERDICT }).notNull().default("watch"),
+  /** The evidence sentence, naming what was found — e.g. "2 sign-ins would have been blocked…". */
+  scanLine: text("scan_line").notNull(),
+  /**
+   * The three parts of the design's provenance line, stored separately and
+   * composed for display rather than stored as the finished prose: "{source},
+   * scanned {cadence}, last {HH:MM}". Storing the sentence would mean a
+   * timestamp that never updates itself.
+   */
+  scanSource: text("scan_source").notNull(),
+  scanCadence: text("scan_cadence").notNull().default("hourly"),
+  scanAt: timestamp("scan_at", { withTimezone: true }),
+  /** Why the wait exists at all, in the design's own voice. */
+  why: text("why").notNull(),
+  /** Set when the window is released or closed early. NULL while it is still open. */
+  closedAt: timestamp("closed_at", { withTimezone: true }),
+  closedReason: text("closed_reason"),
+  /**
+   * The README's alerting contract: a window must notify at T-24, at T-0, and
+   * again the moment a scan turns the verdict to clear before the window ends —
+   * the third being a FINDING ("you don't need to wait the remaining 9 days"),
+   * not a reminder. These three stamps are what makes that contract
+   * implementable without re-firing: the derivation reports which notifications
+   * are DUE, and whatever transport sends them stamps the column.
+   *
+   * The transport itself is explicitly out of round one (BUILD_PLAN §7). These
+   * columns exist so it is a wiring job later rather than another schema change.
+   */
+  notifiedT24At: timestamp("notified_t24_at", { withTimezone: true }),
+  notifiedT0At: timestamp("notified_t0_at", { withTimezone: true }),
+  notifiedEarlyClearAt: timestamp("notified_early_clear_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("portal_hold_windows_customer_id_idx").on(t.customerId),
+  index("portal_hold_windows_runbook_id_idx").on(t.runbookId),
+  uniqueIndex("portal_hold_windows_customer_key_idx").on(t.customerId, t.holdKey),
+]);
+
+export type PortalHoldWindow = typeof portalHoldWindowsTable.$inferSelect;
+export type InsertPortalHoldWindow = typeof portalHoldWindowsTable.$inferInsert;
+
+/**
+ * Every decision taken on a hold window. This is the audit trail the design's
+ * copy promises ("Extending is recorded with a reason"), and it is also where a
+ * hold-window action is joined to the change request it raised — the concrete
+ * form of the portal's central rule that nothing changes in the tenant without a
+ * CR.
+ */
+export const PORTAL_HOLD_EVENT_KIND = [
+  "extended",
+  "closed_early",
+  "released",
+  "cr_prepared",
+] as const;
+export type PortalHoldEventKind = typeof PORTAL_HOLD_EVENT_KIND[number];
+
+export const portalHoldWindowEventsTable = pgTable("portal_hold_window_events", {
+  id: serial("id").primaryKey(),
+  holdWindowId: integer("hold_window_id").notNull().references(() => portalHoldWindowsTable.id, { onDelete: "cascade" }),
+  kind: text("kind", { enum: PORTAL_HOLD_EVENT_KIND }).notNull(),
+  /** Days added, for "extended". NULL for every other kind. */
+  daysDelta: integer("days_delta"),
+  /** The stated reason. The design requires one for an extension. */
+  reason: text("reason"),
+  /** users.id of whoever took the decision. */
+  actorUserId: integer("actor_user_id"),
+  /**
+   * msp_change_requests.id of the change request this decision raised, when it
+   * raised one. No FK, matching the cross-table convention above. This is the
+   * link that makes "every early close routes through a CR" checkable rather
+   * than merely asserted.
+   */
+  changeRequestId: integer("change_request_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("portal_hold_window_events_hold_window_id_idx").on(t.holdWindowId),
+]);
+
+export type PortalHoldWindowEvent = typeof portalHoldWindowEventsTable.$inferSelect;
+export type InsertPortalHoldWindowEvent = typeof portalHoldWindowEventsTable.$inferInsert;
