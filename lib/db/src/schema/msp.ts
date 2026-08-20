@@ -3228,7 +3228,21 @@ export const mspChangeRequestsTable = pgTable("msp_change_requests", {
   description: text("description").notNull(),
   changeClass: text("change_class", { enum: ["standard", "normal", "emergency"] }).notNull().default("normal"),
   riskLevel: text("risk_level", { enum: ["critical", "high", "medium", "low"] }).notNull().default("medium"),
-  category: text("category", { enum: ["ConditionalAccess", "Exchange", "Identity", "Intune", "Defender"] }).notNull().default("Identity"),
+  // Widened from the original five (ConditionalAccess/Exchange/Identity/Intune/
+  // Defender) to the eight workloads the customer-facing Change Control page
+  // classifies against — see `CC_WORKLOADS` in the design prototype and
+  // `api-server/src/lib/portal-change-control.ts`. SharePoint and Purview are
+  // not edge cases: the design's own first two example change requests are a
+  // SharePoint sharing-link revert and a Purview retention lock, neither of
+  // which could previously be stored.
+  //
+  // NO MIGRATION IS REQUIRED and none was written. Verified live before making
+  // this change: the column is plain `text` and `pg_constraint` on
+  // msp_change_requests returns only its primary key and the msp_id foreign
+  // key — there is no CHECK constraint mirroring this list, so Drizzle's `enum`
+  // here is a TypeScript-level type only. Adding a DDL file for this would
+  // record a database change that does not exist.
+  category: text("category", { enum: ["ConditionalAccess", "Exchange", "Identity", "Intune", "Defender", "SharePoint", "Purview", "Teams"] }).notNull().default("Identity"),
   targetResource: text("target_resource").notNull(),
   psaTicketId: text("psa_ticket_id").notNull(),
   requestedBy: text("requested_by").notNull(),

@@ -91,6 +91,7 @@ import PortalV2LicensingPage from "@/pages/portal-v2-licensing";
 import PortalV2AdoptionPage from "@/pages/portal-v2-adoption";
 import PortalV2GovOversharingPage from "@/pages/portal-v2-gov-oversharing";
 import PortalV2GovOversharingAllPage from "@/pages/portal-v2-gov-oversharing-all";
+import PortalV2ChangeControlPage from "@/pages/portal-v2-change-control";
 import ConsentDeclinedPage from "@/pages/consent-declined";
 import ConsentSuccessPage from "@/pages/consent-success";
 import ConsentTenantConflictPage from "@/pages/consent-tenant-conflict";
@@ -574,6 +575,14 @@ function SlugInnerSwitch() {
           and parking a play is explicitly NOT accepting a risk. */}
       <Route path="/portal-v2/adoption">
         <ProtectedRoute component={PortalV2AdoptionPage} />
+      </Route>
+      {/* Operate — Change Control. Declared BEFORE "/portal-v2/:pillar" so the
+          param route does not swallow it, same reason as the pillar pages
+          above. Backed by the customer-scoped GET/POST
+          /api/portal/change-control, NOT the MSPOperator-gated
+          /api/msp/change-requests, which would serve every tenant of the MSP. */}
+      <Route path="/portal-v2/change-control">
+        <ProtectedRoute component={PortalV2ChangeControlPage} />
       </Route>
       <Route path="/portal-v2/:pillar">
         <ProtectedRoute component={PortalV2PillarPage} />

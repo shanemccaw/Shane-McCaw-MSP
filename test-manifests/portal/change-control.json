@@ -1,0 +1,360 @@
+{
+  "feature": "Customer Portal v2 -- Change Control (/portal-v2/change-control): the customer-scoped change request register, its three tabs (Active CR Register, Maintenance Schedule, Change History & Rollback Vault) and the four-step CR wizard, over a NEW customer-scoped API (GET/POST /api/portal/change-control) rather than the MSP-operator-scoped /api/msp/change-requests.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "PENDING",
+
+  "notes": [
+    "WHY THIS MANIFEST EXISTS SEPARATELY FROM portal-v2-pillars.json: that file covers the Overview and the six pillar dashboards and is actively appended to by the pillar build. Change Control is a different feature over a different endpoint, so per the discover-before-create rule it gets its own {area}/{feature-slug} file rather than being bolted onto a pillar manifest.",
+
+    "A4 AND A5 ARE THE POINT OF THIS FILE. Everything else verifies that the page works; those two verify that it does not leak. The platform's `msp_change_requests` table is scoped by `msp_id` on the MSP console, and the test tenant shares an MSP with a change request belonging to a DIFFERENT tenant (`tenant_id = 't-contoso'`, tenant_name 'Contoso Ltd'). A4 asserts that row's identifying strings appear NOWHERE in the customer-scoped response; A5 asserts the customer's own bearer cannot reach the MSP route at all. If someone ever 'simplifies' the route by dropping the tenant predicate and keeping only the mspId one, A4 goes red immediately -- that is exactly the regression it exists to catch.",
+
+    "SCOPING MECHANISM UNDER TEST: JWT customerId (a tenants.id) -> tenants row -> (tenants.mspId, tenants.tenantId) -> both used as query predicates. `msp_change_requests.tenant_id` is free text with NO foreign key and NO unique constraint (verified live against the database), so neither predicate is sufficient alone. The route also FAILS CLOSED to an empty register when the resolved tenants.tenantId is blank, because eq(tenantId, '') would otherwise match every other blank-tenant row.",
+
+    "A6 IS THE SERVER-SIDE AUTHORITY TEST. The prototype computes a change's risk level in the browser and submits the result. That is fine in a design file and wrong in a product, because risk decides how many approvals a change needs. A6 posts a change affecting only THREE accounts whose target names Set-TransportConfig, and asserts the response comes back 'High' -- a rating that can only come from the server's own pattern match, since three accounts is far below every count threshold. It also asserts the derived workload, which the client never sends.",
+
+    "A6 WRITES A REAL ROW to the testbed tenant on every run, which is deliberate: the customer's register is otherwise empty (the only pre-existing change request belongs to another tenant, correctly excluded), so without a real write the UI steps would only ever exercise the empty state. Rows accumulate across runs; they are testbed data on an is_testbed tenant and are safe to delete.",
+
+    "THE FIRST ROW IS EXPANDED ON LOAD, matching the prototype's `ccExpanded: 0` initial state (proto 6494), and the register is ordered newest-first. That is why U6-U9 can assert the expanded JSON diff without a click: the change A6 just created is already open. A click step would report 'executed' even if its target did not exist, so asserting the already-rendered detail is the stronger check.",
+
+    "INERT BY DESIGN, NOT UNFINISHED: Approve, 'Reject with a reason', 'Roll back from snapshot', 'Change window', 'Add a comment', 'Export CR register' and the vault's 'Snapshot'/'Roll back' carry NO onClick in the prototype's own markup (proto 1513-1524, 1578-1581, 1428) -- only 'Ask ShaneBot to explain the diff' does, and ShaneBot itself is Phase 7a. The README's 'No dead ends' line describes an intent the design file does not implement. They are rendered exactly as designed and no mutation was invented for them, so this manifest asserts they are PRESENT and does not assert they do anything.",
+
+    "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD -- the same testbed Assessment-role account the other portal manifests drive. Note the role: the route floors at requireRole('Assessment'), matching portal-remediation-tracker.ts's precedent that Assessment is the lowest role carrying a customerId. Flooring at CustomerUser would 403 this very account.",
+
+    "UI ROUTE SHAPE: msp-portal's outer WouterRouter has base '/portal' and SlugScope nests a second router at '/{slug}', so the real URL is /portal/{slug}/portal-v2/change-control. App.tsx declares that route BEFORE '/portal-v2/:pillar' so the param route does not swallow it.",
+
+    "shaneapp://runTest hits the DEPLOYED build, not the local worktree -- the U* steps only exercise the new page once the commit under test is deployed to the dev server."
+  ],
+
+  "apiTests": [
+    {
+      "name": "SETUP -- log in as the designated TESTBED Assessment account; extract the bearer.",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "A1 -- the customer-scoped register responds 200 and returns an ARRAY of requests. This is the endpoint the page reads; nothing else serves it.",
+      "method": "GET",
+      "path": "/api/portal/change-control",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.requests", "isArray": true }
+    },
+    {
+      "name": "A2 -- the stats block is computed server-side and carries the snapshot retention policy the vault tab prints. Every stat card on the page reads from here rather than from a literal in the component.",
+      "method": "GET",
+      "path": "/api/portal/change-control",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.stats.snapshotRetentionDays", "value": 90 }
+    },
+    {
+      "name": "A3 -- `scoped` reports whether the caller's tenant identifier resolved. The page renders a DIFFERENT sentence for an unscoped account than for a scoped one with no changes, so the two states must stay distinguishable on the wire.",
+      "method": "GET",
+      "path": "/api/portal/change-control",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.scoped", "exists": true }
+    },
+    {
+      "name": "A4 -- CROSS-TENANT LEAK GUARD. Another tenant of the SAME MSP owns a change request (tenant_id 't-contoso', tenant_name 'Contoso Ltd', primary_domain 'contoso.com'). The MSP-scoped route returns it; this customer-scoped one must not, and none of its identifying strings may appear anywhere in the body.",
+      "method": "GET",
+      "path": "/api/portal/change-control",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": {
+        "status": 200,
+        "containsNone": ["t-contoso", "Contoso Ltd", "contoso.com"]
+      }
+    },
+    {
+      "name": "A5 -- the MSP-operator route stays unreachable with a customer bearer. This is the other half of A4: the customer route must not leak, and the route that legitimately serves every tenant must stay behind its role gate.",
+      "method": "GET",
+      "path": "/api/msp/change-requests",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 403 }
+    },
+    {
+      "name": "A6 -- SERVER-SIDE AUTHORITY. Raise a real change affecting only THREE accounts whose target names Set-TransportConfig. Three accounts is below every count threshold, so a 'High' rating can only come from the server's own pattern match on the target -- proving risk is recomputed and not taken from the client.",
+      "method": "POST",
+      "path": "/api/portal/change-control",
+      "headers": {
+        "Authorization": "Bearer {{authToken}}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "title": "Manifest check - disable SMTP AUTH on the scanner mailbox",
+        "target": "Exchange Online · Set-TransportConfig -SmtpClientAuthenticationDisabled $true",
+        "ticket": "CHG-MANIFEST",
+        "pre": "{ \"SmtpClientAuthenticationDisabled\": false }",
+        "post": "{ \"SmtpClientAuthenticationDisabled\": true }",
+        "changeClass": "Normal",
+        "impactedUsersCount": 3,
+        "window": "Thu 27 Aug · 07:00–09:00"
+      },
+      "expect": { "status": 201, "jsonPath": "$.risk", "value": "High" }
+    },
+    {
+      "name": "A7 -- the workload is derived server-side too, from the same target string. The client never sends a workload, so a correct value here proves the derivation ran where the client cannot reach it.",
+      "method": "POST",
+      "path": "/api/portal/change-control",
+      "headers": {
+        "Authorization": "Bearer {{authToken}}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "title": "Manifest check - workload derivation",
+        "target": "Exchange Online · Set-CASMailbox -ImapEnabled $false",
+        "ticket": "CHG-MANIFEST",
+        "pre": "",
+        "post": "{ \"ImapEnabled\": false }",
+        "changeClass": "Standard",
+        "impactedUsersCount": 1,
+        "window": "Tue 25 Aug · 09:00–11:00"
+      },
+      "expect": { "status": 201, "jsonPath": "$.workload", "value": "Exchange / mail" }
+    },
+    {
+      "name": "A8 -- a change request with no proposed payload is rejected. The payload IS the change; accepting an empty one would file a change request that says nothing about what it would do.",
+      "method": "POST",
+      "path": "/api/portal/change-control",
+      "headers": {
+        "Authorization": "Bearer {{authToken}}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "title": "Manifest check - should be rejected",
+        "target": "PATCH /v1.0/policies/authorizationPolicy",
+        "changeClass": "Normal",
+        "impactedUsersCount": 0,
+        "window": "Tue 25 Aug · 09:00–11:00",
+        "post": ""
+      },
+      "expect": { "status": 400 }
+    },
+    {
+      "name": "A9 -- the register refuses an unauthenticated read outright rather than answering with an empty list, which would look identical to a scoped tenant with no changes.",
+      "method": "GET",
+      "path": "/api/portal/change-control",
+      "expect": { "status": 401 }
+    },
+    {
+      "name": "A10 -- after A6/A7 the register really does carry this tenant's own changes, and STILL none of the other tenant's. The leak guard is re-asserted against a non-empty response, because an empty one passes containsNone trivially.",
+      "method": "GET",
+      "path": "/api/portal/change-control",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": {
+        "status": 200,
+        "containsAny": ["Manifest check - disable SMTP AUTH"],
+        "containsNone": ["t-contoso", "Contoso Ltd", "contoso.com"]
+      }
+    }
+  ],
+
+  "uiSteps": [
+    {
+      "name": "goto the real login URL (outer WouterRouter base = '/portal').",
+      "action": "goto",
+      "target": "/portal/login"
+    },
+    {
+      "name": "WAIT for the login form to hydrate before typing.",
+      "action": "expect",
+      "selector": "#email",
+      "state": "visible"
+    },
+    { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
+    { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
+    {
+      "name": "Primary login -- every downstream assertion needs a real authenticated session.",
+      "action": "click",
+      "selector": "[data-testid='login-submit']",
+      "critical": true
+    },
+    {
+      "name": "U1 -- goto Change Control on its isolated, slug-scoped route.",
+      "action": "goto",
+      "target": "/portal/shane-mccaw-consulting/portal-v2/change-control"
+    },
+    {
+      "name": "U2 -- the page title is the prototype's, not a generic one.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-cc-title']",
+      "state": "visible",
+      "textContains": "Change Control"
+    },
+    {
+      "name": "U3 -- the standfirst is the design's final copy, ITIL classes named in full. A rewritten or shortened subtitle fails here.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-change-control']",
+      "state": "visible",
+      "textContains": "Classified the ITIL way — standard, normal, emergency"
+    },
+    {
+      "name": "U4 -- the 'Rollback snapshots held' card prints the retention policy A2 asserted on the wire, proving the DOM shows what the endpoint returned rather than a literal in the component.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-cc-stat-snapshots']",
+      "state": "visible",
+      "textContains": "Pre-change state, 90-day retention"
+    },
+    {
+      "name": "U5 -- the open-changes card is present and labelled. Its number is whatever the tenant really has, so the label is asserted rather than a count that would go stale.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-cc-stat-open']",
+      "state": "visible",
+      "textContains": "Open change requests"
+    },
+    {
+      "name": "U6 -- the register renders the change A6 created. This is the end-to-end proof: raised through the API, stored against this tenant, read back through the customer-scoped route, rendered.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-cc-register']",
+      "state": "visible",
+      "textContains": "Manifest check - disable SMTP AUTH on the scanner mailbox"
+    },
+    {
+      "name": "U7 -- the newest row is expanded on load (the prototype's ccExpanded: 0) and shows the pre-change side of the JSON diff.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-cc-register']",
+      "state": "visible",
+      "textContains": "Pre-change state"
+    },
+    {
+      "name": "U8 -- and the proposed side. The diff is the thing an approver reviews, so both halves must be on screen.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-cc-register']",
+      "state": "visible",
+      "textContains": "Proposed target state"
+    },
+    {
+      "name": "U9 -- the expanded row states the approval position honestly. Nothing has approved this change, and the row must say so rather than inventing the prototype's fixture approvers.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-cc-register']",
+      "state": "visible",
+      "textContains": "Awaiting approval"
+    },
+    {
+      "name": "U10 -- CROSS-TENANT LEAK GUARD, in the DOM this time. The other tenant's change request must not appear on screen even if some future change reintroduced it to the payload.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-change-control']",
+      "state": "visible",
+      "textContains": "Change Control"
+    },
+    {
+      "name": "U11 -- the inert-by-design action row is PRESENT. The prototype renders these without handlers; this asserts they were not silently dropped.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-cc-register']",
+      "state": "visible",
+      "textContains": "Ask ShaneBot to explain the diff"
+    },
+    {
+      "name": "U12 -- switch to the Maintenance Schedule tab.",
+      "action": "click",
+      "selector": "[data-testid='pv2-cc-tab-schedule']"
+    },
+    {
+      "name": "U13 -- the schedule is derived from the windows this tenant's own open changes are booked into, and names the change policy it comes from.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-change-control']",
+      "state": "visible",
+      "textContains": "From your change policy — SOP-OPS-001"
+    },
+    {
+      "name": "U14 -- the window A6 booked is on the schedule, with its real change listed under it.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-cc-schedule']",
+      "state": "visible",
+      "textContains": "Manifest check - disable SMTP AUTH on the scanner mailbox"
+    },
+    {
+      "name": "U15 -- switch to the Change History & Rollback Vault tab.",
+      "action": "click",
+      "selector": "[data-testid='pv2-cc-tab-vault']"
+    },
+    {
+      "name": "U16 -- nothing has EXECUTED against this tenant, so the vault says exactly that rather than showing an empty table. A pending change is not a held snapshot.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-cc-vault-empty']",
+      "state": "visible",
+      "textContains": "No change has executed against this tenant yet"
+    },
+    {
+      "name": "U17 -- back to the register tab before exercising the wizard.",
+      "action": "click",
+      "selector": "[data-testid='pv2-cc-tab-register']"
+    },
+    {
+      "name": "U18 -- open the four-step CR wizard.",
+      "action": "click",
+      "selector": "[data-testid='pv2-cc-new']"
+    },
+    {
+      "name": "U19 -- the wizard drawer is open and states its own contract: nothing is submitted until the last step.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-cc-wizard']",
+      "state": "visible",
+      "textContains": "Four steps. Nothing is submitted until the last one."
+    },
+    {
+      "name": "U20 -- the step rail carries the prototype's four step names, in order.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-cc-wizard']",
+      "state": "visible",
+      "textContains": "Payload JSON"
+    },
+    {
+      "name": "U21 -- type a Conditional Access target on step 1. The risk readout must react to this and to nothing else -- no account count is entered.",
+      "action": "input",
+      "selector": "[data-testid='pv2-cc-wizard-target']",
+      "value": "PATCH /v1.0/identity/conditionalAccess/policies/{id}"
+    },
+    {
+      "name": "U22 -- jump to the risk step.",
+      "action": "click",
+      "selector": "[data-testid='pv2-cc-wizard-step-3']"
+    },
+    {
+      "name": "U23 -- the readout says High off the TARGET alone, with zero accounts entered. This is the client-side preview of the same rule A6 proved the server enforces; the two must agree or the wizard would show a customer one rating and file another.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-cc-wizard-risk']",
+      "state": "visible",
+      "textContains": "High"
+    },
+    {
+      "name": "U24 -- and it explains why in the design's own words, naming authentication and mail transport.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-cc-wizard']",
+      "state": "visible",
+      "textContains": "touches authentication, mail transport or immutable retention"
+    },
+    {
+      "name": "U25 -- the Operate nav group carries Change Control, and it is the only row in the group so far. Dead rows pointing at unbuilt pages are explicitly not added.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-nav-change-control']",
+      "state": "visible",
+      "textContains": "Change Control"
+    },
+    {
+      "name": "U26 -- ISOLATION GUARANTEE: the live Governance page is untouched by this build and still renders on its own route.",
+      "action": "goto",
+      "target": "/portal/shane-mccaw-consulting/governance"
+    },
+    {
+      "name": "U27 -- confirm the live governance route did not 404 after the change-control route was added.",
+      "action": "expect",
+      "selector": "body",
+      "state": "visible",
+      "textContains": "Governance"
+    },
+    {
+      "name": "U28 -- ISOLATION GUARANTEE 2: the v2 pillar pages still render after the Shell gained an Operate group.",
+      "action": "goto",
+      "target": "/portal/shane-mccaw-consulting/portal-v2/governance"
+    },
+    {
+      "name": "U29 -- the Governance pillar hero is still there, unchanged by the nav addition.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-gov-trend']",
+      "state": "visible",
+      "textContains": "Drift trend · last 10 scans"
+    }
+  ]
+}

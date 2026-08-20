@@ -30,6 +30,7 @@
 
 import { useState, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
+import { GitCommit } from "lucide-react";
 
 import { useAuth } from "@/lib/auth-context";
 
@@ -42,6 +43,31 @@ import {
 import "./portal-v2.css";
 
 const MONO = "'SF Mono',Menlo,Consolas,monospace";
+
+/**
+ * The Operate group's nav rows — prototype 7232-7236. Icon names are the
+ * prototype's own, resolved against the installed `lucide-react` rather than
+ * assumed (BUILD_PLAN §5.8): `git-commit` → `GitCommit`.
+ *
+ * Grows one row at a time as its pages land — never a row pointing at a route
+ * that does not exist.
+ */
+const OPERATE_ITEMS: ReadonlyArray<{
+  href: string;
+  label: string;
+  title: string;
+  testId: string;
+  icon: typeof GitCommit;
+}> = [
+  {
+    href: "/portal-v2/change-control",
+    label: "Change Control",
+    title:
+      "Change Control — every tenant change with a request, an approval and a rollback point",
+    testId: "pv2-nav-change-control",
+    icon: GitCommit,
+  },
+];
 
 /** `sidebarWidth: expanded ? '256px' : '76px'` — prototype line 16972. */
 const SIDEBAR_EXPANDED = 256;
@@ -413,6 +439,64 @@ export function PortalV2Shell({
                       background: p.primary,
                     }}
                   />
+                )}
+              </Link>
+            );
+          })}
+
+          {/*
+            ── Operate — prototype 7231-7236 ────────────────────────────────
+            Only the items that EXIST are listed, per BUILD_PLAN §3.3: "the
+            remaining groups get added as their phases land, never as dead
+            rows." Active Runbooks and Remediation Tracker join this group as
+            their own pages land.
+
+            Non-pillar nav items are deliberately different from pillar ones:
+            no coloured 26px tile, a plain 15px glyph in an 18px box, and
+            `navItemBaseCss(isActive, '#60a5fa')` — whose colour argument the
+            prototype never actually reads (7185-7194), so `navItemStyle` is
+            already the right shape.
+
+            The prototype's badge/dot machinery on these rows is driven purely
+            by hold windows ("1 due" on Active Runbooks) and is not reproduced
+            here, because no item in this group carries a badge yet.
+          */}
+          <GroupLabel label="Operate" expanded={expanded} />
+
+          {OPERATE_ITEMS.map((item) => {
+            const isActive =
+              location === item.href || location.startsWith(`${item.href}/`);
+            const Glyph = item.icon;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                title={item.title}
+                data-testid={item.testId}
+                style={navItemStyle(isActive, expanded)}
+              >
+                <span
+                  style={{
+                    flex: "0 0 18px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Glyph size={15} color={isActive ? "#60a5fa" : "#94a3b8"} />
+                </span>
+                {expanded && (
+                  <span
+                    style={{
+                      flex: 1,
+                      textAlign: "left",
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {item.label}
+                  </span>
                 )}
               </Link>
             );
