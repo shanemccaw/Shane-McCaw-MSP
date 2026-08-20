@@ -11,11 +11,15 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import { OV_CR_PIPELINE, OV_POLICY_DECISIONS, PJ_WIN } from "./overviewData";
+import { RR_RISKS } from "./riskRegisterData";
 import {
   CR_WINDOW,
   MC_WINDOW,
+  acceptedRiskLanes,
   crLanes,
   flaggedPolicyCount,
+  holdDecisionCount,
+  holdLanes,
   mcLanes,
   ovBar,
   pdLanes,
@@ -189,6 +193,81 @@ describe("counts", () => {
   it("builds a section count label", () => {
     assert.equal(sectionCount(5, "CRs"), "5 CRs");
     assert.equal(sectionCount(3, "posts"), "3 posts");
+  });
+});
+
+describe("hold-window lanes", () => {
+  // A fixed clock so these assert the derivation, not the wall clock.
+  const NOW = new Date("2026-08-20T08:00:00Z");
+
+  it("draws every seeded window", () => {
+    assert.equal(holdLanes(NOW).length, 4);
+  });
+
+  it("reads a window that has already closed as due", () => {
+    const ca01 = holdLanes(NOW).find((l) => l.key === "hold-ca01");
+    assert.equal(ca01?.state, "due");
+    assert.match(ca01?.tMinus ?? "", /^Closed \d+h ago$/);
+  });
+
+  it("offers an early close only on a CLEAR verdict with a day left to save", () => {
+    const guest = holdLanes(NOW).find((l) => l.key === "hold-guest");
+    assert.equal(guest?.state, "early");
+    // The other future window has a `watch` verdict, so it keeps running even
+    // though it has far longer left.
+    const priv = holdLanes(NOW).find((l) => l.key === "hold-private");
+    assert.equal(priv?.state, "running");
+  });
+
+  it("floors the progress at 0 and caps it at 100", () => {
+    for (const l of holdLanes(NOW)) {
+      assert.ok(l.donePct >= 0 && l.donePct <= 100, `${l.key} was ${l.donePct}`);
+    }
+  });
+
+  it("shows a closed window as fully elapsed", () => {
+    const ca01 = holdLanes(NOW).find((l) => l.key === "hold-ca01");
+    assert.equal(ca01?.donePct, 100);
+  });
+
+  it("counts the windows actually needing a decision", () => {
+    // Two due plus one early. The running one is not a decision.
+    assert.equal(holdDecisionCount(holdLanes(NOW)), 3);
+  });
+
+  it("stays in the same states as the clock moves, because the fixture is relative", () => {
+    // The offsets are hours-from-now, so a run a month later reads identically.
+    const later = new Date("2026-09-20T08:00:00Z");
+    assert.deepEqual(
+      holdLanes(later).map((l) => l.state),
+      holdLanes(NOW).map((l) => l.state),
+    );
+  });
+});
+
+describe("accepted-risk lanes", () => {
+  it("reads the SAME register fixture the Risk Register page renders", () => {
+    const lanes = acceptedRiskLanes();
+    const acceptedInRegister = RR_RISKS.filter((r) => r.status === "Accepted");
+    assert.equal(lanes.length, acceptedInRegister.length);
+    assert.equal(lanes.length, 5);
+  });
+
+  it("names who accepted it and until when", () => {
+    const lane = acceptedRiskLanes()[0];
+    assert.match(lane.note, /^Accepted by .+ until .+$/);
+  });
+
+  it("labels the acceptance as a date range", () => {
+    const lane = acceptedRiskLanes()[0];
+    assert.match(lane.dateLabel, / → /);
+  });
+
+  it("uses the design's FIXED bar, not a to-scale one", () => {
+    // Acceptances run months to years; to-scale on one window collapses them.
+    const lane = acceptedRiskLanes()[0];
+    assert.equal(lane.bar.left, 6);
+    assert.equal(lane.bar.width, 80);
   });
 });
 

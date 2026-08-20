@@ -23,6 +23,11 @@
  *    wrongly — Overview did, before its six-across row was corrected.
  *  • Text split across JSX elements can read as absent. Spot-check a single
  *    line before acting on it; act on the shape of the whole column.
+ *  • It only sees text in the MARKUP. Strings built in the logic class never
+ *    appear, so whole sections can be invisible to it. Overview's six
+ *    "Everything in motion" section labels are all built in `ovSecDef` — the
+ *    score was identical with four sections rendered and with six. A rising
+ *    number is evidence; a flat one is not evidence of no progress.
  *
  * It is a triage instrument for "what has not been rebuilt since the design
  * moved" — the question the manifests cannot answer.

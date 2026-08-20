@@ -11,6 +11,7 @@
 
 import {
   OV_CR_PIPELINE,
+  OV_HOLD_WINDOWS,
   OV_MC_INCOMING,
   OV_POLICY_DECISIONS,
   OV_PROJECT_PHASES,
@@ -19,9 +20,12 @@ import {
   PJ_SLIPS,
   PJ_SPANS,
   PJ_WIN,
+  type OvHoldWindow,
   type OvPolicyDecision,
   type OvProjectPhase,
 } from "./overviewData";
+import { deriveHoldClock, type HoldState } from "./holds/holdState";
+import { RR_RISKS, type RiskEntry } from "./riskRegisterData";
 
 /* ────────────────────────────────────────────────────────────────────────────
    The mini bar — prototype `ovBar`, 8106-8119
@@ -157,6 +161,90 @@ export function pdLanes(): readonly Lane[] {
 /** The count label each section header shows — prototype 17459-17464. */
 export function sectionCount(n: number, noun: string): string {
   return `${n} ${noun}`;
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   Hold windows — prototype 17419-17424
+   ──────────────────────────────────────────────────────────────────────── */
+
+export interface HoldLane {
+  key: string;
+  title: string;
+  note: string;
+  /** T-minus readout, e.g. "T-7d" or "Closed 48h ago". */
+  tMinus: string;
+  tone: string;
+  state: HoldState;
+  /** How far through the wait, 0-100. */
+  donePct: number;
+}
+
+/**
+ * The overview's hold lane.
+ *
+ * The derivation is OURS, not the prototype's: `deriveHoldClock` in
+ * holds/holdState.ts fixes two real defects in the prototype's version —
+ * `closing` was unreachable when the verdict was `clear`, and the early-close
+ * saving ceiled instead of flooring, which overstated the days saved. Reusing
+ * it here means the overview and the Active Runbooks page cannot disagree
+ * about the same window, which they would if this ported the prototype again.
+ */
+export function holdLanes(
+  now: Date,
+  windows: readonly OvHoldWindow[] = OV_HOLD_WINDOWS,
+): readonly HoldLane[] {
+  return windows.map((h) => {
+    const closesAt = new Date(now.getTime() + h.closesInHours * 3_600_000).toISOString();
+    const clock = deriveHoldClock({ closesAt, scanVerdict: h.scanVerdict }, now);
+    const totalHours = h.waitDays * 24;
+    const doneHours = Math.max(0, Math.min(totalHours, totalHours - clock.hoursLeft));
+    return {
+      key: h.id,
+      title: h.title,
+      note: h.gates,
+      tMinus: clock.tMinus,
+      tone: clock.tone,
+      state: clock.state,
+      donePct: totalHours ? Math.round((doneHours / totalHours) * 100) : 0,
+    };
+  });
+}
+
+/** Hold windows that need a decision now — the ones the design leads with. */
+export function holdDecisionCount(lanes: readonly HoldLane[]): number {
+  return lanes.filter((l) => l.state === "due" || l.state === "early").length;
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   Accepted risks — prototype 17432-17445
+   ──────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Reads the SAME fixture the Risk Register page renders, filtered to accepted —
+ * prototype 17354 (`RR_RISKS.filter(r => r.status === 'Accepted')`). No second
+ * copy of the risks exists for this page.
+ *
+ * Like the policy lane, the bar is FIXED rather than to-scale (prototype 17441
+ * hardcodes `left:6%;width:80%`): acceptances run for months to years, and a
+ * true-to-scale bar across one shared window would collapse them all.
+ */
+export function acceptedRiskLanes(risks: readonly RiskEntry[] = RR_RISKS): readonly Lane[] {
+  return risks
+    .filter((r) => r.status === "Accepted")
+    .map((r) => {
+      const by = r.accepted ? r.accepted.by : r.owner;
+      const on = r.accepted ? r.accepted.on : r.review;
+      const until = r.accepted ? r.accepted.until : r.review;
+      return {
+        key: r.id,
+        title: r.title,
+        note: `Accepted by ${by} until ${until}`,
+        dateLabel: `${on} → ${until}`,
+        tone: "#c2a63d",
+        bar: { ...ovBar(-20, 220, -20, 240), left: 6, width: 80 },
+        fill: "linear-gradient(90deg,#c2a63d,rgba(194,166,61,.15))",
+      };
+    });
 }
 
 /* ────────────────────────────────────────────────────────────────────────────

@@ -55,8 +55,10 @@ import {
   PJ_WEEKS,
 } from "@/components/portal-v2/overviewData";
 import {
+  acceptedRiskLanes,
   crLanes,
   flaggedPolicyCount,
+  holdLanes,
   laneTrackBackground,
   mcLanes,
   pdLanes,
@@ -476,6 +478,14 @@ function ProjectSchedule() {
 export default function PortalV2OverviewPage() {
   const { view, loaded, scanning } = usePortalV2Pillars();
   const [evidenceOpen, setEvidenceOpen] = useState(false);
+
+  // The real clock, per the README's "use the real clock in production" note on
+  // hold windows. Held in state so one render cannot see two different `now`s;
+  // the interval re-derive that makes T-24 fire without a reload belongs with
+  // the Active Runbooks page, which owns the hold system.
+  const [now] = useState(() => new Date());
+  const holds = holdLanes(now);
+  const accepted = acceptedRiskLanes();
 
   return (
     <PortalV2Shell eyebrow="Overview" title="Tenant health">
@@ -957,6 +967,112 @@ export default function PortalV2OverviewPage() {
               <ProjectSchedule />
             </MotionSection>
 
+            {/* Hold windows have their own lane shape — a progress track and a
+                T-minus readout rather than a date bar, because what matters is
+                how much of the wait is done, not when it sits on a calendar. */}
+            <MotionSection
+              id="rb"
+              label="Runbooks waiting on a clock"
+              countLabel={sectionCount(holds.length, "hold windows")}
+              linkLabel="Open Active Runbooks →"
+              href="/portal-v2/runbooks"
+            >
+              {holds.map((h) => (
+                <Link
+                  key={h.key}
+                  href="/portal-v2/runbooks"
+                  data-testid={`pv2-ov-hold-${h.key}`}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "minmax(0,1fr) 90px 74px",
+                    gap: 10,
+                    alignItems: "center",
+                    padding: "7px 6px",
+                    borderTop: "1px solid rgba(30,41,59,.7)",
+                    background: "none",
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                    textAlign: "left",
+                    width: "100%",
+                    textDecoration: "none",
+                  }}
+                >
+                  <div style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0 }}>
+                    <span
+                      style={{
+                        fontSize: "12px",
+                        fontWeight: 600,
+                        color: "#e2e8f0",
+                        lineHeight: 1.4,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {h.title}
+                    </span>
+                    <span
+                      style={{
+                        fontSize: "10.5px",
+                        color: "#64748b",
+                        lineHeight: 1.4,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {h.note}
+                    </span>
+                  </div>
+                  <div
+                    style={{
+                      position: "relative",
+                      height: 6,
+                      borderRadius: 3,
+                      background: "rgba(148,163,184,.13)",
+                      overflow: "hidden",
+                    }}
+                  >
+                    <div
+                      style={{
+                        position: "absolute",
+                        left: 0,
+                        top: 0,
+                        bottom: 0,
+                        width: `${h.donePct}%`,
+                        borderRadius: 3,
+                        background: h.tone,
+                      }}
+                    />
+                  </div>
+                  <span
+                    style={{
+                      textAlign: "right",
+                      fontSize: "12px",
+                      fontWeight: 700,
+                      color: h.tone,
+                      fontFamily: MONO,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {h.tMinus}
+                  </span>
+                </Link>
+              ))}
+            </MotionSection>
+
+            <MotionSection
+              id="rr"
+              label="Accepted risks"
+              countLabel={sectionCount(accepted.length, "accepted")}
+              linkLabel="Open the risk register →"
+              href="/portal-v2/risk-register"
+            >
+              {accepted.map((l) => (
+                <LaneRow key={l.key} lane={l} href="/portal-v2/risk-register" />
+              ))}
+            </MotionSection>
+
             <MotionSection
               id="pd"
               label="Policy decisions due for review"
@@ -969,17 +1085,6 @@ export default function PortalV2OverviewPage() {
               ))}
             </MotionSection>
           </div>
-
-          {/* The design's six sections include Runbooks-waiting-on-a-clock and
-              Accepted risks. Both are real data we already hold (the runbooks
-              API and riskRegisterData), and both are deliberately NOT drawn from
-              a fixture here — wiring them means reconciling three lane shapes
-              into one model, which is its own task. Four sections render rather
-              than six, and this note is why. */}
-          <span style={{ fontSize: "10.5px", color: "#475569" }} data-testid="pv2-ov-motion-note">
-            Runbook hold windows and accepted risks join this view when their lanes are wired to
-            live data.
-          </span>
         </div>
       </div>
     </PortalV2Shell>

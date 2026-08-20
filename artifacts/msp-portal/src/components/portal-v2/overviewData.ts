@@ -411,3 +411,70 @@ export const PD_TONE: Readonly<Record<OvPolicyState, string>> = {
 
 /** The label a decision's lane shows when it has never been signed — 17451. */
 export const PD_UNSIGNED = "Not yet signed";
+
+/* ────────────────────────────────────────────────────────────────────────────
+   Hold windows
+   ──────────────────────────────────────────────────────────────────────── */
+
+export interface OvHoldWindow {
+  id: string;
+  title: string;
+  /** Which step of the runbook this window is gating. */
+  gates: string;
+  waitDays: number;
+  /**
+   * Hours from NOW at which the window closes. Negative means it already has.
+   *
+   * The prototype stores absolute `startedAt` dates against a FIXED clock
+   * (`HOLD_NOW`), which the README says to replace with the real one. Storing
+   * an offset rather than a date does that AND keeps the four windows in the
+   * states the design chose to show — anchored to real dates, all four would
+   * drift to `due` within a fortnight and the page would stop demonstrating
+   * the state machine at all. The offsets are the design's own intervals,
+   * measured from its own 20 August 2026.
+   */
+  closesInHours: number;
+  scanVerdict: "clear" | "signals" | "watch";
+}
+
+/**
+ * prototype 8581-8613, the four fields the overview's lane reads.
+ *
+ * The four cover three of the four hold states — `due` (twice), `early` and
+ * `running`. That is the design's own spread, not an omission: `closing` is a
+ * sub-24-hour state and the prototype's fixture has nothing sitting in it.
+ */
+export const OV_HOLD_WINDOWS: readonly OvHoldWindow[] = [
+  {
+    id: "hold-ca01",
+    title: "CA01 in report-only — 7 day observation window",
+    gates: "Gates step 4 — enforce CA01 and block legacy authentication",
+    waitDays: 7,
+    closesInHours: -48,
+    scanVerdict: "signals",
+  },
+  {
+    id: "hold-guest",
+    title: "Guest owner confirmation — 14 day window",
+    gates: "Gates step 5 — remove the guests nobody confirmed",
+    waitDays: 14,
+    closesInHours: 170,
+    scanVerdict: "clear",
+  },
+  {
+    id: "hold-admins",
+    title: "Site admin notice period — 7 days",
+    gates: "Gates step 4 — remove all but the 2 retained admins",
+    waitDays: 7,
+    closesInHours: -26,
+    scanVerdict: "watch",
+  },
+  {
+    id: "hold-private",
+    title: "Owner notice — 30 days before automatic conversion",
+    gates: "Gates step 5 — convert the site to Private automatically",
+    waitDays: 30,
+    closesInHours: 505,
+    scanVerdict: "watch",
+  },
+];

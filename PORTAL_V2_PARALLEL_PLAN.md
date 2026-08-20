@@ -9,6 +9,42 @@ at once without colliding.
 
 ---
 
+## ⚠ READ THIS FIRST — this phase is UI ONLY
+
+**Build the screens. Do not wire up data. Mock data is expected, correct, and
+what you should use.** A later pass connects everything to real sources.
+
+That means, concretely:
+
+- **Use the design's own fixture values.** They are in the `.dc.html` logic
+  class. Extract them mechanically where you can rather than retyping — see
+  `overviewData.ts` and `msChangesData.ts` for the pattern.
+- **Do not skip a section because you have no real data for it.** There is no
+  real data for almost any of this yet. Build it from the design's numbers.
+- **Do not add a note to the page apologising for mock data**, and do not leave
+  a section out with a "joins this view when wired to live data" line. If the
+  design has a section, build the section.
+- **Do not go hunting for an API to hang a page off.** If one already exists and
+  is trivially reusable, fine — but that is a bonus, never a prerequisite.
+
+> This instruction exists because it was got wrong once. The Overview rebuild
+> initially shipped four of the design's six "Everything in motion" sections and
+> put a line on the page explaining that hold windows and accepted risks would
+> arrive "when their lanes are wired to live data". That was the wrong call:
+> both were UI work with fixture data available, and leaving them out made the
+> page look unfinished for no benefit. Both are now built.
+
+**What still applies:** keep the fixture in ONE module per page
+(`<page>Data.ts`), never inline a tenant number in a `.tsx`. That is not about
+real-vs-mock — it is so the later wiring pass has one place to change per page
+instead of hunting through JSX.
+
+**Where a page already has a real source, keep it.** The Overview pillar strip
+reads `/api/portal/assessment/war-room-pillars` and the runbook hold derivation
+is real and tested. Do not tear working wiring out in the name of UI-only.
+
+---
+
 ## How to read a percentage in this document
 
 The number is **copy coverage**: how much of that design section's visible text
@@ -60,8 +96,10 @@ summary.
 - [ ] The page **looks like the design** — structure, order of sections,
       spacing, and the layout shapes (grid columns, fixed vs fluid). Say what
       you compared against.
-- [ ] Every number on screen derives from the data layer or a single fixture
-      module. No tenant number hardcoded in a `.tsx`.
+- [ ] **Every section the design has is built.** Not "most of them". If you
+      genuinely cannot build one, say which and why in your report — do not
+      quietly ship a shorter page.
+- [ ] Fixture values live in ONE module per page, not inline in `.tsx`.
 - [ ] Copy reproduced **verbatim**. No rewriting, no shortening, no emoji.
 - [ ] Derivations have unit tests (`*.test.ts`, `node --test` via `tsx`)
 - [ ] `npx tsc --noEmit -p tsconfig.json` clean apart from the known
@@ -307,14 +345,17 @@ Receipt 13%. Reached from the account menu, so it pairs naturally with Part 1.
 
 **Owns:** new `pages/portal-v2-{billing,webhooks,account-security,alert-preferences,receipt}.tsx`
 
-**⚠ Resolve before building Billing.** The new shell contains **two conflicting
-tier ladders** and no changelog mentions it:
+**⚠ Flag, do not stall.** The new shell contains **two conflicting tier
+ladders** and no changelog mentions it:
 
 - `BILL_TIERS` (shell 15478) — Foundation 690 / Growth 1180 / **Premier 2350**
 - `BILL_TIER_CARDS` (shell 15510) — Foundation 690 / Growth 1180 / **Command 1980**, no Premier
 
-Both render on the billing page. They disagree on the third tier's **name and
-price**. This is Shane's call, not an implementation detail.
+Both render on the billing page, and they disagree on the third tier's **name
+and price**. Since this phase is UI only, **build both surfaces as the design
+draws them** and raise the conflict in your report — it is Shane's call which
+ladder is authoritative, and it has to be settled before this page carries real
+prices, not before the UI exists.
 
 ---
 
@@ -336,6 +377,12 @@ Projects, and My Architect.
 
 > Read `PORTAL_V2_PARALLEL_PLAN.md` and take **Part N**.
 >
+> **This phase is UI ONLY. Mock data is expected — use the design's own fixture
+> values from its logic class. Do not wire up data sources, and do not leave a
+> section out because there is no real data behind it. A later pass does the
+> wiring.** Keep each page's fixtures in one `<page>Data.ts` module so that pass
+> has one place to change.
+>
 > Read `CLAUDE.md` first and follow it — especially the session bookends, the
 > single-executor-per-file-set rule, and the shared-file write discipline.
 >
@@ -349,5 +396,5 @@ Projects, and My Architect.
 > Before you start, run `npx tsx scripts/audit-portal-fidelity.mts` and record
 > your section's percentage. Before you finish, run it again and report the
 > movement. **Do not report a test-manifest pass as evidence the page matches
-> the design — it cannot detect that.** Say plainly what you compared against
-> and what you deliberately did not build.
+> the design — it cannot detect that.** Say plainly what you compared against,
+> and if any section of the design is not built, say which and why.
