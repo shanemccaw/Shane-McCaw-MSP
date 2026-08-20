@@ -1,0 +1,2176 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+<link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/styles.css">
+<script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+<style>
+  html, body { margin:0; padding:0; background:#020617; }
+  body { font-family:Inter, system-ui, -apple-system, sans-serif; -webkit-font-smoothing:antialiased; }
+  a { color:#60a5fa; text-decoration:none; }
+  a:hover { color:#93c5fd; }
+  ::selection { background:rgba(0,120,212,.35); }
+</style>
+</helmet>
+
+<div style="min-height:100%;background:transparent;color:#e2e8f0;font-family:Inter,system-ui,sans-serif">
+  <div style="max-width:1180px;margin:0 auto;padding:26px 28px 110px;display:flex;flex-direction:column;gap:16px;box-sizing:border-box">
+
+
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap;padding-bottom:13px;border-bottom:1px solid rgba(30,41,59,.9)">
+      <div style="display:flex;flex-direction:column;gap:5px;min-width:0">
+        <span style="font-size:19px;font-weight:800;color:#f8fafc;letter-spacing:-.015em">Microsoft Changes</span>
+        <span style="font-size:12.5px;color:#94a3b8;line-height:1.5">Microsoft ships in waves. Pick a wave and this page becomes that wave.</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+        <button onClick="{{ briefGo }}" style="padding:9px 15px;border-radius:7px;font-size:12px;font-weight:700;border:1px solid #0078D4;background:#0078D4;color:#fff;cursor:pointer;font-family:inherit;white-space:nowrap" style-hover="background:#005A9E;border-color:#005A9E">Export a board briefing</button>
+        <button onClick="{{ digestGo }}" style="padding:9px 15px;border-radius:7px;font-size:12px;font-weight:600;border:1px solid rgba(148,163,184,.24);background:transparent;color:#94a3b8;cursor:pointer;font-family:inherit;white-space:nowrap">Digest settings</button>
+        <button onClick="{{ servicesGo }}" style="padding:9px 15px;border-radius:7px;font-size:12px;font-weight:600;border:1px solid rgba(148,163,184,.24);background:transparent;color:#94a3b8;cursor:pointer;font-family:inherit;white-space:nowrap">{{ servicesLabel }}</button>
+      </div>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <span style="font-size:9px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#475569;padding-right:2px">Next 12 months</span>
+      <sc-for list="{{ stats }}" as="s" hint-placeholder-count="6">
+        <span style="{{ s.cardCss }}">
+          <span style="{{ s.valueCss }}">{{ s.value }}</span>
+          <span style="font-size:9.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:#64748b;line-height:1.3;white-space:nowrap">{{ s.label }}</span>
+        </span>
+      </sc-for>
+      <div style="display:flex;align-items:center;gap:8px;margin-left:auto;padding:5px 11px 5px 9px;border:1px solid rgba(52,211,153,.28);border-radius:999px;background:rgba(52,211,153,.06)">
+        <span style="width:7px;height:7px;border-radius:50%;background:#34d399;flex:0 0 auto;box-shadow:0 0 0 3px rgba(52,211,153,.18)"></span>
+        <span style="font-size:10.5px;color:#94a3b8;white-space:nowrap">Read against your tenant · scanned {{ scanAt }}</span>
+        <button onClick="{{ rescanGo }}" style="border:none;background:transparent;color:#34d399;font-size:10.5px;font-weight:700;cursor:pointer;font-family:inherit;padding:0;white-space:nowrap">Scan again</button>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:minmax(0,1fr);gap:24px;align-items:start">
+      <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
+        <sc-if value="{{ isPast }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:14px">
+            <div style="display:flex;flex-direction:column;gap:13px;padding:17px 19px;border:1px solid rgba(148,163,184,.28);border-radius:13px;background:linear-gradient(135deg,rgba(148,163,184,.08),rgba(11,21,36,.9))">
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <span style="font-size:22px;font-weight:800;color:#f8fafc;letter-spacing:-.02em">{{ past.name }}</span>
+                <span style="{{ past.verdictCss }}">{{ past.verdict }}</span>
+                <span style="margin-left:auto;font-size:12px;font-weight:600;color:#94a3b8;white-space:nowrap">{{ past.range }}</span>
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:9px">
+                <sc-for list="{{ past.tiles }}" as="t" hint-placeholder-count="4">
+                  <div style="{{ t.css }}">
+                    <span style="{{ t.valueCss }}">{{ t.value }}</span>
+                    <span style="font-size:10.5px;font-weight:600;color:#94a3b8;line-height:1.4">{{ t.label }}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:9px;padding:15px 17px;border:1px solid rgba(30,41,59,.9);border-radius:13px;background:#0b1524">
+              <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+                <span style="font-size:9.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#94a3b8">Did this release?</span>
+                <span style="font-size:11px;color:#64748b">What actually arrived, and what it cost the help desk</span>
+              </div>
+              <div style="overflow-x:auto;display:flex;flex-direction:column;gap:8px">
+              <sc-for list="{{ past.rows }}" as="r" hint-placeholder-count="3">
+                <div style="{{ r.rowCss }}">
+                  <span style="font-size:9.5px;font-weight:700;color:#475569;font-family:'SF Mono',Menlo,Consolas,monospace">{{ r.id }}</span>
+                  <span style="font-size:12.5px;font-weight:600;color:#e2e8f0;line-height:1.4;min-width:0">{{ r.title }}</span>
+                  <div style="display:flex;flex-direction:column;gap:2px;min-width:0">
+                    <span style="{{ r.outcomeCss }}">{{ r.outcome }}</span>
+                    <span style="font-size:10.5px;color:#64748b">{{ r.tickets }}</span>
+                  </div>
+                  <span style="{{ r.toldCss }}">{{ r.toldLabel }}</span>
+                </div>
+              </sc-for>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isLive }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;flex-direction:column;gap:13px;padding:17px 19px;border:1px solid rgba(0,120,212,.32);border-radius:13px;background:linear-gradient(135deg,rgba(0,120,212,.1),rgba(11,21,36,.9))">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <span style="font-size:22px;font-weight:800;color:#f8fafc;letter-spacing:-.02em">{{ wSel.name }}</span>
+            <span style="{{ wSel.statusCss }}">{{ wSel.status }}</span>
+            <sc-if value="{{ wSel.freeze }}" hint-placeholder-val="{{ false }}">
+              <span style="{{ wSel.freezeCss }}">{{ wSel.freezeLabel }}</span>
+            </sc-if>
+            <sc-if value="{{ wSel.scoped }}" hint-placeholder-val="{{ false }}">
+              <button onClick="{{ wSel.clearGo }}" style="display:inline-flex;align-items:center;gap:7px;padding:4px 10px;border-radius:999px;border:1px solid rgba(34,211,238,.45);background:rgba(34,211,238,.12);color:#22d3ee;font-size:10.5px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">{{ wSel.scopeLabel }} ×</button>
+            </sc-if>
+            <span style="margin-left:auto;font-size:12px;font-weight:600;color:#93c5fd;white-space:nowrap">{{ wSel.range }}</span>
+            <button onClick="{{ wSel.briefWaveGo }}" style="padding:6px 12px;border-radius:7px;font-size:11px;font-weight:700;border:1px solid rgba(0,120,212,.5);background:rgba(0,120,212,.14);color:#93c5fd;cursor:pointer;font-family:inherit;white-space:nowrap">Brief this wave</button>
+          </div>
+          <div style="display:flex;align-items:center;gap:11px">
+            <span style="font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#475569;white-space:nowrap">{{ wSel.noticeGiven }}</span>
+            <div style="flex:1;height:4px;border-radius:2px;background:rgba(148,163,184,.16);min-width:60px">
+              <div style="{{ wSel.noticeBarCss }}"></div>
+            </div>
+            <span style="font-size:11px;font-weight:700;color:#22d3ee;white-space:nowrap">{{ wSel.noticeLeft }}</span>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:9px">
+            <sc-for list="{{ wSel.tiles }}" as="t" hint-placeholder-count="4">
+              <button onClick="{{ t.go }}" style="{{ t.css }}">
+                <span style="{{ t.valueCss }}">{{ t.value }}</span>
+                <span style="font-size:10.5px;font-weight:600;color:#94a3b8;line-height:1.4;text-align:left">{{ t.label }}</span>
+                <span style="{{ t.hintCss }}">{{ t.hint }}</span>
+              </button>
+            </sc-for>
+          </div>
+        </div>
+
+        <sc-if value="{{ wSel.seenPanel }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:9px;padding:15px 17px;border:1px solid rgba(167,139,250,.3);border-radius:13px;background:#0b1524">
+            <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+              <span style="font-size:9.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#a78bfa">What your people will see</span>
+              <span style="font-size:11px;color:#64748b">{{ wSel.seenMeta }} · nothing to configure, only somebody to tell</span>
+            </div>
+            <sc-for list="{{ wSeen }}" as="v" hint-placeholder-count="2">
+              <button onClick="{{ v.go }}" style="{{ v.rowCss }}">
+                <span style="font-size:11.5px;font-weight:700;color:#cbd5e1;text-align:left">{{ v.when }}</span>
+                <span style="{{ v.appCss }}">{{ v.app }}</span>
+                <div style="display:flex;flex-direction:column;gap:2px;min-width:0">
+                  <span style="font-size:12.5px;font-weight:600;color:#f1f5f9;line-height:1.4;text-align:left">{{ v.title }}</span>
+                  <span style="font-size:11px;color:#64748b;line-height:1.5;text-align:left;text-wrap:pretty">{{ v.tickets }}</span>
+                </div>
+                <span style="{{ v.toldCss }}">{{ v.toldLabel }}</span>
+              </button>
+            </sc-for>
+          </div>
+        </sc-if>
+
+        <div style="display:flex;flex-direction:column;gap:12px;padding:16px 18px;border:1px solid rgba(30,41,59,.9);border-radius:13px;background:#0b1524">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap">
+            <span style="font-size:9.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#60a5fa">The next twelve months · click a column to move</span>
+            <div style="display:flex;align-items:center;gap:11px;flex-wrap:wrap">
+              <sc-for list="{{ rmLegend }}" as="l" hint-placeholder-count="4">
+                <div style="display:flex;align-items:center;gap:5px">
+                  <span style="{{ l.dotCss }}"></span>
+                  <span style="font-size:10px;color:#64748b;white-space:nowrap">{{ l.label }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="overflow-x:auto;overflow-y:hidden">
+            <div style="min-width:820px;display:grid;grid-template-columns:190px minmax(0,1fr);gap:0">
+              <span style="font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#475569;align-self:end;padding:0 12px 6px 2px">Wave</span>
+              <div style="display:grid;grid-template-columns:repeat(11,1fr)">
+                <sc-for list="{{ waves }}" as="w" hint-placeholder-count="5">
+                  <button onClick="{{ w.go }}" style="{{ w.css }}" title="{{ w.title }}">
+                    <span style="{{ w.labelCss }}">{{ w.label }}</span>
+                    <span style="{{ w.countCss }}">{{ w.count }}</span>
+                  </button>
+                </sc-for>
+              </div>
+
+              <span style="font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#475569;align-self:end;padding:0 12px 6px 2px">Volume</span>
+              <div style="display:grid;grid-template-columns:repeat(11,1fr);align-items:end;border-bottom:1px solid rgba(30,41,59,.9)">
+                <sc-for list="{{ river }}" as="r" hint-placeholder-count="11">
+                  <button onClick="{{ r.go }}" style="{{ r.wrapCss }}">
+                    <span style="{{ r.totalCss }}">{{ r.total }}</span>
+                    <sc-for list="{{ r.segs }}" as="g" hint-placeholder-count="4">
+                      <div style="{{ g.css }}"></div>
+                    </sc-for>
+                  </button>
+                </sc-for>
+              </div>
+
+              <span style="font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#475569;align-self:start;padding:6px 12px 0 2px">Workload</span>
+              <div style="display:grid;grid-template-columns:repeat(11,1fr)">
+                <sc-for list="{{ headCells }}" as="h" hint-placeholder-count="11">
+                  <div style="{{ h.css }}">
+                    <sc-if value="{{ h.isToday }}" hint-placeholder-val="{{ false }}">
+                      <span style="{{ h.todayCss }}">{{ h.today }}</span>
+                    </sc-if>
+                    <span style="{{ h.labelCss }}">{{ h.label }}</span>
+                    <span style="{{ h.subCss }}">{{ h.sub }}</span>
+                  </div>
+                </sc-for>
+              </div>
+
+              <sc-for list="{{ density }}" as="row" hint-placeholder-count="6">
+                <div style="display:grid;grid-template-columns:190px minmax(0,1fr);gap:0;grid-column:1 / span 2;border-top:1px solid rgba(30,41,59,.6)">
+                  <div style="display:flex;align-items:center;gap:9px;padding:0 12px 0 2px;min-width:0">
+                    <span style="{{ row.dotCss }}"></span>
+                    <span style="flex:1;font-size:11.5px;font-weight:600;color:#cbd5e1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">{{ row.name }}</span>
+                  </div>
+                  <div style="display:grid;grid-template-columns:repeat(11,1fr)">
+                    <sc-for list="{{ row.cells }}" as="c" hint-placeholder-count="11">
+                      <button onClick="{{ c.go }}" title="{{ c.title }}" style="{{ c.css }}">
+                        <sc-for list="{{ c.dots }}" as="d" hint-placeholder-count="4">
+                          <span style="{{ d.css }}"></span>
+                        </sc-for>
+                      </button>
+                    </sc-for>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:9px;padding:15px 17px;border:1px solid rgba(248,113,113,.28);border-radius:13px;background:#0b1524">
+          <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+            <span style="font-size:9.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#f87171">What stops working</span>
+            <span style="font-size:11px;color:#64748b">{{ wSel.breakMeta }}</span>
+          </div>
+          <sc-for list="{{ wBreaks }}" as="b" hint-placeholder-count="2">
+            <button onClick="{{ b.go }}" style="{{ b.rowCss }}">
+              <div style="display:flex;flex-direction:column;gap:2px;min-width:0">
+                <span style="font-size:12.5px;font-weight:800;color:#f87171;line-height:1.3;text-align:left">{{ b.when }}</span>
+                <span style="font-size:10px;color:#94a3b8;text-align:left">{{ b.countdown }}</span>
+                <span style="font-size:9.5px;font-weight:700;color:#475569;font-family:'SF Mono',Menlo,Consolas,monospace;text-align:left">{{ b.id }}</span>
+                <span style="font-size:10px;color:#94a3b8;text-align:left">{{ b.owner }}</span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:3px;min-width:0">
+                <span style="font-size:13px;font-weight:700;color:#f1f5f9;line-height:1.4;text-align:left">{{ b.what }}</span>
+                <span style="font-size:11.5px;color:#94a3b8;line-height:1.55;text-align:left;text-wrap:pretty">{{ b.evidence }}</span>
+              </div>
+              <div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px">
+                <span style="{{ b.stateCss }}">{{ b.state }}</span>
+                <span style="font-size:10.5px;color:#64748b;white-space:nowrap">Open →</span>
+              </div>
+            </button>
+          </sc-for>
+          <sc-if value="{{ wSel.noBreaks }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;align-items:center;gap:10px;padding:13px 14px;border:1px dashed rgba(52,211,153,.3);border-radius:10px;background:rgba(52,211,153,.04)">
+              <span style="width:7px;height:7px;border-radius:50%;background:#34d399;flex:0 0 auto"></span>
+              <span style="font-size:12px;color:#cbd5e1;line-height:1.5">Nothing in this wave stops working here.</span>
+            </div>
+          </sc-if>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:9px;padding:15px 17px;border:1px solid rgba(251,191,36,.28);border-radius:13px;background:#0b1524">
+          <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+            <span style="font-size:9.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#fbbf24">Decide before it lands</span>
+            <span style="font-size:11px;color:#64748b">{{ wSel.decideMeta }}</span>
+          </div>
+          <sc-for list="{{ wQueue }}" as="q" hint-placeholder-count="2">
+            <div style="{{ q.cardCss }}">
+              <div style="display:flex;flex-direction:column;gap:4px;min-width:0">
+                <span style="{{ q.dueCss }}">{{ q.due }}</span>
+                <span style="{{ q.kindCss }}">{{ q.kind }}</span>
+                <span style="font-size:9.5px;font-weight:700;color:#475569;font-family:'SF Mono',Menlo,Consolas,monospace">{{ q.id }}</span>
+                <span style="font-size:10px;color:#94a3b8;line-height:1.4">{{ q.ownerLine }}</span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:4px;min-width:0">
+                <span style="font-size:13px;font-weight:700;color:#f1f5f9;line-height:1.45">{{ q.decision }}</span>
+                <span style="font-size:11.5px;color:#94a3b8;line-height:1.6;text-wrap:pretty">{{ q.ifNot }}</span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:6px;flex:0 0 auto">
+                <sc-for list="{{ q.acts }}" as="a" hint-placeholder-count="3">
+                  <button onClick="{{ a.go }}" style="{{ a.css }}">{{ a.label }}</button>
+                </sc-for>
+              </div>
+            </div>
+          </sc-for>
+          <sc-if value="{{ wSel.noDecisions }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;align-items:center;gap:10px;padding:13px 14px;border:1px dashed rgba(148,163,184,.24);border-radius:10px;background:rgba(148,163,184,.04)">
+              <span style="width:7px;height:7px;border-radius:50%;background:#64748b;flex:0 0 auto"></span>
+              <span style="font-size:12px;color:#94a3b8;line-height:1.5">No decision closes in this wave. Nothing here expires while you wait.</span>
+            </div>
+          </sc-if>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:9px;padding:15px 17px;border:1px solid rgba(30,41,59,.9);border-radius:13px;background:#0b1524">
+          <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+            <span style="font-size:9.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#64748b">Nothing to do</span>
+            <span style="font-size:11px;color:#475569">{{ wSel.quietMeta }}</span>
+          </div>
+          <sc-for list="{{ wNoAction }}" as="n" hint-placeholder-count="2">
+            <button onClick="{{ n.go }}" style="{{ n.rowCss }}">
+              <span style="font-size:11.5px;font-weight:700;color:#94a3b8;text-align:left">{{ n.when }}</span>
+              <div style="display:flex;flex-direction:column;gap:2px;min-width:0">
+                <span style="font-size:12.5px;font-weight:600;color:#cbd5e1;line-height:1.4;text-align:left">{{ n.title }}</span>
+                <span style="font-size:11px;color:#64748b;line-height:1.55;text-align:left;text-wrap:pretty">{{ n.why }}</span>
+              </div>
+              <span style="{{ n.tagCss }}">{{ n.tag }}</span>
+            </button>
+          </sc-for>
+          <sc-if value="{{ wSel.noQuiet }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border:1px dashed rgba(148,163,184,.2);border-radius:10px">
+              <span style="font-size:18px;font-weight:800;color:#64748b;letter-spacing:-.02em">{{ wSel.silent }}</span>
+              <span style="font-size:11.5px;color:#64748b;line-height:1.5">silent changes here, none of them written up because none of them need you</span>
+            </div>
+          </sc-if>
+        </div>
+          </div>
+        </sc-if>
+
+        <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:13px 16px;border:1px solid rgba(45,212,191,.26);border-radius:13px;background:rgba(45,212,191,.05)">
+          <span style="font-size:9.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#2dd4bf;white-space:nowrap">Ownership</span>
+          <span style="font-size:11.5px;color:#94a3b8;line-height:1.5;min-width:0">{{ ownershipLine }}</span>
+          <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+            <sc-for list="{{ ownerChips }}" as="o" hint-placeholder-count="4">
+              <span style="{{ o.css }}">{{ o.label }}</span>
+            </sc-for>
+          </div>
+          <a href="Ownership.dc.html" style="margin-left:auto;font-size:11.5px;font-weight:700;color:#2dd4bf;white-space:nowrap">Open the RACI matrix →</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <sc-if value="{{ postOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ backGo }}" style="position:fixed;inset:0;z-index:114;background:rgba(2,6,23,.65);backdrop-filter:blur(2px)"></div>
+  </sc-if>
+  <sc-if value="{{ postOpen }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;top:0;right:0;bottom:0;z-index:115;width:min(1080px,97vw);overflow-y:auto;border-left:1px solid rgba(0,120,212,.4);background:#020617;box-shadow:-28px 0 70px rgba(2,6,23,.7)">
+      <div style="padding:22px 24px 48px;display:flex;flex-direction:column;gap:14px">
+            <div style="display:flex;flex-direction:column;gap:12px;padding:16px 18px;border:1px solid rgba(0,120,212,.28);border-radius:12px;background:linear-gradient(180deg,rgba(0,120,212,.07),rgba(11,21,36,.9))">
+              <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap">
+                <div style="display:flex;flex-direction:column;gap:6px;min-width:0">
+                  <button onClick="{{ backGo }}" style="align-self:flex-start;padding:0;border:none;background:transparent;color:#60a5fa;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">{{ backLabel }}</button>
+                  <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+                    <span style="font-size:12.5px;font-weight:700;color:#60a5fa;font-family:'SF Mono',Menlo,Consolas,monospace">{{ post.id }}</span>
+                    <span style="font-size:17px;font-weight:800;color:#f8fafc;letter-spacing:-.01em;line-height:1.3">{{ post.title }}</span>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                    <span style="{{ post.impactPill }}">{{ post.impactLabel }}</span>
+                    <span style="{{ post.kindPill }}">{{ post.kind }}</span>
+                    <span style="{{ post.wlPill }}">{{ post.workload }}</span>
+                    <span style="font-size:11px;color:#94a3b8">Lands {{ post.when }} · {{ post.countdown }}</span>
+                  </div>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end">
+                  <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
+                    <sc-for list="{{ post.acts }}" as="a" hint-placeholder-count="3">
+                      <button onClick="{{ a.go }}" style="{{ a.css }}">{{ a.label }}</button>
+                    </sc-for>
+                  </div>
+                  <span style="font-size:10.5px;color:#64748b;text-align:right;max-width:40ch;line-height:1.45">{{ post.actNote }}</span>
+                </div>
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;padding-top:11px;border-top:1px solid rgba(30,41,59,.8)">
+                <sc-for list="{{ post.facts }}" as="f" hint-placeholder-count="5">
+                  <div style="display:flex;flex-direction:column;gap:2px;min-width:0">
+                    <span style="font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#475569">{{ f.label }}</span>
+                    <span style="{{ f.css }}">{{ f.value }}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:248px minmax(0,1fr);gap:16px;align-items:start">
+              <div style="display:flex;flex-direction:column;gap:2px;border:1px solid rgba(30,41,59,.9);border-radius:10px;background:#0b1524;padding:6px;position:sticky;top:18px;overflow:hidden">
+                <sc-for list="{{ post.rail }}" as="s" hint-placeholder-count="11">
+                  <button onClick="{{ s.go }}" style="{{ s.css }}">
+                    <span style="{{ s.numCss }}">{{ s.num }}</span>
+                    <span style="{{ s.labelCss }}">{{ s.label }}</span>
+                  </button>
+                </sc-for>
+              </div>
+
+              <div style="display:flex;flex-direction:column;gap:12px;min-width:0">
+                <div style="display:flex;flex-direction:column;gap:4px;padding-bottom:10px;border-bottom:1px solid rgba(30,41,59,.9)">
+                  <span style="font-size:9.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#60a5fa">Section {{ sec.num }}</span>
+                  <span style="font-size:15.5px;font-weight:700;color:#f8fafc;letter-spacing:-.01em">{{ sec.label }}</span>
+                  <span style="font-size:11.5px;color:#94a3b8;line-height:1.55;max-width:80ch;text-wrap:pretty">{{ sec.intro }}</span>
+                </div>
+
+                <sc-for list="{{ sec.blocks }}" as="b" hint-placeholder-count="3">
+                  <div style="{{ b.wrapCss }}">
+                    <sc-if value="{{ b.head }}" hint-placeholder-val="{{ true }}">
+                      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap">
+                        <span style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#64748b">{{ b.head }}</span>
+                        <span style="font-size:10.5px;color:#475569">{{ b.hint }}</span>
+                      </div>
+                    </sc-if>
+
+                    <sc-if value="{{ b.isProse }}" hint-placeholder-val="{{ false }}">
+                      <span style="{{ b.textCss }}">{{ b.text }}</span>
+                    </sc-if>
+
+                    <sc-if value="{{ b.isFields }}" hint-placeholder-val="{{ false }}">
+                      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:13px">
+                        <sc-for list="{{ b.fields }}" as="f" hint-placeholder-count="4">
+                          <div style="display:flex;flex-direction:column;gap:3px;min-width:0">
+                            <span style="font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#475569">{{ f.label }}</span>
+                            <span style="{{ f.css }}">{{ f.value }}</span>
+                          </div>
+                        </sc-for>
+                      </div>
+                    </sc-if>
+
+                    <sc-if value="{{ b.isCompare }}" hint-placeholder-val="{{ false }}">
+                      <div style="display:flex;flex-direction:column;gap:12px">
+                        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px">
+                          <div style="display:flex;flex-direction:column;gap:5px;padding:12px 13px;border:1px solid rgba(148,163,184,.2);border-radius:9px;background:rgba(2,6,23,.45)">
+                            <span style="font-size:9.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#94a3b8">Microsoft says</span>
+                            <span style="font-size:12.5px;color:#cbd5e1;line-height:1.6;text-wrap:pretty">{{ b.msSays }}</span>
+                          </div>
+                          <div style="display:flex;flex-direction:column;gap:5px;padding:12px 13px;border:1px solid rgba(248,113,113,.32);border-radius:9px;background:rgba(248,113,113,.05)">
+                            <span style="font-size:9.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#f87171">Your tenant says</span>
+                            <span style="font-size:12.5px;color:#e2e8f0;line-height:1.6;text-wrap:pretty">{{ b.youSay }}</span>
+                          </div>
+                        </div>
+                        <div style="display:flex;flex-direction:column;gap:0">
+                          <sc-for list="{{ b.evidence }}" as="e" hint-placeholder-count="3">
+                            <div style="display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:12px;padding:10px 0;border-bottom:1px solid rgba(30,41,59,.55);align-items:baseline">
+                              <span style="font-size:11px;color:#93c5fd;font-family:'SF Mono',Menlo,Consolas,monospace;line-height:1.55;word-break:break-all;min-width:0">{{ e.q }}</span>
+                              <span style="{{ e.aCss }}">{{ e.a }}</span>
+                            </div>
+                          </sc-for>
+                        </div>
+                        <span style="font-size:10.5px;color:#475569;line-height:1.55">{{ b.evidenceNote }}</span>
+                      </div>
+                    </sc-if>
+
+                    <sc-if value="{{ b.isChecks }}" hint-placeholder-val="{{ false }}">
+                      <div style="display:flex;flex-direction:column;gap:1px">
+                        <sc-for list="{{ b.checks }}" as="c" hint-placeholder-count="4">
+                          <div style="display:flex;align-items:flex-start;gap:10px;padding:9px 2px;border-bottom:1px solid rgba(30,41,59,.55)">
+                            <span style="{{ c.markCss }}">{{ c.mark }}</span>
+                            <span style="flex:1;font-size:12px;color:#cbd5e1;line-height:1.5;min-width:0">{{ c.label }}</span>
+                            <span style="{{ c.metaCss }}">{{ c.meta }}</span>
+                          </div>
+                        </sc-for>
+                      </div>
+                    </sc-if>
+
+                    <sc-if value="{{ b.isPhases }}" hint-placeholder-val="{{ false }}">
+                      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px">
+                        <sc-for list="{{ b.phases }}" as="p" hint-placeholder-count="3">
+                          <div style="{{ p.cardCss }}">
+                            <span style="{{ p.nameCss }}">{{ p.name }}</span>
+                            <span style="font-size:11.5px;font-weight:700;color:#e2e8f0">{{ p.when }}</span>
+                            <span style="font-size:10.5px;color:#64748b;line-height:1.5">{{ p.note }}</span>
+                          </div>
+                        </sc-for>
+                      </div>
+                    </sc-if>
+
+                    <sc-if value="{{ b.isTimeline }}" hint-placeholder-val="{{ false }}">
+                      <div style="display:flex;flex-direction:column;gap:0">
+                        <sc-for list="{{ b.events }}" as="e" hint-placeholder-count="4">
+                          <div style="display:grid;grid-template-columns:130px 14px minmax(0,1fr);gap:12px;align-items:start;padding:10px 0;border-bottom:1px solid rgba(30,41,59,.5)">
+                            <span style="font-size:10.5px;color:#64748b;font-family:'SF Mono',Menlo,Consolas,monospace;line-height:1.5">{{ e.at }}</span>
+                            <span style="{{ e.dotCss }}"></span>
+                            <div style="display:flex;flex-direction:column;gap:3px;min-width:0">
+                              <span style="font-size:12px;font-weight:600;color:#e2e8f0;line-height:1.45">{{ e.what }}</span>
+                              <span style="font-size:11px;color:#94a3b8;line-height:1.55;text-wrap:pretty">{{ e.detail }}</span>
+                            </div>
+                          </div>
+                        </sc-for>
+                      </div>
+                    </sc-if>
+
+                    <sc-if value="{{ b.isLinked }}" hint-placeholder-val="{{ false }}">
+                      <div style="display:flex;flex-direction:column;gap:8px">
+                        <sc-for list="{{ b.links }}" as="l" hint-placeholder-count="2">
+                          <button onClick="{{ l.go }}" style="display:flex;align-items:flex-start;gap:11px;padding:11px 12px;border:1px solid rgba(30,41,59,.85);border-radius:9px;background:rgba(2,6,23,.45);cursor:pointer;font-family:inherit;text-align:left;width:100%">
+                            <span style="{{ l.idCss }}">{{ l.id }}</span>
+                            <div style="display:flex;flex-direction:column;gap:3px;min-width:0;flex:1">
+                              <span style="font-size:12px;font-weight:600;color:#e2e8f0;line-height:1.45">{{ l.title }}</span>
+                              <span style="font-size:11px;color:#94a3b8;line-height:1.55;text-wrap:pretty">{{ l.note }}</span>
+                            </div>
+                            <span style="{{ l.tagCss }}">{{ l.tag }}</span>
+                          </button>
+                        </sc-for>
+                      </div>
+                    </sc-if>
+
+                    <sc-if value="{{ b.isThread }}" hint-placeholder-val="{{ false }}">
+                      <div style="display:flex;flex-direction:column;gap:10px">
+                        <sc-for list="{{ b.msgs }}" as="m" hint-placeholder-count="3">
+                          <div style="{{ m.wrapCss }}">
+                            <div style="display:flex;align-items:baseline;gap:9px;flex-wrap:wrap">
+                              <span style="{{ m.whoCss }}">{{ m.who }}</span>
+                              <span style="font-size:10px;color:#475569">{{ m.at }}</span>
+                            </div>
+                            <span style="font-size:12px;color:#cbd5e1;line-height:1.6;text-wrap:pretty">{{ m.text }}</span>
+                          </div>
+                        </sc-for>
+                        <button onClick="{{ b.askGo }}" style="align-self:flex-start;padding:8px 13px;border-radius:7px;border:1px solid rgba(34,211,238,.35);background:transparent;color:#22d3ee;font-size:11.5px;font-weight:700;cursor:pointer;font-family:inherit">Ask Shane about this notice</button>
+                      </div>
+                    </sc-if>
+
+                    <sc-if value="{{ b.isControls }}" hint-placeholder-val="{{ false }}">
+                      <div style="display:flex;flex-direction:column;gap:10px">
+                        <div style="display:flex;gap:8px;flex-wrap:wrap">
+                          <sc-for list="{{ b.controls }}" as="c" hint-placeholder-count="2">
+                            <span style="{{ c.css }}">{{ c.label }}</span>
+                          </sc-for>
+                        </div>
+                        <button onClick="{{ b.tagGo }}" style="align-self:flex-start;padding:7px 12px;border-radius:6px;border:1px solid rgba(148,163,184,.24);background:transparent;color:#94a3b8;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">Tag another control</button>
+                      </div>
+                    </sc-if>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+      </div>
+  </sc-if>
+
+  <sc-if value="{{ formOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeForm }}" style="position:fixed;inset:0;z-index:120;background:rgba(2,6,23,.6);backdrop-filter:blur(2px)"></div>
+  </sc-if>
+  <sc-if value="{{ formOpen }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;top:0;right:0;bottom:0;z-index:121;width:min(600px,95vw);display:flex;flex-direction:column;border-left:1px solid rgba(0,120,212,.4);background:#0b1524;box-shadow:-24px 0 60px rgba(2,6,23,.65);overflow:hidden">
+      <div style="flex:0 0 auto;padding:16px 20px;border-bottom:1px solid rgba(0,120,212,.2);display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+        <div style="display:flex;flex-direction:column;gap:4px;min-width:0">
+          <span style="font-size:9.5px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#60a5fa">{{ formKicker }}</span>
+          <span style="font-size:14.5px;font-weight:800;color:#f8fafc;letter-spacing:-.01em;line-height:1.35">{{ formTitle }}</span>
+          <span style="font-size:11.5px;color:#64748b;line-height:1.55;max-width:60ch">{{ formIntro }}</span>
+        </div>
+        <button onClick="{{ closeForm }}" style="flex:0 0 auto;width:26px;height:26px;display:flex;align-items:center;justify-content:center;border-radius:6px;border:1px solid rgba(148,163,184,.22);background:transparent;color:#94a3b8;font-size:14px;line-height:1;cursor:pointer;font-family:inherit">×</button>
+      </div>
+      <div style="flex:1;min-height:0;overflow-y:auto;padding:16px 20px 24px;display:flex;flex-direction:column;gap:14px">
+        <sc-for list="{{ formFields }}" as="f" hint-placeholder-count="3">
+          <div style="display:flex;flex-direction:column;gap:5px">
+            <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px">
+              <span style="font-size:9.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#64748b">{{ f.label }}</span>
+              <span style="{{ f.reqCss }}">{{ f.req }}</span>
+            </div>
+            <sc-if value="{{ f.isText }}" hint-placeholder-val="{{ true }}">
+              <input value="{{ f.value }}" onChange="{{ f.onChange }}" placeholder="{{ f.ph }}" style="padding:10px 12px;border-radius:7px;border:1px solid rgba(30,41,59,.9);background:#0b1a2e;color:#e2e8f0;font-size:12.5px;font-family:inherit" />
+            </sc-if>
+            <sc-if value="{{ f.isArea }}" hint-placeholder-val="{{ false }}">
+              <textarea value="{{ f.value }}" onChange="{{ f.onChange }}" placeholder="{{ f.ph }}" style="min-height:84px;padding:10px 12px;border-radius:7px;border:1px solid rgba(30,41,59,.9);background:#0b1a2e;color:#e2e8f0;font-size:12.5px;line-height:1.6;font-family:inherit;resize:vertical"></textarea>
+            </sc-if>
+            <sc-if value="{{ f.isSelect }}" hint-placeholder-val="{{ false }}">
+              <select value="{{ f.value }}" onChange="{{ f.onChange }}" style="padding:10px 12px;border-radius:7px;border:1px solid rgba(30,41,59,.9);background:#0b1a2e;color:#e2e8f0;font-size:12.5px;font-family:inherit;cursor:pointer">
+                <sc-for list="{{ f.selOptions }}" as="o" hint-placeholder-count="4">
+                  <option value="{{ o }}">{{ o }}</option>
+                </sc-for>
+              </select>
+            </sc-if>
+            <sc-if value="{{ f.isPick }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;gap:7px;flex-wrap:wrap">
+                <sc-for list="{{ f.options }}" as="o" hint-placeholder-count="3">
+                  <button onClick="{{ o.go }}" style="{{ o.css }}">{{ o.label }}</button>
+                </sc-for>
+              </div>
+            </sc-if>
+            <sc-if value="{{ f.isToggle }}" hint-placeholder-val="{{ false }}">
+              <button onClick="{{ f.toggleGo }}" style="{{ f.toggleCss }}">
+                <span style="{{ f.toggleBoxCss }}">✓</span>
+                <span style="flex:1;font-size:12px;color:#e2e8f0;line-height:1.5;min-width:0">{{ f.toggleLabel }}</span>
+              </button>
+            </sc-if>
+            <sc-if value="{{ f.hint }}" hint-placeholder-val="{{ true }}">
+              <span style="font-size:10.5px;color:#64748b;line-height:1.55">{{ f.hint }}</span>
+            </sc-if>
+          </div>
+        </sc-for>
+      </div>
+      <div style="flex:0 0 auto;padding:14px 20px;border-top:1px solid rgba(30,41,59,.9);display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <button onClick="{{ formSubmit }}" disabled="{{ formBlocked }}" style="{{ formSubmitCss }}">{{ formSubmitLabel }}</button>
+        <button onClick="{{ closeForm }}" style="padding:9px 15px;border-radius:7px;border:none;background:transparent;color:#64748b;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Cancel</button>
+        <span style="font-size:10.5px;color:#475569;line-height:1.45;flex:1 1 200px;min-width:0">{{ formFoot }}</span>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;bottom:22px;left:50%;transform:translateX(-50%);z-index:130;display:flex;align-items:center;gap:11px;padding:12px 17px;border:1px solid rgba(0,120,212,.4);border-radius:9px;background:#0b1a2e;box-shadow:0 18px 40px rgba(2,6,23,.6);max-width:min(640px,92vw)">
+      <span style="width:6px;height:6px;border-radius:50%;background:#34d399;flex:0 0 auto"></span>
+      <span style="font-size:12px;color:#e2e8f0;line-height:1.5">{{ toast }}</span>
+      <button onClick="{{ clearToast }}" style="flex:0 0 auto;border:none;background:transparent;color:#64748b;font-size:13px;cursor:pointer;font-family:inherit">×</button>
+    </div>
+  </sc-if>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;ownedDefault&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Filters&quot;},&quot;showFreezes&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Roadmap&quot;}}">
+class Component extends DCLogic {
+  state = {
+    openId: null, sec: 'ms', spy: 'answers', statFilter: null, drill: null, cellDrill: null, seenOpen: null, announced: null, rmSel: null,
+    query: '', fWl: 'All workloads', fKind: 'All kinds', fImpact: 'All impact', fMonth: 'All months', fWave: 'All waves',
+    ownedOnly: true, form: null, toast: '', threadOv: null, snoozeOv: null, decisionOv: null, wave: 1, past: null, seenPanel: false, raciOv: {},
+    services: { Exchange: true, Teams: true, SharePoint: true, Entra: true, Purview: true, Copilot: true }
+  };
+
+  WL = { Exchange: '#60a5fa', Teams: '#a78bfa', SharePoint: '#2dd4bf', Entra: '#fbbf24', Purview: '#f87171', Copilot: '#22d3ee' };
+  MONTHS = [
+    { l: 'Sep', y: '26' }, { l: 'Oct', y: '26' }, { l: 'Nov', y: '26' }, { l: 'Dec', y: '26' },
+    { l: 'Jan', y: '27' }, { l: 'Feb', y: '27' }, { l: 'Mar', y: '27' }, { l: 'Apr', y: '27' },
+    { l: 'May', y: '27' }, { l: 'Jun', y: '27' }, { l: 'Jul', y: '27' }, { l: 'Aug', y: '27' }
+  ];
+  FREEZE_BANDS = [
+    { from: 0, span: 1, label: 'Quarter close', title: 'Your freeze · 29–30 September' },
+    { from: 3, span: 2, label: 'Year end freeze', title: 'Your freeze · 22 December – 2 January' }
+  ];
+
+  POSTS = [
+    {
+      id: 'MC1042318', title: 'Basic authentication permanently disabled in Exchange Online',
+      wl: 'Exchange', workload: 'Exchange Online', kind: 'Retirement', hard: true, month: 1,
+      when: '1 October 2026', countdown: 'in 6 weeks', score: 92, impact: 'Hits you',
+      optOut: 'None', optOutNote: 'There is no opt-out and no extension programme this time. The date is the date.',
+      owned: 'Covered by your E3', seats: '1,240 mailboxes · 11 with legacy-auth activity',
+      ms: 'Beginning October 1, 2026, Microsoft will permanently disable Basic authentication for POP, IMAP, SMTP AUTH, and Exchange ActiveSync in all Exchange Online tenants. Clients and applications using Basic authentication will no longer be able to connect. Customers should migrate affected clients and service accounts to OAuth 2.0 before this date. This change is being made to reduce the risk of password spray and credential replay attacks.',
+      plain: 'Anything still signing in to a mailbox with a username and a password stops working on 1 October. Not degraded — stops. Outlook and the mobile apps are fine because they already use modern auth. What breaks is the old stuff: a scanner that emails PDFs, a script that sends invoices, a phone with an IMAP profile someone set up in 2019.',
+      msSays: 'A small number of tenants still use Basic authentication for legacy protocols and should migrate affected clients.',
+      youSay: 'You have eleven accounts that authenticated over IMAP or SMTP AUTH in the last 30 days. Nine are the Bay 3 scanners, two are personal iOS Mail profiles, and one automation — the nightly invoice export — sends over SMTP AUTH from Finance.',
+      evidence: [
+        { q: 'GET /reports/getEmailActivityUserDetail · legacy protocol sign-ins, 30 days', a: '1,412 events across 11 accounts', bad: true },
+        { q: 'Get-CASMailbox | where {$_.ImapEnabled -eq $true}', a: '11 mailboxes', bad: true },
+        { q: 'Transport rule / connector using SMTP AUTH', a: '1 · Finance invoice export', bad: true },
+        { q: 'Conditional Access policy blocking legacy auth', a: 'CA-014 exists, report-only', bad: false }
+      ],
+      evidenceNote: 'Read from your tenant 19 August at 08:04. Re-runs nightly, and the answer changes as you fix things.',
+      ignore: 'On 1 October the Bay 3 scanners stop sending, the nightly invoice export fails silently at 23:00, and two people stop receiving mail on their phones. You find out from Finance on 2 October when a customer chases an invoice nobody sent. This is the shape of every Microsoft deprecation: it does not break the thing you were watching, it breaks the thing you forgot was connected to it.',
+      crCode: 'CR-0142', crState: 'Awaiting approval',
+      crNote: 'Already raised — legacy auth disabled deliberately in a 25 August window, six weeks before Microsoft does it for you. That is the whole difference between a change and an incident.',
+      phases: [
+        { name: 'Announced', when: '4 April 2026', note: 'Message Center post published, 180 days notice.' },
+        { name: 'Targeted release', when: 'August 2026', note: 'Reporting only. You are here.' },
+        { name: 'Standard release', when: '1 October 2026', note: 'Enforced tenant-wide. No opt-out.' }
+      ],
+      roadmapId: 'Roadmap 124981',
+      toldMs: 'Global administrators only — two accounts. One is your break-glass account, which nobody signs into by design, so in practice Microsoft told one person.',
+      toldYou: 'Priya Raman on 4 April by digest, Shane McCaw the same day, the eleven affected users on 12 August with instructions, and Facilities about the Bay 3 scanners on 13 August.',
+      history: [
+        { at: '4 Apr 2026', what: 'Published', detail: 'Original date: 1 September 2026.' },
+        { at: '22 May 2026', what: 'Date moved', detail: 'Pushed to 1 October 2026 with no separate announcement. If you had planned to the original date you would never have been told it moved.' },
+        { at: '30 Jun 2026', what: 'Scope widened', detail: 'Exchange ActiveSync added to the list of affected protocols. This is the edit that caught most tenants.' },
+        { at: '11 Aug 2026', what: 'Clarified', detail: 'Microsoft confirmed no extension programme will be offered.' }
+      ],
+      decisions: [
+        { at: '4 Apr 2026 · Priya Raman', what: 'Acknowledged. Position: get ahead of it rather than wait.' },
+        { at: '18 Aug 2026 · Shane McCaw', what: 'CR-0142 raised, report-only ring started, pilot enforced on 25 accounts.' }
+      ],
+      controls: ['Cyber Essentials Plus · authentication', 'ISO 27001 A.9.4.2', 'Copilot gate items 12, 19, 27, 33'],
+      thread: [
+        { who: 'Priya Raman', at: '12 Aug', text: 'Can we just extend past October if the scanners are not ready?', mine: true },
+        { who: 'Shane McCaw', at: '12 Aug', text: 'No. There is no extension this time — that is what the 11 August clarification says. The scanners are on firmware 4.2 and can do OAuth today; the real risk is the Finance invoice export, which has been rewritten but never dry-run. That dry run is the gate I would hold the change on.' }
+      ]
+    },
+    {
+      id: 'MC1049877', title: 'Default sharing link changes to "people with existing access"',
+      wl: 'SharePoint', workload: 'SharePoint · OneDrive', kind: 'Rollout', hard: false, month: 0,
+      when: '22 September 2026', countdown: 'in 5 weeks', score: 74, impact: 'Hits you',
+      optOut: 'Until 18 Sep', optOutNote: 'A tenant setting you can pin before the rollout reaches you. After that you are changing it back, not keeping it.',
+      owned: 'Covered by your E3', seats: '212 document libraries · 1,240 OneDrive accounts',
+      ms: 'We are updating the default sharing link type for SharePoint and OneDrive to "People with existing access" for all tenants that have not explicitly configured a default. Users can still choose other link types where policy allows. Tenant administrators may set an explicit default before rollout reaches their tenant.',
+      plain: 'When someone clicks Share, the link they get by default changes. Today your users get "anyone with the link" for tender documents; after this they get a link that only works for people who already have access — which, for an external customer, is nobody. Nothing is blocked. Links just quietly stop working for the people they were sent to.',
+      msSays: 'Tenants that have not explicitly configured a default will receive the new default. Users can still choose other link types.',
+      youSay: 'You have never set an explicit default, so you get the new one. Sales sent 84 anonymous links in the last 30 days, all tender documents, and 47 of the files they attached to CR-0136 still carry a Confidential label that already restricts anonymous sharing.',
+      evidence: [
+        { q: 'Get-SPOTenant | Select DefaultSharingLinkType', a: 'None — never configured', bad: true },
+        { q: 'Anonymous links created, last 30 days', a: '84 · 61 from the Sales tenders library', bad: true },
+        { q: 'Libraries with a label restricting anonymous links', a: '3 · post-CR-0136 remnant', bad: true },
+        { q: 'External sharing enabled at tenant level', a: 'Yes, unchanged by this rollout', bad: false }
+      ],
+      evidenceNote: 'The point is not that Microsoft is wrong. The new default is safer. The point is that it changes how 84 links a month behave, and nobody in Sales has been told.',
+      ignore: 'Tender links start failing for customers, one at a time, with no error your side. Sales assumes the customer cannot open the file and re-sends it. You find out weeks later when someone loses a bid and asks why the link never worked.',
+      crCode: '', crState: '',
+      crNote: 'Nothing raised yet. Pinning your own default before 18 September makes this a change you control; after that it is a change you inherit and then have to argue about.',
+      phases: [
+        { name: 'Announced', when: '2 July 2026', note: '82 days notice.' },
+        { name: 'Targeted release', when: '22 September 2026', note: 'Reaches your tenant in this window.' },
+        { name: 'Standard release', when: 'October 2026', note: 'Everyone else.' }
+      ],
+      roadmapId: 'Roadmap 131204',
+      toldMs: 'Global and SharePoint administrators. Nobody in Sales, who are the only people this actually affects day to day.',
+      toldYou: 'Priya Raman on 3 July by digest. Sales have not been told, because there is nothing to tell them until you decide what the default will be.',
+      history: [
+        { at: '2 Jul 2026', what: 'Published', detail: 'Rollout window: September to October.' },
+        { at: '28 Jul 2026', what: 'Opt-out clarified', detail: 'Microsoft confirmed an explicit tenant default is honoured and will not be overwritten.' }
+      ],
+      decisions: [{ at: '3 Jul 2026 · Priya Raman', what: 'Acknowledged, deferred to the September review.' }],
+      controls: ['ISO 27001 A.13.2.1', 'Compliance finding CMP-004'],
+      thread: [
+        { who: 'Shane McCaw', at: '14 Aug', text: 'My recommendation is to set the default to "specific people" yourselves before the 18th, and give the tenders library an exception. That way Sales keeps working the way it works, and the rest of the tenant gets the safer default. Doing nothing is also a decision — it just gets made by Redmond.' }
+      ]
+    },
+    {
+      id: 'MC1051144', title: 'Anonymous meeting join default flips to allowed',
+      wl: 'Teams', workload: 'Microsoft Teams', kind: 'Rollout', hard: false, month: 0,
+      when: '26 September 2026', countdown: 'in 5 weeks', score: 61, impact: 'Hits you',
+      optOut: 'Set it explicitly', optOutNote: 'An explicit value on your meeting policy survives the rollout. A default does not.',
+      owned: 'Covered by your E3', seats: '1,240 users · 3 meeting policies',
+      ms: 'The default value of the AllowAnonymousUsersToJoinMeeting setting will change to True for tenants using the default global meeting policy. Tenants with an explicitly configured value will not be affected.',
+      plain: 'People will be able to join your meetings without signing in, unless you have set that value on purpose. You have not — you have the default, which means Microsoft is about to change a setting your compliance evidence describes as an external-access control.',
+      msSays: 'Tenants with an explicitly configured value are unaffected.',
+      youSay: 'Your global meeting policy has never had this value set, so it is the default and it will move. Two of your three policies inherit from global. Your compliance pack cites anonymous join being off as evidence for an external-access control.',
+      evidence: [
+        { q: 'Get-CsTeamsMeetingPolicy Global | Select AllowAnonymousUsersToJoinMeeting', a: 'False — inherited default, not set', bad: true },
+        { q: 'Policies inheriting from Global', a: '2 of 3', bad: true },
+        { q: 'Compliance control citing this setting', a: 'CMP-011 · external access', bad: true }
+      ],
+      evidenceNote: 'This is the quiet kind. Nothing breaks — a control you are audited on simply changes value, during the week of your ERP go-live freeze.',
+      ignore: 'The setting flips, your compliance evidence becomes untrue, and you find out at the next audit rather than at the change. Meanwhile anyone with a meeting link can join without identifying themselves.',
+      crCode: '', crState: '',
+      crNote: 'A one-line change request pins the value before the 26th. It is a ten-minute change that stops a control moving underneath you.',
+      phases: [
+        { name: 'Announced', when: '30 July 2026', note: '58 days notice.' },
+        { name: 'Rollout begins', when: '26 September 2026', note: 'Mid-freeze for you. Microsoft does not observe freezes.' },
+        { name: 'Complete', when: 'Mid October 2026', note: 'All tenants.' }
+      ],
+      roadmapId: 'Roadmap 133907',
+      toldMs: 'Teams administrators. Two accounts, both ours.',
+      toldYou: 'Priya Raman on 31 July by digest, flagged as a freeze collision on 19 August.',
+      history: [
+        { at: '30 Jul 2026', what: 'Published', detail: 'Rollout from late September.' },
+        { at: '15 Aug 2026', what: 'Date narrowed', detail: 'Rollout start moved from "late September" to 26 September.' }
+      ],
+      decisions: [],
+      controls: ['CMP-011 · external access', 'ISO 27001 A.13.1.3'],
+      thread: []
+    },
+    {
+      id: 'MC1054920', title: 'Multifactor authentication required for all Microsoft admin portals',
+      wl: 'Entra', workload: 'Entra ID', kind: 'Enforcement', hard: true, month: 2,
+      when: '15 November 2026', countdown: 'in 3 months', score: 88, impact: 'Hits you',
+      optOut: 'None', optOutNote: 'Enforced by Microsoft at the identity layer. No tenant setting turns it off.',
+      owned: 'Covered by your E3', seats: '14 admin accounts · 2 service principals',
+      ms: 'Microsoft will require multifactor authentication for all users signing in to the Microsoft 365 admin center, Azure portal, and Microsoft Entra admin center. This requirement applies regardless of tenant Conditional Access configuration. Break-glass accounts are not exempt.',
+      plain: 'Every admin sign-in needs a second factor from 15 November, including the emergency account you keep in a safe for the day everything else fails. If that account has no MFA method registered, you cannot use it — which is exactly when you would need it.',
+      msSays: 'MFA will be required for all admin portal sign-ins. Break-glass accounts are not exempt.',
+      youSay: 'Twelve of your fourteen admin accounts already enforce MFA through CA-007. The two that do not are the break-glass accounts, deliberately excluded from Conditional Access — and they have no MFA method registered at all.',
+      evidence: [
+        { q: 'Admin accounts without a registered MFA method', a: '2 · both break-glass', bad: true },
+        { q: 'Accounts excluded from CA-007', a: '2 · same accounts', bad: true },
+        { q: 'Service principals using admin portals interactively', a: '0', bad: false },
+        { q: 'Admin accounts already enforcing MFA', a: '12 of 14', bad: false }
+      ],
+      evidenceNote: 'The finding here is not the twelve accounts that are fine. It is the two that were excluded on purpose and will lock you out of your own tenant.',
+      ignore: 'On 15 November your break-glass accounts stop being break-glass. The next time you genuinely need one — a Conditional Access mistake, a compromised admin, a failed identity provider — you cannot get in, and the recovery path is a support case with Microsoft.',
+      crCode: '', crState: '',
+      crNote: 'Register hardware keys on both break-glass accounts, store them the way you store the passwords, and record it in the risk register. Small change, and the one nobody does until it is too late.',
+      phases: [
+        { name: 'Announced', when: '20 May 2026', note: '179 days notice.' },
+        { name: 'Gradual enforcement', when: 'September 2026', note: 'Random tenants, warning banners only.' },
+        { name: 'Full enforcement', when: '15 November 2026', note: 'All tenants, no exemptions.' }
+      ],
+      roadmapId: 'Roadmap 128840',
+      toldMs: 'Global administrators. Including, ironically, the break-glass account that nobody reads mail on.',
+      toldYou: 'Priya Raman on 21 May by digest. Raised again in the July architect session.',
+      history: [
+        { at: '20 May 2026', what: 'Published', detail: 'Original scope: Azure portal only.' },
+        { at: '18 Jun 2026', what: 'Scope widened', detail: 'Microsoft 365 admin center and Entra admin center added.' },
+        { at: '2 Aug 2026', what: 'Exemptions removed', detail: 'Earlier wording implied break-glass accounts could be excluded. That wording is gone.' }
+      ],
+      decisions: [{ at: '21 May 2026 · Priya Raman', what: 'Acknowledged. Deferred — revisit in the autumn.' }],
+      controls: ['Cyber Essentials Plus · admin access', 'ISO 27001 A.9.2.3', 'Risk register RSK-004'],
+      thread: [
+        { who: 'Shane McCaw', at: '2 Aug', text: 'The exemption wording was removed on 2 August. Two hardware keys, one in each safe, and RSK-004 updated. Half an hour of work now, or a support case on the worst day of your year.' }
+      ]
+    },
+    {
+      id: 'MC1066402', title: 'Classic Teams client removed from all devices',
+      wl: 'Teams', workload: 'Microsoft Teams', kind: 'Retirement', hard: true, month: 5,
+      when: '10 February 2027', countdown: 'in 6 months', score: 71, impact: 'Hits you',
+      optOut: 'None', optOutNote: 'The client stops launching. There is no policy that keeps it alive.',
+      owned: 'Covered by your E3', seats: '34 devices still on the classic client',
+      ms: 'The classic Microsoft Teams client will be removed from devices and will no longer launch after February 10, 2027. Users will be automatically transitioned to the new Teams client.',
+      plain: 'Thirty-four of your machines still run the old Teams. On 10 February it stops opening. Most will update themselves; the ones that will not are the ones running an OS build too old for the new client, and those are hardware decisions, not software ones.',
+      msSays: 'Users will be automatically transitioned to the new Teams client.',
+      youSay: 'Thirty-four devices are on the classic client. Nine of them run a Windows build below the new client\'s minimum, and six of those nine are shop-floor terminals in Bay 3 that also came up in the legacy auth work.',
+      evidence: [
+        { q: 'Devices reporting classic Teams, last 30 days', a: '34', bad: true },
+        { q: 'Devices below the new client OS minimum', a: '9', bad: true },
+        { q: 'Of those, shop-floor terminals', a: '6 · Bay 3', bad: true }
+      ],
+      evidenceNote: 'The same six machines keep appearing across unrelated Microsoft changes. That is usually the real finding.',
+      ignore: 'Nine machines lose Teams entirely in February, six of them on the shop floor where the alternative is a phone call.',
+      crCode: '', crState: '',
+      crNote: 'This is a hardware refresh conversation with six months of warning, which is the only reason it is not an incident.',
+      phases: [
+        { name: 'Announced', when: '12 August 2026', note: '182 days notice.' },
+        { name: 'Warning banners', when: 'November 2026', note: 'In-client notices to affected users.' },
+        { name: 'Removal', when: '10 February 2027', note: 'Client no longer launches.' }
+      ],
+      roadmapId: 'Roadmap 139022',
+      toldMs: 'Teams administrators.',
+      toldYou: 'Priya Raman on 13 August by digest. Not yet raised with Facilities, who own the Bay 3 terminals.',
+      history: [{ at: '12 Aug 2026', what: 'Published', detail: 'Removal date set for February 2027.' }],
+      decisions: [],
+      controls: ['Adoption pillar · client currency'],
+      thread: []
+    },
+    {
+      id: 'MC1061240', title: 'SharePoint 2013 workflows retired',
+      wl: 'SharePoint', workload: 'SharePoint Online', kind: 'Retirement', hard: true, month: 4,
+      when: '31 January 2027', countdown: 'in 5 months', score: 46, impact: 'Might hit you',
+      optOut: 'None', optOutNote: 'Workflows stop executing. Existing instances are not migrated.',
+      owned: 'Covered by your E3', seats: '2 workflows found',
+      ms: 'SharePoint 2013 workflows will be fully retired and will stop running in Microsoft 365 after January 31, 2027. Customers should migrate to Power Automate.',
+      plain: 'Two old workflows in your tenant stop running at the end of January. One looks abandoned; the other is the purchase-order approval in the Procurement site, which is not abandoned at all.',
+      msSays: 'Customers should migrate remaining workflows to Power Automate.',
+      youSay: 'Two workflow definitions are still active. The purchase-order approval ran 61 times in the last 90 days. The other has not run since 2023 and can simply be deleted.',
+      evidence: [
+        { q: 'Active SharePoint 2013 workflow definitions', a: '2', bad: true },
+        { q: 'Runs in the last 90 days', a: '61 · all purchase-order approval', bad: true },
+        { q: 'Power Automate licences available', a: 'Included in E3 for this scope', bad: false }
+      ],
+      evidenceNote: 'The number that matters is 61. A workflow nobody remembers building is running the approval step for every purchase order in the company.',
+      ignore: 'Purchase orders stop being approved on 1 February and nobody knows why, because the workflow was built by someone who left in 2021.',
+      crCode: '', crState: '',
+      crNote: 'One rebuild in Power Automate and one deletion. Five months of notice makes this routine; five weeks would not.',
+      phases: [
+        { name: 'Announced', when: '15 June 2026', note: '230 days notice.' },
+        { name: 'Warning in site health', when: 'October 2026', note: 'Affected sites flagged.' },
+        { name: 'Retirement', when: '31 January 2027', note: 'Workflows stop executing.' }
+      ],
+      roadmapId: 'Roadmap 126601',
+      toldMs: 'SharePoint administrators.',
+      toldYou: 'Priya Raman on 16 June by digest. Procurement told on 20 August once the 61 runs were found.',
+      history: [
+        { at: '15 Jun 2026', what: 'Published', detail: 'Retirement date: 31 January 2027.' },
+        { at: '9 Aug 2026', what: 'Guidance added', detail: 'Microsoft published a migration assessment tool. It does not migrate anything, it only lists what will break.' }
+      ],
+      decisions: [],
+      controls: ['Governance pillar · legacy platform'],
+      thread: []
+    },
+    {
+      id: 'MC1063118', title: 'Semantic index becomes a prerequisite for Microsoft 365 Copilot',
+      wl: 'Copilot', workload: 'Microsoft 365 Copilot', kind: 'Rollout', hard: false, month: 3,
+      when: 'December 2026', countdown: 'in 4 months', score: 58, impact: 'Might hit you',
+      optOut: 'None', optOutNote: 'A prerequisite, not a setting. It changes what you must fix before Copilot is worth buying.',
+      owned: 'Not licensed yet', seats: '41 open gate items',
+      ms: 'The semantic index will become a prerequisite for Microsoft 365 Copilot. Tenants must have completed indexing before Copilot features become available to licensed users.',
+      plain: 'Before Copilot works properly, your content has to be indexed — and indexing surfaces permissions problems rather than fixing them. Anything overshared becomes findable by everyone who was accidentally given access.',
+      msSays: 'Tenants must complete indexing before Copilot features become available.',
+      youSay: 'You are not licensed for Copilot yet, so nothing breaks. But your readiness gate stands at 41 of 82, and 19 of those items are oversharing findings — exactly the ones indexing turns from theoretical into searchable.',
+      evidence: [
+        { q: 'Copilot licences assigned', a: '0', bad: false },
+        { q: 'Open gate items relating to oversharing', a: '19 of 41', bad: true },
+        { q: 'Sites with anonymous or org-wide access', a: '23', bad: true }
+      ],
+      evidenceNote: 'This one does not break anything today. It changes the order of your remediation plan, which is more useful to know now than in December.',
+      ignore: 'Nothing, until the day you buy Copilot licences. Then every oversharing finding you deferred becomes a search result on somebody\'s desk.',
+      crCode: '', crState: '',
+      crNote: 'No change request needed. It moves the oversharing items up the remediation plan, ahead of the cosmetic ones.',
+      phases: [
+        { name: 'Announced', when: '5 August 2026', note: 'Rollout from December.' },
+        { name: 'Rollout', when: 'December 2026', note: 'Prerequisite applies to new Copilot deployments.' }
+      ],
+      roadmapId: 'Roadmap 137115',
+      toldMs: 'Global administrators.',
+      toldYou: 'Priya Raman on 6 August by digest, with a note that it changes remediation order rather than adding work.',
+      history: [{ at: '5 Aug 2026', what: 'Published', detail: 'Prerequisite announced for December.' }],
+      decisions: [],
+      controls: ['Copilot readiness gate'],
+      thread: []
+    },
+    {
+      id: 'MC1069951', title: 'External recipient rate limits enforced in Exchange Online',
+      wl: 'Exchange', workload: 'Exchange Online', kind: 'Enforcement', hard: true, month: 6,
+      when: '1 March 2027', countdown: 'in 6 months', score: 39, impact: 'Might hit you',
+      optOut: 'None', optOutNote: 'A platform limit. Bulk sending moves to a service built for it.',
+      owned: 'Covered by your E3', seats: '2,000 external recipients per day, per mailbox',
+      ms: 'Exchange Online will enforce a limit of 2,000 external recipients per 24 hours per mailbox. Messages exceeding the limit will be rejected until the window resets.',
+      plain: 'No mailbox can email more than 2,000 outside addresses a day. Normal people never come close. Your marketing mailbox sends about 1,100 on a campaign day, which is fine until someone decides to send to the whole list twice.',
+      msSays: 'A limit of 2,000 external recipients per 24 hours will be enforced per mailbox.',
+      youSay: 'One mailbox gets close: marketing@ peaks at 1,100 external recipients on campaign days. It is under the limit today, and it is the only thing in the tenant that would ever notice.',
+      evidence: [
+        { q: 'Highest external recipient count, 90 days', a: '1,100 · marketing@', bad: false },
+        { q: 'Mailboxes above 500 per day', a: '1', bad: false },
+        { q: 'Bulk sending through a dedicated service', a: 'No — sent from a normal mailbox', bad: true }
+      ],
+      evidenceNote: 'Low score, and worth knowing anyway: campaign mail should not run out of a user mailbox, and this is the argument that finally moves it.',
+      ignore: 'Probably nothing. If marketing grows the list by 80 per cent, a campaign send silently half-delivers and nobody can tell which half.',
+      crCode: '', crState: '',
+      crNote: 'Not a change request. A note in the risk register and a conversation with marketing about where campaign mail belongs.',
+      phases: [
+        { name: 'Announced', when: '10 August 2026', note: '203 days notice.' },
+        { name: 'Enforcement', when: '1 March 2027', note: 'Applies to all tenants.' }
+      ],
+      roadmapId: 'Roadmap 140558',
+      toldMs: 'Exchange administrators.',
+      toldYou: 'Priya Raman on 11 August by digest, marked low impact.',
+      history: [{ at: '10 Aug 2026', what: 'Published', detail: 'Limit set at 2,000 recipients per 24 hours.' }],
+      decisions: [],
+      controls: ['Health pillar · mail flow'],
+      thread: []
+    },
+    {
+      id: 'MC1057733', title: 'Retention label management moves to the new Purview portal',
+      wl: 'Purview', workload: 'Microsoft Purview', kind: 'Feature', hard: false, month: 1,
+      when: 'October 2026', countdown: 'in 2 months', score: 12, impact: 'No impact',
+      optOut: 'None', optOutNote: 'A portal move. The policies themselves do not change.',
+      owned: 'Covered by your E3', seats: 'No configuration change',
+      ms: 'Retention label and policy management will move to the new Microsoft Purview portal. Existing labels, policies, and their behaviour are unchanged.',
+      plain: 'The buttons move. Your policies do not. The only cost is that the screenshots in your compliance evidence pack now show a portal that no longer exists.',
+      msSays: 'Existing labels, policies and behaviour are unchanged.',
+      youSay: 'Nothing in your tenant changes. Four screenshots in your compliance evidence pack are now out of date, which matters only at audit time.',
+      evidence: [
+        { q: 'Retention policies affected', a: '0 — presentation only', bad: false },
+        { q: 'Evidence pack screenshots showing the old portal', a: '4', bad: true }
+      ],
+      evidenceNote: 'Kept on the list precisely because it is harmless. A page that only shows scary things gets ignored just like the Message Center does.',
+      ignore: 'Nothing breaks. An auditor asks why your evidence shows a portal that was retired eight months ago.',
+      crCode: '', crState: '',
+      crNote: 'No change request. Re-take four screenshots at the next evidence refresh.',
+      phases: [
+        { name: 'Announced', when: '1 August 2026', note: 'Rollout through October.' },
+        { name: 'Rollout', when: 'October 2026', note: 'Old portal redirects.' }
+      ],
+      roadmapId: 'Roadmap 135880',
+      toldMs: 'Compliance administrators.',
+      toldYou: 'Not sent individually — appeared in the weekly digest under "no action needed".',
+      history: [{ at: '1 Aug 2026', what: 'Published', detail: 'Portal consolidation.' }],
+      decisions: [{ at: '4 Aug 2026 · Automated', what: 'Scored no impact. Filed without a decision, which is itself the decision.' }],
+      controls: [],
+      thread: []
+    },
+    {
+      id: 'MC1072330', title: 'OneNote for Windows 10 reaches end of support',
+      wl: 'Exchange', workload: 'Microsoft 365 Apps', kind: 'Retirement', hard: true, month: 7,
+      when: '30 April 2027', countdown: 'in 8 months', score: 28, impact: 'Might hit you',
+      optOut: 'None', optOutNote: 'End of support, not removal. It keeps working until it does not.',
+      owned: 'Covered by your E3', seats: '19 users on the Windows 10 app',
+      ms: 'OneNote for Windows 10 will reach end of support on April 30, 2027. Users should move to OneNote for Microsoft 365.',
+      plain: 'Nineteen people use the old OneNote app. It will keep opening after April but stops getting fixes, and notebooks stored only on those devices are the ones that get lost.',
+      msSays: 'Users should move to OneNote for Microsoft 365.',
+      youSay: 'Nineteen users, of whom three have notebooks that have never synced to SharePoint. Those three are the actual risk — not the app version.',
+      evidence: [
+        { q: 'Users on OneNote for Windows 10', a: '19', bad: true },
+        { q: 'Local-only notebooks detected', a: '3', bad: true }
+      ],
+      evidenceNote: 'The interesting number is three, not nineteen. Migration is easy; unsynced notebooks are how people lose four years of notes.',
+      ignore: 'Three people lose their notebooks the next time a laptop is replaced, and it will not be connected to this notice at all.',
+      crCode: '', crState: '',
+      crNote: 'Sync those three notebooks first, then migrate the nineteen at leisure.',
+      phases: [
+        { name: 'Announced', when: '18 August 2026', note: '255 days notice.' },
+        { name: 'End of support', when: '30 April 2027', note: 'No further updates.' }
+      ],
+      roadmapId: 'Roadmap 141902',
+      toldMs: 'Global administrators.',
+      toldYou: 'Priya Raman on 19 August by digest.',
+      history: [{ at: '18 Aug 2026', what: 'Published', detail: 'End of support date announced.' }],
+      decisions: [],
+      controls: [],
+      thread: []
+    }
+  ];
+
+  REVERSED = [
+    {
+      id: 'MC1038744', tag: 'Behaviour changed after publication', tone: '#f87171', at: 'Edited 30 July, after you had planned to it',
+      title: 'Sensitivity label interaction with anonymous sharing links',
+      what: 'Published in June saying label enforcement would not affect existing links. Quietly edited on 30 July to say anonymous links would be blocked by restrictive labels. No new notice was sent — the post ID stayed the same.',
+      cost: 'CR-0136 was planned against the June wording. It deployed on 5 August, broke external sharing on 212 libraries, and was rolled back in nine minutes. Eleven hours of degraded sharing and two late tender submissions.',
+      keep: 'The rollback plan, which worked exactly as written. And a standing rule: re-read the post the morning of the change, because the version you planned against may not be the version that ships.'
+    },
+    {
+      id: 'MC1044117', tag: 'Withdrawn by Microsoft', tone: '#34d399', at: 'Withdrawn 12 August',
+      title: 'Microsoft Loop component retirement in Outlook',
+      what: 'Announced in May as a retirement for September. Withdrawn in August after customer feedback, with no replacement date. The original post now reads "no longer planned".',
+      cost: 'Two weeks of planning and a draft change request that will never run. Procurement were told Loop was going away and have stopped using it, which was not the outcome anyone wanted.',
+      keep: 'The inventory work. You now know exactly who uses Loop components and where, which is useful whenever the retirement comes back.'
+    },
+    {
+      id: 'MC1041902', tag: 'Date moved twice', tone: '#fbbf24', at: 'Moved May, moved again July',
+      title: 'Legacy Exchange Web Services throttling changes',
+      what: 'Originally March 2026, moved to June, then to January 2027. Each move was an edit to the existing post rather than a new notice.',
+      cost: 'Nothing yet — which is the point. Three separate remediation windows were held open for a date that kept moving, and the third one is still sitting in the plan.',
+      keep: 'Watch it, do not plan to it. Anything with two date changes gets a watch tag and no engineering time until the date holds for 60 days.'
+    }
+  ];
+
+  FUNNEL = [
+    {
+      key: 'all', n: '452', label: 'Published by Microsoft', sub: 'Message Center and roadmap, last 30 days',
+      tone: '#64748b', rule: 'Everything Microsoft posted to your tenant in the last 30 days, before anything is read. This is the number that makes the Message Center useless — not because it is wrong, but because nobody can act on 452 of anything.',
+      breakdown: [{ label: 'Message Center posts', v: '318' }, { label: 'Roadmap items', v: '134' }, { label: 'Edited after publication', v: '61' }, { label: 'Average notice given', v: '94 days' }],
+      samples: []
+    },
+    {
+      key: 'na', n: '288', label: 'Cannot affect you', sub: 'Ruled out against your tenant, with a reason each',
+      tone: '#34d399', rule: 'Ruled out by reading your licences, your configuration and your usage — not by guessing. Every one of these carries the query that dismissed it, so an auditor can ask why and get an answer rather than an opinion.',
+      breakdown: [{ label: 'You do not licence the product', v: '121' }, { label: 'Feature not in use in your tenant', v: '94' }, { label: 'Already configured the way it will change to', v: '73' }],
+      samples: [
+        { id: 'MC1058221', title: 'Viva Goals retirement', why: 'No Viva licences in the tenant. 0 assigned.' },
+        { id: 'MC1060118', title: 'Defender for Identity sensor update', why: 'Defender for Identity not deployed. No sensors reporting.' },
+        { id: 'MC1064907', title: 'Power Pages authentication change', why: 'No Power Pages sites. 0 environments.' }
+      ]
+    },
+    {
+      key: 'seen', n: '39', label: 'Your people will see it', sub: 'Nothing for you to configure. Something for them to notice',
+      tone: '#a78bfa', rule: 'No admin action does not mean no impact. A button that appears in Teams, a Share dialog that looks different, an Outlook that opens looking wrong — these generate more tickets than the changes that actually break something, because nobody was told they were coming.',
+      breakdown: [{ label: 'Visible in Teams, Outlook or Office', v: '39' }, { label: 'People who will see at least one', v: '1,240' }, { label: 'Expected tickets if nobody is told', v: '150+' }, { label: 'Announcements drafted', v: '0 of 6' }],
+      samples: [
+        { id: 'MC1067201', title: 'A Copilot button appears in every Teams chat', why: '6 October. You do not licence Copilot, so it does nothing — and 1,240 people will assume you do.' },
+        { id: 'MC1070855', title: 'New Outlook becomes the default on Windows', why: '9 November. The biggest visible change of the year, and Finance lose two add-ins.' },
+        { id: 'MC1073110', title: 'AutoSave defaults to on', why: '2 December. Dangerous for anyone who works from a copy of last month\'s file.' }
+      ]
+    },
+    {
+      key: 'invisible', n: '64', label: 'Nobody will notice', sub: 'Back-end, capacity, admin portal moves',
+      tone: '#60a5fa', rule: 'Applies to your tenant, changes nothing anyone can see, needs no decision. Kept on the page because a view that only shows danger gets ignored exactly like the Message Center does — and because four of these changed a screenshot in your compliance evidence pack.',
+      breakdown: [{ label: 'Back-end and capacity changes', v: '31' }, { label: 'Admin portal moves', v: '27' }, { label: 'Evidence-pack screenshots now stale', v: '4' }],
+      samples: [
+        { id: 'MC1057733', title: 'Retention label management moves to the new Purview portal', why: 'No configuration change. Four screenshots to re-take at the next evidence refresh.' }
+      ]
+    },
+    {
+      key: 'watch', n: '46', label: 'Watch', sub: 'Real, but far out or moving',
+      tone: '#fbbf24', rule: 'Applies to you, has a date more than 90 days away, or has a date Microsoft has already moved once. Watching is deliberate: no engineering time is spent until a date has held for 60 days.',
+      breakdown: [{ label: 'More than 90 days out', v: '31' }, { label: 'Date moved at least once', v: '11' }, { label: 'Announced with no date at all', v: '4' }],
+      samples: [
+        { id: 'MC1069951', title: 'External recipient rate limits', why: '1 March 2027. Your peak is 1,100 against a 2,000 limit.' },
+        { id: 'MC1072330', title: 'OneNote for Windows 10 end of support', why: '30 April 2027. Three unsynced notebooks are the real risk.' },
+        { id: 'MC1041902', title: 'Legacy EWS throttling changes', why: 'Date moved twice. Not planning to it until it holds.' }
+      ]
+    },
+    {
+      key: 'decide', n: '12', label: 'Needs a decision', sub: 'A date after which the decision is made for you',
+      tone: '#fbbf24', rule: 'Each of these has an opt-out that closes, a default that flips, or a deadline that arrives. Doing nothing is a valid choice here — it is just a choice somebody in Redmond makes on your behalf.',
+      breakdown: [{ label: 'Opt-out closes within 60 days', v: '4' }, { label: 'Default value changes unless you pin it', v: '5' }, { label: 'Hard enforcement date', v: '3' }],
+      samples: [
+        { id: 'MC1049877', title: 'Default sharing link type changes', why: 'Opt-out closes 18 September. 84 anonymous links a month from Sales.' },
+        { id: 'MC1051144', title: 'Anonymous meeting join flips to allowed', why: 'Pin the value before 26 September or a compliance control moves on its own.' },
+        { id: 'MC1054920', title: 'MFA required for all admin portals', why: '15 November. Two break-glass accounts have no MFA method registered.' }
+      ]
+    },
+    {
+      key: 'break', n: '3', label: 'Will break something', sub: 'Confirmed against your configuration',
+      tone: '#f87171', rule: 'Not "may affect some customers". These three have a named thing in your tenant that stops working on a named date. This is the number the whole page exists to produce, and it is the only one worth putting in front of an executive.',
+      breakdown: [{ label: 'Named systems that stop working', v: '3' }, { label: 'People affected', v: '1,240' }, { label: 'Soonest', v: '22 September' }, { label: 'Change requests raised', v: '1 of 3' }],
+      samples: [
+        { id: 'MC1042318', title: 'Basic authentication permanently disabled', why: '1 October. Bay 3 scanners, the Finance invoice export, two phones. CR-0142 raised.' },
+        { id: 'MC1049877', title: 'Default sharing link type changes', why: '22 September. 84 tender links a month change behaviour silently.' },
+        { id: 'MC1054920', title: 'MFA required for all admin portals', why: '15 November. Both break-glass accounts become unusable.' }
+      ]
+    }
+  ];
+
+  SEEN = [
+    {
+      id: 'MC1067201', app: 'Teams', title: 'A Copilot button appears in every chat and channel',
+      when: '6 October 2026', ring: 'Standard release · reaches everyone within two weeks', who: 'All 1,240 users', heads: 1240,
+      tone: '#f87171', tickets: '40 – 80 tickets in the first week if nobody is told', told: false,
+      sees: 'A Copilot icon appears at the top of every chat, channel and meeting. Clicking it opens a panel that explains Copilot is not included in their licence and offers a trial.',
+      why: 'You do not licence Copilot, so nobody in the company can use it. The button appears anyway. Users will read it as "we have AI now" and either ask why it does not work, or assume Microsoft is reading their chats.',
+      helpdesk: 'The Copilot button is new from Microsoft. We do not have Copilot licences, so it will not do anything — it is not reading your messages. There is nothing wrong with your Teams and nothing you need to do.',
+      ignore: 'Two waves of tickets: the first asking how to use it, the second asking whether it has been listening. The second wave reaches your privacy officer before it reaches IT.'
+    },
+    {
+      id: 'MC1059440', app: 'Teams', title: 'Meeting toolbar buttons move and the recap tab is renamed',
+      when: '21 September 2026', ring: 'Targeted release first · a fortnight of mixed versions', who: 'Anyone who runs meetings · about 400 people', heads: 400,
+      tone: '#fbbf24', tickets: '10 – 20 tickets, mostly "where has mute gone"', told: false,
+      sees: 'Mute, camera and share move position in the meeting bar. "Meeting notes" becomes "Recap". Raise hand moves under a menu.',
+      why: 'Nothing functional changes. It is muscle memory, and it lands during two weeks where half your people have the new layout and half do not, so nobody can help each other over a call.',
+      helpdesk: 'Microsoft moved the meeting buttons around this week. Mute is still on the toolbar, raise hand is now under the three dots, and Meeting notes is called Recap. Nothing is missing.',
+      ignore: 'A fortnight of low-grade confusion in meetings, and at least one executive convinced their Teams is broken.'
+    },
+    {
+      id: 'MC1070855', app: 'Outlook', title: 'New Outlook becomes the default on Windows',
+      when: '9 November 2026', ring: 'Staged · classic Outlook still available until April', who: 'All 1,240 users', heads: 1240,
+      tone: '#f87171', tickets: '60 – 120 tickets over three weeks', told: false,
+      sees: 'Outlook opens looking different. Some add-ins are gone, PST files are not there, signatures need setting up again, and offline behaviour changes.',
+      why: 'This is the biggest visible change of the year for your people, and the toggle back to classic exists only until April. Finance use two COM add-ins that the new client does not support.',
+      helpdesk: 'Outlook has been updated to the new version. If an add-in you rely on is missing, or you cannot find an old archive file, contact IT — do not spend an hour looking. You can switch back to classic Outlook using the toggle at the top right while we work through it.',
+      ignore: 'The single largest ticket spike of the year, landing in the same month as the admin MFA enforcement, with Finance unable to run month-end reconciliation.'
+    },
+    {
+      id: 'MC1049877', app: 'OneDrive', title: 'The Share dialog looks different and picks a different link',
+      when: '22 September 2026', ring: 'Standard release', who: 'Anyone who shares files · about 700 people', heads: 700,
+      tone: '#f87171', tickets: '15 – 30 tickets, plus customer complaints that links do not work', told: false,
+      sees: 'The Share dialog is rearranged, and the link it creates by default is no longer "anyone with the link".',
+      why: 'This is the user-facing half of MC1049877. The admin decision is which default to set; the visible change is that Sales send a link, the customer cannot open it, and neither of them sees an error.',
+      helpdesk: 'The Share window has changed. Check the link type before sending to someone outside the company — if they cannot open it, that is why. Ask IT for the tenders library exception if you share with customers regularly.',
+      ignore: 'Sales quietly lose tender submissions and blame the customer\'s email filter.'
+    },
+    {
+      id: 'MC1073110', app: 'Office apps', appFull: 'Word, Excel and PowerPoint', title: 'AutoSave defaults to on for files stored in SharePoint',
+      when: '2 December 2026', ring: 'Standard release', who: 'About 900 people', heads: 900,
+      tone: '#fbbf24', tickets: '20 – 40 tickets, mostly about overwritten files', told: false,
+      sees: 'AutoSave is on by default. Edits to a shared file save as you type, and "Save As at the end" stops being a way to keep the original intact.',
+      why: 'Harmless for most people and genuinely dangerous for anyone who works by opening last month\'s file, editing it and saving a copy. Finance and Procurement both work that way.',
+      helpdesk: 'AutoSave is now on by default. If you work from a copy of last month\'s file, use File then Save a Copy before you start editing — otherwise you will be editing the original.',
+      ignore: 'Somebody overwrites a signed contract or a prior-month workbook, and version history becomes an emergency lesson rather than a feature.'
+    },
+    {
+      id: 'MC1075402', app: 'SharePoint', title: 'Site navigation moves to the left rail on all sites',
+      when: '18 January 2027', ring: 'Staged over six weeks', who: 'Everyone who uses an intranet site · about 1,100 people', heads: 1100,
+      tone: '#94a3b8', tickets: '5 – 15 tickets', told: false,
+      sees: 'The top navigation on every SharePoint site moves to a left-hand rail. Custom headers are re-laid out.',
+      why: 'Cosmetic, but your intranet homepage was built around the top nav and three of your quick links land badly in the new layout.',
+      helpdesk: 'SharePoint site menus have moved to the left-hand side. All the same links are there. If a link on the intranet homepage looks wrong, tell IT and we will fix the page.',
+      ignore: 'A slightly broken-looking intranet for six weeks, which is a credibility cost rather than a technical one.'
+    }
+  ];
+
+  BUCKETS = [
+    { label: '24 Aug', sub: '– 6 Sep', wave: 'Late August wave', narrow: true },
+    { label: '7 Sep', sub: '– 20 Sep', wave: 'September wave', narrow: true },
+    { label: '21 Sep', sub: '– 4 Oct', wave: 'September wave', narrow: true },
+    { label: 'Oct', sub: '2026', wave: 'Q2 · Oct – Dec' },
+    { label: 'Nov', sub: '2026', wave: 'Q2 · Oct – Dec' },
+    { label: 'Dec', sub: '2026', wave: 'Q2 · Oct – Dec' },
+    { label: 'Jan', sub: '2027', wave: 'Q3 · Jan – Mar' },
+    { label: 'Feb', sub: '2027', wave: 'Q3 · Jan – Mar' },
+    { label: 'Mar', sub: '2027', wave: 'Q3 · Jan – Mar' },
+    { label: 'Apr – Jun', sub: '2027', wave: 'Q4 and beyond' },
+    { label: 'Jul – Sep', sub: '2027', wave: 'Q4 and beyond' }
+  ];
+  FREEZE_BUCKETS = [{ i: 2, label: 'Quarter close' }, { i: 5, label: 'Year end' }];
+  KINDS = [
+    { k: 'b', label: 'Breaks something', tone: '#f87171' },
+    { k: 'd', label: 'Needs a decision', tone: '#fbbf24' },
+    { k: 'v', label: 'Your people will see it', tone: '#a78bfa' },
+    { k: 's', label: 'Silent · no action', tone: '#475569' }
+  ];
+  DENSITY = [
+    { wl: 'Exchange', name: 'Exchange Online & Apps', cells: [[0,0,1,6],[0,1,1,7],[1,1,1,8],[0,1,2,9],[0,0,2,7],[0,0,1,5],[0,0,1,4],[0,0,0,3],[0,0,0,3],[0,0,1,4],[0,0,0,2]] },
+    { wl: 'Teams', name: 'Microsoft Teams', cells: [[0,0,2,7],[0,1,1,8],[0,1,2,6],[0,1,2,7],[0,0,1,5],[0,0,1,4],[0,0,1,3],[0,0,1,4],[0,0,0,2],[0,0,0,3],[0,0,0,1]] },
+    { wl: 'SharePoint', name: 'SharePoint & OneDrive', cells: [[0,1,1,5],[0,1,1,6],[1,1,2,5],[0,0,1,6],[0,0,1,4],[0,0,0,3],[0,1,1,4],[0,0,0,2],[0,0,0,2],[0,0,1,2],[0,0,0,1]] },
+    { wl: 'Entra', name: 'Entra ID', cells: [[0,0,0,4],[0,0,1,4],[0,0,0,3],[0,1,1,5],[1,1,1,4],[0,0,0,2],[0,0,0,2],[0,0,0,1],[0,0,0,1],[0,0,0,2],[0,0,0,1]] },
+    { wl: 'Purview', name: 'Purview', cells: [[0,0,0,3],[0,0,0,2],[0,0,1,2],[0,0,0,3],[0,0,0,2],[0,0,1,2],[0,0,0,1],[0,0,0,1],[0,0,0,1],[0,0,0,1],[0,0,0,0]] },
+    { wl: 'Copilot', name: 'Copilot', cells: [[0,0,1,4],[0,0,1,5],[0,0,1,4],[0,0,0,5],[0,0,1,4],[0,0,0,3],[0,0,0,2],[0,0,0,2],[0,0,1,1],[0,0,0,2],[0,0,0,1]] }
+  ];
+  ITEM_BUCKET = {
+    MC1049877: 2, MC1051144: 2, MC1042318: 2, MC1054920: 4, MC1057733: 3, MC1061240: 6,
+    MC1063118: 5, MC1066402: 7, MC1069951: 8, MC1072330: 9,
+    MC1067201: 3, MC1059440: 2, MC1070855: 4, MC1073110: 5, MC1075402: 6
+  };
+
+  SCHED = [
+    { wl: 'Exchange', name: 'Exchange Online & Apps', counts: [4, 6, 3, 2, 3, 2, 3, 2, 1, 1, 0, 1], hot: [1] },
+    { wl: 'Teams', name: 'Microsoft Teams', counts: [3, 4, 2, 1, 2, 3, 1, 1, 1, 0, 1, 0], hot: [0, 5] },
+    { wl: 'SharePoint', name: 'SharePoint & OneDrive', counts: [5, 3, 2, 1, 2, 1, 1, 2, 0, 1, 0, 0], hot: [0, 4] },
+    { wl: 'Entra', name: 'Entra ID', counts: [2, 3, 4, 1, 1, 1, 1, 0, 1, 0, 0, 0], hot: [2] },
+    { wl: 'Purview', name: 'Purview', counts: [1, 2, 1, 1, 0, 1, 0, 1, 0, 0, 0, 0], hot: [] },
+    { wl: 'Copilot', name: 'Copilot', counts: [0, 1, 1, 2, 1, 0, 1, 0, 1, 0, 0, 0], hot: [] }
+  ];
+
+  GROUPS = [
+    { name: 'Bay 3 · shop floor', heads: '18 people · 34 devices', items: ['MC1042318', 'MC1066402'], first: '1 October', tone: '#f87171', told: false,
+      what: 'Scanners stop emailing when legacy auth goes, and nine of their terminals cannot run the new Teams client in February. The same six machines keep appearing in unrelated Microsoft changes.',
+      who: 'Facilities own the hardware. Nobody in Bay 3 has been told about either date.' },
+    { name: 'Finance', heads: '26 people', items: ['MC1042318', 'MC1061240'], first: '1 October', tone: '#f87171', told: false,
+      what: 'The nightly invoice export sends over SMTP AUTH and fails silently on 1 October. The purchase-order approval workflow stops running on 31 January.',
+      who: 'Finance own both. They know about the invoice export rewrite; they have not been told the workflow is retiring.' },
+    { name: 'Sales', heads: '41 people', items: ['MC1049877'], first: '22 September', tone: '#f87171', told: false,
+      what: 'Tender links stop working for customers, one at a time, with no error on your side. 84 anonymous links a month.',
+      who: 'Not told. There is nothing to tell them until you decide what the default will be — which is why the 18 September date matters.' },
+    { name: 'Administrators', heads: '14 accounts', items: ['MC1054920'], first: '15 November', tone: '#fbbf24', told: true,
+      what: 'MFA required on every admin portal sign-in. Twelve accounts are already fine; the two break-glass accounts have no method registered.',
+      who: 'Priya Raman and Shane McCaw. Told in May, told again in August when the exemption wording disappeared.' },
+    { name: 'Procurement', heads: '12 people', items: ['MC1061240', 'MC1051144'], first: '26 September', tone: '#fbbf24', told: true,
+      what: 'Anonymous meeting join changes on their supplier calls, and the purchase-order workflow retires in January.',
+      who: 'Marcus Bell, told on 20 August once the 61 workflow runs were traced.' },
+    { name: 'Everyone with a mailbox', heads: '1,240 people', items: ['MC1051144', 'MC1057733'], first: '26 September', tone: '#94a3b8', told: false,
+      what: 'Meeting join behaviour changes, and the Purview portal moves. Neither needs an announcement — but both are cited in compliance evidence.',
+      who: 'No announcement planned. Correct, as long as somebody decided that rather than forgot.' }
+  ];
+
+  SECS = [
+    { key: 'ms', num: '01', label: 'Microsoft\'s words', intro: 'The post as published, unedited. Kept verbatim because the wording is what changes, and the change is usually the story.' },
+    { key: 'plain', num: '02', label: 'What it actually means', intro: 'The same thing in language you can forward to someone who does not administer Microsoft 365 for a living.' },
+    { key: 'tenant', num: '03', label: 'Does it hit you', intro: 'What Microsoft says about tenants in general, against what your tenant actually reports. Every answer here is a query result, not an opinion.' },
+    { key: 'blast', num: '04', label: 'Blast radius', intro: 'How many users, mailboxes, sites or devices this touches in your tenant.' },
+    { key: 'opt', num: '05', label: 'Opt-out and deadline', intro: 'Whether you have a choice, and the date after which the choice is made for you.' },
+    { key: 'ignore', num: '06', label: 'If you do nothing', intro: 'The version of events where this notice is never read. This is the section that exists because of the ones that were not.' },
+    { key: 'cr', num: '07', label: 'The change request', intro: 'What gets raised, or what is already raised, to get in front of this on your terms.' },
+    { key: 'phases', num: '08', label: 'Rollout phases', intro: 'Announced, targeted, standard, enforced — and where your tenant sits in that sequence.' },
+    { key: 'told', num: '09', label: 'Who was told', intro: 'Who Microsoft notified, against who in your organisation actually needs to know.' },
+    { key: 'history', num: '10', label: 'Post history', intro: 'Every edit Microsoft made after publication. Dates move, scope widens, exemptions disappear — and none of it generates a new notice.' },
+    { key: 'log', num: '11', label: 'Decisions and controls', intro: 'What you decided, when, and which of your compliance controls this notice is tied to.' }
+  ];
+
+  DIGEST_RULES = [
+    { label: 'Sent', value: 'Every Monday at 07:00, and immediately for anything scored above 80' },
+    { label: 'To', value: 'Priya Raman · IT team distribution list · Shane McCaw' },
+    { label: 'Contains', value: 'Decisions due, anything landing in 30 days, and anything Microsoft changed after publication' },
+    { label: 'Leaves out', value: 'Everything scored no impact, unless it touches a compliance control' }
+  ];
+
+  SCAN_AT = '19 August, 08:04';
+  RACI = {
+    Exchange: { r: 'Priya Raman', a: 'Dan Whitlock', c: 'Shane McCaw', i: 'Service desk' },
+    Teams: { r: 'Priya Raman', a: 'Dan Whitlock', c: 'Comms · Jo Feltham', i: 'All staff' },
+    SharePoint: { r: 'Marcus Lee', a: 'Dan Whitlock', c: 'Sales · Ruth Okafor', i: 'All staff' },
+    Entra: { r: 'Shane McCaw', a: 'Dan Whitlock', c: 'Priya Raman', i: 'Audit' },
+    Purview: { r: 'Aisha Bello', a: 'Legal · R. Court', c: 'Shane McCaw', i: 'Audit' },
+    Copilot: { r: 'Unassigned', a: 'Dan Whitlock', c: 'Shane McCaw', i: 'Pilot group' }
+  };
+  WAVE_NOTICE = [
+    { given: 138, left: 4 }, { given: 82, left: 18 }, { given: 150, left: 42 },
+    { given: 210, left: 134 }, { given: 260, left: 224 }
+  ];
+  LANDED = [
+    {
+      name: 'August wave', range: '27 Jul – 9 Aug', items: 31, moved: 2, tickets: 6, incidents: 0,
+      verdict: 'Landed as announced', tone: '#34d399',
+      rows: [
+        { id: 'MC1039204', title: 'Outlook pinned folders move to the top of the list', outcome: 'Landed on the day', tone: '#34d399', tickets: '2 tickets, both in Bay 3', told: true },
+        { id: 'MC1040118', title: 'Teams recap tab renamed to Recap', outcome: 'Landed on the day', tone: '#34d399', tickets: '4 tickets in the first two days', told: false },
+        { id: 'MC1037755', title: 'OneDrive sync icon set redrawn', outcome: 'Landed 4 days late', tone: '#fbbf24', tickets: 'No tickets', told: true }
+      ]
+    },
+    {
+      name: 'July wave', range: '29 Jun – 12 Jul', items: 26, moved: 1, tickets: 19, incidents: 1,
+      verdict: 'One incident · nobody was told', tone: '#f87171',
+      rows: [
+        { id: 'MC1031882', title: 'Meeting chat permissions default changed', outcome: 'Landed on the day', tone: '#34d399', tickets: '14 tickets in three days', told: false },
+        { id: 'MC1033017', title: 'SharePoint search results page redesigned', outcome: 'Landed on the day', tone: '#34d399', tickets: '5 tickets', told: false },
+        { id: 'MC1029440', title: 'Legacy Exchange Web Services throttling tightened', outcome: 'Incident INC-2291 · invoice export failed for 2 days', tone: '#f87171', tickets: 'Escalated', told: false }
+      ]
+    }
+  ];
+  SCANS = [
+    { wl: 'Exchange', name: 'Exchange Online & Apps', found: '1,240 mailboxes · 11 accounts still using legacy authentication' },
+    { wl: 'Teams', name: 'Microsoft Teams', found: '1,240 licensed users · 3 meeting policies · classic client on 9 machines' },
+    { wl: 'SharePoint', name: 'SharePoint & OneDrive', found: '212 libraries · 84 anonymous links in the last 30 days' },
+    { wl: 'Entra', name: 'Entra ID', found: '2 admin accounts with no registered MFA method' },
+    { wl: 'Purview', name: 'Purview', found: '6 retention labels in use · 3 libraries with restricting labels' },
+    { wl: 'Copilot', name: 'Copilot', found: 'No licences assigned yet · semantic index not enabled' }
+  ];
+
+  raciForm(wl, name, cur) {
+    this.openForm({
+      kicker: 'Ownership · ' + name,
+      title: 'Who owns ' + name + '?',
+      intro: 'Responsible does the work, accountable answers for it, consulted is asked first, informed is told after. Every change on this page inherits these four names from its service.',
+      submitLabel: 'Save ownership',
+      foot: 'Applies to every current and future change in this service, and appears on each one.',
+      values: { r: cur.r, a: cur.a, c: cur.c, i: cur.i },
+      fields: [
+        { k: 'r', label: 'Responsible · does the work', kind: 'select', req: true, options: ['Priya Raman', 'Marcus Lee', 'Aisha Bello', 'Shane McCaw', 'Unassigned'] },
+        { k: 'a', label: 'Accountable · answers for it', kind: 'select', req: true, options: ['Dan Whitlock', 'Priya Raman', 'Legal · R. Court'] },
+        { k: 'c', label: 'Consulted · asked before it happens', kind: 'text' },
+        { k: 'i', label: 'Informed · told after it happens', kind: 'text' }
+      ],
+      done: v => name + ' now sits with ' + v.r + ', accountable to ' + v.a + '.',
+      onSubmit: v => ({ raciOv: Object.assign({}, this.state.raciOv, { [wl]: v }) })
+    });
+  }
+  servicesForm() {
+    const on = this.state.services;
+    this.openForm({
+      kicker: 'Settings · services in use',
+      title: 'Which Microsoft services are you using?',
+      intro: 'Turn a service off and it leaves this page — its waves, counts and notices all go with it. Each one is pre-selected from the last tenant scan, 19 August at 08:04.',
+      fields: this.SCANS.map(sc => ({ k: sc.wl, kind: 'toggle', label: sc.name, toggleLabel: 'In use', hint: 'Scan found: ' + sc.found })),
+      values: Object.assign({}, on),
+      submitLabel: 'Save services',
+      done: 'Services updated. Every count on this page now reads against them.',
+      onSubmit: v => ({ services: Object.assign({}, v), rmSel: null })
+    });
+  }
+  markCss(k, size) {
+    const T = { b: '#f87171', d: '#fbbf24', v: '#a78bfa', s: '#475569' }[k];
+    const base = 'flex:0 0 auto;box-sizing:border-box;width:' + size + 'px;height:' + size + 'px;';
+    if (k === 'b') return base + 'background:' + T + ';clip-path:polygon(52% 0,100% 0,60% 40%,100% 40%,22% 100%,46% 55%,0 55%)';
+    if (k === 'd') return base + 'background:' + T + ';border-radius:1px;transform:rotate(45deg)';
+    if (k === 'v') return base + 'border:1.5px solid ' + T + ';border-radius:50%;background:transparent';
+    return base + 'background:' + T + ';border-radius:1px;opacity:.7';
+  }
+  pill(text, tone, bg) {
+    return 'display:inline-flex;align-items:center;align-self:flex-start;padding:2px 8px;border-radius:5px;font-size:10px;font-weight:700;letter-spacing:.04em;white-space:nowrap;color:' + tone + ';background:' + (bg || 'rgba(148,163,184,.1)') + ';border:1px solid ' + tone + '40';
+  }
+  impactTone(i) { return i === 'Hits you' ? '#f87171' : i === 'Might hit you' ? '#fbbf24' : '#64748b'; }
+  scoreTone(n) { return n >= 65 ? '#f87171' : n >= 35 ? '#fbbf24' : '#34d399'; }
+
+  openForm(cfg) { this.setState({ form: { cfg: cfg, vals: Object.assign({}, cfg.values || {}) } }); }
+  setFV(k, v) { const f = this.state.form; if (!f) return; this.setState({ form: { cfg: f.cfg, vals: Object.assign({}, f.vals, { [k]: v }) } }); }
+  submitForm() {
+    const f = this.state.form; if (!f) return;
+    const patch = (f.cfg.onSubmit && f.cfg.onSubmit(f.vals)) || {};
+    const done = typeof f.cfg.done === 'function' ? f.cfg.done(f.vals) : (f.cfg.done || 'Saved.');
+    this.setState(Object.assign({ form: null, toast: done }, patch));
+  }
+  t(msg) { this.setState({ toast: msg }); }
+
+  ackForm(p) {
+    this.openForm({
+      kicker: 'Decision · ' + p.id, title: 'Record a decision on ' + p.id,
+      intro: 'Acknowledging is a decision, not a dismissal. It records that you read it, what you chose, and why — so that in a year nobody has to guess.',
+      submitLabel: 'Record the decision', foot: 'The decision, your name and the timestamp go on the notice and into the compliance evidence pack.',
+      values: { stance: 'Get ahead of it with a change request', why: '', tell: 'IT team only' },
+      fields: [
+        { k: 'stance', label: 'Position', kind: 'pick', options: ['Get ahead of it with a change request', 'Let it land as Microsoft intends', 'Accept the risk and record it', 'Watch it — the date has moved before'], req: true },
+        { k: 'why', label: 'Reasoning', kind: 'area', req: true, ph: 'The sentence you would want in front of you if this went wrong in six months.' },
+        { k: 'tell', label: 'Who needs telling', kind: 'pick', options: ['IT team only', 'IT team and affected users', 'Everyone with a mailbox', 'Nobody yet'], req: true }
+      ],
+      onSubmit: v => ({ decisionOv: Object.assign({}, this.state.decisionOv || {}, { [p.id]: v.stance }) }),
+      done: v => p.id + ' — decision recorded: ' + v.stance.toLowerCase() + '.' + (v.tell === 'Nobody yet' ? '' : ' ' + v.tell + ' will be told in the next digest.')
+    });
+  }
+  snoozeForm(p) {
+    this.openForm({
+      kicker: 'Snooze · ' + p.id, title: 'Bring ' + p.id + ' back later',
+      intro: 'Snoozing is honest deferral, not deletion. It disappears from the queue and returns before the deadline, with the deadline attached.',
+      submitLabel: 'Snooze it', foot: 'Anything Microsoft edits after publication un-snoozes itself, because the thing you deferred is no longer the thing you read.',
+      values: { until: '30 days before it lands', why: '' },
+      fields: [
+        { k: 'until', label: 'Bring it back', kind: 'pick', options: ['30 days before it lands', '60 days before it lands', 'At the next change review', 'In one week'], req: true },
+        { k: 'why', label: 'Why now is not the time', kind: 'area', req: false, ph: 'Optional, but it is what stops the same conversation happening again in October.' }
+      ],
+      onSubmit: v => ({ snoozeOv: Object.assign({}, this.state.snoozeOv || {}, { [p.id]: v.until }) }),
+      done: v => p.id + ' snoozed until ' + v.until.toLowerCase() + '. It will be back, and the deadline will not have moved on your behalf.'
+    });
+  }
+  crForm(p) {
+    this.openForm({
+      kicker: 'Change request · from ' + p.id, title: 'Get in front of ' + p.id,
+      intro: 'This opens a change request on the change control page, pre-filled from the notice and linked to it, so the reason for the change survives longer than the person who raised it.',
+      submitLabel: 'Raise the change request',
+      values: { title: p.title, window: 'Next Tuesday · 21:00–23:00', risk: 'Medium', note: '' },
+      fields: [
+        { k: 'title', label: 'Change title', kind: 'text', req: true },
+        { k: 'window', label: 'Target window', kind: 'pick', options: ['Next Tuesday · 21:00–23:00', 'Next Thursday · 20:00–22:00', 'The week after next', 'As soon as it can be approved'], req: true, hint: 'Windows outside your Tue–Thu policy or inside a freeze are flagged on the change record.' },
+        { k: 'risk', label: 'Risk category', kind: 'pick', options: ['Low', 'Medium', 'High'], req: true },
+        { k: 'note', label: 'Anything the engineer should know', kind: 'area', req: false }
+      ],
+      done: v => 'Change request drafted from ' + p.id + ' — "' + v.title + '", targeting ' + v.window.toLowerCase() + '. It is linked to this notice both ways.'
+    });
+  }
+  askForm(p) {
+    this.openForm({
+      kicker: 'Ask Shane · ' + p.id, title: 'Ask about ' + p.id,
+      intro: 'Goes to your architect with the notice, your tenant evidence and the impact score attached, so the answer comes back with context rather than questions.',
+      submitLabel: 'Send it',
+      values: { q: '', urgency: 'This week' },
+      fields: [
+        { k: 'q', label: 'Your question', kind: 'area', req: true, ph: 'e.g. is there any version of this where we do nothing and are still fine?' },
+        { k: 'urgency', label: 'When you need it', kind: 'pick', options: ['Today', 'This week', 'Before the deadline', 'No rush'], req: true }
+      ],
+      onSubmit: v => ({ threadOv: Object.assign({}, this.state.threadOv || {}, { [p.id]: (this.state.threadOv || {})[p.id] ? (this.state.threadOv || {})[p.id].concat([{ who: 'Priya Raman', at: 'just now', text: v.q, mine: true }]) : [{ who: 'Priya Raman', at: 'just now', text: v.q, mine: true }] }) }),
+      done: 'Sent to Shane McCaw with the notice and your tenant evidence attached. It is on the thread on this notice.'
+    });
+  }
+
+  componentDidMount() {
+    this._spy = () => {
+      const keys = ['answers', 'seen', 'decisions', 'notices', 'reversed', 'digest'];
+      let cur = keys[0];
+      keys.forEach(k => {
+        const el = document.getElementById('sec-' + k);
+        if (el && el.getBoundingClientRect().top <= 150) cur = k;
+      });
+      if (cur !== this.state.spy) this.setState({ spy: cur });
+    };
+    window.addEventListener('scroll', this._spy, { passive: true });
+    this._spy();
+  }
+  componentWillUnmount() { if (this._spy) window.removeEventListener('scroll', this._spy); }
+
+  renderVals() {
+    const S = this.state;
+    const posts = this.POSTS;
+    const dec = S.decisionOv || {}, snz = S.snoozeOv || {};
+
+    const FV = S.form ? S.form.vals : {};
+    const fcfg = S.form ? S.form.cfg : null;
+    const formFields = !fcfg ? [] : fcfg.fields.map(f => ({
+      label: f.label, hint: f.hint || '', ph: f.ph || '', value: FV[f.k] === undefined ? '' : FV[f.k],
+      req: f.req ? 'Required' : f.kind === 'toggle' ? '' : 'Optional',
+      reqCss: 'font-size:9.5px;font-weight:700;color:' + (f.req ? (String(FV[f.k] || '').trim() ? '#34d399' : '#fbbf24') : '#475569'),
+      isText: f.kind === 'text', isArea: f.kind === 'area', isPick: f.kind === 'pick', isSelect: f.kind === 'select', isToggle: f.kind === 'toggle',
+      onChange: e => this.setFV(f.k, e.target.value),
+      toggleLabel: f.toggleLabel || f.label, toggleOn: !!FV[f.k],
+      toggleCss: 'display:flex;align-items:center;gap:10px;padding:11px 13px;border-radius:8px;border:1px solid ' + (FV[f.k] ? 'rgba(52,211,153,.4)' : 'rgba(148,163,184,.2)') + ';background:' + (FV[f.k] ? 'rgba(52,211,153,.07)' : 'transparent') + ';cursor:pointer;font-family:inherit;text-align:left;width:100%',
+      toggleBoxCss: 'flex:0 0 auto;width:16px;height:16px;display:flex;align-items:center;justify-content:center;border-radius:4px;font-size:10px;font-weight:700;color:' + (FV[f.k] ? '#04121f' : 'transparent') + ';background:' + (FV[f.k] ? '#34d399' : 'transparent') + ';border:1px solid ' + (FV[f.k] ? '#34d399' : 'rgba(148,163,184,.35)'),
+      toggleGo: () => this.setFV(f.k, !FV[f.k]),
+      options: (f.options || []).map(o => ({
+        label: o, go: () => this.setFV(f.k, o),
+        css: 'padding:7px 12px;border-radius:6px;font-size:11.5px;font-weight:' + (FV[f.k] === o ? '700' : '600') + ';font-family:inherit;cursor:pointer;text-align:left;border:1px solid ' + (FV[f.k] === o ? 'rgba(0,120,212,.5)' : 'rgba(148,163,184,.2)') + ';background:' + (FV[f.k] === o ? 'rgba(0,120,212,.14)' : 'transparent') + ';color:' + (FV[f.k] === o ? '#93c5fd' : '#94a3b8')
+      })),
+      selOptions: f.options || []
+    }));
+    const formMissing = !fcfg ? 0 : fcfg.fields.filter(f => f.req && (f.kind === 'toggle' ? !FV[f.k] : !String(FV[f.k] || '').trim())).length;
+
+    const SETS = {
+      decisions: ['MC1042318', 'MC1049877', 'MC1051144', 'MC1054920'],
+      hits: ['MC1042318', 'MC1049877', 'MC1054920'],
+      soon: ['MC1049877', 'MC1051144', 'MC1042318'],
+      reversed: [], none: ['MC1057733'], seen: ['MC1049877', 'MC1051144']
+    };
+    const SF = S.statFilter;
+    const match = id => !SF || SF === 'reversed' || (SETS[SF] || []).indexOf(id) >= 0;
+
+    const statDefs = [
+      { key: 'decisions', label: 'Need a decision', value: '12', sub: '4 written up · two inside five weeks', tone: '#f87171' },
+      { key: 'hits', label: 'Will break something', value: '3', sub: 'Named systems, named dates', tone: '#fbbf24' },
+      { key: 'soon', label: 'Landing in 60 days', value: '34', sub: '3 written up · 22 Sep · 26 Sep · 1 Oct', tone: '#60a5fa' },
+      { key: 'reversed', label: 'Edited after publishing', value: '61', sub: '3 written up · dates moved or withdrawn', tone: '#a78bfa' },
+      { key: 'seen', label: 'Needs an announcement', value: '39', sub: '6 written up · drafts ready to send', tone: '#a78bfa' },
+      { key: 'none', label: 'No action at all', value: '352', sub: '1 written up · dismissed with a reason each', tone: '#34d399' }
+    ];
+    const stats = statDefs.map(s => ({
+      label: s.label, value: s.value, sub: SF === s.key ? 'Filtering everything below · click to clear' : s.sub,
+      go: () => this.setState({ statFilter: SF === s.key ? null : s.key }),
+      cardCss: 'display:inline-flex;align-items:baseline;gap:7px;padding:6px 11px;border:1px solid rgba(30,41,59,.9);border-radius:999px;background:#0b1524',
+      valueCss: 'font-size:19px;font-weight:800;letter-spacing:-.02em;line-height:1.1;flex:0 0 auto;color:' + s.tone
+    }));
+
+    const monthLabels = this.MONTHS.map(m => m.l + ' ' + m.y);
+    const drill = S.drill;
+    const funnel = this.FUNNEL.map((f, i) => ({
+      key: f.key, n: f.n, label: f.label, sub: f.sub, rule: f.rule,
+      isOpen: drill === f.key,
+      go: () => this.setState({ drill: drill === f.key ? null : f.key }),
+      cardCss: 'display:flex;flex-direction:column;gap:5px;align-items:flex-start;padding:13px 14px;border:1px solid ' + (drill === f.key ? f.tone + '99' : f.tone + '38') + ';border-radius:11px;background:' + (drill === f.key ? f.tone + '14' : '#0b1524') + ';cursor:pointer;font-family:inherit;text-align:left;min-width:0;flex:1 1 150px',
+      nCss: 'font-size:26px;font-weight:800;letter-spacing:-.03em;line-height:1;color:' + f.tone,
+      labelCss: 'font-size:12px;font-weight:700;color:#f1f5f9;line-height:1.35',
+      subCss: 'font-size:10.5px;color:#64748b;line-height:1.45',
+      arrow: i < this.FUNNEL.length - 1,
+      breakdown: f.breakdown.map(b => ({ label: b.label, v: b.v })),
+      samples: f.samples.map(s => ({
+        id: s.id, title: s.title, why: s.why,
+        go: () => this.POSTS.some(p => p.id === s.id) ? openPost(s.id) : this.t(s.id + ' — ' + s.why)
+      })),
+      moreLabel: f.samples.length ? 'Every one of the ' + f.n + ' carries its reason like these. Three shown.' : ''
+    }));
+    const drillDef = this.FUNNEL.filter(f => f.key === drill)[0];
+    const drillOpen = !!drillDef;
+
+    const sched = this.SCHED.map(row => ({
+      name: row.name,
+      dotCss: 'width:8px;height:8px;border-radius:2px;background:' + this.WL[row.wl],
+      cells: row.counts.map((n, i) => {
+        const hot = row.hot.indexOf(i) >= 0;
+        const tone = hot ? '#f87171' : n >= 4 ? '#fbbf24' : n > 0 ? '#60a5fa' : '#334155';
+        const on = !!(S.cellDrill && S.cellDrill.wl === row.wl && S.cellDrill.mi === i);
+        const alpha = n === 0 ? '00' : on ? '4d' : hot ? '2e' : n >= 4 ? '24' : '16';
+        return {
+          n: n ? String(n) : '·',
+          title: row.name + ' · ' + monthLabels[i] + ' · ' + (n ? n + ' notices' + (hot ? ', one of them breaks something' : '') : 'nothing scheduled'),
+          css: 'display:flex;align-items:center;justify-content:center;height:34px;border-left:1px solid rgba(30,41,59,.6);background:' + tone + alpha + ';cursor:' + (n ? 'pointer' : 'default') + ';font-family:inherit;border-top:none;border-right:none;border-bottom:none;' + (on ? 'box-shadow:inset 0 0 0 2px ' + tone + ';' : hot ? 'box-shadow:inset 0 0 0 1px rgba(248,113,113,.55);' : ''),
+          nCss: 'font-size:11.5px;font-weight:' + (hot ? '800' : '600') + ';color:' + (n ? (hot ? '#f87171' : '#cbd5e1') : '#334155'),
+          go: () => { if (n) this.setState({ cellDrill: (S.cellDrill && S.cellDrill.wl === row.wl && S.cellDrill.mi === i) ? null : { wl: row.wl, mi: i, n: n, name: row.name } }); }
+        };
+      })
+    }));
+    const schedHead = monthLabels.map((l, i) => ({
+      label: l.split(' ')[0], year: l.split(' ')[1],
+      css: 'display:flex;flex-direction:column;align-items:center;gap:1px;padding:5px 0;border-left:1px solid rgba(30,41,59,.6);background:' + (i === 0 ? 'rgba(34,211,238,.06)' : 'transparent'),
+      labelCss: 'font-size:10px;font-weight:' + (i === 0 ? '800' : '600') + ';color:' + (i === 0 ? '#22d3ee' : '#94a3b8'),
+      yearCss: 'font-size:8.5px;font-weight:700;color:#475569'
+    }));
+
+    const KT = { b: '#f87171', d: '#fbbf24', v: '#a78bfa', s: '#475569' };
+    const SVCS = S.services || {};
+    const svcOn = wl => SVCS[wl] !== false;
+    const dRows = this.DENSITY.filter(r => svcOn(r.wl));
+    const bTotals = this.BUCKETS.map((b, i) => dRows.reduce((a, r) => [a[0] + r.cells[i][0], a[1] + r.cells[i][1], a[2] + r.cells[i][2], a[3] + r.cells[i][3]], [0, 0, 0, 0]));
+    const bSum = bTotals.map(t => t[0] + t[1] + t[2] + t[3]);
+    const peak = Math.max.apply(null, bSum);
+    const grand = bSum.reduce((a, b) => a + b, 0);
+    const grandB = bTotals.reduce((a, t) => a + t[0], 0);
+    const grandD = bTotals.reduce((a, t) => a + t[1], 0);
+    const grandV = bTotals.reduce((a, t) => a + t[2], 0);
+    const rmSel = S.rmSel;
+    const isFz = i => this.FREEZE_BUCKETS.some(f => f.i === i);
+
+    const waveBands = [];
+    this.BUCKETS.forEach((b, i) => {
+      const last = waveBands[waveBands.length - 1];
+      if (last && last.wave === b.wave) { last.span += 1; } else { waveBands.push({ wave: b.wave, span: 1, start: i }); }
+    });
+    const bucketWave = i => { let n = 0; waveBands.forEach((w, k) => { if (i >= w.start && i < w.start + w.span) n = k; }); return n; };
+    const navWave = this.props.waveSel === undefined || this.props.waveSel === null ? null : Number(this.props.waveSel);
+    const wsel = rmSel ? bucketWave(rmSel.i) : Math.max(0, Math.min(navWave === null || isNaN(navWave) ? S.wave : navWave, waveBands.length - 1));
+    const selBuckets = []; for (let i = waveBands[wsel].start; i < waveBands[wsel].start + waveBands[wsel].span; i++) selBuckets.push(i);
+    const inSel = i => selBuckets.indexOf(i) >= 0;
+    const goWave = k => () => this.setState({ wave: k, rmSel: null, past: null, seenPanel: false });
+    const waves = waveBands.map((w, wi) => {
+      const n = this.BUCKETS.slice(w.start, w.start + w.span).reduce((a, x, k) => a + bSum[w.start + k], 0);
+      const short = { 'Late August wave': 'Late Aug', 'September wave': 'Sep wave', 'Q2 · Oct – Dec': 'Q2 · Oct–Dec', 'Q3 · Jan – Mar': 'Q3 · Jan–Mar', 'Q4 and beyond': 'Q4 +' };
+      return {
+        label: w.span === 1 ? (short[w.wave] || w.wave) : w.wave, count: String(n),
+        title: w.wave + ' · ' + n + ' changes',
+        go: goWave(wi),
+        css: 'grid-column:' + (w.start + 1) + ' / span ' + w.span + ';display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;margin:0 1px 5px;padding:5px 3px;border-radius:5px;cursor:pointer;font-family:inherit;border:1px solid ' + (wi === wsel ? 'rgba(0,120,212,.75)' : 'rgba(96,165,250,.22)') + ';background:' + (wi === wsel ? 'rgba(0,120,212,.22)' : 'rgba(96,165,250,.06)') + ';overflow:hidden',
+        labelCss: 'font-size:9px;font-weight:' + (wi === wsel ? '800' : '700') + ';letter-spacing:.03em;text-transform:uppercase;color:' + (wi === wsel ? '#e2e8f0' : '#93c5fd') + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;line-height:1.3',
+        countCss: 'font-size:9px;font-weight:700;color:' + (wi === wsel ? '#93c5fd' : '#60a5fa') + ';white-space:nowrap;line-height:1.3'
+      };
+    });
+
+    const river = this.BUCKETS.map((b, i) => {
+      const t = bTotals[i], total = bSum[i], on = inSel(i);
+      return {
+        label: b.label, sub: b.sub, total: String(total),
+        wrapCss: 'display:flex;flex-direction:column;justify-content:flex-end;align-items:stretch;gap:0;height:96px;padding:0 3px;border-left:' + (i === 0 ? '2px solid rgba(34,211,238,.75)' : '1px solid ' + (isFz(i) ? 'rgba(248,113,113,.4)' : 'rgba(30,41,59,.6)')) + ';background:' + (on ? 'rgba(0,120,212,.1)' : isFz(i) ? 'repeating-linear-gradient(135deg,rgba(248,113,113,.13),rgba(248,113,113,.13) 5px,rgba(248,113,113,.04) 5px,rgba(248,113,113,.04) 10px)' : 'transparent') + ';cursor:pointer;font-family:inherit;border-top:none;border-right:none;border-bottom:none;width:100%',
+        segs: ['s', 'v', 'd', 'b'].map(k => {
+          const n = k === 'b' ? t[0] : k === 'd' ? t[1] : k === 'v' ? t[2] : t[3];
+          return { css: 'height:' + (n / peak * 86) + 'px;background:' + KT[k] + ';border-radius:' + (k === 'b' ? '3px 3px 0 0' : '0') + ';opacity:' + (k === 's' ? '.85' : '1') };
+        }),
+        totalCss: 'font-size:10.5px;font-weight:700;color:' + (on ? '#93c5fd' : '#94a3b8') + ';padding-top:4px;text-align:center',
+        go: goWave(bucketWave(i))
+      };
+    });
+
+    const headCells = this.BUCKETS.map((b, i) => ({
+      label: b.label, sub: b.sub, isToday: i === 0, today: 'Today · 20 Aug',
+      todayCss: 'display:inline-flex;align-items:center;padding:1px 6px;margin-bottom:2px;border-radius:999px;font-size:8px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#022c33;background:#22d3ee;white-space:nowrap',
+      css: 'display:flex;flex-direction:column;align-items:center;gap:0;padding:5px 2px;border-left:' + (i === 0 ? '2px solid rgba(34,211,238,.75)' : '1px solid ' + (isFz(i) ? 'rgba(248,113,113,.4)' : 'rgba(30,41,59,.6)')) + ';background:' + (i === 0 ? 'rgba(34,211,238,.06)' : 'transparent'),
+      labelCss: 'font-size:9.5px;font-weight:' + (i === 0 ? '800' : '700') + ';color:' + (i === 0 ? '#22d3ee' : '#cbd5e1') + ';white-space:nowrap',
+      subCss: 'font-size:8.5px;font-weight:600;color:' + (isFz(i) ? '#f87171' : '#475569') + ';white-space:nowrap'
+    }));
+
+    const density = dRows.map(row => ({
+      name: row.name,
+      dotCss: 'width:8px;height:8px;border-radius:2px;background:' + this.WL[row.wl],
+      total: row.cells.reduce((a, c) => a + c[0] + c[1] + c[2] + c[3], 0) + ' items',
+      cells: row.cells.map((c, i) => {
+        const total = c[0] + c[1] + c[2] + c[3];
+        const on = rmSel && rmSel.i === i && rmSel.wl === row.wl;
+        const dots = [];
+        ['b', 'd', 'v', 's'].forEach((k, ki) => {
+          const n = c[ki];
+          for (let x = 0; x < n; x++) dots.push({ css: this.markCss(k, 7) });
+        });
+        return {
+          dots: dots, hasDots: dots.length > 0,
+          title: row.name + ' · ' + this.BUCKETS[i].label + ' ' + this.BUCKETS[i].sub + ' · ' + total + ' items' + (c[0] ? ', one breaks something' : c[1] ? ', ' + c[1] + ' need a decision' : ''),
+          css: 'display:flex;flex-wrap:wrap;align-content:center;justify-content:center;gap:3px;min-height:38px;padding:6px 5px;border-left:' + (i === 0 ? '2px solid rgba(34,211,238,.5)' : '1px solid ' + (isFz(i) ? 'rgba(248,113,113,.35)' : 'rgba(30,41,59,.5)')) + ';background:' + (on ? 'rgba(0,120,212,.14)' : isFz(i) ? 'rgba(248,113,113,.05)' : 'transparent') + ';cursor:' + (total ? 'pointer' : 'default') + ';font-family:inherit;border-top:none;border-right:none;border-bottom:none;box-shadow:' + (on ? 'inset 0 0 0 1px rgba(0,120,212,.6)' : 'none'),
+          go: () => { if (total) this.setState({ rmSel: on ? null : { i: i, wl: row.wl } }); }
+        };
+      })
+    }));
+
+    const named = !rmSel ? [] : this.POSTS.concat(this.SEEN.map(v => ({ id: v.id, title: v.title, when: v.when, wl: v.app === 'Outlook' || v.app === 'Office apps' ? 'Exchange' : v.app === 'OneDrive' ? 'SharePoint' : v.app, impact: 'Your people will see it', score: null, seen: true })))
+      .filter(p => this.ITEM_BUCKET[p.id] === rmSel.i && (!rmSel.wl || p.wl === rmSel.wl))
+      .map(p => {
+        const tn = p.seen ? '#a78bfa' : this.impactTone(p.impact);
+        return {
+          id: p.id + (p.seen ? ' · user side' : ''), title: p.title, when: p.when,
+          tag: p.seen ? 'People will see it' : p.impact + (p.score ? ' · ' + p.score : ''),
+          tagCss: this.pill(p.seen ? 'People will see it' : p.impact + (p.score ? ' · ' + p.score : ''), tn, tn + '14'),
+          go: () => p.seen ? this.setState({ seenOpen: p.id }) : openPost(p.id)
+        };
+      });
+    const rmDrill = !rmSel ? null : {
+      title: (rmSel.wl ? (this.DENSITY.filter(r => r.wl === rmSel.wl)[0] || {}).name + ' · ' : '') + this.BUCKETS[rmSel.i].label + ' ' + this.BUCKETS[rmSel.i].sub,
+      wave: this.BUCKETS[rmSel.i].wave,
+      counts: this.KINDS.map((k, ki) => {
+        const n = rmSel.wl ? (this.DENSITY.filter(r => r.wl === rmSel.wl)[0] || {}).cells[rmSel.i][ki] : bTotals[rmSel.i][ki];
+        return { label: k.label, n: String(n), css: 'display:flex;flex-direction:column;gap:2px;padding:9px 11px;border:1px solid ' + k.tone + '33;border-left:2px solid ' + k.tone + ';border-radius:8px;background:rgba(2,6,23,.45);min-width:0', nCss: 'font-size:17px;font-weight:800;letter-spacing:-.02em;color:' + k.tone };
+      }),
+      named: named,
+      rest: (function (nonSilent, silent, written, where) {
+        const left = nonSilent - written;
+        if (!nonSilent) return 'Everything in this ' + where + ' is silent — ' + silent + ' back-end and capacity changes, each carrying the query that dismissed it.';
+        if (left <= 0) return 'Every item here that breaks something, needs a decision or will be noticed is written up above. The other ' + silent + ' are silent.';
+        return left + ' more ' + (left === 1 ? 'item' : 'items') + ' in this ' + where + ' ' + (left === 1 ? 'needs a decision or will be noticed' : 'need a decision or will be noticed') + ' and ' + (left === 1 ? 'is' : 'are') + ' not written up yet — they are in the register with their scores. The other ' + silent + ' are silent.';
+      })(
+        (rmSel.wl ? (this.DENSITY.filter(r => r.wl === rmSel.wl)[0] || {}).cells[rmSel.i] : bTotals[rmSel.i]).slice(0, 3).reduce((a, b) => a + b, 0),
+        (rmSel.wl ? (this.DENSITY.filter(r => r.wl === rmSel.wl)[0] || {}).cells[rmSel.i][3] : bTotals[rmSel.i][3]),
+        named.length,
+        rmSel.wl ? 'cell' : 'wave bucket'
+      ),
+      closeGo: () => this.setState({ rmSel: null })
+    };
+    const rmLegend = this.KINDS.map(k => ({ label: k.label, dotCss: this.markCss(k.k, 9) }));
+
+    const cd = S.cellDrill;
+    const cdPosts = !cd ? [] : this.POSTS.filter(p => p.wl === cd.wl && p.month === cd.mi);
+    const cellDrill = !cd ? null : {
+      title: cd.name + ' · ' + monthLabels[cd.mi],
+      count: cd.n + (cd.n === 1 ? ' notice scheduled' : ' notices scheduled') + ' · ' + cdPosts.length + ' written up in full',
+      rest: cd.n - cdPosts.length > 0
+        ? (cd.n - cdPosts.length) + ' more in this cell are feature and UI notices scored no action. They are in the register with the query that dismissed them.'
+        : 'Everything in this cell is written up.',
+      rows: cdPosts.map(p => {
+        const tn = this.impactTone(p.impact);
+        return {
+          id: p.id, title: p.title, when: p.when, impact: p.impact + ' · ' + p.score,
+          impactCss: this.pill(p.impact + ' · ' + p.score, tn, tn + '14'),
+          optOut: 'Opt-out: ' + p.optOut,
+          go: () => openPost(p.id)
+        };
+      }),
+      closeGo: () => this.setState({ cellDrill: null })
+    };
+
+    const waveOf = id => {
+      const i = this.ITEM_BUCKET[id];
+      return i === undefined ? null : { i: i, label: this.BUCKETS[i].label + (this.BUCKETS[i].sub.indexOf('–') === 0 ? ' ' + this.BUCKETS[i].sub : ''), wave: this.BUCKETS[i].wave };
+    };
+    const miniStrip = (ids, tone) => this.BUCKETS.map((b, i) => {
+      const hit = ids.filter(id => this.ITEM_BUCKET[id] === i).length;
+      return {
+        css: 'flex:1;height:' + (hit ? '14px' : '5px') + ';border-radius:2px;background:' + (hit ? tone : 'rgba(148,163,184,.13)') + ';align-self:flex-end',
+        title: this.BUCKETS[i].label + ' ' + this.BUCKETS[i].sub + (hit ? ' · ' + hit + ' for this group' : ' · nothing')
+      };
+    });
+    const ann = S.announced || {};
+    const seenRows = this.SEEN.map(v => {
+      const open = S.seenOpen === v.id;
+      return {
+        id: v.id, app: v.app, title: v.title, when: v.when, ring: v.ring, who: v.who, sees: v.sees,
+        wave: (waveOf(v.id) || {}).wave || '',
+        why: v.why, helpdesk: v.helpdesk, ignore: v.ignore, tickets: v.tickets, isOpen: open,
+        caret: open ? '⌄' : '›',
+        rowCss: 'display:grid;grid-template-columns:30px 118px minmax(0,1fr) 132px 150px 116px;gap:12px;align-items:center;padding:13px 14px;border:1px solid ' + (open ? v.tone + '66' : 'rgba(30,41,59,.9)') + ';border-radius:' + (open ? '11px 11px 0 0' : '11px') + ';background:' + (open ? 'rgba(2,6,23,.6)' : '#0b1524') + ';cursor:pointer;font-family:inherit;text-align:left;width:100%;min-width:820px',
+        caretCss: 'font-size:13px;color:' + (open ? '#93c5fd' : '#475569'),
+        appCss: this.pill(v.app, this.WL[v.app === 'Outlook' || v.app === 'Office apps' ? 'Exchange' : v.app] || '#94a3b8', 'rgba(148,163,184,.08)'),
+        who: v.appFull ? v.who + ' · ' + v.appFull : v.who,
+        whenCss: 'font-size:11.5px;font-weight:600;color:#cbd5e1',
+        ticketCss: 'font-size:11px;font-weight:700;color:' + v.tone + ';line-height:1.4',
+        toldCss: this.pill(ann[v.id] ? 'Announced' : 'Not told', ann[v.id] ? '#34d399' : '#f87171', (ann[v.id] ? '#34d399' : '#f87171') + '14'),
+        toldLabel: ann[v.id] ? 'Announced' : 'Not told',
+        panelCss: 'display:flex;flex-direction:column;gap:14px;padding:16px 18px;border:1px solid ' + v.tone + '66;border-top:none;border-radius:0 0 11px 11px;background:rgba(2,6,23,.6);min-width:820px',
+        go: () => this.setState({ seenOpen: open ? null : v.id }),
+        announceGo: () => this.openForm({
+          kicker: 'Tell your people · ' + v.id, title: 'Announce: ' + v.title,
+          intro: 'A short notice, sent before the change lands, in the words your help desk would use. This is the cheapest ticket reduction available to you.',
+          submitLabel: 'Schedule the announcement', foot: 'Recorded against the notice as who was told and when, which is the other half of the audit question.',
+          values: { when: 'One week before', channel: 'Email and Teams', audience: v.who, msg: v.helpdesk },
+          fields: [
+            { k: 'when', label: 'Send it', kind: 'pick', options: ['Now', 'One week before', 'The day before', 'The morning it lands'], req: true },
+            { k: 'channel', label: 'Channel', kind: 'pick', options: ['Email', 'Teams', 'Email and Teams', 'Intranet banner'], req: true },
+            { k: 'audience', label: 'Audience', kind: 'text', req: true },
+            { k: 'msg', label: 'The message', kind: 'area', req: true, hint: 'Pre-written in plain language. Edit it to sound like you — nobody believes an announcement that reads like a Microsoft post.' }
+          ],
+          onSubmit: () => ({ announced: Object.assign({}, ann, { [v.id]: true }) }),
+          done: vv => 'Announcement scheduled for ' + vv.when.toLowerCase() + ' by ' + vv.channel.toLowerCase() + ' to ' + vv.audience.toLowerCase() + '. Expected tickets drop to a handful.'
+        }),
+        helpdeskGo: () => this.t('Added to the help desk crib sheet for ' + v.when + '. First-line staff see it when a ticket mentions ' + v.app + '.')
+      };
+    });
+
+    const groups = this.GROUPS.map(g => ({
+      name: g.name, heads: g.heads, what: g.what, who: g.who, first: g.first,
+      strip: miniStrip(g.items, g.tone),
+      waveLabel: (waveOf(g.items[0]) || {}).wave || '',
+      cardCss: 'display:flex;flex-direction:column;gap:8px;padding:15px 16px;border:1px solid ' + g.tone + '30;border-left:3px solid ' + g.tone + ';border-radius:12px;background:#0b1524;min-width:0',
+      firstCss: this.pill('First date · ' + g.first, g.tone, g.tone + '14'),
+      toldCss: this.pill(g.told ? 'Told' : 'Not told', g.told ? '#34d399' : '#f87171', (g.told ? '#34d399' : '#f87171') + '14'),
+      toldLabel: g.told ? 'Told' : 'Not told',
+      items: g.items.map(id => ({
+        id: id, go: () => openPost(id),
+        css: 'padding:3px 8px;border-radius:5px;border:1px solid rgba(96,165,250,.25);background:rgba(96,165,250,.08);color:#93c5fd;font-size:10px;font-weight:700;font-family:\'SF Mono\',Menlo,Consolas,monospace;cursor:pointer;white-space:nowrap'
+      })),
+      tellGo: () => this.openForm({
+        kicker: 'Tell them', title: 'Notify ' + g.name, intro: 'Microsoft told your administrators. These are the people who actually feel it. This sends what changes, when, and what they should do differently.',
+        submitLabel: 'Send the notice', foot: 'Recorded on each linked notice as who was told and when — the other half of section 9.',
+        values: { when: 'Now', channel: 'Email', extra: '' },
+        fields: [
+          { k: 'when', label: 'When', kind: 'pick', options: ['Now', 'Two weeks before the date', 'At the next team meeting'], req: true },
+          { k: 'channel', label: 'How', kind: 'pick', options: ['Email', 'Teams message', 'Email and their manager'], req: true },
+          { k: 'extra', label: 'Anything to add', kind: 'area', req: false, ph: 'The generated notice already says what changes and when. This is for anything local — a handover, a shift pattern, a name to ask for.' }
+        ],
+        done: v => g.name + ' will be told ' + v.when.toLowerCase() + ' by ' + v.channel.toLowerCase() + '. It is on the record against ' + g.items.join(' and ') + '.'
+      })
+    }));
+
+    const nav = [
+      { key: 'answers', label: 'What is coming', sub: 'the wave roadmap' },
+      { key: 'seen', label: 'What people will see', sub: 'the tickets you can avoid' },
+      { key: 'decisions', label: 'Needs a decision', sub: 'ordered by deadline' },
+      { key: 'notices', label: 'All notices', sub: 'grouped by wave' },
+      { key: 'reversed', label: 'Changed or withdrawn', sub: 'what Microsoft moved' },
+      { key: 'digest', label: 'Digest & briefing', sub: 'who hears about it' }
+    ].map(v => ({
+      label: v.label, sub: v.sub, href: '#sec-' + v.key,
+      css: 'display:flex;flex-direction:column;gap:2px;align-items:flex-start;width:100%;padding:9px 12px;border-left:2px solid ' + (S.spy === v.key ? '#0078D4' : 'transparent') + ';border-radius:0 7px 7px 0;background:' + (S.spy === v.key ? 'rgba(0,120,212,.13)' : 'transparent') + ';text-decoration:none;box-sizing:border-box',
+      labelCss: 'font-size:12.5px;font-weight:' + (S.spy === v.key ? '700' : '600') + ';color:' + (S.spy === v.key ? '#f1f5f9' : '#94a3b8') + ';line-height:1.35',
+      subCss: 'font-size:10px;line-height:1.4;color:' + (S.spy === v.key ? '#93c5fd' : '#475569')
+    }));
+
+    const openPost = id => this.setState({ openId: id, sec: 'ms' });
+
+    const breakers = posts.filter(p => ['MC1042318', 'MC1054920', 'MC1049877'].indexOf(p.id) >= 0).map(p => ({
+      id: p.id, title: p.title, breaks: p.plain.split('. ')[0] + '.',
+      evidence: p.evidence.filter(e => e.bad)[0].q.split(' · ')[0] + ' → ' + p.evidence.filter(e => e.bad)[0].a,
+      when: p.when,
+      countdown: p.countdown,
+      whenCss: this.pill(p.countdown, this.impactTone(p.impact), this.impactTone(p.impact) + '14'),
+      cardCss: 'display:flex;flex-direction:column;gap:7px;align-items:flex-start;padding:13px 15px;border:1px solid rgba(248,113,113,.28);border-radius:11px;background:rgba(248,113,113,.05);cursor:pointer;font-family:inherit;min-width:0',
+      rowCss: 'display:grid;grid-template-columns:124px minmax(0,1fr) 230px;gap:14px;align-items:start;width:100%;padding:11px 13px;border:1px solid rgba(248,113,113,.24);border-radius:10px;background:rgba(248,113,113,.04);cursor:pointer;font-family:inherit;text-align:left',
+      go: () => openPost(p.id)
+    }));
+
+    const months = this.MONTHS.map((m, i) => ({
+      label: m.l, year: m.y,
+      css: 'display:flex;flex-direction:column;align-items:center;gap:1px;padding:5px 0;border-left:1px solid rgba(30,41,59,.6);background:' + (i === 0 ? 'rgba(34,211,238,.06)' : 'transparent'),
+      labelCss: 'font-size:10.5px;font-weight:' + (i === 0 ? '800' : '600') + ';color:' + (i === 0 ? '#22d3ee' : '#94a3b8'),
+      yearCss: 'font-size:8.5px;font-weight:700;letter-spacing:.06em;color:#475569'
+    }));
+    const freezeBands = this.FREEZE_BANDS.map(f => ({
+      label: f.label, title: f.title,
+      css: 'grid-row:1;grid-column:' + (f.from + 1) + ' / span ' + f.span + ';display:flex;align-items:center;justify-content:center;margin:0 1px 4px;padding:3px 5px;border-radius:4px;border:1px solid rgba(248,113,113,.5);background:repeating-linear-gradient(135deg,rgba(248,113,113,.26),rgba(248,113,113,.26) 5px,rgba(248,113,113,.10) 5px,rgba(248,113,113,.10) 10px);overflow:hidden'
+    }));
+    const cells = this.MONTHS.map((m, i) => ({ css: 'grid-row:1;grid-column:' + (i + 1) + ' / span 1;height:100%;border-left:1px solid rgba(30,41,59,.5);background:' + (this.FREEZE_BANDS.some(f => i >= f.from && i < f.from + f.span) ? 'repeating-linear-gradient(135deg,rgba(248,113,113,.16),rgba(248,113,113,.16) 5px,rgba(248,113,113,.05) 5px,rgba(248,113,113,.05) 10px)' : 'transparent') }));
+
+    const lanes = ['Exchange', 'Teams', 'SharePoint', 'Entra', 'Purview', 'Copilot'].map(w => {
+      const rows = posts.filter(p => p.wl === w && match(p.id)).map(p => {
+        const tone = this.impactTone(p.impact);
+        return {
+          id: p.id, title: p.title, cells: cells, go: () => openPost(p.id),
+          rowCss: 'display:grid;grid-template-columns:230px minmax(0,1fr);gap:0;align-items:stretch;border-top:1px solid rgba(30,41,59,.5)',
+          labelBtnCss: 'display:flex;flex-direction:column;gap:2px;justify-content:center;padding:8px 12px 8px 20px;border:none;background:transparent;text-align:left;cursor:pointer;font-family:inherit;min-width:0',
+          idCss: 'font-size:9.5px;font-weight:700;color:' + tone + ';font-family:\'SF Mono\',Menlo,Consolas,monospace',
+          titleCss: 'font-size:11px;color:#94a3b8;line-height:1.35;overflow:hidden;text-overflow:ellipsis;white-space:nowrap',
+          pillTitle: p.id + ' — ' + p.kind + ' · ' + p.when + ' · impact ' + p.score,
+          pillCss: 'grid-row:1;grid-column:' + (p.month + 1) + ' / span 1;margin:8px 2px;display:flex;align-items:center;justify-content:center;padding:0 6px;border-radius:5px;cursor:pointer;min-width:0;overflow:hidden;' + (p.hard ? 'background:' + tone + ';box-shadow:0 0 14px ' + tone + '40' : 'background:repeating-linear-gradient(135deg,' + tone + '4d,' + tone + '4d 4px,' + tone + '1f 4px,' + tone + '1f 8px);border:1px solid ' + tone + '80'),
+          pillLabel: p.hard ? 'enforced' : 'rollout',
+          pillLabelCss: 'font-size:9px;font-weight:700;letter-spacing:.03em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:' + (p.hard ? '#04121f' : tone)
+        };
+      });
+      return {
+        name: w === 'Exchange' ? 'Exchange Online & Apps' : w === 'SharePoint' ? 'SharePoint & OneDrive' : w === 'Entra' ? 'Entra ID' : w === 'Purview' ? 'Purview' : w === 'Copilot' ? 'Copilot' : 'Teams',
+        count: rows.length === 1 ? '1 notice' : rows.length + ' notices', rows: rows,
+        dotCss: 'width:8px;height:8px;border-radius:2px;background:' + this.WL[w],
+        nameCss: 'font-size:11.5px;font-weight:700;letter-spacing:.02em;color:#cbd5e1'
+      };
+    }).filter(l => l.rows.length);
+
+    const legend = [
+      { label: 'Hits you', tone: '#f87171' }, { label: 'Might hit you', tone: '#fbbf24' },
+      { label: 'No impact', tone: '#64748b' }, { label: 'Your freeze', tone: 'rgba(248,113,113,.6)' }
+    ].map(l => ({ label: l.label, dotCss: 'width:8px;height:8px;border-radius:2px;background:' + l.tone }));
+
+    const QUEUE = [
+      { id: 'MC1049877', due: '18 September', kind: 'Opt-out closes', tone: '#f87171', decision: 'Set your own default sharing link type, or accept the one Microsoft picks.', ifNot: 'After the 18th you are not choosing a default, you are reversing one — and the 84 anonymous links Sales sends each month behave differently in the meantime.' },
+      { id: 'MC1051144', due: '26 September', kind: 'Rollout date', tone: '#fbbf24', decision: 'Pin the anonymous-join value on your Teams meeting policy before the rollout reaches you.', ifNot: 'A control your compliance pack cites changes value on its own, during your ERP go-live freeze, and you find out at audit.' },
+      { id: 'MC1042318', due: '1 October', kind: 'Enforced', tone: '#f87171', decision: 'Approve CR-0142 for a window that leaves room to roll back and retry.', ifNot: 'Microsoft disables legacy auth for you on 1 October with no window, no rollback and no warning to the eleven accounts still using it.' },
+      { id: 'MC1054920', due: '15 November', kind: 'Enforced', tone: '#fbbf24', decision: 'Register MFA methods on both break-glass accounts and update RSK-004.', ifNot: 'Your emergency accounts stop working on the day you need them, and the recovery path is a Microsoft support case.' }
+    ];
+    const queue = QUEUE.filter(q => match(q.id)).map(q => {
+      const p = posts.filter(x => x.id === q.id)[0];
+      return {
+        id: q.id, due: q.due, kind: q.kind, title: p.title, decision: q.decision, ifNot: q.ifNot,
+        wave: (waveOf(q.id) || {}).wave || '', bucket: (waveOf(q.id) || {}).label || '',
+        waveCss: this.pill((waveOf(q.id) || {}).wave || '', '#93c5fd', 'rgba(96,165,250,.1)'),
+        cardCss: 'display:grid;grid-template-columns:150px minmax(0,1fr) auto;gap:16px;align-items:center;padding:14px 16px;border:1px solid ' + q.tone + '33;border-left:3px solid ' + q.tone + ';border-radius:11px;background:#0b1524;min-width:0',
+        dueCss: 'font-size:13px;font-weight:800;letter-spacing:-.01em;color:' + q.tone,
+        kindCss: this.pill(q.kind, q.tone, q.tone + '14'),
+        acts: [
+          { label: 'Open the notice', go: () => openPost(q.id), tone: '#93c5fd', border: 'rgba(0,120,212,.4)', bg: 'rgba(0,120,212,.1)' },
+          { label: snz[q.id] ? 'Snoozed · ' + snz[q.id] : 'Snooze', go: () => this.snoozeForm(p), tone: '#94a3b8', border: 'rgba(148,163,184,.24)', bg: 'transparent' },
+          { label: dec[q.id] ? 'Decision recorded' : 'Record a decision', go: () => this.ackForm(p), tone: dec[q.id] ? '#34d399' : '#fbbf24', border: dec[q.id] ? 'rgba(52,211,153,.35)' : 'rgba(251,191,36,.35)', bg: 'transparent' }
+        ].map(a => ({ label: a.label, go: a.go, css: 'padding:7px 12px;border-radius:6px;font-size:11px;font-weight:700;font-family:inherit;white-space:nowrap;cursor:pointer;border:1px solid ' + a.border + ';background:' + a.bg + ';color:' + a.tone }))
+      };
+    });
+
+    const WAVE_STATUS = ['Landing now', 'Lands in 3 weeks', 'Lands from October', 'Lands from January', 'From April 2027'];
+    const rangeOf = w => {
+      const a = this.BUCKETS[w.start], b = this.BUCKETS[w.start + w.span - 1];
+      if (w.span === 1) return a.label + ' ' + a.sub;
+      if (b.sub.indexOf('–') === 0) return a.label + ' ' + b.sub;
+      const from = a.label.split('–')[0].trim();
+      const to = b.label.split('–').pop().trim();
+      return from + ' – ' + to + ' ' + b.sub;
+    };
+    const namedBreaks = w => this.POSTS.filter(p => { const bi = this.ITEM_BUCKET[p.id]; return svcOn(p.wl) && bi >= w.start && bi < w.start + w.span && (p.hard || p.impact === 'Hits you'); }).length;
+    const namedDue = w => QUEUE.filter(x => { const p = posts.filter(y => y.id === x.id)[0]; const bi = this.ITEM_BUCKET[x.id]; return p && svcOn(p.wl) && bi >= w.start && bi < w.start + w.span; }).length;
+    const waveTot = w => {
+      const t = [0, 0, 0, 0];
+      for (let i = w.start; i < w.start + w.span; i++) { t[0] += bTotals[i][0]; t[1] += bTotals[i][1]; t[2] += bTotals[i][2]; t[3] += bTotals[i][3]; }
+      return t;
+    };
+    const waveNav = waveBands.map((w, wi) => {
+      const t = waveTot(w), total = t[0] + t[1] + t[2] + t[3], on = wi === wsel && (S.past === null || S.past === undefined);
+      const nb = Math.max(t[0], namedBreaks(w)), nd = Math.max(t[1], namedDue(w));
+      return {
+        name: w.wave, range: rangeOf(w), count: String(total), go: goWave(wi),
+        css: 'display:flex;flex-direction:column;gap:5px;padding:10px 12px 11px;border-radius:9px;cursor:pointer;font-family:inherit;text-align:left;border:1px solid ' + (on ? 'rgba(0,120,212,.55)' : 'transparent') + ';border-left:3px solid ' + (on ? '#0078D4' : 'rgba(148,163,184,.18)') + ';background:' + (on ? 'rgba(0,120,212,.12)' : 'transparent'),
+        nameCss: 'font-size:12.5px;font-weight:' + (on ? '800' : '600') + ';color:' + (on ? '#f8fafc' : '#cbd5e1') + ';line-height:1.3',
+        countCss: 'font-size:10.5px;font-weight:700;color:' + (on ? '#93c5fd' : '#475569'),
+        rangeCss: 'font-size:10.5px;color:' + (on ? '#93c5fd' : '#64748b'),
+        bars: ['b', 'd', 'v', 's'].map((k, ki) => ({ css: 'flex:' + t[ki] + ' 0 0;background:' + KT[k] + ';opacity:' + (on ? '1' : '.5') })),
+        meta: nb ? nb + (nb === 1 ? ' stops something working' : ' stop something working') : nd ? nd + (nd === 1 ? ' needs a decision' : ' need a decision') : 'nothing breaks here',
+        metaCss: 'font-size:10px;font-weight:600;color:' + (nb ? '#f87171' : nd ? '#fbbf24' : '#64748b')
+      };
+    });
+    const selBand = waveBands[wsel], selT = waveTot(selBand), selTotal = selT[0] + selT[1] + selT[2] + selT[3];
+    const selFreeze = this.FREEZE_BUCKETS.filter(f => inSel(f.i))[0];
+    const raciOf = wl => Object.assign({}, this.RACI[wl] || {}, (S.raciOv || {})[wl] || {});
+    const initials = n => (n || '').split(/[ ·]+/).filter(x => /^[A-Z]/.test(x)).slice(0, 2).map(x => x[0]).join('') || '—';
+    const ownerOf = wl => { const r = raciOf(wl); return { name: r.r || 'Unassigned', initials: initials(r.r), accountable: r.a || '' }; };
+    const inScope = id => rmSel
+      ? (this.ITEM_BUCKET[id] === rmSel.i && (!rmSel.wl || (this.POSTS.filter(p => p.id === id)[0] || {}).wl === rmSel.wl))
+      : inSel(this.ITEM_BUCKET[id]);
+    const wBreaks = this.POSTS.filter(p => svcOn(p.wl) && inScope(p.id) && (p.hard || p.impact === 'Hits you')).map(p => {
+      const ev = p.evidence.filter(e => e.bad)[0];
+      return {
+        id: p.id, when: p.when, countdown: p.countdown,
+        what: p.plain.split('. ')[0] + '.',
+        evidence: ev ? ev.q.split(' · ')[0] + ' → ' + ev.a : p.seats,
+        owner: ownerOf(p.wl).name, ownerInitials: ownerOf(p.wl).initials,
+        state: p.crCode ? p.crCode + ' · ' + p.crState : 'No change raised yet',
+        stateCss: this.pill(p.crCode ? p.crCode + ' · ' + p.crState : 'No change raised yet', p.crCode ? '#34d399' : '#fbbf24', (p.crCode ? '#34d399' : '#fbbf24') + '14'),
+        rowCss: 'display:grid;grid-template-columns:120px minmax(0,1fr) 190px;gap:14px;align-items:start;width:100%;padding:12px 13px;border:1px solid rgba(248,113,113,.22);border-radius:10px;background:rgba(248,113,113,.04);cursor:pointer;font-family:inherit;text-align:left',
+        go: () => openPost(p.id)
+      };
+    });
+    const wQueue = queue.filter(x => { const p = posts.filter(y => y.id === x.id)[0]; return p && svcOn(p.wl) && inScope(x.id); }).map(x => {
+      const p = posts.filter(y => y.id === x.id)[0], o = ownerOf(p.wl);
+      return Object.assign({}, x, { owner: o.name, ownerInitials: o.initials, ownerLine: o.name + ' · answers to ' + o.accountable });
+    });
+    const wNoAction = this.POSTS.filter(p => svcOn(p.wl) && inScope(p.id) && !wBreaks.some(b => b.id === p.id) && !wQueue.some(q => q.id === p.id)).map(p => ({
+      id: p.id, when: p.when, title: p.title, why: p.plain.split('. ')[0] + '.', owner: ownerOf(p.wl).name,
+      tagCss: this.pill(p.impact === 'No impact' ? 'No action needed' : 'Watch only', p.impact === 'No impact' ? '#34d399' : '#94a3b8', (p.impact === 'No impact' ? '#34d399' : '#94a3b8') + '14'),
+      tag: p.impact === 'No impact' ? 'No action needed' : 'Watch only',
+      rowCss: 'display:grid;grid-template-columns:120px minmax(0,1fr) 150px;gap:14px;align-items:start;width:100%;padding:11px 13px;border:1px solid rgba(30,41,59,.85);border-radius:10px;background:rgba(2,6,23,.4);cursor:pointer;font-family:inherit;text-align:left',
+      go: () => openPost(p.id)
+    }));
+    const selRow = rmSel && rmSel.wl ? this.DENSITY.filter(r => r.wl === rmSel.wl)[0] : null;
+    const scopeCell = rmSel ? (selRow ? selRow.cells[rmSel.i] : bTotals[rmSel.i]) : null;
+    const raci = this.SCANS.filter(sc => svcOn(sc.wl)).map(sc => {
+      const r = raciOf(sc.wl), tone = this.WL[sc.wl];
+      return {
+        name: sc.name, dotCss: 'width:8px;height:8px;border-radius:2px;flex:0 0 auto;background:' + tone,
+        r: r.r, a: r.a, c: r.c || '—', i: r.i || '—',
+        rCss: 'font-size:11.5px;font-weight:700;color:' + (r.r === 'Unassigned' ? '#f87171' : '#e2e8f0'),
+        gap: r.r === 'Unassigned',
+        go: () => this.raciForm(sc.wl, sc.name, r)
+      };
+    });
+    const seenInScope = this.SEEN.filter(v => {
+      const wl = v.app === 'Outlook' || v.app === 'Office apps' ? 'Exchange' : v.app === 'OneDrive' ? 'SharePoint' : v.app;
+      return svcOn(wl) && (rmSel ? (this.ITEM_BUCKET[v.id] === rmSel.i && (!rmSel.wl || wl === rmSel.wl)) : inSel(this.ITEM_BUCKET[v.id]));
+    }).map(v => ({
+      id: v.id, app: v.app, when: v.when, title: v.title, sees: v.sees, tickets: v.tickets,
+      appCss: this.pill(v.app, this.WL[v.app === 'Outlook' || v.app === 'Office apps' ? 'Exchange' : v.app === 'OneDrive' ? 'SharePoint' : v.app] || '#94a3b8', 'rgba(148,163,184,.08)'),
+      toldCss: this.pill((S.announced || {})[v.id] ? 'Announced' : 'Not told', (S.announced || {})[v.id] ? '#34d399' : '#f87171', ((S.announced || {})[v.id] ? '#34d399' : '#f87171') + '14'),
+      toldLabel: (S.announced || {})[v.id] ? 'Announced' : 'Not told',
+      rowCss: 'display:grid;grid-template-columns:104px 118px minmax(0,1fr) 110px;gap:12px;align-items:center;width:100%;padding:11px 13px;border:1px solid rgba(167,139,250,.22);border-radius:10px;background:rgba(167,139,250,.04);cursor:pointer;font-family:inherit;text-align:left',
+      go: () => this.setState({ seenOpen: v.id })
+    }));
+    const notice = this.WAVE_NOTICE[wsel] || { given: 0, left: 0 };
+    const noticePct = Math.max(4, Math.min(96, Math.round(notice.left / (notice.given + notice.left) * 100)));
+    const pastIdx = S.past;
+    const past = pastIdx === null || pastIdx === undefined ? null : (L => {
+      const w = L[pastIdx];
+      return {
+        name: w.name, range: w.range, verdict: w.verdict,
+        verdictCss: 'display:inline-flex;align-items:center;padding:3px 10px;border-radius:999px;font-size:10.5px;font-weight:700;white-space:nowrap;color:' + w.tone + ';background:' + w.tone + '1f;border:1px solid ' + w.tone + '55',
+        tiles: [
+          { label: 'changes landed', value: String(w.items), tone: '#60a5fa' },
+          { label: w.moved === 1 ? 'date Microsoft moved' : 'dates Microsoft moved', value: String(w.moved), tone: '#a78bfa' },
+          { label: w.tickets === 1 ? 'ticket raised' : 'tickets raised', value: String(w.tickets), tone: w.tickets > 10 ? '#f87171' : '#fbbf24' },
+          { label: w.incidents === 1 ? 'incident' : 'incidents', value: String(w.incidents), tone: w.incidents ? '#f87171' : '#34d399' }
+        ].map(t => ({
+          label: t.label, value: t.value,
+          css: 'display:flex;flex-direction:column;gap:2px;padding:11px 13px;border-radius:9px;border:1px solid ' + t.tone + '2e;border-left:3px solid ' + t.tone + ';background:rgba(2,6,23,.5)',
+          valueCss: 'font-size:22px;font-weight:800;letter-spacing:-.02em;line-height:1.05;color:' + t.tone
+        })),
+        rows: w.rows.map(r => ({
+          id: r.id, title: r.title, outcome: r.outcome, tickets: r.tickets,
+          outcomeCss: 'font-size:11.5px;font-weight:700;color:' + r.tone,
+          toldCss: this.pill(r.told ? 'People were told' : 'Nobody was told', r.told ? '#34d399' : '#f87171', (r.told ? '#34d399' : '#f87171') + '14'),
+          toldLabel: r.told ? 'People were told' : 'Nobody was told',
+          rowCss: 'display:grid;grid-template-columns:104px minmax(220px,1fr) 190px 150px;gap:12px;align-items:center;padding:11px 13px;border:1px solid rgba(30,41,59,.85);border-radius:10px;background:rgba(2,6,23,.4);min-width:700px'
+        }))
+      };
+    })(this.LANDED);
+    const wSel = {
+      name: selBand.wave, range: rangeOf(selBand), status: WAVE_STATUS[wsel] || rangeOf(selBand),
+      statusCss: this.pill(WAVE_STATUS[wsel] || '', wsel === 0 ? '#22d3ee' : '#93c5fd', (wsel === 0 ? '#22d3ee' : '#60a5fa') + '1f'),
+      freeze: !!selFreeze, freezeLabel: selFreeze ? 'Lands inside your ' + selFreeze.label.toLowerCase() + ' freeze' : '',
+      freezeCss: this.pill(selFreeze ? 'Lands inside your ' + selFreeze.label.toLowerCase() + ' freeze' : '', '#f87171', 'rgba(248,113,113,.12)'),
+      tiles: [
+        { label: scopeCell ? 'changes in this square' : 'changes in this wave', value: String(scopeCell ? scopeCell[0] + scopeCell[1] + scopeCell[2] + scopeCell[3] : selTotal), tone: '#60a5fa' },
+        { label: 'stop something working', value: String(scopeCell ? Math.max(scopeCell[0], wBreaks.length) : Math.max(selT[0], namedBreaks(selBand))), tone: '#f87171' },
+        { label: 'need a decision', value: String(scopeCell ? Math.max(scopeCell[1], wQueue.length) : Math.max(selT[1], namedDue(selBand))), tone: '#fbbf24' },
+        { label: 'your people will notice', value: String(scopeCell ? scopeCell[2] : selT[2]), tone: '#a78bfa' }
+      ].map((t, ti) => ({
+        go: ti === 3 ? () => this.setState({ seenPanel: !S.seenPanel }) : () => {},
+        hint: ti === 3 ? (S.seenPanel ? 'Hide what they will see' : 'See what they will see') : '',
+        hintCss: 'font-size:10px;font-weight:700;color:' + (ti === 3 ? '#a78bfa' : 'transparent') + ';text-align:left',
+        label: t.value === '1' ? ({ 'changes in this square': 'change in this square', 'changes in this wave': 'change in this wave', 'stop something working': 'stops something working', 'need a decision': 'needs a decision', 'your people will notice': 'your people will notice' })[t.label] : t.label,
+        value: t.value,
+        css: 'display:flex;flex-direction:column;gap:2px;padding:11px 13px;border-radius:9px;border:1px solid ' + t.tone + '2e;border-left:3px solid ' + t.tone + ';background:rgba(2,6,23,.5);font-family:inherit;text-align:left;cursor:' + (ti === 3 ? 'pointer' : 'default'),
+        valueCss: 'font-size:22px;font-weight:800;letter-spacing:-.02em;line-height:1.05;color:' + t.tone
+      })),
+      noBreaks: wBreaks.length === 0, noDecisions: wQueue.length === 0, noQuiet: wNoAction.length === 0,
+      scoped: !!rmSel,
+      scopeLabel: rmSel ? ((selRow ? selRow.name + ' · ' : '') + this.BUCKETS[rmSel.i].label + ' ' + this.BUCKETS[rmSel.i].sub) : '',
+      scopeCss: this.pill('x', '#22d3ee', 'rgba(34,211,238,.12)'),
+      clearGo: () => this.setState({ rmSel: null }),
+      silent: String(scopeCell ? scopeCell[3] : selT[3]),
+      noticeLeft: notice.left + ' days left', noticeGiven: notice.given + ' days notice given',
+      noticeBarCss: 'width:' + noticePct + '%;height:100%;border-radius:2px;background:linear-gradient(90deg,#0078D4,#22d3ee)',
+      briefWaveGo: () => this.openForm({
+        kicker: 'Briefing · ' + selBand.wave, title: 'Brief the ' + selBand.wave.toLowerCase(),
+        intro: 'One page on this wave alone: what lands, what it costs to be ready, what happens if nothing is done. Written in consequences, not product names.',
+        submitLabel: 'Build the briefing', foot: 'Owners come from the service RACI, so every item on the page has a name against it.',
+        values: { audience: 'Board', include: true, note: '' },
+        fields: [
+          { k: 'audience', label: 'Written for', kind: 'pick', options: ['Board', 'Senior leadership', 'The whole business'] },
+          { k: 'include', label: 'Ownership', kind: 'toggle', toggleLabel: 'Name the owner against every item', hint: 'Reads from the M365 RACI below.' },
+          { k: 'note', label: 'Anything to lead with', kind: 'area', ph: 'e.g. we are getting ahead of legacy auth deliberately' }
+        ],
+        done: v => 'Briefing built for the ' + selBand.wave.toLowerCase() + ' — ' + wBreaks.length + ' breaking, ' + wQueue.length + ' to decide, written for the ' + v.audience.toLowerCase() + '.'
+      }),
+      seenPanel: !!S.seenPanel,
+      seenMeta: seenInScope.length + ' of ' + (scopeCell ? scopeCell[2] : selT[2]) + ' written up, with the announcement drafted',
+      seenGo: () => this.setState({ seenPanel: !S.seenPanel }),
+      quietMeta: 'no decision, no ticket, nothing to announce',
+      breakMeta: wBreaks.length ? wBreaks.length + ' named, read against your own configuration' : selT[0] + ' flagged by Microsoft, none matched to anything you run',
+      decideMeta: wQueue.length ? wQueue.length + ' with a date after which it is decided for you' : 'nothing expires in this window'
+    };
+
+    const q = S.query.trim().toLowerCase();
+    const shown = posts.filter(p => {
+      if (!match(p.id)) return false;
+      if (S.ownedOnly && p.owned.indexOf('Not licensed') >= 0) return false;
+      if (q && !(p.id + ' ' + p.title + ' ' + p.workload).toLowerCase().includes(q)) return false;
+      if (S.fWl !== 'All workloads' && p.workload.indexOf(S.fWl) < 0) return false;
+      if (S.fKind !== 'All kinds' && p.kind !== S.fKind) return false;
+      if (S.fImpact !== 'All impact' && p.impact !== S.fImpact) return false;
+      if (S.fWave !== 'All waves' && (this.BUCKETS[this.ITEM_BUCKET[p.id]] || {}).wave !== S.fWave) return false;
+      return true;
+    });
+    const rows = shown.map(p => {
+      const tone = this.impactTone(p.impact), st = this.scoreTone(p.score);
+      return {
+        id: p.id, title: p.title, workload: p.workload, owned: p.owned,
+        wlCss: this.pill(p.workload, this.WL[p.wl], this.WL[p.wl] + '14'),
+        kind: p.kind, kindCss: this.pill(p.kind, p.hard ? '#f87171' : '#94a3b8', 'rgba(148,163,184,.08)'),
+        score: String(p.score), scoreCss: 'font-size:14px;font-weight:800;letter-spacing:-.02em;color:' + st,
+        barCss: 'height:100%;width:' + p.score + '%;background:' + st,
+        when: p.when, countdown: ((this.BUCKETS[this.ITEM_BUCKET[p.id]] || {}).wave || p.countdown) + ' · ' + p.countdown,
+        countCss: 'font-size:10.5px;color:' + (p.score >= 65 ? '#fbbf24' : '#64748b'),
+        optOut: p.optOut, optCss: this.pill(p.optOut, p.optOut === 'None' ? '#f87171' : '#fbbf24', (p.optOut === 'None' ? '#f87171' : '#fbbf24') + '14'),
+        decision: snz[p.id] ? 'Snoozed' : dec[p.id] ? 'Decided' : p.decisions.length ? 'Acknowledged' : 'Not decided',
+        decCss: 'font-size:11.5px;font-weight:600;color:' + (snz[p.id] ? '#94a3b8' : dec[p.id] ? '#34d399' : p.decisions.length ? '#93c5fd' : '#fbbf24'),
+        go: () => openPost(p.id)
+      };
+    });
+    const noticeGroups = [];
+    rows.forEach(r => {
+      const w = (this.BUCKETS[this.ITEM_BUCKET[r.id]] || {}).wave || 'No date yet';
+      const g = noticeGroups.filter(x => x.wave === w)[0];
+      if (g) g.rows.push(r); else noticeGroups.push({ wave: w, rows: [r], order: this.ITEM_BUCKET[r.id] === undefined ? 99 : this.ITEM_BUCKET[r.id] });
+    });
+    noticeGroups.sort((a, b) => a.order - b.order).forEach(g => {
+      g.count = g.rows.length + (g.rows.length === 1 ? ' notice' : ' notices');
+      g.headCss = 'display:flex;align-items:baseline;gap:10px;padding:10px 16px;border-bottom:1px solid rgba(30,41,59,.7);background:rgba(96,165,250,.06);min-width:920px';
+    });
+
+    const selects = [
+      { label: 'Workload', value: S.fWl, options: ['All workloads', 'Exchange Online', 'Microsoft Teams', 'SharePoint', 'Entra ID', 'Purview', 'Copilot'], onChange: e => this.setState({ fWl: e.target.value }) },
+      { label: 'Kind', value: S.fKind, options: ['All kinds', 'Enforcement', 'Retirement', 'Rollout', 'Feature'], onChange: e => this.setState({ fKind: e.target.value }) },
+      { label: 'Impact', value: S.fImpact, options: ['All impact', 'Hits you', 'Might hit you', 'No impact'], onChange: e => this.setState({ fImpact: e.target.value }) },
+      { label: 'Wave', value: S.fWave, options: ['All waves'].concat(this.BUCKETS.filter((b, i, a) => a.findIndex(x => x.wave === b.wave) === i).map(b => b.wave)), onChange: e => this.setState({ fWave: e.target.value }) }
+    ];
+
+    const reversed = this.REVERSED.map(r => ({
+      id: r.id, title: r.title, what: r.what, cost: r.cost, keep: r.keep, at: r.at, tag: r.tag,
+      tagCss: this.pill(r.tag, r.tone, r.tone + '14'),
+      cardCss: 'display:flex;flex-direction:column;gap:8px;padding:16px 18px;border:1px solid ' + r.tone + '30;border-left:3px solid ' + r.tone + ';border-radius:12px;background:#0b1524;min-width:0'
+    }));
+
+    const NUMWORD = ['No', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten'];
+    const soonCount = QUEUE.filter(q => /September|October/.test(q.due)).length;
+    const sepT = [1, 2].reduce((a, i) => [a[0] + bTotals[i][0], a[1] + bTotals[i][1], a[2] + bTotals[i][2], a[3] + bTotals[i][3]], [0, 0, 0, 0]);
+    const sepB = sepT[0], sepD = sepT[1], sepV = sepT[2], sepS = sepT[3], sepN = sepB + sepD + sepV + sepS;
+
+    const digest = {
+      subject: NUMWORD[QUEUE.length] + ' decision' + (QUEUE.length === 1 ? '' : 's') + ', ' + NUMWORD[soonCount].toLowerCase() + ' landing in five weeks, one Microsoft reversal',
+      to: 'Priya Raman · IT team · Shane McCaw', when: 'Monday 24 August, 07:00',
+      blocks: [
+        { head: 'The September wave lands in five weeks · ' + sepN + ' changes', tone: '#22d3ee', lines: [
+          sepB + (sepB === 1 ? ' breaks something' : ' break something') + ' with a named system and a named date in this tenant.',
+          sepD + (sepD === 1 ? ' needs a decision' : ' need a decision') + ' before it lands, and two of those close their opt-out first.',
+          sepV + ' will be visible to your people. None of them has been announced yet.',
+          'The remaining ' + sepS + ' are silent — back-end and capacity work, each carrying the query that dismissed it.'
+        ] },
+        { head: 'Needs a decision from you', tone: '#f87171', lines: QUEUE.map(q => q.id + ' — ' + q.decision.replace(/\.$/, '') + '. ' + q.kind + ' ' + q.due + '.') },
+        { head: 'Landing in the next thirty days', tone: '#fbbf24', lines: [
+          'MC1049877 · 22 September · SharePoint and OneDrive sharing defaults.',
+          'MC1051144 · 26 September · Teams anonymous join, inside your ERP freeze.'
+        ] },
+        { head: 'Microsoft changed something it already told you', tone: '#a78bfa', lines: [
+          'MC1041902 — the EWS throttling date moved for the third time, now January 2027. Watch it, do not plan to it.'
+        ] },
+        { head: 'Your people will see these, and have not been told', tone: '#a78bfa', lines: [
+          'MC1067201 · 6 October · a Copilot button appears in every Teams chat. You do not licence Copilot. Expect 40–80 tickets if nobody says so first.',
+          'MC1070855 · 9 November · new Outlook becomes the default. Finance lose two add-ins.',
+          'MC1049877 · 22 September · the Share dialog changes and picks a different link type.'
+        ] },
+        { head: 'Filed, no action needed', tone: '#34d399', lines: [
+          'MC1057733 — Purview portal move. Four screenshots in the evidence pack to re-take at the next refresh.'
+        ] }
+      ],
+      foot: 'Scored against your tenant configuration on 24 August. Anything above 80 is sent the day it is published rather than waiting for Monday.'
+    };
+    digest.blocks = digest.blocks.map(b => ({
+      head: b.head,
+      headCss: 'font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:' + b.tone,
+      lines: b.lines.map(t => ({ text: t, dotCss: 'flex:0 0 auto;margin-top:6px;width:5px;height:5px;border-radius:50%;background:' + b.tone }))
+    }));
+    const digestRules = this.DIGEST_RULES;
+
+    const cur = posts.filter(p => p.id === S.openId)[0] || posts[0];
+    const secDef = this.SECS.filter(s => s.key === S.sec)[0] || this.SECS[0];
+    const tone = this.impactTone(cur.impact);
+    const wrap = 'display:flex;flex-direction:column;gap:12px;padding:15px 17px;border:1px solid rgba(30,41,59,.9);border-radius:11px;background:#0b1524;min-width:0';
+    const B = o => Object.assign({ wrapCss: wrap, head: '', hint: '', isProse: false, isFields: false, isCompare: false, isChecks: false, isPhases: false, isTimeline: false, isLinked: false, isThread: false, isControls: false }, o);
+    const F = (label, value) => ({ label: label, value: value, css: 'font-size:12.5px;color:#e2e8f0;line-height:1.6;text-wrap:pretty' });
+
+    const thread = (cur.thread || []).concat(((S.threadOv || {})[cur.id]) || []);
+    let blocks = [];
+    if (secDef.key === 'ms') blocks = [
+      B({ head: 'As published by Microsoft', hint: cur.id + ' · ' + cur.roadmapId, isProse: true, text: cur.ms, textCss: 'font-size:12.5px;color:#cbd5e1;line-height:1.75;font-family:Georgia,serif;text-wrap:pretty' }),
+      B({ head: 'Why it is kept verbatim', isProse: true, text: 'Because Microsoft edits these after publication and the edit is often the part that matters. This is the text as it stands today; section 10 lists every change made to it since it was first published.', textCss: 'font-size:12px;color:#94a3b8;line-height:1.65;text-wrap:pretty' })
+    ];
+    if (secDef.key === 'plain') blocks = [B({ head: 'In plain terms', isProse: true, text: cur.plain, textCss: 'font-size:13.5px;color:#e2e8f0;line-height:1.75;text-wrap:pretty' })];
+    if (secDef.key === 'tenant') blocks = [B({
+      head: 'Microsoft says, your tenant says', hint: 'Evidence, not opinion', isCompare: true,
+      msSays: cur.msSays, youSay: cur.youSay, evidenceNote: cur.evidenceNote,
+      evidence: cur.evidence.map(e => ({ q: e.q, a: e.a, aCss: 'font-size:12px;font-weight:700;line-height:1.5;color:' + (e.bad ? '#f87171' : '#34d399') }))
+    })];
+    if (secDef.key === 'blast') blocks = [
+      B({ head: 'In your tenant', isFields: true, fields: [F('Scope', cur.seats), F('Impact score', cur.score + ' of 100'), F('Licence coverage', cur.owned), F('Workload', cur.workload)] }),
+      B({ head: 'How the score is built', isProse: true, text: 'Blast radius, whether failure is silent, how reversible it is, and how much notice you have. A high score is not Microsoft being reckless — it is your configuration meeting their date.', textCss: 'font-size:12px;color:#94a3b8;line-height:1.65;text-wrap:pretty' })
+    ];
+    if (secDef.key === 'opt') blocks = [
+      B({ head: 'Your choice', isFields: true, fields: [F('Opt-out or override', cur.optOut), F('Deadline', cur.when), F('Time left', cur.countdown)] }),
+      B({ head: 'What that means here', isProse: true, text: cur.optOutNote, textCss: 'font-size:12.5px;color:#cbd5e1;line-height:1.7;text-wrap:pretty' })
+    ];
+    if (secDef.key === 'ignore') blocks = [B({ head: 'The version where nobody reads this', isProse: true, text: cur.ignore, textCss: 'font-size:13px;color:#e2e8f0;line-height:1.75;text-wrap:pretty' })];
+    if (secDef.key === 'cr') blocks = [
+      B({ head: cur.crCode ? 'Raised' : 'Suggested', hint: cur.crCode ? cur.crCode + ' · ' + cur.crState : 'Nothing raised yet', isProse: true, text: cur.crNote, textCss: 'font-size:12.5px;color:#cbd5e1;line-height:1.7;text-wrap:pretty' }),
+      B({ head: 'Linked records', isLinked: true, links: (cur.crCode ? [{ id: cur.crCode, title: cur.title, note: 'Change request · ' + cur.crState + '. Opens on the change control page with this notice attached as the reason.', tag: cur.crState, tone: '#fbbf24' }] : []).concat(cur.controls.length ? [{ id: 'Controls', title: cur.controls.join(' · '), note: 'Compliance controls this notice is tied to. If the notice lands, these are the controls that move.', tag: cur.controls.length + ' tagged', tone: '#2dd4bf' }] : []).map(l => ({
+        id: l.id, title: l.title, note: l.note, tag: l.tag,
+        idCss: 'flex:0 0 auto;font-size:10.5px;font-weight:700;color:#93c5fd;font-family:\'SF Mono\',Menlo,Consolas,monospace;padding:2px 6px;border-radius:4px;background:rgba(96,165,250,.1);border:1px solid rgba(96,165,250,.2)',
+        tagCss: this.pill(l.tag, l.tone, l.tone + '14'),
+        go: () => this.t(l.id === 'Controls' ? 'Opens the compliance pillar filtered to these controls.' : l.id + ' opens on the change control page, with ' + cur.id + ' linked as the reason it exists.')
+      })) })
+    ];
+    if (secDef.key === 'phases') blocks = [B({
+      head: 'Rollout', hint: cur.roadmapId, isPhases: true,
+      phases: cur.phases.map((p, i) => ({
+        name: p.name, when: p.when, note: p.note,
+        cardCss: 'display:flex;flex-direction:column;gap:4px;padding:12px 13px;border:1px solid ' + (i === cur.phases.length - 1 ? tone + '40' : 'rgba(30,41,59,.9)') + ';border-radius:10px;background:rgba(2,6,23,.45)',
+        nameCss: 'font-size:9.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:' + (i === cur.phases.length - 1 ? tone : '#64748b')
+      }))
+    })];
+    if (secDef.key === 'told') blocks = [
+      B({ head: 'Who Microsoft told', isProse: true, text: cur.toldMs, textCss: 'font-size:12.5px;color:#cbd5e1;line-height:1.7;text-wrap:pretty' }),
+      B({ head: 'Who you told', isProse: true, text: cur.toldYou, textCss: 'font-size:12.5px;color:#e2e8f0;line-height:1.7;text-wrap:pretty' }),
+      B({ head: 'The gap', isProse: true, text: 'Microsoft notifies administrators. The people affected by a change are almost never administrators, which is why a notice can be delivered perfectly and still reach nobody who needed it.', textCss: 'font-size:12px;color:#94a3b8;line-height:1.65;text-wrap:pretty' })
+    ];
+    if (secDef.key === 'history') blocks = [
+      B({ head: 'Every edit since publication', hint: cur.history.length + (cur.history.length === 1 ? ' entry' : ' entries'), isTimeline: true, events: cur.history.map((h, i) => ({ at: h.at, what: h.what, detail: h.detail, dotCss: 'margin-top:5px;width:7px;height:7px;border-radius:50%;background:' + (i === 0 ? '#64748b' : '#fbbf24') })) }),
+      B({ head: 'Why this section exists', isProse: true, text: 'A Message Center post is not a document, it is a living page. Dates move, scope widens, exemptions vanish — and none of it generates a new notice. If you planned against an older version, this is where you find out.', textCss: 'font-size:12px;color:#94a3b8;line-height:1.65;text-wrap:pretty' })
+    ];
+    if (secDef.key === 'log') blocks = [
+      B({ head: 'Decision log', isTimeline: true, events: (cur.decisions.length ? cur.decisions : [{ at: 'No decision yet', what: 'Nobody has taken a position on this notice', detail: 'Reading it is not deciding. Record a position and it becomes evidence rather than a memory.' }]).map(d => ({ at: d.at ? d.at.split(' · ')[0] : '', what: d.what || d.at, detail: d.detail || (d.at && d.at.split(' · ')[1] ? 'by ' + d.at.split(' · ')[1] : ''), dotCss: 'margin-top:5px;width:7px;height:7px;border-radius:50%;background:#34d399' })) }),
+      B({ head: 'Compliance controls', isControls: true, controls: (cur.controls.length ? cur.controls : ['No control tagged']).map(c => ({ label: c, css: this.pill(c, '#2dd4bf', 'rgba(45,212,191,.1)') })), tagGo: () => this.openForm({
+        kicker: 'Compliance', title: 'Tag a control on ' + cur.id, intro: 'Tagging a notice to a control means the control shows this notice as a reason it might move — which is the question an auditor actually asks.',
+        submitLabel: 'Tag it', values: { control: 'ISO 27001 A.9.4.2', note: '' },
+        fields: [
+          { k: 'control', label: 'Control', kind: 'select', options: ['ISO 27001 A.9.4.2', 'ISO 27001 A.13.1.3', 'Cyber Essentials Plus · authentication', 'Cyber Essentials Plus · admin access', 'Copilot readiness gate', 'CMP-011 · external access'], req: true },
+          { k: 'note', label: 'How this notice affects it', kind: 'area', req: true }
+        ],
+        done: v => cur.id + ' tagged to ' + v.control + '. The control now lists this notice as a reason it may move.'
+      }) }),
+      B({ head: 'Thread with your architect', hint: thread.length ? thread.length + ' messages' : 'Nothing asked yet', isThread: true, askGo: () => this.askForm(cur), msgs: thread.map(m => ({
+        who: m.who, at: m.at, text: m.text,
+        wrapCss: 'display:flex;flex-direction:column;gap:4px;padding:12px 13px;border:1px solid ' + (m.mine ? 'rgba(148,163,184,.2)' : 'rgba(0,120,212,.28)') + ';border-radius:9px;background:' + (m.mine ? 'rgba(2,6,23,.45)' : 'rgba(0,120,212,.06)'),
+        whoCss: 'font-size:11.5px;font-weight:700;color:' + (m.mine ? '#cbd5e1' : '#93c5fd')
+      })) })
+    ];
+
+    const acts = [];
+    if (cur.crCode) acts.push({ label: 'Open ' + cur.crCode, tone: '#93c5fd', border: 'rgba(0,120,212,.4)', bg: 'rgba(0,120,212,.1)', go: () => this.t(cur.crCode + ' opens on the change control page, linked to ' + cur.id + '.') });
+    else acts.push({ label: 'Raise a change request', tone: '#fff', border: '#0078D4', bg: '#0078D4', go: () => this.crForm(cur) });
+    acts.push({ label: dec[cur.id] ? 'Decision recorded' : 'Record a decision', tone: dec[cur.id] ? '#34d399' : '#fbbf24', border: dec[cur.id] ? 'rgba(52,211,153,.35)' : 'rgba(251,191,36,.4)', bg: 'transparent', go: () => this.ackForm(cur) });
+    acts.push({ label: snz[cur.id] ? 'Snoozed · ' + snz[cur.id] : 'Snooze', tone: '#94a3b8', border: 'rgba(148,163,184,.24)', bg: 'transparent', go: () => this.snoozeForm(cur) });
+
+    return {
+      waveNav, wSel, wBreaks, wQueue, wNoAction,
+      ownershipLine: 'Every change on this page inherits four names — responsible, accountable, consulted, informed — from its service.',
+      ownerChips: raci.slice(0, 4).map(r => ({ label: r.name.split(' &')[0].split(' ·')[0] + ' · ' + r.r, css: this.pill(r.name + ' · ' + r.r, r.gap ? '#f87171' : '#94a3b8', 'rgba(148,163,184,.08)') })),
+      raciGapNote: raci.filter(r => r.gap).length, wSeen: seenInScope, past, isPast: !!past,
+      scanAt: this.SCAN_AT, isLive: !past,
+      pastNav: this.LANDED.map((w, i) => ({
+        name: w.name, range: w.range, verdict: w.verdict, count: String(w.items),
+        go: () => this.setState({ past: i, rmSel: null, seenPanel: false }),
+        css: 'display:flex;flex-direction:column;gap:4px;padding:9px 12px 10px;border-radius:9px;cursor:pointer;font-family:inherit;text-align:left;border:1px solid ' + (S.past === i ? 'rgba(148,163,184,.4)' : 'transparent') + ';border-left:3px solid ' + (S.past === i ? '#94a3b8' : 'rgba(148,163,184,.18)') + ';background:' + (S.past === i ? 'rgba(148,163,184,.08)' : 'transparent'),
+        nameCss: 'font-size:12px;font-weight:' + (S.past === i ? '800' : '600') + ';color:' + (S.past === i ? '#e2e8f0' : '#94a3b8'),
+        rangeCss: 'font-size:10.5px;color:#64748b',
+        verdictCss: 'font-size:10px;font-weight:600;color:' + (w.tone === '#f87171' ? '#f87171' : '#34d399')
+      })),
+      rescanGo: () => this.t('Tenant scan queued — Graph read takes about four minutes. Everything on this page will re-read against the result.'), nav, stats, breakers, months, freezeBands, lanes, legend, queue, rows, selects, reversed, digest, digestRules,
+      funnel, sched, schedHead, groups, cellDrill, cellDrillOpen: !!cd,
+      waves, river, headCells, density, rmLegend, rmDrill, rmDrillOpen: !!rmSel,
+      rmTotal: String(grand), rmBreak: String(grandB), rmDecide: String(grandD), rmSeen: String(grandV),
+      drillOpen, drillRule: drillDef ? drillDef.rule : '', drillLabel: drillDef ? drillDef.label : '',
+      drillN: drillDef ? drillDef.n : '', drillBreakdown: drillDef ? drillDef.breakdown : [],
+      drillSamples: drillDef ? (funnel.filter(f => f.key === drill)[0] || {}).samples || [] : [],
+      drillMore: drillDef ? (funnel.filter(f => f.key === drill)[0] || {}).moreLabel : '',
+      closeDrill: () => this.setState({ drill: null }),
+      seenRows, noticeGroups, postOpen: !!S.openId,
+      noRows: rows.length === 0,
+      rowCount: rows.length + ' of ' + posts.length + ' notices' + (S.ownedOnly ? ' · licensed only' : '') + (S.fWave === 'All waves' ? '' : ' · ' + S.fWave),
+      query: S.query, onQuery: e => this.setState({ query: e.target.value }),
+      ownedGo: () => this.setState({ ownedOnly: !S.ownedOnly }),
+      ownedLabel: S.ownedOnly ? 'Only what you licence' : 'Everything Microsoft sends',
+      ownedCss: 'align-self:flex-end;padding:7px 12px;border-radius:7px;font-size:11px;font-weight:700;font-family:inherit;white-space:nowrap;cursor:pointer;border:1px solid ' + (S.ownedOnly ? 'rgba(52,211,153,.4)' : 'rgba(148,163,184,.22)') + ';background:' + (S.ownedOnly ? 'rgba(52,211,153,.08)' : 'transparent') + ';color:' + (S.ownedOnly ? '#34d399' : '#94a3b8'),
+      filterOn: !!SF, filterLabel: SF ? 'Filtered by ' + (statDefs.filter(x => x.key === SF)[0] || {}).label : '',
+      clearFilter: () => this.setState({ statFilter: null }),
+      backGo: () => this.setState({ openId: null }),
+      backLabel: '← Close',
+      post: {
+        id: cur.id, title: cur.title, kind: cur.kind, workload: cur.workload, when: cur.when, countdown: cur.countdown,
+        impactLabel: cur.impact + ' · ' + cur.score,
+        impactPill: this.pill(cur.impact + ' · ' + cur.score, tone, tone + '14'),
+        kindPill: this.pill(cur.kind, cur.hard ? '#f87171' : '#94a3b8', 'rgba(148,163,184,.08)'),
+        wlPill: this.pill(cur.workload, this.WL[cur.wl], this.WL[cur.wl] + '14'),
+        acts: acts.map(a => ({ label: a.label, go: a.go, css: 'padding:9px 15px;border-radius:7px;font-size:12px;font-weight:700;font-family:inherit;white-space:nowrap;cursor:pointer;border:1px solid ' + a.border + ';background:' + a.bg + ';color:' + a.tone })),
+        actNote: snz[cur.id] ? 'Snoozed until ' + snz[cur.id].toLowerCase() + '. It comes back before the deadline, and sooner if Microsoft edits the post.' : dec[cur.id] ? 'Decision on record: ' + dec[cur.id].toLowerCase() + '.' : 'No decision on record yet. Reading a notice is not deciding on it.',
+        facts: [
+          { label: 'Lands', value: cur.when }, { label: 'Opt-out', value: cur.optOut },
+          { label: 'Scope', value: cur.seats }, { label: 'Roadmap', value: cur.roadmapId },
+          { label: 'Edits since publishing', value: String(cur.history.length - 1) }, { label: 'Licence', value: cur.owned }
+        ].map(f => ({ label: f.label, value: f.value, css: 'font-size:12px;font-weight:600;color:#e2e8f0;line-height:1.45' })),
+        rail: this.SECS.map(s => ({
+          num: s.num, label: s.label, go: () => this.setState({ sec: s.key }),
+          css: 'display:flex;align-items:center;gap:9px;width:100%;text-align:left;padding:9px 10px;border:none;border-radius:7px;cursor:pointer;font-family:inherit;background:' + (s.key === S.sec ? 'rgba(0,120,212,.16)' : 'transparent'),
+          numCss: 'flex:0 0 auto;font-size:9.5px;font-weight:700;font-family:\'SF Mono\',Menlo,Consolas,monospace;color:' + (s.key === S.sec ? '#93c5fd' : '#475569'),
+          labelCss: 'flex:1;min-width:0;font-size:12px;font-weight:' + (s.key === S.sec ? '700' : '500') + ';color:' + (s.key === S.sec ? '#f1f5f9' : '#94a3b8') + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap'
+        }))
+      },
+      sec: { num: secDef.num, label: secDef.label, intro: secDef.intro, blocks: blocks },
+      briefGo: () => this.openForm({
+        kicker: 'Board briefing', title: 'Build a board briefing', intro: 'One page in the language of consequences rather than product names. What Microsoft is doing to this tenant, what being ready costs, and what happens if nothing is done.',
+        submitLabel: 'Build it', foot: 'No MC numbers on the page. They go in an appendix nobody will read, which is where they belong.',
+        values: { period: 'Next quarter', tone2: 'Plain English, no product names', include: true },
+        fields: [
+          { k: 'period', label: 'Period', kind: 'pick', options: ['Next 30 days', 'Next quarter', 'Next twelve months'], req: true },
+          { k: 'tone2', label: 'Register', kind: 'pick', options: ['Plain English, no product names', 'Technical, for your IT team'], req: true },
+          { k: 'include', label: 'Include', kind: 'toggle', toggleLabel: 'Include what it costs to be ready, and what doing nothing costs', req: false }
+        ],
+        done: v => 'Briefing built for the ' + v.period.toLowerCase() + ' — four notices, three decisions, one reversal' + (v.include ? ', with the cost of readiness against the cost of doing nothing.' : '.')
+      }),
+      digestGo: () => this.openForm({
+        kicker: 'Digest', title: 'Change the Monday digest', intro: 'The digest is the only reason any of this gets read. Keep it short enough that it does.',
+        submitLabel: 'Save the digest',
+        values: { day: 'Monday 07:00', to: 'Priya Raman · IT team · Shane McCaw', floor: 'Skip no-impact unless it touches a control', urgent: true },
+        fields: [
+          { k: 'day', label: 'When', kind: 'pick', options: ['Monday 07:00', 'Friday 16:00', 'First Monday of the month'], req: true },
+          { k: 'to', label: 'Recipients', kind: 'text', req: true },
+          { k: 'floor', label: 'What to leave out', kind: 'pick', options: ['Skip no-impact unless it touches a control', 'Skip everything under 40', 'Send everything'], req: true },
+          { k: 'urgent', label: 'Out of band', kind: 'toggle', toggleLabel: 'Send anything scored above 80 the day it is published', req: false }
+        ],
+        done: v => 'Digest set for ' + v.day + ' to ' + v.to + '.' + (v.urgent ? ' Anything above 80 goes out the same day.' : '')
+      }),
+      servicesGo: () => this.servicesForm(),
+      servicesLabel: 'Services · ' + this.SCANS.filter(sc => svcOn(sc.wl)).length + ' of ' + this.SCANS.length,
+      formOpen: !!S.form, formFields,
+      formKicker: fcfg ? fcfg.kicker : '', formTitle: fcfg ? fcfg.title : '', formIntro: fcfg ? fcfg.intro : '',
+      formFoot: fcfg ? (fcfg.foot || '') : '',
+      formBlocked: formMissing > 0,
+      formSubmitLabel: formMissing ? 'Fill ' + formMissing + ' required field' + (formMissing === 1 ? '' : 's') : (fcfg ? fcfg.submitLabel : ''),
+      formSubmitCss: 'padding:9px 15px;border-radius:7px;font-size:12px;font-weight:700;font-family:inherit;white-space:nowrap;border:1px solid ' + (formMissing ? 'rgba(148,163,184,.18)' : '#0078D4') + ';background:' + (formMissing ? 'transparent' : '#0078D4') + ';color:' + (formMissing ? '#475569' : '#fff') + ';cursor:' + (formMissing ? 'not-allowed' : 'pointer'),
+      formSubmit: () => { if (!formMissing) this.submitForm(); },
+      closeForm: () => this.setState({ form: null }),
+      toast: S.toast, clearToast: () => this.setState({ toast: '' })
+    };
+  }
+}
+
+</script>
+</body>
+</html>
