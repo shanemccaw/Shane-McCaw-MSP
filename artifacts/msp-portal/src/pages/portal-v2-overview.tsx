@@ -1,113 +1,484 @@
 /**
- * portal-v2-overview.tsx — the tenant health Overview for the isolated
- * Customer Portal v2 build.
+ * portal-v2-overview.tsx — the Tenant health overview.
  *
- * Every number on this page comes from
- * `GET /api/portal/assessment/war-room-pillars` via `usePortalV2Pillars`, which
- * wraps the existing `useWarRoomPillarStats` hook. Nothing is scored, ranked or
- * defaulted here that the engine did not already state.
+ * REBUILT to the current design ('Customer Portal Shell.dc.html' 381-550).
  *
- * The Copilot Gate readout is the payload's own `copilot` card — the same
- * `computePillarDisplayScore` number the live surfaces use — measured against
- * `COPILOT_GATE_TARGET`, which is the single gate constant (mirrored
- * server-side in copilot-gate.ts, each side asserted by its own test).
+ * ── Why it was rebuilt rather than adjusted ────────────────────────────────
+ * The round-one page was a Copilot gate band, six rich pillar cards and a "Most
+ * Urgent" list. The design moved: it is now a scan band carrying drift chips
+ * and an evidence pack, a COMPACT six-across pillar strip, and an "Everything
+ * in motion" section that puts every pipeline in the tenant on one screen. A
+ * copy-coverage audit (scripts/audit-portal-fidelity.mts) put the old page at
+ * 44% of this design — it had never been rebuilt after the design changed.
+ *
+ * ── What is real ──────────────────────────────────────────────────────────
+ * The pillar strip is LIVE: scores, finding counts and the replayed trend all
+ * come from GET /api/portal/assessment/war-room-pillars via usePortalV2Pillars,
+ * exactly as before. The design hardcodes each pillar's delta and sub-line; both
+ * are derived here from the real payload instead — see overviewModel's
+ * pillarDelta / pillarStripSub, and the one place that is deliberately NOT
+ * reproduced (Licensing's "$2,280/mo reclaimable", which we cannot derive and
+ * will not invent).
+ *
+ * Everything else on the page is design content with no endpoint behind it,
+ * held in overviewData.ts so it can be swapped in one place.
+ *
+ * ── The Copilot gate is NOT on this page any more ─────────────────────────
+ * The design's overview has no gate band; the gate lives on its own `copilot`
+ * page, which is not built. The band is removed rather than left orphaned at
+ * the top of a page the design gives a different shape — but that means the
+ * gate has no surface at all until /portal-v2/copilot exists. Recorded so it is
+ * a known consequence rather than a silent loss.
  */
 
+import { useState } from "react";
 import { Link } from "wouter";
-import { Loader2 } from "lucide-react";
+import { ChevronDown, Loader2 } from "lucide-react";
 
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  COPILOT_GATE_TARGET,
-  gateLabel,
-  hexAlpha,
-} from "@/components/copilot-journey/journeyTokens";
-
-import { PortalV2Shell, PillarGlyph } from "@/components/portal-v2/PortalV2Shell";
-import {
-  Eyebrow,
-  EmptyNote,
-  Panel,
-  PanelTitle,
-  ScoreBlock,
-  SeverityChip,
-  TrendLine,
-} from "@/components/portal-v2/PortalV2Pieces";
+import { PortalV2Shell } from "@/components/portal-v2/PortalV2Shell";
 import { usePortalV2Pillars } from "@/components/portal-v2/usePortalV2Pillars";
-import { evaluationNote } from "@/components/portal-v2/portalV2Model";
+import { hexAlpha } from "@/components/copilot-journey/journeyTokens";
+import {
+  OV_CR_PIPELINE,
+  OV_DRIFT_CHIPS,
+  OV_EVIDENCE_ROWS,
+  OV_HEADLINE_MAIN,
+  OV_HEADLINE_SUB,
+  OV_LAST_SCAN,
+  OV_MC_INCOMING,
+  OV_NEXT_SCAN,
+  OV_POLICY_DECISIONS,
+  PJ_CONTRACT_END,
+  PJ_CURRENT_WEEKS,
+  PJ_TODAY,
+  PJ_WEEKS,
+} from "@/components/portal-v2/overviewData";
+import {
+  crLanes,
+  flaggedPolicyCount,
+  laneTrackBackground,
+  mcLanes,
+  pdLanes,
+  pillarDelta,
+  pillarDeltaLabel,
+  pillarDeltaTone,
+  pillarStripSub,
+  pjPct,
+  pjRows,
+  sectionCount,
+  type Lane,
+} from "@/components/portal-v2/overviewModel";
 
-function GateBand({
-  score,
-  scanning,
-}: {
-  score: number | null;
-  scanning: boolean;
-}) {
-  // A gate verdict on a score the engine never stated would be a fabricated
-  // Go/No-Go. Say so instead.
-  if (score === null) {
+const MONO = "'SF Mono',Menlo,Consolas,monospace";
+
+/** The 9.5px/700/.2em uppercase kicker the page's bands open with. */
+function Kicker({ colour, children }: { colour: string; children: React.ReactNode }) {
+  return (
+    <span
+      style={{
+        fontSize: "9.5px",
+        fontWeight: 700,
+        letterSpacing: ".2em",
+        textTransform: "uppercase",
+        color: colour,
+      }}
+    >
+      {children}
+    </span>
+  );
+}
+
+/* ── A lane's mini gantt bar — prototype 481-491 ─────────────────────────── */
+
+function LaneBar({ lane }: { lane: Lane }) {
+  if (lane.bar.unscheduled) {
     return (
-      <Panel className="p-6">
-        <Eyebrow>Copilot gate</Eyebrow>
-        <p
-          className="mt-2 text-[15px] font-semibold"
-          style={{ color: "var(--pv2-heading)" }}
-          data-testid="pv2-gate-unavailable"
-        >
-          No gate score yet
-        </p>
-        <p className="mt-1.5 text-[12.5px]" style={{ color: "var(--pv2-muted)" }}>
-          {scanning
-            ? "A scan is running now. The gate resolves when it finishes."
-            : "The Copilot pillar has not been evaluated for your tenant yet."}
-        </p>
-      </Panel>
+      <span
+        style={{
+          justifySelf: "end",
+          alignSelf: "flex-end",
+          fontSize: "9.5px",
+          fontWeight: 700,
+          color: "#f87171",
+          letterSpacing: ".05em",
+          textTransform: "uppercase",
+        }}
+      >
+        Unscheduled
+      </span>
     );
   }
-
-  const cleared = score >= COPILOT_GATE_TARGET;
-  const colour = cleared ? "#34d399" : "#fbbf24";
-
   return (
-    <Panel className="p-6" accent={colour}>
-      <Eyebrow>Copilot gate</Eyebrow>
-      <div className="mt-2 flex items-baseline gap-2">
-        <span
-          className="pv2-num text-[34px] font-extrabold leading-none tracking-[-0.02em]"
-          style={{ color: "var(--pv2-heading)" }}
-          data-testid="pv2-gate-score"
-        >
-          {score}
-        </span>
-        <span
-          className="pv2-num text-[15px] font-semibold"
-          style={{ color: "var(--pv2-deemphasised)" }}
-        >
-          / {COPILOT_GATE_TARGET}
-        </span>
-      </div>
-      <p
-        className="mt-2 inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-bold"
+    <>
+      <div
         style={{
-          background: hexAlpha(colour, 0.14),
-          color: colour,
-          border: `1px solid ${hexAlpha(colour, 0.4)}`,
+          position: "relative",
+          height: 22,
+          borderRadius: 5,
+          background: laneTrackBackground(lane.bar.weekStepPct),
         }}
-        data-testid="pv2-gate-verdict"
       >
-        {gateLabel(score)}
-      </p>
-    </Panel>
+        <div
+          style={{
+            position: "absolute",
+            left: `${lane.bar.todayLeft}%`,
+            top: -2,
+            bottom: -2,
+            width: 1,
+            background: "rgba(34,211,238,.5)",
+          }}
+        />
+        <div
+          style={{
+            position: "absolute",
+            top: 3,
+            bottom: 3,
+            left: `${lane.bar.left}%`,
+            width: `${lane.bar.width}%`,
+            borderRadius: 4,
+            background: lane.fill ?? lane.tone,
+            opacity: 0.85,
+          }}
+        />
+      </div>
+      <span
+        style={{
+          alignSelf: "flex-end",
+          fontSize: "9.5px",
+          color: "#64748b",
+          fontFamily: MONO,
+        }}
+      >
+        {lane.dateLabel}
+      </span>
+    </>
+  );
+}
+
+function LaneRow({ lane, href }: { lane: Lane; href: string }) {
+  return (
+    <Link
+      href={href}
+      data-testid={`pv2-ov-lane-${lane.key}`}
+      style={{
+        display: "grid",
+        gridTemplateColumns: "minmax(0,1fr) 108px",
+        gap: 10,
+        alignItems: "center",
+        padding: "7px 6px",
+        borderTop: "1px solid rgba(30,41,59,.7)",
+        background: "none",
+        cursor: "pointer",
+        fontFamily: "inherit",
+        textAlign: "left",
+        width: "100%",
+        textDecoration: "none",
+      }}
+    >
+      <div style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0 }}>
+        <span
+          style={{
+            fontSize: "12px",
+            fontWeight: 600,
+            color: "#e2e8f0",
+            lineHeight: 1.4,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {lane.title}
+        </span>
+        {lane.note && (
+          <span
+            style={{
+              fontSize: "10.5px",
+              color: "#64748b",
+              lineHeight: 1.4,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {lane.note}
+          </span>
+        )}
+      </div>
+      <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 3 }}>
+        <LaneBar lane={lane} />
+      </div>
+    </Link>
+  );
+}
+
+/* ── One "Everything in motion" card — prototype 465-543 ─────────────────── */
+
+function MotionSection({
+  id,
+  label,
+  countLabel,
+  linkLabel,
+  href,
+  fullWidth,
+  children,
+}: {
+  id: string;
+  label: string;
+  countLabel: string;
+  linkLabel: string;
+  href: string;
+  fullWidth?: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div
+      data-testid={`pv2-ov-section-${id}`}
+      style={{
+        border: "1px solid rgba(30,41,59,.9)",
+        borderRadius: 12,
+        background: "rgba(15,23,42,.35)",
+        overflow: "hidden",
+        gridColumn: fullWidth ? "1 / -1" : undefined,
+      }}
+    >
+      <button
+        onClick={() => setOpen((v) => !v)}
+        data-testid={`pv2-ov-toggle-${id}`}
+        aria-expanded={open}
+        style={{
+          width: "100%",
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          padding: "13px 16px",
+          border: "none",
+          background: "none",
+          cursor: "pointer",
+          fontFamily: "inherit",
+          textAlign: "left",
+        }}
+      >
+        <span
+          style={{
+            display: "flex",
+            flex: "0 0 auto",
+            color: "#64748b",
+            transform: `rotate(${open ? 180 : 0}deg)`,
+            transition: "transform 180ms",
+          }}
+        >
+          <ChevronDown size={12} />
+        </span>
+        <span style={{ flex: 1, fontSize: "12.5px", fontWeight: 700, color: "#f1f5f9" }}>
+          {label}
+        </span>
+        <span style={{ fontSize: "10.5px", color: "#64748b", fontFamily: MONO }}>{countLabel}</span>
+      </button>
+      {open && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 2, padding: "0 16px 14px" }}>
+          {children}
+          <Link
+            href={href}
+            data-testid={`pv2-ov-link-${id}`}
+            style={{
+              alignSelf: "flex-start",
+              marginTop: 8,
+              padding: 0,
+              border: "none",
+              background: "none",
+              fontFamily: "inherit",
+              cursor: "pointer",
+              fontSize: "11px",
+              fontWeight: 700,
+              color: "#60a5fa",
+              textDecoration: "none",
+            }}
+          >
+            {linkLabel}
+          </Link>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── The project schedule lane — prototype 509-540 ───────────────────────── */
+
+function ProjectSchedule() {
+  const rows = pjRows();
+  return (
+    <>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "150px minmax(0,1fr)",
+          gap: 12,
+          alignItems: "end",
+          padding: "6px 6px 4px",
+        }}
+      >
+        <span
+          style={{
+            fontSize: "9px",
+            fontWeight: 700,
+            letterSpacing: ".1em",
+            textTransform: "uppercase",
+            color: "#475569",
+          }}
+        >
+          Phase
+        </span>
+        <div style={{ display: "flex", alignItems: "flex-end" }}>
+          {PJ_WEEKS.map((w, i) => (
+            <span
+              key={w}
+              style={{
+                flex: "1 1 0",
+                width: "11.1111%",
+                minWidth: 0,
+                fontSize: "9.5px",
+                color: PJ_CURRENT_WEEKS.includes(i) ? "#94a3b8" : "#475569",
+                fontFamily: MONO,
+                paddingBottom: 3,
+                borderLeft: "1px solid rgba(30,41,59,.85)",
+                paddingLeft: 5,
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+              }}
+            >
+              {w}
+            </span>
+          ))}
+        </div>
+      </div>
+      {rows.map((g) => (
+        <div
+          key={g.n}
+          data-testid={`pv2-ov-phase-${g.n}`}
+          style={{
+            display: "grid",
+            gridTemplateColumns: "150px minmax(0,1fr)",
+            gap: 12,
+            alignItems: "center",
+            padding: "6px 6px",
+            borderTop: "1px solid rgba(30,41,59,.7)",
+          }}
+        >
+          <div style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0 }}>
+            <span
+              style={{
+                fontSize: "12px",
+                fontWeight: 600,
+                color: "#e2e8f0",
+                lineHeight: 1.35,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {g.name}
+            </span>
+            <span style={{ fontSize: "9.5px", color: "#64748b", fontFamily: MONO }}>{g.dates}</span>
+          </div>
+          <div
+            style={{
+              position: "relative",
+              height: 30,
+              borderRadius: 6,
+              background:
+                "repeating-linear-gradient(90deg, rgba(148,163,184,.07) 0 1px, transparent 1px 11.1111%)",
+            }}
+          >
+            <div
+              style={{
+                position: "absolute",
+                left: `${pjPct(PJ_TODAY)}%`,
+                top: -2,
+                bottom: -2,
+                width: 1,
+                background: "rgba(34,211,238,.55)",
+              }}
+            />
+            {/* The contract's end date, drawn as a hard line the bars can cross. */}
+            <div
+              style={{
+                position: "absolute",
+                left: `${pjPct(PJ_CONTRACT_END)}%`,
+                top: -2,
+                bottom: -2,
+                width: 1,
+                background: "rgba(226,232,240,.22)",
+              }}
+            />
+            {g.slip && (
+              <div
+                style={{
+                  position: "absolute",
+                  left: `${g.slip.left}%`,
+                  width: `${g.slip.width}%`,
+                  top: 7,
+                  height: 16,
+                  borderRadius: 4,
+                  border: "1px dashed rgba(248,113,113,.5)",
+                  background:
+                    "repeating-linear-gradient(135deg, rgba(248,113,113,.18) 0 5px, transparent 5px 10px)",
+                }}
+              />
+            )}
+            <div
+              style={{
+                position: "absolute",
+                left: `${g.left}%`,
+                width: `${g.width}%`,
+                top: 4,
+                height: 22,
+                borderRadius: 5,
+                border: `1px solid ${g.tone}${g.status === "pending" ? "55" : "99"}`,
+                background: g.status === "pending" ? "rgba(100,116,139,.14)" : `${g.tone}26`,
+                overflow: "hidden",
+                display: "flex",
+                alignItems: "center",
+              }}
+            >
+              <div
+                style={{
+                  position: "absolute",
+                  left: 0,
+                  top: 0,
+                  bottom: 0,
+                  width: `${g.donePct}%`,
+                  background: `${g.tone}${g.status === "complete" ? "66" : "4d"}`,
+                }}
+              />
+              <span
+                style={{
+                  position: "relative",
+                  padding: "0 7px",
+                  fontSize: "9.5px",
+                  fontWeight: 700,
+                  color: g.status === "pending" ? "#94a3b8" : "#f1f5f9",
+                  whiteSpace: "nowrap",
+                  fontFamily: MONO,
+                }}
+              >
+                {g.barText}
+              </span>
+            </div>
+          </div>
+        </div>
+      ))}
+    </>
   );
 }
 
 export default function PortalV2OverviewPage() {
-  const { view, loaded, scanning, everScanned } = usePortalV2Pillars();
+  const { view, loaded, scanning } = usePortalV2Pillars();
+  const [evidenceOpen, setEvidenceOpen] = useState(false);
 
   return (
     <PortalV2Shell eyebrow="Overview" title="Tenant health">
-      {/* Page container — prototype line 274. The shell's <main> carries no
-          padding of its own; each page owns its width and rhythm. */}
       <div
         style={{
           position: "relative",
@@ -121,292 +492,495 @@ export default function PortalV2OverviewPage() {
           boxSizing: "border-box",
         }}
       >
-      {/* The Overview's own headline — prototype lines 277-281. The shell
-          carries no title band, so each page renders its heading itself. */}
-      <div
-        style={{
-          position: "relative",
-          display: "flex",
-          flexDirection: "column",
-          gap: 6,
-        }}
-      >
-        <span
-          style={{
-            fontSize: "9.5px",
-            fontWeight: 700,
-            letterSpacing: ".2em",
-            textTransform: "uppercase",
-            color: "#00B4D8",
-          }}
-        >
-          Tenant health · live
-        </span>
-        <h1
-          style={{
-            margin: 0,
-            fontSize: "23px",
-            fontWeight: 800,
-            letterSpacing: "-.015em",
-            color: "#f8fafc",
-            lineHeight: 1.3,
-          }}
-          data-testid="pv2-page-title"
-        >
-          Tenant health
-        </h1>
+        {/* The page's own light source — prototype 383. */}
         <div
           style={{
-            fontSize: "13px",
-            color: "#94a3b8",
-            lineHeight: 1.5,
-            maxWidth: "74ch",
+            position: "absolute",
+            left: "50%",
+            top: "-8%",
+            width: "min(1100px,150%)",
+            height: "60%",
+            transform: "translateX(-50%)",
+            filter: "blur(80px)",
+            opacity: 0.5,
+            pointerEvents: "none",
+            background:
+              "radial-gradient(ellipse at top, rgba(0,120,212,.14), rgba(2,6,23,0) 68%)",
           }}
-        >
-          Your six pillars, the Copilot gate, and what needs a decision first.
-        </div>
-      </div>
+        />
 
-      {scanning && (
+        {/* ── Headline — prototype 385-389 ──────────────────────────────── */}
+        <div style={{ position: "relative", display: "flex", flexDirection: "column", gap: 6 }}>
+          <Kicker colour="#00B4D8">Tenant health · live</Kicker>
+          <h1
+            style={{
+              margin: 0,
+              fontSize: "23px",
+              fontWeight: 800,
+              letterSpacing: "-.015em",
+              color: "#f8fafc",
+              lineHeight: 1.3,
+            }}
+            data-testid="pv2-page-title"
+          >
+            {OV_HEADLINE_MAIN}
+          </h1>
+          <div style={{ fontSize: "13px", color: "#94a3b8", lineHeight: 1.5, maxWidth: "74ch" }}>
+            {OV_HEADLINE_SUB}
+          </div>
+        </div>
+
+        {/* ── Since your last scan — prototype 391-435 ──────────────────── */}
         <div
-          className="mb-5 flex items-center gap-2.5 rounded-[10px] border px-4 py-3 text-[12.5px]"
           style={{
-            borderColor: hexAlpha("#60a5fa", 0.4),
-            background: hexAlpha("#60a5fa", 0.1),
-            color: "#93c5fd",
+            position: "relative",
+            display: "flex",
+            flexDirection: "column",
+            gap: 12,
+            padding: "18px 20px",
+            border: "1px solid rgba(30,41,59,.9)",
+            borderRadius: 14,
+            background: "rgba(15,23,42,.5)",
           }}
-          data-testid="pv2-scanning-banner"
+          data-testid="pv2-ov-scan-band"
         >
-          <Loader2 className="size-4 animate-spin" />
-          A scan is running now. These numbers update when it finishes.
-        </div>
-      )}
-
-      {/* The loading branch below puts its six skeletons on the SAME row
-          geometry the loaded state uses, so the pillar row does not reflow
-          from three columns to six the moment the payload lands. */}
-      {!loaded ? (
-        <div className="pv2-pillar-row">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <Skeleton key={i} className="h-40 rounded-[12px]" />
-          ))}
-        </div>
-      ) : (
-        <div className="flex flex-col gap-6">
-          {/* ── Gate + scan provenance ─────────────────────────────────── */}
-          <div className="grid gap-4 lg:grid-cols-3">
-            <GateBand score={view.gate.score} scanning={scanning} />
-
-            <Panel className="p-6 lg:col-span-2">
-              <Eyebrow>Scan coverage</Eyebrow>
-              {view.scannedCheckCount === null && view.scannedPackageKeys.length === 0 ? (
-                <p
-                  className="mt-2 text-[12.5px]"
-                  style={{ color: "var(--pv2-muted)" }}
-                  data-testid="pv2-coverage-none"
-                >
-                  {everScanned
-                    ? "No scan package is recorded against this tenant yet."
-                    : "This tenant has not been scanned yet."}
-                </p>
-              ) : (
-                <>
-                  <p className="mt-2 text-[12.5px]" style={{ color: "var(--pv2-body)" }}>
-                    <span className="pv2-num font-semibold">{view.scannedCheckCount ?? 0}</span>{" "}
-                    curated checks across{" "}
-                    <span className="pv2-num font-semibold">
-                      {view.scannedPackageKeys.length}
-                    </span>{" "}
-                    scan package{view.scannedPackageKeys.length === 1 ? "" : "s"}.
-                  </p>
-                  {view.scannedPackageKeys.length > 0 && (
-                    <div className="mt-3 flex flex-wrap gap-1.5">
-                      {view.scannedPackageKeys.map((k) => (
-                        <span
-                          key={k}
-                          className="rounded-full px-2.5 py-1 font-mono text-[10.5px]"
-                          style={{
-                            background: "var(--pv2-raised)",
-                            color: "var(--pv2-muted)",
-                            border: "1px solid var(--pv2-hairline)",
-                          }}
-                        >
-                          {k}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </>
-              )}
-              {view.generatedAt && (
-                <p
-                  className="pv2-num mt-4 font-mono text-[10.5px]"
-                  style={{ color: "var(--pv2-deemphasised)" }}
-                >
-                  Computed {new Date(view.generatedAt).toLocaleString()}
-                </p>
-              )}
-            </Panel>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "baseline",
+              justifyContent: "space-between",
+              gap: 14,
+              flexWrap: "wrap",
+            }}
+          >
+            <Kicker colour="#64748b">Since your last scan · {OV_LAST_SCAN}</Kicker>
+            <button
+              data-testid="pv2-ov-scan"
+              style={{
+                padding: "4px 11px",
+                borderRadius: 6,
+                border: "1px solid rgba(0,180,216,.4)",
+                background: "rgba(0,180,216,.1)",
+                color: "#22d3ee",
+                fontSize: "10.5px",
+                fontWeight: 700,
+                cursor: "pointer",
+                fontFamily: "inherit",
+                whiteSpace: "nowrap",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+              {scanning && <Loader2 className="size-3 animate-spin" />}
+              {scanning ? "Scanning…" : "Scan now"} · {OV_NEXT_SCAN}
+            </button>
           </div>
 
-          {/* ── The six pillars ────────────────────────────────────────── */}
-          <div>
-            <div className="mb-3 flex items-baseline justify-between">
-              <PanelTitle>Pillars</PanelTitle>
-            </div>
-            {/* Six across, per the design's own grid (shell line 443), with a
-                narrow-width step-down. The columns are a named class rather
-                than Tailwind fractions for the same reason `.pv2-gov-grid` is:
-                the ratio IS the spec, and burying `repeat(6,minmax(0,1fr))`
-                inside `xl:grid-cols-6` would put the design's number somewhere
-                less obvious than the file that documents it. */}
-            <div className="pv2-pillar-row">
-              {view.pillars.map((p) => (
-                <Link
-                  key={p.key}
-                  href={`/portal-v2/${p.key}`}
-                  data-testid={`pv2-pillar-card-${p.key}`}
-                  className="pv2-transition block"
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))",
+              gap: 10,
+            }}
+            data-testid="pv2-ov-drift"
+          >
+            {OV_DRIFT_CHIPS.map((c) => (
+              <div
+                key={c.label}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  padding: "11px 13px",
+                  border: `1px solid ${c.border}`,
+                  borderRadius: 9,
+                  background: c.background,
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: "20px",
+                    fontWeight: 800,
+                    color: c.tone,
+                    fontFamily: MONO,
+                    flex: "none",
+                  }}
                 >
-                  {/* Padding travels with the row's breakpoints rather than a
-                      fixed `p-5`, so it lives beside the columns it depends on.
-                      At six across the card is ~181px wide and 20px a side
-                      would leave 141px of content; the design's own strip card
-                      is drawn at `padding:10px 8px` for exactly that reason. */}
-                  <Panel className="pv2-pillar-card h-full hover:brightness-110" accent={p.primary}>
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span
-                            className="flex size-6 items-center justify-center rounded-[6px]"
-                            style={{ background: hexAlpha(p.primary, 0.16) }}
-                          >
-                            <PillarGlyph pillar={p.key} color={p.primary} size={14} />
-                          </span>
-                          <h3
-                            className="text-[13.5px] font-bold tracking-tight"
-                            style={{ color: "var(--pv2-heading)" }}
-                          >
-                            {p.label}
-                          </h3>
-                        </div>
+                  {c.num}
+                </span>
+                <span
+                  style={{ fontSize: "11.5px", fontWeight: 500, lineHeight: 1.4, color: "#94a3b8" }}
+                >
+                  {c.label}
+                </span>
+              </div>
+            ))}
+          </div>
 
-                        {p.score !== null ? (
-                          <div className="mt-3">
-                            <SeverityChip score={p.score} />
-                          </div>
-                        ) : (
-                          <p
-                            className="mt-3 text-[11.5px] leading-snug"
-                            style={{ color: "var(--pv2-micro)" }}
-                            data-testid={`pv2-pillar-note-${p.key}`}
-                          >
-                            {evaluationNote(p.evaluation, scanning, p.evaluationReason)}
-                          </p>
-                        )}
+          {/* The evidence pack divider — prototype 404-415 */}
+          <button
+            onClick={() => setEvidenceOpen((v) => !v)}
+            data-testid="pv2-ov-evidence-toggle"
+            aria-expanded={evidenceOpen}
+            style={{
+              width: "100%",
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              background: "none",
+              border: "none",
+              padding: "2px 0",
+              cursor: "pointer",
+              fontFamily: "inherit",
+            }}
+          >
+            <span style={{ flex: 1, height: 1, background: "rgba(30,41,59,.9)" }} />
+            <span
+              style={{
+                flex: "0 0 auto",
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                whiteSpace: "nowrap",
+              }}
+            >
+              <span
+                style={{
+                  fontSize: "11px",
+                  fontWeight: 700,
+                  letterSpacing: ".08em",
+                  textTransform: "uppercase",
+                  color: "#34d399",
+                }}
+              >
+                Evidence pack
+              </span>
+              <span
+                style={{ fontSize: "11px", fontWeight: 700, color: "#34d399", fontFamily: MONO }}
+              >
+                {OV_EVIDENCE_ROWS.length}
+              </span>
+              <span
+                style={{
+                  display: "flex",
+                  color: "#64748b",
+                  transform: `rotate(${evidenceOpen ? 180 : 0}deg)`,
+                  transition: "transform 180ms",
+                }}
+              >
+                <ChevronDown size={13} />
+              </span>
+            </span>
+            <span style={{ flex: 1, height: 1, background: "rgba(30,41,59,.9)" }} />
+          </button>
 
-                        <p
-                          className="pv2-num mt-3 text-[11.5px]"
-                          style={{ color: "var(--pv2-muted)" }}
-                        >
-                          <span style={{ color: "#f87171" }}>
-                            {p.findingCounts.critical} critical
-                          </span>
-                          {" · "}
-                          <span style={{ color: "#fbbf24" }}>
-                            {p.findingCounts.warning} warning
-                          </span>
-                        </p>
-                      </div>
+          {evidenceOpen && (
+            <div
+              data-testid="pv2-ov-evidence"
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 10,
+                padding: 16,
+                border: "1px solid rgba(30,41,59,.9)",
+                borderRadius: 10,
+                background: "#0b1524",
+              }}
+            >
+              <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                <span style={{ fontSize: "12.5px", fontWeight: 700, color: "#f8fafc" }}>
+                  {OV_EVIDENCE_ROWS.length} verified fixes, timestamped
+                </span>
+                <span style={{ fontSize: "11.5px", color: "#94a3b8", lineHeight: 1.5 }}>
+                  What changed, when the re-scan confirmed it, and which finding it closes — written
+                  for auditors, cyber insurers, and your own board.
+                </span>
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  borderTop: "1px solid rgba(30,41,59,.9)",
+                }}
+              >
+                {OV_EVIDENCE_ROWS.map((ev) => (
+                  <div
+                    key={ev.title}
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 2,
+                      padding: "10px 0",
+                      borderBottom: "1px solid rgba(30,41,59,.9)",
+                    }}
+                  >
+                    <span style={{ fontSize: "12.5px", fontWeight: 600, color: "#f1f5f9" }}>
+                      {ev.title}
+                    </span>
+                    <span style={{ fontSize: "11px", color: "#64748b" }}>
+                      {ev.finding} · verified {ev.when} · {ev.by}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <div style={{ display: "flex", gap: 8, paddingTop: 2 }}>
+                <button
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 7,
+                    padding: "8px 13px",
+                    borderRadius: 6,
+                    border: "1px solid var(--brand-blue, #0078D4)",
+                    background: "var(--brand-blue, #0078D4)",
+                    color: "#fff",
+                    fontSize: "11.5px",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                  }}
+                >
+                  Download as PDF
+                </button>
+                <button
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 7,
+                    padding: "8px 13px",
+                    borderRadius: 6,
+                    border: "1px solid rgba(30,41,59,.9)",
+                    background: "transparent",
+                    color: "#cbd5e1",
+                    fontSize: "11.5px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                  }}
+                >
+                  Export as CSV
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
 
-                      <ScoreBlock
-                        score={p.score}
-                        size={72}
-                        note={evaluationNote(p.evaluation, scanning, p.evaluationReason)}
-                      />
-                    </div>
+        {/* ── Tenant health by pillar — prototype 437-455 ───────────────── */}
+        <div
+          style={{
+            position: "relative",
+            display: "flex",
+            flexDirection: "column",
+            gap: 14,
+            padding: "18px 20px",
+            border: "1px solid rgba(30,41,59,.9)",
+            borderRadius: 14,
+            background: "rgba(15,23,42,.4)",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "baseline",
+              justifyContent: "space-between",
+              gap: 14,
+              flexWrap: "wrap",
+            }}
+          >
+            <Kicker colour="#64748b">Tenant health by pillar</Kicker>
+            <span style={{ fontSize: "11.5px", color: "#475569" }}>
+              We only grade you on what we actually assessed · scored {OV_LAST_SCAN}
+            </span>
+          </div>
 
-                    {p.trend && p.trend.series.length >= 2 && (
-                      <div className="mt-4 flex items-center gap-2">
-                        <TrendLine series={p.trend.series} color={p.primary} width={140} height={30} />
-                        <span
-                          className="text-[10px]"
-                          style={{ color: "var(--pv2-deemphasised)" }}
-                        >
-                          {p.trend.window}
-                        </span>
-                      </div>
-                    )}
-                  </Panel>
-                </Link>
+          {!loaded ? (
+            <div className="pv2-pillar-row">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <Skeleton key={i} className="h-[86px] rounded-[6px]" />
               ))}
             </div>
-          </div>
-
-          {/* ── Most urgent ────────────────────────────────────────────── */}
-          <Panel>
-            <div className="px-4 pb-2 pt-4">
-              <PanelTitle>Most urgent</PanelTitle>
-              <p className="mt-1 text-[11.5px]" style={{ color: "var(--pv2-micro)" }}>
-                Ranked by the engine&rsquo;s own severity and signal weight.
-              </p>
-            </div>
-            {view.urgent.length === 0 ? (
-              <EmptyNote testId="pv2-urgent-empty">
-                {everScanned
-                  ? "No critical or warning findings across your pillars."
-                  : "Nothing to rank until this tenant has been scanned."}
-              </EmptyNote>
-            ) : (
-              <ul>
-                {view.urgent.map((u) => (
-                  <li key={`${u.checkKey}-${u.title}`}>
-                    <Link
-                      href={`/portal-v2/${u.pillar}`}
-                      className="pv2-transition flex items-start gap-3 border-b px-4 py-3 last:border-b-0 hover:brightness-125"
-                      style={{ borderColor: "var(--pv2-hairline)" }}
-                      data-testid="pv2-urgent-row"
+          ) : (
+            <div className="pv2-pillar-row" data-testid="pv2-ov-pillar-strip">
+              {view.pillars.map((p) => {
+                const delta = pillarDelta(p.trend?.series);
+                return (
+                  <Link
+                    key={p.key}
+                    href={`/portal-v2/${p.key}`}
+                    data-testid={`pv2-pillar-card-${p.key}`}
+                    className="pv2-transition pv2-strip-card"
+                    style={{
+                      position: "relative",
+                      overflow: "hidden",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "flex-start",
+                      gap: 3,
+                      textAlign: "left",
+                      background: "#071324",
+                      border: "1px solid rgba(148,163,184,.14)",
+                      borderLeft: `2px solid ${hexAlpha(p.primary, 0.44)}`,
+                      borderRadius: 6,
+                      padding: "10px 8px",
+                      cursor: "pointer",
+                      fontFamily: "inherit",
+                      textDecoration: "none",
+                      ["--pv2-strip-accent" as string]: p.primary,
+                    }}
+                  >
+                    <div
+                      style={{
+                        position: "absolute",
+                        left: -30,
+                        top: -40,
+                        width: 140,
+                        height: 140,
+                        borderRadius: "50%",
+                        background: `radial-gradient(circle, ${hexAlpha(p.primary, 0.15)}, rgba(2,6,23,0) 70%)`,
+                        pointerEvents: "none",
+                      }}
+                    />
+                    <div
+                      style={{
+                        position: "relative",
+                        display: "flex",
+                        alignItems: "flex-start",
+                        justifyContent: "space-between",
+                        width: "100%",
+                      }}
                     >
-                      <span
-                        className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-[5px]"
-                        style={{ background: hexAlpha(u.primary, 0.16) }}
-                      >
-                        <PillarGlyph pillar={u.pillar} color={u.primary} size={12} />
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <p
-                          className="text-[12.5px] leading-snug"
-                          style={{ color: "var(--pv2-body)" }}
-                        >
-                          {u.title}
-                        </p>
-                        <p
-                          className="pv2-num mt-0.5 font-mono text-[10px]"
-                          style={{ color: "var(--pv2-deemphasised)" }}
-                        >
-                          {u.pillarLabel} · {u.checkKey}
-                        </p>
-                      </div>
-                      <span
-                        className="mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-[9.5px] font-bold uppercase tracking-[0.1em]"
+                      <div
                         style={{
-                          background: hexAlpha(
-                            u.severity === "critical" ? "#f87171" : "#fbbf24",
-                            0.14,
-                          ),
-                          color: u.severity === "critical" ? "#f87171" : "#fbbf24",
+                          fontSize: "26px",
+                          fontWeight: 800,
+                          color: "#f8fafc",
+                          letterSpacing: "-.02em",
+                          fontFamily: MONO,
                         }}
                       >
-                        {u.severity}
+                        {p.score === null ? "—" : p.score}
+                      </div>
+                      <span
+                        style={{
+                          fontSize: "11.5px",
+                          fontWeight: 700,
+                          color: pillarDeltaTone(delta),
+                          fontFamily: MONO,
+                          paddingTop: 2,
+                        }}
+                      >
+                        {pillarDeltaLabel(delta)}
                       </span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Panel>
+                    </div>
+                    <div
+                      style={{
+                        position: "relative",
+                        fontSize: "10.5px",
+                        fontWeight: 700,
+                        color: "#e2e8f0",
+                        textAlign: "left",
+                        width: "100%",
+                        lineHeight: 1.3,
+                        whiteSpace: "normal",
+                      }}
+                    >
+                      {p.label}
+                    </div>
+                    <div
+                      style={{
+                        position: "relative",
+                        fontSize: "10px",
+                        color: "#64748b",
+                        textAlign: "left",
+                        width: "100%",
+                        lineHeight: 1.3,
+                        whiteSpace: "normal",
+                      }}
+                    >
+                      {pillarStripSub(p.findingCounts)}
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
         </div>
-      )}
+
+        {/* ── Everything in motion — prototype 457-546 ──────────────────── */}
+        <div
+          style={{ position: "relative", display: "flex", flexDirection: "column", gap: 10 }}
+        >
+          <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+            <Kicker colour="#64748b">Everything in motion</Kicker>
+            <span style={{ fontSize: "11.5px", color: "#475569" }}>
+              Every pipeline across the tenant, one line each. Findings are folded into the item that
+              carries them — drill into any row for the full picture.
+            </span>
+          </div>
+
+          <div className="pv2-motion-grid" data-testid="pv2-ov-motion">
+            <MotionSection
+              id="cc"
+              label="Change control pipeline"
+              countLabel={sectionCount(OV_CR_PIPELINE.length, "CRs")}
+              linkLabel="Open the register →"
+              href="/portal-v2/change-control"
+            >
+              {crLanes().map((l) => (
+                <LaneRow key={l.key} lane={l} href="/portal-v2/change-control" />
+              ))}
+            </MotionSection>
+
+            <MotionSection
+              id="mc"
+              label="Microsoft changes incoming"
+              countLabel={sectionCount(OV_MC_INCOMING.length, "posts")}
+              linkLabel="Open Microsoft Changes →"
+              href="/portal-v2/ms-changes"
+            >
+              {mcLanes().map((l) => (
+                <LaneRow key={l.key} lane={l} href="/portal-v2/ms-changes" />
+              ))}
+            </MotionSection>
+
+            {/* The project schedule spans both columns — prototype's
+                `fullWidth` on section index 2 (ovSecDef's last argument). */}
+            <MotionSection
+              id="pj"
+              label="Project & release schedule"
+              countLabel={sectionCount(pjRows().length, "phases")}
+              linkLabel="Open the full schedule →"
+              href="/portal-v2/projects"
+              fullWidth
+            >
+              <ProjectSchedule />
+            </MotionSection>
+
+            <MotionSection
+              id="pd"
+              label="Policy decisions due for review"
+              countLabel={sectionCount(flaggedPolicyCount(), "flagged")}
+              linkLabel="Open Policy Decisions →"
+              href="/portal-v2/policy-decisions"
+            >
+              {pdLanes().map((l) => (
+                <LaneRow key={l.key} lane={l} href="/portal-v2/policy-decisions" />
+              ))}
+            </MotionSection>
+          </div>
+
+          {/* The design's six sections include Runbooks-waiting-on-a-clock and
+              Accepted risks. Both are real data we already hold (the runbooks
+              API and riskRegisterData), and both are deliberately NOT drawn from
+              a fixture here — wiring them means reconciling three lane shapes
+              into one model, which is its own task. Four sections render rather
+              than six, and this note is why. */}
+          <span style={{ fontSize: "10.5px", color: "#475569" }} data-testid="pv2-ov-motion-note">
+            Runbook hold windows and accepted risks join this view when their lanes are wired to
+            live data.
+          </span>
+        </div>
       </div>
     </PortalV2Shell>
   );

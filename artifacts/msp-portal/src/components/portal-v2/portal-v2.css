@@ -138,12 +138,14 @@
    scrolling. Removing a scroll floor rather than adding one is the same move
    Round Two made on the Gantt rows.
 
-   NOTE, recorded rather than silently resolved: the design's six-across cards
-   are a COMPACT strip (`pillarStrip`, shell 8505-8522) - a 26px score, a delta,
-   a 10.5px label and a 10px sub, at `padding:10px 8px`. Ours are the richer
-   Panel card carrying the severity chip and finding counts. Only the ROW
-   geometry is brought across here; re-cutting the card's information design to
-   the strip is a separate question and has not been assumed. */
+   The card in this row is now the design's own COMPACT STRIP card
+   (`pillarStrip`, shell 8505-8522) - a 26px score, a delta, a 10.5px label and
+   a 10px sub at `padding:10px 8px` - rather than the round-one Panel card it
+   replaced. That is what makes six across viable: an earlier pass kept the
+   richer Panel here and had to hold the step-down at 1400px because the
+   severity chip and finding-count line stopped fitting below ~150px. The strip
+   card has neither, so the row holds six much further down and only steps at
+   1100px, where a 26px numeral and a two-line label genuinely stop reading. */
 .pv2-pillar-row {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -151,30 +153,42 @@
   min-width: 0;
 }
 
-@media (max-width: 1400px) {
+@media (max-width: 1100px) {
   .pv2-pillar-row {
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 16px;
   }
 }
 
-@media (max-width: 820px) {
+@media (max-width: 720px) {
   .pv2-pillar-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
-
-/* The pillar card's padding. It belongs beside `.pv2-pillar-row` above rather
-   than in a `p-5` utility because the two are one decision: the card is only
-   tight because the row is six across, and the fallback padding only matters
-   at the widths where the row has already stepped down. Base is Tailwind's
-   `p-5` (20px), which is what this card carried before the row changed. */
-.pv2-pillar-card {
-  padding: 20px;
+/* The "Everything in motion" grid - two columns, prototype 464. A section can
+   span both (the project schedule does, via `fullWidth`), which is why this is
+   a real 2-column grid rather than a flex wrap. Collapses to one column where
+   two 108px bar columns plus a title would stop fitting. */
+.pv2-motion-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  align-items: start;
 }
 
-@media (min-width: 1401px) {
-  .pv2-pillar-card {
-    padding: 13px 11px;
+@media (max-width: 1100px) {
+  .pv2-motion-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
+}
+
+/* The pillar strip card's hover - prototype `cardHoverCss`, 8517. The border
+   intensifies to the pillar's own colour; nothing moves or scales, per the
+   handoff's "depth is colour, not scale". */
+.pv2-strip-card {
+  transition: border-color 150ms, background 150ms;
+}
+
+.pv2-strip-card:hover {
+  border-color: color-mix(in srgb, var(--pv2-strip-accent, #60a5fa) 33%, transparent);
+  border-left-color: var(--pv2-strip-accent, #60a5fa);
 }
