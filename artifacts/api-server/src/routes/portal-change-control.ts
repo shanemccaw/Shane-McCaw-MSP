@@ -47,16 +47,25 @@
  * query. This is the single most important line in the file.
  *
  * ── Role floor: `Assessment`, not `CustomerUser` ────────────────────────────
- * Every customer-scoped portal route in this codebase floors at
- * `requireRole("Assessment")` — `portal-remediation-tracker.ts` states why in
- * its own header: "Assessment is the lowest role carrying a customerId". The
- * role floor decides which TIER of customer may open the page; it is not what
- * prevents a cross-tenant read — the `customerId`-from-JWT scoping above is.
- * Flooring at `CustomerUser` here would also 403 the pre-provisioned testbed
- * Assessment account every test manifest logs in as, so the page could not be
- * verified. The product-tier question (should a free Assessment-tier account
- * see Change Control at all?) is Shane's to answer; it is flagged rather than
- * silently decided by picking a floor that breaks the harness.
+ * BUILD_PLAN §3.5 says `requireRole('CustomerUser')`. The floor used here is
+ * `Assessment`, matching the customer-scoped routes that already exist —
+ * `portal-remediation-tracker.ts` and `portal-tenant-check-items.ts` both floor
+ * there, and the former states why in its own header: "Assessment is the lowest
+ * role carrying a customerId".
+ *
+ * The distinction that matters: the role floor decides which TIER of customer
+ * may open the page. It is NOT what prevents a cross-tenant read — the
+ * `customerId`-from-JWT scoping above is, and that is identical either way. So
+ * the choice between the two floors is a product decision, not a security one.
+ *
+ * `Assessment` is used for consistency with the routes above rather than
+ * because `CustomerUser` would break anything: the configured testbed account
+ * is in fact a `CustomerUser` (verified against the database, not assumed from
+ * the "testbed Assessment account" phrasing in BuildConsole's own docs), so
+ * either floor is reachable by the harness. FLAGGED FOR SHANE: whether a
+ * free Assessment-tier account should see Change Control at all is a tier
+ * question this route does not presume to answer — raising the floor to
+ * `CustomerUser` is a one-word change if the answer is no.
  *
  * ── What this route deliberately does NOT expose ────────────────────────────
  * No approve, no reject, no rollback, and no `rollbackScriptSnippet` on the

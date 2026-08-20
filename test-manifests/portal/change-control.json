@@ -1,7 +1,7 @@
 {
   "feature": "Customer Portal v2 -- Change Control (/portal-v2/change-control): the customer-scoped change request register, its three tabs (Active CR Register, Maintenance Schedule, Change History & Rollback Vault) and the four-step CR wizard, over a NEW customer-scoped API (GET/POST /api/portal/change-control) rather than the MSP-operator-scoped /api/msp/change-requests.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "PENDING",
+  "lastVerifiedAgainstCommit": "bfe18987",
 
   "notes": [
     "WHY THIS MANIFEST EXISTS SEPARATELY FROM portal-v2-pillars.json: that file covers the Overview and the six pillar dashboards and is actively appended to by the pillar build. Change Control is a different feature over a different endpoint, so per the discover-before-create rule it gets its own {area}/{feature-slug} file rather than being bolted onto a pillar manifest.",
@@ -18,8 +18,11 @@
 
     "INERT BY DESIGN, NOT UNFINISHED: Approve, 'Reject with a reason', 'Roll back from snapshot', 'Change window', 'Add a comment', 'Export CR register' and the vault's 'Snapshot'/'Roll back' carry NO onClick in the prototype's own markup (proto 1513-1524, 1578-1581, 1428) -- only 'Ask ShaneBot to explain the diff' does, and ShaneBot itself is Phase 7a. The README's 'No dead ends' line describes an intent the design file does not implement. They are rendered exactly as designed and no mutation was invented for them, so this manifest asserts they are PRESENT and does not assert they do anything.",
 
-    "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD -- the same testbed Assessment-role account the other portal manifests drive. Note the role: the route floors at requireRole('Assessment'), matching portal-remediation-tracker.ts's precedent that Assessment is the lowest role carrying a customerId. Flooring at CustomerUser would 403 this very account.",
+    "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD -- the same testbed account the other portal manifests drive. WORTH KNOWING, because BuildConsole's own docs call it 'the testbed Assessment account': the configured account is actually msp_role = CustomerUser (users.id 39, tenants.id 1), verified against the database rather than inferred from that phrasing. The route floors at requireRole('Assessment') for consistency with portal-remediation-tracker.ts and portal-tenant-check-items.ts, not because CustomerUser would break the harness -- either floor is reachable by this account. The role floor is a product-tier decision; the cross-tenant guarantee is the customerId-from-JWT scoping A4/A5 assert, and is identical under either floor.",
 
+    "RUN GREEN 2026-08-19: 45/45 against the deployed dev server at commit bfe18987 (deployed via trigger-deploy-and-wait.ps1, 6afa35d49 -> bfe189879, 51.0s). The assertions that matter, with what was really observed: A5 returned 403 for the MSP route on a customer bearer; A10 returned a NON-EMPTY body containing this tenant's own change and none of 't-contoso' / 'Contoso Ltd' / 'contoso.com'; A6 returned risk 'High' for a THREE-account change, which no count threshold produces, proving the server recomputed it from the target. On screen: 'OPEN CHANGE REQUESTS 2 / 2 awaiting approval', 'ROLLBACK SNAPSHOTS HELD 0 / Pre-change state, 90-day retention', the register showing 'CR-2026-104 STANDARD PENDING APPROVAL Exchange / mail', the derived schedule reading 'Thu 27 Aug 07:00-09:00 BOOKED WINDOW - CR-2026-103 ... 1 change booked into this window', the vault's honest 'No change has executed against this tenant yet', and the wizard's risk readout at 'High' from the target alone with no account count entered.",
+
+    "VERIFIED IN THE DATABASE, not just on the wire: the two rows this manifest created carry tenant_id 'c4c814d4-3afe-441e-9145-62461d0a4fd3' -- the caller's REAL M365 GUID resolved from the JWT -- alongside the pre-existing row at tenant_id 't-contoso' under the SAME msp_id 1. Both new rows have backup_verified = false and an EMPTY backup_hash, unlike the MSP route which fabricates a random 64-hex hash and sets backup_verified = true on every create; nothing has executed, so nothing has been backed up.",
     "UI ROUTE SHAPE: msp-portal's outer WouterRouter has base '/portal' and SlugScope nests a second router at '/{slug}', so the real URL is /portal/{slug}/portal-v2/change-control. App.tsx declares that route BEFORE '/portal-v2/:pillar' so the param route does not swallow it.",
 
     "shaneapp://runTest hits the DEPLOYED build, not the local worktree -- the U* steps only exercise the new page once the commit under test is deployed to the dev server."
@@ -27,7 +30,7 @@
 
   "apiTests": [
     {
-      "name": "SETUP -- log in as the designated TESTBED Assessment account; extract the bearer.",
+      "name": "SETUP -- log in as the designated testbed portal account; extract the bearer.",
       "method": "POST",
       "path": "/api/auth/login",
       "headers": { "Content-Type": "application/json" },
