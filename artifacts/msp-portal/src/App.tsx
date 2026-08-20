@@ -97,6 +97,8 @@ import PortalV2GovOversharingAllPage from "@/pages/portal-v2-gov-oversharing-all
 import PortalV2ChangeControlPage from "@/pages/portal-v2-change-control";
 import PortalV2RunbooksPage from "@/pages/portal-v2-runbooks";
 import PortalV2SettingsPage from "@/pages/portal-v2-settings";
+import PortalV2OwnershipPage from "@/pages/portal-v2-ownership";
+import PortalV2MsChangesPage from "@/pages/portal-v2-ms-changes";
 import ConsentDeclinedPage from "@/pages/consent-declined";
 import ConsentSuccessPage from "@/pages/consent-success";
 import ConsentTenantConflictPage from "@/pages/consent-tenant-conflict";
@@ -634,6 +636,28 @@ function SlugInnerSwitch() {
       </Route>
       <Route path="/portal-v2/settings">
         <ProtectedRoute component={PortalV2SettingsPage} />
+      </Route>
+      {/* Governance — Ownership. The `:type` segment is the shell sub-nav's
+          eight-way object-type filter, which the prototype holds as
+          `state.ownType` and passes down as the module's `typeFilter` prop; a
+          URL is the equivalent here, and makes each filtered view linkable.
+          Declared before "/portal-v2/:pillar" like every specific route. */}
+      <Route path="/portal-v2/ownership/:type">
+        <ProtectedRoute component={PortalV2OwnershipPage} />
+      </Route>
+      <Route path="/portal-v2/ownership">
+        <ProtectedRoute component={PortalV2OwnershipPage} />
+      </Route>
+      {/* Reference — Microsoft Changes. The `:wave` segment is the shell
+          sub-nav's five-way wave selector, held as `state.mscWave` in the
+          prototype and passed down as the module's `waveSel` prop. The
+          prototype's own keys are index strings ('0'…'4'); readable slugs are
+          used here because this is a URL a customer can send to someone. */}
+      <Route path="/portal-v2/ms-changes/:wave">
+        <ProtectedRoute component={PortalV2MsChangesPage} />
+      </Route>
+      <Route path="/portal-v2/ms-changes">
+        <ProtectedRoute component={PortalV2MsChangesPage} />
       </Route>
       <Route path="/portal-v2/:pillar">
         <ProtectedRoute component={PortalV2PillarPage} />

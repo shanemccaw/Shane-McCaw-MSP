@@ -45,11 +45,25 @@
 
 import { useCallback, useSyncExternalStore } from "react";
 
-import { OWN_PEOPLE_SEED, type OwnPerson } from "./settingsData";
+import { OWN_ESC_DAYS_SEED, OWN_PEOPLE_SEED, type OwnPerson } from "./settingsData";
 
 let people: readonly OwnPerson[] = OWN_PEOPLE_SEED;
 
+/**
+ * The escalation threshold, which lives here for the SAME reason the people
+ * list does: Settings → Ownership routing sets it ("Escalate to the accountable
+ * name after N days of no movement"), and the Ownership matrix reads it to
+ * decide which cells are past the clock. Two pages, one number. Left in
+ * Settings' local state it would silently do nothing to the matrix, which is
+ * the exact drift this store exists to prevent.
+ */
+let escDays: number = OWN_ESC_DAYS_SEED;
+
 const listeners = new Set<() => void>();
+
+function notify() {
+  for (const fn of listeners) fn();
+}
 
 function subscribe(fn: () => void): () => void {
   listeners.add(fn);
@@ -69,12 +83,23 @@ function getSnapshot(): readonly OwnPerson[] {
 /** Writes and notifies. Exported for tests and for a future mutation hook. */
 export function setPortalV2People(next: readonly OwnPerson[]): void {
   people = next;
-  for (const fn of listeners) fn();
+  notify();
 }
 
-/** Test-only: put the store back to the seed between cases. */
+function getEscDays(): number {
+  return escDays;
+}
+
+export function setPortalV2EscDays(next: number): void {
+  escDays = next;
+  notify();
+}
+
+/** Test-only: put the store back to its seeds between cases. */
 export function resetPortalV2People(): void {
-  setPortalV2People(OWN_PEOPLE_SEED);
+  people = OWN_PEOPLE_SEED;
+  escDays = OWN_ESC_DAYS_SEED;
+  notify();
 }
 
 /**
@@ -93,4 +118,23 @@ export function usePortalV2People(): {
     setPortalV2People(next);
   }, []);
   return { people: list, setPeople };
+}
+
+/**
+ * The escalation threshold from Settings → Ownership routing.
+ *
+ * Settings writes it; the Ownership matrix reads it to mark cells past the
+ * clock. A cell is late when its idle days STRICTLY exceed this, so raising it
+ * from 5 to 10 clears the two late marks on the seeded estate live — which is
+ * the behaviour the two pages have to share for the number to mean anything.
+ */
+export function usePortalV2EscDays(): {
+  escDays: number;
+  setEscDays: (next: number) => void;
+} {
+  const value = useSyncExternalStore(subscribe, getEscDays, getEscDays);
+  const setEscDays = useCallback((next: number) => {
+    setPortalV2EscDays(next);
+  }, []);
+  return { escDays: value, setEscDays };
 }

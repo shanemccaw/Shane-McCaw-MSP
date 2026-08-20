@@ -43,7 +43,7 @@ import { Link, useRoute } from "wouter";
 
 import { PortalV2Shell, SIDEBAR_WASH } from "@/components/portal-v2/PortalV2Shell";
 import { useFormDrawer } from "@/components/portal-v2/FormDrawer";
-import { usePortalV2People } from "@/components/portal-v2/portalV2People";
+import { usePortalV2EscDays, usePortalV2People } from "@/components/portal-v2/portalV2People";
 import {
   CC_APPROVAL_OPTS,
   CC_APPROVER_BANDS,
@@ -54,7 +54,6 @@ import {
   CC_RULES,
   DEPT_ROWS,
   DEPT_UNMAPPED,
-  OWN_ESC_DAYS_SEED,
   OWN_ROLE_DEFS,
   RACI_PEOPLE,
   SET_NAV,
@@ -238,8 +237,8 @@ function RoutingSection({
 }: {
   rules: Record<string, boolean>;
   onToggle: (k: string) => void;
-  escDays: string;
-  onEscDays: (v: string) => void;
+  escDays: number;
+  onEscDays: (v: number) => void;
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -325,8 +324,16 @@ function RoutingSection({
         <span style={{ fontSize: "12px", color: "#cbd5e1" }}>Escalate to the accountable name after</span>
         <input
           type="number"
+          min={1}
           value={escDays}
-          onChange={(e) => onEscDays(e.target.value)}
+          // A cleared or non-numeric field would make every escalation
+          // comparison NaN, which reads as "nothing is ever late" — a silent
+          // wrong answer on the Ownership matrix rather than a visible error.
+          // The last good number is kept instead.
+          onChange={(e) => {
+            const n = Number(e.target.value);
+            if (Number.isFinite(n) && n >= 0) onEscDays(n);
+          }}
           data-testid="pv2-set-esc-days"
           aria-label="Escalate to the accountable name after this many days"
           style={{
@@ -1157,8 +1164,13 @@ export default function PortalV2SettingsPage() {
   // unlike the people list, nothing outside this page reads them yet.
   const [policy, setPolicyState] = useState<CcPolicy>(CC_POLICY_SEED);
   const [rules, setRules] = useState<Record<string, boolean>>({});
-  const [escDays, setEscDays] = useState(String(OWN_ESC_DAYS_SEED));
   const [notif, setNotif] = useState<readonly CcNotifRule[]>(CC_NOTIF_SEED);
+
+  // The escalation threshold is the ONE routing value another page reads: the
+  // Ownership matrix marks a cell late when its idle days exceed it. It
+  // therefore lives in the shell-owned store beside the people list, not in
+  // this component — held here it would change the input and nothing else.
+  const { escDays, setEscDays } = usePortalV2EscDays();
 
   const setPolicy = useCallback(
     (p: Partial<CcPolicy>) => setPolicyState((cur) => ({ ...cur, ...p })),

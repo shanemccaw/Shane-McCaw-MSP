@@ -28,9 +28,9 @@
  * Governance pass turned up. The prototype's value is used.
  */
 
-import { useState, type ReactNode } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
-import { FileText, GitCommit, PlayCircle, ShieldOff } from "lucide-react";
+import { Bell, FileText, GitCommit, PlayCircle, ShieldOff, Users } from "lucide-react";
 
 import { useAuth } from "@/lib/auth-context";
 import { useHoldBadge } from "@/components/portal-v2/holds/useHoldBadge";
@@ -81,31 +81,96 @@ const OPERATE_ITEMS: ReadonlyArray<{
 ];
 
 /**
- * The Standards & risk group — prototype 7239-7243.
+ * The GOVERNANCE group — Round Three's regroup.
  *
- * The prototype's group has THREE rows: SOPs & Runbooks, Risk Register and
- * Microsoft Changes. Only the Risk Register has a page, so only it is listed —
- * the same "never a row pointing at a route that does not exist" rule the
- * Operate group follows. The other two join it when their pages land.
+ * "The old 'Standards & risk' catch-all (7 mixed items) is split into two
+ * groups: Governance — Ownership, Risk Register, Security Plan, PII Governance
+ * — and Reference — SOPs & Runbooks, Microsoft Changes. Order is now Operate /
+ * Governance / Reference / Library."
  *
- * The `title` is the prototype's verbatim, and it UNDER-DESCRIBES the page:
- * it says "accepted risks", while the register actually carries all twelve
- * risks across five statuses and defaults its status filter to "All statuses".
- * Kept as written, because copy is final.
+ * The new shell's `navGroupDefs` confirms it: no "Standards & risk" remains,
+ * and Governance carries `ownership` / `risk-register` / `security-plan` / `pii`
+ * in that order.
+ *
+ * Two of the four are listed here, because two have pages. Security Plan and
+ * PII Governance are not built, and the standing rule for this nav is "never a
+ * row pointing at a route that does not exist" — the same rule that kept SOPs
+ * and Microsoft Changes out of the old group. They join when their pages land.
+ *
+ * The Risk Register `title` is the prototype's verbatim, and it UNDER-DESCRIBES
+ * the page: it says "accepted risks", while the register actually carries all
+ * twelve risks across five statuses and defaults its status filter to "All
+ * statuses". Kept as written, because copy is final.
  */
-const STANDARDS_ITEMS: ReadonlyArray<{
+const GOVERNANCE_ITEMS: ReadonlyArray<{
   href: string;
   label: string;
   title: string;
   testId: string;
   icon: typeof ShieldOff;
+  subs?: ReadonlyArray<{ key: string; label: string; href: string }>;
 }> = [
+  {
+    href: "/portal-v2/ownership",
+    label: "Ownership",
+    title: "Ownership — four names against every service, change, control and freeze",
+    testId: "pv2-nav-ownership",
+    icon: Users,
+    // The prototype's eight sub-items are the object-type filter — shell 8823.
+    subs: [
+      { key: "all", label: "Everything", href: "/portal-v2/ownership" },
+      { key: "service", label: "Microsoft services", href: "/portal-v2/ownership/service" },
+      { key: "change", label: "Individual changes", href: "/portal-v2/ownership/change" },
+      { key: "cr", label: "Change requests", href: "/portal-v2/ownership/cr" },
+      { key: "control", label: "Compliance controls", href: "/portal-v2/ownership/control" },
+      { key: "freeze", label: "Freeze windows", href: "/portal-v2/ownership/freeze" },
+      { key: "incident", label: "Incidents", href: "/portal-v2/ownership/incident" },
+      { key: "announce", label: "Announcements", href: "/portal-v2/ownership/announce" },
+    ],
+  },
   {
     href: "/portal-v2/risk-register",
     label: "Risk Register",
     title: "Risk Register — accepted risks, with the owner and the review date",
     testId: "pv2-nav-risk-register",
     icon: ShieldOff,
+  },
+];
+
+/**
+ * The REFERENCE group — the other half of Round Three's split.
+ *
+ * The new shell's Reference group has two rows, SOPs & Runbooks and Microsoft
+ * Changes. Only Microsoft Changes has a page, so only it is listed, under the
+ * same rule as Governance above.
+ *
+ * Its five sub-items are the prototype's own wave keys (shell 8843), which are
+ * INDEX STRINGS — '0' … '4' — not slugs. They become readable URL segments
+ * here, because "/portal-v2/ms-changes/2" would be a worse link than
+ * "/portal-v2/ms-changes/q2" for something a customer is meant to be able to
+ * send to a colleague. The labels are the design's verbatim.
+ */
+const REFERENCE_ITEMS: ReadonlyArray<{
+  href: string;
+  label: string;
+  title: string;
+  testId: string;
+  icon: typeof ShieldOff;
+  subs?: ReadonlyArray<{ key: string; label: string; href: string }>;
+}> = [
+  {
+    href: "/portal-v2/ms-changes",
+    label: "Microsoft Changes",
+    title: "Microsoft Changes — message centre posts, read against your tenant",
+    testId: "pv2-nav-ms-changes",
+    icon: Bell,
+    subs: [
+      { key: "late-august", label: "Late August wave", href: "/portal-v2/ms-changes" },
+      { key: "september", label: "September wave", href: "/portal-v2/ms-changes/september" },
+      { key: "q2", label: "Q2 · Oct – Dec", href: "/portal-v2/ms-changes/q2" },
+      { key: "q3", label: "Q3 · Jan – Mar", href: "/portal-v2/ms-changes/q3" },
+      { key: "beyond", label: "Q4 and beyond", href: "/portal-v2/ms-changes/beyond" },
+    ],
   },
 ];
 
@@ -222,6 +287,7 @@ function SimpleNavGroup({
     title: string;
     testId: string;
     icon: typeof ShieldOff;
+    subs?: ReadonlyArray<{ key: string; label: string; href: string }>;
   }>;
   location: string;
   expanded: boolean;
@@ -233,40 +299,144 @@ function SimpleNavGroup({
         const isActive = location === item.href || location.startsWith(`${item.href}/`);
         const Glyph = item.icon;
         return (
-          <Link
-            key={item.href}
-            href={item.href}
-            title={item.title}
-            data-testid={item.testId}
-            style={navItemStyle(isActive, expanded)}
-          >
-            <span
-              style={{
-                flex: "0 0 18px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
+          <Fragment key={item.href}>
+            <Link
+              href={item.href}
+              title={item.title}
+              data-testid={item.testId}
+              style={navItemStyle(isActive, expanded)}
             >
-              <Glyph size={15} color={isActive ? "#60a5fa" : "#94a3b8"} />
-            </span>
-            {expanded && (
               <span
                 style={{
-                  flex: 1,
-                  textAlign: "left",
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
+                  flex: "0 0 18px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
                 }}
               >
-                {item.label}
+                <Glyph size={15} color={isActive ? "#60a5fa" : "#94a3b8"} />
               </span>
+              {expanded && (
+                <span
+                  style={{
+                    flex: 1,
+                    textAlign: "left",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
+                  {item.label}
+                </span>
+              )}
+            </Link>
+            {item.subs && isActive && expanded && (
+              <NavSubItems subs={item.subs} location={location} parentHref={item.href} />
             )}
-          </Link>
+          </Fragment>
         );
       })}
     </>
+  );
+}
+
+/**
+ * The sub-nav under an active nav row — prototype 169-178.
+ *
+ * ── Round Two's "↳" ────────────────────────────────────────────────────────
+ * "Sub-nav active-state accent changed from a left vertical bar to a leading
+ * `↳` glyph on the active sub-item, across Change Control, Ownership, SOPs and
+ * Microsoft Changes sub-navigation."
+ *
+ * Two things about the artefact are worth stating, because the sentence reads
+ * slightly differently from what the markup does:
+ *
+ *  1. There was nothing to change HERE. The round-one shell has no sub-nav at
+ *     all — `grep -c "↳"` on it is 0, and its nav rows carry no `subs`. So this
+ *     is the sub-nav's first appearance in this build, drawn to the new spec
+ *     rather than converted from a bar.
+ *  2. The glyph is NOT the active indicator. Prototype 175 renders `↳` on
+ *     EVERY sub-item unconditionally, at 11px `#475569`; what changes when a
+ *     sub-item is active is its row — a `rgba(0,120,212,.5)` border, a
+ *     `rgba(0,120,212,.12)` wash, and the label going 800/`#f8fafc`. Both are
+ *     reproduced as written; drawing the glyph only on the active row would
+ *     look like the changelog's sentence and not like the design.
+ *
+ * `subsVisible: !!o.subs && isActive && expanded` (8872) is why this renders
+ * only under the active parent and only when the sidebar is open — a collapsed
+ * 76px rail has no room for it.
+ */
+function NavSubItems({
+  subs,
+  location,
+  parentHref,
+}: {
+  subs: ReadonlyArray<{ key: string; label: string; href: string }>;
+  location: string;
+  parentHref: string;
+}) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 1, padding: "2px 0 6px" }}>
+      {subs.map((sb) => {
+        // The bare parent path IS the "all" sub-item, so it is active both at
+        // "/…/ownership" and at "/…/ownership/all".
+        const on =
+          location === sb.href || (sb.href === parentHref && location === `${parentHref}/all`);
+        return (
+          <Link
+            key={sb.key}
+            href={sb.href}
+            title={sb.label}
+            data-testid={`pv2-subnav-${sb.key}`}
+            aria-current={on ? "page" : undefined}
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 4,
+              width: "100%",
+              textAlign: "left",
+              padding: "8px 10px 9px 20px",
+              borderRadius: 8,
+              border: `1px solid ${on ? "rgba(0,120,212,.5)" : "transparent"}`,
+              background: on ? "rgba(0,120,212,.12)" : "transparent",
+              cursor: "pointer",
+              fontFamily: "inherit",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textDecoration: "none",
+            }}
+          >
+            <span
+              style={{
+                display: "flex",
+                alignItems: "baseline",
+                justifyContent: "space-between",
+                gap: 8,
+                width: "100%",
+              }}
+            >
+              <span style={{ display: "flex", alignItems: "baseline", gap: 6, minWidth: 0 }}>
+                <span style={{ flex: "0 0 auto", fontSize: "11px", color: "#475569", lineHeight: 1 }}>
+                  ↳
+                </span>
+                <span
+                  style={{
+                    fontSize: "12px",
+                    fontWeight: on ? 800 : 600,
+                    color: on ? "#f8fafc" : "#94a3b8",
+                    lineHeight: 1.3,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
+                  {sb.label}
+                </span>
+              </span>
+            </span>
+          </Link>
+        );
+      })}
+    </div>
   );
 }
 
@@ -677,13 +847,20 @@ export function PortalV2Shell({
             );
           })}
 
-          {/* ── Standards & risk — prototype 7239-7243, then Library at
-              7244-7246. Both groups are badge-free, so they share one renderer;
-              Operate above keeps its own loop because only it carries the
-              hold-window badge. */}
+          {/* ── Round Three's group order: Operate / Governance / Reference /
+              Library. All three below are badge-free, so they share one
+              renderer; Operate above keeps its own loop because only it carries
+              the hold-window badge. */}
           <SimpleNavGroup
-            label="Standards & risk"
-            items={STANDARDS_ITEMS}
+            label="Governance"
+            items={GOVERNANCE_ITEMS}
+            location={location}
+            expanded={expanded}
+          />
+
+          <SimpleNavGroup
+            label="Reference"
+            items={REFERENCE_ITEMS}
             location={location}
             expanded={expanded}
           />
