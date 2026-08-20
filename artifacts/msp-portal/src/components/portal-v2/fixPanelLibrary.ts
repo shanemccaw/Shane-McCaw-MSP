@@ -24,6 +24,7 @@
 import { CMP_FIX_PLAYBOOKS } from "./cmpFixPlaybooks";
 import { LIC_FIX_PLAYBOOKS } from "./licFixPlaybooks";
 import { ADP_FIX_PLAYBOOKS } from "./adpFixPlaybooks";
+import { HLT_FIX_PLAYBOOKS } from "./hltFixPlaybooks";
 
 export interface FixManualStep {
   text: string;
@@ -287,6 +288,7 @@ export function playbookFor(key: string): FixPlaybook {
  * sharing-drift keys. Ordered first-wins, matching the chain it replaces.
  */
 const ALL_PLAYBOOKS: Readonly<Record<string, FixPlaybook>> = {
+  ...HLT_FIX_PLAYBOOKS,
   ...ADP_FIX_PLAYBOOKS,
   ...LIC_FIX_PLAYBOOKS,
   ...CMP_FIX_PLAYBOOKS,
@@ -302,6 +304,7 @@ export const PLAYBOOK_SETS = {
   compliance: CMP_FIX_PLAYBOOKS,
   licensing: LIC_FIX_PLAYBOOKS,
   adoption: ADP_FIX_PLAYBOOKS,
+  health: HLT_FIX_PLAYBOOKS,
 } as const;
 
 /**

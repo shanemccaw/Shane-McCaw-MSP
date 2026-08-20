@@ -189,22 +189,16 @@
       "textContains": "Security"
     },
     {
-      "name": "goto the HEALTH pillar page -- now the LAST pillar still rendering through the generic portal-v2-pillar.tsx. This step has moved down the Layer 1 list each pass: Governance -> Security -> Adoption -> Health, because the exemplar must be a pillar that has not been rebuilt yet. Security's rebuild broke it once and this manifest caught it; Adoption's rebuild was repointed proactively. WHEN HEALTH IS REBUILT (pillar 5 of 5) THESE TWO STEPS MUST BE RETIRED, not repointed -- there will be no pillar left rendering the generic page, and the generic page itself becomes dead code to delete rather than cover.",
+      "name": "U5/U6 RETIRED, as this manifest said they would be. They asserted pv2-pillar-heading and pv2-provenance on the GENERIC portal-v2-pillar.tsx, using whichever pillar had not been rebuilt yet as the exemplar -- Governance, then Security (whose rebuild broke them and was caught here), then Adoption, then Health. Health was the last one. All six pillar keys now match a bespoke route declared ABOVE '/portal-v2/:pillar', so the generic page can no longer be reached by ANY valid pillar and there is nothing left to point them at. Repointing them a fifth time would have meant asserting against a page no user can open. The generic page itself is KEPT rather than deleted -- it is the last consumer of the per-pillar live-data path (usePortalV2Pillars + PortalV2Pieces) and the reference for moving a pillar off its fixture onto the real payload; deleting it is Shane's call. What replaces the coverage is U5a below: the param route's real remaining behaviour.",
       "action": "goto",
-      "target": "/portal/shane-mccaw-consulting/portal-v2/health"
+      "target": "/portal/shane-mccaw-consulting/portal-v2/nonsense"
     },
     {
-      "name": "U5 -- the generic pillar page renders its heading from the real payload.",
+      "name": "U5a -- an unknown pillar segment still falls through to NotFound rather than rendering an empty pillar shell. This is the param route's ONLY remaining reachable behaviour now that all six real pillars are matched above it, and it is the assertion that would catch a future route-order mistake putting the param route back in front of a real pillar.",
       "action": "expect",
-      "selector": "[data-testid='pv2-pillar-heading']",
+      "selector": "body",
       "state": "visible",
-      "textContains": "Health"
-    },
-    {
-      "name": "U6 -- the generic pillar page prints run provenance: which run the findings belong to, or an explicit statement that no completed run backs them. Either way it never implies numbers it does not have.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-provenance']",
-      "state": "visible"
+      "textContains": "Error 404"
     },
     {
       "name": "goto the rebuilt Governance pillar dashboard.",
@@ -570,6 +564,205 @@
       "selector": "[data-testid='pv2-sec-risk-register-link']",
       "state": "visible",
       "textContains": "View full risk register"
+    },
+    {
+      "name": "goto the rebuilt Health pillar dashboard -- the sixth and last.",
+      "action": "goto",
+      "target": "/portal/shane-mccaw-consulting/portal-v2/health"
+    },
+    {
+      "name": "H1 -- THE NAMING PROBLEM, SOLVED ON THE PAGE. Two different screens are called health, so this pillar carries a disambiguation banner naming both. No other pillar explains what it is not.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-hlt-banner']",
+      "state": "visible",
+      "textContains": "Two things share the word health"
+    },
+    {
+      "name": "H2 -- and its own title, which is NOT the word 'Health' alone.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-hlt-banner-title']",
+      "state": "visible",
+      "textContains": "Tenant Infrastructure Health"
+    },
+    {
+      "name": "H3 -- the LOCATOR chip row marks this pillar 'you are here'. It exists only because of the naming collision.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-hlt-locator-health']",
+      "state": "visible",
+      "textContains": "you are here"
+    },
+    {
+      "name": "H4 -- and the other five chips are real links, not decoration. Governance is one of them.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-hlt-locator-governance']",
+      "state": "visible",
+      "textContains": "Governance"
+    },
+    {
+      "name": "H5 -- the hero ring shows the score with a RED delta: debt is trending the wrong way.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-hlt-score']",
+      "state": "visible",
+      "textContains": "66"
+    },
+    {
+      "name": "H6 -- THE TWO OBJECT COUNTS. The hero binds the FULL nine-class inventory sum (166); HLT-05 and the trend quote 78, the same inventory minus the three classes with their own debt items. The first transcription hardcoded 78 here and the unit test caught it; this pins the rendered value.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-hlt-stat-stale-objects']",
+      "state": "visible",
+      "textContains": "166"
+    },
+    {
+      "name": "H7 -- the trend is labelled lower-is-better and explains its own red dot in words. Colouring that dot green, as every other pillar would, would state the opposite of the caption.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-hlt-trend']",
+      "state": "visible",
+      "textContains": "red because the direction changed, not because the number is high"
+    },
+    {
+      "name": "H8 -- the sync table reports state read on the server itself.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-hlt-sync']",
+      "state": "visible",
+      "textContains": "Connect Health agent"
+    },
+    {
+      "name": "H9 -- the stale-object inventory renders all nine classes.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-hlt-objects']",
+      "state": "visible",
+      "textContains": "App registrations with no owner"
+    },
+    {
+      "name": "H10 -- the drift table carries the full audit trail: baseline, current, WHO changed it and WHEN.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-hlt-drift']",
+      "state": "visible",
+      "textContains": "DefaultSharingLinkType"
+    },
+    {
+      "name": "H11 -- and it is honest where the audit log cannot answer, rather than guessing an actor.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-hlt-drift']",
+      "state": "visible",
+      "textContains": "Unknown — pre-baseline"
+    },
+    {
+      "name": "H12 -- debt items use this pillar's OWN severity vocabulary. Not Critical/High/Low: debt accrues, it does not threaten.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-hlt-debt']",
+      "state": "visible",
+      "textContains": "DEGRADING"
+    },
+    {
+      "name": "H13 -- including the third band no other pillar has.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-hlt-debt']",
+      "state": "visible",
+      "textContains": "HOUSEKEEPING"
+    },
+    {
+      "name": "H14 -- expand the end-of-support finding.",
+      "action": "click",
+      "selector": "[data-testid='pv2-hlt-debt-HLT-01']",
+      "critical": true
+    },
+    {
+      "name": "H15 -- its evidence states the option nobody wants to say out loud: there are no mailboxes left on-premises.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-hlt-debt']",
+      "state": "visible",
+      "textContains": "0 — every mailbox is already in the cloud"
+    },
+    {
+      "name": "H16 -- THE GATE FROM A DEBT ITEM.",
+      "action": "click",
+      "selector": "[data-testid='pv2-hlt-fix-hlt-exchange-eol']",
+      "critical": true
+    },
+    {
+      "name": "H17 -- it resolved to the real Health playbook.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-fix-panel']",
+      "state": "visible",
+      "textContains": "Deal with the out-of-support Exchange hybrid server"
+    },
+    {
+      "name": "H18 -- take the manual route toward the CR gate.",
+      "action": "click",
+      "selector": "[data-testid='pv2-fix-route-manual']",
+      "critical": true
+    },
+    {
+      "name": "H19 -- arm the CR confirmation.",
+      "action": "click",
+      "selector": "[data-testid='pv2-cr-confirm']",
+      "critical": true
+    },
+    {
+      "name": "H20 -- submit it.",
+      "action": "click",
+      "selector": "[data-testid='pv2-cr-submit']",
+      "critical": true
+    },
+    {
+      "name": "H21 -- continue to the procedure.",
+      "action": "click",
+      "selector": "[data-testid='pv2-cr-continue']",
+      "critical": true
+    },
+    {
+      "name": "H22 -- HEALTH'S OWN WRAPPER, the fourth distinct one. It draws the line this pillar turns on: some of this work cannot be done from the container at all, because it runs on the sync server or on-premises Exchange.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-fix-manual']",
+      "state": "visible",
+      "textContains": "Anything touching the sync server or on-premises Exchange runs locally"
+    },
+    {
+      "name": "H23 -- and its closer is about the debt count, not an evidence pack or a savings ledger.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-fix-manual']",
+      "state": "visible",
+      "textContains": "drop out of the debt count on the next scan"
+    },
+    {
+      "name": "reset -- reload before the right column.",
+      "action": "goto",
+      "target": "/portal/shane-mccaw-consulting/portal-v2/health"
+    },
+    {
+      "name": "H24 -- the accepted risk is recorded in full, reviewed against a vendor roadmap rather than a calendar date.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-hlt-accepted']",
+      "state": "visible",
+      "textContains": "AD FS retained alongside cloud authentication"
+    },
+    {
+      "name": "H25 -- service health is filtered to what this tenant uses, and cross-references the drift already on this page.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-hlt-service']",
+      "state": "visible",
+      "textContains": "Fix the drift before this lands."
+    },
+    {
+      "name": "H26 -- open the provenance block.",
+      "action": "click",
+      "selector": "[data-testid='pv2-hlt-provenance-toggle']",
+      "critical": true
+    },
+    {
+      "name": "H27 -- it names the reads that genuinely cannot run from the container.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-hlt-provenance']",
+      "state": "visible",
+      "textContains": "Local admin on the sync server"
+    },
+    {
+      "name": "H28 -- and states that two settings are reported UNATTRIBUTABLE rather than guessed, which is the same honesty the drift table shows.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-hlt-provenance']",
+      "state": "visible",
+      "textContains": "reported as unattributable rather than guessed"
     },
     {
       "name": "goto the rebuilt Adoption pillar dashboard.",

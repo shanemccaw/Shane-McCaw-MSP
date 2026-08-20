@@ -1,0 +1,443 @@
+/**
+ * hltDashboardData.ts — the Health pillar dashboard fixture.
+ *
+ * Transcribed from the prototype's own Health logic
+ * (`Customer Portal Shell.dc.html` lines 12945-13285).
+ *
+ * ── The prototype opens with a naming problem, and solves it on the page ────
+ * Its source comment: "the overview is 'M365 Health' across all six pillars.
+ * This page is the infrastructure and configuration layer underneath it, so it
+ * is titled and located explicitly — locator strip, eyebrow, and a plain
+ * sentence saying which is which."
+ *
+ * That is why this pillar, alone, carries: a back link reading "M365 Health
+ * overview" rather than "Overview"; a disambiguation banner that names both
+ * things in bold; and a LOCATOR CHIP ROW of all six pillars with "· you are
+ * here" appended to this one. None of that is decoration — it exists because
+ * two different screens are called health.
+ *
+ * ── Debt goes down, so the trend is inverted ───────────────────────────────
+ * The trend counts OPEN DEBT ITEMS, where lower is better, and its end-point
+ * dot is RED on a GREEN line. The caption says why in words: "The last point is
+ * red because the direction changed, not because the number is high." Colouring
+ * that dot green — the obvious choice from every other pillar — would state the
+ * opposite of what the page says.
+ *
+ * ── Design content, not tenant data ─────────────────────────────────────────
+ * The prototype's fictional Halden Materials figures, in one module.
+ */
+
+export type HltTone = "red" | "amber" | "green";
+export type HltServiceTone = "red" | "amber" | "green" | "blue";
+export type HltSeverity = "high" | "medium" | "low";
+
+/** `hltGreen` (12950). */
+export const HLT_GREEN = "#22C55E";
+export const HLT_GREEN_TEXT = "#4ade80";
+
+export const HLT_TONE: Readonly<Record<HltTone, string>> = {
+  red: "#f87171",
+  amber: "#c2a63d",
+  green: "#34d399",
+};
+
+export const HLT_SERVICE_TONE: Readonly<Record<HltServiceTone, string>> = {
+  ...HLT_TONE,
+  blue: "#60a5fa",
+};
+
+/** Hero and banner copy — 12951 and the literals inline in the markup. */
+export const HLT_HERO = {
+  score: 66,
+  /** Hardcoded in the ring markup (2985) and RED — debt is trending up. */
+  delta: "-2 this month",
+  /** The back link reads differently here than on any other pillar. */
+  backLabel: "M365 Health overview",
+  acceptedStripSuffix: "accepted risk on record · AD FS retained",
+  bannerEyebrow: "Infrastructure & configuration hygiene · pillar 6 of 6",
+  bannerTitle: "Tenant Infrastructure Health",
+  bannerScoreNote: "Score 66 · debt trending up over the last 2 scans",
+  eyebrow: "Where the debt is",
+  headline: "You cleared 57 objects across scans 1 to 8. The last two scans added 7 back.",
+  standfirst:
+    "Nothing runs on a schedule, so the count rises between manual passes. The fix for that is the boring one: thresholds and cleanup rules, not another cleanup weekend.",
+  trendLabel: "Open debt items · lower is better",
+  trendCaption:
+    "128 → 71 → 78. The last point is red because the direction changed, not because the number is high.",
+} as const;
+
+/**
+ * The disambiguation sentence (2932). Split around the two bolded names so the
+ * emphasis survives — it is the entire point of the sentence.
+ */
+export const HLT_BANNER_BODY = {
+  before: "Two things share the word health, so to be plain about which one this is: the overview page you came from is ",
+  boldA: "M365 Health",
+  middle: " — your whole tenant across all six pillars. This page is the sixth of those pillars: the plumbing underneath. Directory sync, hybrid servers, app registrations, stale objects, and configuration drift. Nothing here is being exploited today. It is engineering debt, and left alone it turns into an incident on a day nobody chose.",
+} as const;
+
+export const HLT_DEBT_HISTORY: readonly number[] = [128, 121, 113, 104, 96, 88, 79, 71, 74, 78];
+
+/**
+ * `hltTrend` (12953-12966). A FOURTH distinct domain across the six pillars:
+ * floor padded by EIGHT, ceiling by SIX. Governance/Security/Compliance use ±3;
+ * Adoption uses −4/+3; Licensing anchors at 0 with a ×1.12 ceiling. The wider
+ * pad here is because the series spans 128 down to 71 — a ±3 pad on that range
+ * would put the endpoints hard against the frame.
+ */
+export function hltTrendGeometry() {
+  const w = 280;
+  const h = 84;
+  const min = Math.min(...HLT_DEBT_HISTORY) - 8;
+  const max = Math.max(...HLT_DEBT_HISTORY) + 6;
+  const pts = HLT_DEBT_HISTORY.map((v, i) => {
+    const x = (i / (HLT_DEBT_HISTORY.length - 1)) * w;
+    const y = h - ((v - min) / (max - min || 1)) * h;
+    return { x: +x.toFixed(1), y: +y.toFixed(1) };
+  });
+  return {
+    w,
+    h,
+    line: pts.map((p) => `${p.x},${p.y}`).join(" "),
+    area:
+      `M${pts[0].x},${h} L` +
+      pts.map((p) => `${p.x},${p.y}`).join(" L") +
+      ` L${pts[pts.length - 1].x},${h} Z`,
+    lastX: pts[pts.length - 1].x,
+    lastY: pts[pts.length - 1].y,
+  };
+}
+
+/* The three hero stats are declared after the tables they sum — see below. */
+
+/* ── Directory sync & hybrid — HLT_SYNC (12982-12991) ─────────────────────── */
+
+export const HLT_SYNC: readonly { stage: string; state: string; tone: HltTone; detail: string }[] = [
+  { stage: "Entra Connect Sync", state: "Running · v2.1.20.0", tone: "red", detail: "Two versions behind. Microsoft only supports the current and previous release, and builds older than 18 months stop syncing without warning." },
+  { stage: "Last successful sync", state: "3 hours ago", tone: "amber", detail: "Delta sync runs every 30 minutes. A 3-hour gap means the last four cycles did not complete cleanly." },
+  { stage: "Sync errors", state: "14 objects", tone: "red", detail: "9 duplicate attribute, 3 invalid UPN suffix, 2 federated domain mismatch. Those 14 people do not exist correctly in the cloud." },
+  { stage: "Staging server", state: "None", tone: "red", detail: "One sync server, no staging mode standby. If it fails, on-premises changes stop reaching the cloud until it is rebuilt." },
+  { stage: "Password hash sync", state: "Enabled", tone: "green", detail: "Correct, and the right choice for resilience. It keeps sign-in working if federation has a bad day." },
+  { stage: "Password writeback", state: "Off", tone: "amber", detail: "Self-service password reset cannot write back on-premises, so a cloud reset leaves the on-prem password unchanged." },
+  { stage: "Connect Health agent", state: "Not reporting", tone: "red", detail: "Silent for 11 days. Microsoft’s own alerting on this server is effectively off." },
+  { stage: "Sync scope", state: "3 stale OUs", tone: "amber", detail: "Three organisational units in scope contain only disabled or deleted objects, which is where most of the duplicate-attribute errors come from." },
+];
+
+/* ── Stale object inventory — HLT_OBJECTS (13002-13012) ───────────────────── */
+
+export const HLT_OBJECTS: readonly {
+  type: string;
+  count: number;
+  oldest: string;
+  where: string;
+  note: string;
+  tone: HltTone;
+  fixKey: string;
+}[] = [
+  { type: "Stale device records", count: 31, oldest: "412 days since last sign-in", where: "Entra ID", note: "No cleanup rule exists, so device records accumulate indefinitely.", tone: "amber", fixKey: "hlt-stale-devices" },
+  { type: "Duplicate device records", count: 9, oldest: "2 records for the same hardware ID", where: "Entra ID + Intune", note: "Re-enrolled devices that left the old record behind. Compliance reporting counts both.", tone: "amber", fixKey: "hlt-duplicate-devices" },
+  { type: "App registrations with no owner", count: 61, oldest: "created 4 years ago", where: "Entra ID", note: "When a credential expires there is nobody to notify, which is how a reporting job failed silently for 8 days.", tone: "red", fixKey: "hlt-app-owners" },
+  { type: "Credentials expiring in 30 days", count: 3, oldest: "12 days away", where: "App registrations", note: "Two belong to unowned registrations, so nothing is watching them.", tone: "red", fixKey: "hlt-credentials" },
+  { type: "Credentials already expired", count: 1, oldest: "expired 8 days ago", where: "App registrations", note: "The Legacy Reporting Service — still retrying 44 times a day and failing.", tone: "red", fixKey: "hlt-credentials" },
+  // NOTE: this one points at a SECURITY pillar key, not a Health one — the same
+  // dormant service principals are the OAuth page's subject from the consent
+  // angle. Cross-pillar by design; see the note on HLT_DRIFT below.
+  { type: "Service principals with no sign-in", count: 14, oldest: "18 months dormant", where: "Enterprise apps", note: "Dormant service principals keep their grants. Cross-referenced on the Security OAuth page.", tone: "amber", fixKey: "oauth-dormant" },
+  { type: "Empty security groups", count: 18, oldest: "created 3 years ago", where: "Entra ID", note: "Several are referenced in Conditional Access exclusions, so they are not simply deletable.", tone: "amber", fixKey: "hlt-empty-groups" },
+  { type: "Unassigned Intune profiles", count: 6, oldest: "created 14 months ago", where: "Intune", note: "Profiles that exist and target nothing. They make the real configuration harder to read.", tone: "amber", fixKey: "hlt-orphan-profiles" },
+  { type: "Disabled accounts never removed", count: 23, oldest: "disabled 14 months ago", where: "Entra ID", note: "11 still hold licences and 4 still own groups — both tracked on their own pages.", tone: "amber", fixKey: "hlt-disabled-accounts" },
+];
+
+/** `hltObjectTotal` (13024) — summed, and it is the "78" the hero stat prints. */
+export const HLT_OBJECT_TOTAL = HLT_OBJECTS.reduce((a, o) => a + o.count, 0);
+
+/* ── Configuration drift — HLT_DRIFT (13026-13039) ────────────────────────── */
+
+/**
+ * Eight of these twelve rows carry a fixKey belonging to ANOTHER pillar —
+ * `gov-drift-*`, `cmp-retention-coverage`, `cmp-audit-retention`, `ca-CA201-…`,
+ * `legacy-smtp-off`. That is the design's point: drift is detected here and
+ * remediated where the setting lives, so the wrench routes to the owning
+ * pillar's playbook rather than duplicating it. Only the ones with no other home
+ * (`hlt-compliance-grace`, `hlt-teams-policy-sprawl`) get a Health playbook.
+ */
+export const HLT_DRIFT: readonly {
+  setting: string;
+  baseline: string;
+  current: string;
+  who: string;
+  when: string;
+  scope: string;
+  tone: HltTone;
+  fixKey: string | null;
+}[] = [
+  { setting: "DefaultSharingLinkType", baseline: "Direct", current: "AnonymousAccess", who: "d.cho@tenant.com", when: "18 days ago", scope: "SharePoint tenant", tone: "red", fixKey: "gov-drift-default-link" },
+  { setting: "TransportConfig · SmtpClientAuthenticationDisabled", baseline: "True", current: "False", who: "Unknown — pre-baseline", when: "Before scan 1", scope: "Exchange Online", tone: "red", fixKey: "legacy-smtp-off" },
+  { setting: "CA201 policy state", baseline: "On", current: "On, 6 exclusions added", who: "a.reyes@tenant.com", when: "6 weeks ago", scope: "Conditional Access", tone: "red", fixKey: "ca-CA201-AllUsers-AllApps-RequireMFA" },
+  { setting: "CA301 policy state", baseline: "On", current: "Report-only", who: "a.reyes@tenant.com", when: "94 days ago", scope: "Conditional Access", tone: "red", fixKey: "ca-CA301-Guests-AllApps-RequireMFA" },
+  { setting: "Intune compliance grace period", baseline: "1 day", current: "14 days", who: "k.osei@tenant.com", when: "5 weeks ago", scope: "Intune", tone: "amber", fixKey: "hlt-compliance-grace" },
+  { setting: "Teams meeting policy assignment", baseline: "Global for all", current: "3 custom policies, 2 unused", who: "r.delgado@tenant.com", when: "2 months ago", scope: "Teams", tone: "amber", fixKey: "hlt-teams-policy-sprawl" },
+  { setting: "Retention policy scope", baseline: "All mailboxes", current: "Static scope, 12 uncovered", who: "Scope not updated", when: "8 months ago", scope: "Purview", tone: "red", fixKey: "cmp-retention-coverage" },
+  { setting: "Site sharing on 3 sites", baseline: "Inherit tenant", current: "Site-level override", who: "Site admins", when: "Various", scope: "SharePoint sites", tone: "red", fixKey: "gov-drift-reset-sites" },
+  { setting: "Guest invitation setting", baseline: "Admins and inviters", current: "Everyone", who: "Unknown — pre-baseline", when: "Before scan 1", scope: "Entra ID", tone: "red", fixKey: "gov-guests-invites" },
+  { setting: "Audit retention policy", baseline: "1 year (planned)", current: "180 days (Standard)", who: "Licence-constrained", when: "n/a", scope: "Purview", tone: "amber", fixKey: "cmp-audit-retention" },
+  { setting: "Password expiry policy", baseline: "Never expires", current: "Never expires", who: "—", when: "—", scope: "Entra ID", tone: "green", fixKey: null },
+  { setting: "Security defaults", baseline: "Off (CA in use)", current: "Off", who: "—", when: "—", scope: "Entra ID", tone: "green", fixKey: null },
+];
+
+/** `hltDriftCount` (13051) — non-green rows, which is the "10 of 47" figure. */
+export const HLT_DRIFT_COUNT = HLT_DRIFT.filter((d) => d.tone !== "green").length;
+
+/**
+ * The three hero stats (2989-3005).
+ *
+ * TWO DIFFERENT OBJECT COUNTS LIVE ON THIS PAGE, and they are not a mistake.
+ * The hero's "Stale objects" binds `hltObjectTotal` — the sum of ALL NINE
+ * classes in the inventory, 166 — and its sub-label says "Across 9 object
+ * classes". Debt item HLT-05 and the trend series both say 78, which is that
+ * same inventory MINUS app registrations (61), credentials (3+1) and disabled
+ * accounts (23): each of those three has its own debt item and its own
+ * remediation, so counting them in the debt total would double-count the work.
+ *
+ * Both figures are the prototype's, and both are correct for what they measure.
+ * The values are filled FROM the tables rather than typed, so the hero cannot
+ * silently drift from the rows beneath it — which is exactly the mistake this
+ * transcription made first time round, by hardcoding 78 here.
+ */
+export const HLT_HERO_STATS: readonly { label: string; value: string; sub: string }[] = [
+  { label: "Directory sync", value: "14 errors", sub: "Unsupported build, no standby server" },
+  {
+    label: "Stale objects",
+    value: String(HLT_OBJECT_TOTAL),
+    sub: "Across 9 object classes, no cleanup rule",
+  },
+  {
+    label: "Config drift",
+    value: `${HLT_DRIFT_COUNT} of 47`,
+    sub: "Settings that no longer match the baseline",
+  },
+];
+
+/**
+ * The five object classes the DEBT count covers — the ones with no debt item of
+ * their own. Their sum is the 78 that HLT-05 and the trend series quote.
+ */
+export const HLT_DEBT_OBJECT_CLASSES: readonly string[] = [
+  "Stale device records",
+  "Duplicate device records",
+  "Service principals with no sign-in",
+  "Empty security groups",
+  "Unassigned Intune profiles",
+];
+
+export const HLT_DEBT_OBJECT_TOTAL = HLT_OBJECTS.filter((o) =>
+  HLT_DEBT_OBJECT_CLASSES.includes(o.type),
+).reduce((a, o) => a + o.count, 0);
+
+/* ── Debt items — HLT_FINDINGS (13053-13119) ──────────────────────────────── */
+
+export interface HltFinding {
+  id: string;
+  sev: HltSeverity;
+  title: string;
+  debt: string;
+  why: string;
+  evidence: { k: string; v: string }[];
+  action: string;
+  actionSub: string;
+  fixKey: string;
+}
+
+/**
+ * `hltSevMeta` (13119). The labels are the pillar's own vocabulary — Degrading /
+ * Accruing / Housekeeping — not Critical / High / Low. Debt accrues; it does not
+ * threaten. And this is the only pillar with a THIRD severity band.
+ */
+export const HLT_SEV_META: Readonly<Record<HltSeverity, { c: string; label: string }>> = {
+  high: { c: "#f87171", label: "Degrading" },
+  medium: { c: "#c2a63d", label: "Accruing" },
+  low: { c: "#60a5fa", label: "Housekeeping" },
+};
+
+export const HLT_FINDINGS: readonly HltFinding[] = [
+  {
+    id: "HLT-01",
+    sev: "high",
+    title: "The Exchange hybrid server is past end of support",
+    debt: "Unsupported since 14 October 2025",
+    why: "Exchange 2019 reached end of support on 14 October 2025, so this server receives no security updates, no time-zone updates, and no support case coverage. It still works, which is exactly why it has stayed. Hybrid mail flow, free/busy lookups, and on-premises mailbox moves all depend on it.",
+    evidence: [
+      { k: "Build", v: "15.2.1544.4 · Exchange 2019 CU14, released before end of support" },
+      { k: "Role in the estate", v: "Hybrid mail flow, free/busy federation, and the mailbox migration endpoint" },
+      { k: "Mailboxes on-premises", v: "0 — every mailbox is already in the cloud" },
+      { k: "Why it is still there", v: "Directory writeback and the hybrid configuration were never decommissioned after the migration finished" },
+      { k: "Free/busy failures", v: "2 users currently affected, both with corrupted on-premises calendar permissions" },
+      { k: "The actual options", v: "Move to Exchange Server Subscription Edition to stay hybrid, or decommission the last server now that no mailboxes remain on-premises" },
+    ],
+    action: "Scope the hybrid decommission",
+    actionSub: "No mailboxes remain on-premises — decommission is the cheaper path, and we cost both",
+    fixKey: "hlt-exchange-eol",
+  },
+  {
+    id: "HLT-02",
+    sev: "high",
+    title: "Entra Connect is two versions behind with 14 objects failing to sync",
+    debt: "Single point of failure, no standby",
+    why: "The sync server is running an unsupported build, has no staging-mode standby, and its Connect Health agent has been silent for eleven days. Fourteen objects fail every cycle with duplicate attribute and UPN suffix errors, which means fourteen people do not exist correctly in the cloud.",
+    evidence: [
+      { k: "Version", v: "v2.1.20.0 — two releases behind. Microsoft supports the current and previous version only, and builds over 18 months old stop working." },
+      { k: "Sync errors", v: "9 duplicate attribute, 3 invalid UPN suffix, 2 federated domain mismatch" },
+      { k: "Root cause of most errors", v: "3 stale OUs in sync scope containing only disabled or deleted objects" },
+      { k: "Resilience", v: "One server, no staging-mode standby. A failure stops on-premises changes reaching the cloud until it is rebuilt from scratch." },
+      { k: "Monitoring", v: "Connect Health agent has not reported for 11 days, so Microsoft’s own alerting on this server is off" },
+      { k: "Order of work", v: "Fix the errors first, then upgrade, then build the standby. Upgrading with 14 failing objects just moves the failures to a new build." },
+    ],
+    action: "Clear the sync errors, upgrade, then build a standby",
+    actionSub: "Three stages in that order, each verified before the next",
+    fixKey: "hlt-connect-sync",
+  },
+  {
+    id: "HLT-03",
+    sev: "medium",
+    title: "61 app registrations have no owner and 4 credentials are expiring or expired",
+    debt: "Nobody to notify when something breaks",
+    why: "An unowned app registration has nobody to warn when its credential expires. That is not theoretical here — the Legacy Reporting Service credential expired eight days ago and the job has been failing 44 times a day since, unnoticed. Two of the three credentials expiring in the next month belong to unowned registrations.",
+    evidence: [
+      { k: "Registrations with no owner", v: "61 of 148" },
+      { k: "Expired", v: "1 — Legacy Reporting Service, 8 days ago, 44 failed token requests a day" },
+      { k: "Expiring within 30 days", v: "3, the nearest in 12 days. Two are unowned." },
+      { k: "No lifetime policy", v: "App management policies are not configured, so credentials can be created with no expiry at all — 4 currently have none" },
+      { k: "Related", v: "The same 61 registrations appear on the Security OAuth page from the consent and permission angle" },
+    ],
+    action: "Assign owners and enforce a credential lifetime policy",
+    actionSub: "Owners proposed from usage; policy caps new credentials at 6 months",
+    fixKey: "hlt-app-owners",
+  },
+  {
+    id: "HLT-04",
+    sev: "medium",
+    title: "10 settings have drifted from your recorded baseline",
+    debt: "Configuration no longer matches the record",
+    why: "Ten settings differ from the baseline recorded at scan 1. Two changed before the baseline existed and cannot be attributed, and eight have a name and a date attached. Drift is not automatically wrong — but drift nobody decided is how a tenant ends up in a state nobody can explain.",
+    evidence: [
+      { k: "Drifted settings", v: "10 of 47 tracked" },
+      { k: "Attributable", v: "8 have an actor and a timestamp from the audit log" },
+      { k: "Unattributable", v: "2 predate the baseline. They are recorded as unknown rather than guessed." },
+      { k: "Highest consequence", v: "DefaultSharingLinkType and SMTP AUTH — both already have their own findings on other pillars" },
+      { k: "Change windows", v: "6 of the 8 attributable changes were made outside a change window with no ticket reference" },
+      { k: "Baseline age", v: "Recorded at scan 1, 14 scans ago. It should be re-signed after this remediation round." },
+    ],
+    action: "Reconcile drift and re-sign the baseline",
+    actionSub: "Each drift either reverted or adopted into the baseline deliberately",
+    fixKey: "hlt-baseline-reconcile",
+  },
+  {
+    id: "HLT-05",
+    sev: "medium",
+    title: "78 stale technical objects are accumulating with no cleanup rule",
+    debt: "Entropy with no counter-pressure",
+    why: "Thirty-one stale devices, nine duplicates, eighteen empty groups, six unassigned profiles, and fourteen dormant service principals. None of it is dangerous. All of it makes the real configuration harder to read, makes compliance counts wrong, and slows down every future investigation.",
+    evidence: [
+      { k: "Total objects", v: "78, up from 71 two scans ago" },
+      { k: "Devices", v: "31 with no sign-in in 90+ days, oldest 412 days" },
+      { k: "Duplicates", v: "9 device records sharing a hardware ID with another record" },
+      { k: "Groups", v: "18 empty security groups, several referenced in Conditional Access exclusions — those are not simply deletable" },
+      { k: "Why the count went up", v: "The last cleanup was scan 8. Nothing runs on a schedule, so the count rises between manual passes." },
+      { k: "Effect on other pillars", v: "Device compliance percentages and licence counts are both computed against inflated denominators until this is cleaned" },
+    ],
+    action: "Run the cleanup and set the recurring rules",
+    actionSub: "One pass now, then automatic thresholds so the count stops climbing",
+    fixKey: "hlt-stale-devices",
+  },
+  {
+    id: "HLT-06",
+    sev: "low",
+    title: "34 Message Center posts are unreviewed, 3 of them affect your configuration",
+    debt: "Changes arriving unread",
+    why: "Microsoft publishes changes to the Message Center and three of the current posts touch settings you rely on. Unread, they become surprises. This is the cheapest item on the page and the one most likely to prevent an incident nobody saw coming.",
+    evidence: [
+      { k: "Unreviewed posts", v: "34, oldest 4 months" },
+      { k: "Relevant to your tenant", v: "3 — a Teams policy default change, a SharePoint sharing default, and a Conditional Access evaluation change" },
+      { k: "Service advisories open", v: "3, all informational, none affecting users today" },
+      { k: "Incidents in the last 30 days", v: "1 — Exchange Online delayed mail delivery, resolved in 4 hours" },
+      { k: "No routing", v: "Nothing forwards relevant posts to a person or a channel, so review depends on someone remembering to look" },
+    ],
+    action: "Route Message Center posts to a channel with a weekly review",
+    actionSub: "Filtered to services you actually use, not the full firehose",
+    fixKey: "hlt-message-center",
+  },
+];
+
+export const HLT_FINDING_COUNT = HLT_FINDINGS.length;
+
+/* ── Accepted risk — HLT_ACCEPTED (13150-13156) ───────────────────────────── */
+
+export const HLT_ACCEPTED: readonly {
+  id: string;
+  title: string;
+  rationale: string;
+  compensating: string;
+  owner: string;
+  approved: string;
+  review: string;
+  register: string;
+  note: string;
+}[] = [
+  {
+    id: "HLT-A1",
+    title: "AD FS retained alongside cloud authentication",
+    rationale:
+      "Two line-of-business applications authenticate against AD FS and neither vendor supports modern authentication before their 2027 release. Removing AD FS would break both.",
+    compensating:
+      "AD FS servers patched monthly, certificate expiry monitored with a 60-day alert, and extranet lockout enabled. Password hash sync stays on so cloud sign-in survives an AD FS outage.",
+    owner: "Head of Infrastructure",
+    approved: "11 January 2026",
+    review: "30 April 2027",
+    register: "RR-2026-002",
+    note: "Reviewed against the vendor roadmap rather than a calendar date, so the review moves if their release slips.",
+  },
+];
+
+/** The accepted card's meta grid (13159-13164). Note "Accepted", not "Approved". */
+export function hltAcceptedMeta(a: (typeof HLT_ACCEPTED)[number]) {
+  return [
+    { k: "Owner", v: a.owner },
+    { k: "Accepted", v: a.approved },
+    { k: "Next review", v: a.review },
+    { k: "Risk register", v: a.register },
+  ];
+}
+
+/* ── Service health & incoming changes — HLT_SERVICE (13166-13172) ────────── */
+
+export const HLT_SERVICE: readonly {
+  title: string;
+  kind: string;
+  when: string;
+  impact: string;
+  tone: HltServiceTone;
+}[] = [
+  { title: "Teams meeting policy default change", kind: "Message Center · MC-914203", when: "Rolling out from 12 September", impact: "Affects the 3 custom meeting policies you have in place. One of them relies on the current default.", tone: "amber" },
+  { title: "SharePoint default sharing link change", kind: "Message Center · MC-908771", when: "Rolling out from 28 August", impact: "Interacts with the DefaultSharingLinkType drift already on this page. Fix the drift before this lands.", tone: "amber" },
+  { title: "Conditional Access evaluation change", kind: "Message Center · MC-921044", when: "Announced, no date", impact: "Changes how report-only results are surfaced. Relevant while CA301 is still report-only.", tone: "blue" },
+  { title: "Exchange Online delayed delivery", kind: "Incident EX1094882 · resolved", when: "9 days ago, 4h 12m", impact: "Root cause published. No action required, recorded for the reliability log.", tone: "green" },
+  { title: "Teams advisory · call quality", kind: "Advisory TM1102341 · open", when: "Since 3 days ago", impact: "Informational. No users have reported impact and no configuration change is suggested.", tone: "blue" },
+];
+
+/* ── Provenance — HLT_PROV (13181-13190) ──────────────────────────────────── */
+
+export const HLT_PROV: readonly {
+  src: "graph" | "ps" | "derived";
+  call: string;
+  scope: string;
+  note: string;
+}[] = [
+  { src: "ps", call: "Get-ADSyncScheduler | Select SyncCycleEnabled,NextSyncCyclePolicyType,LastSyncCycleStartTimeInUTC", scope: "Local admin on the sync server", note: "Sync cadence and last cycle. Runs on the server itself, not from the container." },
+  { src: "graph", call: "/v1.0/directory/onPremisesSynchronization", scope: "OnPremDirectorySynchronization.Read.All", note: "Cloud-side view of sync configuration and feature state, including password writeback." },
+  { src: "graph", call: "/beta/directory/deviceLocalCredentials · /v1.0/devices?$filter=approximateLastSignInDateTime le {date}", scope: "Device.Read.All", note: "Stale device identification by last sign-in, which is the field the cleanup rule uses." },
+  { src: "graph", call: "/v1.0/applications?$select=id,displayName,passwordCredentials,keyCredentials&$expand=owners", scope: "Application.Read.All", note: "Credential expiry and ownership in one call — the source of both the 61 and the 4." },
+  { src: "graph", call: "/v1.0/policies/appManagementPolicies", scope: "Policy.Read.All", note: "Whether a credential lifetime policy exists. Returns empty, which is why credentials with no expiry are possible." },
+  { src: "graph", call: "/v1.0/serviceAnnouncement/messages · /serviceAnnouncement/issues", scope: "ServiceMessage.Read.All", note: "Message Center posts and service incidents, filtered to services this tenant actually uses." },
+  { src: "ps", call: "Get-HybridConfiguration · Get-ExchangeServer | Select Name,AdminDisplayVersion,Edition", scope: "Exchange on-premises: View-Only Organization Management", note: "Hybrid configuration state and the on-premises build number behind the end-of-support finding." },
+  { src: "derived", call: "drift(setting) = compare(currentValue, signedBaseline[setting]) + attribution(auditLog)", scope: "—", note: "Every tracked setting compared against the signed baseline, with the audit log supplying who and when. Two settings predate the baseline and are reported as unattributable rather than guessed." },
+];

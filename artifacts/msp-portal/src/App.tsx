@@ -89,6 +89,7 @@ import PortalV2SecurityPage from "@/pages/portal-v2-security";
 import PortalV2CompliancePage from "@/pages/portal-v2-compliance";
 import PortalV2LicensingPage from "@/pages/portal-v2-licensing";
 import PortalV2AdoptionPage from "@/pages/portal-v2-adoption";
+import PortalV2HealthPage from "@/pages/portal-v2-health";
 import PortalV2GovOversharingPage from "@/pages/portal-v2-gov-oversharing";
 import PortalV2GovOversharingAllPage from "@/pages/portal-v2-gov-oversharing-all";
 import PortalV2ChangeControlPage from "@/pages/portal-v2-change-control";
@@ -575,6 +576,18 @@ function SlugInnerSwitch() {
           and parking a play is explicitly NOT accepting a risk. */}
       <Route path="/portal-v2/adoption">
         <ProtectedRoute component={PortalV2AdoptionPage} />
+      </Route>
+      {/* Health is the sixth and last pillar to get its own page. With this
+          route in place ALL SIX pillar keys are matched above the param route,
+          so "/portal-v2/:pillar" below can now only ever receive a NON-pillar
+          segment — which its own isPillarKey guard turns into a NotFound.
+          It is kept deliberately rather than deleted: it is the last consumer of
+          the per-pillar LIVE-data render path (usePortalV2Pillars +
+          PortalV2Pieces), and if any pillar later needs to move off its fixture
+          onto the real payload, that page is the reference for how. Deleting it
+          is Shane's call, not a side effect of finishing Layer 1. */}
+      <Route path="/portal-v2/health">
+        <ProtectedRoute component={PortalV2HealthPage} />
       </Route>
       {/* Operate — Change Control. Declared BEFORE "/portal-v2/:pillar" so the
           param route does not swallow it, same reason as the pillar pages
