@@ -1,7 +1,7 @@
 {
   "feature": "Customer Portal v2 -- MICROSOFT CHANGES (/portal-v2/ms-changes), recreated from 'Microsoft Changes.dc.html', a file that did not exist in the round-one handoff. A density grid over eleven uneven time buckets grouped into five waves, the tenant's own freeze windows drawn over it, and ten Message Center posts read against the tenant rather than forwarded. Each post carries Microsoft's own words beside the tenant's answer, the Graph/PowerShell evidence behind that answer, and a written consequence of doing nothing.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "PENDING",
+  "lastVerifiedAgainstCommit": "b0c8be76",
   "notes": [
     "THE LOGIN BLOCK IS NOT OPTIONAL. /portal-v2/* sits behind ProtectedRoute.",
     "UI ROUTE SHAPE: /portal/{slug}/portal-v2/ms-changes/{wave}. App.tsx declares '/portal-v2/ms-changes/:wave' BEFORE '/portal-v2/ms-changes', and both before '/portal-v2/:pillar'.",
