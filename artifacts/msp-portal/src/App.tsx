@@ -99,6 +99,8 @@ import PortalV2RunbooksPage from "@/pages/portal-v2-runbooks";
 import PortalV2SettingsPage from "@/pages/portal-v2-settings";
 import PortalV2OwnershipPage from "@/pages/portal-v2-ownership";
 import PortalV2MsChangesPage from "@/pages/portal-v2-ms-changes";
+import PortalV2RetainerPage from "@/pages/portal-v2-retainer";
+import PortalV2CopilotPage from "@/pages/portal-v2-copilot";
 import ConsentDeclinedPage from "@/pages/consent-declined";
 import ConsentSuccessPage from "@/pages/consent-success";
 import ConsentTenantConflictPage from "@/pages/consent-tenant-conflict";
@@ -658,6 +660,17 @@ function SlugInnerSwitch() {
       </Route>
       <Route path="/portal-v2/ms-changes">
         <ProtectedRoute component={PortalV2MsChangesPage} />
+      </Route>
+      {/* Ungrouped, above the Pillars group — My Architect (the retainer page).
+          Part 9. A plain /portal-v2/retainer route with no param segments. */}
+      <Route path="/portal-v2/retainer">
+        <ProtectedRoute component={PortalV2RetainerPage} />
+      </Route>
+      {/* Standalone, after the Pillars group — Copilot readiness, now the only
+          surface for the Copilot gate after the Overview rebuild dropped its
+          gate band. Part 9. */}
+      <Route path="/portal-v2/copilot">
+        <ProtectedRoute component={PortalV2CopilotPage} />
       </Route>
       {/* ═══════════════════════════════════════════════════════════════════
           PORTAL-V2 ROUTE INSERTION POINT — ADD NEW /portal-v2 ROUTES ABOVE.

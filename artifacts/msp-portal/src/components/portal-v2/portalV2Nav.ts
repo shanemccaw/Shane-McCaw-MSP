@@ -11,9 +11,11 @@
  *  The design's full nav is larger than this file. Governance is meant to carry
  *  Security Plan and PII Governance; Reference is meant to carry SOPs &
  *  Runbooks; Operate is meant to carry Remediation Tracker and Policy
- *  Decisions; and Projects, My Architect and Copilot sit above the Pillars
- *  group. They are absent because their pages are, not because they were
- *  forgotten — see PORTAL_V2_PARALLEL_PLAN.md for which part builds each.
+ *  Decisions. My Architect and Copilot sit above / after the Pillars group and
+ *  arrived with Part 9; Projects (Part 8) shares the ungrouped region and is
+ *  still absent because its page is. An absent row is absent because its page
+ *  is, not because it was forgotten — see PORTAL_V2_PARALLEL_PLAN.md for which
+ *  part builds each.
  * ══════════════════════════════════════════════════════════════════════════
  *
  * ── Why the nav is a module and not JSX in the shell ──────────────────────
@@ -38,7 +40,7 @@
  * which is harder to read than three explicit branches.
  */
 
-import { Bell, FileText, GitCommit, PlayCircle, ShieldOff, Users } from "lucide-react";
+import { Bell, FileText, GitCommit, PlayCircle, ShieldOff, Sparkles, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import { PILLAR_ICON_PATHS, PILLAR_ORDER } from "@/components/copilot-journey/journeyTokens";
@@ -241,16 +243,61 @@ const LIBRARY_ITEMS: readonly NavItem[] = [
 ];
 
 /**
+ * My Architect — the retainer page (Part 9). Prototype `topDefs` (shell 8803):
+ * an UNGROUPED row above the Pillars group, drawn with the plain 15px glyph, no
+ * group label and no divider. Projects (Part 8) shares this ungrouped region
+ * and sits beside it; each part adds its OWN single-item `label: null` group,
+ * which renders identically to one shared group but keeps two concurrent parts
+ * from editing the same array entry. The icon is the prototype's own `users`.
+ */
+const RETAINER_ITEM: NavItem = {
+  href: "/portal-v2/retainer",
+  label: "My Architect",
+  title: "My Architect",
+  testId: "pv2-nav-retainer",
+  glyph: { kind: "lucide", icon: Users },
+};
+
+/**
+ * Copilot — the readiness verdict page (Part 9), and the ONLY surface for the
+ * Copilot gate now the rebuilt Overview has no gate band. Prototype 133-143: a
+ * STANDALONE row after the Pillars group, drawn with a 26px cyan identity tile
+ * — the `pillars` render treatment — rather than the plain glyph. `primary` is
+ * the design's `#22D3EE`.
+ *
+ * The design also draws a live "41 / 82" gate pill on this row. The shell has
+ * no render path for a nav pill and it belongs to another part this wave, so
+ * the row carries the cyan Copilot identity and the gate number lives in full
+ * on the page itself (portal-v2-copilot.tsx, from `COPILOT_GATE_TARGET`). The
+ * pill is the one nav detail deferred to the shell owner rather than added by
+ * editing a file this part must not touch.
+ */
+const COPILOT_ITEM: NavItem = {
+  href: "/portal-v2/copilot",
+  label: "Copilot",
+  title: "Copilot",
+  testId: "pv2-nav-copilot",
+  glyph: { kind: "lucide", icon: Sparkles },
+  primary: "#22D3EE",
+};
+
+/**
  * The nav, in render order.
  *
  * Group order is Round Three's: Overview, Pillars, then Operate / Governance /
- * Reference / Library. The design also places Projects and My Architect
- * ungrouped above Pillars, and Copilot in its own group carrying the live gate
- * score as a pill; all three arrive with their pages (Parts 8 and 9).
+ * Reference / Library. The design also places My Architect (and Projects, Part
+ * 8) ungrouped above Pillars, and Copilot standalone after Pillars; My
+ * Architect and Copilot arrive here with Part 9.
  */
 export const PORTAL_V2_NAV: readonly NavGroup[] = [
   { label: null, render: "solo", items: [OVERVIEW_ITEM] },
+  // My Architect — ungrouped, above Pillars. Projects (Part 8) joins this
+  // region as its own sibling `label: null` group.
+  { label: null, render: "plain", items: [RETAINER_ITEM] },
   { label: "Pillars", render: "pillars", items: PILLAR_ITEMS },
+  // Copilot — standalone after the Pillars group, drawn with the pillar tile
+  // treatment in the design's cyan.
+  { label: null, render: "pillars", items: [COPILOT_ITEM] },
   { label: "Operate", render: "plain", items: OPERATE_ITEMS },
   { label: "Governance", render: "plain", items: GOVERNANCE_ITEMS },
   { label: "Reference", render: "plain", items: REFERENCE_ITEMS },

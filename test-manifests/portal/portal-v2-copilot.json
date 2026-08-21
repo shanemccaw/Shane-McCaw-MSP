@@ -1,0 +1,48 @@
+{
+  "feature": "Customer Portal v2 -- COPILOT READINESS (/portal-v2/copilot), recreated from 'Customer Portal Shell.dc.html' markup 6093-6199 and logic class CP_PILLARS 13081-13106 + render map 20602-20631. A NEW page: Copilot carried 10% of its design copy and had no route. This page is the assessment verdict and, since the rebuilt Overview has no Copilot gate band, the ONLY surface for the Copilot gate anywhere in the portal. Six findings, one gate number, each pillar's worth-once-remediated, the document pack and the book-a-call band.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "PENDING",
+  "notes": [
+    "THE LOGIN BLOCK IS NOT OPTIONAL. /portal-v2/* sits behind ProtectedRoute.",
+    "UI ROUTE SHAPE: /portal/{slug}/portal-v2/copilot. App.tsx declares '/portal-v2/copilot' ABOVE the '/portal-v2/:pillar' insertion marker so the param route does not swallow it.",
+    "shaneapp://runTest hits the DEPLOYED build, not the local worktree -- this brand-new route asserts green only after the pushed commit is deployed.",
+    "THE GATE DENOMINATOR IS THE CONSTANT, NOT A LITERAL. CP2 asserts 'of 82', which the page renders from COPILOT_GATE_TARGET (journeyTokens.ts) via copilotModel's gateDenominatorLabel() -- never a hardcoded 82. The constant is mirrored server-side in copilot-gate.ts and each side is asserted by its own test; copilotModel.test.ts is the client half. If the gate target ever changes, this step's expected text and both unit tests change together. The current 41 (gate today) and 68 (remediated) are the design's own fixture.",
+    "THE PILLAR DELTAS ARE DERIVED (copilotModel.pillarDelta = target - now). CP7 reads Governance's '+27' off the DOM; copilotModel.test.ts pins the delta for all six.",
+    "THERE IS NO NEGATIVE TEXT ASSERTION IN THIS HARNESS, and an array in `textContains` is ANY-of, not all-of. Every all-of assertion here is its own step.",
+    "NO `select` STEPS. UiTestExecutor.cs cannot drive a native <select>; this page has none.",
+    "UI ONLY: the six 'Open <pillar>' buttons and the document links point at routes that genuinely exist (the pillar pages and /portal-v2/documents). The add-on / booking buttons open flows not built this pass and are visual. Every figure is the design's own fixture in copilotData.ts.",
+    "ENV VARS required: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD."
+  ],
+  "uiSteps": [
+    { "name": "goto the real login URL.", "action": "goto", "target": "/portal/login" },
+    { "name": "WAIT for the login form to hydrate.", "action": "expect", "selector": "#email", "state": "visible" },
+    { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
+    { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
+    { "name": "Primary login.", "action": "click", "selector": "[data-testid='login-submit']", "critical": true },
+
+    { "name": "goto Copilot readiness. It must resolve rather than fall through to the param pillar route or NotFound.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/copilot" },
+    { "name": "CP-title -- the page resolved and leads with the verdict headline.", "action": "expect", "selector": "[data-testid='pv2-page-title']", "textContains": "It is not yet safe to turn Copilot on at Halden Materials", "critical": true },
+
+    { "name": "CP1 -- the gate band names the current gate.", "action": "expect", "selector": "[data-testid='pv2-cp-gate']", "textContains": "Copilot gate today", "critical": true },
+    { "name": "CP2 -- ...against the gate TARGET rendered from COPILOT_GATE_TARGET, not a local literal.", "action": "expect", "selector": "[data-testid='pv2-cp-gate']", "textContains": "of 82", "critical": true },
+    { "name": "CP3 -- ...and the flat verdict.", "action": "expect", "selector": "[data-testid='pv2-cp-gate']", "textContains": "not safe to deploy" },
+    { "name": "CP4 -- the remediated side states what clearing the gate is worth.", "action": "expect", "selector": "[data-testid='pv2-cp-gate']", "textContains": "clears the gate · +27 points" },
+    { "name": "CP5 -- ...and the one-number summary.", "action": "expect", "selector": "[data-testid='pv2-cp-gate']", "textContains": "27 points from safe to deploy" },
+
+    { "name": "CP6 -- the pillar table renders.", "action": "expect", "selector": "[data-testid='pv2-cp-pillars']", "state": "visible", "critical": true },
+    { "name": "CP7 -- Governance's remediation gain is DERIVED (61 - 34 = +27), read off the DOM.", "action": "expect", "selector": "[data-testid='pv2-cp-pillar-governance']", "textContains": "+27", "critical": true },
+    { "name": "CP8 -- ...and its finding is stated in full.", "action": "expect", "selector": "[data-testid='pv2-cp-pillar-governance']", "textContains": "212 of them are open to everyone in your tenant" },
+    { "name": "CP9 -- Security's finding names the Global Admins.", "action": "expect", "selector": "[data-testid='pv2-cp-pillar-security']", "textContains": "Four of them are Global Admins" },
+    { "name": "CP10 -- Compliance, the last of the critical three, is present.", "action": "expect", "selector": "[data-testid='pv2-cp-pillar-compliance']", "textContains": "61% of your files carry no sensitivity label" },
+    { "name": "CP11 -- Health, an attention-required pillar, is present too.", "action": "expect", "selector": "[data-testid='pv2-cp-pillar-health']", "textContains": "37 tenant configuration changes in 90 days" },
+    { "name": "CP12 -- a pillar row deep-links into its own pillar page, a real route.", "action": "click", "selector": "[data-testid='pv2-cp-open-governance']", "critical": true },
+    { "name": "CP13 -- ...and it lands on a real shell page rather than a 404.", "action": "expect", "selector": "[data-testid='pv2-main']", "state": "visible" },
+
+    { "name": "CP14 -- back to Copilot to check the lower bands.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/copilot" },
+    { "name": "CP15 -- the assessed provenance line is stated.", "action": "expect", "selector": "[data-testid='pv2-page-title']", "textContains": "It is not yet safe to turn Copilot on at Halden Materials", "critical": true },
+    { "name": "CP16 -- the document pack names DOC-01 and its title.", "action": "expect", "selector": "[data-testid='pv2-cp-produced']", "textContains": "Copilot Readiness, Safety & Enablement Report", "critical": true },
+    { "name": "CP17 -- ...under its 'what the assessment produced' heading.", "action": "expect", "selector": "[data-testid='pv2-cp-produced']", "textContains": "What the assessment produced" },
+    { "name": "CP18 -- the add-on card names White-Glove Copilot Adoption.", "action": "expect", "selector": "[data-testid='pv2-cp-addon']", "textContains": "White-Glove Copilot Adoption" },
+    { "name": "CP19 -- the closing band offers the thirty minutes with the architect.", "action": "expect", "selector": "[data-testid='pv2-cp-discuss']", "textContains": "Discuss your results with Shane McCaw" }
+  ]
+}
