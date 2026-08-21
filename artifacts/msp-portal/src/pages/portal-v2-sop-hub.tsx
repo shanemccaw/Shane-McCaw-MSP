@@ -8,10 +8,17 @@
  * each a real URL: `/portal-v2/sops`, `/portal-v2/sops/queue`,
  * `/portal-v2/sops/audit`.
  *
- * ── UI only ────────────────────────────────────────────────────────────────
- * Every value is the design's own fixture (`sopHubData.ts`); every computed shape
- * is a pure, tested derivation (`sopHubModel.ts`). Nothing is wired to a data
- * source — a later pass does that. Copy is final and reproduced verbatim.
+ * ── Wired to real data ─────────────────────────────────────────────────────
+ * Part 6 built this page against the design's own fixtures and said a later pass
+ * would wire it. This is that pass. Every value on screen now comes from
+ * `useSops()` — `GET /api/portal/sops` and `GET /api/portal/sop-runs`
+ * (api-server `routes/portal-sops.ts`), both customer-scoped from the JWT — and
+ * every computed shape is still a pure, tested derivation (`sopHubModel.ts`),
+ * now taking that payload as an argument. Copy is final and reproduced verbatim.
+ *
+ * LAYOUT IS UNCHANGED. The only additions are the three states a fixture never
+ * had and real data always does: loading, failed, and empty. Each is a single
+ * line of text in the flow the design already lays out, not a new surface.
  *
  * ── Two design flows that route through the shell, deliberately simplified ──
  * The prototype's "Execute this SOP" buttons run through `gateRun` (the change-
@@ -30,16 +37,13 @@ import { PortalV2Shell } from "@/components/portal-v2/PortalV2Shell";
 import {
   css,
   MONO,
-  SOP_AUDIT,
-  SOP_CAT_OPTIONS,
   SOP_EXEC_TYPES,
-  SOP_QUEUE,
   SOP_SOURCE_OPTIONS,
-  SOP_TAGS,
-  sopOwner,
   type SopAuditItem,
+  type SopHoldCounts,
   type SopOwner,
   type SopQueueItem,
+  type SopsPayload,
 } from "@/components/portal-v2/sopHubData";
 import {
   catChips,
@@ -49,11 +53,14 @@ import {
   holdBanner,
   indexGroups,
   resolveSelectedId,
+  sopBaselineCount,
+  sopOursCount,
   sopTotalCount,
   statCards,
   type SopExecMode,
   type SopFilterState,
 } from "@/components/portal-v2/sopHubModel";
+import { useSops } from "@/components/portal-v2/useSops";
 
 /* ── Small shared bits ──────────────────────────────────────────────────── */
 
@@ -121,8 +128,17 @@ function Header({ baseline, ours }: { baseline: number; ours: number }) {
 
 /* ── Hold banner — proto 1642-1648 ──────────────────────────────────────── */
 
-function HoldBanner({ onOpenRunbooks }: { onOpenRunbooks: () => void }) {
-  const b = holdBanner();
+function HoldBanner({
+  counts,
+  onOpenRunbooks,
+}: {
+  counts: SopHoldCounts | null;
+  onOpenRunbooks: () => void;
+}) {
+  const b = holdBanner(counts);
+  // No open hold windows, no banner. The fixture was a fixed four-window
+  // snapshot and could never be absent; real counts usually are.
+  if (!b) return null;
   return (
     <div
       data-testid="pv2-sop-hold-banner"
@@ -182,7 +198,7 @@ function HoldBanner({ onOpenRunbooks }: { onOpenRunbooks: () => void }) {
 
 /* ── Stat cards — proto 1649-1657 ───────────────────────────────────────── */
 
-function StatCards() {
+function StatCards({ data }: { data: SopsPayload }) {
   return (
     <div
       style={{
@@ -191,7 +207,7 @@ function StatCards() {
         gap: 10,
       }}
     >
-      {statCards().map((s) => (
+      {statCards(data).map((s) => (
         <div
           key={s.label}
           style={css(
@@ -272,10 +288,12 @@ function Toolbar() {
 /* ── Search + filter selects — proto 1666-1682 ──────────────────────────── */
 
 function SearchAndFilters({
+  data,
   filters,
   setFilters,
   resultCount,
 }: {
+  data: SopsPayload;
   filters: SopFilterState;
   setFilters: (patch: Partial<SopFilterState>) => void;
   resultCount: number;
@@ -291,7 +309,12 @@ function SearchAndFilters({
       label: "Category",
       value: filters.cat,
       key: "cat",
-      options: SOP_CAT_OPTIONS.map((c) => ({ value: c, label: c === "All" ? "All categories" : c })),
+      // Built from the categories this tenant's library actually uses, not the
+      // prototype's fixed six — which would offer filters that match nothing.
+      options: data.catOptions.map((c) => ({
+        value: c,
+        label: c === "All" ? "All categories" : c,
+      })),
     },
     {
       label: "Execution type",
@@ -303,7 +326,7 @@ function SearchAndFilters({
       label: "Compliance tag",
       value: filters.tag,
       key: "tag",
-      options: SOP_TAGS.map((t) => ({ value: t, label: t })),
+      options: data.tagOptions.map((t) => ({ value: t, label: t })),
     },
   ];
 
@@ -393,7 +416,13 @@ function SearchAndFilters({
 
 /* ── Execution queue sub-view — proto 1684-1742 ─────────────────────────── */
 
-function QueueView({ onOpenChangeControl }: { onOpenChangeControl: () => void }) {
+function QueueView({
+  queue,
+  onOpenChangeControl,
+}: {
+  queue: readonly SopQueueItem[];
+  onOpenChangeControl: () => void;
+}) {
   const [open, setOpen] = useState<string | null>(null);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }} data-testid="pv2-sop-queue">
@@ -415,7 +444,7 @@ function QueueView({ onOpenChangeControl }: { onOpenChangeControl: () => void })
             color: "#64748b",
           }}
         >
-          Live execution queue · {SOP_QUEUE.length}
+          Live execution queue · {queue.length}
         </span>
         <span style={{ fontSize: "10.5px", color: "#475569" }}>
           Executions run one at a time per tenant so two procedures never touch the same object at
@@ -433,7 +462,7 @@ function QueueView({ onOpenChangeControl }: { onOpenChangeControl: () => void })
           overflow: "hidden",
         }}
       >
-        {SOP_QUEUE.map((q) => (
+        {queue.map((q) => (
           <QueueRow
             key={q.code}
             q={q}
@@ -442,6 +471,15 @@ function QueueView({ onOpenChangeControl }: { onOpenChangeControl: () => void })
             onOpenChangeControl={onOpenChangeControl}
           />
         ))}
+        {queue.length === 0 && (
+          <span
+            style={{ padding: "16px 16px", fontSize: "11.5px", color: "#64748b", lineHeight: 1.55 }}
+            data-testid="pv2-sop-queue-empty"
+          >
+            Nothing is executing against your tenant right now. A procedure appears here while it is
+            running, and moves to the execution history when it finishes.
+          </span>
+        )}
       </div>
     </div>
   );
@@ -459,7 +497,9 @@ function QueueRow({
   onOpenChangeControl: () => void;
 }) {
   const c = q.state === "Running" ? "#60a5fa" : "#c2a63d";
-  const owner = sopOwner(q.owner);
+  // The run's real operator, resolved server-side — not a category string mapped
+  // onto one of nine fixture people.
+  const owner = q.owner;
   const crIsChange = /^CR-/.test(q.cr);
   return (
     <div
@@ -688,7 +728,7 @@ function QueueRow({
 
 const AUDIT_COLS = "minmax(140px,.9fr) minmax(96px,.6fr) minmax(0,1.6fr) minmax(110px,.7fr) 72px 84px";
 
-function AuditView() {
+function AuditView({ audit }: { audit: readonly SopAuditItem[] }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }} data-testid="pv2-sop-audit">
       <div
@@ -766,7 +806,7 @@ function AuditView() {
             </span>
           ))}
         </div>
-        {SOP_AUDIT.map((a, i) => {
+        {audit.map((a, i) => {
           const tone = auditResultTone(a.result);
           return (
             <div
@@ -827,6 +867,15 @@ function AuditView() {
             </div>
           );
         })}
+        {audit.length === 0 && (
+          <span
+            style={{ padding: "16px 16px", fontSize: "11.5px", color: "#64748b", lineHeight: 1.55 }}
+            data-testid="pv2-sop-audit-empty"
+          >
+            No entries yet. This log fills as procedures are published to your library and executed
+            against your tenant.
+          </span>
+        )}
       </div>
     </div>
   );
@@ -835,21 +884,23 @@ function AuditView() {
 /* ── Library sub-view — proto 1776-1926 ─────────────────────────────────── */
 
 function LibraryView({
+  data,
   filters,
   setFilters,
   selId,
   onSelect,
   onExecute,
 }: {
+  data: SopsPayload;
   filters: SopFilterState;
   setFilters: (patch: Partial<SopFilterState>) => void;
-  selId: string;
+  selId: string | null;
   onSelect: (id: string) => void;
   onExecute: (id: string, mode: SopExecMode) => void;
 }) {
-  const filtered = filterSops(filters);
-  const groups = indexGroups(filtered);
-  const chips = catChips(filters.cat);
+  const filtered = filterSops(data, filters);
+  const groups = indexGroups(data, filtered);
+  const chips = catChips(data, filters.cat);
 
   return (
     <div
@@ -872,7 +923,7 @@ function LibraryView({
             Library
           </span>
           <span style={{ fontSize: "10.5px", color: "#475569" }}>
-            {filtered.length} of {sopTotalCount}
+            {filtered.length} of {sopTotalCount(data)}
           </span>
         </div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -1029,19 +1080,24 @@ function LibraryView({
       </div>
 
       {/* Right column (1.9fr) — the detail panel. proto first child. */}
-      <DetailPanel selId={selId} onExecute={onExecute} />
+      <DetailPanel data={data} selId={selId} onExecute={onExecute} />
     </div>
   );
 }
 
 function DetailPanel({
+  data,
   selId,
   onExecute,
 }: {
-  selId: string;
+  data: SopsPayload;
+  selId: string | null;
   onExecute: (id: string, mode: SopExecMode) => void;
 }) {
-  const d = detailFor(selId);
+  const d = detailFor(data, selId);
+  // An empty library has no procedure to detail. The left column already says
+  // so; this side simply has nothing to draw rather than a hollow frame.
+  if (!d) return null;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
       <div
@@ -1476,17 +1532,20 @@ interface ExecState {
 }
 
 function ExecDrawer({
+  data,
   exec,
   onStart,
   onClose,
 }: {
+  data: SopsPayload;
   exec: ExecState;
   onStart: () => void;
   onClose: () => void;
 }) {
   if (!exec.open || !exec.id) return null;
-  const steps = execStepsFor(exec.id, exec.mode);
-  const d = detailFor(exec.id);
+  const steps = execStepsFor(data, exec.id, exec.mode);
+  const d = detailFor(data, exec.id);
+  if (!d) return null;
   const done = steps.length > 0 && exec.idx >= steps.length;
   const idle = !exec.running && !done;
   const pct = steps.length ? Math.round((Math.min(exec.idx, steps.length) / steps.length) * 100) : 0;
@@ -1739,9 +1798,11 @@ export default function PortalV2SopHubPage() {
   const setFilters = (patch: Partial<SopFilterState>) =>
     setFiltersState((f) => ({ ...f, ...patch }));
 
+  const { sops, runs, holds, loaded, error } = useSops();
+
   const [requestedSel, setRequestedSel] = useState<string | null>(null);
-  const filtered = filterSops(filters);
-  const selId = resolveSelectedId(filtered, requestedSel);
+  const filtered = filterSops(sops, filters);
+  const selId = resolveSelectedId(sops, filtered, requestedSel);
 
   const [exec, setExec] = useState<ExecState>({
     open: false,
@@ -1768,7 +1829,7 @@ export default function PortalV2SopHubPage() {
   };
   const runExec = () => {
     if (!exec.id) return;
-    const max = execStepsFor(exec.id, exec.mode).length;
+    const max = execStepsFor(sops, exec.id, exec.mode).length;
     setExec((e) => ({ ...e, running: true, idx: 0 }));
     const tick = () => {
       setExec((e) => {
@@ -1798,18 +1859,47 @@ export default function PortalV2SopHubPage() {
         }}
         data-testid="pv2-sop-hub"
       >
-        <Header baseline={10} ours={7} />
-        <HoldBanner onOpenRunbooks={() => navigate("/portal-v2/runbooks")} />
-        <StatCards />
+        <Header baseline={sopBaselineCount(sops)} ours={sopOursCount(sops)} />
+        <HoldBanner counts={holds} onOpenRunbooks={() => navigate("/portal-v2/runbooks")} />
+        <StatCards data={sops} />
         <Toolbar />
-        <SearchAndFilters filters={filters} setFilters={setFilters} resultCount={filtered.length} />
+        <SearchAndFilters
+          data={sops}
+          filters={filters}
+          setFilters={setFilters}
+          resultCount={filtered.length}
+        />
 
-        {view === "queue" && (
-          <QueueView onOpenChangeControl={() => navigate("/portal-v2/change-control/register")} />
+        {!loaded && (
+          <span style={{ fontSize: "12px", color: "#64748b" }} data-testid="pv2-sop-loading">
+            Loading your procedure library…
+          </span>
         )}
-        {view === "audit" && <AuditView />}
-        {view === "library" && (
+        {loaded && error && (
+          <span style={{ fontSize: "12px", color: "#f87171" }} data-testid="pv2-sop-error">
+            {error}
+          </span>
+        )}
+        {loaded && !error && sops.library.length === 0 && (
+          <span
+            style={{ fontSize: "12.5px", color: "#94a3b8", lineHeight: 1.55, maxWidth: "88ch" }}
+            data-testid="pv2-sop-empty"
+          >
+            No procedures are published to your library yet. Baseline procedures appear here as we
+            publish them, alongside anything your own team writes.
+          </span>
+        )}
+
+        {loaded && !error && view === "queue" && (
+          <QueueView
+            queue={runs.queue}
+            onOpenChangeControl={() => navigate("/portal-v2/change-control/register")}
+          />
+        )}
+        {loaded && !error && view === "audit" && <AuditView audit={runs.audit} />}
+        {loaded && !error && sops.library.length > 0 && view === "library" && (
           <LibraryView
+            data={sops}
             filters={filters}
             setFilters={setFilters}
             selId={selId}
@@ -1819,7 +1909,7 @@ export default function PortalV2SopHubPage() {
         )}
       </div>
 
-      <ExecDrawer exec={exec} onStart={runExec} onClose={closeExec} />
+      <ExecDrawer data={sops} exec={exec} onStart={runExec} onClose={closeExec} />
     </PortalV2Shell>
   );
 }

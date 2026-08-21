@@ -6,6 +6,7 @@ export default defineConfig({
       "src/lib/doc-gate-coverage.test.ts",
       "src/lib/portal-ownership.test.ts",
       "src/lib/lead-intent.test.ts",
+      "src/lib/portal-sops.test.ts",
       "src/lib/sse-channels.test.ts",
       "src/lib/sse-hub-firehose.test.ts",
       "src/routes/admin-live-stream.test.ts",
