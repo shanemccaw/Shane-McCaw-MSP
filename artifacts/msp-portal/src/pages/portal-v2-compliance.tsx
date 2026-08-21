@@ -1,50 +1,35 @@
 /**
  * portal-v2-compliance.tsx — the Compliance pillar dashboard.
  *
- * A direct port of the prototype's `isCompliance` block
- * (`Customer Portal Shell.dc.html` lines 3809-4063), read against its own markup
- * rather than adapted from Governance or Security.
+ * Rebuilt against the prototype's CURRENT `isCompliance` block
+ * (`Customer Portal Shell.dc.html` lines 3864-4004). The earlier build of this
+ * page was a faithful port of an OLDER revision (proto 3809-4063) that carried
+ * three heavy sections inline — Open Gaps, Documented Policy Decisions, and
+ * Obligations We Check Against — plus a "Why this pillar reads differently"
+ * prose panel. The design has since MOVED those out of the pillar page:
  *
- * ── The README is RIGHT here, and it was wrong on the other two ─────────────
- * The Governance pass established that Governance and Security build a findings
- * array no template consumes, so neither renders finding rows. Compliance is the
- * opposite case and the README's "finding rows" line is accurate: `cmpFindingRows`
- * IS rendered, and it is the largest section on the page. Carrying the earlier
- * finding across as a rule would have deleted the richest part of this pillar.
+ *  • Open Gaps is now its own drill-down (proto 4659, "Open Gaps · {cmpOpenCount}").
+ *  • Documented Policy Decisions is now a drill-down (proto 4732).
+ *  • Obligations is now a drill-down (proto 4783).
  *
- * ── What only Compliance has ───────────────────────────────────────────────
- *  1. "Why this pillar reads differently" (3891-3906) — a prose panel plus three
- *     scrutiny-moment cards. No other pillar explains itself.
- *  2. Open Gaps (3950-4011) — expandable finding rows citing the obligation each
- *     one touches, with an evidence grid, a wrench into the CR gate, and a
- *     "Record a policy decision instead" route.
- *  3. Documented Policy Decisions (4013-4046) — accepted risks rendered IN FULL,
- *     with rationale, compensating control, owner, approval and review dates.
- *  4. Obligations We Check Against (4048-4062) — the frameworks in scope and
- *     where the tenant stands against each.
+ * Those three drill-downs are Part 11's to build. Their fixtures stay exported
+ * from `cmpDashboardData.ts` (CMP_FINDINGS / CMP_ACCEPTED / CMP_OBLIGATIONS) so
+ * the copy is not lost and Part 11 has one source to read — this page simply
+ * stops rendering them, because the current design does not.
  *
- * ── And what differs inside the parts that look shared ─────────────────────
- *  • The page glow is `min(900px,140%)` / 44% / blur(70px) / opacity .55 with a
- *    THREE-stop gradient. Governance and Security are `min(1000px,150%)` / 56% /
- *    blur(80px) / .5 with two stops.
- *  • Every panel carries `cmpInset`, a 1px top highlight no other pillar has.
- *  • The status pill is a 5px DOT plus "Stable · 6 gaps open" — not a ⚠ glyph
- *    plus a single word, so the emoji substitution the other two pillars needed
- *    does not arise here at all.
- *  • The trend is labelled "Gaps closed · last 10 scans", not "Drift trend", and
- *    its caption sits BELOW the baseline rule where Security's verdict sits
- *    ABOVE the chart. Different slot, so `DriftTrend` is not reused — see below.
- *  • The ring track is `rgba(148,163,184,.16)` against the others' `.14`, its
- *    glow inset is -14 against -18, and its delta is a hardcoded "±0 this month"
- *    rather than a derived value.
- *  • The scan strip's dot does NOT pulse and its sentence is "N gaps closed in
- *    Compliance since scan 1, none reopened".
- *  • The area cards share Governance's anatomy but not one of its numbers: a
- *    neutral background gradient rather than the status wash, an extra
- *    `border-top`, a `130% 90%` glow at `16` rather than `140% 100%` at `1c`,
- *    24/19/16 score sizes rather than 26/20/17, `min-width:112px`, an inset
- *    shadow, and a cursor that depends on whether the card has a gap to open.
- *    Two clear implementations beat one component with a dozen props.
+ * What the current pillar page IS, top to bottom: the decisions-on-record
+ * banner, the hero (unchanged), a compact "Tested by" scrutiny row that REPLACES
+ * the old prose panel (proto 3949-3963), the scan strip, and the cluster area
+ * cards. The "Why this pillar reads differently" prose is gone; the three
+ * scrutiny moments it carried now live behind the "Tested by" pills.
+ *
+ * ── What still differs inside the parts that look shared ───────────────────
+ * The page glow is `min(900px,140%)` / 44% / blur(70px) / .55, three-stop.
+ * Every panel carries `cmpInset`. The status pill is a DOT plus "Stable · 6 gaps
+ * open". The trend is labelled "Gaps closed" with its caption BELOW the baseline
+ * rule, so it is written out here rather than reusing `DriftTrend`. The area
+ * cards share Governance's anatomy but not its numbers (neutral gradient, an
+ * extra border-top, 24/19/16 score sizes, min-width 112, an inset shadow).
  */
 
 import { useState } from "react";
@@ -52,7 +37,6 @@ import { Link } from "wouter";
 import {
   Activity,
   CheckCircle,
-  ChevronDown,
   ClipboardList,
   FileText,
   Layers,
@@ -61,36 +45,22 @@ import {
   ShieldCheck,
   ShieldOff,
   Users,
-  Wrench,
 } from "lucide-react";
 
 import { PortalV2Shell } from "@/components/portal-v2/PortalV2Shell";
-import { FixPanel, useFixPanel } from "@/components/portal-v2/FixPanel";
-import { useFormDrawer } from "@/components/portal-v2/FormDrawer";
-import { useAcceptRisk } from "@/components/portal-v2/AcceptRiskPanel";
 import { trendGeometry } from "@/components/portal-v2/DriftTrend";
 import {
-  CMP_ACCEPTED,
   CMP_ACCEPTED_COUNT,
   CMP_AREA_LINKS,
   CMP_CLUSTERS,
-  CMP_FINDINGS,
   CMP_HERO,
   CMP_HERO_STATS,
   CMP_HISTORY,
   CMP_INSET,
-  CMP_INTRO_BODY,
-  CMP_INTRO_LABEL,
-  CMP_OBLIGATIONS,
-  CMP_OBLIGATION_TONE,
-  CMP_OPEN_COUNT,
   CMP_SCRUTINY,
-  CMP_SEV_META,
   CMP_TIER,
-  cmpAcceptedMeta,
   cmpAreaGeometry,
   type CmpAreaLink,
-  type CmpFinding,
 } from "@/components/portal-v2/cmpDashboardData";
 
 const MONO = "'SF Mono',Menlo,Consolas,monospace";
@@ -110,78 +80,16 @@ const AREA_ICON = {
   users: Users,
 } as const;
 
-const SECTION_LABEL: React.CSSProperties = {
-  fontSize: "9.5px",
-  fontWeight: 700,
-  letterSpacing: ".2em",
-  textTransform: "uppercase",
-  color: "#64748b",
-};
-
-const SECTION_NOTE: React.CSSProperties = { fontSize: "11px", color: "#475569" };
-
-const MICRO_LABEL: React.CSSProperties = {
-  fontSize: "10px",
-  fontWeight: 700,
-  letterSpacing: ".09em",
-  textTransform: "uppercase",
-  color: "#64748b",
-};
-
 export default function PortalV2CompliancePage() {
   const trend = trendGeometry(CMP_HISTORY);
   const ringR = 46;
   const ringC = 2 * Math.PI * ringR;
   const ringOffset = ringC - (CMP_HERO.score / 100) * ringC;
 
-  const [expanded, setExpanded] = useState<number | null>(null);
-  const { fixKey, openFixPanel, closeFixPanel } = useFixPanel();
-  const { openForm, formElement } = useFormDrawer();
-
-  const askShaneBot = (topic: string) =>
-    openForm({
-      kicker: "Ask ShaneBot",
-      title: "Ask about this finding",
-      intro: topic,
-      submitLabel: "Send to ShaneBot",
-      fields: [
-        {
-          id: "question",
-          label: "Your question",
-          kind: "textarea",
-          wide: true,
-          placeholder: "What would you like to know about this?",
-        },
-      ],
-      doneTitle: "Sent",
-      doneNote:
-        "ShaneBot has the finding and your tenant context. The reply appears in your chat panel.",
-    });
-
-  const { openAcceptRisk, acceptRiskElement } = useAcceptRisk({
-    onConfirm: () => {},
-    onAskShaneBot: askShaneBot,
-  });
-
-  /**
-   * `f.acceptGo` (12186-12195). Compliance overrides FIVE of the accept-risk
-   * drawer's defaults — kicker, both labels, the confirmation sentence and the
-   * button — because on this pillar accepting is not "I accept this risk", it is
-   * "I am recording a deliberate policy position". Those overrides are the whole
-   * reason `AcceptRiskSpec` carries them.
-   */
-  const recordDecision = (f: CmpFinding) =>
-    openAcceptRisk({
-      title: f.title,
-      description: f.why,
-      details: `Obligation this touches: ${f.obligation}. ${f.obligationText} Recording a decision here does not remove the obligation — it documents that you considered it, chose a position, and named someone accountable for reviewing that position.`,
-      kicker: "Record a policy decision",
-      descLabel: "What you are deciding about",
-      detailsLabel: "Obligation on record",
-      confirmText:
-        "I am recording this as a deliberate policy position on behalf of the organisation, with a named owner and a review date, and I understand it will appear in the audit trail as a documented decision.",
-      btnLabel: "Record this decision",
-    });
+  // `cmpScrutiny` selection (proto 13659) — a pill toggles the detail below it
+  // open, clicking the same pill closes it.
+  const [scrutinySel, setScrutinySel] = useState<number | null>(null);
+  const scrutinyOpen = scrutinySel == null ? null : CMP_SCRUTINY[scrutinySel];
 
   return (
     <PortalV2Shell eyebrow="Pillar" title="Compliance">
@@ -197,7 +105,7 @@ export default function PortalV2CompliancePage() {
           boxSizing: "border-box",
         }}
       >
-        {/* Page glow — proto 3811. Smaller, softer and three-stop. */}
+        {/* Page glow — proto 3866. Smaller, softer and three-stop. */}
         <div
           style={{
             position: "absolute",
@@ -214,7 +122,7 @@ export default function PortalV2CompliancePage() {
           }}
         />
 
-        {/* ── Back link + decisions-on-record strip — proto 3813-3823 ────── */}
+        {/* ── Back link + decisions-on-record strip — proto 3868-3878 ────── */}
         <div
           style={{
             position: "relative",
@@ -263,7 +171,9 @@ export default function PortalV2CompliancePage() {
             <span style={{ fontSize: "11.5px", color: "#94a3b8", whiteSpace: "nowrap" }}>
               documented policy decisions on record
             </span>
-            {/* `goRiskCmp` (proto 3821) — pre-filtered to Compliance. */}
+            {/* `goRiskCmp` (proto 3876) — a plain link to the register pre-filtered
+                to Compliance. Unlike Governance/Security this button does not
+                toggle a drop panel; Compliance has no such panel in this design. */}
             <Link
               href="/portal-v2/risk-register?pillar=Compliance"
               data-testid="pv2-cmp-risk-register-link"
@@ -285,7 +195,7 @@ export default function PortalV2CompliancePage() {
           </div>
         </div>
 
-        {/* ── Hero card — proto 3825-3889 ────────────────────────────────── */}
+        {/* ── Hero card — proto 3880-3947 ────────────────────────────────── */}
         <div
           style={{
             position: "relative",
@@ -352,7 +262,7 @@ export default function PortalV2CompliancePage() {
               <span style={{ fontSize: "12.5px", color: "#94a3b8", lineHeight: 1.5 }}>
                 {CMP_HERO.subtitle}
               </span>
-              {/* A DOT, not a warning glyph — proto 3833. */}
+              {/* A DOT, not a warning glyph — proto 3888-3890. */}
               <span
                 style={{
                   display: "inline-flex",
@@ -394,9 +304,7 @@ export default function PortalV2CompliancePage() {
             {/*
               NOT DriftTrend. Its caption slot is above the chart (Security's
               verdict); Compliance's sits BELOW the baseline rule, and the label
-              reads "Gaps closed" rather than "Drift trend". Two differences in
-              structure, not styling, so this is written out here rather than
-              adding two more props to a component shared by two other pillars.
+              reads "Gaps closed" rather than "Drift trend".
             */}
             <div
               style={{
@@ -482,7 +390,7 @@ export default function PortalV2CompliancePage() {
             </div>
           </div>
 
-          {/* Ring + three stats — proto 3858-3888. */}
+          {/* Ring + three stats — proto 3914-3946. */}
           <div
             style={{
               position: "relative",
@@ -623,96 +531,101 @@ export default function PortalV2CompliancePage() {
           </div>
         </div>
 
-        {/* ── "Why this pillar reads differently" — proto 3891-3906 ──────── */}
+        {/* ── "Tested by" scrutiny row — proto 3949-3963. Replaces the older
+            "Why this pillar reads differently" prose panel: the same three
+            moments, now compact pills that expand a detail below. ────────── */}
         <div
           style={{
-            position: "relative",
             display: "flex",
-            flexDirection: "column",
-            gap: 12,
-            padding: "18px 20px",
-            border: "1px solid rgba(226,232,240,.14)",
-            borderRadius: 14,
-            background: "rgba(15,23,42,.45)",
-            boxShadow: "inset 0 1px 0 rgba(255,255,255,.05)",
+            flexWrap: "wrap",
+            alignItems: "center",
+            gap: 0,
+            padding: "0 2px",
           }}
-          data-testid="pv2-cmp-why"
+          data-testid="pv2-cmp-scrutiny"
         >
-          <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-            <span style={SECTION_LABEL}>{CMP_INTRO_LABEL}</span>
+          <span
+            style={{
+              flex: "0 0 auto",
+              fontSize: "9.5px",
+              fontWeight: 700,
+              letterSpacing: ".14em",
+              textTransform: "uppercase",
+              color: "#64748b",
+              marginRight: 14,
+            }}
+          >
+            Tested by
+          </span>
+          {CMP_SCRUTINY.map((sm, i) => (
+            <button
+              key={sm.moment}
+              type="button"
+              onClick={() => setScrutinySel((cur) => (cur === i ? null : i))}
+              title={sm.what}
+              data-testid={`pv2-cmp-scrutiny-${i}`}
+              style={{
+                display: "flex",
+                alignItems: "baseline",
+                gap: 8,
+                marginRight: 8,
+                padding: "6px 12px",
+                borderRadius: 999,
+                cursor: "pointer",
+                fontFamily: "inherit",
+                border: `1px solid ${scrutinySel === i ? "rgba(226,232,240,.42)" : "rgba(226,232,240,.14)"}`,
+                background: scrutinySel === i ? "rgba(226,232,240,.09)" : "transparent",
+              }}
+            >
+              <span style={{ fontSize: "11.5px", fontWeight: 700, color: "#e2e8f0", whiteSpace: "nowrap" }}>
+                {sm.moment}
+              </span>
+              <span style={{ fontSize: "10.5px", color: "#64748b", whiteSpace: "nowrap" }}>
+                {sm.when}
+              </span>
+            </button>
+          ))}
+        </div>
+        {scrutinyOpen && (
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 4,
+              padding: "13px 16px",
+              border: "1px solid rgba(226,232,240,.16)",
+              borderLeft: "2px solid #E2E8F0",
+              borderRadius: 10,
+              background: "rgba(226,232,240,.04)",
+            }}
+            data-testid="pv2-cmp-scrutiny-detail"
+          >
             <span
               style={{
-                fontSize: "13px",
+                fontSize: "9.5px",
+                fontWeight: 700,
+                letterSpacing: ".12em",
+                textTransform: "uppercase",
+                color: "#94a3b8",
+              }}
+            >
+              {scrutinyOpen.moment} · {scrutinyOpen.when}
+            </span>
+            <span
+              style={{
+                fontSize: "12.5px",
                 color: "#cbd5e1",
-                lineHeight: 1.6,
-                maxWidth: "88ch",
+                lineHeight: 1.65,
+                maxWidth: "92ch",
                 textWrap: "pretty",
               }}
             >
-              {CMP_INTRO_BODY}
+              {scrutinyOpen.what}
             </span>
           </div>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit,minmax(250px,1fr))",
-              gap: 10,
-            }}
-          >
-            {CMP_SCRUTINY.map((sm) => (
-              <div
-                key={sm.moment}
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 5,
-                  padding: "12px 14px",
-                  border: "1px solid rgba(226,232,240,.12)",
-                  borderLeft: "2px solid rgba(226,232,240,.45)",
-                  borderRadius: 8,
-                  background: "rgba(226,232,240,.035)",
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "baseline",
-                    justifyContent: "space-between",
-                    gap: 8,
-                  }}
-                >
-                  <span style={{ fontSize: "12.5px", fontWeight: 700, color: "#f1f5f9" }}>
-                    {sm.moment}
-                  </span>
-                  <span
-                    style={{
-                      fontSize: "9.5px",
-                      fontWeight: 600,
-                      letterSpacing: ".05em",
-                      textTransform: "uppercase",
-                      color: "#64748b",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {sm.when}
-                  </span>
-                </div>
-                <span
-                  style={{
-                    fontSize: "11.5px",
-                    color: "#94a3b8",
-                    lineHeight: 1.55,
-                    textWrap: "pretty",
-                  }}
-                >
-                  {sm.what}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
+        )}
 
-        {/* ── Scan strip — proto 3908-3912. NOT PillarScanBar: no pulse, and
+        {/* ── Scan strip — proto 3965-3969. NOT PillarScanBar: no pulse, and
             the sentence is "gaps closed … , none reopened". ─────────────── */}
         <div
           style={{
@@ -751,7 +664,7 @@ export default function PortalV2CompliancePage() {
           </span>
         </div>
 
-        {/* ── Cluster area cards — proto 3914-3948 ───────────────────────── */}
+        {/* ── Cluster area cards — proto 3971-4001 ───────────────────────── */}
         <div
           style={{
             position: "relative",
@@ -802,654 +715,36 @@ export default function PortalV2CompliancePage() {
                   style={{ display: "flex", flexWrap: "wrap", alignItems: "stretch", gap: 10 }}
                 >
                   {items.map((a) => (
-                    <AreaCard key={a.key} link={a} onOpenGap={setExpanded} />
+                    <AreaCard key={a.key} link={a} />
                   ))}
                 </div>
               </div>
             );
           })}
         </div>
-
-        {/* ── Open Gaps — proto 3950-4011 ────────────────────────────────── */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "baseline",
-              justifyContent: "space-between",
-              gap: 12,
-              flexWrap: "wrap",
-            }}
-          >
-            <span style={SECTION_LABEL}>Open Gaps · {CMP_OPEN_COUNT}</span>
-            <span style={SECTION_NOTE}>
-              Each one cites the obligation it touches. Expand for the evidence behind it.
-            </span>
-          </div>
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 0,
-              border: "1px solid rgba(226,232,240,.13)",
-              borderRadius: 12,
-              background: "rgba(15,23,42,.4)",
-              overflow: "hidden",
-              boxShadow: "inset 0 1px 0 rgba(255,255,255,.05)",
-            }}
-            data-testid="pv2-cmp-gaps"
-          >
-            {CMP_FINDINGS.map((f, i) => {
-              const sev = CMP_SEV_META[f.sev];
-              const isExpanded = expanded === i;
-              return (
-                <div
-                  key={f.id}
-                  style={{
-                    position: "relative",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 0,
-                    borderTop: "1px solid rgba(30,41,59,.85)",
-                  }}
-                >
-                  <div
-                    style={{
-                      position: "absolute",
-                      left: 0,
-                      top: 0,
-                      bottom: 0,
-                      width: 2,
-                      background: `${sev.c}66`,
-                    }}
-                  />
-                  <button
-                    onClick={() => setExpanded(isExpanded ? null : i)}
-                    data-testid={`pv2-cmp-gap-${f.id}`}
-                    style={{
-                      display: "flex",
-                      alignItems: "flex-start",
-                      gap: 12,
-                      padding: "14px 18px",
-                      border: "none",
-                      background: "none",
-                      cursor: "pointer",
-                      fontFamily: "inherit",
-                      textAlign: "left",
-                      width: "100%",
-                    }}
-                  >
-                    <span
-                      style={{
-                        flex: "0 0 auto",
-                        display: "flex",
-                        marginTop: 2,
-                        transform: `rotate(${isExpanded ? 180 : -90}deg)`,
-                        transition: "transform 180ms",
-                      }}
-                    >
-                      <ChevronDown size={14} color="#64748b" aria-hidden="true" />
-                    </span>
-                    <div
-                      style={{
-                        flex: 1,
-                        minWidth: 0,
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 5,
-                      }}
-                    >
-                      <div
-                        style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}
-                      >
-                        <span
-                          style={{
-                            flex: "0 0 auto",
-                            fontSize: "10.5px",
-                            fontWeight: 700,
-                            color: "#64748b",
-                            letterSpacing: ".06em",
-                            fontFamily: MONO,
-                          }}
-                        >
-                          {f.id}
-                        </span>
-                        <span
-                          style={{
-                            flex: "0 0 auto",
-                            padding: "2px 8px",
-                            borderRadius: 4,
-                            border: `1px solid ${sev.c}55`,
-                            background: `${sev.c}14`,
-                            fontSize: "9.5px",
-                            fontWeight: 700,
-                            letterSpacing: ".06em",
-                            textTransform: "uppercase",
-                            color: sev.c,
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {sev.label}
-                        </span>
-                      </div>
-                      <span
-                        style={{
-                          fontSize: "13.5px",
-                          fontWeight: 700,
-                          color: "#f1f5f9",
-                          lineHeight: 1.4,
-                          textWrap: "pretty",
-                        }}
-                      >
-                        {f.title}
-                      </span>
-                      <span
-                        style={{
-                          fontSize: "11px",
-                          fontWeight: 600,
-                          color: "#cbd5e1",
-                          letterSpacing: ".01em",
-                          fontFamily: MONO,
-                        }}
-                      >
-                        {f.obligation}
-                      </span>
-                    </div>
-                  </button>
-
-                  {isExpanded && (
-                    <div
-                      style={{
-                        padding: "0 18px 18px 44px",
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 14,
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: 4,
-                          padding: "12px 14px",
-                          border: "1px solid rgba(226,232,240,.14)",
-                          borderRadius: 8,
-                          background: "rgba(226,232,240,.04)",
-                        }}
-                      >
-                        <span style={MICRO_LABEL}>The obligation</span>
-                        <span
-                          style={{
-                            fontSize: "12px",
-                            color: "#e2e8f0",
-                            lineHeight: 1.6,
-                            textWrap: "pretty",
-                          }}
-                        >
-                          {f.obligationText}
-                        </span>
-                      </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                        <span style={MICRO_LABEL}>Why it matters here</span>
-                        <span
-                          style={{
-                            fontSize: "12.5px",
-                            color: "#cbd5e1",
-                            lineHeight: 1.65,
-                            textWrap: "pretty",
-                          }}
-                        >
-                          {f.why}
-                        </span>
-                      </div>
-                      <div
-                        style={{
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: 0,
-                          borderTop: "1px solid rgba(30,41,59,.9)",
-                        }}
-                      >
-                        {f.evidence.map((e) => (
-                          <div
-                            key={e.k}
-                            style={{
-                              display: "grid",
-                              gridTemplateColumns: "minmax(130px,.85fr) minmax(0,2.15fr)",
-                              gap: 14,
-                              padding: "8px 0",
-                              borderBottom: "1px solid rgba(30,41,59,.75)",
-                              alignItems: "baseline",
-                            }}
-                          >
-                            <span
-                              style={{
-                                fontSize: "10.5px",
-                                fontWeight: 700,
-                                letterSpacing: ".05em",
-                                textTransform: "uppercase",
-                                color: "#64748b",
-                                lineHeight: 1.4,
-                              }}
-                            >
-                              {e.k}
-                            </span>
-                            <span
-                              style={{
-                                fontSize: "12px",
-                                color: "#e2e8f0",
-                                lineHeight: 1.55,
-                                textWrap: "pretty",
-                              }}
-                            >
-                              {e.v}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                      <div
-                        style={{
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: 8,
-                          paddingTop: 4,
-                        }}
-                      >
-                        <button
-                          onClick={() => openFixPanel(f.fixKey)}
-                          data-testid={`pv2-cmp-fix-${f.fixKey}`}
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 11,
-                            textAlign: "left",
-                            padding: "11px 13px",
-                            borderRadius: 9,
-                            border: "1px solid rgba(0,120,212,.4)",
-                            background:
-                              "linear-gradient(160deg, rgba(0,120,212,.1), rgba(15,23,42,.3))",
-                            cursor: "pointer",
-                            fontFamily: "inherit",
-                          }}
-                        >
-                          <span
-                            style={{
-                              flex: "0 0 28px",
-                              width: 28,
-                              height: 28,
-                              borderRadius: 7,
-                              border: "1px solid rgba(0,120,212,.4)",
-                              background: "rgba(0,120,212,.14)",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                            }}
-                          >
-                            <Wrench size={13} color="#60a5fa" aria-hidden="true" />
-                          </span>
-                          <span
-                            style={{
-                              display: "flex",
-                              flexDirection: "column",
-                              gap: 2,
-                              minWidth: 0,
-                            }}
-                          >
-                            <span
-                              style={{
-                                fontSize: "12.5px",
-                                fontWeight: 700,
-                                color: "#60a5fa",
-                                lineHeight: 1.4,
-                              }}
-                            >
-                              {f.fixLabel}
-                            </span>
-                            <span
-                              style={{ fontSize: "11.5px", color: "#94a3b8", lineHeight: 1.45 }}
-                            >
-                              {f.fixSub}
-                            </span>
-                          </span>
-                        </button>
-                        <button
-                          onClick={() => recordDecision(f)}
-                          data-testid={`pv2-cmp-record-${f.id}`}
-                          style={{
-                            alignSelf: "flex-start",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 8,
-                            padding: "8px 12px",
-                            borderRadius: 8,
-                            border: "1px solid rgba(226,232,240,.22)",
-                            background: "rgba(226,232,240,.05)",
-                            cursor: "pointer",
-                            fontFamily: "inherit",
-                          }}
-                        >
-                          <span style={{ fontSize: "11.5px", fontWeight: 700, color: "#e2e8f0" }}>
-                            Record a policy decision instead
-                          </span>
-                          <span style={{ fontSize: "11px", color: "#64748b" }}>
-                            Owner, rationale, review date
-                          </span>
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* ── Documented Policy Decisions — proto 4013-4046 ──────────────── */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "baseline",
-              justifyContent: "space-between",
-              gap: 12,
-              flexWrap: "wrap",
-            }}
-          >
-            <span style={SECTION_LABEL}>Documented Policy Decisions · {CMP_ACCEPTED_COUNT}</span>
-            <span style={SECTION_NOTE}>
-              Deliberate positions, not gaps. Shown in full so an auditor sees the reasoning, not
-              just the outcome.
-            </span>
-          </div>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))",
-              gap: 10,
-            }}
-            data-testid="pv2-cmp-decisions"
-          >
-            {CMP_ACCEPTED.map((a) => (
-              <div
-                key={a.id}
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 11,
-                  padding: "16px 18px",
-                  border: "1px solid rgba(226,232,240,.16)",
-                  borderRadius: 12,
-                  background: "linear-gradient(160deg, rgba(226,232,240,.05), rgba(15,23,42,.5))",
-                  boxShadow: "inset 0 1px 0 rgba(255,255,255,.06)",
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
-                  <span
-                    style={{
-                      fontSize: "10.5px",
-                      fontWeight: 700,
-                      color: "#64748b",
-                      letterSpacing: ".06em",
-                      fontFamily: MONO,
-                    }}
-                  >
-                    {a.id}
-                  </span>
-                  <span
-                    style={{
-                      padding: "2px 8px",
-                      borderRadius: 4,
-                      border: "1px solid rgba(226,232,240,.3)",
-                      background: "rgba(226,232,240,.08)",
-                      fontSize: "9.5px",
-                      fontWeight: 700,
-                      letterSpacing: ".06em",
-                      textTransform: "uppercase",
-                      color: "#e2e8f0",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {a.decision}
-                  </span>
-                </div>
-                <span
-                  style={{
-                    fontSize: "13px",
-                    fontWeight: 700,
-                    color: "#f1f5f9",
-                    lineHeight: 1.45,
-                    textWrap: "pretty",
-                  }}
-                >
-                  {a.title}
-                </span>
-                <span
-                  style={{ fontSize: "11px", fontWeight: 600, color: "#cbd5e1", fontFamily: MONO }}
-                >
-                  {a.obligation}
-                </span>
-                <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                  <span style={MICRO_LABEL}>Rationale</span>
-                  <span
-                    style={{
-                      fontSize: "12px",
-                      color: "#cbd5e1",
-                      lineHeight: 1.6,
-                      textWrap: "pretty",
-                    }}
-                  >
-                    {a.rationale}
-                  </span>
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                  <span style={MICRO_LABEL}>Compensating control</span>
-                  <span
-                    style={{
-                      fontSize: "12px",
-                      color: "#cbd5e1",
-                      lineHeight: 1.6,
-                      textWrap: "pretty",
-                    }}
-                  >
-                    {a.compensating}
-                  </span>
-                </div>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
-                    gap: 8,
-                    paddingTop: 10,
-                    borderTop: "1px solid rgba(226,232,240,.12)",
-                  }}
-                >
-                  {cmpAcceptedMeta(a).map((m) => (
-                    <div key={m.k} style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                      <span
-                        style={{
-                          fontSize: "9.5px",
-                          fontWeight: 700,
-                          letterSpacing: ".07em",
-                          textTransform: "uppercase",
-                          color: "#64748b",
-                        }}
-                      >
-                        {m.k}
-                      </span>
-                      <span
-                        style={{
-                          fontSize: "11.5px",
-                          fontWeight: 600,
-                          color: "#e2e8f0",
-                          fontFamily: MONO,
-                        }}
-                      >
-                        {m.v}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-                <span
-                  style={{
-                    fontSize: "11px",
-                    color: "#64748b",
-                    lineHeight: 1.55,
-                    textWrap: "pretty",
-                  }}
-                >
-                  {a.note}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* ── Obligations We Check Against — proto 4048-4062 ─────────────── */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "baseline",
-              justifyContent: "space-between",
-              gap: 12,
-              flexWrap: "wrap",
-            }}
-          >
-            <span style={SECTION_LABEL}>Obligations We Check Against</span>
-            <span style={SECTION_NOTE}>
-              Scope set by you at onboarding. Change it and every check re-evaluates.
-            </span>
-          </div>
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 0,
-              border: "1px solid rgba(226,232,240,.13)",
-              borderRadius: 12,
-              background: "rgba(15,23,42,.4)",
-              overflow: "hidden",
-              boxShadow: "inset 0 1px 0 rgba(255,255,255,.05)",
-            }}
-            data-testid="pv2-cmp-obligations"
-          >
-            {CMP_OBLIGATIONS.map((o) => (
-              <div
-                key={o.framework}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "minmax(190px,1fr) minmax(0,1.5fr) minmax(0,1.3fr)",
-                  gap: 16,
-                  padding: "12px 18px",
-                  borderTop: "1px solid rgba(30,41,59,.85)",
-                  alignItems: "start",
-                }}
-              >
-                <div
-                  style={{ display: "flex", flexDirection: "column", gap: 5, minWidth: 0 }}
-                >
-                  <span
-                    style={{
-                      fontSize: "11.5px",
-                      fontWeight: 700,
-                      color: "#f1f5f9",
-                      lineHeight: 1.4,
-                      fontFamily: MONO,
-                    }}
-                  >
-                    {o.framework}
-                  </span>
-                  <span
-                    style={{
-                      flex: "0 0 auto",
-                      alignSelf: "flex-start",
-                      padding: "2px 7px",
-                      borderRadius: 4,
-                      border: `1px solid ${o.tone === "slate" ? "rgba(148,163,184,.25)" : "rgba(226,232,240,.2)"}`,
-                      background: "rgba(226,232,240,.05)",
-                      fontSize: "9px",
-                      fontWeight: 700,
-                      letterSpacing: ".07em",
-                      textTransform: "uppercase",
-                      color: o.tone === "slate" ? "#64748b" : "#cbd5e1",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {o.scope}
-                  </span>
-                </div>
-                <span style={{ fontSize: "11.5px", color: "#94a3b8", lineHeight: 1.55, textWrap: "pretty" }}>
-                  {o.requires}
-                </span>
-                <span
-                  style={{
-                    fontSize: "11.5px",
-                    fontWeight: 600,
-                    color: CMP_OBLIGATION_TONE[o.tone],
-                    lineHeight: 1.5,
-                  }}
-                >
-                  {o.state}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
       </div>
-
-      {fixKey && (
-        <FixPanel
-          fixKey={fixKey}
-          onClose={closeFixPanel}
-          onAskShaneBot={(playbook) =>
-            askShaneBot(`Explain this finding to me before I approve the change: ${playbook.title}`)
-          }
-          onAcceptRisk={(playbook) => {
-            closeFixPanel();
-            openAcceptRisk({
-              title: playbook.title,
-              description: playbook.description,
-              details:
-                "Accepting instead of fixing suppresses this finding’s points in the pillar score and mutes its alerts, and puts it on the risk register with your name, a rationale and a review date. It stays visible as an accepted risk. No change request is raised because nothing changes in the tenant.",
-              kicker: "Accept instead of fixing",
-            });
-          }}
-        />
-      )}
-      {acceptRiskElement}
-      {formElement}
     </PortalV2Shell>
   );
 }
 
 /**
- * One cluster area card — proto 3928-3944, geometry at 12045-12079.
+ * One cluster area card — proto 3977-3996, geometry at 13685-13718.
  *
- * `cursor` depends on whether the card has a `finding` index: a card with one
- * opens that gap below, a card without one is inert. That is the prototype's own
- * `cursor:${a.finding != null ? 'pointer' : 'default'}`, and it is why these are
- * buttons rather than links — none of them navigates anywhere. The drill-down
- * routes exist for the four that also appear in GOV_PAGES, but that is Layer 3.
+ * `navGo` (13708) navigates to the card's drill-down when one exists, otherwise
+ * expands the finding it points at. With the inline Open Gaps section removed,
+ * both branches resolve to a Compliance drill-down, so every card is a link to
+ * `/portal-v2/compliance/<area>` — the same pattern Governance and Security use
+ * for their tiles. Those drill-down routes are Layer 3 (Part 11) and 404 until
+ * built, exactly as the other two pillars' tiles already do.
  */
-function AreaCard({
-  link,
-  onOpenGap,
-}: {
-  link: CmpAreaLink;
-  onOpenGap: (i: number) => void;
-}) {
+function AreaCard({ link }: { link: CmpAreaLink }) {
   const { meta, deltaText, deltaColor, sparkBars } = cmpAreaGeometry(link);
   const t = CMP_TIER[meta.tier];
   const Glyph = AREA_ICON[link.icon as keyof typeof AREA_ICON];
-  const interactive = link.finding != null;
 
   return (
-    <button
-      type="button"
-      onClick={() => {
-        if (link.finding != null) onOpenGap(link.finding);
-      }}
-      disabled={!interactive}
+    <Link
+      href={`/portal-v2/compliance/${link.key.replace(/^compliance-/, "")}`}
       data-testid={`pv2-cmp-area-${link.key}`}
       className="pv2-area-card"
       style={{
@@ -1465,11 +760,12 @@ function AreaCard({
         borderTop: "1px solid rgba(226,232,240,.14)",
         borderRadius: 8,
         padding: t.pad,
-        cursor: interactive ? "pointer" : "default",
+        cursor: "pointer",
         fontFamily: "inherit",
         flex: `${meta.grow} 1 0`,
         minWidth: 112,
         boxShadow: CMP_INSET,
+        textDecoration: "none",
       }}
     >
       <div
@@ -1480,7 +776,7 @@ function AreaCard({
           pointerEvents: "none",
         }}
       />
-      {/* Sparkbars, top-right — proto 3932-3936. */}
+      {/* Sparkbars, top-right — proto 3980-3984. */}
       <div
         style={{
           position: "absolute",
@@ -1586,6 +882,6 @@ function AreaCard({
           {meta.label}
         </span>
       </div>
-    </button>
+    </Link>
   );
 }

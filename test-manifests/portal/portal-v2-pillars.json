@@ -225,6 +225,73 @@
       "textContains": "Sharing & Collaboration"
     },
     {
+      "name": "G2a -- THE RISK DROP PANEL, the largest surface the earlier build was missing. The banner button (proto 563, govRisk.go) TOGGLES it open rather than navigating. Its closed label is 'View full risk register'.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-gov-risk-toggle']",
+      "state": "visible",
+      "textContains": "View full risk register"
+    },
+    {
+      "name": "G2b -- open it.",
+      "action": "click",
+      "selector": "[data-testid='pv2-gov-risk-toggle']",
+      "critical": true
+    },
+    {
+      "name": "G2c -- the panel renders the likelihood-against-impact heat-map with its own label. This whole surface was absent before.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-gov-risk-panel']",
+      "state": "visible",
+      "textContains": "Likelihood against impact"
+    },
+    {
+      "name": "G2d -- and the heat-map's caption, verbatim.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-gov-risk-panel']",
+      "state": "visible",
+      "textContains": "A filled cell is a risk sitting at that pair"
+    },
+    {
+      "name": "G2e -- and the register link INSIDE the panel (govRisk.openAllGo), distinct from the toggle button above it.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-gov-risk-open-all']",
+      "state": "visible",
+      "textContains": "Open in the register"
+    },
+    {
+      "name": "G2f -- expand a risk row (RSK-005, the accepted guest-access risk).",
+      "action": "click",
+      "selector": "[data-testid='pv2-gov-risk-row-RSK-005']",
+      "critical": true
+    },
+    {
+      "name": "G2g -- the detail carries 'What happens if it lands', one of the strings the copy-coverage floor flagged as absent before this pass.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-gov-risk-detail']",
+      "state": "visible",
+      "textContains": "What happens if it lands"
+    },
+    {
+      "name": "G2h -- and 'What is holding it down', its controls list. Both are new copy that only renders once a row is expanded.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-gov-risk-detail']",
+      "state": "visible",
+      "textContains": "What is holding it down"
+    },
+    {
+      "name": "G2i -- the accepted risk shows its acceptance block in full. RSK-005 is Accepted, so the purple panel names its register entry.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-gov-risk-detail']",
+      "state": "visible",
+      "textContains": "RR-2026-016"
+    },
+    {
+      "name": "G2j -- close the panel so the toggle label flips back and later steps see the default state.",
+      "action": "click",
+      "selector": "[data-testid='pv2-gov-risk-toggle']",
+      "critical": true
+    },
+    {
       "name": "G3 -- an area tile links into the drill-down.",
       "action": "click",
       "selector": "[data-testid='pv2-gov-area-governance-sharing-drift']",
@@ -564,11 +631,31 @@
       "textContains": "Email Security"
     },
     {
-      "name": "S11 -- the risk-accepted strip names Security, not Governance. Both pillars carry this strip with the same styling and different copy, so a copy-paste port would show the wrong pillar name here and nowhere else.",
+      "name": "S11 -- the risk-accepted strip's button. In the CURRENT design (proto 781) this is a TOGGLE (secRisk.go), not a link: its closed-state label is 'View full risk register' and clicking it opens the drop panel below rather than navigating. The register link now lives INSIDE the panel.",
       "action": "expect",
-      "selector": "[data-testid='pv2-sec-risk-register-link']",
+      "selector": "[data-testid='pv2-sec-risk-toggle']",
       "state": "visible",
       "textContains": "View full risk register"
+    },
+    {
+      "name": "S11a -- open the risk drop panel.",
+      "action": "click",
+      "selector": "[data-testid='pv2-sec-risk-toggle']",
+      "critical": true
+    },
+    {
+      "name": "S11b -- the panel names SECURITY, not Governance. Both pillars render the same shared component with only the pillar string different, so a wrong filter would surface the wrong pillar's risks here and nowhere else.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-sec-risk-panel']",
+      "state": "visible",
+      "textContains": "Security risks"
+    },
+    {
+      "name": "S11c -- the likelihood-against-impact heat-map renders with its caption, one of the surfaces the earlier build was missing entirely.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-sec-risk-panel']",
+      "state": "visible",
+      "textContains": "Rows run from most likely at the top"
     },
     {
       "name": "goto the rebuilt Health pillar dashboard -- the sixth and last.",
@@ -1253,18 +1340,24 @@
       "textContains": "Compliance improves by closing gaps, not by repelling attacks."
     },
     {
-      "name": "C5 -- the 'Why this pillar reads differently' panel. No other pillar explains itself, and its whole point is that nothing here is being exploited today.",
+      "name": "C5 -- the 'Tested by' scrutiny row (proto 3949). In the CURRENT design this REPLACES the older 'Why this pillar reads differently' prose panel: the same three moments, now compact pills that expand on click.",
       "action": "expect",
-      "selector": "[data-testid='pv2-cmp-why']",
+      "selector": "[data-testid='pv2-cmp-scrutiny']",
       "state": "visible",
-      "textContains": "none of it can be fixed retroactively"
+      "textContains": "Tested by"
     },
     {
-      "name": "C6 -- the three scrutiny moments, including the one with no notice at all.",
+      "name": "C6 -- open the third moment ('A breach investigation', the one with no notice at all).",
+      "action": "click",
+      "selector": "[data-testid='pv2-cmp-scrutiny-2']",
+      "critical": true
+    },
+    {
+      "name": "C6a -- its detail expands below the row, carrying the moment's full text -- the copy the old prose panel used to hold.",
       "action": "expect",
-      "selector": "[data-testid='pv2-cmp-why']",
+      "selector": "[data-testid='pv2-cmp-scrutiny-detail']",
       "state": "visible",
-      "textContains": "A breach investigation"
+      "textContains": "the trail expires before most intrusions are even discovered"
     },
     {
       "name": "C7 -- the scan strip is NOT the shared PillarScanBar: its dot does not pulse and its sentence ends 'none reopened'.",
@@ -1274,142 +1367,18 @@
       "textContains": "gaps closed in Compliance since scan 1, none reopened"
     },
     {
-      "name": "C8 -- THE README IS RIGHT ABOUT THIS PILLAR. Governance and Security build a findings array no template consumes, so neither renders rows; Compliance genuinely does, and this is the section carrying them.",
+      "name": "C8 -- the cluster area-card grid renders, leading with its first cluster label. Compliance's clusters are Data Lifecycle / Information Protection / Audit & Evidence / Legal Hold & Records.",
       "action": "expect",
-      "selector": "[data-testid='pv2-cmp-gaps']",
+      "selector": "[data-testid='pv2-cmp-areas']",
       "state": "visible",
-      "textContains": "12 mailboxes are not covered by any retention policy"
+      "textContains": "Data Lifecycle"
     },
     {
-      "name": "C9 -- each gap cites the obligation it touches, in mono, on the collapsed row.",
+      "name": "C9 -- a specific area card carries its real label. THE STRUCTURAL CHANGE THIS PASS: the Open Gaps, Documented Policy Decisions and Obligations sections that used to sit inline on this page have MOVED to their own drill-downs in the current design (proto 4659 / 4732 / 4783), so the pillar page now ends at the cards -- and the cards link to /portal-v2/compliance/<area> (Layer 3, Part 11) the same way Governance's and Security's tiles do. Their fixtures stay exported from cmpDashboardData.ts for the drill-downs to read.",
       "action": "expect",
-      "selector": "[data-testid='pv2-cmp-gaps']",
+      "selector": "[data-testid='pv2-cmp-area-compliance-retention-coverage']",
       "state": "visible",
-      "textContains": "SOX §802 · 17 CFR 210.2-06"
-    },
-    {
-      "name": "C10 -- expand a gap.",
-      "action": "click",
-      "selector": "[data-testid='pv2-cmp-gap-CMP-03']",
-      "critical": true
-    },
-    {
-      "name": "C11 -- the expansion carries the obligation TEXT, which the collapsed row only cites by reference.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-cmp-gaps']",
-      "state": "visible",
-      "textContains": "non-rewritable, non-erasable form"
-    },
-    {
-      "name": "C12 -- and the evidence grid, keyed and valued.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-cmp-gaps']",
-      "state": "visible",
-      "textContains": "6 Global Administrators, 2 Compliance Administrators"
-    },
-    {
-      "name": "C13 -- THE GATE FROM A COMPLIANCE GAP. The wrench opens the fix panel on a REAL playbook, not the generic fallback -- these six exist in the prototype and are transcribed, unlike governance's four sharing-drift keys.",
-      "action": "click",
-      "selector": "[data-testid='pv2-cmp-fix-cmp-preservation-lock']",
-      "critical": true
-    },
-    {
-      "name": "C14 -- it resolved to the named playbook. The fallback's title is 'Apply the recommended change'.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-fix-panel']",
-      "state": "visible",
-      "textContains": "Apply Preservation Lock to the retention policy"
-    },
-    {
-      "name": "C15 -- take the MANUAL route. It is gated by the CR step exactly like the Graph route, which is the gate's whole point: a change is a change whoever's hands are on it.",
-      "action": "click",
-      "selector": "[data-testid='pv2-fix-route-manual']",
-      "critical": true
-    },
-    {
-      "name": "C16 -- the CR gate still applies to a compliance fix, same as every other pillar.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-fix-panel']",
-      "state": "visible",
-      "textContains": "Nothing changes in your tenant without a change request behind it"
-    },
-    {
-      "name": "C16a -- arm the CR confirmation.",
-      "action": "click",
-      "selector": "[data-testid='pv2-cr-confirm']",
-      "critical": true
-    },
-    {
-      "name": "C16b -- submit it.",
-      "action": "click",
-      "selector": "[data-testid='pv2-cr-submit']",
-      "critical": true
-    },
-    {
-      "name": "C16c -- continue past the raised CR to the procedure itself.",
-      "action": "click",
-      "selector": "[data-testid='pv2-cr-continue']",
-      "critical": true
-    },
-    {
-      "name": "C16d -- THE WRAPPER STEP, ASSERTED IN THE REAL DOM. The prototype does not store this step with the fix: `complianceFixLibrary` PREPENDS a Purview sign-in to every compliance playbook (12256-12274). A transcription that copied the per-fix `manual` array flat would drop it from all six playbooks and nothing on screen would look wrong.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-fix-manual']",
-      "state": "visible",
-      "textContains": "Sign in to the Microsoft Purview portal with a Compliance Administrator account"
-    },
-    {
-      "name": "C16e -- and the appended step at the other end of the same wrapper.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-fix-manual']",
-      "state": "visible",
-      "textContains": "export the evidence pack for your records"
-    },
-    {
-      "name": "reset -- reload before the remaining sections.",
-      "action": "goto",
-      "target": "/portal/shane-mccaw-consulting/portal-v2/compliance"
-    },
-    {
-      "name": "C17 -- Documented Policy Decisions are rendered IN FULL, with the rationale an auditor reads rather than just an 'accepted' badge. No other pillar has this section.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-cmp-decisions']",
-      "state": "visible",
-      "textContains": "classifies Teams chat as transitory communication rather than a record"
-    },
-    {
-      "name": "C18 -- each decision carries its four-field audit trail, including the risk-register reference.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-cmp-decisions']",
-      "state": "visible",
-      "textContains": "RR-2026-011"
-    },
-    {
-      "name": "C19 -- Obligations We Check Against renders, including the framework deliberately marked OUT of scope. Hiding it would misrepresent the scope as narrower than it was set.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-cmp-obligations']",
-      "state": "visible",
-      "textContains": "PCI DSS v4.0"
-    },
-    {
-      "name": "C20 -- and the out-of-scope row keeps its invitation to correct the scope.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-cmp-obligations']",
-      "state": "visible",
-      "textContains": "Tell us if that changed and every check re-evaluates."
-    },
-    {
-      "name": "C21 -- an area card that maps to a gap is interactive; clicking it opens that gap rather than navigating.",
-      "action": "click",
-      "selector": "[data-testid='pv2-cmp-area-compliance-audit-retention']",
-      "critical": true
-    },
-    {
-      "name": "C22 -- and the gap it points at is now expanded, showing its evidence.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-cmp-gaps']",
-      "state": "visible",
-      "textContains": "Anything before 20 February 2026 is already unavailable to search"
+      "textContains": "Retention Coverage"
     },
     {
       "name": "S12 -- REGRESSION GUARD on extracting DriftTrend out of the Governance page: Governance's own trend must still render after the refactor.",

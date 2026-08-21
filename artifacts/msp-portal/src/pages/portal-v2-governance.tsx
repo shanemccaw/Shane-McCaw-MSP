@@ -33,12 +33,14 @@
  * component everywhere its own shape fits — it stays in use on the overview.
  */
 
+import { useState } from "react";
 import { Link } from "wouter";
 import { AlertTriangle, PartyPopper } from "lucide-react";
 
 import { PortalV2Shell } from "@/components/portal-v2/PortalV2Shell";
 import { PillarScanBar } from "@/components/portal-v2/PillarScanBar";
 import { DriftTrend } from "@/components/portal-v2/DriftTrend";
+import { RiskAcceptedPanel } from "@/components/portal-v2/RiskAcceptedPanel";
 import {
   GOV_AREA_LINKS,
   GOV_CLUSTERS,
@@ -63,6 +65,12 @@ export default function PortalV2GovernancePage() {
   const ringR = 46;
   const ringC = 2 * Math.PI * ringR;
   const ringOffset = ringC - (GOV_HERO.score / 100) * ringC;
+
+  // The risk drop panel (proto `govRisk`, 8188): the banner button toggles it
+  // open, a row toggles its own detail. Both live here rather than in the panel
+  // so the toggle button and the panel stay siblings, as the markup places them.
+  const [riskOpen, setRiskOpen] = useState(false);
+  const [riskRowId, setRiskRowId] = useState<string | null>(null);
 
   const clusters = GOV_CLUSTERS.map((name) => ({
     name,
@@ -157,12 +165,15 @@ export default function PortalV2GovernancePage() {
             <span style={{ fontSize: "11.5px", color: "#94a3b8", whiteSpace: "nowrap" }}>
               finding risk-accepted in Governance
             </span>
-            {/* Prototype line 404, `goRiskGov` — a real button, not a bare
-                arrow. Now wired: the register exists, and the shell's `rrPillar`
-                state becomes a query parameter here. */}
-            <Link
-              href="/portal-v2/risk-register?pillar=Governance"
-              data-testid="pv2-gov-risk-register-link"
+            {/* Prototype line 563, `govRisk.go` / `govRisk.label` — this button
+                TOGGLES the risk drop panel below rather than navigating. The
+                label follows the state (8205); the "Open in the register →" link
+                that actually leaves for the register lives INSIDE the panel. */}
+            <button
+              type="button"
+              onClick={() => setRiskOpen((o) => !o)}
+              data-testid="pv2-gov-risk-toggle"
+              aria-expanded={riskOpen}
               style={{
                 padding: 0,
                 border: "none",
@@ -173,13 +184,23 @@ export default function PortalV2GovernancePage() {
                 fontWeight: 600,
                 color: "#c2a63d",
                 whiteSpace: "nowrap",
-                textDecoration: "none",
               }}
             >
-              View full risk register →
-            </Link>
+              {riskOpen ? "Hide the register" : "View full risk register →"}
+            </button>
           </div>
         </div>
+
+        {/* ── Risk drop panel — proto 567-647. Independent of the all-resolved
+            state below: the accepted risk stays visible and tracked. ─────── */}
+        {riskOpen && (
+          <RiskAcceptedPanel
+            pillar="Governance"
+            expandedId={riskRowId}
+            onToggleRow={(id) => setRiskRowId((cur) => (cur === id ? null : id))}
+            testPrefix="pv2-gov"
+          />
+        )}
 
         {allResolved ? (
           /* All-resolved panel — lines 408-417. Emoji replaced per the README. */

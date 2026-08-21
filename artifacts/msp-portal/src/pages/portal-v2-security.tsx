@@ -39,6 +39,7 @@
  * conflicts with the design's 104-unit viewBox at 88px.
  */
 
+import { useState } from "react";
 import { Link } from "wouter";
 import {
   AlertTriangle,
@@ -53,6 +54,7 @@ import {
 import { PortalV2Shell } from "@/components/portal-v2/PortalV2Shell";
 import { PillarScanBar } from "@/components/portal-v2/PillarScanBar";
 import { DriftTrend, trendGeometry } from "@/components/portal-v2/DriftTrend";
+import { RiskAcceptedPanel } from "@/components/portal-v2/RiskAcceptedPanel";
 import {
   SEC_AREA_ROW_1,
   SEC_AREA_ROW_2,
@@ -82,6 +84,11 @@ export default function PortalV2SecurityPage() {
   const ringR = 46;
   const ringC = 2 * Math.PI * ringR;
   const ringOffset = ringC - (SEC_HERO.score / 100) * ringC;
+
+  // The risk drop panel (proto `secRisk`, 8188) — identical to Governance's, so
+  // the same component. The banner button toggles it; a row toggles its detail.
+  const [riskOpen, setRiskOpen] = useState(false);
+  const [riskRowId, setRiskRowId] = useState<string | null>(null);
 
   return (
     <PortalV2Shell eyebrow="Pillar" title="Security">
@@ -162,12 +169,14 @@ export default function PortalV2SecurityPage() {
             <span style={{ fontSize: "11.5px", color: "#94a3b8", whiteSpace: "nowrap" }}>
               finding risk-accepted in Security
             </span>
-            {/* `goRiskSec` (proto 540) navigates to the risk register pre-filtered
-                to Security. That page now exists, so this is wired: the shell's
-                `rrPillar` state becomes a query parameter here. */}
-            <Link
-              href="/portal-v2/risk-register?pillar=Security"
-              data-testid="pv2-sec-risk-register-link"
+            {/* Prototype line 781, `secRisk.go` / `secRisk.label` — TOGGLES the
+                risk drop panel below rather than navigating. The register link
+                lives inside the panel, exactly as on Governance. */}
+            <button
+              type="button"
+              onClick={() => setRiskOpen((o) => !o)}
+              data-testid="pv2-sec-risk-toggle"
+              aria-expanded={riskOpen}
               style={{
                 padding: 0,
                 border: "none",
@@ -178,13 +187,22 @@ export default function PortalV2SecurityPage() {
                 fontWeight: 600,
                 color: "#c2a63d",
                 whiteSpace: "nowrap",
-                textDecoration: "none",
               }}
             >
-              View full risk register →
-            </Link>
+              {riskOpen ? "Hide the register" : "View full risk register →"}
+            </button>
           </div>
         </div>
+
+        {/* ── Risk drop panel — proto 785-865, shared with Governance. ────── */}
+        {riskOpen && (
+          <RiskAcceptedPanel
+            pillar="Security"
+            expandedId={riskRowId}
+            onToggleRow={(id) => setRiskRowId((cur) => (cur === id ? null : id))}
+            testPrefix="pv2-sec"
+          />
+        )}
 
         {/* ── The critical headline — proto 544-546. Governance has no such row. */}
         <div
