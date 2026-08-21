@@ -66,6 +66,7 @@
  */
 
 import type {
+  BriefDef,
   ChangeRequest,
   CrAudit,
   CrLinked,
@@ -366,6 +367,43 @@ export function calEventsFor(
  * would blank the register instead of narrowing it. This computes the same
  * six sets as predicates over whatever rows are actually loaded.
  */
+/** First one or two initials off a submitter's name — an email local-part counts as words. */
+function initialsFor(name: string): string {
+  if (!name || name === "Not recorded") return "—";
+  const words = name.split(/[\s._+@]+/).filter(Boolean);
+  if (words.length === 0) return "—";
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return (words[0][0] + words[1][0]).toUpperCase();
+}
+
+/**
+ * A real `ChangeRequest` → the briefing card's `BriefDef`.
+ *
+ * `CC_BRIEFS` is a hand-authored narrative (a "why", a call-and-result "how",
+ * an "ifWrong") keyed by the design's own five fixture codes — there is no
+ * such narrative behind a real row, so this builds the same shape from the
+ * fields a real row actually carries rather than leaving the briefing card
+ * unreachable for every live change request. `how` reuses the real audit
+ * trail (`auditFor`) rather than inventing API calls the row never made.
+ */
+export function briefFor(cr: ChangeRequest): BriefDef {
+  return {
+    group: cr.workload,
+    groupSub: cr.window,
+    time: cr.window,
+    timeSub: cr.state,
+    who: cr.approvals.submitter.name,
+    whoOrg: cr.approvals.submitter.org,
+    init: initialsFor(cr.approvals.submitter.name),
+    where: cr.scope || "Not recorded",
+    whereNote: cr.workload + " · " + cr.code,
+    sentence: [[cr.title, "what"]],
+    why: cr.desc || "No rationale recorded.",
+    how: cr.audit.map((a) => ({ call: a.event, result: a.detail })),
+    ifWrong: cr.rollbackReady ? "Rollback tested." : "No rollback plan on file — see the record's Rollback section.",
+  };
+}
+
 export function deriveStatSets(crs: readonly ChangeRequest[]): Record<string, string[]> {
   const waiting = crs.filter((c) => c.state === "Awaiting approval" || /retro/.test(c.state));
   const incomplete = crs.filter((c) => (c.missing || []).length > 0);

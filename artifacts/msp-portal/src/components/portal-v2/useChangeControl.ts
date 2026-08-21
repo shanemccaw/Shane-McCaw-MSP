@@ -240,13 +240,15 @@ export function useChangeControl(opts: { viewParam?: string } = {}): CcControlle
         if (!res.ok) throw new Error(`change-control read failed: ${res.status}`);
         const payload = (await res.json()) as WireChangeControlPayload;
         if (cancelled) return;
-        // An EMPTY register is a real answer, not a failure: a tenant with no
-        // change requests, or one whose M365 identifier does not resolve (the
-        // route's fail-closed path, `scoped: false`), genuinely has none. But
-        // rendering a blank page for it would look broken rather than empty, and
-        // would lose the design's own worked example — so the fixtures stay on
-        // screen and `dataState` reports "fixture" so nothing claims otherwise.
-        if (!payload || !Array.isArray(payload.requests) || payload.requests.length === 0) {
+        // A tenant whose M365 identifier does not resolve (the route's
+        // fail-closed path, `scoped: false`) cannot be attributed any real
+        // rows — that is not the tenant's own answer, so the design's fixtures
+        // stay on screen and `dataState` reports "fixture" so nothing claims
+        // otherwise. But a SCOPED tenant with zero rows is a real, honest
+        // answer — "this tenant genuinely has no change requests" — and gets
+        // treated as live with an empty set rather than papered over with the
+        // design's worked example.
+        if (!payload || !Array.isArray(payload.requests) || !payload.scoped) {
           setWire(null);
           setDataState("fixture");
           return;

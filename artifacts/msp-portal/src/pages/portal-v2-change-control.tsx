@@ -78,6 +78,7 @@ import {
   type CrCheck,
   type CrStep,
 } from "@/components/portal-v2/ccPageData";
+import { briefFor } from "@/components/portal-v2/ccChangeControlWire";
 import { stateInFreeze, useChangeControl, type CcController, type CcDraft } from "@/components/portal-v2/useChangeControl";
 
 const MONO = CC_MONO;
@@ -281,9 +282,11 @@ interface FocusCard {
 
 function BriefingView({ ctrl }: { ctrl: CcController }) {
   const { s, role } = ctrl;
-  const all = CC_CRS;
+  const isLive = ctrl.dataState === "live";
+  const all = isLive ? ctrl.crs() : CC_CRS;
   const SF = s.statFilter;
-  const order = CC_BRIEF_ORDER;
+  const order = isLive ? all.map((c) => c.code) : CC_BRIEF_ORDER;
+  const sets = ctrl.statSets();
   const FZ = CC_FREEZE;
 
   const isFz = (d: number) => d >= FZ.from && d <= FZ.to;
@@ -349,7 +352,7 @@ function BriefingView({ ctrl }: { ctrl: CcController }) {
   const ganttRows: GanttRow[] = order
     .map((code): GanttRow | null => {
       const c = all.find((x) => x.code === code);
-      const g = CC_GANTT[code];
+      const g = isLive ? undefined : CC_GANTT[code];
       if (!c) return null;
       const tone = stateTone(c.state);
       const dim = !!s.focusCode && s.focusCode !== code;
@@ -414,14 +417,14 @@ function BriefingView({ ctrl }: { ctrl: CcController }) {
         phaseLabelCss: "font-size:9.5px;font-weight:600;color:" + tone + ";overflow:hidden;text-overflow:ellipsis;white-space:nowrap",
         blockedCss:
           "grid-row:1;grid-column:1 / span 15;margin:11px 2px;display:flex;align-items:center;justify-content:center;gap:8px;border-radius:6px;border:1px dashed rgba(248,113,113,.4);background:rgba(248,113,113,.05)",
-        blockedLabel: "No window — four required sections empty, so it cannot be scheduled",
+        blockedLabel: isLive ? c.window : "No window — four required sections empty, so it cannot be scheduled",
         blockedTextCss: "font-size:10px;font-weight:600;color:#f87171;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 8px",
         go: () => ctrl.patch({ focusCode: s.focusCode === code ? null : code }),
       };
     })
     .filter((r): r is GanttRow => r !== null)
     .filter((r) => r.code !== "CR-0136")
-    .filter((r) => matchSF(r.code, SF))
+    .filter((r) => matchSF(r.code, SF, sets))
     .map((r) => {
       const mv = (s.movedOv || {})[r.code];
       return !mv
@@ -524,8 +527,9 @@ function BriefingView({ ctrl }: { ctrl: CcController }) {
   const briefCards: FocusCard[] = order
     .map((code): FocusCard | null => {
       const c = all.find((x) => x.code === code);
-      const b = CC_BRIEFS[code];
-      if (!c || !b) return null;
+      if (!c) return null;
+      const b = isLive ? briefFor(c) : CC_BRIEFS[code];
+      if (!b) return null;
       const cmp = compOf(c);
       const needsYou = c.state === "Awaiting approval" && role === "approver";
       const clashHere = stateInFreeze(code, s.movedOv) && !s.freezeException;
@@ -744,8 +748,10 @@ function BriefingView({ ctrl }: { ctrl: CcController }) {
           </div>
 
           {ganttRows.length === 0 && (
-            <div style={css("padding:14px 2px;font-size:11.5px;color:#64748b")}>
-              Nothing of yours is aimed at these two weeks under this filter — check the off-timeline items below.
+            <div style={css("padding:14px 2px;font-size:11.5px;color:#64748b")} data-testid="cc-briefing-empty">
+              {isLive && all.length === 0
+                ? "No change requests exist for this tenant yet."
+                : "Nothing of yours is aimed at these two weeks under this filter — check the off-timeline items below."}
             </div>
           )}
           {ganttRows.map((r) => (

@@ -17,6 +17,7 @@ import { describe, it } from "node:test";
 import { compOf, filterRegister } from "./ccPageData";
 import type { WireChangeRequest } from "./ccChangeControlWire";
 import {
+  briefFor,
   calEventsFor,
   deriveStatSets,
   stateForWireStatus,
@@ -211,6 +212,39 @@ describe("toChangeRequest — what is honestly absent", () => {
     for (const key of ["impact", "rollback", "test", "deploy"]) {
       assert.ok(cr.missing.includes(key), `${key} must be reported missing`);
     }
+  });
+});
+
+describe("briefFor — the briefing card for a real change request", () => {
+  const cr = toChangeRequest(ROW_40);
+  const brief = briefFor(cr);
+
+  it("carries real fields straight through rather than a fixture narrative", () => {
+    assert.equal(brief.group, "Exchange Online");
+    assert.equal(brief.groupSub, "Thu 27 Aug · 07:00–09:00");
+    assert.equal(brief.where, ROW_40.target);
+    assert.deepEqual(brief.sentence, [["Manifest check - disable SMTP AUTH on the scanner mailbox", "what"]]);
+    assert.equal(brief.why, "Legacy SMTP AUTH is on for the whole tenant.");
+  });
+
+  it("initials the submitter from the requester, not a fixture name", () => {
+    assert.equal(brief.who, "shanemccaw+buyassessment@outlook.com");
+    assert.equal(brief.init, "SB");
+  });
+
+  it("builds how from the real audit trail, not invented API calls", () => {
+    assert.equal(brief.how.length, cr.audit.length);
+    assert.equal(brief.how[0].call, cr.audit[0].event);
+    assert.equal(brief.how[0].result, cr.audit[0].detail);
+  });
+
+  it("reports the real rollback state rather than a fixture default", () => {
+    assert.equal(brief.ifWrong, "No rollback plan on file — see the record's Rollback section.");
+  });
+
+  it("falls back to em-dash initials for a row with no recorded requester", () => {
+    const noRequester = toChangeRequest({ ...ROW_40, requester: "" });
+    assert.equal(briefFor(noRequester).init, "—");
   });
 });
 
