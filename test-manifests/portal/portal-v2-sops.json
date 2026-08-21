@@ -1,17 +1,25 @@
 {
-  "feature": "Customer Portal v2 Part 6 -- Reference -> SOPs & Runbooks (/portal-v2/sops) and its four sop-* category pages. Recreated from the prototype's own `isSopHub` block ('Customer Portal Shell.dc.html' 1633-1978) and its SOP_LIBRARY / SOP_META / SOP_QUEUE / SOP_AUDIT derivations, transcribed into sopHubData.ts + sopHubModel.ts and pinned by unit assertions. The hub has three sub-views -- library / execution queue / execution history -- each a real linkable URL (base = library, /sops/queue, /sops/audit) and a shell-nav sub-item under SOPs & Runbooks. The library is a master-detail: a grouped, filterable index on the left and the selected procedure in full on the right, with an execution slide-over for runnable procedures. The four category keys (incident-response / security-drift / mail-flow / device-mgmt) are the prototype's `sopCategories` (shell 8789), which the design renders through its generic placeholder branch (shell 6500-6507) -- reproduced faithfully as real, linkable routes. UI-only: every value is the design's own fixture, so these steps assert rendered design copy rather than an endpoint.",
+  "feature": "Customer Portal v2 -- Reference -> SOPs & Runbooks (/portal-v2/sops), WIRED TO REAL DATA. Part 6 built the hub and its three sub-views (library / execution queue / execution history, each a real linkable URL) against the design's own fixtures in sopHubData.ts. This manifest covers the pass that replaced those fixtures with GET /api/portal/sops and GET /api/portal/sop-runs (api-server routes/portal-sops.ts) -- customer-scoped reads over msp_sops + msp_sop_runs, requireRole(CustomerUser), scope from the authenticated JWT only. So it asserts two things the UI-only version could not: that the endpoints are real, correctly scoped and role-gated, and that the DOM shows what THEY returned rather than what the fixture used to say. The four sop-* category pages are the prototype's `sopCategories` (shell 8789), which the design renders through its generic placeholder branch (shell 6500-6507) and which carry no tenant data at all -- covered here as routes, unchanged by the wiring pass.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "a2c7aa54",
+  "lastVerifiedAgainstCommit": "152b9133",
   "notes": [
     "THE LOGIN BLOCK IS NOT OPTIONAL. /portal-v2/* sits behind ProtectedRoute; a probe that skips the five login steps hits the login screen and every assertion fails for a reason unrelated to the page.",
     "UI ROUTE SHAPE: msp-portal's outer WouterRouter has base '/portal' and SlugScope nests a second router at '/{slug}', so the real URL is /portal/{slug}/portal-v2/sops. App.tsx declares the four /sops/<category> routes BEFORE '/sops/:view' (the queue/audit param) and both before '/portal-v2/:pillar' so nothing is swallowed.",
-    "shaneapp://runTest hits the DEPLOYED build, not the local worktree; this manifest needs the Part 6 pages deployed first.",
+    "shaneapp://runTest hits the DEPLOYED build, not the local worktree; deploy before running.",
     "PERSISTED-SESSION FLAKE (known): when WebView2 is already authed, the two input steps against #email/#password can fail while the rest runs green because auth persists. N-2 of N with only those two red is a PASS for the feature.",
-    "THIS PAGE IS UI-ONLY. There is no apiTests block beyond the login setup -- there is no SOP endpoint yet; a later pass wires it. These steps assert that the design's copy and structure render, which is what the fidelity audit cannot check on its own.",
-    "THE EXECUTE BUTTONS open the execution slide-over directly. In the prototype they route through the change-request gate (a shell system owned by another part); UI-only here, so the drawer -- the design's real execution surface -- opens directly.",
+    "ROLE FLOOR IS HIGHER HERE THAN ON SIBLING PORTAL-V2 PAGES, ON PURPOSE. portal-runbooks.ts / portal-change-control.ts / portal-remediation-tracker.ts all sit at requireRole('Assessment'); these two routes sit at requireRole('CustomerUser'), because the SOP library is the MSP's own procedure documentation plus whatever the customer's team wrote, which is not prospect-tier content. A1 asserts the auth gate and A2 pins the testbed account's role, so if TEST_PORTAL_EMAIL is ever moved to an Assessment-tier account this manifest fails LOUDLY at A2 with the real role in the failure text, rather than every UI step failing for an unexplained reason. (A stale note on an older manifest claimed this account WAS Assessment-role; verified against the live login response 2026-08-21 -- it is CustomerUser, customerId 1, mspId 1.)",
+    "THE REAL-DATA ASSERTIONS ARE DELIBERATELY TENANT-SHAPED. Counts and the selected procedure come from whatever msp_sops holds for this MSP; at the time of writing that is a single row (sop_id SOP-CUSTOM-592, code SOP-CUSTOM-01, title 'Test', category 'Incident Response', automation_type hybrid, 2 steps of which 1 carries a graphEndpoint) and zero msp_sop_runs rows. If that library grows, S6/S7/S11/S20/S24 are the steps to update -- they are the ones pinned to today's real content, and that is intentional: a manifest that asserted nothing specific would pass against the fixture too, which is exactly the regression this pass exists to prevent. S9 avoids the problem entirely by interpolating A4's extracted title rather than hardcoding it.",
+    "PROVING THE FIXTURES ARE ACTUALLY GONE is half the point, so it is asserted twice over: A3 and A8 use expect.containsNone on the real response bodies, and S10/S25 assert the fixture's own index and queue testids are ABSENT from the DOM. A page still reading sopHubData would pass every positive assertion below and fail these.",
+    "THE HOLD BANNER IS NOT ASSERTED IN THE DOM, on purpose. It now derives from the real hold-window summary on GET /api/portal/runbooks (the source Active Runbooks owns), so whether it renders at all depends on live hold state for this tenant -- asserting it present would be asserting today's hold windows, and asserting it absent would break the moment a window opens. A9 asserts the SOURCE endpoint instead, which is the part this pass is responsible for.",
     "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD."
   ],
   "apiTests": [
+    {
+      "name": "A1 -- the SOP library refuses an unauthenticated caller.",
+      "method": "GET",
+      "path": "/api/portal/sops",
+      "expect": { "status": 401 }
+    },
     {
       "name": "SETUP -- log in as the designated TESTBED account; extract the bearer.",
       "method": "POST",
@@ -20,6 +28,88 @@
       "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
       "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
       "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "A2 -- the testbed account clears the CustomerUser floor these routes require. See the ROLE FLOOR note.",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.user.mspRole", "value": "CustomerUser" }
+    },
+    {
+      "name": "A3 -- GET /api/portal/sops returns THIS tenant's real library, and none of the retired fixture content.",
+      "method": "GET",
+      "path": "/api/portal/sops",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": {
+        "status": 200,
+        "containsAny": ["SOP-CUSTOM-01"],
+        "containsNone": [
+          "Disable legacy authentication safely",
+          "SOP-IDN-004",
+          "Priya Raman",
+          "Reset a site above the sharing baseline"
+        ]
+      }
+    },
+    {
+      "name": "A4 -- the library's step text is the REAL stored step, not a fixture sentence.",
+      "method": "GET",
+      "path": "/api/portal/sops",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": {
+        "status": 200,
+        "jsonPath": "$.library[0].steps[0]",
+        "containsAny": ["Revoke User Sessions"]
+      },
+      "extract": { "as": "sopTitle", "jsonPath": "$.library[0].title" }
+    },
+    {
+      "name": "A5 -- 'Not recorded' is served for review cadence rather than a guessed value, because msp_sops does not store one.",
+      "method": "GET",
+      "path": "/api/portal/sops",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.library[0].reviewCadence", "value": "Not recorded" }
+    },
+    {
+      "name": "A6 -- the category filter vocabulary is built from the tenant's own rows, not the prototype's fixed six.",
+      "method": "GET",
+      "path": "/api/portal/sops",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": {
+        "status": 200,
+        "jsonPath": "$.catOptions",
+        "isArray": true,
+        "containsAny": ["Incident Response"],
+        "containsNone": ["DR playbooks"]
+      }
+    },
+    {
+      "name": "A7 -- GET /api/portal/sop-runs returns the queue and the audit history for this tenant.",
+      "method": "GET",
+      "path": "/api/portal/sop-runs",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.queue", "isArray": true }
+    },
+    {
+      "name": "A8 -- the audit history carries a real published-version event, with a digest computed from the record rather than a fixture hash.",
+      "method": "GET",
+      "path": "/api/portal/sop-runs",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": {
+        "status": 200,
+        "jsonPath": "$.audit[0].action",
+        "value": "Version published",
+        "containsNone": ["a91f", "4d17", "77c3"]
+      }
+    },
+    {
+      "name": "A9 -- the hold banner's SOURCE is the real hold-window summary Active Runbooks owns. See the HOLD BANNER note.",
+      "method": "GET",
+      "path": "/api/portal/runbooks",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.summary.openCount", "exists": true }
     }
   ],
   "uiSteps": [
@@ -31,45 +121,45 @@
 
     { "name": "goto the SOPs & Runbooks hub (library sub-view) on its slug-scoped route.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/sops" },
     { "name": "S1 -- the page resolved to the hub, not NotFound and not the param pillar route.", "action": "expect", "selector": "[data-testid='pv2-sop-title']", "textContains": "SOPs & Runbooks", "critical": true },
-    { "name": "S2 -- the hold banner renders its thesis, verbatim.", "action": "expect", "selector": "[data-testid='pv2-sop-hold-banner']", "textContains": "procedures are in a hold window" },
-    { "name": "S3 -- ...and its Open active runbooks deep-link.", "action": "expect", "selector": "[data-testid='pv2-sop-hold-banner']", "textContains": "Open active runbooks" },
-    { "name": "S4 -- the toolbar carries Refresh logs.", "action": "expect", "selector": "[data-testid='pv2-sop-refresh-logs']", "textContains": "Refresh logs" },
-    { "name": "S5 -- ...and Export master index PDF.", "action": "expect", "selector": "[data-testid='pv2-sop-export-index']", "textContains": "Export master index PDF" },
-    { "name": "S6 -- a stat card renders (the automated-ratio label).", "action": "expect", "selector": "[data-testid='pv2-sop-hub']", "textContains": "Automated execution ratio" },
-    { "name": "S7 -- the result count shows all 17 procedures.", "action": "expect", "selector": "[data-testid='pv2-sop-result-count']", "textContains": "17 shown" },
+    { "name": "S2 -- the library loaded: the failure line is not on screen.", "action": "expect", "selector": "[data-testid='pv2-sop-error']", "state": "absent", "critical": true },
+    { "name": "S3 -- the toolbar carries Refresh logs.", "action": "expect", "selector": "[data-testid='pv2-sop-refresh-logs']", "textContains": "Refresh logs" },
+    { "name": "S4 -- ...and Export master index PDF.", "action": "expect", "selector": "[data-testid='pv2-sop-export-index']", "textContains": "Export master index PDF" },
+    { "name": "S5 -- the stat cards render the design's automated-ratio label...", "action": "expect", "selector": "[data-testid='pv2-sop-hub']", "textContains": "Automated execution ratio" },
+    { "name": "S6 -- ...over a ratio counted from the REAL library (1 of 1 rows carries an automated step).", "action": "expect", "selector": "[data-testid='pv2-sop-hub']", "textContains": "1 of 1 can run through Graph" },
+    { "name": "S7 -- the result count reflects the tenant's real library size, not the fixture's 17.", "action": "expect", "selector": "[data-testid='pv2-sop-result-count']", "textContains": "1 shown" },
     { "name": "S8 -- the library sub-view rendered.", "action": "expect", "selector": "[data-testid='pv2-sop-library']", "state": "visible" },
-    { "name": "S9 -- the first procedure is selected and shows its title.", "action": "expect", "selector": "[data-testid='pv2-sop-detail-title']", "textContains": "Disable legacy authentication safely" },
-    { "name": "S10 -- the detail panel carries 'The procedure, in full'.", "action": "expect", "selector": "[data-testid='pv2-sop-library']", "textContains": "The procedure, in full" },
-    { "name": "S11 -- ...and the 'Maintained by' meta field.", "action": "expect", "selector": "[data-testid='pv2-sop-library']", "textContains": "Maintained by" },
-    { "name": "S12 -- a runnable procedure offers 'Execute this SOP'.", "action": "expect", "selector": "[data-testid='pv2-sop-execute']", "textContains": "Execute this SOP" },
-    { "name": "S13 -- ...and 'Execute automated steps only'.", "action": "expect", "selector": "[data-testid='pv2-sop-execute-auto']", "textContains": "Execute automated steps only" },
-    { "name": "S14 -- the library footer note, verbatim.", "action": "expect", "selector": "[data-testid='pv2-sop-library']", "textContains": "Baseline procedures are ours to maintain" },
-    { "name": "S15 -- click Execute this SOP to open the slide-over.", "action": "click", "selector": "[data-testid='pv2-sop-execute']" },
-    { "name": "S16 -- the execution drawer renders its Start execution button.", "action": "expect", "selector": "[data-testid='pv2-sop-exec-start']", "textContains": "Start execution" },
-    { "name": "S17 -- ...and states the step scope.", "action": "expect", "selector": "[data-testid='pv2-sop-exec-drawer']", "textContains": "steps in scope" },
-    { "name": "S18 -- close the drawer.", "action": "click", "selector": "[data-testid='pv2-sop-exec-close']" },
-    { "name": "S19 -- select a customer-written procedure from the index.", "action": "click", "selector": "[data-testid='pv2-sop-index-sop-offboarding']" },
-    { "name": "S20 -- the detail retargets to Employee offboarding.", "action": "expect", "selector": "[data-testid='pv2-sop-detail-title']", "textContains": "Employee offboarding" },
-    { "name": "S21 -- ...and shows the 'Your procedure, your call' note (source === ours).", "action": "expect", "selector": "[data-testid='pv2-sop-library']", "textContains": "Your procedure, your call" },
+    { "name": "S9 -- REAL DATA IN THE DOM: the selected procedure is the row msp_sops actually holds, interpolated from A4's extract.", "action": "expect", "selector": "[data-testid='pv2-sop-detail-title']", "textContains": "{{sopTitle}}", "critical": true },
+    { "name": "S10 -- FIXTURE GONE: the fixture's own index row is absent from the DOM.", "action": "expect", "selector": "[data-testid='pv2-sop-index-sop-legacy-auth']", "state": "absent", "critical": true },
+    { "name": "S11 -- REAL DATA: the index row keyed on the real sop_id is present instead.", "action": "expect", "selector": "[data-testid='pv2-sop-index-SOP-CUSTOM-592']", "state": "visible", "critical": true },
+    { "name": "S12 -- the detail panel carries 'The procedure, in full'.", "action": "expect", "selector": "[data-testid='pv2-sop-library']", "textContains": "The procedure, in full" },
+    { "name": "S13 -- ...and shows the REAL stored step text under it.", "action": "expect", "selector": "[data-testid='pv2-sop-library']", "textContains": "Revoke User Sessions" },
+    { "name": "S14 -- the 'Maintained by' meta field carries the real last-updated date off msp_sops.", "action": "expect", "selector": "[data-testid='pv2-sop-library']", "textContains": "Updated 19 August 2026" },
+    { "name": "S15 -- 'Review' honestly reads Not recorded rather than a guessed cadence.", "action": "expect", "selector": "[data-testid='pv2-sop-library']", "textContains": "Not recorded" },
+    { "name": "S16 -- runnable is derived from a step that really carries an endpoint, so Execute is offered.", "action": "expect", "selector": "[data-testid='pv2-sop-execute']", "textContains": "Execute this SOP" },
+    { "name": "S17 -- the library footer note, verbatim.", "action": "expect", "selector": "[data-testid='pv2-sop-library']", "textContains": "Baseline procedures are ours to maintain" },
+    { "name": "S18 -- open the execution slide-over.", "action": "click", "selector": "[data-testid='pv2-sop-execute']" },
+    { "name": "S19 -- the drawer renders its Start execution button.", "action": "expect", "selector": "[data-testid='pv2-sop-exec-start']", "textContains": "Start execution" },
+    { "name": "S20 -- ...and scopes itself to the REAL step count (2 stored steps).", "action": "expect", "selector": "[data-testid='pv2-sop-exec-drawer']", "textContains": "2 steps in scope" },
+    { "name": "S21 -- close the drawer.", "action": "click", "selector": "[data-testid='pv2-sop-exec-close']" },
 
     { "name": "goto the execution queue sub-view.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/sops/queue" },
     { "name": "S22 -- the queue sub-view rendered.", "action": "expect", "selector": "[data-testid='pv2-sop-queue']", "state": "visible" },
     { "name": "S23 -- the one-at-a-time note, verbatim.", "action": "expect", "selector": "[data-testid='pv2-sop-queue']", "textContains": "Executions run one at a time per tenant so two procedures never touch the same object at once" },
-    { "name": "S24 -- the running legacy-auth execution is listed.", "action": "expect", "selector": "[data-testid='pv2-sop-queue-SOP-IDN-004']", "textContains": "Disable legacy authentication safely" },
-    { "name": "S25 -- expand it.", "action": "click", "selector": "[data-testid='pv2-sop-queue-SOP-IDN-004']" },
-    { "name": "S26 -- the expanded row offers 'Watch it run'.", "action": "expect", "selector": "[data-testid='pv2-sop-queue']", "textContains": "Watch it run" },
+    { "name": "S24 -- REAL DATA: with no msp_sop_runs rows in flight the queue reads its honest empty state...", "action": "expect", "selector": "[data-testid='pv2-sop-queue-empty']", "textContains": "Nothing is executing against your tenant right now", "critical": true },
+    { "name": "S25 -- ...and the fixture's running execution row is gone.", "action": "expect", "selector": "[data-testid='pv2-sop-queue-SOP-IDN-004']", "state": "absent", "critical": true },
 
     { "name": "goto the execution history (audit) sub-view.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/sops/audit" },
-    { "name": "S27 -- the audit sub-view rendered.", "action": "expect", "selector": "[data-testid='pv2-sop-audit']", "state": "visible" },
-    { "name": "S28 -- the section title, verbatim.", "action": "expect", "selector": "[data-testid='pv2-sop-audit']", "textContains": "Audit history & verification logs" },
-    { "name": "S29 -- the evidence note, verbatim.", "action": "expect", "selector": "[data-testid='pv2-sop-audit']", "textContains": "Every entry is hashed and exportable — this is the evidence an auditor asks for" },
-    { "name": "S30 -- the 'Action and detail' column header.", "action": "expect", "selector": "[data-testid='pv2-sop-audit']", "textContains": "Action and detail" },
-    { "name": "S31 -- a real audit action renders.", "action": "expect", "selector": "[data-testid='pv2-sop-audit']", "textContains": "Verified by re-scan" },
+    { "name": "S26 -- the audit sub-view rendered.", "action": "expect", "selector": "[data-testid='pv2-sop-audit']", "state": "visible" },
+    { "name": "S27 -- the section title, verbatim.", "action": "expect", "selector": "[data-testid='pv2-sop-audit']", "textContains": "Audit history & verification logs" },
+    { "name": "S28 -- the evidence note, verbatim.", "action": "expect", "selector": "[data-testid='pv2-sop-audit']", "textContains": "Every entry is hashed and exportable — this is the evidence an auditor asks for" },
+    { "name": "S29 -- REAL DATA: a real published-version event is listed.", "action": "expect", "selector": "[data-testid='pv2-sop-audit']", "textContains": "Version published", "critical": true },
+    { "name": "S30 -- ...keyed on the code msp_sops actually stores.", "action": "expect", "selector": "[data-testid='pv2-sop-audit']", "textContains": "SOP-CUSTOM-01", "critical": true },
+    { "name": "S31 -- the audit table has real rows, so its empty state is NOT on screen.", "action": "expect", "selector": "[data-testid='pv2-sop-audit-empty']", "state": "absent" },
 
-    { "name": "S32 -- the Reference nav row for SOPs & Runbooks exists now that its page does.", "action": "expect", "selector": "[data-testid='pv2-nav-sops']", "state": "visible" },
+    { "name": "S32 -- the Reference nav row for SOPs & Runbooks.", "action": "expect", "selector": "[data-testid='pv2-nav-sops']", "state": "visible" },
 
     { "name": "goto a sop-* category page.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/sops/incident-response" },
     { "name": "S33 -- the category page resolved and carries its label, verbatim.", "action": "expect", "selector": "[data-testid='pv2-sop-category-label']", "textContains": "Incident Response" },
-    { "name": "S34 -- ...and the design's placeholder line, verbatim.", "action": "expect", "selector": "[data-testid='pv2-sop-category']", "textContains": "Pillar detail page not yet built — coming next." }
+    { "name": "S34 -- ...and the design's placeholder line, verbatim. These four pages carry no tenant data by design -- see the manifest feature note.", "action": "expect", "selector": "[data-testid='pv2-sop-category']", "textContains": "Pillar detail page not yet built — coming next." }
   ]
 }
