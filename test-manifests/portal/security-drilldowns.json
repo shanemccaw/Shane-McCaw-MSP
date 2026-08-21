@@ -1,0 +1,65 @@
+{
+  "feature": "Customer Portal v2 Part 11 -- Security drill-downs: MFA (/portal-v2/security/mfa, isMfaPage 4816-4972), Conditional Access baseline (/portal-v2/security/ca, isCaPage 4975-5039) and the three Evidence pages (isEvidencePage 5041-5202) -- OAuth Apps (/security/oauth), Legacy Authentication (/security/legacy-auth) and Email Security (/security/email). UI-only, design fixtures in secMfaData.ts / secCaData.ts / secEvidenceData.ts; the CA counts, the MFA control/partial/wizard derivations and evidence slug resolution are pinned by secCaModel.test.ts / secMfaModel.test.ts / secEvidenceModel.test.ts. The wrench opens the shared FixPanel (CR gate); the sparkle asks ShaneBot. Reached from the Security pillar area cards; no top-level nav rows.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "PENDING-PART11",
+  "notes": [
+    "THE LOGIN BLOCK IS NOT OPTIONAL. /portal-v2/* sits behind ProtectedRoute; skipping the five login steps hits the login screen and every assertion fails for an unrelated reason. On a WebView2 with a PERSISTED session the two input steps (#email/#password) can fail because the form never mounts -- with only those two red and every page assertion green, that is a PASS (portal-v2-manifest-login-block-persisted-session memory).",
+    "UI ROUTE SHAPE: the outer WouterRouter base is '/portal' and SlugScope nests a second router at '/{slug}', so the real URL is /portal/shane-mccaw-consulting/portal-v2/security/<slug>. These are TWO-segment routes, declared at the App.tsx marker; '/portal-v2/:pillar' is a single-segment param route and cannot swallow them.",
+    "shaneapp://runTest hits the DEPLOYED build, not the local worktree -- these routes are new in Part 11, so the dev server must carry this commit before they resolve. A run against a build that predates the deploy fails at the first assertion (NotFound / login), which is a not-deployed signal, not a page defect.",
+    "REAL INTERACTIONS DRIVEN: the MFA preview strip (MFA6-MFA9 switches the tenant state -- unconfigured wizard, healthy card -- real local UI state) and the Evidence provenance toggle + row expand (EV3-EV5). The CA counts and MFA derivations are pinned by their model tests rather than re-driven here.",
+    "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD."
+  ],
+  "apiTests": [
+    {
+      "name": "SETUP -- log in as the designated TESTBED account; extract the bearer.",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    }
+  ],
+  "uiSteps": [
+    { "name": "goto the real login URL (outer WouterRouter base = '/portal').", "action": "goto", "target": "/portal/login" },
+    { "name": "WAIT for the login form to hydrate before typing.", "action": "expect", "selector": "#email", "state": "visible" },
+    { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
+    { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
+    { "name": "Primary login -- every assertion below needs a real session.", "action": "click", "selector": "[data-testid='login-submit']", "critical": true },
+
+    { "name": "goto the MFA drill-down.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/security/mfa" },
+    { "name": "MFA1 -- the page resolved (not NotFound, not the param pillar route).", "action": "expect", "selector": "[data-testid='pv2-mfa-page']", "state": "present", "critical": true },
+    { "name": "MFA2 -- default state is 'gaps': 8 accounts still without MFA.", "action": "expect", "selector": "[data-testid='pv2-mfa-heading']", "textContains": "MFA is enforced tenant-wide" },
+    { "name": "MFA3 -- the four preview states are offered.", "action": "expect", "selector": "[data-testid='pv2-mfa-preview']", "textContains": ["Not configured", "Configured, not enrolled", "Enabled, a few gaps", "Healthy"] },
+    { "name": "MFA4 -- the two admin accounts are named in the gap list.", "action": "expect", "selector": "[data-testid='pv2-mfa-gap-users']", "textContains": ["D. Cho (admin)", "A. Reyes (admin)"] },
+    { "name": "MFA5 -- the always-on controls panel lists the surrounding controls.", "action": "expect", "selector": "[data-testid='pv2-mfa-controls']", "textContains": ["MFA controls we check", "Authentication methods policy", "Break-glass account coverage"] },
+    { "name": "MFA6 -- switch the preview to 'Not configured'.", "action": "click", "selector": "[data-testid='pv2-mfa-preview-unconfigured']" },
+    { "name": "MFA7 -- the setup-wizard state renders (real state switch, not a static page).", "action": "expect", "selector": "[data-testid='pv2-mfa-heading']", "textContains": "MFA isn't configured for this tenant yet." },
+    { "name": "MFA8 -- switch the preview to 'Healthy'.", "action": "click", "selector": "[data-testid='pv2-mfa-preview-healthy']" },
+    { "name": "MFA9 -- the healthy state renders.", "action": "expect", "selector": "[data-testid='pv2-mfa-heading']", "textContains": "MFA is fully enforced across every account." },
+
+    { "name": "goto the Conditional Access drill-down.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/security/ca" },
+    { "name": "CA1 -- the page resolved.", "action": "expect", "selector": "[data-testid='pv2-ca-page']", "state": "present", "critical": true },
+    { "name": "CA2 -- the heading carries the '22 named' copy verbatim.", "action": "expect", "selector": "[data-testid='pv2-ca-heading']", "textContains": "22 named Conditional Access policies" },
+    { "name": "CA3 -- the four stat cards carry the design's labels.", "action": "expect", "selector": "[data-testid='pv2-ca-stats']", "textContains": ["Baseline policies", "In place", "Needs attention", "Missing"] },
+    { "name": "CA4 -- the foundation band and a named policy render.", "action": "expect", "selector": "[data-testid='pv2-ca-page']", "textContains": ["Foundation & Global Baselines", "CA001-AllUsers-AllApps-BlockLegacyAuth", "Resiliency & Emergency Controls"] },
+
+    { "name": "goto the OAuth Apps evidence drill-down.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/security/oauth" },
+    { "name": "EV1 -- the page resolved to OAuth Apps.", "action": "expect", "selector": "[data-testid='pv2-ev-page']", "state": "present", "critical": true },
+    { "name": "EV2 -- the heading is OAuth Apps & Consent Grants.", "action": "expect", "selector": "[data-testid='pv2-ev-heading']", "textContains": "OAuth Apps & Consent Grants" },
+    { "name": "EV3 -- the stat cards carry the design's labels.", "action": "expect", "selector": "[data-testid='pv2-ev-stats']", "textContains": ["Enterprise apps", "Tenant-wide consent", "Dormant apps"] },
+    { "name": "EV4 -- open the 'How we know this' provenance panel.", "action": "click", "selector": "[data-testid='pv2-ev-provenance-toggle']" },
+    { "name": "EV5 -- the provenance panel carries the design's own line.", "action": "expect", "selector": "[data-testid='pv2-ev-provenance']", "textContains": "Every number on this page traces to one of these queries." },
+    { "name": "EV6 -- expand the first flagged application.", "action": "click", "selector": "[data-testid='pv2-ev-row-0']" },
+    { "name": "EV7 -- the expanded row shows its application permissions (real expand-in-place).", "action": "expect", "selector": "[data-testid='pv2-ev-rows']", "textContains": ["Mail.ReadWrite", "Mail.Send"] },
+    { "name": "EV8 -- the secondary tenant-controls panel renders.", "action": "expect", "selector": "[data-testid='pv2-ev-secondary']", "textContains": ["Tenant consent controls", "User consent for applications"] },
+
+    { "name": "goto the Legacy Authentication evidence drill-down.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/security/legacy-auth" },
+    { "name": "EV9 -- the same template resolved to Legacy Authentication.", "action": "expect", "selector": "[data-testid='pv2-ev-heading']", "textContains": "Legacy Authentication" },
+    { "name": "EV10 -- its protocol-state panel names IMAP4.", "action": "expect", "selector": "[data-testid='pv2-ev-secondary']", "textContains": ["Protocol state", "Authenticated SMTP"] },
+
+    { "name": "goto the Email Security evidence drill-down.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/security/email" },
+    { "name": "EV11 -- the same template resolved to Email Security.", "action": "expect", "selector": "[data-testid='pv2-ev-heading']", "textContains": "Email Security" },
+    { "name": "EV12 -- its Defender controls panel renders.", "action": "expect", "selector": "[data-testid='pv2-ev-secondary']", "textContains": ["Defender for Office 365 controls", "Safe Links"] }
+  ]
+}

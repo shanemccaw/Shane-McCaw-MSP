@@ -1,0 +1,45 @@
+{
+  "feature": "Customer Portal v2 Part 11 -- Compliance drill-downs: Open gaps (/portal-v2/compliance/open-gaps, isCmpGaps 4659-4730), Documented policy decisions (/compliance/decisions, isCmpDecisions 4732-4781) and Obligations we check against (/compliance/obligations, isCmpObligations 4783-4814). UI-only, design fixtures in cmpDrilldownData.ts (CMP_FINDINGS / CMP_ACCEPTED / CMP_OBLIGATIONS); the counts, accepted-meta pairs and obligation tone map are pinned by cmpDrilldownModel.test.ts. A gap's wrench opens the shared FixPanel and 'Record a policy decision instead' opens the shared FormDrawer. Reached from the Compliance pillar; no top-level nav rows.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "PENDING-PART11",
+  "notes": [
+    "THE LOGIN BLOCK IS NOT OPTIONAL -- see the shared portal manifest note. With only the two #email/#password input steps red on a persisted session and every page assertion green, that is a PASS.",
+    "UI ROUTE SHAPE: real URL is /portal/shane-mccaw-consulting/portal-v2/compliance/<slug>. Two-segment routes declared at the App.tsx marker; '/portal-v2/:pillar' cannot swallow them.",
+    "shaneapp://runTest hits the DEPLOYED build -- these routes are new in Part 11, so a run against a build predating the deploy fails at the first assertion (a not-deployed signal, not a page defect).",
+    "REAL INTERACTION DRIVEN: expand a gap (CMP4-CMP5) reveals the obligation, evidence and both actions; the wrench and 'Record a policy decision instead' open the shared FixPanel / FormDrawer, asserted as RENDERING.",
+    "ENV VARS required: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD."
+  ],
+  "apiTests": [
+    {
+      "name": "SETUP -- log in as the designated TESTBED account; extract the bearer.",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    }
+  ],
+  "uiSteps": [
+    { "name": "goto the real login URL (outer WouterRouter base = '/portal').", "action": "goto", "target": "/portal/login" },
+    { "name": "WAIT for the login form to hydrate before typing.", "action": "expect", "selector": "#email", "state": "visible" },
+    { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
+    { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
+    { "name": "Primary login -- every assertion below needs a real session.", "action": "click", "selector": "[data-testid='login-submit']", "critical": true },
+
+    { "name": "goto the Open gaps drill-down.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/compliance/open-gaps" },
+    { "name": "CMP1 -- the page resolved.", "action": "expect", "selector": "[data-testid='pv2-cmpgaps-heading']", "state": "present", "critical": true },
+    { "name": "CMP2 -- the heading and the six-gap list render.", "action": "expect", "selector": "[data-testid='pv2-cmpgaps-rows']", "textContains": ["12 mailboxes are not covered by any retention policy", "SOX §802 · 17 CFR 210.2-06"] },
+    { "name": "CMP3 -- the two severities are labelled Material gap / Gap.", "action": "expect", "selector": "[data-testid='pv2-cmpgaps-rows']", "textContains": ["Material gap", "Gap"] },
+    { "name": "CMP4 -- expand the first gap (CMP-01).", "action": "click", "selector": "[data-testid='pv2-cmpgaps-row-0']" },
+    { "name": "CMP5 -- the expanded gap shows its obligation, its fix and the record-decision action.", "action": "expect", "selector": "[data-testid='pv2-cmpgaps-rows']", "textContains": ["The obligation", "Apply an adaptive-scope retention policy that covers new mailboxes automatically", "Record a policy decision instead"] },
+
+    { "name": "goto the Documented decisions drill-down.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/compliance/decisions" },
+    { "name": "CMP6 -- the page resolved.", "action": "expect", "selector": "[data-testid='pv2-cmpdec-heading']", "textContains": "Documented policy decisions", "critical": true },
+    { "name": "CMP7 -- both decisions render as cards with rationale and compensating control.", "action": "expect", "selector": "[data-testid='pv2-cmpdec-cards']", "textContains": ["Teams chat retention set to 1 year rather than the 7-year records period", "Compensating control", "General Counsel"] },
+
+    { "name": "goto the Obligations drill-down.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/compliance/obligations" },
+    { "name": "CMP8 -- the page resolved.", "action": "expect", "selector": "[data-testid='pv2-cmpobl-heading']", "textContains": "Obligations we check against", "critical": true },
+    { "name": "CMP9 -- the frameworks render, including the out-of-scope PCI row.", "action": "expect", "selector": "[data-testid='pv2-cmpobl-rows']", "textContains": ["SOX §802 · 17 CFR 210.2-06", "PCI DSS v4.0", "Marked out of scope"] }
+  ]
+}

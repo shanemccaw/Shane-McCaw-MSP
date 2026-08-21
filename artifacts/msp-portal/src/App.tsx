@@ -113,6 +113,14 @@ import PortalV2AlertPreferencesPage from "@/pages/portal-v2-alert-preferences";
 import PortalV2ReceiptPage from "@/pages/portal-v2-receipt";
 import PortalV2SopHubPage from "@/pages/portal-v2-sop-hub";
 import PortalV2SopCategoryPage from "@/pages/portal-v2-sop-category";
+// Part 11 — pillar drill-downs (reached from the pillar pages, no top-level nav).
+import PortalV2SecurityMfaPage from "@/pages/portal-v2-security-mfa";
+import PortalV2SecurityCaPage from "@/pages/portal-v2-security-ca";
+import PortalV2SecurityEvidencePage from "@/pages/portal-v2-security-evidence";
+import PortalV2ComplianceGapsPage from "@/pages/portal-v2-compliance-gaps";
+import PortalV2ComplianceDecisionsPage from "@/pages/portal-v2-compliance-decisions";
+import PortalV2ComplianceObligationsPage from "@/pages/portal-v2-compliance-obligations";
+import PortalV2GovAreaPage from "@/pages/portal-v2-gov-area";
 import ConsentDeclinedPage from "@/pages/consent-declined";
 import ConsentSuccessPage from "@/pages/consent-success";
 import ConsentTenantConflictPage from "@/pages/consent-tenant-conflict";
@@ -566,6 +574,30 @@ function SlugInnerSwitch() {
       <Route path="/portal-v2/governance/oversharing">
         <ProtectedRoute component={PortalV2GovOversharingPage} />
       </Route>
+      {/* Part 11 — the "generic area" Governance drill-downs (list / drift /
+          inventory shapes). Each governance tile links to
+          "/portal-v2/governance/<slug>", which the ":area" param route below
+          otherwise swallows into the GOV_PAGES drill-down (→ NotFound for these
+          slugs). So each is declared here as a specific literal route ABOVE
+          ":area", the same precedence pattern "…/oversharing" already uses.
+          They share one page component that reads its slug from the location.
+          This is the one place these must go — the App.tsx insertion marker sits
+          below ":area" and would not reach them. */}
+      <Route path="/portal-v2/governance/orphaned-teams">
+        <ProtectedRoute component={PortalV2GovAreaPage} />
+      </Route>
+      <Route path="/portal-v2/governance/team-owners">
+        <ProtectedRoute component={PortalV2GovAreaPage} />
+      </Route>
+      <Route path="/portal-v2/governance/device-inventory">
+        <ProtectedRoute component={PortalV2GovAreaPage} />
+      </Route>
+      <Route path="/portal-v2/governance/device-lifecycle">
+        <ProtectedRoute component={PortalV2GovAreaPage} />
+      </Route>
+      <Route path="/portal-v2/governance/sharing-drift-legacy">
+        <ProtectedRoute component={PortalV2GovAreaPage} />
+      </Route>
       <Route path="/portal-v2/governance/:area">
         <ProtectedRoute component={PortalV2GovDetailPage} />
       </Route>
@@ -764,6 +796,35 @@ function SlugInnerSwitch() {
       </Route>
       <Route path="/portal-v2/sops">
         <ProtectedRoute component={PortalV2SopHubPage} />
+      </Route>
+      {/* Part 11 — Security drill-downs (MFA, Conditional Access, and the three
+          evidence pages) and Compliance drill-downs (open gaps, decisions,
+          obligations). Two-segment routes that "/portal-v2/:pillar" cannot
+          swallow, declared at the marker per the plan. Evidence's three slugs
+          share one page component that reads its slug from the location. */}
+      <Route path="/portal-v2/security/mfa">
+        <ProtectedRoute component={PortalV2SecurityMfaPage} />
+      </Route>
+      <Route path="/portal-v2/security/ca">
+        <ProtectedRoute component={PortalV2SecurityCaPage} />
+      </Route>
+      <Route path="/portal-v2/security/oauth">
+        <ProtectedRoute component={PortalV2SecurityEvidencePage} />
+      </Route>
+      <Route path="/portal-v2/security/legacy-auth">
+        <ProtectedRoute component={PortalV2SecurityEvidencePage} />
+      </Route>
+      <Route path="/portal-v2/security/email">
+        <ProtectedRoute component={PortalV2SecurityEvidencePage} />
+      </Route>
+      <Route path="/portal-v2/compliance/open-gaps">
+        <ProtectedRoute component={PortalV2ComplianceGapsPage} />
+      </Route>
+      <Route path="/portal-v2/compliance/decisions">
+        <ProtectedRoute component={PortalV2ComplianceDecisionsPage} />
+      </Route>
+      <Route path="/portal-v2/compliance/obligations">
+        <ProtectedRoute component={PortalV2ComplianceObligationsPage} />
       </Route>
       {/* ═══════════════════════════════════════════════════════════════════
           PORTAL-V2 ROUTE INSERTION POINT — ADD NEW /portal-v2 ROUTES ABOVE.
