@@ -422,7 +422,7 @@ export default function LoginPage() {
     : user?.mspRole === "Assessment"
       ? "/copilot-readiness"
       : user?.mspRole === "CustomerUser"
-        ? "/m365-health"
+        ? "/portal-v2"
         : "/dashboard";
 
   useEffect(() => {
@@ -447,12 +447,13 @@ export default function LoginPage() {
       // there is no separate dead-end branch for it here anymore.
 
       // Compute landing from the freshly-resolved user so CustomerUser
-      // always goes to m365-health, not dashboard (pre-login user is null).
+      // always goes to the /portal-v2 Overview, not dashboard (pre-login user
+      // is null).
       const resolvedLanding =
         result.user?.mspRole === "Assessment"
           ? "/copilot-readiness"
           : result.user?.mspRole === "CustomerUser"
-            ? "/m365-health"
+            ? "/portal-v2"
             : "/dashboard";
 
       if (ctxSlug) {

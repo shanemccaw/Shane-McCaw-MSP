@@ -416,13 +416,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           // pushing the target URL and letting wouter re-render.
           if (targetSlug) {
             // Assessment lands on the assessment shell; CustomerUser lands on
-            // M365 Health; MSP-side roles land on the dashboard. mspRole is
-            // the impersonated identity's role.
+            // the Portal v2 Overview; MSP-side roles land on the dashboard.
+            // mspRole is the impersonated identity's role.
             const landing =
               data.user.mspRole === "Assessment"
                 ? "copilot-readiness"
                 : data.user.mspRole === "CustomerUser"
-                  ? "m365-health"
+                  ? "portal-v2"
                   : "dashboard";
             const base = import.meta.env.BASE_URL.replace(/\/$/, "");
             const target = `${base}/${targetSlug}/${landing}`;
@@ -718,7 +718,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           data.user.mspRole === "Assessment"
             ? "copilot-readiness"
             : data.user.mspRole === "CustomerUser"
-              ? "m365-health"
+              ? "portal-v2"
               : "dashboard";
         const base = import.meta.env.BASE_URL.replace(/\/$/, "");
         window.history.pushState({}, "", `${base}/${targetSlug}/${landing}`);

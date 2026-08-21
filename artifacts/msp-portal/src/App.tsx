@@ -304,7 +304,7 @@ function SetupMfaPage() {
   const [, navigate] = useLocation();
 
   const defaultLanding =
-    user?.mspRole === "CustomerUser" ? "/m365-health" : "/dashboard";
+    user?.mspRole === "CustomerUser" ? "/portal-v2" : "/dashboard";
 
   return (
     <AssessmentMfaEnrollment
@@ -387,7 +387,10 @@ function SlugInnerSwitch() {
     : user?.mspRole === "Assessment"
       ? "/copilot-readiness"
       : user?.mspRole === "CustomerUser"
-        ? "/m365-health"
+        // Portal v2: a CustomerUser's "home" is now the /portal-v2 Overview, not
+        // the legacy /m365-health page. The old pages stay live and directly
+        // URL-reachable as the fallback until Portal v2 is confirmed end to end.
+        ? "/portal-v2"
         : "/dashboard";
 
   return (
@@ -541,7 +544,7 @@ function SlugInnerSwitch() {
         <ProtectedRoute component={CustomerHomePage} />
       </Route>
       <Route path="/customer-dashboard">
-        <Redirect to="/m365-health" />
+        <Redirect to="/portal-v2" />
       </Route>
       <Route path="/overview-test">
         <ProtectedRoute component={OverviewTestPage} />
@@ -1252,7 +1255,7 @@ function FlatLoggedInRedirect() {
         user?.mspRole === "Assessment"
           ? "copilot-readiness"
           : user?.mspRole === "CustomerUser"
-            ? "m365-health"
+            ? "portal-v2"
             : "dashboard";
       navigate(`/${resolvedSlug}/${landing}`, { replace: true });
       return;
