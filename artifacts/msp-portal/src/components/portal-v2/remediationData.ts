@@ -19,15 +19,23 @@
  * A step's `status` (done / not / accepted) is one fact; whether a real scan has
  * VERIFIED that claim is a separate one. Only a real scan's
  * `reverifyRemediationTrackerSteps()` (#732, server-side) may set a step
- * verified — never UI or tick state. So NO task below carries `verified`, and
- * the model reads `verified` straight off the fixture (always false here): the
- * "Fixed and verified" counter honestly reads 0, and a done-but-unverified task
- * reads "Awaiting re-scan", exactly as the design intends. See
- * components/copilot-journey/useRemediationTracker.ts for the real vocabulary.
+ * verified — never UI or tick state.
  *
- * UI-only: design content for the fictional Halden Materials tenant. A later
- * pass wires it to real tracker rows; keeping the fixture in one module is what
- * makes that a single-file change.
+ * THAT SEPARATION IS NOW STRUCTURAL, NOT A CONVENTION. Neither field exists on
+ * the task type any more: both come over the wire, per step, from the
+ * customer's own `remediation_tracker_steps` rows (see remediationLive.ts).
+ * The design's own demo progress markers — `done: true` on p1a/p1g/p1h — went
+ * with them, because a fixture flag and a real row would otherwise fight over
+ * the same counter. There is no longer any way for this module to assert that
+ * something is done or verified, which is exactly the point.
+ *
+ * ── WHAT IS STILL FIXTURE ──────────────────────────────────────────────────
+ * Everything below: the finding CATALOGUE itself — titles, scan evidence,
+ * severity, pillar, who runs it — plus the phases and the RACI owners. The
+ * platform holds none of that per-customer today (the server's own
+ * `remediation-tracker-catalogue.ts` carries titles and pillars only, and no
+ * evidence, severity or owner), so it stays the design's content for the
+ * fictional Halden Materials tenant until there is a real source to read.
  */
 
 export type RtSeverity = "Critical" | "Attention" | "Low risk";
@@ -50,13 +58,6 @@ export interface RemediationTask {
   pillar: RtPillarKey;
   /** True when Shane's team runs it rather than the customer's. */
   shane?: boolean;
-  /** The tracked status: whether the change has been done. */
-  done?: boolean;
-  /**
-   * Whether a real scan has VERIFIED the fix. Deliberately never set in this
-   * fixture — see the header. Present on the type only so the model can read it.
-   */
-  verified?: boolean;
 }
 
 /** One phase of the remediation programme. */
@@ -80,14 +81,14 @@ export const RT_PHASES: readonly RemediationPhase[] = [
     fee: 16200,
     state: "In progress",
     tasks: [
-      { id: "p1a", title: "Close org-wide sharing on the four sensitive sites", ev: "212 sites shared org-wide", sev: "Critical", pillar: "governance", shane: true, done: true },
+      { id: "p1a", title: "Close org-wide sharing on the four sensitive sites", ev: "212 sites shared org-wide", sev: "Critical", pillar: "governance", shane: true },
       { id: "p1b", title: "Export the remaining 208 sites and route to owners", ev: "212 sites shared org-wide", sev: "Attention", pillar: "governance" },
       { id: "p1c", title: "Expire all future anonymous links", ev: "2,940 non-expiring links", sev: "Attention", pillar: "governance" },
       { id: "p1d", title: "Revoke the 2,940 existing anonymous links", ev: "2,940 non-expiring links", sev: "Critical", pillar: "governance" },
       { id: "p1e", title: "Apply a 12-month lifecycle policy", ev: "148 inactive sites", sev: "Attention", pillar: "governance" },
       { id: "p1f", title: "Put Teams creation behind a request", ev: "61 teams, 22 single-member", sev: "Attention", pillar: "governance" },
-      { id: "p1g", title: "Audit and fix MFA on the 11 admin accounts", ev: "14 accounts without MFA", sev: "Critical", pillar: "security", shane: true, done: true },
-      { id: "p1h", title: "Scope Conditional Access to privileged roles", ev: "No privileged-role CA policy", sev: "Critical", pillar: "security", shane: true, done: true },
+      { id: "p1g", title: "Audit and fix MFA on the 11 admin accounts", ev: "14 accounts without MFA", sev: "Critical", pillar: "security", shane: true },
+      { id: "p1h", title: "Scope Conditional Access to privileged roles", ev: "No privileged-role CA policy", sev: "Critical", pillar: "security", shane: true },
       { id: "p1i", title: "Re-enable CA01 and remove the 14 June exclusion", ev: "CA baseline deviation", sev: "Attention", pillar: "security" },
       { id: "p1j", title: "Disable legacy authentication", ev: "1,106 legacy sign-ins", sev: "Critical", pillar: "security" },
       { id: "p1k", title: "Reduce 11 standing Global Admins to 2", ev: "11 permanent admin accounts", sev: "Critical", pillar: "security" },

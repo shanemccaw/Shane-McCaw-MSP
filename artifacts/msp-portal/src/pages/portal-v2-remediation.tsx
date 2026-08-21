@@ -13,24 +13,38 @@
  * grouped under its pillar with the state it is in and who closes it.
  *
  * ── STATUS vs VERIFICATION ─────────────────────────────────────────────────
- * A step reads "Verified" only when a real scan has verified it — which the
- * fixture never asserts, so the "Fixed and verified" counter honestly reads 0
- * and every done step reads "Awaiting re-scan". This page never derives verified
- * from UI state. See remediationData.ts / remediationModel.ts.
+ * A step reads "Verified" only when a REAL SCAN has verified it. That value can
+ * now only arrive one way — `verificationState` on the customer's own tracker
+ * row, set exclusively by `reverifyRemediationTrackerSteps()` running inside a
+ * scan — and the fixture no longer carries a `verified` (or `done`) field for
+ * anything to read instead. This page never derives verified from UI state, a
+ * tick, or a filter. See remediationLive.ts / remediationModel.ts.
  *
- * ── UI-only ────────────────────────────────────────────────────────────────
- * The fixture is design content (remediationData.ts). The counter filter is
- * local UI state. The row is not clickable (the prototype's markup wires no row
- * handler); the only interactions are the CR badge — which deep-links into
- * Change Control — and the owner chip, which carries its name on a native
- * tooltip (the prototype's pinned RACI popover is shell state a page must not
- * touch).
+ * ── WHAT IS REAL, AND WHAT IS STILL FIXTURE ────────────────────────────────
+ * REAL, per customer, off `GET /api/portal/remediation-tracker` via
+ * `useRemediationTracker`: every step's status, every step's verification, and
+ * therefore the progress bar, the headline count, all four counters, the row
+ * state badges, the CR badges and the "We run it" routing of a step handed to
+ * Shane.
+ *
+ * STILL FIXTURE (remediationData.ts): the finding catalogue itself — titles,
+ * scan evidence, severity, pillar and the RACI owner chips. The platform holds
+ * no per-customer source for those yet.
+ *
+ * ── UI-only bits that remain ───────────────────────────────────────────────
+ * The counter filter is local UI state. The row is not clickable (the
+ * prototype's markup wires no row handler); the only interactions are the CR
+ * badge — which deep-links into Change Control — and the owner chip, which
+ * carries its name on a native tooltip (the prototype's pinned RACI popover is
+ * shell state a page must not touch).
  */
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useLocation } from "wouter";
 
+import { useRemediationTracker } from "@/components/copilot-journey/useRemediationTracker";
 import { PortalV2Shell, SIDEBAR_WASH } from "@/components/portal-v2/PortalV2Shell";
+import type { RtLiveState } from "@/components/portal-v2/remediationLive";
 import {
   rtCounters,
   rtGroups,
@@ -46,15 +60,35 @@ export default function PortalV2RemediationPage() {
   const [filter, setFilter] = useState<RtStateKey | null>(null);
   const [, navigate] = useLocation();
 
-  const progress = rtProgress();
-  const counters = rtCounters(filter);
-  const groups = rtGroups(filter);
+  // The customer's own tracker rows — the same store the Full Remediation Guide
+  // reads and writes, so a step ticked there is already ticked here.
+  const tracker = useRemediationTracker();
+  const live: RtLiveState = useMemo(
+    () => ({ statuses: tracker.statuses, verification: tracker.verification }),
+    [tracker.statuses, tracker.verification],
+  );
+
+  const progress = rtProgress(live);
+  const counters = rtCounters(filter, live);
+  const groups = rtGroups(filter, live);
 
   const toggleFilter = (state: RtStateKey) => setFilter((f) => (f === state ? null : state));
 
   return (
     <PortalV2Shell eyebrow="Operate" title="Remediation Tracker">
-      <div style={{ minHeight: "100%", background: SIDEBAR_WASH }}>
+      {/*
+        Load state rides as data attributes rather than new copy: the design
+        specifies no loading or error slot on this page, and inventing one would
+        be a layout change. Before the payload lands every step reads "not
+        started" — understating, never over-claiming — and a failed read is
+        already beaconed by the hook (RemediationTrackerLoadFailed).
+      */}
+      <div
+        style={{ minHeight: "100%", background: SIDEBAR_WASH }}
+        data-testid="pv2-rt-root"
+        data-rt-loaded={tracker.loaded ? "true" : "false"}
+        data-rt-error={tracker.error ? "true" : "false"}
+      >
         <div
           style={{
             maxWidth: 1180,
