@@ -55,6 +55,7 @@
     "portal/portal-v2-settings.json",
     "portal/portal-v2-ms-changes.json",
     "portal/portal-v2-retainer.json",
-    "portal/portal-v2-copilot.json"
+    "portal/portal-v2-copilot.json",
+    "portal/portal-v2-projects.json"
   ]
 }

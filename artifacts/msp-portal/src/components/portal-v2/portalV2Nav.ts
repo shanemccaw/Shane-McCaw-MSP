@@ -12,8 +12,8 @@
  *  Security Plan and PII Governance; Reference is meant to carry SOPs &
  *  Runbooks; Operate is meant to carry Remediation Tracker and Policy
  *  Decisions. My Architect and Copilot sit above / after the Pillars group and
- *  arrived with Part 9; Projects (Part 8) shares the ungrouped region and is
- *  still absent because its page is. An absent row is absent because its page
+ *  arrived with Part 9; Projects (Part 8) shares the ungrouped region beside My
+ *  Architect and arrived with Part 8. An absent row is absent because its page
  *  is, not because it was forgotten — see PORTAL_V2_PARALLEL_PLAN.md for which
  *  part builds each.
  * ══════════════════════════════════════════════════════════════════════════
@@ -40,7 +40,7 @@
  * which is harder to read than three explicit branches.
  */
 
-import { Bell, FileText, GitCommit, PlayCircle, ShieldOff, Sparkles, Users } from "lucide-react";
+import { Bell, ClipboardList, FileText, GitCommit, PlayCircle, ShieldOff, Sparkles, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import { PILLAR_ICON_PATHS, PILLAR_ORDER } from "@/components/copilot-journey/journeyTokens";
@@ -259,6 +259,23 @@ const RETAINER_ITEM: NavItem = {
 };
 
 /**
+ * Projects — the SOW-based delivery page (Part 8). Prototype `topDefs` (shell
+ * 8804): the SECOND ungrouped row, drawn with the plain 15px glyph, no group
+ * label and no divider — it sits beside My Architect above the Pillars group.
+ * The icon is the prototype's own `clipboard-list`. Like My Architect it is its
+ * OWN single-item `label: null` group, so the two ungrouped parts never edit
+ * the same array entry; the design's topDefs order (retainer, then projects) is
+ * kept by placing this group directly after My Architect's below.
+ */
+const PROJECTS_ITEM: NavItem = {
+  href: "/portal-v2/projects",
+  label: "Projects",
+  title: "Projects",
+  testId: "pv2-nav-projects",
+  glyph: { kind: "lucide", icon: ClipboardList },
+};
+
+/**
  * Copilot — the readiness verdict page (Part 9), and the ONLY surface for the
  * Copilot gate now the rebuilt Overview has no gate band. Prototype 133-143: a
  * STANDALONE row after the Pillars group, drawn with a 26px cyan identity tile
@@ -292,8 +309,10 @@ const COPILOT_ITEM: NavItem = {
 export const PORTAL_V2_NAV: readonly NavGroup[] = [
   { label: null, render: "solo", items: [OVERVIEW_ITEM] },
   // My Architect — ungrouped, above Pillars. Projects (Part 8) joins this
-  // region as its own sibling `label: null` group.
+  // region as its own sibling `label: null` group, directly after — the
+  // prototype's topDefs order is retainer, then projects.
   { label: null, render: "plain", items: [RETAINER_ITEM] },
+  { label: null, render: "plain", items: [PROJECTS_ITEM] },
   { label: "Pillars", render: "pillars", items: PILLAR_ITEMS },
   // Copilot — standalone after the Pillars group, drawn with the pillar tile
   // treatment in the design's cyan.

@@ -1,0 +1,189 @@
+{
+  "feature": "Customer Portal v2 Part 8 -- the Projects page (/portal-v2/projects), an SOW-based fixed-scope delivery view. Recreated from the prototype's own `isProjects` block ('Customer Portal Shell.dc.html' 1231-1495), its PJ_PHASES / PJ_TASKS / PJ_LANES / PJ_MILESTONES fixtures (shell 15999-16123) and the pjGanttRows / pjPhaseRail / pjMilestones derivations. The page answers two questions -- how much of the contracted scope is done, and whose move it is -- and arranges everything under them: a back-to-Overview link, the header (SOW-2026-0114 label, title, delivery-lead meta), three summary cards (Waiting on you / With us / Scope delivered), a full phase Gantt reusing the Overview's pjRows/pjPct geometry (ONE shared copy, no forked phases), the phase-deliverables rail, the FLUID 5-lane auto-fit task board, and the footer actions. Fixture lives in projectsData.ts; the geometry is reused from overviewModel via projectsModel and pinned by projectsModel.test.ts.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "UNSET",
+  "notes": [
+    "THE LOGIN BLOCK IS NOT OPTIONAL. /portal-v2/* sits behind ProtectedRoute; a probe that skips the five login steps hits the login screen and every assertion fails for a reason unrelated to the page.",
+    "UI ROUTE SHAPE: msp-portal's outer WouterRouter has base '/portal' and SlugScope nests a second router at '/{slug}', so the real URL is /portal/{slug}/portal-v2/projects. App.tsx declares '/portal-v2/projects' BEFORE '/portal-v2/:pillar' so the param route cannot swallow it -- Projects is a plain, param-free route.",
+    "shaneapp://runTest hits the DEPLOYED build, not the local worktree -- the Projects page is new in Part 8, so the dev server must carry this commit before the route resolves. A run against a build that predates the deploy fails at PJ1 (NotFound / login), which is a not-deployed signal, not a page defect.",
+    "WHY THE PER-TASK ACTION AND ASK-SHANEBOT BUTTONS ARE NOT CLICKED -- INERT BY DESIGN, ASSERTED PRESENT. In the prototype the 'Confirm the pilot user list' style buttons drive a slide-over FORM (openForm) and 'Ask ShaneBot about this' opens the assistant; both belong to the shell systems (Part 1), not this page, so Part 8 renders them exactly as drawn but inert -- the same call the Change Control rebuild made. Asserting they RENDER is the real assertion: the page was not 'improved' by inventing behaviour, and not trimmed to hide it.",
+    "WHAT IS REALLY DRIVEN: the phase-rail toggle (PJ13-PJ15 -- clicking a Gantt phase row opens its deliverables panel, real local UI state) and the nav wiring (PJ16-PJ18 -- the ungrouped Projects nav row navigates to the page). The task-card expand/collapse split, the two card counts and the milestone diamond placement are pinned by src/components/portal-v2/projectsModel.test.ts (unit) rather than re-driven here.",
+    "ROUND TWO ITEM 6: the Gantt track (186px minmax(0,1fr)) and the 5-lane board (repeat(auto-fit,minmax(200px,1fr))) are FLUID -- no fixed min-width floor and no overflow-x wrapper. Layout fluidity is a visual property this text-based harness cannot assert; it is verified by eye and stated here so nobody reads a green run as proof of it.",
+    "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD."
+  ],
+  "apiTests": [
+    {
+      "name": "SETUP -- log in as the designated TESTBED account; extract the bearer.",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "email": "{{TEST_PORTAL_EMAIL}}",
+        "password": "{{TEST_PORTAL_PASSWORD}}"
+      },
+      "expect": {
+        "status": 200,
+        "jsonPath": "$.accessToken",
+        "exists": true
+      },
+      "extract": {
+        "as": "authToken",
+        "jsonPath": "$.accessToken"
+      }
+    }
+  ],
+  "uiSteps": [
+    {
+      "name": "goto the real login URL (outer WouterRouter base = '/portal').",
+      "action": "goto",
+      "target": "/portal/login"
+    },
+    {
+      "name": "WAIT for the login form to hydrate before typing.",
+      "action": "expect",
+      "selector": "#email",
+      "state": "visible"
+    },
+    {
+      "action": "input",
+      "selector": "#email",
+      "value": "{{TEST_PORTAL_EMAIL}}"
+    },
+    {
+      "action": "input",
+      "selector": "#password",
+      "value": "{{TEST_PORTAL_PASSWORD}}"
+    },
+    {
+      "name": "Primary login -- every assertion below needs a real session.",
+      "action": "click",
+      "selector": "[data-testid='login-submit']",
+      "critical": true
+    },
+    {
+      "name": "goto the Projects page on its slug-scoped route.",
+      "action": "goto",
+      "target": "/portal/shane-mccaw-consulting/portal-v2/projects"
+    },
+    {
+      "name": "PJ1 -- the page resolved to Projects, not NotFound and not the param pillar route. The SOW label is the header's first line.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-projects-sow']",
+      "textContains": "Fixed-scope project · SOW-2026-0114",
+      "critical": true
+    },
+    {
+      "name": "PJ2 -- the project title.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-projects-title']",
+      "textContains": "Copilot Readiness Assessment"
+    },
+    {
+      "name": "PJ3 -- the 'Waiting on you' card leads with its kicker and its overdue count.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-projects-waiting']",
+      "textContains": "Waiting on you"
+    },
+    {
+      "name": "PJ4 -- ...and the derived count of items with the customer (3 tasks in the waiting lane) with its verbatim tail.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-projects-waiting']",
+      "textContains": "items are with you. One of them is holding two phases."
+    },
+    {
+      "name": "PJ5 -- the 'With us' card says nothing is overdue on our side.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-projects-mine']",
+      "textContains": "Nothing overdue on our side"
+    },
+    {
+      "name": "PJ6 -- the 'Scope delivered' card names the contracted-deliverables bar.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-projects-scope']",
+      "textContains": "Contracted deliverables accepted"
+    },
+    {
+      "name": "PJ7 -- ...and its 2-of-8 value, alongside the tasks-closed bar.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-projects-scope']",
+      "textContains": "Tasks closed"
+    },
+    {
+      "name": "PJ8 -- the schedule strip carries the day-19-of-53 window kicker.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-projects-schedule']",
+      "textContains": "Schedule · 4 Aug – 26 Sep, day 19 of 53"
+    },
+    {
+      "name": "PJ9 -- the Gantt renders, and a complete phase's bar reads 'Signed off', not a task count.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-projects-gantt']",
+      "textContains": "Signed off"
+    },
+    {
+      "name": "PJ10 -- the blocked phase (P4) reads 'Blocked', not '0/3 tasks' -- cannot-start, not no-progress-yet.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-projects-gantt']",
+      "textContains": "Blocked"
+    },
+    {
+      "name": "PJ11 -- the Gantt legend names the contracted end line, 26 Sep.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-projects-gantt']",
+      "textContains": "Contracted end · 26 Sep"
+    },
+    {
+      "name": "PJ12 -- the task board header counts 18 tasks across the five phases.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-projects-board']",
+      "textContains": "Task board · 18 tasks across the five phases"
+    },
+    {
+      "name": "PJ13 -- the phase deliverables rail is closed on arrival (no phase selected).",
+      "action": "expect",
+      "selector": "[data-testid='pv2-projects-phase-panel']",
+      "state": "absent"
+    },
+    {
+      "name": "PJ14 -- click phase 3's Gantt row to open its rail.",
+      "action": "click",
+      "selector": "[data-testid='pv2-projects-phase-3']"
+    },
+    {
+      "name": "PJ15 -- the rail opens on phase 3, the running phase, and carries its status badge.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-projects-phase-panel']",
+      "textContains": "Pilot group configuration"
+    },
+    {
+      "name": "PJ16 -- the footer offers the real deep link into Change Control, and the Billing pointer.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-projects-footer']",
+      "textContains": "Fee, invoices and milestone releases live in Billing"
+    },
+    {
+      "name": "PJ17 -- the ungrouped Projects nav row exists (above the Pillars group, beside My Architect).",
+      "action": "expect",
+      "selector": "[data-testid='pv2-nav-projects']",
+      "state": "visible"
+    },
+    {
+      "name": "PJ18 -- from the Overview, clicking the nav row navigates to Projects. Go to Overview first.",
+      "action": "goto",
+      "target": "/portal/shane-mccaw-consulting/portal-v2"
+    },
+    {
+      "name": "PJ19 -- click the Projects nav row.",
+      "action": "click",
+      "selector": "[data-testid='pv2-nav-projects']"
+    },
+    {
+      "name": "PJ20 -- it lands on the Projects page: the SOW label is back.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-projects-sow']",
+      "textContains": "Fixed-scope project · SOW-2026-0114"
+    }
+  ]
+}

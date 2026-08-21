@@ -101,6 +101,7 @@ import PortalV2OwnershipPage from "@/pages/portal-v2-ownership";
 import PortalV2MsChangesPage from "@/pages/portal-v2-ms-changes";
 import PortalV2RetainerPage from "@/pages/portal-v2-retainer";
 import PortalV2CopilotPage from "@/pages/portal-v2-copilot";
+import PortalV2ProjectsPage from "@/pages/portal-v2-projects";
 import ConsentDeclinedPage from "@/pages/consent-declined";
 import ConsentSuccessPage from "@/pages/consent-success";
 import ConsentTenantConflictPage from "@/pages/consent-tenant-conflict";
@@ -671,6 +672,13 @@ function SlugInnerSwitch() {
           gate band. Part 9. */}
       <Route path="/portal-v2/copilot">
         <ProtectedRoute component={PortalV2CopilotPage} />
+      </Route>
+      {/* Ungrouped, above the Pillars group — Projects (SOW-based delivery),
+          beside My Architect. Part 8. A plain /portal-v2/projects route with no
+          param segments; declared before "/portal-v2/:pillar" like every
+          specific route above so the param route cannot swallow it. */}
+      <Route path="/portal-v2/projects">
+        <ProtectedRoute component={PortalV2ProjectsPage} />
       </Route>
       {/* ═══════════════════════════════════════════════════════════════════
           PORTAL-V2 ROUTE INSERTION POINT — ADD NEW /portal-v2 ROUTES ABOVE.

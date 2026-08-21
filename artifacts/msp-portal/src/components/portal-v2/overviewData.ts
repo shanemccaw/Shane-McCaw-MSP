@@ -218,133 +218,29 @@ export const OV_MC_INCOMING: readonly OvMsChange[] = [
   },
 ];
 
-export type OvPhaseStatus = "complete" | "active" | "blocked" | "pending";
-
-export interface OvProjectPhase {
-  n: number;
-  name: string;
-  dates: string;
-  status: OvPhaseStatus;
-  done: number;
-  total: number;
-  summary: string;
-  deliverables: readonly string[];
-  note: string;
-}
-
-/** prototype 15999. The overview draws the first five. */
-export const OV_PROJECT_PHASES: readonly OvProjectPhase[] = [
-  {
-    n: 1,
-    name: "Discovery & data inventory",
-    dates: "4 – 13 Aug",
-    status: "complete",
-    done: 4,
-    total: 4,
-    summary:
-      "Every site, mailbox and Teams channel in scope inventoried, with the oversharing baseline that phase 2 was planned against.",
-    deliverables: ["Tenant data inventory report", "Oversharing exposure baseline"],
-    note: "Signed off 13 Aug at the findings workshop. Both deliverables accepted without comment.",
-  },
-  {
-    n: 2,
-    name: "Governance & remediation plan",
-    dates: "11 – 20 Aug",
-    status: "complete",
-    done: 5,
-    total: 5,
-    summary:
-      "The remediation plan for the 412 sites in scope, sequenced so the pilot can proceed before the wider tenant is touched.",
-    deliverables: ["Governance remediation plan"],
-    note: "Delivered 20 Aug. Work complete on our side; the deliverable is with you for approval, which is tracked as a task rather than an open phase.",
-  },
-  {
-    n: 3,
-    name: "Pilot group configuration",
-    dates: "18 Aug – 5 Sep",
-    status: "active",
-    done: 2,
-    total: 6,
-    summary:
-      "Configuring the pilot tenant baseline, sharing controls and label pilot for the 24 named users.",
-    deliverables: ["Pilot tenant configuration", "Sensitivity label pilot"],
-    note: "Four of six tasks are running. Two cannot finish without the named pilot user list, which is a day overdue with you.",
-  },
-  {
-    n: 4,
-    name: "Enablement & training",
-    dates: "1 – 12 Sep",
-    status: "blocked",
-    done: 0,
-    total: 3,
-    summary: "Enablement pack and two live training sessions for the pilot group.",
-    deliverables: ["Enablement material pack", "Two training sessions delivered"],
-    note: "Cannot be scheduled. Trainer and room need 10 working days notice, and the dates have not come back. If dates are not confirmed by 28 Aug the phase 5 date moves.",
-  },
-  {
-    n: 5,
-    name: "Readiness report & handover",
-    dates: "15 – 26 Sep",
-    status: "pending",
-    done: 0,
-    total: 2,
-    summary:
-      "The readiness report, scored against the assessment criteria in the SOW, and the handover session.",
-    deliverables: ["Copilot readiness report", "Handover session"],
-    note: "Not started. Depends on phase 4 completing; the end date has no float in it.",
-  },
-];
-
-/* ── Project gantt geometry — prototype 16240-16244 ─────────────────────── */
-
-/** Day index of "today" on the project window. */
-export const PJ_TODAY = 19;
-
-/** The window is 63 days; `pct(d) = d / PJ_WIN * 100`. */
-export const PJ_WIN = 63;
-
-export const PJ_SPANS: Readonly<Record<number, readonly [number, number]>> = {
-  1: [0, 9],
-  2: [7, 16],
-  3: [14, 32],
-  4: [28, 39],
-  5: [42, 53],
-};
-
-/**
- * Phases 4 and 5 carry a SLIP band — a dashed hatch showing where the phase was
- * meant to sit, drawn beside where it now does. Only two phases have one, and
- * the page is honest about that rather than drawing an empty band on the rest.
+/* ── Project fixture & gantt geometry — moved to projectsData.ts ─────────────
+ *
+ * Part 8 gave the Projects page ownership of the project phase fixture and the
+ * gantt geometry, because the full Projects page and this Overview's mini-gantt
+ * must never disagree about a phase. There is now ONE copy, in projectsData.ts;
+ * these re-exports keep the Overview page and overviewModel importing them from
+ * here under their original names, so nothing on the Overview side changed.
  */
-export const PJ_SLIPS: Readonly<Record<number, readonly [number, number]>> = {
-  4: [39, 46],
-  5: [53, 60],
-};
-
-/** The contract's end date, drawn as a hard line — prototype 16265, day 53. */
-export const PJ_CONTRACT_END = 53;
-
-export const PJ_WEEKS: readonly string[] = [
-  "4 Aug",
-  "11 Aug",
-  "18 Aug",
-  "25 Aug",
-  "1 Sep",
-  "8 Sep",
-  "15 Sep",
-  "22 Sep",
-  "29 Sep",
-];
-
-/** The two week columns the design highlights as "now" — prototype 16246. */
-export const PJ_CURRENT_WEEKS: readonly number[] = [2, 3];
-
-export const PJ_PHASE_TONE: Readonly<Record<OvPhaseStatus, string>> = {
-  complete: "#34d399",
-  active: "#60a5fa",
-  blocked: "#f87171",
-  pending: "#64748b",
-};
+export {
+  PROJECT_PHASES as OV_PROJECT_PHASES,
+  PJ_TODAY,
+  PJ_WIN,
+  PJ_SPANS,
+  PJ_SLIPS,
+  PJ_CONTRACT_END,
+  PJ_WEEKS,
+  PJ_CURRENT_WEEKS,
+  PJ_PHASE_TONE,
+} from "./projectsData";
+export type {
+  ProjectPhase as OvProjectPhase,
+  PhaseStatus as OvPhaseStatus,
+} from "./projectsData";
 
 /* ── Policy decisions ───────────────────────────────────────────────────── */
 

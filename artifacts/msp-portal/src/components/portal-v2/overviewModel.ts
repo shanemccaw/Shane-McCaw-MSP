@@ -14,16 +14,20 @@ import {
   OV_HOLD_WINDOWS,
   OV_MC_INCOMING,
   OV_POLICY_DECISIONS,
-  OV_PROJECT_PHASES,
   PD_TONE,
   PD_UNSIGNED,
+  type OvHoldWindow,
+  type OvPolicyDecision,
+} from "./overviewData";
+// The project fixture and gantt geometry live in projectsData.ts (Part 8); this
+// derivation and the Projects page read the one copy so their gantts can't drift.
+import {
+  PROJECT_PHASES,
   PJ_SLIPS,
   PJ_SPANS,
   PJ_WIN,
-  type OvHoldWindow,
-  type OvPolicyDecision,
-  type OvProjectPhase,
-} from "./overviewData";
+  type ProjectPhase,
+} from "./projectsData";
 import { deriveHoldClock, type HoldState } from "./holds/holdState";
 import { RR_RISKS, type RiskEntry } from "./riskRegisterData";
 
@@ -260,7 +264,7 @@ export interface PjRow {
   n: number;
   name: string;
   dates: string;
-  status: OvProjectPhase["status"];
+  status: ProjectPhase["status"];
   tone: string;
   /** Bar left/width as percentages of the window. */
   left: number;
@@ -279,7 +283,7 @@ export interface PjRow {
  * Printing "0/3 tasks" on a blocked phase would read as no-progress-yet rather
  * than cannot-start, which is the opposite of what phase 4 means.
  */
-export function pjRows(phases: readonly OvProjectPhase[] = OV_PROJECT_PHASES): readonly PjRow[] {
+export function pjRows(phases: readonly ProjectPhase[] = PROJECT_PHASES): readonly PjRow[] {
   return phases.map((p) => {
     const span = PJ_SPANS[p.n];
     const slip = PJ_SLIPS[p.n];
