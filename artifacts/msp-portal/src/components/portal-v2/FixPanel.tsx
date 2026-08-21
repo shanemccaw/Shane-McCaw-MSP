@@ -16,17 +16,31 @@
  * values ARE the spec; house component defaults are deliberately NOT used where
  * the two disagree.
  *
- * ── Deliberately NOT wired to a backend ─────────────────────────────────────
- * `msp_change_requests` already models this (preChangeSnapshot, proposedPayload,
- * rollbackScriptSnippet, changeClass/riskLevel, a 6-value status) — but only
- * behind MSP-operator routes. A customer-scoped CR route does not exist yet, and
- * reusing the MSP one would leak cross-tenant data. So submit is a real UI flow
- * over a local state transition, and the CR reference it shows is the
- * prototype's own. Phase 4 of the build plan adds the customer-scoped route.
+ * ── Wired to the real customer-scoped CR route ──────────────────────────────
+ * The customer-scoped route now exists — `POST /api/portal/change-control`
+ * (api-server `routes/portal-change-control.ts`), a scoped insert into
+ * `msp_change_requests` with `risk`/`workload` computed server-side. Submitting
+ * the CR step raises a REAL change request through it (see
+ * `ccCreateChangeRequest.ts` for the body mapping) and renders real success and
+ * failure state — not the prototype's `setTimeout` over a hardcoded code.
+ *
+ * The submitted panel's copy is HONEST about what the backend actually did: the
+ * route writes every new CR as `pending_approval` with no approver and exposes
+ * no approve/execute mutation, so a raised CR waits for approval and does NOT
+ * run against the tenant. The prototype's "approved, both signatures in" copy
+ * described a flow that does not exist yet (the Dev→Test→Prod approval gate is
+ * separate, later work) and is replaced with the real pending-approval state.
  */
 
 import { useCallback, useState } from "react";
 
+import { useAuth } from "@/lib/auth-context";
+
+import {
+  changeRequestBodyForPlaybook,
+  postChangeRequest,
+  type ChangeRequestCreated,
+} from "./ccCreateChangeRequest";
 import {
   CR_DEFAULT_WINDOW,
   CR_WINDOWS,
@@ -144,6 +158,7 @@ export interface FixPanelProps {
 
 export function FixPanel({ fixKey, onClose, onAcceptRisk, onAskShaneBot }: FixPanelProps) {
   const data = playbookFor(fixKey);
+  const { fetchWithAuth } = useAuth();
 
   const [step, setStep] = useState<FixStep>("choose");
   const [intent, setIntent] = useState<FixIntent | null>(null);
@@ -151,6 +166,11 @@ export function FixPanel({ fixKey, onClose, onAcceptRisk, onAskShaneBot }: FixPa
   const [crSubmitted, setCrSubmitted] = useState(false);
   const [crWindow, setCrWindow] = useState(CR_DEFAULT_WINDOW);
   const [agreeChecked, setAgreeChecked] = useState(false);
+  // Real submit state: in-flight while the POST is open, the created CR once it
+  // lands, and the route's error string if it fails.
+  const [crBusy, setCrBusy] = useState(false);
+  const [created, setCreated] = useState<ChangeRequestCreated | null>(null);
+  const [crError, setCrError] = useState<string | null>(null);
 
   // `goFixCr(intent)` in the prototype — every route that changes the tenant
   // lands on the CR step first. Only "manual" and "graph" reach it; "shane"
@@ -160,12 +180,27 @@ export function FixPanel({ fixKey, onClose, onAcceptRisk, onAskShaneBot }: FixPa
     setStep("cr");
     setCrSubmitted(false);
     setCrConfirm(false);
+    setCreated(null);
+    setCrError(null);
   }, []);
 
-  const submitCr = useCallback(() => {
-    if (!crConfirm) return;
-    setCrSubmitted(true);
-  }, [crConfirm]);
+  const submitCr = useCallback(async () => {
+    if (!crConfirm || crBusy) return;
+    setCrBusy(true);
+    setCrError(null);
+    const body = changeRequestBodyForPlaybook(data, {
+      window: crWindow,
+      intent: intent ?? "graph",
+    });
+    const result = await postChangeRequest(fetchWithAuth, body);
+    setCrBusy(false);
+    if (result.ok) {
+      setCreated(result.created);
+      setCrSubmitted(true);
+    } else {
+      setCrError(result.error);
+    }
+  }, [crConfirm, crBusy, data, crWindow, intent, fetchWithAuth]);
 
   const proceedFromCr = useCallback(() => {
     setStep(intent === "manual" ? "manual" : "graph");
@@ -549,23 +584,32 @@ export function FixPanel({ fixKey, onClose, onAcceptRisk, onAskShaneBot }: FixPa
                 </span>
               </div>
 
+              {crError && (
+                <span
+                  style={{ fontSize: "11.5px", color: "#f87171", lineHeight: 1.5 }}
+                  data-testid="pv2-cr-error"
+                >
+                  {crError}
+                </span>
+              )}
+
               <button
                 onClick={submitCr}
-                disabled={!crConfirm}
+                disabled={!crConfirm || crBusy}
                 data-testid="pv2-cr-submit"
                 style={{
                   padding: "10px 16px",
                   borderRadius: 8,
                   fontSize: "12.5px",
                   fontWeight: 700,
-                  border: `1px solid ${crConfirm ? "#0078D4" : "rgba(30,41,59,.9)"}`,
-                  background: crConfirm ? "#0078D4" : "rgba(255,255,255,.02)",
-                  color: crConfirm ? "#fff" : "#475569",
-                  cursor: crConfirm ? "pointer" : "not-allowed",
+                  border: `1px solid ${crConfirm && !crBusy ? "#0078D4" : "rgba(30,41,59,.9)"}`,
+                  background: crConfirm && !crBusy ? "#0078D4" : "rgba(255,255,255,.02)",
+                  color: crConfirm && !crBusy ? "#fff" : "#475569",
+                  cursor: crConfirm && !crBusy ? "pointer" : "not-allowed",
                   fontFamily: "inherit",
                 }}
               >
-                Submit change request
+                {crBusy ? "Raising the change request…" : "Submit change request"}
               </button>
 
               <div
@@ -612,7 +656,7 @@ export function FixPanel({ fixKey, onClose, onAcceptRisk, onAskShaneBot }: FixPa
           )}
 
           {/* ── Step: change request submitted ────────────────────────── */}
-          {step === "cr" && crSubmitted && (
+          {step === "cr" && crSubmitted && created && (
             <div
               style={{ display: "flex", flexDirection: "column", gap: 13 }}
               data-testid="pv2-cr-submitted"
@@ -637,13 +681,14 @@ export function FixPanel({ fixKey, onClose, onAcceptRisk, onAskShaneBot }: FixPa
                     textTransform: "uppercase",
                     color: "#34d399",
                   }}
+                  data-testid="pv2-cr-code"
                 >
-                  CR-2026-0186 · approved for this window
+                  {created.code} · raised, pending approval
                 </span>
                 <span style={{ fontSize: "12px", color: "#e2e8f0", lineHeight: 1.55 }}>
-                  Both approvals are in: yours as IT lead, and Shane McCaw Consulting as second
-                  admin under your retainer. It is on the register, in the maintenance schedule,
-                  and the snapshot is armed.
+                  It is on your change register now, waiting for approval. Nothing runs against your
+                  tenant until it is approved and its window opens, and the pre-change snapshot is
+                  captured at execution rather than now.
                 </span>
               </div>
 
@@ -661,6 +706,10 @@ export function FixPanel({ fixKey, onClose, onAcceptRisk, onAskShaneBot }: FixPa
               >
                 <span style={CR_FIELD_LABEL}>Window</span>
                 <span style={CR_FIELD_VALUE}>{crWindow}</span>
+                <span style={CR_FIELD_LABEL}>Risk</span>
+                <span style={CR_FIELD_VALUE}>
+                  {created.risk} · {created.workload} — assessed for you when it was raised
+                </span>
                 <span style={CR_FIELD_LABEL}>Rollback</span>
                 <span style={CR_FIELD_VALUE}>
                   One click from the vault for 90 days after execution
@@ -715,7 +764,8 @@ export function FixPanel({ fixKey, onClose, onAcceptRisk, onAskShaneBot }: FixPa
                   }}
                 />
                 <span style={{ fontSize: "11px", color: "#cbd5e1", lineHeight: 1.45 }}>
-                  Running under CR-2026-0186 · snapshot armed
+                  Raised under {created?.code ?? "your change request"} · pending approval, snapshot
+                  captured at execution
                 </span>
               </div>
 
@@ -867,7 +917,8 @@ export function FixPanel({ fixKey, onClose, onAcceptRisk, onAskShaneBot }: FixPa
                   }}
                 />
                 <span style={{ fontSize: "11px", color: "#cbd5e1", lineHeight: 1.45 }}>
-                  Running under CR-2026-0186 · snapshot armed
+                  Raised under {created?.code ?? "your change request"} · pending approval, snapshot
+                  captured at execution
                 </span>
               </div>
 

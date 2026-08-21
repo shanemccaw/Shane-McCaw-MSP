@@ -1,5 +1,5 @@
 {
-  "feature": "Customer Portal v2 -- Change Control (/portal-v2/change-control), rebuilt to the standalone Change Control.dc.html module (Part 4) and, as of the wiring pass, reading the REGISTER from real data. Covers the five sub-views (briefing / register / catalogue / calendar / review), each on its own linkable URL, plus the per-CR record view and the deep-linkable policy view (ccView === 'settings'). MIXED SOURCES BY DESIGN -- see the note below: the register and the record are live off /api/portal/change-control; the briefing, catalogue, freeze cards, CAB agenda and notification rules are still the design's fixtures because no table backs them.",
+  "feature": "Customer Portal v2 -- Change Control (/portal-v2/change-control), rebuilt to the standalone Change Control.dc.html module (Part 4), reading the REGISTER from real data, and -- as of the creation-flow wiring pass -- RAISING real change requests. The fix panel (FixPanel.tsx, shared across every pillar drill-down) and the SOP hub's Execute buttons (portal-v2-sop-hub.tsx) now POST to /api/portal/change-control through a shared mapper (ccCreateChangeRequest.ts) instead of running a local setTimeout over a hardcoded CR-2026-0186; both render the REAL pending-approval state the route returns rather than the prototype's fictional 'approved, both signatures in'. apiTests A8/A9 + uiStep CC20d cover that flow end to end. Covers the five sub-views (briefing / register / catalogue / calendar / review), each on its own linkable URL, plus the per-CR record view and the deep-linkable policy view (ccView === 'settings'). MIXED SOURCES BY DESIGN -- see the note below: the register and the record are live off /api/portal/change-control; the briefing, catalogue, freeze cards, CAB agenda and notification rules are still the design's fixtures because no table backs them.",
   "baseUrl": "{{DEPLOY_URL}}",
   "lastVerifiedAgainstCommit": "PENDING",
 
@@ -20,7 +20,11 @@
 
     "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD -- the same testbed account the other portal manifests drive.",
 
-    "shaneapp://runTest hits the DEPLOYED build, not the local worktree -- these steps only exercise the rebuilt page once the commit under test is deployed to the dev server."
+    "shaneapp://runTest hits the DEPLOYED build, not the local worktree -- these steps only exercise the rebuilt page once the commit under test is deployed to the dev server.",
+
+    "THE CREATION FLOW (A8/A9/CC20d) WRITES A REAL ROW every run. There is no cleanup step and there is no delete route -- a raised CR is a permanent record by design -- so each regression run leaves one more 'Manifest check -- raise a CR from the change-control creation flow' row on the testbed tenant's msp_change_requests, always pending_approval. That is expected and harmless (the register simply grows); prune them by hand if the testbed register gets noisy. The entitlement rule (Git #1168) is why there is nothing to gate here: CR creation is ALWAYS real and unconditional regardless of the Change Control add-on, so A8 succeeds without any entitlement setup.",
+
+    "WHAT THE CREATION FLOW DOES NOT DO: it raises a CR and stops. The route writes pending_approval with no approver and exposes no approve/execute/reject mutation (A7 pins the approve 404), so a raised CR does NOT run against the tenant -- it waits for an approval step that is separate, later work. The UI copy says so honestly; the prototype's 'approved for this window / both approvals are in' was replaced because it described a flow that does not exist yet."
   ],
 
   "apiTests": [
@@ -84,6 +88,29 @@
       "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
       "body": {},
       "expect": { "status": 404 }
+    },
+    {
+      "name": "A8 -- THE CREATION FLOW: the fix panel and the SOP hub raise a REAL change request through POST /api/portal/change-control. This is that endpoint, driven directly. It answers 201 and returns the code it assigned. risk MUST come back 'High' even though impactedUsersCount is 3 -- the High rating comes entirely from the conditionalAccess target pattern, computed SERVER-SIDE (the client sends no risk), which is exactly the authority the route refuses to accept from the client. Extract the assigned code so CC20d can prove it reaches the register's DOM.",
+      "method": "POST",
+      "path": "/api/portal/change-control",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": {
+        "title": "Manifest check -- raise a CR from the change-control creation flow",
+        "target": "PATCH /v1.0/identity/conditionalAccess/policies/{id}",
+        "post": "{\"change\":\"manifest creation-flow probe\"}",
+        "changeClass": "Normal",
+        "impactedUsersCount": 3,
+        "window": "Thu 27 Aug -- 07:00-09:00"
+      },
+      "expect": { "status": 201, "jsonPath": "$.risk", "value": "High" },
+      "extract": { "as": "createdCrCode", "jsonPath": "$.code" }
+    },
+    {
+      "name": "A9 -- REGISTER REFLECTS IT: re-reading the register (id DESC) now returns the CR A8 just raised as the FIRST row. This is the real-time proof at the API layer -- the newly created record is served by the same customer-scoped read the register renders, not just accepted by the write. workload comes back 'Conditional Access', derived server-side from the same target.",
+      "method": "GET",
+      "path": "/api/portal/change-control",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.requests[0].workload", "value": "Conditional Access" }
     }
   ],
 
@@ -119,6 +146,7 @@
     { "name": "CC20 -- ...and that row's REAL rendered text is the title the API returned (A4). This is the endpoint-to-DOM integration proof: both sides come from the same response, so they cannot agree by coincidence.", "action": "expect", "selector": "[data-testid='cc-register-row-{{firstCrCode}}']", "textContains": "{{firstCrTitle}}" },
     { "name": "CC20b -- the STATUS MAPPING reached the DOM: the API sent 'Pending approval' (A5) and the register must show the module's word for it. If the mapping were dropped, this row would read 'Approved' -- a change nobody signed, shown as signed.", "action": "expect", "selector": "[data-testid='cc-register-row-{{firstCrCode}}']", "textContains": ["Awaiting signature", "Awaiting approval"] },
     { "name": "CC20c -- NO FIXTURE ROW SURVIVES in a live register. CR-0142 is the design's own change request; if it is still on screen the page is reading fixtures, which is exactly the failure this whole pass was meant to end.", "action": "expect", "selector": "[data-testid='cc-register-row-CR-0142']", "state": "absent" },
+    { "name": "CC20d -- THE CREATION FLOW REACHES THE DOM: the register renders a row whose testid is the code POST /api/portal/change-control returned at A8. This is the end-to-end proof for the wiring pass -- a CR raised through the real create endpoint appears on the real register in this same session, not just as a 201 nobody can see.", "action": "expect", "selector": "[data-testid='cc-register-row-{{createdCrCode}}']", "state": "visible", "critical": true },
     { "name": "CC21 -- open the REAL change request's full record (the row div is the click target).", "action": "click", "selector": "[data-testid='cc-register-row-{{firstCrCode}}']" },
     { "name": "CC22 -- the record view opened.", "action": "expect", "selector": "[data-testid='cc-view-record']", "state": "visible", "critical": true },
     { "name": "CC23 -- the record opens on section 01 of 11.", "action": "expect", "selector": "[data-testid='cc-view-record']", "textContains": "Section 01 of 11" },

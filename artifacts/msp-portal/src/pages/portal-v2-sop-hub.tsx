@@ -29,11 +29,17 @@
  * execution surface — is built in full, timer and all.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { useLocation, useRoute } from "wouter";
 import { Check, ChevronDown, Search, X } from "lucide-react";
 
+import { useAuth } from "@/lib/auth-context";
 import { PortalV2Shell } from "@/components/portal-v2/PortalV2Shell";
+import {
+  changeRequestBodyForSop,
+  postChangeRequest,
+  type ChangeRequestCreated,
+} from "@/components/portal-v2/ccCreateChangeRequest";
 import {
   css,
   MONO,
@@ -1527,8 +1533,16 @@ interface ExecState {
   open: boolean;
   id: string | null;
   mode: SopExecMode;
-  idx: number;
-  running: boolean;
+  /**
+   * idle → the drawer is showing the procedure, waiting for Start.
+   * raising → the POST is open. raised → a real CR came back. error → it failed.
+   * There is no "running" step animation anymore: raising a change request is
+   * the real action, and the procedure does not execute until that CR is
+   * approved (single-step creation only — see ccCreateChangeRequest.ts).
+   */
+  phase: "idle" | "raising" | "raised" | "error";
+  cr: ChangeRequestCreated | null;
+  error: string | null;
 }
 
 function ExecDrawer({
@@ -1546,9 +1560,11 @@ function ExecDrawer({
   const steps = execStepsFor(data, exec.id, exec.mode);
   const d = detailFor(data, exec.id);
   if (!d) return null;
-  const done = steps.length > 0 && exec.idx >= steps.length;
-  const idle = !exec.running && !done;
-  const pct = steps.length ? Math.round((Math.min(exec.idx, steps.length) / steps.length) * 100) : 0;
+  // The bar tracks the raise action (the one thing that actually happens),
+  // NOT step execution — the steps below stay un-ticked because nothing has run
+  // against the tenant. 100% means the change request was raised, and the
+  // footer says plainly that it is pending approval.
+  const pct = exec.phase === "raised" ? 100 : 0;
   const modeLabel =
     exec.mode === "auto" ? "Automated steps only" : "Full execution · automated and manual";
 
@@ -1645,9 +1661,11 @@ function ExecDrawer({
             gap: 10,
           }}
         >
-          {steps.map((s, i) => {
-            const stepDone = i < exec.idx;
-            const current = i === exec.idx;
+          {steps.map((s) => {
+            // Nothing executes in this scope — a raised CR is pending approval —
+            // so every step renders as in-scope, none ticked done.
+            const stepDone = false;
+            const current = false;
             const c = stepDone ? "#34d399" : current ? "#60a5fa" : "#475569";
             return (
               <div key={s.n} style={{ display: "flex", alignItems: "flex-start", gap: 11 }}>
@@ -1710,8 +1728,16 @@ function ExecDrawer({
             gap: 9,
           }}
         >
-          {idle && (
+          {(exec.phase === "idle" || exec.phase === "error") && (
             <>
+              {exec.phase === "error" && exec.error && (
+                <span
+                  style={{ fontSize: "11px", color: "#f87171", lineHeight: 1.5 }}
+                  data-testid="pv2-sop-exec-error"
+                >
+                  {exec.error}
+                </span>
+              )}
               <button
                 type="button"
                 onClick={onStart}
@@ -1731,26 +1757,35 @@ function ExecDrawer({
                 Start execution
               </button>
               <span style={{ fontSize: "10.5px", color: "#64748b", lineHeight: 1.5 }}>
-                Each step is written to the audit log as it completes, with the endpoint called and
-                the object affected.
+                This raises a change request for the procedure. It goes on your change register
+                pending approval — nothing runs against your tenant until it is approved.
               </span>
             </>
           )}
-          {exec.running && (
+          {exec.phase === "raising" && (
             <>
-              <span style={{ fontSize: "12px", fontWeight: 700, color: "#60a5fa" }}>Running…</span>
+              <span
+                style={{ fontSize: "12px", fontWeight: 700, color: "#60a5fa" }}
+                data-testid="pv2-sop-exec-raising"
+              >
+                Raising the change request…
+              </span>
               <span style={{ fontSize: "10.5px", color: "#64748b", lineHeight: 1.5 }}>
-                You can close this panel — the execution continues and appears in the live queue.
+                Its risk and workload are being assessed for you.
               </span>
             </>
           )}
-          {done && (
+          {exec.phase === "raised" && exec.cr && (
             <>
-              <span style={{ fontSize: "12px", fontWeight: 700, color: "#34d399" }}>
-                Execution complete
+              <span
+                style={{ fontSize: "12px", fontWeight: 700, color: "#34d399" }}
+                data-testid="pv2-sop-exec-raised"
+              >
+                {exec.cr.code} · raised, pending approval
               </span>
               <span style={{ fontSize: "10.5px", color: "#64748b", lineHeight: 1.5 }}>
-                Verification runs on the next scan. The audit entry and hash are already written.
+                It is on your change register now. This procedure runs once the change request is
+                approved — nothing has run against your tenant yet.
               </span>
               <button
                 type="button"
@@ -1799,6 +1834,7 @@ export default function PortalV2SopHubPage() {
     setFiltersState((f) => ({ ...f, ...patch }));
 
   const { sops, runs, holds, loaded, error } = useSops();
+  const { fetchWithAuth } = useAuth();
 
   const [requestedSel, setRequestedSel] = useState<string | null>(null);
   const filtered = filterSops(sops, filters);
@@ -1808,40 +1844,43 @@ export default function PortalV2SopHubPage() {
     open: false,
     id: null,
     mode: "all",
-    idx: 0,
-    running: false,
+    phase: "idle",
+    cr: null,
+    error: null,
   });
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (timer.current) clearTimeout(timer.current);
-    };
-  }, []);
 
   const startExec = (id: string, mode: SopExecMode) => {
-    if (timer.current) clearTimeout(timer.current);
-    setExec({ open: true, id, mode, idx: 0, running: false });
+    setExec({ open: true, id, mode, phase: "idle", cr: null, error: null });
   };
   const closeExec = () => {
-    if (timer.current) clearTimeout(timer.current);
-    setExec((e) => ({ ...e, open: false, running: false }));
+    setExec((e) => ({ ...e, open: false, phase: "idle", cr: null, error: null }));
   };
-  const runExec = () => {
-    if (!exec.id) return;
-    const max = execStepsFor(sops, exec.id, exec.mode).length;
-    setExec((e) => ({ ...e, running: true, idx: 0 }));
-    const tick = () => {
-      setExec((e) => {
-        const next = e.idx + 1;
-        if (next < max) {
-          timer.current = setTimeout(tick, 900);
-          return { ...e, idx: next };
-        }
-        return { ...e, idx: next, running: false };
-      });
-    };
-    timer.current = setTimeout(tick, 700);
+
+  // Replaces the prototype's fake tick loop. Executing an SOP raises a REAL
+  // change request through the one customer-scoped route — the handoff's rule
+  // is that every executed SOP routes through a CR. Single-step creation only:
+  // the CR lands `pending_approval`, and the procedure runs once it is approved
+  // (that approval/execution step is separate, later work — see
+  // ccCreateChangeRequest.ts).
+  const runExec = async () => {
+    if (!exec.id || exec.phase === "raising") return;
+    const d = detailFor(sops, exec.id);
+    if (!d) return;
+    const steps = execStepsFor(sops, exec.id, exec.mode);
+    setExec((e) => ({ ...e, phase: "raising", error: null }));
+    const body = changeRequestBodyForSop({
+      code: d.code,
+      title: d.title,
+      category: d.category,
+      mode: exec.mode,
+      steps: steps.map((s) => ({ text: s.text, endpoint: s.endpoint, isGraph: s.isGraph })),
+    });
+    const result = await postChangeRequest(fetchWithAuth, body);
+    if (result.ok) {
+      setExec((e) => ({ ...e, phase: "raised", cr: result.created }));
+    } else {
+      setExec((e) => ({ ...e, phase: "error", error: result.error }));
+    }
   };
 
   return (
