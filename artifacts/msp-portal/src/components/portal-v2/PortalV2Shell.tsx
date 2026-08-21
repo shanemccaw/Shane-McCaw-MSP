@@ -60,6 +60,8 @@ import { ShaneBotPanel, ShaneBotLauncher, SelectionChip } from "@/components/por
 import { AlertsTrayContent } from "@/components/portal-v2/shell/AlertsTrayContent";
 import { AccountMenuContent, NewMenuContent, ChangeControlBadge } from "@/components/portal-v2/shell/HeaderMenus";
 import { KnowledgeBaseOverlay } from "@/components/portal-v2/shell/KnowledgeBaseOverlay";
+import { useFormDrawer } from "@/components/portal-v2/FormDrawer";
+import { formSpecForNewCreate, type NewCreateKind } from "@/components/portal-v2/newMenuCreate";
 
 import "./portal-v2.css";
 
@@ -565,8 +567,11 @@ export function PortalV2Shell({
   children: ReactNode;
 }) {
   const [location, navigate] = useLocation();
-  const { logout } = useAuth();
+  const { logout, fetchWithAuth } = useAuth();
   const [expanded, setExpanded] = useState(true);
+  // The portal's ONE form primitive, hosted here so a New-menu "New X" opens it on
+  // any portal-v2 page. Its onSubmit does the real POST — see newMenuCreate.ts.
+  const { openForm, formElement } = useFormDrawer();
   // The three header dropdowns are mutually exclusive — the prototype closes the
   // others whenever one opens (shell 7407-7449).
   const [openMenu, setOpenMenu] = useState<null | "new" | "alerts" | "account">(null);
@@ -599,6 +604,23 @@ export function PortalV2Shell({
     setOpenMenu(null);
     setPaletteOpen(false);
   }, []);
+
+  /** A New-menu item that has a real backend opens its create form here. */
+  const handleCreate = useCallback(
+    (kind: NewCreateKind) => {
+      setOpenMenu(null);
+      openForm(
+        formSpecForNewCreate(kind, {
+          fetchWithAuth,
+          onError: (message) =>
+            // The FormDrawer has already flipped to its optimistic done panel; a
+            // real failure is logged rather than silently swallowed.
+            console.error("New-menu create failed:", message),
+        }),
+      );
+    },
+    [openForm, fetchWithAuth],
+  );
 
   // Close any open header dropdown on an outside click — prototype 7441-7449.
   useEffect(() => {
@@ -982,7 +1004,7 @@ export function PortalV2Shell({
                   overflow: "hidden",
                 }}
               >
-                <NewMenuContent onNavigate={go} />
+                <NewMenuContent onNavigate={go} onCreate={handleCreate} />
               </div>
             )}
           </div>
@@ -1236,6 +1258,9 @@ export function PortalV2Shell({
         onNavigate={go}
         onAsk={shaneBot.askShane}
       />
+
+      {/* The New-menu create form, when one is open. */}
+      {formElement}
 
       {/* ShaneBot: the selection chip (at the selection, nothing follows the
           pointer), the chat panel, and the launcher. */}

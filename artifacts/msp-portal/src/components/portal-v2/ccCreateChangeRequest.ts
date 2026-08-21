@@ -178,6 +178,51 @@ export function changeRequestBodyForSop(sop: SopExecutionInput): CreateChangeReq
   };
 }
 
+/**
+ * The New menu's three change-control creators (Change request / Emergency change
+ * / Standard change) → the create body. Unlike the playbook/SOP builders these
+ * start from what the customer TYPED into the shared FormDrawer, so this maps the
+ * drawer's field values straight onto `createSchema`'s fields and nothing else.
+ *
+ * `changeClass` is fixed by which menu item opened the form, never typed — an
+ * Emergency raised from the "Change request" item would be a lie about which gate
+ * it went through. The window is likewise item-derived where the item has no
+ * window field: Emergency runs outside a window (the retrospective-approval path
+ * the panel warns about), Standard books into the next available window from the
+ * pre-approved catalogue.
+ */
+export type NewMenuChangeKind = "change-request" | "emergency-change" | "standard-change";
+
+export function changeRequestBodyFromNewMenu(
+  values: Record<string, string>,
+  kind: NewMenuChangeKind,
+): CreateChangeRequestInput {
+  const changeClass: CreateChangeClass =
+    kind === "emergency-change" ? "Emergency" : kind === "standard-change" ? "Standard" : "Normal";
+
+  // The window is only typed on a Normal change; the other two are item-derived.
+  const typedWindow = (values.window ?? "").trim();
+  const window =
+    kind === "emergency-change"
+      ? EMERGENCY_WINDOW_LABEL
+      : kind === "standard-change"
+        ? typedWindow || SOP_EXECUTION_WINDOW
+        : typedWindow;
+
+  const impacted = Number.parseInt((values.impactedUsersCount ?? "").trim(), 10);
+
+  return {
+    title: (values.title ?? "").trim(),
+    target: (values.target ?? "").trim(),
+    ticket: (values.ticket ?? "").trim() || undefined,
+    pre: (values.pre ?? "").trim() || undefined,
+    post: (values.post ?? "").trim(),
+    changeClass,
+    impactedUsersCount: Number.isFinite(impacted) && impacted >= 0 ? impacted : 0,
+    window,
+  };
+}
+
 type FetchWithAuth = (
   input: RequestInfo | URL,
   init?: RequestInit,

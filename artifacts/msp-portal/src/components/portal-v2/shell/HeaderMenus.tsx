@@ -15,6 +15,7 @@
 
 import { CC_POLICY, ccBadge } from "./shellData";
 import { ACCOUNT_MENU, NEW_MENU } from "./shellMenus";
+import { newCreateKindForLabel, type NewCreateKind } from "@/components/portal-v2/newMenuCreate";
 
 /* ── Change-control header badge ─────────────────────────────────────────── */
 
@@ -100,7 +101,14 @@ export function AccountMenuContent({
 
 /* ── New menu body ───────────────────────────────────────────────────────── */
 
-export function NewMenuContent({ onNavigate }: { onNavigate: (href: string) => void }) {
+export function NewMenuContent({
+  onNavigate,
+  onCreate,
+}: {
+  onNavigate: (href: string) => void;
+  /** Opens the real create form for items that have a backend; see newMenuCreate.ts. */
+  onCreate: (kind: NewCreateKind) => void;
+}) {
   return (
     <>
       {NEW_MENU.map((g, gi) => (
@@ -117,11 +125,17 @@ export function NewMenuContent({ onNavigate }: { onNavigate: (href: string) => v
           <span style={{ padding: "5px 8px 6px", fontSize: "8.5px", fontWeight: 800, letterSpacing: ".14em", textTransform: "uppercase", color: "#475569" }}>
             {g.label}
           </span>
-          {g.items.map((n) => (
+          {g.items.map((n) => {
+            const createKind = newCreateKindForLabel(n.label);
+            // A per-item testid (the label slugged) so a manifest can click one
+            // specific item; the shared `pv2-new-item` is kept as a class-like
+            // marker for any assertion that wants "any New item".
+            const slug = n.label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+            return (
             <button
               key={n.label}
-              onClick={() => onNavigate(n.href)}
-              data-testid="pv2-new-item"
+              onClick={() => (createKind ? onCreate(createKind) : onNavigate(n.href))}
+              data-testid={`pv2-new-item-${slug}`}
               style={{
                 display: "flex",
                 alignItems: "flex-start",
@@ -142,7 +156,8 @@ export function NewMenuContent({ onNavigate }: { onNavigate: (href: string) => v
                 <span style={{ fontSize: "10.5px", color: "#64748b", lineHeight: 1.4 }}>{n.sub}</span>
               </div>
             </button>
-          ))}
+            );
+          })}
         </div>
       ))}
     </>

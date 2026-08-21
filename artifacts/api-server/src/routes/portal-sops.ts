@@ -43,15 +43,25 @@
  * is deliberate: the SOP library is the MSP's own procedure documentation plus
  * whatever the customer's team has written, which is not prospect-tier content.
  *
- * ── Read-only, on purpose ──────────────────────────────────────────────────
+ * ── No EXECUTION write, on purpose — but authoring IS allowed ───────────────
  * The design's "Execute this SOP" drawer is a rehearsal — Part 6 built it as a
  * client-side timer and nothing in the portal writes an `msp_sop_runs` row.
- * Adding a customer-facing POST would mean the portal could start a real
- * procedure against the tenant without passing the change-control gate, which is
- * the one thing that gate exists to prevent. So: two GETs, no writes.
+ * Starting a real procedure against the tenant without passing the change-control
+ * gate is the one thing that gate exists to prevent, so there is deliberately NO
+ * customer-facing route here that writes `msp_sop_runs`.
+ *
+ * `POST /portal/sops` (below) is a different act and is safe: it authors a new
+ * procedure DEFINITION — the New menu's "Procedure · Write an SOP or runbook for
+ * your team" — not an execution. It is forced `automationType: "manual"` with no
+ * step carrying a `graphEndpoint`, so the SOP it writes is non-runnable by
+ * construction (`sopRunnable()` stays false and the Execute path the gate guards
+ * is never offered on it). It can only add a manual reference the customer's own
+ * team wrote; it can never start anything.
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
+import { z } from "zod";
+import { randomUUID } from "crypto";
 import { db, mspSopRunsTable, mspSopsTable, usersTable } from "@workspace/db";
 import { and, asc, eq } from "drizzle-orm";
 
@@ -571,6 +581,102 @@ router.get(
     } catch (err) {
       log.error({ err, customerId }, "GET /portal/sop-runs failed");
       res.status(500).json({ error: "Failed to load SOP runs" });
+    }
+  },
+);
+
+// ── POST /api/portal/sops ───────────────────────────────────────────────────
+//
+// Author a new procedure into the library — the New menu's "Procedure". This is
+// the ONE write in this file and it is deliberately narrow (see the header):
+// a manual, non-runnable DEFINITION, never an execution. Every authority-bearing
+// value is server-assigned; the body carries only what a customer legitimately
+// wrote.
+const authorStepSchema = z.object({
+  title: z.string().trim().min(1).max(200),
+  description: z.string().trim().max(2_000).optional(),
+});
+
+const authorSopSchema = z.object({
+  title: z.string().trim().min(1).max(200),
+  description: z.string().trim().min(1).max(2_000),
+  category: z.string().trim().min(1).max(120),
+  estimatedMinutes: z.number().int().min(0).max(100_000).optional(),
+  steps: z.array(authorStepSchema).min(1).max(60),
+});
+
+router.post(
+  "/portal/sops",
+  requireRole("CustomerUser"),
+  async (req: Request, res: Response): Promise<void> => {
+    const customerId = resolveCustomerId(req);
+    if (customerId === null) {
+      res.status(403).json({ error: "No customer identity on token" });
+      return;
+    }
+
+    const parsed = authorSopSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.issues.map((i) => i.message).join("; ") });
+      return;
+    }
+
+    try {
+      const scope = await resolveTenantScope(customerId);
+      if (scope === null) {
+        res.status(403).json({ error: "No tenant scope for this account" });
+        return;
+      }
+
+      const author = req.user?.email ?? "unknown";
+      const today = new Date().toISOString().slice(0, 10);
+      const uid = randomUUID();
+      const sopId = `SOP-CUST-${uid}`;
+      const code = `CUST-${uid.slice(0, 4).toUpperCase()}`;
+
+      // Forced manual, no graphEndpoint on any step: sopRunnable() stays false, so
+      // the change-control-gated Execute path is never offered on a customer-authored
+      // SOP. See the header.
+      const steps = parsed.data.steps.map((s, i) => ({
+        stepNumber: i + 1,
+        title: s.title,
+        description: s.description ?? "",
+        type: "manual" as const,
+        status: "pending" as const,
+      }));
+
+      const [inserted] = await db
+        .insert(mspSopsTable)
+        .values({
+          mspId: scope.mspId,
+          sopId,
+          code,
+          title: parsed.data.title,
+          description: parsed.data.description,
+          category: parsed.data.category,
+          version: "v1.0",
+          automationType: "manual",
+          estimatedMinutes: parsed.data.estimatedMinutes ?? 0,
+          complianceTags: [],
+          workloadTags: [],
+          steps,
+          // The caller's own email — this is what puts the SOP in the design's
+          // "Written by your team" source bucket rather than the MSP baseline.
+          lastUpdatedBy: author,
+          lastUpdatedAt: today,
+          versionStatus: "Published / Active",
+        })
+        .returning({ id: mspSopsTable.id });
+
+      log.info(
+        { customerId, mspId: scope.mspId, sopId, steps: steps.length },
+        "SOP authored from the customer portal",
+      );
+
+      res.status(201).json({ id: inserted.id, sopId, code });
+    } catch (err) {
+      log.error({ err, customerId }, "POST /portal/sops failed");
+      res.status(500).json({ error: "Failed to save the SOP" });
     }
   },
 );

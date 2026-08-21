@@ -8,7 +8,7 @@
     "shaneapp://runTest hits the DEPLOYED build, not the local worktree; deploy before running.",
     "PERSISTED-SESSION FLAKE (known): when WebView2 is already authed, the two input steps against #email/#password can fail while the rest runs green because auth persists. N-2 of N with only those two red is a PASS for the feature.",
     "ROLE FLOOR IS HIGHER HERE THAN ON SIBLING PORTAL-V2 PAGES, ON PURPOSE. portal-runbooks.ts / portal-change-control.ts / portal-remediation-tracker.ts all sit at requireRole('Assessment'); these two routes sit at requireRole('CustomerUser'), because the SOP library is the MSP's own procedure documentation plus whatever the customer's team wrote, which is not prospect-tier content. A1 asserts the auth gate and A2 pins the testbed account's role, so if TEST_PORTAL_EMAIL is ever moved to an Assessment-tier account this manifest fails LOUDLY at A2 with the real role in the failure text, rather than every UI step failing for an unexplained reason. (A stale note on an older manifest claimed this account WAS Assessment-role; verified against the live login response 2026-08-21 -- it is CustomerUser, customerId 1, mspId 1.)",
-    "THE REAL-DATA ASSERTIONS ARE DELIBERATELY TENANT-SHAPED. Counts and the selected procedure come from whatever msp_sops holds for this MSP; at the time of writing that is a single row (sop_id SOP-CUSTOM-592, code SOP-CUSTOM-01, title 'Test', category 'Incident Response', automation_type hybrid, 2 steps of which 1 carries a graphEndpoint) and zero msp_sop_runs rows. If that library grows, S6/S7/S11/S20/S24 are the steps to update -- they are the ones pinned to today's real content, and that is intentional: a manifest that asserted nothing specific would pass against the fixture too, which is exactly the regression this pass exists to prevent. S9 avoids the problem entirely by interpolating A4's extracted title rather than hardcoding it.",
+    "THE LIBRARY IS NOW SEEDED, NOT A SINGLE ROW. A2b calls the dev-origin-gated, self-scoped /admin/testbed/seed-sops, which idempotently upserts 7 realistic SOPs for the caller's own mspId (4 runnable -- a step carrying a real graphEndpoint -- across Identity/Incident-Response/Governance/Data-Protection, and 3 manual). It NEVER deletes, so the original SOP-CUSTOM-592 'Test' row (the lowest id, hence library[0]) survives and A4/A5/S9/S11 still key off it. A3c then AUTHORS a new SOP through the real POST /api/portal/sops (201, manual + non-runnable by construction) and A3d proves it is in the library. Because authoring adds a row per run, the count-pinned assertions were removed: S6 asserts a seeded TITLE in the DOM, S7 asserts the count readout is present rather than an exact number, and S8c explicitly selects the 'Test' row so the detail assertions stay deterministic. S20/S24 still key off the 'Test' SOP and the empty msp_sop_runs queue.",
     "PROVING THE FIXTURES ARE ACTUALLY GONE is half the point, so it is asserted twice over: A3 and A8 use expect.containsNone on the real response bodies, and S10/S25 assert the fixture's own index and queue testids are ABSENT from the DOM. A page still reading sopHubData would pass every positive assertion below and fail these.",
     "THE HOLD BANNER IS NOT ASSERTED IN THE DOM, on purpose. It now derives from the real hold-window summary on GET /api/portal/runbooks (the source Active Runbooks owns), so whether it renders at all depends on live hold state for this tenant -- asserting it present would be asserting today's hold windows, and asserting it absent would break the moment a window opens. A9 asserts the SOURCE endpoint instead, which is the part this pass is responsible for.",
     "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD."
@@ -38,13 +38,21 @@
       "expect": { "status": 200, "jsonPath": "$.user.mspRole", "value": "CustomerUser" }
     },
     {
-      "name": "A3 -- GET /api/portal/sops returns THIS tenant's real library, and none of the retired fixture content.",
+      "name": "A2b -- SEED the SOP library so the hub has real content. Dev-origin gated + self-scoped to the caller's own mspId; idempotent upsert of 7 SOPs (never a delete), so it is safe to re-run.",
+      "method": "POST",
+      "path": "/api/admin/testbed/seed-sops",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": {},
+      "expect": { "status": 200, "jsonPath": "$.sopsSeeded", "value": 7 }
+    },
+    {
+      "name": "A3 -- GET /api/portal/sops returns THIS tenant's real library, now carrying the seeded content and still none of the retired fixture content.",
       "method": "GET",
       "path": "/api/portal/sops",
       "headers": { "Authorization": "Bearer {{authToken}}" },
       "expect": {
         "status": 200,
-        "containsAny": ["SOP-CUSTOM-01"],
+        "containsAny": ["Offboard a Departing Employee"],
         "containsNone": [
           "Disable legacy authentication safely",
           "SOP-IDN-004",
@@ -52,6 +60,42 @@
           "Reset a site above the sharing baseline"
         ]
       }
+    },
+    {
+      "name": "A3b -- SEEDED RUNNABLE: a seeded SOP carries a real graphEndpoint step, which is what makes sopRunnable() true (the runnable flag is step-derived, not automation_type-derived).",
+      "method": "GET",
+      "path": "/api/portal/sops",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": {
+        "status": 200,
+        "containsAny": ["Block Legacy Authentication Tenant-Wide", "revokeSignInSessions"]
+      }
+    },
+    {
+      "name": "A3c -- REAL CREATION: POST /api/portal/sops authors a new procedure and returns 201 with the server-assigned sopId/code.",
+      "method": "POST",
+      "path": "/api/portal/sops",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": {
+        "title": "Verify a backup restore point",
+        "description": "Manual check that the latest backup restore point is valid before a risky change.",
+        "category": "Data Protection",
+        "estimatedMinutes": 15,
+        "steps": [
+          { "title": "Open the backup console" },
+          { "title": "Confirm the most recent restore point completed" },
+          { "title": "Record the restore point id against the change" }
+        ]
+      },
+      "expect": { "status": 201, "jsonPath": "$.sopId", "exists": true },
+      "extract": { "as": "createdSopCode", "jsonPath": "$.code" }
+    },
+    {
+      "name": "A3d -- the authored procedure is really in the library on a fresh read (customer-authored, so it lands in the 'ours' source bucket).",
+      "method": "GET",
+      "path": "/api/portal/sops",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "containsAny": ["Verify a backup restore point"] }
     },
     {
       "name": "A4 -- the library's step text is the REAL stored step, not a fixture sentence.",
@@ -125,9 +169,11 @@
     { "name": "S3 -- the toolbar carries Refresh logs.", "action": "expect", "selector": "[data-testid='pv2-sop-refresh-logs']", "textContains": "Refresh logs" },
     { "name": "S4 -- ...and Export master index PDF.", "action": "expect", "selector": "[data-testid='pv2-sop-export-index']", "textContains": "Export master index PDF" },
     { "name": "S5 -- the stat cards render the design's automated-ratio label...", "action": "expect", "selector": "[data-testid='pv2-sop-hub']", "textContains": "Automated execution ratio" },
-    { "name": "S6 -- ...over a ratio counted from the REAL library (1 of 1 rows carries an automated step).", "action": "expect", "selector": "[data-testid='pv2-sop-hub']", "textContains": "1 of 1 can run through Graph" },
-    { "name": "S7 -- the result count reflects the tenant's real library size, not the fixture's 17.", "action": "expect", "selector": "[data-testid='pv2-sop-result-count']", "textContains": "1 shown" },
+    { "name": "S6 -- SEEDED CONTENT IN THE DOM: a seeded SOP title renders in the hub (was empty before this seed). Asserted by content, not by an exact library count, because the library grows as SOPs are authored.", "action": "expect", "selector": "[data-testid='pv2-sop-hub']", "textContains": "Offboard a Departing Employee", "critical": true },
+    { "name": "S7 -- the result count element reports the tenant's real library size. Asserted as the presence of the count readout rather than an exact number, which the create tests above legitimately move.", "action": "expect", "selector": "[data-testid='pv2-sop-result-count']", "textContains": "shown" },
     { "name": "S8 -- the library sub-view rendered.", "action": "expect", "selector": "[data-testid='pv2-sop-library']", "state": "visible" },
+    { "name": "S8b -- SEEDED RUNNABLE IN THE DOM: the index row keyed on a seeded runnable SOP's sop_id is present.", "action": "expect", "selector": "[data-testid='pv2-sop-index-SOP-SEED-IAM-01']", "state": "visible", "critical": true },
+    { "name": "S8c -- select the original 'Test' row so the detail assertions below are deterministic regardless of which SOP the hub defaults to after seeding.", "action": "click", "selector": "[data-testid='pv2-sop-index-SOP-CUSTOM-592']" },
     { "name": "S9 -- REAL DATA IN THE DOM: the selected procedure is the row msp_sops actually holds, interpolated from A4's extract.", "action": "expect", "selector": "[data-testid='pv2-sop-detail-title']", "textContains": "{{sopTitle}}", "critical": true },
     { "name": "S10 -- FIXTURE GONE: the fixture's own index row is absent from the DOM.", "action": "expect", "selector": "[data-testid='pv2-sop-index-sop-legacy-auth']", "state": "absent", "critical": true },
     { "name": "S11 -- REAL DATA: the index row keyed on the real sop_id is present instead.", "action": "expect", "selector": "[data-testid='pv2-sop-index-SOP-CUSTOM-592']", "state": "visible", "critical": true },

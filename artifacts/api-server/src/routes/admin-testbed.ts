@@ -64,8 +64,10 @@ import {
   portalRunbooksTable,
   portalRunbookStepsTable,
   portalHoldWindowsTable,
+  mspSopsTable,
 } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
+import { resolveTenantScope } from "../lib/portal-customer-scope";
 import { randomBytes } from "crypto";
 import { requireAdminOrIngestToken, requireRole } from "../middlewares/requireAuth";
 import { isReplitDevEnvironment, getStripeKey } from "../lib/stripe";
@@ -979,6 +981,257 @@ router.post(
       res.json({ ok: true, customerId, runbooksSeeded, holdsSeeded });
     } catch (err) {
       log.error({ err, customerId }, "admin-testbed: seed-runbooks failed");
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  },
+);
+
+// ── POST /api/admin/testbed/seed-sops ───────────────────────────────────────
+//
+// Give the SOPs Hub real content: `msp_sops` is empty for the testbed MSP, so the
+// hub renders correctly but blank. This seeds a realistic library across a mix of
+// categories, some runnable (a step carrying a real graphEndpoint, which is what
+// makes sopRunnable() true) and some manual references.
+//
+// AUTH mirrors seed-runbooks: dev-origin gated + a normal customer session, and it
+// resolves the caller's OWN mspId from their tenant row (never the body). SOPs are
+// keyed on msp_id, so this seeds the library the caller's tenant reads.
+//
+// IDEMPOTENT BY UPSERT, NOT BY DELETE. Unlike seed-runbooks (which owns every
+// portal_runbooks row for a customer and replaces them), msp_sops is a shared MSP
+// library that may already hold real procedures — so this ONLY upserts its own
+// seed keys on the (msp_id, sop_id) unique index and never deletes anything.
+router.post(
+  "/admin/testbed/seed-sops",
+  requireDevOrigin,
+  requireRole("Assessment"),
+  async (req: Request, res: Response): Promise<void> => {
+    const claimed = (req.user as { customerId?: number } | undefined)?.customerId;
+    const customerId = typeof claimed === "number" && !Number.isNaN(claimed) ? claimed : NaN;
+    if (!Number.isFinite(customerId) || customerId <= 0) {
+      res.status(403).json({ error: "No customer identity on token" });
+      return;
+    }
+
+    type SeedStep = {
+      stepNumber: number;
+      title: string;
+      description: string;
+      type: "automated" | "manual";
+      status: "pending";
+      graphEndpoint?: string;
+    };
+    type SeedSop = {
+      sopId: string;
+      code: string;
+      title: string;
+      description: string;
+      category: string;
+      automationType: "automated" | "hybrid" | "manual";
+      estimatedMinutes: number;
+      complianceTags: string[];
+      workloadTags: string[];
+      steps: SeedStep[];
+    };
+
+    const auto = (n: number, title: string, description: string, graphEndpoint: string): SeedStep => ({
+      stepNumber: n,
+      title,
+      description,
+      type: "automated",
+      status: "pending",
+      graphEndpoint,
+    });
+    const manual = (n: number, title: string, description: string): SeedStep => ({
+      stepNumber: n,
+      title,
+      description,
+      type: "manual",
+      status: "pending",
+    });
+
+    const SEED_SOPS: SeedSop[] = [
+      {
+        sopId: "SOP-SEED-IAM-01",
+        code: "IAM-01",
+        title: "Offboard a Departing Employee",
+        description: "Revoke access, disable the account and reclaim licences when someone leaves.",
+        category: "Identity & Access",
+        automationType: "hybrid",
+        estimatedMinutes: 25,
+        complianceTags: ["CIS M365 1.1.3", "NIST AC-2"],
+        workloadTags: ["Entra ID", "Exchange"],
+        steps: [
+          auto(1, "Revoke all sign-in sessions", "Force sign-out and invalidate refresh tokens.", "POST /v1.0/users/{id}/revokeSignInSessions"),
+          auto(2, "Disable the account", "Block sign-in without deleting the object.", "PATCH /v1.0/users/{id} { accountEnabled: false }"),
+          auto(3, "Remove assigned licences", "Free the licences the leaver held.", "POST /v1.0/users/{id}/assignLicense"),
+          manual(4, "Convert mailbox to shared", "Preserve mail without a licence, per the retention policy."),
+          manual(5, "Collect and wipe devices", "Recover company-owned devices and issue a remote wipe."),
+        ],
+      },
+      {
+        sopId: "SOP-SEED-IAM-03",
+        code: "IAM-03",
+        title: "Block Legacy Authentication Tenant-Wide",
+        description: "Stage and enforce a Conditional Access policy that blocks basic-auth clients.",
+        category: "Identity & Access",
+        automationType: "automated",
+        estimatedMinutes: 15,
+        complianceTags: ["CIS M365 1.2.1", "Essential Eight"],
+        workloadTags: ["Entra ID"],
+        steps: [
+          auto(1, "Inventory legacy-auth sign-ins", "List accounts still using IMAP/POP/SMTP basic auth.", "GET /v1.0/auditLogs/signIns?$filter=clientAppUsed eq 'IMAP4'"),
+          auto(2, "Create the CA policy in report-only", "Stage a policy blocking legacy clients, observe-only first.", "POST /v1.0/identity/conditionalAccess/policies"),
+          auto(3, "Enforce the policy", "Flip the policy from report-only to enabled.", "PATCH /v1.0/identity/conditionalAccess/policies/{id} { state: enabled }"),
+        ],
+      },
+      {
+        sopId: "SOP-SEED-IR-01",
+        code: "IR-01",
+        title: "Respond to a Reported Phishing Email",
+        description: "Triage a reported message, purge it tenant-wide and block the sender.",
+        category: "Incident Response",
+        automationType: "hybrid",
+        estimatedMinutes: 30,
+        complianceTags: ["NIST IR-4"],
+        workloadTags: ["Exchange", "Defender"],
+        steps: [
+          manual(1, "Confirm the report", "Verify the reported message is malicious, not a false positive."),
+          auto(2, "Soft-delete the message tenant-wide", "Move every copy to Deleted Items across mailboxes.", "POST /v1.0/users/{id}/messages/{messageId}/move { destinationId: 'deleteditems' }"),
+          auto(3, "Block the sender", "Add the sender domain to the tenant threat indicators.", "POST /v1.0/security/tiIndicators"),
+          manual(4, "Notify affected recipients", "Advise a credential reset for anyone who interacted with it."),
+        ],
+      },
+      {
+        sopId: "SOP-SEED-IR-02",
+        code: "IR-02",
+        title: "Contain a Compromised Mailbox",
+        description: "Cut an attacker's access, remove malicious rules and restore the account safely.",
+        category: "Incident Response",
+        automationType: "hybrid",
+        estimatedMinutes: 40,
+        complianceTags: ["NIST IR-4", "CIS M365 1.1"],
+        workloadTags: ["Entra ID", "Exchange"],
+        steps: [
+          auto(1, "Revoke sessions and reset the password", "Cut the attacker's active session immediately.", "POST /v1.0/users/{id}/revokeSignInSessions"),
+          auto(2, "Remove malicious inbox rules", "Find and delete forwarding and hide-the-evidence rules.", "GET /v1.0/users/{id}/mailFolders/inbox/messageRules"),
+          manual(3, "Review sent items and the audit log", "Assess what was sent or exfiltrated during the compromise."),
+          manual(4, "Re-enable behind fresh MFA", "Restore access only after a new MFA registration."),
+        ],
+      },
+      {
+        sopId: "SOP-SEED-IAM-02",
+        code: "IAM-02",
+        title: "Onboard a New Starter",
+        description: "The manual checklist for provisioning a new employee's access on day one.",
+        category: "Identity & Access",
+        automationType: "manual",
+        estimatedMinutes: 20,
+        complianceTags: ["ISO 27001 A.9"],
+        workloadTags: ["Entra ID"],
+        steps: [
+          manual(1, "Create the account from the role template", "Use the department's standard role template."),
+          manual(2, "Assign the correct licence bundle", "Match the licence set to the role."),
+          manual(3, "Add to the department groups", "Membership drives access, so this is what most steps depend on."),
+          manual(4, "Register MFA on first sign-in", "Walk the starter through MFA registration."),
+          manual(5, "Hand over the welcome pack", "Devices, credentials and the acceptable-use policy."),
+        ],
+      },
+      {
+        sopId: "SOP-SEED-GOV-01",
+        code: "GOV-01",
+        title: "Quarterly Guest Access Review",
+        description: "Confirm which external guests are still needed and remove the rest.",
+        category: "Governance",
+        automationType: "manual",
+        estimatedMinutes: 45,
+        complianceTags: ["CIS M365 1.3", "ISO 27001 A.9.2"],
+        workloadTags: ["Entra ID", "SharePoint"],
+        steps: [
+          manual(1, "Export all guest accounts with last sign-in", "The starting inventory for the review."),
+          manual(2, "Ask each site owner to confirm the guests they still need", "The owners, not IT, decide who stays."),
+          manual(3, "Remove invitations never accepted after 30 days", "Stale pending invites are pure risk."),
+          manual(4, "Remove the guests nobody confirmed", "Only after the owner window has closed."),
+        ],
+      },
+      {
+        sopId: "SOP-SEED-DATA-01",
+        code: "DATA-01",
+        title: "Restore a Deleted SharePoint Site",
+        description: "Recover a site from the deleted-sites retention window and verify it.",
+        category: "Data Protection",
+        automationType: "manual",
+        estimatedMinutes: 20,
+        complianceTags: ["NIST CP-9"],
+        workloadTags: ["SharePoint"],
+        steps: [
+          manual(1, "Confirm the site is within the 93-day retention window", "Past that the restore is a support ticket, not this SOP."),
+          manual(2, "Restore the site from the deleted sites list", "Use the SharePoint admin centre."),
+          manual(3, "Verify permissions and content", "Confirm nothing was lost and access is correct."),
+          manual(4, "Notify the site owner", "Tell them it is back and confirm they can reach it."),
+        ],
+      },
+    ];
+
+    try {
+      const scope = await resolveTenantScope(customerId);
+      if (scope === null) {
+        res.status(403).json({ error: "No tenant scope for this account" });
+        return;
+      }
+
+      const author = req.user?.email ?? "shane@shanemccaw.com";
+      const today = new Date().toISOString().slice(0, 10);
+      let sopsSeeded = 0;
+
+      for (const s of SEED_SOPS) {
+        const values = {
+          mspId: scope.mspId,
+          sopId: s.sopId,
+          code: s.code,
+          title: s.title,
+          description: s.description,
+          category: s.category,
+          version: "v1.0",
+          automationType: s.automationType,
+          estimatedMinutes: s.estimatedMinutes,
+          complianceTags: s.complianceTags,
+          workloadTags: s.workloadTags,
+          steps: s.steps,
+          lastUpdatedBy: author,
+          lastUpdatedAt: today,
+          versionStatus: "Published / Active",
+        };
+        // Upsert on the (msp_id, sop_id) unique index — never a blanket delete, so
+        // any real SOPs already in the shared library survive.
+        await db
+          .insert(mspSopsTable)
+          .values(values)
+          .onConflictDoUpdate({
+            target: [mspSopsTable.mspId, mspSopsTable.sopId],
+            set: {
+              code: values.code,
+              title: values.title,
+              description: values.description,
+              category: values.category,
+              version: values.version,
+              automationType: values.automationType,
+              estimatedMinutes: values.estimatedMinutes,
+              complianceTags: values.complianceTags,
+              workloadTags: values.workloadTags,
+              steps: values.steps,
+              lastUpdatedBy: values.lastUpdatedBy,
+              lastUpdatedAt: values.lastUpdatedAt,
+              versionStatus: values.versionStatus,
+            },
+          });
+        sopsSeeded += 1;
+      }
+
+      log.info({ customerId, mspId: scope.mspId, sopsSeeded }, "admin-testbed: seeded msp SOP library");
+      res.json({ ok: true, customerId, mspId: scope.mspId, sopsSeeded });
+    } catch (err) {
+      log.error({ err, customerId }, "admin-testbed: seed-sops failed");
       res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }
   },

@@ -9,6 +9,7 @@
     "MUTUAL EXCLUSIVITY + OVERLAYS: each header dropdown is toggled by its own anchor and closed again before the next is opened, because the palette / KB overlays cover the header when open. The palette is exercised last and left open.",
     "PALETTE RANKING IS UNIT-TESTED, NOT ASSERTED HERE: shell/paletteIndex.test.ts pins the exact-> prefix-> contains-> sub/kind order and the 14 cap (npm test, 13 cases). This manifest proves the palette MOUNTS, indexes a real count, and turns a typed query into the always-last Ask-ShaneBot row.",
     "TEXTCONTAINS asserts the element's REAL rendered text; an array is ANY-of, so every all-of assertion is its own step (per the standing test-coverage rule).",
+    "THE NEW MENU IS NOW REAL CREATION, NOT NAVIGATION. SH-new-sop* and SH-new-cr* prove the four backed items (Change request / Emergency change / Standard change / Procedure) open the portal's ONE form primitive (FormDrawer, via useFormDrawer/openForm hosted in PortalV2Shell) whose onSubmit does a real POST -- /api/portal/change-control for the three CR variants and /api/portal/sops for the SOP (see newMenuCreate.ts). SH-new-sop3 submits the SOP form and fires a genuine POST, so it writes a real (manual, non-runnable) msp_sops row each run; that is intended and harmless on the testbed. The three New-menu items WITHOUT a backend (Freeze window, Ownership row, Webhook endpoint) deliberately still navigate -- there is no create route for them and none is faked.",
     "ENV VARS required: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD."
   ],
   "uiSteps": [
@@ -26,7 +27,23 @@
     { "name": "SH-new-open -- open the New menu.", "action": "click", "selector": "[data-testid='pv2-new-button']", "critical": true },
     { "name": "SH-new1 -- the New menu names a change request.", "action": "expect", "selector": "[data-testid='pv2-new-menu']", "textContains": "Change request", "critical": true },
     { "name": "SH-new2 -- ...and an emergency change.", "action": "expect", "selector": "[data-testid='pv2-new-menu']", "textContains": "Emergency change" },
-    { "name": "SH-new-close -- close the New menu.", "action": "click", "selector": "[data-testid='pv2-new-button']" },
+
+    { "name": "SH-new-sop -- REAL CREATION: click Procedure. It no longer just navigates -- it opens the portal's ONE form primitive with a real onSubmit.", "action": "click", "selector": "[data-testid='pv2-new-item-procedure']", "critical": true },
+    { "name": "SH-new-sop1 -- the create drawer opened with the SOP author form.", "action": "expect", "selector": "[data-testid='pv2-form-title']", "state": "visible", "textContains": "Write an SOP", "critical": true },
+    { "name": "SH-new-sop2 -- its fields are the ones the create route reads (title).", "action": "expect", "selector": "[data-testid='pv2-form-field-title']", "state": "visible" },
+    { "action": "input", "selector": "[data-testid='pv2-form-field-title']", "value": "Rotate a shared mailbox password" },
+    { "action": "input", "selector": "[data-testid='pv2-form-field-category']", "value": "Identity & Access" },
+    { "action": "input", "selector": "[data-testid='pv2-form-field-description']", "value": "Manual runbook for rotating a shared mailbox credential." },
+    { "action": "input", "selector": "[data-testid='pv2-form-field-steps']", "value": "Confirm the mailbox owner\nReset the password in the admin centre\nUpdate the stored credential" },
+    { "name": "SH-new-sop3 -- submit fires the real POST /api/portal/sops.", "action": "click", "selector": "[data-testid='pv2-form-submit']", "critical": true },
+    { "name": "SH-new-sop4 -- the drawer confirms the procedure was saved (its own honest done copy, no fabricated code).", "action": "expect", "selector": "[data-testid='pv2-form-done']", "state": "visible", "textContains": "It is in your SOP library", "critical": true },
+    { "name": "SH-new-sop5 -- close the create drawer.", "action": "click", "selector": "[data-testid='pv2-form-close']" },
+
+    { "name": "SH-new-cr-open -- reopen the New menu.", "action": "click", "selector": "[data-testid='pv2-new-button']" },
+    { "name": "SH-new-cr -- REAL CREATION: click Change request; it opens the same form primitive, not a navigation.", "action": "click", "selector": "[data-testid='pv2-new-item-change-request']", "critical": true },
+    { "name": "SH-new-cr1 -- the change-request form opened.", "action": "expect", "selector": "[data-testid='pv2-form-title']", "state": "visible", "textContains": "Raise a change request", "critical": true },
+    { "name": "SH-new-cr2 -- it collects the target the route classifies risk from.", "action": "expect", "selector": "[data-testid='pv2-form-field-target']", "state": "visible" },
+    { "name": "SH-new-cr-close -- close the create drawer.", "action": "click", "selector": "[data-testid='pv2-form-close']" },
 
     { "name": "SH-acct-open -- open the account menu.", "action": "click", "selector": "[data-testid='pv2-account-chip']", "critical": true },
     { "name": "SH-acct1 -- the account menu carries the full set, incl. Billing.", "action": "expect", "selector": "[data-testid='pv2-account-menu']", "textContains": "Billing", "critical": true },
