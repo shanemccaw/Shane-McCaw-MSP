@@ -1,7 +1,7 @@
 {
   "feature": "Customer Portal v2 -- COPILOT READINESS (/portal-v2/copilot), recreated from 'Customer Portal Shell.dc.html' markup 6093-6199 and logic class CP_PILLARS 13081-13106 + render map 20602-20631. A NEW page: Copilot carried 10% of its design copy and had no route. This page is the assessment verdict and, since the rebuilt Overview has no Copilot gate band, the ONLY surface for the Copilot gate anywhere in the portal. Six findings, one gate number, each pillar's worth-once-remediated, the document pack and the book-a-call band.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "PENDING",
+  "lastVerifiedAgainstCommit": "ea364b50",
   "notes": [
     "THE LOGIN BLOCK IS NOT OPTIONAL. /portal-v2/* sits behind ProtectedRoute.",
     "UI ROUTE SHAPE: /portal/{slug}/portal-v2/copilot. App.tsx declares '/portal-v2/copilot' ABOVE the '/portal-v2/:pillar' insertion marker so the param route does not swallow it.",
