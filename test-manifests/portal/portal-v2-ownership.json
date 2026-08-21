@@ -1,18 +1,20 @@
 {
-  "feature": "Customer Portal v2 -- the OWNERSHIP matrix (/portal-v2/ownership), recreated from 'Ownership.dc.html', a file that did not exist in the round-one handoff at all. Four names (Responsible / Accountable / Consulted / Informed) against twenty-four objects across seven types, five derived counters above the matrix, and four detail panels behind them. PART 10 finished the deferred slide-overs: the assign slide-over's own surface (Mark accepted / Who held it before / Leave unassigned -- record it as a gap), the add-a-row flow, delegation + handover, the row detail, and 'What ownership drives' (routing). Every number on screen is derived from one fixture (ownershipData.ts) by ownershipModel.ts and pinned by 78 unit assertions; this manifest proves the DOM actually shows what those derivations return.",
+  "feature": "Customer Portal v2 -- the OWNERSHIP matrix (/portal-v2/ownership), now reading REAL TENANT DATA from GET /api/portal/ownership instead of the ownershipData.ts design fixture. Four names (Responsible / Accountable / Consulted / Informed) against the customer's own objects: their purchased services, their Microsoft changes with an action still due, their change requests, and their open hold windows -- plus the people list, which is their own active users. This manifest proves the DOM shows what the ENDPOINT returned, not what a fixture contains: every row id, person id and person name it asserts against is EXTRACTED FROM THE API RESPONSE at run time and interpolated into the selector, so the test cannot pass against a stale fixture and does not have to be re-pinned when the tenant's data changes.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "b57e2877",
+  "lastVerifiedAgainstCommit": "98f15a90",
   "notes": [
     "THE LOGIN BLOCK IS NOT OPTIONAL. /portal-v2/* sits behind ProtectedRoute; a probe that skips the five login steps hits the login screen and every assertion fails for a reason unrelated to the page.",
     "UI ROUTE SHAPE: msp-portal's outer WouterRouter has base '/portal' and SlugScope nests a second router at '/{slug}', so the real URL is /portal/{slug}/portal-v2/ownership. App.tsx declares '/portal-v2/ownership/:type' and '/portal-v2/ownership' BEFORE '/portal-v2/:pillar' so the param route cannot swallow them.",
     "shaneapp://runTest hits the DEPLOYED build, not the local worktree. This manifest cannot pass until the commit it was written against is deployed.",
-    "ROUND TWO, ITEM 4 IS WHAT OWN9-OWN14 EXIST FOR. The changelog: the five counters 'changed from pill-shaped inline buttons to box-shaped cards in a fixed 5-column grid (repeat(5, 1fr)) so they never wrap to a second row; labels wrap to two lines instead of truncating'. Both halves are asserted -- all five labels are read out of ONE container, which is only possible if all five rendered, and the two longest labels are asserted in full rather than truncated. The grid itself is repeat(5,minmax(0,1fr)) rather than plain 1fr: they differ on a long label, and only the minmax form actually holds five columns instead of letting a wide word push a track out.",
-    "ROUND TWO, ITEM 2: Ownership no longer has its own People & roles button or slide-over. The prototype confirms the removal twice -- there is no people-editing markup left in the file, and `peopleRows` is still COMPUTED at Ownership.dc.html 1032 with nothing rendering it. OWN30 asserts that no such control exists here. Stated plainly: an `absent` assertion on a testid this build never rendered passes trivially, so OWN30 is a REINTRODUCTION GUARD rather than evidence of a removal. The assertion that actually carries weight is OWN31-OWN35, which proves the editing works from its NEW home and reaches this page.",
+    "WHY THE FIXTURE NUMBERS ARE GONE. The previous version of this manifest asserted '24 of 24 shown', '6 ownership gaps', '3 duty conflicts' and named cells like pv2-own-cell-svc-exo-r / 'Priya Raman'. Every one of those was a property of the DESIGN FIXTURE (the prototype's fictional Halden Materials estate), and none of them survives the page reading a real tenant. They are replaced by assertions that extract the tenant's OWN first object id/name, change-request code and person id/name from the API response and then assert the DOM against those -- which is the pattern CLAUDE.md prescribes (apiTests + uiStep textContains) and is a STRONGER test: it fails if the page falls back to the fixture, which the old assertions could not detect.",
+    "WHAT IS REAL AND WHAT IS NOT, so a reader does not over-read a green run. REAL: the matrix rows, the people list, and the Responsible/Accountable cells on a change request -- its requester and its approver, the only two owner names the schema stores for anything. NOT REAL, and asserted AS gaps rather than hidden: Consulted and Informed on every row, and Responsible/Accountable on everything that is not a change request. There is no ownership/RACI table in the database (an information_schema sweep for owner/assigned/responsible columns finds nothing about these objects), so those cells are genuinely unassigned. OWN6 asserts one of them shows the word 'Assign', which is what the page renders for a gap -- i.e. the gap is proved on screen, not assumed.",
+    "THE THREE ABSENT GROUPS ARE AN ASSERTION, NOT AN OMISSION. control / incident / announce have no table behind them, so the endpoint returns them as sources with live:false and no rows, and the matrix renders no group for them. OWN11-OWN13 pin that, and the apiTest pins the endpoint's own live:false claim, so a future build that invents rows for them fails here rather than shipping quietly.",
+    "OWN5 DEPENDS ON THE TESTBED ACCOUNT BEING THE REQUESTER, and says so rather than hiding it. Every change request in this tenant was raised by TEST_PORTAL_EMAIL, so the endpoint's own currentUserName is also the Responsible name on those rows, which is what makes the assertion self-describing (it is extracted, not hardcoded). If a future tenant's CRs are raised by someone else, re-point OWN5 at that person's name -- the step is still asserting a REAL owner either way.",
+    "THE PROP CONTRACT IS STILL PROVED ACROSS TWO PAGES, and now over real people. OWN27-OWN31 rename the REAL user who owns the real change requests in Settings, then read the new name out of the Ownership matrix. That is the README's 'the Ownership matrix reads the same data live', and it is the one assertion that would fail if the people list were forked into a second source when it was wired to the endpoint.",
+    "OWN30 MUST BE A CLICK, NOT A `goto`, AND A PREVIOUS RUN PROVED IT. `goto` is a FULL PAGE LOAD, which resets the client store and re-reads the endpoint -- so the rename would be gone and the step would test the fetch rather than the sharing. That is correct behaviour, not a bug: there is still no people/roles WRITE endpoint and no table to persist a rename to, so edits live for the session exactly as the prototype's do. The sidebar nav row is a client-side wouter Link, so clicking it preserves the store and is also how a customer actually gets there. WHEN A REAL PEOPLE WRITE ENDPOINT LANDS, this step can become a `goto` and should then still pass; if it does not, the persistence is not wired.",
+    "OWN28 ASSERTS `state` AND NOT TEXT, deliberately: pv2-set-person-name-* is an <input>, whose innerText/textContent is empty regardless of its value, so a textContains there would fail for a reason that has nothing to do with the data. The NAME is asserted through the API (the person id it interpolates came from the response) and through OWN31, where it reaches the matrix as real rendered text.",
     "THERE IS NO NEGATIVE TEXT ASSERTION IN THIS HARNESS, and an array in `textContains` is ANY-of, not all-of (UiTestExecutor.cs:570, :1282). Every all-of assertion here is its own step, and absence is asserted on a selector rather than on text.",
-    "THE PROP CONTRACT IS PROVED ACROSS TWO PAGES. OWN31-OWN35 rename a person in Settings and then read the NEW name out of the Ownership matrix. That is the README's 'the Ownership matrix reads the same data live' sentence, and it is the one assertion that would fail if the people list were duplicated per page instead of shared.",
-    "OWN34 MUST BE A CLICK, NOT A `goto`, AND THE FIRST RUN PROVED IT. Written with `goto` this sequence failed 41/42: the matrix still read 'Priya Raman'. `goto` drives the WebView2 to a URL, which is a FULL PAGE LOAD, and the people list is client-only state with no endpoint behind it yet, so a reload resets it to the seed. That is correct behaviour, not a bug -- the prototype persists nothing either -- but it means a `goto` between the edit and the assertion tests the seed rather than the sharing. The sidebar nav row is a client-side wouter Link, so clicking it preserves the store and is also how a customer actually gets there. WHEN A REAL PEOPLE ENDPOINT LANDS, this step can go back to `goto` and should then still pass; if it does not, the persistence is not wired.",
-    "WHY THE COUNTS ARE THE NUMBERS THEY ARE: 6 gaps (svc-copilot, CR-0149, RSK-004, ANN-teams-recap, ANN-share, ANN-copilot), 3 duty conflicts (CE-AUTH has Shane McCaw as both R and A; INC-2274 has the Service desk GROUP as Responsible; Dan Whitlock is Accountable for 14 of 24, a strict majority), 0 carrying too much (Marcus is away but HAS a deputy, so nothing warns -- the zero is the correct answer, not a missing feature), 4 not in the matrix, 24 objects.",
-    "NO `select` STEPS ANYWHERE. UiTestExecutor.cs takes the `value` setter from HTMLInputElement.prototype for anything that is not a TEXTAREA, so invoking it on a native <select> throws 'Illegal invocation'; and an unrecognised action falls through and SILENTLY PASSES. This page has no <select> in its main flow -- the assign form's dropdown lives in the right drawer and is deliberately not driven here.",
+    "NO `select` STEPS ANYWHERE. UiTestExecutor.cs takes the `value` setter from HTMLInputElement.prototype for anything that is not a TEXTAREA, so invoking it on a native <select> throws 'Illegal invocation'; and an unrecognised action falls through and SILENTLY PASSES. This page has no <select> in its main flow.",
     "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD."
   ],
   "apiTests": [
@@ -24,6 +26,53 @@
       "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
       "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
       "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "API1 -- the route exists, admits a CustomerUser, and resolved the MSP-era tenant scope rather than failing closed to a half payload.",
+      "method": "GET",
+      "path": "/api/portal/ownership",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.tenantScoped", "value": true },
+      "extract": { "as": "firstObjectId", "jsonPath": "$.objects[0].id" }
+    },
+    {
+      "name": "API2 -- the matrix has real rows; take the first row's NAME to assert against the DOM.",
+      "method": "GET",
+      "path": "/api/portal/ownership",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.objects", "isArray": true },
+      "extract": { "as": "firstObjectName", "jsonPath": "$.objects[0].name" }
+    },
+    {
+      "name": "API3 -- a real change-request code, pulled off the payload by regex rather than by array index, since the type order within objects[] is a property of the data.",
+      "method": "GET",
+      "path": "/api/portal/ownership",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.people[0].id", "exists": true },
+      "extract": { "as": "crCode", "regex": "\"(CR-2026-[0-9]+)\"" }
+    },
+    {
+      "name": "API4 -- the signed-in user resolved to a person in the tenant's own roster (this is also the requester on every CR here).",
+      "method": "GET",
+      "path": "/api/portal/ownership",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.currentUserId", "exists": true },
+      "extract": { "as": "crOwnerId", "jsonPath": "$.currentUserId" }
+    },
+    {
+      "name": "API5 -- ...and their real name, which is what the matrix cell has to render.",
+      "method": "GET",
+      "path": "/api/portal/ownership",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.customer.name", "exists": true },
+      "extract": { "as": "crOwnerName", "jsonPath": "$.currentUserName" }
+    },
+    {
+      "name": "API6 -- the endpoint STATES that the control register has no source, rather than returning an empty group and leaving the page to explain it.",
+      "method": "GET",
+      "path": "/api/portal/ownership",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.sources[4].live", "value": false }
     }
   ],
   "uiSteps": [
@@ -35,82 +84,68 @@
 
     { "name": "goto Ownership on its slug-scoped route.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/ownership" },
     { "name": "OWN1 -- the page resolved to Ownership, not NotFound and not the param pillar route.", "action": "expect", "selector": "[data-testid='pv2-page-title']", "textContains": "Ownership", "critical": true },
-    { "name": "OWN2 -- the standfirst states what the matrix is FOR, not what it contains.", "action": "expect", "selector": "[data-testid='pv2-page-title']", "state": "visible" },
+    { "name": "OWN2 -- the matrix meta still tells a reader how to change a name.", "action": "expect", "selector": "[data-testid='pv2-own-matrix-meta']", "textContains": "click any name to change it" },
 
-    { "name": "OWN3 -- the matrix meta states shown-of-total and how to change a name.", "action": "expect", "selector": "[data-testid='pv2-own-matrix-meta']", "textContains": "24 of 24 shown" },
-    { "name": "OWN4 -- ...and the second half of the same line.", "action": "expect", "selector": "[data-testid='pv2-own-matrix-meta']", "textContains": "click any name to change it" },
+    { "name": "OWN3 -- THE REAL-DATA ASSERTION. The row the ENDPOINT returned first is on screen, under its own real name. A page still rendering the design fixture has no element with this id at all.", "action": "expect", "selector": "[data-testid='pv2-own-rowname-{{firstObjectId}}']", "textContains": "{{firstObjectName}}", "critical": true },
+    { "name": "OWN4 -- a real change request from msp_change_requests has a row, addressed by its real code.", "action": "expect", "selector": "[data-testid='pv2-own-rowname-{{crCode}}']", "state": "visible", "critical": true },
+    { "name": "OWN5 -- ...and its Responsible cell names the REAL person who raised it, resolved from requested_by through the tenant's roster.", "action": "expect", "selector": "[data-testid='pv2-own-cell-{{crCode}}-r']", "textContains": "{{crOwnerName}}", "critical": true },
+    { "name": "OWN6 -- ...while its Accountable cell reads 'Assign', which is what the matrix renders for a GAP. The CR is unsigned, so the gap is real and the page says so rather than filling it in.", "action": "expect", "selector": "[data-testid='pv2-own-cell-{{crCode}}-a']", "textContains": "Assign" },
 
-    { "name": "OWN5 -- all seven object-type groups render when the filter is Everything.", "action": "expect", "selector": "[data-testid='pv2-own-group-service']", "state": "visible" },
-    { "name": "OWN6 -- ...including the last of the seven.", "action": "expect", "selector": "[data-testid='pv2-own-group-announce']", "state": "visible" },
-    { "name": "OWN7 -- a group with gaps states the count in amber, not just a total.", "action": "expect", "selector": "[data-testid='pv2-own-group-announce']", "textContains": "3 · 3 with a gap" },
-    { "name": "OWN8 -- a group with none says 'fully owned' rather than leaving the meta blank.", "action": "expect", "selector": "[data-testid='pv2-own-group-freeze']", "textContains": "2 · fully owned" },
+    { "name": "OWN7 -- the four groups that HAVE a source all render: services...", "action": "expect", "selector": "[data-testid='pv2-own-group-service']", "state": "visible" },
+    { "name": "OWN8 -- ...Microsoft changes...", "action": "expect", "selector": "[data-testid='pv2-own-group-change']", "state": "visible" },
+    { "name": "OWN9 -- ...change requests...", "action": "expect", "selector": "[data-testid='pv2-own-group-cr']", "state": "visible" },
+    { "name": "OWN10 -- ...and hold windows, mapped to the design's freeze type.", "action": "expect", "selector": "[data-testid='pv2-own-group-freeze']", "state": "visible" },
+    { "name": "OWN11 -- the control group is ABSENT: no control register is stored, and the endpoint says so (API6) rather than inventing rows.", "action": "expect", "selector": "[data-testid='pv2-own-group-control']", "state": "absent" },
+    { "name": "OWN12 -- ...as is announcements.", "action": "expect", "selector": "[data-testid='pv2-own-group-announce']", "state": "absent" },
+    { "name": "OWN13 -- ...as is incidents.", "action": "expect", "selector": "[data-testid='pv2-own-group-incident']", "state": "absent" },
 
-    { "name": "OWN9 -- ROUND TWO ITEM 4: all five counters are in ONE row container, which is only true if none wrapped away.", "action": "expect", "selector": "[data-testid='pv2-own-counters']", "state": "visible", "critical": true },
-    { "name": "OWN10 -- counter 1: six ownership gaps, derived from the fixture.", "action": "expect", "selector": "[data-testid='pv2-own-counter-gaps']", "textContains": "6" },
-    { "name": "OWN11 -- ...and its label is PLURAL at six, and NOT truncated.", "action": "expect", "selector": "[data-testid='pv2-own-counter-gaps']", "textContains": "ownership gaps" },
-    { "name": "OWN12 -- counter 2: three duty conflicts (same-person R/A, a group as Responsible, and one majority holder).", "action": "expect", "selector": "[data-testid='pv2-own-counter-sod']", "textContains": "3" },
-    { "name": "OWN13 -- counter 3 reads ZERO, and says so rather than hiding: Marcus is away but has cover.", "action": "expect", "selector": "[data-testid='pv2-own-counter-load']", "textContains": "carrying too much" },
-    { "name": "OWN14 -- counter 4's label wraps to two lines rather than truncating -- the second half of Round Two item 4.", "action": "expect", "selector": "[data-testid='pv2-own-counter-cov']", "textContains": "not in the matrix" },
-    { "name": "OWN15 -- counter 5: twenty-four objects, and the whole label survives.", "action": "expect", "selector": "[data-testid='pv2-own-counter-all']", "textContains": "objects owned here" },
-    { "name": "OWN16 -- ...with the real total beside it.", "action": "expect", "selector": "[data-testid='pv2-own-counter-all']", "textContains": "24" },
+    { "name": "OWN14 -- ROUND TWO ITEM 4: all five counters are in ONE row container, which is only true if none wrapped away.", "action": "expect", "selector": "[data-testid='pv2-own-counters']", "state": "visible", "critical": true },
+    { "name": "OWN15 -- counter 1 leads with what is missing, and its label is not truncated.", "action": "expect", "selector": "[data-testid='pv2-own-counter-gaps']", "textContains": "ownership gaps" },
+    { "name": "OWN16 -- counter 2 is the duty-conflict count.", "action": "expect", "selector": "[data-testid='pv2-own-counter-sod']", "textContains": "duty conflict" },
+    { "name": "OWN17 -- counter 3's label survives in full.", "action": "expect", "selector": "[data-testid='pv2-own-counter-load']", "textContains": "carrying too much" },
+    { "name": "OWN18 -- counter 4's label wraps to two lines rather than truncating -- the second half of Round Two item 4.", "action": "expect", "selector": "[data-testid='pv2-own-counter-cov']", "textContains": "not in the matrix" },
+    { "name": "OWN19 -- counter 5 shows the total last, which is the page's own argument about ordering.", "action": "expect", "selector": "[data-testid='pv2-own-counter-all']", "textContains": "objects owned here" },
 
-    { "name": "OWN17 -- no detail panel is open before a counter is clicked.", "action": "expect", "selector": "[data-testid='pv2-own-panel-gaps']", "state": "absent" },
-    { "name": "OWN18 -- click the gaps counter.", "action": "click", "selector": "[data-testid='pv2-own-counter-gaps']" },
-    { "name": "OWN19 -- the gaps panel opens and states the count against the total.", "action": "expect", "selector": "[data-testid='pv2-own-panel-gaps']", "textContains": "6 of 24 objects are missing a name", "critical": true },
-    { "name": "OWN20 -- ...and refuses to call it a blocker, which is the page's own position.", "action": "expect", "selector": "[data-testid='pv2-own-panel-gaps']", "textContains": "Nothing is blocked" },
-    { "name": "OWN21 -- a gap with a WRITTEN consequence shows it, not a generated sentence.", "action": "expect", "selector": "[data-testid='pv2-own-panel-gaps']", "textContains": "the pilot group has no route to ask" },
-    { "name": "OWN22 -- a gap with no written consequence gets the generated one instead.", "action": "expect", "selector": "[data-testid='pv2-own-panel-gaps']", "textContains": "No informed named." },
-
+    { "name": "OWN20 -- no detail panel is open before a counter is clicked.", "action": "expect", "selector": "[data-testid='pv2-own-panel-gaps']", "state": "absent" },
+    { "name": "OWN21 -- click the gaps counter.", "action": "click", "selector": "[data-testid='pv2-own-counter-gaps']" },
+    { "name": "OWN22 -- the gaps panel opens and refuses to call a gap a blocker, which is the page's own position and is unchanged by the data being real.", "action": "expect", "selector": "[data-testid='pv2-own-panel-gaps']", "textContains": "Nothing is blocked", "critical": true },
     { "name": "OWN23 -- clicking the same counter again closes its panel.", "action": "click", "selector": "[data-testid='pv2-own-counter-gaps']" },
     { "name": "OWN24 -- ...proving the counters toggle rather than latch.", "action": "expect", "selector": "[data-testid='pv2-own-panel-gaps']", "state": "absent" },
 
     { "name": "OWN25 -- open the duty-conflict panel.", "action": "click", "selector": "[data-testid='pv2-own-counter-sod']" },
-    { "name": "OWN26 -- it names the same-person conflict in words, with the person.", "action": "expect", "selector": "[data-testid='pv2-own-panel-sod']", "textContains": "would be approving their own work" },
-    { "name": "OWN27 -- ...and the group-as-Responsible one, which is a DIFFERENT check.", "action": "expect", "selector": "[data-testid='pv2-own-panel-sod']", "textContains": "Responsible has to be one person" },
-    { "name": "OWN28 -- ...and the concentration one, with its real 14-of-24 arithmetic.", "action": "expect", "selector": "[data-testid='pv2-own-panel-sod']", "textContains": "Accountable for 14 of 24 objects" },
+    { "name": "OWN26 -- it states what it is checking for, even when a real estate produces no conflicts -- an empty answer is still an answer.", "action": "expect", "selector": "[data-testid='pv2-own-panel-sod']", "textContains": "do not separate the work from the sign-off", "critical": true },
 
-    { "name": "OWN29 -- the matrix draws a real cell for a real owner, by name.", "action": "expect", "selector": "[data-testid='pv2-own-cell-svc-exo-r']", "textContains": "Priya Raman" },
-    { "name": "OWN30 -- ROUND TWO ITEM 2: no People & roles control is left on this page. Asserting the ABSENCE is the only way a removal is testable.", "action": "expect", "selector": "[data-testid='pv2-own-people-open']", "state": "absent", "critical": true },
+    { "name": "OWN27 -- ROUND TWO ITEM 2: no People & roles control is left on this page. Asserting the ABSENCE is the only way a removal is testable.", "action": "expect", "selector": "[data-testid='pv2-own-people-open']", "state": "absent", "critical": true },
 
-    { "name": "OWN31 -- SHARED STATE, step 1: go to Settings -> People & roles, where the editing now lives.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/settings/people" },
-    { "name": "OWN32 -- the roster is there and seeded.", "action": "expect", "selector": "[data-testid='pv2-set-person-name-priya']", "state": "visible", "critical": true },
-    { "name": "OWN33 -- rename Priya Raman.", "action": "input", "selector": "[data-testid='pv2-set-person-name-priya']", "value": "Priya Raman-Okoro" },
-    { "name": "OWN34 -- back to the matrix via the SIDEBAR LINK, not `goto`. This is load-bearing: `goto` drives the WebView2 to a URL, which is a full page load and resets all client state, so a `goto` here would assert nothing about sharing and fail for the wrong reason. The nav row is a client-side wouter Link, which is also how a customer actually gets there.", "action": "click", "selector": "[data-testid='pv2-nav-ownership']", "critical": true },
-    { "name": "OWN35 -- THE MATRIX READS THE NEW NAME. This is the README's 'reads the same data live', and the one assertion that fails if the people list were duplicated per page.", "action": "expect", "selector": "[data-testid='pv2-own-cell-svc-exo-r']", "textContains": "Priya Raman-Okoro", "critical": true },
+    { "name": "OWN28 -- SHARED STATE, step 1: go to Settings -> People & roles, where the editing now lives.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/settings/people" },
+    { "name": "OWN29 -- the roster there is the REAL one: the person the endpoint identified is addressable by their real id, which no fixture contains.", "action": "expect", "selector": "[data-testid='pv2-set-person-name-{{crOwnerId}}']", "state": "visible", "critical": true },
+    { "name": "OWN30 -- rename that real person.", "action": "input", "selector": "[data-testid='pv2-set-person-name-{{crOwnerId}}']", "value": "{{crOwnerName}} the second" },
+    { "name": "OWN31 -- back to the matrix via the SIDEBAR LINK, not `goto`. This is load-bearing: `goto` is a full page load, which resets the client store and re-reads the endpoint, so it would test the fetch rather than the sharing.", "action": "click", "selector": "[data-testid='pv2-nav-ownership']", "critical": true },
+    { "name": "OWN32 -- THE MATRIX READS THE NEW NAME, on a REAL row, for a REAL person. This is the README's 'reads the same data live', and the assertion that fails if the people list had been forked into a second source when it was wired to the endpoint.", "action": "expect", "selector": "[data-testid='pv2-own-cell-{{crCode}}-r']", "textContains": "the second", "critical": true },
 
-    { "name": "OWN36 -- the sub-nav type filter is a real URL: switch to Compliance controls.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/ownership/control" },
-    { "name": "OWN37 -- the matrix meta re-derives against the filtered set, not the whole estate.", "action": "expect", "selector": "[data-testid='pv2-own-matrix-meta']", "textContains": "4 of 24 shown", "critical": true },
-    { "name": "OWN38 -- the controls group is shown...", "action": "expect", "selector": "[data-testid='pv2-own-group-control']", "state": "visible" },
-    { "name": "OWN39 -- ...and an unrelated group is GONE, so the filter really filters.", "action": "expect", "selector": "[data-testid='pv2-own-group-freeze']", "state": "absent" },
-    { "name": "OWN40 -- the counters do NOT re-derive against the filter: concentration is a property of the estate, not of what you are looking at.", "action": "expect", "selector": "[data-testid='pv2-own-counter-all']", "textContains": "24" },
+    { "name": "OWN33 -- the sub-nav type filter is a real URL: switch to change requests.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/ownership/cr" },
+    { "name": "OWN34 -- the change-request group is shown...", "action": "expect", "selector": "[data-testid='pv2-own-group-cr']", "state": "visible", "critical": true },
+    { "name": "OWN35 -- ...and an unrelated group is GONE, so the filter really filters.", "action": "expect", "selector": "[data-testid='pv2-own-group-freeze']", "state": "absent" },
+    { "name": "OWN36 -- an unrecognised type segment falls back to Everything rather than rendering an empty page.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/ownership/not-a-type" },
+    { "name": "OWN37 -- ...proved by the hold-window group being back.", "action": "expect", "selector": "[data-testid='pv2-own-group-freeze']", "state": "visible" },
 
-    { "name": "OWN41 -- an unrecognised type segment falls back to Everything rather than rendering an empty page.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/ownership/not-a-type" },
-    { "name": "OWN42 -- ...proved by the meta reading the full estate again.", "action": "expect", "selector": "[data-testid='pv2-own-matrix-meta']", "textContains": "24 of 24 shown" },
+    { "name": "OWN38 -- reset to a fresh matrix, then open 'What ownership drives' from the header.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/ownership" },
+    { "name": "OWN38b -- click the routing button.", "action": "click", "selector": "[data-testid='pv2-own-routing']" },
+    { "name": "OWN39 -- the routing slide-over is the design's own 'What ownership drives'.", "action": "expect", "selector": "[data-testid='pv2-own-rules']", "textContains": "What ownership drives", "critical": true },
+    { "name": "OWN40 -- ...with the line that says why the rules matter.", "action": "expect", "selector": "[data-testid='pv2-own-rules']", "textContains": "this page becomes a diagram instead of a system" },
 
-    { "name": "OWN43 -- PART 10. reset to a fresh matrix, then open 'What ownership drives' from the header.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/ownership" },
-    { "name": "OWN43b -- click the routing button.", "action": "click", "selector": "[data-testid='pv2-own-routing']" },
-    { "name": "OWN44 -- the routing slide-over is the design's own 'What ownership drives'.", "action": "expect", "selector": "[data-testid='pv2-own-rules']", "textContains": "What ownership drives", "critical": true },
-    { "name": "OWN45 -- ...with the line that says why the rules matter.", "action": "expect", "selector": "[data-testid='pv2-own-rules']", "textContains": "this page becomes a diagram instead of a system" },
+    { "name": "OWN41 -- reset, then open the add-a-row flow.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/ownership" },
+    { "name": "OWN41b -- click Add a row.", "action": "click", "selector": "[data-testid='pv2-own-add-row']" },
+    { "name": "OWN42 -- the add-a-row slide-over opens with its own title.", "action": "expect", "selector": "[data-testid='pv2-own-newrow']", "textContains": "Add something to the matrix", "critical": true },
+    { "name": "OWN43 -- ...and the four-gaps honesty line.", "action": "expect", "selector": "[data-testid='pv2-own-newrow']", "textContains": "It arrives with four gaps" },
 
-    { "name": "OWN46 -- reset, then open the add-a-row flow.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/ownership" },
-    { "name": "OWN46b -- click Add a row.", "action": "click", "selector": "[data-testid='pv2-own-add-row']" },
-    { "name": "OWN47 -- the add-a-row slide-over opens with its own title.", "action": "expect", "selector": "[data-testid='pv2-own-newrow']", "textContains": "Add something to the matrix", "critical": true },
-    { "name": "OWN48 -- ...and the four-gaps honesty line.", "action": "expect", "selector": "[data-testid='pv2-own-newrow']", "textContains": "It arrives with four gaps" },
-    { "name": "OWN49 -- ...the type-picker label.", "action": "expect", "selector": "[data-testid='pv2-own-newrow']", "textContains": "What kind of thing is it" },
-    { "name": "OWN50 -- ...and the sub-line field label.", "action": "expect", "selector": "[data-testid='pv2-own-newrow']", "textContains": "The detail underneath" },
+    { "name": "OWN44 -- reset, then open the assign slide-over on a REAL cell.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/ownership" },
+    { "name": "OWN44b -- click the Responsible cell of a real change request.", "action": "click", "selector": "[data-testid='pv2-own-cell-{{crCode}}-r']" },
+    { "name": "OWN45 -- the design's own assign slide-over opens, not a generic form, and still offers the honest option.", "action": "expect", "selector": "[data-testid='pv2-own-assign']", "textContains": "Leave unassigned — record it as a gap", "critical": true },
 
-    { "name": "OWN51 -- reset, then open the assign slide-over on a cell that has history.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/ownership" },
-    { "name": "OWN51b -- click the Responsible cell for Exchange Online.", "action": "click", "selector": "[data-testid='pv2-own-cell-svc-exo-r']" },
-    { "name": "OWN52 -- the design's own assign slide-over opens, not a generic form.", "action": "expect", "selector": "[data-testid='pv2-own-assign']", "textContains": "Leave unassigned — record it as a gap", "critical": true },
-    { "name": "OWN53 -- ...and it carries the prior-holders block.", "action": "expect", "selector": "[data-testid='pv2-own-assign']", "textContains": "Who held it before" },
-
-    { "name": "OWN54 -- reset, then open a cell whose owner has not accepted yet.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/ownership" },
-    { "name": "OWN54b -- click the Responsible cell for Entra ID, which is pending.", "action": "click", "selector": "[data-testid='pv2-own-cell-svc-entra-r']" },
-    { "name": "OWN55 -- the acceptance surface shows the Mark-accepted action.", "action": "expect", "selector": "[data-testid='pv2-own-assign-accept']", "textContains": "Mark accepted", "critical": true },
-
-    { "name": "OWN56 -- reset, then open the row detail by clicking a row's name.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/ownership" },
-    { "name": "OWN56b -- click the Exchange Online row name.", "action": "click", "selector": "[data-testid='pv2-own-rowname-svc-exo']" },
-    { "name": "OWN57 -- the row-detail slide-over names what the service's ownership drives.", "action": "expect", "selector": "[data-testid='pv2-own-rowdetail']", "textContains": "What these names cover", "critical": true },
-    { "name": "OWN58 -- ...and spells out a Responsible duty for a service.", "action": "expect", "selector": "[data-testid='pv2-own-rowdetail']", "textContains": "Reads every Microsoft notice for this service against the tenant" }
+    { "name": "OWN46 -- reset, then open the row detail by clicking a REAL row's name.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/ownership" },
+    { "name": "OWN46b -- click the change request's row name.", "action": "click", "selector": "[data-testid='pv2-own-rowname-{{crCode}}']" },
+    { "name": "OWN47 -- the row-detail slide-over opens on the real row and shows its REAL owner. NOTE: the design’s 'What these names cover' block is deliberately NOT asserted here -- it renders only for a `service` row that drives other rows (rowDrivesLabel/rowDetailDrives, OwnershipMatrix.tsx:1919), and a change request drives nothing. Asserting it on a CR would fail for a reason that has nothing to do with the data.", "action": "expect", "selector": "[data-testid='pv2-own-rowdetail']", "textContains": "{{crOwnerName}}", "critical": true },
+    { "name": "OWN48 -- ...and spells out the Accountable duty for a change request, which is the design's own copy.", "action": "expect", "selector": "[data-testid='pv2-own-rowdetail']", "textContains": "Approves it" }
   ]
 }
