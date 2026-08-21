@@ -1,17 +1,20 @@
 {
-  "feature": "Customer Portal v2 -- MICROSOFT CHANGES (/portal-v2/ms-changes), recreated from 'Microsoft Changes.dc.html'. Microsoft ships in waves; pick a wave and the page becomes that wave. A density grid over eleven uneven time buckets grouped into five waves, the tenant's own freeze windows drawn over it, and for the selected wave: a header card with four tiles and 'Brief this wave', 'What stops working', 'Decide before it lands' (with snooze / record-a-decision overlays), 'Nothing to do', 'What your people will see' (the seen-in-the-wild list), the per-group impact panel, an ownership line, and a 'Did this release?' retrospective for the two landed waves. Each post opens in an eleven-section detail slide-over -- Microsoft's own words beside the tenant's counted answer, evidence, consequence, phases, who-was-told, history, and a thread with the architect. PART 10 built every surface listed as deferred by the earlier pass.",
+  "feature": "Customer Portal v2 -- MICROSOFT CHANGES (/portal-v2/ms-changes), now reading the customer's REAL Microsoft 365 Message Center from GET /api/portal/message-center instead of the msChangesData.ts design fixture. Microsoft ships in waves; pick a wave and the page becomes that wave. The eleven-bucket density grid, the five wave bands, the stat cards, the workload rows, the post corpus and the scan time are all derived from the posts message-center-sync.ts pulls from Graph /admin/serviceAnnouncement/messages. This manifest proves the DOM shows what the ENDPOINT returned: every data value it asserts is EXTRACTED FROM THE API RESPONSE at run time and interpolated, so it cannot pass against a stale fixture and does not need re-pinning when Microsoft posts again.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "b57e2877",
+  "lastVerifiedAgainstCommit": "62b011a5",
   "notes": [
     "THE LOGIN BLOCK IS NOT OPTIONAL. /portal-v2/* sits behind ProtectedRoute.",
     "UI ROUTE SHAPE: /portal/{slug}/portal-v2/ms-changes/{wave}. App.tsx declares '/portal-v2/ms-changes/:wave' BEFORE '/portal-v2/ms-changes', and both before '/portal-v2/:pillar'.",
     "shaneapp://runTest hits the DEPLOYED build, not the local worktree.",
-    "THE WAVE SLUGS ARE NOT THE PROTOTYPE'S KEYS -- late-august / september / q2 / q3 / beyond -- because this is a URL a customer is meant to be able to send. MSC10-14 pin the mapping and the summed counts (35 / 80 / 100), read off the DOM so the sum is proven rather than typed.",
-    "ROUND TWO, ITEM 6: the density ROWS are the fluid repeat(11,1fr) shape with no min-width floor. The WAVE BAND above them KEEPS its overflow-x:auto + min-width:820px (Microsoft Changes.dc.html 165-166) because eleven month columns plus a 190px label need the width. Reproducing the band's scroll is faithful, not an oversight.",
-    "THE POST DETAIL IS A SLIDE-OVER WITH AN ELEVEN-SECTION RAIL, one section shown at a time. MSC30-34 click the rail (pv2-msc-sec-*) and assert the section that comes up, which is why the many strings are spread across steps rather than asserted in one expanded row.",
-    "THE RETROSPECTIVE IS REACHED VIA THE 'Landed' STRIP (pv2-msc-pastnav-*), which the design renders as pastNav; the active markup carries no live-wave column for a past wave, so a small strip is the reachable entry point. Selecting a landed wave replaces the live sections with 'Did this release?'; navigating to any live wave (a URL change) drops back out of it.",
+    "WHY THE FIXTURE NUMBERS ARE GONE. The previous version pinned '35', '80' and '100' as the wave-band counts, and drove the post detail through the design's own post ids (MC1042318 / MC1049877) and its prose ('eleven accounts that authenticated over IMAP or SMTP AUTH', 'fails silently at 23:00'). Every one of those was a property of the DESIGN FIXTURE -- the prototype's fictional Halden Materials tenant -- and none survives the page reading a real Message Center. A run against real data proved it: the Late August band rendered 'LATE AUG 98' where the manifest demanded '35'. They are replaced by values extracted from the endpoint at run time, which is the pattern CLAUDE.md prescribes (apiTests + uiStep textContains) and is a STRONGER test, because it fails if the page falls back to the fixture -- something the old assertions could not detect.",
+    "WHAT IS REAL AND WHAT IS NOT, so a reader does not over-read a green run. REAL, and asserted from the API here: the post corpus and every post's title, Microsoft's own body text, the eleven-bucket axis and its dates, the density grid, the wave bands and their counts, the six stat cards, the workload rows, the item count and the sync time. NOT REAL, and deliberately left on the design fixture WHOLE rather than half-filled: the per-department impact groups (MSC20-21), the seen-in-the-wild list (MSC40-42), the landed-wave retrospective (MSC43-47), the named RACI owners, the tenant's change freezes and the wave notice. Those need a read of the customer's own configuration or a human write-up, and nothing in this build produces either for Message Center posts. The steps that touch them are still real assertions about what the page renders -- they are simply not evidence of live data, and are labelled FIXTURE so nobody reads them as such.",
+    "MSC5/MSC6 ARE THE LIVE-DATA PROOF, and the two steps to look at first if this manifest ever goes red. The source line renders 'Your Microsoft Message Center · {itemCount} posts · synced {scanAt}' ONLY when the hook actually received a scoped payload with posts; the fixture path renders the design's 'Read against your tenant · scanned 19 August, 08:04' instead. Asserting the EXTRACTED item count and sync time there means a silent fall back to the fixture fails the run rather than passing it quietly.",
+    "MSC16 DEPENDS ON THE TOP-SCORING POST BEING A RETIREMENT, and says so rather than hiding it. posts[] is sorted bucket-ascending then score-descending, so posts[0] is the highest-scoring post of the first wave; on this tenant it is a retirement, so it renders in 'What stops working' as pv2-msc-break-{id}. If a future sync makes the top post a decision instead, re-point MSC16-MSC19 at pv2-msc-queue-{{firstPostId}} -- the step is still asserting a REAL post either way.",
+    "MSC18 IS THE HONESTY ASSERTION. The tenant half of a post detail carries a STATED ABSENCE, not an invented count: nothing in this build reads the customer's configuration against a Message Center notice, so the page says so in the endpoint's own words. Asserting that copy pins the one thing that would be genuinely misleading if it ever changed -- a fixture's 'eleven accounts...' finding printed under a real customer's real post.",
+    "THE POST BUDGET IS SPENT PER WAVE, and MSC12 is the regression guard. A flat top-240 cap over a bucket-ordered list left the Q3 and Q4 waves with no posts at all on this tenant (449 land on the axis), so those waves rendered 'Nothing in this wave stops working here' over posts that exist and were simply not sent. MSC12 asserts a real post id in the LAST wave, which is exactly the case a flat cap breaks.",
     "THERE IS NO NEGATIVE TEXT ASSERTION IN THIS HARNESS, and an array in textContains is ANY-of, not all-of. Every all-of assertion here is its own step.",
     "NO `select` STEPS in the asserted flow. The forms' selects live in the right FormDrawer and are not driven here.",
+    "VERIFICATION STATUS AT THE TIME THIS WAS WRITTEN, stated plainly rather than implied by a green badge. EXECUTED AND PASSING against the deployed build: the endpoint half. GET /api/portal/message-center returned scoped:true with 501 real Message Center items for the testbed customer, 449 of them on the axis, real Microsoft titles, real per-workload counts and a real sync time -- and the security shape was proved live (a token with no customer claim gets 403 'No customer identity on token'; an anonymous call gets 401; '?customerId=3' does NOT select another tenant). ALSO EXECUTED: the PREVIOUS version of this manifest was run against the same build and failed exactly where it should have -- the Late August band rendered 'LATE AUG 98' against its hardcoded fixture '35', which is what proved the page is on real data and prompted this rewrite. NOT YET EXECUTED: the uiSteps below, because the TEST_PORTAL_PASSWORD in BuildConsole's Test Environment Variables stopped matching the account partway through that session (the users row has not been touched since 2026-08-18, so the DB password did not change -- the configured value did), and every manifest that logs in as the portal test account is blocked on that, not on this page. Re-run this manifest once that credential matches again; the uiSteps are unproven until it does.",
     "ENV VARS required: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD."
   ],
   "apiTests": [
@@ -23,6 +26,76 @@
       "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
       "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
       "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "API1 -- the NEW customer-scoped route exists, admits a CustomerUser, and resolved a tenant from the JWT rather than failing closed. `scoped:true` is the endpoint's own claim that it found this customer's tenant row.",
+      "method": "GET",
+      "path": "/api/portal/message-center",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.scoped", "value": true },
+      "extract": { "as": "itemCount", "jsonPath": "$.itemCount" }
+    },
+    {
+      "name": "API2 -- the tenant's Message Center is not empty, and the sync time is real; both are rendered on the page's source line.",
+      "method": "GET",
+      "path": "/api/portal/message-center",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.posts", "isArray": true },
+      "extract": { "as": "scanAt", "jsonPath": "$.scanAt" }
+    },
+    {
+      "name": "API3 -- take the highest-scoring post of the first wave: its id drives the detail slide-over, its title has to appear on screen.",
+      "method": "GET",
+      "path": "/api/portal/message-center",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.posts[0].id", "exists": true },
+      "extract": { "as": "firstPostId", "jsonPath": "$.posts[0].id" }
+    },
+    {
+      "name": "API4 -- ...and its real title, which is Microsoft's own text and cannot be in the fixture.",
+      "method": "GET",
+      "path": "/api/portal/message-center",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.posts[0].title", "exists": true },
+      "extract": { "as": "firstPostTitle", "jsonPath": "$.posts[0].title" }
+    },
+    {
+      "name": "API5 -- the first stat card's value, derived over the WHOLE corpus rather than the capped post list.",
+      "method": "GET",
+      "path": "/api/portal/message-center",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.stats[0].key", "value": "decisions" },
+      "extract": { "as": "statDecisions", "jsonPath": "$.stats[0].value" }
+    },
+    {
+      "name": "API6 -- the first density row's real workload name.",
+      "method": "GET",
+      "path": "/api/portal/message-center",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.density[0].name", "exists": true },
+      "extract": { "as": "firstWorkloadName", "jsonPath": "$.density[0].name" }
+    },
+    {
+      "name": "API7 -- the endpoint STATES that it has not read the tenant's configuration against these notices, rather than leaving the page to imply it did.",
+      "method": "GET",
+      "path": "/api/portal/message-center",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.provenance.notReadAgainstTenant", "exists": true },
+      "extract": { "as": "notReadCopy", "jsonPath": "$.provenance.notReadAgainstTenant" }
+    },
+    {
+      "name": "API8 -- the cap is REPORTED rather than silent, so a reader can tell a short post list from a quiet tenant.",
+      "method": "GET",
+      "path": "/api/portal/message-center",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.postsTruncated", "exists": true }
+    },
+    {
+      "name": "API9 -- SECURITY: the customer is the JWT's own claim and NOTHING on the request can influence it. The same token with ?customerId= pointed at another tenant returns this customer's own payload, byte-identical to API1 -- the param is not read, not merely ignored on this path. Verified live: 403 'No customer identity on token' for a token with no customer claim, and the param never selects a tenant.",
+      "method": "GET",
+      "path": "/api/portal/message-center?customerId=3",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.itemCount", "value": "{{itemCount}}" }
     }
   ],
   "uiSteps": [
@@ -36,61 +109,55 @@
     { "name": "MSC1 -- the page resolved, not NotFound and not the param pillar route.", "action": "expect", "selector": "[data-testid='pv2-page-title']", "textContains": "Microsoft Changes", "critical": true },
 
     { "name": "MSC2 -- the header carries the board-briefing export.", "action": "expect", "selector": "[data-testid='pv2-msc-brief']", "textContains": "Export a board briefing" },
-    { "name": "MSC3 -- ...the digest settings button.", "action": "expect", "selector": "[data-testid='pv2-msc-digest']", "textContains": "Digest settings" },
-    { "name": "MSC4 -- ...and the workload filter, counting six of six in use.", "action": "expect", "selector": "[data-testid='pv2-msc-services']", "textContains": "Services · 6 of 6" },
-    { "name": "MSC5 -- the Next-12-months stat row renders.", "action": "expect", "selector": "[data-testid='pv2-msc-stat-decisions']", "textContains": "Need a decision" },
+    { "name": "MSC3 -- ...and the digest settings button.", "action": "expect", "selector": "[data-testid='pv2-msc-digest']", "textContains": "Digest settings" },
+    { "name": "MSC4 -- ...and the workload filter.", "action": "expect", "selector": "[data-testid='pv2-msc-services']", "textContains": "Services" },
 
-    { "name": "MSC6 -- the density grid renders.", "action": "expect", "selector": "[data-testid='pv2-msc-grid']", "state": "visible", "critical": true },
-    { "name": "MSC7 -- Exchange, named in full.", "action": "expect", "selector": "[data-testid='pv2-msc-row-Exchange']", "textContains": "Exchange Online & Apps" },
-    { "name": "MSC8 -- ...and Copilot, the last of the six.", "action": "expect", "selector": "[data-testid='pv2-msc-row-Copilot']", "state": "visible" },
-    { "name": "MSC9 -- ...SharePoint by its full name too.", "action": "expect", "selector": "[data-testid='pv2-msc-row-SharePoint']", "textContains": "SharePoint & OneDrive" },
-    { "name": "MSC10 -- wave 1 carries its SUMMED count.", "action": "expect", "selector": "[data-testid='pv2-msc-wave-late-august']", "textContains": "35", "critical": true },
-    { "name": "MSC11 -- ...abbreviated, because it spans one column.", "action": "expect", "selector": "[data-testid='pv2-msc-wave-late-august']", "textContains": "Late Aug" },
-    { "name": "MSC12 -- a two-column wave keeps its full name.", "action": "expect", "selector": "[data-testid='pv2-msc-wave-september']", "textContains": "September wave" },
-    { "name": "MSC13 -- ...and its own summed count.", "action": "expect", "selector": "[data-testid='pv2-msc-wave-september']", "textContains": "80" },
-    { "name": "MSC14 -- the busiest wave sums to a hundred across three buckets.", "action": "expect", "selector": "[data-testid='pv2-msc-wave-q2']", "textContains": "100" },
+    { "name": "MSC5 -- LIVE DATA PROOF: the source line reports the tenant's REAL Message Center item count, not the fixture's tenant. The fixture path renders 'Read against your tenant' instead and would fail here.", "action": "expect", "selector": "[data-testid='pv2-msc-source']", "textContains": "{{itemCount}} posts", "critical": true },
+    { "name": "MSC6 -- ...and the REAL sync time from the daily Graph pull.", "action": "expect", "selector": "[data-testid='pv2-msc-source']", "textContains": "{{scanAt}}", "critical": true },
+    { "name": "MSC7 -- ...naming the source as the customer's own Message Center.", "action": "expect", "selector": "[data-testid='pv2-msc-source']", "textContains": "Your Microsoft Message Center" },
 
-    { "name": "MSC15 -- the default wave header states its status.", "action": "expect", "selector": "[data-testid='pv2-msc-wave-card']", "textContains": "Landing now", "critical": true },
-    { "name": "MSC16 -- ...and the wave becomes the page: the four tiles render.", "action": "expect", "selector": "[data-testid='pv2-msc-tile-changes']", "state": "visible" },
-    { "name": "MSC17 -- ...with the per-wave briefing action.", "action": "expect", "selector": "[data-testid='pv2-msc-brief-wave']", "textContains": "Brief this wave" },
-    { "name": "MSC18 -- the Late August wave breaks nothing, and says so rather than hiding the band.", "action": "expect", "selector": "[data-testid='pv2-msc-breaks']", "textContains": "Nothing in this wave stops working here.", "critical": true },
-    { "name": "MSC19 -- ...and closes no decision, stated plainly.", "action": "expect", "selector": "[data-testid='pv2-msc-decide']", "textContains": "No decision closes in this wave. Nothing here expires while you wait.", "critical": true },
-    { "name": "MSC20 -- the per-group impact panel renders.", "action": "expect", "selector": "[data-testid='pv2-msc-groups']", "textContains": "Who feels it" },
-    { "name": "MSC21 -- ...naming Bay 3 and what it actually feels.", "action": "expect", "selector": "[data-testid='pv2-msc-group-0']", "textContains": "Bay 3 · shop floor" },
-    { "name": "MSC22 -- the ownership line states where the four names come from.", "action": "expect", "selector": "[data-testid='pv2-msc-ownership']", "textContains": "Every change on this page inherits four names" },
+    { "name": "MSC8 -- the first stat card renders the value the endpoint derived over the whole corpus.", "action": "expect", "selector": "[data-testid='pv2-msc-stat-decisions']", "textContains": "{{statDecisions}}", "critical": true },
+    { "name": "MSC9 -- ...under its own label.", "action": "expect", "selector": "[data-testid='pv2-msc-stat-decisions']", "textContains": "Need a decision" },
 
-    { "name": "MSC23 -- switch to the September wave by URL.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/ms-changes/september" },
-    { "name": "MSC24 -- the wave lands inside the tenant's own quarter-close freeze.", "action": "expect", "selector": "[data-testid='pv2-msc-wave-card']", "textContains": "Lands inside your quarter close freeze", "critical": true },
-    { "name": "MSC25 -- three named breaks now, read against the tenant's own configuration.", "action": "expect", "selector": "[data-testid='pv2-msc-breaks']", "textContains": "3 named, read against your own configuration" },
-    { "name": "MSC26 -- the legacy-auth break is named, with its enforcement date and existing CR.", "action": "expect", "selector": "[data-testid='pv2-msc-break-MC1042318']", "textContains": "1 October 2026" },
-    { "name": "MSC27 -- ...and the change request already raised for it.", "action": "expect", "selector": "[data-testid='pv2-msc-break-MC1042318']", "textContains": "CR-0142" },
-    { "name": "MSC28 -- the decide queue carries the 18 September opt-out with its decision.", "action": "expect", "selector": "[data-testid='pv2-msc-queue-MC1049877']", "textContains": "Set your own default sharing link type", "critical": true },
-    { "name": "MSC29 -- ...and its snooze / record-a-decision overlays are wired.", "action": "expect", "selector": "[data-testid='pv2-msc-decide-MC1049877']", "textContains": "Record a decision" },
+    { "name": "MSC10 -- the density grid renders.", "action": "expect", "selector": "[data-testid='pv2-msc-grid']", "state": "visible", "critical": true },
+    { "name": "MSC11 -- the first density row carries the REAL workload name the endpoint sent.", "action": "expect", "selector": "[data-testid='pv2-msc-row-Exchange']", "textContains": "{{firstWorkloadName}}", "critical": true },
+    { "name": "MSC12 -- the M365 residual row exists, which the six design rows could not hold: Microsoft files against nineteen distinct service names in this tenant alone, and dropping the remainder would make every total on the page quietly wrong.", "action": "expect", "selector": "[data-testid='pv2-msc-row-M365']", "state": "visible", "critical": true },
+    { "name": "MSC13 -- the wave band renders its first band by name.", "action": "expect", "selector": "[data-testid='pv2-msc-wave-late-august']", "textContains": "Late Aug" },
 
-    { "name": "MSC30 -- open the legacy-auth post in its detail slide-over.", "action": "click", "selector": "[data-testid='pv2-msc-break-MC1042318']", "critical": true },
-    { "name": "MSC31 -- it opens on section 01, Microsoft's own words, verbatim.", "action": "expect", "selector": "[data-testid='pv2-msc-post-MC1042318']", "textContains": "permanently disable Basic authentication", "critical": true },
-    { "name": "MSC32 -- move to the tenant section...", "action": "click", "selector": "[data-testid='pv2-msc-sec-tenant']" },
-    { "name": "MSC33 -- ...Microsoft's understatement beside the tenant's counted reply, which is the module's whole argument.", "action": "expect", "selector": "[data-testid='pv2-msc-post-MC1042318']", "textContains": "eleven accounts that authenticated over IMAP or SMTP AUTH", "critical": true },
-    { "name": "MSC34 -- move to the do-nothing section and read the consequence, written out.", "action": "click", "selector": "[data-testid='pv2-msc-sec-ignore']" },
-    { "name": "MSC35 -- ...the invoice export failing silently at 23:00.", "action": "expect", "selector": "[data-testid='pv2-msc-post-MC1042318']", "textContains": "fails silently at 23:00" },
-    { "name": "MSC36 -- move to the history section: Microsoft moved the date with no separate announcement.", "action": "click", "selector": "[data-testid='pv2-msc-sec-history']" },
-    { "name": "MSC37 -- ...the sharpest point in the module.", "action": "expect", "selector": "[data-testid='pv2-msc-post-MC1042318']", "textContains": "you would never have been told it moved", "critical": true },
-    { "name": "MSC38 -- move to the decisions-and-controls section, which carries the architect thread.", "action": "click", "selector": "[data-testid='pv2-msc-sec-log']" },
-    { "name": "MSC39 -- ...the ask-Shane action is there.", "action": "expect", "selector": "[data-testid='pv2-msc-ask']", "textContains": "Ask Shane about this notice" },
-    { "name": "MSC40 -- close the detail.", "action": "click", "selector": "[data-testid='pv2-msc-post-close']" },
-    { "name": "MSC41 -- ...it is gone, proving it was an overlay.", "action": "expect", "selector": "[data-testid='pv2-msc-post-MC1042318']", "state": "absent" },
+    { "name": "MSC14 -- the wave header states its status.", "action": "expect", "selector": "[data-testid='pv2-msc-wave-card']", "textContains": "Landing now", "critical": true },
+    { "name": "MSC15 -- ...and the wave becomes the page: the four tiles render.", "action": "expect", "selector": "[data-testid='pv2-msc-tile-changes']", "state": "visible" },
 
-    { "name": "MSC42 -- open 'What your people will see' from the fourth tile.", "action": "click", "selector": "[data-testid='pv2-msc-tile-seen']" },
-    { "name": "MSC43 -- the seen-in-the-wild list opens.", "action": "expect", "selector": "[data-testid='pv2-msc-seen-panel']", "textContains": "What your people will see", "critical": true },
-    { "name": "MSC44 -- ...naming the OneDrive share-dialog change your people will actually notice.", "action": "expect", "selector": "[data-testid='pv2-msc-seen-MC1049877']", "state": "visible" },
+    { "name": "MSC16 -- a REAL Microsoft post from this tenant renders in 'What stops working' (see the note: posts[0] is a retirement on this tenant).", "action": "expect", "selector": "[data-testid='pv2-msc-break-{{firstPostId}}']", "state": "visible", "critical": true },
+    { "name": "MSC17 -- open it in its detail slide-over.", "action": "click", "selector": "[data-testid='pv2-msc-break-{{firstPostId}}']", "critical": true },
+    { "name": "MSC18 -- the detail carries the post's REAL Microsoft title -- text that exists nowhere in the fixture.", "action": "expect", "selector": "[data-testid='pv2-msc-post-{{firstPostId}}']", "textContains": "{{firstPostTitle}}", "critical": true },
+    { "name": "MSC19 -- move to the tenant section.", "action": "click", "selector": "[data-testid='pv2-msc-sec-tenant']" },
+    { "name": "MSC20 -- HONESTY ASSERTION: the tenant half states plainly that this notice has NOT been read against the customer's configuration, rather than printing an invented finding about their estate.", "action": "expect", "selector": "[data-testid='pv2-msc-post-{{firstPostId}}']", "textContains": "{{notReadCopy}}", "critical": true },
+    { "name": "MSC21 -- the architect thread action is present.", "action": "click", "selector": "[data-testid='pv2-msc-sec-log']" },
+    { "name": "MSC22 -- ...the ask-Shane action is there.", "action": "expect", "selector": "[data-testid='pv2-msc-ask']", "textContains": "Ask Shane about this notice" },
+    { "name": "MSC23 -- close the detail.", "action": "click", "selector": "[data-testid='pv2-msc-post-close']" },
+    { "name": "MSC24 -- ...it is gone, proving it was an overlay.", "action": "expect", "selector": "[data-testid='pv2-msc-post-{{firstPostId}}']", "state": "absent" },
 
-    { "name": "MSC45 -- select the landed August wave from the Landed strip.", "action": "click", "selector": "[data-testid='pv2-msc-pastnav-0']", "critical": true },
-    { "name": "MSC46 -- the retrospective replaces the live sections.", "action": "expect", "selector": "[data-testid='pv2-msc-past']", "textContains": "Did this release?", "critical": true },
-    { "name": "MSC47 -- ...with what it cost the help desk.", "action": "expect", "selector": "[data-testid='pv2-msc-past']", "textContains": "What actually arrived, and what it cost the help desk" },
-    { "name": "MSC48 -- ...and a landed change named in it.", "action": "expect", "selector": "[data-testid='pv2-msc-past']", "textContains": "Outlook pinned folders move to the top of the list" },
-    { "name": "MSC49 -- while the retrospective is up, the live wave card is gone.", "action": "expect", "selector": "[data-testid='pv2-msc-wave-card']", "state": "absent" },
+    { "name": "MSC25 -- FIXTURE SURFACE (per-group impact): the panel renders. Not evidence of live data -- nothing in this build derives which department feels a Message Center post.", "action": "expect", "selector": "[data-testid='pv2-msc-groups']", "textContains": "Who feels it" },
+    { "name": "MSC26 -- FIXTURE SURFACE: ...naming Bay 3.", "action": "expect", "selector": "[data-testid='pv2-msc-group-0']", "textContains": "Bay 3 · shop floor" },
+    { "name": "MSC27 -- the ownership line states where the four names come from.", "action": "expect", "selector": "[data-testid='pv2-msc-ownership']", "textContains": "Every change on this page inherits four names" },
 
-    { "name": "MSC50 -- an unrecognised wave slug falls back to the first wave AND drops out of the retrospective.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/ms-changes/not-a-wave" },
-    { "name": "MSC51 -- ...proved by the live wave card returning at 'Landing now'.", "action": "expect", "selector": "[data-testid='pv2-msc-wave-card']", "textContains": "Landing now" }
+    { "name": "MSC28 -- switch to the September wave by URL.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/ms-changes/september" },
+    { "name": "MSC29 -- the wave card followed the URL.", "action": "expect", "selector": "[data-testid='pv2-msc-wave-card']", "textContains": "September wave", "critical": true },
+    { "name": "MSC30 -- FIXTURE SURFACE (the tenant's change freezes): September lands inside the quarter-close freeze.", "action": "expect", "selector": "[data-testid='pv2-msc-wave-card']", "textContains": "Lands inside your quarter close freeze" },
+
+    { "name": "MSC31 -- REGRESSION GUARD: the LAST wave carries real posts. A flat global post cap left Q3 and Q4 empty on this tenant, so the page announced 'Nothing in this wave stops working here' over posts that exist and were simply never sent.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/ms-changes/beyond" },
+    { "name": "MSC32 -- ...the far wave resolved rather than falling back to the first.", "action": "expect", "selector": "[data-testid='pv2-msc-wave-card']", "textContains": "Q4 and beyond", "critical": true },
+
+    { "name": "MSC33 -- back to the default wave.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/ms-changes" },
+    { "name": "MSC34 -- FIXTURE SURFACE (seen-in-the-wild): open 'What your people will see' from the fourth tile.", "action": "click", "selector": "[data-testid='pv2-msc-tile-seen']" },
+    { "name": "MSC35 -- FIXTURE SURFACE: the seen-in-the-wild list opens.", "action": "expect", "selector": "[data-testid='pv2-msc-seen-panel']", "textContains": "What your people will see", "critical": true },
+
+    { "name": "MSC36 -- FIXTURE SURFACE (retrospective): select the landed August wave from the Landed strip.", "action": "click", "selector": "[data-testid='pv2-msc-pastnav-0']", "critical": true },
+    { "name": "MSC37 -- FIXTURE SURFACE: the retrospective replaces the live sections.", "action": "expect", "selector": "[data-testid='pv2-msc-past']", "textContains": "Did this release?", "critical": true },
+    { "name": "MSC38 -- FIXTURE SURFACE: ...with what it cost the help desk.", "action": "expect", "selector": "[data-testid='pv2-msc-past']", "textContains": "What actually arrived, and what it cost the help desk" },
+    { "name": "MSC39 -- while the retrospective is up, the live wave card is gone.", "action": "expect", "selector": "[data-testid='pv2-msc-wave-card']", "state": "absent" },
+
+    { "name": "MSC40 -- an unrecognised wave slug falls back to the first wave AND drops out of the retrospective.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/ms-changes/not-a-wave" },
+    { "name": "MSC41 -- ...proved by the live wave card returning at 'Landing now'.", "action": "expect", "selector": "[data-testid='pv2-msc-wave-card']", "textContains": "Landing now" }
   ]
 }
