@@ -40,7 +40,35 @@ investigation. Where something wasn't checked, it's marked as such explicitly.
   planned. Wire the UI to `live-documents`/`documentTypesTable`, never to
   `insights-documents`.
 
-## 2. Real backend, wrong role scope — needs new customer-scoped routes only
+## 2. Real design change, needs a real per-field audit — not a drop-in reuse
+
+**Pillar dashboards (Governance, Security, Compliance, Licensing, Adoption,
+Health).** The redesign's UI-only pass (Parts 2-3) correctly replaced these
+  pages' real wiring with fixture data per the parallel plan's own
+  instructions — expected, not a regression. **Correction — this is NOT a
+  drop-in reuse of `usePortalV2Pillars`.** The redesign is a real, deep UI
+  change (risk heat-maps, "what happens if it lands," "what is holding it
+  down," cluster grids) — meaningfully richer than what the old UI needed.
+  `usePortalV2Pillars` deliberately **narrows** the real server response
+  (`useWarRoomPillarStats()` -> `WarRoomPillarCard`, per its own header
+  comment) rather than exposing everything the server actually sends. The real
+  wiring work, per pillar:
+  1. Audit what the new design's fixture data actually needs against what the
+     real server response already contains but the current narrowed
+     `portalV2Model.ts` mirror type discards — likely widenable safely for
+     some fields.
+  2. For anything the new design needs that has no real backing anywhere (a
+     heat-map's likelihood/impact matrix almost certainly doesn't exist as
+     structured data today) — that's real backend design work, not a type
+     change. Do not assume; check each field against real data before
+     deciding which bucket it's in.
+  Each pillar's `*DashboardData.ts` module has its own header comment flagging
+  which values are fixture — start there, but expect the actual scope to be
+  larger than the comment implies given how much the design changed.
+
+---
+
+## 3. Real backend, wrong role scope — needs new customer-scoped routes only
 
 Same leak-risk pattern established repeatedly tonight: reusing an
 MSP-operator-only route directly from a customer page would expose other
@@ -62,7 +90,7 @@ tenants' data.
   in the UI pass (`people` prop / `onPeopleChange` callback) — confirm the
   underlying data table's real customer scoping before wiring.
 
-## 3. Real backend, real state machine, genuinely new build
+## 4. Real backend, real state machine, genuinely new build
 
 - **Hold Windows.** Zero existing implementation. Build the real state machine
   per the README's hold-window section. **The prototype's own state machine
@@ -92,14 +120,14 @@ tenants' data.
     needs to resolve "which tenant's consent" from the CR's target tenant
     before running anything.
 
-## 4. Real number, must stay in sync both sides
+## 5. Real number, must stay in sync both sides
 
 - **Copilot gate.** `COPILOT_GATE_TARGET` in `journeyTokens.ts` (frontend) and
   `copilot-gate.ts` (backend) are already test-locked to agree — each side
   asserted by its own test. Wire the UI to the real value; never hardcode 82
   again once wiring replaces the fixture.
 
-## 5. Genuinely unknown — needs the same investigation discipline as everything
+## 6. Genuinely unknown — needs the same investigation discipline as everything
    above before assuming either way
 
 - **PII Governance and Security Plan** — 0% UI coverage, never checked for any
@@ -112,7 +140,7 @@ tenants' data.
 - **Retainer/hours tracking** — confirmed genuinely greenfield earlier
   tonight, no time field anywhere in the project/kanban data model. Real build.
 
-## 6. Cross-cutting, not a page — the multi-tenant (Dev/Test/Staging/Prod)
+## 7. Cross-cutting, not a page — the multi-tenant (Dev/Test/Staging/Prod)
    architecture
 
 Designed at length tonight, not started. Touches almost everything above:
@@ -131,15 +159,21 @@ this account have" is a real, queryable concept.
 1. Section 1 (Webhooks, Document Library) — zero backend risk, pure wiring,
    good first pass to prove the wiring methodology works before touching
    anything riskier.
-2. Section 4 (Copilot gate) — same reasoning, trivially low-risk, already
+2. Section 5 (Copilot gate) — same reasoning, trivially low-risk, already
    test-locked.
-3. Section 2 (customer-scoped route builds) — real but well-understood work,
+3. Section 2 (pillar dashboards) — start here once the easy wins are done.
+   Do the per-field audit pillar by pillar rather than assuming; some fields
+   may widen the existing type cheaply, others need real backend design.
+   Report findings per pillar before moving to the next, same discipline as
+   the design build's own sign-off pattern.
+4. Section 3 (customer-scoped route builds — SOPs, Risk Register, Change
+   Control, Microsoft Changes, Ownership) — real but well-understood work,
    same pattern proven multiple times tonight.
-4. Section 6 (multi-tenant architecture decision) — foundational, needs to
-   land before section 3's CR flow can be finished for real, even if section
-   3's non-tenant-specific pieces (Hold Windows state machine fixes, the
+5. Section 7 (multi-tenant architecture decision) — foundational, needs to
+   land before section 4's CR flow can be finished for real, even if section
+   4's non-tenant-specific pieces (Hold Windows state machine fixes, the
    verification connector) start earlier.
-5. Section 3 (Hold Windows, the full CR flow) — the highest-stakes, most
+6. Section 4 (Hold Windows, the full CR flow) — the highest-stakes, most
    novel work in this whole plan.
-6. Section 5 (the unknowns) — investigate each properly before scoping,
+7. Section 6 (the unknowns) — investigate each properly before scoping,
    same discipline as everything else in this document.
