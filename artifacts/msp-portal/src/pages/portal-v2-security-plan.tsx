@@ -32,11 +32,8 @@ import { useState } from "react";
 import { useLocation } from "wouter";
 
 import { PortalV2Shell } from "@/components/portal-v2/PortalV2Shell";
-import {
-  SECURITY_PLAN,
-  SECURITY_PLAN_OWNER,
-  type SecPlanRow,
-} from "@/components/portal-v2/securityPlanData";
+import { type SecPlanRow } from "@/components/portal-v2/securityPlanData";
+import { useSecurityPlan } from "@/components/portal-v2/securityPlanLive";
 import {
   SP_STATE_META,
   spCounts,
@@ -67,7 +64,10 @@ const LIVE_ROUTES = new Set<string>([
 
 export default function PortalV2SecurityPlanPage() {
   const [, navigate] = useLocation();
-  const plan = SECURITY_PLAN;
+  // Live from GET /api/portal/security-plan, falling back to the design fixture
+  // (SECURITY_PLAN / SECURITY_PLAN_OWNER) on a failed read or a customer with no
+  // plan authored yet. `dataState` says which source is on screen.
+  const { plan, owner, dataState } = useSecurityPlan();
 
   const [selected, setSelected] = useState<string>("governance");
   const section = spSelectedSection(plan, selected);
@@ -92,6 +92,29 @@ export default function PortalV2SecurityPlanPage() {
           boxSizing: "border-box",
         }}
       >
+        {/*
+          Which source the plan came from — "live" once GET /api/portal/security-plan
+          returned a usable plan, "fixture" while it falls back to the design's own,
+          "loading" before the first response. The seeded plan is a verbatim copy of
+          the design fixture, so its text alone cannot tell the two apart; this is the
+          one signal that proves the page is reading the endpoint, and is what the
+          test manifest asserts. Off-screen, not display:none, so its textContent is
+          still readable by the harness.
+        */}
+        <span
+          data-testid="pv2-sp-source"
+          style={{
+            position: "absolute",
+            width: 1,
+            height: 1,
+            overflow: "hidden",
+            clip: "rect(0 0 0 0)",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {dataState}
+        </span>
+
         {/* ── Header — proto 4261-4277 ──────────────────────────────────── */}
         <div
           style={{
@@ -179,11 +202,11 @@ export default function PortalV2SecurityPlanPage() {
                   fontWeight: 800,
                   letterSpacing: ".02em",
                   color: "#0b1524",
-                  background: SECURITY_PLAN_OWNER.tone,
+                  background: owner.tone,
                   border: "1px solid transparent",
                 }}
               >
-                {SECURITY_PLAN_OWNER.initials}
+                {owner.initials}
               </span>
               <div
                 style={{ display: "flex", flexDirection: "column", gap: 0, textAlign: "right" }}
