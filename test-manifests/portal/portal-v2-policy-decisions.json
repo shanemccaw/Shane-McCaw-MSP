@@ -1,7 +1,7 @@
 {
   "feature": "Customer Portal v2 Part 5 -- Operate -> Policy Decisions (/portal-v2/policy-decisions). Recreated from the prototype's own `isPolicyDecisions` block ('Customer Portal Shell.dc.html' 4578-4657) and its `pdStates`/`pdFilterNote`/`pdRows` derivation (20247-20328), transcribed into policyDecisionsModel.ts and pinned by unit assertions. Four decisions, one in each state (proposed / live / due / expired), four state counters that double as filters, a knowledge-base info dot, rows that expand in place into the full record (owner / signed / next review / risk register, why this is the position, compensating control, where it stands today) and their per-state actions (Sign it off for proposed, Renew it for due/expired, Withdraw and fix instead for all). The fixture is policyDecisionsData.ts, now the single home of the decisions -- overviewData re-exports it as OV_POLICY_DECISIONS for the Overview lane, so the two can never disagree.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "UNSET",
+  "lastVerifiedAgainstCommit": "6f4c02fa",
   "notes": [
     "THE LOGIN BLOCK IS NOT OPTIONAL. /portal-v2/* sits behind ProtectedRoute; a probe that skips the five login steps hits the login screen and every assertion fails for a reason unrelated to the page.",
     "UI ROUTE SHAPE: msp-portal's outer WouterRouter has base '/portal' and SlugScope nests a second router at '/{slug}', so the real URL is /portal/{slug}/portal-v2/policy-decisions. App.tsx declares it BEFORE '/portal-v2/:pillar' so the param route cannot swallow it -- Policy Decisions is a plain, param-free route.",

@@ -1,7 +1,7 @@
 {
   "feature": "Customer Portal v2 Part 5 -- Operate -> Remediation Tracker (/portal-v2/remediation). Recreated from the prototype's own `isRemediation` block ('Customer Portal Shell.dc.html' 5961-6012) and its `rtRun` derivation (20380-20441), transcribed into remediationModel.ts and pinned by unit assertions. Not a project plan and not a quote -- a run-down of what has been fixed and what has not, off the design's own RT_PHASES fixture (30 tasks across three phases). A progress bar, four state counters that double as filters (Fixed and verified / Done, awaiting re-scan / Still to do / Accepted as-is), and every finding grouped under its pillar with the state it is in, who closes it, a change-request badge on Shane-run done items, and the pillar's responsible RACI owner.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "UNSET",
+  "lastVerifiedAgainstCommit": "6f4c02fa",
   "notes": [
     "THE LOGIN BLOCK IS NOT OPTIONAL. /portal-v2/* sits behind ProtectedRoute; a probe that skips the five login steps hits the login screen and every assertion fails for a reason unrelated to the page.",
     "UI ROUTE SHAPE: msp-portal's outer WouterRouter has base '/portal' and SlugScope nests a second router at '/{slug}', so the real URL is /portal/{slug}/portal-v2/remediation. App.tsx declares it BEFORE '/portal-v2/:pillar' so the param route cannot swallow it -- Remediation is a plain, param-free route.",
