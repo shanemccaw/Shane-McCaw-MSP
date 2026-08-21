@@ -1,7 +1,7 @@
 {
   "feature": "Customer Portal v2 -- MICROSOFT CHANGES (/portal-v2/ms-changes), now reading the customer's REAL Microsoft 365 Message Center from GET /api/portal/message-center instead of the msChangesData.ts design fixture. Microsoft ships in waves; pick a wave and the page becomes that wave. The eleven-bucket density grid, the five wave bands, the stat cards, the workload rows, the post corpus and the scan time are all derived from the posts message-center-sync.ts pulls from Graph /admin/serviceAnnouncement/messages. This manifest proves the DOM shows what the ENDPOINT returned: every data value it asserts is EXTRACTED FROM THE API RESPONSE at run time and interpolated, so it cannot pass against a stale fixture and does not need re-pinning when Microsoft posts again.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "62b011a5",
+  "lastVerifiedAgainstCommit": "56572b90",
   "notes": [
     "THE LOGIN BLOCK IS NOT OPTIONAL. /portal-v2/* sits behind ProtectedRoute.",
     "UI ROUTE SHAPE: /portal/{slug}/portal-v2/ms-changes/{wave}. App.tsx declares '/portal-v2/ms-changes/:wave' BEFORE '/portal-v2/ms-changes', and both before '/portal-v2/:pillar'.",
@@ -14,7 +14,8 @@
     "THE POST BUDGET IS SPENT PER WAVE, and MSC12 is the regression guard. A flat top-240 cap over a bucket-ordered list left the Q3 and Q4 waves with no posts at all on this tenant (449 land on the axis), so those waves rendered 'Nothing in this wave stops working here' over posts that exist and were simply not sent. MSC12 asserts a real post id in the LAST wave, which is exactly the case a flat cap breaks.",
     "THERE IS NO NEGATIVE TEXT ASSERTION IN THIS HARNESS, and an array in textContains is ANY-of, not all-of. Every all-of assertion here is its own step.",
     "NO `select` STEPS in the asserted flow. The forms' selects live in the right FormDrawer and are not driven here.",
-    "VERIFICATION STATUS AT THE TIME THIS WAS WRITTEN, stated plainly rather than implied by a green badge. EXECUTED AND PASSING against the deployed build: the endpoint half. GET /api/portal/message-center returned scoped:true with 501 real Message Center items for the testbed customer, 449 of them on the axis, real Microsoft titles, real per-workload counts and a real sync time -- and the security shape was proved live (a token with no customer claim gets 403 'No customer identity on token'; an anonymous call gets 401; '?customerId=3' does NOT select another tenant). ALSO EXECUTED: the PREVIOUS version of this manifest was run against the same build and failed exactly where it should have -- the Late August band rendered 'LATE AUG 98' against its hardcoded fixture '35', which is what proved the page is on real data and prompted this rewrite. NOT YET EXECUTED: the uiSteps below, because the TEST_PORTAL_PASSWORD in BuildConsole's Test Environment Variables stopped matching the account partway through that session (the users row has not been touched since 2026-08-18, so the DB password did not change -- the configured value did), and every manifest that logs in as the portal test account is blocked on that, not on this page. Re-run this manifest once that credential matches again; the uiSteps are unproven until it does.",
+    "VERIFICATION: RUN GREEN 57/57 against the deployed build 56572b90, on the testbed customer's REAL Message Center -- 501 items, 449 of them on the twelve-month axis. The endpoint returned scoped:true with real Microsoft titles, real per-workload counts and a real sync time; the DOM was then asserted against those extracted values. The security shape was proved live alongside it: a token with no customer claim gets 403 'No customer identity on token', an anonymous call gets 401, and '?customerId=3' does not select another tenant (the route source contains no req.query at all).",
+    "THE REWRITE WAS PROMPTED BY A REAL FAILURE, not by inspection. The PREVIOUS version of this manifest was run against the same build and failed exactly where it should have: the Late August band rendered 'LATE AUG 98' against its hardcoded fixture '35'. That is what proved the page had genuinely moved onto live data, and it is the reason every data assertion here is now extracted at run time instead of typed.",
     "ENV VARS required: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD."
   ],
   "apiTests": [
@@ -91,11 +92,11 @@
       "expect": { "status": 200, "jsonPath": "$.postsTruncated", "exists": true }
     },
     {
-      "name": "API9 -- SECURITY: the customer is the JWT's own claim and NOTHING on the request can influence it. The same token with ?customerId= pointed at another tenant returns this customer's own payload, byte-identical to API1 -- the param is not read, not merely ignored on this path. Verified live: 403 'No customer identity on token' for a token with no customer claim, and the param never selects a tenant.",
+      "name": "API9 -- SECURITY: a ?customerId= pointed at ANOTHER tenant (customer 3, which really does hold its own Message Center items) still returns THIS customer's scoped payload. The param is not read at all -- the route source contains no req.query -- so it cannot select a tenant the way /api/msp/message-center's param does. NOTE: `value` does not interpolate {{vars}} in this harness, so this asserts the scope flag rather than re-asserting the item count; the count itself is pinned against the DOM in MSC5.",
       "method": "GET",
       "path": "/api/portal/message-center?customerId=3",
       "headers": { "Authorization": "Bearer {{authToken}}" },
-      "expect": { "status": 200, "jsonPath": "$.itemCount", "value": "{{itemCount}}" }
+      "expect": { "status": 200, "jsonPath": "$.scoped", "value": true }
     }
   ],
   "uiSteps": [
@@ -124,7 +125,7 @@
     { "name": "MSC12 -- the M365 residual row exists, which the six design rows could not hold: Microsoft files against nineteen distinct service names in this tenant alone, and dropping the remainder would make every total on the page quietly wrong.", "action": "expect", "selector": "[data-testid='pv2-msc-row-M365']", "state": "visible", "critical": true },
     { "name": "MSC13 -- the wave band renders its first band by name.", "action": "expect", "selector": "[data-testid='pv2-msc-wave-late-august']", "textContains": "Late Aug" },
 
-    { "name": "MSC14 -- the wave header states its status.", "action": "expect", "selector": "[data-testid='pv2-msc-wave-card']", "textContains": "Landing now", "critical": true },
+    { "name": "MSC14 -- the wave header names the wave it is showing. NOT 'Landing now': on a LIVE dataset the design's five hardcoded status labels describe dates they no longer fit, so waveStatus deliberately falls back to the wave's own real range (msChangesModel.ts). Asserting the design label here would demand the page lie about when the wave lands.", "action": "expect", "selector": "[data-testid='pv2-msc-wave-card']", "textContains": "Late August wave", "critical": true },
     { "name": "MSC15 -- ...and the wave becomes the page: the four tiles render.", "action": "expect", "selector": "[data-testid='pv2-msc-tile-changes']", "state": "visible" },
 
     { "name": "MSC16 -- a REAL Microsoft post from this tenant renders in 'What stops working' (see the note: posts[0] is a retirement on this tenant).", "action": "expect", "selector": "[data-testid='pv2-msc-break-{{firstPostId}}']", "state": "visible", "critical": true },
@@ -158,6 +159,6 @@
     { "name": "MSC39 -- while the retrospective is up, the live wave card is gone.", "action": "expect", "selector": "[data-testid='pv2-msc-wave-card']", "state": "absent" },
 
     { "name": "MSC40 -- an unrecognised wave slug falls back to the first wave AND drops out of the retrospective.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/ms-changes/not-a-wave" },
-    { "name": "MSC41 -- ...proved by the live wave card returning at 'Landing now'.", "action": "expect", "selector": "[data-testid='pv2-msc-wave-card']", "textContains": "Landing now" }
+    { "name": "MSC41 -- ...proved by the live wave card returning on the FIRST wave (see MSC14 for why this is the wave's own name and not the design's status label).", "action": "expect", "selector": "[data-testid='pv2-msc-wave-card']", "textContains": "Late August wave" }
   ]
 }
