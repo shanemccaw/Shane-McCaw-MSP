@@ -1,5 +1,5 @@
 {
-  "feature": "Customer Portal v2 -- the OWNERSHIP matrix (/portal-v2/ownership), recreated from 'Ownership.dc.html', a file that did not exist in the round-one handoff at all. Four names (Responsible / Accountable / Consulted / Informed) against twenty-four objects across seven types, five derived counters above the matrix, and four detail panels behind them. Every number on screen is derived from one fixture (ownershipData.ts) by ownershipModel.ts and pinned by 56 unit assertions; this manifest proves the DOM actually shows what those derivations return.",
+  "feature": "Customer Portal v2 -- the OWNERSHIP matrix (/portal-v2/ownership), recreated from 'Ownership.dc.html', a file that did not exist in the round-one handoff at all. Four names (Responsible / Accountable / Consulted / Informed) against twenty-four objects across seven types, five derived counters above the matrix, and four detail panels behind them. PART 10 finished the deferred slide-overs: the assign slide-over's own surface (Mark accepted / Who held it before / Leave unassigned -- record it as a gap), the add-a-row flow, delegation + handover, the row detail, and 'What ownership drives' (routing). Every number on screen is derived from one fixture (ownershipData.ts) by ownershipModel.ts and pinned by 78 unit assertions; this manifest proves the DOM actually shows what those derivations return.",
   "baseUrl": "{{DEPLOY_URL}}",
   "lastVerifiedAgainstCommit": "b0c8be76",
   "notes": [
@@ -85,6 +85,32 @@
     { "name": "OWN40 -- the counters do NOT re-derive against the filter: concentration is a property of the estate, not of what you are looking at.", "action": "expect", "selector": "[data-testid='pv2-own-counter-all']", "textContains": "24" },
 
     { "name": "OWN41 -- an unrecognised type segment falls back to Everything rather than rendering an empty page.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/ownership/not-a-type" },
-    { "name": "OWN42 -- ...proved by the meta reading the full estate again.", "action": "expect", "selector": "[data-testid='pv2-own-matrix-meta']", "textContains": "24 of 24 shown" }
+    { "name": "OWN42 -- ...proved by the meta reading the full estate again.", "action": "expect", "selector": "[data-testid='pv2-own-matrix-meta']", "textContains": "24 of 24 shown" },
+
+    { "name": "OWN43 -- PART 10. reset to a fresh matrix, then open 'What ownership drives' from the header.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/ownership" },
+    { "name": "OWN43b -- click the routing button.", "action": "click", "selector": "[data-testid='pv2-own-routing']" },
+    { "name": "OWN44 -- the routing slide-over is the design's own 'What ownership drives'.", "action": "expect", "selector": "[data-testid='pv2-own-rules']", "textContains": "What ownership drives", "critical": true },
+    { "name": "OWN45 -- ...with the line that says why the rules matter.", "action": "expect", "selector": "[data-testid='pv2-own-rules']", "textContains": "this page becomes a diagram instead of a system" },
+
+    { "name": "OWN46 -- reset, then open the add-a-row flow.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/ownership" },
+    { "name": "OWN46b -- click Add a row.", "action": "click", "selector": "[data-testid='pv2-own-add-row']" },
+    { "name": "OWN47 -- the add-a-row slide-over opens with its own title.", "action": "expect", "selector": "[data-testid='pv2-own-newrow']", "textContains": "Add something to the matrix", "critical": true },
+    { "name": "OWN48 -- ...and the four-gaps honesty line.", "action": "expect", "selector": "[data-testid='pv2-own-newrow']", "textContains": "It arrives with four gaps" },
+    { "name": "OWN49 -- ...the type-picker label.", "action": "expect", "selector": "[data-testid='pv2-own-newrow']", "textContains": "What kind of thing is it" },
+    { "name": "OWN50 -- ...and the sub-line field label.", "action": "expect", "selector": "[data-testid='pv2-own-newrow']", "textContains": "The detail underneath" },
+
+    { "name": "OWN51 -- reset, then open the assign slide-over on a cell that has history.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/ownership" },
+    { "name": "OWN51b -- click the Responsible cell for Exchange Online.", "action": "click", "selector": "[data-testid='pv2-own-cell-svc-exo-r']" },
+    { "name": "OWN52 -- the design's own assign slide-over opens, not a generic form.", "action": "expect", "selector": "[data-testid='pv2-own-assign']", "textContains": "Leave unassigned — record it as a gap", "critical": true },
+    { "name": "OWN53 -- ...and it carries the prior-holders block.", "action": "expect", "selector": "[data-testid='pv2-own-assign']", "textContains": "Who held it before" },
+
+    { "name": "OWN54 -- reset, then open a cell whose owner has not accepted yet.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/ownership" },
+    { "name": "OWN54b -- click the Responsible cell for Entra ID, which is pending.", "action": "click", "selector": "[data-testid='pv2-own-cell-svc-entra-r']" },
+    { "name": "OWN55 -- the acceptance surface shows the Mark-accepted action.", "action": "expect", "selector": "[data-testid='pv2-own-assign-accept']", "textContains": "Mark accepted", "critical": true },
+
+    { "name": "OWN56 -- reset, then open the row detail by clicking a row's name.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/ownership" },
+    { "name": "OWN56b -- click the Exchange Online row name.", "action": "click", "selector": "[data-testid='pv2-own-rowname-svc-exo']" },
+    { "name": "OWN57 -- the row-detail slide-over names what the service's ownership drives.", "action": "expect", "selector": "[data-testid='pv2-own-rowdetail']", "textContains": "What these names cover", "critical": true },
+    { "name": "OWN58 -- ...and spells out a Responsible duty for a service.", "action": "expect", "selector": "[data-testid='pv2-own-rowdetail']", "textContains": "Reads every Microsoft notice for this service against the tenant" }
   ]
 }

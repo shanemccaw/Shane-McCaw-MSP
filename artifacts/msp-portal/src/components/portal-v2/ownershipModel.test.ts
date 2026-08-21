@@ -10,20 +10,36 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import { OWN_ESC_DAYS_SEED, OWN_PEOPLE_SEED } from "./settingsData";
-import { MISSING_OBJECTS, OWN_OBJECTS } from "./ownershipData";
+import { MISSING_OBJECTS, OWN_OBJECTS, ROUTING_RULES } from "./ownershipData";
 import {
   acceptanceOf,
+  activeDelegations,
+  addToRows,
   addedObject,
   allObjects,
+  allObjectsWith,
+  assignAcceptLabel,
   cellMark,
   cellTitle,
   counterOn,
   counters,
   coverageRows,
+  coverLine,
+  customObject,
+  delNote,
+  delegationFor,
+  delegationOn,
+  deliveryLine,
+  deliverySent,
+  escLateCount,
+  escLine,
+  escalationLate,
   escalationOf,
   gapRows,
   gapsOf,
   groupedByType,
+  handoverBlocked,
+  handoverSubmitLabel,
   isLate,
   isNamedOn,
   loadRows,
@@ -33,10 +49,20 @@ import {
   noRowsLine,
   ownerOf,
   personCounts,
+  personDelText,
+  priorHolders,
+  provLine,
   provenanceOf,
+  riskButtonLabel,
+  routingLabel,
+  routingRuleLive,
+  rowDetailDrives,
+  rowDrivesLabel,
+  rowRoleDuties,
   rowSub,
   shownObjects,
   sodRows,
+  type Delegation,
 } from "./ownershipModel";
 
 const obj = (id: string) => {
@@ -443,5 +469,192 @@ describe("copy", () => {
   it("says something different when a person filter is on and empty", () => {
     assert.equal(noRowsLine("Ruth Okafor"), "Ruth Okafor is not named on anything in this category.");
     assert.equal(noRowsLine(null), "Nothing in this category yet — add a row and give it four names.");
+  });
+});
+
+/* ── Part 10: the assign slide-over, delegation, routing and row detail ──── */
+
+describe("acceptance and provenance overrides", () => {
+  it("lets a local override win over the seeded acceptance", () => {
+    assert.equal(acceptanceOf("svc-exo", "r", {}), "accepted");
+    assert.equal(acceptanceOf("svc-exo", "r", { "svc-exo:r": "pending" }), "pending");
+    // Consulted still carries none, override or not.
+    assert.equal(acceptanceOf("svc-exo", "c", { "svc-exo:c": "pending" }), "");
+  });
+
+  it("lets a provenance override win over fixture and default", () => {
+    const ov = { "svc-exo:r": { by: "Priya Raman", at: "20 Aug 2026", why: "Changed on the ownership page", from: "20 Aug 2026" } };
+    assert.equal(provenanceOf("svc-exo", "r", ov).by, "Priya Raman");
+    assert.equal(provenanceOf("svc-exo", "r", ov).why, "Changed on the ownership page");
+  });
+
+  it("threads the acceptance override into the cell mark", () => {
+    // Priya is not away and svc-exo:r is normally accepted -> no mark; a pending
+    // override makes the same cell read as not accepted.
+    assert.equal(cellMark({ objectId: "svc-exo", k: "r", person: person("priya"), escDays: 5 }), null);
+    assert.equal(
+      cellMark({ objectId: "svc-exo", k: "r", person: person("priya"), escDays: 5, accOv: { "svc-exo:r": "pending" } }),
+      "pending",
+    );
+  });
+});
+
+describe("the assign slide-over surface", () => {
+  it("prints the one-line provenance, with the effective date only when it differs", () => {
+    assert.equal(
+      provLine(provenanceOf("svc-teams", "r")),
+      "Set by Shane McCaw on 12 Aug 2026 — Initial matrix, built from the tenant scan",
+    );
+    assert.equal(
+      provLine(provenanceOf("MC1049877", "r")),
+      "Set by Priya Raman on 18 Aug 2026 · effective 1 Sep 2026 — Sales tenders are the only thing affected and Marcus holds the tenant setting",
+    );
+  });
+
+  it("labels the acceptance chip: pending, a recorded date, or nothing", () => {
+    assert.equal(assignAcceptLabel("svc-entra", "r", "shane"), "Not accepted yet");
+    assert.equal(assignAcceptLabel("svc-exo", "r", "priya"), "Accepted 12 Aug");
+    assert.equal(assignAcceptLabel("svc-teams", "a", "dan"), "Accepted");
+    assert.equal(assignAcceptLabel("svc-exo", "c", "shane"), "");
+    assert.equal(assignAcceptLabel("svc-copilot", "r", ""), "");
+  });
+
+  it("shows the away/cover line only when the named person is away", () => {
+    assert.equal(coverLine(person("marcus"), person("priya")), "Marcus Lee is away — back 22 september. Priya Raman covers.");
+    assert.equal(coverLine(person("priya"), null), "");
+  });
+
+  it("states the escalation clock, or that nothing is waiting", () => {
+    assert.equal(escLine(7, 5), "7 days with no movement. Escalates to the accountable name at 5.");
+    assert.equal(escLine(0, 5), "Nothing waiting. The clock starts when a decision or approval lands here.");
+  });
+
+  it("reads the Informed delivery, and only for Informed", () => {
+    assert.equal(deliveryLine("svc-exo", "i"), "Sent 13 Aug 2026 · opened by 3 of 4 · Legacy auth notice to the service desk");
+    assert.equal(deliverySent("svc-exo"), true);
+    assert.equal(deliveryLine("ANN-share", "i"), "Drafted, never sent — nothing has reached anyone.");
+    assert.equal(deliverySent("ANN-share"), false);
+    assert.equal(deliveryLine("svc-teams", "i"), "Nothing has been sent to the informed name for this yet.");
+    assert.equal(deliveryLine("svc-exo", "r"), "");
+  });
+
+  it("labels the risk button both ways", () => {
+    assert.equal(riskButtonLabel(false), "Accept it unowned");
+    assert.equal(riskButtonLabel(true), "Unowned by choice — remove that");
+  });
+
+  it("lists who held it before, in from–to form", () => {
+    assert.deepEqual(priorHolders("svc-exo", "r"), [
+      { who: "Dan Whitlock", when: "Jan 2026 – 12 Aug 2026", why: "Held it while the IT manager role was vacant" },
+    ]);
+    assert.deepEqual(priorHolders("svc-teams", "r"), []);
+  });
+});
+
+describe("delegation", () => {
+  const dels: Delegation[] = [{ from: "priya", to: "marcus", until: "22 September", scope: "all", done: false }];
+
+  it("finds the live handover from a person, and drops done ones", () => {
+    assert.equal(delegationFor(dels, "priya")?.to, "marcus");
+    assert.equal(delegationFor(dels, "dan"), null);
+    assert.deepEqual(activeDelegations([{ from: "a", to: "b", until: "x", scope: "all", done: true }]), []);
+  });
+
+  it("respects scope when deciding whether a handover covers an object", () => {
+    assert.ok(delegationOn(dels, obj("svc-exo"), "priya"));
+    const scoped: Delegation[] = [{ from: "priya", to: "marcus", until: "x", scope: "service", done: false }];
+    assert.ok(delegationOn(scoped, obj("svc-exo"), "priya"));
+    assert.equal(delegationOn(scoped, obj("CR-0142"), "priya"), null);
+  });
+
+  it("writes the assign-slide-over note and the person-band chip", () => {
+    assert.equal(delNote(dels, obj("svc-exo"), "priya", OWN_PEOPLE_SEED), "Handed to Marcus Lee until 22 September.");
+    assert.equal(delNote(dels, obj("svc-exo"), "dan", OWN_PEOPLE_SEED), "");
+    assert.equal(personDelText(dels, "priya", OWN_PEOPLE_SEED), "Handed to Marcus Lee until 22 September");
+    assert.equal(
+      personDelText([{ from: "priya", to: "marcus", until: "x", scope: "service", done: false }], "priya", OWN_PEOPLE_SEED),
+      "Handed to Marcus Lee until x · service only",
+    );
+  });
+});
+
+describe("the escalation clock and routing rules", () => {
+  it("lists every cell past the clock, using the object name", () => {
+    const late = escalationLate(OWN_OBJECTS, {}, 5);
+    assert.deepEqual(
+      late.map((e) => [e.name, e.days, e.role]),
+      [
+        ["Disable legacy auth ahead of Microsoft", 7, "Accountable"],
+        ["Teams toolbar and recap tab", 6, "Responsible"],
+      ],
+    );
+    assert.equal(escLateCount(OWN_OBJECTS, {}, 5), 2);
+    assert.equal(escLateCount(OWN_OBJECTS, {}, 10), 0);
+  });
+
+  it("generates the escalate rule live line and passes the rest through", () => {
+    const escLate = escalationLate(OWN_OBJECTS, {}, 5);
+    const escRule = ROUTING_RULES.find((r) => r.k === "escalate")!;
+    assert.equal(
+      routingRuleLive(escRule, 5, escLate),
+      "Nothing moves for 5 days and it goes to the accountable name. 2 past it now: Disable legacy auth ahead (7d), Teams toolbar and recap (6d)",
+    );
+    const decRule = ROUTING_RULES.find((r) => r.k === "decisions")!;
+    assert.equal(routingRuleLive(decRule, 5, escLate), decRule.live);
+  });
+
+  it("counts the live rules in the routing label", () => {
+    assert.equal(routingLabel({ decisions: true, approvals: true, consulted: true, informed: true, digest: true, escalate: true }), "Routing · 6 of 6");
+    assert.equal(routingLabel({ decisions: true, approvals: false, consulted: true, informed: true, digest: true, escalate: true }), "Routing · 5 of 6");
+  });
+});
+
+describe("assign to more, handover and add-a-row", () => {
+  it("offers only objects a person is not already named on, with the short type", () => {
+    const rows = addToRows(OWN_OBJECTS, "ruth", {});
+    assert.ok(!rows.some((r) => r.id === "svc-spo")); // ruth is consulted there
+    const cr = rows.find((r) => r.id === "CR-0142");
+    assert.ok(cr);
+    assert.equal(cr.type, "CR");
+  });
+
+  it("blocks and labels the handover submit as the two fields fill", () => {
+    assert.equal(handoverBlocked("", ""), true);
+    assert.equal(handoverBlocked("marcus", "  "), true);
+    assert.equal(handoverBlocked("marcus", "22 September"), false);
+    assert.equal(handoverSubmitLabel("", ""), "Pick who covers");
+    assert.equal(handoverSubmitLabel("marcus", ""), "Give it an end date");
+    assert.equal(handoverSubmitLabel("marcus", "22 September"), "Start the handover");
+  });
+
+  it("builds a custom row with four gaps and appends it to the list", () => {
+    const c = customObject({ id: "own-x", type: "service", name: "Power BI workspaces", sub: "" });
+    assert.equal(c.sub, "Added by hand · nobody named yet");
+    assert.deepEqual([c.r, c.a, c.c, c.i], ["", "", "", ""]);
+    assert.equal(allObjectsWith([], [{ id: "own-x", type: "service", name: "N", sub: "s" }]).length, OWN_OBJECTS.length + 1);
+  });
+});
+
+describe("row detail", () => {
+  it("gives a service the changes it drives, and whether each inherits its owner", () => {
+    const drives = rowDetailDrives(obj("svc-exo"), OWN_OBJECTS, {}, OWN_PEOPLE_SEED);
+    assert.deepEqual(drives, [
+      { id: "MC1042318", name: "Basic authentication disabled", when: "1 October 2026", own: "Marcus Lee", inherits: "has its own owner" },
+    ]);
+    assert.equal(rowDrivesLabel("service"), "What these names cover");
+  });
+
+  it("points a change back at the service its names come from", () => {
+    const drives = rowDetailDrives(obj("MC1042318"), OWN_OBJECTS, {}, OWN_PEOPLE_SEED);
+    assert.deepEqual(drives, [
+      { id: "svc-exo", name: "Exchange Online & Apps", when: "service default", own: "Priya Raman", inherits: "where these names come from" },
+    ]);
+    assert.equal(rowDrivesLabel("change"), "Where these names come from");
+  });
+
+  it("drives nothing for a control, and names the per-role duties", () => {
+    assert.deepEqual(rowDetailDrives(obj("CE-AUTH"), OWN_OBJECTS, {}, OWN_PEOPLE_SEED), []);
+    assert.equal(rowRoleDuties("service", "r")[0], "Reads every Microsoft notice for this service against the tenant");
+    assert.equal(rowRoleDuties("cr", "a")[0], "Approves it — nothing moves without this name");
   });
 });

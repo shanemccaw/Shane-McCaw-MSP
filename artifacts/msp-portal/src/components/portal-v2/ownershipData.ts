@@ -96,6 +96,21 @@ export const TYPE_SINGULAR: Readonly<Record<ObjectTypeKey, string>> = {
   announce: "Announcement",
 };
 
+/**
+ * The shorter noun the "Assign to more" slide-over uses — Ownership.dc.html
+ * 1094-1095. Identical to TYPE_SINGULAR except `cr`, which abbreviates to "CR"
+ * because it sits in a 128px column rather than a full row.
+ */
+export const TYPE_SHORT: Readonly<Record<ObjectTypeKey, string>> = {
+  service: "Service",
+  change: "Change",
+  cr: "CR",
+  control: "Control",
+  freeze: "Freeze",
+  incident: "Incident",
+  announce: "Announcement",
+};
+
 /* ────────────────────────────────────────────────────────────────────────────
    The estate
    ──────────────────────────────────────────────────────────────────────── */
@@ -276,6 +291,130 @@ export const ESCALATION_DAYS: Readonly<Record<string, number>> = {
   "ANN-teams-recap:r": 6,
   "MC1049877:r": 3,
 };
+
+/**
+ * Cells where a specific acceptance DATE is recorded — Ownership.dc.html 604-607.
+ * The assign slide-over shows this instead of a bare "Accepted" when it has one.
+ */
+export const ACCEPTED_AT: Readonly<Record<string, string>> = {
+  "svc-exo:r": "Accepted 12 Aug",
+  "svc-teams:r": "Accepted 12 Aug",
+  "svc-spo:r": "Accepted 13 Aug",
+  "svc-purview:r": "Accepted 12 Aug",
+  "MC1042318:r": "Accepted 13 Aug",
+  "CR-0149:r": "Accepted 18 Aug",
+};
+
+/* ────────────────────────────────────────────────────────────────────────────
+   Who held it before, and where the informed line was sent
+   ──────────────────────────────────────────────────────────────────────── */
+
+export interface PriorHolder {
+  who: string;
+  from: string;
+  to: string;
+  why: string;
+}
+
+/** Ownership.dc.html 577-582, keyed `${objectId}:${roleKey}`. */
+export const OWNER_HISTORY: Readonly<Record<string, readonly PriorHolder[]>> = {
+  "svc-exo:r": [{ who: "Dan Whitlock", from: "Jan 2026", to: "12 Aug 2026", why: "Held it while the IT manager role was vacant" }],
+  "svc-entra:r": [{ who: "Priya Raman", from: "Mar 2026", to: "19 Aug 2026", why: "Moved to the architect for the MFA enforcement work" }],
+  "MC1042318:r": [{ who: "Priya Raman", from: "4 Apr 2026", to: "13 Aug 2026", why: "Reassigned once Bay 3 turned out to be the whole problem" }],
+  "CR-0142:a": [{ who: "Priya Raman", from: "18 Aug 2026", to: "18 Aug 2026", why: "Raised it, then handed the approval up" }],
+};
+
+export interface DeliveryRecord {
+  sent: string;
+  opened: number;
+  total: number;
+  note: string;
+}
+
+/** Ownership.dc.html 583-589, keyed by object id. Read for the Informed cell. */
+export const DELIVERY: Readonly<Record<string, DeliveryRecord>> = {
+  "ANN-teams-recap": { sent: "", opened: 0, total: 4, note: "Drafted, never sent" },
+  "ANN-share": { sent: "", opened: 0, total: 4, note: "Drafted, never sent" },
+  "ANN-copilot": { sent: "", opened: 0, total: 4, note: "Drafted, never sent" },
+  "svc-exo": { sent: "13 Aug 2026", opened: 3, total: 4, note: "Legacy auth notice to the service desk" },
+  "INC-2291": { sent: "2 Aug 2026", opened: 4, total: 4, note: "Incident summary, read by everyone informed" },
+};
+
+/** Ownership.dc.html 590 — the prototype's fixed clock. */
+export const OWN_TODAY = "20 August 2026";
+
+/* ────────────────────────────────────────────────────────────────────────────
+   What each role actually does, per object type — the row-detail duties
+   ──────────────────────────────────────────────────────────────────────── */
+
+/** Ownership.dc.html 659-702. Keyed by object type, then role key. */
+export const DUTIES: Readonly<Record<ObjectTypeKey, Readonly<Record<RoleKey, readonly string[]>>>> = {
+  service: {
+    r: ["Reads every Microsoft notice for this service against the tenant", "Raises the change request when something needs a window", "Runs the pre-flight check before each wave lands"],
+    a: ["Approves any change to this service", "Answers for it at the board and at audit", "Takes the decision when the responsible name goes quiet"],
+    c: ["Asked before a window is booked", "Says whether the timing breaks a business process"],
+    i: ["Told what changed, in the words the help desk uses", "Gets the crib sheet before the change lands"],
+  },
+  change: {
+    r: ["Owns this one notice, whatever the service default says", "Produces the evidence that says whether it applies here", "Books the window or records why none is needed"],
+    a: ["Approves the window and the rollback", "Signs the decision that this is acceptable"],
+    c: ["Asked before the date is set", "Confirms the affected process can take it"],
+    i: ["Told the date and what they will see", "Told again the day it lands"],
+  },
+  cr: {
+    r: ["Writes the change, the test and the rollback", "Runs it in the window and records the result"],
+    a: ["Approves it — nothing moves without this name", "Answers for the outcome if it goes wrong"],
+    c: ["Reviewed the risk before approval", "Confirms the freeze position"],
+    i: ["Told when it is scheduled and when it is done"],
+  },
+  control: {
+    r: ["Keeps the evidence current", "Flags when a Microsoft change moves this control"],
+    a: ["Attests the control at assessment", "Owns the finding if it fails"],
+    c: ["Asked when the wording or scope changes"],
+    i: ["Told when the control moves or the evidence is refreshed"],
+  },
+  freeze: {
+    r: ["Holds the calendar and the exception list", "Says what may still ship inside it"],
+    a: ["Grants exceptions, and owns them"],
+    c: ["Asked before the dates move"],
+    i: ["Told the dates, and told when something ships anyway"],
+  },
+  incident: {
+    r: ["Runs the incident and writes it up", "Produces the timeline and the cause"],
+    a: ["Answers for the impact and the follow-up actions"],
+    c: ["Asked during the incident for a business call"],
+    i: ["Told when it opens, and told what changed after"],
+  },
+  announce: {
+    r: ["Writes it in plain language and sends it", "Chooses the channel and the timing"],
+    a: ["Approves the wording before it goes out"],
+    c: ["Asked whether the audience is right"],
+    i: ["Receives it — and it is recorded that they did"],
+  },
+};
+
+/* ────────────────────────────────────────────────────────────────────────────
+   What ownership drives — the routing rules
+   ──────────────────────────────────────────────────────────────────────── */
+
+export interface RoutingRule {
+  k: "decisions" | "approvals" | "consulted" | "informed" | "digest" | "escalate";
+  label: string;
+  /** The live status line. Empty on the escalate rule, which is built at render. */
+  live: string;
+  /** Only the escalate rule carries the clock, so its live line is generated. */
+  esc?: boolean;
+}
+
+/** Ownership.dc.html 711-718. */
+export const ROUTING_RULES: readonly RoutingRule[] = [
+  { k: "decisions", label: "Decisions go to the Responsible person", live: "4 decisions sit in a queue: 2 with Marcus Lee, 1 with Priya Raman, 1 with Shane McCaw." },
+  { k: "approvals", label: "Approval requires the Accountable person", live: "CR-0142 is waiting on Dan Whitlock. CR-0149 cannot be approved — nobody is accountable for it yet." },
+  { k: "consulted", label: "Consulted are asked before the window opens", live: "Ruth Okafor is asked before the sharing default changes, because Sales send 84 of those links a month." },
+  { k: "informed", label: "Informed receive the announcement automatically", live: "The service desk gets every announcement the moment it is scheduled. Three are drafted and unsent." },
+  { k: "digest", label: "The Monday digest is built from this matrix", live: "Nine recipients, derived — not a static list. Each one only sees the services they are named on." },
+  { k: "escalate", label: "Silence escalates to the accountable name", live: "", esc: true },
+];
 
 /* ────────────────────────────────────────────────────────────────────────────
    Review state

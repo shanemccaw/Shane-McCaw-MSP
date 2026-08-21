@@ -1026,3 +1026,227 @@ export const MSC_WAVE_SHORT: Readonly<Record<string, string>> = {
 
 /** The "today" pin on bucket 0 - 1508. */
 export const MSC_TODAY_LABEL = "Today \u00b7 20 Aug";
+
+/** The two freeze buckets, WITH their labels - 'Microsoft Changes.dc.html' 1118. */
+export const MSC_FREEZE_BUCKET_DEFS: ReadonlyArray<{ i: number; label: string }> = [
+  { i: 2, label: "Quarter close" },
+  { i: 5, label: "Year end" },
+];
+
+/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+   Part 10 \u2014 the wave page's deferred surfaces
+   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */
+
+/** When your tenant was last read - 'Microsoft Changes.dc.html' 1190. */
+export const MSC_SCAN_AT = "19 August, 08:04";
+
+/**
+ * The stat cards under "Next 12 months" - 1395-1402. `statFilter` keys them, so
+ * a card can filter everything below it; the fixture holds the numbers and copy.
+ */
+export interface MscStatDef {
+  key: string;
+  label: string;
+  value: string;
+  sub: string;
+  tone: string;
+}
+
+export const MSC_STAT_DEFS: readonly MscStatDef[] = [
+  { key: "decisions", label: "Need a decision", value: "12", sub: "4 written up \u00b7 two inside five weeks", tone: "#f87171" },
+  { key: "hits", label: "Will break something", value: "3", sub: "Named systems, named dates", tone: "#fbbf24" },
+  { key: "soon", label: "Landing in 60 days", value: "34", sub: "3 written up \u00b7 22 Sep \u00b7 26 Sep \u00b7 1 Oct", tone: "#60a5fa" },
+  { key: "reversed", label: "Edited after publishing", value: "61", sub: "3 written up \u00b7 dates moved or withdrawn", tone: "#a78bfa" },
+  { key: "seen", label: "Needs an announcement", value: "39", sub: "6 written up \u00b7 drafts ready to send", tone: "#a78bfa" },
+  { key: "none", label: "No action at all", value: "352", sub: "1 written up \u00b7 dismissed with a reason each", tone: "#34d399" },
+];
+
+/**
+ * The status label per wave, in band order - 1752. Beyond the list it falls
+ * back to the wave's own date range.
+ */
+export const MSC_WAVE_STATUS: readonly string[] = [
+  "Landing now",
+  "Lands in 3 weeks",
+  "Lands from October",
+  "Lands from January",
+  "From April 2027",
+];
+
+/** Notice given / days left, per wave band - 1199-1202. */
+export interface MscWaveNotice {
+  given: number;
+  left: number;
+}
+
+export const MSC_WAVE_NOTICE: readonly MscWaveNotice[] = [
+  { given: 138, left: 4 },
+  { given: 82, left: 18 },
+  { given: 150, left: 42 },
+  { given: 210, left: 134 },
+  { given: 260, left: 224 },
+];
+
+/** The per-workload four names the changes inherit - 1191-1198. */
+export interface MscRaci {
+  r: string;
+  a: string;
+  c: string;
+  i: string;
+}
+
+export const MSC_RACI: Readonly<Record<string, MscRaci>> = {
+  Exchange: { r: "Priya Raman", a: "Dan Whitlock", c: "Shane McCaw", i: "Service desk" },
+  Teams: { r: "Priya Raman", a: "Dan Whitlock", c: "Comms \u00b7 Jo Feltham", i: "All staff" },
+  SharePoint: { r: "Marcus Lee", a: "Dan Whitlock", c: "Sales \u00b7 Ruth Okafor", i: "All staff" },
+  Entra: { r: "Shane McCaw", a: "Dan Whitlock", c: "Priya Raman", i: "Audit" },
+  Purview: { r: "Aisha Bello", a: "Legal \u00b7 R. Court", c: "Shane McCaw", i: "Audit" },
+  Copilot: { r: "Unassigned", a: "Dan Whitlock", c: "Shane McCaw", i: "Pilot group" },
+};
+
+/** The services in use, and what the last scan found - 1223-1230. Drives the filter. */
+export interface MscScan {
+  wl: string;
+  name: string;
+  found: string;
+}
+
+export const MSC_SCANS: readonly MscScan[] = [
+  { wl: "Exchange", name: "Exchange Online & Apps", found: "1,240 mailboxes \u00b7 11 accounts still using legacy authentication" },
+  { wl: "Teams", name: "Microsoft Teams", found: "1,240 licensed users \u00b7 3 meeting policies \u00b7 classic client on 9 machines" },
+  { wl: "SharePoint", name: "SharePoint & OneDrive", found: "212 libraries \u00b7 84 anonymous links in the last 30 days" },
+  { wl: "Entra", name: "Entra ID", found: "2 admin accounts with no registered MFA method" },
+  { wl: "Purview", name: "Purview", found: "6 retention labels in use \u00b7 3 libraries with restricting labels" },
+  { wl: "Copilot", name: "Copilot", found: "No licences assigned yet \u00b7 semantic index not enabled" },
+];
+
+/** The decision queue - "Decide before it lands" - 1729-1734. */
+export interface MscQueueItem {
+  id: string;
+  due: string;
+  kind: string;
+  tone: string;
+  decision: string;
+  ifNot: string;
+}
+
+export const MSC_QUEUE: readonly MscQueueItem[] = [
+  { id: "MC1049877", due: "18 September", kind: "Opt-out closes", tone: "#f87171", decision: "Set your own default sharing link type, or accept the one Microsoft picks.", ifNot: "After the 18th you are not choosing a default, you are reversing one \u2014 and the 84 anonymous links Sales sends each month behave differently in the meantime." },
+  { id: "MC1051144", due: "26 September", kind: "Rollout date", tone: "#fbbf24", decision: "Pin the anonymous-join value on your Teams meeting policy before the rollout reaches you.", ifNot: "A control your compliance pack cites changes value on its own, during your ERP go-live freeze, and you find out at audit." },
+  { id: "MC1042318", due: "1 October", kind: "Enforced", tone: "#f87171", decision: "Approve CR-0142 for a window that leaves room to roll back and retry.", ifNot: "Microsoft disables legacy auth for you on 1 October with no window, no rollback and no warning to the eleven accounts still using it." },
+  { id: "MC1054920", due: "15 November", kind: "Enforced", tone: "#fbbf24", decision: "Register MFA methods on both break-glass accounts and update RSK-004.", ifNot: "Your emergency accounts stop working on the day you need them, and the recovery path is a Microsoft support case." },
+];
+
+/** The 11 post-detail sections the rail navigates - 1169-1181. */
+export interface MscSec {
+  key: string;
+  num: string;
+  label: string;
+  intro: string;
+}
+
+export const MSC_SECS: readonly MscSec[] = [
+  { key: "ms", num: "01", label: "Microsoft\u2019s words", intro: "The post as published, unedited. Kept verbatim because the wording is what changes, and the change is usually the story." },
+  { key: "plain", num: "02", label: "What it actually means", intro: "The same thing in language you can forward to someone who does not administer Microsoft 365 for a living." },
+  { key: "tenant", num: "03", label: "Does it hit you", intro: "What Microsoft says about tenants in general, against what your tenant actually reports. Every answer here is a query result, not an opinion." },
+  { key: "blast", num: "04", label: "Blast radius", intro: "How many users, mailboxes, sites or devices this touches in your tenant." },
+  { key: "opt", num: "05", label: "Opt-out and deadline", intro: "Whether you have a choice, and the date after which the choice is made for you." },
+  { key: "ignore", num: "06", label: "If you do nothing", intro: "The version of events where this notice is never read. This is the section that exists because of the ones that were not." },
+  { key: "cr", num: "07", label: "The change request", intro: "What gets raised, or what is already raised, to get in front of this on your terms." },
+  { key: "phases", num: "08", label: "Rollout phases", intro: "Announced, targeted, standard, enforced \u2014 and where your tenant sits in that sequence." },
+  { key: "told", num: "09", label: "Who was told", intro: "Who Microsoft notified, against who in your organisation actually needs to know." },
+  { key: "history", num: "10", label: "Post history", intro: "Every edit Microsoft made after publication. Dates move, scope widens, exemptions disappear \u2014 and none of it generates a new notice." },
+  { key: "log", num: "11", label: "Decisions and controls", intro: "What you decided, when, and which of your compliance controls this notice is tied to." },
+];
+
+/** What each named group actually feels, and whether they have been told - 1148-1167. */
+export interface MscGroup {
+  name: string;
+  heads: string;
+  items: readonly string[];
+  first: string;
+  tone: string;
+  told: boolean;
+  what: string;
+  who: string;
+}
+
+export const MSC_GROUPS: readonly MscGroup[] = [
+  { name: "Bay 3 \u00b7 shop floor", heads: "18 people \u00b7 34 devices", items: ["MC1042318", "MC1066402"], first: "1 October", tone: "#f87171", told: false, what: "Scanners stop emailing when legacy auth goes, and nine of their terminals cannot run the new Teams client in February. The same six machines keep appearing in unrelated Microsoft changes.", who: "Facilities own the hardware. Nobody in Bay 3 has been told about either date." },
+  { name: "Finance", heads: "26 people", items: ["MC1042318", "MC1061240"], first: "1 October", tone: "#f87171", told: false, what: "The nightly invoice export sends over SMTP AUTH and fails silently on 1 October. The purchase-order approval workflow stops running on 31 January.", who: "Finance own both. They know about the invoice export rewrite; they have not been told the workflow is retiring." },
+  { name: "Sales", heads: "41 people", items: ["MC1049877"], first: "22 September", tone: "#f87171", told: false, what: "Tender links stop working for customers, one at a time, with no error on your side. 84 anonymous links a month.", who: "Not told. There is nothing to tell them until you decide what the default will be \u2014 which is why the 18 September date matters." },
+  { name: "Administrators", heads: "14 accounts", items: ["MC1054920"], first: "15 November", tone: "#fbbf24", told: true, what: "MFA required on every admin portal sign-in. Twelve accounts are already fine; the two break-glass accounts have no method registered.", who: "Priya Raman and Shane McCaw. Told in May, told again in August when the exemption wording disappeared." },
+  { name: "Procurement", heads: "12 people", items: ["MC1061240", "MC1051144"], first: "26 September", tone: "#fbbf24", told: true, what: "Anonymous meeting join changes on their supplier calls, and the purchase-order workflow retires in January.", who: "Marcus Bell, told on 20 August once the 61 workflow runs were traced." },
+  { name: "Everyone with a mailbox", heads: "1,240 people", items: ["MC1051144", "MC1057733"], first: "26 September", tone: "#94a3b8", told: false, what: "Meeting join behaviour changes, and the Purview portal moves. Neither needs an announcement \u2014 but both are cited in compliance evidence.", who: "No announcement planned. Correct, as long as somebody decided that rather than forgot." },
+];
+
+/** What your people will actually see, per app - the seen-in-the-wild list - 1048-1103. */
+export interface MscSeen {
+  id: string;
+  app: string;
+  appFull?: string;
+  title: string;
+  when: string;
+  ring: string;
+  who: string;
+  heads: number;
+  tone: string;
+  tickets: string;
+  told: boolean;
+  sees: string;
+  why: string;
+  helpdesk: string;
+  ignore: string;
+}
+
+export const MSC_SEEN: readonly MscSeen[] = [
+  { id: "MC1067201", app: "Teams", title: "A Copilot button appears in every chat and channel", when: "6 October 2026", ring: "Standard release \u00b7 reaches everyone within two weeks", who: "All 1,240 users", heads: 1240, tone: "#f87171", tickets: "40 \u2013 80 tickets in the first week if nobody is told", told: false, sees: "A Copilot icon appears at the top of every chat, channel and meeting. Clicking it opens a panel that explains Copilot is not included in their licence and offers a trial.", why: "You do not licence Copilot, so nobody in the company can use it. The button appears anyway. Users will read it as \"we have AI now\" and either ask why it does not work, or assume Microsoft is reading their chats.", helpdesk: "The Copilot button is new from Microsoft. We do not have Copilot licences, so it will not do anything \u2014 it is not reading your messages. There is nothing wrong with your Teams and nothing you need to do.", ignore: "Two waves of tickets: the first asking how to use it, the second asking whether it has been listening. The second wave reaches your privacy officer before it reaches IT." },
+  { id: "MC1059440", app: "Teams", title: "Meeting toolbar buttons move and the recap tab is renamed", when: "21 September 2026", ring: "Targeted release first \u00b7 a fortnight of mixed versions", who: "Anyone who runs meetings \u00b7 about 400 people", heads: 400, tone: "#fbbf24", tickets: "10 \u2013 20 tickets, mostly \"where has mute gone\"", told: false, sees: "Mute, camera and share move position in the meeting bar. \"Meeting notes\" becomes \"Recap\". Raise hand moves under a menu.", why: "Nothing functional changes. It is muscle memory, and it lands during two weeks where half your people have the new layout and half do not, so nobody can help each other over a call.", helpdesk: "Microsoft moved the meeting buttons around this week. Mute is still on the toolbar, raise hand is now under the three dots, and Meeting notes is called Recap. Nothing is missing.", ignore: "A fortnight of low-grade confusion in meetings, and at least one executive convinced their Teams is broken." },
+  { id: "MC1070855", app: "Outlook", title: "New Outlook becomes the default on Windows", when: "9 November 2026", ring: "Staged \u00b7 classic Outlook still available until April", who: "All 1,240 users", heads: 1240, tone: "#f87171", tickets: "60 \u2013 120 tickets over three weeks", told: false, sees: "Outlook opens looking different. Some add-ins are gone, PST files are not there, signatures need setting up again, and offline behaviour changes.", why: "This is the biggest visible change of the year for your people, and the toggle back to classic exists only until April. Finance use two COM add-ins that the new client does not support.", helpdesk: "Outlook has been updated to the new version. If an add-in you rely on is missing, or you cannot find an old archive file, contact IT \u2014 do not spend an hour looking. You can switch back to classic Outlook using the toggle at the top right while we work through it.", ignore: "The single largest ticket spike of the year, landing in the same month as the admin MFA enforcement, with Finance unable to run month-end reconciliation." },
+  { id: "MC1049877", app: "OneDrive", title: "The Share dialog looks different and picks a different link", when: "22 September 2026", ring: "Standard release", who: "Anyone who shares files \u00b7 about 700 people", heads: 700, tone: "#f87171", tickets: "15 \u2013 30 tickets, plus customer complaints that links do not work", told: false, sees: "The Share dialog is rearranged, and the link it creates by default is no longer \"anyone with the link\".", why: "This is the user-facing half of MC1049877. The admin decision is which default to set; the visible change is that Sales send a link, the customer cannot open it, and neither of them sees an error.", helpdesk: "The Share window has changed. Check the link type before sending to someone outside the company \u2014 if they cannot open it, that is why. Ask IT for the tenders library exception if you share with customers regularly.", ignore: "Sales quietly lose tender submissions and blame the customer\u2019s email filter." },
+  { id: "MC1073110", app: "Office apps", appFull: "Word, Excel and PowerPoint", title: "AutoSave defaults to on for files stored in SharePoint", when: "2 December 2026", ring: "Standard release", who: "About 900 people", heads: 900, tone: "#fbbf24", tickets: "20 \u2013 40 tickets, mostly about overwritten files", told: false, sees: "AutoSave is on by default. Edits to a shared file save as you type, and \"Save As at the end\" stops being a way to keep the original intact.", why: "Harmless for most people and genuinely dangerous for anyone who works by opening last month\u2019s file, editing it and saving a copy. Finance and Procurement both work that way.", helpdesk: "AutoSave is now on by default. If you work from a copy of last month\u2019s file, use File then Save a Copy before you start editing \u2014 otherwise you will be editing the original.", ignore: "Somebody overwrites a signed contract or a prior-month workbook, and version history becomes an emergency lesson rather than a feature." },
+  { id: "MC1075402", app: "SharePoint", title: "Site navigation moves to the left rail on all sites", when: "18 January 2027", ring: "Staged over six weeks", who: "Everyone who uses an intranet site \u00b7 about 1,100 people", heads: 1100, tone: "#94a3b8", tickets: "5 \u2013 15 tickets", told: false, sees: "The top navigation on every SharePoint site moves to a left-hand rail. Custom headers are re-laid out.", why: "Cosmetic, but your intranet homepage was built around the top nav and three of your quick links land badly in the new layout.", helpdesk: "SharePoint site menus have moved to the left-hand side. All the same links are there. If a link on the intranet homepage looks wrong, tell IT and we will fix the page.", ignore: "A slightly broken-looking intranet for six weeks, which is a credibility cost rather than a technical one." },
+];
+
+/** What actually arrived, and what it cost - the retrospective - 1203-1222. */
+export interface MscLandedRow {
+  id: string;
+  title: string;
+  outcome: string;
+  tone: string;
+  tickets: string;
+  told: boolean;
+}
+
+export interface MscLanded {
+  name: string;
+  range: string;
+  items: number;
+  moved: number;
+  tickets: number;
+  incidents: number;
+  verdict: string;
+  tone: string;
+  rows: readonly MscLandedRow[];
+}
+
+export const MSC_LANDED: readonly MscLanded[] = [
+  {
+    name: "August wave", range: "27 Jul \u2013 9 Aug", items: 31, moved: 2, tickets: 6, incidents: 0,
+    verdict: "Landed as announced", tone: "#34d399",
+    rows: [
+      { id: "MC1039204", title: "Outlook pinned folders move to the top of the list", outcome: "Landed on the day", tone: "#34d399", tickets: "2 tickets, both in Bay 3", told: true },
+      { id: "MC1040118", title: "Teams recap tab renamed to Recap", outcome: "Landed on the day", tone: "#34d399", tickets: "4 tickets in the first two days", told: false },
+      { id: "MC1037755", title: "OneDrive sync icon set redrawn", outcome: "Landed 4 days late", tone: "#fbbf24", tickets: "No tickets", told: true },
+    ],
+  },
+  {
+    name: "July wave", range: "29 Jun \u2013 12 Jul", items: 26, moved: 1, tickets: 19, incidents: 1,
+    verdict: "One incident \u00b7 nobody was told", tone: "#f87171",
+    rows: [
+      { id: "MC1031882", title: "Meeting chat permissions default changed", outcome: "Landed on the day", tone: "#34d399", tickets: "14 tickets in three days", told: false },
+      { id: "MC1033017", title: "SharePoint search results page redesigned", outcome: "Landed on the day", tone: "#34d399", tickets: "5 tickets", told: false },
+      { id: "MC1029440", title: "Legacy Exchange Web Services throttling tightened", outcome: "Incident INC-2291 \u00b7 invoice export failed for 2 days", tone: "#f87171", tickets: "Escalated", told: false },
+    ],
+  },
+];

@@ -10,22 +10,45 @@
  */
 
 import {
+  ACCEPTED_AT,
+  DELIVERY,
+  DUTIES,
   ESCALATION_DAYS,
   GAP_RISK,
   MISSING_OBJECTS,
   OBJECT_TYPES,
+  OWNER_HISTORY,
   OWN_OBJECTS,
   PENDING_ACCEPTANCE,
   PROVENANCE,
   PROVENANCE_DEFAULT,
   ROLE_KEYS,
+  ROUTING_RULES,
+  TYPE_SHORT,
   TYPE_SINGULAR,
   type ObjectTypeKey,
   type OwnObject,
   type Provenance,
   type RoleKey,
+  type RoutingRule,
 } from "./ownershipData";
 import type { OwnPerson } from "./settingsData";
+
+/** A dated cover arrangement — Ownership.dc.html 1146. It annotates, never reassigns. */
+export interface Delegation {
+  from: string;
+  to: string;
+  until: string;
+  /** "all" or an object-type key. */
+  scope: string;
+  done: boolean;
+}
+
+/** Provenance overrides recorded when a name is changed on this page — keyed like PROVENANCE. */
+export type ProvenanceOverrides = Readonly<Record<string, Provenance>>;
+
+/** Acceptance overrides — "pending" the moment a name is set, "accepted" once they accept. */
+export type AcceptanceOverrides = Readonly<Record<string, string>>;
 
 /** Local overrides applied on top of the fixture, keyed `${objectId}:${roleKey}`. */
 export type OwnerOverrides = Readonly<Record<string, string>>;
@@ -52,19 +75,36 @@ export function isNamedOn(obj: OwnObject, personId: string, ov: OwnerOverrides =
   return ROLE_KEYS.some((rk) => ownerOf(obj, rk.k, ov) === personId);
 }
 
-/** `provOf` — prototype 740. */
-export function provenanceOf(objectId: string, k: RoleKey): Provenance {
-  return { ...PROVENANCE_DEFAULT, ...(PROVENANCE[`${objectId}:${k}`] ?? {}) };
+/**
+ * `provOf` — prototype 735/740. A local override (recorded when a name is
+ * changed on this page) wins over the fixture, which in turn wins over the
+ * initial-scan default.
+ */
+export function provenanceOf(
+  objectId: string,
+  k: RoleKey,
+  provOv: ProvenanceOverrides = {},
+): Provenance {
+  const key = `${objectId}:${k}`;
+  return { ...PROVENANCE_DEFAULT, ...(PROVENANCE[key] ?? {}), ...(provOv[key] ?? {}) };
 }
 
 /**
- * `accOf` — prototype 741-746.
+ * `accOf` — prototype 736-741.
  *
  * Consulted and Informed carry NO acceptance state at all — being told is not
- * something you accept. Only Responsible and Accountable can be pending.
+ * something you accept. Only Responsible and Accountable can be pending. A
+ * local override (set the moment a name is changed, cleared once they accept)
+ * wins over the seeded state, so a just-reassigned cell reads as not accepted.
  */
-export function acceptanceOf(objectId: string, k: RoleKey): "" | "pending" | "accepted" {
+export function acceptanceOf(
+  objectId: string,
+  k: RoleKey,
+  accOv: AcceptanceOverrides = {},
+): "" | "pending" | "accepted" {
   if (k === "c" || k === "i") return "";
+  const ov = accOv[`${objectId}:${k}`];
+  if (ov === "pending" || ov === "accepted") return ov;
   return PENDING_ACCEPTANCE.includes(`${objectId}:${k}`) ? "pending" : "accepted";
 }
 
@@ -407,13 +447,15 @@ export function cellTitle(args: {
   roleLabel: string;
   person: OwnPerson | null;
   escDays: number;
+  accOv?: AcceptanceOverrides;
+  provOv?: ProvenanceOverrides;
 }): string {
-  const { obj, k, roleLabel, person, escDays } = args;
+  const { obj, k, roleLabel, person, escDays, accOv = {}, provOv = {} } = args;
   if (!person) return `Nobody is ${roleLabel.toLowerCase()} for this`;
-  const acc = acceptanceOf(obj.id, k);
+  const acc = acceptanceOf(obj.id, k, accOv);
   const esc = escalationOf(obj.id, k);
   const late = esc > escDays;
-  const prov = provenanceOf(obj.id, k);
+  const prov = provenanceOf(obj.id, k, provOv);
   return (
     person.name +
     (person.away ? ` · away, ${person.away}` : "") +
@@ -429,11 +471,12 @@ export function cellMark(args: {
   k: RoleKey;
   person: OwnPerson | null;
   escDays: number;
+  accOv?: AcceptanceOverrides;
 }): "late" | "pending" | "away" | null {
-  const { objectId, k, person, escDays } = args;
+  const { objectId, k, person, escDays, accOv = {} } = args;
   if (!person) return null;
   if (isLate(objectId, k, escDays)) return "late";
-  if (acceptanceOf(objectId, k) === "pending") return "pending";
+  if (acceptanceOf(objectId, k, accOv) === "pending") return "pending";
   if (person.away) return "away";
   return null;
 }
@@ -479,7 +522,316 @@ export function personCounts(
   }));
 }
 
+/** A row created by hand through the add-a-row flow — prototype 775-778. */
+export interface CustomRow {
+  id: string;
+  type: ObjectTypeKey;
+  name: string;
+  sub: string;
+}
+
+/** It, too, arrives with four gaps — prototype 775-778. */
+export function customObject(c: CustomRow): OwnObject {
+  return {
+    type: c.type,
+    id: c.id,
+    name: c.name,
+    sub: c.sub || "Added by hand · nobody named yet",
+    r: "",
+    a: "",
+    c: "",
+    i: "",
+    link: "Open →",
+  };
+}
+
 /** The whole object list including anything promoted from coverage — 776. */
 export function allObjects(added: readonly string[]): readonly OwnObject[] {
   return OWN_OBJECTS.concat(added.map(addedObject).filter((x): x is OwnObject => x !== null));
+}
+
+/** The full list plus any hand-added rows — prototype 779. */
+export function allObjectsWith(
+  added: readonly string[],
+  custom: readonly CustomRow[],
+): readonly OwnObject[] {
+  return allObjects(added).concat(custom.map(customObject));
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   The assign slide-over — prototype 960-1030
+   ──────────────────────────────────────────────────────────────────────── */
+
+/** The one-line provenance the slide-over prints — prototype 979. */
+export function provLine(prov: Provenance): string {
+  return (
+    `Set by ${prov.by} on ${prov.at}` +
+    (prov.from !== prov.at ? ` · effective ${prov.from}` : "") +
+    ` — ${prov.why}`
+  );
+}
+
+/**
+ * The acceptance chip's text — prototype 980-984. A recorded date shows where
+ * there is one; Consulted and Informed, and any gap, show nothing at all.
+ */
+export function assignAcceptLabel(
+  objectId: string,
+  k: RoleKey,
+  ownerId: string,
+  accOv: AcceptanceOverrides = {},
+): string {
+  if (!ownerId || k === "c" || k === "i") return "";
+  return acceptanceOf(objectId, k, accOv) === "pending"
+    ? "Not accepted yet"
+    : ACCEPTED_AT[`${objectId}:${k}`] ?? "Accepted";
+}
+
+/** The away/cover line, shown only when the named person is away — prototype 991-998. */
+export function coverLine(person: OwnPerson | null, deputy: OwnPerson | null): string {
+  if (!person || !person.away) return "";
+  return `${person.name} is away — ${person.away.toLowerCase()}. ${deputy ? `${deputy.name} covers.` : "Nobody covers."}`;
+}
+
+/** The escalation-clock line — prototype 999-1003. */
+export function escLine(days: number, escDays: number): string {
+  if (!days) return "Nothing waiting. The clock starts when a decision or approval lands here.";
+  return `${days} days with no movement. Escalates to the accountable name at ${escDays}.`;
+}
+
+/** The Informed-cell delivery line — prototype 1010-1015. Only for k === "i". */
+export function deliveryLine(objectId: string, k: RoleKey): string {
+  if (k !== "i") return "";
+  const d = DELIVERY[objectId];
+  if (!d) return "Nothing has been sent to the informed name for this yet.";
+  return d.sent
+    ? `Sent ${d.sent} · opened by ${d.opened} of ${d.total} · ${d.note}`
+    : `${d.note} — nothing has reached anyone.`;
+}
+
+/** Whether the Informed delivery has actually gone out — drives its colour, prototype 1016. */
+export function deliverySent(objectId: string): boolean {
+  return !!DELIVERY[objectId]?.sent;
+}
+
+/** The riskable button's label — prototype 1019. */
+export function riskButtonLabel(hasRisk: boolean): string {
+  return hasRisk ? "Unowned by choice — remove that" : "Accept it unowned";
+}
+
+export interface PriorHolderRow {
+  who: string;
+  when: string;
+  why: string;
+}
+
+/** "Who held it before" — prototype 1005-1008. */
+export function priorHolders(objectId: string, k: RoleKey): readonly PriorHolderRow[] {
+  return (OWNER_HISTORY[`${objectId}:${k}`] ?? []).map((h) => ({
+    who: h.who,
+    when: `${h.from} – ${h.to}`,
+    why: h.why,
+  }));
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   Delegation — prototype 890-897, 1080-1082
+   ──────────────────────────────────────────────────────────────────────── */
+
+export function activeDelegations(dels: readonly Delegation[]): readonly Delegation[] {
+  return dels.filter((d) => !d.done);
+}
+
+/** The live handover FROM a person, if any — prototype 891. */
+export function delegationFor(dels: readonly Delegation[], personId: string): Delegation | null {
+  return activeDelegations(dels).find((d) => d.from === personId) ?? null;
+}
+
+/** The handover that actually covers THIS object for a person — prototype 892-897. */
+export function delegationOn(
+  dels: readonly Delegation[],
+  obj: OwnObject,
+  personId: string,
+): Delegation | null {
+  const d = delegationFor(dels, personId);
+  if (!d) return null;
+  if (d.scope !== "all" && d.scope !== obj.type) return null;
+  return d;
+}
+
+/** The assign slide-over's delegation note — prototype 1025-1029. */
+export function delNote(
+  dels: readonly Delegation[],
+  obj: OwnObject,
+  ownerId: string,
+  people: readonly OwnPerson[],
+): string {
+  const d = ownerId ? delegationOn(dels, obj, ownerId) : null;
+  if (!d) return "";
+  const to = people.find((p) => p.id === d.to);
+  return `Handed to ${to ? to.name : d.to} until ${d.until}.`;
+}
+
+/** The selected-person band's handover chip text — prototype 1080. */
+export function personDelText(
+  dels: readonly Delegation[],
+  personId: string,
+  people: readonly OwnPerson[],
+): string {
+  const d = delegationFor(dels, personId);
+  if (!d) return "";
+  const to = people.find((p) => p.id === d.to);
+  return `Handed to ${to ? to.name : d.to} until ${d.until}${d.scope === "all" ? "" : ` · ${d.scope} only`}`;
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   The escalation clock and the routing rules — prototype 883-888, 945-957
+   ──────────────────────────────────────────────────────────────────────── */
+
+export interface EscLateRow {
+  name: string;
+  who: string;
+  days: number;
+  role: string;
+}
+
+/**
+ * Every cell whose idle days now exceed the threshold — prototype 883-888. The
+ * name is the OBJECT's, reproduced exactly, so raising the clock in the routing
+ * panel empties this list live.
+ */
+export function escalationLate(
+  objects: readonly OwnObject[],
+  ov: OwnerOverrides,
+  escDays: number,
+): readonly EscLateRow[] {
+  return Object.keys(ESCALATION_DAYS)
+    .filter((key) => ESCALATION_DAYS[key] > escDays)
+    .map((key) => {
+      const [id, k] = key.split(":");
+      const o = objects.find((x) => x.id === id);
+      const rk = ROLE_KEYS.find((x) => x.k === k);
+      if (!o || !rk) return null;
+      const pid = ownerOf(o, rk.k, ov);
+      return { name: o.name, who: pid || "nobody", days: ESCALATION_DAYS[key], role: rk.label };
+    })
+    .filter((x): x is EscLateRow => x !== null);
+}
+
+/** The routing panel's escalation count — prototype 384. */
+export function escLateCount(objects: readonly OwnObject[], ov: OwnerOverrides, escDays: number): number {
+  return escalationLate(objects, ov, escDays).length;
+}
+
+/** The live status line under each routing rule — prototype 950. */
+export function routingRuleLive(rule: RoutingRule, escDays: number, escLate: readonly EscLateRow[]): string {
+  if (!rule.esc) return rule.live;
+  const tail = escLate.length
+    ? `${escLate.length} past it now: ${escLate.map((e) => `${e.name.split(" ").slice(0, 4).join(" ")} (${e.days}d)`).join(", ")}`
+    : "Nothing past it today.";
+  return `Nothing moves for ${escDays} days and it goes to the accountable name. ${tail}`;
+}
+
+/** The routing panel's footer count — prototype 1121. */
+export function routingLabel(rules: Readonly<Record<string, boolean>>): string {
+  const on = ROUTING_RULES.filter((r) => rules[r.k]).length;
+  return `Routing · ${on} of ${ROUTING_RULES.length}`;
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   The "Assign to more" flow — prototype 1086-1103
+   ──────────────────────────────────────────────────────────────────────── */
+
+export interface AddToRow {
+  id: string;
+  name: string;
+  sub: string;
+  type: string;
+  tone: string;
+}
+
+/** Everything a person is NOT already named on — prototype 1090. */
+export function addToRows(
+  objects: readonly OwnObject[],
+  personId: string,
+  ov: OwnerOverrides,
+): readonly AddToRow[] {
+  return objects
+    .filter((o) => !isNamedOn(o, personId, ov))
+    .map((o) => ({
+      id: o.id,
+      name: o.name,
+      sub: o.sub,
+      type: TYPE_SHORT[o.type],
+      tone: OBJECT_TYPES.find((t) => t.key === o.type)?.tone ?? "#94a3b8",
+    }));
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   The handover slide-over — prototype 1123-1152
+   ──────────────────────────────────────────────────────────────────────── */
+
+export function handoverBlocked(to: string, until: string): boolean {
+  return !(to && until.trim());
+}
+
+/** The submit button's label, which changes as the two fields fill — prototype 1140. */
+export function handoverSubmitLabel(to: string, until: string): string {
+  return to ? (until.trim() ? "Start the handover" : "Give it an end date") : "Pick who covers";
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   The row-detail slide-over — prototype 1163-1205
+   ──────────────────────────────────────────────────────────────────────── */
+
+/** What a role's cell does, per object type — prototype 1199. */
+export function rowRoleDuties(type: ObjectTypeKey, k: RoleKey): readonly string[] {
+  return DUTIES[type][k] ?? [];
+}
+
+export interface RowDetailDrive {
+  id: string;
+  name: string;
+  when: string;
+  own: string;
+  inherits: string;
+}
+
+/**
+ * What a row's ownership drives — prototype 1169-1176. A service lists the
+ * changes that land on it and whether each inherits its owner; a change points
+ * back at the service its names come from; everything else drives nothing.
+ */
+export function rowDetailDrives(
+  obj: OwnObject,
+  objects: readonly OwnObject[],
+  ov: OwnerOverrides,
+  people: readonly OwnPerson[],
+): readonly RowDetailDrive[] {
+  const nameOf = (o: OwnObject) => {
+    const pid = ownerOf(o, "r", ov);
+    return pid ? people.find((p) => p.id === pid)?.name ?? pid : "nobody";
+  };
+  if (obj.type === "service") {
+    return objects
+      .filter((x) => x.svc === obj.id)
+      .map((x) => ({
+        id: x.id,
+        name: x.name,
+        when: x.when ?? "",
+        own: nameOf(x),
+        inherits: ownerOf(x, "r", ov) === ownerOf(obj, "r", ov) ? "inherits this row" : "has its own owner",
+      }));
+  }
+  if (obj.svc) {
+    const sv = objects.find((x) => x.id === obj.svc);
+    if (!sv) return [];
+    return [{ id: sv.id, name: sv.name, when: "service default", own: nameOf(sv), inherits: "where these names come from" }];
+  }
+  return [];
+}
+
+/** The drives-block heading — prototype 1182. */
+export function rowDrivesLabel(type: ObjectTypeKey): string {
+  return type === "service" ? "What these names cover" : "Where these names come from";
 }

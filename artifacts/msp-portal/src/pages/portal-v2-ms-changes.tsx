@@ -1,70 +1,87 @@
 /**
  * portal-v2-ms-changes.tsx — the Microsoft Changes module.
  *
- * Built from 'Microsoft Changes.dc.html' (markup 27-260, logic 590-1800).
- * A NEW file in this handoff round; the round-one bundle had no such module.
+ * Built from 'Microsoft Changes.dc.html' (active markup 27-586, logic 590-2172).
  *
  * ── What this page argues ──────────────────────────────────────────────────
- * Microsoft tells every tenant the same thing. This page says what it means for
- * THIS one. Each post carries Microsoft's own Message Center text beside the
- * tenant's answer, the Graph/PowerShell evidence behind that answer, and a
- * written consequence of doing nothing. The `score` is a per-tenant impact
- * number, not Microsoft's severity — which is the whole point of reading the
- * post against a scan rather than forwarding it.
+ * Microsoft ships in waves. Pick a wave and this page becomes that wave: what
+ * lands, what stops working, what needs a decision before it decides itself,
+ * and what your people will simply see. Each post is read against the tenant —
+ * Microsoft's own words beside the tenant's counted answer — not forwarded.
  *
- * ── Round Two, item 6: the Gantt rows are fluid ────────────────────────────
- * "Horizontal scroll removed from several data displays ... the Change Control
- * CR/Microsoft-changes Gantt rows. These were all already built on fluid grid
- * columns (`minmax(0,1fr)`); the fix was removing an unnecessary fixed
- * `min-width` floor and its scroll wrapper."
+ * ── Round Two, item 6: the density rows are fluid, the wave band is not ────
+ * The density ROWS are the fluid `repeat(11,1fr)` shape with no min-width floor
+ * and no scroll wrapper (prototype 208). The WAVE BAND above them keeps its
+ * `overflow-x:auto` + `min-width:820px` (165-166), because eleven month columns
+ * plus a 190px label genuinely need the width and the changelog names the ROWS.
+ * Both are honoured rather than "fixed".
  *
- * The density ROWS here are exactly that shape — `repeat(11,1fr)` with no floor
- * of their own (prototype 208) — and they are reproduced with no scroll
- * wrapper. The WAVE BAND above them is a different element and the prototype
- * still carries `overflow-x:auto` + `min-width:820px` on it (165-166); that one
- * is honoured rather than "fixed", because eleven columns of month header plus
- * a 190px label genuinely need the width, and the changelog names the ROWS.
- *
- * ── What is built here, and what is not ────────────────────────────────────
- * Built: the wave selector, the density grid, the freeze bands, the named posts
- * for the selected wave, and each post's full detail — Microsoft's words, the
- * plain-English reading, the evidence table, the consequence, the phases, the
- * change-request state and the history.
- *
- * Not built, and listed rather than quietly dropped: the "Did this release?"
- * retrospective, the seen-in-the-wild list, the per-group impact panel
- * (GROUPS), the thread/snooze/decision overlays, and the workload filter rail.
- * Each is its own subsystem in the prototype with its own state, and none is
- * named by the Round Two or Round Three changelog.
+ * ── Part 10 finished the deferred surfaces ─────────────────────────────────
+ * The wave-page layout replaces the earlier inline post list: the wave header
+ * card with its four tiles and "Brief this wave", "What your people will see"
+ * (the seen-in-the-wild list), "What stops working", "Decide before it lands"
+ * with its snooze / record-a-decision overlays, "Nothing to do", the per-group
+ * impact panel, the "Did this release?" retrospective, the ownership line, the
+ * board-briefing / digest / services (workload) forms, and the eleven-section
+ * post detail slide-over with its thread. Every form is the portal's one
+ * FormDrawer primitive; the design's `pick`/`toggle` fields map to its selects.
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRoute } from "wouter";
-import { ChevronDown } from "lucide-react";
+import { Link } from "wouter";
 
+import { useFormDrawer, type FormSpec } from "@/components/portal-v2/FormDrawer";
 import { PortalV2Shell, SIDEBAR_WASH } from "@/components/portal-v2/PortalV2Shell";
 import {
   MSC_BUCKETS,
-  MSC_DENSITY,
   MSC_FREEZE_BANDS,
+  MSC_GROUPS,
   MSC_KINDS,
+  MSC_LANDED,
+  MSC_SCAN_AT,
+  MSC_SCANS,
+  MSC_SECS,
+  MSC_STAT_DEFS,
   MSC_TODAY_LABEL,
+  MS_POSTS,
   WORKLOAD_TONE,
+  type MscSeen,
   type MsPost,
 } from "@/components/portal-v2/msChangesData";
 import {
-  bucketSums,
-  bucketsInWave,
-  breakingInWave,
+  breakMeta,
   cellDots,
   cellTitle,
   clampWave,
+  decideMeta,
+  activeDensity,
+  freezeInWave,
+  groupStrip,
+  groupWave,
+  impactTone,
   isFreezeBucket,
-  postsInWave,
+  pastWave,
+  QUIET_META,
+  raciRows,
+  rangeOf,
+  seenInWave,
+  seenMeta,
+  seenWorkload,
+  servicesLabel,
   waveBands,
+  waveBreaks,
   waveCount,
   waveLabel,
+  waveNotice,
+  waveQueue,
+  waveQuiet,
+  waveSilent,
+  waveStatus,
+  waveTiles,
   waveTitle,
+  waveTotals,
+  type Services,
 } from "@/components/portal-v2/msChangesModel";
 
 const MONO = "'SF Mono',Menlo,Consolas,monospace";
@@ -74,272 +91,479 @@ const WAVE_SLUGS = ["late-august", "september", "q2", "q3", "beyond"] as const;
 
 const KIND_TONE = Object.fromEntries(MSC_KINDS.map((k) => [k.k, k.tone])) as Record<string, string>;
 
+const ALL_SERVICES: Services = { Exchange: true, Teams: true, SharePoint: true, Entra: true, Purview: true, Copilot: true };
+
 function Kicker({ colour, children }: { colour: string; children: React.ReactNode }) {
   return (
-    <span
-      style={{
-        fontSize: "9.5px",
-        fontWeight: 700,
-        letterSpacing: ".14em",
-        textTransform: "uppercase",
-        color: colour,
-      }}
-    >
+    <span style={{ fontSize: "9.5px", fontWeight: 700, letterSpacing: ".14em", textTransform: "uppercase", color: colour }}>
       {children}
     </span>
   );
 }
 
-/** One post, collapsed to a row and expanding in place — the portal's own idiom. */
-function PostRow({ post, open, onToggle }: { post: MsPost; open: boolean; onToggle: () => void }) {
-  const tone = WORKLOAD_TONE[post.wl] ?? "#94a3b8";
-  const hits = post.impact === "Hits you";
+function pill(text: string, tone: string, bg?: string): React.CSSProperties {
+  return {
+    display: "inline-flex",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    padding: "2px 8px",
+    borderRadius: 5,
+    fontSize: "10px",
+    fontWeight: 700,
+    letterSpacing: ".04em",
+    whiteSpace: "nowrap",
+    color: tone,
+    background: bg ?? "rgba(148,163,184,.1)",
+    border: `1px solid ${tone}40`,
+  };
+}
+
+const HEADER_BTN = (accent: boolean): React.CSSProperties => ({
+  padding: "9px 15px",
+  borderRadius: 7,
+  fontSize: "12px",
+  fontWeight: accent ? 700 : 600,
+  border: accent ? "1px solid #0078D4" : "1px solid rgba(148,163,184,.24)",
+  background: accent ? "#0078D4" : "transparent",
+  color: accent ? "#fff" : "#94a3b8",
+  cursor: "pointer",
+  fontFamily: "inherit",
+  whiteSpace: "nowrap",
+});
+
+const SECTION_CARD = (border: string): React.CSSProperties => ({
+  display: "flex",
+  flexDirection: "column",
+  gap: 9,
+  padding: "15px 17px",
+  border: `1px solid ${border}`,
+  borderRadius: 13,
+  background: "#0b1524",
+});
+
+/** A design-style form spec (fields with pick/toggle) mapped onto the FormDrawer. */
+interface MscField {
+  k: string;
+  label: string;
+  kind: "text" | "area" | "select" | "pick" | "toggle";
+  options?: string[];
+  toggleLabel?: string;
+  value?: string;
+  ph?: string;
+  hint?: string;
+}
+interface MscFormCfg {
+  kicker: string;
+  title: string;
+  intro: string;
+  submitLabel: string;
+  fields: MscField[];
+  doneNote: string;
+  onSubmit?: (v: Record<string, string>) => void;
+}
+
+function toFormSpec(cfg: MscFormCfg): FormSpec {
+  return {
+    kicker: cfg.kicker,
+    title: cfg.title,
+    intro: cfg.intro,
+    submitLabel: cfg.submitLabel,
+    doneNote: cfg.doneNote,
+    onSubmit: cfg.onSubmit,
+    fields: cfg.fields.map((f) => {
+      if (f.kind === "text") return { id: f.k, label: f.label, kind: "text" as const, wide: true, value: f.value, placeholder: f.ph, hint: f.hint };
+      if (f.kind === "area") return { id: f.k, label: f.label, kind: "textarea" as const, wide: true, value: f.value, placeholder: f.ph, hint: f.hint };
+      if (f.kind === "toggle")
+        return {
+          id: f.k,
+          label: f.label,
+          kind: "select" as const,
+          value: f.value ?? "In use",
+          options: [
+            { value: "In use", label: f.toggleLabel ?? "In use" },
+            { value: "Off", label: "Off" },
+          ],
+          hint: f.hint,
+        };
+      // select | pick -> a native select of the same options
+      return {
+        id: f.k,
+        label: f.label,
+        kind: "select" as const,
+        wide: f.kind === "pick",
+        value: f.value ?? (f.options?.[0] ?? ""),
+        options: (f.options ?? []).map((o) => ({ value: o, label: o })),
+        hint: f.hint,
+      };
+    }),
+  };
+}
+
+/* ── The post detail slide-over — prototype 327-517 ──────────────────────── */
+
+function Fact({ label, value }: { label: string; value: string }) {
   return (
-    <div
-      data-testid={`pv2-msc-post-${post.id}`}
-      style={{
-        border: `1px solid ${post.hard ? "rgba(248,113,113,.3)" : "rgba(30,41,59,.9)"}`,
-        borderRadius: 12,
-        background: post.hard ? "rgba(248,113,113,.04)" : "rgba(2,6,23,.35)",
-        overflow: "hidden",
-      }}
-    >
-      <button
-        onClick={onToggle}
-        data-testid={`pv2-msc-toggle-${post.id}`}
-        aria-expanded={open}
-        style={{
-          display: "grid",
-          gridTemplateColumns: "minmax(0,1fr) 120px 92px 22px",
-          gap: 12,
-          alignItems: "center",
-          width: "100%",
-          padding: "13px 15px",
-          border: "none",
-          background: "transparent",
-          cursor: "pointer",
-          fontFamily: "inherit",
-          textAlign: "left",
-        }}
-      >
-        <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
-          <span style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            <span style={{ fontSize: "9.5px", fontWeight: 700, color: "#475569", fontFamily: MONO }}>
-              {post.id}
-            </span>
-            <span
-              style={{
-                display: "inline-flex",
-                padding: "1px 7px",
-                borderRadius: 5,
-                fontSize: "9px",
-                fontWeight: 800,
-                letterSpacing: ".05em",
-                textTransform: "uppercase",
-                color: tone,
-                background: `${tone}14`,
-                border: `1px solid ${tone}44`,
-              }}
-            >
-              {post.workload}
-            </span>
-            <span style={{ fontSize: "9.5px", fontWeight: 700, color: "#64748b" }}>{post.kind}</span>
-          </span>
-          <span style={{ fontSize: "13px", fontWeight: 700, color: "#f1f5f9", lineHeight: 1.4 }}>
-            {post.title}
-          </span>
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
-          <span style={{ fontSize: "11.5px", fontWeight: 700, color: "#e2e8f0", fontFamily: MONO }}>
-            {post.when}
-          </span>
-          <span style={{ fontSize: "10px", color: "#64748b" }}>{post.countdown}</span>
-        </div>
-        <span
-          style={{
-            fontSize: "10px",
-            fontWeight: 800,
-            letterSpacing: ".05em",
-            textTransform: "uppercase",
-            whiteSpace: "nowrap",
-            color: hits ? "#f87171" : "#94a3b8",
-          }}
-        >
-          {post.impact}
-        </span>
-        <span
-          style={{
-            display: "flex",
-            justifyContent: "flex-end",
-            color: "#64748b",
-            transform: `rotate(${open ? 0 : -90}deg)`,
-            transition: "transform 180ms",
-          }}
-        >
-          <ChevronDown size={15} />
-        </span>
-      </button>
-
-      {open && (
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 14,
-            padding: "4px 15px 16px",
-            borderTop: "1px solid rgba(30,41,59,.7)",
-          }}
-        >
-          {/* Microsoft's words vs the tenant's answer, side by side — the
-              module's central claim, so they share one row and equal width. */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))", gap: 12, paddingTop: 12 }}>
-            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-              <Kicker colour="#94a3b8">Microsoft says</Kicker>
-              <span style={{ fontSize: "11.5px", color: "#94a3b8", lineHeight: 1.6, textWrap: "pretty" }}>
-                {post.msSays}
-              </span>
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-              <Kicker colour="#22d3ee">Your tenant says</Kicker>
-              <span style={{ fontSize: "11.5px", color: "#cbd5e1", lineHeight: 1.6, textWrap: "pretty" }}>
-                {post.youSay}
-              </span>
-            </div>
-          </div>
-
-          <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-            <Kicker colour="#60a5fa">In plain words</Kicker>
-            <span style={{ fontSize: "12px", color: "#cbd5e1", lineHeight: 1.65, textWrap: "pretty" }}>
-              {post.plain}
-            </span>
-          </div>
-
-          {/* Evidence — the provenance block every drill-down in this portal has */}
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 0,
-              border: "1px solid rgba(30,41,59,.9)",
-              borderRadius: 10,
-              background: "rgba(2,6,23,.4)",
-              overflow: "hidden",
-            }}
-          >
-            {post.evidence.map((e, i) => (
-              <div
-                key={e.q}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "minmax(0,1.6fr) minmax(0,1fr)",
-                  gap: 12,
-                  padding: "9px 12px",
-                  alignItems: "center",
-                  borderBottom: i === post.evidence.length - 1 ? "none" : "1px solid rgba(30,41,59,.8)",
-                }}
-              >
-                <span
-                  style={{
-                    fontSize: "10.5px",
-                    color: "#94a3b8",
-                    fontFamily: MONO,
-                    lineHeight: 1.5,
-                    minWidth: 0,
-                    overflowWrap: "anywhere",
-                  }}
-                >
-                  {e.q}
-                </span>
-                <span
-                  style={{
-                    fontSize: "11px",
-                    fontWeight: 700,
-                    color: e.bad ? "#f87171" : "#34d399",
-                    lineHeight: 1.5,
-                    minWidth: 0,
-                  }}
-                >
-                  {e.a}
-                </span>
-              </div>
-            ))}
-          </div>
-          <span style={{ fontSize: "10.5px", color: "#475569", lineHeight: 1.5 }}>{post.evidenceNote}</span>
-
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 5,
-              padding: "13px 14px",
-              border: "1px solid rgba(248,113,113,.28)",
-              borderRadius: 11,
-              background: "rgba(248,113,113,.05)",
-            }}
-          >
-            <Kicker colour="#f87171">If nobody acts</Kicker>
-            <span style={{ fontSize: "12px", color: "#cbd5e1", lineHeight: 1.65, textWrap: "pretty" }}>
-              {post.ignore}
-            </span>
-          </div>
-
-          {/* Phases, and the CR that already exists for it */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))", gap: 12 }}>
-            <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-              <Kicker colour="#a78bfa">How it rolls out</Kicker>
-              {post.phases.map((ph) => (
-                <div key={ph.name} style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                  <span style={{ fontSize: "11.5px", fontWeight: 700, color: "#e2e8f0" }}>
-                    {ph.name} · <span style={{ fontFamily: MONO, fontWeight: 600 }}>{ph.when}</span>
-                  </span>
-                  <span style={{ fontSize: "10.5px", color: "#94a3b8", lineHeight: 1.5 }}>{ph.note}</span>
-                </div>
-              ))}
-              <span style={{ fontSize: "10px", color: "#475569", fontFamily: MONO }}>{post.roadmapId}</span>
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-              <Kicker colour="#0078D4">Change request</Kicker>
-              <span style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                <span style={{ fontSize: "12px", fontWeight: 800, color: "#60a5fa", fontFamily: MONO }}>
-                  {post.crCode}
-                </span>
-                <span style={{ fontSize: "10.5px", fontWeight: 700, color: "#94a3b8" }}>{post.crState}</span>
-              </span>
-              <span style={{ fontSize: "11.5px", color: "#94a3b8", lineHeight: 1.6, textWrap: "pretty" }}>
-                {post.crNote}
-              </span>
-              <span style={{ fontSize: "11px", color: "#cbd5e1", lineHeight: 1.55 }}>
-                <span style={{ color: "#64748b" }}>Opt-out: </span>
-                {post.optOut} — {post.optOutNote}
-              </span>
-            </div>
-          </div>
-
-          {/* History — the module's sharpest point: dates move silently */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-            <Kicker colour="#fbbf24">What Microsoft changed about this post</Kicker>
-            {post.history.map((h) => (
-              <div key={`${h.at}-${h.what}`} style={{ display: "flex", gap: 10, alignItems: "baseline" }}>
-                <span
-                  style={{
-                    flex: "0 0 84px",
-                    fontSize: "10px",
-                    fontWeight: 700,
-                    color: "#475569",
-                    fontFamily: MONO,
-                  }}
-                >
-                  {h.at}
-                </span>
-                <span style={{ flex: 1, fontSize: "11.5px", color: "#cbd5e1", lineHeight: 1.55, minWidth: 0 }}>
-                  <span style={{ fontWeight: 700, color: "#e2e8f0" }}>{h.what}</span> — {h.detail}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+    <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+      <span style={{ fontSize: "9px", fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: "#475569" }}>{label}</span>
+      <span style={{ fontSize: "12px", fontWeight: 600, color: "#e2e8f0", lineHeight: 1.45 }}>{value}</span>
     </div>
+  );
+}
+
+function BlockHead({ head, hint }: { head: string; hint?: string }) {
+  return (
+    <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+      <span style={{ fontSize: "10px", fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: "#64748b" }}>{head}</span>
+      {hint && <span style={{ fontSize: "10.5px", color: "#475569" }}>{hint}</span>}
+    </div>
+  );
+}
+
+function Prose({ text, css }: { text: string; css: React.CSSProperties }) {
+  return <span style={css}>{text}</span>;
+}
+
+const BLOCK_WRAP: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 12,
+  padding: "15px 17px",
+  border: "1px solid rgba(30,41,59,.9)",
+  borderRadius: 11,
+  background: "#0b1524",
+  minWidth: 0,
+};
+
+function PostDetail({
+  post,
+  sec,
+  setSec,
+  thread,
+  decided,
+  snoozed,
+  onCr,
+  onDecide,
+  onSnooze,
+  onAsk,
+  onTag,
+  toast,
+  onClose,
+}: {
+  post: MsPost;
+  sec: string;
+  setSec: (k: string) => void;
+  thread: readonly { who: string; at: string; text: string; mine?: boolean }[];
+  decided: string | undefined;
+  snoozed: string | undefined;
+  onCr: () => void;
+  onDecide: () => void;
+  onSnooze: () => void;
+  onAsk: () => void;
+  onTag: () => void;
+  toast: (m: string) => void;
+  onClose: () => void;
+}) {
+  const tone = impactTone(post.impact);
+  const secDef = MSC_SECS.find((s) => s.key === sec) ?? MSC_SECS[0];
+  const proseCss = (extra: React.CSSProperties): React.CSSProperties => ({ lineHeight: 1.7, textWrap: "pretty", ...extra });
+
+  const acts: { label: string; go: () => void; accent?: boolean; tone?: string; border?: string; bg?: string }[] = [];
+  if (post.crCode) acts.push({ label: `Open ${post.crCode}`, go: () => toast(`${post.crCode} opens on the change control page, linked to ${post.id}.`), tone: "#93c5fd", border: "rgba(0,120,212,.4)", bg: "rgba(0,120,212,.1)" });
+  else acts.push({ label: "Raise a change request", go: onCr, tone: "#fff", border: "#0078D4", bg: "#0078D4" });
+  acts.push({ label: decided ? "Decision recorded" : "Record a decision", go: onDecide, tone: decided ? "#34d399" : "#fbbf24", border: decided ? "rgba(52,211,153,.35)" : "rgba(251,191,36,.4)", bg: "transparent" });
+  acts.push({ label: snoozed ? `Snoozed · ${snoozed}` : "Snooze", go: onSnooze, tone: "#94a3b8", border: "rgba(148,163,184,.24)", bg: "transparent" });
+
+  const actNote = snoozed
+    ? `Snoozed until ${snoozed.toLowerCase()}. It comes back before the deadline, and sooner if Microsoft edits the post.`
+    : decided
+      ? `Decision on record: ${decided.toLowerCase()}.`
+      : "No decision on record yet. Reading a notice is not deciding on it.";
+
+  return (
+    <>
+      <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 114, background: "rgba(2,6,23,.65)", backdropFilter: "blur(2px)" }} />
+      <div
+        data-testid={`pv2-msc-post-${post.id}`}
+        style={{ position: "fixed", top: 0, right: 0, bottom: 0, zIndex: 115, width: "min(1080px,97vw)", overflowY: "auto", borderLeft: "1px solid rgba(0,120,212,.4)", background: "#020617", boxShadow: "-28px 0 70px rgba(2,6,23,.7)" }}
+      >
+        <div style={{ padding: "22px 24px 48px", display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: "16px 18px", border: "1px solid rgba(0,120,212,.28)", borderRadius: 12, background: "linear-gradient(180deg,rgba(0,120,212,.07),rgba(11,21,36,.9))" }}>
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 0 }}>
+                <button onClick={onClose} data-testid="pv2-msc-post-close" style={{ alignSelf: "flex-start", padding: 0, border: "none", background: "transparent", color: "#60a5fa", fontSize: "11px", fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>← Close</button>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: "12.5px", fontWeight: 700, color: "#60a5fa", fontFamily: MONO }}>{post.id}</span>
+                  <span style={{ fontSize: "17px", fontWeight: 800, color: "#f8fafc", letterSpacing: "-.01em", lineHeight: 1.3 }}>{post.title}</span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <span style={pill(`${post.impact} · ${post.score}`, tone, `${tone}14`)}>{post.impact} · {post.score}</span>
+                  <span style={pill(post.kind, post.hard ? "#f87171" : "#94a3b8", "rgba(148,163,184,.08)")}>{post.kind}</span>
+                  <span style={pill(post.workload, WORKLOAD_TONE[post.wl], `${WORKLOAD_TONE[post.wl]}14`)}>{post.workload}</span>
+                  <span style={{ fontSize: "11px", color: "#94a3b8" }}>Lands {post.when} · {post.countdown}</span>
+                </div>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end" }}>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                  {acts.map((a) => (
+                    <button key={a.label} onClick={a.go} style={{ padding: "9px 15px", borderRadius: 7, fontSize: "12px", fontWeight: 700, fontFamily: "inherit", whiteSpace: "nowrap", cursor: "pointer", border: `1px solid ${a.border}`, background: a.bg, color: a.tone }}>{a.label}</button>
+                  ))}
+                </div>
+                <span style={{ fontSize: "10.5px", color: "#64748b", textAlign: "right", maxWidth: "40ch", lineHeight: 1.45 }}>{actNote}</span>
+              </div>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 12, paddingTop: 11, borderTop: "1px solid rgba(30,41,59,.8)" }}>
+              <Fact label="Lands" value={post.when} />
+              <Fact label="Opt-out" value={post.optOut} />
+              <Fact label="Scope" value={post.seats} />
+              <Fact label="Roadmap" value={post.roadmapId} />
+              <Fact label="Edits since publishing" value={String(post.history.length - 1)} />
+              <Fact label="Licence" value={post.owned} />
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "248px minmax(0,1fr)", gap: 16, alignItems: "start" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 2, border: "1px solid rgba(30,41,59,.9)", borderRadius: 10, background: "#0b1524", padding: 6, position: "sticky", top: 18, overflow: "hidden" }}>
+              {MSC_SECS.map((s) => {
+                const on = s.key === sec;
+                return (
+                  <button key={s.key} onClick={() => setSec(s.key)} data-testid={`pv2-msc-sec-${s.key}`} style={{ display: "flex", alignItems: "center", gap: 9, width: "100%", textAlign: "left", padding: "9px 10px", border: "none", borderRadius: 7, cursor: "pointer", fontFamily: "inherit", background: on ? "rgba(0,120,212,.16)" : "transparent" }}>
+                    <span style={{ flex: "0 0 auto", fontSize: "9.5px", fontWeight: 700, fontFamily: MONO, color: on ? "#93c5fd" : "#475569" }}>{s.num}</span>
+                    <span style={{ flex: 1, minWidth: 0, fontSize: "12px", fontWeight: on ? 700 : 500, color: on ? "#f1f5f9" : "#94a3b8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4, paddingBottom: 10, borderBottom: "1px solid rgba(30,41,59,.9)" }}>
+                <Kicker colour="#60a5fa">Section {secDef.num}</Kicker>
+                <span style={{ fontSize: "15.5px", fontWeight: 700, color: "#f8fafc", letterSpacing: "-.01em" }}>{secDef.label}</span>
+                <span style={{ fontSize: "11.5px", color: "#94a3b8", lineHeight: 1.55, maxWidth: "80ch", textWrap: "pretty" }}>{secDef.intro}</span>
+              </div>
+
+              {sec === "ms" && (
+                <>
+                  <div style={BLOCK_WRAP}>
+                    <BlockHead head="As published by Microsoft" hint={`${post.id} · ${post.roadmapId}`} />
+                    <Prose text={post.ms} css={proseCss({ fontSize: "12.5px", color: "#cbd5e1", lineHeight: 1.75, fontFamily: "Georgia,serif" })} />
+                  </div>
+                  <div style={BLOCK_WRAP}>
+                    <BlockHead head="Why it is kept verbatim" />
+                    <Prose text="Because Microsoft edits these after publication and the edit is often the part that matters. This is the text as it stands today; section 10 lists every change made to it since it was first published." css={proseCss({ fontSize: "12px", color: "#94a3b8", lineHeight: 1.65 })} />
+                  </div>
+                </>
+              )}
+
+              {sec === "plain" && (
+                <div style={BLOCK_WRAP}>
+                  <BlockHead head="In plain terms" />
+                  <Prose text={post.plain} css={proseCss({ fontSize: "13.5px", color: "#e2e8f0", lineHeight: 1.75 })} />
+                </div>
+              )}
+
+              {sec === "tenant" && (
+                <div style={BLOCK_WRAP}>
+                  <BlockHead head="Microsoft says, your tenant says" hint="Evidence, not opinion" />
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(250px,1fr))", gap: 12 }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 5, padding: "12px 13px", border: "1px solid rgba(148,163,184,.2)", borderRadius: 9, background: "rgba(2,6,23,.45)" }}>
+                      <Kicker colour="#94a3b8">Microsoft says</Kicker>
+                      <span style={{ fontSize: "12.5px", color: "#cbd5e1", lineHeight: 1.6, textWrap: "pretty" }}>{post.msSays}</span>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 5, padding: "12px 13px", border: "1px solid rgba(248,113,113,.32)", borderRadius: 9, background: "rgba(248,113,113,.05)" }}>
+                      <Kicker colour="#f87171">Your tenant says</Kicker>
+                      <span style={{ fontSize: "12.5px", color: "#e2e8f0", lineHeight: 1.6, textWrap: "pretty" }}>{post.youSay}</span>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+                    {post.evidence.map((e) => (
+                      <div key={e.q} style={{ display: "grid", gridTemplateColumns: "minmax(0,1.2fr) minmax(0,1fr)", gap: 12, padding: "10px 0", borderBottom: "1px solid rgba(30,41,59,.55)", alignItems: "baseline" }}>
+                        <span style={{ fontSize: "11px", color: "#93c5fd", fontFamily: MONO, lineHeight: 1.55, wordBreak: "break-all", minWidth: 0 }}>{e.q}</span>
+                        <span style={{ fontSize: "12px", fontWeight: 700, lineHeight: 1.5, color: e.bad ? "#f87171" : "#34d399" }}>{e.a}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <span style={{ fontSize: "10.5px", color: "#475569", lineHeight: 1.55 }}>{post.evidenceNote}</span>
+                </div>
+              )}
+
+              {sec === "blast" && (
+                <>
+                  <div style={BLOCK_WRAP}>
+                    <BlockHead head="In your tenant" />
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 13 }}>
+                      <Fact label="Scope" value={post.seats} />
+                      <Fact label="Impact score" value={`${post.score} of 100`} />
+                      <Fact label="Licence coverage" value={post.owned} />
+                      <Fact label="Workload" value={post.workload} />
+                    </div>
+                  </div>
+                  <div style={BLOCK_WRAP}>
+                    <BlockHead head="How the score is built" />
+                    <Prose text="Blast radius, whether failure is silent, how reversible it is, and how much notice you have. A high score is not Microsoft being reckless — it is your configuration meeting their date." css={proseCss({ fontSize: "12px", color: "#94a3b8", lineHeight: 1.65 })} />
+                  </div>
+                </>
+              )}
+
+              {sec === "opt" && (
+                <>
+                  <div style={BLOCK_WRAP}>
+                    <BlockHead head="Your choice" />
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 13 }}>
+                      <Fact label="Opt-out or override" value={post.optOut} />
+                      <Fact label="Deadline" value={post.when} />
+                      <Fact label="Time left" value={post.countdown} />
+                    </div>
+                  </div>
+                  <div style={BLOCK_WRAP}>
+                    <BlockHead head="What that means here" />
+                    <Prose text={post.optOutNote} css={proseCss({ fontSize: "12.5px", color: "#cbd5e1", lineHeight: 1.7 })} />
+                  </div>
+                </>
+              )}
+
+              {sec === "ignore" && (
+                <div style={BLOCK_WRAP}>
+                  <BlockHead head="The version where nobody reads this" />
+                  <Prose text={post.ignore} css={proseCss({ fontSize: "13px", color: "#e2e8f0", lineHeight: 1.75 })} />
+                </div>
+              )}
+
+              {sec === "cr" && (
+                <>
+                  <div style={BLOCK_WRAP}>
+                    <BlockHead head={post.crCode ? "Raised" : "Suggested"} hint={post.crCode ? `${post.crCode} · ${post.crState}` : "Nothing raised yet"} />
+                    <Prose text={post.crNote} css={proseCss({ fontSize: "12.5px", color: "#cbd5e1", lineHeight: 1.7 })} />
+                  </div>
+                  <div style={BLOCK_WRAP}>
+                    <BlockHead head="Linked records" />
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {(post.crCode
+                        ? [{ id: post.crCode, title: post.title, note: `Change request · ${post.crState}. Opens on the change control page with this notice attached as the reason.`, tag: post.crState, tone: "#fbbf24" }]
+                        : []
+                      )
+                        .concat(post.controls.length ? [{ id: "Controls", title: post.controls.join(" · "), note: "Compliance controls this notice is tied to. If the notice lands, these are the controls that move.", tag: `${post.controls.length} tagged`, tone: "#2dd4bf" }] : [])
+                        .map((l) => (
+                          <button key={l.id} onClick={() => toast(l.id === "Controls" ? "Opens the compliance pillar filtered to these controls." : `${l.id} opens on the change control page, with ${post.id} linked as the reason it exists.`)} style={{ display: "flex", alignItems: "flex-start", gap: 11, padding: "11px 12px", border: "1px solid rgba(30,41,59,.85)", borderRadius: 9, background: "rgba(2,6,23,.45)", cursor: "pointer", fontFamily: "inherit", textAlign: "left", width: "100%" }}>
+                            <span style={{ flex: "0 0 auto", fontSize: "10.5px", fontWeight: 700, color: "#93c5fd", fontFamily: MONO, padding: "2px 6px", borderRadius: 4, background: "rgba(96,165,250,.1)", border: "1px solid rgba(96,165,250,.2)" }}>{l.id}</span>
+                            <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0, flex: 1 }}>
+                              <span style={{ fontSize: "12px", fontWeight: 600, color: "#e2e8f0", lineHeight: 1.45 }}>{l.title}</span>
+                              <span style={{ fontSize: "11px", color: "#94a3b8", lineHeight: 1.55, textWrap: "pretty" }}>{l.note}</span>
+                            </div>
+                            <span style={pill(l.tag, l.tone, `${l.tone}14`)}>{l.tag}</span>
+                          </button>
+                        ))}
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {sec === "phases" && (
+                <div style={BLOCK_WRAP}>
+                  <BlockHead head="Rollout" hint={post.roadmapId} />
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 10 }}>
+                    {post.phases.map((p, i) => {
+                      const last = i === post.phases.length - 1;
+                      return (
+                        <div key={p.name} style={{ display: "flex", flexDirection: "column", gap: 4, padding: "12px 13px", border: `1px solid ${last ? `${tone}40` : "rgba(30,41,59,.9)"}`, borderRadius: 10, background: "rgba(2,6,23,.45)" }}>
+                          <span style={{ fontSize: "9.5px", fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: last ? tone : "#64748b" }}>{p.name}</span>
+                          <span style={{ fontSize: "11.5px", fontWeight: 700, color: "#e2e8f0" }}>{p.when}</span>
+                          <span style={{ fontSize: "10.5px", color: "#64748b", lineHeight: 1.5 }}>{p.note}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {sec === "told" && (
+                <>
+                  <div style={BLOCK_WRAP}>
+                    <BlockHead head="Who Microsoft told" />
+                    <Prose text={post.toldMs} css={proseCss({ fontSize: "12.5px", color: "#cbd5e1", lineHeight: 1.7 })} />
+                  </div>
+                  <div style={BLOCK_WRAP}>
+                    <BlockHead head="Who you told" />
+                    <Prose text={post.toldYou} css={proseCss({ fontSize: "12.5px", color: "#e2e8f0", lineHeight: 1.7 })} />
+                  </div>
+                  <div style={BLOCK_WRAP}>
+                    <BlockHead head="The gap" />
+                    <Prose text="Microsoft notifies administrators. The people affected by a change are almost never administrators, which is why a notice can be delivered perfectly and still reach nobody who needed it." css={proseCss({ fontSize: "12px", color: "#94a3b8", lineHeight: 1.65 })} />
+                  </div>
+                </>
+              )}
+
+              {sec === "history" && (
+                <>
+                  <div style={BLOCK_WRAP}>
+                    <BlockHead head="Every edit since publication" hint={`${post.history.length} ${post.history.length === 1 ? "entry" : "entries"}`} />
+                    <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+                      {post.history.map((h, i) => (
+                        <div key={`${h.at}-${h.what}`} style={{ display: "grid", gridTemplateColumns: "130px 14px minmax(0,1fr)", gap: 12, alignItems: "start", padding: "10px 0", borderBottom: "1px solid rgba(30,41,59,.5)" }}>
+                          <span style={{ fontSize: "10.5px", color: "#64748b", fontFamily: MONO, lineHeight: 1.5 }}>{h.at}</span>
+                          <span style={{ marginTop: 5, width: 7, height: 7, borderRadius: "50%", background: i === 0 ? "#64748b" : "#fbbf24" }} />
+                          <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
+                            <span style={{ fontSize: "12px", fontWeight: 600, color: "#e2e8f0", lineHeight: 1.45 }}>{h.what}</span>
+                            <span style={{ fontSize: "11px", color: "#94a3b8", lineHeight: 1.55, textWrap: "pretty" }}>{h.detail}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div style={BLOCK_WRAP}>
+                    <BlockHead head="Why this section exists" />
+                    <Prose text="A Message Center post is not a document, it is a living page. Dates move, scope widens, exemptions vanish — and none of it generates a new notice. If you planned against an older version, this is where you find out." css={proseCss({ fontSize: "12px", color: "#94a3b8", lineHeight: 1.65 })} />
+                  </div>
+                </>
+              )}
+
+              {sec === "log" && (
+                <>
+                  <div style={BLOCK_WRAP}>
+                    <BlockHead head="Decision log" />
+                    <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+                      {(post.decisions.length ? post.decisions.map((d) => ({ at: d.at.split(" · ")[0], what: d.what, detail: d.at.split(" · ")[1] ? `by ${d.at.split(" · ")[1]}` : "" })) : [{ at: "No decision yet", what: "Nobody has taken a position on this notice", detail: "Reading it is not deciding. Record a position and it becomes evidence rather than a memory." }]).map((d, i) => (
+                        <div key={i} style={{ display: "grid", gridTemplateColumns: "130px 14px minmax(0,1fr)", gap: 12, alignItems: "start", padding: "10px 0", borderBottom: "1px solid rgba(30,41,59,.5)" }}>
+                          <span style={{ fontSize: "10.5px", color: "#64748b", fontFamily: MONO, lineHeight: 1.5 }}>{d.at}</span>
+                          <span style={{ marginTop: 5, width: 7, height: 7, borderRadius: "50%", background: "#34d399" }} />
+                          <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
+                            <span style={{ fontSize: "12px", fontWeight: 600, color: "#e2e8f0", lineHeight: 1.45 }}>{d.what}</span>
+                            {d.detail && <span style={{ fontSize: "11px", color: "#94a3b8", lineHeight: 1.55, textWrap: "pretty" }}>{d.detail}</span>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div style={BLOCK_WRAP}>
+                    <BlockHead head="Compliance controls" />
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      {(post.controls.length ? post.controls : ["No control tagged"]).map((c) => (
+                        <span key={c} style={pill(c, "#2dd4bf", "rgba(45,212,191,.1)")}>{c}</span>
+                      ))}
+                    </div>
+                    <button onClick={onTag} style={{ alignSelf: "flex-start", padding: "7px 12px", borderRadius: 6, border: "1px solid rgba(148,163,184,.24)", background: "transparent", color: "#94a3b8", fontSize: "11px", fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Tag another control</button>
+                  </div>
+                  <div style={BLOCK_WRAP}>
+                    <BlockHead head="Thread with your architect" hint={thread.length ? `${thread.length} messages` : "Nothing asked yet"} />
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                      {thread.map((m, i) => (
+                        <div key={i} style={{ display: "flex", flexDirection: "column", gap: 4, padding: "12px 13px", border: `1px solid ${m.mine ? "rgba(148,163,184,.2)" : "rgba(0,120,212,.28)"}`, borderRadius: 9, background: m.mine ? "rgba(2,6,23,.45)" : "rgba(0,120,212,.06)" }}>
+                          <div style={{ display: "flex", alignItems: "baseline", gap: 9, flexWrap: "wrap" }}>
+                            <span style={{ fontSize: "11.5px", fontWeight: 700, color: m.mine ? "#cbd5e1" : "#93c5fd" }}>{m.who}</span>
+                            <span style={{ fontSize: "10px", color: "#475569" }}>{m.at}</span>
+                          </div>
+                          <span style={{ fontSize: "12px", color: "#cbd5e1", lineHeight: 1.6, textWrap: "pretty" }}>{m.text}</span>
+                        </div>
+                      ))}
+                      <button onClick={onAsk} data-testid="pv2-msc-ask" style={{ alignSelf: "flex-start", padding: "8px 13px", borderRadius: 7, border: "1px solid rgba(34,211,238,.35)", background: "transparent", color: "#22d3ee", fontSize: "11.5px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Ask Shane about this notice</button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -349,388 +573,628 @@ export default function PortalV2MsChangesPage() {
   const slugIndex = params?.wave ? WAVE_SLUGS.indexOf(params.wave as (typeof WAVE_SLUGS)[number]) : 0;
   const wave = clampWave(slugIndex < 0 ? 0 : slugIndex, bands);
 
+  const [services, setServices] = useState<Services>(ALL_SERVICES);
+  const [seenPanel, setSeenPanel] = useState(false);
+  const [past, setPast] = useState<number | null>(null);
+  const [statFilter, setStatFilter] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [sec, setSec] = useState("ms");
+  const [announced, setAnnounced] = useState<Record<string, boolean>>({});
+  const [decided, setDecided] = useState<Record<string, string>>({});
+  const [snoozed, setSnoozed] = useState<Record<string, string>>({});
+  const [threadOv, setThreadOv] = useState<Record<string, { who: string; at: string; text: string; mine?: boolean }[]>>({});
+  const [toast, setToast] = useState("");
+  const { openForm, formElement } = useFormDrawer();
 
-  const sums = useMemo(() => bucketSums(), []);
-  const selected = useMemo(() => new Set(bucketsInWave(wave, bands)), [wave, bands]);
-  const posts = useMemo(() => postsInWave(wave), [wave]);
-  const breaks = useMemo(() => breakingInWave(wave), [wave]);
+  // Selecting a live wave (which changes the URL) drops out of the retrospective.
+  useEffect(() => {
+    setPast(null);
+  }, [wave]);
+
+  const t = (msg: string) => setToast(msg);
+  const openPost = (id: string) => {
+    setOpenId(id);
+    setSec("ms");
+  };
+
+  const active = useMemo(() => activeDensity(services), [services]);
+  const selBand = bands[wave];
+  const selT = useMemo(() => waveTotals(wave, services, bands), [wave, services, bands]);
+  const tiles = useMemo(() => waveTiles(wave, services, bands), [wave, services, bands]);
+  const notice = waveNotice(wave);
+  const freeze = freezeInWave(wave, bands);
+  const wBreaks = useMemo(() => waveBreaks(wave, services, bands), [wave, services, bands]);
+  const wQueue = useMemo(() => waveQueue(wave, services, bands), [wave, services, bands]);
+  const wQuiet = useMemo(() => waveQuiet(wave, services, bands), [wave, services, bands]);
+  const wSeen = useMemo(() => seenInWave(wave, services, bands), [wave, services, bands]);
+  const raci = useMemo(() => raciRows(services), [services]);
+  const pastData = past !== null ? pastWave(past) : null;
+
+  const openPostObj = openId ? MS_POSTS.find((p) => p.id === openId) ?? null : null;
+  const thread = openPostObj ? [...openPostObj.thread, ...(threadOv[openPostObj.id] ?? [])] : [];
+
+  /* ── The forms ─────────────────────────────────────────────────────────── */
+
+  const briefForm = () =>
+    openForm(
+      toFormSpec({
+        kicker: "Board briefing",
+        title: "Build a board briefing",
+        intro: "One page in the language of consequences rather than product names. What Microsoft is doing to this tenant, what being ready costs, and what happens if nothing is done.",
+        submitLabel: "Build it",
+        fields: [
+          { k: "period", label: "Period", kind: "pick", value: "Next quarter", options: ["Next 30 days", "Next quarter", "Next twelve months"] },
+          { k: "tone2", label: "Register", kind: "pick", value: "Plain English, no product names", options: ["Plain English, no product names", "Technical, for your IT team"] },
+          { k: "include", label: "Include", kind: "toggle", value: "In use", toggleLabel: "Include what it costs to be ready, and what doing nothing costs" },
+        ],
+        doneNote: "Briefing built — four notices, three decisions, one reversal, with the cost of readiness against the cost of doing nothing.",
+      }),
+    );
+
+  const digestForm = () =>
+    openForm(
+      toFormSpec({
+        kicker: "Digest",
+        title: "Change the Monday digest",
+        intro: "The digest is the only reason any of this gets read. Keep it short enough that it does.",
+        submitLabel: "Save the digest",
+        fields: [
+          { k: "day", label: "When", kind: "pick", value: "Monday 07:00", options: ["Monday 07:00", "Friday 16:00", "First Monday of the month"] },
+          { k: "to", label: "Recipients", kind: "text", value: "Priya Raman · IT team · Shane McCaw" },
+          { k: "floor", label: "What to leave out", kind: "pick", value: "Skip no-impact unless it touches a control", options: ["Skip no-impact unless it touches a control", "Skip everything under 40", "Send everything"] },
+          { k: "urgent", label: "Out of band", kind: "toggle", value: "In use", toggleLabel: "Send anything scored above 80 the day it is published" },
+        ],
+        doneNote: "Digest saved. Anything above 80 goes out the same day it is published.",
+      }),
+    );
+
+  const servicesForm = () =>
+    openForm(
+      toFormSpec({
+        kicker: "Settings · services in use",
+        title: "Which Microsoft services are you using?",
+        intro: `Turn a service off and it leaves this page — its waves, counts and notices all go with it. Each one is pre-selected from the last tenant scan, ${MSC_SCAN_AT}.`,
+        submitLabel: "Save services",
+        fields: MSC_SCANS.map((sc) => ({ k: sc.wl, label: sc.name, kind: "toggle" as const, value: services[sc.wl] === false ? "Off" : "In use", toggleLabel: "In use", hint: `Scan found: ${sc.found}` })),
+        doneNote: "Services updated. Every count on this page now reads against them.",
+        onSubmit: (v) => {
+          const next: Record<string, boolean> = {};
+          MSC_SCANS.forEach((sc) => {
+            next[sc.wl] = v[sc.wl] === "In use";
+          });
+          setServices(next);
+        },
+      }),
+    );
+
+  const briefWaveForm = () =>
+    openForm(
+      toFormSpec({
+        kicker: `Briefing · ${selBand.wave}`,
+        title: `Brief the ${selBand.wave.toLowerCase()}`,
+        intro: "One page on this wave alone: what lands, what it costs to be ready, what happens if nothing is done. Written in consequences, not product names.",
+        submitLabel: "Build the briefing",
+        fields: [
+          { k: "audience", label: "Written for", kind: "pick", value: "Board", options: ["Board", "Senior leadership", "The whole business"] },
+          { k: "include", label: "Ownership", kind: "toggle", value: "In use", toggleLabel: "Name the owner against every item", hint: "Reads from the M365 RACI below." },
+          { k: "note", label: "Anything to lead with", kind: "area", ph: "e.g. we are getting ahead of legacy auth deliberately" },
+        ],
+        doneNote: `Briefing built for the ${selBand.wave.toLowerCase()} — ${wBreaks.length} breaking, ${wQueue.length} to decide.`,
+      }),
+    );
+
+  const decisionForm = (p: MsPost) =>
+    openForm(
+      toFormSpec({
+        kicker: `Decision · ${p.id}`,
+        title: `Record a decision on ${p.id}`,
+        intro: "Acknowledging is a decision, not a dismissal. It records that you read it, what you chose, and why — so that in a year nobody has to guess.",
+        submitLabel: "Record the decision",
+        fields: [
+          { k: "stance", label: "Position", kind: "pick", value: "Get ahead of it with a change request", options: ["Get ahead of it with a change request", "Let it land as Microsoft intends", "Accept the risk and record it", "Watch it — the date has moved before"] },
+          { k: "why", label: "Reasoning", kind: "area", ph: "The sentence you would want in front of you if this went wrong in six months." },
+          { k: "tell", label: "Who needs telling", kind: "pick", value: "IT team only", options: ["IT team only", "IT team and affected users", "Everyone with a mailbox", "Nobody yet"] },
+        ],
+        doneNote: `${p.id} — decision recorded. The decision, your name and the timestamp go on the notice and into the compliance evidence pack.`,
+        onSubmit: (v) => setDecided((cur) => ({ ...cur, [p.id]: v.stance })),
+      }),
+    );
+
+  const snoozeForm = (p: MsPost) =>
+    openForm(
+      toFormSpec({
+        kicker: `Snooze · ${p.id}`,
+        title: `Bring ${p.id} back later`,
+        intro: "Snoozing is honest deferral, not deletion. It disappears from the queue and returns before the deadline, with the deadline attached.",
+        submitLabel: "Snooze it",
+        fields: [
+          { k: "until", label: "Bring it back", kind: "pick", value: "30 days before it lands", options: ["30 days before it lands", "60 days before it lands", "At the next change review", "In one week"] },
+          { k: "why", label: "Why now is not the time", kind: "area", ph: "Optional, but it is what stops the same conversation happening again in October." },
+        ],
+        doneNote: `${p.id} snoozed. It will be back, and the deadline will not have moved on your behalf.`,
+        onSubmit: (v) => setSnoozed((cur) => ({ ...cur, [p.id]: v.until })),
+      }),
+    );
+
+  const crForm = (p: MsPost) =>
+    openForm(
+      toFormSpec({
+        kicker: `Change request · from ${p.id}`,
+        title: `Get in front of ${p.id}`,
+        intro: "This opens a change request on the change control page, pre-filled from the notice and linked to it, so the reason for the change survives longer than the person who raised it.",
+        submitLabel: "Raise the change request",
+        fields: [
+          { k: "title", label: "Change title", kind: "text", value: p.title },
+          { k: "window", label: "Target window", kind: "pick", value: "Next Tuesday · 21:00–23:00", options: ["Next Tuesday · 21:00–23:00", "Next Thursday · 20:00–22:00", "The week after next", "As soon as it can be approved"], hint: "Windows outside your Tue–Thu policy or inside a freeze are flagged on the change record." },
+          { k: "risk", label: "Risk category", kind: "pick", value: "Medium", options: ["Low", "Medium", "High"] },
+          { k: "note", label: "Anything the engineer should know", kind: "area" },
+        ],
+        doneNote: `Change request drafted from ${p.id}. It is linked to this notice both ways.`,
+      }),
+    );
+
+  const askForm = (p: MsPost) =>
+    openForm(
+      toFormSpec({
+        kicker: `Ask Shane · ${p.id}`,
+        title: `Ask about ${p.id}`,
+        intro: "Goes to your architect with the notice, your tenant evidence and the impact score attached, so the answer comes back with context rather than questions.",
+        submitLabel: "Send it",
+        fields: [
+          { k: "q", label: "Your question", kind: "area", ph: "e.g. is there any version of this where we do nothing and are still fine?" },
+          { k: "urgency", label: "When you need it", kind: "pick", value: "This week", options: ["Today", "This week", "Before the deadline", "No rush"] },
+        ],
+        doneNote: "Sent to Shane McCaw with the notice and your tenant evidence attached. It is on the thread on this notice.",
+        onSubmit: (v) => setThreadOv((cur) => ({ ...cur, [p.id]: [...(cur[p.id] ?? []), { who: "Priya Raman", at: "just now", text: v.q, mine: true }] })),
+      }),
+    );
+
+  const tagForm = (p: MsPost) =>
+    openForm(
+      toFormSpec({
+        kicker: "Compliance",
+        title: `Tag a control on ${p.id}`,
+        intro: "Tagging a notice to a control means the control shows this notice as a reason it might move — which is the question an auditor actually asks.",
+        submitLabel: "Tag it",
+        fields: [
+          { k: "control", label: "Control", kind: "select", value: "ISO 27001 A.9.4.2", options: ["ISO 27001 A.9.4.2", "ISO 27001 A.13.1.3", "Cyber Essentials Plus · authentication", "Cyber Essentials Plus · admin access", "Copilot readiness gate", "CMP-011 · external access"] },
+          { k: "note", label: "How this notice affects it", kind: "area" },
+        ],
+        doneNote: `${p.id} tagged. The control now lists this notice as a reason it may move.`,
+      }),
+    );
+
+  const announceForm = (v: MscSeen) =>
+    openForm(
+      toFormSpec({
+        kicker: `Tell your people · ${v.id}`,
+        title: `Announce: ${v.title}`,
+        intro: "A short notice, sent before the change lands, in the words your help desk would use. This is the cheapest ticket reduction available to you.",
+        submitLabel: "Schedule the announcement",
+        fields: [
+          { k: "when", label: "Send it", kind: "pick", value: "One week before", options: ["Now", "One week before", "The day before", "The morning it lands"] },
+          { k: "channel", label: "Channel", kind: "pick", value: "Email and Teams", options: ["Email", "Teams", "Email and Teams", "Intranet banner"] },
+          { k: "audience", label: "Audience", kind: "text", value: v.who },
+          { k: "msg", label: "The message", kind: "area", value: v.helpdesk, hint: "Pre-written in plain language. Edit it to sound like you — nobody believes an announcement that reads like a Microsoft post." },
+        ],
+        doneNote: "Announcement scheduled. Expected tickets drop to a handful.",
+        onSubmit: () => setAnnounced((cur) => ({ ...cur, [v.id]: true })),
+      }),
+    );
+
+  const tellForm = (name: string, items: readonly string[]) =>
+    openForm(
+      toFormSpec({
+        kicker: "Tell them",
+        title: `Notify ${name}`,
+        intro: "Microsoft told your administrators. These are the people who actually feel it. This sends what changes, when, and what they should do differently.",
+        submitLabel: "Send the notice",
+        fields: [
+          { k: "when", label: "When", kind: "pick", value: "Now", options: ["Now", "Two weeks before the date", "At the next team meeting"] },
+          { k: "channel", label: "How", kind: "pick", value: "Email", options: ["Email", "Teams message", "Email and their manager"] },
+          { k: "extra", label: "Anything to add", kind: "area", ph: "The generated notice already says what changes and when. This is for anything local — a handover, a shift pattern, a name to ask for." },
+        ],
+        doneNote: `${name} will be told. It is on the record against ${items.join(" and ")}.`,
+      }),
+    );
 
   return (
     <PortalV2Shell eyebrow="Reference" title="Microsoft Changes">
       <div style={{ minHeight: "100%", background: SIDEBAR_WASH }}>
-        <div
-          style={{
-            maxWidth: 1180,
-            margin: "0 auto",
-            padding: "26px 28px 110px",
-            display: "flex",
-            flexDirection: "column",
-            gap: 16,
-            boxSizing: "border-box",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "flex-end",
-              justifyContent: "space-between",
-              gap: 20,
-              flexWrap: "wrap",
-              paddingBottom: 13,
-              borderBottom: "1px solid rgba(30,41,59,.9)",
-            }}
-          >
+        <div style={{ maxWidth: 1180, margin: "0 auto", padding: "26px 28px 110px", display: "flex", flexDirection: "column", gap: 16, boxSizing: "border-box" }}>
+          {/* Header — prototype 31-41 */}
+          <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 20, flexWrap: "wrap", paddingBottom: 13, borderBottom: "1px solid rgba(30,41,59,.9)" }}>
             <div style={{ display: "flex", flexDirection: "column", gap: 5, minWidth: 0 }}>
-              <span
-                style={{ fontSize: "19px", fontWeight: 800, color: "#f8fafc", letterSpacing: "-.015em" }}
-                data-testid="pv2-page-title"
-              >
-                Microsoft Changes
-              </span>
-              <span style={{ fontSize: "12.5px", color: "#94a3b8", lineHeight: 1.5 }}>
-                Every Message Center post, read against your tenant rather than forwarded to you.
-              </span>
+              <span style={{ fontSize: "19px", fontWeight: 800, color: "#f8fafc", letterSpacing: "-.015em" }} data-testid="pv2-page-title">Microsoft Changes</span>
+              <span style={{ fontSize: "12.5px", color: "#94a3b8", lineHeight: 1.5 }}>Microsoft ships in waves. Pick a wave and this page becomes that wave.</span>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
+              <button onClick={briefForm} data-testid="pv2-msc-brief" style={HEADER_BTN(true)}>Export a board briefing</button>
+              <button onClick={digestForm} data-testid="pv2-msc-digest" style={HEADER_BTN(false)}>Digest settings</button>
+              <button onClick={servicesForm} data-testid="pv2-msc-services" style={HEADER_BTN(false)}>{servicesLabel(services)}</button>
             </div>
           </div>
 
-          {/* ── The density grid ──────────────────────────────────────────
-              The wave band keeps the prototype's scroll wrapper (165-166);
-              the ROWS below it are the fluid `repeat(11,1fr)` shape Round Two
-              de-scrolled, and carry no floor of their own. */}
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 12,
-              padding: "16px 18px",
-              border: "1px solid rgba(30,41,59,.9)",
-              borderRadius: 13,
-              background: "#0b1524",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
-              <Kicker colour="#22d3ee">What is coming</Kicker>
-              <span style={{ fontSize: "11px", color: "#64748b" }}>
-                {sums.reduce((a, b) => a + b, 0)} changes across the next twelve months, by workload
-              </span>
+          {/* Next 12 months — the stat cards — prototype 43-56 */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <span style={{ fontSize: "9px", fontWeight: 700, letterSpacing: ".12em", textTransform: "uppercase", color: "#475569", paddingRight: 2 }}>Next 12 months</span>
+            {MSC_STAT_DEFS.map((s) => {
+              const on = statFilter === s.key;
+              return (
+                <button key={s.key} onClick={() => setStatFilter(on ? null : s.key)} data-testid={`pv2-msc-stat-${s.key}`} title={on ? "Filtering everything below · click to clear" : s.sub} style={{ display: "inline-flex", alignItems: "baseline", gap: 7, padding: "6px 11px", border: `1px solid ${on ? `${s.tone}80` : "rgba(30,41,59,.9)"}`, borderRadius: 999, background: on ? `${s.tone}14` : "#0b1524", cursor: "pointer", fontFamily: "inherit" }}>
+                  <span style={{ fontSize: "19px", fontWeight: 800, letterSpacing: "-.02em", lineHeight: 1.1, flex: "0 0 auto", color: s.tone }}>{s.value}</span>
+                  <span style={{ fontSize: "9.5px", fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase", color: "#64748b", lineHeight: 1.3, whiteSpace: "nowrap" }}>{s.label}</span>
+                </button>
+              );
+            })}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: "auto", padding: "5px 11px 5px 9px", border: "1px solid rgba(52,211,153,.28)", borderRadius: 999, background: "rgba(52,211,153,.06)" }}>
+              <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#34d399", flex: "0 0 auto", boxShadow: "0 0 0 3px rgba(52,211,153,.18)" }} />
+              <span style={{ fontSize: "10.5px", color: "#94a3b8", whiteSpace: "nowrap" }}>Read against your tenant · scanned {MSC_SCAN_AT}</span>
+              <button onClick={() => t("Tenant scan queued — Graph read takes about four minutes. Everything on this page will re-read against the result.")} data-testid="pv2-msc-rescan" style={{ border: "none", background: "transparent", color: "#34d399", fontSize: "10.5px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", padding: 0, whiteSpace: "nowrap" }}>Scan again</button>
             </div>
+          </div>
 
-            <div style={{ overflowX: "auto", overflowY: "hidden" }} data-testid="pv2-msc-grid">
-              <div style={{ minWidth: 820, display: "grid", gridTemplateColumns: "190px minmax(0,1fr)", gap: 0 }}>
-                <span
-                  style={{
-                    fontSize: "9px",
-                    fontWeight: 700,
-                    letterSpacing: ".1em",
-                    textTransform: "uppercase",
-                    color: "#475569",
-                    alignSelf: "end",
-                    padding: "0 12px 6px 2px",
-                  }}
-                >
-                  Wave
-                </span>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(11,1fr)" }}>
-                  {bands.map((b, wi) => {
-                    const on = wi === wave;
-                    const n = waveCount(wi);
-                    return (
-                      <a
-                        key={b.wave}
-                        href={`/portal-v2/ms-changes${wi === 0 ? "" : `/${WAVE_SLUGS[wi]}`}`}
-                        title={waveTitle(b, n)}
-                        data-testid={`pv2-msc-wave-${WAVE_SLUGS[wi]}`}
-                        aria-current={on ? "page" : undefined}
-                        style={{
-                          gridColumn: `${b.start + 1} / span ${b.span}`,
-                          display: "flex",
-                          flexDirection: "column",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          gap: 0,
-                          margin: "0 1px 5px",
-                          padding: "5px 3px",
-                          borderRadius: 5,
-                          cursor: "pointer",
-                          fontFamily: "inherit",
-                          textDecoration: "none",
-                          border: `1px solid ${on ? "rgba(96,165,250,.55)" : "rgba(96,165,250,.2)"}`,
-                          background: on ? "rgba(96,165,250,.16)" : "rgba(96,165,250,.05)",
-                        }}
-                      >
-                        <span
-                          style={{
-                            fontSize: "9px",
-                            fontWeight: on ? 800 : 700,
-                            letterSpacing: ".03em",
-                            textTransform: "uppercase",
-                            color: on ? "#e2e8f0" : "#93c5fd",
-                            whiteSpace: "nowrap",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            maxWidth: "100%",
-                          }}
-                        >
-                          {waveLabel(b)}
-                        </span>
-                        <span
-                          style={{
-                            fontSize: "9px",
-                            fontWeight: 700,
-                            color: on ? "#93c5fd" : "#60a5fa",
-                            whiteSpace: "nowrap",
-                            lineHeight: 1.3,
-                          }}
-                        >
-                          {n}
-                        </span>
-                      </a>
-                    );
-                  })}
+          {/* Landed waves — the way into the retrospective — prototype pastNav 2087-2094 */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <span style={{ fontSize: "9px", fontWeight: 700, letterSpacing: ".12em", textTransform: "uppercase", color: "#475569", paddingRight: 2 }}>Landed</span>
+            {MSC_LANDED.map((w, i) => {
+              const on = past === i;
+              return (
+                <button key={w.name} onClick={() => { setPast(i); setSeenPanel(false); }} data-testid={`pv2-msc-pastnav-${i}`} style={{ display: "flex", flexDirection: "column", gap: 2, padding: "8px 12px", borderRadius: 9, cursor: "pointer", fontFamily: "inherit", textAlign: "left", border: `1px solid ${on ? "rgba(148,163,184,.4)" : "rgba(30,41,59,.9)"}`, borderLeft: `3px solid ${on ? "#94a3b8" : "rgba(148,163,184,.18)"}`, background: on ? "rgba(148,163,184,.08)" : "#0b1524" }}>
+                  <span style={{ fontSize: "12px", fontWeight: on ? 800 : 600, color: on ? "#e2e8f0" : "#94a3b8" }}>{w.name}</span>
+                  <span style={{ fontSize: "10px", fontWeight: 600, color: w.tone === "#f87171" ? "#f87171" : "#34d399" }}>{w.verdict}</span>
+                </button>
+              );
+            })}
+            {past !== null && (
+              <button onClick={() => setPast(null)} style={{ padding: "8px 12px", borderRadius: 9, border: "1px solid rgba(0,120,212,.4)", background: "rgba(0,120,212,.1)", color: "#93c5fd", fontSize: "11px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Back to the live wave</button>
+            )}
+          </div>
+
+          {/* ── The retrospective — prototype 60-97 ─────────────────────────── */}
+          {pastData && (
+            <div data-testid="pv2-msc-past" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 13, padding: "17px 19px", border: "1px solid rgba(148,163,184,.28)", borderRadius: 13, background: "linear-gradient(135deg,rgba(148,163,184,.08),rgba(11,21,36,.9))" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: "22px", fontWeight: 800, color: "#f8fafc", letterSpacing: "-.02em" }}>{pastData.name}</span>
+                  <span style={{ display: "inline-flex", alignItems: "center", padding: "3px 10px", borderRadius: 999, fontSize: "10.5px", fontWeight: 700, whiteSpace: "nowrap", color: pastData.tone, background: `${pastData.tone}1f`, border: `1px solid ${pastData.tone}55` }}>{pastData.verdict}</span>
+                  <span style={{ marginLeft: "auto", fontSize: "12px", fontWeight: 600, color: "#94a3b8", whiteSpace: "nowrap" }}>{pastData.range}</span>
                 </div>
-
-                <span
-                  style={{
-                    fontSize: "9px",
-                    fontWeight: 700,
-                    letterSpacing: ".1em",
-                    textTransform: "uppercase",
-                    color: "#475569",
-                    alignSelf: "start",
-                    padding: "6px 12px 0 2px",
-                  }}
-                >
-                  Workload
-                </span>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(11,1fr)" }}>
-                  {MSC_BUCKETS.map((b, i) => (
-                    <div
-                      key={`${b.label}-${b.sub}`}
-                      style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        alignItems: "center",
-                        gap: 0,
-                        padding: "5px 2px",
-                        borderLeft:
-                          i === 0
-                            ? "2px solid rgba(34,211,238,.75)"
-                            : `1px solid ${isFreezeBucket(i) ? "rgba(248,113,113,.4)" : "rgba(30,41,59,.6)"}`,
-                        background: selected.has(i) ? "rgba(96,165,250,.05)" : "transparent",
-                      }}
-                    >
-                      {i === 0 && (
-                        <span
-                          style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            padding: "1px 6px",
-                            marginBottom: 2,
-                            borderRadius: 999,
-                            fontSize: "8px",
-                            fontWeight: 800,
-                            letterSpacing: ".06em",
-                            textTransform: "uppercase",
-                            color: "#022c33",
-                            background: "#22d3ee",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {MSC_TODAY_LABEL}
-                        </span>
-                      )}
-                      <span
-                        style={{
-                          fontSize: "9.5px",
-                          fontWeight: i === 0 ? 800 : 700,
-                          color: i === 0 ? "#22d3ee" : "#cbd5e1",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {b.label}
-                      </span>
-                      <span
-                        style={{
-                          fontSize: "8.5px",
-                          fontWeight: 600,
-                          color: isFreezeBucket(i) ? "#f87171" : "#475569",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {isFreezeBucket(i)
-                          ? MSC_FREEZE_BANDS.find((f) => f.from <= i && i < f.from + f.span)?.label ?? b.sub
-                          : b.sub}
-                      </span>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 9 }}>
+                  {pastData.tiles.map((t2) => (
+                    <div key={t2.label} style={{ display: "flex", flexDirection: "column", gap: 2, padding: "11px 13px", borderRadius: 9, border: `1px solid ${t2.tone}2e`, borderLeft: `3px solid ${t2.tone}`, background: "rgba(2,6,23,.5)" }}>
+                      <span style={{ fontSize: "22px", fontWeight: 800, letterSpacing: "-.02em", lineHeight: 1.05, color: t2.tone }}>{t2.value}</span>
+                      <span style={{ fontSize: "10.5px", fontWeight: 600, color: "#94a3b8", lineHeight: 1.4 }}>{t2.label}</span>
                     </div>
                   ))}
                 </div>
-
-                {MSC_DENSITY.map((row) => (
-                  <div
-                    key={row.wl}
-                    data-testid={`pv2-msc-row-${row.wl}`}
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "190px minmax(0,1fr)",
-                      gap: 0,
-                      gridColumn: "1 / span 2",
-                      borderTop: "1px solid rgba(30,41,59,.6)",
-                    }}
-                  >
-                    <div
-                      style={{ display: "flex", alignItems: "center", gap: 9, padding: "0 12px 0 2px", minWidth: 0 }}
-                    >
-                      <span
-                        style={{
-                          width: 8,
-                          height: 8,
-                          borderRadius: 2,
-                          flex: "0 0 auto",
-                          background: WORKLOAD_TONE[row.wl],
-                        }}
-                      />
-                      <span
-                        style={{
-                          flex: 1,
-                          fontSize: "11.5px",
-                          fontWeight: 600,
-                          color: "#cbd5e1",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                          minWidth: 0,
-                        }}
-                      >
-                        {row.name}
-                      </span>
-                    </div>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(11,1fr)" }}>
-                      {row.cells.map((c, i) => (
-                        <div
-                          key={i}
-                          title={cellTitle(row.name, i, c)}
-                          style={{
-                            display: "flex",
-                            flexWrap: "wrap",
-                            alignContent: "center",
-                            justifyContent: "center",
-                            gap: 3,
-                            minHeight: 38,
-                            padding: "6px 5px",
-                            borderLeft:
-                              i === 0
-                                ? "2px solid rgba(34,211,238,.5)"
-                                : `1px solid ${isFreezeBucket(i) ? "rgba(248,113,113,.35)" : "rgba(30,41,59,.5)"}`,
-                            background: selected.has(i) ? "rgba(96,165,250,.05)" : "transparent",
-                          }}
-                        >
-                          {cellDots(c).map((k, di) => (
-                            <span
-                              key={di}
-                              style={{
-                                width: 7,
-                                height: 7,
-                                borderRadius: 2,
-                                background: KIND_TONE[k],
-                                opacity: k === "s" ? 0.85 : 1,
-                              }}
-                            />
-                          ))}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
               </div>
-            </div>
-
-            <div style={{ display: "flex", gap: 14, flexWrap: "wrap", paddingTop: 2 }}>
-              {MSC_KINDS.map((k) => (
-                <span key={k.k} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <span style={{ width: 7, height: 7, borderRadius: 2, background: k.tone }} />
-                  <span style={{ fontSize: "10px", color: "#64748b", whiteSpace: "nowrap" }}>{k.label}</span>
-                </span>
-              ))}
-            </div>
-          </div>
-
-          {/* What stops working, for the selected wave — prototype 222-240 */}
-          {breaks.length > 0 && (
-            <div
-              data-testid="pv2-msc-breaks"
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: 9,
-                padding: "15px 17px",
-                border: "1px solid rgba(248,113,113,.28)",
-                borderRadius: 13,
-                background: "#0b1524",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
-                <Kicker colour="#f87171">What stops working</Kicker>
-                <span style={{ fontSize: "11px", color: "#64748b" }}>
-                  {breaks.length} in {bands[wave].wave.toLowerCase()}, with a date you cannot move
-                </span>
-              </div>
-              {breaks.map((p) => (
-                <div
-                  key={p.id}
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "150px minmax(0,1fr)",
-                    gap: 14,
-                    padding: "10px 12px",
-                    borderLeft: "2px solid rgba(248,113,113,.5)",
-                    borderRadius: "0 8px 8px 0",
-                    background: "rgba(248,113,113,.05)",
-                  }}
-                >
-                  <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
-                    <span style={{ fontSize: "12.5px", fontWeight: 800, color: "#f87171", lineHeight: 1.3 }}>
-                      {p.when}
-                    </span>
-                    <span style={{ fontSize: "10px", color: "#94a3b8" }}>{p.countdown}</span>
-                    <span style={{ fontSize: "9.5px", fontWeight: 700, color: "#475569", fontFamily: MONO }}>
-                      {p.id}
-                    </span>
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
-                    <span style={{ fontSize: "13px", fontWeight: 700, color: "#f1f5f9", lineHeight: 1.4 }}>
-                      {p.title}
-                    </span>
-                    <span style={{ fontSize: "11.5px", color: "#94a3b8", lineHeight: 1.55, textWrap: "pretty" }}>
-                      {p.seats}
-                    </span>
-                  </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 9, padding: "15px 17px", border: "1px solid rgba(30,41,59,.9)", borderRadius: 13, background: "#0b1524" }}>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+                  <Kicker colour="#94a3b8">Did this release?</Kicker>
+                  <span style={{ fontSize: "11px", color: "#64748b" }}>What actually arrived, and what it cost the help desk</span>
                 </div>
-              ))}
+                <div style={{ overflowX: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
+                  {pastData.rows.map((r) => (
+                    <div key={r.id} style={{ display: "grid", gridTemplateColumns: "104px minmax(220px,1fr) 190px 150px", gap: 12, alignItems: "center", padding: "11px 13px", border: "1px solid rgba(30,41,59,.85)", borderRadius: 10, background: "rgba(2,6,23,.4)", minWidth: 700 }}>
+                      <span style={{ fontSize: "9.5px", fontWeight: 700, color: "#475569", fontFamily: MONO }}>{r.id}</span>
+                      <span style={{ fontSize: "12.5px", fontWeight: 600, color: "#e2e8f0", lineHeight: 1.4, minWidth: 0 }}>{r.title}</span>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+                        <span style={{ fontSize: "11.5px", fontWeight: 700, color: r.tone }}>{r.outcome}</span>
+                        <span style={{ fontSize: "10.5px", color: "#64748b" }}>{r.tickets}</span>
+                      </div>
+                      <span style={pill(r.told ? "People were told" : "Nobody was told", r.told ? "#34d399" : "#f87171", `${r.told ? "#34d399" : "#f87171"}14`)}>{r.told ? "People were told" : "Nobody was told"}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           )}
 
-          {/* The wave's named posts */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
-              <Kicker colour="#2dd4bf">{bands[wave].wave}</Kicker>
-              <span style={{ fontSize: "11px", color: "#64748b" }} data-testid="pv2-msc-post-count">
-                {posts.length === 0
-                  ? "No post in this wave has been read against your tenant yet."
-                  : `${posts.length} read against your tenant`}
-              </span>
+          {/* ── The live wave ───────────────────────────────────────────────── */}
+          {!pastData && (
+            <>
+              {/* Wave header card — prototype 101-130 */}
+              <div data-testid="pv2-msc-wave-card" style={{ display: "flex", flexDirection: "column", gap: 13, padding: "17px 19px", border: "1px solid rgba(0,120,212,.32)", borderRadius: 13, background: "linear-gradient(135deg,rgba(0,120,212,.1),rgba(11,21,36,.9))" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: "22px", fontWeight: 800, color: "#f8fafc", letterSpacing: "-.02em" }}>{selBand.wave}</span>
+                  <span style={pill(waveStatus(wave, bands), wave === 0 ? "#22d3ee" : "#93c5fd", `${wave === 0 ? "#22d3ee" : "#60a5fa"}1f`)}>{waveStatus(wave, bands)}</span>
+                  {freeze && <span style={pill(`Lands inside your ${freeze.label.toLowerCase()} freeze`, "#f87171", "rgba(248,113,113,.12)")}>Lands inside your {freeze.label.toLowerCase()} freeze</span>}
+                  <span style={{ marginLeft: "auto", fontSize: "12px", fontWeight: 600, color: "#93c5fd", whiteSpace: "nowrap" }}>{rangeOf(selBand)}</span>
+                  <button onClick={briefWaveForm} data-testid="pv2-msc-brief-wave" style={{ padding: "6px 12px", borderRadius: 7, fontSize: "11px", fontWeight: 700, border: "1px solid rgba(0,120,212,.5)", background: "rgba(0,120,212,.14)", color: "#93c5fd", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>Brief this wave</button>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
+                  <span style={{ fontSize: "10px", fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "#475569", whiteSpace: "nowrap" }}>{notice.given} days notice given</span>
+                  <div style={{ flex: 1, height: 4, borderRadius: 2, background: "rgba(148,163,184,.16)", minWidth: 60 }}>
+                    <div style={{ width: `${notice.pct}%`, height: "100%", borderRadius: 2, background: "linear-gradient(90deg,#0078D4,#22d3ee)" }} />
+                  </div>
+                  <span style={{ fontSize: "11px", fontWeight: 700, color: "#22d3ee", whiteSpace: "nowrap" }}>{notice.left} days left</span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 9 }}>
+                  {tiles.map((tile) => {
+                    const isSeen = tile.key === "seen";
+                    return (
+                      <button key={tile.key} onClick={isSeen ? () => setSeenPanel((v) => !v) : undefined} data-testid={`pv2-msc-tile-${tile.key}`} style={{ display: "flex", flexDirection: "column", gap: 2, padding: "11px 13px", borderRadius: 9, border: `1px solid ${tile.tone}2e`, borderLeft: `3px solid ${tile.tone}`, background: "rgba(2,6,23,.5)", fontFamily: "inherit", textAlign: "left", cursor: isSeen ? "pointer" : "default" }}>
+                        <span style={{ fontSize: "22px", fontWeight: 800, letterSpacing: "-.02em", lineHeight: 1.05, color: tile.tone }}>{tile.value}</span>
+                        <span style={{ fontSize: "10.5px", fontWeight: 600, color: "#94a3b8", lineHeight: 1.4 }}>{tile.label}</span>
+                        {isSeen && <span style={{ fontSize: "10px", fontWeight: 700, color: "#a78bfa", textAlign: "left" }}>{seenPanel ? "Hide what they will see" : "See what they will see"}</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* What your people will see — the seen-in-the-wild list — prototype 132-150 */}
+              {seenPanel && (
+                <div data-testid="pv2-msc-seen-panel" style={SECTION_CARD("rgba(167,139,250,.3)")}>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+                    <Kicker colour="#a78bfa">What your people will see</Kicker>
+                    <span style={{ fontSize: "11px", color: "#64748b" }}>{seenMeta(wave, services, bands)} · nothing to configure, only somebody to tell</span>
+                  </div>
+                  {wSeen.length === 0 && <span style={{ fontSize: "12px", color: "#64748b", lineHeight: 1.5 }}>Nothing your people will notice lands in this wave.</span>}
+                  {wSeen.map((v) => (
+                    <div key={v.id} data-testid={`pv2-msc-seen-${v.id}`} style={{ display: "flex", flexDirection: "column", gap: 8, padding: "12px 14px", border: `1px solid ${v.tone}44`, borderRadius: 11, background: "rgba(2,6,23,.4)" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                        <span style={{ fontSize: "11.5px", fontWeight: 700, color: "#cbd5e1" }}>{v.when}</span>
+                        <span style={pill(v.app, WORKLOAD_TONE[seenWorkload(v.app)] ?? "#94a3b8", "rgba(148,163,184,.08)")}>{v.app}</span>
+                        <span style={{ fontSize: "12.5px", fontWeight: 700, color: "#f1f5f9", lineHeight: 1.4, minWidth: 0 }}>{v.title}</span>
+                        <span style={{ marginLeft: "auto", ...pill(announced[v.id] ? "Announced" : "Not told", announced[v.id] ? "#34d399" : "#f87171", `${announced[v.id] ? "#34d399" : "#f87171"}14`) }}>{announced[v.id] ? "Announced" : "Not told"}</span>
+                      </div>
+                      <span style={{ fontSize: "11.5px", color: "#94a3b8", lineHeight: 1.6, textWrap: "pretty" }}>{v.sees}</span>
+                      <span style={{ fontSize: "11px", color: v.tone, fontWeight: 600, lineHeight: 1.5 }}>{v.tickets}</span>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        <button onClick={() => announceForm(v)} data-testid={`pv2-msc-announce-${v.id}`} style={{ padding: "7px 12px", borderRadius: 6, border: "1px solid rgba(167,139,250,.45)", background: "rgba(167,139,250,.12)", color: "#a78bfa", fontSize: "11px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Announce it</button>
+                        <button onClick={() => t(`Added to the help desk crib sheet for ${v.when}. First-line staff see it when a ticket mentions ${v.app}.`)} style={{ padding: "7px 12px", borderRadius: 6, border: "1px solid rgba(148,163,184,.24)", background: "transparent", color: "#94a3b8", fontSize: "11px", fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Add to crib sheet</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* ── The density grid ──────────────────────────────────────────
+                  The wave band keeps the prototype's scroll wrapper (165-166);
+                  the ROWS below it are the fluid `repeat(11,1fr)` shape Round Two
+                  de-scrolled, and carry no floor of their own. */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: "16px 18px", border: "1px solid rgba(30,41,59,.9)", borderRadius: 13, background: "#0b1524" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}>
+                  <Kicker colour="#60a5fa">The next twelve months · click a column to move</Kicker>
+                  <div style={{ display: "flex", alignItems: "center", gap: 11, flexWrap: "wrap" }}>
+                    {MSC_KINDS.map((k) => (
+                      <div key={k.k} style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                        <span style={{ width: 7, height: 7, borderRadius: 2, background: k.tone }} />
+                        <span style={{ fontSize: "10px", color: "#64748b", whiteSpace: "nowrap" }}>{k.label}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ overflowX: "auto", overflowY: "hidden" }} data-testid="pv2-msc-grid">
+                  <div style={{ minWidth: 820, display: "grid", gridTemplateColumns: "190px minmax(0,1fr)", gap: 0 }}>
+                    <span style={{ fontSize: "9px", fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: "#475569", alignSelf: "end", padding: "0 12px 6px 2px" }}>Wave</span>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(11,1fr)" }}>
+                      {bands.map((b, wi) => {
+                        const on = wi === wave;
+                        const n = waveCount(wi, active);
+                        return (
+                          <a
+                            key={b.wave}
+                            href={`/portal-v2/ms-changes${wi === 0 ? "" : `/${WAVE_SLUGS[wi]}`}`}
+                            onClick={() => setPast(null)}
+                            title={waveTitle(b, n)}
+                            data-testid={`pv2-msc-wave-${WAVE_SLUGS[wi]}`}
+                            aria-current={on ? "page" : undefined}
+                            style={{ gridColumn: `${b.start + 1} / span ${b.span}`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 0, margin: "0 1px 5px", padding: "5px 3px", borderRadius: 5, cursor: "pointer", fontFamily: "inherit", textDecoration: "none", border: `1px solid ${on ? "rgba(0,120,212,.75)" : "rgba(96,165,250,.22)"}`, background: on ? "rgba(0,120,212,.22)" : "rgba(96,165,250,.06)", overflow: "hidden" }}
+                          >
+                            <span style={{ fontSize: "9px", fontWeight: on ? 800 : 700, letterSpacing: ".03em", textTransform: "uppercase", color: on ? "#e2e8f0" : "#93c5fd", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%", lineHeight: 1.3 }}>{waveLabel(b)}</span>
+                            <span style={{ fontSize: "9px", fontWeight: 700, color: on ? "#93c5fd" : "#60a5fa", whiteSpace: "nowrap", lineHeight: 1.3 }}>{n}</span>
+                          </a>
+                        );
+                      })}
+                    </div>
+
+                    <span style={{ fontSize: "9px", fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: "#475569", alignSelf: "start", padding: "6px 12px 0 2px" }}>Workload</span>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(11,1fr)" }}>
+                      {MSC_BUCKETS.map((b, i) => (
+                        <div key={`${b.label}-${b.sub}`} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 0, padding: "5px 2px", borderLeft: i === 0 ? "2px solid rgba(34,211,238,.75)" : `1px solid ${isFreezeBucket(i) ? "rgba(248,113,113,.4)" : "rgba(30,41,59,.6)"}`, background: b.wave === selBand.wave ? "rgba(96,165,250,.05)" : "transparent" }}>
+                          {i === 0 && <span style={{ display: "inline-flex", alignItems: "center", padding: "1px 6px", marginBottom: 2, borderRadius: 999, fontSize: "8px", fontWeight: 800, letterSpacing: ".06em", textTransform: "uppercase", color: "#022c33", background: "#22d3ee", whiteSpace: "nowrap" }}>{MSC_TODAY_LABEL}</span>}
+                          <span style={{ fontSize: "9.5px", fontWeight: i === 0 ? 800 : 700, color: i === 0 ? "#22d3ee" : "#cbd5e1", whiteSpace: "nowrap" }}>{b.label}</span>
+                          <span style={{ fontSize: "8.5px", fontWeight: 600, color: isFreezeBucket(i) ? "#f87171" : "#475569", whiteSpace: "nowrap" }}>{isFreezeBucket(i) ? MSC_FREEZE_BANDS.find((f) => f.from <= i && i < f.from + f.span)?.label ?? b.sub : b.sub}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {active.map((row) => (
+                      <div key={row.wl} data-testid={`pv2-msc-row-${row.wl}`} style={{ display: "grid", gridTemplateColumns: "190px minmax(0,1fr)", gap: 0, gridColumn: "1 / span 2", borderTop: "1px solid rgba(30,41,59,.6)" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "0 12px 0 2px", minWidth: 0 }}>
+                          <span style={{ width: 8, height: 8, borderRadius: 2, flex: "0 0 auto", background: WORKLOAD_TONE[row.wl] }} />
+                          <span style={{ flex: 1, fontSize: "11.5px", fontWeight: 600, color: "#cbd5e1", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{row.name}</span>
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(11,1fr)" }}>
+                          {row.cells.map((c, i) => (
+                            <div key={i} title={cellTitle(row.name, i, c)} style={{ display: "flex", flexWrap: "wrap", alignContent: "center", justifyContent: "center", gap: 3, minHeight: 38, padding: "6px 5px", borderLeft: i === 0 ? "2px solid rgba(34,211,238,.5)" : `1px solid ${isFreezeBucket(i) ? "rgba(248,113,113,.35)" : "rgba(30,41,59,.5)"}`, background: MSC_BUCKETS[i].wave === selBand.wave ? "rgba(96,165,250,.05)" : "transparent" }}>
+                              {cellDots(c).map((k, di) => (
+                                <span key={di} style={{ width: 7, height: 7, borderRadius: 2, background: KIND_TONE[k], opacity: k === "s" ? 0.85 : 1 }} />
+                              ))}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* What stops working — prototype 224-253 */}
+              <div data-testid="pv2-msc-breaks" style={SECTION_CARD("rgba(248,113,113,.28)")}>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+                  <Kicker colour="#f87171">What stops working</Kicker>
+                  <span style={{ fontSize: "11px", color: "#64748b" }}>{breakMeta(wave, services, bands)}</span>
+                </div>
+                {wBreaks.map((b) => (
+                  <button key={b.id} onClick={() => openPost(b.id)} data-testid={`pv2-msc-break-${b.id}`} style={{ display: "grid", gridTemplateColumns: "120px minmax(0,1fr) 190px", gap: 14, alignItems: "start", width: "100%", padding: "12px 13px", border: "1px solid rgba(248,113,113,.22)", borderRadius: 10, background: "rgba(248,113,113,.04)", cursor: "pointer", fontFamily: "inherit", textAlign: "left" }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+                      <span style={{ fontSize: "12.5px", fontWeight: 800, color: "#f87171", lineHeight: 1.3 }}>{b.when}</span>
+                      <span style={{ fontSize: "10px", color: "#94a3b8" }}>{b.countdown}</span>
+                      <span style={{ fontSize: "9.5px", fontWeight: 700, color: "#475569", fontFamily: MONO }}>{b.id}</span>
+                      <span style={{ fontSize: "10px", color: "#94a3b8" }}>{b.owner}</span>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
+                      <span style={{ fontSize: "13px", fontWeight: 700, color: "#f1f5f9", lineHeight: 1.4 }}>{b.what}</span>
+                      <span style={{ fontSize: "11.5px", color: "#94a3b8", lineHeight: 1.55, textWrap: "pretty" }}>{b.evidence}</span>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 5 }}>
+                      <span style={pill(b.state, b.hasCr ? "#34d399" : "#fbbf24", `${b.hasCr ? "#34d399" : "#fbbf24"}14`)}>{b.state}</span>
+                      <span style={{ fontSize: "10.5px", color: "#64748b", whiteSpace: "nowrap" }}>Open →</span>
+                    </div>
+                  </button>
+                ))}
+                {wBreaks.length === 0 && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "13px 14px", border: "1px dashed rgba(52,211,153,.3)", borderRadius: 10, background: "rgba(52,211,153,.04)" }}>
+                    <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#34d399", flex: "0 0 auto" }} />
+                    <span style={{ fontSize: "12px", color: "#cbd5e1", lineHeight: 1.5 }}>Nothing in this wave stops working here.</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Decide before it lands — prototype 255-285 */}
+              <div data-testid="pv2-msc-decide" style={SECTION_CARD("rgba(251,191,36,.28)")}>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+                  <Kicker colour="#fbbf24">Decide before it lands</Kicker>
+                  <span style={{ fontSize: "11px", color: "#64748b" }}>{decideMeta(wave, services, bands)}</span>
+                </div>
+                {wQueue.map((q) => (
+                  <div key={q.item.id} data-testid={`pv2-msc-queue-${q.item.id}`} style={{ display: "grid", gridTemplateColumns: "150px minmax(0,1fr) auto", gap: 16, alignItems: "center", padding: "14px 16px", border: `1px solid ${q.item.tone}33`, borderLeft: `3px solid ${q.item.tone}`, borderRadius: 11, background: "#0b1524", minWidth: 0 }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
+                      <span style={{ fontSize: "13px", fontWeight: 800, letterSpacing: "-.01em", color: q.item.tone }}>{q.item.due}</span>
+                      <span style={pill(q.item.kind, q.item.tone, `${q.item.tone}14`)}>{q.item.kind}</span>
+                      <span style={{ fontSize: "9.5px", fontWeight: 700, color: "#475569", fontFamily: MONO }}>{q.item.id}</span>
+                      <span style={{ fontSize: "10px", color: "#94a3b8", lineHeight: 1.4 }}>{q.ownerLine}</span>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
+                      <span style={{ fontSize: "13px", fontWeight: 700, color: "#f1f5f9", lineHeight: 1.45 }}>{q.item.decision}</span>
+                      <span style={{ fontSize: "11.5px", color: "#94a3b8", lineHeight: 1.6, textWrap: "pretty" }}>{q.item.ifNot}</span>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: "0 0 auto" }}>
+                      <button onClick={() => openPost(q.item.id)} style={{ padding: "7px 12px", borderRadius: 6, fontSize: "11px", fontWeight: 700, fontFamily: "inherit", whiteSpace: "nowrap", cursor: "pointer", border: "1px solid rgba(0,120,212,.4)", background: "rgba(0,120,212,.1)", color: "#93c5fd" }}>Open the notice</button>
+                      <button onClick={() => snoozeForm(q.post)} data-testid={`pv2-msc-snooze-${q.item.id}`} style={{ padding: "7px 12px", borderRadius: 6, fontSize: "11px", fontWeight: 700, fontFamily: "inherit", whiteSpace: "nowrap", cursor: "pointer", border: "1px solid rgba(148,163,184,.24)", background: "transparent", color: "#94a3b8" }}>{snoozed[q.item.id] ? `Snoozed · ${snoozed[q.item.id]}` : "Snooze"}</button>
+                      <button onClick={() => decisionForm(q.post)} data-testid={`pv2-msc-decide-${q.item.id}`} style={{ padding: "7px 12px", borderRadius: 6, fontSize: "11px", fontWeight: 700, fontFamily: "inherit", whiteSpace: "nowrap", cursor: "pointer", border: `1px solid ${decided[q.item.id] ? "rgba(52,211,153,.35)" : "rgba(251,191,36,.35)"}`, background: "transparent", color: decided[q.item.id] ? "#34d399" : "#fbbf24" }}>{decided[q.item.id] ? "Decision recorded" : "Record a decision"}</button>
+                    </div>
+                  </div>
+                ))}
+                {wQueue.length === 0 && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "13px 14px", border: "1px dashed rgba(148,163,184,.24)", borderRadius: 10, background: "rgba(148,163,184,.04)" }}>
+                    <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#64748b", flex: "0 0 auto" }} />
+                    <span style={{ fontSize: "12px", color: "#94a3b8", lineHeight: 1.5 }}>No decision closes in this wave. Nothing here expires while you wait.</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Nothing to do — prototype 287-308 */}
+              <div data-testid="pv2-msc-quiet" style={SECTION_CARD("rgba(30,41,59,.9)")}>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+                  <Kicker colour="#64748b">Nothing to do</Kicker>
+                  <span style={{ fontSize: "11px", color: "#475569" }}>{QUIET_META}</span>
+                </div>
+                {wQuiet.map((n) => (
+                  <button key={n.post.id} onClick={() => openPost(n.post.id)} style={{ display: "grid", gridTemplateColumns: "120px minmax(0,1fr) 150px", gap: 14, alignItems: "start", width: "100%", padding: "11px 13px", border: "1px solid rgba(30,41,59,.85)", borderRadius: 10, background: "rgba(2,6,23,.4)", cursor: "pointer", fontFamily: "inherit", textAlign: "left" }}>
+                    <span style={{ fontSize: "11.5px", fontWeight: 700, color: "#94a3b8" }}>{n.post.when}</span>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+                      <span style={{ fontSize: "12.5px", fontWeight: 600, color: "#cbd5e1", lineHeight: 1.4 }}>{n.post.title}</span>
+                      <span style={{ fontSize: "11px", color: "#64748b", lineHeight: 1.55, textWrap: "pretty" }}>{n.post.plain.split(". ")[0]}.</span>
+                    </div>
+                    <span style={pill(n.tag, n.tagTone, `${n.tagTone}14`)}>{n.tag}</span>
+                  </button>
+                ))}
+                {wQuiet.length === 0 && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", border: "1px dashed rgba(148,163,184,.2)", borderRadius: 10 }}>
+                    <span style={{ fontSize: "18px", fontWeight: 800, color: "#64748b", letterSpacing: "-.02em" }}>{waveSilent(wave, services, bands)}</span>
+                    <span style={{ fontSize: "11.5px", color: "#64748b", lineHeight: 1.5 }}>silent changes here, none of them written up because none of them need you</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Who feels it — the per-group impact panel — prototype GROUPS 1637-1660 */}
+              <div data-testid="pv2-msc-groups" style={SECTION_CARD("rgba(30,41,59,.9)")}>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+                  <Kicker colour="#2dd4bf">Who feels it</Kicker>
+                  <span style={{ fontSize: "11px", color: "#64748b" }}>Microsoft told your administrators. These are the people who actually feel it.</span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))", gap: 12 }}>
+                  {MSC_GROUPS.map((g, gi) => {
+                    const strip = groupStrip(g.items);
+                    return (
+                      <div key={g.name} data-testid={`pv2-msc-group-${gi}`} style={{ display: "flex", flexDirection: "column", gap: 8, padding: "15px 16px", border: `1px solid ${g.tone}30`, borderLeft: `3px solid ${g.tone}`, borderRadius: 12, background: "rgba(2,6,23,.35)", minWidth: 0 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
+                          <span style={{ fontSize: "13.5px", fontWeight: 800, color: "#f8fafc" }}>{g.name}</span>
+                          <span style={{ fontSize: "10.5px", color: "#64748b" }}>{g.heads}</span>
+                          <span style={{ marginLeft: "auto", ...pill(g.told ? "Told" : "Not told", g.told ? "#34d399" : "#f87171", `${g.told ? "#34d399" : "#f87171"}14`) }}>{g.told ? "Told" : "Not told"}</span>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "flex-end", gap: 2, height: 16 }}>
+                          {strip.map((hit, i) => (
+                            <span key={i} title={`${MSC_BUCKETS[i].label} ${MSC_BUCKETS[i].sub}${hit ? ` · ${hit} for this group` : " · nothing"}`} style={{ flex: 1, height: hit ? 14 : 5, borderRadius: 2, background: hit ? g.tone : "rgba(148,163,184,.13)" }} />
+                          ))}
+                        </div>
+                        <span style={{ fontSize: "11.5px", color: "#cbd5e1", lineHeight: 1.6, textWrap: "pretty" }}>{g.what}</span>
+                        <span style={{ fontSize: "11px", color: "#94a3b8", lineHeight: 1.55, textWrap: "pretty" }}>{g.who}</span>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                          <span style={pill(`First date · ${g.first}`, g.tone, `${g.tone}14`)}>First date · {g.first}</span>
+                          <span style={{ fontSize: "9.5px", color: "#64748b" }}>{groupWave(g.items)}</span>
+                          <span style={{ marginLeft: "auto", display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            {g.items.map((id) => (
+                              <button key={id} onClick={() => openPost(id)} style={{ padding: "3px 8px", borderRadius: 5, border: "1px solid rgba(96,165,250,.25)", background: "rgba(96,165,250,.08)", color: "#93c5fd", fontSize: "10px", fontWeight: 700, fontFamily: MONO, cursor: "pointer", whiteSpace: "nowrap" }}>{id}</button>
+                            ))}
+                          </span>
+                        </div>
+                        <button onClick={() => tellForm(g.name, g.items)} data-testid={`pv2-msc-tell-${gi}`} style={{ alignSelf: "flex-start", padding: "7px 12px", borderRadius: 6, border: `1px solid ${g.tone}55`, background: "transparent", color: g.tone, fontSize: "11px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Tell them</button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Ownership line — prototype 312-321 */}
+          <div data-testid="pv2-msc-ownership" style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", padding: "13px 16px", border: "1px solid rgba(45,212,191,.26)", borderRadius: 13, background: "rgba(45,212,191,.05)" }}>
+            <Kicker colour="#2dd4bf">Ownership</Kicker>
+            <span style={{ fontSize: "11.5px", color: "#94a3b8", lineHeight: 1.5, minWidth: 0 }}>Every change on this page inherits four names — responsible, accountable, consulted, informed — from its service.</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
+              {raci.slice(0, 4).map((r) => (
+                <span key={r.wl} title={`${r.name} · ${r.r}`} style={pill(`${r.name.split(" &")[0].split(" ·")[0]} · ${r.r}`, r.gap ? "#f87171" : "#94a3b8", "rgba(148,163,184,.08)")}>{r.name.split(" &")[0].split(" ·")[0]} · {r.r}</span>
+              ))}
             </div>
-            {posts.map((p) => (
-              <PostRow
-                key={p.id}
-                post={p}
-                open={openId === p.id}
-                onToggle={() => setOpenId(openId === p.id ? null : p.id)}
-              />
-            ))}
+            <Link href="/portal-v2/ownership" style={{ marginLeft: "auto", fontSize: "11.5px", fontWeight: 700, color: "#2dd4bf", whiteSpace: "nowrap", textDecoration: "none" }}>Open the RACI matrix →</Link>
           </div>
         </div>
       </div>
+
+      {openPostObj && (
+        <PostDetail
+          post={openPostObj}
+          sec={sec}
+          setSec={setSec}
+          thread={thread}
+          decided={decided[openPostObj.id]}
+          snoozed={snoozed[openPostObj.id]}
+          onCr={() => crForm(openPostObj)}
+          onDecide={() => decisionForm(openPostObj)}
+          onSnooze={() => snoozeForm(openPostObj)}
+          onAsk={() => askForm(openPostObj)}
+          onTag={() => tagForm(openPostObj)}
+          toast={t}
+          onClose={() => setOpenId(null)}
+        />
+      )}
+
+      {formElement}
+
+      {toast && (
+        <div data-testid="pv2-msc-toast" style={{ position: "fixed", bottom: 22, left: "50%", transform: "translateX(-50%)", zIndex: 130, display: "flex", alignItems: "center", gap: 11, padding: "12px 17px", border: "1px solid rgba(0,120,212,.4)", borderRadius: 9, background: "#0b1a2e", boxShadow: "0 18px 40px rgba(2,6,23,.6)", maxWidth: "min(640px,92vw)" }}>
+          <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#34d399", flex: "0 0 auto" }} />
+          <span style={{ fontSize: "12px", color: "#e2e8f0", lineHeight: 1.5 }}>{toast}</span>
+          <button onClick={() => setToast("")} style={{ flex: "0 0 auto", border: "none", background: "transparent", color: "#64748b", fontSize: "13px", cursor: "pointer", fontFamily: "inherit" }}>×</button>
+        </div>
+      )}
     </PortalV2Shell>
   );
 }
