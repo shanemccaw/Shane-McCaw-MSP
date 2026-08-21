@@ -1,7 +1,7 @@
 {
   "feature": "Customer Portal v2 -- THE SHELL'S FIVE SYSTEMS (Part 1), recreated from 'Customer Portal Shell.dc.html'. The global chrome that renders on every /portal-v2 page: the command palette (Cmd-K), ShaneBot (selection chip + chat panel + launcher), the alerts tray with real smart alerts and a hold-windows section, the account menu, the New menu, the knowledge-base overlay, and the change-control header badge. All UI-only against the design's own fixtures in components/portal-v2/shell/; the palette ranking + 14-cap are unit-tested in shell/paletteIndex.test.ts.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "fdc72a87",
+  "lastVerifiedAgainstCommit": "b19e042c",
   "notes": [
     "THE LOGIN BLOCK IS NOT OPTIONAL. /portal-v2/* sits behind ProtectedRoute.",
     "UI ROUTE SHAPE: /portal/{slug}/portal-v2. The shell chrome renders on every portal-v2 page; this exercises it from the Overview.",
@@ -34,7 +34,7 @@
     { "action": "input", "selector": "[data-testid='pv2-form-field-title']", "value": "Rotate a shared mailbox password" },
     { "action": "input", "selector": "[data-testid='pv2-form-field-category']", "value": "Identity & Access" },
     { "action": "input", "selector": "[data-testid='pv2-form-field-description']", "value": "Manual runbook for rotating a shared mailbox credential." },
-    { "action": "input", "selector": "[data-testid='pv2-form-field-steps']", "value": "Confirm the mailbox owner\nReset the password in the admin centre\nUpdate the stored credential" },
+    { "name": "SH-new-sop-steps -- one-per-line in the real UI; a single line here because the test runner's input cannot type a newline (the multi-line split is unit-tested in newMenuCreate.test.ts).", "action": "input", "selector": "[data-testid='pv2-form-field-steps']", "value": "Confirm the mailbox owner, reset the password in the admin centre, then update the stored credential" },
     { "name": "SH-new-sop3 -- submit fires the real POST /api/portal/sops.", "action": "click", "selector": "[data-testid='pv2-form-submit']", "critical": true },
     { "name": "SH-new-sop4 -- the drawer confirms the procedure was saved (its own honest done copy, no fabricated code).", "action": "expect", "selector": "[data-testid='pv2-form-done']", "state": "visible", "textContains": "It is in your SOP library", "critical": true },
     { "name": "SH-new-sop5 -- close the create drawer.", "action": "click", "selector": "[data-testid='pv2-form-close']" },

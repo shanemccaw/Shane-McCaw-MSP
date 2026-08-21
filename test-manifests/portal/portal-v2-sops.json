@@ -1,7 +1,7 @@
 {
   "feature": "Customer Portal v2 -- Reference -> SOPs & Runbooks (/portal-v2/sops), WIRED TO REAL DATA. Part 6 built the hub and its three sub-views (library / execution queue / execution history, each a real linkable URL) against the design's own fixtures in sopHubData.ts. This manifest covers the pass that replaced those fixtures with GET /api/portal/sops and GET /api/portal/sop-runs (api-server routes/portal-sops.ts) -- customer-scoped reads over msp_sops + msp_sop_runs, requireRole(CustomerUser), scope from the authenticated JWT only. So it asserts two things the UI-only version could not: that the endpoints are real, correctly scoped and role-gated, and that the DOM shows what THEY returned rather than what the fixture used to say. The four sop-* category pages are the prototype's `sopCategories` (shell 8789), which the design renders through its generic placeholder branch (shell 6500-6507) and which carry no tenant data at all -- covered here as routes, unchanged by the wiring pass.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "152b9133",
+  "lastVerifiedAgainstCommit": "b19e042c",
   "notes": [
     "THE LOGIN BLOCK IS NOT OPTIONAL. /portal-v2/* sits behind ProtectedRoute; a probe that skips the five login steps hits the login screen and every assertion fails for a reason unrelated to the page.",
     "UI ROUTE SHAPE: msp-portal's outer WouterRouter has base '/portal' and SlugScope nests a second router at '/{slug}', so the real URL is /portal/{slug}/portal-v2/sops. App.tsx declares the four /sops/<category> routes BEFORE '/sops/:view' (the queue/audit param) and both before '/portal-v2/:pillar' so nothing is swallowed.",
