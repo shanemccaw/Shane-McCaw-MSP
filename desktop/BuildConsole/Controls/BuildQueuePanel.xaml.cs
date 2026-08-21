@@ -1252,8 +1252,10 @@ namespace BuildConsole.Controls
                 {
                     Header = stubRow,
                     IsExpanded = true,
-                    IsHitTestVisible = false,
-                    Focusable = false,
+                    // NOTE: do NOT set IsHitTestVisible=false here — it would propagate
+                    // down the visual tree and make all child BuildQueueTreeItem cards
+                    // unclickable and un-right-clickable.  The stub header row has no
+                    // click handlers so clicking it just no-ops in SelectedItemChanged.
                     Padding = new Thickness(0),
                     Margin = new Thickness(0, 1, 0, 1)
                 };
