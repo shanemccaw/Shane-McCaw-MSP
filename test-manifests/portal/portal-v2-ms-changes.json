@@ -1,7 +1,7 @@
 {
   "feature": "Customer Portal v2 -- MICROSOFT CHANGES (/portal-v2/ms-changes), recreated from 'Microsoft Changes.dc.html'. Microsoft ships in waves; pick a wave and the page becomes that wave. A density grid over eleven uneven time buckets grouped into five waves, the tenant's own freeze windows drawn over it, and for the selected wave: a header card with four tiles and 'Brief this wave', 'What stops working', 'Decide before it lands' (with snooze / record-a-decision overlays), 'Nothing to do', 'What your people will see' (the seen-in-the-wild list), the per-group impact panel, an ownership line, and a 'Did this release?' retrospective for the two landed waves. Each post opens in an eleven-section detail slide-over -- Microsoft's own words beside the tenant's counted answer, evidence, consequence, phases, who-was-told, history, and a thread with the architect. PART 10 built every surface listed as deferred by the earlier pass.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "b0c8be76",
+  "lastVerifiedAgainstCommit": "b57e2877",
   "notes": [
     "THE LOGIN BLOCK IS NOT OPTIONAL. /portal-v2/* sits behind ProtectedRoute.",
     "UI ROUTE SHAPE: /portal/{slug}/portal-v2/ms-changes/{wave}. App.tsx declares '/portal-v2/ms-changes/:wave' BEFORE '/portal-v2/ms-changes', and both before '/portal-v2/:pillar'.",

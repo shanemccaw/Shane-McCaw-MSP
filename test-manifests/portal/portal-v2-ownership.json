@@ -1,7 +1,7 @@
 {
   "feature": "Customer Portal v2 -- the OWNERSHIP matrix (/portal-v2/ownership), recreated from 'Ownership.dc.html', a file that did not exist in the round-one handoff at all. Four names (Responsible / Accountable / Consulted / Informed) against twenty-four objects across seven types, five derived counters above the matrix, and four detail panels behind them. PART 10 finished the deferred slide-overs: the assign slide-over's own surface (Mark accepted / Who held it before / Leave unassigned -- record it as a gap), the add-a-row flow, delegation + handover, the row detail, and 'What ownership drives' (routing). Every number on screen is derived from one fixture (ownershipData.ts) by ownershipModel.ts and pinned by 78 unit assertions; this manifest proves the DOM actually shows what those derivations return.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "b0c8be76",
+  "lastVerifiedAgainstCommit": "b57e2877",
   "notes": [
     "THE LOGIN BLOCK IS NOT OPTIONAL. /portal-v2/* sits behind ProtectedRoute; a probe that skips the five login steps hits the login screen and every assertion fails for a reason unrelated to the page.",
     "UI ROUTE SHAPE: msp-portal's outer WouterRouter has base '/portal' and SlugScope nests a second router at '/{slug}', so the real URL is /portal/{slug}/portal-v2/ownership. App.tsx declares '/portal-v2/ownership/:type' and '/portal-v2/ownership' BEFORE '/portal-v2/:pillar' so the param route cannot swallow them.",
