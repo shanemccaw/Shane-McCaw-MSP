@@ -4009,11 +4009,31 @@ namespace BuildConsole
                                 ToastEngine.Warning("Queue Build", "Not connected — see Settings.");
                                 return;
                             }
+
+                            // --notGit deduplication: allocate a unique local number so no two
+                            // queued builds share the same negative GithubNumber.
+                            var dialogGithubNum = dialog.FinalGithubNumber;
+                            var dialogBlockedByNums = dialog.FinalBlockedByNumbers;
+                            if (dialogGithubNum.HasValue && dialogGithubNum.Value < 0)
+                            {
+                                int allocated = BuildConsole.Services.NotGitNumberRegistry.Allocate(-dialogGithubNum.Value);
+                                if (allocated != -dialogGithubNum.Value)
+                                    BuildConsole.Services.ActivityLog.Log("build-queue.notgit",
+                                        $"BT_EDIT_BUILD: --notGit {-dialogGithubNum.Value} -> remapped to {allocated}");
+                                dialogGithubNum = -allocated;
+                            }
+                            if (dialogBlockedByNums != null)
+                            {
+                                dialogBlockedByNums = dialogBlockedByNums
+                                    .Select(n => n < 0 ? -BuildConsole.Services.NotGitNumberRegistry.Allocate(-n) : n)
+                                    .ToList();
+                            }
+
                             if (_updatePending)
                             {
                                 bool saved = PersistQueueRequestDuringPendingUpdate(
                                     dialog.FinalTitle ?? "Untitled", dialog.FinalPrompt, dialog.FinalModel, dialog.FinalEffort, dialog.FinalCwd,
-                                    dialog.FinalGithubNumber, dialog.FinalBlockedByNumbers);
+                                    dialogGithubNum, dialogBlockedByNums);
                                 if (saved)
                                 {
                                     ToastEngine.Success("Queued after update", "Build request saved for after restart.");
@@ -4023,7 +4043,7 @@ namespace BuildConsole
                             }
                             var res = await _buildTrackerApi.QueueBuildAsync(
                                 dialog.FinalTitle ?? "Untitled", dialog.FinalPrompt, dialog.FinalModel, dialog.FinalEffort, dialog.FinalCwd,
-                                dialog.FinalGithubNumber, dialog.FinalBlockedByNumbers);
+                                dialogGithubNum, dialogBlockedByNums);
                             if (res.IsSuccessStatusCode)
                             {
                                 ToastEngine.Success("Build Queued", $"Queued '{dialog.FinalTitle ?? "Build"}' successfully.");
@@ -4073,6 +4093,28 @@ namespace BuildConsole
                     if (root.TryGetProperty("blockedByNumbers", out var arr) && arr.ValueKind == System.Text.Json.JsonValueKind.Array)
                     {
                         blockedByNumbers = arr.EnumerateArray().Select(x => x.GetInt32()).ToList();
+                    }
+
+                    // --notGit deduplication: if the incoming githubNumber is negative (a --notGit
+                    // item), make sure it gets a unique slot in the local registry starting at 2000.
+                    // Duplicate --notGit numbers from parallel agent sessions all claiming the same
+                    // small number (e.g. --notGit 1) will each be remapped to distinct values so the
+                    // Build Queue can nest them correctly (keyed by GithubNumber).
+                    if (githubNum.HasValue && githubNum.Value < 0)
+                    {
+                        int requested = -githubNum.Value;
+                        int allocated = BuildConsole.Services.NotGitNumberRegistry.Allocate(requested);
+                        if (allocated != requested)
+                            BuildConsole.Services.ActivityLog.Log("build-queue.notgit",
+                                $"BT_QUEUE_BUILD: --notGit {requested} -> remapped to {allocated}");
+                        githubNum = -allocated;
+                    }
+                    // Also remap negative blockedByNumbers (--block-by local references).
+                    if (blockedByNumbers != null)
+                    {
+                        blockedByNumbers = blockedByNumbers
+                            .Select(n => n < 0 ? -BuildConsole.Services.NotGitNumberRegistry.Allocate(-n) : n)
+                            .ToList();
                     }
 
                     // A version Update is pending: the deploy is deferred until the

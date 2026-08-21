@@ -866,6 +866,9 @@ namespace BuildConsole.Controls
                 _lastItems = result.Data;
                 _queueIsStale = result.IsStale;
                 _queueCachedAtUtc = result.CachedAtUtc;
+                // Keep the notGit registry in sync with whatever is already in the DB
+                // (handles numbers assigned by earlier sessions or other machines).
+                BuildConsole.Services.NotGitNumberRegistry.SyncFromQueue(_lastItems);
 
                 // Queued-for-Restart lag fix — fold the pending-update spillover
                 // file's current contents into the poll signature. RenderQueue() is
@@ -1147,23 +1150,26 @@ namespace BuildConsole.Controls
             // than indistinguishable from them.
             RenderQueuedForRestartGroup();
 
-            // Git #799/#813 — a queued item nests under its blocker only when
-            // the blocker is ALSO currently in the queue (same scoping choice
-            // content.js's renderQueueSection() made) - otherwise it just
-            // shows its own "waiting on #N, #M" line, not nested. An item can
-            // have several blockers (#813 - Shane tried "--blocked-by
-            // 807,808,809"); it nests once, under the first one found in the
-            // queue.
+            // Git #799/#813 — a queued item nests under its blocker.
+            // Original behavior: only nested when blocker was ALSO in the queue.
+            // Extended: when the blocker is not in the active queue (done, or not
+            // yet queued) we create a lightweight ghost stub so blocked items still
+            // group visually rather than falling to a flat list.  An item with
+            // several blockers nests under the first one found (either real or ghost).
             var byGithubNumber = items.Where(i => i.GithubNumber.HasValue)
                                        .GroupBy(i => i.GithubNumber!.Value)
                                        .ToDictionary(g => g.Key, g => g.First());
+            // childrenOf: keyed by the blocker's GithubNumber (real or ghost).
             var childrenOf = new Dictionary<int, List<QueueItem>>();
+            // ghostBlockers: numbers that appear as blockers but aren't in byGithubNumber.
+            var ghostBlockers = new Dictionary<int, List<QueueItem>>();
             var topLevel = new List<QueueItem>();
             foreach (var item in items)
             {
                 var blockers = item.BlockedByNumbers ?? (item.BlockedByNumber.HasValue ? new List<int> { item.BlockedByNumber.Value } : new List<int>());
-                var nestUnder = blockers.FirstOrDefault(n => n != item.GithubNumber && byGithubNumber.ContainsKey(n), -1);
-                if (nestUnder != -1)
+                // First try to nest under a blocker that IS in the queue (real parent).
+                var nestUnder = blockers.FirstOrDefault(n => n != item.GithubNumber && byGithubNumber.ContainsKey(n), 0);
+                if (nestUnder != 0)
                 {
                     if (!childrenOf.TryGetValue(nestUnder, out var list))
                     {
@@ -1174,23 +1180,26 @@ namespace BuildConsole.Controls
                 }
                 else
                 {
-                    topLevel.Add(item);
+                    // No live blocker found — try to ghost-nest under any blocker reference.
+                    var ghostNestUnder = blockers.FirstOrDefault(n => n != 0 && n != item.GithubNumber, 0);
+                    if (ghostNestUnder != 0)
+                    {
+                        if (!ghostBlockers.TryGetValue(ghostNestUnder, out var ghostList))
+                        {
+                            ghostList = new List<QueueItem>();
+                            ghostBlockers[ghostNestUnder] = ghostList;
+                        }
+                        ghostList.Add(item);
+                    }
+                    else
+                    {
+                        topLevel.Add(item);
+                    }
                 }
             }
 
-            // Git #818 — Shane: "whoa" (screenshot: the same #806-#812 chain
-            // rendered 2-4x over, nested inside itself). Root cause:
-            // childrenOf is keyed by githubNumber, not by a specific row's
-            // id — if two SEPARATE queue rows share a githubNumber (Shane
-            // queued the same issue more than once while testing today),
-            // EVERY row with that number independently pulls and renders
-            // the FULL childrenOf[number] list again, so the whole subtree
-            // fans out once per duplicate. A visited-by-id guard renders
-            // each real row at most once regardless of how many other rows
-            // share its githubNumber — also a real latent safety net
-            // against a genuine blocker cycle (A blocked by B blocked by A)
-            // causing infinite recursion, which nothing here guarded
-            // against before.
+            // Git #818 — visited-by-id guard prevents duplicate subtree rendering
+            // when two rows share a githubNumber, and guards against blocker cycles.
             var renderedIds = new HashSet<int>();
 
             void RenderOne(QueueItem item, ItemsControl parent)
@@ -1204,6 +1213,61 @@ namespace BuildConsole.Controls
                     // nested blocked-by group as at the top level.
                     foreach (var kid in SortForDisplay(kids)) RenderOne(kid, tvi);
                 }
+            }
+
+            // Render ghost-blocker stubs for blockers not currently in the queue.
+            // Each stub is a compact non-selectable header row so Shane can see
+            // what the blocked items are waiting on without a full queue card.
+            var ghostBlockerBrush = new SolidColorBrush(Color.FromRgb(0x89, 0x8A, 0xB4));
+            foreach (var kvp in ghostBlockers.OrderByDescending(k => k.Key))
+            {
+                int blockerNum = kvp.Key;
+                var blockedKids = kvp.Value;
+
+                var stubRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(2, 2, 0, 1) };
+                stubRow.Children.Add(new TextBlock
+                {
+                    Text = "🔒 ",
+                    FontSize = 11,
+                    Foreground = ghostBlockerBrush,
+                    VerticalAlignment = VerticalAlignment.Center
+                });
+                stubRow.Children.Add(new TextBlock
+                {
+                    Text = $"Waiting on {FormatIssueRef(blockerNum)}",
+                    FontSize = 11,
+                    FontStyle = FontStyles.Italic,
+                    Foreground = ghostBlockerBrush,
+                    VerticalAlignment = VerticalAlignment.Center
+                });
+                stubRow.Children.Add(new TextBlock
+                {
+                    Text = $"  ({blockedKids.Count} blocked)",
+                    FontSize = 10,
+                    Foreground = (Brush)Application.Current.FindResource("Subtext1Brush"),
+                    VerticalAlignment = VerticalAlignment.Center
+                });
+
+                var ghostTvi = new TreeViewItem
+                {
+                    Header = stubRow,
+                    IsExpanded = true,
+                    IsHitTestVisible = false,
+                    Focusable = false,
+                    Padding = new Thickness(0),
+                    Margin = new Thickness(0, 1, 0, 1)
+                };
+                // Blocked children still use real cards and are selectable.
+                foreach (var kid in SortForDisplay(blockedKids))
+                {
+                    if (!renderedIds.Add(kid.Id)) continue;
+                    var kidTvi = BuildQueueTreeItem(kid);
+                    ghostTvi.Items.Add(kidTvi);
+                    // If this kid also has its own children (it IS a blocker too), render those.
+                    if (kid.GithubNumber.HasValue && childrenOf.TryGetValue(kid.GithubNumber.Value, out var grandkids))
+                        foreach (var gk in SortForDisplay(grandkids)) RenderOne(gk, kidTvi);
+                }
+                QueueTree.Items.Add(ghostTvi);
             }
 
             // Git #950 — biggest GithubNumber first (see SortForDisplay).
