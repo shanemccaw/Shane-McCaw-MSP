@@ -1,0 +1,172 @@
+{
+  "feature": "Customer Portal v2 Part 7 -- PII Governance (/portal-v2/pii), a new Governance page recreated from the prototype's `isPii` block ('Customer Portal Shell.dc.html' 4106-4256), its PII fixture (7872-7922) and its render derivation (20095-20196). Where personal data lives, who can reach it, what moved, and what is required of each finding -- findings become risks and changes, never tickets. Fixture in piiData.ts; the four stat counts, the headline totals, the per-source bar and the finding filter are derived in piiModel.ts and pinned by piiModel.test.ts. The design's fixed 'N exposed' nav badge is wired through portalV2Nav.ts.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "PENDING-PART7",
+  "notes": [
+    "THE LOGIN BLOCK IS NOT OPTIONAL. /portal-v2/* sits behind ProtectedRoute; a probe that skips the five login steps hits the login screen and every assertion fails for a reason unrelated to the page. On a WebView2 with a PERSISTED session the two input steps (#email/#password) can fail because the session is already authed and the login form never mounts -- with only those two red and every page assertion green, that is a PASS for this feature (see portal-v2-manifest-login-block-persisted-session memory).",
+    "UI ROUTE SHAPE: msp-portal's outer WouterRouter has base '/portal' and SlugScope nests a second router at '/{slug}', so the real URL is /portal/{slug}/portal-v2/pii. App.tsx declares '/portal-v2/pii' BEFORE '/portal-v2/:pillar' so the param route cannot swallow it -- PII is a plain, param-free route.",
+    "shaneapp://runTest hits the DEPLOYED build, not the local worktree -- PII Governance is new in Part 7, so the dev server must carry this commit before the route resolves. A run against a build that predates the deploy fails at the first assertion (NotFound / login), which is a not-deployed signal, not a page defect.",
+    "REAL INTERACTIONS DRIVEN: the stat-card filter (PII8-PII9 -- clicking 'High severity' drops the Low finding PII-06 out of the list, real local UI state and the piiModel filter) and the expand-in-place finding (PII6-PII7 -- clicking a finding reveals its detail and its three moves). The four stat counts, the headline sum and the source-bar widths are pinned by piiModel.test.ts (unit) rather than re-driven here.",
+    "THE 'Raise the change to fix it' / 'RSK-014 on the register' / 'Accept it as a decision' buttons navigate into other modules where those exist (Change Control, Risk Register) and are inert where the target page does not exist yet (Policy Decisions is Part 5); this manifest asserts they RENDER, not that they navigate.",
+    "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD."
+  ],
+  "apiTests": [
+    {
+      "name": "SETUP -- log in as the designated TESTBED account; extract the bearer.",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    }
+  ],
+  "uiSteps": [
+    {
+      "name": "goto the real login URL (outer WouterRouter base = '/portal').",
+      "action": "goto",
+      "target": "/portal/login"
+    },
+    {
+      "name": "WAIT for the login form to hydrate before typing.",
+      "action": "expect",
+      "selector": "#email",
+      "state": "visible"
+    },
+    { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
+    { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
+    {
+      "name": "Primary login -- every assertion below needs a real session.",
+      "action": "click",
+      "selector": "[data-testid='login-submit']",
+      "critical": true
+    },
+    {
+      "name": "goto the PII Governance page on its slug-scoped route.",
+      "action": "goto",
+      "target": "/portal/shane-mccaw-consulting/portal-v2/pii"
+    },
+    {
+      "name": "PII1 -- the page resolved to PII Governance, not NotFound and not the param pillar route.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-pii-page']",
+      "state": "present",
+      "critical": true
+    },
+    {
+      "name": "PII2 -- the header carries the purple kicker and the owner subtitle 'Answers for personal data'.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-pii-page']",
+      "textContains": "Answers for personal data"
+    },
+    {
+      "name": "PII3 -- the headline is the summed file total and the exposed count, not a hardcoded string.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-pii-heading']",
+      "textContains": "files hold personal data"
+    },
+    {
+      "name": "PII4 -- the status pill reads 'At risk'.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-pii-status']",
+      "textContains": "At risk"
+    },
+    {
+      "name": "PII5 -- the four stat cards carry the design's labels.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-pii-stats']",
+      "textContains": ["High severity", "Reachable outside", "No sensitivity label", "Locations in total"]
+    },
+    {
+      "name": "PII6 -- expand the first finding.",
+      "action": "click",
+      "selector": "[data-testid='pv2-pii-finding-toggle-PII-01']"
+    },
+    {
+      "name": "PII7 -- the expanded finding shows its detail and its three moves.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-pii-finding-open-PII-01']",
+      "textContains": ["Raise the change to fix it", "RSK-014 on the register", "Accept it as a decision"]
+    },
+    {
+      "name": "PII8 -- filter to High severity by clicking the stat card.",
+      "action": "click",
+      "selector": "[data-testid='pv2-pii-stat-High']"
+    },
+    {
+      "name": "PII9 -- the Low finding PII-06 drops out of the filtered list (real filter, not a static page).",
+      "action": "expect",
+      "selector": "[data-testid='pv2-pii-finding-PII-06']",
+      "state": "absent"
+    },
+    {
+      "name": "PII10 -- clear the filter again so the full list returns.",
+      "action": "click",
+      "selector": "[data-testid='pv2-pii-stat-High']"
+    },
+    {
+      "name": "PII11 -- 'Who can reach it' lists the external-access rows.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-pii-access']",
+      "textContains": ["2 external accountants", "Anyone with the link"]
+    },
+    {
+      "name": "PII12 -- 'What moved' names the drift and its verdict.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-pii-drift']",
+      "textContains": ["Anonymous link created on HR / Personnel Files", "No change request behind it"]
+    },
+    {
+      "name": "PII13 -- 'Where it was found' lists the four scanned sources.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-pii-sources']",
+      "textContains": ["SharePoint sites", "Exchange attachments"]
+    },
+    {
+      "name": "PII14 -- 'What it looks for' lists the patterns and tags the custom one.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-pii-patterns']",
+      "textContains": ["National insurance and SSN", "Halden employee number format", "Yours"]
+    },
+    {
+      "name": "PII15 -- the 'Add a pattern' control is present.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-pii-add-pattern']",
+      "textContains": "Add a pattern"
+    },
+    {
+      "name": "PII16 -- 'What a finding is wired into' lists the five module links.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-pii-links']",
+      "textContains": ["Risk Register", "Change Control", "Policy Decisions", "SOPs & Runbooks", "Security Plan"]
+    },
+    {
+      "name": "PII17 -- the four section labels the audit probes for render in the DOM.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-pii-page']",
+      "textContains": ["Who can reach it", "Where it was found", "What it looks for", "What a finding is wired into"]
+    },
+    {
+      "name": "PII18 -- the nav row carries the design's fixed '3 exposed' badge.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-nav-pii-badge']",
+      "textContains": "3 exposed"
+    },
+    {
+      "name": "PII19 -- from the Overview, clicking the PII nav row navigates to the page. Go to Overview first.",
+      "action": "goto",
+      "target": "/portal/shane-mccaw-consulting/portal-v2"
+    },
+    {
+      "name": "PII20 -- click the PII Governance nav row.",
+      "action": "click",
+      "selector": "[data-testid='pv2-nav-pii']"
+    },
+    {
+      "name": "PII21 -- it lands on the PII Governance page.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-pii-heading']",
+      "textContains": "files hold personal data"
+    }
+  ]
+}

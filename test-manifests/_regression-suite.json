@@ -59,6 +59,8 @@
     "portal/portal-v2-projects.json",
     "portal/portal-v2-remediation.json",
     "portal/portal-v2-policy-decisions.json",
+    "portal/portal-v2-security-plan.json",
+    "portal/portal-v2-pii.json",
     "portal/shell-systems.json"
   ]
 }

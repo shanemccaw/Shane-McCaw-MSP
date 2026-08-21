@@ -104,6 +104,8 @@ import PortalV2CopilotPage from "@/pages/portal-v2-copilot";
 import PortalV2ProjectsPage from "@/pages/portal-v2-projects";
 import PortalV2RemediationPage from "@/pages/portal-v2-remediation";
 import PortalV2PolicyDecisionsPage from "@/pages/portal-v2-policy-decisions";
+import PortalV2SecurityPlanPage from "@/pages/portal-v2-security-plan";
+import PortalV2PiiPage from "@/pages/portal-v2-pii";
 import ConsentDeclinedPage from "@/pages/consent-declined";
 import ConsentSuccessPage from "@/pages/consent-success";
 import ConsentTenantConflictPage from "@/pages/consent-tenant-conflict";
@@ -691,7 +693,15 @@ function SlugInnerSwitch() {
       <Route path="/portal-v2/policy-decisions">
         <ProtectedRoute component={PortalV2PolicyDecisionsPage} />
       </Route>
-      {/* ═══════════════════════════════════════════════════════════════════
+      {/* Governance — Security Plan + PII Governance (Part 7). Plain,
+          param-free routes declared before "/portal-v2/:pillar" so the param
+          route cannot swallow them. */}
+      <Route path="/portal-v2/security-plan">
+        <ProtectedRoute component={PortalV2SecurityPlanPage} />
+      </Route>
+      <Route path="/portal-v2/pii">
+        <ProtectedRoute component={PortalV2PiiPage} />
+      </Route>      {/* ═══════════════════════════════════════════════════════════════════
           PORTAL-V2 ROUTE INSERTION POINT — ADD NEW /portal-v2 ROUTES ABOVE.
 
           Add them ABOVE this marker, never below it. The "/portal-v2/:pillar"

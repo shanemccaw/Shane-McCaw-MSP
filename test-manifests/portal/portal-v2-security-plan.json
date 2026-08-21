@@ -1,0 +1,144 @@
+{
+  "feature": "Customer Portal v2 Part 7 -- the Security Plan (/portal-v2/security-plan), a new Governance page recreated from the prototype's `isSecPlan` block ('Customer Portal Shell.dc.html' 4258-4343), its SECPLAN fixture (7792-7869) and its render derivation (20197-20244). The authoritative record of how this tenant must be configured, monitored, governed and changed, as ten numbered sections of requirements plus a version history. Fixture in securityPlanData.ts; the verdict, the percentage and the per-section gap badge are derived in securityPlanModel.ts and pinned by securityPlanModel.test.ts -- a plan that could disagree with itself would defeat its own claim.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "PENDING-PART7",
+  "notes": [
+    "THE LOGIN BLOCK IS NOT OPTIONAL. /portal-v2/* sits behind ProtectedRoute; a probe that skips the five login steps hits the login screen and every assertion fails for a reason unrelated to the page. On a WebView2 with a PERSISTED session the two input steps (#email/#password) can fail because the session is already authed -- with only those two red and every page assertion green, that is a PASS for this feature.",
+    "UI ROUTE SHAPE: msp-portal's outer WouterRouter has base '/portal' and SlugScope nests a second router at '/{slug}', so the real URL is /portal/{slug}/portal-v2/security-plan. App.tsx declares '/portal-v2/security-plan' BEFORE '/portal-v2/:pillar' so the param route cannot swallow it.",
+    "shaneapp://runTest hits the DEPLOYED build, not the local worktree -- the Security Plan is new in Part 7, so the dev server must carry this commit before the route resolves. A run against a build that predates the deploy fails at the first assertion, which is a not-deployed signal, not a page defect.",
+    "REAL INTERACTION DRIVEN: the left-rail section selector (SP11-SP12 -- clicking a section swaps the requirement rows and the section header, real local UI state). The met/partly/not-met tallies, the percentage and the section gap counts are derived and pinned by securityPlanModel.test.ts rather than re-driven here.",
+    "The requirement '-> Module' buttons and the version-history CR buttons navigate into other modules where those exist and are inert where the target page does not exist yet (Policy Decisions, SOPs & Runbooks, Remediation and some drill-downs land in later parts); this manifest asserts they RENDER, not that they navigate.",
+    "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD."
+  ],
+  "apiTests": [
+    {
+      "name": "SETUP -- log in as the designated TESTBED account; extract the bearer.",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    }
+  ],
+  "uiSteps": [
+    {
+      "name": "goto the real login URL (outer WouterRouter base = '/portal').",
+      "action": "goto",
+      "target": "/portal/login"
+    },
+    {
+      "name": "WAIT for the login form to hydrate before typing.",
+      "action": "expect",
+      "selector": "#email",
+      "state": "visible"
+    },
+    { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
+    { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
+    {
+      "name": "Primary login -- every assertion below needs a real session.",
+      "action": "click",
+      "selector": "[data-testid='login-submit']",
+      "critical": true
+    },
+    {
+      "name": "goto the Security Plan page on its slug-scoped route.",
+      "action": "goto",
+      "target": "/portal/shane-mccaw-consulting/portal-v2/security-plan"
+    },
+    {
+      "name": "SP1 -- the page resolved to the Security Plan, not NotFound and not the param pillar route.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-sp-page']",
+      "state": "present",
+      "critical": true
+    },
+    {
+      "name": "SP2 -- the header names the tenant and environment.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-sp-heading']",
+      "textContains": "Halden Materials · Production"
+    },
+    {
+      "name": "SP3 -- the lead paragraph is the plan's own thesis, verbatim.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-sp-page']",
+      "textContains": "The authoritative record of how this tenant must be configured, monitored, governed and changed"
+    },
+    {
+      "name": "SP4 -- the verdict is derived from the gap and partial counts.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-sp-verdict']",
+      "textContains": "12 requirements in this plan are not met, and 7 are only partly met."
+    },
+    {
+      "name": "SP5 -- the met percentage is derived (round(20/39*100) = 51%).",
+      "action": "expect",
+      "selector": "[data-testid='pv2-sp-pct']",
+      "textContains": "51%"
+    },
+    {
+      "name": "SP6 -- the count strip carries the four tallies.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-sp-page']",
+      "textContains": ["20 met", "7 partly met", "12 not met", "39 requirements in total"]
+    },
+    {
+      "name": "SP7 -- the left rail lists the numbered sections.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-sp-nav']",
+      "textContains": ["Governance framework", "Architecture baseline", "AI-assisted governance"]
+    },
+    {
+      "name": "SP8 -- the default selected section is Governance framework.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-sp-section-label']",
+      "textContains": "Governance framework"
+    },
+    {
+      "name": "SP9 -- its requirement rows carry the state badges and the requirement copy.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-sp-rows']",
+      "textContains": ["Policy decisions recorded with an owner and a review date", "Met", "Not met"]
+    },
+    {
+      "name": "SP10 -- the version history renders under its own label, newest first.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-sp-history']",
+      "textContains": ["PII governance added as a required section", "CR-0131"]
+    },
+    {
+      "name": "SP11 -- select the PII governance section in the rail.",
+      "action": "click",
+      "selector": "[data-testid='pv2-sp-nav-pii']"
+    },
+    {
+      "name": "SP12 -- the section swaps: header and rows are now the PII requirements.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-sp-rows']",
+      "textContains": "No PII reachable by an anonymous link"
+    },
+    {
+      "name": "SP13 -- the 'Version history' label the audit probes for renders in the DOM.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-sp-page']",
+      "textContains": "Version history"
+    },
+    {
+      "name": "SP14 -- from the Overview, clicking the Security Plan nav row navigates to the page. Go to Overview first.",
+      "action": "goto",
+      "target": "/portal/shane-mccaw-consulting/portal-v2"
+    },
+    {
+      "name": "SP15 -- click the Security Plan nav row.",
+      "action": "click",
+      "selector": "[data-testid='pv2-nav-security-plan']"
+    },
+    {
+      "name": "SP16 -- it lands on the Security Plan page.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-sp-heading']",
+      "textContains": "Halden Materials · Production"
+    }
+  ]
+}

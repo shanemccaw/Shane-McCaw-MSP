@@ -40,7 +40,7 @@
  * which is harder to read than three explicit branches.
  */
 
-import { Bell, CheckCircle, ClipboardList, FileText, GitCommit, PlayCircle, ShieldOff, Sparkles, Users } from "lucide-react";
+import { Bell, CheckCircle, ClipboardList, FileText, GitCommit, PlayCircle, Scale, ShieldCheck, ShieldOff, Sparkles, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import { PILLAR_ICON_PATHS, PILLAR_ORDER } from "@/components/copilot-journey/journeyTokens";
@@ -71,6 +71,18 @@ export interface NavSubItem {
   href: string;
 }
 
+/**
+ * A badge whose text is fixed in the design rather than fetched live — PII
+ * Governance's "3 exposed" (prototype `piiNavBadge`, shell 8807/8835). The
+ * `"holds"` token, by contrast, names a badge the shell resolves at runtime from
+ * a hook. `urgent` omitted renders the quiet grey treatment the design uses for
+ * this badge; set it true only for the blue "a decision is waiting" styling.
+ */
+export interface NavStaticBadge {
+  readonly label: string;
+  readonly urgent?: boolean;
+}
+
 export interface NavItem {
   href: string;
   label: string;
@@ -79,12 +91,15 @@ export interface NavItem {
   testId: string;
   glyph: NavGlyph;
   /**
-   * Which live badge feeds this row, if any. Badges are RARE on purpose: the
+   * The badge on this row, if any. Two shapes because the design genuinely has
+   * two: `"holds"` names a LIVE badge the shell resolves from a hook (Active
+   * Runbooks' hold count), while a `NavStaticBadge` carries text fixed in the
+   * design (PII Governance's "3 exposed"). Badges are RARE on purpose: the
    * handoff README calls the nav badge "the single place in the nav that says
-   * a decision is waiting", so adding a second one is a design decision, not a
-   * detail. Only `plain` groups render it.
+   * a decision is waiting", so adding one is a design decision, not a detail.
+   * Only `plain` groups render it.
    */
-  badge?: "holds";
+  badge?: "holds" | NavStaticBadge;
   /**
    * Sub-rows, shown only while this row is active AND the sidebar is expanded.
    * Each is a real URL so the view is linkable.
@@ -192,7 +207,8 @@ const OPERATE_ITEMS: readonly NavItem[] = [
  * Reference / Library.
  *
  * The design's group is Ownership, Risk Register, Security Plan, PII
- * Governance. The last two are Part 7.
+ * Governance — all four present. Security Plan and PII Governance arrived with
+ * Part 7; PII carries the design's fixed "3 exposed" nav badge.
  *
  * The Risk Register `title` is the prototype's verbatim and it UNDER-DESCRIBES
  * the page: it says "accepted risks", while the register carries all twelve
@@ -224,6 +240,28 @@ const GOVERNANCE_ITEMS: readonly NavItem[] = [
     title: "Risk Register — accepted risks, with the owner and the review date",
     testId: "pv2-nav-risk-register",
     glyph: { kind: "lucide", icon: ShieldOff },
+  },
+  // Security Plan and PII Governance — prototype 8834-8835, added with Part 7,
+  // in the design's group order (after Risk Register). Icons are the
+  // prototype's own: `shield-check` → ShieldCheck, `scale` → Scale.
+  {
+    href: "/portal-v2/security-plan",
+    label: "Security Plan",
+    title: "Security Plan — the authoritative record of how this tenant must be run",
+    testId: "pv2-nav-security-plan",
+    glyph: { kind: "lucide", icon: ShieldCheck },
+  },
+  {
+    href: "/portal-v2/pii",
+    label: "PII Governance",
+    title: "PII Governance — where personal data lives, who can reach it, and what moved",
+    testId: "pv2-nav-pii",
+    glyph: { kind: "lucide", icon: Scale },
+    // The design's `piiNavBadge` (shell 8807/8835) — a fixed "3 exposed", which
+    // equals the number of findings reachable from outside (asserted in
+    // piiModel.test.ts). `urgent` omitted → the quiet grey treatment the design
+    // draws it with, distinct from Active Runbooks' blue "decision waiting".
+    badge: { label: "3 exposed" },
   },
 ];
 

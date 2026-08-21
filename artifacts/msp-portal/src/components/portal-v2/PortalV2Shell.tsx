@@ -183,8 +183,11 @@ function PlainNavGroup({
       {group.items.map((item) => {
         const isActive = isNavItemActive(item, location);
         // Badges are rare on purpose — the README calls the nav badge "the
-        // single place in the nav that says a decision is waiting".
-        const badge = item.badge === "holds" ? holdBadge : null;
+        // single place in the nav that says a decision is waiting". Two shapes:
+        // "holds" is resolved LIVE from the hold-window hook; a static badge
+        // ({ label, urgent? }) carries text fixed in the design, e.g. PII
+        // Governance's "3 exposed". Both render through the one span below.
+        const badge = item.badge === "holds" ? holdBadge : (item.badge ?? null);
         return (
           <Fragment key={item.href}>
             <Link
@@ -223,7 +226,7 @@ function PlainNavGroup({
               {/* Badge when expanded — prototype 7263-7265. */}
               {expanded && badge?.label && (
                 <span
-                  data-testid="pv2-nav-runbooks-badge"
+                  data-testid={`${item.testId}-badge`}
                   style={{
                     flex: "0 0 auto",
                     padding: "2px 7px",
@@ -243,7 +246,7 @@ function PlainNavGroup({
               {/* Collapsed mode shows a 6px dot instead — prototype 7266-7267. */}
               {!expanded && badge?.label && (
                 <span
-                  data-testid="pv2-nav-runbooks-dot"
+                  data-testid={`${item.testId}-dot`}
                   style={{
                     position: "absolute",
                     top: 6,
