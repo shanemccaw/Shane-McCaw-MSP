@@ -423,6 +423,19 @@ router.post(
       // signer choose their own audit trail. A customer-facing signature must
       // not: the whole point of the record is that it was not written by the
       // person it binds.
+      //
+      // KNOWN LIMITATION, FLAGGED RATHER THAN PAPERED OVER: on the deployed dev
+      // server this records `127.0.0.1`, verified against a real acceptance.
+      // The app sits behind Replit's proxy and Express `trust proxy` is not
+      // configured, so `req.ip` is the proxy's loopback hop and not the
+      // customer's address. The value is therefore NOT a meaningful audit fact
+      // today. It is still recorded (it is correct once `trust proxy` is set,
+      // and an absent field would be worse), but nothing should be inferred
+      // from it until that setting is made — and it must not be "fixed" by
+      // reading `x-forwarded-for` directly, which is client-spoofable unless
+      // `trust proxy` is configured to say how many hops to believe. That is an
+      // app-wide change affecting every route, so it is Shane's call, not this
+      // route's to make unilaterally.
       const ipAddress = (req.ip ?? "").trim() || null;
       const signatureHash = createHash("sha256")
         .update([existing.rbdId, parsed.data.fullName, acceptedAt.toISOString(), parsed.data.statement].join(" "))

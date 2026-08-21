@@ -1,7 +1,7 @@
 {
   "feature": "Customer Portal v2 -- Operate -> Policy Decisions (/portal-v2/policy-decisions), WIRED TO REAL DATA. The page previously rendered the design fixture POLICY_DECISIONS; it now renders the calling customer's own documented positions from msp_risk_decisions via GET /api/portal/policy-decisions -- the same table and the same customer-scoped route file as the Risk Register, filtered to rows that carry a decision_state. Structural copy assertions (heading, standfirst, the four-state counter row, the knowledge-base note) are unchanged because that copy is the design's and did not move.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "PENDING",
+  "lastVerifiedAgainstCommit": "2d0703ad",
   "notes": [
     "WHAT CHANGED. The previous version asserted the FIXTURE's decisions (CMP-A1, CMP-A2 and their counts). The page now reads the customer's real register, so those ids no longer exist for any real tenant and asserting them would guarantee a red run. The fixture-side derivations they used to pin are still pinned by src/components/portal-v2/policyDecisionsModel.test.ts, which runs over POLICY_DECISIONS on purpose.",
     "ONE ROUTE FILE, TWO PAGES. Policy Decisions and the Risk Register are two views of ONE table -- the design itself says so: fixture risk RSK-007 and fixture decision CMP-A1 carry the SAME register reference, RR-2026-011, because a documented policy position IS an accepted risk. So artifacts/api-server/src/routes/portal-risk-register.ts serves both, and this page's rows are the register's rows filtered to those with a decision_state.",
@@ -10,8 +10,11 @@
     "THE LOGIN BLOCK IS NOT OPTIONAL. /portal-v2/* sits behind ProtectedRoute. On a WebView2 that is already authenticated the two `input` steps fail while the rest runs green -- a known harness artefact, not a page fault.",
     "UI ROUTE SHAPE: msp-portal's outer WouterRouter has base '/portal' and SlugScope nests a second router at '/{slug}', so the real URL is /portal/{slug}/portal-v2/policy-decisions. App.tsx declares it BEFORE '/portal-v2/:pillar' so the param route does not swallow it.",
     "ROLE FLOOR IS CustomerUser. TEST_PORTAL_EMAIL (shanemccaw+buyassessment@outlook.com) is a real CustomerUser, verified against the users/tenants join.",
-    "shaneapp://runTest hits the DEPLOYED build, not the local worktree.",
-    "ENV VARS required: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD, TEST_PORTAL_SLUG."
+    "TWO HARNESS FACTS THIS MANIFEST'S FIRST RUN PAID FOR, recorded so nobody re-learns them. (1) `state` is ELEMENT-PRESENCE ONLY and does not compose with `textContains` to mean 'this text is absent'. A step asking for state:absent on [data-testid='pv2-pd-rows'] fails no matter what the text says, because the rows CONTAINER is always rendered. To assert a decision is filtered out, target its own per-row testid (pv2-pd-row-{id}), which genuinely does not exist. (2) The register reference is NOT on the collapsed row -- it is an expanded meta field -- so it has to be clicked open first. Three assertions failed on that assumption before this was corrected.",
+    "PER-ROW TESTIDS EXIST but are template literals (`pv2-pd-row-${d.id}`, `pv2-pd-toggle-${d.id}`), so a plain grep for data-testid= on the page source does not list them. They are the right target for per-decision assertions.",
+    "shaneapp://runTest hits the DEPLOYED build, not the local worktree. A run that comes back ok:true with stepCount 0 is a SILENT NO-OP, not a pass -- it happens when a previous run is still finishing. Re-fire it and check stepCount matches apiTests+uiSteps before believing any result.",
+    "ENV VARS required: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD, TEST_PORTAL_SLUG.",
+    "RUN GREEN 2026-08-21: 33/33 against the deployed dev server at commit 2d0703ad. The FIRST run was 25/30 and caught two real mistakes in this manifest rather than in the page -- both are written up in the harness note above. Real text read back from the run: the rows list rendered \"Teams chat retention set to 1 year rather than the 7-year records period\" and \"Records schedule 4.2\", the live counter read 2 and the expired counter 0, and the register reference RR-2026-011 was found only after the row was expanded."
   ],
   "apiTests": [
     {
@@ -129,67 +132,82 @@
       "textContains": "{{firstDecisionTitle}}"
     },
     {
-      "name": "PD9 -- API-TO-DOM: so is its register reference. Interpolated from A3.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-pd-rows']",
-      "textContains": "{{firstDecisionRegister}}"
-    },
-    {
-      "name": "PD10 -- the SECOND real decision is on the page too, by its stored register reference. This is the one that shares RR-2026-011 with the Risk Register, which is the design's own evidence that the two pages are one table.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-pd-rows']",
-      "textContains": "RR-2026-011"
-    },
-    {
-      "name": "PD11 -- a row's stored obligation is rendered, straight off the obligation column.",
+      "name": "PD9 -- a row's stored obligation is rendered on the COLLAPSED row, straight off the obligation column.",
       "action": "expect",
       "selector": "[data-testid='pv2-pd-rows']",
       "textContains": "Records schedule 4.2"
     },
     {
-      "name": "PD12 -- the row that carries NO policy position is absent: RBD-2026-101 is on the risk register but is not a documented decision.",
+      "name": "PD10 -- expand that decision. THE REGISTER REFERENCE IS NOT ON THE COLLAPSED ROW -- it is one of the expanded meta fields, which a first run of this manifest proved by failing three assertions that looked for it in the rows list. Recorded here so the next reader does not re-make that assumption.",
+      "action": "click",
+      "selector": "[data-testid='pv2-pd-toggle-RBD-2026-104']"
+    },
+    {
+      "name": "PD11 -- API-TO-DOM: the register reference the API returned at $.decisions[0].register is in the expanded record. Interpolated from A3, so it cannot pass against a hardcoded string.",
       "action": "expect",
-      "selector": "[data-testid='pv2-pd-rows']",
-      "textContains": "Legacy authentication remains enabled tenant-wide",
+      "selector": "[data-testid='pv2-pd-row-RBD-2026-104']",
+      "textContains": "{{firstDecisionRegister}}"
+    },
+    {
+      "name": "PD12 -- and it is RR-2026-011 -- the reference this decision SHARES with the Risk Register, which is the design's own evidence that the two pages are one table.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-pd-row-RBD-2026-104']",
+      "textContains": "RR-2026-011"
+    },
+    {
+      "name": "PD13 -- the stored rationale is in the expanded record too, verbatim from the database.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-pd-row-RBD-2026-104']",
+      "textContains": "classifies Teams chat as transitory communication"
+    },
+    {
+      "name": "PD14 -- the row that carries NO policy position has NO ROW ELEMENT AT ALL: RBD-2026-101 is on the risk register but is not a documented decision, so the decision_state filter really excluded it. Asserted on the per-row testid, which is genuinely absent -- not on the rows container, which is always present.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-pd-row-RBD-2026-101']",
       "state": "absent"
     },
     {
-      "name": "PD13 -- clicking the live counter filters to it.",
-      "action": "click",
-      "selector": "[data-testid='pv2-pd-state-live']"
+      "name": "PD15 -- the other real decision DOES have a row.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-pd-row-RBD-2026-102']",
+      "state": "visible"
     },
     {
-      "name": "PD14 -- ...and the filter note says so, so the user can tell a filtered page from an empty one.",
+      "name": "PD16 -- filter to a lane the customer has nothing in. Both decisions are live, so Expired must empty the list -- a filter that changes nothing would prove nothing.",
+      "action": "click",
+      "selector": "[data-testid='pv2-pd-state-expired']"
+    },
+    {
+      "name": "PD17 -- ...the filter note says so, so an empty page reads as filtered rather than as having no decisions.",
       "action": "expect",
       "selector": "[data-testid='pv2-pd-filter-note']",
       "textContains": "Filtered. Click the box again to show all four."
     },
     {
-      "name": "PD15 -- the two live decisions survive their own filter.",
+      "name": "PD18 -- ...and both live decisions are genuinely gone from the DOM.",
       "action": "expect",
-      "selector": "[data-testid='pv2-pd-rows']",
-      "textContains": "RR-2026-011"
-    },
-    {
-      "name": "PD16 -- click it again to clear the filter.",
-      "action": "click",
-      "selector": "[data-testid='pv2-pd-state-live']"
-    },
-    {
-      "name": "PD17 -- ...and the note clears with it.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-pd-filter-note']",
-      "textContains": "Filtered",
+      "selector": "[data-testid='pv2-pd-row-RBD-2026-102']",
       "state": "absent"
     },
     {
-      "name": "PD18 -- the knowledge-base note renders. Design copy, unaffected by the wiring.",
+      "name": "PD19 -- click the same counter again to clear the filter.",
+      "action": "click",
+      "selector": "[data-testid='pv2-pd-state-expired']"
+    },
+    {
+      "name": "PD20 -- ...and the decisions come back.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-pd-row-RBD-2026-102']",
+      "state": "visible"
+    },
+    {
+      "name": "PD21 -- the knowledge-base note renders. Design copy, unaffected by the wiring.",
       "action": "expect",
       "selector": "[data-testid='pv2-pd-info']",
       "state": "visible"
     },
     {
-      "name": "PD19 -- 'Record a new decision' renders.",
+      "name": "PD22 -- 'Record a new decision' renders.",
       "action": "expect",
       "selector": "[data-testid='pv2-pd-new']",
       "state": "visible"
