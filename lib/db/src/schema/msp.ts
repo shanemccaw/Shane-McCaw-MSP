@@ -3402,6 +3402,79 @@ export const mspRiskDecisionsTable = pgTable("msp_risk_decisions", {
   clientApprover: jsonb("client_approver").$type<ClientApprover>().notNull(),
   expirationDate: text("expiration_date").notNull(),
   status: text("status").notNull(),
+
+  // ── Customer-facing register fields (Risk Register / Policy Decisions) ─────
+  //
+  // Everything above this line is the MSP-side liability record as `msp-rbd.ts`
+  // has always written it. Everything below exists because the customer portal's
+  // Risk Register and Policy Decisions pages render facts this table genuinely
+  // did not hold — WIRING_PLAN.md called this out in advance ("a heat-map's
+  // likelihood/impact matrix almost certainly doesn't exist as structured data
+  // today — that's real backend design work, not a type change"), and it was
+  // right. Each column below was added because a real field on one of those two
+  // pages had no source, NOT to mirror the fixture for its own sake.
+  //
+  // ALL NULLABLE ON PURPOSE. `msp-rbd.ts` predates every one of these and does
+  // not write them; a row it creates must stay valid. The portal route treats
+  // null as "not recorded" and says so on screen rather than inventing a value.
+  //
+  // `riskStatus` vs `status`: two different lifecycles that must never collapse.
+  // `status` is the ACCEPTANCE's state (pending_signature / active / expired /
+  // revoked) — where the liability transfer has got to. `riskStatus` is the
+  // RISK's own state (Open / Mitigating / Accepted / Closed / Expired) — what is
+  // happening about it. A risk can be Mitigating with no acceptance at all, and
+  // an acceptance can be revoked while the risk stays Open.
+  pillar: text("pillar"),
+  owner: text("owner"),
+  /** RACI person key behind `owner`, for the ownership matrix's chips. */
+  ownerId: text("owner_id"),
+  riskStatus: text("risk_status"),
+  /** Next review date as displayed copy, e.g. "27 Aug 2026". */
+  reviewDate: text("review_date"),
+  /** Scoring weight the register's stat cards sum over. */
+  weight: integer("weight"),
+  /** 1-5. With `impact`, the coordinates of this risk on the 5x5 heat map. */
+  likelihood: integer("likelihood"),
+  /** 1-5. */
+  impact: integer("impact"),
+  /** What happens if it lands — the consequence, not the finding. */
+  outcome: text("outcome"),
+  /** Where the finding came from: the query, the counts, the pillar. */
+  evidence: text("evidence"),
+  /** What is being done about it. */
+  plan: text("plan"),
+  /** The register entry number an acceptance was recorded under, e.g. RR-2026-014. */
+  registerRef: text("register_ref"),
+  /** Why the decision was taken — the reasoning, shown on both pages. */
+  rationale: text("rationale"),
+  /** The obligation a policy decision sits against, e.g. "GDPR Art. 5(1)(e)". */
+  obligation: text("obligation"),
+  /** The last verification line, e.g. "Compensating control verified on the last scan." */
+  verificationNote: text("verification_note"),
+  /** Policy Decisions' own four-state lane: proposed / live / due / expired. */
+  decisionState: text("decision_state"),
+
+  // ── The acceptance itself ──────────────────────────────────────────────────
+  //
+  // The typed name goes in `clientApprover.name` (that jsonb already has the
+  // right shape and already has an MSP-side writer in `msp-rbd.ts`, so both
+  // writers agree rather than keeping two records of the same signature).
+  //
+  // `acceptedAt` is a REAL column rather than another jsonb key because it is
+  // the one field that must be server-set, queryable, and never rewritten:
+  // it is the proof-of-when. `clientApprover.signedAt` is a display string the
+  // MSP path already writes; this is the machine timestamp beside it.
+  //
+  // NEVER EDITABLE AFTER THE FACT is enforced in the route, not by a constraint:
+  // `portal-risk-register.ts` rejects any accept on a row that already has
+  // `acceptedAt` set, with 409. Postgres has no "write once" column type, so the
+  // guarantee is a guarded UPDATE plus this comment telling the next writer why
+  // they must not relax it.
+  acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+  /** The exact confirmation sentence the customer ticked, snapshotted at accept
+   * time — so a later reword of the copy cannot rewrite what they agreed to. */
+  acceptedStatement: text("accepted_statement"),
+
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [

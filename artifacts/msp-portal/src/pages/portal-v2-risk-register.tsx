@@ -60,9 +60,7 @@ import {
   RR_PILLAR_META,
   RR_SELECTS,
   RR_SEV_META,
-  RR_STATS,
   RR_STATUS_META,
-  RR_SUPPRESSED_LABEL,
   riskAcceptSpec,
   riskAskTopic,
   riskCanAccept,
@@ -73,9 +71,12 @@ import {
   riskWeightText,
   rrExpiring,
   rrFiltered,
+  rrStats,
+  rrSuppressedLabel,
   type RiskFilterKey,
   type RiskFilterState,
 } from "@/components/portal-v2/riskRegisterModel";
+import { useRiskRegister } from "@/components/portal-v2/riskRegisterLive";
 
 const MONO = "'SF Mono',Menlo,Consolas,monospace";
 
@@ -158,6 +159,11 @@ export default function PortalV2RiskRegisterPage() {
     setExpanded(RR_DEFAULT_EXPANDED);
   }
 
+  const { risks, loading, error, accept } = useRiskRegister();
+  /** Set when a recorded acceptance was refused — most usefully a 409, which is
+   * the permanence guarantee working rather than a fault. */
+  const [acceptError, setAcceptError] = useState<string | null>(null);
+
   const { openForm, formElement } = useFormDrawer();
 
   const askShaneBot = (topic: string) =>
@@ -184,10 +190,24 @@ export default function PortalV2RiskRegisterPage() {
    * Confirming an acceptance opens the record-keeping form rather than mutating
    * anything: the panel captures the DECISION, and an acceptance is only real
    * once it carries an owner, a rationale and a review date.
+   *
+   * The form's submit is now the REAL write. `values.owner` is the typed name —
+   * the panel's checkbox is the consent, this is the signature — and the
+   * statement snapshotted alongside it is the exact sentence that was ticked
+   * (`spec.confirmText`), so a later reword of the copy cannot rewrite what was
+   * agreed to. The write is permanent: the route refuses a second acceptance on
+   * the same risk with a 409, which surfaces here as `acceptError`.
    */
   const { openAcceptRisk, acceptRiskElement } = useAcceptRisk({
     onConfirm: (spec: AcceptRiskSpec) =>
       openForm({
+        onSubmit: (values: Record<string, string>) => {
+          const riskId = spec.riskId;
+          if (!riskId) return;
+          void accept(riskId, (values.owner ?? "").trim(), spec.confirmText ?? "").then(
+            (message) => setAcceptError(message),
+          );
+        },
         kicker: "Risk-based decision",
         title: "Record this acceptance",
         intro: spec.title,
@@ -216,8 +236,13 @@ export default function PortalV2RiskRegisterPage() {
     onAskShaneBot: askShaneBot,
   });
 
-  const rows = rrFiltered(filters);
-  const expiring = rrExpiring();
+  // Every derivation below now runs over the REAL register for this customer,
+  // fetched from /api/portal/risk-register. The same functions keep their
+  // fixture default for the pillar pages, which still read the design register.
+  const rows = rrFiltered(filters, risks);
+  const expiring = rrExpiring(risks);
+  const stats = rrStats(risks);
+  const suppressedLabel = rrSuppressedLabel(risks);
 
   const setFilter = (key: RiskFilterKey, value: string) => {
     setFilters((f) => ({ ...f, [key]: value }));
@@ -298,6 +323,34 @@ export default function PortalV2RiskRegisterPage() {
           </button>
         </div>
 
+        {/*
+          Live-read state. Not in the prototype, and deliberately added: this
+          page now renders the customer's REAL register, so "no rows" has two
+          very different causes — a register with nothing on it, and a read that
+          failed. Showing the empty table for both would state the first while
+          the second was true.
+        */}
+        {(loading || error || acceptError) && (
+          <div
+            data-testid="pv2-risk-register-status"
+            style={{
+              marginBottom: 10,
+              padding: "9px 12px",
+              borderRadius: 8,
+              fontSize: "12px",
+              border: `1px solid ${error || acceptError ? "rgba(248,113,113,.4)" : "rgba(148,163,184,.25)"}`,
+              background: error || acceptError ? "rgba(248,113,113,.08)" : "transparent",
+              color: error || acceptError ? "#f87171" : "#94a3b8",
+            }}
+          >
+            {acceptError
+              ? acceptError
+              : error
+                ? "Your risk register could not be loaded, so this page is not showing your current risks."
+                : "Loading your risk register…"}
+          </div>
+        )}
+
         {/* ── Stat cards — proto 812-820 ──────────────────────────────── */}
         <div
           style={{
@@ -307,7 +360,7 @@ export default function PortalV2RiskRegisterPage() {
           }}
           data-testid="pv2-rr-stats"
         >
-          {RR_STATS.map((s) => (
+          {stats.map((s) => (
             <div
               key={s.label}
               style={{
@@ -383,7 +436,7 @@ export default function PortalV2RiskRegisterPage() {
                 textWrap: "pretty",
               }}
             >
-              An accepted risk stops costing you score — {RR_SUPPRESSED_LABEL} are currently
+              An accepted risk stops costing you score — {suppressedLabel} are currently
               suppressed across your pillars — and its alerts are muted so it does not keep arriving
               as news. What does not stop is the checking: every scan still evaluates it, and if the
               underlying facts move materially, or the acceptance passes its review date, the points

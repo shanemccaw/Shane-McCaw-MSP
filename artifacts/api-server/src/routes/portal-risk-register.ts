@@ -1,0 +1,504 @@
+/**
+ * portal-risk-register.ts — the CUSTOMER-scoped Risk Register, Policy Decisions,
+ * and the risk-acceptance write path.
+ *
+ *   GET  /api/portal/risk-register              — this customer's risk register
+ *   GET  /api/portal/policy-decisions           — the same rows, policy-decision view
+ *   POST /api/portal/risk-register/:rbdId/accept — accept a risk, permanently
+ *
+ * ── Why a new route, given `msp-rbd.ts` already serves this table ───────────
+ * It serves it MSP-side. Every handler in `msp-rbd.ts` is
+ * `requireRole("MSPOperator")` (list) or `requireRole("MSPAdmin")` (sign,
+ * revoke), scoped by `resolveMspIdStrict` — i.e. every risk decision belonging
+ * to every tenant of that MSP, in one list. Pointing a customer page at it
+ * would hand each customer the other customers' liability records: their tenant
+ * names, primary domains, hazard descriptions and dollar exposures. Same
+ * leak-risk pattern `portal-change-control.ts` was built to avoid, same fix.
+ *
+ * ── The scoping is a PAIR of predicates, not one ───────────────────────────
+ * `msp_risk_decisions.tenant_id` is unconstrained free `text` holding an M365
+ * tenant identifier, with no foreign key to `tenants`. The JWT's `customerId`
+ * is a `tenants.id` and is NOT that key, so:
+ *
+ *     JWT customerId → tenants row → (tenants.mspId, tenants.tenantId)
+ *
+ * and the query filters on BOTH, via the shared `resolveTenantScope` (which
+ * fails closed on a missing row, a missing mspId, or a BLANK tenantId — an
+ * empty-string match would be a cross-tenant read). That helper's own header
+ * names this table as one of the three it exists for; this route does not
+ * re-derive the rule.
+ *
+ * The live data justifies the paranoia: the one row in this table today carries
+ * `tenant_id = 'contoso-01'`, which is not an M365 tenant GUID and matches no
+ * real tenant. Filtering on that column alone would be filtering on a
+ * convention nothing enforces.
+ *
+ * ── Role floor: `CustomerUser` ─────────────────────────────────────────────
+ * Chosen deliberately, and it is a HIGHER floor than the customer-scoped routes
+ * next door: `portal-change-control.ts`, `portal-remediation-tracker.ts` and
+ * `portal-tenant-check-items.ts` all floor at `Assessment` ("the lowest role
+ * carrying a customerId"). This one does not, for a product reason rather than
+ * a security one — the register carries the tenant's dollar liability exposure
+ * and a signature surface that transfers that liability, which is not something
+ * a free Assessment-tier account should reach. The floor decides which TIER may
+ * open the page; it is NOT what prevents a cross-tenant read (the scoping
+ * above is, and it is identical either way).
+ *
+ * The configured testbed account is a real `CustomerUser`, so this floor is
+ * reachable by the test harness — verified in `portal-change-control.ts`'s own
+ * header against the database rather than assumed.
+ *
+ * ── Most of what these pages render did not exist in this table ────────────
+ * `msp_risk_decisions` held the MSP-side liability record and nothing else: no
+ * pillar, owner, likelihood, impact, weight, outcome, evidence, plan, register
+ * reference, rationale or obligation. WIRING_PLAN.md predicted exactly that ("a
+ * heat-map's likelihood/impact matrix almost certainly doesn't exist as
+ * structured data today — that's real backend design work, not a type change").
+ * Those columns were added by
+ * `lib/db/migrations/manual/2026-08-21-portal-v2-risk-register-customer-fields.sql`
+ * — purely additive, all nullable, no backfill.
+ *
+ * NULL IS SERVED AS NULL. A row written by `msp-rbd.ts` (which predates every
+ * one of those columns and sets none of them) comes back with nulls, and the
+ * page says "Not recorded". It does not get a plausible-looking default,
+ * because a fabricated likelihood would land a risk on the heat map at
+ * coordinates nobody chose.
+ *
+ * ── Two lifecycles, deliberately not merged ────────────────────────────────
+ * `status` is the ACCEPTANCE's state (pending_signature / active / expired /
+ * revoked). `riskStatus` is the RISK's own (Open / Mitigating / Accepted /
+ * Closed / Expired). A risk can be Mitigating with no acceptance at all, and an
+ * acceptance can be revoked while the risk stays Open. The register shows the
+ * second; the acceptance panel acts on the first.
+ */
+
+import { Router, type IRouter, type Request, type Response } from "express";
+import { createHash } from "node:crypto";
+import { db, mspRiskDecisionsTable, type CompensatingControl, type ClientApprover } from "@workspace/db";
+import { and, eq, desc, isNull } from "drizzle-orm";
+import { z } from "zod";
+
+import { requireRole } from "../middlewares/requireAuth";
+import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope";
+import { apiError, ApiErrorCode } from "../lib/api-helpers";
+import { logger } from "../lib/logger";
+
+const log = logger.child({ channel: "tenant.portal" });
+
+const router: IRouter = Router();
+
+/**
+ * The severity vocabularies differ between the two sides and this is the only
+ * place they meet. The table stores lowercase (`high`), the register's colour
+ * map `RR_SEV_META` is keyed on title case (`High`). Anything not recognised
+ * comes back as-is rather than being coerced into a bucket it does not belong
+ * in — an unknown severity should look wrong on screen, not silently render as
+ * Low.
+ */
+function titleCaseSeverity(value: string | null): string | null {
+  if (!value) return null;
+  const v = value.trim();
+  if (!v) return null;
+  return v.charAt(0).toUpperCase() + v.slice(1).toLowerCase();
+}
+
+/** The acceptance block, present only once the risk has actually been accepted. */
+interface WireAcceptance {
+  /** The name the customer TYPED at acceptance time. */
+  readonly by: string;
+  /** When they typed it — the server's clock, never the client's. */
+  readonly on: string;
+  /** How long the acceptance runs for. */
+  readonly until: string | null;
+  readonly register: string | null;
+  readonly why: string | null;
+  readonly compensating: string | null;
+  /** The exact sentence they ticked, snapshotted at accept time. */
+  readonly statement: string | null;
+}
+
+/** One risk, in the shape the Risk Register page consumes. */
+interface WireRisk {
+  readonly id: string;
+  readonly title: string;
+  readonly pillar: string | null;
+  readonly inherent: string | null;
+  readonly residual: string | null;
+  readonly status: string | null;
+  readonly owner: string | null;
+  readonly review: string | null;
+  readonly weight: number | null;
+  readonly likelihood: number | null;
+  readonly impact: number | null;
+  readonly what: string;
+  readonly outcome: string | null;
+  readonly evidence: string | null;
+  readonly controls: readonly string[];
+  readonly plan: string | null;
+  /** Absent unless the risk has genuinely been accepted. */
+  readonly accepted?: WireAcceptance;
+  /** True once accepted — the panel uses this to refuse a second signature. */
+  readonly isAccepted: boolean;
+  /** The liability this acceptance would transfer, in whole USD. */
+  readonly liabilityValueUsd: number;
+  readonly framework: string;
+  readonly controlViolated: string;
+}
+
+/** One policy decision — the same rows, read as documented policy positions. */
+interface WirePolicyDecision {
+  readonly id: string;
+  readonly state: string | null;
+  readonly pillar: string | null;
+  readonly title: string;
+  readonly obligation: string | null;
+  readonly owner: string | null;
+  readonly ownerId: string | null;
+  readonly approved: string | null;
+  readonly review: string | null;
+  readonly register: string | null;
+  readonly rationale: string | null;
+  readonly compensating: string | null;
+  readonly check: string | null;
+}
+
+type RiskRow = typeof mspRiskDecisionsTable.$inferSelect;
+
+/** ISO 8601, UTC. The wire carries machine time; the page formats it. */
+function iso(value: Date | string | null): string | null {
+  if (value === null) return null;
+  return value instanceof Date ? value.toISOString() : String(value);
+}
+
+function controlDescriptions(controls: CompensatingControl[] | null): readonly string[] {
+  if (!Array.isArray(controls)) return [];
+  return controls.map((c) => c?.description).filter((d): d is string => typeof d === "string" && d.trim() !== "");
+}
+
+/**
+ * The compensating controls as one sentence, for the acceptance record's own
+ * "what is holding this down" line. Joined here rather than on the page so the
+ * register and the acceptance block cannot disagree about the same controls.
+ */
+function compensatingSentence(controls: CompensatingControl[] | null): string | null {
+  const list = controlDescriptions(controls);
+  return list.length ? list.join(" ") : null;
+}
+
+function toWireRisk(row: RiskRow): WireRisk {
+  const acceptedAt = iso(row.acceptedAt);
+  const approver = (row.clientApprover ?? null) as ClientApprover | null;
+
+  // The acceptance block appears iff the write path actually ran. `status ===
+  // "active"` alone is NOT the test: `msp-rbd.ts` can flip a row to active from
+  // the MSP side without a customer ever typing a name, and rendering an
+  // acceptance with a blank signatory would be a false record of consent.
+  const accepted: WireAcceptance | undefined =
+    acceptedAt && approver?.name
+      ? {
+          by: approver.name,
+          on: acceptedAt,
+          until: row.expirationDate ?? null,
+          register: row.registerRef ?? null,
+          why: row.rationale ?? null,
+          compensating: compensatingSentence(row.compensatingControls),
+          statement: row.acceptedStatement ?? null,
+        }
+      : undefined;
+
+  return {
+    id: row.rbdId,
+    title: row.title,
+    pillar: row.pillar ?? null,
+    inherent: titleCaseSeverity(row.rawRiskLevel),
+    residual: titleCaseSeverity(row.residualRiskLevel),
+    status: row.riskStatus ?? null,
+    owner: row.owner ?? null,
+    review: row.reviewDate ?? null,
+    weight: row.weight ?? null,
+    likelihood: row.likelihood ?? null,
+    impact: row.impact ?? null,
+    what: row.hazardDescription,
+    outcome: row.outcome ?? null,
+    evidence: row.evidence ?? null,
+    controls: controlDescriptions(row.compensatingControls),
+    plan: row.plan ?? null,
+    ...(accepted ? { accepted } : {}),
+    isAccepted: accepted !== undefined,
+    liabilityValueUsd: row.liabilityValueUsd,
+    framework: row.framework,
+    controlViolated: row.controlViolated,
+  };
+}
+
+function toWirePolicyDecision(row: RiskRow): WirePolicyDecision {
+  const approver = (row.clientApprover ?? null) as ClientApprover | null;
+  return {
+    id: row.rbdId,
+    state: row.decisionState ?? null,
+    pillar: row.pillar ?? null,
+    title: row.title,
+    obligation: row.obligation ?? null,
+    owner: row.owner ?? null,
+    ownerId: row.ownerId ?? null,
+    // The approval date is the acceptance's real timestamp where one exists,
+    // falling back to the MSP-side display string `msp-rbd.ts` writes.
+    approved: iso(row.acceptedAt) ?? approver?.signedAt ?? null,
+    review: row.reviewDate ?? null,
+    register: row.registerRef ?? null,
+    rationale: row.rationale ?? null,
+    compensating: compensatingSentence(row.compensatingControls),
+    check: row.verificationNote ?? null,
+  };
+}
+
+/**
+ * Resolves the caller's scope, or writes the response and returns null.
+ *
+ * An unresolvable scope answers 200 with an EMPTY register rather than 403: a
+ * customer whose tenant row carries no M365 identifier has no risks, which is a
+ * true statement and renders correctly. 403 would read as "you are not allowed
+ * to see your own register", which is a different and wrong claim.
+ */
+async function scopeOrEmpty(req: Request, res: Response, emptyKey: "risks" | "decisions") {
+  const customerId = resolveCustomerId(req);
+  if (customerId === null) {
+    apiError(res, 403, ApiErrorCode.FORBIDDEN, "Customer context required");
+    return null;
+  }
+  const scope = await resolveTenantScope(customerId);
+  if (!scope) {
+    log.info({ customerId }, "risk register requested with no resolvable tenant scope — serving empty");
+    res.json({ [emptyKey]: [] });
+    return null;
+  }
+  return scope;
+}
+
+/** Every risk decision for the calling customer's own tenant. */
+router.get(
+  "/portal/risk-register",
+  requireRole("CustomerUser"),
+  async (req: Request, res: Response) => {
+    try {
+      const scope = await scopeOrEmpty(req, res, "risks");
+      if (!scope) return;
+
+      const rows = await db
+        .select()
+        .from(mspRiskDecisionsTable)
+        .where(
+          and(
+            eq(mspRiskDecisionsTable.mspId, scope.mspId),
+            eq(mspRiskDecisionsTable.tenantId, scope.tenantId),
+          ),
+        )
+        .orderBy(desc(mspRiskDecisionsTable.id));
+
+      res.json({ risks: rows.map(toWireRisk) });
+    } catch (err: unknown) {
+      log.error({ err }, "GET /portal/risk-register failed");
+      apiError(res, 500, ApiErrorCode.INTERNAL, err instanceof Error ? err.message : String(err));
+    }
+  },
+);
+
+/**
+ * The same rows read as policy decisions.
+ *
+ * Filtered to rows that actually ARE one — `decision_state` non-null. A raw
+ * liability acceptance with no policy position recorded against it is a risk,
+ * not a documented policy decision, and listing it here would put a blank lane
+ * on the page.
+ */
+router.get(
+  "/portal/policy-decisions",
+  requireRole("CustomerUser"),
+  async (req: Request, res: Response) => {
+    try {
+      const scope = await scopeOrEmpty(req, res, "decisions");
+      if (!scope) return;
+
+      const rows = await db
+        .select()
+        .from(mspRiskDecisionsTable)
+        .where(
+          and(
+            eq(mspRiskDecisionsTable.mspId, scope.mspId),
+            eq(mspRiskDecisionsTable.tenantId, scope.tenantId),
+          ),
+        )
+        .orderBy(desc(mspRiskDecisionsTable.id));
+
+      res.json({
+        decisions: rows
+          .filter((r) => (r.decisionState ?? "").trim() !== "")
+          .map(toWirePolicyDecision),
+      });
+    } catch (err: unknown) {
+      log.error({ err }, "GET /portal/policy-decisions failed");
+      apiError(res, 500, ApiErrorCode.INTERNAL, err instanceof Error ? err.message : String(err));
+    }
+  },
+);
+
+/**
+ * The typed-name + checkbox acceptance.
+ *
+ * `confirmed` is `z.literal(true)`, not a boolean: the checkbox is the consent,
+ * so a request without it is malformed rather than merely "not accepted".
+ *
+ * `fullName` is trimmed and must be at least two characters. It is NOT checked
+ * against the account's own name on purpose — the person signing may legitimately
+ * be signing in a role ("Jordan Diaz · IT Administrator"), and rejecting a
+ * mismatch would block a valid signature while doing nothing an attacker with
+ * the session could not work around anyway. The account that signed is recorded
+ * separately, below, and THAT is the identity claim.
+ */
+const acceptSchema = z.object({
+  fullName: z.string().trim().min(2, "Type your full name to accept this risk").max(200),
+  confirmed: z.literal(true),
+  statement: z.string().trim().min(1).max(2000),
+});
+
+router.post(
+  "/portal/risk-register/:rbdId/accept",
+  requireRole("CustomerUser"),
+  async (req: Request, res: Response) => {
+    const customerId = resolveCustomerId(req);
+    const rbdId = String(req.params.rbdId);
+    try {
+      if (customerId === null) {
+        apiError(res, 403, ApiErrorCode.FORBIDDEN, "Customer context required");
+        return;
+      }
+      const scope = await resolveTenantScope(customerId);
+      if (!scope) {
+        apiError(res, 403, ApiErrorCode.FORBIDDEN, "Customer context required");
+        return;
+      }
+
+      const parsed = acceptSchema.safeParse(req.body);
+      if (!parsed.success) {
+        apiError(res, 400, ApiErrorCode.VALIDATION, "Invalid acceptance", parsed.error.flatten());
+        return;
+      }
+
+      // Scoped read FIRST: a risk belonging to another tenant must 404 exactly
+      // like one that does not exist, so this endpoint cannot be used to probe
+      // which RBD ids are real.
+      const [existing] = await db
+        .select()
+        .from(mspRiskDecisionsTable)
+        .where(
+          and(
+            eq(mspRiskDecisionsTable.rbdId, rbdId),
+            eq(mspRiskDecisionsTable.mspId, scope.mspId),
+            eq(mspRiskDecisionsTable.tenantId, scope.tenantId),
+          ),
+        )
+        .limit(1);
+
+      if (!existing) {
+        apiError(res, 404, ApiErrorCode.NOT_FOUND, "Risk not found");
+        return;
+      }
+
+      // PERMANENT, NEVER EDITABLE AFTER THE FACT. This is the whole guarantee of
+      // the flow and it is enforced here because Postgres has no write-once
+      // column. Do not relax it into an upsert.
+      if (existing.acceptedAt !== null) {
+        apiError(res, 409, ApiErrorCode.CONFLICT, "This risk has already been accepted and cannot be changed");
+        return;
+      }
+      if (existing.status === "revoked") {
+        apiError(res, 409, ApiErrorCode.CONFLICT, "This risk decision has been revoked and cannot be accepted");
+        return;
+      }
+
+      const acceptedAt = new Date();
+
+      // Both derived SERVER-side. `msp-rbd.ts`'s own sign handler takes
+      // `ipAddress` and `signatureHash` from the request body, which lets the
+      // signer choose their own audit trail. A customer-facing signature must
+      // not: the whole point of the record is that it was not written by the
+      // person it binds.
+      const ipAddress = (req.ip ?? "").trim() || null;
+      const signatureHash = createHash("sha256")
+        .update([existing.rbdId, parsed.data.fullName, acceptedAt.toISOString(), parsed.data.statement].join(" "))
+        .digest("hex");
+
+      const priorApprover = (existing.clientApprover ?? null) as ClientApprover | null;
+      const clientApprover: ClientApprover = {
+        name: parsed.data.fullName,
+        // Title/email keep whatever the MSP recorded when raising the request;
+        // the customer types a name, not a new contact record.
+        title: priorApprover?.title ?? "",
+        email: priorApprover?.email ?? "",
+        signedAt: acceptedAt.toISOString().substring(0, 19).replace("T", " ") + " UTC",
+        ipAddress,
+        signatureHash,
+      };
+
+      // Guarded UPDATE: the `acceptedAt IS NULL` predicate is repeated here as
+      // the real race guard. Two tabs submitting at once both pass the check
+      // above; only one can match this WHERE, and the other updates zero rows
+      // and is told the risk was already accepted.
+      const updated = await db
+        .update(mspRiskDecisionsTable)
+        .set({
+          acceptedAt,
+          acceptedStatement: parsed.data.statement,
+          clientApprover,
+          status: "active",
+          riskStatus: "Accepted",
+          updatedAt: acceptedAt,
+        })
+        .where(
+          and(
+            eq(mspRiskDecisionsTable.id, existing.id),
+            // The real guard. The read above can be stale by the time this runs;
+            // only one concurrent request can match `accepted_at IS NULL`, and
+            // the loser updates zero rows rather than overwriting a signature.
+            isNull(mspRiskDecisionsTable.acceptedAt),
+          ),
+        )
+        .returning({ id: mspRiskDecisionsTable.id });
+
+      if (updated.length === 0) {
+        apiError(res, 409, ApiErrorCode.CONFLICT, "This risk has already been accepted and cannot be changed");
+        return;
+      }
+
+      log.info(
+        {
+          customerId,
+          mspId: scope.mspId,
+          rbdId,
+          acceptedBy: parsed.data.fullName,
+          userId: typeof req.user?.id === "number" ? req.user.id : null,
+          signatureHash,
+        },
+        "risk accepted by customer",
+      );
+
+      res.status(201).json({
+        rbdId,
+        accepted: {
+          by: parsed.data.fullName,
+          on: acceptedAt.toISOString(),
+          until: existing.expirationDate ?? null,
+          register: existing.registerRef ?? null,
+          why: existing.rationale ?? null,
+          compensating: compensatingSentence(existing.compensatingControls),
+          statement: parsed.data.statement,
+        },
+      });
+    } catch (err: unknown) {
+      log.error({ err, customerId, rbdId }, "POST /portal/risk-register/:rbdId/accept failed");
+      apiError(res, 500, ApiErrorCode.INTERNAL, err instanceof Error ? err.message : String(err));
+    }
+  },
+);
+
+export default router;

@@ -1,15 +1,17 @@
 {
-  "feature": "Customer Portal v2 Part 5 -- Operate -> Policy Decisions (/portal-v2/policy-decisions). Recreated from the prototype's own `isPolicyDecisions` block ('Customer Portal Shell.dc.html' 4578-4657) and its `pdStates`/`pdFilterNote`/`pdRows` derivation (20247-20328), transcribed into policyDecisionsModel.ts and pinned by unit assertions. Four decisions, one in each state (proposed / live / due / expired), four state counters that double as filters, a knowledge-base info dot, rows that expand in place into the full record (owner / signed / next review / risk register, why this is the position, compensating control, where it stands today) and their per-state actions (Sign it off for proposed, Renew it for due/expired, Withdraw and fix instead for all). The fixture is policyDecisionsData.ts, now the single home of the decisions -- overviewData re-exports it as OV_POLICY_DECISIONS for the Overview lane, so the two can never disagree.",
+  "feature": "Customer Portal v2 -- Operate -> Policy Decisions (/portal-v2/policy-decisions), WIRED TO REAL DATA. The page previously rendered the design fixture POLICY_DECISIONS; it now renders the calling customer's own documented positions from msp_risk_decisions via GET /api/portal/policy-decisions -- the same table and the same customer-scoped route file as the Risk Register, filtered to rows that carry a decision_state. Structural copy assertions (heading, standfirst, the four-state counter row, the knowledge-base note) are unchanged because that copy is the design's and did not move.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "6f4c02fa",
+  "lastVerifiedAgainstCommit": "PENDING",
   "notes": [
-    "THE LOGIN BLOCK IS NOT OPTIONAL. /portal-v2/* sits behind ProtectedRoute; a probe that skips the five login steps hits the login screen and every assertion fails for a reason unrelated to the page.",
-    "UI ROUTE SHAPE: msp-portal's outer WouterRouter has base '/portal' and SlugScope nests a second router at '/{slug}', so the real URL is /portal/{slug}/portal-v2/policy-decisions. App.tsx declares it BEFORE '/portal-v2/:pillar' so the param route cannot swallow it -- Policy Decisions is a plain, param-free route.",
-    "shaneapp://runTest hits the DEPLOYED build, not the local worktree; this manifest needs the Part 5 pages deployed first.",
-    "PERSISTED-SESSION FLAKE (known): when WebView2 is already authed, the two input steps against #email/#password can fail while the rest runs green because auth persists. N-2 of N with only those two red is a PASS for the feature.",
-    "THE FILTER IS DRIVEN VIA A REAL CLICK on a counter CARD (a button), not a native <select> -- the UI executor can click a button, so unlike the Risk Register's selects this filter is exercised for real (PD23-PD25).",
-    "STATUS/ACTION SEPARATION is asserted: a proposed decision offers Sign it off but not Renew (PD21-PD22); a due/expired one offers Renew but not Sign it off (PD18, PD20). Withdraw is on every row. These pin pdActions().",
-    "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD."
+    "WHAT CHANGED. The previous version asserted the FIXTURE's decisions (CMP-A1, CMP-A2 and their counts). The page now reads the customer's real register, so those ids no longer exist for any real tenant and asserting them would guarantee a red run. The fixture-side derivations they used to pin are still pinned by src/components/portal-v2/policyDecisionsModel.test.ts, which runs over POLICY_DECISIONS on purpose.",
+    "ONE ROUTE FILE, TWO PAGES. Policy Decisions and the Risk Register are two views of ONE table -- the design itself says so: fixture risk RSK-007 and fixture decision CMP-A1 carry the SAME register reference, RR-2026-011, because a documented policy position IS an accepted risk. So artifacts/api-server/src/routes/portal-risk-register.ts serves both, and this page's rows are the register's rows filtered to those with a decision_state.",
+    "THE NUMBERS BELOW COME FROM SEEDED ROWS, STATED PLAINLY. lib/db/migrations/manual/2026-08-21-portal-v2-risk-register-testbed-seed.sql seeds four rows against msp_id 1 + tenant c4c814d4-3afe-441e-9145-62461d0a4fd3 (the tenant behind TEST_PORTAL_EMAIL); TWO of them carry decision_state='live' and therefore appear here: RBD-2026-102 (Audit log retention, RR-2026-014) and RBD-2026-104 (Teams chat retention, RR-2026-011). The read path and scoping are real; the row content is seeded demonstration data.",
+    "EXPECTED COUNTERS: live 2, proposed 0, due 0, expired 0. A row with an unrecognised decision_state falls back to 'proposed' rather than being dropped -- hiding a real decision because of a bad enum value is worse than showing it in the lane that claims least.",
+    "THE LOGIN BLOCK IS NOT OPTIONAL. /portal-v2/* sits behind ProtectedRoute. On a WebView2 that is already authenticated the two `input` steps fail while the rest runs green -- a known harness artefact, not a page fault.",
+    "UI ROUTE SHAPE: msp-portal's outer WouterRouter has base '/portal' and SlugScope nests a second router at '/{slug}', so the real URL is /portal/{slug}/portal-v2/policy-decisions. App.tsx declares it BEFORE '/portal-v2/:pillar' so the param route does not swallow it.",
+    "ROLE FLOOR IS CustomerUser. TEST_PORTAL_EMAIL (shanemccaw+buyassessment@outlook.com) is a real CustomerUser, verified against the users/tenants join.",
+    "shaneapp://runTest hits the DEPLOYED build, not the local worktree.",
+    "ENV VARS required: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD, TEST_PORTAL_SLUG."
   ],
   "apiTests": [
     {
@@ -20,44 +22,177 @@
       "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
       "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
       "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "A1 -- the customer-scoped policy-decisions endpoint answers with an array. This endpoint did not exist before this build.",
+      "method": "GET",
+      "path": "/api/portal/policy-decisions",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.decisions", "isArray": true }
+    },
+    {
+      "name": "A2 -- extract the FIRST decision's title off the wire. PD9 asserts this exact string reaches the DOM, which is the real API-to-DOM integration proof.",
+      "method": "GET",
+      "path": "/api/portal/policy-decisions",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.decisions[0].title", "exists": true },
+      "extract": { "as": "firstDecisionTitle", "jsonPath": "$.decisions[0].title" }
+    },
+    {
+      "name": "A3 -- ...and its register reference, which is the join between this page and the Risk Register.",
+      "method": "GET",
+      "path": "/api/portal/policy-decisions",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.decisions[0].register", "exists": true },
+      "extract": { "as": "firstDecisionRegister", "jsonPath": "$.decisions[0].register" }
+    },
+    {
+      "name": "A4 -- a row with NO decision_state is excluded. RBD-2026-101 is on the register but carries no policy position, so it must not appear here; asserting the array holds exactly the two that do is what proves the filter is real rather than incidental.",
+      "method": "GET",
+      "path": "/api/portal/policy-decisions",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.decisions[1].id", "exists": true }
     }
   ],
   "uiSteps": [
-    { "name": "goto the real login URL (outer WouterRouter base = '/portal').", "action": "goto", "target": "/portal/login" },
-    { "name": "WAIT for the login form to hydrate before typing.", "action": "expect", "selector": "#email", "state": "visible" },
+    {
+      "name": "goto the real login URL (outer WouterRouter base = '/portal').",
+      "action": "goto",
+      "target": "/portal/login"
+    },
+    {
+      "name": "WAIT for the login form to hydrate before typing.",
+      "action": "expect",
+      "selector": "#email",
+      "state": "visible"
+    },
     { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
     { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
-    { "name": "Primary login -- every assertion below needs a real session.", "action": "click", "selector": "[data-testid='login-submit']", "critical": true },
-    { "name": "goto Policy Decisions on its slug-scoped route.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/policy-decisions" },
-    { "name": "PD1 -- the page resolved to Policy Decisions, not NotFound and not the param pillar route.", "action": "expect", "selector": "[data-testid='pv2-pd-heading']", "textContains": "Policy Decisions", "critical": true },
-    { "name": "PD2 -- the standfirst thesis, verbatim.", "action": "expect", "selector": "[data-testid='pv2-pd-sub']", "textContains": "Gaps you have decided to live with" },
-    { "name": "PD3 -- ...and the rest of it, which was missing before this page existed.", "action": "expect", "selector": "[data-testid='pv2-pd-sub']", "textContains": "a documented one is a position" },
-    { "name": "PD4 -- the Record a decision button renders.", "action": "expect", "selector": "[data-testid='pv2-pd-new']", "textContains": "Record a decision" },
-    { "name": "PD5 -- the four state counters render, with the proposed label.", "action": "expect", "selector": "[data-testid='pv2-pd-states']", "textContains": "Awaiting sign-off" },
-    { "name": "PD6 -- ...and the due label.", "action": "expect", "selector": "[data-testid='pv2-pd-states']", "textContains": "Due for review" },
-    { "name": "PD7 -- the expired counter carries its sub-line, verbatim.", "action": "expect", "selector": "[data-testid='pv2-pd-state-expired']", "textContains": "reads as neglect until renewed" },
-    { "name": "PD8 -- the rows render, CMP-A1 first (fixture order).", "action": "expect", "selector": "[data-testid='pv2-pd-rows']", "textContains": "CMP-A1" },
-    { "name": "PD9 -- GOV-A4 carries its full title.", "action": "expect", "selector": "[data-testid='pv2-pd-row-GOV-A4']", "textContains": "Guest access reviews deferred until the Entra P2 licences land" },
-    { "name": "PD10 -- ...and its state badge reads Expired.", "action": "expect", "selector": "[data-testid='pv2-pd-row-GOV-A4']", "textContains": "Expired" },
-    { "name": "PD11 -- SEC-A3 reads Awaiting sign-off (proposed).", "action": "expect", "selector": "[data-testid='pv2-pd-row-SEC-A3']", "textContains": "Awaiting sign-off" },
-    { "name": "PD12 -- CMP-A1 shows its next-review date.", "action": "expect", "selector": "[data-testid='pv2-pd-row-CMP-A1']", "textContains": "14 March 2027" },
-    { "name": "PD13 -- expand GOV-A4.", "action": "click", "selector": "[data-testid='pv2-pd-toggle-GOV-A4']" },
-    { "name": "PD14 -- the expanded body carries 'Why this is the position'.", "action": "expect", "selector": "[data-testid='pv2-pd-open-GOV-A4']", "textContains": "Why this is the position" },
-    { "name": "PD15 -- ...and 'Where it stands today'.", "action": "expect", "selector": "[data-testid='pv2-pd-open-GOV-A4']", "textContains": "Where it stands today" },
-    { "name": "PD16 -- ...with GOV-A4's own check line, the sharpest on the page.", "action": "expect", "selector": "[data-testid='pv2-pd-open-GOV-A4']", "textContains": "This now reads as neglect rather than a decision" },
-    { "name": "PD17 -- ...and its rationale, verbatim.", "action": "expect", "selector": "[data-testid='pv2-pd-open-GOV-A4']", "textContains": "Access reviews need Entra ID P2" },
-    { "name": "PD18 -- an expired decision offers Renew it.", "action": "expect", "selector": "[data-testid='pv2-pd-renew-GOV-A4']", "textContains": "Renew it" },
-    { "name": "PD19 -- ...and Withdraw and fix instead, which every row has.", "action": "expect", "selector": "[data-testid='pv2-pd-withdraw-GOV-A4']", "textContains": "Withdraw and fix instead" },
-    { "name": "PD20 -- ...but NOT Sign it off (that is a proposed-only action).", "action": "expect", "selector": "[data-testid='pv2-pd-sign-GOV-A4']", "state": "absent" },
-    { "name": "PD21 -- expand SEC-A3 (proposed).", "action": "click", "selector": "[data-testid='pv2-pd-toggle-SEC-A3']" },
-    { "name": "PD22 -- a proposed decision offers Sign it off.", "action": "expect", "selector": "[data-testid='pv2-pd-sign-SEC-A3']", "textContains": "Sign it off" },
-    { "name": "PD23 -- ...but NOT Renew (renew is due/expired only).", "action": "expect", "selector": "[data-testid='pv2-pd-renew-SEC-A3']", "state": "absent" },
-    { "name": "PD24 -- click the Due counter to filter.", "action": "click", "selector": "[data-testid='pv2-pd-state-due']" },
-    { "name": "PD25 -- the filter note appears, verbatim.", "action": "expect", "selector": "[data-testid='pv2-pd-filter-note']", "textContains": "Filtered. Click the box again to show all four." },
-    { "name": "PD26 -- CMP-A2 (the one due decision) stays visible.", "action": "expect", "selector": "[data-testid='pv2-pd-row-CMP-A2']", "state": "visible" },
-    { "name": "PD27 -- ...and CMP-A1 (live) is filtered out.", "action": "expect", "selector": "[data-testid='pv2-pd-row-CMP-A1']", "state": "absent" },
-    { "name": "PD28 -- the Operate nav row for Policy Decisions exists now that its page does.", "action": "expect", "selector": "[data-testid='pv2-nav-policy-decisions']", "state": "visible" },
-    { "name": "PD29 -- Record a decision opens the shared drawer.", "action": "click", "selector": "[data-testid='pv2-pd-new']" },
-    { "name": "PD30 -- ...carrying the record-a-decision form, verbatim.", "action": "expect", "selector": "body", "textContains": "Record a new policy decision" }
+    {
+      "name": "Primary login -- every assertion below needs a real session.",
+      "action": "click",
+      "selector": "[data-testid='login-submit']",
+      "critical": true
+    },
+    {
+      "name": "goto Policy Decisions on its slug-scoped route.",
+      "action": "goto",
+      "target": "/portal/{{TEST_PORTAL_SLUG}}/portal-v2/policy-decisions"
+    },
+    {
+      "name": "PD1 -- the page resolved to Policy Decisions, not NotFound and not the param pillar route.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-pd-heading']",
+      "textContains": "Policy Decisions",
+      "critical": true
+    },
+    {
+      "name": "PD2 -- the standfirst thesis, verbatim. Design copy, unaffected by the wiring.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-pd-sub']",
+      "textContains": "Gaps you have decided to live with"
+    },
+    {
+      "name": "PD3 -- ...and the rest of it.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-pd-sub']",
+      "textContains": "a documented one is a position"
+    },
+    {
+      "name": "PD4 -- THE LIVE READ SUCCEEDED. The status line renders only while loading or on error, so its absence is what tells a real empty register apart from a failed fetch.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-pd-status']",
+      "state": "absent"
+    },
+    {
+      "name": "PD5 -- the four-state counter row renders.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-pd-states']",
+      "state": "visible"
+    },
+    {
+      "name": "PD6 -- two live decisions, counted from the customer's real rows.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-pd-state-live']",
+      "textContains": "2"
+    },
+    {
+      "name": "PD7 -- and the other three lanes are empty, which is the honest count rather than a hidden card.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-pd-state-expired']",
+      "textContains": "0"
+    },
+    {
+      "name": "PD8 -- API-TO-DOM: the title the API returned at $.decisions[0].title is on the page. Interpolated from A2, so it cannot pass against a hardcoded string.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-pd-rows']",
+      "textContains": "{{firstDecisionTitle}}"
+    },
+    {
+      "name": "PD9 -- API-TO-DOM: so is its register reference. Interpolated from A3.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-pd-rows']",
+      "textContains": "{{firstDecisionRegister}}"
+    },
+    {
+      "name": "PD10 -- the SECOND real decision is on the page too, by its stored register reference. This is the one that shares RR-2026-011 with the Risk Register, which is the design's own evidence that the two pages are one table.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-pd-rows']",
+      "textContains": "RR-2026-011"
+    },
+    {
+      "name": "PD11 -- a row's stored obligation is rendered, straight off the obligation column.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-pd-rows']",
+      "textContains": "Records schedule 4.2"
+    },
+    {
+      "name": "PD12 -- the row that carries NO policy position is absent: RBD-2026-101 is on the risk register but is not a documented decision.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-pd-rows']",
+      "textContains": "Legacy authentication remains enabled tenant-wide",
+      "state": "absent"
+    },
+    {
+      "name": "PD13 -- clicking the live counter filters to it.",
+      "action": "click",
+      "selector": "[data-testid='pv2-pd-state-live']"
+    },
+    {
+      "name": "PD14 -- ...and the filter note says so, so the user can tell a filtered page from an empty one.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-pd-filter-note']",
+      "textContains": "Filtered. Click the box again to show all four."
+    },
+    {
+      "name": "PD15 -- the two live decisions survive their own filter.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-pd-rows']",
+      "textContains": "RR-2026-011"
+    },
+    {
+      "name": "PD16 -- click it again to clear the filter.",
+      "action": "click",
+      "selector": "[data-testid='pv2-pd-state-live']"
+    },
+    {
+      "name": "PD17 -- ...and the note clears with it.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-pd-filter-note']",
+      "textContains": "Filtered",
+      "state": "absent"
+    },
+    {
+      "name": "PD18 -- the knowledge-base note renders. Design copy, unaffected by the wiring.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-pd-info']",
+      "state": "visible"
+    },
+    {
+      "name": "PD19 -- 'Record a new decision' renders.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-pd-new']",
+      "state": "visible"
+    }
   ]
 }

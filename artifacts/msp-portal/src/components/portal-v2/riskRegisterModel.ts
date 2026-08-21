@@ -152,8 +152,11 @@ export const RR_SELECTS: ReadonlyArray<{
  * ES2019), which is what keeps ties in fixture order the way the prototype's
  * own comparator does.
  */
-export function rrFiltered(f: RiskFilterState): RiskEntry[] {
-  return RR_RISKS.filter(
+export function rrFiltered(
+  f: RiskFilterState,
+  risks: readonly RiskEntry[] = RR_RISKS,
+): RiskEntry[] {
+  return risks.filter(
     (r) =>
       (f.pillar === "All pillars" || r.pillar === f.pillar) &&
       (f.severity === "All severities" || r.inherent === f.severity) &&
@@ -179,18 +182,50 @@ const COUNTING_STATUSES = ["Open", "Mitigating", "Expired"];
 
 const sumWeight = (list: readonly RiskEntry[]) => list.reduce((a, r) => a + r.weight, 0);
 
-export const RR_ACCEPTED: readonly RiskEntry[] = RR_RISKS.filter((r) => r.status === "Accepted");
+/* ── Fixture-backed constants vs live functions ──────────────────────────────
+ *
+ * Each total below exists in TWO forms, and the pair is deliberate.
+ *
+ * The `RR_*` CONSTANTS are computed from the design fixture at module load.
+ * They are what the Governance and Security pillar pages read (through
+ * `riskPanelModel.ts`), and what this module's own tests assert against — both
+ * of which want the fixed, known register the design describes.
+ *
+ * The `rr*()` FUNCTIONS take the register as an argument. The Risk Register
+ * page passes the REAL rows fetched from `/api/portal/risk-register` (see
+ * `riskRegisterLive.ts`), so its stat cards count the customer's own risks
+ * rather than Halden Materials'.
+ *
+ * The constants are defined as calls to the functions, so the two can never
+ * drift into computing the same total two different ways.
+ */
+
+export function rrAccepted(risks: readonly RiskEntry[] = RR_RISKS): readonly RiskEntry[] {
+  return risks.filter((r) => r.status === "Accepted");
+}
 
 /** Weight NOT being deducted, because an acceptance is holding (15337). */
-export const RR_SUPPRESSED_WEIGHT = sumWeight(RR_ACCEPTED);
+export function rrSuppressedWeight(risks: readonly RiskEntry[] = RR_RISKS): number {
+  return sumWeight(rrAccepted(risks));
+}
 
 /** Weight still counting against the pillar scores (15338). */
-export const RR_OPEN_WEIGHT = sumWeight(
-  RR_RISKS.filter((r) => COUNTING_STATUSES.includes(r.status)),
-);
+export function rrOpenWeight(risks: readonly RiskEntry[] = RR_RISKS): number {
+  return sumWeight(risks.filter((r) => COUNTING_STATUSES.includes(r.status)));
+}
 
 /** `rrSuppressed` as the banner renders it — 17105 appends the unit. */
-export const RR_SUPPRESSED_LABEL = `${RR_SUPPRESSED_WEIGHT} points`;
+export function rrSuppressedLabel(risks: readonly RiskEntry[] = RR_RISKS): string {
+  return `${rrSuppressedWeight(risks)} points`;
+}
+
+export const RR_ACCEPTED: readonly RiskEntry[] = rrAccepted();
+
+export const RR_SUPPRESSED_WEIGHT = rrSuppressedWeight();
+
+export const RR_OPEN_WEIGHT = rrOpenWeight();
+
+export const RR_SUPPRESSED_LABEL = rrSuppressedLabel();
 
 export interface RiskStat {
   label: string;
@@ -205,34 +240,38 @@ export interface RiskStat {
  * on a page whose whole argument is that acceptance moves points around, a stat
  * that disagreed with the rows beneath it would undo the argument.
  */
-export const RR_STATS: readonly RiskStat[] = [
-  {
-    label: "Risks on the register",
-    value: String(RR_RISKS.length),
-    sub: `${RR_RISKS.filter((r) => r.status === "Open").length} open · ${
-      RR_RISKS.filter((r) => r.status === "Mitigating").length
-    } mitigating`,
-    c: "#60a5fa",
-  },
-  {
-    label: "Accepted decisions",
-    value: String(RR_ACCEPTED.length),
-    sub: "Each with an owner and a review date",
-    c: "#a78bfa",
-  },
-  {
-    label: "Score suppressed by acceptance",
-    value: `${RR_SUPPRESSED_WEIGHT} pts`,
-    sub: "Not deducted while the acceptances hold",
-    c: "#22d3ee",
-  },
-  {
-    label: "Weight still counting",
-    value: `${RR_OPEN_WEIGHT} pts`,
-    sub: "Across open, mitigating and expired risks",
-    c: "#f87171",
-  },
-];
+export function rrStats(risks: readonly RiskEntry[] = RR_RISKS): readonly RiskStat[] {
+  return [
+    {
+      label: "Risks on the register",
+      value: String(risks.length),
+      sub: `${risks.filter((r) => r.status === "Open").length} open · ${
+        risks.filter((r) => r.status === "Mitigating").length
+      } mitigating`,
+      c: "#60a5fa",
+    },
+    {
+      label: "Accepted decisions",
+      value: String(rrAccepted(risks).length),
+      sub: "Each with an owner and a review date",
+      c: "#a78bfa",
+    },
+    {
+      label: "Score suppressed by acceptance",
+      value: `${rrSuppressedWeight(risks)} pts`,
+      sub: "Not deducted while the acceptances hold",
+      c: "#22d3ee",
+    },
+    {
+      label: "Weight still counting",
+      value: `${rrOpenWeight(risks)} pts`,
+      sub: "Across open, mitigating and expired risks",
+      c: "#f87171",
+    },
+  ];
+}
+
+export const RR_STATS: readonly RiskStat[] = rrStats();
 
 /* ── Acceptances needing attention — 15349-15355 ─────────────────────────── */
 
@@ -252,8 +291,8 @@ export interface ExpiringAcceptance {
  * The Expired branch reads the risk's own `review` field rather than the
  * prototype's hardcoded literal; the two are byte-identical. See the header.
  */
-export function rrExpiring(): ExpiringAcceptance[] {
-  return RR_RISKS.filter(
+export function rrExpiring(risks: readonly RiskEntry[] = RR_RISKS): ExpiringAcceptance[] {
+  return risks.filter(
     (r) => r.status === "Expired" || (r.accepted && r.accepted.until.indexOf("2026") !== -1),
   ).map((r) => ({
     id: r.id,
@@ -347,6 +386,7 @@ export function riskAskTopic(r: RiskEntry): string {
  */
 export function riskAcceptSpec(r: RiskEntry) {
   return {
+    riskId: r.id,
     title: r.title,
     description: `${r.what} ${r.outcome}`,
     details: `Inherent severity ${r.inherent}, residual ${r.residual} with current controls. Accepting suppresses ${r.weight} points in the ${r.pillar} pillar score and mutes this risk’s alerts. Monitoring continues, and a material change in the underlying facts reopens it automatically. An acceptance needs an owner, a rationale, the compensating controls you are relying on, and a review date.`,

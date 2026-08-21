@@ -36,6 +36,7 @@ import {
   pdStateCards,
   pdVisible,
 } from "@/components/portal-v2/policyDecisionsModel";
+import { usePolicyDecisions } from "@/components/portal-v2/riskRegisterLive";
 
 const MONO = "'SF Mono',Menlo,Consolas,monospace";
 
@@ -117,8 +118,14 @@ export default function PortalV2PolicyDecisionsPage() {
 
   const { openForm, formElement } = useFormDrawer();
 
-  const cards = pdStateCards(filter);
-  const rows = pdVisible(filter);
+  // The REAL policy decisions for this customer, from
+  // /api/portal/policy-decisions. The model functions already took the register
+  // as a parameter with the fixture as their default, so wiring is a matter of
+  // passing the live rows in — nothing below this line changed shape.
+  const { decisions, loading, error } = usePolicyDecisions();
+
+  const cards = pdStateCards(filter, decisions);
+  const rows = pdVisible(filter, decisions);
   const note = pdFilterNote(filter);
 
   const toggleFilter = (state: PolicyDecisionState) =>
@@ -260,6 +267,31 @@ export default function PortalV2PolicyDecisionsPage() {
               Record a decision
             </button>
           </div>
+
+          {/*
+            Live-read state. Not in the prototype, and deliberately added: these
+            counters now count the customer's REAL decisions, so four zeroes has
+            two very different causes — no decisions recorded, and a read that
+            failed. Saying nothing would assert the first while the second held.
+          */}
+          {(loading || error) && (
+            <div
+              data-testid="pv2-pd-status"
+              style={{
+                marginBottom: 10,
+                padding: "9px 12px",
+                borderRadius: 8,
+                fontSize: "12px",
+                border: `1px solid ${error ? "rgba(248,113,113,.4)" : "rgba(148,163,184,.25)"}`,
+                background: error ? "rgba(248,113,113,.08)" : "transparent",
+                color: error ? "#f87171" : "#94a3b8",
+              }}
+            >
+              {error
+                ? "Your policy decisions could not be loaded, so this page is not showing your current positions."
+                : "Loading your policy decisions…"}
+            </div>
+          )}
 
           {/* ── State counters — proto 4589-4597. Each is a filter. ──────── */}
           <div
