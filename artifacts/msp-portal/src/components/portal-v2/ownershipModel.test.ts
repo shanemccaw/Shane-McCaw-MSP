@@ -10,7 +10,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import { OWN_ESC_DAYS_SEED, OWN_PEOPLE_SEED } from "./settingsData";
-import { MISSING_OBJECTS, OWN_OBJECTS, ROUTING_RULES } from "./ownershipData";
+import { MISSING_OBJECTS, OWN_OBJECTS, ROUTING_RULES, type OwnObject } from "./ownershipData";
 import {
   acceptanceOf,
   activeDelegations,
@@ -656,5 +656,37 @@ describe("row detail", () => {
     assert.deepEqual(rowDetailDrives(obj("CE-AUTH"), OWN_OBJECTS, {}, OWN_PEOPLE_SEED), []);
     assert.equal(rowRoleDuties("service", "r")[0], "Reads every Microsoft notice for this service against the tenant");
     assert.equal(rowRoleDuties("cr", "a")[0], "Approves it — nothing moves without this name");
+  });
+});
+
+/* --------------------------------------------------------------------------
+   The data seam — the one line that swaps the fixture for the tenant
+   -------------------------------------------------------------------------- */
+
+describe("allObjects / allObjectsWith — the injected base", () => {
+  const LIVE: readonly OwnObject[] = [
+    { type: "cr", id: "CR-2026-103", name: "Disable SMTP AUTH", sub: "Pending approval", r: "u39", a: "", c: "", i: "", link: "CR →" },
+    { type: "freeze", id: "hold-ca01", name: "Guest owner confirmation", sub: "Gates step 5", r: "", a: "", c: "", i: "", link: "Freeze →" },
+  ];
+
+  it("still renders the design’s estate when no base is passed", () => {
+    // The standalone module and every assertion above depend on this.
+    assert.equal(allObjects([]).length, OWN_OBJECTS.length);
+    assert.equal(allObjectsWith([], []).length, OWN_OBJECTS.length);
+  });
+
+  it("renders the tenant’s rows INSTEAD of the fixture when one is", () => {
+    // Instead of, not as well as: a matrix showing both would attribute the
+    // design’s invented owners to a real tenant.
+    const objects = allObjectsWith([], [], LIVE);
+    assert.deepEqual(objects.map((o) => o.id), ["CR-2026-103", "hold-ca01"]);
+  });
+
+  it("keeps counting gaps the same way over live rows", () => {
+    // The derivations are indifferent to where the rows came from, which is
+    // the entire reason the seam is one defaulted parameter.
+    const objects = allObjectsWith([], [], LIVE);
+    assert.deepEqual(gapsOf(objects[0]!, {}), ["Accountable", "Consulted", "Informed"]);
+    assert.equal(gapRows(objects, {}, {}).length, 2);
   });
 });

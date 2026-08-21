@@ -61,9 +61,21 @@ export function deputyLabel(person: OwnPerson, people: readonly OwnPerson[]): st
   return `Cover · ${dep.name.split(" ")[0]}`;
 }
 
-/** `sideGo` — prototype 19977. Wraps at the end of OWN_SIDES. */
-export function cycleSide(side: OwnSide): OwnSide {
-  return OWN_SIDES[(OWN_SIDES.indexOf(side) + 1) % OWN_SIDES.length];
+/**
+ * `sideGo` — prototype 19977. Wraps at the end of the list.
+ *
+ * The list is a PARAMETER because the customer side is the tenant’s own name
+ * once the people list is live: `GET /api/portal/ownership` sends
+ * `[customerName, "MSP", "External"]`, and cycling against the fixture’s
+ * `OWN_SIDES` instead would rewrite a real person’s company to the
+ * prototype’s "Halden" on the first click. Defaulting to `OWN_SIDES` keeps
+ * the standalone/fixture behaviour byte-identical.
+ *
+ * A side that is not in the list — someone edited under a list that has since
+ * changed — starts the cycle at the top rather than sticking.
+ */
+export function cycleSide(side: OwnSide, sides: readonly string[] = OWN_SIDES): OwnSide {
+  return sides[(sides.indexOf(side) + 1) % sides.length] ?? side;
 }
 
 /** `kindGo` — prototype 19980. */

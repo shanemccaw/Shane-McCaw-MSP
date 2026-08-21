@@ -545,17 +545,29 @@ export function customObject(c: CustomRow): OwnObject {
   };
 }
 
-/** The whole object list including anything promoted from coverage — 776. */
-export function allObjects(added: readonly string[]): readonly OwnObject[] {
-  return OWN_OBJECTS.concat(added.map(addedObject).filter((x): x is OwnObject => x !== null));
+/**
+ * The whole object list including anything promoted from coverage — 776.
+ *
+ * `base` is the TENANT’S OWN objects once `GET /api/portal/ownership` has
+ * landed, and the design fixture until then. It is a defaulted parameter
+ * rather than a module read so that the swap happens in ONE place — the page
+ * passes what it has, every derivation below keeps working unchanged, and the
+ * standalone module still renders the design’s estate with no caller at all.
+ */
+export function allObjects(
+  added: readonly string[],
+  base: readonly OwnObject[] = OWN_OBJECTS,
+): readonly OwnObject[] {
+  return base.concat(added.map(addedObject).filter((x): x is OwnObject => x !== null));
 }
 
 /** The full list plus any hand-added rows — prototype 779. */
 export function allObjectsWith(
   added: readonly string[],
   custom: readonly CustomRow[],
+  base: readonly OwnObject[] = OWN_OBJECTS,
 ): readonly OwnObject[] {
-  return allObjects(added).concat(custom.map(customObject));
+  return allObjects(added, base).concat(custom.map(customObject));
 }
 
 /* ────────────────────────────────────────────────────────────────────────────

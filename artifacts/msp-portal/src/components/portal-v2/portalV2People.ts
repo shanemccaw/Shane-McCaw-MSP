@@ -1,5 +1,6 @@
 /**
- * portalV2People.ts — the one people list the portal edits and reads.
+ * portalV2People.ts — the one people list the portal edits and reads, and now
+ * the one place the Ownership matrix's data is loaded.
  *
  * ── What the design asks for ────────────────────────────────────────────────
  * Round Two moved People & roles out of Ownership and into Settings, and made
@@ -34,20 +35,52 @@
  * live" sentence is really specifying — a provider that remounted would lose
  * them.
  *
- * ── Client state, for now, and honestly so ─────────────────────────────────
- * There is no people/roles endpoint behind this yet, so edits live for the
- * session and reset on reload — the same standing as the prototype, which also
- * persists nothing. The seed is `OWN_PEOPLE_SEED` in one place so it can be
- * swapped for a fetch without touching either page, which is the project's
- * standing fixture rule. When the endpoint lands, `setPeople` becomes the
- * mutation and `usePortalV2People` the query; no caller changes.
+ * ── The people list is now REAL, and it is still ONE list ──────────────────
+ * `GET /api/portal/ownership` supplies it: the tenant's own active users, from
+ * `users.tenant_id = customerId`. The load lands HERE rather than in either
+ * page, which is the whole point — Settings and Ownership read the same store,
+ * so neither had to change how it gets people, and there is no second source to
+ * drift from the first. The route's own header states what is real on it and
+ * what is not; `ownershipWire.ts` decides which source is on screen.
+ *
+ * The read runs ONCE per session (`loadPromise`), because a module-level store
+ * mounted by two pages would otherwise re-fetch on every navigation between
+ * them.
+ *
+ * ── Edits still do not persist, and that is still honest ───────────────────
+ * There is no people/roles WRITE endpoint, and no ownership/RACI table for one
+ * to write to. Renaming someone in Settings still lives for the session and
+ * resets on reload — the same standing as the prototype, which persists nothing
+ * either. What changed is only where the list STARTS: the tenant's real roster
+ * instead of the design's nine invented names. A local edit is never clobbered
+ * by a hydrate that lands afterwards (`peopleEdited`), because silently
+ * reverting something a user typed is worse than showing it unsaved.
  */
 
-import { useCallback, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 
-import { OWN_ESC_DAYS_SEED, OWN_PEOPLE_SEED, type OwnPerson } from "./settingsData";
+import { useAuth } from "@/lib/auth-context";
+
+import { OWN_ESC_DAYS_SEED, OWN_PEOPLE_SEED, OWN_SIDES, type OwnPerson } from "./settingsData";
+import type { OwnObject } from "./ownershipData";
+import {
+  OWNERSHIP_FIXTURE,
+  toOwnershipData,
+  type OwnDataState,
+  type OwnershipData,
+  type WireOwnershipPayload,
+} from "./ownershipWire";
+
+const OWNERSHIP_URL = "/api/portal/ownership";
 
 let people: readonly OwnPerson[] = OWN_PEOPLE_SEED;
+
+/**
+ * Set the moment anything writes through `setPortalV2People`, so a hydrate that
+ * arrives afterwards leaves the edit alone. Without it, a slow first response
+ * landing after a fast rename would undo the rename with no trace of why.
+ */
+let peopleEdited = false;
 
 /**
  * The escalation threshold, which lives here for the SAME reason the people
@@ -58,6 +91,11 @@ let people: readonly OwnPerson[] = OWN_PEOPLE_SEED;
  * the exact drift this store exists to prevent.
  */
 let escDays: number = OWN_ESC_DAYS_SEED;
+
+/** The matrix rows and their provenance. Null until the first read settles. */
+let ownership: OwnershipData | null = null;
+let dataState: OwnDataState = "loading";
+let loadPromise: Promise<void> | null = null;
 
 const listeners = new Set<() => void>();
 
@@ -83,6 +121,7 @@ function getSnapshot(): readonly OwnPerson[] {
 /** Writes and notifies. Exported for tests and for a future mutation hook. */
 export function setPortalV2People(next: readonly OwnPerson[]): void {
   people = next;
+  peopleEdited = true;
   notify();
 }
 
@@ -98,8 +137,65 @@ export function setPortalV2EscDays(next: number): void {
 /** Test-only: put the store back to its seeds between cases. */
 export function resetPortalV2People(): void {
   people = OWN_PEOPLE_SEED;
+  peopleEdited = false;
   escDays = OWN_ESC_DAYS_SEED;
+  ownership = null;
+  dataState = "loading";
+  loadPromise = null;
   notify();
+}
+
+function getOwnership(): OwnershipData | null {
+  return ownership;
+}
+
+function getDataState(): OwnDataState {
+  return dataState;
+}
+
+type FetchWithAuth = (
+  input: string,
+  init?: RequestInit,
+  opts?: { silent?: boolean },
+) => Promise<Response>;
+
+/**
+ * Reads the matrix once per session and hydrates the store from it.
+ *
+ * A failed, forbidden or empty read settles `dataState` to "fixture" and leaves
+ * the design's estate on screen rather than emptying a page a customer is
+ * looking at. `ownershipWire.toOwnershipData` decides what counts as empty, and
+ * says why there.
+ */
+export function ensurePortalV2OwnershipLoaded(fetchWithAuth: FetchWithAuth): Promise<void> {
+  if (loadPromise) return loadPromise;
+
+  loadPromise = (async () => {
+    try {
+      const res = await fetchWithAuth(OWNERSHIP_URL, {}, { silent: true });
+      if (!res.ok) {
+        dataState = "fixture";
+        notify();
+        return;
+      }
+      const body = (await res.json()) as WireOwnershipPayload;
+      const parsed = toOwnershipData(body);
+      if (!parsed) {
+        dataState = "fixture";
+        notify();
+        return;
+      }
+      ownership = parsed;
+      dataState = "live";
+      if (!peopleEdited) people = parsed.people;
+      notify();
+    } catch {
+      dataState = "fixture";
+      notify();
+    }
+  })();
+
+  return loadPromise;
 }
 
 /**
@@ -107,17 +203,74 @@ export function resetPortalV2People(): void {
  *
  * Settings edits through `setPeople`; Ownership passes the same pair down as
  * the design's `people` / `onPeopleChange`, so the module keeps working
- * standalone against its own local state — see PortalV2OwnershipMatrix.
+ * standalone against its own local state — see `OwnershipMatrix`.
+ *
+ * Mounting this hook is also what triggers the one read, so BOTH pages get the
+ * real roster without either of them having to know there is an endpoint.
  */
 export function usePortalV2People(): {
   people: readonly OwnPerson[];
   setPeople: (next: readonly OwnPerson[]) => void;
+  /** The cycle order for a person's side, with the tenant's real name first. */
+  sides: readonly string[];
+  dataState: OwnDataState;
 } {
+  const { fetchWithAuth } = useAuth();
+  const fetchRef = useRef(fetchWithAuth);
+  fetchRef.current = fetchWithAuth;
+
+  // `fetchWithAuth` is rebuilt on every silent token refresh, so it is held in
+  // a ref rather than in the dependency array — the same reason every polling
+  // hook in this codebase does.
+  useEffect(() => {
+    void ensurePortalV2OwnershipLoaded((input, init, opts) => fetchRef.current(input, init, opts));
+  }, []);
+
   const list = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  const state = useSyncExternalStore(subscribe, getDataState, getDataState);
+  const data = useSyncExternalStore(subscribe, getOwnership, getOwnership);
+
   const setPeople = useCallback((next: readonly OwnPerson[]) => {
     setPortalV2People(next);
   }, []);
-  return { people: list, setPeople };
+
+  return { people: list, setPeople, sides: data?.sides ?? OWN_SIDES, dataState: state };
+}
+
+/**
+ * The matrix's rows, for the page that renders them.
+ *
+ * Separate from `usePortalV2People` because the two have different fallbacks —
+ * an unloaded people list is the design's nine names, an unloaded matrix is its
+ * twenty-four objects — and a caller wanting one should not have to reason
+ * about the other.
+ */
+export function usePortalV2OwnershipObjects(): {
+  objects: readonly OwnObject[];
+  dataState: OwnDataState;
+  sources: OwnershipData["sources"];
+  customerName: string;
+  tenantScoped: boolean;
+} {
+  const { fetchWithAuth } = useAuth();
+  const fetchRef = useRef(fetchWithAuth);
+  fetchRef.current = fetchWithAuth;
+
+  useEffect(() => {
+    void ensurePortalV2OwnershipLoaded((input, init, opts) => fetchRef.current(input, init, opts));
+  }, []);
+
+  const data = useSyncExternalStore(subscribe, getOwnership, getOwnership);
+  const state = useSyncExternalStore(subscribe, getDataState, getDataState);
+  const source = data ?? OWNERSHIP_FIXTURE;
+
+  return {
+    objects: source.objects,
+    dataState: state,
+    sources: source.sources,
+    customerName: source.customerName,
+    tenantScoped: source.tenantScoped,
+  };
 }
 
 /**

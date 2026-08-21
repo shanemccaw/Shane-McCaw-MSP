@@ -782,7 +782,7 @@ function ChangePolicySection({
 /* ── People & roles — prototype 4532-4565 ────────────────────────────────── */
 
 function PeopleSection() {
-  const { people, setPeople } = usePortalV2People();
+  const { people, setPeople, sides } = usePortalV2People();
 
   const patch = useCallback(
     (i: number, next: Partial<(typeof people)[number]>) => {
@@ -892,7 +892,7 @@ function PeopleSection() {
               {p.kind}
             </button>
             <button
-              onClick={() => patch(i, { side: cycleSide(p.side) })}
+              onClick={() => patch(i, { side: cycleSide(p.side, sides) })}
               data-testid={`pv2-set-person-side-${p.id}`}
               style={{
                 padding: "8px 6px",

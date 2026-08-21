@@ -8,6 +8,10 @@
  * 1629). This page is that mount point, and it supplies the same three things
  * from real sources:
  *
+ *   • `objects`        — the tenant’s OWN rows, from
+ *                        `GET /api/portal/ownership`. The design fixture is
+ *                        still what renders until that read lands, and if it
+ *                        fails — see `ownershipWire.ts`.
  *   • `typeFilter`     — from the URL, which is where the shell's sub-nav
  *                        selection lives here rather than `state.ownType`.
  *   • `people`         — the shell-owned list, shared with Settings.
@@ -23,7 +27,11 @@ import { useRoute } from "wouter";
 import { PortalV2Shell, SIDEBAR_WASH } from "@/components/portal-v2/PortalV2Shell";
 import { OwnershipMatrix } from "@/components/portal-v2/OwnershipMatrix";
 import { OBJECT_TYPES } from "@/components/portal-v2/ownershipData";
-import { usePortalV2EscDays, usePortalV2People } from "@/components/portal-v2/portalV2People";
+import {
+  usePortalV2EscDays,
+  usePortalV2OwnershipObjects,
+  usePortalV2People,
+} from "@/components/portal-v2/portalV2People";
 
 const TYPE_KEYS = new Set<string>(["all", ...OBJECT_TYPES.map((t) => t.key)]);
 
@@ -33,6 +41,7 @@ export default function PortalV2OwnershipPage() {
 
   const { people, setPeople } = usePortalV2People();
   const { escDays } = usePortalV2EscDays();
+  const { objects } = usePortalV2OwnershipObjects();
 
   return (
     <PortalV2Shell eyebrow="Governance" title="Ownership">
@@ -49,6 +58,7 @@ export default function PortalV2OwnershipPage() {
           }}
         >
           <OwnershipMatrix
+            objects={objects}
             people={people}
             onPeopleChange={setPeople}
             typeFilter={typeFilter}

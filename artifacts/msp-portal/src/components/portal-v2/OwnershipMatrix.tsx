@@ -47,6 +47,7 @@ import {
   MATRIX_REVIEW_DUE_DAYS,
   MATRIX_REVIEW_WARN_DAYS,
   OBJECT_TYPES,
+  OWN_OBJECTS,
   ROLE_KEYS,
   ROUTING_RULES,
   TYPE_SINGULAR,
@@ -416,6 +417,12 @@ function pill(text: string, tone: string, bg: string): React.CSSProperties {
 }
 
 export interface OwnershipMatrixProps {
+  /**
+   * The tenant’s real objects, from `GET /api/portal/ownership`. Absent means
+   * standalone — the module renders the design’s own estate, exactly as it did
+   * before an endpoint existed — so this prop is the whole data seam.
+   */
+  objects?: readonly OwnObject[];
   /** The shell's list. Absent means standalone, and the module holds its own. */
   people?: readonly OwnPerson[];
   onPeopleChange?: (next: readonly OwnPerson[]) => void;
@@ -426,6 +433,7 @@ export interface OwnershipMatrixProps {
 }
 
 export function OwnershipMatrix({
+  objects: objectsProp,
   people: peopleProp,
   onPeopleChange,
   typeFilter = "all",
@@ -468,7 +476,13 @@ export function OwnershipMatrix({
   const [escDaysState, setEscDaysState] = useState(escDays);
   const [toast, setToast] = useState("");
 
-  const objects = useMemo(() => allObjectsWith(added, custom), [added, custom]);
+  // The one place the fixture is swapped for the tenant’s own rows. Everything
+  // below — every counter, panel, group and cell — derives from this list and
+  // is unchanged by where it came from.
+  const objects = useMemo(
+    () => allObjectsWith(added, custom, objectsProp ?? OWN_OBJECTS),
+    [added, custom, objectsProp],
+  );
   const gaps = useMemo(() => gapRows(objects, overrides, risks), [objects, overrides, risks]);
   const sod = useMemo(() => sodRows(objects, overrides, people), [objects, overrides, people]);
   const warns = useMemo(() => loadWarnRows(objects, overrides, people), [objects, overrides, people]);

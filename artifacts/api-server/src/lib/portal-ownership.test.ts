@@ -1,0 +1,254 @@
+/**
+ * Tests for the pure mapping layer behind `GET /api/portal/ownership`.
+ *
+ * Run with:
+ *   pnpm --filter @workspace/api-server run test
+ *
+ * WHAT THESE PIN, AND WHY IT IS THIS AND NOT THE QUERY
+ * ---------------------------------------------------
+ * The interesting decisions on this route are all mapping decisions, and every
+ * one of them is a decision about what NOT to claim:
+ *
+ *   • an unrecognised requester resolves to a GAP, not to an invented person
+ *   • Consulted and Informed are never filled in
+ *   • a person with no job title gets a readable role, never an enum spelling
+ *   • the customer's real name is the `side`, never the design's "Halden"
+ *
+ * Each of those is one wrong line away from a page that looks more complete
+ * than the database is, which is the specific failure this route exists to
+ * avoid. They are tested here rather than through the handler because they do
+ * not need a tenant to be true.
+ */
+import { describe, it, expect } from "vitest";
+import {
+  buildSources,
+  crObject,
+  emailIndex,
+  formatOwnDate,
+  holdWindowObject,
+  messageCentreObject,
+  personIdForUser,
+  personRoleLabel,
+  resolvePersonId,
+  serviceObject,
+  sidesFor,
+  toWirePerson,
+  type OwnObjectType,
+  type UserRow,
+  type WireOwnPerson,
+} from "./portal-ownership.ts";
+
+const USERS: UserRow[] = [
+  { id: 39, email: "buyer@example.com", name: "Buy Assessment", jobTitle: null, department: null, mspRole: "CustomerUser" },
+  { id: 42, email: "joe@example.com", name: "Joe Joe", jobTitle: "IT Manager", department: null, mspRole: "CustomerUser" },
+  { id: 55, email: "shane@example.com", name: null, jobTitle: null, department: "Operations", mspRole: "Assessment" },
+];
+
+const PEOPLE: WireOwnPerson[] = USERS.map((u) => toWirePerson(u, "Halden Materials"));
+const EMAILS = emailIndex(USERS);
+
+// ---------------------------------------------------------------------------
+// People
+// ---------------------------------------------------------------------------
+
+describe("toWirePerson()", () => {
+  it("prefixes the id so it cannot collide with a fixture person id", () => {
+    // The fallback list ("priya", "dan", "desk") can be on screen in the same
+    // session, because it renders until the fetch lands.
+    expect(personIdForUser(39)).toBe("u39");
+    expect(PEOPLE.map((p) => p.id)).toEqual(["u39", "u42", "u55"]);
+  });
+
+  it("falls back to the email when the account has no name", () => {
+    expect(PEOPLE[2]!.name).toBe("shane@example.com");
+  });
+
+  it("carries the real customer name as the side, not the design's Halden", () => {
+    expect(sidesFor("Halden Materials")).toEqual(["Halden Materials", "MSP", "External"]);
+    expect(sidesFor("   ")).toEqual(["Your organisation", "MSP", "External"]);
+  });
+
+  it("reports available and uncovered, because no column records either", () => {
+    // "" is the prototype's own word for available — `away` holds a RETURN
+    // DATE, not a boolean — so this is a real answer rather than a null.
+    expect(PEOPLE.every((p) => p.away === "" && p.deputy === "")).toBe(true);
+  });
+});
+
+describe("personRoleLabel()", () => {
+  it("prefers a real job title", () => {
+    expect(personRoleLabel("IT Manager", "Operations", "CustomerUser")).toBe("IT Manager");
+  });
+
+  it("falls back to the department before the role", () => {
+    expect(personRoleLabel(null, "Operations", "CustomerUser")).toBe("Operations");
+  });
+
+  it("never prints the enum spelling of a portal role", () => {
+    expect(personRoleLabel(null, null, "CustomerUser")).toBe("Team member");
+    expect(personRoleLabel(null, null, "Assessment")).toBe("Assessment access");
+    expect(personRoleLabel(null, null, null)).toBe("Team member");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Resolving a stored name to a person — the invented-person guard
+// ---------------------------------------------------------------------------
+
+describe("resolvePersonId()", () => {
+  it("matches the stored email, which is what the live rows actually hold", () => {
+    expect(resolvePersonId("buyer@example.com", PEOPLE, EMAILS)).toBe("u39");
+  });
+
+  it("is case-insensitive, because the column is unconstrained free text", () => {
+    expect(resolvePersonId("Buyer@Example.com", PEOPLE, EMAILS)).toBe("u39");
+  });
+
+  it("matches a display name too", () => {
+    expect(resolvePersonId("Joe Joe", PEOPLE, EMAILS)).toBe("u42");
+  });
+
+  it("returns a GAP for someone who is not on the team", () => {
+    // The important one. A matrix cell naming a person absent from the roster
+    // is unactionable; an honest blank is the page's own "gap", which it counts
+    // and makes loud.
+    expect(resolvePersonId("someone.who.left@example.com", PEOPLE, EMAILS)).toBe("");
+  });
+
+  it("returns a gap for null and for whitespace", () => {
+    expect(resolvePersonId(null, PEOPLE, EMAILS)).toBe("");
+    expect(resolvePersonId("   ", PEOPLE, EMAILS)).toBe("");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Objects
+// ---------------------------------------------------------------------------
+
+describe("crObject()", () => {
+  const row = {
+    id: 3,
+    title: "Disable SMTP AUTH on the scanner mailbox",
+    status: "pending_approval",
+    scheduledFor: "Thu 27 Aug · 07:00–09:00",
+    requestedBy: "buyer@example.com",
+    approvedBy: null,
+  };
+
+  it("carries the requester as Responsible and an unsigned CR as an Accountable gap", () => {
+    const obj = crObject(
+      row,
+      "CR-2026-103",
+      "Pending approval",
+      resolvePersonId(row.requestedBy, PEOPLE, EMAILS),
+      resolvePersonId(row.approvedBy, PEOPLE, EMAILS),
+    );
+    expect(obj.r).toBe("u39");
+    expect(obj.a).toBe("");
+  });
+
+  it("never guesses Consulted or Informed", () => {
+    const obj = crObject(row, "CR-2026-103", "Pending approval", "u39", "");
+    expect(obj.c).toBe("");
+    expect(obj.i).toBe("");
+  });
+
+  it("puts the status and the booked window on the sub-line", () => {
+    const obj = crObject(row, "CR-2026-103", "Pending approval", "u39", "");
+    expect(obj.sub).toBe("Pending approval · Thu 27 Aug · 07:00–09:00");
+    expect(obj.id).toBe("CR-2026-103");
+    expect(obj.link).toBe("CR →");
+  });
+
+  it("omits the separator when no window is booked", () => {
+    const obj = crObject({ ...row, scheduledFor: "" }, "CR-2026-103", "Pending approval", "u39", "");
+    expect(obj.sub).toBe("Pending approval");
+  });
+});
+
+describe("messageCentreObject()", () => {
+  const row = {
+    graphMessageId: "MC1458474",
+    title: "Microsoft Entra ID: Retirement of custom CSS layout",
+    category: "planForChange",
+    isMajorChange: true,
+    services: ["Microsoft Entra"],
+    actionRequiredByDateTime: "2026-10-26T07:00:00Z",
+  };
+
+  it("keeps the Microsoft id as the row id and formats the deadline", () => {
+    const obj = messageCentreObject(row);
+    expect(obj.id).toBe("MC1458474");
+    expect(obj.when).toBe("26 October 2026");
+    expect(obj.sub).toBe("Microsoft Entra · Major change");
+  });
+
+  it("falls back to the category when it is not a major change", () => {
+    const obj = messageCentreObject({ ...row, isMajorChange: false, services: [] });
+    expect(obj.sub).toBe("planForChange");
+  });
+
+  it("has no owner, because nothing records one", () => {
+    const obj = messageCentreObject(row);
+    expect([obj.r, obj.a, obj.c, obj.i]).toEqual(["", "", "", ""]);
+  });
+});
+
+describe("serviceObject() / holdWindowObject()", () => {
+  it("titles a service from the catalogue and states its status", () => {
+    const obj = serviceObject({ id: 7, name: "Copilot Readiness", status: "active", nextMilestone: "Pilot review" });
+    expect(obj.id).toBe("svc-7");
+    expect(obj.name).toBe("Copilot Readiness");
+    expect(obj.sub).toBe("Active · Pilot review");
+  });
+
+  it("keeps the hold window's own stable key as the row id", () => {
+    const obj = holdWindowObject({ id: 4, holdKey: "hold-ca01", title: "Guest owner confirmation", gates: "Gates step 5" });
+    expect(obj.id).toBe("hold-ca01");
+    expect(obj.type).toBe("freeze");
+    expect(obj.sub).toBe("Gates step 5");
+  });
+});
+
+describe("formatOwnDate()", () => {
+  it("uses the design's own format", () => {
+    expect(formatOwnDate("2026-10-01T00:00:00Z")).toBe("1 October 2026");
+  });
+
+  it("answers empty for null and for an unparseable value", () => {
+    expect(formatOwnDate(null)).toBe("");
+    expect(formatOwnDate("not a date")).toBe("");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sources
+// ---------------------------------------------------------------------------
+
+describe("buildSources()", () => {
+  const counts: Record<OwnObjectType, number> = {
+    service: 1,
+    change: 15,
+    cr: 7,
+    freeze: 4,
+    control: 0,
+    incident: 0,
+    announce: 0,
+  };
+
+  it("says which three types have no table rather than hiding the group", () => {
+    const dead = buildSources(counts).filter((s) => !s.live).map((s) => s.type);
+    expect(dead).toEqual(["control", "incident", "announce"]);
+    expect(buildSources(counts).every((s) => s.note.length > 0)).toBe(true);
+  });
+
+  it("reports the real counts for the four it serves", () => {
+    const live = buildSources(counts).filter((s) => s.live);
+    expect(live.map((s) => [s.type, s.count])).toEqual([
+      ["service", 1],
+      ["change", 15],
+      ["cr", 7],
+      ["freeze", 4],
+    ]);
+  });
+});

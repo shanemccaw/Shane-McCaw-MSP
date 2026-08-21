@@ -39,7 +39,19 @@
 
 /** `side` cycles in this order on click — prototype 19977. */
 export const OWN_SIDES = ["Halden", "MSP", "External"] as const;
-export type OwnSide = (typeof OWN_SIDES)[number];
+/**
+ * A side is a STRING, not the three literals above.
+ *
+ * `OWN_SIDES` is the design fixture’s cycle, and its first entry is the
+ * prototype’s fictional customer name. Once the people list comes from
+ * `GET /api/portal/ownership` the customer side carries the TENANT’S OWN
+ * name — it is rendered verbatim beside a person ("Joe Joe · IT Manager ·
+ * Halden"), so pinning the type to "Halden" would mean either printing a
+ * fictional company on a real person’s row or resolving the label somewhere
+ * in the render, which is a tenant fact invented in the UI layer. The cycle
+ * order is supplied per call instead — see `cycleSide`.
+ */
+export type OwnSide = string;
 
 /** `kind` cycles in this order on click — prototype 19980. */
 export const OWN_KINDS = ["Person", "Group", "Vendor"] as const;
