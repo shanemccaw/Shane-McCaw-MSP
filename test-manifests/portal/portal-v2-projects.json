@@ -1,7 +1,7 @@
 {
   "feature": "Customer Portal v2 Part 8 -- the Projects page (/portal-v2/projects), an SOW-based fixed-scope delivery view. Recreated from the prototype's own `isProjects` block ('Customer Portal Shell.dc.html' 1231-1495), its PJ_PHASES / PJ_TASKS / PJ_LANES / PJ_MILESTONES fixtures (shell 15999-16123) and the pjGanttRows / pjPhaseRail / pjMilestones derivations. The page answers two questions -- how much of the contracted scope is done, and whose move it is -- and arranges everything under them: a back-to-Overview link, the header (SOW-2026-0114 label, title, delivery-lead meta), three summary cards (Waiting on you / With us / Scope delivered), a full phase Gantt reusing the Overview's pjRows/pjPct geometry (ONE shared copy, no forked phases), the phase-deliverables rail, the FLUID 5-lane auto-fit task board, and the footer actions. Fixture lives in projectsData.ts; the geometry is reused from overviewModel via projectsModel and pinned by projectsModel.test.ts.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "UNSET",
+  "lastVerifiedAgainstCommit": "181e3296",
   "notes": [
     "THE LOGIN BLOCK IS NOT OPTIONAL. /portal-v2/* sits behind ProtectedRoute; a probe that skips the five login steps hits the login screen and every assertion fails for a reason unrelated to the page.",
     "UI ROUTE SHAPE: msp-portal's outer WouterRouter has base '/portal' and SlugScope nests a second router at '/{slug}', so the real URL is /portal/{slug}/portal-v2/projects. App.tsx declares '/portal-v2/projects' BEFORE '/portal-v2/:pillar' so the param route cannot swallow it -- Projects is a plain, param-free route.",
