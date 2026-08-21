@@ -35,8 +35,9 @@
  * design's fixtures — they describe assignments that have nowhere to be stored.
  */
 
-import type { ObjectTypeKey, OwnObject } from "./ownershipData";
+import type { ObjectTypeKey, OwnObject, Provenance } from "./ownershipData";
 import { OBJECT_TYPES, OWN_OBJECTS } from "./ownershipData";
+import type { CustomRow, Delegation } from "./ownershipModel";
 import { OWN_PEOPLE_SEED, OWN_SIDES, type OwnPerson } from "./settingsData";
 
 /** Which of the two sources the page is currently rendering. */
@@ -58,6 +59,24 @@ export interface WireOwnershipPayload {
   readonly currentUserId?: string;
   readonly currentUserName?: string;
   readonly tenantScoped?: boolean;
+  readonly overlay?: unknown;
+}
+
+/**
+ * The customer's own saved matrix edits, already mapped into the exact state
+ * shapes the module seeds from — so the component sets `overrides` / `accOv` /
+ * `provOv` / `delegations` / `custom` / `added` straight from here with no
+ * per-field translation, and a reload shows what was saved rather than only what
+ * was in memory. An `overrides` value of "" is kept: it is a REAL "cleared to a
+ * gap", the same value the client's `ownerOf` treats as one.
+ */
+export interface OwnershipOverlay {
+  readonly overrides: Readonly<Record<string, string>>;
+  readonly acceptance: Readonly<Record<string, string>>;
+  readonly provenance: Readonly<Record<string, Provenance>>;
+  readonly delegations: readonly Delegation[];
+  readonly customRows: readonly CustomRow[];
+  readonly addedCoverage: readonly string[];
 }
 
 /** The page's whole data surface, from whichever source supplied it. */
@@ -69,6 +88,80 @@ export interface OwnershipData {
   readonly customerName: string;
   readonly currentUserName: string;
   readonly tenantScoped: boolean;
+  readonly overlay: OwnershipOverlay;
+}
+
+/** The empty overlay — a customer who has saved nothing, and the fixture's own. */
+export const EMPTY_OVERLAY: OwnershipOverlay = {
+  overrides: {},
+  acceptance: {},
+  provenance: {},
+  delegations: [],
+  customRows: [],
+  addedCoverage: [],
+};
+
+const ROLE_KEY_SET = new Set(["r", "a", "c", "i"]);
+
+/**
+ * The wire `overlay` block mapped into the module's own state shapes.
+ *
+ * Everything is validated structurally, for the same reason the objects are: a
+ * malformed assignment silently seeding an `undefined` owner would read on the
+ * matrix as a real ownership statement rather than as a bad payload. An unknown
+ * object-type on a custom row drops that row rather than crashing `groupedByType`.
+ */
+export function toOwnershipOverlay(raw: unknown): OwnershipOverlay {
+  if (!raw || typeof raw !== "object") return EMPTY_OVERLAY;
+  const o = raw as Record<string, unknown>;
+
+  const overrides: Record<string, string> = {};
+  const acceptance: Record<string, string> = {};
+  const provenance: Record<string, Provenance> = {};
+  for (const item of Array.isArray(o.assignments) ? o.assignments : []) {
+    if (!item || typeof item !== "object") continue;
+    const a = item as Record<string, unknown>;
+    const objectId = str(a.objectId);
+    const roleKey = str(a.roleKey);
+    if (!objectId || !ROLE_KEY_SET.has(roleKey)) continue;
+    const key = `${objectId}:${roleKey}`;
+    overrides[key] = str(a.ownerPersonId); // "" is a real value — an explicit gap.
+    const acc = str(a.acceptance);
+    if (acc) acceptance[key] = acc;
+    const setAt = str(a.setAt);
+    provenance[key] = { by: str(a.setBy), at: setAt, why: str(a.setWhy), from: setAt };
+  }
+
+  const delegations: Delegation[] = [];
+  for (const item of Array.isArray(o.delegations) ? o.delegations : []) {
+    if (!item || typeof item !== "object") continue;
+    const d = item as Record<string, unknown>;
+    const from = str(d.fromPersonId);
+    const to = str(d.toPersonId);
+    const until = str(d.until);
+    if (!from || !to || !until) continue;
+    delegations.push({ from, to, until, scope: str(d.scope) || "all", done: d.done === true });
+  }
+
+  const customRows: CustomRow[] = [];
+  const addedCoverage: string[] = [];
+  for (const item of Array.isArray(o.rows) ? o.rows : []) {
+    if (!item || typeof item !== "object") continue;
+    const r = item as Record<string, unknown>;
+    const rowId = str(r.rowId);
+    if (!rowId) continue;
+    const source = str(r.source);
+    if (source === "custom") {
+      const type = str(r.objType);
+      if (TYPE_KEYS.has(type)) {
+        customRows.push({ id: rowId, type: type as ObjectTypeKey, name: str(r.name), sub: str(r.sub) });
+      }
+    } else if (source === "coverage") {
+      addedCoverage.push(rowId);
+    }
+  }
+
+  return { overrides, acceptance, provenance, delegations, customRows, addedCoverage };
 }
 
 const TYPE_KEYS = new Set<string>(OBJECT_TYPES.map((t) => t.key));
@@ -147,6 +240,7 @@ export const OWNERSHIP_FIXTURE: OwnershipData = {
   customerName: OWN_SIDES[0],
   currentUserName: "",
   tenantScoped: false,
+  overlay: EMPTY_OVERLAY,
 };
 
 /**
@@ -181,5 +275,6 @@ export function toOwnershipData(payload: WireOwnershipPayload | null): Ownership
     customerName,
     currentUserName: str(payload.currentUserName),
     tenantScoped: payload.tenantScoped === true,
+    overlay: toOwnershipOverlay(payload.overlay),
   };
 }

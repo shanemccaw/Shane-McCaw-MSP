@@ -26,13 +26,18 @@ import {
   emailIndex,
   formatOwnDate,
   holdWindowObject,
+  initialAcceptance,
+  isOwnRoleKey,
   messageCentreObject,
   personIdForUser,
   personRoleLabel,
   resolvePersonId,
   serviceObject,
   sidesFor,
+  toWireAssignment,
+  toWireDelegation,
   toWirePerson,
+  toWireRow,
   type OwnObjectType,
   type UserRow,
   type WireOwnPerson,
@@ -250,5 +255,75 @@ describe("buildSources()", () => {
       ["cr", 7],
       ["freeze", 4],
     ]);
+  });
+});
+
+/**
+ * The WRITE side's pure pieces — the same "never claim more than the data does"
+ * rule, now applied to what a customer's own edit means.
+ */
+describe("isOwnRoleKey", () => {
+  it("admits exactly the four RACI keys", () => {
+    for (const k of ["r", "a", "c", "i"]) expect(isOwnRoleKey(k)).toBe(true);
+  });
+  it("rejects anything else, including near-misses and non-strings", () => {
+    for (const k of ["R", "x", "", "ra", 0, null, undefined, {}]) {
+      expect(isOwnRoleKey(k)).toBe(false);
+    }
+  });
+});
+
+describe("initialAcceptance", () => {
+  it("starts a newly-named Responsible/Accountable cell as pending — the accept clock", () => {
+    expect(initialAcceptance("u39", "r")).toBe("pending");
+    expect(initialAcceptance("u39", "a")).toBe("pending");
+  });
+  it("carries no acceptance for Consulted/Informed — being told is not accepted", () => {
+    expect(initialAcceptance("u39", "c")).toBe("");
+    expect(initialAcceptance("u39", "i")).toBe("");
+  });
+  it("carries no acceptance for a cleared cell — a gap accepts nothing", () => {
+    expect(initialAcceptance("", "r")).toBe("");
+    expect(initialAcceptance("", "a")).toBe("");
+  });
+});
+
+describe("toWireAssignment", () => {
+  it("passes the stored cell through and normalises nulls to empty strings", () => {
+    expect(
+      toWireAssignment({
+        objectId: "CR-2026-148",
+        roleKey: "a",
+        ownerPersonId: null,
+        acceptance: null,
+        setBy: null,
+        setAt: null,
+        setWhy: null,
+      }),
+    ).toEqual({
+      objectId: "CR-2026-148",
+      roleKey: "a",
+      ownerPersonId: "",
+      acceptance: "",
+      setBy: "",
+      setAt: "",
+      setWhy: "",
+    });
+  });
+});
+
+describe("toWireDelegation", () => {
+  it("defaults a null scope to 'all' and preserves done", () => {
+    expect(
+      toWireDelegation({ fromPersonId: "u1", toPersonId: "u2", until: "1 Oct", scope: null, done: true }),
+    ).toEqual({ fromPersonId: "u1", toPersonId: "u2", until: "1 Oct", scope: "all", done: true });
+  });
+});
+
+describe("toWireRow", () => {
+  it("normalises the nullable custom/coverage fields to empty strings", () => {
+    expect(
+      toWireRow({ rowId: "cov-x", source: "coverage", objType: null, name: null, sub: null }),
+    ).toEqual({ rowId: "cov-x", source: "coverage", objType: "", name: "", sub: "" });
   });
 });

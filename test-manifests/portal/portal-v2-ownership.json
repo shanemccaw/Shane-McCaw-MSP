@@ -1,5 +1,5 @@
 {
-  "feature": "Customer Portal v2 -- the OWNERSHIP matrix (/portal-v2/ownership), now reading REAL TENANT DATA from GET /api/portal/ownership instead of the ownershipData.ts design fixture. Four names (Responsible / Accountable / Consulted / Informed) against the customer's own objects: their purchased services, their Microsoft changes with an action still due, their change requests, and their open hold windows -- plus the people list, which is their own active users. This manifest proves the DOM shows what the ENDPOINT returned, not what a fixture contains: every row id, person id and person name it asserts against is EXTRACTED FROM THE API RESPONSE at run time and interpolated into the selector, so the test cannot pass against a stale fixture and does not have to be re-pinned when the tenant's data changes.",
+  "feature": "Customer Portal v2 -- the OWNERSHIP matrix (/portal-v2/ownership), now reading REAL TENANT DATA from GET /api/portal/ownership instead of the ownershipData.ts design fixture. Four names (Responsible / Accountable / Consulted / Informed) against the customer's own objects: their purchased services, their Microsoft changes with an action still due, their change requests, and their open hold windows -- plus the people list, which is their own active users. This manifest proves the DOM shows what the ENDPOINT returned, not what a fixture contains: every row id, person id and person name it asserts against is EXTRACTED FROM THE API RESPONSE at run time and interpolated into the selector, so the test cannot pass against a stale fixture and does not have to be re-pinned when the tenant's data changes. It ALSO proves the matrix's WRITE actions now persist: a cell assigned through the real POST route is read back off the matrix after a full page reload (API7-API9 + OWN49-OWN50).",
   "baseUrl": "{{DEPLOY_URL}}",
   "lastVerifiedAgainstCommit": "98f15a90",
   "notes": [
@@ -15,7 +15,9 @@
     "OWN28 ASSERTS `state` AND NOT TEXT, deliberately: pv2-set-person-name-* is an <input>, whose innerText/textContent is empty regardless of its value, so a textContains there would fail for a reason that has nothing to do with the data. The NAME is asserted through the API (the person id it interpolates came from the response) and through OWN31, where it reaches the matrix as real rendered text.",
     "THERE IS NO NEGATIVE TEXT ASSERTION IN THIS HARNESS, and an array in `textContains` is ANY-of, not all-of (UiTestExecutor.cs:570, :1282). Every all-of assertion here is its own step, and absence is asserted on a selector rather than on text.",
     "NO `select` STEPS ANYWHERE. UiTestExecutor.cs takes the `value` setter from HTMLInputElement.prototype for anything that is not a TEXTAREA, so invoking it on a native <select> throws 'Illegal invocation'; and an unrecognised action falls through and SILENTLY PASSES. This page has no <select> in its main flow.",
-    "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD."
+    "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD.",
+    "WRITE PERSISTENCE (API7-API9 + OWN49-OWN50). The matrix's mutations -- assign, mark-accepted, handover, add-a-row -- were React state only and lost on reload; the route called itself 'Read-only, deliberately'. Three per-customer tables now back them (portal_ownership_assignments / portal_ownership_delegations / portal_ownership_rows), the GET returns an `overlay` block, and the client seeds its state from it. API8 assigns the CR's CONSULTED cell (a role the read never fills, so a name there can only be from the overlay), and OWN50 -- after a FULL page reload (OWN49 goto) -- reads that name back off the matrix. That is the round trip end to end: POST persists -> GET overlay returns it -> the reloaded UI renders it. WHY CONSULTED AND NOT ACCOUNTABLE: OWN6 asserts the CR's Accountable cell reads 'Assign' (a gap), and the write is idempotent + persistent, so assigning -a would break OWN6 on the next run; -c is asserted nowhere else and is a gap by nature, so it is the clean target.",
+    "STILL SESSION-ONLY, and honestly so: 'Accept it unowned' (the risk toggle). It is not one of the assign/handover/add flows this pass wired, and the route header says so. Also NOT re-tested here: that a client-side nav (not a full reload) preserves an in-session ownership edit -- the store overlay is refreshed from the DB only on a full read, so a same-session edit reappears after a full reload (OWN49/OWN50) but a wouter-Link nav back re-seeds from the load-time overlay. That matches the pre-existing behaviour (ownership edits were always lost on unmount) and is not a regression; OWN49 uses a full goto deliberately."
   ],
   "apiTests": [
     {
@@ -73,6 +75,29 @@
       "path": "/api/portal/ownership",
       "headers": { "Authorization": "Bearer {{authToken}}" },
       "expect": { "status": 200, "jsonPath": "$.sources[4].live", "value": false }
+    },
+    {
+      "name": "API7 -- WRITE side: the read now carries an `overlay` block (the customer's own saved edits), returned as an array even when empty. Its presence is what lets the client seed assign/acceptance/handover/added-row state from real data on load.",
+      "method": "GET",
+      "path": "/api/portal/ownership",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.overlay.assignments", "isArray": true }
+    },
+    {
+      "name": "API8 -- WRITE side: assign the change request's Consulted cell to the signed-in person through the real POST route. Consulted is a role the READ never fills (c/i are always gaps), so a name landing there later can only have come from the overlay -- which makes the reload assertion below a clean persistence proof. Idempotent: the route upserts on (customer, object, role), so re-runs overwrite rather than accumulate.",
+      "method": "POST",
+      "path": "/api/portal/ownership/assign",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "objectId": "{{crCode}}", "roleKey": "c", "ownerPersonId": "{{crOwnerId}}" },
+      "expect": { "status": 200, "jsonPath": "$.ok", "value": true }
+    },
+    {
+      "name": "API9 -- ...and the route echoes what it saved: the cell it wrote is Consulted (roleKey 'c'), which carries no acceptance (only r/a do). Proves the write computed acceptance per-role rather than starting every cell pending.",
+      "method": "POST",
+      "path": "/api/portal/ownership/assign",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "objectId": "{{crCode}}", "roleKey": "c", "ownerPersonId": "{{crOwnerId}}" },
+      "expect": { "status": 200, "jsonPath": "$.assignment.acceptance", "value": "" }
     }
   ],
   "uiSteps": [
@@ -146,6 +171,9 @@
     { "name": "OWN46 -- reset, then open the row detail by clicking a REAL row's name.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/ownership" },
     { "name": "OWN46b -- click the change request's row name.", "action": "click", "selector": "[data-testid='pv2-own-rowname-{{crCode}}']" },
     { "name": "OWN47 -- the row-detail slide-over opens on the real row and shows its REAL owner. NOTE: the design’s 'What these names cover' block is deliberately NOT asserted here -- it renders only for a `service` row that drives other rows (rowDrivesLabel/rowDetailDrives, OwnershipMatrix.tsx:1919), and a change request drives nothing. Asserting it on a CR would fail for a reason that has nothing to do with the data.", "action": "expect", "selector": "[data-testid='pv2-own-rowdetail']", "textContains": "{{crOwnerName}}", "critical": true },
-    { "name": "OWN48 -- ...and spells out the Accountable duty for a change request, which is the design's own copy.", "action": "expect", "selector": "[data-testid='pv2-own-rowdetail']", "textContains": "Approves it" }
+    { "name": "OWN48 -- ...and spells out the Accountable duty for a change request, which is the design's own copy.", "action": "expect", "selector": "[data-testid='pv2-own-rowdetail']", "textContains": "Approves it" },
+
+    { "name": "OWN49 -- WRITE PERSISTENCE: a FULL page load of the matrix. `goto` resets the client store and re-reads GET /api/portal/ownership from scratch, so anything on screen after this came out of the database, not out of session memory.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/ownership" },
+    { "name": "OWN50 -- THE PROOF the whole build exists for: the change request's Consulted cell now names the person API8 assigned it, even though the READ never fills Consulted. It is on screen only because the assignment was PERSISTED (portal_ownership_assignments) and the reload seeded the matrix from the overlay. Before this build every ownership mutation was React state and this cell would read 'Assign' again after a refresh.", "action": "expect", "selector": "[data-testid='pv2-own-cell-{{crCode}}-c']", "textContains": "{{crOwnerName}}", "critical": true }
   ]
 }

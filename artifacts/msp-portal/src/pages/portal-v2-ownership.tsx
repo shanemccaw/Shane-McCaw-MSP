@@ -30,6 +30,7 @@ import { OBJECT_TYPES } from "@/components/portal-v2/ownershipData";
 import {
   usePortalV2EscDays,
   usePortalV2OwnershipObjects,
+  usePortalV2OwnershipPersist,
   usePortalV2People,
 } from "@/components/portal-v2/portalV2People";
 
@@ -41,7 +42,8 @@ export default function PortalV2OwnershipPage() {
 
   const { people, setPeople } = usePortalV2People();
   const { escDays } = usePortalV2EscDays();
-  const { objects } = usePortalV2OwnershipObjects();
+  const { objects, overlay, dataState } = usePortalV2OwnershipObjects();
+  const persist = usePortalV2OwnershipPersist();
 
   return (
     <PortalV2Shell eyebrow="Governance" title="Ownership">
@@ -63,6 +65,9 @@ export default function PortalV2OwnershipPage() {
             onPeopleChange={setPeople}
             typeFilter={typeFilter}
             escDays={escDays}
+            overlay={overlay}
+            overlayLive={dataState === "live"}
+            persist={persist}
           />
         </div>
       </div>

@@ -38,7 +38,7 @@
  * is added and Settings is not touched, keeping the people contract intact.
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "wouter";
 
 import {
@@ -111,6 +111,8 @@ import {
 } from "@/components/portal-v2/ownershipModel";
 import { OWN_PEOPLE_SEED, type OwnPerson } from "@/components/portal-v2/settingsData";
 import { initialsOf } from "@/components/portal-v2/settingsModel";
+import type { OwnershipOverlay } from "@/components/portal-v2/ownershipWire";
+import type { OwnershipPersist } from "@/components/portal-v2/ownershipPersist";
 
 const MONO = "'SF Mono',Menlo,Consolas,monospace";
 
@@ -430,6 +432,24 @@ export interface OwnershipMatrixProps {
   typeFilter?: string;
   /** From Settings → Ownership routing. Drives the late/escalation marks. */
   escDays?: number;
+  /**
+   * The customer's own saved edits, from `GET /api/portal/ownership`. Absent
+   * means standalone — the module keeps its own empty overlay and never
+   * hydrates, exactly as it did before a write side existed.
+   */
+  overlay?: OwnershipOverlay;
+  /**
+   * True once the overlay is the tenant's REAL saved data rather than the
+   * loading/fixture default. Hydration waits for this, so an empty overlay that
+   * merely hasn't loaded yet cannot clobber a just-made local edit.
+   */
+  overlayLive?: boolean;
+  /**
+   * The write side. Absent means standalone — every mutation stays local, the
+   * design's own behaviour before an endpoint existed — so this prop is the whole
+   * persistence seam.
+   */
+  persist?: OwnershipPersist;
 }
 
 export function OwnershipMatrix({
@@ -438,6 +458,9 @@ export function OwnershipMatrix({
   onPeopleChange,
   typeFilter = "all",
   escDays = 5,
+  overlay,
+  overlayLive = false,
+  persist,
 }: OwnershipMatrixProps) {
   // The standalone fallback — prototype 720-721. Only ever read when the
   // caller passes no `people`, so the shell-wired page never touches it.
@@ -475,6 +498,39 @@ export function OwnershipMatrix({
   const [reviewDue, setReviewDue] = useState(MATRIX_REVIEW_DUE_DAYS);
   const [escDaysState, setEscDaysState] = useState(escDays);
   const [toast, setToast] = useState("");
+
+  // ── Seeding the module's state from the customer's own saved overlay ───────
+  // Runs at most once, and only when the overlay is the REAL saved data (not the
+  // loading/fixture default). If a local edit was made before the read landed,
+  // that edit wins and hydration is skipped — silently reverting something a
+  // user just did is worse than showing it unsaved, the same rule the shared
+  // people store follows. Standalone (no `overlayLive`) never hydrates at all.
+  const hydratedRef = useRef(false);
+  const editedRef = useRef(false);
+  useEffect(() => {
+    if (hydratedRef.current || !overlayLive || !overlay) return;
+    hydratedRef.current = true;
+    if (editedRef.current) return;
+    setOverrides(overlay.overrides);
+    setAccOv(overlay.acceptance);
+    setProvOv(overlay.provenance);
+    setDelegations(overlay.delegations);
+    setCustom(overlay.customRows);
+    setAdded(overlay.addedCoverage);
+  }, [overlay, overlayLive]);
+
+  /**
+   * A persisted mutation has already updated local state; this reports back only
+   * when the SAVE failed, in the matrix's own voice. `persist` is absent
+   * standalone, so this is a no-op there. It never awaits into a click handler.
+   */
+  const save = (result: Promise<boolean> | undefined): void => {
+    editedRef.current = true;
+    if (!result) return;
+    void result.then((ok) => {
+      if (!ok) setToast("That change could not be saved. Check your connection and try again.");
+    });
+  };
 
   // The one place the fixture is swapped for the tenant’s own rows. Everything
   // below — every counter, panel, group and cell — derives from this list and
@@ -524,6 +580,7 @@ export function OwnershipMatrix({
     }));
     setAccOv((cur) => ({ ...cur, [key]: whoId ? "pending" : "" }));
     setAssign(null);
+    save(persist?.assign(objId, k, whoId));
     setToast(
       p
         ? `${roleLabel} for ${objName} is now ${p.name} — waiting for them to accept it.`
@@ -533,6 +590,7 @@ export function OwnershipMatrix({
 
   const acceptOwner = (objId: string, k: RoleKey, name: string, roleLabel: string) => {
     setAccOv((cur) => ({ ...cur, [`${objId}:${k}`]: "accepted" }));
+    save(persist?.accept(objId, k));
     setToast(`${roleLabel} accepted for ${name}, recorded against today.`);
   };
 
@@ -544,24 +602,30 @@ export function OwnershipMatrix({
   const submitNewRow = () => {
     if (!newRow || !newRow.name.trim()) return;
     const id = `own-${Date.now()}`;
-    setCustom((cur) => cur.concat([{ id, type: newRow.type, name: newRow.name.trim(), sub: newRow.sub.trim() }]));
+    const name = newRow.name.trim();
+    const sub = newRow.sub.trim();
+    setCustom((cur) => cur.concat([{ id, type: newRow.type, name, sub }]));
+    save(persist?.addRow(id, "custom", newRow.type, name, sub));
     setNewRow(null);
-    setToast(`${newRow.name.trim()} added with four gaps on it. Assign responsible first — that is the one that does the work.`);
+    setToast(`${name} added with four gaps on it. Assign responsible first — that is the one that does the work.`);
   };
 
   const submitHandover = () => {
     if (!handover || !selected || !handover.to || !handover.until.trim()) return;
     const to = personOf(handover.to);
+    const until = handover.until.trim();
     setDelegations((cur) =>
-      cur.concat([{ from: selected.id, to: handover.to, until: handover.until.trim(), scope: handover.scope, done: false }]),
+      cur.concat([{ from: selected.id, to: handover.to, until, scope: handover.scope, done: false }]),
     );
+    save(persist?.startHandover(selected.id, handover.to, until, handover.scope));
     setHandover(null);
-    setToast(`${to ? to.name : handover.to} covers ${selected.name} until ${handover.until.trim()}. It ends on its own.`);
+    setToast(`${to ? to.name : handover.to} covers ${selected.name} until ${until}. It ends on its own.`);
   };
 
   const endDelegation = () => {
     if (!personId) return;
     setDelegations((cur) => cur.map((d) => (d.from === personId ? { ...d, done: true } : d)));
+    save(persist?.endHandover(personId));
     setToast("Handover ended. It is theirs again from today.");
   };
 
@@ -1120,6 +1184,7 @@ export function OwnershipMatrix({
                     testId={`pv2-own-cov-add-${m.id}`}
                     onClick={() => {
                       setAdded((cur) => cur.concat([m.id]));
+                      save(persist?.addRow(m.id, "coverage", "", "", ""));
                       setToast(`${m.name} now has a row, with four gaps on it. Assign them.`);
                     }}
                   />

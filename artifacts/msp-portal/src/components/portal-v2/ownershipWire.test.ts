@@ -17,7 +17,14 @@ import assert from "node:assert/strict";
 
 import { OWN_OBJECTS } from "./ownershipData";
 import { OWN_PEOPLE_SEED, OWN_SIDES } from "./settingsData";
-import { OWNERSHIP_FIXTURE, toOwnObject, toOwnPerson, toOwnershipData } from "./ownershipWire";
+import {
+  EMPTY_OVERLAY,
+  OWNERSHIP_FIXTURE,
+  toOwnObject,
+  toOwnPerson,
+  toOwnershipData,
+  toOwnershipOverlay,
+} from "./ownershipWire";
 
 const PERSON = {
   id: "u42",
@@ -171,5 +178,103 @@ describe("OWNERSHIP_FIXTURE", () => {
     assert.equal(OWNERSHIP_FIXTURE.objects, OWN_OBJECTS);
     assert.equal(OWNERSHIP_FIXTURE.people, OWN_PEOPLE_SEED);
     assert.equal(OWNERSHIP_FIXTURE.tenantScoped, false);
+    assert.equal(OWNERSHIP_FIXTURE.overlay, EMPTY_OVERLAY);
+  });
+});
+
+describe("toOwnershipOverlay()", () => {
+  it("is an empty overlay for a missing or non-object block", () => {
+    for (const raw of [undefined, null, "nope", 7]) {
+      const ov = toOwnershipOverlay(raw);
+      assert.deepEqual(ov.overrides, {});
+      assert.deepEqual(ov.acceptance, {});
+      assert.deepEqual(ov.provenance, {});
+      assert.deepEqual(ov.delegations, []);
+      assert.deepEqual(ov.customRows, []);
+      assert.deepEqual(ov.addedCoverage, []);
+    }
+  });
+
+  it("maps an assignment into overrides/acceptance/provenance keyed objectId:roleKey", () => {
+    const ov = toOwnershipOverlay({
+      assignments: [
+        {
+          objectId: "CR-2026-148",
+          roleKey: "a",
+          ownerPersonId: "u39",
+          acceptance: "pending",
+          setBy: "Shane McCaw",
+          setAt: "21 Aug 2026",
+          setWhy: "Changed on the ownership page",
+        },
+      ],
+    });
+    assert.equal(ov.overrides["CR-2026-148:a"], "u39");
+    assert.equal(ov.acceptance["CR-2026-148:a"], "pending");
+    assert.deepEqual(ov.provenance["CR-2026-148:a"], {
+      by: "Shane McCaw",
+      at: "21 Aug 2026",
+      why: "Changed on the ownership page",
+      from: "21 Aug 2026",
+    });
+  });
+
+  it("KEEPS an empty owner — a cleared cell is a real gap, not a dropped row", () => {
+    // ownerOf treats an override of "" as "cleared to a gap"; losing it here
+    // would silently fall the cell back to whatever the read computed.
+    const ov = toOwnershipOverlay({
+      assignments: [{ objectId: "svc-9", roleKey: "r", ownerPersonId: "" }],
+    });
+    assert.equal(ov.overrides["svc-9:r"], "");
+    assert.ok("svc-9:r" in ov.overrides);
+  });
+
+  it("drops an assignment with no objectId or a role that is not r/a/c/i", () => {
+    const ov = toOwnershipOverlay({
+      assignments: [
+        { objectId: "", roleKey: "r", ownerPersonId: "u1" },
+        { objectId: "svc-1", roleKey: "x", ownerPersonId: "u1" },
+        null,
+      ],
+    });
+    assert.deepEqual(ov.overrides, {});
+  });
+
+  it("maps a delegation and drops one missing any of from/to/until", () => {
+    const ov = toOwnershipOverlay({
+      delegations: [
+        { fromPersonId: "u1", toPersonId: "u2", until: "22 September", scope: "cr", done: false },
+        { fromPersonId: "u3", toPersonId: "", until: "1 Oct", scope: "all", done: false },
+      ],
+    });
+    assert.equal(ov.delegations.length, 1);
+    assert.deepEqual(ov.delegations[0], {
+      from: "u1",
+      to: "u2",
+      until: "22 September",
+      scope: "cr",
+      done: false,
+    });
+  });
+
+  it("defaults a delegation's blank scope to 'all'", () => {
+    const ov = toOwnershipOverlay({
+      delegations: [{ fromPersonId: "u1", toPersonId: "u2", until: "soon", scope: "" }],
+    });
+    assert.equal(ov.delegations[0].scope, "all");
+  });
+
+  it("splits added rows into custom rows (valid type only) and coverage ids", () => {
+    const ov = toOwnershipOverlay({
+      rows: [
+        { rowId: "own-1", source: "custom", objType: "service", name: "Power BI", sub: "14 spaces" },
+        { rowId: "own-2", source: "custom", objType: "not-a-type", name: "Bad", sub: "" },
+        { rowId: "cov-x", source: "coverage" },
+        { rowId: "", source: "custom", objType: "service", name: "No id" },
+      ],
+    });
+    assert.equal(ov.customRows.length, 1);
+    assert.deepEqual(ov.customRows[0], { id: "own-1", type: "service", name: "Power BI", sub: "14 spaces" });
+    assert.deepEqual(ov.addedCoverage, ["cov-x"]);
   });
 });

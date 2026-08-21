@@ -394,3 +394,130 @@ export function buildSources(
     { type: "announce", live: false, count: 0, note: "No announcement record is stored yet." },
   ];
 }
+
+/* ────────────────────────────────────────────────────────────────────────────
+   The WRITE overlay — the customer's own assignments, handovers and added rows.
+
+   These are the shapes the matrix's mutations persist to, layered on top of the
+   objects the read assembles. They are kept here, pure, for the same reason the
+   read mappers are: what a customer's saved edit MEANS (a "" owner is an explicit
+   gap, only r/a carry acceptance) is testable without a database.
+   ──────────────────────────────────────────────────────────────────────────── */
+
+/** The four role keys the matrix assigns against. */
+export const OWN_ROLE_KEYS: readonly OwnRoleKey[] = ["r", "a", "c", "i"];
+
+/** True only for one of the four role keys — the write routes' input guard. */
+export function isOwnRoleKey(value: unknown): value is OwnRoleKey {
+  return value === "r" || value === "a" || value === "c" || value === "i";
+}
+
+/**
+ * The acceptance a freshly-set cell starts at. Setting a name starts the accept
+ * clock (`pending`); clearing it to a gap carries none; and Consulted/Informed
+ * never carry acceptance at all — being told is not something you accept. This
+ * mirrors the client's `acceptanceOf`, so a reload reads the same chip.
+ */
+export function initialAcceptance(ownerPersonId: string, roleKey: OwnRoleKey): string {
+  if (!ownerPersonId) return "";
+  if (roleKey === "c" || roleKey === "i") return "";
+  return "pending";
+}
+
+/** One stored cell as the wire shape the overlay sends. */
+export interface WireOwnAssignment {
+  readonly objectId: string;
+  readonly roleKey: string;
+  readonly ownerPersonId: string;
+  readonly acceptance: string;
+  readonly setBy: string;
+  readonly setAt: string;
+  readonly setWhy: string;
+}
+
+/** One stored handover as the wire shape the overlay sends. */
+export interface WireOwnDelegation {
+  readonly fromPersonId: string;
+  readonly toPersonId: string;
+  readonly until: string;
+  readonly scope: string;
+  readonly done: boolean;
+}
+
+/** One customer-added row as the wire shape the overlay sends. */
+export interface WireOwnRow {
+  readonly rowId: string;
+  readonly source: string;
+  readonly objType: string;
+  readonly name: string;
+  readonly sub: string;
+}
+
+/**
+ * The whole write overlay for one customer. The client seeds its assign /
+ * acceptance / provenance / delegation / added-row state from this, so a reload
+ * shows the real saved matrix rather than only what was in memory.
+ */
+export interface WireOwnershipOverlay {
+  readonly assignments: readonly WireOwnAssignment[];
+  readonly delegations: readonly WireOwnDelegation[];
+  readonly rows: readonly WireOwnRow[];
+}
+
+export interface AssignmentRow {
+  readonly objectId: string;
+  readonly roleKey: string;
+  readonly ownerPersonId: string | null;
+  readonly acceptance: string | null;
+  readonly setBy: string | null;
+  readonly setAt: string | null;
+  readonly setWhy: string | null;
+}
+
+export function toWireAssignment(row: AssignmentRow): WireOwnAssignment {
+  return {
+    objectId: row.objectId,
+    roleKey: row.roleKey,
+    ownerPersonId: row.ownerPersonId ?? "",
+    acceptance: row.acceptance ?? "",
+    setBy: row.setBy ?? "",
+    setAt: row.setAt ?? "",
+    setWhy: row.setWhy ?? "",
+  };
+}
+
+export interface DelegationRow {
+  readonly fromPersonId: string;
+  readonly toPersonId: string;
+  readonly until: string;
+  readonly scope: string | null;
+  readonly done: boolean;
+}
+
+export function toWireDelegation(row: DelegationRow): WireOwnDelegation {
+  return {
+    fromPersonId: row.fromPersonId,
+    toPersonId: row.toPersonId,
+    until: row.until,
+    scope: row.scope ?? "all",
+    done: row.done,
+  };
+}
+
+export interface OwnRowRecord {
+  readonly rowId: string;
+  readonly source: string;
+  readonly objType: string | null;
+  readonly name: string | null;
+  readonly sub: string | null;
+}
+
+export function toWireRow(row: OwnRowRecord): WireOwnRow {
+  return {
+    rowId: row.rowId,
+    source: row.source,
+    objType: row.objType ?? "",
+    name: row.name ?? "",
+    sub: row.sub ?? "",
+  };
+}

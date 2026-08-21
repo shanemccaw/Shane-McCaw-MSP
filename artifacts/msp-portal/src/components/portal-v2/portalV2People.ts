@@ -57,19 +57,22 @@
  * reverting something a user typed is worse than showing it unsaved.
  */
 
-import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 
 import { useAuth } from "@/lib/auth-context";
 
 import { OWN_ESC_DAYS_SEED, OWN_PEOPLE_SEED, OWN_SIDES, type OwnPerson } from "./settingsData";
 import type { OwnObject } from "./ownershipData";
 import {
+  EMPTY_OVERLAY,
   OWNERSHIP_FIXTURE,
   toOwnershipData,
   type OwnDataState,
   type OwnershipData,
+  type OwnershipOverlay,
   type WireOwnershipPayload,
 } from "./ownershipWire";
+import { makeOwnershipPersist, type OwnershipPersist } from "./ownershipPersist";
 
 const OWNERSHIP_URL = "/api/portal/ownership";
 
@@ -251,6 +254,8 @@ export function usePortalV2OwnershipObjects(): {
   sources: OwnershipData["sources"];
   customerName: string;
   tenantScoped: boolean;
+  /** The customer's own saved edits, for the matrix to seed its state from. */
+  overlay: OwnershipOverlay;
 } {
   const { fetchWithAuth } = useAuth();
   const fetchRef = useRef(fetchWithAuth);
@@ -270,7 +275,27 @@ export function usePortalV2OwnershipObjects(): {
     sources: source.sources,
     customerName: source.customerName,
     tenantScoped: source.tenantScoped,
+    overlay: source.overlay ?? EMPTY_OVERLAY,
   };
+}
+
+/**
+ * The five matrix-write calls, bound to the live `fetchWithAuth`.
+ *
+ * `fetchWithAuth` is rebuilt on every silent token refresh, so — as everywhere
+ * else in this file — it is read through a ref and the returned object is stable
+ * across those refreshes: the matrix holds this in effects and callbacks, and a
+ * new identity each render would re-fire them.
+ */
+export function usePortalV2OwnershipPersist(): OwnershipPersist {
+  const { fetchWithAuth } = useAuth();
+  const fetchRef = useRef(fetchWithAuth);
+  fetchRef.current = fetchWithAuth;
+
+  return useMemo(
+    () => makeOwnershipPersist((input, init, opts) => fetchRef.current(input, init, opts)),
+    [],
+  );
 }
 
 /**

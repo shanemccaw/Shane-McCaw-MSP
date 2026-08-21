@@ -4126,3 +4126,117 @@ export const portalSecurityPlanVersionsTable = pgTable("portal_security_plan_ver
 
 export type PortalSecurityPlanVersion = typeof portalSecurityPlanVersionsTable.$inferSelect;
 export type InsertPortalSecurityPlanVersion = typeof portalSecurityPlanVersionsTable.$inferInsert;
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * Portal v2 — Ownership matrix WRITE persistence
+ *
+ * `GET /api/portal/ownership` reads real rows and real people, but until these
+ * three tables existed every mutation the matrix offers — assign a name to a
+ * cell, mark it accepted, hand a person's work over, add a row — lived only in
+ * React state and was lost on reload (the route's own header called itself
+ * "Read-only, deliberately", because there was nowhere to write). These are
+ * that write side: a per-customer OVERLAY on top of the objects the read
+ * assembles, keyed by the same opaque wire identifiers the page already uses.
+ *
+ * All three are keyed on `customer_id` (= tenants.id, the JWT's customerId) with
+ * NO foreign keys, matching every portal-* table above: the object ids
+ * ("svc-12", "CR-2026-0148", a Graph message id, a hold key, a hand-added
+ * "own-…") and person ids ("u39") are UI identifiers assembled by
+ * `lib/portal-ownership.ts`, not rows in a table this could reference.
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * One assigned (or explicitly cleared) matrix cell — the heart of the overlay.
+ *
+ * A row exists for every (object, role) a customer has touched. `owner_person_id`
+ * of "" is a REAL value meaning "cleared to a gap", exactly as the client's
+ * `ownerOf` treats an override of "" (an absent row falls back to what the read
+ * computed — a change request's requester/approver, or a gap). Acceptance and
+ * the three provenance fields carry the assign slide-over's own state so a
+ * reload shows the same "not accepted yet · set by … on …" it showed live.
+ */
+export const portalOwnershipAssignmentsTable = pgTable("portal_ownership_assignments", {
+  id: serial("id").primaryKey(),
+  /** tenants.id — the JWT's customerId claim. No FK, matching the tables above. */
+  customerId: integer("customer_id").notNull(),
+  /** The matrix object's opaque wire id, as assembled by the read layer. */
+  objectId: text("object_id").notNull(),
+  /** One of r | a | c | i. */
+  roleKey: text("role_key").notNull(),
+  /** The wire person id this cell names (e.g. "u39"), or "" for an explicit gap. */
+  ownerPersonId: text("owner_person_id").notNull().default(""),
+  /** "" | "pending" | "accepted". Only r/a ever carry acceptance; c/i never do. */
+  acceptance: text("acceptance").notNull().default(""),
+  /** Provenance the assign flow records — who set it, when, and why. */
+  setBy: text("set_by").notNull().default(""),
+  setAt: text("set_at").notNull().default(""),
+  setWhy: text("set_why").notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("portal_ownership_assignments_customer_id_idx").on(t.customerId),
+  uniqueIndex("portal_ownership_assignments_customer_object_role_idx").on(
+    t.customerId,
+    t.objectId,
+    t.roleKey,
+  ),
+]);
+
+export type PortalOwnershipAssignment = typeof portalOwnershipAssignmentsTable.$inferSelect;
+export type InsertPortalOwnershipAssignment = typeof portalOwnershipAssignmentsTable.$inferInsert;
+
+/**
+ * A dated handover of one person's work to another. It annotates the matrix, it
+ * does not reassign it (the design: "It ends by itself, and the matrix goes back
+ * to what it says today") — so `done` and the free-text `until` are the whole
+ * lifecycle, and ending a handover flips `done` rather than deleting the row.
+ */
+export const portalOwnershipDelegationsTable = pgTable("portal_ownership_delegations", {
+  id: serial("id").primaryKey(),
+  /** tenants.id — the JWT's customerId claim. No FK, matching the tables above. */
+  customerId: integer("customer_id").notNull(),
+  /** Wire person ids. `from` is whoever was handed over; `to` covers them. */
+  fromPersonId: text("from_person_id").notNull(),
+  toPersonId: text("to_person_id").notNull(),
+  /** The end date exactly as the design keeps it — free text, e.g. "22 September". */
+  until: text("until").notNull(),
+  /** "all" or an object-type key — how much of their work the cover extends to. */
+  scope: text("scope").notNull().default("all"),
+  done: boolean("done").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("portal_ownership_delegations_customer_id_idx").on(t.customerId),
+]);
+
+export type PortalOwnershipDelegation = typeof portalOwnershipDelegationsTable.$inferSelect;
+export type InsertPortalOwnershipDelegation = typeof portalOwnershipDelegationsTable.$inferInsert;
+
+/**
+ * A row the customer added to the matrix by hand. `source` distinguishes the two
+ * ways the page grows the matrix: "custom" is the add-a-row slide-over (a thing
+ * that can go wrong and needs a name against it), "coverage" is "Give it a row"
+ * in the not-in-the-matrix panel (a known-missing object promoted to a real
+ * row). Either way it arrives with four gaps, which is the point.
+ */
+export const portalOwnershipRowsTable = pgTable("portal_ownership_rows", {
+  id: serial("id").primaryKey(),
+  /** tenants.id — the JWT's customerId claim. No FK, matching the tables above. */
+  customerId: integer("customer_id").notNull(),
+  /** The row's wire id — a hand-added "own-…" id, or a promoted coverage id. */
+  rowId: text("row_id").notNull(),
+  /** "custom" (add-a-row) or "coverage" (give-it-a-row). */
+  source: text("source").notNull(),
+  /** Object type key. NULL for a coverage row, whose type comes from its fixture. */
+  objType: text("obj_type"),
+  /** NULL for a coverage row, whose name/sub come from its fixture entry. */
+  name: text("name"),
+  sub: text("sub"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("portal_ownership_rows_customer_id_idx").on(t.customerId),
+  uniqueIndex("portal_ownership_rows_customer_row_idx").on(t.customerId, t.rowId),
+]);
+
+export type PortalOwnershipRow = typeof portalOwnershipRowsTable.$inferSelect;
+export type InsertPortalOwnershipRow = typeof portalOwnershipRowsTable.$inferInsert;

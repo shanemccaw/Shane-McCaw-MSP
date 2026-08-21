@@ -64,11 +64,26 @@
  * ownership matrix is a thing a paying tenant's team maintains, not something a
  * free assessment lead is asked to fill in.
  *
- * ── Read-only, deliberately ────────────────────────────────────────────────
- * No POST, no PUT. The matrix's assign / delegate / accept flows stay client
- * side exactly as they already were, because there is no table to write them
- * to; inventing one is a schema change and its own piece of work. What this
- * route changes is WHOSE names and WHICH objects those flows operate on.
+ * ── The write side (added later) ───────────────────────────────────────────
+ * This route WAS read-only, because there was no table to persist the matrix's
+ * assign / accept / handover / add-a-row flows to and inventing one was its own
+ * piece of work. That work is now done: three per-customer tables
+ * (`portal_ownership_assignments`, `portal_ownership_delegations`,
+ * `portal_ownership_rows`) hold an OVERLAY on top of the objects this read
+ * assembles, and the POST handlers at the bottom of this file write to them.
+ *
+ * The GET now returns that overlay alongside `objects`/`people`, so the client
+ * seeds its assign / acceptance / provenance / delegation / added-row state from
+ * real saved data and a reload shows the matrix a customer actually left —
+ * rather than only what happened to be in memory. The read still computes each
+ * object's base r/a/c/i (a change request's requester/approver, gaps elsewhere);
+ * the overlay's assignments layer on top of that, and an owner of "" is a real
+ * "cleared to a gap" rather than an absent one.
+ *
+ * NOT persisted, and deliberately: "Accept it unowned" (the risk toggle). It
+ * records a decision that a gap is knowingly accepted, and it stays session-only
+ * for now — it is not one of the assign/handover/add flows this pass wired, and
+ * saying so is more honest than half-persisting it.
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
@@ -78,12 +93,15 @@ import {
   mspChangeRequestsTable,
   mspMessageCenterItemsTable,
   portalHoldWindowsTable,
+  portalOwnershipAssignmentsTable,
+  portalOwnershipDelegationsTable,
+  portalOwnershipRowsTable,
   servicesTable,
   usersTable,
 } from "@workspace/db";
 import { and, asc, eq, gt, isNull } from "drizzle-orm";
 
-import { requireRole } from "../middlewares/requireAuth";
+import { requireRole, type AuthUser } from "../middlewares/requireAuth";
 import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope";
 import { logger } from "../lib/logger";
 import { displayStatus, formatChangeRequestCode } from "../lib/portal-change-control";
@@ -91,15 +109,23 @@ import {
   buildSources,
   crObject,
   emailIndex,
+  formatOwnDate,
   holdWindowObject,
+  initialAcceptance,
+  isOwnRoleKey,
   messageCentreObject,
   resolvePersonId,
   serviceObject,
   sidesFor,
+  toWireAssignment,
+  toWireDelegation,
   toWirePerson,
+  toWireRow,
   type OwnObjectType,
+  type OwnRoleKey,
   type UserRow,
   type WireOwnObject,
+  type WireOwnershipOverlay,
   type WireOwnPerson,
   type WireOwnSource,
 } from "../lib/portal-ownership";
@@ -135,6 +161,13 @@ export interface WireOwnershipPayload {
    * because the tenant has none.
    */
   readonly tenantScoped: boolean;
+  /**
+   * The customer's own saved matrix edits — assignments, handovers and added
+   * rows. The client seeds its state from this so a reload shows real saved
+   * ownership rather than only what was in memory. Empty arrays for a customer
+   * who has never written, which is a true empty overlay, not a missing one.
+   */
+  readonly overlay: WireOwnershipOverlay;
 }
 
 router.get(
@@ -278,6 +311,54 @@ router.get(
       const currentUserId = callerEmail ? (emails.get(callerEmail) ?? "") : "";
       const currentUser = people.find((p) => p.id === currentUserId);
 
+      // ── The write overlay ─────────────────────────────────────────────────
+      // The customer's own saved edits, layered on top of the objects above.
+      // Read in parallel — three small, customer-scoped tables — and returned
+      // whole so the client seeds its state from real data on load.
+      const [assignmentRows, delegationRows, ownRowRows] = await Promise.all([
+        db
+          .select({
+            objectId: portalOwnershipAssignmentsTable.objectId,
+            roleKey: portalOwnershipAssignmentsTable.roleKey,
+            ownerPersonId: portalOwnershipAssignmentsTable.ownerPersonId,
+            acceptance: portalOwnershipAssignmentsTable.acceptance,
+            setBy: portalOwnershipAssignmentsTable.setBy,
+            setAt: portalOwnershipAssignmentsTable.setAt,
+            setWhy: portalOwnershipAssignmentsTable.setWhy,
+          })
+          .from(portalOwnershipAssignmentsTable)
+          .where(eq(portalOwnershipAssignmentsTable.customerId, customerId))
+          .orderBy(asc(portalOwnershipAssignmentsTable.id)),
+        db
+          .select({
+            fromPersonId: portalOwnershipDelegationsTable.fromPersonId,
+            toPersonId: portalOwnershipDelegationsTable.toPersonId,
+            until: portalOwnershipDelegationsTable.until,
+            scope: portalOwnershipDelegationsTable.scope,
+            done: portalOwnershipDelegationsTable.done,
+          })
+          .from(portalOwnershipDelegationsTable)
+          .where(eq(portalOwnershipDelegationsTable.customerId, customerId))
+          .orderBy(asc(portalOwnershipDelegationsTable.id)),
+        db
+          .select({
+            rowId: portalOwnershipRowsTable.rowId,
+            source: portalOwnershipRowsTable.source,
+            objType: portalOwnershipRowsTable.objType,
+            name: portalOwnershipRowsTable.name,
+            sub: portalOwnershipRowsTable.sub,
+          })
+          .from(portalOwnershipRowsTable)
+          .where(eq(portalOwnershipRowsTable.customerId, customerId))
+          .orderBy(asc(portalOwnershipRowsTable.id)),
+      ]);
+
+      const overlay: WireOwnershipOverlay = {
+        assignments: assignmentRows.map(toWireAssignment),
+        delegations: delegationRows.map(toWireDelegation),
+        rows: ownRowRows.map(toWireRow),
+      };
+
       const payload: WireOwnershipPayload = {
         customer: { id: customerId, name: customerName },
         sides,
@@ -287,6 +368,7 @@ router.get(
         currentUserId,
         currentUserName: currentUser?.name ?? "",
         tenantScoped: scope !== null,
+        overlay,
       };
 
       log.info(
@@ -296,6 +378,11 @@ router.get(
           people: people.length,
           objects: objects.length,
           counts,
+          overlay: {
+            assignments: overlay.assignments.length,
+            delegations: overlay.delegations.length,
+            rows: overlay.rows.length,
+          },
         },
         "portal ownership matrix served",
       );
@@ -307,6 +394,281 @@ router.get(
         "portal ownership matrix failed",
       );
       res.status(500).json({ error: "Your ownership matrix could not be loaded." });
+    }
+  },
+);
+
+/* ────────────────────────────────────────────────────────────────────────────
+   The write side — one POST per matrix mutation.
+
+   Every handler is scoped by `resolveCustomerId` off the JWT, identically to the
+   read: the object ids and person ids in the body are opaque UI strings, so the
+   ONLY thing standing between one tenant and another's overlay is that every
+   insert/update carries this customer's id and every WHERE filters on it. A body
+   value is never trusted to name a customer.
+   ──────────────────────────────────────────────────────────────────────────── */
+
+const WRITE_WHY = "Changed on the ownership page";
+
+/** A required non-empty string from a JSON body, or "" if it is not one. */
+function bodyStr(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+/** The customer id off the JWT, or null after having sent the 403. */
+function scopedCustomerId(req: Request, res: Response): number | null {
+  const customerId = resolveCustomerId(req);
+  if (customerId === null) {
+    res.status(403).json({ error: "No customer identity on token" });
+    return null;
+  }
+  return customerId;
+}
+
+/** The acting user's display name for provenance, from the JWT. */
+function actingName(req: Request): string {
+  const user = req.user as AuthUser | undefined;
+  if (!user) return "A teammate";
+  const name = (user.name ?? "").trim();
+  if (name) return name;
+  const email = (user.email ?? "").trim();
+  return email || "A teammate";
+}
+
+/**
+ * Assign (or clear) a matrix cell. An `ownerPersonId` of "" is a real value —
+ * "cleared to a gap" — so it is not rejected; only a bad `roleKey` is. Upserts on
+ * the (customer, object, role) unique key so re-assigning the same cell
+ * overwrites rather than accumulating, and provenance/acceptance follow the
+ * client's own rules (`initialAcceptance`).
+ */
+router.post(
+  "/portal/ownership/assign",
+  requireRole("CustomerUser"),
+  async (req: Request, res: Response): Promise<void> => {
+    const customerId = scopedCustomerId(req, res);
+    if (customerId === null) return;
+
+    const objectId = bodyStr((req.body as Record<string, unknown>)?.objectId);
+    const roleKeyRaw = (req.body as Record<string, unknown>)?.roleKey;
+    const ownerPersonId = bodyStr((req.body as Record<string, unknown>)?.ownerPersonId);
+    if (!objectId || !isOwnRoleKey(roleKeyRaw)) {
+      res.status(400).json({ error: "objectId and a valid roleKey (r|a|c|i) are required" });
+      return;
+    }
+    const roleKey: OwnRoleKey = roleKeyRaw;
+    const acceptance = initialAcceptance(ownerPersonId, roleKey);
+    const setBy = actingName(req);
+    const setAt = formatOwnDate(new Date());
+
+    try {
+      await db
+        .insert(portalOwnershipAssignmentsTable)
+        .values({ customerId, objectId, roleKey, ownerPersonId, acceptance, setBy, setAt, setWhy: WRITE_WHY })
+        .onConflictDoUpdate({
+          target: [
+            portalOwnershipAssignmentsTable.customerId,
+            portalOwnershipAssignmentsTable.objectId,
+            portalOwnershipAssignmentsTable.roleKey,
+          ],
+          set: { ownerPersonId, acceptance, setBy, setAt, setWhy: WRITE_WHY, updatedAt: new Date() },
+        });
+
+      log.info({ customerId, objectId, roleKey, hasOwner: !!ownerPersonId }, "portal ownership cell assigned");
+      res.json({
+        ok: true,
+        assignment: toWireAssignment({ objectId, roleKey, ownerPersonId, acceptance, setBy, setAt, setWhy: WRITE_WHY }),
+      });
+    } catch (err) {
+      log.error(
+        { customerId, objectId, roleKey, err: err instanceof Error ? err.message : String(err) },
+        "portal ownership assign failed",
+      );
+      res.status(500).json({ error: "That assignment could not be saved." });
+    }
+  },
+);
+
+/**
+ * Mark a pending cell accepted. Update-only: the cell must already have been
+ * assigned (that is the only way it is pending on real data), so a hit updates
+ * exactly the one row and a miss reports `matched: false` rather than inventing
+ * an owner it does not know.
+ */
+router.post(
+  "/portal/ownership/accept",
+  requireRole("CustomerUser"),
+  async (req: Request, res: Response): Promise<void> => {
+    const customerId = scopedCustomerId(req, res);
+    if (customerId === null) return;
+
+    const objectId = bodyStr((req.body as Record<string, unknown>)?.objectId);
+    const roleKeyRaw = (req.body as Record<string, unknown>)?.roleKey;
+    if (!objectId || !isOwnRoleKey(roleKeyRaw)) {
+      res.status(400).json({ error: "objectId and a valid roleKey (r|a|c|i) are required" });
+      return;
+    }
+
+    try {
+      const updated = await db
+        .update(portalOwnershipAssignmentsTable)
+        .set({ acceptance: "accepted", updatedAt: new Date() })
+        .where(
+          and(
+            eq(portalOwnershipAssignmentsTable.customerId, customerId),
+            eq(portalOwnershipAssignmentsTable.objectId, objectId),
+            eq(portalOwnershipAssignmentsTable.roleKey, roleKeyRaw),
+          ),
+        )
+        .returning({ id: portalOwnershipAssignmentsTable.id });
+
+      log.info({ customerId, objectId, roleKey: roleKeyRaw, matched: updated.length > 0 }, "portal ownership cell accepted");
+      res.json({ ok: true, matched: updated.length > 0 });
+    } catch (err) {
+      log.error(
+        { customerId, objectId, err: err instanceof Error ? err.message : String(err) },
+        "portal ownership accept failed",
+      );
+      res.status(500).json({ error: "That acceptance could not be saved." });
+    }
+  },
+);
+
+/**
+ * Start a dated handover from one person to another. `fromPersonId` is the
+ * SELECTED person on the page, not necessarily the caller, so it comes from the
+ * body — the caller's identity only scopes the customer.
+ */
+router.post(
+  "/portal/ownership/delegations",
+  requireRole("CustomerUser"),
+  async (req: Request, res: Response): Promise<void> => {
+    const customerId = scopedCustomerId(req, res);
+    if (customerId === null) return;
+
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const fromPersonId = bodyStr(body.fromPersonId);
+    const toPersonId = bodyStr(body.toPersonId);
+    const until = bodyStr(body.until);
+    const scope = bodyStr(body.scope) || "all";
+    if (!fromPersonId || !toPersonId || !until) {
+      res.status(400).json({ error: "fromPersonId, toPersonId and until are required" });
+      return;
+    }
+
+    try {
+      await db
+        .insert(portalOwnershipDelegationsTable)
+        .values({ customerId, fromPersonId, toPersonId, until, scope, done: false });
+
+      log.info({ customerId, fromPersonId, toPersonId, scope }, "portal ownership handover started");
+      res.json({ ok: true, delegation: toWireDelegation({ fromPersonId, toPersonId, until, scope, done: false }) });
+    } catch (err) {
+      log.error(
+        { customerId, fromPersonId, err: err instanceof Error ? err.message : String(err) },
+        "portal ownership handover failed",
+      );
+      res.status(500).json({ error: "That handover could not be saved." });
+    }
+  },
+);
+
+/**
+ * End the active handover(s) from a person — flips `done` rather than deleting,
+ * so the record that a handover happened survives, matching the design's "It ends
+ * by itself" without erasing that it existed.
+ */
+router.post(
+  "/portal/ownership/delegations/end",
+  requireRole("CustomerUser"),
+  async (req: Request, res: Response): Promise<void> => {
+    const customerId = scopedCustomerId(req, res);
+    if (customerId === null) return;
+
+    const fromPersonId = bodyStr((req.body as Record<string, unknown>)?.fromPersonId);
+    if (!fromPersonId) {
+      res.status(400).json({ error: "fromPersonId is required" });
+      return;
+    }
+
+    try {
+      const updated = await db
+        .update(portalOwnershipDelegationsTable)
+        .set({ done: true, updatedAt: new Date() })
+        .where(
+          and(
+            eq(portalOwnershipDelegationsTable.customerId, customerId),
+            eq(portalOwnershipDelegationsTable.fromPersonId, fromPersonId),
+            eq(portalOwnershipDelegationsTable.done, false),
+          ),
+        )
+        .returning({ id: portalOwnershipDelegationsTable.id });
+
+      log.info({ customerId, fromPersonId, ended: updated.length }, "portal ownership handover ended");
+      res.json({ ok: true, ended: updated.length });
+    } catch (err) {
+      log.error(
+        { customerId, fromPersonId, err: err instanceof Error ? err.message : String(err) },
+        "portal ownership handover end failed",
+      );
+      res.status(500).json({ error: "That handover could not be ended." });
+    }
+  },
+);
+
+/**
+ * Add a row to the matrix — the add-a-row slide-over (`source: "custom"`) or
+ * "Give it a row" in the coverage panel (`source: "coverage"`). Upserts on
+ * (customer, rowId) so a coverage id promoted twice does not duplicate. A custom
+ * row carries its own type/name; a coverage row's come from its fixture entry, so
+ * they may be blank here.
+ */
+router.post(
+  "/portal/ownership/rows",
+  requireRole("CustomerUser"),
+  async (req: Request, res: Response): Promise<void> => {
+    const customerId = scopedCustomerId(req, res);
+    if (customerId === null) return;
+
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const rowId = bodyStr(body.rowId);
+    const source = bodyStr(body.source);
+    const objType = bodyStr(body.objType);
+    const name = bodyStr(body.name);
+    const sub = bodyStr(body.sub);
+    if (!rowId || (source !== "custom" && source !== "coverage")) {
+      res.status(400).json({ error: 'rowId and a source of "custom" or "coverage" are required' });
+      return;
+    }
+    if (source === "custom" && (!objType || !name)) {
+      res.status(400).json({ error: "a custom row requires objType and name" });
+      return;
+    }
+
+    try {
+      await db
+        .insert(portalOwnershipRowsTable)
+        .values({
+          customerId,
+          rowId,
+          source,
+          objType: objType || null,
+          name: name || null,
+          sub: sub || null,
+        })
+        .onConflictDoUpdate({
+          target: [portalOwnershipRowsTable.customerId, portalOwnershipRowsTable.rowId],
+          set: { source, objType: objType || null, name: name || null, sub: sub || null },
+        });
+
+      log.info({ customerId, rowId, source }, "portal ownership row added");
+      res.json({ ok: true, row: toWireRow({ rowId, source, objType: objType || null, name: name || null, sub: sub || null }) });
+    } catch (err) {
+      log.error(
+        { customerId, rowId, err: err instanceof Error ? err.message : String(err) },
+        "portal ownership add-row failed",
+      );
+      res.status(500).json({ error: "That row could not be saved." });
     }
   },
 );
