@@ -1,7 +1,7 @@
 {
   "feature": "Customer Portal v2 -- THE SHELL'S FIVE SYSTEMS (Part 1), recreated from 'Customer Portal Shell.dc.html'. The global chrome that renders on every /portal-v2 page: the command palette (Cmd-K), ShaneBot (selection chip + chat panel + launcher), the alerts tray with real smart alerts and a hold-windows section, the account menu, the New menu, the knowledge-base overlay, and the change-control header badge. All UI-only against the design's own fixtures in components/portal-v2/shell/; the palette ranking + 14-cap are unit-tested in shell/paletteIndex.test.ts.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "6ca3b7b7",
+  "lastVerifiedAgainstCommit": "c2187f48",
   "notes": [
     "THE LOGIN BLOCK IS NOT OPTIONAL. /portal-v2/* sits behind ProtectedRoute.",
     "UI ROUTE SHAPE: /portal/{slug}/portal-v2. The shell chrome renders on every portal-v2 page; this exercises it from the Overview.",
