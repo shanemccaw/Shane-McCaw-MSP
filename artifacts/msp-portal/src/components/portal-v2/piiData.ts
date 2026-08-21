@@ -332,7 +332,7 @@ export const PII_LINKS: readonly PiiLink[] = [
   {
     label: "SOPs & Runbooks",
     note: "Three procedures cover PII: link revocation, permission reset, and leaver drive handling.",
-    to: "/portal-v2/sop-hub",
+    to: "/portal-v2/sops",
   },
   {
     label: "Security Plan",

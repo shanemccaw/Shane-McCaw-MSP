@@ -1,14 +1,17 @@
 {
-  "feature": "Customer Portal v2 Part 7 -- PII Governance (/portal-v2/pii), a new Governance page recreated from the prototype's `isPii` block ('Customer Portal Shell.dc.html' 4106-4256), its PII fixture (7872-7922) and its render derivation (20095-20196). Where personal data lives, who can reach it, what moved, and what is required of each finding -- findings become risks and changes, never tickets. Fixture in piiData.ts; the four stat counts, the headline totals, the per-source bar and the finding filter are derived in piiModel.ts and pinned by piiModel.test.ts. The design's fixed 'N exposed' nav badge is wired through portalV2Nav.ts.",
+  "feature": "Customer Portal v2 -- PII Governance (/portal-v2/pii), WIRED TO REAL DATA. The page previously rendered the design fixture PII_GOVERNANCE (piiData.ts) -- a fictional per-document PII discovery scan with named SharePoint/OneDrive/Teams/Exchange sources, matched patterns, an access matrix and a drift feed. It now renders the calling customer's OWN real data from GET /api/portal/pii-governance (requireRole('CustomerUser'), scoped by (msp_id, tenants.tenantId) off the JWT). The real backing is the four aggregate Purview compliance monitor-checks (compliance:missing-labels / label-errors / weak-dlp-policies / dlp-incidents) already scored by copilot-readiness.ts -- org-level COUNTS + a matched-severity sentence, not per-document detail. There is no content-inspection PII discovery scan in the platform, so the fixture's sources/patterns/access/drift have no collected backing and are NOT shown; the 'Where this comes from' panel names every backing check's real status instead.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "PENDING-PART7",
+  "lastVerifiedAgainstCommit": "PENDING-PII-REAL",
   "notes": [
-    "THE LOGIN BLOCK IS NOT OPTIONAL. /portal-v2/* sits behind ProtectedRoute; a probe that skips the five login steps hits the login screen and every assertion fails for a reason unrelated to the page. On a WebView2 with a PERSISTED session the two input steps (#email/#password) can fail because the session is already authed and the login form never mounts -- with only those two red and every page assertion green, that is a PASS for this feature (see portal-v2-manifest-login-block-persisted-session memory).",
-    "UI ROUTE SHAPE: msp-portal's outer WouterRouter has base '/portal' and SlugScope nests a second router at '/{slug}', so the real URL is /portal/{slug}/portal-v2/pii. App.tsx declares '/portal-v2/pii' BEFORE '/portal-v2/:pillar' so the param route cannot swallow it -- PII is a plain, param-free route.",
-    "shaneapp://runTest hits the DEPLOYED build, not the local worktree -- PII Governance is new in Part 7, so the dev server must carry this commit before the route resolves. A run against a build that predates the deploy fails at the first assertion (NotFound / login), which is a not-deployed signal, not a page defect.",
-    "REAL INTERACTIONS DRIVEN: the stat-card filter (PII8-PII9 -- clicking 'High severity' drops the Low finding PII-06 out of the list, real local UI state and the piiModel filter) and the expand-in-place finding (PII6-PII7 -- clicking a finding reveals its detail and its three moves). The four stat counts, the headline sum and the source-bar widths are pinned by piiModel.test.ts (unit) rather than re-driven here.",
-    "THE 'Raise the change to fix it' / 'RSK-014 on the register' / 'Accept it as a decision' buttons navigate into other modules where those exist (Change Control, Risk Register) and are inert where the target page does not exist yet (Policy Decisions is Part 5); this manifest asserts they RENDER, not that they navigate.",
-    "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD."
+    "WHAT CHANGED AND WHY THE OLD ASSERTIONS ARE GONE. The previous version asserted the FIXTURE: 'At risk' status, the summed 'files hold personal data' headline, four fixture findings PII-01..PII-06, the RSK-014 per-finding risk button, the four named sources (SharePoint sites / Exchange attachments), the seven patterns (National insurance and SSN / Halden employee number format), the access rows (2 external accountants) and the drift feed. Every one of those was fixture data with no collected backing and is now false for any real tenant. They are replaced, not deleted quietly -- the fixture derivations they pinned still run over the fixture on purpose in src/components/portal-v2/piiModel.test.ts; the REAL transform is pinned in artifacts/api-server/src/lib/portal-pii-governance.test.ts and src/components/portal-v2/piiGovernanceWire.test.ts.",
+    "THE TESTBED TENANT HAS NO OK-STATUS BACKING DATA, AND THAT IS STATED PLAINLY. For tenant c4c814d4-3afe-441e-9145-62461d0a4fd3 (tenants.id 1, behind TEST_PORTAL_EMAIL) every one of the four backing checks' most-recent run is status=error ('Could not establish a Security & Compliance session for the target tenant') -- verified live via shaneapp://executeSql. So the honest live state is: findings=[], status 'Not collected', and a coverage panel of four rows each showing the check's real label and a 'Scan error' chip. This manifest asserts that REAL honest state, NOT a fabricated clean result. The tenant_monitor_profiles table is the production scoring surface, so it was deliberately NOT seeded with ok rows (that would corrupt pillar scores platform-wide) -- unlike the risk-register seed, which used an isolated table.",
+    "WHY THE COVERAGE LABELS ARE THE REAL API-TO-DOM PROOF. The four 'Where this comes from' labels ('Sensitivity labels defined but disabled', 'Sensitivity label policies failed to distribute', 'DLP policies not actively enforcing', 'DLP-related activity in the last 30 days') are served by the route (from PII_GOVERNANCE_CHECKS in the lib) and rendered from the response, not hardcoded in the page -- so A4's extract of $.coverage[0].label and UI6's textContains of the interpolated {{firstCoverageLabel}} is the genuine endpoint->DOM integration, per CLAUDE.md's apiTests+textContains rule.",
+    "THE HEADLINE IS DERIVED, ROBUST ACROSS STATES. piiSignalHeadline always contains the phrase 'governance signal' whether the tenant has live findings ('N data-governance signals need attention'), ok-but-quiet checks ('...are firing on this tenant right now') or no collected data ('...have been collected for this tenant yet'). UI3 asserts that phrase rather than a volatile count, so a later real collection does not turn this red.",
+    "THE LOGIN BLOCK IS NOT OPTIONAL. /portal-v2/* sits behind ProtectedRoute; a probe that skips login hits the login screen and every assertion fails for an unrelated reason. On a WebView2 with a PERSISTED session the two input steps (#email/#password) can fail because the form never mounts -- with only those two red and every page assertion green, that is a PASS for this feature (see portal-v2-manifest-login-block-persisted-session memory).",
+    "ROLE FLOOR IS CustomerUser, matching its Governance sibling portal-risk-register.ts (higher than the Assessment floor used by change-control/remediation). TEST_PORTAL_EMAIL is a real CustomerUser (verified against the users/tenants join in portal-risk-register.ts's header), so both the apiTests bearer and the UI login reach the floor.",
+    "UI ROUTE SHAPE: msp-portal's outer WouterRouter has base '/portal' and SlugScope nests a second router at '/{slug}', so the real URL is /portal/{slug}/portal-v2/pii. App.tsx declares '/portal-v2/pii' BEFORE '/portal-v2/:pillar' so the param route cannot swallow it.",
+    "shaneapp://runTest hits the DEPLOYED build, not the local worktree -- the /api/portal/pii-governance route is NEW, so the dev server must carry this commit before the route resolves. A run against a build that predates the deploy fails A1 (NotFound/404) or the coverage assertions, which is a not-deployed signal, not a page defect.",
+    "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD, TEST_PORTAL_SLUG."
   ],
   "apiTests": [
     {
@@ -19,154 +22,115 @@
       "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
       "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
       "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "A1 -- the customer-scoped PII governance endpoint answers, and answers with a findings ARRAY. This is the endpoint that did not exist before this build.",
+      "method": "GET",
+      "path": "/api/portal/pii-governance",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.findings", "isArray": true }
+    },
+    {
+      "name": "A2 -- the coverage block is an ARRAY (every backing check's real status).",
+      "method": "GET",
+      "path": "/api/portal/pii-governance",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.coverage", "isArray": true }
+    },
+    {
+      "name": "A3 -- the cadence is served (the backing checks' collection cadence).",
+      "method": "GET",
+      "path": "/api/portal/pii-governance",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.cadence", "exists": true }
+    },
+    {
+      "name": "A4 -- extract the first coverage entry's label. UI6 asserts this exact string reaches the DOM, which is the real API-to-DOM integration proof.",
+      "method": "GET",
+      "path": "/api/portal/pii-governance",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.coverage[0].label", "exists": true },
+      "extract": { "as": "firstCoverageLabel", "jsonPath": "$.coverage[0].label" }
     }
   ],
   "uiSteps": [
-    {
-      "name": "goto the real login URL (outer WouterRouter base = '/portal').",
-      "action": "goto",
-      "target": "/portal/login"
-    },
-    {
-      "name": "WAIT for the login form to hydrate before typing.",
-      "action": "expect",
-      "selector": "#email",
-      "state": "visible"
-    },
+    { "name": "goto the real login URL (outer WouterRouter base = '/portal').", "action": "goto", "target": "/portal/login" },
+    { "name": "WAIT for the login form to hydrate before typing.", "action": "expect", "selector": "#email", "state": "visible" },
     { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
     { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
+    { "name": "Primary login -- every assertion below needs a real session.", "action": "click", "selector": "[data-testid='login-submit']", "critical": true },
+    { "name": "goto the PII Governance page on its slug-scoped route.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/pii" },
     {
-      "name": "Primary login -- every assertion below needs a real session.",
-      "action": "click",
-      "selector": "[data-testid='login-submit']",
-      "critical": true
-    },
-    {
-      "name": "goto the PII Governance page on its slug-scoped route.",
-      "action": "goto",
-      "target": "/portal/shane-mccaw-consulting/portal-v2/pii"
-    },
-    {
-      "name": "PII1 -- the page resolved to PII Governance, not NotFound and not the param pillar route.",
+      "name": "UI1 -- the page resolved to PII Governance, not NotFound and not the param pillar route.",
       "action": "expect",
       "selector": "[data-testid='pv2-pii-page']",
       "state": "present",
       "critical": true
     },
     {
-      "name": "PII2 -- the header carries the purple kicker and the owner subtitle 'Answers for personal data'.",
+      "name": "UI2 -- the header carries the owner subtitle 'Answers for personal data'.",
       "action": "expect",
       "selector": "[data-testid='pv2-pii-page']",
       "textContains": "Answers for personal data"
     },
     {
-      "name": "PII3 -- the headline is the summed file total and the exposed count, not a hardcoded string.",
+      "name": "UI3 -- the derived headline renders (robust across live/quiet/not-collected).",
       "action": "expect",
       "selector": "[data-testid='pv2-pii-heading']",
-      "textContains": "files hold personal data"
+      "textContains": "governance signal"
     },
     {
-      "name": "PII4 -- the status pill reads 'At risk'.",
+      "name": "UI4 -- the status pill renders one of the three real states.",
       "action": "expect",
       "selector": "[data-testid='pv2-pii-status']",
-      "textContains": "At risk"
+      "textContains": ["At risk", "Monitored", "Not collected"]
     },
     {
-      "name": "PII5 -- the four stat cards carry the design's labels.",
+      "name": "UI5 -- the four real stat tiles carry the wired labels (not the fixture's exposure/file tiles).",
       "action": "expect",
       "selector": "[data-testid='pv2-pii-stats']",
-      "textContains": ["High severity", "Reachable outside", "No sensitivity label", "Locations in total"]
+      "textContains": ["High severity", "Needs attention", "Signals in total", "Checks unavailable"]
     },
     {
-      "name": "PII6 -- expand the first finding.",
-      "action": "click",
-      "selector": "[data-testid='pv2-pii-finding-toggle-PII-01']"
-    },
-    {
-      "name": "PII7 -- the expanded finding shows its detail and its three moves.",
+      "name": "UI6 -- the 'Where this comes from' panel shows the FIRST coverage label the API returned (real endpoint->DOM integration).",
       "action": "expect",
-      "selector": "[data-testid='pv2-pii-finding-open-PII-01']",
-      "textContains": ["Raise the change to fix it", "RSK-014 on the register", "Accept it as a decision"]
+      "selector": "[data-testid='pv2-pii-coverage']",
+      "textContains": "{{firstCoverageLabel}}"
     },
     {
-      "name": "PII8 -- filter to High severity by clicking the stat card.",
-      "action": "click",
-      "selector": "[data-testid='pv2-pii-stat-High']"
-    },
-    {
-      "name": "PII9 -- the Low finding PII-06 drops out of the filtered list (real filter, not a static page).",
+      "name": "UI7 -- the coverage panel names all four real backing checks, served by the route.",
       "action": "expect",
-      "selector": "[data-testid='pv2-pii-finding-PII-06']",
-      "state": "absent"
+      "selector": "[data-testid='pv2-pii-coverage']",
+      "textContains": [
+        "Sensitivity labels defined but disabled",
+        "Sensitivity label policies failed to distribute",
+        "DLP policies not actively enforcing",
+        "DLP-related activity in the last 30 days"
+      ]
     },
     {
-      "name": "PII10 -- clear the filter again so the full list returns.",
-      "action": "click",
-      "selector": "[data-testid='pv2-pii-stat-High']"
-    },
-    {
-      "name": "PII11 -- 'Who can reach it' lists the external-access rows.",
+      "name": "UI8 -- the section labels the real page renders are in the DOM.",
       "action": "expect",
-      "selector": "[data-testid='pv2-pii-access']",
-      "textContains": ["2 external accountants", "Anyone with the link"]
+      "selector": "[data-testid='pv2-pii-page']",
+      "textContains": ["Findings", "Where this comes from", "What a finding is wired into"]
     },
     {
-      "name": "PII12 -- 'What moved' names the drift and its verdict.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-pii-drift']",
-      "textContains": ["Anonymous link created on HR / Personnel Files", "No change request behind it"]
-    },
-    {
-      "name": "PII13 -- 'Where it was found' lists the four scanned sources.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-pii-sources']",
-      "textContains": ["SharePoint sites", "Exchange attachments"]
-    },
-    {
-      "name": "PII14 -- 'What it looks for' lists the patterns and tags the custom one.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-pii-patterns']",
-      "textContains": ["National insurance and SSN", "Halden employee number format", "Yours"]
-    },
-    {
-      "name": "PII15 -- the 'Add a pattern' control is present.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-pii-add-pattern']",
-      "textContains": "Add a pattern"
-    },
-    {
-      "name": "PII16 -- 'What a finding is wired into' lists the five module links.",
+      "name": "UI9 -- 'What a finding is wired into' lists the five module links.",
       "action": "expect",
       "selector": "[data-testid='pv2-pii-links']",
       "textContains": ["Risk Register", "Change Control", "Policy Decisions", "SOPs & Runbooks", "Security Plan"]
     },
     {
-      "name": "PII17 -- the four section labels the audit probes for render in the DOM.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-pii-page']",
-      "textContains": ["Who can reach it", "Where it was found", "What it looks for", "What a finding is wired into"]
-    },
-    {
-      "name": "PII18 -- the nav row carries the design's fixed '3 exposed' badge.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-nav-pii-badge']",
-      "textContains": "3 exposed"
-    },
-    {
-      "name": "PII19 -- from the Overview, clicking the PII nav row navigates to the page. Go to Overview first.",
+      "name": "UI10 -- from the Overview, clicking the PII nav row navigates to the page. Go to Overview first.",
       "action": "goto",
       "target": "/portal/shane-mccaw-consulting/portal-v2"
     },
+    { "name": "UI11 -- click the PII Governance nav row.", "action": "click", "selector": "[data-testid='pv2-nav-pii']" },
     {
-      "name": "PII20 -- click the PII Governance nav row.",
-      "action": "click",
-      "selector": "[data-testid='pv2-nav-pii']"
-    },
-    {
-      "name": "PII21 -- it lands on the PII Governance page.",
+      "name": "UI12 -- it lands on the PII Governance page.",
       "action": "expect",
       "selector": "[data-testid='pv2-pii-heading']",
-      "textContains": "files hold personal data"
+      "textContains": "governance signal"
     }
   ]
 }

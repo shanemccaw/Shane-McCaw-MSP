@@ -4,6 +4,7 @@ export default defineConfig({
   test: {
     include: [
       "src/lib/portal-message-center.test.ts",
+      "src/lib/portal-pii-governance.test.ts",
       "src/lib/doc-gate-coverage.test.ts",
       "src/lib/portal-ownership.test.ts",
       "src/lib/lead-intent.test.ts",
