@@ -1,0 +1,55 @@
+{
+  "feature": "Customer Portal home landing re-route: a CustomerUser's post-login 'home' now resolves to the new /portal-v2 Overview instead of the legacy /m365-health page. Additive only -- the old pages (/m365-health, /governance, /security-overview, ...) stay live and directly URL-reachable as the fallback; no old page file was deleted, redirected, or touched. Landing resolvers changed to /portal-v2 for mspRole==='CustomerUser': App.tsx SlugInnerSwitch defaultLanding, SetupMfaPage, the slug-redirect effect, the /customer-dashboard alias redirect; login.tsx (already-authed redirect + post-login resolvedLanding); auth-context.tsx (both impersonation paths); account-setup.tsx; accept-agreement.tsx. Assessment (/copilot-readiness) and non-customer (/dashboard) landings are untouched.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "87b49945",
+
+  "notes": [
+    "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL, and a dedicated CustomerUser-role portal login TEST_CUSTOMER_EMAIL / TEST_CUSTOMER_PASSWORD. This is a NEW pair distinct from TEST_PORTAL_EMAIL/PASSWORD, which is the Assessment-role testbed account every other portal manifest drives -- an Assessment login lands on /copilot-readiness (deliberately UNCHANGED by this feature) and therefore CANNOT exercise the CustomerUser landing this manifest asserts. A real CustomerUser testbed account exists on the shane-mccaw-consulting testbed tenant (shanemccaw+buyassessment@outlook.com, users.id=39, mfa_enforced=false, 0 MFA enrollments -- a clean no-MFA login); point TEST_CUSTOMER_EMAIL/PASSWORD at it. SHANE TO-DO: set these two vars so this manifest runs in the regression sweep. See the 'LAST REAL RUN' note for how it was verified this session against a temporary hardcoded copy.",
+    "WHY A CustomerUser LOGIN IS THE POINT: the whole feature is 'mspRole==='CustomerUser' -> land on /portal-v2'. The runner's `goto` to any /login URL force-clears the session first (UiTestExecutor.EnsureLoggedOutForOriginAsync), so the form login below reliably authenticates as THIS account regardless of any persisted prior session. After login-submit there is deliberately NO explicit goto -- the assertion that the /portal-v2 Overview shell renders can ONLY be true if the post-login redirect (login.tsx resolvedLanding) sent the CustomerUser there. The negative control (the legacy /m365-health hero score is ABSENT right after login) proves it did NOT land on the old page.",
+    "LAST REAL RUN (shaneapp://runTest, 2026-08-21, against deployed commit 87b49945f == this feature's own work commit, confirmed via GET /api/internal/deploy-status): PASS. Run this session against a temporary copy with the CustomerUser creds inlined (the committed manifest uses the TEST_CUSTOMER_* vars above, which were not yet provisioned in Settings). The login POST returned mspRole=CustomerUser / mspSlug=shane-mccaw-consulting / no mfaRequired; after login-submit the app landed on /portal/shane-mccaw-consulting/portal-v2 (pv2-page-title 'Tenant health' visible, m365-health-score-value absent); and the legacy /m365-health page still rendered its hero score on a direct goto (additive/non-destructive confirmed)."
+  ],
+
+  "uiSteps": [
+    {
+      "name": "goto the real login URL (msp-portal's outer WouterRouter has base=BASE_PATH='/portal'). The runner force-logs-out on any /login goto, so the form renders even if a prior session persisted.",
+      "action": "goto",
+      "target": "/portal/login"
+    },
+    { "action": "expect", "selector": "#email", "state": "visible" },
+    { "action": "input", "selector": "#email", "value": "{{TEST_CUSTOMER_EMAIL}}" },
+    { "action": "input", "selector": "#password", "value": "{{TEST_CUSTOMER_PASSWORD}}" },
+    {
+      "name": "Primary login AS A CustomerUser -- critical: the whole landing assertion depends on a real CustomerUser session. Assert the login response carries mspRole=CustomerUser so a regression that changed the account's role would surface here, not as a confusing landing miss.",
+      "action": "click",
+      "selector": "[data-testid='login-submit']",
+      "critical": true,
+      "captureResponse": {
+        "urlPattern": "/api/auth/login",
+        "expect": { "status": 200, "jsonPath": "$.user.mspRole", "value": "CustomerUser" }
+      }
+    },
+    {
+      "name": "LANDING -- with NO explicit goto, the /portal-v2 Overview shell renders. This is only true if the post-login redirect resolved a CustomerUser's home to /portal-v2 (the feature under test).",
+      "action": "expect",
+      "selector": "[data-testid='pv2-page-title']",
+      "state": "visible",
+      "textContains": "at risk"
+    },
+    {
+      "name": "NEGATIVE CONTROL -- the legacy /m365-health hero score is ABSENT here, proving the CustomerUser did NOT land on the old page.",
+      "action": "expect",
+      "selector": "[data-testid='m365-health-score-value']",
+      "state": "absent"
+    },
+    {
+      "name": "ADDITIVE -- the legacy /m365-health page is still directly URL-reachable (slug-scoped route, untouched by this feature): its hero score renders on a direct goto, proving the old page was neither deleted nor redirected.",
+      "action": "goto",
+      "target": "/portal/shane-mccaw-consulting/m365-health"
+    },
+    {
+      "action": "expect",
+      "selector": "[data-testid='m365-health-score-value']",
+      "state": "visible"
+    }
+  ]
+}
