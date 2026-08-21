@@ -195,6 +195,8 @@
                                 <MenuItem Header="git stash"       Click="GitChip_Click" Tag="git stash"/>
                                 <Separator/>
                                 <MenuItem Header="dotnet build"    Click="GitChip_Click" Tag="dotnet build --configuration Release"/>
+                                <Separator/>
+                                <MenuItem Header="Open SQL Runner" Click="OpenSql_Click"/>
                             </MenuItem>
 
                             <MenuItem Header="_Help">
