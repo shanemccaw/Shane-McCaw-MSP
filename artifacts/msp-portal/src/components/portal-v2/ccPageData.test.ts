@@ -1,175 +1,190 @@
 /**
- * ccPageData.test.ts — the Change Control page's view model.
+ * ccPageData.test.ts — the Change Control module's pure derivations.
  *
- * The filter predicate and the two derived tabs are what these cover. The
- * filter is worth pinning because it was ported clause-for-clause from the
- * prototype and has one behaviour that reads like a bug and is not: the search
- * box does NOT search the requester, the rationale or the window.
+ * Run with: npx tsx --test src/components/portal-v2/ccPageData.test.ts
+ *
+ * These pin the derivations most easily lost in a port of this size: the
+ * required-section completeness maths, the freeze-collision predicate, the
+ * register filter, the Gantt trailing-label clamp (an off-by-one there pushes a
+ * label off the 15-column timeline), and the freeze-calendar month builder.
  */
 
-import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { describe, it } from "node:test";
 
 import {
-  CC_DEFAULT_FILTERS,
-  deriveVaultRows,
-  deriveWindowRows,
-  filterChangeRequests,
-  formatRetentionExpiry,
+  apprState,
+  barTextSpan,
+  buildCalendar,
+  CC_CATALOGUE,
+  CC_CATS,
+  CC_CRS,
+  CC_FREEZES,
+  CC_MSC,
+  CC_MSC_TRAY,
+  CC_SECS,
+  CC_STAT_SETS,
+  compOf,
+  css,
+  filterRegister,
+  inFreeze,
+  matchSF,
+  secDone,
 } from "./ccPageData";
-import type { ChangeRequest } from "./useChangeControl";
 
-function cr(over: Partial<ChangeRequest> = {}): ChangeRequest {
-  return {
-    code: "CR-2026-101",
-    title: "Enable CA001 — block legacy authentication",
-    changeClass: "Normal",
-    status: "Pending approval",
-    workload: "Conditional Access",
-    target: "PATCH /v1.0/identity/conditionalAccess/policies/{id}",
-    ticket: "CHG-0912",
-    requester: "jordan.diaz@example.com",
-    window: "Thu 27 Aug · 07:00–09:00",
-    risk: "High",
-    impactedUsersCount: 1240,
-    rationale: "7-day report-only review complete.",
-    pre: "{}",
-    post: "{}",
-    approvals: ["Awaiting approval"],
-    canApprove: true,
-    canRollback: false,
-    executedAt: null,
-    backupVerified: false,
-    createdAt: "2026-08-19T10:00:00.000Z",
-    ...over,
-  };
-}
+const byCode = (code: string) => CC_CRS.find((c) => c.code === code)!;
+const DEFAULT_FILTERS = { query: "", fRisk: "All risk", fState: "All states", fWork: "All workloads", statFilter: null as string | null };
 
-describe("filterChangeRequests", () => {
-  it("returns everything under the default filters", () => {
-    const rows = [cr(), cr({ code: "CR-2026-102" })];
-    assert.equal((filterChangeRequests(rows, CC_DEFAULT_FILTERS)).length, 2);
+describe("fixture integrity", () => {
+  it("has five change requests with unique codes", () => {
+    assert.equal(CC_CRS.length, 5);
+    assert.equal(new Set(CC_CRS.map((c) => c.code)).size, 5);
   });
 
-  it("ANDs the three selects together", () => {
-    const rows = [
-      cr({ code: "A", changeClass: "Normal", status: "Scheduled", workload: "Intune" }),
-      cr({ code: "B", changeClass: "Normal", status: "Scheduled", workload: "Defender" }),
-      cr({ code: "C", changeClass: "Emergency", status: "Scheduled", workload: "Intune" }),
-    ];
-    const out = filterChangeRequests(rows, {
-      changeClass: "Normal",
-      status: "Scheduled",
-      workload: "Intune",
-      query: "",
-    });
-    assert.deepEqual(out.map((r) => r.code), ["A"]);
+  it("has 24 catalogue entries, each in a known category", () => {
+    assert.equal(CC_CATALOGUE.length, 24);
+    const cats = new Set<string>(CC_CATS);
+    for (const c of CC_CATALOGUE) assert.ok(cats.has(c.cat), `unknown category ${c.cat}`);
   });
 
-  it("searches code, title, target and ticket — case-insensitively", () => {
-    const rows = [cr({ code: "CR-2026-184", ticket: "INC-4471" })];
-    for (const q of ["cr-2026-184", "LEGACY", "conditionalaccess", "inc-4471"]) {
-      assert.equal((filterChangeRequests(rows, { ...CC_DEFAULT_FILTERS, query: q })).length, 1);
-    }
-  });
-
-  it("does NOT search the requester, rationale or window — the prototype's own haystack", () => {
-    // Reads like a gap and is the design's behaviour (proto 15008). Pinned so
-    // that widening it later is a deliberate decision rather than a drift.
-    const rows = [cr({ requester: "jordan.diaz@example.com", rationale: "report-only review" })];
-    assert.equal((filterChangeRequests(rows, { ...CC_DEFAULT_FILTERS, query: "jordan" })).length, 0);
-    assert.equal((filterChangeRequests(rows, { ...CC_DEFAULT_FILTERS, query: "report-only" })).length, 0);
-  });
-
-  it("ignores surrounding whitespace in the query", () => {
-    assert.equal(filterChangeRequests([cr()], { ...CC_DEFAULT_FILTERS, query: "   " }).length, 1);
+  it("every stat-set code resolves to a CR, a Microsoft change or the tray", () => {
+    const known = new Set<string>([...CC_CRS.map((c) => c.code), ...CC_MSC.map((m) => m.id), CC_MSC_TRAY.id]);
+    for (const set of Object.values(CC_STAT_SETS)) for (const code of set) assert.ok(known.has(code), `unknown stat code ${code}`);
   });
 });
 
-describe("deriveWindowRows", () => {
-  it("groups open changes by their exact window string", () => {
-    const rows = [
-      cr({ code: "A", window: "Thu 27 Aug · 07:00–09:00", status: "Scheduled" }),
-      cr({ code: "B", window: "Thu 27 Aug · 07:00–09:00", status: "Approved" }),
-      cr({ code: "C", window: "Tue 25 Aug · 09:00–11:00", status: "Pending approval" }),
-    ];
-    const out = deriveWindowRows(rows);
-    assert.equal((out).length, 2);
-    // Largest group first.
-    assert.equal(out[0].when, "Thu 27 Aug · 07:00–09:00");
-    assert.equal((out[0].items).length, 2);
-    assert.equal(out[0].note, "2 changes booked into this window.");
-    assert.equal(out[1].note, "1 change booked into this window.");
+describe("compOf / secDone", () => {
+  it("counts required sections only (six of eleven are required)", () => {
+    assert.equal(CC_SECS.filter((s) => s.req).length, 6);
   });
 
-  it("excludes changes that are no longer open", () => {
-    const rows = [
-      cr({ code: "A", window: "W", status: "Implemented" }),
-      cr({ code: "B", window: "W", status: "Rejected" }),
-      cr({ code: "C", window: "W", status: "Rolled back" }),
-    ];
-    assert.equal((deriveWindowRows(rows)).length, 0);
+  it("CR-0142 with no missing sections is complete", () => {
+    const c = compOf(byCode("CR-0142"));
+    assert.deepEqual(c, { done: 6, total: 6, pct: 100 });
   });
 
-  it("skips a change with no window rather than grouping every blank together", () => {
-    const rows = [cr({ code: "A", window: "" }), cr({ code: "B", window: "   " })];
-    assert.equal((deriveWindowRows(rows)).length, 0);
+  it("CR-0147 missing four required sections is 2 of 6", () => {
+    const c = compOf(byCode("CR-0147"));
+    assert.deepEqual(c, { done: 2, total: 6, pct: 33 });
   });
 
-  it("flags a window carrying an emergency change", () => {
-    const out = deriveWindowRows([cr({ changeClass: "Emergency", window: "Now" })]);
-    assert.equal(out[0].kind, "Emergency change");
-    assert.equal(out[0].tone, "#f87171");
+  it("CR-0151 missing test (pir is not required) is 5 of 6", () => {
+    const c = compOf(byCode("CR-0151"));
+    assert.deepEqual(c, { done: 5, total: 6, pct: 83 });
   });
 
-  it("is stable for equal-sized groups", () => {
-    const rows = [cr({ code: "A", window: "Zeta" }), cr({ code: "B", window: "Alpha" })];
-    assert.deepEqual(deriveWindowRows(rows).map((w) => w.when), ["Alpha", "Zeta"]);
+  it("secDone reads the missing list", () => {
+    assert.equal(secDone(byCode("CR-0147"), "impact"), false);
+    assert.equal(secDone(byCode("CR-0147"), "request"), true);
   });
 });
 
-describe("deriveVaultRows", () => {
-  it("holds only changes that actually executed", () => {
-    const rows = [
-      cr({ code: "A", status: "Implemented" }),
-      cr({ code: "B", status: "Rolled back" }),
-      cr({ code: "C", status: "Pending approval" }),
-      cr({ code: "D", status: "Rejected" }),
-    ];
-    assert.deepEqual(deriveVaultRows(rows, 90).map((v) => v.code), ["A", "B"]);
+describe("inFreeze", () => {
+  it("CR-0142 (25 Aug) collides with the 24–28 freeze by default", () => {
+    assert.equal(inFreeze("CR-0142"), true);
   });
-
-  it("says the snapshot was consumed by a rollback rather than giving it an expiry", () => {
-    const [v] = deriveVaultRows([cr({ status: "Rolled back" })], 90);
-    assert.equal(v.isRolledBack, true);
-    assert.equal(v.expires, "Snapshot consumed by rollback");
+  it("a moved CR no longer collides", () => {
+    assert.equal(inFreeze("CR-0142", { moved: { "CR-0142": "Tue 1 September" } }), false);
   });
-
-  it("reports what is really known about the backup, not that a scan verified it", () => {
-    const [unverified] = deriveVaultRows([cr({ status: "Implemented", backupVerified: false })], 90);
-    assert.equal(unverified.verified, "Pre-change snapshot not verified");
-    const [verified] = deriveVaultRows([cr({ status: "Implemented", backupVerified: true })], 90);
-    assert.equal(verified.verified, "Pre-change snapshot verified");
+  it("freezeActive:false suppresses the collision", () => {
+    assert.equal(inFreeze("CR-0142", { freezeActive: false }), false);
   });
-
-  it("labels a missing execution time instead of rendering a blank", () => {
-    const [v] = deriveVaultRows([cr({ status: "Implemented", executedAt: null })], 90);
-    assert.equal(v.when, "Implemented · time not recorded");
+  it("CR-0144 (20 Aug) is outside the freeze", () => {
+    assert.equal(inFreeze("CR-0144"), false);
   });
-
-  it("uses the recorded execution time when there is one", () => {
-    const [v] = deriveVaultRows([cr({ status: "Implemented", executedAt: "12 Aug 14:10" })], 90);
-    assert.equal(v.when, "Implemented 12 Aug 14:10");
+  it("a CR with no scheduled window never collides", () => {
+    assert.equal(inFreeze("CR-0147"), false);
   });
 });
 
-describe("formatRetentionExpiry", () => {
-  it("adds the retention window to the creation date", () => {
-    // 2026-08-19 + 90 days = 2026-11-17.
-    assert.equal(formatRetentionExpiry("2026-08-19T10:00:00.000Z", 90), "17 Nov");
+describe("filterRegister", () => {
+  it("returns all five with default filters", () => {
+    assert.equal(filterRegister(CC_CRS, DEFAULT_FILTERS).length, 5);
   });
+  it("searches code, title, workload and MC id", () => {
+    assert.deepEqual(filterRegister(CC_CRS, { ...DEFAULT_FILTERS, query: "legacy" }).map((c) => c.code), ["CR-0142"]);
+    assert.deepEqual(filterRegister(CC_CRS, { ...DEFAULT_FILTERS, query: "MC1042318" }).map((c) => c.code), ["CR-0142"]);
+    assert.equal(filterRegister(CC_CRS, { ...DEFAULT_FILTERS, query: "teams" }).length, 1);
+  });
+  it("filters by risk", () => {
+    assert.equal(filterRegister(CC_CRS, { ...DEFAULT_FILTERS, fRisk: "High" }).length, 3);
+    assert.deepEqual(filterRegister(CC_CRS, { ...DEFAULT_FILTERS, fRisk: "Low" }).map((c) => c.code), ["CR-0144"]);
+  });
+  it("filters by workload substring", () => {
+    assert.equal(filterRegister(CC_CRS, { ...DEFAULT_FILTERS, fWork: "Exchange Online" }).length, 3);
+  });
+  it("intersects the stat filter", () => {
+    assert.deepEqual(filterRegister(CC_CRS, { ...DEFAULT_FILTERS, statFilter: "waiting" }).map((c) => c.code).sort(), ["CR-0142", "CR-0151"]);
+  });
+});
 
-  it("never renders 'Invalid Date' to a customer", () => {
-    assert.equal(formatRetentionExpiry("not a date", 90), "an unrecorded date");
+describe("matchSF", () => {
+  it("passes everything with no filter", () => {
+    assert.equal(matchSF("CR-0144", null), true);
+  });
+  it("filters to the stat set", () => {
+    assert.equal(matchSF("CR-0142", "waiting"), true);
+    assert.equal(matchSF("CR-0144", "waiting"), false);
+  });
+});
+
+describe("apprState", () => {
+  it("maps each state to its register label and tone", () => {
+    assert.deepEqual(apprState("Awaiting approval"), { label: "Awaiting signature", tone: "#fbbf24" });
+    assert.deepEqual(apprState("Draft"), { label: "Not submitted", tone: "#94a3b8" });
+    assert.deepEqual(apprState("Rolled back"), { label: "Approved, reverted", tone: "#f87171" });
+    assert.deepEqual(apprState("Emergency · retro approval due"), { label: "Retro approval due", tone: "#f87171" });
+    assert.deepEqual(apprState("In test"), { label: "Approved", tone: "#34d399" });
+  });
+});
+
+describe("barTextSpan", () => {
+  it("trails a mid-timeline bar", () => {
+    assert.deepEqual(barTextSpan(9, 1), { col: 10, span: 6 });
+  });
+  it("clamps a bar that reaches the right edge so the label never overflows 15 columns", () => {
+    assert.deepEqual(barTextSpan(14, 2), { col: 15, span: 1 });
+    assert.deepEqual(barTextSpan(15, 1), { col: 15, span: 1 });
+  });
+});
+
+describe("buildCalendar", () => {
+  it("titles the month and offsets forward", () => {
+    assert.equal(buildCalendar(0, CC_FREEZES, null).title, "August 2026");
+    assert.equal(buildCalendar(1, CC_FREEZES, null).title, "September 2026");
+  });
+  it("leads with the right number of blank cells and then day 1", () => {
+    const lead = (new Date(2026, 7, 1).getDay() + 6) % 7;
+    const cal = buildCalendar(0, CC_FREEZES, null);
+    assert.equal(cal.cells.filter((c) => c.blank).length, lead);
+    assert.equal(cal.cells[lead].d, "1");
+  });
+  it("marks the ERP freeze days and today", () => {
+    const cal = buildCalendar(0, CC_FREEZES, null);
+    const d24 = cal.cells.find((c) => c.d === "24" && !c.blank)!;
+    assert.equal(d24.fzTone, "#f87171");
+    assert.equal(d24.isFzStart, true);
+    const today = cal.cells.find((c) => c.today)!;
+    assert.equal(today.d, "20");
+  });
+  it("opens a selected freeze day with the freeze verdict", () => {
+    const cal = buildCalendar(0, CC_FREEZES, "2026-08-25");
+    assert.ok(cal.day);
+    assert.equal(cal.day!.hasFz, true);
+    assert.match(cal.day!.verdict, /Nothing may ship/);
+  });
+});
+
+describe("css", () => {
+  it("parses a design CSS string into a React style object", () => {
+    const out = css("display:flex;grid-column:1 / span 15;background:linear-gradient(180deg,rgba(0,0,0,.1),#fff)") as Record<string, string>;
+    assert.equal(out.display, "flex");
+    assert.equal(out.gridColumn, "1 / span 15");
+    assert.equal(out.background, "linear-gradient(180deg,rgba(0,0,0,.1),#fff)");
+  });
+  it("kebab-cases property names and ignores empty declarations", () => {
+    const out = css("border-bottom-left-radius:0;;text-wrap:pretty;") as Record<string, string>;
+    assert.equal(out.borderBottomLeftRadius, "0");
+    assert.equal(out.textWrap, "pretty");
   });
 });

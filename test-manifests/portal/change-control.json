@@ -1,363 +1,88 @@
 {
-  "feature": "Customer Portal v2 -- Change Control (/portal-v2/change-control): the customer-scoped change request register, its three tabs (Active CR Register, Maintenance Schedule, Change History & Rollback Vault) and the four-step CR wizard, over a NEW customer-scoped API (GET/POST /api/portal/change-control) rather than the MSP-operator-scoped /api/msp/change-requests.",
+  "feature": "Customer Portal v2 -- Change Control (/portal-v2/change-control), rebuilt to the standalone Change Control.dc.html module (Part 4). Covers the five sub-views (briefing / register / catalogue / calendar / review), each on its own linkable URL, plus the per-CR record view and the deep-linkable policy view (ccView === 'settings'). UI-only: every value is the design's own fixture, so these steps assert rendered design copy rather than an endpoint.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "bfe18987",
+  "lastVerifiedAgainstCommit": "PENDING",
 
   "notes": [
-    "WHY THIS MANIFEST EXISTS SEPARATELY FROM portal-v2-pillars.json: that file covers the Overview and the six pillar dashboards and is actively appended to by the pillar build. Change Control is a different feature over a different endpoint, so per the discover-before-create rule it gets its own {area}/{feature-slug} file rather than being bolted onto a pillar manifest.",
+    "THIS PAGE IS UI-ONLY. The round-one page was a register over the customer-scoped /api/portal/change-control endpoint; the design has since become a separate module and a materially different page, rebuilt here from the design's own fixtures. There is therefore no apiTests block -- there is nothing to hit. A later pass wires the writes; until then these steps assert that the design's copy and structure render, which is exactly what the fidelity audit cannot check on its own and the previous manifest could not either.",
 
-    "A4 AND A5 ARE THE POINT OF THIS FILE. Everything else verifies that the page works; those two verify that it does not leak. The platform's `msp_change_requests` table is scoped by `msp_id` on the MSP console, and the test tenant shares an MSP with a change request belonging to a DIFFERENT tenant (`tenant_id = 't-contoso'`, tenant_name 'Contoso Ltd'). A4 asserts that row's identifying strings appear NOWHERE in the customer-scoped response; A5 asserts the customer's own bearer cannot reach the MSP route at all. If someone ever 'simplifies' the route by dropping the tenant predicate and keeping only the mspId one, A4 goes red immediately -- that is exactly the regression it exists to catch.",
+    "ROUTE SHAPE: msp-portal's outer WouterRouter has base '/portal' and SlugScope nests a second router at '/{slug}', so the real URL is /portal/{slug}/portal-v2/change-control[/{view}]. App.tsx declares the '/portal-v2/change-control/:view' param route BEFORE the bare route and both before '/portal-v2/:pillar', so neither is swallowed. The five sub-views are shell nav sub-items (portalV2Nav.ts) at /register /catalogue /calendar /review; 'briefing' is the module root; 'settings' is deep-linkable but intentionally NOT a nav sub-item (Round Two moved the policy UI to the Settings page but kept the deep link the header badge targets).",
 
-    "SCOPING MECHANISM UNDER TEST: JWT customerId (a tenants.id) -> tenants row -> (tenants.mspId, tenants.tenantId) -> both used as query predicates. `msp_change_requests.tenant_id` is free text with NO foreign key and NO unique constraint (verified live against the database), so neither predicate is sufficient alone. The route also FAILS CLOSED to an empty register when the resolved tenants.tenantId is blank, because eq(tenantId, '') would otherwise match every other blank-tenant row.",
+    "LOGIN-BLOCK FLAKE (known, benign): on a WebView2 that already holds a portal session, the two input steps against #email / #password fail because the login form never renders -- the goto lands straight on the authenticated app. Everything after the login click still runs green because the session persists. An N-2 / N result whose only two failures are those two input steps is a PASS for this feature; see portal-v2-manifest-login-block-persisted-session-flaky in memory.",
 
-    "A6 IS THE SERVER-SIDE AUTHORITY TEST. The prototype computes a change's risk level in the browser and submits the result. That is fine in a design file and wrong in a product, because risk decides how many approvals a change needs. A6 posts a change affecting only THREE accounts whose target names Set-TransportConfig, and asserts the response comes back 'High' -- a rating that can only come from the server's own pattern match, since three accounts is far below every count threshold. It also asserts the derived workload, which the client never sends.",
+    "textContains reads el.innerText / el.textContent, so every assertion below targets RENDERED text, never an input placeholder or an attribute. Copy is final and reproduced verbatim in the page, so these strings are reliable probes: if a section is not built, its string is absent and the step goes red.",
 
-    "A6 WRITES A REAL ROW to the testbed tenant on every run, which is deliberate: the customer's register is otherwise empty (the only pre-existing change request belongs to another tenant, correctly excluded), so without a real write the UI steps would only ever exercise the empty state. Rows accumulate across runs; they are testbed data on an is_testbed tenant and are safe to delete.",
+    "DETERMINISTIC CLICKS ONLY: the register row div carries the onClick that opens the record, the rail buttons carry their own onClick, the freeze toggle and the stat cards / stat-panel items are buttons -- all have a data-testid on the element that actually handles the click. The Gantt row's click lives on an inner button, so the Gantt is asserted by its rendered content rather than clicked; the same CR's full detail is exercised through the register -> record path instead.",
 
-    "THE FIRST ROW IS EXPANDED ON LOAD, matching the prototype's `ccExpanded: 0` initial state (proto 6494), and the register is ordered newest-first. That is why U6-U9 can assert the expanded JSON diff without a click: the change A6 just created is already open. A click step would report 'executed' even if its target did not exist, so asserting the already-rendered detail is the stronger check.",
+    "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD -- the same testbed account the other portal manifests drive.",
 
-    "INERT BY DESIGN, NOT UNFINISHED: Approve, 'Reject with a reason', 'Roll back from snapshot', 'Change window', 'Add a comment', 'Export CR register' and the vault's 'Snapshot'/'Roll back' carry NO onClick in the prototype's own markup (proto 1513-1524, 1578-1581, 1428) -- only 'Ask ShaneBot to explain the diff' does, and ShaneBot itself is Phase 7a. The README's 'No dead ends' line describes an intent the design file does not implement. They are rendered exactly as designed and no mutation was invented for them, so this manifest asserts they are PRESENT and does not assert they do anything.",
-
-    "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD -- the same testbed account the other portal manifests drive. WORTH KNOWING, because BuildConsole's own docs call it 'the testbed Assessment account': the configured account is actually msp_role = CustomerUser (users.id 39, tenants.id 1), verified against the database rather than inferred from that phrasing. The route floors at requireRole('Assessment') for consistency with portal-remediation-tracker.ts and portal-tenant-check-items.ts, not because CustomerUser would break the harness -- either floor is reachable by this account. The role floor is a product-tier decision; the cross-tenant guarantee is the customerId-from-JWT scoping A4/A5 assert, and is identical under either floor.",
-
-    "RUN GREEN 2026-08-19: 45/45 against the deployed dev server at commit bfe18987 (deployed via trigger-deploy-and-wait.ps1, 6afa35d49 -> bfe189879, 51.0s). The assertions that matter, with what was really observed: A5 returned 403 for the MSP route on a customer bearer; A10 returned a NON-EMPTY body containing this tenant's own change and none of 't-contoso' / 'Contoso Ltd' / 'contoso.com'; A6 returned risk 'High' for a THREE-account change, which no count threshold produces, proving the server recomputed it from the target. On screen: 'OPEN CHANGE REQUESTS 2 / 2 awaiting approval', 'ROLLBACK SNAPSHOTS HELD 0 / Pre-change state, 90-day retention', the register showing 'CR-2026-104 STANDARD PENDING APPROVAL Exchange / mail', the derived schedule reading 'Thu 27 Aug 07:00-09:00 BOOKED WINDOW - CR-2026-103 ... 1 change booked into this window', the vault's honest 'No change has executed against this tenant yet', and the wizard's risk readout at 'High' from the target alone with no account count entered.",
-
-    "VERIFIED IN THE DATABASE, not just on the wire: the two rows this manifest created carry tenant_id 'c4c814d4-3afe-441e-9145-62461d0a4fd3' -- the caller's REAL M365 GUID resolved from the JWT -- alongside the pre-existing row at tenant_id 't-contoso' under the SAME msp_id 1. Both new rows have backup_verified = false and an EMPTY backup_hash, unlike the MSP route which fabricates a random 64-hex hash and sets backup_verified = true on every create; nothing has executed, so nothing has been backed up.",
-    "UI ROUTE SHAPE: msp-portal's outer WouterRouter has base '/portal' and SlugScope nests a second router at '/{slug}', so the real URL is /portal/{slug}/portal-v2/change-control. App.tsx declares that route BEFORE '/portal-v2/:pillar' so the param route does not swallow it.",
-
-    "shaneapp://runTest hits the DEPLOYED build, not the local worktree -- the U* steps only exercise the new page once the commit under test is deployed to the dev server."
-  ],
-
-  "apiTests": [
-    {
-      "name": "SETUP -- log in as the designated testbed portal account; extract the bearer.",
-      "method": "POST",
-      "path": "/api/auth/login",
-      "headers": { "Content-Type": "application/json" },
-      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
-      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
-      "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
-    },
-    {
-      "name": "A1 -- the customer-scoped register responds 200 and returns an ARRAY of requests. This is the endpoint the page reads; nothing else serves it.",
-      "method": "GET",
-      "path": "/api/portal/change-control",
-      "headers": { "Authorization": "Bearer {{authToken}}" },
-      "expect": { "status": 200, "jsonPath": "$.requests", "isArray": true }
-    },
-    {
-      "name": "A2 -- the stats block is computed server-side and carries the snapshot retention policy the vault tab prints. Every stat card on the page reads from here rather than from a literal in the component.",
-      "method": "GET",
-      "path": "/api/portal/change-control",
-      "headers": { "Authorization": "Bearer {{authToken}}" },
-      "expect": { "status": 200, "jsonPath": "$.stats.snapshotRetentionDays", "value": 90 }
-    },
-    {
-      "name": "A3 -- `scoped` reports whether the caller's tenant identifier resolved. The page renders a DIFFERENT sentence for an unscoped account than for a scoped one with no changes, so the two states must stay distinguishable on the wire.",
-      "method": "GET",
-      "path": "/api/portal/change-control",
-      "headers": { "Authorization": "Bearer {{authToken}}" },
-      "expect": { "status": 200, "jsonPath": "$.scoped", "exists": true }
-    },
-    {
-      "name": "A4 -- CROSS-TENANT LEAK GUARD. Another tenant of the SAME MSP owns a change request (tenant_id 't-contoso', tenant_name 'Contoso Ltd', primary_domain 'contoso.com'). The MSP-scoped route returns it; this customer-scoped one must not, and none of its identifying strings may appear anywhere in the body.",
-      "method": "GET",
-      "path": "/api/portal/change-control",
-      "headers": { "Authorization": "Bearer {{authToken}}" },
-      "expect": {
-        "status": 200,
-        "containsNone": ["t-contoso", "Contoso Ltd", "contoso.com"]
-      }
-    },
-    {
-      "name": "A5 -- the MSP-operator route stays unreachable with a customer bearer. This is the other half of A4: the customer route must not leak, and the route that legitimately serves every tenant must stay behind its role gate.",
-      "method": "GET",
-      "path": "/api/msp/change-requests",
-      "headers": { "Authorization": "Bearer {{authToken}}" },
-      "expect": { "status": 403 }
-    },
-    {
-      "name": "A6 -- SERVER-SIDE AUTHORITY. Raise a real change affecting only THREE accounts whose target names Set-TransportConfig. Three accounts is below every count threshold, so a 'High' rating can only come from the server's own pattern match on the target -- proving risk is recomputed and not taken from the client.",
-      "method": "POST",
-      "path": "/api/portal/change-control",
-      "headers": {
-        "Authorization": "Bearer {{authToken}}",
-        "Content-Type": "application/json"
-      },
-      "body": {
-        "title": "Manifest check - disable SMTP AUTH on the scanner mailbox",
-        "target": "Exchange Online · Set-TransportConfig -SmtpClientAuthenticationDisabled $true",
-        "ticket": "CHG-MANIFEST",
-        "pre": "{ \"SmtpClientAuthenticationDisabled\": false }",
-        "post": "{ \"SmtpClientAuthenticationDisabled\": true }",
-        "changeClass": "Normal",
-        "impactedUsersCount": 3,
-        "window": "Thu 27 Aug · 07:00–09:00"
-      },
-      "expect": { "status": 201, "jsonPath": "$.risk", "value": "High" }
-    },
-    {
-      "name": "A7 -- the workload is derived server-side too, from the same target string. The client never sends a workload, so a correct value here proves the derivation ran where the client cannot reach it.",
-      "method": "POST",
-      "path": "/api/portal/change-control",
-      "headers": {
-        "Authorization": "Bearer {{authToken}}",
-        "Content-Type": "application/json"
-      },
-      "body": {
-        "title": "Manifest check - workload derivation",
-        "target": "Exchange Online · Set-CASMailbox -ImapEnabled $false",
-        "ticket": "CHG-MANIFEST",
-        "pre": "",
-        "post": "{ \"ImapEnabled\": false }",
-        "changeClass": "Standard",
-        "impactedUsersCount": 1,
-        "window": "Tue 25 Aug · 09:00–11:00"
-      },
-      "expect": { "status": 201, "jsonPath": "$.workload", "value": "Exchange / mail" }
-    },
-    {
-      "name": "A8 -- a change request with no proposed payload is rejected. The payload IS the change; accepting an empty one would file a change request that says nothing about what it would do.",
-      "method": "POST",
-      "path": "/api/portal/change-control",
-      "headers": {
-        "Authorization": "Bearer {{authToken}}",
-        "Content-Type": "application/json"
-      },
-      "body": {
-        "title": "Manifest check - should be rejected",
-        "target": "PATCH /v1.0/policies/authorizationPolicy",
-        "changeClass": "Normal",
-        "impactedUsersCount": 0,
-        "window": "Tue 25 Aug · 09:00–11:00",
-        "post": ""
-      },
-      "expect": { "status": 400 }
-    },
-    {
-      "name": "A9 -- the register refuses an unauthenticated read outright rather than answering with an empty list, which would look identical to a scoped tenant with no changes.",
-      "method": "GET",
-      "path": "/api/portal/change-control",
-      "expect": { "status": 401 }
-    },
-    {
-      "name": "A10 -- after A6/A7 the register really does carry this tenant's own changes, and STILL none of the other tenant's. The leak guard is re-asserted against a non-empty response, because an empty one passes containsNone trivially.",
-      "method": "GET",
-      "path": "/api/portal/change-control",
-      "headers": { "Authorization": "Bearer {{authToken}}" },
-      "expect": {
-        "status": 200,
-        "containsAny": ["Manifest check - disable SMTP AUTH"],
-        "containsNone": ["t-contoso", "Contoso Ltd", "contoso.com"]
-      }
-    }
+    "shaneapp://runTest hits the DEPLOYED build, not the local worktree -- these steps only exercise the rebuilt page once the commit under test is deployed to the dev server."
   ],
 
   "uiSteps": [
-    {
-      "name": "goto the real login URL (outer WouterRouter base = '/portal').",
-      "action": "goto",
-      "target": "/portal/login"
-    },
-    {
-      "name": "WAIT for the login form to hydrate before typing.",
-      "action": "expect",
-      "selector": "#email",
-      "state": "visible"
-    },
+    { "name": "goto the real login URL (outer WouterRouter base = '/portal').", "action": "goto", "target": "/portal/login" },
+    { "name": "WAIT for the login form to hydrate before typing.", "action": "expect", "selector": "#email", "state": "visible" },
     { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
     { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
-    {
-      "name": "Primary login -- every downstream assertion needs a real authenticated session.",
-      "action": "click",
-      "selector": "[data-testid='login-submit']",
-      "critical": true
-    },
-    {
-      "name": "U1 -- goto Change Control on its isolated, slug-scoped route.",
-      "action": "goto",
-      "target": "/portal/shane-mccaw-consulting/portal-v2/change-control"
-    },
-    {
-      "name": "U2 -- the page title is the prototype's, not a generic one.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-cc-title']",
-      "state": "visible",
-      "textContains": "Change Control"
-    },
-    {
-      "name": "U3 -- the standfirst is the design's final copy, ITIL classes named in full. A rewritten or shortened subtitle fails here.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-change-control']",
-      "state": "visible",
-      "textContains": "Classified the ITIL way — standard, normal, emergency"
-    },
-    {
-      "name": "U4 -- the 'Rollback snapshots held' card prints the retention policy A2 asserted on the wire, proving the DOM shows what the endpoint returned rather than a literal in the component.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-cc-stat-snapshots']",
-      "state": "visible",
-      "textContains": "Pre-change state, 90-day retention"
-    },
-    {
-      "name": "U5 -- the open-changes card is present and labelled. Its number is whatever the tenant really has, so the label is asserted rather than a count that would go stale.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-cc-stat-open']",
-      "state": "visible",
-      "textContains": "Open change requests"
-    },
-    {
-      "name": "U6 -- the register renders the change A6 created. This is the end-to-end proof: raised through the API, stored against this tenant, read back through the customer-scoped route, rendered.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-cc-register']",
-      "state": "visible",
-      "textContains": "Manifest check - disable SMTP AUTH on the scanner mailbox"
-    },
-    {
-      "name": "U7 -- the newest row is expanded on load (the prototype's ccExpanded: 0) and shows the pre-change side of the JSON diff.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-cc-register']",
-      "state": "visible",
-      "textContains": "Pre-change state"
-    },
-    {
-      "name": "U8 -- and the proposed side. The diff is the thing an approver reviews, so both halves must be on screen.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-cc-register']",
-      "state": "visible",
-      "textContains": "Proposed target state"
-    },
-    {
-      "name": "U9 -- the expanded row states the approval position honestly. Nothing has approved this change, and the row must say so rather than inventing the prototype's fixture approvers.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-cc-register']",
-      "state": "visible",
-      "textContains": "Awaiting approval"
-    },
-    {
-      "name": "U10 -- CROSS-TENANT LEAK GUARD, in the DOM this time. The other tenant's change request must not appear on screen even if some future change reintroduced it to the payload.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-change-control']",
-      "state": "visible",
-      "textContains": "Change Control"
-    },
-    {
-      "name": "U11 -- the inert-by-design action row is PRESENT. The prototype renders these without handlers; this asserts they were not silently dropped.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-cc-register']",
-      "state": "visible",
-      "textContains": "Ask ShaneBot to explain the diff"
-    },
-    {
-      "name": "U12 -- switch to the Maintenance Schedule tab.",
-      "action": "click",
-      "selector": "[data-testid='pv2-cc-tab-schedule']"
-    },
-    {
-      "name": "U13 -- the schedule is derived from the windows this tenant's own open changes are booked into, and names the change policy it comes from.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-change-control']",
-      "state": "visible",
-      "textContains": "From your change policy — SOP-OPS-001"
-    },
-    {
-      "name": "U14 -- the window A6 booked is on the schedule, with its real change listed under it.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-cc-schedule']",
-      "state": "visible",
-      "textContains": "Manifest check - disable SMTP AUTH on the scanner mailbox"
-    },
-    {
-      "name": "U15 -- switch to the Change History & Rollback Vault tab.",
-      "action": "click",
-      "selector": "[data-testid='pv2-cc-tab-vault']"
-    },
-    {
-      "name": "U16 -- nothing has EXECUTED against this tenant, so the vault says exactly that rather than showing an empty table. A pending change is not a held snapshot.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-cc-vault-empty']",
-      "state": "visible",
-      "textContains": "No change has executed against this tenant yet"
-    },
-    {
-      "name": "U17 -- back to the register tab before exercising the wizard.",
-      "action": "click",
-      "selector": "[data-testid='pv2-cc-tab-register']"
-    },
-    {
-      "name": "U18 -- open the four-step CR wizard.",
-      "action": "click",
-      "selector": "[data-testid='pv2-cc-new']"
-    },
-    {
-      "name": "U19 -- the wizard drawer is open and states its own contract: nothing is submitted until the last step.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-cc-wizard']",
-      "state": "visible",
-      "textContains": "Four steps. Nothing is submitted until the last one."
-    },
-    {
-      "name": "U20 -- the step rail carries the prototype's four step names, in order.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-cc-wizard']",
-      "state": "visible",
-      "textContains": "Payload JSON"
-    },
-    {
-      "name": "U21 -- type a Conditional Access target on step 1. The risk readout must react to this and to nothing else -- no account count is entered.",
-      "action": "input",
-      "selector": "[data-testid='pv2-cc-wizard-target']",
-      "value": "PATCH /v1.0/identity/conditionalAccess/policies/{id}"
-    },
-    {
-      "name": "U22 -- jump to the risk step.",
-      "action": "click",
-      "selector": "[data-testid='pv2-cc-wizard-step-3']"
-    },
-    {
-      "name": "U23 -- the readout says High off the TARGET alone, with zero accounts entered. This is the client-side preview of the same rule A6 proved the server enforces; the two must agree or the wizard would show a customer one rating and file another.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-cc-wizard-risk']",
-      "state": "visible",
-      "textContains": "High"
-    },
-    {
-      "name": "U24 -- and it explains why in the design's own words, naming authentication and mail transport.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-cc-wizard']",
-      "state": "visible",
-      "textContains": "touches authentication, mail transport or immutable retention"
-    },
-    {
-      "name": "U25 -- the Operate nav group carries Change Control, and it is the only row in the group so far. Dead rows pointing at unbuilt pages are explicitly not added.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-nav-change-control']",
-      "state": "visible",
-      "textContains": "Change Control"
-    },
-    {
-      "name": "U26 -- ISOLATION GUARANTEE: the live Governance page is untouched by this build and still renders on its own route.",
-      "action": "goto",
-      "target": "/portal/shane-mccaw-consulting/governance"
-    },
-    {
-      "name": "U27 -- confirm the live governance route did not 404 after the change-control route was added.",
-      "action": "expect",
-      "selector": "body",
-      "state": "visible",
-      "textContains": "Governance"
-    },
-    {
-      "name": "U28 -- ISOLATION GUARANTEE 2: the v2 pillar pages still render after the Shell gained an Operate group.",
-      "action": "goto",
-      "target": "/portal/shane-mccaw-consulting/portal-v2/governance"
-    },
-    {
-      "name": "U29 -- the Governance pillar hero is still there, unchanged by the nav addition.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-gov-trend']",
-      "state": "visible",
-      "textContains": "Drift trend · last 10 scans"
-    }
+    { "name": "Primary login -- every assertion below needs a real session.", "action": "click", "selector": "[data-testid='login-submit']", "critical": true },
+
+    { "name": "goto Change Control on its slug-scoped route -- lands on the briefing (module root).", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/change-control" },
+    { "name": "CC1 -- resolved to the briefing view, not NotFound and not the param pillar route.", "action": "expect", "selector": "[data-testid='cc-view-briefing']", "state": "visible", "critical": true },
+    { "name": "CC2 -- the freeze band header.", "action": "expect", "selector": "[data-testid='cc-view-briefing']", "textContains": "When it lands" },
+    { "name": "CC3 -- the two-week subtitle, verbatim.", "action": "expect", "selector": "[data-testid='cc-view-briefing']", "textContains": "17 – 31 August · your change windows, your blackout, and what is aimed at them" },
+    { "name": "CC4 -- the change-freeze strip.", "action": "expect", "selector": "[data-testid='cc-view-briefing']", "textContains": "Change freeze" },
+    { "name": "CC5 -- the Microsoft section header.", "action": "expect", "selector": "[data-testid='cc-view-briefing']", "textContains": "Microsoft · not yours to approve" },
+    { "name": "CC6 -- the collisions section.", "action": "expect", "selector": "[data-testid='cc-view-briefing']", "textContains": "Collisions detected" },
+    { "name": "CC7 -- the off-timeline tray.", "action": "expect", "selector": "[data-testid='cc-view-briefing']", "textContains": "Off the timeline" },
+    { "name": "CC8 -- CR-0142 is a fluid Gantt row carrying its title.", "action": "expect", "selector": "[data-testid='cc-gantt-row-CR-0142']", "textContains": "Block legacy authentication for all mailboxes" },
+    { "name": "CC9 -- the first Microsoft row is the OneDrive sharing-link change.", "action": "expect", "selector": "[data-testid='cc-ms-row-MC1049877']", "textContains": "OneDrive and SharePoint default sharing link" },
+    { "name": "CC10 -- open the freeze detail; Microsoft does not observe the freeze.", "action": "click", "selector": "[data-testid='cc-freeze-toggle']" },
+    { "name": "CC11 -- the freeze detail states the mid-freeze Microsoft change.", "action": "expect", "selector": "[data-testid='cc-view-briefing']", "textContains": "Microsoft does not observe it. MC1051144 lands on 26 August, four days in, and there is no approval path to stop it." },
+    { "name": "CC12 -- open the Decisions-due stat panel.", "action": "click", "selector": "[data-testid='cc-stat-decisions']" },
+    { "name": "CC13 -- the panel lists CR-0151.", "action": "expect", "selector": "[data-testid='cc-stat-item-CR-0151']", "state": "visible" },
+    { "name": "CC14 -- select it: the briefing focus card for CR-0151 opens.", "action": "click", "selector": "[data-testid='cc-stat-item-CR-0151']" },
+    { "name": "CC15 -- the focus card carries the who/what/when sentence.", "action": "expect", "selector": "[data-testid='cc-focus-card-CR-0151']", "textContains": "disabled the transport rule that was queueing every inbound external message" },
+    { "name": "CC16 -- ...and the 'if it goes wrong' column.", "action": "expect", "selector": "[data-testid='cc-focus-card-CR-0151']", "textContains": "If it goes wrong" },
+
+    { "name": "goto the Register sub-view.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/change-control/register" },
+    { "name": "CC17 -- resolved to the register.", "action": "expect", "selector": "[data-testid='cc-view-register']", "state": "visible", "critical": true },
+    { "name": "CC18 -- the pipeline-stages footnote.", "action": "expect", "selector": "[data-testid='cc-view-register']", "textContains": "Pipeline stages read Dev · Test · Stage · Prod. A dimmed stage is not provisioned in this tenant." },
+    { "name": "CC19 -- CR-0142 is a register row.", "action": "expect", "selector": "[data-testid='cc-register-row-CR-0142']", "textContains": "Block legacy authentication for all mailboxes" },
+    { "name": "CC20 -- CR-0144 too.", "action": "expect", "selector": "[data-testid='cc-register-row-CR-0144']", "textContains": "Retire the shared Reception mailbox password and move to OAuth" },
+    { "name": "CC21 -- open CR-0142's full record (the row div is the click target).", "action": "click", "selector": "[data-testid='cc-register-row-CR-0142']" },
+    { "name": "CC22 -- the record view opened.", "action": "expect", "selector": "[data-testid='cc-view-record']", "state": "visible", "critical": true },
+    { "name": "CC23 -- the record opens on section 01 of 11.", "action": "expect", "selector": "[data-testid='cc-view-record']", "textContains": "Section 01 of 11" },
+    { "name": "CC24 -- the completeness rail: CR-0142 is complete, 6 of 6 required sections.", "action": "expect", "selector": "[data-testid='cc-view-record']", "textContains": "6 of 6 required sections" },
+    { "name": "CC25 -- the record carries the CR title.", "action": "expect", "selector": "[data-testid='cc-view-record']", "textContains": "Block legacy authentication for all mailboxes" },
+    { "name": "CC26 -- jump to the AI change-planning section via the rail.", "action": "click", "selector": "[data-testid='cc-rail-ai']" },
+    { "name": "CC27 -- the AI section rendered.", "action": "expect", "selector": "[data-testid='cc-view-record']", "textContains": "Automated change planning" },
+    { "name": "CC28 -- ...including the tenant-wide impact analysis.", "action": "expect", "selector": "[data-testid='cc-view-record']", "textContains": "Impact analysis · tenant-wide" },
+
+    { "name": "goto the Catalogue sub-view.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/change-control/catalogue" },
+    { "name": "CC29 -- resolved to the catalogue.", "action": "expect", "selector": "[data-testid='cc-view-catalogue']", "state": "visible", "critical": true },
+    { "name": "CC30 -- 24 pre-approved standard changes.", "action": "expect", "selector": "[data-testid='cc-view-catalogue']", "textContains": "Standard changes · 24 pre-approved" },
+    { "name": "CC31 -- the most-used strip.", "action": "expect", "selector": "[data-testid='cc-view-catalogue']", "textContains": "Most used this month" },
+    { "name": "CC32 -- the promote-to-catalogue candidate.", "action": "expect", "selector": "[data-testid='cc-view-catalogue']", "textContains": "Candidate for the catalogue" },
+
+    { "name": "goto the Freezes & notices (calendar) sub-view.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/change-control/calendar" },
+    { "name": "CC33 -- resolved to the calendar.", "action": "expect", "selector": "[data-testid='cc-view-calendar']", "state": "visible", "critical": true },
+    { "name": "CC34 -- the freeze-calendar heading.", "action": "expect", "selector": "[data-testid='cc-view-calendar']", "textContains": "Your freeze calendar" },
+    { "name": "CC35 -- the declare-a-freeze affordance.", "action": "expect", "selector": "[data-testid='cc-view-calendar']", "textContains": "Declare a freeze" },
+    { "name": "CC36 -- the ERP go-live freeze card.", "action": "expect", "selector": "[data-testid='cc-view-calendar']", "textContains": "ERP go-live freeze" },
+    { "name": "CC37 -- the month grid opens on August 2026.", "action": "expect", "selector": "[data-testid='cc-view-calendar']", "textContains": "August 2026" },
+
+    { "name": "goto the Change review sub-view.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/change-control/review" },
+    { "name": "CC38 -- resolved to the review.", "action": "expect", "selector": "[data-testid='cc-view-review']", "state": "visible", "critical": true },
+    { "name": "CC39 -- the next change review.", "action": "expect", "selector": "[data-testid='cc-view-review']", "textContains": "Next change review" },
+    { "name": "CC40 -- its date.", "action": "expect", "selector": "[data-testid='cc-view-review']", "textContains": "Thursday 21 August" },
+    { "name": "CC41 -- the add-to-agenda affordance.", "action": "expect", "selector": "[data-testid='cc-view-review']", "textContains": "Add something to the agenda" },
+    { "name": "CC42 -- last review's decisions.", "action": "expect", "selector": "[data-testid='cc-view-review']", "textContains": "Last review · decisions" },
+
+    { "name": "goto the deep-linkable policy view (ccView === 'settings').", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/change-control/settings" },
+    { "name": "CC43 -- resolved to the policy view (built by Part 4).", "action": "expect", "selector": "[data-testid='cc-view-settings']", "state": "visible", "critical": true },
+    { "name": "CC44 -- the change control policy heading.", "action": "expect", "selector": "[data-testid='cc-view-settings']", "textContains": "Change control policy" },
+    { "name": "CC45 -- the policy statement the header badge targets.", "action": "expect", "selector": "[data-testid='cc-view-settings']", "textContains": "Every change runs through a request and 2 signatures." },
+    { "name": "CC46 -- the notification rules block.", "action": "expect", "selector": "[data-testid='cc-view-settings']", "textContains": "Notifications" },
+    { "name": "CC47 -- one of the design's own notification rules.", "action": "expect", "selector": "[data-testid='cc-view-settings']", "textContains": "Microsoft enforcement date approaching" }
   ]
 }

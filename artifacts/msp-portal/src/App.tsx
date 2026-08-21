@@ -618,13 +618,22 @@ function SlugInnerSwitch() {
       </Route>
       {/* Operate — Change Control. Declared BEFORE "/portal-v2/:pillar" so the
           param route does not swallow it, same reason as the pillar pages
-          above. Backed by the customer-scoped GET/POST
-          /api/portal/change-control, NOT the MSPOperator-gated
-          /api/msp/change-requests, which would serve every tenant of the MSP. */}
+          above. Rebuilt to the standalone Change Control.dc.html module (Part 4):
+          UI-only against the design's own fixtures. The customer-scoped
+          /api/portal/change-control endpoint remains for the later wiring pass. */}
       {/* Operate — Active Runbooks, including the hold-window panel. Declared
           before "/portal-v2/:pillar" for the same reason as the rows above. */}
       <Route path="/portal-v2/runbooks">
         <ProtectedRoute component={PortalV2RunbooksPage} />
+      </Route>
+      {/* The sub-view segment — /portal-v2/change-control/<view> — is the shell
+          sub-nav's five view tabs (briefing / register / catalogue / calendar /
+          review) plus the deep-linkable policy view (`settings`), held as
+          `state.view` in the prototype and passed down as the module's `view`
+          prop. Declared before the bare route so the param match is tried first,
+          and both precede "/portal-v2/:pillar". */}
+      <Route path="/portal-v2/change-control/:view">
+        <ProtectedRoute component={PortalV2ChangeControlPage} />
       </Route>
       <Route path="/portal-v2/change-control">
         <ProtectedRoute component={PortalV2ChangeControlPage} />

@@ -175,6 +175,20 @@ const OPERATE_ITEMS: readonly NavItem[] = [
       "Change Control — every tenant change with a request, an approval and a rollback point",
     testId: "pv2-nav-change-control",
     glyph: { kind: "lucide", icon: GitCommit },
+    // The design's own view tabs (Change Control.dc.html viewTabs), each a real
+    // URL. "Briefing" is the module root, so it lights on /change-control and
+    // /change-control/all the same way Ownership's "Everything" does. Round Two
+    // removed "Policy & settings" from this sub-nav (the policy UI now lives in
+    // the Settings page), but the module keeps a deep-linkable policy view at
+    // /portal-v2/change-control/settings that the header badge and alerts
+    // target — it is intentionally NOT a sub-item here.
+    subs: [
+      { key: "briefing", label: "Briefing", href: "/portal-v2/change-control" },
+      { key: "register", label: "Register", href: "/portal-v2/change-control/register" },
+      { key: "catalogue", label: "Catalogue", href: "/portal-v2/change-control/catalogue" },
+      { key: "calendar", label: "Freezes & notices", href: "/portal-v2/change-control/calendar" },
+      { key: "review", label: "Change review", href: "/portal-v2/change-control/review" },
+    ],
   },
   {
     href: "/portal-v2/runbooks",

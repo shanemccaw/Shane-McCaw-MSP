@@ -1,178 +1,316 @@
 /**
- * useChangeControl.ts — the one data seam for `/portal-v2/change-control`.
+ * useChangeControl.ts — the Change Control module's state machine.
  *
- * Wraps `GET/POST /api/portal/change-control` (api-server
- * `routes/portal-change-control.ts`), which is customer-scoped from the JWT.
- * Components consume this hook and never a fixture module, per BUILD_PLAN's
- * "The fixture seam" note — and unlike holds or documents, this page needed no
- * fixture at all, because its backing table already exists.
+ * A faithful port of the design's `Component` state and flow handlers (the logic
+ * class at the bottom of `Change Control.dc.html`). The design keeps everything
+ * in one `setState`-merging component; this hook does the same with a single
+ * state object and a `patch()` updater, and exposes the reusable flow builders
+ * (`signForm` / `exceptionForm` / `moveForm`) plus the generic form engine the
+ * page's forms all run through.
  *
- * `fetchWithAuth` is held in a ref, not a dependency. BUILD_PLAN §5.4: it is
- * rebuilt on every 13-minute silent token refresh, so putting it in a dep array
- * tears the request down mid-flight.
+ * ── UI only ────────────────────────────────────────────────────────────────
+ * There is no data source here. Every form's onSubmit returns a client-side
+ * patch (a moved window, an added agenda item, an edited notification rule) and
+ * a toast — exactly what the prototype does. A later pass wires the writes to
+ * the real change-control API; until then the flows are the design's own.
  *
- * `fetchWithAuth` also globally toasts every non-OK, non-401 response unless
- * `{ silent: true }` is passed. The reads here pass it and surface the failure
- * in the page's own state instead — an empty register with an explanation reads
- * better than a toast over a blank page. The WRITE deliberately does not: a
- * failed submission is exactly the case where a toast is the right feedback.
+ * ── The view seam ──────────────────────────────────────────────────────────
+ * `viewParam` is the URL segment (`/portal-v2/change-control/<view>`), which the
+ * shell's nav sub-items and the deep-linkable policy view drive. It syncs into
+ * `state.view`, resetting the record/focus/stat-filter selection the way the
+ * prototype's componentDidUpdate does when its `view` prop changes. Internal
+ * navigation (opening a record, jumping to the briefing from a decision) moves
+ * `state.view` without touching the URL, matching the prototype.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { useAuth } from "@/lib/auth-context";
+import type { AgendaItem, FreezeRow, NotifRule } from "./ccPageData";
+import { CC_CAB, CC_FREEZE, CC_FREEZES, CC_NOTIF, CC_WINDOW_DAY } from "./ccPageData";
 
-const CHANGE_CONTROL_URL = "/api/portal/change-control";
+export interface CcDraft {
+  title: string;
+  desc: string;
+  just: string;
+  scope: string;
+  deps: string;
+  priority: string;
+  risk: string;
+  sec: string;
+  comp: string;
+}
 
-/** Mirrors `WireChangeRequest` in api-server `routes/portal-change-control.ts`. */
-export interface ChangeRequest {
-  readonly code: string;
+export type FormKind = "text" | "area" | "pick" | "select" | "toggle";
+
+export interface FormFieldDef {
+  readonly k: string;
+  readonly label: string;
+  readonly kind: FormKind;
+  readonly req?: boolean;
+  readonly ph?: string;
+  readonly hint?: string;
+  readonly options?: readonly string[];
+  readonly toggleLabel?: string;
+}
+
+export interface FormCfg {
+  readonly kicker: string;
   readonly title: string;
-  readonly changeClass: "Standard" | "Normal" | "Emergency";
-  readonly status: string;
-  readonly workload: string;
-  readonly target: string;
-  readonly ticket: string;
-  readonly requester: string;
-  readonly window: string;
-  readonly risk: string;
-  readonly impactedUsersCount: number;
-  readonly rationale: string;
-  readonly pre: string;
-  readonly post: string;
-  readonly approvals: readonly string[];
-  readonly canApprove: boolean;
-  readonly canRollback: boolean;
-  readonly executedAt: string | null;
-  readonly backupVerified: boolean;
-  readonly createdAt: string;
+  readonly intro: string;
+  readonly submitLabel: string;
+  readonly foot?: string;
+  readonly values?: Record<string, unknown>;
+  readonly fields: readonly FormFieldDef[];
+  readonly onSubmit?: (v: Record<string, unknown>) => Partial<CcState> | void;
+  readonly done: string | ((v: Record<string, unknown>) => string);
 }
 
-export interface ChangeControlStats {
-  readonly open: number;
-  readonly awaitingApproval: number;
-  readonly nextWindowCount: number;
-  readonly nextWindowLabel: string;
-  readonly emergencyCount: number;
-  readonly emergencyLookbackDays: number;
-  readonly snapshotsHeld: number;
-  readonly snapshotRetentionDays: number;
+export interface FormState {
+  readonly cfg: FormCfg;
+  readonly vals: Record<string, unknown>;
 }
 
-export interface ChangeControlPayload {
-  readonly requests: readonly ChangeRequest[];
-  readonly stats: ChangeControlStats;
-  /**
-   * False when the account has no resolvable Microsoft 365 tenant identifier.
-   * The server fails closed to an empty register in that case rather than
-   * running a query that a blank identifier would widen — the page says so
-   * rather than showing "no change requests", which would be a different and
-   * misleading claim.
-   */
-  readonly scoped: boolean;
+export interface CcState {
+  view: string;
+  lastList: string;
+  openCode: string | null;
+  sec: string;
+  focusCode: string | null;
+  statFilter: string | null;
+  query: string;
+  fRisk: string;
+  fState: string;
+  fWork: string;
+  freezeException: boolean;
+  freezeOpen: boolean;
+  calMonth: number;
+  calDay: string | null;
+  catQ: string;
+  catCat: string;
+  catOpen: string | null;
+  intakeOpen: boolean;
+  intakeMode: string;
+  draft: CcDraft;
+  form: FormState | null;
+  toast: string;
+  freezesOv: FreezeRow[] | null;
+  agendaOv: AgendaItem[] | null;
+  notifOv: NotifRule[] | null;
+  movedOv: Record<string, string> | null;
 }
 
-export interface NewChangeRequest {
-  readonly title: string;
-  readonly target: string;
-  readonly ticket: string;
-  readonly pre: string;
-  readonly post: string;
-  readonly changeClass: "Standard" | "Normal" | "Emergency";
-  readonly impactedUsersCount: number;
-  readonly window: string;
-}
-
-export interface ChangeControlState {
-  readonly payload: ChangeControlPayload | null;
-  readonly loaded: boolean;
-  readonly error: string | null;
-  readonly submit: (draft: NewChangeRequest) => Promise<{ code: string } | null>;
-  readonly reload: () => void;
-}
-
-const EMPTY_STATS: ChangeControlStats = {
-  open: 0,
-  awaitingApproval: 0,
-  nextWindowCount: 0,
-  nextWindowLabel: "No window booked",
-  emergencyCount: 0,
-  emergencyLookbackDays: 90,
-  snapshotsHeld: 0,
-  snapshotRetentionDays: 90,
+const INITIAL_DRAFT: CcDraft = {
+  title: "",
+  desc: "",
+  just: "",
+  scope: "",
+  deps: "",
+  priority: "Normal",
+  risk: "Medium",
+  sec: "",
+  comp: "",
 };
 
-export function useChangeControl(): ChangeControlState {
-  const { fetchWithAuth } = useAuth();
-  const fetchRef = useRef(fetchWithAuth);
-  fetchRef.current = fetchWithAuth;
+function initialState(view: string): CcState {
+  return {
+    view,
+    lastList: "briefing",
+    openCode: null,
+    sec: "request",
+    focusCode: null,
+    statFilter: null,
+    query: "",
+    fRisk: "All risk",
+    fState: "All states",
+    fWork: "All workloads",
+    freezeException: false,
+    freezeOpen: false,
+    calMonth: 0,
+    calDay: null,
+    catQ: "",
+    catCat: "All",
+    catOpen: null,
+    intakeOpen: false,
+    intakeMode: "normal",
+    draft: INITIAL_DRAFT,
+    form: null,
+    toast: "",
+    freezesOv: null,
+    agendaOv: null,
+    notifOv: null,
+    movedOv: null,
+  };
+}
 
-  const [payload, setPayload] = useState<ChangeControlPayload | null>(null);
-  const [loaded, setLoaded] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [reloadKey, setReloadKey] = useState(0);
+export interface CcController {
+  readonly s: CcState;
+  readonly role: "approver";
+  readonly patch: (p: Partial<CcState>) => void;
+  readonly t: (msg: string) => void;
+  readonly clearToast: () => void;
+  readonly setDraft: (k: keyof CcDraft, v: string) => void;
+  readonly openForm: (cfg: FormCfg) => void;
+  readonly setFV: (k: string, v: unknown) => void;
+  readonly submitForm: () => void;
+  readonly closeForm: () => void;
+  readonly signForm: (code: string, window: string) => void;
+  readonly exceptionForm: (code: string) => void;
+  readonly moveForm: (code: string) => void;
+  readonly freezes: () => FreezeRow[];
+  readonly agenda: () => AgendaItem[];
+  readonly notif: () => NotifRule[];
+}
 
-  const cancelledRef = useRef(false);
+export function useChangeControl(opts: { viewParam?: string } = {}): CcController {
+  const initialView = opts.viewParam || "briefing";
+  const [s, setS] = useState<CcState>(() => initialState(initialView));
 
+  const patch = useCallback((p: Partial<CcState>) => {
+    setS((prev) => ({ ...prev, ...p }));
+  }, []);
+
+  // View seam: sync the URL segment into state.view, resetting the record/focus
+  // selection the way the prototype's componentDidUpdate does.
+  const prevViewParam = useRef<string | undefined>(opts.viewParam);
   useEffect(() => {
-    cancelledRef.current = false;
-    let active = true;
+    const vp = opts.viewParam || "briefing";
+    if (vp !== prevViewParam.current) {
+      prevViewParam.current = opts.viewParam;
+      setS((prev) =>
+        prev.view === vp ? prev : { ...prev, view: vp, openCode: null, statFilter: null, focusCode: null },
+      );
+    }
+  }, [opts.viewParam]);
 
-    void (async () => {
-      try {
-        const res = await fetchRef.current(CHANGE_CONTROL_URL, {}, { silent: true });
-        if (!active || cancelledRef.current) return;
-        if (!res.ok) {
-          setError("The change control register could not be loaded.");
-          setLoaded(true);
-          return;
-        }
-        const body = (await res.json()) as ChangeControlPayload;
-        if (!active || cancelledRef.current) return;
-        setPayload({
-          requests: Array.isArray(body.requests) ? body.requests : [],
-          stats: body.stats ?? EMPTY_STATS,
-          scoped: body.scoped === true,
-        });
-        setError(null);
-        setLoaded(true);
-      } catch {
-        if (!active || cancelledRef.current) return;
-        setError("The change control register could not be loaded.");
-        setLoaded(true);
-      }
-    })();
+  const t = useCallback((msg: string) => setS((prev) => ({ ...prev, toast: msg })), []);
+  const clearToast = useCallback(() => setS((prev) => ({ ...prev, toast: "" })), []);
 
-    return () => {
-      active = false;
-      cancelledRef.current = true;
-    };
-  }, [reloadKey]);
+  const setDraft = useCallback((k: keyof CcDraft, v: string) => {
+    setS((prev) => ({ ...prev, draft: { ...prev.draft, [k]: v } }));
+  }, []);
 
-  const reload = useCallback(() => setReloadKey((k) => k + 1), []);
+  const openForm = useCallback((cfg: FormCfg) => {
+    setS((prev) => ({ ...prev, form: { cfg, vals: { ...(cfg.values || {}) } } }));
+  }, []);
 
-  const submit = useCallback(
-    async (draft: NewChangeRequest): Promise<{ code: string } | null> => {
-      try {
-        // No `silent` here on purpose — a failed submission should toast.
-        const res = await fetchRef.current(CHANGE_CONTROL_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(draft),
-        });
-        if (!res.ok) return null;
-        const body = (await res.json()) as { code?: string };
-        // Re-read rather than splicing the new row in locally: the server
-        // computes the code, the risk and the workload, so the register has to
-        // come back from the server to show what was really stored.
-        setReloadKey((k) => k + 1);
-        return body.code ? { code: body.code } : null;
-      } catch {
-        return null;
-      }
+  const setFV = useCallback((k: string, v: unknown) => {
+    setS((prev) => (prev.form ? { ...prev, form: { cfg: prev.form.cfg, vals: { ...prev.form.vals, [k]: v } } } : prev));
+  }, []);
+
+  const closeForm = useCallback(() => setS((prev) => ({ ...prev, form: null })), []);
+
+  const submitForm = useCallback(() => {
+    setS((prev) => {
+      const f = prev.form;
+      if (!f) return prev;
+      const extra = (f.cfg.onSubmit && f.cfg.onSubmit(f.vals)) || {};
+      const done = typeof f.cfg.done === "function" ? f.cfg.done(f.vals) : f.cfg.done || "Saved.";
+      return { ...prev, form: null, toast: done, ...extra };
+    });
+  }, []);
+
+  // ── Reusable flow builders (proto signForm / exceptionForm / moveForm) ──────
+
+  const signForm = useCallback(
+    (code: string, window: string) => {
+      openForm({
+        kicker: "Approval · " + code,
+        title: "Sign and schedule " + code,
+        intro:
+          "Your signature is what schedules it. It records the account, the time, and the exact payload you approved — an edit after this point invalidates it.",
+        submitLabel: "Sign and schedule",
+        foot: "Separation of duties: the submitter cannot sign, and the record refuses an attempt.",
+        values: { agree: false, window, note: "" },
+        fields: [
+          { k: "agree", label: "Signature", kind: "toggle", req: true, toggleLabel: "I approve this change, its rollback plan and its window" },
+          { k: "window", label: "Window", kind: "text", req: true, hint: "Change it here if you want it run at a different time." },
+          { k: "note", label: "Condition or note", kind: "area", req: false, ph: "Optional. e.g. Go ahead only if the Finance export dry run passes at 21:00." },
+        ],
+        done: (v) =>
+          code +
+          " signed and scheduled for " +
+          String(v.window) +
+          "." +
+          (String(v.note || "").trim() ? " Your condition is on the record and the engineer sees it before they start." : ""),
+      });
     },
-    [],
+    [openForm],
   );
 
-  return { payload, loaded, error, submit, reload };
+  const exceptionForm = useCallback(
+    (code: string) => {
+      openForm({
+        kicker: "Freeze exception",
+        title: "Grant an exception for " + code,
+        intro:
+          "An exception is a narrow hole in the freeze, for one change, with an expiry. It is the freeze owner's call and it is logged as such.",
+        submitLabel: "Grant the exception",
+        foot: "Emergency changes are already exempt. This is for a planned change you have decided cannot wait.",
+        values: { authority: false, reason: "", expiry: "The change window only" },
+        fields: [
+          { k: "authority", label: "Authority", kind: "toggle", req: true, toggleLabel: "I am the freeze owner, or acting with their written authority" },
+          { k: "reason", label: "Why this cannot wait", kind: "area", req: true, ph: "e.g. Microsoft enforces legacy auth off on 1 October. Waiting until 1 September leaves no room for a rollback and a retry." },
+          { k: "expiry", label: "Exception expires", kind: "pick", options: ["The change window only", "End of the freeze", "24 hours"], req: true },
+        ],
+        onSubmit: () => ({ freezeException: true }),
+        done: (v) =>
+          "Exception granted for " +
+          code +
+          ", valid for " +
+          String(v.expiry).toLowerCase() +
+          ". Your name, your reason and the expiry are on the record.",
+      });
+    },
+    [openForm],
+  );
+
+  const moveForm = useCallback(
+    (code: string) => {
+      openForm({
+        kicker: "Reschedule",
+        title: "Move " + code + " out of the freeze",
+        intro:
+          "Pick a window outside the freeze. The original window and the reason for moving stay on the record, so the delay is explained rather than mysterious.",
+        submitLabel: "Move the window",
+        values: { window: "Tue 1 September · 21:00–23:00", reason: "Inside the ERP go-live freeze" },
+        fields: [
+          { k: "window", label: "New window", kind: "pick", options: ["Tue 1 September · 21:00–23:00", "Wed 2 September · 21:00–23:00", "Tue 8 September · 21:00–23:00"], req: true, hint: "All three sit inside your Tue–Thu policy and outside the freeze." },
+          { k: "reason", label: "Reason for the move", kind: "area", req: true },
+        ],
+        onSubmit: (v) => ({ movedOv: { ...(s.movedOv || {}), [code]: String(v.window) } }),
+        done: (v) => code + " moved to " + String(v.window) + ". The freeze collision is cleared and the original window is still on the record.",
+      });
+    },
+    [openForm, s.movedOv],
+  );
+
+  const freezes = useCallback(() => s.freezesOv || (CC_FREEZES as FreezeRow[]), [s.freezesOv]);
+  const agenda = useCallback(() => s.agendaOv || (CC_CAB.agenda as AgendaItem[]), [s.agendaOv]);
+  const notif = useCallback(() => s.notifOv || (CC_NOTIF as NotifRule[]), [s.notifOv]);
+
+  return {
+    s,
+    role: "approver",
+    patch,
+    t,
+    clearToast,
+    setDraft,
+    openForm,
+    setFV,
+    submitForm,
+    closeForm,
+    signForm,
+    exceptionForm,
+    moveForm,
+    freezes,
+    agenda,
+    notif,
+  };
+}
+
+/** proto inFreeze against live state (freeze always active in this UI-only build). */
+export function stateInFreeze(code: string, movedOv: Record<string, string> | null): boolean {
+  if ((movedOv || {})[code]) return false;
+  const d = CC_WINDOW_DAY[code];
+  return !!d && d >= CC_FREEZE.from && d <= CC_FREEZE.to;
 }
