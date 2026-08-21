@@ -1,0 +1,61 @@
+{
+  "feature": "Customer Portal v2 Part 5 -- Operate -> Remediation Tracker (/portal-v2/remediation). Recreated from the prototype's own `isRemediation` block ('Customer Portal Shell.dc.html' 5961-6012) and its `rtRun` derivation (20380-20441), transcribed into remediationModel.ts and pinned by unit assertions. Not a project plan and not a quote -- a run-down of what has been fixed and what has not, off the design's own RT_PHASES fixture (30 tasks across three phases). A progress bar, four state counters that double as filters (Fixed and verified / Done, awaiting re-scan / Still to do / Accepted as-is), and every finding grouped under its pillar with the state it is in, who closes it, a change-request badge on Shane-run done items, and the pillar's responsible RACI owner.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "UNSET",
+  "notes": [
+    "THE LOGIN BLOCK IS NOT OPTIONAL. /portal-v2/* sits behind ProtectedRoute; a probe that skips the five login steps hits the login screen and every assertion fails for a reason unrelated to the page.",
+    "UI ROUTE SHAPE: msp-portal's outer WouterRouter has base '/portal' and SlugScope nests a second router at '/{slug}', so the real URL is /portal/{slug}/portal-v2/remediation. App.tsx declares it BEFORE '/portal-v2/:pillar' so the param route cannot swallow it -- Remediation is a plain, param-free route.",
+    "shaneapp://runTest hits the DEPLOYED build, not the local worktree; this manifest needs the Part 5 pages deployed first.",
+    "PERSISTED-SESSION FLAKE (known): when WebView2 is already authed, the two input steps against #email/#password can fail while the rest runs green because auth persists. N-2 of N with only those two red is a PASS for the feature.",
+    "STATUS vs VERIFICATION -- THE LOAD-BEARING ASSERTION. RT6 asserts the 'Fixed and verified' counter reads 0. No fixture task carries `verified`; only a real scan's reverifyRemediationTrackerSteps() (#732, server-side) may set it, and this page never derives verified from UI state. Every done task instead reads 'Awaiting re-scan' (RT13). If a future edit ever promoted a step to verified off tick/filter state, RT6 goes red.",
+    "COMPUTED NUMBERS: the headline '3 of 30 things fixed since the first scan.' (RT1), '10%' / '3 / 30' (RT3-RT4) and the counter values (RT6-RT9) are all summed from RT_PHASES, not typed -- three tasks are done (p1a, p1g, p1h, all Shane-run), the other 27 open, none verified, none accepted.",
+    "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD."
+  ],
+  "apiTests": [
+    {
+      "name": "SETUP -- log in as the designated TESTBED account; extract the bearer.",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    }
+  ],
+  "uiSteps": [
+    { "name": "goto the real login URL (outer WouterRouter base = '/portal').", "action": "goto", "target": "/portal/login" },
+    { "name": "WAIT for the login form to hydrate before typing.", "action": "expect", "selector": "#email", "state": "visible" },
+    { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
+    { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
+    { "name": "Primary login -- every assertion below needs a real session.", "action": "click", "selector": "[data-testid='login-submit']", "critical": true },
+    { "name": "goto the Remediation Tracker on its slug-scoped route.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/remediation" },
+    { "name": "RT1 -- the page resolved, and its headline is COMPUTED (3 of 30), not typed.", "action": "expect", "selector": "[data-testid='pv2-rt-heading']", "textContains": "3 of 30 things fixed since the first scan.", "critical": true },
+    { "name": "RT2 -- the sub states the page's argument, verbatim.", "action": "expect", "selector": "[data-testid='pv2-rt-sub']", "textContains": "Nothing here is a project plan" },
+    { "name": "RT3 -- the progress bar reads 10 percent.", "action": "expect", "selector": "[data-testid='pv2-rt-progress']", "textContains": "10%" },
+    { "name": "RT4 -- ...and 3 / 30.", "action": "expect", "selector": "[data-testid='pv2-rt-progress']", "textContains": "3 / 30" },
+    { "name": "RT5 -- the counters render with the first state's label.", "action": "expect", "selector": "[data-testid='pv2-rt-counters']", "textContains": "Fixed and verified" },
+    { "name": "RT6 -- LOAD-BEARING: the Fixed-and-verified counter reads 0. Verified is never derived from UI state.", "action": "expect", "selector": "[data-testid='pv2-rt-counter-verified']", "textContains": "confirmed by a re-scan, not marked done" },
+    { "name": "RT7 -- the Done-awaiting-re-scan counter reads 3.", "action": "expect", "selector": "[data-testid='pv2-rt-counter-done']", "textContains": "Done, awaiting re-scan" },
+    { "name": "RT8 -- the Still-to-do counter reads 27.", "action": "expect", "selector": "[data-testid='pv2-rt-counter-open']", "textContains": "Still to do" },
+    { "name": "RT9 -- the Accepted-as-is counter is present (reads 0 -- nothing skipped).", "action": "expect", "selector": "[data-testid='pv2-rt-counter-accepted']", "textContains": "Accepted as-is" },
+    { "name": "RT10 -- the Governance group renders.", "action": "expect", "selector": "[data-testid='pv2-rt-group-governance']", "textContains": "Governance" },
+    { "name": "RT11 -- p1a carries its full title.", "action": "expect", "selector": "[data-testid='pv2-rt-row-p1a']", "textContains": "Close org-wide sharing on the four sensitive sites" },
+    { "name": "RT12 -- ...and its evidence, prefixed 'Found by the scan'.", "action": "expect", "selector": "[data-testid='pv2-rt-row-p1a']", "textContains": "Found by the scan · 212 sites shared org-wide" },
+    { "name": "RT13 -- p1a is done but UNVERIFIED, so it reads 'Awaiting re-scan', never 'Verified'.", "action": "expect", "selector": "[data-testid='pv2-rt-row-p1a']", "textContains": "Awaiting re-scan" },
+    { "name": "RT14 -- p1a is Shane-run, so its route reads 'We run it'.", "action": "expect", "selector": "[data-testid='pv2-rt-row-p1a']", "textContains": "We run it" },
+    { "name": "RT15 -- ...and it carries a change-request badge, numbered off its index.", "action": "expect", "selector": "[data-testid='pv2-rt-cr-p1a']", "textContains": "CR-0100" },
+    { "name": "RT16 -- p1a's owner chip shows the governance responsible owner's initials.", "action": "expect", "selector": "[data-testid='pv2-rt-owner-p1a']", "textContains": "SM" },
+    { "name": "RT17 -- an open critical task (p1d) reads 'Not started'.", "action": "expect", "selector": "[data-testid='pv2-rt-row-p1d']", "textContains": "Not started" },
+    { "name": "RT18 -- ...and routes to a Runbook (critical, not Shane-run).", "action": "expect", "selector": "[data-testid='pv2-rt-row-p1d']", "textContains": "Runbook" },
+    { "name": "RT19 -- an open attention task (p1b) routes to 'Your team'.", "action": "expect", "selector": "[data-testid='pv2-rt-row-p1b']", "textContains": "Your team" },
+    { "name": "RT20 -- the Security group renders too.", "action": "expect", "selector": "[data-testid='pv2-rt-group-security']", "textContains": "Security" },
+    { "name": "RT21 -- and the Compliance group.", "action": "expect", "selector": "[data-testid='pv2-rt-group-compliance']", "state": "visible" },
+    { "name": "RT22 -- filter to Done: click the Done counter.", "action": "click", "selector": "[data-testid='pv2-rt-counter-done']" },
+    { "name": "RT23 -- p1a (done) stays visible.", "action": "expect", "selector": "[data-testid='pv2-rt-row-p1a']", "state": "visible" },
+    { "name": "RT24 -- p1b (open) is filtered out.", "action": "expect", "selector": "[data-testid='pv2-rt-row-p1b']", "state": "absent" },
+    { "name": "RT25 -- and the Compliance group, which has no done tasks, disappears entirely.", "action": "expect", "selector": "[data-testid='pv2-rt-group-compliance']", "state": "absent" },
+    { "name": "RT26 -- click Done again to clear the filter.", "action": "click", "selector": "[data-testid='pv2-rt-counter-done']" },
+    { "name": "RT27 -- p1b is back.", "action": "expect", "selector": "[data-testid='pv2-rt-row-p1b']", "state": "visible" },
+    { "name": "RT28 -- the Operate nav row for Remediation Tracker exists now that its page does.", "action": "expect", "selector": "[data-testid='pv2-nav-remediation']", "state": "visible" }
+  ]
+}

@@ -10,8 +10,8 @@
  *
  *  The design's full nav is larger than this file. Governance is meant to carry
  *  Security Plan and PII Governance; Reference is meant to carry SOPs &
- *  Runbooks; Operate is meant to carry Remediation Tracker and Policy
- *  Decisions. My Architect and Copilot sit above / after the Pillars group and
+ *  Runbooks; Operate carries Remediation Tracker and Policy Decisions, which
+ *  arrived with Part 5. My Architect and Copilot sit above / after the Pillars group and
  *  arrived with Part 9; Projects (Part 8) shares the ungrouped region beside My
  *  Architect and arrived with Part 8. An absent row is absent because its page
  *  is, not because it was forgotten — see PORTAL_V2_PARALLEL_PLAN.md for which
@@ -40,7 +40,7 @@
  * which is harder to read than three explicit branches.
  */
 
-import { Bell, ClipboardList, FileText, GitCommit, PlayCircle, ShieldOff, Sparkles, Users } from "lucide-react";
+import { Bell, CheckCircle, ClipboardList, FileText, GitCommit, PlayCircle, ShieldOff, Sparkles, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import { PILLAR_ICON_PATHS, PILLAR_ORDER } from "@/components/copilot-journey/journeyTokens";
@@ -134,12 +134,23 @@ const PILLAR_ITEMS: readonly NavItem[] = PILLAR_ORDER.map((p) => ({
 }));
 
 /**
- * Operate — prototype 7232-7236. Icon names are the prototype's own, resolved
+ * Operate — prototype 8810-8820. Icon names are the prototype's own, resolved
  * against the installed `lucide-react` rather than assumed: `git-commit` →
- * `GitCommit`.
+ * `GitCommit`, `check-circle` → `CheckCircle`, `file-text` → `FileText`.
  *
- * The design's Operate group also holds Remediation Tracker and Policy
- * Decisions. Both are Part 5.
+ * The design's Operate group is Change Control, Active Runbooks, Remediation
+ * Tracker, Policy Decisions — in that order. Remediation Tracker and Policy
+ * Decisions arrived with Part 5.
+ *
+ * POLICY DECISIONS' NAV BADGE IS DEFERRED, DELIBERATELY. The design draws a
+ * "N due" badge on this row (prototype 8820: `cmpPolicyDue ? cmpPolicyDue + '
+ * due' : ''`, currently "2 due" — the due + expired count). The shell renders a
+ * nav badge only for `badge === "holds"` (PortalV2Shell.tsx line 187, fed by
+ * the `useHoldBadge` hook); a second badge type needs a shell render path this
+ * part must not add. So the row carries no badge and the same due/expired count
+ * is surfaced ON the page, in its own state counters — the same call Part 9 made
+ * for the Copilot nav pill. The count itself is `pdFlaggedCount` in
+ * policyDecisionsModel.ts, ready for the shell owner to wire.
  */
 const OPERATE_ITEMS: readonly NavItem[] = [
   {
@@ -157,6 +168,21 @@ const OPERATE_ITEMS: readonly NavItem[] = [
     testId: "pv2-nav-runbooks",
     glyph: { kind: "lucide", icon: PlayCircle },
     badge: "holds",
+  },
+  {
+    href: "/portal-v2/remediation",
+    label: "Remediation Tracker",
+    title: "Remediation Tracker — findings being closed, and what closed them",
+    testId: "pv2-nav-remediation",
+    glyph: { kind: "lucide", icon: CheckCircle },
+  },
+  {
+    href: "/portal-v2/policy-decisions",
+    label: "Policy Decisions",
+    title:
+      "Policy Decisions — gaps you have decided to live with, with an owner and a review date",
+    testId: "pv2-nav-policy-decisions",
+    glyph: { kind: "lucide", icon: FileText },
   },
 ];
 

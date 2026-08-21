@@ -6,8 +6,8 @@
  *
  *   CR_PIPELINE       8142  →  OV_CR_PIPELINE
  *   MC_INCOMING       8149  →  OV_MC_INCOMING
- *   PJ_PHASES        15999  →  OV_PROJECT_PHASES
- *   POLICY_DECISIONS  8155  →  OV_POLICY_DECISIONS (the six fields this page reads)
+ *   PJ_PHASES        15999  →  OV_PROJECT_PHASES  (moved to projectsData.ts, Part 8)
+ *   POLICY_DECISIONS  8155  →  OV_POLICY_DECISIONS (moved to policyDecisionsData.ts, Part 5)
  *
  * ── Why the page needed rebuilding ─────────────────────────────────────────
  * The round-one Overview was a score band, six rich pillar cards and a "Most
@@ -242,71 +242,28 @@ export type {
   PhaseStatus as OvPhaseStatus,
 } from "./projectsData";
 
-/* ── Policy decisions ───────────────────────────────────────────────────── */
-
-export type OvPolicyState = "proposed" | "live" | "due" | "expired";
-
-export interface OvPolicyDecision {
-  id: string;
-  state: OvPolicyState;
-  title: string;
-  check: string;
-  approved: string;
-  review: string;
-}
-
-/**
- * prototype 8155, reduced to the six fields this page's lane reads.
+/* ── Policy decisions — moved to policyDecisionsData.ts ──────────────────────
  *
- * GOV-A4's `check` is the sharpest line on the page and is why the lane exists:
+ * Part 5 gave the Policy Decisions page (Operate → Policy Decisions) ownership
+ * of the policy-decision fixture, because the full page reads the WHOLE
+ * prototype record while this Overview lane reads only six of its fields. There
+ * is now ONE copy, in policyDecisionsData.ts; these re-exports keep the Overview
+ * page and overviewModel importing it from here under their original names, so
+ * nothing on the Overview side changed. Same move Part 8 made for the project
+ * phases above.
+ *
+ * GOV-A4's `check` is the sharpest line on the page and is why this lane exists:
  * "Expired 103 days ago ... This now reads as neglect rather than a decision."
  */
-export const OV_POLICY_DECISIONS: readonly OvPolicyDecision[] = [
-  {
-    id: "CMP-A1",
-    state: "live",
-    title: "Teams chat retention set to 1 year rather than the 7-year records period",
-    check: "Compensating control verified on the last scan.",
-    approved: "14 March 2026",
-    review: "14 March 2027",
-  },
-  {
-    id: "CMP-A2",
-    state: "due",
-    title: "OneDrive retention excludes 14 contractor accounts",
-    check:
-      "Review date passed 18 days ago. The contractor population has changed by 4 people since the decision was signed.",
-    approved: "2 February 2026",
-    review: "2 August 2026",
-  },
-  {
-    id: "SEC-A3",
-    state: "proposed",
-    title: "Legacy authentication left enabled for 11 Bay 3 scanners",
-    check: "Waiting on Priya Raman. Raised 6 days ago from CMP-03.",
-    approved: "Not yet signed",
-    review: "Set on approval",
-  },
-  {
-    id: "GOV-A4",
-    state: "expired",
-    title: "Guest access reviews deferred until the Entra P2 licences land",
-    check:
-      "Expired 103 days ago and the compensating control has not run since March. This now reads as neglect rather than a decision.",
-    approved: "9 November 2025",
-    review: "9 May 2026",
-  },
-];
-
-export const PD_TONE: Readonly<Record<OvPolicyState, string>> = {
-  proposed: "#fbbf24",
-  live: "#34d399",
-  due: "#f97316",
-  expired: "#f87171",
-};
-
-/** The label a decision's lane shows when it has never been signed — 17451. */
-export const PD_UNSIGNED = "Not yet signed";
+export {
+  POLICY_DECISIONS as OV_POLICY_DECISIONS,
+  PD_TONE,
+  PD_UNSIGNED,
+} from "./policyDecisionsData";
+export type {
+  PolicyDecision as OvPolicyDecision,
+  PolicyDecisionState as OvPolicyState,
+} from "./policyDecisionsData";
 
 /* ────────────────────────────────────────────────────────────────────────────
    Hold windows

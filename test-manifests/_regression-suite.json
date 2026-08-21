@@ -57,6 +57,8 @@
     "portal/portal-v2-retainer.json",
     "portal/portal-v2-copilot.json",
     "portal/portal-v2-projects.json",
+    "portal/portal-v2-remediation.json",
+    "portal/portal-v2-policy-decisions.json",
     "portal/shell-systems.json"
   ]
 }
