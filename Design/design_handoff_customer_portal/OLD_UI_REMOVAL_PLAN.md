@@ -59,13 +59,24 @@ fallback if something's wrong with the new portal.
 
 ## Category 3 — Needs real investigation before any decision
 
-- `offboarding.tsx` — 568 lines, no preview/deprecated markers, looks like a
-  genuinely real, substantial page. **Do not assume this is trial UI.** Given
-  tonight's design conversation assumed Onboarding/Offboarding was mock-only
-  on the MSP side, this may be a real customer-facing page that changes that
-  assumption — check what it actually does before deciding whether it's
-  superseded, needs porting into the new design, or was already the real
-  thing all along.
+- `offboarding.tsx` — **checked live, correcting the earlier flag.** This is
+  real, but not what it looked like — `/offboarding` is an MSPAdmin-only
+  3-step flow for Shane offboarding a *client* from his MSP business (a
+  churn/termination process), not a customer's own employee-offboarding
+  feature. For a CustomerUser, this same route actually redirects to the
+  Cancel Services tab of the consolidated settings hub. Different concept
+  entirely from the customer-facing Onboarding/Offboarding runbook feature
+  designed earlier — that one still needs building from scratch, this page
+  doesn't inform or replace it.
+
+  **Decision: keep as-is, do not rebuild into the new design.** Admin-only,
+  not customer-facing — the whole rewrite (design build + wiring plan) has
+  been scoped to the customer portal specifically, never the admin side.
+  Rebuilding this into the unified UI is real additional scope, not something
+  to fold in as an afterthought while the customer-facing work is still
+  mid-flight. If admin-panel unification becomes a real priority later, treat
+  it as its own deliberate project, same way this rewrite started as its own
+  thing. Move to Category 4 (not in scope).
 - `documents.tsx` / `documents-hub.tsx` / `document-detail.tsx` /
   `customer-documents.tsx` — four candidates for what should map to one
   Document Library concept. Confirm which (if any) is the real, currently-live
