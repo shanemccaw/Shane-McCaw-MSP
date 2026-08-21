@@ -1,7 +1,7 @@
 {
   "feature": "Customer Portal v2 -- Change Control (/portal-v2/change-control), rebuilt to the standalone Change Control.dc.html module (Part 4). Covers the five sub-views (briefing / register / catalogue / calendar / review), each on its own linkable URL, plus the per-CR record view and the deep-linkable policy view (ccView === 'settings'). UI-only: every value is the design's own fixture, so these steps assert rendered design copy rather than an endpoint.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "PENDING",
+  "lastVerifiedAgainstCommit": "8680d54b",
 
   "notes": [
     "THIS PAGE IS UI-ONLY. The round-one page was a register over the customer-scoped /api/portal/change-control endpoint; the design has since become a separate module and a materially different page, rebuilt here from the design's own fixtures. There is therefore no apiTests block -- there is nothing to hit. A later pass wires the writes; until then these steps assert that the design's copy and structure render, which is exactly what the fidelity audit cannot check on its own and the previous manifest could not either.",
