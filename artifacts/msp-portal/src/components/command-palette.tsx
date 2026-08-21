@@ -47,6 +47,20 @@ import {
   Users,
 } from "lucide-react";
 
+/**
+ * ── Portal v2 shares this endpoint, not this dialog ────────────────────────
+ * The Customer Portal v2 shell has its own bespoke ⌘K palette
+ * (`components/portal-v2/shell/PaletteOverlay.tsx`). The design there demands
+ * coloured type labels, a 14-result cap, an indexed-count footer and an
+ * always-last "Ask ShaneBot" row that this shared shadcn dialog does not draw,
+ * so the surface is separate. What is NOT separate is the search backend: the
+ * portal-v2 palette is UI-only against a fixture index today, and the real
+ * search it wires to in a later pass is THIS endpoint — exported here so the
+ * two share one seam rather than growing a second customer-search backend
+ * (the "needs a real search endpoint" item the handoff flags as out of scope).
+ */
+export const PORTAL_V2_CUSTOMER_SEARCH_ENDPOINT = "/api/portal/customer/search";
+
 interface SearchCustomer {
   id: number;
   name: string;
@@ -202,7 +216,9 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
       setLoading(true);
       try {
         if (isCustomerFacing) {
-          const res = await fetchWithAuth(`/api/portal/customer/search?q=${encodeURIComponent(q)}`);
+          const res = await fetchWithAuth(
+            `${PORTAL_V2_CUSTOMER_SEARCH_ENDPOINT}?q=${encodeURIComponent(q)}`,
+          );
           if (res.ok) {
             const data = (await res.json()) as { results: CustomerSearchResult[] };
             setCustomerResults(data.results ?? []);

@@ -28,8 +28,9 @@
  * Governance pass turned up. The prototype's value is used.
  */
 
-import { Fragment, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useState, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
+import { Plus } from "lucide-react";
 
 import { useAuth } from "@/lib/auth-context";
 import { useHoldBadge } from "@/components/portal-v2/holds/useHoldBadge";
@@ -46,6 +47,19 @@ import {
   PILLAR_ICON_PATHS,
   hexAlpha,
 } from "@/components/copilot-journey/journeyTokens";
+
+// ── The shell's five systems (Part 1) ────────────────────────────────────────
+// Every one is UI-only against the design's own fixtures; the palette index,
+// ShaneBot replies, hold windows, alerts and knowledge base all live in
+// components/portal-v2/shell/ and are wired here.
+import { ACCOUNT } from "@/components/portal-v2/shell/shellData";
+import { useShaneBot } from "@/components/portal-v2/shell/useShaneBot";
+import { useSelectionAsk } from "@/components/portal-v2/shell/useSelectionAsk";
+import { PaletteOverlay } from "@/components/portal-v2/shell/PaletteOverlay";
+import { ShaneBotPanel, ShaneBotLauncher, SelectionChip } from "@/components/portal-v2/shell/ShaneBot";
+import { AlertsTrayContent } from "@/components/portal-v2/shell/AlertsTrayContent";
+import { AccountMenuContent, NewMenuContent, ChangeControlBadge } from "@/components/portal-v2/shell/HeaderMenus";
+import { KnowledgeBaseOverlay } from "@/components/portal-v2/shell/KnowledgeBaseOverlay";
 
 import "./portal-v2.css";
 
@@ -504,16 +518,19 @@ function IconBtn({
   onClick,
   children,
   badge,
+  testId,
 }: {
   title: string;
   onClick?: () => void;
   children: ReactNode;
   badge?: ReactNode;
+  testId?: string;
 }) {
   return (
     <button
       title={title}
       onClick={onClick}
+      data-testid={testId}
       style={{
         position: "relative",
         flex: "0 0 34px",
@@ -544,12 +561,53 @@ export function PortalV2Shell({
   eyebrow?: string;
   children: ReactNode;
 }) {
-  const [location] = useLocation();
+  const [location, navigate] = useLocation();
   const { logout } = useAuth();
   const [expanded, setExpanded] = useState(true);
-  const [alertsOpen, setAlertsOpen] = useState(false);
-  const [accountOpen, setAccountOpen] = useState(false);
+  // The three header dropdowns are mutually exclusive — the prototype closes the
+  // others whenever one opens (shell 7407-7449).
+  const [openMenu, setOpenMenu] = useState<null | "new" | "alerts" | "account">(null);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [kb, setKb] = useState<{ open: boolean; articleId: string | null }>({ open: false, articleId: null });
   const holdBadge = useHoldBadge();
+
+  const shaneBot = useShaneBot();
+  const openPalette = useCallback(() => {
+    setPaletteOpen(true);
+    setOpenMenu(null);
+  }, []);
+  // ⌘K with a selection asks ShaneBot; ⌘K with none opens the palette. The chip
+  // is placed once at the selection and never follows the pointer (README §2).
+  const selection = useSelectionAsk(shaneBot.askShane, openPalette);
+
+  /** Navigate and close every transient shell surface. */
+  const go = useCallback(
+    (href: string) => {
+      setOpenMenu(null);
+      setPaletteOpen(false);
+      setKb({ open: false, articleId: null });
+      navigate(href);
+    },
+    [navigate],
+  );
+
+  const openKb = useCallback((articleId: string | null) => {
+    setKb({ open: true, articleId });
+    setOpenMenu(null);
+    setPaletteOpen(false);
+  }, []);
+
+  // Close any open header dropdown on an outside click — prototype 7441-7449.
+  useEffect(() => {
+    if (!openMenu) return;
+    const onDown = (e: MouseEvent) => {
+      const el = e.target as Element | null;
+      if (el && el.closest && el.closest("[data-pv2-menu]")) return;
+      setOpenMenu(null);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [openMenu]);
 
   const isOverview = location === "/portal-v2" || location === "/portal-v2/";
 
@@ -807,10 +865,20 @@ export function PortalV2Shell({
           }}
           data-testid="pv2-header"
         >
-          {/* Search trigger — a trigger, not an input. max-width 280px. */}
+          {/* Search trigger — a trigger, not an input. max-width 280px.
+              ⌘K (with no selection) opens the same palette; see useSelectionAsk. */}
           <div
             title="Search everything — ⌘K"
             data-testid="pv2-search-trigger"
+            onClick={openPalette}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                openPalette();
+              }
+            }}
             style={{
               cursor: "pointer",
               flex: "1 1 140px",
@@ -861,14 +929,92 @@ export function PortalV2Shell({
             </span>
           </div>
 
+          {/* Change-control header badge — deep-links into the Change Control
+              module's own policy view. The design defines the badge's values
+              (shell 19292-19296) but this revision leaves it out of the header
+              markup; placed here, first in the right cluster, as a tenant-wide
+              status indicator. */}
+          <ChangeControlBadge onNavigate={go} />
+
+          {/* New menu — prototype 220-242. */}
+          <div data-pv2-menu style={{ position: "relative", flex: "0 0 auto" }}>
+            <button
+              onClick={() => setOpenMenu((m) => (m === "new" ? null : "new"))}
+              data-testid="pv2-new-button"
+              style={{
+                flex: "0 0 auto",
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                height: 34,
+                padding: "0 13px 0 11px",
+                borderRadius: 5,
+                cursor: "pointer",
+                fontFamily: "inherit",
+                transition: "background 160ms,border-color 160ms,color 160ms",
+                border: `1px solid ${openMenu === "new" ? "rgba(0,180,216,.65)" : "rgba(148,163,184,.16)"}`,
+                background:
+                  openMenu === "new"
+                    ? "linear-gradient(135deg,rgba(0,120,212,.32),rgba(0,180,216,.2))"
+                    : "#0b1a2e",
+                color: openMenu === "new" ? "#ffffff" : "#cbd5e1",
+              }}
+            >
+              <Plus size={14} color={openMenu === "new" ? "#ffffff" : "#7dd3fc"} />
+              <span style={{ fontSize: "12px", fontWeight: 700, letterSpacing: ".01em", whiteSpace: "nowrap" }}>New</span>
+            </button>
+            {openMenu === "new" && (
+              <div
+                data-testid="pv2-new-menu"
+                style={{
+                  position: "absolute",
+                  left: 0,
+                  top: 42,
+                  zIndex: 90,
+                  width: 320,
+                  border: "1px solid rgba(30,41,59,.9)",
+                  borderRadius: 12,
+                  background: "#0b1524",
+                  boxShadow: "0 18px 44px rgba(2,6,23,.6)",
+                  overflow: "hidden",
+                }}
+              >
+                <NewMenuContent onNavigate={go} />
+              </div>
+            )}
+          </div>
+
+          {/* Knowledge-base "?" — prototype 245. Opens the KB overlay in browse. */}
+          <button
+            onClick={() => openKb(null)}
+            title="Get help on this page"
+            data-testid="pv2-kb-button"
+            style={{
+              flex: "0 0 34px",
+              width: 34,
+              height: 34,
+              borderRadius: 5,
+              border: "1px solid rgba(148,163,184,.16)",
+              background: "#0b1a2e",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+              color: "#94a3b8",
+              fontFamily: "inherit",
+              fontSize: "14px",
+              fontWeight: 700,
+            }}
+          >
+            ?
+          </button>
+
           {/* Alerts bell + tray */}
-          <div style={{ position: "relative", flex: "0 0 auto" }}>
+          <div data-pv2-menu style={{ position: "relative", flex: "0 0 auto" }}>
             <IconBtn
               title="Notifications"
-              onClick={() => {
-                setAlertsOpen((v) => !v);
-                setAccountOpen(false);
-              }}
+              testId="pv2-alerts-bell"
+              onClick={() => setOpenMenu((m) => (m === "alerts" ? null : "alerts"))}
               badge={
                 <span
                   className="pv2-slow-pulse"
@@ -890,7 +1036,7 @@ export function PortalV2Shell({
               </svg>
             </IconBtn>
 
-            {alertsOpen && (
+            {openMenu === "alerts" && (
               <div
                 data-testid="pv2-alerts-tray"
                 style={{
@@ -931,24 +1077,17 @@ export function PortalV2Shell({
                     Same ranking as Most Urgent — pillar coded, sized by impact
                   </span>
                 </div>
-                {/* The tray's rows are driven by the alerts + hold-window systems,
-                    neither of which is built yet. An honest empty state rather
-                    than fabricated alerts — the geometry above is the spec. */}
-                <div style={{ padding: "18px 16px", fontSize: "12px", color: "#64748b" }}>
-                  No alerts yet. Smart alerts arrive with the alerts and hold-window
-                  systems.
-                </div>
+                {/* Hold windows needing a decision, then the smart alerts —
+                    both from one source, ranked as Most Urgent. */}
+                <AlertsTrayContent onNavigate={go} />
               </div>
             )}
           </div>
 
           {/* Account chip + menu */}
-          <div style={{ position: "relative", flex: "0 0 auto" }}>
+          <div data-pv2-menu style={{ position: "relative", flex: "0 0 auto" }}>
             <button
-              onClick={() => {
-                setAccountOpen((v) => !v);
-                setAlertsOpen(false);
-              }}
+              onClick={() => setOpenMenu((m) => (m === "account" ? null : "account"))}
               data-testid="pv2-account-chip"
               style={{
                 flex: "0 0 auto",
@@ -978,7 +1117,7 @@ export function PortalV2Shell({
                   flex: "0 0 26px",
                 }}
               >
-                JD
+                {ACCOUNT.initials}
               </div>
               <div
                 style={{
@@ -1000,7 +1139,7 @@ export function PortalV2Shell({
                     maxWidth: 110,
                   }}
                 >
-                  Jordan Diaz
+                  {ACCOUNT.name}
                 </span>
                 <span
                   style={{
@@ -1013,7 +1152,7 @@ export function PortalV2Shell({
                     maxWidth: 110,
                   }}
                 >
-                  IT Lead
+                  {ACCOUNT.role}
                 </span>
               </div>
               <span
@@ -1022,7 +1161,7 @@ export function PortalV2Shell({
                   display: "flex",
                   color: "#64748b",
                   marginLeft: 2,
-                  transform: `rotate(${accountOpen ? 180 : 0}deg)`,
+                  transform: `rotate(${openMenu === "account" ? 180 : 0}deg)`,
                   transition: "transform 180ms",
                 }}
               >
@@ -1032,7 +1171,7 @@ export function PortalV2Shell({
               </span>
             </button>
 
-            {accountOpen && (
+            {openMenu === "account" && (
               <div
                 data-testid="pv2-account-menu"
                 style={{
@@ -1051,59 +1190,12 @@ export function PortalV2Shell({
                   gap: 1,
                 }}
               >
-                {/* Settings is reached from HERE, not the left nav — the
-                    prototype's account menu carries it (19243) and the nav
-                    does not. This replaces the placeholder note that stood
-                    here while the page did not exist. */}
-                <Link
-                  href="/portal-v2/settings"
-                  onClick={() => setAccountOpen(false)}
-                  data-testid="pv2-account-settings"
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 9,
-                    width: "100%",
-                    padding: "8px 10px",
-                    borderRadius: 6,
-                    background: "transparent",
-                    color: "#94a3b8",
-                    fontSize: "12px",
-                    fontWeight: 600,
-                    fontFamily: "inherit",
-                    textAlign: "left",
-                    textDecoration: "none",
-                  }}
-                >
-                  Settings
-                </Link>
-                {/* Sign out is real today — the account menu is where the design
-                    puts it, and having it here gives a deterministic way to end
-                    a session. Without it the only sign-out affordance in the app
-                    is on the flat no-slug route and carries no test handle, which
-                    is why a persisted session makes login-first test runs flaky. */}
-                <button
-                  onClick={() => void logout()}
-                  data-testid="pv2-sign-out"
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 9,
-                    width: "100%",
-                    padding: "8px 10px",
-                    borderRadius: 6,
-                    border: "none",
-                    background: "transparent",
-                    color: "#94a3b8",
-                    fontSize: "12px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    fontFamily: "inherit",
-                    textAlign: "left",
-                  }}
-                >
-                  Sign out
-                </button>
+                {/* The design's full account menu — Settings, Change control
+                    policy, Alert preferences, Webhooks, Billing, Account
+                    security, Sign out (shell 19242-19249). Several targets are
+                    owned by later parts and resolve when they land; Settings and
+                    the change-control policy exist today. Sign out is real. */}
+                <AccountMenuContent onNavigate={go} onSignOut={() => void logout()} />
               </div>
             )}
           </div>
@@ -1123,6 +1215,38 @@ export function PortalV2Shell({
           {children}
         </main>
       </div>
+
+      {/* ── The five systems' overlays, mounted at the shell root ──────────── */}
+      <PaletteOverlay
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        onNavigate={go}
+        onOpenKb={(articleId) => openKb(articleId)}
+        onAsk={shaneBot.askShane}
+      />
+
+      <KnowledgeBaseOverlay
+        open={kb.open}
+        seedArticleId={kb.articleId}
+        location={location}
+        onClose={() => setKb({ open: false, articleId: null })}
+        onNavigate={go}
+        onAsk={shaneBot.askShane}
+      />
+
+      {/* ShaneBot: the selection chip (at the selection, nothing follows the
+          pointer), the chat panel, and the launcher. */}
+      {selection.chip && (
+        <SelectionChip
+          chip={selection.chip}
+          onAsk={(topic) => {
+            selection.dismiss();
+            shaneBot.askShane(topic);
+          }}
+        />
+      )}
+      {shaneBot.open && <ShaneBotPanel api={shaneBot} />}
+      <ShaneBotLauncher onClick={shaneBot.toggle} />
     </div>
   );
 }
