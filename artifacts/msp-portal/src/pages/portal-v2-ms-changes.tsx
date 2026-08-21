@@ -33,22 +33,26 @@ import { Link } from "wouter";
 
 import { useFormDrawer, type FormSpec } from "@/components/portal-v2/FormDrawer";
 import { PortalV2Shell, SIDEBAR_WASH } from "@/components/portal-v2/PortalV2Shell";
+/**
+ * The bucket axis, the density rows, the stat cards, the post corpus and the
+ * scan time no longer come from this module — they come from the `MscDataset`
+ * that `useMessageCenter()` returns, which is the tenant's real Message Center
+ * when one is reachable and this fixture when it is not.
+ *
+ * What is still imported here is the design's own STRUCTURE, which has no data
+ * source and needs none: the four kind legends, the eleven detail sections, the
+ * workload accents, and the tenant's freeze bands / today pin.
+ */
 import {
-  MSC_BUCKETS,
   MSC_FREEZE_BANDS,
-  MSC_GROUPS,
   MSC_KINDS,
-  MSC_LANDED,
-  MSC_SCAN_AT,
-  MSC_SCANS,
   MSC_SECS,
-  MSC_STAT_DEFS,
   MSC_TODAY_LABEL,
-  MS_POSTS,
   WORKLOAD_TONE,
   type MscSeen,
   type MsPost,
 } from "@/components/portal-v2/msChangesData";
+import { useMessageCenter } from "@/components/portal-v2/useMessageCenter";
 import {
   breakMeta,
   cellDots,
@@ -569,7 +573,17 @@ function PostDetail({
 
 export default function PortalV2MsChangesPage() {
   const [, params] = useRoute("/portal-v2/ms-changes/:wave");
-  const bands = useMemo(() => waveBands(), []);
+
+  /**
+   * The tenant's REAL Microsoft 365 Message Center, from
+   * `GET /api/portal/message-center`. Until it lands — and if it fails — `ds` is
+   * the design fixture, so the page renders rather than flickering through an
+   * empty state. See `useMessageCenter.ts` for what is real in it and what stays
+   * fixture.
+   */
+  const { dataset: ds, provenance } = useMessageCenter();
+
+  const bands = useMemo(() => waveBands(ds.buckets), [ds]);
   const slugIndex = params?.wave ? WAVE_SLUGS.indexOf(params.wave as (typeof WAVE_SLUGS)[number]) : 0;
   const wave = clampWave(slugIndex < 0 ? 0 : slugIndex, bands);
 
@@ -597,20 +611,20 @@ export default function PortalV2MsChangesPage() {
     setSec("ms");
   };
 
-  const active = useMemo(() => activeDensity(services), [services]);
+  const active = useMemo(() => activeDensity(services, ds), [services, ds]);
   const selBand = bands[wave];
-  const selT = useMemo(() => waveTotals(wave, services, bands), [wave, services, bands]);
-  const tiles = useMemo(() => waveTiles(wave, services, bands), [wave, services, bands]);
-  const notice = waveNotice(wave);
-  const freeze = freezeInWave(wave, bands);
-  const wBreaks = useMemo(() => waveBreaks(wave, services, bands), [wave, services, bands]);
-  const wQueue = useMemo(() => waveQueue(wave, services, bands), [wave, services, bands]);
-  const wQuiet = useMemo(() => waveQuiet(wave, services, bands), [wave, services, bands]);
-  const wSeen = useMemo(() => seenInWave(wave, services, bands), [wave, services, bands]);
-  const raci = useMemo(() => raciRows(services), [services]);
-  const pastData = past !== null ? pastWave(past) : null;
+  const selT = useMemo(() => waveTotals(wave, services, bands, ds), [wave, services, bands, ds]);
+  const tiles = useMemo(() => waveTiles(wave, services, bands, ds), [wave, services, bands, ds]);
+  const notice = waveNotice(wave, ds);
+  const freeze = freezeInWave(wave, bands, ds);
+  const wBreaks = useMemo(() => waveBreaks(wave, services, bands, ds), [wave, services, bands, ds]);
+  const wQueue = useMemo(() => waveQueue(wave, services, bands, ds), [wave, services, bands, ds]);
+  const wQuiet = useMemo(() => waveQuiet(wave, services, bands, ds), [wave, services, bands, ds]);
+  const wSeen = useMemo(() => seenInWave(wave, services, bands, ds), [wave, services, bands, ds]);
+  const raci = useMemo(() => raciRows(services, ds), [services, ds]);
+  const pastData = past !== null ? pastWave(past, ds) : null;
 
-  const openPostObj = openId ? MS_POSTS.find((p) => p.id === openId) ?? null : null;
+  const openPostObj = openId ? ds.posts.find((p) => p.id === openId) ?? null : null;
   const thread = openPostObj ? [...openPostObj.thread, ...(threadOv[openPostObj.id] ?? [])] : [];
 
   /* ── The forms ─────────────────────────────────────────────────────────── */
@@ -653,13 +667,13 @@ export default function PortalV2MsChangesPage() {
       toFormSpec({
         kicker: "Settings · services in use",
         title: "Which Microsoft services are you using?",
-        intro: `Turn a service off and it leaves this page — its waves, counts and notices all go with it. Each one is pre-selected from the last tenant scan, ${MSC_SCAN_AT}.`,
+        intro: `Turn a service off and it leaves this page — its waves, counts and notices all go with it. Each one is pre-selected from the last tenant scan, ${ds.scanAt}.`,
         submitLabel: "Save services",
-        fields: MSC_SCANS.map((sc) => ({ k: sc.wl, label: sc.name, kind: "toggle" as const, value: services[sc.wl] === false ? "Off" : "In use", toggleLabel: "In use", hint: `Scan found: ${sc.found}` })),
+        fields: ds.scans.map((sc) => ({ k: sc.wl, label: sc.name, kind: "toggle" as const, value: services[sc.wl] === false ? "Off" : "In use", toggleLabel: "In use", hint: `Scan found: ${sc.found}` })),
         doneNote: "Services updated. Every count on this page now reads against them.",
         onSubmit: (v) => {
           const next: Record<string, boolean> = {};
-          MSC_SCANS.forEach((sc) => {
+          ds.scans.forEach((sc) => {
             next[sc.wl] = v[sc.wl] === "In use";
           });
           setServices(next);
@@ -818,7 +832,7 @@ export default function PortalV2MsChangesPage() {
           {/* Next 12 months — the stat cards — prototype 43-56 */}
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <span style={{ fontSize: "9px", fontWeight: 700, letterSpacing: ".12em", textTransform: "uppercase", color: "#475569", paddingRight: 2 }}>Next 12 months</span>
-            {MSC_STAT_DEFS.map((s) => {
+            {ds.stats.map((s) => {
               const on = statFilter === s.key;
               return (
                 <button key={s.key} onClick={() => setStatFilter(on ? null : s.key)} data-testid={`pv2-msc-stat-${s.key}`} title={on ? "Filtering everything below · click to clear" : s.sub} style={{ display: "inline-flex", alignItems: "baseline", gap: 7, padding: "6px 11px", border: `1px solid ${on ? `${s.tone}80` : "rgba(30,41,59,.9)"}`, borderRadius: 999, background: on ? `${s.tone}14` : "#0b1524", cursor: "pointer", fontFamily: "inherit" }}>
@@ -829,7 +843,18 @@ export default function PortalV2MsChangesPage() {
             })}
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: "auto", padding: "5px 11px 5px 9px", border: "1px solid rgba(52,211,153,.28)", borderRadius: 999, background: "rgba(52,211,153,.06)" }}>
               <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#34d399", flex: "0 0 auto", boxShadow: "0 0 0 3px rgba(52,211,153,.18)" }} />
-              <span style={{ fontSize: "10.5px", color: "#94a3b8", whiteSpace: "nowrap" }}>Read against your tenant · scanned {MSC_SCAN_AT}</span>
+              {/*
+                The design says "Read against your tenant", which on the LIVE
+                dataset would be a claim nothing has done: these posts come from
+                your Message Center, they have not been matched against your
+                configuration. The fixture keeps the design's own words; the live
+                dataset says what actually happened, and how many posts it holds.
+              */}
+              <span data-testid="pv2-msc-source" title={provenance?.impactBasis ?? undefined} style={{ fontSize: "10.5px", color: "#94a3b8", whiteSpace: "nowrap" }}>
+                {ds.live
+                  ? `Your Microsoft Message Center · ${ds.itemCount} posts · synced ${ds.scanAt}`
+                  : `Read against your tenant · scanned ${ds.scanAt}`}
+              </span>
               <button onClick={() => t("Tenant scan queued — Graph read takes about four minutes. Everything on this page will re-read against the result.")} data-testid="pv2-msc-rescan" style={{ border: "none", background: "transparent", color: "#34d399", fontSize: "10.5px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", padding: 0, whiteSpace: "nowrap" }}>Scan again</button>
             </div>
           </div>
@@ -837,7 +862,7 @@ export default function PortalV2MsChangesPage() {
           {/* Landed waves — the way into the retrospective — prototype pastNav 2087-2094 */}
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <span style={{ fontSize: "9px", fontWeight: 700, letterSpacing: ".12em", textTransform: "uppercase", color: "#475569", paddingRight: 2 }}>Landed</span>
-            {MSC_LANDED.map((w, i) => {
+            {ds.landed.map((w, i) => {
               const on = past === i;
               return (
                 <button key={w.name} onClick={() => { setPast(i); setSeenPanel(false); }} data-testid={`pv2-msc-pastnav-${i}`} style={{ display: "flex", flexDirection: "column", gap: 2, padding: "8px 12px", borderRadius: 9, cursor: "pointer", fontFamily: "inherit", textAlign: "left", border: `1px solid ${on ? "rgba(148,163,184,.4)" : "rgba(30,41,59,.9)"}`, borderLeft: `3px solid ${on ? "#94a3b8" : "rgba(148,163,184,.18)"}`, background: on ? "rgba(148,163,184,.08)" : "#0b1524" }}>
@@ -898,9 +923,9 @@ export default function PortalV2MsChangesPage() {
               <div data-testid="pv2-msc-wave-card" style={{ display: "flex", flexDirection: "column", gap: 13, padding: "17px 19px", border: "1px solid rgba(0,120,212,.32)", borderRadius: 13, background: "linear-gradient(135deg,rgba(0,120,212,.1),rgba(11,21,36,.9))" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                   <span style={{ fontSize: "22px", fontWeight: 800, color: "#f8fafc", letterSpacing: "-.02em" }}>{selBand.wave}</span>
-                  <span style={pill(waveStatus(wave, bands), wave === 0 ? "#22d3ee" : "#93c5fd", `${wave === 0 ? "#22d3ee" : "#60a5fa"}1f`)}>{waveStatus(wave, bands)}</span>
+                  <span style={pill(waveStatus(wave, bands, ds), wave === 0 ? "#22d3ee" : "#93c5fd", `${wave === 0 ? "#22d3ee" : "#60a5fa"}1f`)}>{waveStatus(wave, bands, ds)}</span>
                   {freeze && <span style={pill(`Lands inside your ${freeze.label.toLowerCase()} freeze`, "#f87171", "rgba(248,113,113,.12)")}>Lands inside your {freeze.label.toLowerCase()} freeze</span>}
-                  <span style={{ marginLeft: "auto", fontSize: "12px", fontWeight: 600, color: "#93c5fd", whiteSpace: "nowrap" }}>{rangeOf(selBand)}</span>
+                  <span style={{ marginLeft: "auto", fontSize: "12px", fontWeight: 600, color: "#93c5fd", whiteSpace: "nowrap" }}>{rangeOf(selBand, ds)}</span>
                   <button onClick={briefWaveForm} data-testid="pv2-msc-brief-wave" style={{ padding: "6px 12px", borderRadius: 7, fontSize: "11px", fontWeight: 700, border: "1px solid rgba(0,120,212,.5)", background: "rgba(0,120,212,.14)", color: "#93c5fd", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>Brief this wave</button>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
@@ -985,7 +1010,7 @@ export default function PortalV2MsChangesPage() {
                             aria-current={on ? "page" : undefined}
                             style={{ gridColumn: `${b.start + 1} / span ${b.span}`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 0, margin: "0 1px 5px", padding: "5px 3px", borderRadius: 5, cursor: "pointer", fontFamily: "inherit", textDecoration: "none", border: `1px solid ${on ? "rgba(0,120,212,.75)" : "rgba(96,165,250,.22)"}`, background: on ? "rgba(0,120,212,.22)" : "rgba(96,165,250,.06)", overflow: "hidden" }}
                           >
-                            <span style={{ fontSize: "9px", fontWeight: on ? 800 : 700, letterSpacing: ".03em", textTransform: "uppercase", color: on ? "#e2e8f0" : "#93c5fd", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%", lineHeight: 1.3 }}>{waveLabel(b)}</span>
+                            <span style={{ fontSize: "9px", fontWeight: on ? 800 : 700, letterSpacing: ".03em", textTransform: "uppercase", color: on ? "#e2e8f0" : "#93c5fd", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%", lineHeight: 1.3 }}>{waveLabel(b, ds)}</span>
                             <span style={{ fontSize: "9px", fontWeight: 700, color: on ? "#93c5fd" : "#60a5fa", whiteSpace: "nowrap", lineHeight: 1.3 }}>{n}</span>
                           </a>
                         );
@@ -994,11 +1019,11 @@ export default function PortalV2MsChangesPage() {
 
                     <span style={{ fontSize: "9px", fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: "#475569", alignSelf: "start", padding: "6px 12px 0 2px" }}>Workload</span>
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(11,1fr)" }}>
-                      {MSC_BUCKETS.map((b, i) => (
-                        <div key={`${b.label}-${b.sub}`} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 0, padding: "5px 2px", borderLeft: i === 0 ? "2px solid rgba(34,211,238,.75)" : `1px solid ${isFreezeBucket(i) ? "rgba(248,113,113,.4)" : "rgba(30,41,59,.6)"}`, background: b.wave === selBand.wave ? "rgba(96,165,250,.05)" : "transparent" }}>
+                      {ds.buckets.map((b, i) => (
+                        <div key={`${b.label}-${b.sub}`} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 0, padding: "5px 2px", borderLeft: i === 0 ? "2px solid rgba(34,211,238,.75)" : `1px solid ${isFreezeBucket(i, ds) ? "rgba(248,113,113,.4)" : "rgba(30,41,59,.6)"}`, background: b.wave === selBand.wave ? "rgba(96,165,250,.05)" : "transparent" }}>
                           {i === 0 && <span style={{ display: "inline-flex", alignItems: "center", padding: "1px 6px", marginBottom: 2, borderRadius: 999, fontSize: "8px", fontWeight: 800, letterSpacing: ".06em", textTransform: "uppercase", color: "#022c33", background: "#22d3ee", whiteSpace: "nowrap" }}>{MSC_TODAY_LABEL}</span>}
                           <span style={{ fontSize: "9.5px", fontWeight: i === 0 ? 800 : 700, color: i === 0 ? "#22d3ee" : "#cbd5e1", whiteSpace: "nowrap" }}>{b.label}</span>
-                          <span style={{ fontSize: "8.5px", fontWeight: 600, color: isFreezeBucket(i) ? "#f87171" : "#475569", whiteSpace: "nowrap" }}>{isFreezeBucket(i) ? MSC_FREEZE_BANDS.find((f) => f.from <= i && i < f.from + f.span)?.label ?? b.sub : b.sub}</span>
+                          <span style={{ fontSize: "8.5px", fontWeight: 600, color: isFreezeBucket(i, ds) ? "#f87171" : "#475569", whiteSpace: "nowrap" }}>{isFreezeBucket(i, ds) ? MSC_FREEZE_BANDS.find((f) => f.from <= i && i < f.from + f.span)?.label ?? b.sub : b.sub}</span>
                         </div>
                       ))}
                     </div>
@@ -1011,7 +1036,7 @@ export default function PortalV2MsChangesPage() {
                         </div>
                         <div style={{ display: "grid", gridTemplateColumns: "repeat(11,1fr)" }}>
                           {row.cells.map((c, i) => (
-                            <div key={i} title={cellTitle(row.name, i, c)} style={{ display: "flex", flexWrap: "wrap", alignContent: "center", justifyContent: "center", gap: 3, minHeight: 38, padding: "6px 5px", borderLeft: i === 0 ? "2px solid rgba(34,211,238,.5)" : `1px solid ${isFreezeBucket(i) ? "rgba(248,113,113,.35)" : "rgba(30,41,59,.5)"}`, background: MSC_BUCKETS[i].wave === selBand.wave ? "rgba(96,165,250,.05)" : "transparent" }}>
+                            <div key={i} title={cellTitle(row.name, i, c, ds)} style={{ display: "flex", flexWrap: "wrap", alignContent: "center", justifyContent: "center", gap: 3, minHeight: 38, padding: "6px 5px", borderLeft: i === 0 ? "2px solid rgba(34,211,238,.5)" : `1px solid ${isFreezeBucket(i, ds) ? "rgba(248,113,113,.35)" : "rgba(30,41,59,.5)"}`, background: ds.buckets[i].wave === selBand.wave ? "rgba(96,165,250,.05)" : "transparent" }}>
                               {cellDots(c).map((k, di) => (
                                 <span key={di} style={{ width: 7, height: 7, borderRadius: 2, background: KIND_TONE[k], opacity: k === "s" ? 0.85 : 1 }} />
                               ))}
@@ -1120,8 +1145,8 @@ export default function PortalV2MsChangesPage() {
                   <span style={{ fontSize: "11px", color: "#64748b" }}>Microsoft told your administrators. These are the people who actually feel it.</span>
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))", gap: 12 }}>
-                  {MSC_GROUPS.map((g, gi) => {
-                    const strip = groupStrip(g.items);
+                  {ds.groups.map((g, gi) => {
+                    const strip = groupStrip(g.items, ds);
                     return (
                       <div key={g.name} data-testid={`pv2-msc-group-${gi}`} style={{ display: "flex", flexDirection: "column", gap: 8, padding: "15px 16px", border: `1px solid ${g.tone}30`, borderLeft: `3px solid ${g.tone}`, borderRadius: 12, background: "rgba(2,6,23,.35)", minWidth: 0 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
@@ -1131,14 +1156,14 @@ export default function PortalV2MsChangesPage() {
                         </div>
                         <div style={{ display: "flex", alignItems: "flex-end", gap: 2, height: 16 }}>
                           {strip.map((hit, i) => (
-                            <span key={i} title={`${MSC_BUCKETS[i].label} ${MSC_BUCKETS[i].sub}${hit ? ` · ${hit} for this group` : " · nothing"}`} style={{ flex: 1, height: hit ? 14 : 5, borderRadius: 2, background: hit ? g.tone : "rgba(148,163,184,.13)" }} />
+                            <span key={i} title={`${ds.buckets[i].label} ${ds.buckets[i].sub}${hit ? ` · ${hit} for this group` : " · nothing"}`} style={{ flex: 1, height: hit ? 14 : 5, borderRadius: 2, background: hit ? g.tone : "rgba(148,163,184,.13)" }} />
                           ))}
                         </div>
                         <span style={{ fontSize: "11.5px", color: "#cbd5e1", lineHeight: 1.6, textWrap: "pretty" }}>{g.what}</span>
                         <span style={{ fontSize: "11px", color: "#94a3b8", lineHeight: 1.55, textWrap: "pretty" }}>{g.who}</span>
                         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                           <span style={pill(`First date · ${g.first}`, g.tone, `${g.tone}14`)}>First date · {g.first}</span>
-                          <span style={{ fontSize: "9.5px", color: "#64748b" }}>{groupWave(g.items)}</span>
+                          <span style={{ fontSize: "9.5px", color: "#64748b" }}>{groupWave(g.items, ds)}</span>
                           <span style={{ marginLeft: "auto", display: "flex", gap: 6, flexWrap: "wrap" }}>
                             {g.items.map((id) => (
                               <button key={id} onClick={() => openPost(id)} style={{ padding: "3px 8px", borderRadius: 5, border: "1px solid rgba(96,165,250,.25)", background: "rgba(96,165,250,.08)", color: "#93c5fd", fontSize: "10px", fontWeight: 700, fontFamily: MONO, cursor: "pointer", whiteSpace: "nowrap" }}>{id}</button>

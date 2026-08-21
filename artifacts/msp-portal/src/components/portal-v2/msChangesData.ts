@@ -22,7 +22,16 @@
  * The prototype's fictional Halden Materials tenant.
  */
 
-/** A workload's accent - 'Microsoft Changes.dc.html' 598. */
+/**
+ * A workload's accent - 'Microsoft Changes.dc.html' 598.
+ *
+ * `M365` is not in the design. It is the residual row the LIVE Message Center
+ * needs: Microsoft files posts against nineteen distinct service names in the
+ * testbed tenant alone (Dynamics 365, Viva, Defender XDR, Power BI, Planner...),
+ * and the six design rows cannot hold them. Dropping the remainder would make
+ * every total on the page quietly wrong, so they land here instead. It is slate
+ * rather than a new accent because it is a catch-all, not a workload.
+ */
 export const WORKLOAD_TONE: Readonly<Record<string, string>> = {
   Exchange: "#60a5fa",
   Teams: "#a78bfa",
@@ -30,6 +39,7 @@ export const WORKLOAD_TONE: Readonly<Record<string, string>> = {
   Entra: "#fbbf24",
   Purview: "#f87171",
   Copilot: "#22d3ee",
+  M365: "#94a3b8",
 };
 
 /** The twelve-month band the density grid is drawn over - 599-603. */
@@ -103,6 +113,17 @@ export interface MsPost {
   decisions: readonly MsDecision[];
   controls: readonly string[];
   thread: readonly MsThreadEntry[];
+  /**
+   * Which of the eleven buckets this post lands in.
+   *
+   * The FIXTURE posts do not carry it — their bucket comes from the hand-built
+   * MSC_ITEM_BUCKET map, because a design fixture has no real dates to derive
+   * one from. A post that arrives from the live Message Center DOES carry it,
+   * computed server-side from Microsoft's own published date, and
+   * `postsInWave` prefers it over the map. Optional for exactly that reason:
+   * it is the seam between a fixture post and a real one.
+   */
+  bucket?: number;
 }
 
 export const MS_POSTS: readonly MsPost[] = [
@@ -1250,3 +1271,87 @@ export const MSC_LANDED: readonly MscLanded[] = [
     ],
   },
 ];
+
+/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+   The dataset seam \u2014 where the design fixture stops and the tenant's own
+   Microsoft 365 Message Center starts
+   \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */
+
+/**
+ * Everything the page and `msChangesModel.ts` read, in one object.
+ *
+ * Before this existed the model reached straight for the module constants above,
+ * so the page could only ever draw the design's fictional Halden Materials
+ * tenant. Every derivation now takes a `MscDataset` that DEFAULTS to
+ * `FIXTURE_DATASET` \u2014 which is why the existing model tests still pass
+ * unchanged \u2014 and `useMessageCenter()` swaps in a real one built from
+ * `GET /api/portal/message-center`.
+ *
+ * -- What is real in the live dataset -------------------------------------
+ * From the customer's own Message Center, synced from Graph
+ * `/admin/serviceAnnouncement/messages` by `message-center-sync.ts`:
+ *
+ *   posts . density . buckets . stats . scans . scanAt . waveShort . itemCount
+ *
+ * -- What stays fixture, and why ------------------------------------------
+ * These need a read of the customer's own CONFIGURATION, their staff list, or a
+ * human write-up. Nothing in this build produces any of them for Message Center
+ * posts, so they are left as the design's own rather than fabricated against a
+ * real customer's name:
+ *
+ *   queue (the decision write-ups) . seen (the seen-in-the-wild briefings) .
+ *   groups (which department feels it) . landed (the retrospective) .
+ *   raci (named owners) . freezeBuckets (the tenant's change freezes) .
+ *   waveNotice (notice given / days left)
+ *
+ * `live` tells the page which dataset it is holding, so it can say so on screen.
+ * Nothing is silently blended: a fixture surface stays whole rather than being
+ * half-populated from real data, which would be the one genuinely misleading
+ * outcome.
+ */
+export interface MscDataset {
+  readonly live: boolean;
+  readonly posts: readonly MsPost[];
+  readonly density: readonly MscDensityRow[];
+  readonly buckets: readonly MscBucket[];
+  readonly stats: readonly MscStatDef[];
+  readonly scans: readonly MscScan[];
+  readonly scanAt: string;
+  readonly waveShort: Readonly<Record<string, string>>;
+  /** Fixture-only: the hand-built post-to-bucket map. Live posts carry `bucket`. */
+  readonly itemBucket: Readonly<Record<string, number>>;
+  readonly freezeBuckets: readonly number[];
+  readonly freezeBucketDefs: ReadonlyArray<{ i: number; label: string }>;
+  readonly waveStatus: readonly string[];
+  readonly waveNotice: readonly MscWaveNotice[];
+  readonly queue: readonly MscQueueItem[];
+  readonly seen: readonly MscSeen[];
+  readonly groups: readonly MscGroup[];
+  readonly landed: readonly MscLanded[];
+  readonly raci: Readonly<Record<string, MscRaci>>;
+  /** How many Message Center items the tenant holds. 0 on the fixture. */
+  readonly itemCount: number;
+}
+
+/** The design's own tenant, unchanged. What the page draws before the fetch lands. */
+export const FIXTURE_DATASET: MscDataset = {
+  live: false,
+  posts: MS_POSTS,
+  density: MSC_DENSITY,
+  buckets: MSC_BUCKETS,
+  stats: MSC_STAT_DEFS,
+  scans: MSC_SCANS,
+  scanAt: MSC_SCAN_AT,
+  waveShort: MSC_WAVE_SHORT,
+  itemBucket: MSC_ITEM_BUCKET,
+  freezeBuckets: MSC_FREEZE_BUCKETS,
+  freezeBucketDefs: MSC_FREEZE_BUCKET_DEFS,
+  waveStatus: MSC_WAVE_STATUS,
+  waveNotice: MSC_WAVE_NOTICE,
+  queue: MSC_QUEUE,
+  seen: MSC_SEEN,
+  groups: MSC_GROUPS,
+  landed: MSC_LANDED,
+  raci: MSC_RACI,
+  itemCount: 0,
+};
