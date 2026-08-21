@@ -1,0 +1,75 @@
+{
+  "feature": "Customer Portal v2 Part 6 -- Reference -> SOPs & Runbooks (/portal-v2/sops) and its four sop-* category pages. Recreated from the prototype's own `isSopHub` block ('Customer Portal Shell.dc.html' 1633-1978) and its SOP_LIBRARY / SOP_META / SOP_QUEUE / SOP_AUDIT derivations, transcribed into sopHubData.ts + sopHubModel.ts and pinned by unit assertions. The hub has three sub-views -- library / execution queue / execution history -- each a real linkable URL (base = library, /sops/queue, /sops/audit) and a shell-nav sub-item under SOPs & Runbooks. The library is a master-detail: a grouped, filterable index on the left and the selected procedure in full on the right, with an execution slide-over for runnable procedures. The four category keys (incident-response / security-drift / mail-flow / device-mgmt) are the prototype's `sopCategories` (shell 8789), which the design renders through its generic placeholder branch (shell 6500-6507) -- reproduced faithfully as real, linkable routes. UI-only: every value is the design's own fixture, so these steps assert rendered design copy rather than an endpoint.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "UNSET",
+  "notes": [
+    "THE LOGIN BLOCK IS NOT OPTIONAL. /portal-v2/* sits behind ProtectedRoute; a probe that skips the five login steps hits the login screen and every assertion fails for a reason unrelated to the page.",
+    "UI ROUTE SHAPE: msp-portal's outer WouterRouter has base '/portal' and SlugScope nests a second router at '/{slug}', so the real URL is /portal/{slug}/portal-v2/sops. App.tsx declares the four /sops/<category> routes BEFORE '/sops/:view' (the queue/audit param) and both before '/portal-v2/:pillar' so nothing is swallowed.",
+    "shaneapp://runTest hits the DEPLOYED build, not the local worktree; this manifest needs the Part 6 pages deployed first.",
+    "PERSISTED-SESSION FLAKE (known): when WebView2 is already authed, the two input steps against #email/#password can fail while the rest runs green because auth persists. N-2 of N with only those two red is a PASS for the feature.",
+    "THIS PAGE IS UI-ONLY. There is no apiTests block beyond the login setup -- there is no SOP endpoint yet; a later pass wires it. These steps assert that the design's copy and structure render, which is what the fidelity audit cannot check on its own.",
+    "THE EXECUTE BUTTONS open the execution slide-over directly. In the prototype they route through the change-request gate (a shell system owned by another part); UI-only here, so the drawer -- the design's real execution surface -- opens directly.",
+    "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD."
+  ],
+  "apiTests": [
+    {
+      "name": "SETUP -- log in as the designated TESTBED account; extract the bearer.",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    }
+  ],
+  "uiSteps": [
+    { "name": "goto the real login URL (outer WouterRouter base = '/portal').", "action": "goto", "target": "/portal/login" },
+    { "name": "WAIT for the login form to hydrate before typing.", "action": "expect", "selector": "#email", "state": "visible" },
+    { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
+    { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
+    { "name": "Primary login -- every assertion below needs a real session.", "action": "click", "selector": "[data-testid='login-submit']", "critical": true },
+
+    { "name": "goto the SOPs & Runbooks hub (library sub-view) on its slug-scoped route.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/sops" },
+    { "name": "S1 -- the page resolved to the hub, not NotFound and not the param pillar route.", "action": "expect", "selector": "[data-testid='pv2-sop-title']", "textContains": "SOPs & Runbooks", "critical": true },
+    { "name": "S2 -- the hold banner renders its thesis, verbatim.", "action": "expect", "selector": "[data-testid='pv2-sop-hold-banner']", "textContains": "procedures are in a hold window" },
+    { "name": "S3 -- ...and its Open active runbooks deep-link.", "action": "expect", "selector": "[data-testid='pv2-sop-hold-banner']", "textContains": "Open active runbooks" },
+    { "name": "S4 -- the toolbar carries Refresh logs.", "action": "expect", "selector": "[data-testid='pv2-sop-refresh-logs']", "textContains": "Refresh logs" },
+    { "name": "S5 -- ...and Export master index PDF.", "action": "expect", "selector": "[data-testid='pv2-sop-export-index']", "textContains": "Export master index PDF" },
+    { "name": "S6 -- a stat card renders (the automated-ratio label).", "action": "expect", "selector": "[data-testid='pv2-sop-hub']", "textContains": "Automated execution ratio" },
+    { "name": "S7 -- the result count shows all 17 procedures.", "action": "expect", "selector": "[data-testid='pv2-sop-result-count']", "textContains": "17 shown" },
+    { "name": "S8 -- the library sub-view rendered.", "action": "expect", "selector": "[data-testid='pv2-sop-library']", "state": "visible" },
+    { "name": "S9 -- the first procedure is selected and shows its title.", "action": "expect", "selector": "[data-testid='pv2-sop-detail-title']", "textContains": "Disable legacy authentication safely" },
+    { "name": "S10 -- the detail panel carries 'The procedure, in full'.", "action": "expect", "selector": "[data-testid='pv2-sop-library']", "textContains": "The procedure, in full" },
+    { "name": "S11 -- ...and the 'Maintained by' meta field.", "action": "expect", "selector": "[data-testid='pv2-sop-library']", "textContains": "Maintained by" },
+    { "name": "S12 -- a runnable procedure offers 'Execute this SOP'.", "action": "expect", "selector": "[data-testid='pv2-sop-execute']", "textContains": "Execute this SOP" },
+    { "name": "S13 -- ...and 'Execute automated steps only'.", "action": "expect", "selector": "[data-testid='pv2-sop-execute-auto']", "textContains": "Execute automated steps only" },
+    { "name": "S14 -- the library footer note, verbatim.", "action": "expect", "selector": "[data-testid='pv2-sop-library']", "textContains": "Baseline procedures are ours to maintain" },
+    { "name": "S15 -- click Execute this SOP to open the slide-over.", "action": "click", "selector": "[data-testid='pv2-sop-execute']" },
+    { "name": "S16 -- the execution drawer renders its Start execution button.", "action": "expect", "selector": "[data-testid='pv2-sop-exec-start']", "textContains": "Start execution" },
+    { "name": "S17 -- ...and states the step scope.", "action": "expect", "selector": "[data-testid='pv2-sop-exec-drawer']", "textContains": "steps in scope" },
+    { "name": "S18 -- close the drawer.", "action": "click", "selector": "[data-testid='pv2-sop-exec-close']" },
+    { "name": "S19 -- select a customer-written procedure from the index.", "action": "click", "selector": "[data-testid='pv2-sop-index-sop-offboarding']" },
+    { "name": "S20 -- the detail retargets to Employee offboarding.", "action": "expect", "selector": "[data-testid='pv2-sop-detail-title']", "textContains": "Employee offboarding" },
+    { "name": "S21 -- ...and shows the 'Your procedure, your call' note (source === ours).", "action": "expect", "selector": "[data-testid='pv2-sop-library']", "textContains": "Your procedure, your call" },
+
+    { "name": "goto the execution queue sub-view.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/sops/queue" },
+    { "name": "S22 -- the queue sub-view rendered.", "action": "expect", "selector": "[data-testid='pv2-sop-queue']", "state": "visible" },
+    { "name": "S23 -- the one-at-a-time note, verbatim.", "action": "expect", "selector": "[data-testid='pv2-sop-queue']", "textContains": "Executions run one at a time per tenant so two procedures never touch the same object at once" },
+    { "name": "S24 -- the running legacy-auth execution is listed.", "action": "expect", "selector": "[data-testid='pv2-sop-queue-SOP-IDN-004']", "textContains": "Disable legacy authentication safely" },
+    { "name": "S25 -- expand it.", "action": "click", "selector": "[data-testid='pv2-sop-queue-SOP-IDN-004']" },
+    { "name": "S26 -- the expanded row offers 'Watch it run'.", "action": "expect", "selector": "[data-testid='pv2-sop-queue']", "textContains": "Watch it run" },
+
+    { "name": "goto the execution history (audit) sub-view.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/sops/audit" },
+    { "name": "S27 -- the audit sub-view rendered.", "action": "expect", "selector": "[data-testid='pv2-sop-audit']", "state": "visible" },
+    { "name": "S28 -- the section title, verbatim.", "action": "expect", "selector": "[data-testid='pv2-sop-audit']", "textContains": "Audit history & verification logs" },
+    { "name": "S29 -- the evidence note, verbatim.", "action": "expect", "selector": "[data-testid='pv2-sop-audit']", "textContains": "Every entry is hashed and exportable — this is the evidence an auditor asks for" },
+    { "name": "S30 -- the 'Action and detail' column header.", "action": "expect", "selector": "[data-testid='pv2-sop-audit']", "textContains": "Action and detail" },
+    { "name": "S31 -- a real audit action renders.", "action": "expect", "selector": "[data-testid='pv2-sop-audit']", "textContains": "Verified by re-scan" },
+
+    { "name": "S32 -- the Reference nav row for SOPs & Runbooks exists now that its page does.", "action": "expect", "selector": "[data-testid='pv2-nav-sops']", "state": "visible" },
+
+    { "name": "goto a sop-* category page.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/sops/incident-response" },
+    { "name": "S33 -- the category page resolved and carries its label, verbatim.", "action": "expect", "selector": "[data-testid='pv2-sop-category-label']", "textContains": "Incident Response" },
+    { "name": "S34 -- ...and the design's placeholder line, verbatim.", "action": "expect", "selector": "[data-testid='pv2-sop-category']", "textContains": "Pillar detail page not yet built — coming next." }
+  ]
+}

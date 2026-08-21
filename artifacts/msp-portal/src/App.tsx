@@ -111,6 +111,8 @@ import PortalV2BillingPage from "@/pages/portal-v2-billing";
 import PortalV2WebhooksPage from "@/pages/portal-v2-webhooks";
 import PortalV2AlertPreferencesPage from "@/pages/portal-v2-alert-preferences";
 import PortalV2ReceiptPage from "@/pages/portal-v2-receipt";
+import PortalV2SopHubPage from "@/pages/portal-v2-sop-hub";
+import PortalV2SopCategoryPage from "@/pages/portal-v2-sop-category";
 import ConsentDeclinedPage from "@/pages/consent-declined";
 import ConsentSuccessPage from "@/pages/consent-success";
 import ConsentTenantConflictPage from "@/pages/consent-tenant-conflict";
@@ -738,6 +740,30 @@ function SlugInnerSwitch() {
       </Route>
       <Route path="/portal-v2/receipt">
         <ProtectedRoute component={PortalV2ReceiptPage} />
+      </Route>
+      {/* Reference — SOPs & Runbooks hub (Part 6). The four sop-* category pages
+          are EXPLICIT routes declared BEFORE "/portal-v2/sops/:view" so the
+          hub's sub-view param does not swallow them; the hub's sub-views
+          (library / queue / audit) are the design's nav sub-items, so the base
+          route is the library and "/sops/:view" carries queue/audit. All precede
+          "/portal-v2/:pillar" like every specific route above. */}
+      <Route path="/portal-v2/sops/incident-response">
+        <ProtectedRoute component={PortalV2SopCategoryPage} />
+      </Route>
+      <Route path="/portal-v2/sops/security-drift">
+        <ProtectedRoute component={PortalV2SopCategoryPage} />
+      </Route>
+      <Route path="/portal-v2/sops/mail-flow">
+        <ProtectedRoute component={PortalV2SopCategoryPage} />
+      </Route>
+      <Route path="/portal-v2/sops/device-mgmt">
+        <ProtectedRoute component={PortalV2SopCategoryPage} />
+      </Route>
+      <Route path="/portal-v2/sops/:view">
+        <ProtectedRoute component={PortalV2SopHubPage} />
+      </Route>
+      <Route path="/portal-v2/sops">
+        <ProtectedRoute component={PortalV2SopHubPage} />
       </Route>
       {/* ═══════════════════════════════════════════════════════════════════
           PORTAL-V2 ROUTE INSERTION POINT — ADD NEW /portal-v2 ROUTES ABOVE.

@@ -289,6 +289,25 @@ const GOVERNANCE_ITEMS: readonly NavItem[] = [
  * customer is meant to send to a colleague. The labels are verbatim.
  */
 const REFERENCE_ITEMS: readonly NavItem[] = [
+  // SOPs & Runbooks — prototype 8838, added with Part 6, first in the Reference
+  // group (before Microsoft Changes) as the design orders it. Icon is the
+  // prototype's own `clipboard-list`. The three subs are the design's own hub
+  // sub-views (shell 8839-8841), each a real URL: Library is the module root, so
+  // it lights on /portal-v2/sops the way Ownership's "Everything" lights on its
+  // root. The four sop-* category keys (shell 8789) are NOT nav rows — the design
+  // reaches them from the command palette, not the left nav.
+  {
+    href: "/portal-v2/sops",
+    label: "SOPs & Runbooks",
+    title: "SOPs & Runbooks — the procedure library, ours and yours",
+    testId: "pv2-nav-sops",
+    glyph: { kind: "lucide", icon: ClipboardList },
+    subs: [
+      { key: "library", label: "Library", href: "/portal-v2/sops" },
+      { key: "queue", label: "Execution queue", href: "/portal-v2/sops/queue" },
+      { key: "audit", label: "Execution history", href: "/portal-v2/sops/audit" },
+    ],
+  },
   {
     href: "/portal-v2/ms-changes",
     label: "Microsoft Changes",
