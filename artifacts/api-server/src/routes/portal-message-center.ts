@@ -77,6 +77,7 @@ import {
   buildDensity,
   buildStats,
   bucketForDate,
+  capPerWave,
   effectiveDate,
   formatCountdown,
   formatScanAt,
@@ -99,18 +100,31 @@ const log = logger.child({ channel: "integration.azure" });
 const router: IRouter = Router();
 
 /**
- * How many posts are shaped for the wire.
+ * How many posts are shaped for the wire, PER WAVE.
  *
  * The live testbed tenant holds 501 items and a busy enterprise will hold more.
  * Every one of them is COUNTED — the density grid, the stat cards and the wave
  * totals are computed over the whole corpus before this cap applies — but only
- * the highest-scoring `POST_LIMIT` are shaped into full post objects with their
- * body text, because the page lists posts a wave at a time and a megabyte of
+ * the highest-scoring posts are shaped into full post objects with their body
+ * text, because the page lists posts a wave at a time and a megabyte of
  * Microsoft prose the reader will never scroll to is not worth the transfer.
+ *
+ * ── Why PER WAVE and not one global cap ───────────────────────────────────
+ * A single global cap applied to a bucket-ordered list starves the far end of
+ * the axis: on the real testbed tenant, 449 posts land on the axis and a flat
+ * top-240 filled up inside the first four buckets, so the Q3 and Q4 waves came
+ * back with NO posts at all. The page is wave-navigable — "pick a wave and the
+ * page becomes that wave" — so those waves rendered their empty states, and
+ * this page's empty states are ASSERTIONS about the customer's estate
+ * ("Nothing in this wave stops working here"). A transfer optimisation must
+ * never make the page state something untrue about a wave it simply did not
+ * send, so the budget is spent per wave instead: every wave keeps its own
+ * highest-scoring posts, and a wave is empty on screen only when it is empty
+ * in the data.
  *
  * The cap is reported on the wire as `postsTruncated` rather than left silent.
  */
-const POST_LIMIT = 240;
+const POSTS_PER_WAVE = 60;
 
 /** One post, in the shape the page's `MsPost` expects. */
 interface WirePost {
@@ -246,7 +260,7 @@ router.get(
       }));
 
       // Everything below is computed over the WHOLE corpus. Only the post list
-      // is capped — see POST_LIMIT.
+      // is capped — see POSTS_PER_WAVE.
       const density = buildDensity(corpus, buckets);
       const stats = buildStats(corpus, buckets, now);
 
@@ -254,7 +268,11 @@ router.get(
       const shaped = onAxis
         .map((r) => toWirePost(r, buckets, now))
         .sort((a, b) => (a.bucket === b.bucket ? b.score - a.score : a.bucket - b.bucket));
-      const posts = shaped.slice(0, POST_LIMIT);
+
+      // The budget is spent per WAVE, so no wave is starved by a busier one
+      // earlier on the axis. See capPerWave's header for what went wrong with a
+      // flat cap on the real tenant.
+      const posts = capPerWave(shaped, buckets, POSTS_PER_WAVE);
 
       const lastSeen = corpus.reduce<Date | null>(
         (acc, r) => (acc === null || r.lastSeenAt > acc ? r.lastSeenAt : acc),

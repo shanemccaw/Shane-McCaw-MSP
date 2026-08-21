@@ -565,3 +565,35 @@ export function workloadFound(rows: readonly MessageCenterRow[], wl: string, buc
   const tail = breaks || decide ? ` · ${breaks} act-now, ${decide} needing a decision` : " · none needing a decision";
   return `${mine.length} Microsoft ${mine.length === 1 ? "post" : "posts"} ahead${tail}`;
 }
+
+/**
+ * Spends a post budget PER WAVE rather than as one global cap.
+ *
+ * A flat top-N over a bucket-ordered list starves the far end of the axis: on
+ * the real testbed tenant 449 posts land on the axis, and a flat top-240 filled
+ * up inside the first four buckets, so the Q3 and Q4 waves came back with no
+ * posts at all. The page is wave-navigable and its empty states are ASSERTIONS
+ * about the customer's estate ("Nothing in this wave stops working here"), so a
+ * wave that was merely not sent would make the page state something untrue
+ * about it.
+ *
+ * `items` is expected in the route's own order — bucket ascending, score
+ * descending within a bucket — so taking the first `perWave` of each wave group
+ * keeps that wave's highest-scoring, earliest posts. Anything whose bucket is
+ * off the axis is dropped, since it belongs to no wave.
+ */
+export function capPerWave<T extends { bucket: number }>(
+  items: readonly T[],
+  buckets: readonly Bucket[],
+  perWave: number,
+): readonly T[] {
+  const taken = new Map<string, number>();
+  return items.filter((it) => {
+    const wave = buckets[it.bucket]?.wave;
+    if (wave === undefined) return false;
+    const n = taken.get(wave) ?? 0;
+    if (n >= perWave) return false;
+    taken.set(wave, n + 1);
+    return true;
+  });
+}

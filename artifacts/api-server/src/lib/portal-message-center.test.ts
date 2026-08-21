@@ -15,6 +15,7 @@ import {
   buildDensity,
   buildStats,
   bucketForDate,
+  capPerWave,
   effectiveDate,
   formatCountdown,
   formatScanAt,
@@ -374,5 +375,53 @@ describe("the workload filter line", () => {
   it("singularises a lone post", () => {
     const rows = [row({ services: ["Microsoft Purview"], endDateTime: new Date("2026-08-25T00:00:00.000Z") })];
     expect(workloadFound(rows, "Purview", buckets)).toContain("1 Microsoft post ahead");
+  });
+});
+
+describe("the post budget is spent per wave, not as one global cap", () => {
+  const buckets = buildBuckets(NOW);
+
+  /** One post per bucket, repeated `n` times, in the route's own emit order. */
+  const spread = (n: number) =>
+    buckets.flatMap((_, bucket) => Array.from({ length: n }, (_, i) => ({ bucket, id: `b${bucket}-${i}` })));
+
+  it("keeps posts for EVERY wave, which a flat top-N did not", () => {
+    // The real regression: 449 on-axis posts and a flat top-240 filled up
+    // inside the first four buckets, leaving Q3 and Q4 with nothing.
+    const capped = capPerWave(spread(40), buckets, 60);
+    const wavesIn = new Set(buckets.map((b) => b.wave));
+    const wavesOut = new Set(capped.map((p) => buckets[p.bucket].wave));
+    expect(wavesOut.size).toBe(wavesIn.size);
+    for (const w of wavesIn) expect(wavesOut.has(w)).toBe(true);
+  });
+
+  it("holds each wave to its own budget", () => {
+    const capped = capPerWave(spread(40), buckets, 60);
+    const perWave = new Map<string, number>();
+    for (const p of capped) {
+      const w = buckets[p.bucket].wave;
+      perWave.set(w, (perWave.get(w) ?? 0) + 1);
+    }
+    for (const n of perWave.values()) expect(n).toBeLessThanOrEqual(60);
+  });
+
+  it("keeps the earliest, highest-scoring posts of a wave — the head of its own order", () => {
+    const capped = capPerWave(spread(40), buckets, 60);
+    const q4 = capped.filter((p) => buckets[p.bucket].wave === "Q4 and beyond");
+    // Two buckets make up that wave at 40 each; the budget takes bucket 9 whole
+    // and the first 20 of bucket 10, never a tail-first sample.
+    expect(q4[0].id).toBe("b9-0");
+    expect(q4.length).toBe(60);
+  });
+
+  it("passes everything through when the corpus is under budget", () => {
+    const few = spread(1);
+    expect(capPerWave(few, buckets, 60).length).toBe(few.length);
+  });
+
+  it("drops a post whose bucket is off the axis rather than counting it against a wave", () => {
+    const off = [{ bucket: -1, id: "past" }, { bucket: 999, id: "far" }, { bucket: 0, id: "ok" }];
+    const capped = capPerWave(off, buckets, 60);
+    expect(capped.map((p) => p.id)).toEqual(["ok"]);
   });
 });
