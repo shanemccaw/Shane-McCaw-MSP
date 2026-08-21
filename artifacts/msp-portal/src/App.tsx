@@ -106,6 +106,11 @@ import PortalV2RemediationPage from "@/pages/portal-v2-remediation";
 import PortalV2PolicyDecisionsPage from "@/pages/portal-v2-policy-decisions";
 import PortalV2SecurityPlanPage from "@/pages/portal-v2-security-plan";
 import PortalV2PiiPage from "@/pages/portal-v2-pii";
+import PortalV2AccountSecurityPage from "@/pages/portal-v2-account-security";
+import PortalV2BillingPage from "@/pages/portal-v2-billing";
+import PortalV2WebhooksPage from "@/pages/portal-v2-webhooks";
+import PortalV2AlertPreferencesPage from "@/pages/portal-v2-alert-preferences";
+import PortalV2ReceiptPage from "@/pages/portal-v2-receipt";
 import ConsentDeclinedPage from "@/pages/consent-declined";
 import ConsentSuccessPage from "@/pages/consent-success";
 import ConsentTenantConflictPage from "@/pages/consent-tenant-conflict";
@@ -710,7 +715,31 @@ function SlugInnerSwitch() {
       </Route>
       <Route path="/portal-v2/pii">
         <ProtectedRoute component={PortalV2PiiPage} />
-      </Route>      {/* ═══════════════════════════════════════════════════════════════════
+      </Route>
+      {/* Account settings (Part 12) — the five account-MENU pages, not left-nav
+          rows. Reached from the account menu (HeaderMenus.tsx). All plain,
+          param-free routes declared before "/portal-v2/:pillar" so the param
+          route cannot swallow them. Receipt takes an optional id segment, so its
+          two-segment form is declared before its bare form. */}
+      <Route path="/portal-v2/account-security">
+        <ProtectedRoute component={PortalV2AccountSecurityPage} />
+      </Route>
+      <Route path="/portal-v2/billing">
+        <ProtectedRoute component={PortalV2BillingPage} />
+      </Route>
+      <Route path="/portal-v2/webhooks">
+        <ProtectedRoute component={PortalV2WebhooksPage} />
+      </Route>
+      <Route path="/portal-v2/alert-preferences">
+        <ProtectedRoute component={PortalV2AlertPreferencesPage} />
+      </Route>
+      <Route path="/portal-v2/receipt/:id">
+        <ProtectedRoute component={PortalV2ReceiptPage} />
+      </Route>
+      <Route path="/portal-v2/receipt">
+        <ProtectedRoute component={PortalV2ReceiptPage} />
+      </Route>
+      {/* ═══════════════════════════════════════════════════════════════════
           PORTAL-V2 ROUTE INSERTION POINT — ADD NEW /portal-v2 ROUTES ABOVE.
 
           Add them ABOVE this marker, never below it. The "/portal-v2/:pillar"
