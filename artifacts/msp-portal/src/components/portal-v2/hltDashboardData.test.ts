@@ -25,11 +25,12 @@ import { licTrendGeometry } from "./licDashboardData";
 import { adpTrendGeometry } from "./adpDashboardData";
 import {
   HLT_ACCEPTED,
-  HLT_BANNER_BODY,
   HLT_DEBT_HISTORY,
   HLT_DEBT_OBJECT_CLASSES,
   HLT_DEBT_OBJECT_TOTAL,
   HLT_DRIFT,
+  HLT_DRIFT_ALERTS,
+  HLT_DRIFT_APPROVED,
   HLT_DRIFT_COUNT,
   HLT_FINDINGS,
   HLT_FINDING_COUNT,
@@ -41,7 +42,10 @@ import {
   HLT_SERVICE,
   HLT_SEV_META,
   HLT_SYNC,
+  HLT_VERDICT,
   hltAcceptedMeta,
+  hltDriftOwner,
+  hltDriftRows,
   hltTrendGeometry,
 } from "./hltDashboardData";
 
@@ -49,15 +53,13 @@ describe("Health hero", () => {
   it("scores 66 with a RED delta — debt is trending the wrong way", () => {
     assert.equal(HLT_HERO.score, 66);
     assert.equal(HLT_HERO.delta, "-2 this month");
-    assert.match(HLT_HERO.bannerScoreNote, /debt trending up over the last 2 scans/);
   });
 
-  it("names the OTHER thing called health, in the back link and the banner", () => {
-    // The only pillar whose back link is not "Overview".
+  it("names the OTHER thing called health in its back link — the only pillar that does", () => {
+    // The current design disambiguates with the back link and the locator row
+    // only; the earlier prose banner (bannerTitle/bannerScoreNote/HLT_BANNER_BODY)
+    // is not in the shell and is intentionally not reproduced.
     assert.equal(HLT_HERO.backLabel, "M365 Health overview");
-    assert.equal(HLT_BANNER_BODY.boldA, "M365 Health");
-    assert.match(HLT_BANNER_BODY.before, /^Two things share the word health/);
-    assert.match(HLT_BANNER_BODY.middle, /This page is the sixth of those pillars/);
   });
 
   /**
@@ -166,6 +168,64 @@ describe("Health tables", () => {
     // Two reads genuinely cannot run from the container.
     assert.equal(HLT_PROV.filter((q) => q.src === "ps").length, 2);
     assert.match(HLT_PROV[0].scope, /Local admin on the sync server/);
+  });
+});
+
+describe("Health configuration drift — verdict sort and owners", () => {
+  it("sorts the unexplained changes to the top, the clean rows to the bottom", () => {
+    const rows = hltDriftRows();
+    assert.equal(rows.length, 12);
+    // Groups are 0 (alerts) → 1 (approved) → 2 (accepted) → 3 (clean), and the
+    // sort is stable so declared order survives inside a group.
+    const groups = rows.map((r) => HLT_VERDICT[r.verdict].group);
+    assert.deepEqual(
+      groups,
+      [...groups].sort((a, b) => a - b),
+      "verdict groups are not in ascending order",
+    );
+    // The first row is an alert; the last two are the clean baseline rows.
+    assert.equal(rows[0].isAlert, true);
+    assert.equal(rows[0].setting, "DefaultSharingLinkType");
+    assert.equal(rows[10].verdict, "clean");
+    assert.equal(rows[11].verdict, "clean");
+  });
+
+  it("counts alerts and change-record rows the way the header reports them", () => {
+    // "7 changed with no request behind them · 3 tied to a change record".
+    assert.equal(HLT_DRIFT_ALERTS, 7);
+    assert.equal(HLT_DRIFT_APPROVED, 3);
+    const rows = hltDriftRows();
+    assert.equal(rows.filter((r) => r.isAlert).length, HLT_DRIFT_ALERTS);
+    assert.equal(rows.filter((r) => r.hasCr).length, HLT_DRIFT_APPROVED);
+    // Only the three rows with a CR carry a change-record note.
+    rows.filter((r) => r.hasCr).forEach((r) => assert.ok(r.crNote && r.crNote.length > 0));
+    // An alert row is a group-0 verdict, and the three of those are the finding.
+    assert.deepEqual(
+      [...new Set(rows.filter((r) => r.isAlert).map((r) => r.verdict))].sort(),
+      ["drifted", "unapproved", "unattributed"],
+    );
+  });
+
+  it("resolves each drift owner to a real person, and unknowns to Unassigned", () => {
+    assert.deepEqual(hltDriftOwner("pr"), {
+      init: "PR",
+      name: "Priya Raman",
+      tone: "#f472b6",
+    });
+    const unknown = hltDriftOwner("zz");
+    assert.equal(unknown.init, "—");
+    assert.equal(unknown.name, "Unassigned");
+    // Every drift row names an owner the roster knows.
+    hltDriftRows().forEach((r) =>
+      assert.notEqual(hltDriftOwner(r.owner).name, "Unassigned", `${r.setting} has no owner`),
+    );
+  });
+
+  it("labels the verdicts in the pillar's own words", () => {
+    assert.equal(HLT_VERDICT.unapproved.label, "Changed without approval");
+    assert.equal(HLT_VERDICT.unattributed.label, "Nobody owns this change");
+    assert.equal(HLT_VERDICT.drifted.label, "Drifted on its own");
+    assert.equal(HLT_VERDICT.clean.lead, "");
   });
 });
 

@@ -129,6 +129,8 @@ export const LIC_HERO_STATS: readonly {
  * already paid" instead, because annualising it would imply a saving.
  */
 export const LIC_BUCKETS: readonly {
+  /** `licBucketsRaw[].key` (12303) — keys the breakdown panel in `LIC_BUCKET_LINES`. */
+  key: "today" | "renewal" | "reassign";
   label: string;
   value: string;
   annual: string;
@@ -136,6 +138,7 @@ export const LIC_BUCKETS: readonly {
   what: string;
 }[] = [
   {
+    key: "today",
     label: "Removable today",
     value: "$399/mo",
     annual: "$4,788/yr",
@@ -143,6 +146,7 @@ export const LIC_BUCKETS: readonly {
     what: "Monthly-billed SKUs that duplicate an entitlement you already own, plus idle standalone seats. Cancelling these reduces the very next invoice — no renewal date involved.",
   },
   {
+    key: "renewal",
     label: "Recoverable at renewal",
     value: "$2,280/mo",
     annual: "$27,360/yr",
@@ -150,6 +154,7 @@ export const LIC_BUCKETS: readonly {
     what: `38 unassigned E5 seats on an annual commitment. Removing the assignment frees the seat immediately, but the billed quantity can only be reduced at renewal — so this is a decision to take before ${LIC_HERO.renewal}, not a saving available this month.`,
   },
   {
+    key: "reassign",
     label: "Reassignable now",
     value: "$1,470/mo",
     annual: "value already paid",
@@ -164,6 +169,94 @@ export const LIC_BUCKETS: readonly {
     what: "Seats you are already paying for that nobody is using: 27 idle Copilot seats and 11 E5 licences held by disabled accounts. Reassigning changes nothing on the invoice and hands $1,470-worth of monthly capability to the 34 people currently on the request list.",
   },
 ];
+
+/**
+ * `LIC_BUCKET_LINES` (13983-14013) — the working behind each recovery bucket,
+ * revealed when the bucket is clicked open. A bucket's headline figure is the
+ * gross; the panel shows how it is arrived at line by line and what it NETS to
+ * ("What that leaves"). The renewal bucket nets a negative line off (12 seats
+ * held for hiring), which is why its total ($1,560) is below its headline
+ * ($2,280) — the panel is where that reconciliation is shown, not hidden.
+ */
+export const LIC_BUCKET_LINES: Readonly<
+  Record<
+    "today" | "renewal" | "reassign",
+    {
+      lines: { what: string; detail: string; amt: number; src: string }[];
+      total: number;
+      why: string;
+      proof: string;
+    }
+  >
+> = {
+  today: {
+    lines: [
+      { what: "Power BI Pro standalone", detail: "12 seats × $14 — every holder already has Power BI Pro inside E5", amt: 168, src: "subscribedSkus + per-user entitlement comparison" },
+      { what: "Visio Plan 2", detail: "3 unassigned + 6 with no app launch in 90 days × $15", amt: 135, src: "getOffice365ActiveUserDetail, 90-day window" },
+      { what: "Defender for Office P1", detail: "36 seats × $2 — superseded by the E5 entitlement", amt: 72, src: "subscribedSkus servicePlans overlap" },
+      { what: "Exchange Online Plan 1", detail: "6 shared mailboxes under 50 GB × $4 — no licence required", amt: 24, src: "Get-Mailbox -RecipientTypeDetails SharedMailbox" },
+    ],
+    total: 399,
+    why: "All four are monthly-billed, so a cancellation lands on the next invoice with no renewal date involved.",
+    proof: "Checked against your agreement on the last scan, 2 hours ago. Unit prices are the ones on your invoice, not list.",
+  },
+  renewal: {
+    lines: [
+      { what: "Microsoft 365 E5 — unassigned", detail: "38 seats bought, assigned to nobody × $60", amt: 2280, src: "subscribedSkus: enabled 240, consumed 202" },
+      { what: "Less: planned headcount", detail: "12 of the 38 are committed to Q3 hiring and stay", amt: -720, src: "Acknowledged spend · FIN-2026-034" },
+    ],
+    total: 1560,
+    why: "Annual commitment. The seat count cannot drop mid-term — the reduction has to be lodged before renewal or the same money commits for another twelve months.",
+    proof: "Net recoverable is $1,560/mo, $18,720 a year. The headline $2,280 is the gross figure before the hiring plan.",
+  },
+  reassign: {
+    lines: [
+      { what: "Copilot seats sitting idle", detail: "27 assigned, no Copilot activity in 30 days × $30", amt: 810, src: "getM365AppUserDetail + Copilot usage report" },
+      { what: "E5 held by disabled accounts", detail: "11 accounts disabled, licence still attached × $60", amt: 660, src: "users?$filter=accountEnabled eq false" },
+    ],
+    total: 1470,
+    why: "Nothing here changes the invoice. It is capability you have already bought sitting with people who are not using it, while 34 people are on the request list.",
+    proof: "4 of the 11 disabled accounts hold a mailbox someone still needs, so those convert to shared before the licence comes off.",
+  },
+};
+
+/**
+ * The breakdown-panel view for an open bucket (`licBuckets[].{lines,totalLabel,
+ * totalAnnual,why,proof}`, 14025-14033). `total` and its annualised form are
+ * DERIVED, never typed — the same discipline as the ledger totals row — so a
+ * line edited above cannot silently disagree with the "What that leaves" figure
+ * below it. The negative line renders with a real minus sign and a muted colour.
+ */
+export function licBucketPanel(key: "today" | "renewal" | "reassign") {
+  const bucket = LIC_BUCKETS.find((b) => b.key === key);
+  const d = LIC_BUCKET_LINES[key];
+  if (!bucket) return null;
+  return {
+    title: `How ${bucket.value} is arrived at`,
+    lines: d.lines.map((l) => ({
+      what: l.what,
+      detail: l.detail,
+      src: l.src,
+      negative: l.amt < 0,
+      amt: (l.amt < 0 ? "−$" : "$") + Math.abs(l.amt).toLocaleString("en-US") + "/mo",
+    })),
+    totalLabel: "$" + d.total.toLocaleString("en-US") + "/mo",
+    totalAnnual: "$" + (d.total * 12).toLocaleString("en-US") + " a year",
+    why: d.why,
+    proof: d.proof,
+  };
+}
+
+/**
+ * `kbInfo('lic-recover')` (8111-8112) — the info-dot tooltip on the ledger
+ * header. The full article opens the knowledge-base overlay (a later part); the
+ * hover card reproduces the title, the summary, and the "Click to read it" cue.
+ */
+export const LIC_LEDGER_KBI = {
+  title: "What licence money is actually recoverable",
+  summary:
+    "Removable today, recoverable at renewal, reassignable now — and why the difference matters.",
+} as const;
 
 /* ── The licence ledger — LIC_SKUS (12313-12322) ──────────────────────────── */
 
@@ -211,7 +304,7 @@ export function licSkuGeometry(s: LicSku) {
   };
 }
 
-/** `licTotals` (12342-12347) — sums, not literals. */
+/** `licTotals` (14128-14133) — sums, not literals. */
 export const LIC_TOTALS = {
   purchased: LIC_SKUS.reduce((a, s) => a + s.purchased, 0),
   assigned: LIC_SKUS.reduce((a, s) => a + s.assigned, 0),
@@ -219,7 +312,169 @@ export const LIC_TOTALS = {
   waste: LIC_SKUS.reduce((a, s) => a + s.waste, 0),
 };
 
-/* ── Recovery items — LIC_FINDINGS (12348-12412) ──────────────────────────── */
+/**
+ * The ledger header's totals string (`licSkuTotals`, 19887-19892). Rendered as
+ * "{purchased} seats bought · {active} in use · {waste} wasted" on the right of
+ * the ledger header. Derived from LIC_TOTALS so it cannot disagree with the
+ * cards below it.
+ */
+export const LIC_SKU_TOTALS = {
+  purchased: String(LIC_TOTALS.purchased),
+  assigned: String(LIC_TOTALS.assigned),
+  active: String(LIC_TOTALS.active),
+  waste: `${licFmt(LIC_TOTALS.waste)}/mo`,
+} as const;
+
+/**
+ * `licLedgerLegend` (19881-19884). The three keys the utilisation bar is drawn
+ * in, named once above the cards: the teal fill is seats in use, the SKU's tone
+ * colour is assigned-but-idle, and the dashed grey tail is assigned to nobody.
+ */
+export const LIC_LEDGER_LEGEND: readonly { label: string; dot: string }[] = [
+  { label: "using it", dot: "rgba(45,212,191,.55)" },
+  { label: "assigned but idle", dot: "rgba(194,166,61,.7)" },
+  { label: "assigned to nobody", dot: "rgba(148,163,184,.28)" },
+];
+
+/* ── The licence ledger cards — LIC_SKU_ACTIONS + licLedgerCards (14048-14110) ─ */
+
+/**
+ * `LIC_SKU_ACTIONS` (14050-14070). The prototype's own source comment: "The
+ * ledger and the recovery list were two views of the same fact. One card per
+ * SKU: what you bought, what actually runs, and the action attached to the gap
+ * between them." Round Two consolidated the flat SKU table and the separate
+ * recovery list into a single card view, so the recovery actions now live INSIDE
+ * the ledger card for the SKU they belong to, revealed when the card is opened.
+ *
+ * These are NOT the same strings as LIC_FINDINGS below: the E5 gap is split into
+ * two actions (unassigned seats vs disabled-account seats), the figures are the
+ * per-action recoverable amounts rather than the finding's gross, and the action
+ * verbs are the short card form. LIC_FINDINGS is kept as the fuller recovery
+ * narrative the design still defines (`licFindingRows`) but no longer renders as
+ * its own list.
+ *
+ * NOTE on the Copilot fixKey. The prototype writes `lic-copilot-idle` here
+ * (14056), but no `lic-copilot-idle` playbook exists in its own LIC_FIXES — the
+ * real, matching playbook is `lic-copilot-reassign` ("reassign idle Copilot
+ * seats"). Reproduced against the real key so the wrench opens a genuine
+ * playbook rather than the generic fallback; the visible action text is verbatim.
+ */
+export interface LicSkuAction {
+  id: string;
+  text: string;
+  money: number;
+  timing: string;
+  action: string;
+  fixKey: string;
+}
+
+export const LIC_SKU_ACTIONS: Readonly<Record<string, readonly LicSkuAction[]>> = {
+  SPE_E5: [
+    { id: "LIC-01", text: "38 seats assigned to nobody. 12 are committed to Q3 hiring; the other 26 are recoverable.", money: 1560, timing: "Lodge before renewal", action: "Lodge the renewal reduction for 26 seats", fixKey: "lic-e5-unassigned" },
+    { id: "LIC-03", text: "11 seats attached to disabled accounts. 4 hold a mailbox somebody still needs.", money: 660, timing: "Reassign now", action: "Reclaim 11 seats, converting 4 mailboxes first", fixKey: "lic-disabled-accounts" },
+  ],
+  Microsoft_365_Copilot: [
+    { id: "LIC-02", text: "27 seats with no Copilot activity in 30 days, while 34 people are on the request list.", money: 810, timing: "Reassign now", action: "Move 27 idle seats to the waiting list", fixKey: "lic-copilot-reassign" },
+  ],
+  POWER_BI_PRO: [
+    { id: "LIC-04", text: "All 12 holders have E5, which already includes Power BI Pro. You are paying twice.", money: 168, timing: "Next invoice", action: "Cancel the duplicate subscription", fixKey: "lic-powerbi-duplicate" },
+  ],
+  VISIOCLIENT: [
+    { id: "LIC-05", text: "3 unassigned, 6 with no launch in 90 days.", money: 135, timing: "Next invoice", action: "Release the idle seats after a 7-day keep-or-release note", fixKey: "lic-addons-idle" },
+  ],
+  ATP_ENTERPRISE: [
+    { id: "LIC-05", text: "Superseded by the Defender entitlement already inside E5.", money: 72, timing: "Next invoice", action: "Remove the superseded add-on", fixKey: "lic-addons-idle" },
+  ],
+  EXCHANGESTANDARD: [
+    { id: "LIC-06", text: "6 shared mailboxes under 50 GB carrying a licence they do not need.", money: 24, timing: "Next invoice", action: "Unlicense the 6 shared mailboxes", fixKey: "lic-shared-mailboxes" },
+  ],
+};
+
+export interface LicLedgerSegment {
+  /** Percentage width against PURCHASED seats — the ratio the whole page is about. */
+  pct: number;
+  /** The count, shown inside the segment only when it clears 12% of the bar. */
+  label: string;
+  /** Idle and unassigned segments are omitted entirely when their count is zero. */
+  show: boolean;
+}
+
+export interface LicLedgerCard {
+  sku: string;
+  part: string;
+  note: string;
+  tone: LicTone;
+  clean: boolean;
+  /** "$60 / seat". */
+  unit: string;
+  /** "240 bought · 202 assigned · 183 actually using it". */
+  counts: string;
+  /** "$2,280/mo" or, for a right-sized SKU, "Right-sized". */
+  waste: string;
+  /** "$27,360 a year" or "nothing to recover". */
+  annual: string;
+  seg: { active: LicLedgerSegment; idle: LicLedgerSegment; free: LicLedgerSegment };
+  hasActions: boolean;
+  actions: { id: string; text: string; timing: string; money: string; action: string; fixKey: string }[];
+}
+
+/**
+ * `licLedgerCards` (14072-14110). One card per SKU, ordered by monthly waste so
+ * the money sits at the top. Each card carries the three-segment utilisation bar
+ * (active / assigned-idle / unassigned, all against purchased), the counts line,
+ * the waste figure, and the recovery actions attached to the gap. A right-sized
+ * SKU (`waste === 0`) has no actions and no caret. Pure data — the page supplies
+ * the colours, handlers and the fix wrench.
+ */
+export function licLedgerCards(): readonly LicLedgerCard[] {
+  return LIC_SKUS.slice()
+    .sort((a, b) => b.waste - a.waste)
+    .map((sk) => {
+      const idle = Math.max(sk.assigned - sk.active, 0);
+      const unassigned = Math.max(sk.purchased - sk.assigned, 0);
+      const pct = (n: number) => (n / sk.purchased) * 100;
+      const seg = (n: number, show: boolean): LicLedgerSegment => ({
+        pct: pct(n),
+        label: n > sk.purchased * 0.12 ? String(n) : "",
+        show,
+      });
+      const acts = LIC_SKU_ACTIONS[sk.part] ?? [];
+      return {
+        sku: sk.sku,
+        part: sk.part,
+        note: sk.note,
+        tone: sk.tone,
+        clean: sk.waste === 0,
+        unit: `${licFmt(sk.unit)} / seat`,
+        counts: `${sk.purchased} bought · ${sk.assigned} assigned · ${sk.active} actually using it`,
+        waste: sk.waste ? `${licFmt(sk.waste)}/mo` : "Right-sized",
+        annual: sk.waste ? `${licFmt(sk.waste * 12)} a year` : "nothing to recover",
+        seg: {
+          active: seg(sk.active, true),
+          idle: seg(idle, idle > 0),
+          free: seg(unassigned, unassigned > 0),
+        },
+        hasActions: acts.length > 0,
+        actions: acts.map((a) => ({
+          id: a.id,
+          text: a.text,
+          timing: a.timing,
+          money: `${licFmt(a.money)}/mo`,
+          action: a.action,
+          fixKey: a.fixKey,
+        })),
+      };
+    });
+}
+
+/* ── Recovery items — LIC_FINDINGS (14135-14301) ──────────────────────────────
+ *
+ * Retained as the fuller recovery narrative the design still defines
+ * (`licFindingRows`). Round Two consolidated it into the ledger cards above, so
+ * it is no longer rendered as its own list on the page — its actions live inside
+ * the per-SKU cards via LIC_SKU_ACTIONS. Kept here because it is real design
+ * fixture and the wiring pass may surface it again.
+ * ─────────────────────────────────────────────────────────────────────────── */
 
 export interface LicFinding {
   id: string;

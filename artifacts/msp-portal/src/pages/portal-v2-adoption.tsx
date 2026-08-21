@@ -45,9 +45,11 @@ import { useFormDrawer } from "@/components/portal-v2/FormDrawer";
 import { useAcceptRisk } from "@/components/portal-v2/AcceptRiskPanel";
 import { GOV_SRC_META } from "@/components/portal-v2/govPages";
 import {
+  ADP_DEPT,
   ADP_ENABLERS,
   ADP_HERO,
   ADP_HERO_STATS,
+  ADP_KIND_LEGEND,
   ADP_KIND_META,
   ADP_MATRIX,
   ADP_MATRIX_NOTE,
@@ -66,6 +68,8 @@ import {
   adpParkedMeta,
   adpPlayFixKey,
   adpTrendGeometry,
+  adpWinTier,
+  adpWorkloadDetail,
   type AdpPlay,
 } from "@/components/portal-v2/adpDashboardData";
 
@@ -99,6 +103,8 @@ export default function PortalV2AdoptionPage() {
   const ringOffset = ringC - (ADP_HERO.score / 100) * ringC;
 
   const [expanded, setExpanded] = useState<number | null>(null);
+  const [openWorkload, setOpenWorkload] = useState<number | null>(null);
+  const [parkedOpen, setParkedOpen] = useState(true);
   const [provOpen, setProvOpen] = useState(false);
   const { fixKey, openFixPanel, closeFixPanel } = useFixPanel();
   const { openForm, formElement } = useFormDrawer();
@@ -573,74 +579,159 @@ export default function PortalV2AdoptionPage() {
               }}
               data-testid="pv2-adp-workloads"
             >
-              {ADP_WORKLOADS.map((w) => {
+              {ADP_WORKLOADS.map((w, wi) => {
                 const c = ADP_TONE[w.tone];
+                const isOpen = openWorkload === wi;
+                const detail = adpWorkloadDetail(w);
                 return (
                   <div
                     key={w.name}
                     style={{
-                      display: "grid",
-                      gridTemplateColumns: "minmax(0,1fr) 52px",
-                      gap: 12,
-                      padding: "9px 14px",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 0,
                       borderBottom: "1px solid rgba(30,41,59,.8)",
-                      alignItems: "center",
                     }}
                   >
-                    <div
-                      style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}
+                    <button
+                      onClick={() => setOpenWorkload(isOpen ? null : wi)}
+                      data-testid={`pv2-adp-workload-${wi}`}
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "minmax(0,1fr) 52px",
+                        gap: 12,
+                        padding: "9px 14px",
+                        alignItems: "center",
+                        border: "none",
+                        background: isOpen ? "rgba(148,163,184,.05)" : "transparent",
+                        cursor: "pointer",
+                        fontFamily: "inherit",
+                        textAlign: "left",
+                        width: "100%",
+                      }}
                     >
+                      <div
+                        style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}
+                      >
+                        <span
+                          style={{
+                            fontSize: "12px",
+                            fontWeight: 700,
+                            color: "#e2e8f0",
+                            lineHeight: 1.35,
+                          }}
+                        >
+                          {w.name}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: "10.5px",
+                            color: "#94a3b8",
+                            lineHeight: 1.45,
+                            textWrap: "pretty",
+                          }}
+                        >
+                          {w.note}
+                        </span>
+                        <div
+                          style={{
+                            position: "relative",
+                            height: 5,
+                            borderRadius: 3,
+                            background: "rgba(148,163,184,.14)",
+                            overflow: "hidden",
+                          }}
+                        >
+                          <div
+                            style={{
+                              height: "100%",
+                              borderRadius: 3,
+                              width: `${w.active}%`,
+                              background: c,
+                              opacity: 0.9,
+                            }}
+                          />
+                        </div>
+                      </div>
                       <span
                         style={{
-                          fontSize: "12px",
-                          fontWeight: 700,
-                          color: "#e2e8f0",
-                          lineHeight: 1.35,
+                          fontSize: "13px",
+                          fontWeight: 800,
+                          color: c,
+                          fontFamily: MONO,
+                          textAlign: "right",
                         }}
                       >
-                        {w.name}
+                        {w.active}%
                       </span>
-                      <span
-                        style={{
-                          fontSize: "10.5px",
-                          color: "#94a3b8",
-                          lineHeight: 1.45,
-                          textWrap: "pretty",
-                        }}
-                      >
-                        {w.note}
-                      </span>
+                    </button>
+                    {isOpen && (
                       <div
                         style={{
-                          position: "relative",
-                          height: 5,
-                          borderRadius: 3,
-                          background: "rgba(148,163,184,.14)",
-                          overflow: "hidden",
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 9,
+                          padding: "2px 14px 13px",
                         }}
                       >
                         <div
                           style={{
-                            height: "100%",
-                            borderRadius: 3,
-                            width: `${w.active}%`,
-                            background: c,
-                            opacity: 0.9,
+                            display: "grid",
+                            gridTemplateColumns: "repeat(auto-fit,minmax(130px,1fr))",
+                            gap: 9,
                           }}
-                        />
+                        >
+                          {detail.facts.map((f) => (
+                            <div
+                              key={f.k}
+                              style={{ display: "flex", flexDirection: "column", gap: 1 }}
+                            >
+                              <span
+                                style={{
+                                  fontSize: "9px",
+                                  fontWeight: 700,
+                                  letterSpacing: ".09em",
+                                  textTransform: "uppercase",
+                                  color: "#64748b",
+                                }}
+                              >
+                                {f.k}
+                              </span>
+                              <span
+                                style={{
+                                  fontSize: "11.5px",
+                                  fontWeight: 600,
+                                  color: "#e2e8f0",
+                                  fontFamily: MONO,
+                                }}
+                              >
+                                {f.v}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                        <span
+                          style={{
+                            fontSize: "11.5px",
+                            color: "#cbd5e1",
+                            lineHeight: 1.6,
+                            textWrap: "pretty",
+                          }}
+                        >
+                          {detail.reading}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: "10px",
+                            color: "#475569",
+                            lineHeight: 1.5,
+                            fontFamily: MONO,
+                          }}
+                        >
+                          {detail.src}
+                        </span>
                       </div>
-                    </div>
-                    <span
-                      style={{
-                        fontSize: "13px",
-                        fontWeight: 800,
-                        color: c,
-                        fontFamily: MONO,
-                        textAlign: "right",
-                      }}
-                    >
-                      {w.active}%
-                    </span>
+                    )}
                   </div>
                 );
               })}
@@ -658,8 +749,69 @@ export default function PortalV2AdoptionPage() {
               }}
             >
               <span style={SECTION_LABEL}>Adoption by department</span>
-              {/* The subtitle is doing ethical work, not decorative work. */}
-              <span style={SECTION_NOTE}>Where to start, not a league table</span>
+              {/* Deep-links into how the department attribute is mapped — a
+                  Settings surface built in a later part, so inert for now. */}
+              <button
+                type="button"
+                data-testid="pv2-adp-dept-settings"
+                style={{
+                  padding: "4px 9px",
+                  borderRadius: 6,
+                  border: "1px solid rgba(148,163,184,.24)",
+                  background: "transparent",
+                  color: "#94a3b8",
+                  fontSize: "10px",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                How departments are set
+              </button>
+            </div>
+            {/* The mapping caveat — departments are only as good as the Entra
+                attribute they are read from (proto 3347-3350). */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 9,
+                padding: "9px 12px",
+                borderRadius: 9,
+                border: "1px solid rgba(194,166,61,.3)",
+                background: "rgba(15,23,42,.4)",
+                flexWrap: "wrap",
+              }}
+            >
+              <span
+                style={{
+                  flex: "0 0 auto",
+                  padding: "3px 9px",
+                  borderRadius: 5,
+                  border: "1px solid rgba(194,166,61,.5)",
+                  background: "rgba(194,166,61,.12)",
+                  fontSize: "10px",
+                  fontWeight: 800,
+                  color: "#e8c96a",
+                  whiteSpace: "nowrap",
+                  fontFamily: MONO,
+                }}
+              >
+                {ADP_DEPT.coverage}
+              </span>
+              <span
+                style={{
+                  fontSize: "11px",
+                  color: "#94a3b8",
+                  lineHeight: 1.5,
+                  flex: 1,
+                  minWidth: 180,
+                  textWrap: "pretty",
+                }}
+              >
+                {ADP_DEPT.note}
+              </span>
             </div>
             <div
               style={{
@@ -769,10 +921,26 @@ export default function PortalV2AdoptionPage() {
                 flexWrap: "wrap",
               }}
             >
-              <span style={SECTION_LABEL}>Plays · {ADP_PLAY_COUNT}</span>
+              <span style={SECTION_LABEL}>What would move these numbers · {ADP_PLAY_COUNT}</span>
               <span style={SECTION_NOTE}>
-                Each one names the shape, the timeline, who runs it, and how it gets measured.
+                Each one says who does the work and whether it costs you anything.
               </span>
+            </div>
+            {/* Who does the work and what it costs — the cost model, not the play
+                taxonomy (proto 3380-3387). */}
+            <div
+              style={{ display: "flex", flexWrap: "wrap", gap: 14, padding: "0 2px 4px" }}
+            >
+              {ADP_KIND_LEGEND.map((kl) => (
+                <div key={kl.label} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span
+                    style={{ width: 9, height: 9, borderRadius: 2, background: kl.dot }}
+                  />
+                  <span style={{ fontSize: "10px", color: "#64748b", whiteSpace: "nowrap" }}>
+                    {kl.label}
+                  </span>
+                </div>
+              ))}
             </div>
             <div
               style={{
@@ -1124,17 +1292,85 @@ export default function PortalV2AdoptionPage() {
               })}
             </div>
 
-            {/* Parked cards — GREY, not orange. proto 3413-3444. */}
-            <div
+            {/* Parked toggle — proto 3449-3456. Defaults OPEN so the parked
+                record is visible on arrival, the same way it renders today. */}
+            <button
+              onClick={() => setParkedOpen(!parkedOpen)}
+              data-testid="pv2-adp-parked-toggle"
               style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))",
-                gap: 10,
+                display: "flex",
+                alignItems: "center",
+                gap: 13,
+                width: "100%",
                 marginTop: 6,
+                padding: "13px 15px",
+                borderRadius: 11,
+                cursor: "pointer",
+                fontFamily: "inherit",
+                border: `1px solid rgba(148,163,184,${parkedOpen ? ".4" : ".2"})`,
+                background: `linear-gradient(160deg,rgba(148,163,184,${parkedOpen ? ".1" : ".05"}),rgba(15,23,42,.5))`,
               }}
-              data-testid="pv2-adp-parked"
             >
-              {ADP_PARKED.map((p) => (
+              <span
+                style={{
+                  fontSize: "22px",
+                  fontWeight: 800,
+                  color: "#f8fafc",
+                  letterSpacing: "-.02em",
+                  fontFamily: MONO,
+                }}
+              >
+                {ADP_PARKED_COUNT}
+              </span>
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 2,
+                  minWidth: 0,
+                  textAlign: "left",
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: "9.5px",
+                    fontWeight: 800,
+                    letterSpacing: ".14em",
+                    textTransform: "uppercase",
+                    color: "#94a3b8",
+                  }}
+                >
+                  Parked this quarter
+                </span>
+                <span style={{ fontSize: "11px", color: "#64748b", lineHeight: 1.45 }}>
+                  Deliberately not doing these, with an owner and a revisit date
+                </span>
+              </div>
+              <span
+                style={{
+                  marginLeft: "auto",
+                  flex: "0 0 auto",
+                  display: "flex",
+                  transform: `rotate(${parkedOpen ? 180 : 0}deg)`,
+                  transition: "transform 180ms",
+                }}
+              >
+                <ChevronDown size={13} color="#94a3b8" aria-hidden="true" />
+              </span>
+            </button>
+
+            {/* Parked cards — GREY, not orange. proto 3458-3484. */}
+            {parkedOpen && (
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))",
+                  gap: 10,
+                  marginTop: 6,
+                }}
+                data-testid="pv2-adp-parked"
+              >
+                {ADP_PARKED.map((p) => (
                 <div
                   key={p.id}
                   style={{
@@ -1249,33 +1485,27 @@ export default function PortalV2AdoptionPage() {
                     ))}
                   </div>
                 </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* ── Right column — proto 3447-3504 ───────────────────────────── */}
           <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
-            {/* How far you have come — GREEN, the only positive-framed panel
-                in the whole portal. */}
+            {/* How far you have come — GREEN, the only positive-framed panel in
+                the whole portal. Sized by movement: the bigger the win, the
+                bigger the box (proto 3489-3505). */}
             <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: 0,
-                border: "1px solid rgba(52,211,153,.24)",
-                borderRadius: 12,
-                background: "rgba(52,211,153,.04)",
-                overflow: "hidden",
-              }}
+              style={{ display: "flex", flexDirection: "column", gap: 9 }}
               data-testid="pv2-adp-wins"
             >
               <div
                 style={{
-                  padding: "11px 14px",
-                  borderBottom: "1px solid rgba(52,211,153,.14)",
                   display: "flex",
-                  flexDirection: "column",
-                  gap: 2,
+                  alignItems: "baseline",
+                  justifyContent: "space-between",
+                  gap: 10,
+                  flexWrap: "wrap",
                 }}
               >
                 <span
@@ -1289,51 +1519,96 @@ export default function PortalV2AdoptionPage() {
                 >
                   How far you have come
                 </span>
-                <span style={{ fontSize: "11px", color: "#94a3b8", lineHeight: 1.45 }}>
-                  Measured, not asserted — each one from the usage reports.
-                </span>
+                <span style={SECTION_NOTE}>Sized by how far each one moved</span>
               </div>
-              {ADP_WINS.map((w) => (
-                <div
-                  key={w.what}
-                  style={{
-                    display: "flex",
-                    alignItems: "flex-start",
-                    gap: 10,
-                    padding: "10px 14px",
-                    borderBottom: "1px solid rgba(52,211,153,.1)",
-                  }}
-                >
-                  <div
-                    style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}
-                  >
-                    <span
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 9, alignItems: "stretch" }}>
+                {ADP_WINS.map((w) => {
+                  const tier = adpWinTier(w.delta);
+                  const flexGrow = [1, 1.4, 1.9][tier];
+                  const flexBasis = [150, 190, 230][tier];
+                  const pad = ["11px 13px", "13px 15px", "16px 17px"][tier];
+                  const borderA = ["2b", "3d", "59"][tier];
+                  const bgA = ["0d", "14", "1c"][tier];
+                  const glow = [70, 90, 116][tier];
+                  const deltaSize = [18, 23, 29][tier];
+                  const whatSize = [11, 11.5, 12.5][tier];
+                  return (
+                    <div
+                      key={w.what}
                       style={{
-                        fontSize: "11.5px",
-                        fontWeight: 600,
-                        color: "#e2e8f0",
-                        lineHeight: 1.4,
+                        position: "relative",
+                        overflow: "hidden",
+                        flex: `${flexGrow} 1 ${flexBasis}px`,
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 3,
+                        padding: pad,
+                        borderRadius: 11,
+                        border: `1px solid #34d399${borderA}`,
+                        background: `linear-gradient(160deg,#34d399${bgA},rgba(15,23,42,.5))`,
                       }}
                     >
-                      {w.what}
-                    </span>
-                    <span style={{ fontSize: "10.5px", color: "#64748b", fontFamily: MONO }}>
-                      {w.from} → {w.to} · {w.when}
-                    </span>
-                  </div>
-                  <span
-                    style={{
-                      flex: "0 0 auto",
-                      fontSize: "12px",
-                      fontWeight: 700,
-                      color: "#34d399",
-                      fontFamily: MONO,
-                    }}
-                  >
-                    {w.delta}
-                  </span>
-                </div>
-              ))}
+                      <div
+                        style={{
+                          position: "absolute",
+                          right: -24,
+                          top: -28,
+                          width: glow,
+                          height: glow,
+                          borderRadius: "50%",
+                          background: "radial-gradient(circle,#34d3992b,rgba(2,6,23,0) 70%)",
+                          pointerEvents: "none",
+                        }}
+                      />
+                      <span
+                        style={{
+                          position: "relative",
+                          fontSize: `${deltaSize}px`,
+                          fontWeight: 800,
+                          letterSpacing: "-.02em",
+                          color: "#34d399",
+                          fontFamily: MONO,
+                        }}
+                      >
+                        {w.delta}
+                      </span>
+                      <span
+                        style={{
+                          position: "relative",
+                          fontSize: `${whatSize}px`,
+                          fontWeight: 700,
+                          color: "#e2e8f0",
+                          lineHeight: 1.4,
+                          textWrap: "pretty",
+                        }}
+                      >
+                        {w.what}
+                      </span>
+                      <span
+                        style={{
+                          position: "relative",
+                          fontSize: "10px",
+                          color: "#64748b",
+                          fontFamily: MONO,
+                        }}
+                      >
+                        {w.from} → {w.to}
+                      </span>
+                      <span
+                        style={{
+                          position: "relative",
+                          marginTop: "auto",
+                          paddingTop: 5,
+                          fontSize: "9.5px",
+                          color: "#475569",
+                        }}
+                      >
+                        {w.when}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
 
             {/* What makes plays land */}

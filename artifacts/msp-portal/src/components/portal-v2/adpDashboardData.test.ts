@@ -26,6 +26,8 @@ import {
   ADP_HERO,
   ADP_HERO_STATS,
   ADP_HISTORY,
+  ADP_KIND_LEGEND,
+  ADP_KIND_META,
   ADP_MATRIX,
   ADP_PARKED,
   ADP_PARKED_COUNT,
@@ -38,7 +40,26 @@ import {
   adpParkedMeta,
   adpPlayFixKey,
   adpTrendGeometry,
+  adpWinTier,
+  adpWorkloadDetail,
 } from "./adpDashboardData";
+
+describe("Adoption play badges — who does the work", () => {
+  it("names the delivery model, not the superseded play taxonomy", () => {
+    // Round Two: "'Play' meant nothing to anyone reading it. Each item now says
+    // who does the work." The badges must not revert to "People play" etc.
+    assert.equal(ADP_KIND_META.play.label, "We deliver it · billable");
+    assert.equal(ADP_KIND_META.hybrid.label, "We configure it · included");
+    assert.notEqual(ADP_KIND_META.play.label, "People play");
+  });
+
+  it("agrees with the cost legend it sits under", () => {
+    // The badge for a billable play reads the same as the legend's first row.
+    assert.equal(ADP_KIND_META.play.label, ADP_KIND_LEGEND[0].label);
+    assert.equal(ADP_KIND_META.play.c, ADP_KIND_LEGEND[0].dot);
+    assert.equal(ADP_KIND_META.hybrid.c, ADP_KIND_LEGEND[1].dot);
+  });
+});
 
 describe("Adoption hero", () => {
   it("leads with a sentence, not a score or a figure", () => {
@@ -218,6 +239,48 @@ describe("Parked plays", () => {
   it("revisits one at a DATE and the other at a CONTRACT EVENT", () => {
     assert.equal(ADP_PARKED[0].revisit, "Q1 2027 planning");
     assert.equal(ADP_PARKED[1].revisit, "When the LOB contract renews, March 2027");
+  });
+});
+
+describe("Workload expansion — derived, not typed", () => {
+  it("draws the Counted fact from the first three words of the population line", () => {
+    const exchange = ADP_WORKLOADS.find((w) => w.name === "Exchange / Outlook")!;
+    const d = adpWorkloadDetail(exchange);
+    assert.deepEqual(d.facts, [
+      { k: "Active", v: "98%" },
+      { k: "Counted", v: "1,215 of 1,240" },
+      { k: "Window", v: "30 days" },
+    ]);
+    // The reading joins the population line and the reading with a full stop, so
+    // the expansion cannot disagree with the count it is drawn from.
+    assert.equal(
+      d.reading,
+      "1,215 of 1,240 sent or read mail in 30 days. The 25 who did not are shared and resource mailboxes, which is correct.",
+    );
+    assert.equal(d.src, "getEmailActivityUserDetail(period=D30)");
+  });
+
+  it("gives every workload a source and a reading, none blank", () => {
+    ADP_WORKLOADS.forEach((w) => {
+      const d = adpWorkloadDetail(w);
+      assert.ok(d.src.length > 0, `${w.name} has no source`);
+      assert.ok(d.reading.startsWith(w.of), `${w.name} reading dropped its population line`);
+    });
+  });
+});
+
+describe("Wins are sized by how far each one moved", () => {
+  it("weighs a multiplier at 12× and tiers ≥40 / ≥18", () => {
+    // "4.3×" weighs 51.6 → the biggest box; "+34%" weighs 34 → the middle.
+    assert.equal(adpWinTier("4.3×"), 2);
+    assert.equal(adpWinTier("+34%"), 1);
+    assert.equal(adpWinTier("+16 pts"), 0);
+    // The regex only catches ×, pt and % — a "people" delta weighs zero and
+    // sits at the base tier, which is the prototype's own behaviour, pinned so a
+    // future "smarter" parser cannot silently resize the boxes.
+    assert.equal(adpWinTier("+19 people"), 0);
+    // Exactly one win reaches the top tier on this fixture.
+    assert.equal(ADP_WINS.filter((w) => adpWinTier(w.delta) === 2).length, 1);
   });
 });
 

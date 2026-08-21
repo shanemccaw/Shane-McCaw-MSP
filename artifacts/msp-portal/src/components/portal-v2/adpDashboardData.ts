@@ -95,19 +95,64 @@ export const ADP_HERO_STATS: readonly { label: string; value: string; sub: strin
 
 /* ── Workload utilisation — ADP_WORKLOADS (12641-12652) ───────────────────── */
 
-export const ADP_WORKLOADS: readonly { name: string; active: number; tone: AdpTone; note: string }[] =
-  [
-    { name: "Exchange / Outlook", active: 98, tone: "green", note: "Universal. Nothing to do here." },
-    { name: "Teams chat & meetings", active: 94, tone: "green", note: "Strong. The gap is where the work lands, not whether Teams is used." },
-    { name: "SharePoint", active: 81, tone: "green", note: "Healthy after the intranet refresh." },
-    { name: "OneDrive", active: 60, tone: "amber", note: "Sync configured on 60% of devices. The rest keep work on local disks." },
-    { name: "Teams channels", active: 38, tone: "amber", note: "Most collaboration still happens in 1:1 chat." },
-    { name: "Copilot", active: 55, tone: "amber", note: "41 of 68 assigned seats active, concentrated in meeting recap." },
-    { name: "Power BI (in E5)", active: 6, tone: "red", note: "12 of 202 E5 holders. Paid for, effectively unused." },
-    { name: "Teams Phone", active: 0, tone: "red", note: "Licensed on 41 seats, never provisioned." },
-    { name: "Planner / Tasks", active: 22, tone: "amber", note: "Two departments only. Project tracking still lives in spreadsheets." },
-    { name: "Viva Engage", active: 4, tone: "red", note: "Deliberately not launched — see the parked play." },
-  ];
+export interface AdpWorkload {
+  name: string;
+  active: number;
+  tone: AdpTone;
+  note: string;
+  /** The counted population — "1,215 of 1,240 sent or read mail in 30 days". */
+  of: string;
+  src: string;
+  reading: string;
+}
+
+export const ADP_WORKLOADS: readonly AdpWorkload[] = [
+  { name: "Exchange / Outlook", active: 98, tone: "green", note: "Universal. Nothing to do here.", of: "1,215 of 1,240 sent or read mail in 30 days", src: "getEmailActivityUserDetail(period=D30)", reading: "The 25 who did not are shared and resource mailboxes, which is correct." },
+  { name: "Teams chat & meetings", active: 94, tone: "green", note: "Strong. The gap is where the work lands, not whether Teams is used.", of: "1,166 of 1,240 posted or joined a meeting", src: "getTeamsUserActivityUserDetail(period=D30)", reading: "Usage is high but 1:1 chat dominates. Work is happening in Teams and landing nowhere durable." },
+  { name: "SharePoint", active: 81, tone: "green", note: "Healthy after the intranet refresh.", of: "1,004 of 1,240 viewed or edited a file", src: "getSharePointActivityUserDetail(period=D30)", reading: "Up 14 points since the intranet refresh in March. The remaining fifth are mostly manufacturing floor accounts." },
+  { name: "OneDrive", active: 60, tone: "amber", note: "Sync configured on 60% of devices. The rest keep work on local disks.", of: "127 of 212 devices have sync configured", src: "getOneDriveUsageAccountDetail + Intune device config", reading: "Eighty-five devices keep work on local disks. That is a backup problem before it is an adoption one." },
+  { name: "Teams channels", active: 38, tone: "amber", note: "Most collaboration still happens in 1:1 chat.", of: "471 of 1,240 posted in a channel", src: "getTeamsUserActivityUserDetail — channel messages", reading: "Channel posting is the single best predictor of whether content is findable later. This is the number to move." },
+  { name: "Copilot", active: 55, tone: "amber", note: "41 of 68 assigned seats active, concentrated in meeting recap.", of: "41 of 68 assigned seats used it in 30 days", src: "getMicrosoft365CopilotUsageUserDetail(period=D30)", reading: "Eighty per cent of all Copilot use is meeting recap. Nobody is using it in Excel or Word, which is where the licence pays for itself." },
+  { name: "Power BI (in E5)", active: 6, tone: "red", note: "12 of 202 E5 holders. Paid for, effectively unused.", of: "12 of 202 E5 holders opened it", src: "getOffice365ActiveUserDetail(period=D30)", reading: "You also hold 12 standalone Power BI Pro licences for people who already have it inside E5. See the licence ledger." },
+  { name: "Teams Phone", active: 0, tone: "red", note: "Licensed on 41 seats, never provisioned.", of: "0 of 41 licensed seats provisioned", src: "getPstnCalls + subscribedSkus", reading: "Never set up. No numbers assigned and no calling plan attached, so the licence has produced nothing since it was bought." },
+  { name: "Planner / Tasks", active: 22, tone: "amber", note: "Two departments only. Project tracking still lives in spreadsheets.", of: "273 of 1,240 have an assigned task", src: "Planner plan and task enumeration", reading: "Engineering and Sales only. Operations deliberately runs project tracking elsewhere — that is a parked decision, not a gap." },
+  { name: "Viva Engage", active: 4, tone: "red", note: "Deliberately not launched — see the parked play.", of: "50 of 1,240 posted or read", src: "getYammerActivityUserDetail(period=D30)", reading: "Not launched on purpose. Leadership parked it this quarter, so this number staying flat is the expected outcome." },
+];
+
+/**
+ * The expanded workload detail (`adpWorkloadRows`, 12692-12708). The "Counted"
+ * fact is the first three words of `of`, and the reading joins `of` and
+ * `reading` with a full stop — both are DERIVED so the expansion cannot disagree
+ * with the population line it is drawn from.
+ */
+export function adpWorkloadDetail(w: AdpWorkload) {
+  return {
+    facts: [
+      { k: "Active", v: `${w.active}%` },
+      { k: "Counted", v: w.of.split(" ").slice(0, 3).join(" ") },
+      { k: "Window", v: "30 days" },
+    ],
+    reading: `${w.of}. ${w.reading}`,
+    src: w.src,
+  };
+}
+
+/** `adpDeptCoverage` / `adpDeptNote` (19827-19830) — the department-mapping caveat. */
+export const ADP_DEPT = {
+  coverage: "1,036 of 1,240 mapped",
+  note: "Read from the Entra department attribute. 204 people have it blank or misspelled and sit outside every row below, so treat these as indicative until they are mapped.",
+} as const;
+
+/**
+ * `adpKindLegend` (19847-19851). THREE bands — who does the work and whether it
+ * costs you anything — even though only two play kinds exist, because the legend
+ * is naming the cost model, not the play taxonomy.
+ */
+export const ADP_KIND_LEGEND: readonly { label: string; dot: string }[] = [
+  { label: "We deliver it · billable", dot: "#fb923c" },
+  { label: "We configure it · included in your plan", dot: "#60a5fa" },
+  { label: "Your team does it · no cost", dot: "#34d399" },
+];
 
 /* ── Department matrix — ADP_MATRIX (12664-12674) ─────────────────────────── */
 
@@ -157,10 +202,15 @@ export interface AdpPlay {
   actionSub: string;
 }
 
-/** `adpKindMeta` (12777-12780). */
+/**
+ * `adpKindMeta` (14583-14586). The prototype's own source comment: "'Play' meant
+ * nothing to anyone reading it. Each item now says who does the work." So the
+ * badge on every play row names the delivery model, and agrees with the cost
+ * legend above it (ADP_KIND_LEGEND) rather than the superseded play taxonomy.
+ */
 export const ADP_KIND_META: Readonly<Record<AdpPlayKind, { label: string; c: string }>> = {
-  play: { label: "People play", c: "#fb923c" },
-  hybrid: { label: "Policy + play", c: "#60a5fa" },
+  play: { label: "We deliver it · billable", c: "#fb923c" },
+  hybrid: { label: "We configure it · included", c: "#60a5fa" },
 };
 
 export const ADP_PLAYS: readonly AdpPlay[] = [
@@ -364,6 +414,20 @@ export const ADP_WINS: readonly {
   { what: "Meetings with a recording", from: "9%", to: "23%", delta: "+14 pts", when: "since transcription went on" },
   { what: "SharePoint news readership", from: "112", to: "486", delta: "4.3×", when: "after the intranet refresh" },
 ];
+
+/**
+ * `adpWinRows` tiering (14425-14430) — bigger movement, bigger box. A multiplier
+ * ("4.3×") weighs 12× its factor; a points/percent move weighs its own
+ * magnitude. Tier 2 at ≥40, tier 1 at ≥18, else tier 0. The box, glow, delta and
+ * label all scale off the returned tier, so "how far it moved" is legible from
+ * across the panel without reading a single number.
+ */
+export function adpWinTier(delta: string): 0 | 1 | 2 {
+  const mult = /×/.test(delta) ? parseFloat(delta) : 0;
+  const pts = /pt|%/.test(delta) ? Math.abs(parseFloat(delta.replace(/[^0-9.\-]/g, ""))) : 0;
+  const weight = mult ? mult * 12 : pts;
+  return weight >= 40 ? 2 : weight >= 18 ? 1 : 0;
+}
 
 /* ── Enablers — ADP_ENABLERS (12828-12835) ────────────────────────────────── */
 

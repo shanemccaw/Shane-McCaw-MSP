@@ -30,18 +30,24 @@ import {
   LIC_ACK,
   LIC_ACK_COUNT,
   LIC_BUCKETS,
+  LIC_BUCKET_LINES,
   LIC_FINDINGS,
   LIC_FINDING_COUNT,
   LIC_HERO,
   LIC_HERO_STATS,
   LIC_LEDGER,
+  LIC_LEDGER_LEGEND,
   LIC_POLICY,
   LIC_PROV,
   LIC_SAVED_HISTORY,
+  LIC_SKU_ACTIONS,
+  LIC_SKU_TOTALS,
   LIC_SKUS,
   LIC_TOTALS,
   licAckMeta,
+  licBucketPanel,
   licFmt,
+  licLedgerCards,
   licSkuGeometry,
   licTrendGeometry,
 } from "./licDashboardData";
@@ -122,6 +128,45 @@ describe("The three recovery buckets", () => {
   });
 });
 
+describe("The bucket breakdown panel — 'What that leaves'", () => {
+  it("has a breakdown for every bucket key, and no orphans", () => {
+    const bucketKeys = LIC_BUCKETS.map((b) => b.key).sort();
+    const lineKeys = Object.keys(LIC_BUCKET_LINES).sort();
+    assert.deepEqual(lineKeys, bucketKeys);
+  });
+
+  it("DERIVES the total from the lines rather than stating it — annual too", () => {
+    (["today", "renewal", "reassign"] as const).forEach((key) => {
+      const raw = LIC_BUCKET_LINES[key];
+      const summed = raw.lines.reduce((a, l) => a + l.amt, 0);
+      assert.equal(raw.total, summed, `${key} total drifted from its lines`);
+      const panel = licBucketPanel(key)!;
+      assert.equal(panel.totalLabel, `${licFmt(raw.total)}/mo`);
+      assert.equal(panel.totalAnnual, `${licFmt(raw.total * 12)} a year`);
+    });
+  });
+
+  it("nets the renewal bucket BELOW its headline, which is the point of the panel", () => {
+    // The bucket card shows $2,280 gross; the panel nets the 12 held-for-hiring
+    // seats off to $1,560. A held-back line is negative, muted, and rendered
+    // with a real minus sign, not a hyphen.
+    const panel = licBucketPanel("renewal")!;
+    assert.equal(panel.totalLabel, "$1,560/mo");
+    assert.equal(panel.totalAnnual, "$18,720 a year");
+    const held = panel.lines.find((l) => l.negative)!;
+    assert.equal(held.amt, "−$720/mo");
+    assert.ok(held.amt.startsWith("−"), "the held-back line must use a minus sign, not a hyphen");
+    // The two buckets that genuinely leave the bill carry no negative line.
+    assert.equal(licBucketPanel("today")!.lines.some((l) => l.negative), false);
+    assert.equal(licBucketPanel("reassign")!.lines.some((l) => l.negative), false);
+  });
+
+  it("titles the panel with the bucket's own figure", () => {
+    assert.equal(licBucketPanel("today")!.title, "How $399/mo is arrived at");
+    assert.equal(licBucketPanel("reassign")!.title, "How $1,470/mo is arrived at");
+  });
+});
+
 describe("The licence ledger", () => {
   it("sums its totals from the rows rather than stating them", () => {
     // 430 bought, 382 assigned, 323 active — the two gaps ARE the page: 48
@@ -159,6 +204,103 @@ describe("The licence ledger", () => {
     assert.equal(licFmt(2280), "$2,280");
     assert.equal(licFmt(24), "$24");
     assert.equal(licFmt(18720), "$18,720");
+  });
+});
+
+describe("The ledger cards — the consolidated ledger + recovery view", () => {
+  it("orders one card per SKU by monthly waste, money at the top", () => {
+    const cards = licLedgerCards();
+    assert.equal(cards.length, LIC_SKUS.length);
+    const wastes = LIC_SKUS.map((s) => s.waste).sort((a, b) => b - a);
+    // The E5 gap is the biggest, so it leads; the two right-sized SKUs trail.
+    assert.equal(cards[0].part, "SPE_E5");
+    assert.equal(cards[cards.length - 1].clean, true);
+    // Cards are in descending waste order.
+    const orderedByWaste = cards.every((c, i) => {
+      if (i === 0) return true;
+      const prev = LIC_SKUS.find((s) => s.part === cards[i - 1].part)!.waste;
+      const cur = LIC_SKUS.find((s) => s.part === c.part)!.waste;
+      return prev >= cur;
+    });
+    assert.ok(orderedByWaste, "cards are not sorted by descending waste");
+    assert.equal(wastes[0], 2280);
+  });
+
+  it("builds the counts line, unit and waste strings the design specifies", () => {
+    const e5 = licLedgerCards().find((c) => c.part === "SPE_E5")!;
+    assert.equal(e5.unit, "$60 / seat");
+    assert.equal(e5.counts, "240 bought · 202 assigned · 183 actually using it");
+    assert.equal(e5.waste, "$2,280/mo");
+    assert.equal(e5.annual, "$27,360 a year");
+    // A right-sized SKU says so in words and has nothing to recover.
+    const clean = licLedgerCards().find((c) => c.clean)!;
+    assert.equal(clean.waste, "Right-sized");
+    assert.equal(clean.annual, "nothing to recover");
+    assert.equal(clean.hasActions, false);
+    assert.equal(clean.actions.length, 0);
+  });
+
+  it("splits the utilisation bar into active / idle / unassigned against PURCHASED", () => {
+    const e5 = licLedgerCards().find((c) => c.part === "SPE_E5")!;
+    // 183 active, 19 idle, 38 unassigned of 240.
+    assert.equal(e5.seg.active.pct, (183 / 240) * 100);
+    assert.equal(e5.seg.idle.pct, (19 / 240) * 100);
+    assert.equal(e5.seg.free.pct, (38 / 240) * 100);
+    assert.equal(e5.seg.idle.show, true);
+    assert.equal(e5.seg.free.show, true);
+    // A label appears only when the segment clears 12% of the bar: 183 and 38 do,
+    // 19 does not.
+    assert.equal(e5.seg.active.label, "183");
+    assert.equal(e5.seg.idle.label, "");
+    assert.equal(e5.seg.free.label, "38");
+  });
+
+  it("attaches the recovery action to the SKU it belongs to, with a real playbook", () => {
+    const e5 = licLedgerCards().find((c) => c.part === "SPE_E5")!;
+    // The E5 gap carries TWO actions: unassigned seats and disabled-account seats.
+    assert.deepEqual(
+      e5.actions.map((a) => a.id),
+      ["LIC-01", "LIC-03"],
+    );
+    assert.equal(e5.actions[0].money, "$1,560/mo");
+    // The Copilot card routes to the real reassign playbook, not the design's
+    // non-existent `lic-copilot-idle` key.
+    const copilot = licLedgerCards().find((c) => c.part === "Microsoft_365_Copilot")!;
+    assert.equal(copilot.actions[0].fixKey, "lic-copilot-reassign");
+    assert.equal(copilot.actions[0].money, "$810/mo");
+    // Every card action points at a playbook that resolves.
+    licLedgerCards()
+      .flatMap((c) => c.actions)
+      .forEach((a) =>
+        assert.notEqual(
+          playbookFor(a.fixKey).title,
+          "Apply the recommended change",
+          `${a.fixKey} fell through to the fallback`,
+        ),
+      );
+  });
+
+  it("renders the header totals string from the summed rows", () => {
+    assert.equal(LIC_SKU_TOTALS.purchased, "430");
+    assert.equal(LIC_SKU_TOTALS.active, "323");
+    assert.equal(LIC_SKU_TOTALS.waste, "$3,699/mo");
+    assert.equal(LIC_SKU_TOTALS.purchased, String(LIC_TOTALS.purchased));
+    assert.equal(LIC_SKU_TOTALS.waste, `${licFmt(LIC_TOTALS.waste)}/mo`);
+  });
+
+  it("names the three bar segments in its legend", () => {
+    assert.deepEqual(
+      LIC_LEDGER_LEGEND.map((l) => l.label),
+      ["using it", "assigned but idle", "assigned to nobody"],
+    );
+  });
+
+  it("attaches actions to exactly the six SKUs with a recoverable gap", () => {
+    // The two right-sized SKUs carry none; every keyed action fixKey is real.
+    assert.equal(Object.keys(LIC_SKU_ACTIONS).length, 6);
+    Object.values(LIC_SKU_ACTIONS)
+      .flat()
+      .forEach((a) => assert.ok(a.fixKey.startsWith("lic-"), `${a.id} has a bad fixKey`));
   });
 });
 

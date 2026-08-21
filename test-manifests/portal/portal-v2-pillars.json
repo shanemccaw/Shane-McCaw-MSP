@@ -24,7 +24,8 @@
     "RUN GREEN 2026-08-19: 207/207 against the deployed dev server at commit b7bdebb8 (deployed via trigger-deploy-and-wait.ps1, bfe189879 -> b7bdebb8c, 53.4s), covering the 28 new H* steps for the rebuilt Health pillar hero — the sixth and last of Layer 1. Real text observed on screen: the locator chip reading 'Health · you are here'; 'Tenant Infrastructure Health' as the banner title; 'STALE OBJECTS 166 Across 9 object classes…'; 'OPEN DEBT ITEMS · LOWER IS BETTER 128 → 71 → 78…'; 'HLT-01 DEGRADING Unsupported since 14 October 2025…'; 'HLT-A1 ACCEPTED RISK AD FS retained alongside cloud…'; and 'HOW THIS IS GATHERED Cloud reads from the container…'. U5a also passed with 'ERROR 404 This page ran off to go check a complian…', confirming the param route's only remaining reachable behaviour. Also verified at that commit: tsc --noEmit clean, a full vite build clean, and 99/99 across all six portal-v2 fixture suites.",
     "DECISION, Shane 2026-08-19: KEEP the generic portal-v2-pillar.tsx and its '/portal-v2/:pillar' route until the whole Customer Portal v2 build is finished — \"keep the generic pages until we are done\". It is now unreachable by any valid pillar (all six match a bespoke route above it) and U5a covers its only remaining behaviour, but it is NOT to be deleted as tidy-up by a later session. It is the last consumer of the per-pillar live-data path (usePortalV2Pillars + PortalV2Pieces) and the working reference for moving a pillar off its fixture onto the real payload.",
     "THE 166-VERSUS-78 TRAP ON HEALTH, worth knowing before anyone edits that page: the hero's 'Stale objects' stat binds hltObjectTotal — the sum of ALL NINE inventory classes, 166 — while debt item HLT-05 and the whole trend series quote 78, which is that same inventory minus app registrations (61), credentials (4) and disabled accounts (23). Those three have their own debt items and their own remediation, so counting them in the debt total would double-count the work. Both figures are the prototype's and both are correct for what they measure. The first transcription hardcoded 78 in the hero and the fixture's own sum assertion caught it; both values are now COMPUTED from the tables rather than typed, and manifest step H6 pins the rendered 166.",
-    "OBSERVED, NOT A REGRESSION, WORTH KNOWING: CR2 shows the fix panel reading 'Apply the recommended change' — the GENERIC FALLBACK — because govPages.ts's sharing-drift policy rows carry fixKeys (gov-drift-anon-expiry, gov-drift-default-permission, gov-drift-domain-allowlist, gov-drift-alert) that exist in neither FIX_PLAYBOOKS nor the prototype's GOV_FIXES. The gate still works end to end, which is what CR1-CR7 assert, but 'wrench fixes tied to NAMED playbooks' is currently only true on the oversharing page (OV18 asserts its real title). Writing those four playbooks is real outstanding work, not a test defect."
+    "OBSERVED, NOT A REGRESSION, WORTH KNOWING: CR2 shows the fix panel reading 'Apply the recommended change' — the GENERIC FALLBACK — because govPages.ts's sharing-drift policy rows carry fixKeys (gov-drift-anon-expiry, gov-drift-default-permission, gov-drift-domain-allowlist, gov-drift-alert) that exist in neither FIX_PLAYBOOKS nor the prototype's GOV_FIXES. The gate still works end to end, which is what CR1-CR7 assert, but 'wrench fixes tied to NAMED playbooks' is currently only true on the oversharing page (OV18 asserts its real title). Writing those four playbooks is real outstanding work, not a test defect.",
+    "PART 3 TOP-UP (Licensing / Adoption / Health) -- structural fidelity, not just copy. The copy-coverage floor read 83/88/90 before and 100/100/100 after, but the real work was layout the floor cannot see, so several steps here were rewritten to match: (1) HEALTH lost its prose disambiguation banner -- the current shell has no bannerTitle/HLT_BANNER_BODY, so H1/H2 no longer assert pv2-hlt-banner / pv2-hlt-banner-title (removed). (2) HEALTH's Configuration drift went from a flat table to a verdict-sorted EXPANDABLE list (pv2-hlt-drift-{i}); H11 now expands rows to reach 'Unknown — pre-baseline', 'Raise the change that should have covered it' (isAlert only), and the 'Change record · CR-0098' block. (3) HEALTH's service subtitle was corrected to 'Straight from the Message Center, filtered to services you use.' and gained the 'All 452 notices' header link (pv2-hlt-mc-all) -- H25a/H25b. (4) LICENSING consolidated the flat 7-column ledger table AND the separate recovery-items list into one card per SKU (licLedgerCards): the totals ROW (pv2-lic-ledger-total) is gone, its figures moved to the header (pv2-lic-ledger-totals, L7); the recovery list (pv2-lic-recovery / pv2-lic-item-*) is gone, its actions now live inside the expandable SKU card (L9-L11 expand pv2-lic-sku-SPE_E5 and read the counts line and the embedded action). A segmented utilisation bar and a legend (pv2-lic-ledger-legend, L7b) were added. (5) ADOPTION's play badges were corrected from the superseded 'People play'/'Policy + play' to 'We deliver it · billable'/'We configure it · included' (pinned in adpDashboardData.test.ts). The Copilot ledger action routes to lic-copilot-reassign because the prototype's own lic-copilot-idle key has no matching playbook."
   ],
 
   "apiTests": [
@@ -575,18 +576,18 @@
       "target": "/portal/shane-mccaw-consulting/portal-v2/health"
     },
     {
-      "name": "H1 -- THE NAMING PROBLEM, SOLVED ON THE PAGE. Two different screens are called health, so this pillar carries a disambiguation banner naming both. No other pillar explains what it is not.",
+      "name": "H1 -- THE NAMING PROBLEM, SOLVED ON THE PAGE. Two screens are called health; the CURRENT design disambiguates with the back link and the locator row, not a prose banner (Round Two dropped bannerTitle/HLT_BANNER_BODY -- no such symbol exists in the shell). The back link is the only pillar back link that is not 'Overview'.",
       "action": "expect",
-      "selector": "[data-testid='pv2-hlt-banner']",
+      "selector": "[data-testid='pv2-hlt-back']",
       "state": "visible",
-      "textContains": "Two things share the word health"
+      "textContains": "M365 Health overview"
     },
     {
-      "name": "H2 -- and its own title, which is NOT the word 'Health' alone.",
+      "name": "H2 -- the configuration-drift section is now verdict-sorted, leading with the changes that carry no request behind them. 'Changed without approval' is a group-0 verdict label that only exists once the flat table became this expandable list.",
       "action": "expect",
-      "selector": "[data-testid='pv2-hlt-banner-title']",
+      "selector": "[data-testid='pv2-hlt-drift']",
       "state": "visible",
-      "textContains": "Tenant Infrastructure Health"
+      "textContains": "Changed without approval"
     },
     {
       "name": "H3 -- the LOCATOR chip row marks this pillar 'you are here'. It exists only because of the naming collision.",
@@ -645,11 +646,37 @@
       "textContains": "DefaultSharingLinkType"
     },
     {
-      "name": "H11 -- and it is honest where the audit log cannot answer, rather than guessing an actor.",
+      "name": "H11 -- expand an UNEXPLAINED drift row (unattributed, no change request). Sorted index 1 is TransportConfig · SmtpClientAuthenticationDisabled.",
+      "action": "click",
+      "selector": "[data-testid='pv2-hlt-drift-1']",
+      "critical": true
+    },
+    {
+      "name": "H11a -- it is honest where the audit log cannot answer, in the 'Changed by' detail, rather than guessing an actor.",
       "action": "expect",
       "selector": "[data-testid='pv2-hlt-drift']",
       "state": "visible",
       "textContains": "Unknown — pre-baseline"
+    },
+    {
+      "name": "H11b -- and an alert row offers the change to RAISE. This copy exists ONLY on a drift with no request behind it, which is why the copy-coverage floor missed it until the drift section was rebuilt from a flat table into this verdict list.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-hlt-drift']",
+      "state": "visible",
+      "textContains": "Raise the change that should have covered it"
+    },
+    {
+      "name": "H11c -- expand a drift that DID move under a change record (sorted index 7, CA301). Opening it closes the previous row -- the list opens one at a time.",
+      "action": "click",
+      "selector": "[data-testid='pv2-hlt-drift-7']",
+      "critical": true
+    },
+    {
+      "name": "H11d -- it names the change record and why it is still open: process working, not a finding. The whole verdict split is 'drift only means something next to the change record'.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-hlt-drift']",
+      "state": "visible",
+      "textContains": "Change record · CR-0098"
     },
     {
       "name": "H12 -- debt items use this pillar's OWN severity vocabulary. Not Critical/High/Low: debt accrues, it does not threaten.",
@@ -747,6 +774,20 @@
       "selector": "[data-testid='pv2-hlt-service']",
       "state": "visible",
       "textContains": "Fix the drift before this lands."
+    },
+    {
+      "name": "H25a -- the panel's subtitle is the design's own words -- straight from the Message Center. This was the altered-copy defect the rebuild fixed (it had read 'Filtered to services you use and changes that touch your configuration.').",
+      "action": "expect",
+      "selector": "[data-testid='pv2-hlt-service']",
+      "state": "visible",
+      "textContains": "Straight from the Message Center, filtered to services you use."
+    },
+    {
+      "name": "H25b -- the header carries the 'All 452 notices' link into the full Message Center, which was missing entirely before the rebuild.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-hlt-mc-all']",
+      "state": "visible",
+      "textContains": "All 452 notices"
     },
     {
       "name": "H26 -- open the provenance block.",
@@ -1023,11 +1064,18 @@
       "textContains": "38 unassigned seats on annual commitment"
     },
     {
-      "name": "L7 -- THE TOTALS ROW IS SUMMED, NOT STATED. 430 bought against 382 assigned against 323 active: the two gaps are the entire page. A hardcoded total would drift from the rows above it, which on a money page is the worst failure available.",
+      "name": "L7 -- THE LEDGER TOTALS ARE SUMMED, NOT STATED, and now render in the ledger HEADER. Round Two consolidated the flat 7-column table and the separate recovery list into one card per SKU, so the old totals ROW is gone and the summed figures moved to the header: 430 bought, 323 in use, $3,699/mo wasted. A hardcoded total would drift from the cards below it, the worst failure on a money page.",
       "action": "expect",
-      "selector": "[data-testid='pv2-lic-ledger-total']",
+      "selector": "[data-testid='pv2-lic-ledger-totals']",
       "state": "visible",
       "textContains": "$3,699/mo"
+    },
+    {
+      "name": "L7b -- the utilisation-bar legend names its three segments, which is what the segmented bar on every card is drawn in.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-lic-ledger-legend']",
+      "state": "visible",
+      "textContains": "assigned but idle"
     },
     {
       "name": "L8 -- a right-sized SKU shows an em dash rather than $0, so 'no waste' and 'zero dollars of waste' do not look like the same claim.",
@@ -1037,24 +1085,24 @@
       "textContains": "Right-sized"
     },
     {
-      "name": "L9 -- the recovery items carry monthly AND annualised figures on the collapsed row.",
+      "name": "L9 -- each SKU card carries the counts line the whole page turns on: what you bought, what is assigned, and what is actually using it. The two gaps in that line ARE the finding.",
       "action": "expect",
-      "selector": "[data-testid='pv2-lic-recovery']",
+      "selector": "[data-testid='pv2-lic-sku-SPE_E5']",
       "state": "visible",
-      "textContains": "$27,360/yr"
+      "textContains": "240 bought · 202 assigned · 183 actually using it"
     },
     {
-      "name": "L10 -- expand the largest recovery item.",
+      "name": "L10 -- expand the E5 card, whose gap carries the largest recovery. Round Two moved the recovery ACTION inside the ledger card for the SKU it belongs to, so there is no separate recovery-items list any more.",
       "action": "click",
-      "selector": "[data-testid='pv2-lic-item-LIC-01']",
+      "selector": "[data-testid='pv2-lic-sku-SPE_E5']",
       "critical": true
     },
     {
-      "name": "L11 -- the expansion states the BILLING REALITY, which is what separates this pillar from a generic waste report.",
+      "name": "L11 -- the E5 gap splits into the two actions attached to it. The unassigned-seats action keeps the 12 held for hiring and recovers the other 26 -- the per-action figure, not the finding's gross.",
       "action": "expect",
-      "selector": "[data-testid='pv2-lic-recovery']",
+      "selector": "[data-testid='pv2-lic-sku-SPE_E5']",
       "state": "visible",
-      "textContains": "Miss it and the same $27,360 commits again."
+      "textContains": "the other 26 are recoverable"
     },
     {
       "name": "L12 -- THE GATE FROM A RECOVERY ITEM. The wrench opens a real playbook, one of thirteen transcribed for this pillar.",

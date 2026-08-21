@@ -7,14 +7,15 @@
  * ── The prototype opens with a naming problem, and solves it on the page ────
  * Its source comment: "the overview is 'M365 Health' across all six pillars.
  * This page is the infrastructure and configuration layer underneath it, so it
- * is titled and located explicitly — locator strip, eyebrow, and a plain
- * sentence saying which is which."
+ * is titled and located explicitly."
  *
- * That is why this pillar, alone, carries: a back link reading "M365 Health
- * overview" rather than "Overview"; a disambiguation banner that names both
- * things in bold; and a LOCATOR CHIP ROW of all six pillars with "· you are
- * here" appended to this one. None of that is decoration — it exists because
- * two different screens are called health.
+ * In the current handoff that disambiguation is carried by exactly two things,
+ * and no more: a back link reading "M365 Health overview" rather than
+ * "Overview" — the only pillar whose back link differs — and a LOCATOR CHIP ROW
+ * of all six pillars with "· you are here" appended to this one (proto
+ * 2891-2897). An earlier revision also had a prose disambiguation banner; the
+ * current design dropped it (there is no `hltBanner`/`bannerTitle` symbol
+ * anywhere in the shell), so it is not reproduced here.
  *
  * ── Debt goes down, so the trend is inverted ───────────────────────────────
  * The trend counts OPEN DEBT ITEMS, where lower is better, and its end-point
@@ -46,17 +47,14 @@ export const HLT_SERVICE_TONE: Readonly<Record<HltServiceTone, string>> = {
   blue: "#60a5fa",
 };
 
-/** Hero and banner copy — 12951 and the literals inline in the markup. */
+/** Hero copy — 12951 and the literals inline in the markup. */
 export const HLT_HERO = {
   score: 66,
-  /** Hardcoded in the ring markup (2985) and RED — debt is trending up. */
+  /** Hardcoded in the ring markup (2940) and RED — debt is trending up. */
   delta: "-2 this month",
   /** The back link reads differently here than on any other pillar. */
   backLabel: "M365 Health overview",
   acceptedStripSuffix: "accepted risk on record · AD FS retained",
-  bannerEyebrow: "Infrastructure & configuration hygiene · pillar 6 of 6",
-  bannerTitle: "Tenant Infrastructure Health",
-  bannerScoreNote: "Score 66 · debt trending up over the last 2 scans",
   eyebrow: "Where the debt is",
   headline: "You cleared 57 objects across scans 1 to 8. The last two scans added 7 back.",
   standfirst:
@@ -64,16 +62,6 @@ export const HLT_HERO = {
   trendLabel: "Open debt items · lower is better",
   trendCaption:
     "128 → 71 → 78. The last point is red because the direction changed, not because the number is high.",
-} as const;
-
-/**
- * The disambiguation sentence (2932). Split around the two bolded names so the
- * emphasis survives — it is the entire point of the sentence.
- */
-export const HLT_BANNER_BODY = {
-  before: "Two things share the word health, so to be plain about which one this is: the overview page you came from is ",
-  boldA: "M365 Health",
-  middle: " — your whole tenant across all six pillars. This page is the sixth of those pillars: the plumbing underneath. Directory sync, hybrid servers, app registrations, stale objects, and configuration drift. Nothing here is being exploited today. It is engineering debt, and left alone it turns into an incident on a day nobody chose.",
 } as const;
 
 export const HLT_DEBT_HISTORY: readonly number[] = [128, 121, 113, 104, 96, 88, 79, 71, 74, 78];
@@ -151,7 +139,67 @@ export const HLT_OBJECTS: readonly {
 /** `hltObjectTotal` (13024) — summed, and it is the "78" the hero stat prints. */
 export const HLT_OBJECT_TOTAL = HLT_OBJECTS.reduce((a, o) => a + o.count, 0);
 
-/* ── Configuration drift — HLT_DRIFT (13026-13039) ────────────────────────── */
+/* ── Configuration drift — HLT_DRIFT (14835-14888) ────────────────────────── */
+
+export type HltVerdict =
+  | "unapproved"
+  | "unattributed"
+  | "drifted"
+  | "approved"
+  | "accepted"
+  | "clean";
+
+/**
+ * `HLT_VERDICT` (14851-14858). Drift only means something next to the change
+ * record: a setting that moved with an approved CR is process working; the same
+ * setting moving without one is the finding. The `group` is the sort key — the
+ * three group-0 verdicts (the alerts) float to the top, then approved, then
+ * accepted positions, then the clean rows that match the baseline.
+ */
+export const HLT_VERDICT: Readonly<
+  Record<HltVerdict, { c: string; label: string; lead: string; group: number }>
+> = {
+  unapproved: { c: "#f87171", label: "Changed without approval", lead: "No change request covers this", group: 0 },
+  unattributed: { c: "#f87171", label: "Nobody owns this change", lead: "Made before the baseline — no actor, no request", group: 0 },
+  drifted: { c: "#f97316", label: "Drifted on its own", lead: "Nobody changed it. The scope stopped matching reality", group: 0 },
+  approved: { c: "#34d399", label: "Approved", lead: "Change control worked", group: 1 },
+  accepted: { c: "#c2a63d", label: "Accepted position", lead: "Recorded decision, not a change", group: 2 },
+  clean: { c: "#34d399", label: "Matches baseline", lead: "", group: 3 },
+};
+
+/**
+ * The drift owners (`d.owner`). The prototype resolves each row's owner through
+ * `raciChip` from the shared RACI roster (7599-7609); only the four people the
+ * drift rows actually reference are reproduced here, with the same tones, so the
+ * owner avatar and the "Answers for it" line render without pulling the whole
+ * roster into this page. The full pinned RACI hover-card is the shell's own
+ * `raciHover` state (a later part); a `title` tooltip stands in for the name.
+ */
+export const HLT_DRIFT_PEOPLE: Readonly<Record<string, { name: string; tone: string }>> = {
+  pr: { name: "Priya Raman", tone: "#f472b6" },
+  sm: { name: "Shane McCaw", tone: "#38bdf8" },
+  ml: { name: "Marcus Lee", tone: "#60a5fa" },
+  ab: { name: "Aisha Bello", tone: "#34d399" },
+};
+
+/** Two-letter initials from a name, matching the prototype's `initialsOf` (7643). */
+export function hltOwnerInitials(name: string): string {
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .map((w) => w[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+}
+
+/** The owner chip for a drift row — initials, name and tone, or an unassigned mark. */
+export function hltDriftOwner(id: string): { init: string; name: string; tone: string } {
+  const p = HLT_DRIFT_PEOPLE[id];
+  return p
+    ? { init: hltOwnerInitials(p.name), name: p.name, tone: p.tone }
+    : { init: "—", name: "Unassigned", tone: "rgba(248,113,113,.14)" };
+}
 
 /**
  * Eight of these twelve rows carry a fixKey belonging to ANOTHER pillar —
@@ -161,7 +209,7 @@ export const HLT_OBJECT_TOTAL = HLT_OBJECTS.reduce((a, o) => a + o.count, 0);
  * pillar's playbook rather than duplicating it. Only the ones with no other home
  * (`hlt-compliance-grace`, `hlt-teams-policy-sprawl`) get a Health playbook.
  */
-export const HLT_DRIFT: readonly {
+export interface HltDrift {
   setting: string;
   baseline: string;
   current: string;
@@ -170,23 +218,65 @@ export const HLT_DRIFT: readonly {
   scope: string;
   tone: HltTone;
   fixKey: string | null;
-}[] = [
-  { setting: "DefaultSharingLinkType", baseline: "Direct", current: "AnonymousAccess", who: "d.cho@tenant.com", when: "18 days ago", scope: "SharePoint tenant", tone: "red", fixKey: "gov-drift-default-link" },
-  { setting: "TransportConfig · SmtpClientAuthenticationDisabled", baseline: "True", current: "False", who: "Unknown — pre-baseline", when: "Before scan 1", scope: "Exchange Online", tone: "red", fixKey: "legacy-smtp-off" },
-  { setting: "CA201 policy state", baseline: "On", current: "On, 6 exclusions added", who: "a.reyes@tenant.com", when: "6 weeks ago", scope: "Conditional Access", tone: "red", fixKey: "ca-CA201-AllUsers-AllApps-RequireMFA" },
-  { setting: "CA301 policy state", baseline: "On", current: "Report-only", who: "a.reyes@tenant.com", when: "94 days ago", scope: "Conditional Access", tone: "red", fixKey: "ca-CA301-Guests-AllApps-RequireMFA" },
-  { setting: "Intune compliance grace period", baseline: "1 day", current: "14 days", who: "k.osei@tenant.com", when: "5 weeks ago", scope: "Intune", tone: "amber", fixKey: "hlt-compliance-grace" },
-  { setting: "Teams meeting policy assignment", baseline: "Global for all", current: "3 custom policies, 2 unused", who: "r.delgado@tenant.com", when: "2 months ago", scope: "Teams", tone: "amber", fixKey: "hlt-teams-policy-sprawl" },
-  { setting: "Retention policy scope", baseline: "All mailboxes", current: "Static scope, 12 uncovered", who: "Scope not updated", when: "8 months ago", scope: "Purview", tone: "red", fixKey: "cmp-retention-coverage" },
-  { setting: "Site sharing on 3 sites", baseline: "Inherit tenant", current: "Site-level override", who: "Site admins", when: "Various", scope: "SharePoint sites", tone: "red", fixKey: "gov-drift-reset-sites" },
-  { setting: "Guest invitation setting", baseline: "Admins and inviters", current: "Everyone", who: "Unknown — pre-baseline", when: "Before scan 1", scope: "Entra ID", tone: "red", fixKey: "gov-guests-invites" },
-  { setting: "Audit retention policy", baseline: "1 year (planned)", current: "180 days (Standard)", who: "Licence-constrained", when: "n/a", scope: "Purview", tone: "amber", fixKey: "cmp-audit-retention" },
-  { setting: "Password expiry policy", baseline: "Never expires", current: "Never expires", who: "—", when: "—", scope: "Entra ID", tone: "green", fixKey: null },
-  { setting: "Security defaults", baseline: "Off (CA in use)", current: "Off", who: "—", when: "—", scope: "Entra ID", tone: "green", fixKey: null },
+  verdict: HltVerdict;
+  owner: string;
+  cr?: string;
+  crNote?: string;
+}
+
+export const HLT_DRIFT: readonly HltDrift[] = [
+  { setting: "DefaultSharingLinkType", baseline: "Direct", current: "AnonymousAccess", who: "d.cho@tenant.com", when: "18 days ago", scope: "SharePoint tenant", tone: "red", fixKey: "gov-drift-default-link", verdict: "unapproved", owner: "pr" },
+  { setting: "TransportConfig · SmtpClientAuthenticationDisabled", baseline: "True", current: "False", who: "Unknown — pre-baseline", when: "Before scan 1", scope: "Exchange Online", tone: "red", fixKey: "legacy-smtp-off", verdict: "unattributed", owner: "pr" },
+  { setting: "CA201 policy state", baseline: "On", current: "On, 6 exclusions added", who: "a.reyes@tenant.com", when: "6 weeks ago", scope: "Conditional Access", tone: "red", fixKey: "ca-CA201-AllUsers-AllApps-RequireMFA", verdict: "unapproved", owner: "sm" },
+  { setting: "CA301 policy state", baseline: "On", current: "Report-only", who: "a.reyes@tenant.com", when: "94 days ago", scope: "Conditional Access", tone: "red", fixKey: "ca-CA301-Guests-AllApps-RequireMFA", verdict: "approved", owner: "sm", cr: "CR-0098", crNote: "Put into report-only for the guest MFA pilot. The CR closed 63 days ago and it was never taken back out." },
+  { setting: "Intune compliance grace period", baseline: "1 day", current: "14 days", who: "k.osei@tenant.com", when: "5 weeks ago", scope: "Intune", tone: "amber", fixKey: "hlt-compliance-grace", verdict: "approved", owner: "ml", cr: "CR-0110", crNote: "Raised to stop the Bay 3 device lockouts during the scanner replacement. Approved by Dan Whitlock, due to revert when the scanners land." },
+  { setting: "Teams meeting policy assignment", baseline: "Global for all", current: "3 custom policies, 2 unused", who: "r.delgado@tenant.com", when: "2 months ago", scope: "Teams", tone: "amber", fixKey: "hlt-teams-policy-sprawl", verdict: "unapproved", owner: "pr" },
+  { setting: "Retention policy scope", baseline: "All mailboxes", current: "Static scope, 12 uncovered", who: "Scope not updated", when: "8 months ago", scope: "Purview", tone: "red", fixKey: "cmp-retention-coverage", verdict: "drifted", owner: "ab" },
+  { setting: "Site sharing on 3 sites", baseline: "Inherit tenant", current: "Site-level override", who: "Site admins", when: "Various", scope: "SharePoint sites", tone: "red", fixKey: "gov-drift-reset-sites", verdict: "unapproved", owner: "ml" },
+  { setting: "Guest invitation setting", baseline: "Admins and inviters", current: "Everyone", who: "Unknown — pre-baseline", when: "Before scan 1", scope: "Entra ID", tone: "red", fixKey: "gov-guests-invites", verdict: "unattributed", owner: "sm" },
+  { setting: "Audit retention policy", baseline: "1 year (planned)", current: "180 days (Standard)", who: "Licence-constrained", when: "n/a", scope: "Purview", tone: "amber", fixKey: "cmp-audit-retention", verdict: "accepted", owner: "ab", cr: "CMP-A3", crNote: "Not a change. The Audit Standard ceiling is 180 days and the licence to lift it is not held." },
+  { setting: "Password expiry policy", baseline: "Never expires", current: "Never expires", who: "—", when: "—", scope: "Entra ID", tone: "green", fixKey: null, verdict: "clean", owner: "sm" },
+  { setting: "Security defaults", baseline: "Off (CA in use)", current: "Off", who: "—", when: "—", scope: "Entra ID", tone: "green", fixKey: null, verdict: "clean", owner: "sm" },
 ];
 
-/** `hltDriftCount` (13051) — non-green rows, which is the "10 of 47" figure. */
+/** `hltDriftCount` (14888) — non-green rows, which is the "10 of 47" figure. */
 export const HLT_DRIFT_COUNT = HLT_DRIFT.filter((d) => d.tone !== "green").length;
+
+export interface HltDriftRow extends HltDrift {
+  isAlert: boolean;
+  hasCr: boolean;
+}
+
+/**
+ * `hltDriftRows` (14860-14885). Sorted by verdict group so the unexplained
+ * changes sit at the top, then the ones with an approved change record, then
+ * accepted positions, then the clean rows. The sort is stable, so rows inside a
+ * group keep their declared order.
+ */
+export function hltDriftRows(): readonly HltDriftRow[] {
+  return HLT_DRIFT.slice()
+    .sort((a, b) => HLT_VERDICT[a.verdict].group - HLT_VERDICT[b.verdict].group)
+    .map((d) => ({ ...d, isAlert: HLT_VERDICT[d.verdict].group === 0, hasCr: !!d.cr }));
+}
+
+/** `hltDriftAlerts` (14886) — rows that changed with no request behind them. */
+export const HLT_DRIFT_ALERTS = hltDriftRows().filter((r) => r.isAlert).length;
+
+/** `hltDriftApproved` (14887) — rows tied to a change record. */
+export const HLT_DRIFT_APPROVED = hltDriftRows().filter((r) => r.hasCr).length;
+
+/**
+ * `kbInfo('hlt-drift')` (8131-8132) — the info-dot tooltip on the drift header.
+ * The full article opens the knowledge-base overlay (a later part); the hover
+ * card reproduces the title, the summary and the "Click to read it" cue.
+ */
+export const HLT_DRIFT_KBI = {
+  title: "Configuration drift",
+  summary: "A setting that moved. The question is whether a change request moved it.",
+} as const;
+
+/** `hltMcCount` (19819) — the Message Center notice count on the service-health header. */
+export const HLT_MC_COUNT = "452";
 
 /**
  * The three hero stats (2989-3005).

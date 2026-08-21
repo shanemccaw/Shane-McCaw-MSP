@@ -48,15 +48,17 @@ import { GOV_SRC_META } from "@/components/portal-v2/govPages";
 import { PILLAR_ORDER } from "@/components/copilot-journey/journeyTokens";
 import {
   HLT_ACCEPTED,
-  HLT_BANNER_BODY,
-  HLT_DRIFT,
+  HLT_DRIFT_ALERTS,
+  HLT_DRIFT_APPROVED,
   HLT_DRIFT_COUNT,
+  HLT_DRIFT_KBI,
   HLT_FINDINGS,
   HLT_FINDING_COUNT,
   HLT_GREEN,
   HLT_GREEN_TEXT,
   HLT_HERO,
   HLT_HERO_STATS,
+  HLT_MC_COUNT,
   HLT_OBJECTS,
   HLT_OBJECT_TOTAL,
   HLT_PROV,
@@ -65,16 +67,15 @@ import {
   HLT_SEV_META,
   HLT_SYNC,
   HLT_TONE,
+  HLT_VERDICT,
   hltAcceptedMeta,
+  hltDriftOwner,
+  hltDriftRows,
   hltTrendGeometry,
   type HltFinding,
 } from "@/components/portal-v2/hltDashboardData";
 
 const MONO = "'SF Mono',Menlo,Consolas,monospace";
-
-/** The drift table's column template. Header and every row share it. */
-const DRIFT_GRID =
-  "minmax(190px,1.6fr) minmax(110px,.9fr) minmax(130px,1.1fr) minmax(120px,1fr) minmax(96px,.7fr) 30px";
 
 const SECTION_LABEL: React.CSSProperties = {
   fontSize: "9.5px",
@@ -102,13 +103,81 @@ const MICRO_LABEL: React.CSSProperties = {
   color: "#64748b",
 };
 
-const DRIFT_HEAD: React.CSSProperties = {
+/** The small uppercase key labels inside an expanded drift row (proto 3056). */
+const DRIFT_DETAIL_LABEL: React.CSSProperties = {
   fontSize: "9px",
   fontWeight: 700,
-  letterSpacing: ".1em",
+  letterSpacing: ".09em",
   textTransform: "uppercase",
   color: "#64748b",
 };
+
+/**
+ * The knowledge-base info dot (`kbInfo`, proto 7776-7789). A small "i" that
+ * shows a hover card of the article's title, summary and a "Click to read it"
+ * cue. The full article lives in the knowledge-base overlay (a later part), so
+ * the click is inert here — the hover card is the reproduced surface.
+ */
+function HltInfoDot({ title, summary }: { title: string; summary: string }) {
+  const [hover, setHover] = useState(false);
+  return (
+    <span
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      data-testid="pv2-hlt-drift-info"
+      style={{
+        position: "relative",
+        flex: "0 0 15px",
+        width: 15,
+        height: 15,
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        borderRadius: "50%",
+        border: `1px solid ${hover ? "rgba(96,165,250,.8)" : "rgba(148,163,184,.35)"}`,
+        background: hover ? "rgba(96,165,250,.18)" : "transparent",
+        color: hover ? "#93c5fd" : "#64748b",
+        fontSize: "9.5px",
+        fontWeight: 800,
+        fontStyle: "normal",
+        textTransform: "none",
+        letterSpacing: 0,
+        cursor: "pointer",
+        fontFamily: MONO,
+      }}
+    >
+      i
+      {hover && (
+        <span
+          style={{
+            position: "absolute",
+            left: "50%",
+            top: 22,
+            transform: "translateX(-50%)",
+            zIndex: 140,
+            width: 260,
+            display: "flex",
+            flexDirection: "column",
+            gap: 4,
+            padding: "10px 12px",
+            borderRadius: 9,
+            border: "1px solid rgba(96,165,250,.35)",
+            background: "#0b1524",
+            boxShadow: "0 14px 34px rgba(2,6,23,.6)",
+            textAlign: "left",
+            pointerEvents: "none",
+          }}
+        >
+          <span style={{ fontSize: "11.5px", fontWeight: 800, color: "#f8fafc", lineHeight: 1.35 }}>
+            {title}
+          </span>
+          <span style={{ fontSize: "10.5px", color: "#94a3b8", lineHeight: 1.5 }}>{summary}</span>
+          <span style={{ fontSize: "9.5px", fontWeight: 700, color: "#60a5fa" }}>Click to read it</span>
+        </span>
+      )}
+    </span>
+  );
+}
 
 export default function PortalV2HealthPage() {
   const trend = hltTrendGeometry();
@@ -117,6 +186,7 @@ export default function PortalV2HealthPage() {
   const ringOffset = ringC - (HLT_HERO.score / 100) * ringC;
 
   const [expanded, setExpanded] = useState<number | null>(null);
+  const [driftOpen, setDriftOpen] = useState<number | null>(null);
   const [provOpen, setProvOpen] = useState(false);
   const { fixKey, openFixPanel, closeFixPanel } = useFixPanel();
   const { openForm, formElement } = useFormDrawer();
@@ -277,121 +347,58 @@ export default function PortalV2HealthPage() {
           </div>
         </div>
 
-        {/* ── The disambiguation banner + locator — proto 2925-2939 ──────── */}
+        {/* ── Locator chip row — proto 2891-2897. All six pillars, this one
+            marked "you are here". Together with the "M365 Health overview" back
+            link above, this is the whole of the page's disambiguation; the
+            current design carries no prose banner (there is no bannerTitle
+            symbol anywhere in the shell). ── */}
         <div
-          style={{
-            position: "relative",
-            display: "flex",
-            flexDirection: "column",
-            gap: 10,
-            padding: "16px 18px",
-            border: "1px solid rgba(34,197,94,.24)",
-            borderLeft: `2px solid ${HLT_GREEN}`,
-            borderRadius: 12,
-            background: "linear-gradient(160deg, rgba(34,197,94,.07), rgba(15,23,42,.45))",
-          }}
-          data-testid="pv2-hlt-banner"
+          style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6 }}
+          data-testid="pv2-hlt-locator"
         >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "baseline",
-              justifyContent: "space-between",
-              gap: 12,
-              flexWrap: "wrap",
-            }}
-          >
-            <div style={{ display: "flex", flexDirection: "column", gap: 5, minWidth: 0 }}>
-              <span
+          {PILLAR_ORDER.map((p) => {
+            const isThis = p.key === "health";
+            // Compliance's near-white identity is unreadable as a chip border,
+            // so the prototype substitutes #cbd5e1 for it here specifically.
+            const c = p.key === "compliance" ? "#cbd5e1" : p.primary;
+            return (
+              <Link
+                key={p.key}
+                href={`/portal-v2/${p.key}`}
+                data-testid={`pv2-hlt-locator-${p.key}`}
                 style={{
-                  fontSize: "9.5px",
-                  fontWeight: 700,
-                  letterSpacing: ".2em",
-                  textTransform: "uppercase",
-                  color: HLT_GREEN_TEXT,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "5px 10px",
+                  borderRadius: 6,
+                  border: `1px solid ${isThis ? `${c}99` : "rgba(30,41,59,.9)"}`,
+                  background: isThis ? `${c}1c` : "transparent",
+                  fontSize: "10.5px",
+                  fontWeight: isThis ? 700 : 600,
+                  color: isThis ? "#f8fafc" : "#64748b",
+                  whiteSpace: "nowrap",
+                  textDecoration: "none",
                 }}
               >
-                {HLT_HERO.bannerEyebrow}
-              </span>
-              <span
-                style={{
-                  fontSize: "19px",
-                  fontWeight: 800,
-                  color: "#f8fafc",
-                  lineHeight: 1.28,
-                  letterSpacing: "-.02em",
-                }}
-                data-testid="pv2-hlt-banner-title"
-              >
-                {HLT_HERO.bannerTitle}
-              </span>
-            </div>
-            <span style={{ fontSize: "10.5px", color: "#64748b", whiteSpace: "nowrap" }}>
-              {HLT_HERO.bannerScoreNote}
-            </span>
-          </div>
-          <span
-            style={{
-              fontSize: "12.5px",
-              color: "#cbd5e1",
-              lineHeight: 1.6,
-              maxWidth: "92ch",
-              textWrap: "pretty",
-            }}
-          >
-            {HLT_BANNER_BODY.before}
-            <span style={{ fontWeight: 700, color: "#f8fafc" }}>{HLT_BANNER_BODY.boldA}</span>
-            {HLT_BANNER_BODY.middle}
-          </span>
-          {/* The locator: all six pillars, this one marked "you are here". */}
-          <div
-            style={{ display: "flex", flexWrap: "wrap", gap: 6, paddingTop: 2 }}
-            data-testid="pv2-hlt-locator"
-          >
-            {PILLAR_ORDER.map((p) => {
-              const isThis = p.key === "health";
-              // Compliance's near-white identity is unreadable as a chip border,
-              // so the prototype substitutes #cbd5e1 for it here specifically.
-              const c = p.key === "compliance" ? "#cbd5e1" : p.primary;
-              return (
-                <Link
-                  key={p.key}
-                  href={`/portal-v2/${p.key}`}
-                  data-testid={`pv2-hlt-locator-${p.key}`}
+                <span
                   style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 6,
-                    padding: "5px 10px",
-                    borderRadius: 6,
-                    border: `1px solid ${isThis ? `${c}99` : "rgba(30,41,59,.9)"}`,
-                    background: isThis ? `${c}1c` : "transparent",
-                    fontSize: "10.5px",
-                    fontWeight: isThis ? 700 : 600,
-                    color: isThis ? "#f8fafc" : "#64748b",
-                    whiteSpace: "nowrap",
-                    textDecoration: "none",
+                    width: 5,
+                    height: 5,
+                    borderRadius: "50%",
+                    background: c,
+                    flex: "0 0 5px",
+                    opacity: isThis ? 1 : 0.5,
                   }}
-                >
-                  <span
-                    style={{
-                      width: 5,
-                      height: 5,
-                      borderRadius: "50%",
-                      background: c,
-                      flex: "0 0 5px",
-                      opacity: isThis ? 1 : 0.5,
-                    }}
-                  />
-                  {p.label}
-                  {isThis ? " · you are here" : ""}
-                </Link>
-              );
-            })}
-          </div>
+                />
+                {p.label}
+                {isThis ? " · you are here" : ""}
+              </Link>
+            );
+          })}
         </div>
 
-        {/* ── Hero card — proto 2941-3008 ────────────────────────────────── */}
+        {/* ── Hero card — proto 2899-2963 ────────────────────────────────── */}
         <div
           style={{
             position: "relative",
@@ -902,8 +909,11 @@ export default function PortalV2HealthPage() {
           </div>
         </div>
 
-        {/* ── Configuration drift — proto 3055-3087 ──────────────────────── */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {/* ── Configuration drift — proto 3022-3090. Expandable and
+            verdict-sorted: the unexplained changes float to the top, and each
+            row opens to who changed it, when, who answers for it, the change
+            record if there is one, and the fix or the change to raise. ── */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
           <div
             style={{
               display: "flex",
@@ -913,11 +923,13 @@ export default function PortalV2HealthPage() {
               flexWrap: "wrap",
             }}
           >
-            <span style={SECTION_LABEL}>
-              Configuration drift · {HLT_DRIFT_COUNT} of 47 tracked settings
+            <span style={{ ...SECTION_LABEL, display: "flex", alignItems: "center", gap: 8 }}>
+              Configuration drift · {HLT_DRIFT_COUNT} of 47 tracked settings{" "}
+              <HltInfoDot title={HLT_DRIFT_KBI.title} summary={HLT_DRIFT_KBI.summary} />
             </span>
             <span style={SECTION_NOTE}>
-              Baseline signed at scan 1. Actor and date from the audit log where it exists.
+              {HLT_DRIFT_ALERTS} changed with no request behind them · {HLT_DRIFT_APPROVED} tied to a
+              change record
             </span>
           </div>
           <div
@@ -932,120 +944,283 @@ export default function PortalV2HealthPage() {
             }}
             data-testid="pv2-hlt-drift"
           >
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: DRIFT_GRID,
-                gap: 12,
-                padding: "9px 16px",
-                borderBottom: "1px solid rgba(30,41,59,.9)",
-                background: "rgba(34,197,94,.05)",
-              }}
-            >
-              <span style={DRIFT_HEAD}>Setting</span>
-              <span style={DRIFT_HEAD}>Baseline</span>
-              <span style={DRIFT_HEAD}>Current</span>
-              <span style={DRIFT_HEAD}>Changed by</span>
-              <span style={DRIFT_HEAD}>When</span>
-              <span />
-            </div>
-            {HLT_DRIFT.map((d) => {
-              const c = HLT_TONE[d.tone];
+            {hltDriftRows().map((d, i) => {
+              const v = HLT_VERDICT[d.verdict];
+              const isOpen = driftOpen === i;
+              const owner = hltDriftOwner(d.owner);
               return (
                 <div
                   key={d.setting}
                   style={{
-                    display: "grid",
-                    gridTemplateColumns: DRIFT_GRID,
-                    gap: 12,
-                    padding: "9px 16px",
-                    borderBottom: "1px solid rgba(30,41,59,.8)",
-                    alignItems: "start",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 0,
+                    borderLeft: `2px solid ${v.c}`,
+                    borderTop: "1px solid rgba(30,41,59,.8)",
+                    background: isOpen ? "rgba(148,163,184,.04)" : "transparent",
                   }}
                 >
-                  <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
-                    <span
-                      style={{
-                        fontSize: "11.5px",
-                        fontWeight: 700,
-                        color: "#e2e8f0",
-                        lineHeight: 1.4,
-                        overflowWrap: "break-word",
-                        fontFamily: MONO,
-                      }}
-                    >
-                      {d.setting}
-                    </span>
+                  <button
+                    type="button"
+                    onClick={() => setDriftOpen(isOpen ? null : i)}
+                    data-testid={`pv2-hlt-drift-${i}`}
+                    style={{
+                      display: "flex",
+                      alignItems: "flex-start",
+                      gap: 11,
+                      padding: "11px 15px",
+                      border: "none",
+                      background: "none",
+                      cursor: "pointer",
+                      fontFamily: "inherit",
+                      textAlign: "left",
+                      width: "100%",
+                    }}
+                  >
                     <span
                       style={{
                         flex: "0 0 auto",
-                        alignSelf: "flex-start",
-                        padding: "2px 7px",
-                        borderRadius: 4,
-                        border: "1px solid rgba(148,163,184,.22)",
-                        background: "rgba(148,163,184,.06)",
-                        fontSize: "9px",
-                        fontWeight: 700,
-                        letterSpacing: ".06em",
-                        textTransform: "uppercase",
-                        color: "#94a3b8",
-                        whiteSpace: "nowrap",
+                        display: "flex",
+                        marginTop: 3,
+                        transform: `rotate(${isOpen ? 180 : -90}deg)`,
+                        transition: "transform 180ms",
                       }}
                     >
-                      {d.scope}
+                      <ChevronDown size={12} color="#64748b" aria-hidden="true" />
                     </span>
-                  </div>
-                  <span
-                    style={{ fontSize: "11.5px", color: "#94a3b8", lineHeight: 1.4, fontFamily: MONO }}
-                  >
-                    {d.baseline}
-                  </span>
-                  <span
-                    style={{
-                      fontSize: "11.5px",
-                      fontWeight: 700,
-                      color: c,
-                      lineHeight: 1.4,
-                      fontFamily: MONO,
-                    }}
-                  >
-                    {d.current}
-                  </span>
-                  <span
-                    style={{
-                      fontSize: "11px",
-                      color: "#94a3b8",
-                      lineHeight: 1.4,
-                      overflowWrap: "break-word",
-                    }}
-                  >
-                    {d.who}
-                  </span>
-                  <span style={{ fontSize: "11px", color: "#64748b", lineHeight: 1.4 }}>
-                    {d.when}
-                  </span>
-                  {d.fixKey ? (
-                    <button
-                      onClick={() => openFixPanel(d.fixKey!)}
-                      title="Reconcile this setting"
-                      data-testid={`pv2-hlt-drift-fix-${d.fixKey}`}
+                    <div
+                      style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 5 }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                        <span
+                          style={{
+                            flex: "0 0 auto",
+                            padding: "2px 8px",
+                            borderRadius: 5,
+                            border: `1px solid ${v.c}55`,
+                            background: `${v.c}14`,
+                            fontSize: "9px",
+                            fontWeight: 800,
+                            letterSpacing: ".06em",
+                            textTransform: "uppercase",
+                            color: v.c,
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {v.label}
+                        </span>
+                        {d.hasCr && (
+                          <span
+                            onClick={(e) => e.stopPropagation()}
+                            data-testid={`pv2-hlt-drift-cr-${i}`}
+                            style={{
+                              flex: "0 0 auto",
+                              padding: "2px 8px",
+                              borderRadius: 5,
+                              border: "1px solid rgba(96,165,250,.45)",
+                              background: "rgba(96,165,250,.12)",
+                              fontSize: "9.5px",
+                              fontWeight: 800,
+                              color: "#93c5fd",
+                              whiteSpace: "nowrap",
+                              fontFamily: MONO,
+                            }}
+                          >
+                            {d.cr}
+                          </span>
+                        )}
+                        <span
+                          style={{
+                            flex: "0 0 auto",
+                            padding: "2px 7px",
+                            borderRadius: 4,
+                            border: "1px solid rgba(148,163,184,.22)",
+                            background: "rgba(148,163,184,.06)",
+                            fontSize: "9px",
+                            fontWeight: 700,
+                            letterSpacing: ".06em",
+                            textTransform: "uppercase",
+                            color: "#94a3b8",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {d.scope}
+                        </span>
+                        {v.lead && (
+                          <span style={{ fontSize: "10.5px", color: "#475569" }}>{v.lead}</span>
+                        )}
+                      </div>
+                      <span
+                        style={{
+                          fontSize: "12px",
+                          fontWeight: 700,
+                          color: "#e2e8f0",
+                          lineHeight: 1.4,
+                          overflowWrap: "break-word",
+                          fontFamily: MONO,
+                        }}
+                      >
+                        {d.setting}
+                      </span>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                        <span style={{ fontSize: "11px", color: "#64748b", fontFamily: MONO }}>
+                          {d.baseline}
+                        </span>
+                        <span style={{ fontSize: "11px", color: "#475569" }}>→</span>
+                        <span
+                          style={{
+                            fontSize: "11.5px",
+                            fontWeight: 700,
+                            color: v.c,
+                            lineHeight: 1.4,
+                            fontFamily: MONO,
+                          }}
+                        >
+                          {d.current}
+                        </span>
+                      </div>
+                    </div>
+                    <span
+                      title={owner.name}
                       style={{
-                        width: 26,
-                        height: 26,
-                        display: "flex",
+                        flex: "0 0 auto",
+                        display: "inline-flex",
                         alignItems: "center",
                         justifyContent: "center",
-                        borderRadius: 6,
-                        border: "1px solid rgba(34,197,94,.4)",
-                        background: "rgba(34,197,94,.12)",
-                        cursor: "pointer",
-                        fontFamily: "inherit",
+                        width: 22,
+                        height: 22,
+                        borderRadius: "50%",
+                        fontSize: "9.5px",
+                        fontWeight: 800,
+                        letterSpacing: ".02em",
+                        color: "#0b1524",
+                        background: owner.tone,
                       }}
                     >
-                      <Wrench size={12} color={HLT_GREEN_TEXT} aria-hidden="true" />
-                    </button>
-                  ) : (
-                    <span />
+                      {owner.init}
+                    </span>
+                  </button>
+                  {isOpen && (
+                    <div
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 11,
+                        padding: "0 15px 15px 38px",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))",
+                          gap: 10,
+                        }}
+                      >
+                        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                          <span style={DRIFT_DETAIL_LABEL}>Changed by</span>
+                          <span
+                            style={{ fontSize: "11.5px", color: "#e2e8f0", overflowWrap: "break-word" }}
+                          >
+                            {d.who}
+                          </span>
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                          <span style={DRIFT_DETAIL_LABEL}>When</span>
+                          <span style={{ fontSize: "11.5px", color: "#e2e8f0" }}>{d.when}</span>
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                          <span style={DRIFT_DETAIL_LABEL}>Answers for it</span>
+                          <span style={{ fontSize: "11.5px", color: "#e2e8f0" }}>{owner.name}</span>
+                        </div>
+                      </div>
+                      {d.hasCr && (
+                        <div
+                          style={{
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 3,
+                            padding: "11px 13px",
+                            borderRadius: 9,
+                            border: "1px solid rgba(96,165,250,.28)",
+                            background: "rgba(96,165,250,.06)",
+                          }}
+                        >
+                          <span
+                            style={{
+                              fontSize: "9px",
+                              fontWeight: 700,
+                              letterSpacing: ".1em",
+                              textTransform: "uppercase",
+                              color: "#60a5fa",
+                            }}
+                          >
+                            Change record · {d.cr}
+                          </span>
+                          <span
+                            style={{
+                              fontSize: "11.5px",
+                              color: "#cbd5e1",
+                              lineHeight: 1.6,
+                              textWrap: "pretty",
+                            }}
+                          >
+                            {d.crNote}
+                          </span>
+                        </div>
+                      )}
+                      {(d.fixKey || d.isAlert) && (
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                          {d.fixKey && (
+                            <button
+                              type="button"
+                              onClick={() => openFixPanel(d.fixKey!)}
+                              data-testid={`pv2-hlt-drift-fix-${d.fixKey}`}
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 8,
+                                padding: "8px 12px",
+                                borderRadius: 8,
+                                border: "1px solid rgba(34,197,94,.4)",
+                                background: "rgba(34,197,94,.1)",
+                                cursor: "pointer",
+                                fontFamily: "inherit",
+                              }}
+                            >
+                              <Wrench size={12} color={HLT_GREEN_TEXT} aria-hidden="true" />
+                              <span
+                                style={{ fontSize: "11.5px", fontWeight: 700, color: HLT_GREEN_TEXT }}
+                              >
+                                Reconcile this setting
+                              </span>
+                            </button>
+                          )}
+                          {/* Design `d.raiseGo` (14880) opens Change Control's
+                              register with a new-change intent — reproduced as a
+                              real link into that module. */}
+                          {d.isAlert && (
+                            <Link
+                              href="/portal-v2/change-control"
+                              data-testid={`pv2-hlt-drift-raise-${i}`}
+                              style={{
+                                padding: "8px 12px",
+                                borderRadius: 8,
+                                border: "1px solid rgba(148,163,184,.24)",
+                                background: "transparent",
+                                color: "#94a3b8",
+                                fontSize: "11.5px",
+                                fontWeight: 600,
+                                cursor: "pointer",
+                                fontFamily: "inherit",
+                                textDecoration: "none",
+                              }}
+                            >
+                              Raise the change that should have covered it
+                            </Link>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
               );
@@ -1501,14 +1676,38 @@ export default function PortalV2HealthPage() {
                   padding: "11px 14px",
                   borderBottom: "1px solid rgba(30,41,59,.9)",
                   display: "flex",
-                  flexDirection: "column",
-                  gap: 2,
+                  alignItems: "flex-start",
+                  justifyContent: "space-between",
+                  gap: 10,
                 }}
               >
-                <span style={PANEL_HEAD_LABEL}>Service health &amp; incoming changes</span>
-                <span style={{ fontSize: "11px", color: "#94a3b8", lineHeight: 1.45 }}>
-                  Filtered to services you use and changes that touch your configuration.
-                </span>
+                <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+                  <span style={PANEL_HEAD_LABEL}>Service health &amp; incoming changes</span>
+                  <span style={{ fontSize: "11px", color: "#94a3b8", lineHeight: 1.45 }}>
+                    Straight from the Message Center, filtered to services you use.
+                  </span>
+                </div>
+                {/* Design `hltMcGo` (3185) opens the Message Center drill-down,
+                    a Health sub-page not built yet — inert for now. */}
+                <button
+                  type="button"
+                  data-testid="pv2-hlt-mc-all"
+                  style={{
+                    flex: "0 0 auto",
+                    padding: "5px 10px",
+                    borderRadius: 6,
+                    border: "1px solid rgba(96,165,250,.4)",
+                    background: "rgba(96,165,250,.1)",
+                    color: "#93c5fd",
+                    fontSize: "10.5px",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  All {HLT_MC_COUNT} notices →
+                </button>
               </div>
               {HLT_SERVICE.map((s) => {
                 const c = HLT_SERVICE_TONE[s.tone];

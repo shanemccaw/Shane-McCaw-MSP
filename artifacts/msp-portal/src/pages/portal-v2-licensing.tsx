@@ -10,7 +10,16 @@
  *
  *  • The CONTAINER is `max-width:1320px; padding:26px 26px 48px; gap:18` — the
  *    drill-down template's frame, not the `1180 / 28px 28px 56px / gap:22` the
- *    other three pillar heroes use. It needs the width for a 7-column table.
+ *    other three pillar heroes use. It needs the width for the ledger's per-SKU
+ *    cards and their full-width segmented utilisation bars.
+ *
+ * ── Round Two consolidated the ledger and the recovery list ────────────────
+ * The prototype's own comment: "The ledger and the recovery list were two views
+ * of the same fact. One card per SKU." The flat SKU table and the separate
+ * recovery-items list were merged into `licLedgerCards` — expandable per-SKU
+ * cards whose expansion carries the recovery ACTION attached to that SKU's gap
+ * (`LIC_SKU_ACTIONS`). So the left column of the lower grid is Acknowledged
+ * spend only; there is no standalone recovery list.
  *  • There is NO scan strip, NO status pill and NO cluster area-card grid.
  *  • The hero's left column is an EYEBROW ("Money on the table"), a 38px mono
  *    figure and a sentence — not a title / subtitle / status triple. There is no
@@ -52,32 +61,27 @@ import {
   LIC_ACK,
   LIC_ACK_COUNT,
   LIC_BUCKETS,
-  LIC_FINDINGS,
-  LIC_FINDING_COUNT,
   LIC_HERO,
   LIC_HERO_STATS,
   LIC_LEDGER,
+  LIC_LEDGER_KBI,
+  LIC_LEDGER_LEGEND,
   LIC_POLICY,
   LIC_PROV,
-  LIC_SKUS,
+  LIC_SKU_TOTALS,
   LIC_TEAL,
   LIC_TONE,
-  LIC_TOTALS,
   licAckMeta,
+  licBucketPanel,
   licFmt,
-  licSkuGeometry,
+  licLedgerCards,
   licTrendGeometry,
-  type LicFinding,
 } from "@/components/portal-v2/licDashboardData";
 
 const MONO = "'SF Mono',Menlo,Consolas,monospace";
 /** The lighter teal used for figures and eyebrows. */
 const TEAL_TEXT = "#2dd4bf";
 const TEAL_EYEBROW = "#5eead4";
-
-/** The ledger's column template. Header, every row and the totals row MUST share it. */
-const LEDGER_GRID =
-  "minmax(180px,1.7fr) repeat(3,minmax(58px,.4fr)) minmax(64px,.45fr) minmax(96px,.7fr) minmax(96px,.7fr)";
 
 const SECTION_LABEL: React.CSSProperties = {
   fontSize: "9.5px",
@@ -89,15 +93,6 @@ const SECTION_LABEL: React.CSSProperties = {
 
 const SECTION_NOTE: React.CSSProperties = { fontSize: "10.5px", color: "#475569" };
 
-const LEDGER_HEAD: React.CSSProperties = {
-  fontSize: "9px",
-  fontWeight: 700,
-  letterSpacing: ".1em",
-  textTransform: "uppercase",
-  color: "#64748b",
-  textAlign: "right",
-};
-
 const MICRO_LABEL: React.CSSProperties = {
   fontSize: "9.5px",
   fontWeight: 700,
@@ -106,13 +101,82 @@ const MICRO_LABEL: React.CSSProperties = {
   color: "#64748b",
 };
 
+/**
+ * The knowledge-base info dot (`kbInfo`, proto 7776-7789). A small "i" that
+ * shows a hover card of the article's title, summary and a "Click to read it"
+ * cue. The full article lives in the knowledge-base overlay (a later part), so
+ * the click is inert here — the hover card is the reproduced surface.
+ */
+function LicInfoDot({ title, summary }: { title: string; summary: string }) {
+  const [hover, setHover] = useState(false);
+  return (
+    <span
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      data-testid="pv2-lic-ledger-info"
+      style={{
+        position: "relative",
+        flex: "0 0 15px",
+        width: 15,
+        height: 15,
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        borderRadius: "50%",
+        border: `1px solid ${hover ? "rgba(96,165,250,.8)" : "rgba(148,163,184,.35)"}`,
+        background: hover ? "rgba(96,165,250,.18)" : "transparent",
+        color: hover ? "#93c5fd" : "#64748b",
+        fontSize: "9.5px",
+        fontWeight: 800,
+        fontStyle: "normal",
+        textTransform: "none",
+        letterSpacing: 0,
+        cursor: "pointer",
+        fontFamily: MONO,
+      }}
+    >
+      i
+      {hover && (
+        <span
+          style={{
+            position: "absolute",
+            left: "50%",
+            top: 22,
+            transform: "translateX(-50%)",
+            zIndex: 140,
+            width: 260,
+            display: "flex",
+            flexDirection: "column",
+            gap: 4,
+            padding: "10px 12px",
+            borderRadius: 9,
+            border: "1px solid rgba(96,165,250,.35)",
+            background: "#0b1524",
+            boxShadow: "0 14px 34px rgba(2,6,23,.6)",
+            textAlign: "left",
+            pointerEvents: "none",
+          }}
+        >
+          <span style={{ fontSize: "11.5px", fontWeight: 800, color: "#f8fafc", lineHeight: 1.35 }}>
+            {title}
+          </span>
+          <span style={{ fontSize: "10.5px", color: "#94a3b8", lineHeight: 1.5 }}>{summary}</span>
+          <span style={{ fontSize: "9.5px", fontWeight: 700, color: "#60a5fa" }}>Click to read it</span>
+        </span>
+      )}
+    </span>
+  );
+}
+
 export default function PortalV2LicensingPage() {
   const trend = licTrendGeometry();
   const ringR = 46;
   const ringC = 2 * Math.PI * ringR;
   const ringOffset = ringC - (LIC_HERO.score / 100) * ringC;
 
-  const [expanded, setExpanded] = useState<number | null>(null);
+  /** `licSku` (14071) — which ledger card is open, keyed by SKU part number. */
+  const [openSku, setOpenSku] = useState<string | null>(null);
+  const [openBucket, setOpenBucket] = useState<"today" | "renewal" | "reassign" | null>(null);
   const [provOpen, setProvOpen] = useState(false);
   const { fixKey, openFixPanel, closeFixPanel } = useFixPanel();
   const { openForm, formElement } = useFormDrawer();
@@ -141,28 +205,6 @@ export default function PortalV2LicensingPage() {
     onConfirm: () => {},
     onAskShaneBot: askShaneBot,
   });
-
-  /**
-   * `f.ackGo` (12435-12444). Licensing overrides every default on the drawer,
-   * as Compliance does — but to different words again. Here accepting is not
-   * "I accept this risk" or "I am recording a policy position"; it is "this
-   * spend is intentional", and the confirmation says planned cost rather than
-   * recoverable waste.
-   */
-  const acknowledgeSpend = (f: LicFinding) => {
-    const annual = f.monthly * 12;
-    openAcceptRisk({
-      title: f.title,
-      description: f.why,
-      details: `${licFmt(f.monthly)} per month, ${licFmt(annual)} per year. ${f.timing}. Marking this as intentional keeps the spend and records why, so it stops appearing as waste on every future scan and shows up in the finance review as a decision rather than an oversight.`,
-      kicker: "Acknowledge intentional spend",
-      descLabel: "What you are keeping",
-      detailsLabel: "Cost of keeping it",
-      confirmText:
-        "I confirm this spend is intentional, with a named owner and a review date, and I want it recorded as planned cost rather than recoverable waste.",
-      btnLabel: "Record as intentional spend",
-    });
-  };
 
   return (
     <PortalV2Shell eyebrow="Pillar" title="Licensing">
@@ -575,6 +617,10 @@ export default function PortalV2LicensingPage() {
         </div>
 
         {/* ── The three recovery buckets — proto 3593-3612 ───────────────── */}
+        {/* Clickable: each opens its own "How X is arrived at" breakdown below
+            (proto 3644-3683). The panel is where the gross-versus-net figure is
+            shown, not hidden — the renewal bucket's $2,280 headline nets down to
+            $1,560 once the 12 hiring seats are held back. */}
         <div
           style={{
             display: "grid",
@@ -583,84 +629,239 @@ export default function PortalV2LicensingPage() {
           }}
           data-testid="pv2-lic-buckets"
         >
-          {LIC_BUCKETS.map((b) => (
-            <div
-              key={b.label}
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: 7,
-                padding: "14px 16px",
-                border: "1px solid rgba(20,184,166,.24)",
-                borderLeft: `2px solid ${LIC_TEAL}`,
-                borderRadius: 10,
-                background: "linear-gradient(160deg, rgba(20,184,166,.07), rgba(15,23,42,.45))",
-              }}
-            >
-              <div
+          {LIC_BUCKETS.map((b) => {
+            const isOpen = openBucket === b.key;
+            return (
+              <button
+                key={b.key}
+                onClick={() => setOpenBucket(isOpen ? null : b.key)}
+                title="Show the workings"
+                data-testid={`pv2-lic-bucket-${b.key}`}
                 style={{
                   display: "flex",
-                  alignItems: "baseline",
-                  justifyContent: "space-between",
-                  gap: 8,
-                  flexWrap: "wrap",
+                  flexDirection: "column",
+                  gap: 7,
+                  padding: "14px 16px",
+                  border: `1px solid rgba(20,184,166,${isOpen ? ".55" : ".24"})`,
+                  borderLeft: `2px solid ${LIC_TEAL}`,
+                  borderRadius: 10,
+                  background: `linear-gradient(160deg, rgba(20,184,166,${isOpen ? ".13" : ".07"}), rgba(15,23,42,.45))`,
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                  textAlign: "left",
+                  width: "100%",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "baseline",
+                    justifyContent: "space-between",
+                    gap: 8,
+                    flexWrap: "wrap",
+                    width: "100%",
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: "9.5px",
+                      fontWeight: 700,
+                      letterSpacing: ".14em",
+                      textTransform: "uppercase",
+                      color: TEAL_EYEBROW,
+                    }}
+                  >
+                    {b.label}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: "9.5px",
+                      fontWeight: 700,
+                      letterSpacing: ".05em",
+                      textTransform: "uppercase",
+                      color: "#64748b",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {b.when}
+                  </span>
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "baseline",
+                    gap: 8,
+                    flexWrap: "wrap",
+                    width: "100%",
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: "22px",
+                      fontWeight: 800,
+                      color: "#f8fafc",
+                      letterSpacing: "-.02em",
+                      fontFamily: MONO,
+                    }}
+                  >
+                    {b.value}
+                  </span>
+                  <span
+                    style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", fontFamily: MONO }}
+                  >
+                    {b.annual}
+                  </span>
+                  <span
+                    style={{
+                      marginLeft: "auto",
+                      display: "flex",
+                      transform: `rotate(${isOpen ? 180 : 0}deg)`,
+                      transition: "transform 180ms",
+                    }}
+                  >
+                    <ChevronDown size={12} color={TEAL_EYEBROW} aria-hidden="true" />
+                  </span>
+                </div>
+                <span
+                  style={{
+                    fontSize: "11.5px",
+                    color: "#94a3b8",
+                    lineHeight: 1.55,
+                    textWrap: "pretty",
+                  }}
+                >
+                  {b.what}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* The open bucket's breakdown — proto 3660-3683. */}
+        {openBucket &&
+          (() => {
+            const panel = licBucketPanel(openBucket);
+            if (!panel) return null;
+            return (
+              <div
+                data-testid="pv2-lic-bucket-panel"
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 11,
+                  padding: "15px 17px",
+                  border: "1px solid rgba(20,184,166,.35)",
+                  borderRadius: 11,
+                  background: "rgba(2,6,23,.55)",
                 }}
               >
                 <span
                   style={{
                     fontSize: "9.5px",
-                    fontWeight: 700,
+                    fontWeight: 800,
                     letterSpacing: ".14em",
                     textTransform: "uppercase",
                     color: TEAL_EYEBROW,
                   }}
                 >
-                  {b.label}
+                  {panel.title}
+                </span>
+                <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+                  {panel.lines.map((ln) => (
+                    <div
+                      key={ln.what}
+                      style={{
+                        display: "flex",
+                        alignItems: "flex-start",
+                        gap: 14,
+                        padding: "9px 0",
+                        borderBottom: "1px solid rgba(30,41,59,.7)",
+                      }}
+                    >
+                      <div
+                        style={{
+                          flex: 1,
+                          minWidth: 0,
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 2,
+                        }}
+                      >
+                        <span
+                          style={{ fontSize: "12px", fontWeight: 700, color: "#e2e8f0", lineHeight: 1.4 }}
+                        >
+                          {ln.what}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: "11px",
+                            color: "#94a3b8",
+                            lineHeight: 1.5,
+                            textWrap: "pretty",
+                          }}
+                        >
+                          {ln.detail}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: "9.5px",
+                            color: "#475569",
+                            lineHeight: 1.45,
+                            fontFamily: MONO,
+                          }}
+                        >
+                          {ln.src}
+                        </span>
+                      </div>
+                      <span
+                        style={{
+                          flex: "0 0 auto",
+                          fontSize: "12.5px",
+                          fontWeight: 800,
+                          fontFamily: MONO,
+                          color: ln.negative ? "#64748b" : TEAL_TEXT,
+                        }}
+                      >
+                        {ln.amt}
+                      </span>
+                    </div>
+                  ))}
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 12, padding: "11px 0 0" }}>
+                    <span
+                      style={{
+                        flex: 1,
+                        fontSize: "11px",
+                        fontWeight: 700,
+                        letterSpacing: ".1em",
+                        textTransform: "uppercase",
+                        color: "#64748b",
+                      }}
+                    >
+                      What that leaves
+                    </span>
+                    <span
+                      style={{ fontSize: "15px", fontWeight: 800, color: TEAL_TEXT, fontFamily: MONO }}
+                    >
+                      {panel.totalLabel}
+                    </span>
+                    <span style={{ fontSize: "11px", color: "#64748b", fontFamily: MONO }}>
+                      {panel.totalAnnual}
+                    </span>
+                  </div>
+                </div>
+                <span
+                  style={{ fontSize: "12px", color: "#cbd5e1", lineHeight: 1.6, textWrap: "pretty" }}
+                >
+                  {panel.why}
                 </span>
                 <span
-                  style={{
-                    fontSize: "9.5px",
-                    fontWeight: 700,
-                    letterSpacing: ".05em",
-                    textTransform: "uppercase",
-                    color: "#64748b",
-                    whiteSpace: "nowrap",
-                  }}
+                  style={{ fontSize: "11px", color: "#64748b", lineHeight: 1.55, textWrap: "pretty" }}
                 >
-                  {b.when}
+                  {panel.proof}
                 </span>
               </div>
-              <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
-                <span
-                  style={{
-                    fontSize: "22px",
-                    fontWeight: 800,
-                    color: "#f8fafc",
-                    letterSpacing: "-.02em",
-                    fontFamily: MONO,
-                  }}
-                >
-                  {b.value}
-                </span>
-                <span
-                  style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", fontFamily: MONO }}
-                >
-                  {b.annual}
-                </span>
-              </div>
-              <span
-                style={{
-                  fontSize: "11.5px",
-                  color: "#94a3b8",
-                  lineHeight: 1.55,
-                  textWrap: "pretty",
-                }}
-              >
-                {b.what}
-              </span>
-            </div>
-          ))}
-        </div>
+            );
+          })()}
 
         {/* ── The licence ledger — proto 3614-3650 ───────────────────────── */}
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -673,189 +874,339 @@ export default function PortalV2LicensingPage() {
               flexWrap: "wrap",
             }}
           >
-            <span style={SECTION_LABEL}>Licence ledger · what you buy against what runs</span>
-            <span style={SECTION_NOTE}>
-              Purchased and consumed from subscribedSkus. Active is 30-day service or app activity,
-              not sign-in.
+            <span style={{ ...SECTION_LABEL, display: "flex", alignItems: "center", gap: 8 }}>
+              Licence ledger · what you buy against what runs{" "}
+              <LicInfoDot title={LIC_LEDGER_KBI.title} summary={LIC_LEDGER_KBI.summary} />
+            </span>
+            <span style={SECTION_NOTE} data-testid="pv2-lic-ledger-totals">
+              {LIC_SKU_TOTALS.purchased} seats bought · {LIC_SKU_TOTALS.active} in use ·{" "}
+              {LIC_SKU_TOTALS.waste} wasted
             </span>
           </div>
+          {/* The utilisation-bar legend — proto 3690-3697. */}
           <div
             style={{
               display: "flex",
-              flexDirection: "column",
-              gap: 0,
-              border: "1px solid rgba(30,41,59,.9)",
-              borderRadius: 12,
-              background: "rgba(15,23,42,.4)",
-              overflow: "hidden",
+              flexWrap: "wrap",
+              alignItems: "center",
+              gap: 16,
+              padding: "0 2px 2px",
             }}
-            data-testid="pv2-lic-ledger"
+            data-testid="pv2-lic-ledger-legend"
           >
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: LEDGER_GRID,
-                gap: 12,
-                padding: "9px 16px",
-                borderBottom: "1px solid rgba(30,41,59,.9)",
-                background: "rgba(20,184,166,.06)",
-              }}
-            >
-              <span style={{ ...LEDGER_HEAD, textAlign: "left" }}>SKU</span>
-              <span style={LEDGER_HEAD}>Bought</span>
-              <span style={LEDGER_HEAD}>Assigned</span>
-              <span style={LEDGER_HEAD}>Active</span>
-              <span style={LEDGER_HEAD}>Unit</span>
-              <span style={LEDGER_HEAD}>Waste</span>
-              <span style={LEDGER_HEAD}>Timing</span>
-            </div>
-
-            {LIC_SKUS.map((s) => {
-              const g = licSkuGeometry(s);
+            {LIC_LEDGER_LEGEND.map((lg) => (
+              <div key={lg.label} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span
+                  style={{ width: 9, height: 9, borderRadius: 2, background: lg.dot, flex: "0 0 9px" }}
+                />
+                <span style={{ fontSize: "10px", color: "#64748b", whiteSpace: "nowrap" }}>
+                  {lg.label}
+                </span>
+              </div>
+            ))}
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 9 }} data-testid="pv2-lic-ledger">
+            {licLedgerCards().map((k) => {
+              const c = LIC_TONE[k.tone];
+              const isOpen = openSku === k.part;
               return (
-                <div
-                  key={s.part}
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: LEDGER_GRID,
-                    gap: 12,
-                    padding: "10px 16px",
-                    borderBottom: "1px solid rgba(30,41,59,.8)",
-                    alignItems: "start",
-                  }}
-                  data-testid={`pv2-lic-sku-${s.part}`}
-                >
-                  <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
-                    <span
-                      style={{ fontSize: "12px", fontWeight: 700, color: "#e2e8f0", lineHeight: 1.35 }}
-                    >
-                      {s.sku}
-                    </span>
-                    <span style={{ fontSize: "10px", color: "#64748b", fontFamily: MONO }}>
-                      {s.part}
-                    </span>
-                    <span
-                      style={{
-                        fontSize: "10.5px",
-                        color: "#94a3b8",
-                        lineHeight: 1.45,
-                        textWrap: "pretty",
-                      }}
-                    >
-                      {s.note}
-                    </span>
-                    {/* Utilisation is active / PURCHASED — the ratio that maps
-                        to the invoice, not active / assigned. */}
-                    <div
-                      style={{
-                        position: "relative",
-                        height: 4,
-                        borderRadius: 2,
-                        background: "rgba(148,163,184,.14)",
-                        overflow: "hidden",
-                        marginTop: 5,
-                      }}
-                    >
-                      <div
-                        style={{
-                          height: "100%",
-                          borderRadius: 2,
-                          width: `${g.util}%`,
-                          background: g.c,
-                          opacity: 0.85,
-                        }}
-                      />
-                    </div>
-                  </div>
-                  <span style={{ fontSize: "12px", color: "#94a3b8", textAlign: "right", fontFamily: MONO }}>
-                    {s.purchased}
-                  </span>
-                  <span style={{ fontSize: "12px", color: "#94a3b8", textAlign: "right", fontFamily: MONO }}>
-                    {s.assigned}
-                  </span>
-                  <span style={{ fontSize: "12px", color: "#e2e8f0", textAlign: "right", fontFamily: MONO }}>
-                    {s.active}
-                  </span>
-                  <span style={{ fontSize: "12px", color: "#94a3b8", textAlign: "right", fontFamily: MONO }}>
-                    {g.unitLabel}
-                  </span>
-                  <span
+                <div key={k.part} style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+                  <button
+                    type="button"
+                    onClick={k.hasActions ? () => setOpenSku(isOpen ? null : k.part) : undefined}
+                    data-testid={`pv2-lic-sku-${k.part}`}
                     style={{
-                      fontSize: "12px",
-                      fontWeight: 700,
-                      color: s.waste ? g.c : "#475569",
-                      fontFamily: MONO,
-                      textAlign: "right",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 10,
+                      padding: "14px 16px",
+                      borderRadius: 12,
+                      width: "100%",
+                      textAlign: "left",
+                      fontFamily: "inherit",
+                      cursor: k.hasActions ? "pointer" : "default",
+                      border: `1px solid ${isOpen ? `${c}80` : "rgba(30,41,59,.9)"}`,
+                      background: isOpen ? "rgba(2,6,23,.6)" : "rgba(15,23,42,.4)",
                     }}
                   >
-                    {g.wasteLabel}
-                  </span>
-                  <span style={{ display: "flex", justifyContent: "flex-end" }}>
-                    <span
+                    <div
                       style={{
-                        flex: "0 0 auto",
-                        padding: "2px 7px",
-                        borderRadius: 4,
-                        border: `1px solid ${g.c}55`,
-                        background: `${g.c}14`,
-                        fontSize: "9px",
-                        fontWeight: 700,
-                        letterSpacing: ".06em",
-                        textTransform: "uppercase",
-                        color: g.c,
-                        whiteSpace: "nowrap",
+                        display: "flex",
+                        alignItems: "baseline",
+                        justifyContent: "space-between",
+                        gap: 14,
+                        flexWrap: "wrap",
+                        width: "100%",
                       }}
                     >
-                      {s.timing}
-                    </span>
-                  </span>
+                      <div style={{ display: "flex", alignItems: "baseline", gap: 10, minWidth: 0 }}>
+                        <span
+                          style={{
+                            fontSize: "13.5px",
+                            fontWeight: 700,
+                            color: "#f1f5f9",
+                            letterSpacing: "-.01em",
+                          }}
+                        >
+                          {k.sku}
+                        </span>
+                        <span style={{ fontSize: "10px", color: "#475569", fontFamily: MONO }}>
+                          {k.part}
+                        </span>
+                        <span style={{ fontSize: "10.5px", color: "#64748b", fontFamily: MONO }}>
+                          {k.unit}
+                        </span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 9, flex: "0 0 auto" }}>
+                        <div
+                          style={{
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "flex-end",
+                            gap: 0,
+                          }}
+                        >
+                          <span
+                            style={{
+                              fontSize: "14px",
+                              fontWeight: 800,
+                              fontFamily: MONO,
+                              color: k.clean ? "#34d399" : c,
+                            }}
+                          >
+                            {k.waste}
+                          </span>
+                          <span style={{ fontSize: "10px", color: "#64748b", fontFamily: MONO }}>
+                            {k.annual}
+                          </span>
+                        </div>
+                        {k.hasActions && (
+                          <span
+                            style={{
+                              display: "flex",
+                              transform: `rotate(${isOpen ? 180 : 0}deg)`,
+                              transition: "transform 180ms",
+                            }}
+                          >
+                            <ChevronDown size={12} color={c} aria-hidden="true" />
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* The 3-segment utilisation bar — active / assigned-idle /
+                        unassigned, all against purchased. Labels appear only when
+                        a segment clears 12% of the bar. */}
+                    <div
+                      style={{
+                        display: "flex",
+                        width: "100%",
+                        height: 22,
+                        borderRadius: 6,
+                        overflow: "hidden",
+                        background: "rgba(148,163,184,.08)",
+                      }}
+                    >
+                      <span
+                        style={{
+                          width: `${k.seg.active.pct}%`,
+                          background: "rgba(45,212,191,.55)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          minWidth: 0,
+                        }}
+                      >
+                        <span
+                          style={{ fontSize: "10px", fontWeight: 800, color: "#062c2a", fontFamily: MONO }}
+                        >
+                          {k.seg.active.label}
+                        </span>
+                      </span>
+                      {k.seg.idle.show && (
+                        <span
+                          style={{
+                            width: `${k.seg.idle.pct}%`,
+                            background: `${c}55`,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            minWidth: 0,
+                          }}
+                        >
+                          <span
+                            style={{ fontSize: "10px", fontWeight: 800, color: "#0b1524", fontFamily: MONO }}
+                          >
+                            {k.seg.idle.label}
+                          </span>
+                        </span>
+                      )}
+                      {k.seg.free.show && (
+                        <span
+                          style={{
+                            width: `${k.seg.free.pct}%`,
+                            background: "rgba(148,163,184,.22)",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            minWidth: 0,
+                            borderLeft: "1px dashed rgba(148,163,184,.35)",
+                          }}
+                        >
+                          <span
+                            style={{ fontSize: "10px", fontWeight: 800, color: "#94a3b8", fontFamily: MONO }}
+                          >
+                            {k.seg.free.label}
+                          </span>
+                        </span>
+                      )}
+                    </div>
+
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "baseline",
+                        justifyContent: "space-between",
+                        gap: 12,
+                        flexWrap: "wrap",
+                        width: "100%",
+                      }}
+                    >
+                      <span style={{ fontSize: "11px", color: "#94a3b8", fontFamily: MONO }}>
+                        {k.counts}
+                      </span>
+                      <span
+                        style={{
+                          fontSize: "11px",
+                          color: "#64748b",
+                          lineHeight: 1.5,
+                          textWrap: "pretty",
+                          flex: 1,
+                          minWidth: 180,
+                          textAlign: "right",
+                        }}
+                      >
+                        {k.note}
+                      </span>
+                    </div>
+                  </button>
+
+                  {isOpen && (
+                    <div
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 9,
+                        margin: "8px 0 2px 16px",
+                        paddingLeft: 14,
+                        borderLeft: "2px solid rgba(20,184,166,.35)",
+                      }}
+                    >
+                      {k.actions.map((ac) => (
+                        <div
+                          key={ac.id}
+                          style={{
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 7,
+                            padding: "12px 14px",
+                            border: "1px solid rgba(20,184,166,.24)",
+                            borderRadius: 10,
+                            background: "rgba(20,184,166,.05)",
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 9,
+                              flexWrap: "wrap",
+                            }}
+                          >
+                            <span
+                              style={{ fontSize: "10px", fontWeight: 700, color: "#64748b", fontFamily: MONO }}
+                            >
+                              {ac.id}
+                            </span>
+                            <span
+                              style={{
+                                flex: "0 0 auto",
+                                padding: "2px 8px",
+                                borderRadius: 4,
+                                border: `1px solid ${c}55`,
+                                background: `${c}14`,
+                                fontSize: "9px",
+                                fontWeight: 700,
+                                letterSpacing: ".06em",
+                                textTransform: "uppercase",
+                                color: c,
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {ac.timing}
+                            </span>
+                            <span
+                              style={{
+                                marginLeft: "auto",
+                                fontSize: "12.5px",
+                                fontWeight: 800,
+                                color: TEAL_TEXT,
+                                fontFamily: MONO,
+                              }}
+                            >
+                              {ac.money}
+                            </span>
+                          </div>
+                          <span
+                            style={{
+                              fontSize: "12px",
+                              color: "#cbd5e1",
+                              lineHeight: 1.6,
+                              textWrap: "pretty",
+                            }}
+                          >
+                            {ac.text}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => openFixPanel(ac.fixKey)}
+                            data-testid={`pv2-lic-fix-${ac.fixKey}`}
+                            style={{
+                              alignSelf: "flex-start",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 9,
+                              padding: "8px 12px",
+                              borderRadius: 8,
+                              border: "1px solid rgba(20,184,166,.45)",
+                              background: "rgba(20,184,166,.12)",
+                              cursor: "pointer",
+                              fontFamily: "inherit",
+                            }}
+                          >
+                            <Wrench size={13} color={TEAL_TEXT} aria-hidden="true" />
+                            <span
+                              style={{ fontSize: "11.5px", fontWeight: 700, color: TEAL_TEXT }}
+                            >
+                              {ac.action}
+                            </span>
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               );
             })}
-
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: LEDGER_GRID,
-                gap: 12,
-                padding: "11px 16px",
-                background: "rgba(20,184,166,.07)",
-                alignItems: "center",
-              }}
-              data-testid="pv2-lic-ledger-total"
-            >
-              <span
-                style={{
-                  fontSize: "11px",
-                  fontWeight: 700,
-                  letterSpacing: ".08em",
-                  textTransform: "uppercase",
-                  color: TEAL_EYEBROW,
-                }}
-              >
-                Total
-              </span>
-              <span style={{ fontSize: "12.5px", fontWeight: 700, color: "#e2e8f0", textAlign: "right", fontFamily: MONO }}>
-                {LIC_TOTALS.purchased}
-              </span>
-              <span style={{ fontSize: "12.5px", fontWeight: 700, color: "#e2e8f0", textAlign: "right", fontFamily: MONO }}>
-                {LIC_TOTALS.assigned}
-              </span>
-              <span style={{ fontSize: "12.5px", fontWeight: 700, color: "#e2e8f0", textAlign: "right", fontFamily: MONO }}>
-                {LIC_TOTALS.active}
-              </span>
-              <span />
-              <span style={{ fontSize: "12.5px", fontWeight: 800, color: TEAL_TEXT, textAlign: "right", fontFamily: MONO }}>
-                {licFmt(LIC_TOTALS.waste)}/mo
-              </span>
-              <span />
-            </div>
           </div>
         </div>
 
-        {/* ── Recovery items (left) + ledger/policy/provenance (right) ───── */}
+        {/* ── Acknowledged spend (left) + savings/policy/provenance (right).
+            Round Two consolidated the recovery list into the ledger cards above,
+            so the left column is Acknowledged spend only — proto 3755-3794. ── */}
         <div className="pv2-gov-grid">
           <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
+            {/* Acknowledged spend — proto 3757-3760, then its cards 3762-3792. */}
             <div
               style={{
                 display: "flex",
@@ -865,303 +1216,11 @@ export default function PortalV2LicensingPage() {
                 flexWrap: "wrap",
               }}
             >
-              <span style={SECTION_LABEL}>Recovery items · {LIC_FINDING_COUNT}</span>
+              <span style={SECTION_LABEL}>Acknowledged spend</span>
               <span style={SECTION_NOTE}>
-                Every item carries its monthly figure, its annualised figure, and when it reaches
-                the bill.
+                Money you have decided to keep spending, with the reason recorded.
               </span>
             </div>
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: 0,
-                border: "1px solid rgba(30,41,59,.9)",
-                borderRadius: 12,
-                background: "rgba(15,23,42,.4)",
-                overflow: "hidden",
-              }}
-              data-testid="pv2-lic-recovery"
-            >
-              {LIC_FINDINGS.map((f, i) => {
-                const isExpanded = expanded === i;
-                const annual = f.monthly * 12;
-                return (
-                  <div
-                    key={f.id}
-                    style={{
-                      position: "relative",
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: 0,
-                      borderTop: "1px solid rgba(30,41,59,.85)",
-                    }}
-                  >
-                    <div
-                      style={{
-                        position: "absolute",
-                        left: 0,
-                        top: 0,
-                        bottom: 0,
-                        width: 2,
-                        background: `${LIC_TEAL}88`,
-                      }}
-                    />
-                    <button
-                      onClick={() => setExpanded(isExpanded ? null : i)}
-                      data-testid={`pv2-lic-item-${f.id}`}
-                      style={{
-                        display: "flex",
-                        alignItems: "flex-start",
-                        gap: 12,
-                        padding: "13px 16px",
-                        border: "none",
-                        background: "none",
-                        cursor: "pointer",
-                        fontFamily: "inherit",
-                        textAlign: "left",
-                        width: "100%",
-                      }}
-                    >
-                      <span
-                        style={{
-                          flex: "0 0 auto",
-                          display: "flex",
-                          marginTop: 3,
-                          transform: `rotate(${isExpanded ? 180 : -90}deg)`,
-                          transition: "transform 180ms",
-                        }}
-                      >
-                        <ChevronDown size={14} color="#64748b" aria-hidden="true" />
-                      </span>
-                      <div
-                        style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 4 }}
-                      >
-                        <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
-                          <span
-                            style={{
-                              flex: "0 0 auto",
-                              fontSize: "10.5px",
-                              fontWeight: 700,
-                              color: "#64748b",
-                              letterSpacing: ".06em",
-                              fontFamily: MONO,
-                            }}
-                          >
-                            {f.id}
-                          </span>
-                          <span
-                            style={{
-                              fontSize: "9.5px",
-                              fontWeight: 700,
-                              letterSpacing: ".05em",
-                              textTransform: "uppercase",
-                              color: TEAL_EYEBROW,
-                            }}
-                          >
-                            {f.timing}
-                          </span>
-                        </div>
-                        <span
-                          style={{
-                            fontSize: "13px",
-                            fontWeight: 700,
-                            color: "#f1f5f9",
-                            lineHeight: 1.45,
-                            textWrap: "pretty",
-                          }}
-                        >
-                          {f.title}
-                        </span>
-                      </div>
-                      <div
-                        style={{
-                          flex: "0 0 auto",
-                          display: "flex",
-                          flexDirection: "column",
-                          alignItems: "flex-end",
-                          gap: 1,
-                        }}
-                      >
-                        <span
-                          style={{
-                            fontSize: "16px",
-                            fontWeight: 800,
-                            color: TEAL_TEXT,
-                            letterSpacing: "-.02em",
-                            fontFamily: MONO,
-                          }}
-                        >
-                          {licFmt(f.monthly)}/mo
-                        </span>
-                        <span
-                          style={{
-                            fontSize: "10.5px",
-                            fontWeight: 600,
-                            color: "#64748b",
-                            fontFamily: MONO,
-                          }}
-                        >
-                          {licFmt(annual)}/yr
-                        </span>
-                      </div>
-                    </button>
-
-                    {isExpanded && (
-                      <div
-                        style={{
-                          padding: "0 16px 16px 40px",
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: 12,
-                        }}
-                      >
-                        <span
-                          style={{
-                            fontSize: "12.5px",
-                            color: "#cbd5e1",
-                            lineHeight: 1.65,
-                            textWrap: "pretty",
-                          }}
-                        >
-                          {f.why}
-                        </span>
-                        <div
-                          style={{
-                            display: "grid",
-                            gridTemplateColumns: "repeat(auto-fit,minmax(250px,1fr))",
-                            gap: "0 20px",
-                          }}
-                        >
-                          {f.evidence.map((e) => (
-                            <div
-                              key={e.k}
-                              style={{
-                                display: "flex",
-                                flexDirection: "column",
-                                gap: 2,
-                                padding: "7px 0",
-                                borderBottom: "1px solid rgba(30,41,59,.75)",
-                              }}
-                            >
-                              <span
-                                style={{
-                                  fontSize: "9.5px",
-                                  fontWeight: 700,
-                                  letterSpacing: ".07em",
-                                  textTransform: "uppercase",
-                                  color: "#64748b",
-                                }}
-                              >
-                                {e.k}
-                              </span>
-                              <span
-                                style={{
-                                  fontSize: "12px",
-                                  color: "#e2e8f0",
-                                  lineHeight: 1.5,
-                                  textWrap: "pretty",
-                                }}
-                              >
-                                {e.v}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                        <div
-                          style={{
-                            display: "grid",
-                            gridTemplateColumns: "repeat(auto-fit,minmax(260px,1fr))",
-                            gap: 8,
-                            paddingTop: 6,
-                          }}
-                        >
-                          <button
-                            onClick={() => openFixPanel(f.fixKey)}
-                            data-testid={`pv2-lic-fix-${f.fixKey}`}
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 11,
-                              textAlign: "left",
-                              padding: "11px 13px",
-                              borderRadius: 9,
-                              border: "1px solid rgba(20,184,166,.45)",
-                              background:
-                                "linear-gradient(160deg, rgba(20,184,166,.14), rgba(15,23,42,.3))",
-                              cursor: "pointer",
-                              fontFamily: "inherit",
-                            }}
-                          >
-                            <span
-                              style={{
-                                flex: "0 0 28px",
-                                width: 28,
-                                height: 28,
-                                borderRadius: 7,
-                                border: "1px solid rgba(20,184,166,.45)",
-                                background: "rgba(20,184,166,.16)",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                              }}
-                            >
-                              <Wrench size={13} color={TEAL_TEXT} aria-hidden="true" />
-                            </span>
-                            <span
-                              style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}
-                            >
-                              {/* "Recover $X/mo — <action>" is one string in the
-                                  prototype's own template (3690). */}
-                              <span
-                                style={{
-                                  fontSize: "12.5px",
-                                  fontWeight: 700,
-                                  color: TEAL_TEXT,
-                                  lineHeight: 1.4,
-                                }}
-                              >
-                                Recover {licFmt(f.monthly)}/mo — {f.action}
-                              </span>
-                              <span style={{ fontSize: "11px", color: "#94a3b8", lineHeight: 1.45 }}>
-                                {f.actionSub}
-                              </span>
-                            </span>
-                          </button>
-                          <button
-                            onClick={() => acknowledgeSpend(f)}
-                            data-testid={`pv2-lic-ack-${f.id}`}
-                            style={{
-                              display: "flex",
-                              flexDirection: "column",
-                              alignItems: "flex-start",
-                              gap: 2,
-                              textAlign: "left",
-                              padding: "11px 13px",
-                              borderRadius: 9,
-                              border: "1px solid rgba(148,163,184,.25)",
-                              background: "rgba(148,163,184,.05)",
-                              cursor: "pointer",
-                              fontFamily: "inherit",
-                            }}
-                          >
-                            <span style={{ fontSize: "12px", fontWeight: 700, color: "#e2e8f0" }}>
-                              This spend is intentional
-                            </span>
-                            <span style={{ fontSize: "11px", color: "#64748b", lineHeight: 1.45 }}>
-                              Records owner, rationale and review date, and takes it off the waste
-                              list
-                            </span>
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Intentional-spend cards — proto 3705-3740. */}
             <div
               style={{
                 display: "grid",
