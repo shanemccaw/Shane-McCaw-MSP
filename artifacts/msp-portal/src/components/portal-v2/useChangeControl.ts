@@ -8,11 +8,29 @@
  * (`signForm` / `exceptionForm` / `moveForm`) plus the generic form engine the
  * page's forms all run through.
  *
- * ── UI only ────────────────────────────────────────────────────────────────
- * There is no data source here. Every form's onSubmit returns a client-side
- * patch (a moved window, an added agenda item, an edited notification rule) and
- * a toast — exactly what the prototype does. A later pass wires the writes to
- * the real change-control API; until then the flows are the design's own.
+ * ── The data seam (the REGISTER is live; the rest is not) ──────────────────
+ * `GET /api/portal/change-control` (api-server `routes/portal-change-control.ts`,
+ * customer-scoped from the JWT) now backs the register, the record and the
+ * calendar's change-request markers, through `ccChangeControlWire.ts`. The
+ * fixtures in `ccPageData.ts` remain as the fallback — a failed or unscoped
+ * fetch renders the design's own five change requests rather than an empty
+ * page — and `dataState` says which of the two is on screen, so nothing has to
+ * infer it from the row count.
+ *
+ * What is NOT wired, because it has no table to be wired to: the change
+ * CATALOGUE, the freeze windows, the CAB agenda and the notification rules.
+ * A grep of `lib/db/src/schema/msp.ts` finds no catalogue, freeze-window,
+ * agenda or notification-rule table — only `msp_change_requests` (the register)
+ * and the portal's own runbook/hold-window tables, which are a different
+ * build's subject and explicitly out of scope here. Those four stay on the
+ * design's fixtures and are reported as fixtures rather than dressed up.
+ *
+ * ── Writes are still UI-only ───────────────────────────────────────────────
+ * Every form's onSubmit still returns a client-side patch (a moved window, an
+ * added agenda item, an edited notification rule) and a toast — exactly what
+ * the prototype does. No approval, no rejection, no rollback and no scheduling
+ * is sent anywhere: the route deliberately exposes no such mutation, and
+ * building the approval gate is separate, later work.
  *
  * ── The view seam ──────────────────────────────────────────────────────────
  * `viewParam` is the URL segment (`/portal-v2/change-control/<view>`), which the
@@ -25,8 +43,17 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import type { AgendaItem, FreezeRow, NotifRule } from "./ccPageData";
-import { CC_CAB, CC_FREEZE, CC_FREEZES, CC_NOTIF, CC_WINDOW_DAY } from "./ccPageData";
+import { useAuth } from "@/lib/auth-context";
+
+import type { AgendaItem, ChangeRequest, FreezeRow, NotifRule } from "./ccPageData";
+import { CC_CAB, CC_CAL_EVENTS, CC_CRS, CC_FREEZE, CC_FREEZES, CC_NOTIF, CC_STAT_SETS, CC_WINDOW_DAY } from "./ccPageData";
+import type { WireChangeControlPayload, WireChangeRequest } from "./ccChangeControlWire";
+import { calEventsFor, deriveStatSets, toChangeRequests } from "./ccChangeControlWire";
+
+const CHANGE_CONTROL_URL = "/api/portal/change-control";
+
+/** Which of the two sources the page is currently rendering. */
+export type CcDataState = "loading" | "live" | "fixture";
 
 export interface CcDraft {
   title: string;
@@ -159,6 +186,17 @@ export interface CcController {
   readonly freezes: () => FreezeRow[];
   readonly agenda: () => AgendaItem[];
   readonly notif: () => NotifRule[];
+  /**
+   * The register's change requests: the tenant's real ones once loaded, the
+   * design's fixtures until then or if the read fails. Same accessor idiom as
+   * `freezes`/`agenda`/`notif` above, so a view does not need to know which.
+   */
+  readonly crs: () => readonly ChangeRequest[];
+  /** Stat-card filter sets, derived from live rows or the design's literal map. */
+  readonly statSets: () => Record<string, readonly string[]>;
+  /** Freeze-calendar day markers, including live change-request windows. */
+  readonly calEvents: () => Record<string, ReadonlyArray<{ label: string; tone: string }>>;
+  readonly dataState: CcDataState;
 }
 
 export function useChangeControl(opts: { viewParam?: string } = {}): CcController {
@@ -181,6 +219,76 @@ export function useChangeControl(opts: { viewParam?: string } = {}): CcControlle
       );
     }
   }, [opts.viewParam]);
+
+  // ── The register read ──────────────────────────────────────────────────────
+  // `fetchWithAuth` is rebuilt on every silent token refresh, so it is held in
+  // a ref rather than a dependency array — the same rule every polling hook in
+  // this codebase follows (BUILD_PLAN §5.4). This read is one-shot rather than
+  // polled: a change request moves when a human moves it, not on a clock.
+  const { fetchWithAuth } = useAuth();
+  const fetchRef = useRef(fetchWithAuth);
+  fetchRef.current = fetchWithAuth;
+
+  const [wire, setWire] = useState<WireChangeControlPayload | null>(null);
+  const [dataState, setDataState] = useState<CcDataState>("loading");
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetchRef.current(CHANGE_CONTROL_URL);
+        if (!res.ok) throw new Error(`change-control read failed: ${res.status}`);
+        const payload = (await res.json()) as WireChangeControlPayload;
+        if (cancelled) return;
+        // An EMPTY register is a real answer, not a failure: a tenant with no
+        // change requests, or one whose M365 identifier does not resolve (the
+        // route's fail-closed path, `scoped: false`), genuinely has none. But
+        // rendering a blank page for it would look broken rather than empty, and
+        // would lose the design's own worked example — so the fixtures stay on
+        // screen and `dataState` reports "fixture" so nothing claims otherwise.
+        if (!payload || !Array.isArray(payload.requests) || payload.requests.length === 0) {
+          setWire(null);
+          setDataState("fixture");
+          return;
+        }
+        setWire(payload);
+        setDataState("live");
+      } catch {
+        if (!cancelled) {
+          setWire(null);
+          setDataState("fixture");
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const liveCrs = useRef<{ key: readonly WireChangeRequest[]; value: ChangeRequest[] } | null>(null);
+  const crs = useCallback((): readonly ChangeRequest[] => {
+    if (!wire) return CC_CRS;
+    if (liveCrs.current?.key !== wire.requests) {
+      liveCrs.current = { key: wire.requests, value: toChangeRequests(wire) };
+    }
+    return liveCrs.current.value;
+  }, [wire]);
+
+  const statSets = useCallback((): Record<string, readonly string[]> => {
+    return wire ? deriveStatSets(crs()) : CC_STAT_SETS;
+  }, [wire, crs]);
+
+  const calEvents = useCallback((): Record<string, ReadonlyArray<{ label: string; tone: string }>> => {
+    if (!wire) return CC_CAL_EVENTS;
+    // The design's own markers stay: they carry the Microsoft-change and freeze
+    // annotations the register knows nothing about. Live change-request windows
+    // are merged in on top, per day.
+    const live = calEventsFor(crs(), wire.requests);
+    const merged: Record<string, Array<{ label: string; tone: string }>> = {};
+    for (const [k, v] of Object.entries(CC_CAL_EVENTS)) merged[k] = [...v];
+    for (const [k, v] of Object.entries(live)) merged[k] = [...(merged[k] || []), ...v];
+    return merged;
+  }, [wire, crs]);
 
   const t = useCallback((msg: string) => setS((prev) => ({ ...prev, toast: msg })), []);
   const clearToast = useCallback(() => setS((prev) => ({ ...prev, toast: "" })), []);
@@ -305,6 +413,10 @@ export function useChangeControl(opts: { viewParam?: string } = {}): CcControlle
     freezes,
     agenda,
     notif,
+    crs,
+    statSets,
+    calEvents,
+    dataState,
   };
 }
 

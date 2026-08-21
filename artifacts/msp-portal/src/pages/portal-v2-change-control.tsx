@@ -962,8 +962,8 @@ const REG_GRID = "minmax(220px,2.6fr) 80px 56px 112px minmax(136px,1.3fr) 118px 
 
 function RegisterView({ ctrl }: { ctrl: CcController }) {
   const { s } = ctrl;
-  const all = CC_CRS;
-  const rows = filterRegister(all, { query: s.query, fRisk: s.fRisk, fState: s.fState, fWork: s.fWork, statFilter: s.statFilter });
+  const all = ctrl.crs();
+  const rows = filterRegister(all, { query: s.query, fRisk: s.fRisk, fState: s.fState, fWork: s.fWork, statFilter: s.statFilter, statSets: ctrl.statSets() });
   const rowCount = rows.length + " of " + all.length + " change requests" + (s.statFilter ? " · filtered" : "");
   const filters: { label: string; value: string; options: string[]; onChange: (v: string) => void }[] = [
     { label: "Risk", value: s.fRisk, options: ["All risk", "High", "Medium", "Low"], onChange: (v) => ctrl.patch({ fRisk: v }) },
@@ -1262,7 +1262,7 @@ function openPromoteForm(ctrl: CcController) {
 function CalendarView({ ctrl }: { ctrl: CcController }) {
   const { s } = ctrl;
   const freezeRows = ctrl.freezes();
-  const cal = buildCalendar(s.calMonth, freezeRows, s.calDay);
+  const cal = buildCalendar(s.calMonth, freezeRows, s.calDay, ctrl.calEvents());
 
   return (
     <div style={css("display:flex;flex-direction:column;gap:20px")} data-testid="cc-view-calendar">
@@ -2028,7 +2028,14 @@ function sectionDone(cr: ChangeRequest, key: string): boolean {
 
 function RecordView({ ctrl }: { ctrl: CcController }) {
   const { s, role } = ctrl;
-  const cur = CC_CRS.find((c) => c.code === s.openCode) || CC_CRS[0];
+  // The record is reachable from BOTH lists and has to resolve against both:
+  // the register lists the tenant's real change requests, while the briefing's
+  // Gantt rows and focus cards are the design's own worked example and keep
+  // their fixture codes. Searching live first, then the fixtures, means a click
+  // in either place opens the record it named — rather than silently falling
+  // through to whatever happens to be first.
+  const all = ctrl.crs();
+  const cur = all.find((c) => c.code === s.openCode) || CC_CRS.find((c) => c.code === s.openCode) || all[0];
   const comp = compOf(cur);
   const secDef = CC_SECS.find((x) => x.key === s.sec) || CC_SECS[0];
   const canEdit = editableBy(secDef.key);

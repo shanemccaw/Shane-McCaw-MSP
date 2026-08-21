@@ -1211,9 +1211,23 @@ export const CC_STAT_SETS: Record<string, readonly string[]> = {
   freeze: ["CR-0142", "MC1051144"],
 };
 
-/** proto matchSF — is a code in the active stat filter's set (or no filter). */
-export function matchSF(code: string, statFilter: string | null): boolean {
-  return !statFilter || (CC_STAT_SETS[statFilter] || []).indexOf(code) >= 0;
+/**
+ * proto matchSF — is a code in the active stat filter's set (or no filter).
+ *
+ * `sets` defaults to the design's own literal map so every existing caller and
+ * test behaves exactly as before. It is a parameter at all because CC_STAT_SETS
+ * is a list of FIXTURE codes (and Microsoft-change ids, which are not change
+ * requests): against the tenant's live register every one of its sets is empty,
+ * so a stat card would blank the table instead of narrowing it. The live caller
+ * passes sets derived from the rows actually loaded — see `deriveStatSets` in
+ * ccChangeControlWire.ts.
+ */
+export function matchSF(
+  code: string,
+  statFilter: string | null,
+  sets: Record<string, readonly string[]> = CC_STAT_SETS,
+): boolean {
+  return !statFilter || (sets[statFilter] || []).indexOf(code) >= 0;
 }
 
 export interface RegisterFilters {
@@ -1222,6 +1236,8 @@ export interface RegisterFilters {
   readonly fState: string;
   readonly fWork: string;
   readonly statFilter: string | null;
+  /** Optional; defaults to the design's literal map. See `matchSF`. */
+  readonly statSets?: Record<string, readonly string[]>;
 }
 
 /**
@@ -1231,7 +1247,7 @@ export interface RegisterFilters {
 export function filterRegister(crs: readonly ChangeRequest[], f: RegisterFilters): ChangeRequest[] {
   const q = f.query.trim().toLowerCase();
   return crs.filter((c) => {
-    if (!matchSF(c.code, f.statFilter)) return false;
+    if (!matchSF(c.code, f.statFilter, f.statSets)) return false;
     if (q && !`${c.code} ${c.title} ${c.workload} ${c.mc}`.toLowerCase().includes(q)) return false;
     if (f.fRisk !== "All risk" && c.risk !== f.fRisk) return false;
     if (f.fState !== "All states" && c.state !== f.fState) return false;
@@ -1329,6 +1345,12 @@ export function buildCalendar(
   monthOffset: number,
   freezes: readonly FreezeRow[],
   calDay: string | null,
+  /**
+   * The day markers. Defaults to the design's own map so every existing caller
+   * and test is unchanged; the page passes a map that merges the tenant's real
+   * change-request windows in on top (see `calEvents` in useChangeControl.ts).
+   */
+  events: Record<string, ReadonlyArray<{ label: string; tone: string }>> = CC_CAL_EVENTS,
 ): CalendarModel {
   const base = new Date(2026, 7 + monthOffset, 1);
   const y = base.getFullYear();
@@ -1346,7 +1368,7 @@ export function buildCalendar(
   for (let d = 1; d <= days; d++) {
     const k = iso(d);
     const fz = fzs.filter((f) => f.start! <= k && k <= f.end!)[0];
-    const evs = CC_CAL_EVENTS[k] || [];
+    const evs = events[k] || [];
     const wd = new Date(y, m, d).getDay();
     const weekend = wd === 0 || wd === 6;
     const today = k === "2026-08-20";
@@ -1377,7 +1399,7 @@ export function buildCalendar(
   if (calDay) {
     const dt = new Date(`${calDay}T00:00:00`);
     const fz = fzs.filter((f) => calDay >= f.start! && calDay <= f.end!)[0];
-    const evs = CC_CAL_EVENTS[calDay] || [];
+    const evs = events[calDay] || [];
     day = {
       key: calDay,
       title: `${CAL_DAY_NAMES[dt.getDay()]} ${dt.getDate()} ${CC_MONTHS[dt.getMonth()]} ${dt.getFullYear()}`,
