@@ -1,0 +1,27 @@
+{
+  "feature": "Marketing rebuild Part 7 -- /quick-start (Design/design_handoff_marketing/Marketing Quick-Start Packs.dc.html). Fifteen fixed-price packs, multi-select with a running total. Prices verified live 2026-08-21 via shaneapp://executeSql against `services` (service_type = 'config_pack'): five of the fifteen packs (Entra ID Quick-Start $799, New Employee Onboarding $149, Employee Offboarding $199, Security Incident Response $299, Compromised Account Recovery $149) already exist as live catalog rows and matched exactly -- no correction needed. The other ten (Break-Glass $249, Conditional Access Baseline $199, Privileged Access $299, MFA Enforcement $299, Identity Hygiene $249, Device Compliance $249, Email Security $249, SharePoint & OneDrive Oversharing $349, Baseline Licensing $199, Copilot Readiness $499) are not yet live catalog rows, so there is nothing live to check them against; the page renders all fifteen from a single fixture (src/marketing/data/quickStartPacks.ts), not scattered inline literals, so it can be swapped for a full live-catalog read once the other ten packs are onboarded as real services rows.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "PENDING",
+  "notes": [
+    "Public marketing page, no auth required.",
+    "QS1-QS3 select two packs (Entra ID Quick-Start $799 + New Employee Onboarding $149) and assert the sticky selection bar's running total reads $948 -- proves the multi-select sum is real arithmetic over the fixture, not static copy.",
+    "QS4 asserts the overlap warning: selecting Entra ID Quick-Start (which already covers Conditional Access Baseline) alongside Conditional Access Baseline surfaces the 'Overlap in your selection' banner -- the design's COVERS reasoning, not just a flat list.",
+    "QS5 asserts Clear empties the selection and the sticky bar disappears.",
+    "This manifest asserts against {{DEPLOY_URL}} -- only reflects this commit once the marketing site is redeployed."
+  ],
+  "uiSteps": [
+    { "action": "goto", "target": "/quick-start" },
+    { "action": "expect", "selector": "h1", "state": "visible", "textContains": "Fixed scope, fixed price" },
+    { "action": "expect", "selector": "[data-testid='quick-start-pack-entra']", "state": "visible" },
+
+    { "name": "QS1 -- select the Entra ID Quick-Start Pack.", "action": "click", "selector": "[data-testid='quick-start-pack-entra']" },
+    { "name": "QS2 -- select the New Employee Onboarding Pack.", "action": "click", "selector": "[data-testid='quick-start-pack-onboard']" },
+    { "name": "QS3 -- sticky bar totals the two real fixture prices ($799 + $149).", "action": "expect", "selector": "[data-testid='quick-start-total']", "state": "visible", "textContains": "$948" },
+
+    { "name": "QS4a -- select Conditional Access Baseline, which Entra ID already covers.", "action": "click", "selector": "[data-testid='quick-start-pack-ca']" },
+    { "name": "QS4b -- the overlap warning surfaces.", "action": "expect", "selector": "[data-testid='quick-start-overlap']", "state": "visible", "textContains": "Overlap in your selection" },
+
+    { "name": "QS5a -- Clear empties the selection.", "action": "click", "selector": "[data-testid='quick-start-clear']" },
+    { "name": "QS5b -- the sticky selection bar is gone.", "action": "expect", "selector": "[data-testid='quick-start-sticky-bar']", "state": "absent" }
+  ]
+}
