@@ -25,6 +25,34 @@ If you've already started implementing from Round One, these are the concrete ch
 - **Left nav regrouped.** The old "Standards & risk" catch-all (7 mixed items) is split into two groups: **Governance** — Ownership, Risk Register, Security Plan, PII Governance — and **Reference** — SOPs & Runbooks, Microsoft Changes. Order is now Operate / Governance / Reference / Library.
 - **Overview pillar-card row fixed.** The six pillar cards on the tenant health overview sit in a `repeat(6, minmax(0,1fr))` grid; a stray `margin-right:56px` on that grid was shrinking the row and leaving blank space to the right of the Health card. Removed — the six cards now fill the row evenly.
 
+## Round Four updates (this pass)
+
+Two modules changed. Nothing else in the portal was touched.
+
+### Remediation Tracker (`remediation`)
+
+Rebuilt from a phase/task checklist into a working tracker for the whole tenant.
+
+- **Seven phases**, in dependency order: Discovery (target 12 Aug, Complete) → Stabilization (26 Aug, On Track) → Baseline (9 Sep, At Risk) → Hardening (30 Sep, On Track) → Copilot Readiness (21 Oct, Blocked) → Drift Cleanup (4 Nov, On Track) → Identity Hygiene (18 Nov, On Track). ~30 tasks across them.
+- **Phases now live in the left nav, not in the page body.** Remediation Tracker gets sub-nav items in the same pattern as Microsoft Changes' waves: each phase shows `done/total`, its target date, a two-segment progress bar coloured by phase status (Complete `#34d399` · On Track `#60a5fa` · At Risk `#fbbf24` · Blocked `#f87171`), and a line reading `N tasks open · <status>`. Clicking a phase filters the tracker to that phase; clicking the active one clears the filter. Sub-nav is only rendered when the module is active and the sidebar is expanded. The phase-card grid that used to sit above the task list is **removed** — phases are a navigation concern now, not page content.
+- **Eight operational task states**, each with its own colour and filter chip: Completed, Waiting for Evidence, In Change Control, On Hold, Blocked by Dependency, Waiting on You, Not Started, Skipped. Phase filter and state filter compose; the header states "Showing N of M tasks" with a clear action.
+- **CR gate stepper** on any task that changes the tenant: prepare → SIA/CIA → rollback plan → submit → approve → execute → evidence. A task cannot be ticked before its CR reaches evidence.
+- **Hold windows** on tasks that wait on elapsed time, with release, extend and close-early actions — same contract as Active Runbooks (notify at T-24, at T-0, and when a scan clears the verdict early).
+- **Evidence states** (`pending` → `filed` → `approved`); filing an evidence artefact creates the document in the Document Library.
+- **Severity-weighted points that only score on verification.** Ticking a task moves it to "pending"; the points land against the pillar and tenant score only once a re-scan confirms the fix. Live pillar scores show base / confirmed / pending / forfeited as one stacked bar.
+- **Drift and re-remediation.** Completed tasks stay monitored; a reversed setting spawns a re-remediation task that names the original.
+- **Message Center posts map to CRs.** A post that forces a tenant change links to the task already in the plan, or raises a CR against the right phase.
+- **Inline SOP runbooks** execute their Graph steps in place inside the task row.
+- **Re-opening a signed-off task requires a recorded reason** — captured through the standard right-drawer form, written to the audit trail.
+
+### Microsoft Changes (`ms-changes`)
+
+- **Header reduced** to two controls: `Export briefing` and a single Settings panel (digest cadence, services in scope, tenant scan).
+- **Six duplicate stat cards removed** — the same counts already read from the wave sub-nav.
+- **Wave tiles drop down their evidence** in place rather than linking out.
+- **Roadmap chart column alignment fixed.**
+- Wave selection lives in the left nav (five waves, each with a stacked breaks/decide/verify/informational bar, a total, its landing range, and a one-line "what this means" note) — this is the pattern the Remediation Tracker phases now follow.
+
 ## About the Design Files
 
 The files in this bundle are **design references created in HTML** — prototypes showing intended look and behaviour, not production code to copy. The task is to **recreate these designs in the target codebase's existing environment** (React + Vite + Tailwind v4 + shadcn/ui "new-york" + `lucide-react`, per the Shane McCaw MSP platform) using its established patterns, components and tokens.
@@ -88,7 +116,7 @@ Group labels are 9.5px/700/`.12em` uppercase `#475569` with a hairline rule runn
 | `operate-runbooks` | Active Runbooks | Progress, steps, **hold windows** — see below |
 | `sop-hub` | SOPs & Runbooks | Procedure library, categories, SOP authoring wizard |
 | `sop-*` | SOP categories | Incident Response, Security Drift, Mail Flow, Device Management |
-| `remediation` | Remediation Tracker | Phases, tasks, fees, released vs held |
+| `remediation` | Remediation Tracker | 7 phases (in the left nav), ~30 tasks, 8 states, CR gate, holds, evidence, verified scoring |
 | `risk-register` | Risk Register | Accepted risks, owner, review date, expiry |
 | `ms-changes` | Microsoft Changes | Message centre posts with tenant impact |
 | `alert-preferences`, `webhooks`, `billing`, `receipt`, `account-security` | Settings | Reached from the account menu |

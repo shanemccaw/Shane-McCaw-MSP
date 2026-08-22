@@ -1,0 +1,39 @@
+Change Control register wired to real data
+
+The register and the per-CR record now read GET /api/portal/change-control
+(the customer-scoped route that already existed at routes/index.ts), through a
+new ccChangeControlWire.ts mapper. The design fixtures stay as the typed shape
+and the fallback.
+
+Two vocabulary mismatches found and mapped, either of which shipped a page
+that lied:
+
+  - The route sends the SERVER's display statuses ("Pending approval"). The
+    module's apprState() switches on "Awaiting approval" / "Draft" / "In test" /
+    "Rolled back", so "Pending approval" hit the fall-through branch and
+    rendered every unsigned change request as "Approved", in green.
+  - The route sends "Exchange / mail" / "Identity" / "Teams"; the Workload
+    filter offers "Exchange Online" / "Entra ID" / "Microsoft Teams". Only
+    SharePoint matched, so the filter selected nothing.
+
+Also: CC_STAT_SETS is a literal map of FIXTURE codes, so against live rows every
+stat card blanked the register instead of narrowing it. matchSF/filterRegister
+take the sets as an optional parameter (defaulted, so existing callers and tests
+are untouched) and the live path derives them from the rows in hand.
+
+The briefing stays on fixtures deliberately: CC_GANTT, CC_BRIEFS and
+CC_BRIEF_ORDER are all keyed by fixture CR code, so pointing it at live rows
+renders it empty. The record view resolves against both lists so either entry
+point opens the record it named.
+
+`missing` is derived rather than emptied: a real row reports 2 of 6 required
+sections, because msp_change_requests has columns for the intake and the
+approval trail and for nothing else. Claiming 6 of 6 would assert an impact
+assessment, rollback plan, test evidence and deployment plan that do not exist.
+
+NO APPROVAL-GATE LOGIC was built — no Dev/Test/Prod gates, no Hold Windows
+integration, no simulator-run-store connector, no tenant targeting. Writes stay
+UI-only exactly as the prototype has them, and a manifest step asserts an
+approve path 404s.
+
+21 new unit assertions; msp-portal suite 1516/1516.

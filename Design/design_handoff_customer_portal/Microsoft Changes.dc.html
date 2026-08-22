@@ -35,23 +35,7 @@
       </div>
       <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
         <button onClick="{{ briefGo }}" style="padding:9px 15px;border-radius:7px;font-size:12px;font-weight:700;border:1px solid #0078D4;background:#0078D4;color:#fff;cursor:pointer;font-family:inherit;white-space:nowrap" style-hover="background:#005A9E;border-color:#005A9E">Export a board briefing</button>
-        <button onClick="{{ digestGo }}" style="padding:9px 15px;border-radius:7px;font-size:12px;font-weight:600;border:1px solid rgba(148,163,184,.24);background:transparent;color:#94a3b8;cursor:pointer;font-family:inherit;white-space:nowrap">Digest settings</button>
-        <button onClick="{{ servicesGo }}" style="padding:9px 15px;border-radius:7px;font-size:12px;font-weight:600;border:1px solid rgba(148,163,184,.24);background:transparent;color:#94a3b8;cursor:pointer;font-family:inherit;white-space:nowrap">{{ servicesLabel }}</button>
-      </div>
-    </div>
-
-    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-      <span style="font-size:9px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#475569;padding-right:2px">Next 12 months</span>
-      <sc-for list="{{ stats }}" as="s" hint-placeholder-count="6">
-        <span style="{{ s.cardCss }}">
-          <span style="{{ s.valueCss }}">{{ s.value }}</span>
-          <span style="font-size:9.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:#64748b;line-height:1.3;white-space:nowrap">{{ s.label }}</span>
-        </span>
-      </sc-for>
-      <div style="display:flex;align-items:center;gap:8px;margin-left:auto;padding:5px 11px 5px 9px;border:1px solid rgba(52,211,153,.28);border-radius:999px;background:rgba(52,211,153,.06)">
-        <span style="width:7px;height:7px;border-radius:50%;background:#34d399;flex:0 0 auto;box-shadow:0 0 0 3px rgba(52,211,153,.18)"></span>
-        <span style="font-size:10.5px;color:#94a3b8;white-space:nowrap">Read against your tenant · scanned {{ scanAt }}</span>
-        <button onClick="{{ rescanGo }}" style="border:none;background:transparent;color:#34d399;font-size:10.5px;font-weight:700;cursor:pointer;font-family:inherit;padding:0;white-space:nowrap">Scan again</button>
+        <button onClick="{{ settingsGo }}" style="padding:9px 15px;border-radius:7px;font-size:12px;font-weight:600;border:1px solid rgba(148,163,184,.24);background:transparent;color:#94a3b8;cursor:pointer;font-family:inherit;white-space:nowrap">{{ settingsLabel }}</button>
       </div>
     </div>
 
@@ -129,6 +113,28 @@
           </div>
         </div>
 
+        <sc-if value="{{ wDrillOpen }}" hint-placeholder-val="{{ false }}">
+          <div style="{{ wDrill.wrapCss }}">
+            <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+              <span style="{{ wDrill.headCss }}">{{ wDrill.count }} written up · {{ wDrill.label }}</span>
+              <span style="flex:1 1 160px;min-width:0;font-size:11px;color:#64748b;line-height:1.5;text-wrap:pretty">{{ wDrill.note }}</span>
+              <button onClick="{{ wDrill.closeGo }}" style="flex:0 0 auto;border:none;background:transparent;color:#64748b;font-size:14px;line-height:1;cursor:pointer;font-family:inherit;padding:0">×</button>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:0;border:1px solid rgba(30,41,59,.9);border-radius:10px;overflow:hidden">
+              <sc-for list="{{ wDrill.rows }}" as="r" hint-placeholder-count="3">
+                <button onClick="{{ r.go }}" style="display:flex;flex-direction:column;gap:3px;padding:11px 13px;border:none;border-top:1px solid rgba(30,41,59,.8);background:transparent;cursor:pointer;font-family:inherit;text-align:left;min-width:0">
+                  <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+                    <span style="font-size:9.5px;font-weight:700;color:#475569;font-family:'SF Mono',Menlo,Consolas,monospace">{{ r.id }}</span>
+                    <span style="flex:1 1 220px;min-width:0;font-size:12.5px;font-weight:600;color:#e2e8f0;line-height:1.4;text-wrap:pretty">{{ r.title }}</span>
+                    <span style="{{ r.metaCss }}">{{ r.meta }}</span>
+                  </div>
+                  <span style="font-size:11px;color:#64748b;line-height:1.55;text-wrap:pretty">{{ r.why }}</span>
+                </button>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+
         <sc-if value="{{ wSel.seenPanel }}" hint-placeholder-val="{{ false }}">
           <div style="display:flex;flex-direction:column;gap:9px;padding:15px 17px;border:1px solid rgba(167,139,250,.3);border-radius:13px;background:#0b1524">
             <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
@@ -163,9 +169,9 @@
           </div>
 
           <div style="overflow-x:auto;overflow-y:hidden">
-            <div style="min-width:820px;display:grid;grid-template-columns:190px minmax(0,1fr);gap:0">
-              <span style="font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#475569;align-self:end;padding:0 12px 6px 2px">Wave</span>
-              <div style="display:grid;grid-template-columns:repeat(11,1fr)">
+            <div style="min-width:900px;display:grid;grid-template-columns:136px minmax(0,1fr);gap:0">
+              <span style="font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#475569;align-self:end;padding:0 10px 6px 2px">Wave</span>
+              <div style="display:grid;grid-template-columns:repeat(11,minmax(0,1fr))">
                 <sc-for list="{{ waves }}" as="w" hint-placeholder-count="5">
                   <button onClick="{{ w.go }}" style="{{ w.css }}" title="{{ w.title }}">
                     <span style="{{ w.labelCss }}">{{ w.label }}</span>
@@ -174,8 +180,8 @@
                 </sc-for>
               </div>
 
-              <span style="font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#475569;align-self:end;padding:0 12px 6px 2px">Volume</span>
-              <div style="display:grid;grid-template-columns:repeat(11,1fr);align-items:end;border-bottom:1px solid rgba(30,41,59,.9)">
+              <span style="font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#475569;align-self:end;padding:0 10px 6px 2px">Volume</span>
+              <div style="display:grid;grid-template-columns:repeat(11,minmax(0,1fr));align-items:end;border-bottom:1px solid rgba(30,41,59,.9)">
                 <sc-for list="{{ river }}" as="r" hint-placeholder-count="11">
                   <button onClick="{{ r.go }}" style="{{ r.wrapCss }}">
                     <span style="{{ r.totalCss }}">{{ r.total }}</span>
@@ -186,13 +192,13 @@
                 </sc-for>
               </div>
 
-              <span style="font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#475569;align-self:start;padding:6px 12px 0 2px">Workload</span>
-              <div style="display:grid;grid-template-columns:repeat(11,1fr)">
+              <div style="display:flex;flex-direction:column;gap:3px;align-items:flex-start;padding:5px 10px 0 2px">
+                <span style="font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#475569">Workload</span>
+                <span style="display:inline-flex;align-items:center;padding:1px 6px;border-radius:999px;font-size:8px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#022c33;background:#22d3ee;white-space:nowrap">Today · 20 Aug</span>
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(11,minmax(0,1fr))">
                 <sc-for list="{{ headCells }}" as="h" hint-placeholder-count="11">
                   <div style="{{ h.css }}">
-                    <sc-if value="{{ h.isToday }}" hint-placeholder-val="{{ false }}">
-                      <span style="{{ h.todayCss }}">{{ h.today }}</span>
-                    </sc-if>
                     <span style="{{ h.labelCss }}">{{ h.label }}</span>
                     <span style="{{ h.subCss }}">{{ h.sub }}</span>
                   </div>
@@ -200,12 +206,12 @@
               </div>
 
               <sc-for list="{{ density }}" as="row" hint-placeholder-count="6">
-                <div style="display:grid;grid-template-columns:190px minmax(0,1fr);gap:0;grid-column:1 / span 2;border-top:1px solid rgba(30,41,59,.6)">
-                  <div style="display:flex;align-items:center;gap:9px;padding:0 12px 0 2px;min-width:0">
+                <div style="display:grid;grid-template-columns:136px minmax(0,1fr);gap:0;grid-column:1 / span 2;border-top:1px solid rgba(30,41,59,.6)">
+                  <div style="display:flex;align-items:center;gap:9px;padding:0 10px 0 2px;min-width:0">
                     <span style="{{ row.dotCss }}"></span>
                     <span style="flex:1;font-size:11.5px;font-weight:600;color:#cbd5e1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">{{ row.name }}</span>
                   </div>
-                  <div style="display:grid;grid-template-columns:repeat(11,1fr)">
+                  <div style="display:grid;grid-template-columns:repeat(11,minmax(0,1fr))">
                     <sc-for list="{{ row.cells }}" as="c" hint-placeholder-count="11">
                       <button onClick="{{ c.go }}" title="{{ c.title }}" style="{{ c.css }}">
                         <sc-for list="{{ c.dots }}" as="d" hint-placeholder-count="4">
@@ -591,7 +597,7 @@ class Component extends DCLogic {
   state = {
     openId: null, sec: 'ms', spy: 'answers', statFilter: null, drill: null, cellDrill: null, seenOpen: null, announced: null, rmSel: null,
     query: '', fWl: 'All workloads', fKind: 'All kinds', fImpact: 'All impact', fMonth: 'All months', fWave: 'All waves',
-    ownedOnly: true, form: null, toast: '', threadOv: null, snoozeOv: null, decisionOv: null, wave: 1, past: null, seenPanel: false, raciOv: {},
+    ownedOnly: true, waveTile: null, form: null, toast: '', threadOv: null, snoozeOv: null, decisionOv: null, wave: 1, past: null, seenPanel: false, raciOv: {},
     services: { Exchange: true, Teams: true, SharePoint: true, Entra: true, Purview: true, Copilot: true }
   };
 
@@ -1247,6 +1253,31 @@ class Component extends DCLogic {
       onSubmit: v => ({ raciOv: Object.assign({}, this.state.raciOv, { [wl]: v }) })
     });
   }
+  settingsForm() {
+    const on = this.state.services;
+    const svcFields = this.SCANS.map(sc => ({ k: sc.wl, kind: 'toggle', label: sc.name, toggleLabel: 'In use', hint: 'Scan found: ' + sc.found }));
+    this.openForm({
+      kicker: 'Settings',
+      title: 'Digest, services and the tenant read',
+      intro: 'Read against your tenant, scanned ' + this.SCAN_AT + '. The digest decides who hears about a change; the services decide what this page counts at all. Turn a service off and its waves, counts and notices go with it.',
+      submitLabel: 'Save settings',
+      values: Object.assign({ day: 'Monday 07:00', to: 'Priya Raman · IT team · Shane McCaw', floor: 'Skip no-impact unless it touches a control', urgent: true, rescan: false }, on),
+      fields: [
+        { k: 'day', label: 'Digest sent', kind: 'pick', options: ['Monday 07:00', 'Friday 16:00', 'First Monday of the month'], req: true },
+        { k: 'to', label: 'Recipients', kind: 'text', req: true },
+        { k: 'floor', label: 'What to leave out', kind: 'pick', options: ['Skip no-impact unless it touches a control', 'Skip everything under 40', 'Send everything'], req: true },
+        { k: 'urgent', label: 'Out of band', kind: 'toggle', toggleLabel: 'Send anything scored above 80 the day it is published', req: false }
+      ].concat(svcFields).concat([
+        { k: 'rescan', label: 'Tenant read', kind: 'toggle', toggleLabel: 'Scan again when I save', hint: 'Last read ' + this.SCAN_AT + '. A Graph read takes about four minutes.', req: false }
+      ]),
+      onSubmit: v => {
+        const svc = {};
+        this.SCANS.forEach(sc => { svc[sc.wl] = v[sc.wl] !== false; });
+        return { services: svc, rmSel: null };
+      },
+      done: v => 'Saved. Digest goes out ' + String(v.day).toLowerCase() + ' to ' + v.to + '.' + (v.rescan ? ' Tenant scan queued — everything on this page re-reads against the result.' : '')
+    });
+  }
   servicesForm() {
     const on = this.state.services;
     this.openForm({
@@ -1393,19 +1424,63 @@ class Component extends DCLogic {
     const match = id => !SF || SF === 'reversed' || (SETS[SF] || []).indexOf(id) >= 0;
 
     const statDefs = [
-      { key: 'decisions', label: 'Need a decision', value: '12', sub: '4 written up · two inside five weeks', tone: '#f87171' },
-      { key: 'hits', label: 'Will break something', value: '3', sub: 'Named systems, named dates', tone: '#fbbf24' },
-      { key: 'soon', label: 'Landing in 60 days', value: '34', sub: '3 written up · 22 Sep · 26 Sep · 1 Oct', tone: '#60a5fa' },
-      { key: 'reversed', label: 'Edited after publishing', value: '61', sub: '3 written up · dates moved or withdrawn', tone: '#a78bfa' },
-      { key: 'seen', label: 'Needs an announcement', value: '39', sub: '6 written up · drafts ready to send', tone: '#a78bfa' },
-      { key: 'none', label: 'No action at all', value: '352', sub: '1 written up · dismissed with a reason each', tone: '#34d399' }
+      { key: 'decisions', label: 'Need a decision', value: '12', sub: '4 written up · two inside five weeks', tone: '#f87171',
+        rule: 'Twelve posts need a position taken by a named person. Four are written up in full here, and every one of them has a date that arrives whether the decision is made or not.',
+        figs: [['Written up', '4'], ['Inside five weeks', '2'], ['No opt-out', '1']] },
+      { key: 'hits', label: 'Will break something', value: '3', sub: 'Named systems, named dates', tone: '#fbbf24',
+        rule: 'Not "may affect some customers". These three have a named thing in your tenant that stops working on a named date, confirmed against your own configuration.',
+        figs: [['Named systems', '3'], ['People affected', '1,240'], ['Soonest', '22 Sep']] },
+      { key: 'soon', label: 'Landing in 60 days', value: '34', sub: '3 written up · 22 Sep · 26 Sep · 1 Oct', tone: '#60a5fa',
+        rule: 'Thirty-four land inside sixty days. Three of those dates sit inside your quarter-close freeze, which is a scheduling problem rather than a technical one.',
+        figs: [['Written up', '3'], ['Freeze collisions', '1'], ['First date', '22 Sep']] },
+      { key: 'reversed', label: 'Edited after publishing', value: '61', sub: '3 written up · dates moved or withdrawn', tone: '#a78bfa',
+        rule: 'Sixty-one posts were edited after publication — dates moved, scope widened, or the notice quietly withdrawn. Microsoft does not re-announce an edit, so a plan built on the original wording drifts without anybody being told.',
+        figs: [['Dates moved', '38'], ['Scope widened', '16'], ['Withdrawn', '7']] },
+      { key: 'seen', label: 'Needs an announcement', value: '39', sub: '6 written up · drafts ready to send', tone: '#c4b5fd',
+        rule: 'Thirty-nine change something your people will see without any admin action from you. Six have a draft announcement written and ready to send.',
+        figs: [['Drafts ready', '6'], ['Groups to tell', '4'], ['Nobody told yet', '2']] },
+      { key: 'none', label: 'No action at all', value: '352', sub: '1 written up · dismissed with a reason each', tone: '#34d399',
+        rule: 'Three hundred and fifty-two were read and dismissed, each with a reason on the record. Dismissal is a decision, so it is filed like one.',
+        figs: [['Dismissed automatically', '338'], ['Reviewed by hand', '14'], ['Cited in evidence', '2']] }
     ];
-    const stats = statDefs.map(s => ({
-      label: s.label, value: s.value, sub: SF === s.key ? 'Filtering everything below · click to clear' : s.sub,
-      go: () => this.setState({ statFilter: SF === s.key ? null : s.key }),
-      cardCss: 'display:inline-flex;align-items:baseline;gap:7px;padding:6px 11px;border:1px solid rgba(30,41,59,.9);border-radius:999px;background:#0b1524',
-      valueCss: 'font-size:19px;font-weight:800;letter-spacing:-.02em;line-height:1.1;flex:0 0 auto;color:' + s.tone
+    const statOpen = S.statOpen || null;
+    const evFor = key => {
+      if (key === 'reversed') return this.REVERSED.map(r => ({ id: r.id, title: r.title, meta: r.at, why: r.what, tone: r.tone }));
+      if (key === 'seen') return this.SEEN.slice(0, 4).map(s => ({ id: s.id, title: s.title, meta: s.when, why: s.tickets, tone: s.tone }));
+      return (SETS[key] || []).map(id => this.POSTS.filter(p => p.id === id)[0]).filter(Boolean)
+        .map(p => ({ id: p.id, title: p.title, meta: p.when + ' · ' + p.countdown, why: p.youSay || p.msSays, tone: p.hard ? '#f87171' : '#94a3b8' }));
+    };
+    const mkFigs = s => s.figs.map(g => ({ label: g[0], v: g[1], vCss: "font-size:15px;font-weight:800;letter-spacing:-.02em;color:#f8fafc;font-family:'SF Mono',Menlo,Consolas,monospace" }));
+    const mkEv = s => evFor(s.key).map(e => ({
+      id: e.id, title: e.title, meta: e.meta, why: e.why,
+      metaCss: 'flex:0 0 auto;padding:2px 8px;border-radius:5px;border:1px solid ' + e.tone + '4d;color:' + e.tone + ";font-size:9.5px;font-weight:700;white-space:nowrap;font-family:'SF Mono',Menlo,Consolas,monospace",
+      go: () => this.POSTS.some(p => p.id === e.id) ? this.setState({ openId: e.id, sec: 'ms' }) : this.t(e.id + ' — ' + e.why)
     }));
+    const stats = statDefs.map(s => {
+      const on = statOpen === s.key;
+      return {
+        label: s.label, value: s.value, sub: s.sub, showSub: !statOpen,
+        go: () => this.setState({ statOpen: on ? null : s.key }),
+        cardCss: 'position:relative;display:flex;flex-direction:column;gap:5px;min-height:' + (statOpen ? '132px' : '116px') + ';padding:13px 13px 14px 15px;border:1px solid ' + (on ? s.tone + '88' : 'rgba(30,41,59,.9)') + ';border-radius:11px;background:' + (on ? s.tone + '14' : '#0b1524') + ';cursor:pointer;font-family:inherit;text-align:left;overflow:hidden;min-width:0',
+        barCss: 'position:absolute;left:0;top:0;bottom:0;width:2px;background:' + s.tone,
+        valueCss: 'font-size:' + (statOpen ? '22px' : '26px') + ';font-weight:800;letter-spacing:-.03em;line-height:1;color:' + s.tone,
+        labelCss: 'font-size:11.5px;font-weight:700;color:' + (on ? '#f8fafc' : '#f1f5f9') + ';line-height:1.35;text-wrap:pretty'
+      };
+    });
+    const statSel = statDefs.filter(s => s.key === statOpen)[0];
+    const statPanelOpen = !!statSel;
+    const statsGridCss = 'flex:1 1 auto;min-width:0;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;align-content:start';
+    const statPanel = !statSel ? null : {
+      label: statSel.label, value: statSel.value, rule: statSel.rule,
+      wrapCss: 'flex:0 0 372px;max-width:372px;display:flex;flex-direction:column;gap:11px;padding:14px 16px;border:1px solid ' + statSel.tone + '55;border-radius:12px;background:linear-gradient(150deg,' + statSel.tone + '10,#0b1524 60%);max-height:460px;overflow-y:auto',
+      valueCss: 'flex:0 0 auto;font-size:26px;font-weight:800;letter-spacing:-.03em;line-height:1;color:' + statSel.tone,
+      closeGo: () => this.setState({ statOpen: null }),
+      figs: mkFigs(statSel), evidence: mkEv(statSel),
+      moreLabel: 'The other ' + (parseInt(statSel.value, 10) - mkEv(statSel).length) + ' carry the same reasoning, unwritten until one of them changes.',
+      filterLabel: SF === statSel.key ? 'Clear the filter' : 'Filter the page to these',
+      filterCss: 'padding:6px 12px;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;border:1px solid ' + (SF === statSel.key ? statSel.tone + '88' : 'rgba(148,163,184,.22)') + ';background:' + (SF === statSel.key ? statSel.tone + '1f' : 'transparent') + ';color:' + (SF === statSel.key ? statSel.tone : '#94a3b8'),
+      filterGo: () => this.setState({ statFilter: SF === statSel.key ? null : statSel.key })
+    };
 
     const monthLabels = this.MONTHS.map(m => m.l + ' ' + m.y);
     const drill = S.drill;
@@ -1506,10 +1581,10 @@ class Component extends DCLogic {
 
     const headCells = this.BUCKETS.map((b, i) => ({
       label: b.label, sub: b.sub, isToday: i === 0, today: 'Today · 20 Aug',
-      todayCss: 'display:inline-flex;align-items:center;padding:1px 6px;margin-bottom:2px;border-radius:999px;font-size:8px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#022c33;background:#22d3ee;white-space:nowrap',
-      css: 'display:flex;flex-direction:column;align-items:center;gap:0;padding:5px 2px;border-left:' + (i === 0 ? '2px solid rgba(34,211,238,.75)' : '1px solid ' + (isFz(i) ? 'rgba(248,113,113,.4)' : 'rgba(30,41,59,.6)')) + ';background:' + (i === 0 ? 'rgba(34,211,238,.06)' : 'transparent'),
-      labelCss: 'font-size:9.5px;font-weight:' + (i === 0 ? '800' : '700') + ';color:' + (i === 0 ? '#22d3ee' : '#cbd5e1') + ';white-space:nowrap',
-      subCss: 'font-size:8.5px;font-weight:600;color:' + (isFz(i) ? '#f87171' : '#475569') + ';white-space:nowrap'
+      todayCss: 'position:absolute;left:-1px;top:-13px;display:inline-flex;align-items:center;padding:1px 6px;border-radius:999px;font-size:8px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#022c33;background:#22d3ee;white-space:nowrap;pointer-events:none',
+      css: 'position:relative;display:flex;flex-direction:column;align-items:center;gap:0;padding:5px 3px;min-width:0;overflow:hidden;border-left:' + (i === 0 ? '2px solid rgba(34,211,238,.75)' : '1px solid ' + (isFz(i) ? 'rgba(248,113,113,.4)' : 'rgba(30,41,59,.6)')) + ';background:' + (i === 0 ? 'rgba(34,211,238,.06)' : 'transparent'),
+      labelCss: 'font-size:9.5px;font-weight:' + (i === 0 ? '800' : '700') + ';color:' + (i === 0 ? '#22d3ee' : '#cbd5e1') + ';line-height:1.25;text-align:center;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap',
+      subCss: 'font-size:8.5px;font-weight:600;color:' + (isFz(i) ? '#f87171' : '#475569') + ';line-height:1.25;text-align:center;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'
     }));
 
     const density = dRows.map(row => ({
@@ -1861,6 +1936,36 @@ class Component extends DCLogic {
         }))
       };
     })(this.LANDED);
+    const WT_KEYS = ['all', 'break', 'decide', 'seen'];
+    const scopePosts = this.POSTS.filter(p => svcOn(p.wl) && inScope(p.id));
+    const evRow = (p, why) => ({
+      id: p.id, title: p.title, meta: p.when, why: why || (p.plain.split('. ')[0] + '.'),
+      tone: p.hard ? '#f87171' : p.impact === 'No impact' ? '#34d399' : '#94a3b8'
+    });
+    const WT = {
+      all: { label: 'changes in this wave', tone: '#60a5fa', note: 'Every notice in scope, read against your tenant rather than against the catalogue.',
+        rows: scopePosts.map(p => evRow(p)) },
+      break: { label: 'stop something working', tone: '#f87171', note: 'Each one has a named thing in your tenant and a date it stops.',
+        rows: scopePosts.filter(p => p.hard || p.impact === 'Hits you').map(p => { const e = (p.evidence || []).filter(x => x.bad)[0]; return evRow(p, e ? e.q + ' → ' + e.a : null); }) },
+      decide: { label: 'need a decision', tone: '#fbbf24', note: 'Each carries a date after which the decision is made for you.',
+        rows: scopePosts.filter(p => wQueue.some(q => q.id === p.id)).map(p => evRow(p)) },
+      seen: { label: 'your people will notice', tone: '#a78bfa', note: 'No admin action needed. Somebody still has to be told.',
+        rows: seenInScope.map(v => ({ id: v.id, title: v.title, meta: v.when + ' · ' + v.app, why: v.tickets, tone: v.tone })) }
+    };
+    const wtKey = S.waveTile && WT[S.waveTile] ? S.waveTile : null;
+    const wtDef = wtKey ? WT[wtKey] : null;
+    const wDrill = !wtDef ? {} : {
+      label: wtDef.label, note: wtDef.note,
+      count: String(wtDef.rows.length),
+      headCss: 'font-size:9.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:' + wtDef.tone,
+      wrapCss: 'display:flex;flex-direction:column;gap:10px;padding:15px 17px;border:1px solid ' + wtDef.tone + '4d;border-radius:13px;background:linear-gradient(150deg,' + wtDef.tone + '0d,#0b1524 55%)',
+      closeGo: () => this.setState({ waveTile: null }),
+      rows: wtDef.rows.map(r => ({
+        id: r.id, title: r.title, meta: r.meta, why: r.why,
+        metaCss: 'flex:0 0 auto;padding:2px 8px;border-radius:5px;border:1px solid ' + r.tone + "4d;color:" + r.tone + ";font-size:9.5px;font-weight:700;white-space:nowrap;font-family:'SF Mono',Menlo,Consolas,monospace",
+        go: () => this.POSTS.some(p => p.id === r.id) ? this.setState({ openId: r.id, sec: 'ms' }) : this.t(r.id + ' — ' + r.why)
+      }))
+    };
     const wSel = {
       name: selBand.wave, range: rangeOf(selBand), status: WAVE_STATUS[wsel] || rangeOf(selBand),
       statusCss: this.pill(WAVE_STATUS[wsel] || '', wsel === 0 ? '#22d3ee' : '#93c5fd', (wsel === 0 ? '#22d3ee' : '#60a5fa') + '1f'),
@@ -1872,12 +1977,12 @@ class Component extends DCLogic {
         { label: 'need a decision', value: String(scopeCell ? Math.max(scopeCell[1], wQueue.length) : Math.max(selT[1], namedDue(selBand))), tone: '#fbbf24' },
         { label: 'your people will notice', value: String(scopeCell ? scopeCell[2] : selT[2]), tone: '#a78bfa' }
       ].map((t, ti) => ({
-        go: ti === 3 ? () => this.setState({ seenPanel: !S.seenPanel }) : () => {},
-        hint: ti === 3 ? (S.seenPanel ? 'Hide what they will see' : 'See what they will see') : '',
-        hintCss: 'font-size:10px;font-weight:700;color:' + (ti === 3 ? '#a78bfa' : 'transparent') + ';text-align:left',
+        go: () => this.setState({ waveTile: S.waveTile === WT_KEYS[ti] ? null : WT_KEYS[ti], seenPanel: false }),
+        hint: S.waveTile === WT_KEYS[ti] ? 'Hide the evidence' : 'Show the evidence',
+        hintCss: 'font-size:10px;font-weight:700;color:' + (S.waveTile === WT_KEYS[ti] ? t.tone : '#475569') + ';text-align:left',
         label: t.value === '1' ? ({ 'changes in this square': 'change in this square', 'changes in this wave': 'change in this wave', 'stop something working': 'stops something working', 'need a decision': 'needs a decision', 'your people will notice': 'your people will notice' })[t.label] : t.label,
         value: t.value,
-        css: 'display:flex;flex-direction:column;gap:2px;padding:11px 13px;border-radius:9px;border:1px solid ' + t.tone + '2e;border-left:3px solid ' + t.tone + ';background:rgba(2,6,23,.5);font-family:inherit;text-align:left;cursor:' + (ti === 3 ? 'pointer' : 'default'),
+        css: 'display:flex;flex-direction:column;gap:2px;padding:11px 13px;border-radius:9px;border:1px solid ' + t.tone + (S.waveTile === WT_KEYS[ti] ? '99' : '2e') + ';border-left:3px solid ' + t.tone + ';background:' + (S.waveTile === WT_KEYS[ti] ? t.tone + '14' : 'rgba(2,6,23,.5)') + ';font-family:inherit;text-align:left;cursor:pointer',
         valueCss: 'font-size:22px;font-weight:800;letter-spacing:-.02em;line-height:1.05;color:' + t.tone
       })),
       noBreaks: wBreaks.length === 0, noDecisions: wQueue.length === 0, noQuiet: wNoAction.length === 0,
@@ -2094,6 +2199,7 @@ class Component extends DCLogic {
       })),
       rescanGo: () => this.t('Tenant scan queued — Graph read takes about four minutes. Everything on this page will re-read against the result.'), nav, stats, breakers, months, freezeBands, lanes, legend, queue, rows, selects, reversed, digest, digestRules,
       funnel, sched, schedHead, groups, cellDrill, cellDrillOpen: !!cd,
+      wDrillOpen: !!wtDef, wDrill,
       waves, river, headCells, density, rmLegend, rmDrill, rmDrillOpen: !!rmSel,
       rmTotal: String(grand), rmBreak: String(grandB), rmDecide: String(grandD), rmSeen: String(grandV),
       drillOpen, drillRule: drillDef ? drillDef.rule : '', drillLabel: drillDef ? drillDef.label : '',
@@ -2144,20 +2250,9 @@ class Component extends DCLogic {
         ],
         done: v => 'Briefing built for the ' + v.period.toLowerCase() + ' — four notices, three decisions, one reversal' + (v.include ? ', with the cost of readiness against the cost of doing nothing.' : '.')
       }),
-      digestGo: () => this.openForm({
-        kicker: 'Digest', title: 'Change the Monday digest', intro: 'The digest is the only reason any of this gets read. Keep it short enough that it does.',
-        submitLabel: 'Save the digest',
-        values: { day: 'Monday 07:00', to: 'Priya Raman · IT team · Shane McCaw', floor: 'Skip no-impact unless it touches a control', urgent: true },
-        fields: [
-          { k: 'day', label: 'When', kind: 'pick', options: ['Monday 07:00', 'Friday 16:00', 'First Monday of the month'], req: true },
-          { k: 'to', label: 'Recipients', kind: 'text', req: true },
-          { k: 'floor', label: 'What to leave out', kind: 'pick', options: ['Skip no-impact unless it touches a control', 'Skip everything under 40', 'Send everything'], req: true },
-          { k: 'urgent', label: 'Out of band', kind: 'toggle', toggleLabel: 'Send anything scored above 80 the day it is published', req: false }
-        ],
-        done: v => 'Digest set for ' + v.day + ' to ' + v.to + '.' + (v.urgent ? ' Anything above 80 goes out the same day.' : '')
-      }),
-      servicesGo: () => this.servicesForm(),
-      servicesLabel: 'Services · ' + this.SCANS.filter(sc => svcOn(sc.wl)).length + ' of ' + this.SCANS.length,
+      statPanelOpen, statPanel: statPanel || {}, statsGridCss,
+      settingsGo: () => this.settingsForm(),
+      settingsLabel: 'Settings · ' + this.SCANS.filter(sc => svcOn(sc.wl)).length + ' services',
       formOpen: !!S.form, formFields,
       formKicker: fcfg ? fcfg.kicker : '', formTitle: fcfg ? fcfg.title : '', formIntro: fcfg ? fcfg.intro : '',
       formFoot: fcfg ? (fcfg.foot || '') : '',

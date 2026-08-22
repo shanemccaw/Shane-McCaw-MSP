@@ -5960,53 +5960,269 @@ button{font-family:inherit}
 
       <sc-if value="{{ isRemediation }}" hint-placeholder-val="{{ false }}">
         <div style="min-height:100%;background:{{ moduleWash }}">
-          <div style="max-width:1180px;margin:0 auto;padding:26px 28px 60px;display:flex;flex-direction:column;gap:17px">
+          <div style="max-width:1180px;margin:0 auto;padding:26px 28px 60px;display:flex;flex-direction:column;gap:18px">
             <div style="display:flex;flex-direction:column;gap:7px">
-              <span style="font-size:9.5px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:#64748b">Remediation</span>
-              <span style="font-size:22px;font-weight:800;color:#f8fafc;letter-spacing:-.02em;line-height:1.3">{{ rtRun.headline }}</span>
-              <span style="font-size:12.5px;color:#94a3b8;line-height:1.6;max-width:86ch;text-wrap:pretty">{{ rtRun.sub }}</span>
+              <span style="font-size:9.5px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:#64748b">Remediation tracker</span>
+              <span style="font-size:22px;font-weight:800;color:#f8fafc;letter-spacing:-.02em;line-height:1.3">{{ rt.headline }}</span>
+              <span style="font-size:12.5px;color:#94a3b8;line-height:1.6;max-width:86ch;text-wrap:pretty">{{ rt.sub }}</span>
             </div>
 
-            <div style="display:flex;align-items:center;gap:13px;flex-wrap:wrap">
-              <div style="flex:1;min-width:220px;height:10px;border-radius:5px;background:rgba(148,163,184,.14);overflow:hidden"><div style="{{ rtRun.barCss }}"></div></div>
-              <span style="flex:0 0 auto;font-size:13px;font-weight:800;color:#34d399;font-family:'SF Mono',Menlo,Consolas,monospace">{{ rtRun.pct }}</span>
-              <span style="flex:0 0 auto;font-size:11px;color:#64748b;font-family:'SF Mono',Menlo,Consolas,monospace">{{ rtRun.done }} / {{ rtRun.total }}</span>
+            <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;padding:16px 18px;border:1px solid rgba(30,41,59,.9);border-radius:13px;background:rgba(15,23,42,.45)">
+              <div style="flex:0 0 auto;display:flex;flex-direction:column;gap:3px">
+                <span style="font-size:9px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#64748b">Tenant score</span>
+                <span style="{{ rt.gateNowCss }}">{{ rt.gateNow }}</span>
+                <span style="{{ rt.gatePendingCss }}">{{ rt.gatePending }}</span>
+              </div>
+              <div style="flex:1 1 260px;min-width:200px;display:flex;flex-direction:column;gap:7px">
+                <div style="position:relative;height:9px;border-radius:5px;background:rgba(148,163,184,.14);overflow:hidden">
+                  <div style="{{ rt.confCss }}"></div>
+                  <div style="{{ rt.pendCss }}"></div>
+                </div>
+                <div style="display:flex;align-items:baseline;gap:14px;flex-wrap:wrap">
+                  <span style="font-size:10.5px;color:#94a3b8;font-family:'SF Mono',Menlo,Consolas,monospace">{{ rt.gateBase }} at scan 1</span>
+                  <span style="font-size:10.5px;color:#94a3b8;font-family:'SF Mono',Menlo,Consolas,monospace">{{ rt.gateTarget }} when every task is verified</span>
+                </div>
+              </div>
+              <div style="flex:0 0 auto;display:flex;flex-direction:column;gap:2px;padding-left:18px;border-left:1px solid rgba(30,41,59,.9)">
+                <span style="font-size:9px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#64748b">Copilot gate</span>
+                <span style="{{ rt.copilotCss }}">{{ rt.copilotGate }}</span>
+                <span style="font-size:10px;color:#64748b">{{ rt.copilotNote }}</span>
+              </div>
             </div>
 
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px">
-              <sc-for list="{{ rtRun.counters }}" as="c" hint-placeholder-count="4">
-                <button onClick="{{ c.go }}" style="{{ c.css }}">
-                  <span style="{{ c.labelCss }}">{{ c.label }}</span>
-                  <span style="{{ c.valueCss }}">{{ c.value }}</span>
-                  <span style="font-size:10px;color:#64748b;line-height:1.35">{{ c.sub }}</span>
+            <div style="display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:9px">
+              <sc-for list="{{ rt.pillarCells }}" as="p" hint-placeholder-count="6">
+                <button onClick="{{ p.go }}" style="{{ p.css }}">
+                  <span style="{{ p.labelCss }}">{{ p.label }}</span>
+                  <div style="display:flex;align-items:baseline;gap:6px">
+                    <span style="{{ p.scoreCss }}">{{ p.score }}</span>
+                    <span style="font-size:9.5px;color:#475569;font-family:'SF Mono',Menlo,Consolas,monospace">{{ p.target }}</span>
+                    <span style="{{ p.deltaCss }}">{{ p.delta }}</span>
+                  </div>
+                  <div style="{{ p.trackCss }}">
+                    <div style="{{ p.confCss }}"></div>
+                    <div style="{{ p.pendCss }}"></div>
+                  </div>
+                  <sc-if value="{{ p.hasPending }}" hint-placeholder-val="{{ false }}">
+                    <span style="font-size:9px;font-weight:700;color:#5eead4;font-family:'SF Mono',Menlo,Consolas,monospace">{{ p.pending }}</span>
+                  </sc-if>
                 </button>
               </sc-for>
             </div>
 
-            <sc-for list="{{ rtRun.groups }}" as="g" hint-placeholder-count="6">
+            <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+              <sc-for list="{{ rt.stateChips }}" as="c" hint-placeholder-count="6">
+                <button onClick="{{ c.go }}" style="{{ c.css }}">{{ c.label }}<span style="{{ c.nCss }}">{{ c.n }}</span></button>
+              </sc-for>
+              <sc-if value="{{ rt.filtered }}" hint-placeholder-val="{{ false }}">
+                <button onClick="{{ rt.clearGo }}" style="padding:5px 10px;border-radius:999px;border:1px solid rgba(148,163,184,.22);background:transparent;color:#94a3b8;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit">{{ rt.filterLabel }} · clear</button>
+              </sc-if>
+            </div>
+
+            <sc-for list="{{ rt.groups }}" as="g" hint-placeholder-count="4">
               <div style="display:flex;flex-direction:column;gap:7px">
-                <div style="display:flex;align-items:baseline;gap:9px">
-                  <span style="font-size:9px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#475569">{{ g.label }}</span>
-                  <span style="font-size:9.5px;color:#3f4c5f;font-family:'SF Mono',Menlo,Consolas,monospace">{{ g.n }}</span>
+                <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+                  <span style="font-size:9px;font-weight:800;letter-spacing:.14em;color:#475569;font-family:'SF Mono',Menlo,Consolas,monospace">{{ g.n }}</span>
+                  <span style="font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#cbd5e1">{{ g.name }}</span>
+                  <span style="font-size:9.5px;color:#3f4c5f;font-family:'SF Mono',Menlo,Consolas,monospace">{{ g.progress }}</span>
+                  <span style="font-size:9.5px;color:#3f4c5f">Target {{ g.due }}</span>
                 </div>
                 <div style="display:flex;flex-direction:column;gap:0;border:1px solid rgba(30,41,59,.85);border-radius:11px;background:rgba(15,23,42,.4);overflow:hidden">
                   <sc-for list="{{ g.items }}" as="t" hint-placeholder-count="4">
                     <div style="{{ t.rowCss }}">
-                      <span style="{{ t.stateCss }}">{{ t.stateLabel }}</span>
-                      <div style="flex:1 1 280px;min-width:0;display:flex;flex-direction:column;gap:2px">
-                        <span style="font-size:12.5px;font-weight:600;color:#e2e8f0;line-height:1.4;text-wrap:pretty">{{ t.title }}</span>
-                        <span style="font-size:10.5px;color:#64748b;line-height:1.4">Found by the scan · {{ t.ev }}</span>
+                      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                        <button onClick="{{ t.toggle }}" title="{{ t.boxTitle }}" style="{{ t.boxCss }}">
+                          <span dangerouslySetInnerHTML="{{ t.checkHtml }}" style="display:flex"></span>
+                        </button>
+                        <button onClick="{{ t.openGo }}" style="flex:1 1 240px;min-width:0;text-align:left;background:none;border:none;padding:0;cursor:pointer;font-family:inherit">
+                          <span style="{{ t.titleCss }}">{{ t.title }}</span>
+                        </button>
+                        <span style="{{ t.stateCss }}">{{ t.stateLabel }}</span>
+                        <div style="flex:0 0 auto;display:flex;flex-direction:column;align-items:flex-end;gap:1px">
+                          <span style="{{ t.ptsCss }}">{{ t.ptsLabel }}</span>
+                          <span style="font-size:8.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#475569">{{ t.ptsSub }}</span>
+                        </div>
                       </div>
-                      <span style="{{ t.routeCss }}">{{ t.routeLabel }}</span>
-                      <sc-if value="{{ t.hasCr }}" hint-placeholder-val="{{ false }}">
-                        <button onClick="{{ t.crGo }}" style="flex:0 0 auto;padding:2px 8px;border-radius:5px;border:1px solid rgba(96,165,250,.4);background:rgba(96,165,250,.1);color:#93c5fd;font-size:9.5px;font-weight:800;cursor:pointer;font-family:'SF Mono',Menlo,Consolas,monospace">{{ t.cr }}</button>
+                      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding-left:28px">
+                        <sc-for list="{{ t.chips }}" as="c" hint-placeholder-count="5">
+                          <span style="{{ c.css }}">{{ c.txt }}</span>
+                        </sc-for>
+                      </div>
+                      <span style="padding-left:28px;font-size:10.5px;color:#64748b;line-height:1.5;text-wrap:pretty">{{ t.next }}</span>
+
+                      <sc-if value="{{ t.isOpen }}" hint-placeholder-val="{{ false }}">
+                        <div style="display:flex;flex-direction:column;gap:13px;margin:6px 0 4px 28px;padding:14px 16px;border:1px solid rgba(30,41,59,.9);border-radius:11px;background:rgba(8,17,32,.5)">
+                          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px">
+                            <div style="display:flex;flex-direction:column;gap:3px">
+                              <span style="font-size:9px;font-weight:800;letter-spacing:.13em;text-transform:uppercase;color:#f87171">The problem</span>
+                              <span style="font-size:12px;color:#cbd5e1;line-height:1.6;text-wrap:pretty">{{ t.detail.problem }}</span>
+                            </div>
+                            <div style="display:flex;flex-direction:column;gap:3px">
+                              <span style="font-size:9px;font-weight:800;letter-spacing:.13em;text-transform:uppercase;color:#34d399">The fix</span>
+                              <span style="font-size:12px;color:#cbd5e1;line-height:1.6;text-wrap:pretty">{{ t.detail.fix }}</span>
+                            </div>
+                          </div>
+
+                          <sc-if value="{{ t.detail.hasDeps }}" hint-placeholder-val="{{ false }}">
+                            <div style="display:flex;flex-direction:column;gap:4px">
+                              <span style="font-size:9px;font-weight:800;letter-spacing:.13em;text-transform:uppercase;color:#64748b">Depends on</span>
+                              <sc-for list="{{ t.detail.deps }}" as="d" hint-placeholder-count="1">
+                                <button onClick="{{ d.go }}" style="align-self:flex-start;background:none;border:none;padding:0;cursor:pointer;font-family:inherit;text-align:left">
+                                  <span style="{{ d.css }}">{{ d.label }} · {{ d.met }}</span>
+                                </button>
+                              </sc-for>
+                            </div>
+                          </sc-if>
+
+                          <sc-if value="{{ t.detail.hasCr }}" hint-placeholder-val="{{ false }}">
+                            <div style="display:flex;flex-direction:column;gap:7px">
+                              <div style="display:flex;align-items:baseline;gap:9px;flex-wrap:wrap">
+                                <span style="font-size:9px;font-weight:800;letter-spacing:.13em;text-transform:uppercase;color:#64748b">Change request</span>
+                                <span style="font-size:10.5px;font-weight:800;color:#93c5fd;font-family:'SF Mono',Menlo,Consolas,monospace">{{ t.detail.crLabel }}</span>
+                              </div>
+                              <div style="display:flex;gap:6px;flex-wrap:wrap">
+                                <sc-for list="{{ t.detail.crStages }}" as="s" hint-placeholder-count="7">
+                                  <div style="{{ s.css }}">
+                                    <span style="{{ s.nCss }}">{{ s.n }}</span>
+                                    <span style="{{ s.labelCss }}">{{ s.label }}</span>
+                                  </div>
+                                </sc-for>
+                              </div>
+                              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                                <sc-if value="{{ t.detail.crCanAdvance }}" hint-placeholder-val="{{ false }}">
+                                  <button onClick="{{ t.detail.crAdvance }}" style="padding:6px 12px;border-radius:7px;border:1px solid rgba(96,165,250,.45);background:rgba(96,165,250,.1);color:#bfdbfe;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">{{ t.detail.crNextLabel }}</button>
+                                </sc-if>
+                                <sc-if value="{{ t.detail.crClosed }}" hint-placeholder-val="{{ false }}">
+                                  <span style="font-size:11px;color:#34d399;font-weight:700">{{ t.detail.crNextLabel }}</span>
+                                </sc-if>
+                              </div>
+                            </div>
+                          </sc-if>
+
+                          <sc-if value="{{ t.detail.hasHold }}" hint-placeholder-val="{{ false }}">
+                            <div style="display:flex;flex-direction:column;gap:7px;padding:12px 13px;border:1px solid rgba(34,211,238,.3);border-radius:10px;background:rgba(34,211,238,.05)">
+                              <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+                                <span style="font-size:9px;font-weight:800;letter-spacing:.13em;text-transform:uppercase;color:#22d3ee">Hold window</span>
+                                <span style="{{ t.detail.holdStateCss }}">{{ t.detail.holdState }}</span>
+                                <span style="font-size:10.5px;font-weight:700;color:#e2e8f0;font-family:'SF Mono',Menlo,Consolas,monospace">{{ t.detail.holdLeft }}</span>
+                                <span style="font-size:10.5px;color:#5eead4;font-family:'SF Mono',Menlo,Consolas,monospace">{{ t.detail.holdVerdict }}</span>
+                              </div>
+                              <span style="font-size:11.5px;color:#94a3b8;line-height:1.6;text-wrap:pretty">{{ t.detail.holdWhy }}</span>
+                              <div style="display:flex;gap:7px;flex-wrap:wrap">
+                                <button onClick="{{ t.detail.holdRelease }}" style="padding:6px 12px;border-radius:7px;border:1px solid rgba(34,211,238,.5);background:rgba(34,211,238,.12);color:#22d3ee;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">Release the gated step</button>
+                                <button onClick="{{ t.detail.holdExtend }}" style="padding:6px 12px;border-radius:7px;border:1px solid rgba(148,163,184,.22);background:transparent;color:#94a3b8;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">Extend 24h</button>
+                                <button onClick="{{ t.detail.holdClose }}" style="padding:6px 12px;border-radius:7px;border:1px solid rgba(148,163,184,.22);background:transparent;color:#94a3b8;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">Close early</button>
+                              </div>
+                            </div>
+                          </sc-if>
+
+                          <div style="display:flex;flex-direction:column;gap:6px">
+                            <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+                              <span style="font-size:9px;font-weight:800;letter-spacing:.13em;text-transform:uppercase;color:#64748b">Evidence</span>
+                              <span style="{{ t.detail.evCss }}">{{ t.detail.evLabel }}</span>
+                            </div>
+                            <sc-for list="{{ t.detail.evItems }}" as="e" hint-placeholder-count="2">
+                              <span style="{{ e.css }}">{{ e.label }}</span>
+                            </sc-for>
+                            <div style="display:flex;gap:7px;flex-wrap:wrap;padding-top:2px">
+                              <sc-if value="{{ t.detail.evCanAct }}" hint-placeholder-val="{{ false }}">
+                                <button onClick="{{ t.detail.evAct }}" style="padding:6px 12px;border-radius:7px;border:1px solid rgba(251,191,36,.45);background:rgba(251,191,36,.1);color:#fbbf24;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">{{ t.detail.evActLabel }}</button>
+                              </sc-if>
+                              <button onClick="{{ t.detail.evDocsGo }}" style="padding:6px 12px;border-radius:7px;border:1px solid rgba(148,163,184,.22);background:transparent;color:#94a3b8;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">Open in the Document Library</button>
+                            </div>
+                          </div>
+
+                          <div style="display:flex;flex-direction:column;gap:7px;padding:12px 13px;border:1px solid rgba(94,234,212,.22);border-radius:10px;background:rgba(94,234,212,.04)">
+                            <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+                              <span style="font-size:9px;font-weight:800;letter-spacing:.13em;text-transform:uppercase;color:#5eead4">Runbook</span>
+                              <button onClick="{{ t.detail.playbookGo }}" style="flex:1 1 160px;min-width:0;background:none;border:none;padding:0;cursor:pointer;font-family:inherit;font-size:11.5px;font-weight:700;color:#93c5fd;text-align:left">{{ t.detail.playbook }}</button>
+                              <span style="{{ t.detail.rbKindCss }}">{{ t.detail.rbKind }}</span>
+                            </div>
+                            <div style="display:flex;flex-direction:column;gap:4px">
+                              <sc-for list="{{ t.detail.rbSteps }}" as="s" hint-placeholder-count="2">
+                                <div style="{{ s.css }}">
+                                  <span style="{{ s.kindCss }}">{{ s.kind }}</span>
+                                  <span style="{{ s.labelCss }}">{{ s.label }}</span>
+                                  <span style="{{ s.markCss }}">{{ s.mark }}</span>
+                                </div>
+                              </sc-for>
+                            </div>
+                            <sc-if value="{{ t.detail.rbRunning }}" hint-placeholder-val="{{ false }}">
+                              <div style="display:flex;flex-direction:column;gap:5px">
+                                <div style="height:5px;border-radius:3px;background:rgba(148,163,184,.14);overflow:hidden"><div style="{{ t.detail.rbBarCss }}"></div></div>
+                                <span style="font-size:10.5px;color:#5eead4;font-family:'SF Mono',Menlo,Consolas,monospace">{{ t.detail.rbStatus }}</span>
+                              </div>
+                            </sc-if>
+                            <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+                              <sc-if value="{{ t.detail.rbCanRun }}" hint-placeholder-val="{{ false }}">
+                                <button onClick="{{ t.detail.rbRunGo }}" style="padding:7px 13px;border-radius:7px;border:1px solid rgba(94,234,212,.55);background:rgba(94,234,212,.14);color:#5eead4;font-size:11.5px;font-weight:800;cursor:pointer;font-family:inherit">Run it now</button>
+                              </sc-if>
+                              <sc-if value="{{ t.detail.rbRan }}" hint-placeholder-val="{{ false }}">
+                                <span style="font-size:11px;color:#34d399;font-weight:700;line-height:1.5">{{ t.detail.rbStatus }}</span>
+                                <button onClick="{{ t.detail.rbRollbackGo }}" style="padding:6px 12px;border-radius:7px;border:1px solid rgba(148,163,184,.22);background:transparent;color:#94a3b8;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">Roll it back</button>
+                              </sc-if>
+                              <sc-if value="{{ t.detail.rbBlocked }}" hint-placeholder-val="{{ false }}">
+                                <span style="font-size:11px;color:#fbbf24;line-height:1.5">{{ t.detail.rbBlockedNote }}</span>
+                              </sc-if>
+                            </div>
+                          </div>
+
+                          <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding-top:2px;border-top:1px solid rgba(30,41,59,.8)">
+                            <span style="flex:1 1 200px;min-width:0;font-size:11px;color:#94a3b8;padding-top:11px;font-family:'SF Mono',Menlo,Consolas,monospace">{{ t.detail.feeLine }}</span>
+                            <button onClick="{{ t.detail.rescanGo }}" title="Cycle the re-scan that verifies this change" style="{{ t.detail.rescanCss }}">{{ t.detail.rescanLabel }}</button>
+                            <sc-if value="{{ t.detail.canVerify }}" hint-placeholder-val="{{ false }}">
+                              <button onClick="{{ t.detail.verifyGo }}" style="padding:6px 12px;border-radius:7px;border:1px solid rgba(94,234,212,.45);background:rgba(94,234,212,.1);color:#5eead4;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">Re-scan now</button>
+                            </sc-if>
+                            <button onClick="{{ t.detail.handGo }}" style="padding:6px 12px;border-radius:7px;border:1px solid rgba(0,120,212,.5);background:rgba(0,120,212,.14);color:#bfdbfe;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">Hand it to Shane</button>
+                            <button onClick="{{ t.detail.skipGo }}" style="padding:6px 12px;border-radius:7px;border:1px solid rgba(148,163,184,.2);background:transparent;color:#64748b;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">{{ t.detail.skipLabel }}</button>
+                          </div>
+                        </div>
                       </sc-if>
-                      <span onMouseEnter="{{ t.owner.enter }}" onMouseLeave="{{ t.owner.leave }}" onClick="{{ t.owner.click }}" title="{{ t.owner.name }}" style="{{ t.owner.css }}">{{ t.owner.init }}</span>
                     </div>
                   </sc-for>
                 </div>
               </div>
             </sc-for>
+
+            <div style="display:flex;flex-direction:column;gap:9px;padding:16px 18px;border:1px solid rgba(244,114,182,.28);border-radius:13px;background:rgba(244,114,182,.05)">
+              <div style="display:flex;flex-direction:column;gap:3px">
+                <span style="font-size:9px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#f472b6">Drift and re-remediation</span>
+                <span style="font-size:12px;color:#cbd5e1;line-height:1.6;max-width:80ch;text-wrap:pretty">Completed tasks stay monitored. When a setting reverses, a policy disappears or PII re-exposes, the scan raises a new task against the original and it carries its own CR.</span>
+              </div>
+              <sc-for list="{{ rt.driftItems }}" as="d" hint-placeholder-count="2">
+                <button onClick="{{ d.go }}" style="display:flex;flex-direction:column;gap:3px;padding:11px 13px;border:1px solid rgba(30,41,59,.9);border-radius:10px;background:rgba(15,23,42,.5);cursor:pointer;font-family:inherit;text-align:left">
+                  <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+                    <span style="flex:1 1 220px;min-width:0;font-size:12.5px;font-weight:700;color:#e2e8f0;line-height:1.4;text-wrap:pretty">{{ d.title }}</span>
+                    <span style="{{ d.sevCss }}">{{ d.sev }}</span>
+                  </div>
+                  <span style="font-size:11px;color:#94a3b8;line-height:1.5;text-wrap:pretty">{{ d.detected }}</span>
+                  <span style="font-size:10px;color:#64748b;font-family:'SF Mono',Menlo,Consolas,monospace">{{ d.origin }}</span>
+                </button>
+              </sc-for>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:9px;padding:16px 18px;border:1px solid rgba(167,139,250,.28);border-radius:13px;background:rgba(167,139,250,.05)">
+              <div style="display:flex;flex-direction:column;gap:3px">
+                <span style="font-size:9px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#a78bfa">Microsoft Message Center</span>
+                <span style="font-size:12px;color:#cbd5e1;line-height:1.6;max-width:80ch;text-wrap:pretty">Posts with tenant impact, read against your configuration. Map one to a change request or add it to the plan so Microsoft's baseline and yours stay in step.</span>
+              </div>
+              <sc-for list="{{ rt.mc }}" as="m" hint-placeholder-count="3">
+                <div style="display:flex;flex-direction:column;gap:5px;padding:12px 14px;border:1px solid rgba(30,41,59,.9);border-radius:10px;background:rgba(15,23,42,.5)">
+                  <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+                    <span style="font-size:9.5px;font-weight:800;color:#a78bfa;font-family:'SF Mono',Menlo,Consolas,monospace">{{ m.id }}</span>
+                    <span style="flex:1 1 220px;min-width:0;font-size:12.5px;font-weight:700;color:#e2e8f0;line-height:1.4;text-wrap:pretty">{{ m.title }}</span>
+                    <span style="{{ m.needCss }}">{{ m.need }}</span>
+                  </div>
+                  <span style="font-size:11.5px;color:#94a3b8;line-height:1.6;text-wrap:pretty">{{ m.impact }}</span>
+                  <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+                    <span style="font-size:10px;color:#64748b;font-family:'SF Mono',Menlo,Consolas,monospace">{{ m.when }}</span>
+                    <button onClick="{{ m.taskGo }}" style="padding:5px 11px;border-radius:7px;border:1px solid rgba(148,163,184,.22);background:transparent;color:#94a3b8;font-size:10.5px;font-weight:700;cursor:pointer;font-family:inherit">{{ m.taskLabel }}</button>
+                    <button onClick="{{ m.crGo }}" style="padding:5px 11px;border-radius:7px;border:1px solid rgba(167,139,250,.45);background:rgba(167,139,250,.12);color:#c4b5fd;font-size:10.5px;font-weight:700;cursor:pointer;font-family:inherit">Map to a change request</button>
+                    <button onClick="{{ m.mcGo }}" style="padding:5px 11px;border-radius:7px;border:1px solid rgba(148,163,184,.22);background:transparent;color:#94a3b8;font-size:10.5px;font-weight:700;cursor:pointer;font-family:inherit">Open Microsoft Changes</button>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
           </div>
         </div>
       </sc-if>
@@ -7241,6 +7457,15 @@ class Component extends DCLogic {
     rbFilter: null,
     rbOpen: null,
     rtFilter: null,
+    rtVerified: {},
+    rtRescan: {},
+    rtCr: {},
+    rtEv: {},
+    rtHold: {},
+    rtPhaseSel: null,
+    rtStateSel: null,
+    rtOpen: null,
+    rtExec: {},
     spSel: 'governance',
     piiFilter: null,
     piiOpen: null,
@@ -8319,6 +8544,33 @@ class Component extends DCLogic {
       }
     }, 650);
   };
+  rtRunbook = (id, steps) => {
+    clearInterval(this._rtTimer);
+    this.setState(s => ({ rtExec: { ...(s.rtExec || {}), [id]: { i: -1, n: steps.length, running: true, label: 'Connecting to Graph…' } } }));
+    let i = 0;
+    this._rtTimer = setInterval(() => {
+      i++;
+      const at = i;
+      this.setState(s => ({ rtExec: { ...(s.rtExec || {}), [id]: { i: at - 1, n: steps.length, running: at < steps.length, label: steps[at - 1] } } }));
+      if (i >= steps.length) {
+        clearInterval(this._rtTimer);
+        setTimeout(() => this.setState(s => ({
+          rtExec: { ...(s.rtExec || {}), [id]: { i: steps.length, n: steps.length, running: false, done: true, at: '09:12' } },
+          rtTicked: { ...(s.rtTicked || {}), [id]: true },
+          rtEv: { ...(s.rtEv || {}), [id]: 'submitted' },
+        })), 450);
+      }
+    }, 620);
+  };
+  rtRollback = (id) => {
+    clearInterval(this._rtTimer);
+    this.setState(s => ({
+      rtExec: { ...(s.rtExec || {}), [id]: null },
+      rtTicked: { ...(s.rtTicked || {}), [id]: false },
+      rtVerified: { ...(s.rtVerified || {}), [id]: false },
+      rtEv: { ...(s.rtEv || {}), [id]: 'missing' },
+    }));
+  };
   runRollback = (steps) => {
     this._fixStepsCache = steps;
     this.setState({ fixPanelStep: 'progress', fixProgressDirection: 'reverse', fixProgressIdx: steps.length, fixProgressPct: 100, fixProgressStatus: 'Starting rollback…' });
@@ -8816,7 +9068,15 @@ class Component extends DCLogic {
           { key: 'review', label: 'Change review', title: 'Agenda, minutes, reviews due' },
         ] },
         { key: 'operate-runbooks', label: 'Active Runbooks', icon: 'play-circle', title: 'Active Runbooks — procedures in progress, including hold windows', badge: holdDue ? holdDue + ' due' : (holdEarly ? 'early' : null), urgent: !!holdDue },
-        { key: 'remediation', label: 'Remediation Tracker', icon: 'check-circle', title: 'Remediation Tracker — findings being closed, and what closed them' },
+        { key: 'remediation', label: 'Remediation Tracker', icon: 'check-circle', title: 'Remediation Tracker — findings being closed, and what closed them', subs: [
+          { key: 'discovery', label: 'Discovery', title: 'Target 12 August' },
+          { key: 'stabilization', label: 'Stabilization', title: 'Target 26 August' },
+          { key: 'baseline', label: 'Baseline', title: 'Target 9 September' },
+          { key: 'hardening', label: 'Hardening', title: 'Target 30 September' },
+          { key: 'copilot', label: 'Copilot Readiness', title: 'Target 21 October' },
+          { key: 'drift', label: 'Drift Cleanup', title: 'Target 4 November' },
+          { key: 'identity', label: 'Identity Hygiene', title: 'Target 18 November' },
+        ] },
         { key: 'policy-decisions', label: 'Policy Decisions', icon: 'file-text', title: 'Policy Decisions — gaps you have decided to live with, with an owner and a review date', badge: cmpPolicyDue ? cmpPolicyDue + ' due' : '' },
       ] },
       { label: 'Governance', items: [
@@ -8874,10 +9134,11 @@ class Component extends DCLogic {
           const isOwn = o.key === 'ownership';
           const isSop = o.key === 'sop-hub';
           const isMsc = o.key === 'ms-changes';
-          const on = isOwn ? (this.state.ownType || 'all') === sb.key : isSop ? (this.state.sopTab || 'library') === sb.key : isMsc ? String(this.state.mscWave || '0') === sb.key : ccView === sb.key;
+          const isRem = o.key === 'remediation';
+          const on = isOwn ? (this.state.ownType || 'all') === sb.key : isSop ? (this.state.sopTab || 'library') === sb.key : isMsc ? String(this.state.mscWave || '0') === sb.key : isRem ? this.state.rtPhaseSel === sb.key : ccView === sb.key;
           return {
             label: sb.label, title: sb.title || sb.label,
-            go: () => this.setState(isOwn ? { active: o.key, ownType: sb.key } : isSop ? { active: o.key, sopTab: sb.key } : isMsc ? { active: o.key, mscWave: sb.key } : { active: o.key, ccView: sb.key }),
+            go: () => this.setState(st2 => isOwn ? { active: o.key, ownType: sb.key } : isSop ? { active: o.key, sopTab: sb.key } : isMsc ? { active: o.key, mscWave: sb.key } : isRem ? { active: o.key, rtPhaseSel: st2.rtPhaseSel === sb.key ? null : sb.key, rtStateSel: null, rtOpen: null } : { active: o.key, ccView: sb.key }),
             css: 'display:flex;flex-direction:column;gap:4px;width:100%;text-align:left;padding:8px 10px 9px 20px;border-radius:8px;border:1px solid ' + (on ? 'rgba(0,120,212,.5)' : 'transparent') + ';background:' + (on ? 'rgba(0,120,212,.12)' : 'transparent') + ';cursor:pointer;font-family:inherit;white-space:nowrap;overflow:hidden',
             nameCss: 'font-size:12px;font-weight:' + (on ? '800' : '600') + ';color:' + (on ? '#f8fafc' : '#94a3b8') + ';line-height:1.3;overflow:hidden;text-overflow:ellipsis',
             key: sb.key, barsVisible: false, count: '', range: '', bars: [], meta: '', countCss: '', rangeCss: '', metaCss: '',
@@ -15708,6 +15969,41 @@ class Component extends DCLogic {
     const rtSevMeta = { Critical: '#f87171', Attention: '#fbbf24', 'Low risk': '#94a3b8' };
     const rtPillarColor = { governance: '#3B82F6', security: '#8B5CF6', compliance: '#cbd5e1', licensing: '#14B8A6', adoption: '#F97316', health: '#22C55E' };
     const rtPillarScores = { governance: 34, security: 38, compliance: 29, licensing: 57, adoption: 46, health: 44 };
+    const rtPillarTargets = { governance: 61, security: 72, compliance: 58, licensing: 79, adoption: 68, health: 70 };
+    const rtVerifiedState = this.state.rtVerified || {};
+    const rtVerifiedSeed = { p1a: true, p1g: true };
+    const rtIsVerified = (t) => rtIsDone(t) && (rtVerifiedState[t.id] != null ? rtVerifiedState[t.id] : !!rtVerifiedSeed[t.id]);
+    const RT_RESCAN = [
+      { k: 'nightly', label: 'Scan 15 · tonight 02:00' },
+      { k: 'weekly', label: 'Scan 18 · Mon 26 Aug' },
+      { k: 'window', label: 'When the window closes · 24 Aug' },
+    ];
+    const rtRescanState = this.state.rtRescan || {};
+    const rtRescanFor = (t) => RT_RESCAN.find(r => r.k === (rtRescanState[t.id] || 'nightly')) || RT_RESCAN[0];
+    // Every configuration change is worth a known number of pillar points, weighted by
+    // severity, so the pillar reaches exactly its remediated target when all of it is closed.
+    const RT_W = { Critical: 3, Attention: 2, 'Low risk': 1 };
+    const rtPoints = {};
+    Object.keys(rtPillarScores).forEach(k => {
+      const ts = rtAllTasks.filter(t => t.pillar === k);
+      const sumW = ts.reduce((a, t) => a + (RT_W[t.sev] || 1), 0);
+      const gap = rtPillarTargets[k] - rtPillarScores[k];
+      let acc = 0;
+      ts.forEach((t, i) => {
+        const p = i === ts.length - 1 ? gap - acc : Math.round(gap * (RT_W[t.sev] || 1) / sumW);
+        rtPoints[t.id] = p; acc += p;
+      });
+    });
+    const rtPillarLive = (k) => {
+      const ts = rtAllTasks.filter(t => t.pillar === k);
+      let conf = 0, pend = 0, forfeit = 0;
+      ts.forEach(t => {
+        if (rtSkippedState[t.id]) { forfeit += rtPoints[t.id]; return; }
+        if (rtIsVerified(t)) conf += rtPoints[t.id];
+        else if (rtIsDone(t)) pend += rtPoints[t.id];
+      });
+      return { base: rtPillarScores[k], now: rtPillarScores[k] + conf, pending: pend, forfeit: forfeit, target: rtPillarTargets[k] };
+    };
     const rtRemaining = RT_PHASES.reduce((a, p) => {
       const open = p.tasks.filter(t => !rtIsDone(t) && !rtSkippedState[t.id]).length;
       return a + Math.round(p.fee * (open / p.tasks.length));
@@ -20379,64 +20675,500 @@ class Component extends DCLogic {
       }),
       isRemediation,
       // Not a project plan and not a quote — a run-down of what has been fixed and what has not.
-      rtRun: (() => {
-        const pillars = { governance: 'Governance', security: 'Security', compliance: 'Compliance', licensing: 'Licensing', adoption: 'Adoption', health: 'Health' };
-        const routeFor = (t) => t.shane ? { label: 'We run it', c: '#60a5fa' } : t.sev === 'Critical' ? { label: 'Runbook', c: '#22d3ee' } : { label: 'Your team', c: '#94a3b8' };
-        const stateFor = (t) => {
-          if (rtSkippedState[t.id]) return { k: 'accepted', label: 'Accepted as-is', c: '#a78bfa' };
-          if (rtIsDone(t)) return t.verified ? { k: 'verified', label: 'Verified', c: '#34d399' } : { k: 'done', label: 'Awaiting re-scan', c: '#5eead4' };
-          if (t.sev === 'Critical') return { k: 'open', label: 'Not started', c: '#f87171' };
-          return { k: 'open', label: 'Not started', c: '#fbbf24' };
+      rt: (() => {
+        const mono = "font-family:'SF Mono',Menlo,Consolas,monospace";
+        const CR_STAGES = ['Prepare', 'SIA / CIA', 'Rollback plan', 'Submit', 'Approve', 'Execute', 'Evidence'];
+        const PH = [
+          { k: 'discovery', n: '01', name: 'Discovery', due: '12 August', status: 'Complete' },
+          { k: 'stabilization', n: '02', name: 'Stabilization', due: '26 August', status: 'On Track' },
+          { k: 'baseline', n: '03', name: 'Baseline', due: '9 September', status: 'At Risk' },
+          { k: 'hardening', n: '04', name: 'Hardening', due: '30 September', status: 'On Track' },
+          { k: 'copilot', n: '05', name: 'Copilot Readiness', due: '21 October', status: 'Blocked' },
+          { k: 'drift', n: '06', name: 'Drift Cleanup', due: '4 November', status: 'On Track' },
+          { k: 'identity', n: '07', name: 'Identity Hygiene', due: '18 November', status: 'On Track' },
+        ];
+        // ph phase · pl pillar · sv severity · ef effort · crs CR stage (7 = closed) · evst evidence state
+        const T = [
+          { id: 'd1', ph: 'discovery', pl: 'governance', t: 'Baseline read of all 1,847 sites and 96 teams', pr: '212 sites are shared org-wide and no inventory existed.', fx: 'Read-only Graph enumeration of every site, team and sharing link, filed as the scan-1 baseline.',
+            sv: 'Low risk', ef: '4h', fee: 0, bill: 'Retainer', cr: false, crs: 7, evst: 'approved', ev: ['Graph response set, 1,847 sites', 'Scan 1 verdict, 3 August 06:00'], hold: null, dep: [],
+            pb: 'PB-01 Tenant enumeration', gr: ['GET /sites?search=*', 'GET /groups?$filter=resourceProvisioningOptions/Any(x:x eq \'Team\')'], mn: [], done: true, drift: null, mc: null },
+          { id: 'd2', ph: 'discovery', pl: 'security', t: 'Identity and MFA inventory across 1,240 users', pr: '14 accounts had no MFA and nobody knew which.', fx: 'Full registration-detail read, cross-checked against directory role assignments.',
+            sv: 'Low risk', ef: '3h', fee: 0, bill: 'Retainer', cr: false, crs: 7, evst: 'approved', ev: ['authenticationMethods export, 1,240 users', 'Privileged role assignment list'], hold: null, dep: [],
+            pb: 'PB-02 Identity inventory', gr: ['GET /reports/authenticationMethods/userRegistrationDetails', 'GET /roleManagement/directory/roleAssignments'], mn: [], done: true, drift: null, mc: null },
+          { id: 'd3', ph: 'discovery', pl: 'compliance', t: 'Label and DLP coverage report', pr: '61% of content carries no sensitivity label and Teams chat has no DLP.', fx: 'Coverage read across labels, DLP policies and retention scope, per workload.',
+            sv: 'Low risk', ef: '5h', fee: 0, bill: 'Retainer', cr: false, crs: 7, evst: 'submitted', ev: ['Label coverage export', 'DLP policy scope, 9 workloads'], hold: null, dep: [],
+            pb: 'PB-03 Purview coverage', gr: ['GET /security/informationProtection/labelPolicySettings'], mn: ['Export DLP policy scope from Purview'], done: true, drift: null, mc: null },
+
+          { id: 's1', ph: 'stabilization', pl: 'security', t: 'Audit and fix MFA on the 11 admin accounts', pr: '14 accounts without MFA. Four are Global Admins.', fx: 'Enforce registration, revoke sessions and confirm each method is phishing-resistant.',
+            sv: 'Critical', ef: '6h', fee: 1450, bill: 'Billed', cr: true, crs: 6, evst: 'submitted', ev: ['Post-change method export', 'Session revocation log', 'Approver identity, D. Whitmore'], hold: null, dep: [],
+            pb: 'PB-11 Admin MFA enforcement', gr: ['POST /users/{id}/authentication/methods', 'POST /users/{id}/revokeSignInSessions'], mn: ['Confirm each admin re-registers within 24h'], done: true, drift: null, mc: null },
+          { id: 's3', ph: 'stabilization', pl: 'governance', t: 'Close org-wide sharing on the four sensitive sites', pr: 'Four sites holding regulated content are open to everyone in the tenant.', fx: 'Remove the org-wide link, re-permission from the owner group, notify affected members.',
+            sv: 'Critical', ef: '8h', fee: 2100, bill: 'Billed', cr: true, crs: 5, evst: 'missing', ev: ['Permission set before and after', 'Owner sign-off per site'], dep: [],
+            hold: { left: '36h', of: '72h', verdict: 'Clear at scan 14', state: 'running', why: 'A 72-hour window runs before the second site batch, so a wrongly removed permission surfaces while it is still cheap to reverse.' },
+            pb: 'PB-14 Sharing link removal', gr: ['DELETE /sites/{id}/permissions/{permId}'], mn: ['Notify the 38 members who lose access'], done: false, drift: null, mc: null },
+          { id: 's5', ph: 'stabilization', pl: 'governance', t: 'Revoke the 2,940 existing anonymous links', pr: '2,940 anonymous links, none of them expiring.', fx: 'Bulk revoke by age band, oldest first, with an owner notification per site.',
+            sv: 'Critical', ef: '12h', fee: 2800, bill: 'Billed', cr: true, crs: 0, evst: 'missing', ev: ['Revocation log per link', 'Owner notification receipts'], hold: null, dep: ['s3'],
+            pb: 'PB-15 Anonymous link revocation', gr: ['DELETE /shares/{shareId}'], mn: ['Agree the age bands with the site owners'], done: false, drift: null, mc: 'MC1098234' },
+          { id: 's2', ph: 'stabilization', pl: 'security', t: 'Reduce 11 standing Global Admins to 2', pr: 'Eleven permanent Global Admins, nine of them unused in 90 days.', fx: 'Move nine to eligible-only under PIM, keep two break-glass accounts excluded.',
+            sv: 'Critical', ef: '10h', fee: 2400, bill: 'Billed', cr: true, crs: 4, evst: 'missing', ev: ['PIM assignment export', 'Break-glass account attestation'], hold: null, dep: [],
+            pb: 'PB-12 Privileged role reduction', gr: ['POST /roleManagement/directory/roleEligibilityScheduleRequests'], mn: ['Confirm break-glass credentials are sealed and tested'], done: false, drift: null, mc: null },
+          { id: 's4', ph: 'stabilization', pl: 'security', t: 'Reinstate the Finance Safe Links policy', pr: 'Policy disabled 14 June, unrecorded, never re-enabled.', fx: 'Re-enable with the original scope and add it to the signed baseline.',
+            sv: 'Attention', ef: '2h', fee: 480, bill: 'Retainer', cr: true, crs: 1, evst: 'missing', ev: ['Policy state before and after'], hold: null, dep: [],
+            pb: 'PB-13 Defender policy restore', gr: [], mn: ['Re-enable in Defender, compare against the 13 June export'], done: false, drift: null, mc: null },
+
+          { id: 'b1', ph: 'baseline', pl: 'health', t: 'Capture a signed configuration baseline', pr: 'No baseline on record, so nothing can be called drift.', fx: 'Snapshot every monitored setting, have it signed, and pin it as the comparison point.',
+            sv: 'Critical', ef: '6h', fee: 1600, bill: 'Billed', cr: false, crs: 7, evst: 'missing', ev: ['Signed baseline document', 'Hash of the configuration snapshot'], hold: null, dep: [],
+            pb: 'PB-21 Baseline capture', gr: ['GET /policies', 'GET /admin/sharepoint/settings'], mn: ['Counter-signature from the IT owner'], done: false, drift: null, mc: null },
+          { id: 'b2', ph: 'baseline', pl: 'governance', t: 'Expire all future anonymous links', pr: 'Anonymous links are created with no expiry by default.', fx: 'Set a 30-day tenant default and a 30-day cap at site level.',
+            sv: 'Attention', ef: '1h', fee: 0, bill: 'Retainer', cr: true, crs: 7, evst: 'approved', ev: ['Tenant setting before and after'], hold: null, dep: [],
+            pb: 'PB-22 Sharing defaults', gr: ['PATCH /admin/sharepoint/settings'], mn: [], done: true, drift: null, mc: 'MC1098234' },
+          { id: 'b3', ph: 'baseline', pl: 'governance', t: 'Apply a 12-month lifecycle policy', pr: '148 sites inactive for more than a year, none of them reviewed.', fx: 'Attestation at 12 months, archive at 15, delete at 18, with owner escalation.',
+            sv: 'Attention', ef: '5h', fee: 1250, bill: 'Billed', cr: true, crs: 2, evst: 'missing', ev: ['Policy definition', 'First attestation run output'], hold: null, dep: [],
+            pb: 'PB-23 Site lifecycle', gr: [], mn: ['Agree the archive destination and retention overlap'], done: false, drift: null, mc: null },
+          { id: 'b4', ph: 'baseline', pl: 'compliance', t: 'Raise audit log retention above 90 days', pr: '90-day audit retention, below the one-year obligation in the ISMS.', fx: 'Move to a 365-day audit retention policy on the privileged and file activity sets.',
+            sv: 'Attention', ef: '2h', fee: 0, bill: 'Retainer', cr: true, crs: 7, evst: 'approved', ev: ['Retention policy export', 'Sample query over day 120'], hold: null, dep: [],
+            pb: 'PB-24 Audit retention', gr: [], mn: [], done: true, drift: null, mc: null },
+
+          { id: 'h2', ph: 'hardening', pl: 'security', t: 'Scope Conditional Access to privileged roles', pr: 'No CA policy targeted privileged roles.', fx: 'Require phishing-resistant MFA and a compliant device for every privileged role.',
+            sv: 'Critical', ef: '7h', fee: 1900, bill: 'Billed', cr: true, crs: 7, evst: 'approved', ev: ['Policy JSON, report-only then enforced', 'What-if results for 12 accounts', 'Approver identity, S. McCaw'], hold: null, dep: [],
+            pb: 'PB-31 Privileged CA', gr: ['POST /identity/conditionalAccess/policies'], mn: [], done: true, drift: null, mc: null },
+          { id: 'h1', ph: 'hardening', pl: 'security', t: 'Disable legacy authentication', pr: '1,106 legacy sign-ins in 30 days, mostly SMTP AUTH.', fx: 'Block legacy auth tenant-wide after moving the four service accounts to modern auth.',
+            sv: 'Critical', ef: '9h', fee: 2200, bill: 'Billed', cr: true, crs: 6, evst: 'submitted', ev: ['Legacy sign-in count before and after', 'Service account migration log'], dep: [],
+            hold: { left: '4h', of: '48h', verdict: 'Clear at scan 14, no legacy sign-ins in 41h', state: 'closing', why: 'The block stays report-only for 48 hours so a missed service account shows up as a failed sign-in, not an outage.' },
+            pb: 'PB-32 Legacy auth block', gr: ['POST /identity/conditionalAccess/policies'], mn: ['Confirm the four service accounts before enforcing'], done: false, drift: null, mc: 'MC1105442' },
+          { id: 'h3', ph: 'hardening', pl: 'compliance', t: 'Extend DLP to Teams chat and OneDrive', pr: 'No DLP policy covers Teams chat, where most regulated content now moves.', fx: 'Extend the existing policy set to chat and OneDrive, notify-only first, then block.',
+            sv: 'Critical', ef: '11h', fee: 2650, bill: 'Billed', cr: true, crs: 3, evst: 'missing', ev: ['Policy scope export', 'Two weeks of notify-only match data'], hold: null, dep: [],
+            pb: 'PB-33 DLP extension', gr: [], mn: ['Agree the notify-only period with the compliance owner'], done: false, drift: null, mc: null },
+          { id: 'h4', ph: 'hardening', pl: 'security', t: 'Take device compliance out of report-only', pr: '88 non-compliant devices still reach tenant data.', fx: 'Enforce the compliance grant after a two-week remediation window for the 88.',
+            sv: 'Attention', ef: '6h', fee: 1400, bill: 'Billed', cr: true, crs: 5, evst: 'missing', ev: ['Non-compliant device list, before and after', 'Helpdesk ticket references'], hold: null, dep: [],
+            pb: 'PB-34 Device compliance enforcement', gr: ['GET /deviceManagement/managedDevices'], mn: ['Chase the 88 device owners through the service desk'], done: false, drift: null, mc: null },
+
+          { id: 'c1', ph: 'copilot', pl: 'compliance', t: 'Publish a mandatory baseline label set', pr: '61% of content is unlabelled, so Copilot has no instruction to obey.', fx: 'Four labels published in order, piloted for two weeks, then defaulted.',
+            sv: 'Critical', ef: '14h', fee: 3400, bill: 'Billed', cr: true, crs: 0, evst: 'missing', ev: ['Label definitions', 'Pilot group feedback', 'Publication order sign-off'], hold: null, dep: ['h3'],
+            pb: 'PB-41 Label taxonomy rollout', gr: [], mn: ['Board pack owners confirm the marking wording'], done: false, drift: null, mc: null },
+          { id: 'c2', ph: 'copilot', pl: 'compliance', t: 'Auto-label regulated content', pr: '690 PII, 412 financial and 84 PHI documents carry no label.', fx: 'Auto-labelling policies per classifier, simulation first, then enforce.',
+            sv: 'Attention', ef: '10h', fee: 2400, bill: 'Billed', cr: true, crs: 1, evst: 'missing', ev: ['Simulation results per classifier', 'False-positive review notes'], hold: null, dep: ['c1'],
+            pb: 'PB-42 Auto-labelling', gr: [], mn: ['Review the first 100 simulated matches with the data owner'], done: false, drift: null, mc: null },
+          { id: 'c3', ph: 'copilot', pl: 'licensing', t: 'Reclaim the 22 dormant Copilot seats', pr: '22 Copilot seats unused for 60 days, $18,400 a year.', fx: 'Fourteen-day notice, then reclaim and hold six for the executive pilot.',
+            sv: 'Attention', ef: '3h', fee: 0, bill: 'Retainer', cr: true, crs: 7, evst: 'approved', ev: ['Usage export per seat', 'Notice sent to 22 users', 'Reclaim confirmation'], hold: null, dep: [],
+            pb: 'PB-43 Seat reclamation', gr: ['DELETE /users/{id}/assignLicense'], mn: [], done: true, drift: null, mc: null },
+          { id: 'c4', ph: 'copilot', pl: 'licensing', t: 'Reconcile the 47 mismatched SKU assignments', pr: '47 assignments sit outside the licensing pattern for their role.', fx: 'Reconcile against the role matrix and move the 31 legacy group licences.',
+            sv: 'Attention', ef: '7h', fee: 1700, bill: 'Billed', cr: true, crs: 6, evst: 'missing', ev: ['Assignment diff, before and after'], hold: null, dep: [],
+            pb: 'PB-44 SKU reconciliation', gr: ['POST /users/{id}/assignLicense'], mn: ['Confirm the role matrix with HR'], done: false, drift: null, mc: null },
+
+          { id: 'dr1', ph: 'drift', pl: 'governance', t: 'Re-close org-wide sharing on two sites that reverted', pr: 'Two of the four sites were re-shared org-wide on 12 August, six days after the fix.', fx: 'Re-remove the link, then put the two sites under a sharing-change alert.',
+            sv: 'Critical', ef: '3h', fee: 720, bill: 'Retainer', cr: true, crs: 2, evst: 'missing', ev: ['Drift detection record, scan 13', 'Permission set after re-close'], hold: null, dep: [],
+            pb: 'PB-14 Sharing link removal', gr: ['DELETE /sites/{id}/permissions/{permId}'], mn: ['Ask the site owner why it was re-shared'], done: false, drift: 's3', mc: null },
+          { id: 'dr2', ph: 'drift', pl: 'security', t: 'Re-enable CA01 and remove the 14 June exclusion', pr: 'CA01 was disabled and an exclusion group added, outside any change window.', fx: 'Re-enable, remove the exclusion, and raise the change as unauthorised.',
+            sv: 'Attention', ef: '2h', fee: 480, bill: 'Retainer', cr: true, crs: 6, evst: 'submitted', ev: ['Policy JSON diff', 'Audit log entry for the 14 June change'], hold: null, dep: [],
+            pb: 'PB-31 Privileged CA', gr: ['PATCH /identity/conditionalAccess/policies/{id}'], mn: [], done: false, drift: 'h2', mc: null },
+          { id: 'dr3', ph: 'drift', pl: 'health', t: 'Put drift telemetry on the tenant', pr: '37 configuration changes in 90 days, none recorded or reviewed.', fx: 'Hourly configuration read against the signed baseline, alerting on deviation.',
+            sv: 'Critical', ef: '4h', fee: 0, bill: 'Retainer', cr: false, crs: 7, evst: 'missing', ev: ['First 24 hours of drift telemetry'], hold: null, dep: ['b1'],
+            pb: 'PB-51 Drift telemetry', gr: ['GET /policies', 'GET /admin/sharepoint/settings'], mn: [], done: false, drift: null, mc: null },
+          { id: 'dr4', ph: 'drift', pl: 'health', t: 'Resolve the 214 OneDrive sync errors', pr: '214 clients reporting sync errors, most on path length.', fx: 'Fix the path-length offenders, then re-baseline the sync health report.',
+            sv: 'Attention', ef: '8h', fee: 1900, bill: 'Billed', cr: false, crs: 7, evst: 'missing', ev: ['Sync error count before and after'], hold: null, dep: [],
+            pb: 'PB-52 Sync remediation', gr: [], mn: ['Rename the 41 offending folder paths with the owners'], done: false, drift: null, mc: null },
+
+          { id: 'i1', ph: 'identity', pl: 'licensing', t: 'Move to group-based licensing', pr: '31 licences still come from legacy direct assignment.', fx: 'Group-based assignment per role, with direct assignments removed after verification.',
+            sv: 'Low risk', ef: '5h', fee: 1200, bill: 'Billed', cr: true, crs: 5, evst: 'missing', ev: ['Group membership export', 'Assignment diff'], hold: null, dep: ['c4'],
+            pb: 'PB-61 Group licensing', gr: ['PATCH /groups/{id}/assignLicense'], mn: [], done: false, drift: null, mc: null },
+          { id: 'i6', ph: 'identity', pl: 'governance', t: 'Put Teams creation behind a request', pr: '61 teams, 22 of them with a single member.', fx: 'Restrict creation to a request flow with an owner and a purpose recorded.',
+            sv: 'Attention', ef: '6h', fee: 1450, bill: 'Billed', cr: true, crs: 4, evst: 'missing', ev: ['Directory setting before and after', 'Request form definition'], hold: null, dep: [],
+            pb: 'PB-62 Team provisioning', gr: ['PATCH /groupSettings/{id}'], mn: ['Publish the request route to the service desk'], done: false, drift: null, mc: null },
+          { id: 'i7', ph: 'identity', pl: 'compliance', t: 'Extend retention to the six uncovered workloads', pr: 'Retention covers 3 of 9 workloads, including nothing in Teams chat.', fx: 'One policy per workload, scoped to the obligation that requires it.',
+            sv: 'Critical', ef: '9h', fee: 2200, bill: 'Billed', cr: true, crs: 1, evst: 'missing', ev: ['Policy scope per workload', 'Obligation mapping'], hold: null, dep: [],
+            pb: 'PB-63 Retention extension', gr: [], mn: ['Confirm the retention period per obligation with legal'], done: false, drift: null, mc: 'MC1102771' },
+          { id: 'i5', ph: 'identity', pl: 'health', t: 'Attest and dispose of 148 inactive sites', pr: '148 sites inactive over a year, 19 channels orphaned.', fx: 'Owner attestation, then archive or delete under the lifecycle policy.',
+            sv: 'Attention', ef: '10h', fee: 2400, bill: 'Billed', cr: true, crs: 6, evst: 'missing', ev: ['Attestation responses per site', 'Disposal log', 'Archive location record'], hold: null, dep: ['b3'],
+            pb: 'PB-64 Site disposal', gr: ['DELETE /sites/{id}'], mn: ['Chase the 22 owners who have not attested'], done: false, drift: null, mc: null },
+          { id: 'i2', ph: 'identity', pl: 'adoption', t: 'Pull the real usage baseline', pr: '412 users have not opened Teams in 30 days.', fx: 'Per-department usage baseline so enablement is aimed where it pays.',
+            sv: 'Low risk', ef: '3h', fee: 0, bill: 'Retainer', cr: false, crs: 7, evst: 'approved', ev: ['Usage report per department'], hold: null, dep: [],
+            pb: 'PB-71 Usage baseline', gr: ['GET /reports/getTeamsUserActivityUserDetail'], mn: [], done: true, drift: null, mc: null },
+          { id: 'i8', ph: 'identity', pl: 'adoption', t: 'Move one recurring workflow per department into Teams', pr: 'Operations at 38% and Field Services at 26% of expected use.', fx: 'One recurring workflow per department moved, measured on the same usage data.',
+            sv: 'Attention', ef: '12h', fee: 2900, bill: 'Billed', cr: false, crs: 7, evst: 'missing', ev: ['Workflow definition per department', 'Usage delta after four weeks'], hold: null, dep: ['i2'],
+            pb: 'PB-72 Workflow migration', gr: [], mn: ['Run the workshop with each department lead'], done: false, drift: null, mc: null },
+          { id: 'i3', ph: 'identity', pl: 'adoption', t: 'Train the three ready personas', pr: '516 users need fundamentals before Copilot means anything.', fx: 'Three persona sessions, recorded, with a prompt drip in Teams afterwards.',
+            sv: 'Low risk', ef: '16h', fee: 3800, bill: 'Billed', cr: false, crs: 7, evst: 'missing', ev: ['Attendance per session', 'Post-session usage delta'], hold: null, dep: ['i2'],
+            pb: 'PB-73 Persona enablement', gr: [], mn: ['Book the three sessions with the department leads'], done: false, drift: null, mc: null },
+        ];
+        const byId = {}; T.forEach(t => { byId[t.id] = t; });
+        const phName = {}; PH.forEach(p => { phName[p.k] = p.name; });
+        const pillarName = { governance: 'Governance', security: 'Security', compliance: 'Compliance', licensing: 'Licensing', adoption: 'Adoption', health: 'Health' };
+
+        const crStageOf = (t) => { const s = (this.state.rtCr || {})[t.id]; return s != null ? s : t.crs; };
+        const evStateOf = (t) => { const s = (this.state.rtEv || {})[t.id]; return s || t.evst; };
+        const holdStateOf = (t) => { const s = (this.state.rtHold || {})[t.id]; return s || (t.hold ? t.hold.state : null); };
+        const doneOf = (t) => { const s = (this.state.rtTicked || {})[t.id]; return s != null ? s : !!t.done; };
+        const verOf = (t) => doneOf(t) && ((this.state.rtVerified || {})[t.id] != null ? this.state.rtVerified[t.id] : ['d1', 'd2', 'b2', 'b4', 'h2', 'c3', 'i2'].indexOf(t.id) > -1);
+        const skipOf = (t) => !!(this.state.rtSkipped || {})[t.id];
+        const scoredOf = (t) => doneOf(t) && evStateOf(t) === 'approved' && verOf(t);
+
+        // Severity-weighted points per pillar: a pillar hits its remediated target when all of it is scored.
+        const W = { Critical: 3, Attention: 2, 'Low risk': 1 };
+        const pts = {};
+        Object.keys(pillarName).forEach(k => {
+          const ts = T.filter(t => t.pl === k);
+          const sum = ts.reduce((a, t) => a + W[t.sv], 0);
+          const gap = rtPillarTargets[k] - rtPillarScores[k];
+          let acc = 0;
+          ts.forEach((t, i) => { const p = i === ts.length - 1 ? gap - acc : Math.round(gap * W[t.sv] / sum); pts[t.id] = p; acc += p; });
+        });
+        const pillarLive = (k) => {
+          let conf = 0, pend = 0;
+          T.filter(t => t.pl === k).forEach(t => {
+            if (skipOf(t)) return;
+            if (scoredOf(t)) conf += pts[t.id]; else if (doneOf(t)) pend += pts[t.id];
+          });
+          return { base: rtPillarScores[k], now: rtPillarScores[k] + conf, pending: pend, target: rtPillarTargets[k] };
         };
-        const sel = this.state.rtFilter;
-        const all = rtAllTasks.map((t, i) => {
-          const st = stateFor(t), rt = routeFor(t);
-          const owner = this.raciChip(t.pillar, 20);
+
+        const ST = {
+          completed: { label: 'Completed', c: '#34d399' },
+          evidence: { label: 'Waiting for Evidence', c: '#fbbf24' },
+          held: { label: 'Held', c: '#22d3ee' },
+          blocked: { label: 'Blocked', c: '#f87171' },
+          wcr: { label: 'Waiting for CR', c: '#93c5fd' },
+          wapp: { label: 'Waiting for Approval', c: '#c4b5fd' },
+          progress: { label: 'In Progress', c: '#60a5fa' },
+          released: { label: 'Released', c: '#94a3b8' },
+          accepted: { label: 'Accepted as-is', c: '#a78bfa' },
+        };
+        const stateOf = (t) => {
+          if (skipOf(t)) return { k: 'accepted', next: 'A decision on the record. Reverse it to bring the points back into scope.' };
+          if (doneOf(t)) {
+            const ev = evStateOf(t);
+            if (ev !== 'approved') return { k: 'evidence', next: ev === 'submitted' ? 'Evidence submitted, waiting on approval before the task can close.' : 'File the evidence this task owes before it can close.' };
+            if (!verOf(t)) return { k: 'completed', next: 'Closed. Re-scan to bank the ' + pts[t.id] + ' points against ' + pillarName[t.pl] + '.' };
+            return { k: 'completed', next: 'Closed and verified at scan 14. Monitored for drift from here.' };
+          }
+          const dep = (t.dep || []).filter(d => !doneOf(byId[d]));
+          if (dep.length) return { k: 'blocked', next: 'Waiting on ' + byId[dep[0]].t + '.' };
+          const hs = holdStateOf(t);
+          if (t.hold && hs !== 'released') return { k: 'held', next: 'Hold window ' + (hs === 'closing' ? 'closing' : hs === 'extended' ? 'extended' : 'running') + ', ' + t.hold.left + ' left. Release, extend or close it early.' };
+          if (t.cr) {
+            const s = crStageOf(t);
+            if (s < 3) return { k: 'wcr', next: 'CR at ' + CR_STAGES[s] + '. Advance it to submit.' };
+            if (s < 5) return { k: 'wapp', next: 'CR submitted, waiting on ' + (s === 3 ? 'approval' : 'the execute window') + '.' };
+            if (s < 7) return { k: 'progress', next: 'CR approved and executing. Tick the task when the change is made.' };
+          }
+          return { k: 'released', next: 'Released to you. Tick it when the change has been made.' };
+        };
+
+        const selPhase = this.state.rtPhaseSel || null;
+        const selState = this.state.rtStateSel || null;
+        const open = this.state.rtOpen || null;
+
+        const mkRow = (t) => {
+          const s = stateOf(t), meta = ST[s.k], done = doneOf(t), ver = verOf(t), sc = scoredOf(t);
+          const sev = rtSevMeta[t.sv] || '#94a3b8', pc = rtPillarColor[t.pl];
+          const ev = evStateOf(t), crs = crStageOf(t), hs = holdStateOf(t);
+          const exec = (this.state.rtExec || {})[t.id] || null;
+          const isOpen = open === t.id;
+          const chip = (c, txt, dashed) => ({ txt: txt, css: 'flex:0 0 auto;padding:2px 7px;border-radius:5px;border:1px ' + (dashed ? 'dashed ' : 'solid ') + c + '44;background:' + (dashed ? 'transparent' : c + '10') + ';color:' + c + ';font-size:9px;font-weight:700;letter-spacing:.04em;white-space:nowrap;' + mono });
+          const canTick = !done && s.k !== 'blocked' && s.k !== 'accepted' && (!t.cr || crs >= 5) && (!t.hold || hs === 'released');
+          const rs = rtRescanFor(t);
           return {
-            id: t.id, title: t.title, ev: t.ev, sev: t.sev,
-            pillar: pillars[t.pillar] || t.pillar, pillarKey: t.pillar,
-            stateKey: st.k, stateLabel: st.label,
-            stateCss: 'flex:0 0 auto;padding:2px 8px;border-radius:5px;border:1px solid ' + st.c + '55;background:' + st.c + '14;font-size:9px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:' + st.c + ';white-space:nowrap',
-            routeLabel: rt.label,
-            routeCss: 'flex:0 0 auto;padding:2px 8px;border-radius:5px;border:1px solid ' + rt.c + '3d;background:transparent;font-size:9px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:' + rt.c + ';white-space:nowrap',
-            cr: t.shane && rtIsDone(t) ? 'CR-0' + (100 + (i % 40)) : '',
-            hasCr: !!(t.shane && rtIsDone(t)),
-            crGo: () => this.setState({ active: 'change-control', ccView: 'register' }),
-            owner: owner,
-            rowCss: 'display:flex;align-items:center;gap:11px;padding:10px 14px;border-left:2px solid ' + st.c + ';border-top:1px solid rgba(30,41,59,.75);flex-wrap:wrap',
-            go: () => this.setState({ active: t.pillar })
+            id: t.id, title: t.t, isOpen: isOpen,
+            openGo: () => this.setState(st2 => ({ rtOpen: st2.rtOpen === t.id ? null : t.id })),
+            rowCss: 'display:flex;flex-direction:column;gap:6px;padding:11px 13px;border-left:2px solid ' + meta.c + ';border-top:1px solid rgba(30,41,59,.75);background:' + (isOpen ? 'rgba(30,41,59,.35)' : sc ? 'rgba(52,211,153,.04)' : 'transparent'),
+            titleCss: 'font-size:12.5px;font-weight:600;line-height:1.4;text-wrap:pretty;color:' + (skipOf(t) ? '#64748b' : done ? '#cbd5e1' : '#e2e8f0') + ';text-decoration:' + (skipOf(t) ? 'line-through' : 'none'),
+            boxCss: 'flex:0 0 18px;width:18px;height:18px;border-radius:5px;display:flex;align-items:center;justify-content:center;padding:0;font-family:inherit;cursor:' + (canTick || done ? 'pointer' : 'not-allowed') + ';border:1px ' + (canTick || done ? 'solid' : 'dashed') + ' ' + (done ? 'rgba(52,211,153,.7)' : canTick ? 'rgba(148,163,184,.4)' : 'rgba(148,163,184,.2)') + ';background:' + (done ? 'rgba(52,211,153,.16)' : 'transparent'),
+            checkHtml: { __html: done ? iconSvg('check-sm', '#34d399', 11) : '' },
+            boxTitle: done ? ((ev === 'approved' || verOf(t)) ? 'Signed off — re-opening needs a recorded reason' : 'Re-open this task') : canTick ? 'Mark the configuration change made' : s.next,
+            toggle: () => {
+              if (done) {
+                const signed = ev === 'approved' || verOf(t);
+                if (!signed) { this.setState(st2 => ({ rtTicked: { ...(st2.rtTicked || {}), [t.id]: false } })); return; }
+                this.openForm({
+                  kicker: 'Re-open a signed-off task',
+                  title: 'Why is this being re-opened?',
+                  intro: t.t + '. The evidence is approved' + (verOf(t) ? ' and a re-scan verified it at scan 14' : '') + ', so re-opening it withdraws ' + pts[t.id] + ' points from ' + pillarName[t.pl] + ' and puts the reason on the record against the CR.',
+                  submitLabel: 'Re-open the task',
+                  fields: [
+                    { id: 'reason', label: 'Reason', kind: 'select', options: ['The change was reversed in the tenant', 'The evidence does not prove the fix', 'Approved in error', 'Scope changed'], value: 'The change was reversed in the tenant' },
+                    { id: 'detail', label: 'What happened', kind: 'textarea', wide: true, placeholder: 'What has changed since sign-off.' },
+                  ],
+                  onSubmit: () => this.setState(st2 => ({
+                    rtTicked: { ...(st2.rtTicked || {}), [t.id]: false },
+                    rtVerified: { ...(st2.rtVerified || {}), [t.id]: false },
+                    rtEv: { ...(st2.rtEv || {}), [t.id]: 'missing' },
+                    rtExec: { ...(st2.rtExec || {}), [t.id]: null },
+                  })),
+                  doneNote: 'Re-opened. The points are withdrawn, the evidence is marked missing again, and the reason is filed against the change request.',
+                });
+                return;
+              }
+              if (!canTick) { this.setState({ rtOpen: t.id }); return; }
+              this.gateRun('remediation', { title: 'Close remediation task · ' + t.t, where: 'Remediation tracker · ' + phName[t.ph], owner: this.raciChip(t.pl).name },
+                () => this.setState(st2 => ({ rtTicked: { ...(st2.rtTicked || {}), [t.id]: true } })));
+            },
+            stateLabel: meta.label,
+            stateCss: 'flex:0 0 auto;padding:2px 8px;border-radius:5px;border:1px solid ' + meta.c + '55;background:' + meta.c + '14;font-size:9px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:' + meta.c + ';white-space:nowrap',
+            next: s.next,
+            chips: [
+              chip(pc, pillarName[t.pl]),
+              chip(sev, t.sv),
+              chip('#94a3b8', t.ef + ' effort'),
+            ].concat(t.cr ? [chip(crs === 7 ? '#34d399' : '#93c5fd', 'CR-0' + (140 + (T.indexOf(t) % 40)) + ' · ' + (crs === 7 ? 'closed' : CR_STAGES[crs]))] : [])
+             .concat([chip(ev === 'approved' ? '#34d399' : ev === 'submitted' ? '#fbbf24' : '#64748b', 'Evidence ' + ev, ev === 'missing')])
+             .concat(t.hold ? [chip('#22d3ee', 'Hold ' + t.hold.left + ' of ' + t.hold.of)] : [])
+             .concat(t.drift ? [chip('#f472b6', 'Drift of ' + byId[t.drift].t.slice(0, 22) + '…')] : [])
+             .concat(t.mc ? [chip('#a78bfa', t.mc)] : []),
+            ptsLabel: '+' + pts[t.id],
+            ptsSub: sc ? 'scored' : done ? 'pending' : skipOf(t) ? 'forfeit' : 'to claim',
+            ptsCss: 'flex:0 0 auto;text-align:right;font-size:12px;font-weight:800;' + mono + ';color:' + (sc ? '#34d399' : done ? '#5eead4' : skipOf(t) ? '#475569' : '#64748b'),
+            detail: {
+              problem: t.pr, fix: t.fx,
+              hasDeps: (t.dep || []).length > 0,
+              deps: (t.dep || []).map(d => ({ label: byId[d].t, met: doneOf(byId[d]) ? 'met' : 'outstanding', css: 'font-size:11px;color:' + (doneOf(byId[d]) ? '#34d399' : '#f87171') + ';' + mono, go: () => this.setState({ rtOpen: d, rtPhaseSel: byId[d].ph }) })),
+              hasCr: !!t.cr, crClosed: crs === 7,
+              crLabel: 'CR-0' + (140 + (T.indexOf(t) % 40)),
+              crStages: CR_STAGES.map((sName, i) => ({
+                label: sName, n: String(i + 1),
+                css: 'flex:1 1 84px;display:flex;flex-direction:column;gap:3px;padding:7px 9px;border-radius:8px;border:1px solid ' + (i < crs ? 'rgba(52,211,153,.35)' : i === crs ? 'rgba(96,165,250,.55)' : 'rgba(30,41,59,.9)') + ';background:' + (i < crs ? 'rgba(52,211,153,.07)' : i === crs ? 'rgba(96,165,250,.1)' : 'transparent'),
+                nCss: 'font-size:8.5px;font-weight:800;' + mono + ';color:' + (i < crs ? '#34d399' : i === crs ? '#93c5fd' : '#475569'),
+                labelCss: 'font-size:10px;font-weight:700;line-height:1.3;color:' + (i <= crs ? '#e2e8f0' : '#475569'),
+              })),
+              crNextLabel: crs === 7 ? 'CR closed, evidence filed' : 'Advance to ' + (crs === 6 ? 'closed' : CR_STAGES[crs + 1]),
+              crCanAdvance: crs < 7,
+              crAdvance: () => this.setState(st2 => ({ rtCr: { ...(st2.rtCr || {}), [t.id]: Math.min(7, crStageOf(t) + 1) } })),
+              hasHold: !!t.hold,
+              holdWhy: t.hold ? t.hold.why : '',
+              holdLeft: t.hold ? t.hold.left + ' left of ' + t.hold.of : '',
+              holdVerdict: t.hold ? t.hold.verdict : '',
+              holdState: hs === 'released' ? 'Released' : hs === 'extended' ? 'Extended by 24h' : hs === 'closing' ? 'Closing' : 'Running',
+              holdStateCss: 'flex:0 0 auto;padding:2px 8px;border-radius:5px;border:1px solid ' + (hs === 'released' ? 'rgba(52,211,153,.5)' : 'rgba(34,211,238,.5)') + ';background:' + (hs === 'released' ? 'rgba(52,211,153,.12)' : 'rgba(34,211,238,.1)') + ';color:' + (hs === 'released' ? '#34d399' : '#22d3ee') + ';font-size:9px;font-weight:800;letter-spacing:.06em;text-transform:uppercase',
+              holdRelease: () => this.setState(st2 => ({ rtHold: { ...(st2.rtHold || {}), [t.id]: 'released' } })),
+              holdExtend: () => this.setState(st2 => ({ rtHold: { ...(st2.rtHold || {}), [t.id]: 'extended' } })),
+              holdClose: () => this.openForm({
+                kicker: 'Hold window · close early',
+                title: 'Close the hold early',
+                intro: t.t + '. The window still has ' + (t.hold ? t.hold.left : '') + ' to run. ' + (t.hold ? t.hold.verdict : '') + ', so closing early is defensible — the reason is recorded against the CR.',
+                submitLabel: 'Close the window',
+                fields: [{ id: 'why', label: 'Why it is safe to close now', kind: 'textarea', wide: true, value: 'Scan 14 came back clear and no dependent change is outstanding.' }],
+                onSubmit: () => this.setState(st2 => ({ rtHold: { ...(st2.rtHold || {}), [t.id]: 'released' } })),
+                doneNote: 'Window closed. The gated step is released and the reason is filed against the CR.',
+              }),
+              evState: ev,
+              evLabel: ev === 'approved' ? 'Approved and filed' : ev === 'submitted' ? 'Submitted, waiting on approval' : 'Missing',
+              evCss: 'flex:0 0 auto;padding:2px 8px;border-radius:5px;font-size:9px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;border:1px solid ' + (ev === 'approved' ? 'rgba(52,211,153,.5)' : ev === 'submitted' ? 'rgba(251,191,36,.5)' : 'rgba(100,116,139,.4)') + ';color:' + (ev === 'approved' ? '#34d399' : ev === 'submitted' ? '#fbbf24' : '#94a3b8'),
+              evItems: (t.ev || []).map(e => ({ label: e, css: 'font-size:11.5px;color:' + (ev === 'missing' ? '#64748b' : '#cbd5e1') + ';line-height:1.5' })),
+              evCanAct: ev !== 'approved',
+              evActLabel: ev === 'missing' ? 'File the evidence' : 'Approve the evidence',
+              evAct: () => {
+                if (ev === 'missing') {
+                  this.openForm({
+                    kicker: 'Evidence · ' + t.t.slice(0, 40),
+                    title: 'File the evidence for this task',
+                    intro: 'Every completed task owes evidence: ' + (t.ev || []).join(', ') + '. Filed evidence lands in the Document Library against this task and its CR.',
+                    submitLabel: 'File it',
+                    fields: [
+                      { id: 'method', label: 'How', kind: 'select', options: ['Collect automatically through Graph', 'Attach a PowerShell transcript', 'Upload screenshots and notes'], value: 'Collect automatically through Graph' },
+                      { id: 'approver', label: 'Approver', placeholder: 'name@tenant.com', value: 'jordan.diaz@tenant.com' },
+                    ],
+                    onSubmit: () => this.setState(st2 => ({ rtEv: { ...(st2.rtEv || {}), [t.id]: 'submitted' } })),
+                    doneNote: 'Filed. The task stays at Waiting for Evidence until the approver signs it off.',
+                  });
+                } else {
+                  this.setState(st2 => ({ rtEv: { ...(st2.rtEv || {}), [t.id]: 'approved' } }));
+                }
+              },
+              evDocsGo: () => this.setState({ active: 'documents' }),
+              playbook: t.pb,
+              playbookGo: () => this.setState({ active: 'sop-hub' }),
+              rbKind: (t.gr || []).length ? 'Executable through Graph · ' + t.gr.length + ' call' + (t.gr.length === 1 ? '' : 's') : 'Manual procedure · no Graph path',
+              rbKindCss: 'flex:0 0 auto;padding:2px 8px;border-radius:5px;border:1px solid ' + ((t.gr || []).length ? 'rgba(94,234,212,.45)' : 'rgba(148,163,184,.25)') + ';color:' + ((t.gr || []).length ? '#5eead4' : '#94a3b8') + ';font-size:9px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;white-space:nowrap',
+              rbSteps: (t.gr || []).map((g, i) => ({ g: g, auto: true, i: i })).concat((t.mn || []).map((m, i) => ({ g: m, auto: false, i: (t.gr || []).length + i }))).map(st => {
+                const ran = exec && exec.i >= st.i;
+                const now = exec && exec.running && exec.i + 1 === st.i;
+                const c = !st.auto ? '#94a3b8' : ran ? '#34d399' : now ? '#5eead4' : '#475569';
+                return {
+                  label: st.g, kind: st.auto ? 'Graph' : 'Manual',
+                  css: 'display:flex;align-items:flex-start;gap:8px;padding:7px 10px;border-radius:8px;border:1px solid ' + (now ? 'rgba(94,234,212,.5)' : 'rgba(30,41,59,.9)') + ';background:' + (now ? 'rgba(94,234,212,.08)' : ran ? 'rgba(52,211,153,.05)' : 'transparent'),
+                  kindCss: 'flex:0 0 46px;font-size:8.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:' + c + ';padding-top:2px',
+                  labelCss: 'flex:1 1 200px;min-width:0;font-size:10.5px;line-height:1.5;word-break:break-all;color:' + (st.auto ? (ran ? '#cbd5e1' : '#94a3b8') : '#94a3b8') + ';' + (st.auto ? "font-family:'SF Mono',Menlo,Consolas,monospace" : ''),
+                  markCss: 'flex:0 0 auto;font-size:9px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:' + c,
+                  mark: ran ? 'done' : now ? 'running' : st.auto ? 'queued' : 'by hand',
+                };
+              }),
+              rbCanRun: (t.gr || []).length > 0 && !(exec && (exec.running || exec.done)) && canTick,
+              rbBlocked: (t.gr || []).length > 0 && !canTick && !(exec && exec.done),
+              rbBlockedNote: t.cr && crs < 5 ? 'Blocked until CR-0' + (140 + (T.indexOf(t) % 40)) + ' reaches execute.' : t.hold && hs !== 'released' ? 'Blocked until the hold window is released.' : 'Blocked by an outstanding dependency.',
+              rbRunning: !!(exec && exec.running),
+              rbRan: !!(exec && exec.done),
+              rbStatus: exec && exec.running ? 'Running · ' + exec.label : exec && exec.done ? 'Ran at ' + exec.at + ' · evidence captured, task ticked, awaiting approval' : '',
+              rbBarCss: 'height:100%;border-radius:3px;transition:width 400ms;background:linear-gradient(90deg,#34d399,#5eead4);width:' + (exec ? Math.round(((Math.max(0, exec.i + 1)) / exec.n) * 100) : 0) + '%',
+              rbRunGo: () => this.rtRunbook(t.id, (t.gr || []).map(g => 'Calling ' + g)),
+              rbRollbackGo: () => this.rtRollback(t.id),
+              feeLine: t.ef + ' estimated · ' + (t.bill === 'Retainer' ? 'covered by the retainer' : 'quoted separately'),
+              rescanLabel: ver ? 'Verified at scan 14' : 'Target re-scan · ' + rs.label,
+              rescanCss: 'flex:0 0 auto;padding:4px 10px;border-radius:7px;font-size:10px;font-weight:700;' + mono + ';font-family:inherit;cursor:' + (ver ? 'default' : 'pointer') + ';border:1px dashed ' + (ver ? 'rgba(52,211,153,.35)' : 'rgba(148,163,184,.3)') + ';background:transparent;color:' + (ver ? '#34d399' : '#94a3b8'),
+              rescanGo: ver ? (() => {}) : (() => this.setState(st2 => {
+                const cur = (st2.rtRescan || {})[t.id] || 'nightly';
+                const i = RT_RESCAN.findIndex(r => r.k === cur);
+                return { rtRescan: { ...(st2.rtRescan || {}), [t.id]: RT_RESCAN[(i + 1) % RT_RESCAN.length].k } };
+              })),
+              canVerify: done && !ver && ev === 'approved',
+              verifyGo: () => this.openForm({
+                kicker: 'Remediation tracker · re-scan',
+                title: 'Re-scan and re-score',
+                intro: t.t + '. This re-runs the check that produced the finding and re-scores ' + pillarName[t.pl] + ' on the result. The ' + pts[t.id] + ' points stay pending until it passes.',
+                submitLabel: 'Run the check now',
+                fields: [
+                  { id: 'scope', label: 'Scope', kind: 'select', options: ['This check only', 'This check and its pillar', 'Full tenant scan'], value: 'This check only' },
+                  { id: 'notify', label: 'Tell me the result', kind: 'select', options: ['Portal only', 'Portal and email', 'Portal, email and the webhook'], value: 'Portal and email' },
+                ],
+                onSubmit: () => this.setState(st2 => ({ rtVerified: { ...(st2.rtVerified || {}), [t.id]: true } })),
+                doneNote: 'Check passed. ' + pillarName[t.pl] + ' moves +' + pts[t.id] + ', and those points are scored rather than pending.',
+              }),
+              skipLabel: skipOf(t) ? 'Reverse the acceptance' : 'Accept as-is',
+              skipGo: () => this.setState(st2 => ({ rtSkipped: { ...(st2.rtSkipped || {}), [t.id]: !skipOf(t) } })),
+              handGo: () => this.openForm({
+                kicker: 'Remediation tracker · ' + t.sv,
+                title: 'Hand this task to Shane',
+                intro: t.t + '. ' + t.pr + ' Handing it over raises the CR against ' + phName[t.ph] + ', so the fee and the dates stay on one document.',
+                submitLabel: 'Hand it over',
+                fields: [
+                  { id: 'window', label: 'Preferred change window', kind: 'select', options: ['Next available', 'Out of hours only', 'Weekend only', 'Agree on a call'], value: 'Next available' },
+                  { id: 'approver', label: 'Who approves the change', placeholder: 'name@tenant.com', value: 'jordan.diaz@tenant.com' },
+                ],
+                doneNote: 'Handed over. It appears in Change Control as a CR and in Active Runbooks once the window is approved.',
+              }),
+            },
+          };
+        };
+
+        const stateKeyOf = (t) => stateOf(t).k;
+        const visible = T.filter(t => (!selPhase || t.ph === selPhase) && (!selState || stateKeyOf(t) === selState));
+        const groups = PH.filter(p => visible.some(t => t.ph === p.k)).map(p => {
+          const ts = T.filter(t => t.ph === p.k);
+          const done = ts.filter(t => stateKeyOf(t) === 'completed').length;
+          return { n: p.n, name: p.name, due: p.due, progress: done + ' of ' + ts.length + ' completed', items: visible.filter(t => t.ph === p.k).map(mkRow) };
+        });
+
+        const phaseCards = PH.map(p => {
+          const ts = T.filter(t => t.ph === p.k);
+          const done = ts.filter(t => stateKeyOf(t) === 'completed').length;
+          const pct = Math.round((done / ts.length) * 100);
+          const stCol = p.status === 'Complete' ? '#34d399' : p.status === 'At Risk' ? '#fbbf24' : p.status === 'Blocked' ? '#f87171' : '#60a5fa';
+          const on = selPhase === p.k;
+          return {
+            n: p.n, name: p.name, due: 'Target ' + p.due, status: p.status, pct: pct + '%',
+            progress: done + ' of ' + ts.length + ' completed',
+            go: () => this.setState(st2 => ({ rtPhaseSel: st2.rtPhaseSel === p.k ? null : p.k, rtOpen: null })),
+            css: 'display:flex;flex-direction:column;gap:6px;padding:12px 13px;border-radius:11px;cursor:pointer;font-family:inherit;text-align:left;width:100%;border:1px solid ' + (on ? stCol + '99' : 'rgba(30,41,59,.9)') + ';background:' + (on ? stCol + '14' : 'rgba(15,23,42,.45)'),
+            nCss: 'font-size:9px;font-weight:800;' + mono + ';color:#475569',
+            statusCss: 'flex:0 0 auto;padding:1px 6px;border-radius:4px;border:1px solid ' + stCol + '55;color:' + stCol + ';font-size:8.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;white-space:nowrap',
+            fillCss: 'height:100%;width:' + pct + '%;border-radius:3px;background:' + stCol + ';transition:width 400ms',
           };
         });
-        const shown = all.filter(x => !sel || x.stateKey === sel);
-        const groups = Object.keys(pillars).map(k => ({
-          label: pillars[k],
-          n: String(shown.filter(x => x.pillarKey === k).length),
-          items: shown.filter(x => x.pillarKey === k)
-        })).filter(g => g.items.length > 0);
-        const count = (k) => all.filter(x => x.stateKey === k).length;
-        const counters = [
-          { k: 'verified', label: 'Fixed and verified', n: count('verified'), sub: 'confirmed by a re-scan, not marked done', c: '#34d399' },
-          { k: 'done', label: 'Done, awaiting re-scan', n: count('done'), sub: 'the change ran, the proof has not landed', c: '#5eead4' },
-          { k: 'open', label: 'Still to do', n: count('open'), sub: 'nothing has run against these yet', c: '#f87171' },
-          { k: 'accepted', label: 'Accepted as-is', n: count('accepted'), sub: 'a decision, with an owner and a date', c: '#a78bfa' }
-        ].map(x => {
-          const on = sel === x.k;
+
+        (() => {
+          const item = navGroups.reduce((f, g) => f || g.items.find(i => i.key === 'remediation'), null);
+          if (!item || !item.subs) return;
+          item.subs.forEach(sb => {
+            const p = PH.find(x => x.k === sb.key); if (!p) return;
+            const ts = T.filter(t => t.ph === p.k);
+            const done = ts.filter(t => stateKeyOf(t) === 'completed').length;
+            const pct = Math.round((done / ts.length) * 100);
+            const c = p.status === 'Complete' ? '#34d399' : p.status === 'At Risk' ? '#fbbf24' : p.status === 'Blocked' ? '#f87171' : '#60a5fa';
+            const on = selPhase === p.k;
+            sb.barsVisible = true;
+            sb.count = done + '/' + ts.length;
+            sb.range = 'Target ' + p.due;
+            sb.countCss = 'font-size:10px;font-weight:800;' + mono + ';color:' + (on ? c : '#475569');
+            sb.rangeCss = 'font-size:9.5px;color:' + (on ? '#93c5fd' : '#64748b');
+            sb.bars = [
+              { css: 'flex:' + pct + ' 0 0;background:' + c + ';opacity:' + (on ? '1' : '.7') },
+              { css: 'flex:' + (100 - pct) + ' 0 0;background:rgba(148,163,184,.16)' },
+            ];
+            sb.meta = p.status === 'Complete' ? 'Phase complete' : (ts.length - done) + (ts.length - done === 1 ? ' task open · ' : ' tasks open · ') + p.status;
+            sb.metaCss = 'font-size:9.5px;font-weight:600;color:' + c;
+          });
+        })();
+
+        const stateChips = Object.keys(ST).map(k => {
+          const n = T.filter(t => stateKeyOf(t) === k).length;
+          const on = selState === k;
           return {
-            label: x.label, sub: x.sub, value: String(x.n),
-            go: () => this.setState(st2 => ({ rtFilter: st2.rtFilter === x.k ? null : x.k })),
-            css: 'display:flex;flex-direction:column;gap:3px;padding:13px 15px;border-radius:11px;cursor:pointer;font-family:inherit;text-align:left;width:100%;border:1px solid ' + x.c + (on ? '99' : '2b') + ';background:linear-gradient(160deg,' + x.c + (on ? '1f' : '0d') + ',rgba(15,23,42,.45))',
-            labelCss: 'font-size:9.5px;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:' + x.c,
-            valueCss: "font-size:22px;font-weight:800;letter-spacing:-.02em;color:#f8fafc;font-family:'SF Mono',Menlo,Consolas,monospace"
+            label: ST[k].label, n: String(n), show: n > 0,
+            go: () => this.setState(st2 => ({ rtStateSel: st2.rtStateSel === k ? null : k, rtOpen: null })),
+            css: 'display:flex;align-items:center;gap:6px;padding:5px 10px;border-radius:999px;cursor:pointer;font-family:inherit;border:1px solid ' + ST[k].c + (on ? '99' : '33') + ';background:' + ST[k].c + (on ? '1f' : '0a') + ';color:' + ST[k].c + ';font-size:10px;font-weight:700',
+            nCss: 'font-size:10px;font-weight:800;' + mono + ';color:' + ST[k].c,
+          };
+        }).filter(c => c.show);
+
+        const pillarCells = Object.keys(pillarName).map(k => {
+          const l = pillarLive(k), c = rtPillarColor[k], span = l.target - l.base;
+          const w = (n) => Math.max(0, Math.min(100, Math.round((n / span) * 100)));
+          return {
+            label: pillarName[k], score: String(l.now), target: 'of ' + l.target,
+            delta: l.now > l.base ? '+' + (l.now - l.base) : '±0',
+            pending: l.pending > 0 ? '+' + l.pending + ' pending' : '',
+            hasPending: l.pending > 0,
+            go: () => this.setState({ active: k }),
+            css: 'display:flex;flex-direction:column;gap:4px;padding:11px 12px;border-radius:10px;cursor:pointer;font-family:inherit;text-align:left;border:1px solid ' + c + '2b;background:' + c + '0a',
+            labelCss: 'font-size:9px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:' + c,
+            scoreCss: 'font-size:18px;font-weight:800;' + mono + ';color:' + (l.now >= l.target ? '#34d399' : '#f8fafc'),
+            trackCss: 'position:relative;height:5px;border-radius:3px;background:rgba(148,163,184,.14);overflow:hidden',
+            confCss: 'position:absolute;left:0;top:0;bottom:0;width:' + w(l.now - l.base) + '%;background:' + c + ';transition:width 400ms',
+            pendCss: 'position:absolute;left:' + w(l.now - l.base) + '%;top:0;bottom:0;width:' + w(l.pending) + '%;background:' + c + ';opacity:.35;transition:all 400ms',
+            deltaCss: 'font-size:9.5px;font-weight:700;' + mono + ';color:' + (l.now > l.base ? '#34d399' : '#64748b'),
           };
         });
-        const doneN = count('verified') + count('done');
-        const pct = Math.round((doneN / all.length) * 100);
+
+        const keys = Object.keys(pillarName);
+        const avg = (f) => Math.round(keys.reduce((a, k) => a + f(pillarLive(k)), 0) / keys.length);
+        const gBase = avg(l => l.base), gNow = avg(l => l.now), gTarget = avg(l => l.target), gPend = avg(l => l.pending);
+        const gw = (n) => Math.max(0, Math.min(100, (n / (gTarget - gBase)) * 100));
+
+        const driftItems = T.filter(t => t.drift).map(t => ({
+          title: t.t, origin: 'Original: ' + byId[t.drift].t, detected: t.pr,
+          sev: t.sv, sevCss: 'flex:0 0 auto;padding:2px 7px;border-radius:5px;border:1px solid ' + (rtSevMeta[t.sv] || '#94a3b8') + '55;color:' + (rtSevMeta[t.sv] || '#94a3b8') + ';font-size:9px;font-weight:800;letter-spacing:.06em;text-transform:uppercase',
+          go: () => this.setState({ rtPhaseSel: 'drift', rtStateSel: null, rtOpen: t.id }),
+        }));
+
+        const MC = [
+          { id: 'MC1098234', title: 'Anonymous sharing links will default to a 30-day expiry', when: 'Rolling out from 14 September', impact: 'Your 2,940 non-expiring links keep working until an owner edits them, then inherit the new default with no warning.', need: 'Remediation required', task: 's5' },
+          { id: 'MC1102771', title: 'Teams private channel retention behaviour changes', when: 'Rolling out from 2 October', impact: '12 private channels sit outside retention scope today. After the change their backing sites are treated separately for eDiscovery.', need: 'Remediation required', task: 'i7' },
+          { id: 'MC1105442', title: 'Basic authentication for SMTP AUTH permanently disabled', when: 'Enforced from 1 November', impact: '1,106 legacy sign-ins in the last 30 days, four of them from service accounts that will stop sending mail.', need: 'Already in the plan', task: 'h1' },
+        ].map(m => ({
+          id: m.id, title: m.title, when: m.when, impact: m.impact, need: m.need,
+          needCss: 'flex:0 0 auto;padding:2px 8px;border-radius:5px;border:1px solid ' + (m.need === 'Remediation required' ? 'rgba(251,191,36,.5)' : 'rgba(52,211,153,.5)') + ';color:' + (m.need === 'Remediation required' ? '#fbbf24' : '#34d399') + ';font-size:9px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap',
+          taskLabel: 'In the plan · ' + byId[m.task].t,
+          taskGo: () => this.setState({ rtPhaseSel: byId[m.task].ph, rtStateSel: null, rtOpen: m.task }),
+          crGo: () => this.openForm({
+            kicker: 'Message Center · ' + m.id,
+            title: 'Map this post to a change request',
+            intro: m.title + '. ' + m.impact + ' Mapping it raises a CR against the phase you choose, so Microsoft\'s change and your remediation stay on one record.',
+            submitLabel: 'Raise the CR',
+            fields: [
+              { id: 'phase', label: 'Phase', kind: 'select', options: PH.map(p => p.name), value: phName[byId[m.task].ph] },
+              { id: 'owner', label: 'Owner', placeholder: 'name@tenant.com', value: 'jordan.diaz@tenant.com' },
+              { id: 'note', label: 'What has to change', kind: 'textarea', wide: true, required: false, placeholder: 'Optional — what in the tenant this post forces.' },
+            ],
+            doneNote: 'Raised. The CR carries the Message Center ID, so the audit trail shows what Microsoft changed and what you did about it.',
+          }),
+          mcGo: () => this.setState({ active: 'microsoft-changes' }),
+        }));
+
         return {
-          counters: counters, groups: groups,
-          total: String(all.length), done: String(doneN), pct: pct + '%',
-          barCss: 'height:100%;border-radius:5px;width:' + pct + '%;background:linear-gradient(90deg,#34d399,#5eead4);transition:width 500ms',
-          headline: doneN + ' of ' + all.length + ' things fixed since the first scan.',
-          sub: 'This is the run-down from the tenant we found to the tenant you want. Nothing here is a project plan — items appear when a scan finds them and leave when a re-scan proves they are gone.'
+          headline: 'Tenant score ' + gBase + ' → ' + gNow + ', ' + T.filter(t => stateKeyOf(t) === 'completed').length + ' of ' + T.length + ' tasks completed.',
+          sub: 'The whole tenant across seven phases, each task gated by its change request, its hold window and the evidence it owes. Points only move the score once a re-scan proves the change, and drift puts a task back on the board.',
+          copilotGate: String(Math.max(0, gNow - 2)) + ' of 82',
+          copilotNote: gNow >= 68 ? 'clear to deploy Copilot' : 'not yet safe to turn Copilot on',
+          copilotCss: 'font-size:15px;font-weight:800;' + mono + ';color:' + (gNow >= 68 ? '#34d399' : '#fbbf24'),
+          gateBase: String(gBase), gateNow: String(gNow), gateTarget: String(gTarget),
+          gateNowCss: 'font-size:40px;font-weight:800;line-height:1;' + mono + ';color:' + (gNow >= 68 ? '#34d399' : gNow > gBase ? '#f8fafc' : '#f87171'),
+          gatePending: gPend > 0 ? '+' + gPend + ' pending re-scan' : 'nothing pending re-scan',
+          gatePendingCss: 'font-size:10.5px;font-weight:700;' + mono + ';color:' + (gPend > 0 ? '#5eead4' : '#475569'),
+          confCss: 'position:absolute;left:0;top:0;bottom:0;width:' + gw(gNow - gBase) + '%;background:linear-gradient(90deg,#34d399,#5eead4);transition:width 500ms',
+          pendCss: 'position:absolute;left:' + gw(gNow - gBase) + '%;top:0;bottom:0;width:' + gw(gPend) + '%;background:#5eead4;opacity:.3;transition:all 500ms',
+          phaseCards: phaseCards, stateChips: stateChips, pillarCells: pillarCells,
+          groups: groups, driftItems: driftItems, mc: MC,
+          filtered: !!(selPhase || selState),
+          filterLabel: 'Showing ' + visible.length + ' of ' + T.length + ' tasks' + (selPhase ? ' · ' + phName[selPhase] : '') + (selState ? ' · ' + ST[selState].label : ''),
+          clearGo: () => this.setState({ rtPhaseSel: null, rtStateSel: null }),
         };
       })(),
       rtGate: '41',
