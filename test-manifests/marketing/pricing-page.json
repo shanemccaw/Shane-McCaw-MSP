@@ -1,0 +1,50 @@
+{
+  "feature": "Marketing rebuild Part 9 -- /pricing (Design/design_handoff_marketing/Marketing Pricing.dc.html). The full price architecture on one page -- ladder card, four 'doors', ongoing-customer tiers, funnel steps. Every number is pulled from the same live sources /monitoring, /retainers and /quick-start already read (useCatalog() monitoring tiers, useServices('retainer') + resolvePublicServicePriceCents, the quickStartPacks.ts fixture), not retyped as a fourth independent literal.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "PENDING",
+  "notes": [
+    "Public marketing page, no auth required.",
+    "REAL INCONSISTENCY FOUND AND RESOLVED: the design mock's own retainer ladder/ongoing-tiers list a fourth, fictional 'Advisory' tier at $900/mo (5 hours) and price the retainer range as '$900-$5,500/mo'. Per Retainers.tsx's own documented pricing correction (and retainers-page.json's live 11/11 run), the live catalog (service_type='retainer') has only THREE fixed-hour tiers: Architect Essentials $1,500/mo (8h), Growth $3,000/mo (16h), Enterprise $5,500/mo (30h) -- no Advisory row exists. This page reads those same three tiers live (isFixedHourlyRetainer filter, resolvePublicServicePriceCents) instead of copying the mock's numbers, so the ladder/doors correctly show '$1,500-$5,500/mo' and 'From $1,500/mo', never the mock's fictional $900 figure.",
+    "Monitoring's 'from $180/mo' figure and the Quick-Start '$149-$799' range in the mock both verified correct against the live sources /monitoring and /quick-start already read (Foundation tier's pricePerUserMonth $12 x seatCountFloor 15 = $180 min; PACKS fixture min/max $149/$799) -- computed live/derived from the same fixture below rather than retyped, so this page can never drift from those two pages even if the catalog changes.",
+    "PR1/PR2/PR3 extract the real retainer tier names+priceCents the same way retainers-page.json does, confirming there are exactly 3 fixed-hour rows (not 4) backing this page's ladder/doors range.",
+    "This manifest asserts against {{DEPLOY_URL}} -- only reflects this commit once the marketing site is redeployed."
+  ],
+  "apiTests": [
+    {
+      "name": "PR1 -- retainer tier[0] is highlighted (expected Architect Essentials Retainer, priceCents 150000).",
+      "method": "GET",
+      "path": "/api/services?type=retainer",
+      "expect": { "status": 200, "jsonPath": "$[0].highlighted", "equals": true },
+      "extract": { "as": "tier0PriceCents", "jsonPath": "$[0].priceCents" }
+    },
+    {
+      "name": "PR2 -- retainer tier[1] priceCents (expected Architect Growth Retainer, 300000).",
+      "method": "GET",
+      "path": "/api/services?type=retainer",
+      "expect": { "status": 200, "jsonPath": "$[1].priceCents", "exists": true },
+      "extract": { "as": "tier1PriceCents", "jsonPath": "$[1].priceCents" }
+    },
+    {
+      "name": "PR3 -- retainer tier[2] priceCents (expected Architect Enterprise Retainer, 550000).",
+      "method": "GET",
+      "path": "/api/services?type=retainer",
+      "expect": { "status": 200, "jsonPath": "$[2].priceCents", "exists": true },
+      "extract": { "as": "tier2PriceCents", "jsonPath": "$[2].priceCents" }
+    }
+  ],
+  "uiSteps": [
+    { "action": "goto", "target": "/pricing" },
+    { "action": "expect", "selector": "h1", "state": "visible", "textContains": "Fixed prices, real scope" },
+
+    { "name": "PR4 -- ladder shows the real $0 free scan row.", "action": "expect", "selector": "[data-testid='pricing-ladder-scan-price']", "state": "visible", "textContains": "$0" },
+    { "name": "PR5 -- ladder shows the real Quick-Start range, not a stale literal.", "action": "expect", "selector": "[data-testid='pricing-ladder-pack-price']", "state": "visible", "textContains": "$149" },
+    { "name": "PR6 -- ladder shows the real Monitoring floor ($12/seat Foundation tier x 15-seat floor).", "action": "expect", "selector": "[data-testid='pricing-ladder-monitor-price']", "state": "visible", "textContains": "$180" },
+    { "name": "PR7 -- ladder shows the REAL retainer range ($1,500-$5,500/mo), never the design mock's fictional $900 Advisory-tier floor.", "action": "expect", "selector": "[data-testid='pricing-ladder-retainer-price']", "state": "visible", "textContains": "$1,500" },
+    { "name": "PR7b -- retainer ladder row's upper bound is the real Enterprise tier price.", "action": "expect", "selector": "[data-testid='pricing-ladder-retainer-price']", "state": "visible", "textContains": "$5,500" },
+
+    { "name": "PR8 -- the retainer door also shows the real floor, not $900.", "action": "expect", "selector": "[data-testid='pricing-door-retainer-price']", "state": "visible", "textContains": "$1,500" },
+    { "name": "PR9 -- the monitoring door shows the real floor.", "action": "expect", "selector": "[data-testid='pricing-door-monitor-price']", "state": "visible", "textContains": "$180" },
+    { "name": "PR10 -- the pack door shows the real range.", "action": "expect", "selector": "[data-testid='pricing-door-pack-price']", "state": "visible", "textContains": "$149" },
+    { "name": "PR11 -- the scan door is free.", "action": "expect", "selector": "[data-testid='pricing-door-scan-price']", "state": "visible", "textContains": "Free" }
+  ]
+}
