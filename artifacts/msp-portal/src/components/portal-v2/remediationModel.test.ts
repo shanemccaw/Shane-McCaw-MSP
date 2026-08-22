@@ -1,271 +1,125 @@
 /**
- * remediationModel.test.ts — pins the Remediation Tracker's counts, states,
- * grouping, and its wiring to the customer's real tracker rows.
+ * remediationModel.test.ts — pins the Round Four Remediation Tracker's fixture,
+ * its nine-state resolver, the point scoring, the phase grouping and — the
+ * load-bearing part — its wiring to the customer's REAL tracker rows.
  *
- * The load-bearing assertion is "verified is only ever read off the wire". A
- * step reaches the `verified` state in exactly one circumstance — the server
- * said `verificationState === "verified"` for it — and the fixture no longer
- * carries a field anything could set instead. Every other status, tick or
- * filter must leave it unverified. If a future edit ever promotes a step to
- * verified off UI state, this file goes red, which is the whole point of the
- * status / verificationState separation.
+ * The guard that must never regress: DONE, VERIFIED and ACCEPTED are read off
+ * the wire (a task's `stepId` into the `RtLiveState` the useRemediationTracker
+ * hook returns), never asserted by the fixture and never derived from a tick or
+ * a filter. If a future edit ever makes a task read done/verified/accepted from
+ * anything other than the real rows (or an explicit session override), these
+ * tests go red — which is the whole point of keeping the hook connected.
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { RT_PHASES } from "./remediationData";
 import {
-  RT_ACCEPTED_STATUSES,
-  RT_FIXED_STATUSES,
-  RT_LIVE_EMPTY,
-  RT_STEP_ID,
-  rtLiveStep,
-  type RtLiveState,
-} from "./remediationLive";
+  RT_PHASES,
+  RT_PILLAR_BASE,
+  RT_PILLAR_ORDER,
+  RT_PILLAR_TARGET,
+  RT_TASKS,
+} from "./remediationData";
+import { RT_ACCEPTED_STATUSES, RT_FIXED_STATUSES, type RtLiveState } from "./remediationLive";
 import {
-  RT_ALL_TASKS,
-  rtAllRows,
-  rtCounters,
-  rtCrNumber,
+  RT_CTX_EMPTY,
+  RT_OV_EMPTY,
+  RT_POINTS,
+  rtAcceptedOf,
+  rtCanTick,
+  rtDoneOf,
+  rtDriftItems,
+  rtGate,
   rtGroups,
-  rtProgress,
-  rtStateCounts,
-  rtTaskRoute,
-  rtTaskState,
+  rtPillarLive,
+  rtStateChips,
+  rtStateKeyOf,
+  rtVerOf,
+  type RtCtx,
+  type RtOverrides,
 } from "./remediationModel";
 
 /** Build an RtLiveState the way the route's payload would arrive. */
-function live(
-  statuses: Record<string, string>,
-  verification: Record<string, string> = {},
-): RtLiveState {
+function live(statuses: Record<string, string>, verification: Record<string, string> = {}): RtLiveState {
   return {
     statuses: new Map(Object.entries(statuses)) as RtLiveState["statuses"],
-    verification: new Map(
-      Object.entries(verification).map(([k, v]) => [k, { state: v }]),
-    ) as RtLiveState["verification"],
+    verification: new Map(Object.entries(verification).map(([k, v]) => [k, { state: v }])) as RtLiveState["verification"],
   };
 }
-
-const task = (id: string) => RT_ALL_TASKS.find((t) => t.id === id)!;
+const ctxOf = (l: RtLiveState, ov: Partial<RtOverrides> = {}): RtCtx => ({ live: l, ov: { ...RT_OV_EMPTY, ...ov } });
+const task = (id: string) => RT_TASKS.find((t) => t.id === id)!;
 
 describe("fixture", () => {
-  it("flattens to 30 tasks across three phases", () => {
-    assert.equal(RT_ALL_TASKS.length, 30);
+  it("is 31 tasks across seven phases in dependency order", () => {
+    assert.equal(RT_TASKS.length, 31);
     assert.deepEqual(
-      RT_PHASES.map((p) => p.tasks.length),
-      [13, 9, 8],
+      RT_PHASES.map((p) => p.k),
+      ["discovery", "stabilization", "baseline", "hardening", "copilot", "drift", "identity"],
+    );
+    assert.deepEqual(
+      RT_PHASES.map((p) => RT_TASKS.filter((t) => t.ph === p.k).length),
+      [3, 5, 4, 4, 4, 4, 7],
     );
   });
 
-  it("carries NO done or verified field at all — both are wire facts now", () => {
-    for (const t of RT_ALL_TASKS) {
+  it("carries NO fixture done or verified field — both are wire facts", () => {
+    for (const t of RT_TASKS) {
       assert.ok(!("done" in t), `${t.id} still carries a fixture done flag`);
       assert.ok(!("verified" in t), `${t.id} still carries a fixture verified flag`);
     }
   });
 });
 
-describe("step id mapping", () => {
-  it("maps every design task, and only p3b/p3c to null (the steps #757 removed)", () => {
-    assert.equal(Object.keys(RT_STEP_ID).length, 30);
-    for (const t of RT_ALL_TASKS) assert.ok(t.id in RT_STEP_ID, `${t.id} has no mapping`);
-    const unmapped = Object.entries(RT_STEP_ID)
-      .filter(([, v]) => v === null)
-      .map(([k]) => k);
-    assert.deepEqual(unmapped, ["p3b", "p3c"]);
+describe("the real-data seam (stepId)", () => {
+  it("maps 25 tasks to real platform steps and leaves 6 unmapped", () => {
+    const mapped = RT_TASKS.filter((t) => t.stepId !== null).map((t) => t.stepId as string);
+    const unmapped = RT_TASKS.filter((t) => t.stepId === null).map((t) => t.id);
+    assert.equal(mapped.length, 25);
+    assert.equal(new Set(mapped).size, 25, "a real step id is claimed by two tasks");
+    assert.deepEqual(unmapped.sort(), ["d1", "d2", "d3", "dr1", "i3", "i8"].sort());
   });
 
-  it("covers exactly the platform's own 28 step ids, one task each", () => {
-    const expected = [
+  it("only ever draws real step ids from the platform's own set", () => {
+    const platform = new Set([
       ...Array.from({ length: 23 }, (_, i) => `s${i + 1}`),
       ...Array.from({ length: 5 }, (_, i) => `s${i + 26}`),
-    ];
-    const mapped = Object.values(RT_STEP_ID).filter((v): v is string => v !== null);
-    assert.equal(mapped.length, 28);
-    assert.equal(new Set(mapped).size, 28, "a step id is claimed by two tasks");
-    assert.deepEqual([...mapped].sort(), [...expected].sort());
-  });
-
-  it("resolves an unmapped task to no step, permanently not_started", () => {
-    assert.deepEqual(rtLiveStep("p3b", live({ s24: "completed" })), {
-      stepId: null,
-      status: "not_started",
-      verification: "unverified",
-    });
-  });
-});
-
-describe("state counts — no rows yet", () => {
-  it("reads every step as open, none done, none verified", () => {
-    assert.deepEqual(rtStateCounts(), { verified: 0, done: 0, open: 30, accepted: 0 });
-    assert.deepEqual(rtStateCounts(RT_LIVE_EMPTY), { verified: 0, done: 0, open: 30, accepted: 0 });
-  });
-});
-
-describe("state counts — real rows", () => {
-  it("counts claimed-but-unverified steps as awaiting re-scan", () => {
-    // s1 = p1a, s7 = p1g, s8 = p1h
-    const counts = rtStateCounts(live({ s1: "completed", s7: "completed", s8: "already_handled" }));
-    assert.deepEqual(counts, { verified: 0, done: 3, open: 27, accepted: 0 });
-  });
-
-  it("counts a step ONLY as verified when a real scan verified it", () => {
-    const counts = rtStateCounts(
-      live({ s1: "completed", s7: "completed" }, { s1: "verified" }),
-    );
-    assert.deepEqual(counts, { verified: 1, done: 1, open: 28, accepted: 0 });
-  });
-
-  it("moves decisions into accepted", () => {
-    const counts = rtStateCounts(live({ s2: "not_applicable", s3: "deferred" }));
-    assert.deepEqual(counts, { verified: 0, done: 0, open: 28, accepted: 2 });
-  });
-
-  it("leaves a step handed to Shane outstanding, not done", () => {
-    const counts = rtStateCounts(live({ s4: "shane_handles" }));
-    assert.deepEqual(counts, { verified: 0, done: 0, open: 30, accepted: 0 });
-  });
-
-  it("still honours an explicitly skipped task id", () => {
-    const counts = rtStateCounts(RT_LIVE_EMPTY, new Set(["p1b", "p1c"]));
-    assert.equal(counts.accepted, 2);
-    assert.equal(counts.open, 28);
-  });
-});
-
-describe("verified is never derived", () => {
-  it("no status alone reaches verified — verification must say so", () => {
-    for (const status of [
-      "not_started",
-      "completed",
-      "already_handled",
-      "not_applicable",
-      "deferred",
-      "shane_handles",
-    ]) {
-      const rows = rtAllRows(live({ s1: status }));
-      assert.ok(
-        rows.every((r) => r.state.key !== "verified"),
-        `status ${status} reached verified with no verification on the wire`,
-      );
+    ]);
+    for (const t of RT_TASKS) {
+      if (t.stepId !== null) assert.ok(platform.has(t.stepId), `${t.id} → ${t.stepId} is not a platform step`);
     }
   });
-
-  it("a filter cannot promote anything to verified", () => {
-    assert.equal(rtGroups("verified", live({ s1: "completed" })).length, 0);
-    assert.equal(rtCounters("verified", live({ s1: "completed" }))[0].value, "0");
-  });
-
-  it("a verified verification on an unclaimed step does NOT read verified", () => {
-    // Defence in depth: the server resets verification on every status write,
-    // so this pairing should not exist — if it ever does, the row must not
-    // claim a fix nobody said they made.
-    const state = rtTaskState(task("p1a"), live({}, { s1: "verified" }));
-    assert.equal(state.key, "open");
-    assert.equal(state.label, "Not started");
-  });
 });
 
-describe("drift", () => {
-  it("reads a contradicted claim as Drifted, in the critical tone", () => {
-    const state = rtTaskState(task("p1a"), live({ s1: "completed" }, { s1: "drift" }));
-    assert.equal(state.label, "Drifted");
-    assert.equal(state.tone, "#f87171");
-    assert.equal(state.drifted, true);
+describe("done / verified / accepted come off the wire", () => {
+  it("a task is done when its real step reports completed/already_handled", () => {
+    // s3's stepId is s1.
+    assert.equal(rtDoneOf(task("s3"), ctxOf(live({ s1: "completed" }))), true);
+    assert.equal(rtDoneOf(task("s3"), ctxOf(live({ s1: "already_handled" }))), true);
+    assert.equal(rtDoneOf(task("s3"), RT_CTX_EMPTY), false);
   });
 
-  it("counts it as still to do, and keeps it out of the fixed numerator", () => {
-    const l = live({ s1: "completed" }, { s1: "drift" });
-    assert.deepEqual(rtStateCounts(l), { verified: 0, done: 0, open: 30, accepted: 0 });
-    assert.equal(rtProgress(l).done, "0");
+  it("shane_handles leaves a task NOT done", () => {
+    assert.equal(rtDoneOf(task("s3"), ctxOf(live({ s1: "shane_handles" }))), false);
   });
 
-  it("withdraws the CR badge along with the claim", () => {
-    const l = live({ s1: "completed" }, { s1: "drift" });
-    assert.equal(rtAllRows(l)[0].cr, null);
-  });
-});
-
-describe("progress", () => {
-  it("is 0 of 30 before any step is actioned", () => {
-    const p = rtProgress();
-    assert.equal(p.total, "30");
-    assert.equal(p.done, "0");
-    assert.equal(p.pct, 0);
-    assert.equal(p.headline, "0 of 30 things fixed since the first scan.");
+  it("verified needs done AND a real scan verdict — never a status alone", () => {
+    // h2's stepId is s8, evidence seed approved.
+    assert.equal(rtVerOf(task("h2"), ctxOf(live({ s8: "completed" }))), false);
+    assert.equal(rtVerOf(task("h2"), ctxOf(live({ s8: "completed" }, { s8: "verified" }))), true);
+    // verified verdict on an unclaimed step never reads verified.
+    assert.equal(rtVerOf(task("h2"), ctxOf(live({}, { s8: "verified" }))), false);
   });
 
-  it("counts verified and awaiting-re-scan together, off real rows", () => {
-    const p = rtProgress(live({ s1: "completed", s7: "completed", s8: "completed" }, { s1: "verified" }));
-    assert.equal(p.done, "3");
-    assert.equal(p.pct, 10);
-    assert.equal(p.headline, "3 of 30 things fixed since the first scan.");
-  });
-});
-
-describe("counters", () => {
-  it("labels the four states in order", () => {
-    const c = rtCounters(null);
-    assert.deepEqual(
-      c.map((x) => x.key),
-      ["verified", "done", "open", "accepted"],
-    );
-    assert.deepEqual(
-      c.map((x) => x.value),
-      ["0", "0", "30", "0"],
-    );
-    assert.equal(c[0].label, "Fixed and verified");
+  it("accepted comes from a real not_applicable/deferred decision", () => {
+    // s5's stepId is s4.
+    assert.equal(rtAcceptedOf(task("s5"), ctxOf(live({ s4: "not_applicable" }))), true);
+    assert.equal(rtAcceptedOf(task("s5"), ctxOf(live({ s4: "deferred" }))), true);
+    assert.equal(rtAcceptedOf(task("s5"), RT_CTX_EMPTY), false);
   });
 
-  it("reads real values off the wire", () => {
-    const c = rtCounters(null, live({ s1: "completed", s2: "deferred" }, { s1: "verified" }));
-    assert.deepEqual(
-      c.map((x) => x.value),
-      ["1", "0", "28", "1"],
-    );
-  });
-
-  it("marks the filtered counter active", () => {
-    assert.deepEqual(
-      rtCounters("open")
-        .filter((x) => x.active)
-        .map((x) => x.key),
-      ["open"],
-    );
-  });
-});
-
-describe("task state", () => {
-  it("reads a claimed, unverified step as awaiting re-scan", () => {
-    assert.deepEqual(rtTaskState(task("p1a"), live({ s1: "completed" })), {
-      key: "done",
-      label: "Awaiting re-scan",
-      tone: "#5eead4",
-    });
-  });
-
-  it("reads a scan-verified step as Verified", () => {
-    assert.deepEqual(rtTaskState(task("p1a"), live({ s1: "completed" }, { s1: "verified" })), {
-      key: "verified",
-      label: "Verified",
-      tone: "#34d399",
-    });
-  });
-
-  it("treats already_handled as a claim too", () => {
-    assert.equal(rtTaskState(task("p1a"), live({ s1: "already_handled" })).key, "done");
-  });
-
-  it("colours an open critical task red and an open attention task amber", () => {
-    assert.equal(rtTaskState(task("p1d")).tone, "#f87171"); // Critical
-    assert.equal(rtTaskState(task("p1b")).tone, "#fbbf24"); // Attention
-    assert.equal(rtTaskState(task("p1d")).label, "Not started");
-    assert.equal(rtTaskState(task("p1b")).label, "Not started");
-  });
-
-  it("reads a skipped task as accepted", () => {
-    assert.equal(rtTaskState(task("p1b"), RT_LIVE_EMPTY, new Set(["p1b"])).key, "accepted");
+  it("an unmapped task can never read done off the wire", () => {
+    // d1 has no stepId; nothing on the wire can make it done.
+    assert.equal(rtDoneOf(task("d1"), ctxOf(live({ s1: "completed", s7: "completed" }))), false);
   });
 
   it("splits the resolved statuses the same way the server's pricing does", () => {
@@ -274,90 +128,114 @@ describe("task state", () => {
   });
 });
 
-describe("route", () => {
-  it("routes a Shane task, a critical task and everything else", () => {
-    assert.deepEqual(rtTaskRoute(task("p1a")), { label: "We run it", tone: "#60a5fa" }); // shane
-    assert.deepEqual(rtTaskRoute(task("p1d")), { label: "Runbook", tone: "#22d3ee" }); // Critical
-    assert.deepEqual(rtTaskRoute(task("p1b")), { label: "Your team", tone: "#94a3b8" }); // Attention
+describe("session overrides win over the baseline", () => {
+  it("a session tick makes a task done even with an empty wire", () => {
+    assert.equal(rtDoneOf(task("s3"), ctxOf(live({}), { ticked: { s3: true } })), true);
   });
-
-  it("routes a step the customer handed to Shane to us, off the real status", () => {
-    // p1b (s2) is the customer's own by default.
-    assert.deepEqual(rtTaskRoute(task("p1b"), live({ s2: "shane_handles" })), {
-      label: "We run it",
-      tone: "#60a5fa",
-    });
+  it("a session skip accepts a task", () => {
+    assert.equal(rtAcceptedOf(task("s3"), ctxOf(live({}), { skipped: { s3: true } })), true);
+    assert.equal(rtStateKeyOf(task("s3"), ctxOf(live({}), { skipped: { s3: true } })), "accepted");
   });
 });
 
-describe("change-request numbers", () => {
-  it("gives a CR to a Shane-run step only once it is really claimed done", () => {
-    const l = live({ s1: "completed", s7: "completed", s8: "completed" });
-    const rows = rtAllRows(l);
-    assert.equal(rows[0].cr, "CR-0100"); // p1a, index 0
-    assert.equal(rows[6].cr, "CR-0106"); // p1g, index 6
-    assert.equal(rows[7].cr, "CR-0107"); // p1h, index 7
-    assert.equal(rows.filter((r) => r.cr).length, 3);
+describe("state resolution", () => {
+  it("holds a task whose hold window is running", () => {
+    assert.equal(rtStateKeyOf(task("s3"), RT_CTX_EMPTY), "held"); // s3 seeds a running hold
   });
-
-  it("gives none when nothing has been actioned", () => {
-    assert.equal(rtAllRows().filter((r) => r.cr).length, 0);
+  it("blocks a task on an unmet dependency", () => {
+    assert.equal(rtStateKeyOf(task("s5"), RT_CTX_EMPTY), "blocked"); // s5 depends on s3
   });
-
-  it("gives none to a done step that is not Shane-run", () => {
-    // p1b (s2) is not Shane-run.
-    const state = rtTaskState(task("p1b"), live({ s2: "completed" }));
-    assert.equal(rtCrNumber(task("p1b"), 1, state), null);
+  it("reads CR stages as waiting-for-CR / approval / in-progress", () => {
+    assert.equal(rtStateKeyOf(task("s4"), RT_CTX_EMPTY), "wcr"); // crs 1
+    assert.equal(rtStateKeyOf(task("s2"), RT_CTX_EMPTY), "wapp"); // crs 4
+    assert.equal(rtStateKeyOf(task("h4"), RT_CTX_EMPTY), "progress"); // crs 5, no hold/dep
+  });
+  it("reads a done task as waiting-for-evidence until its evidence is approved", () => {
+    // s3 is done on the wire but seeds missing evidence.
+    assert.equal(rtStateKeyOf(task("s3"), ctxOf(live({ s1: "completed" }))), "evidence");
+  });
+  it("reads a done, evidence-approved, verified task as completed", () => {
+    assert.equal(rtStateKeyOf(task("h2"), ctxOf(live({ s8: "completed" }, { s8: "verified" }))), "completed");
   });
 });
 
-describe("groups", () => {
-  it("groups all six pillars in order when unfiltered", () => {
-    const g = rtGroups(null);
+describe("the CR tick gate", () => {
+  it("a CR-gated task cannot be ticked before its CR reaches execute (crs≥5)", () => {
+    assert.equal(rtCanTick(task("s4"), RT_CTX_EMPTY), false); // crs 1
+    assert.equal(rtCanTick(task("s4"), ctxOf(live({}), { cr: { s4: 5 } })), true);
+  });
+  it("a held task cannot be ticked until the hold is released", () => {
+    assert.equal(rtCanTick(task("s3"), ctxOf(live({}), { cr: { s3: 5 } })), false); // hold still running
+    assert.equal(rtCanTick(task("s3"), ctxOf(live({}), { cr: { s3: 5 }, hold: { s3: "released" } })), true);
+  });
+});
+
+describe("severity-weighted points", () => {
+  it("each pillar's task points sum to its base→target gap", () => {
+    for (const k of RT_PILLAR_ORDER) {
+      const sum = RT_TASKS.filter((t) => t.pl === k).reduce((a, t) => a + RT_POINTS[t.id], 0);
+      assert.equal(sum, RT_PILLAR_TARGET[k] - RT_PILLAR_BASE[k], `${k} points do not sum to its gap`);
+    }
+  });
+});
+
+describe("pillar live scoring", () => {
+  it("banks points as CONFIRMED only when done, evidence-approved AND verified", () => {
+    const base = RT_PILLAR_BASE.security;
+    // h2 is a security task. Done + approved evidence (seed) + verified.
+    const scored = rtPillarLive("security", ctxOf(live({ s8: "completed" }, { s8: "verified" })));
+    assert.equal(scored.now, base + RT_POINTS.h2);
+    assert.equal(scored.pending, 0);
+  });
+  it("holds points as PENDING when done but not yet verified", () => {
+    const base = RT_PILLAR_BASE.security;
+    const pending = rtPillarLive("security", ctxOf(live({ s8: "completed" })));
+    assert.equal(pending.now, base);
+    assert.equal(pending.pending, RT_POINTS.h2);
+  });
+});
+
+describe("gate summary", () => {
+  it("reports the base as the average of the pillar bases before anything is scored", () => {
+    const g = rtGate(RT_CTX_EMPTY);
+    const avgBase = Math.round(RT_PILLAR_ORDER.reduce((a, k) => a + RT_PILLAR_BASE[k], 0) / RT_PILLAR_ORDER.length);
+    assert.equal(g.now, String(avgBase));
+    assert.equal(g.base, String(avgBase));
+  });
+});
+
+describe("grouping and filters", () => {
+  it("groups the phases that have visible tasks, in phase order", () => {
+    const g = rtGroups(null, null, RT_CTX_EMPTY);
     assert.deepEqual(
       g.map((x) => x.key),
-      ["governance", "security", "compliance", "licensing", "adoption", "health"],
-    );
-    assert.deepEqual(
-      g.map((x) => x.n),
-      ["6", "7", "5", "4", "4", "4"],
+      ["discovery", "stabilization", "baseline", "hardening", "copilot", "drift", "identity"],
     );
   });
-
-  it("drops empty groups under a filter, off real rows", () => {
-    // s1 = p1a (governance), s7/s8 = p1g/p1h (security).
-    const g = rtGroups("done", live({ s1: "completed", s7: "completed", s8: "completed" }));
-    assert.deepEqual(
-      g.map((x) => x.key),
-      ["governance", "security"],
-    );
-    assert.deepEqual(
-      g.map((x) => x.n),
-      ["1", "2"],
-    );
+  it("filters to a single phase", () => {
+    const g = rtGroups("stabilization", null, RT_CTX_EMPTY);
+    assert.equal(g.length, 1);
+    assert.equal(g[0].items.length, 5);
   });
-
-  it("returns no groups for a state nothing is in", () => {
-    assert.equal(rtGroups("verified").length, 0);
+  it("composes phase and state filters", () => {
+    const g = rtGroups("stabilization", "blocked", RT_CTX_EMPTY);
+    assert.deepEqual(g.flatMap((x) => x.items.map((i) => i.id)), ["s5"]); // s5 is the blocked one
   });
 });
 
-describe("rows", () => {
-  it("carries each task's real step id, and null for the two #757 dropped", () => {
-    const rows = rtAllRows();
-    assert.equal(rows.find((r) => r.id === "p1a")!.stepId, "s1");
-    assert.equal(rows.find((r) => r.id === "p3h")!.stepId, "s30");
-    assert.equal(rows.find((r) => r.id === "p3b")!.stepId, null);
-    assert.equal(rows.find((r) => r.id === "p3c")!.stepId, null);
+describe("state chips", () => {
+  it("only shows a chip for a state something is in", () => {
+    const chips = rtStateChips(null, RT_CTX_EMPTY);
+    assert.ok(chips.every((c) => Number(c.n) > 0));
+    // With an empty wire nothing is completed, so no completed chip.
+    assert.ok(!chips.some((c) => c.key === "completed"));
   });
 });
 
-describe("owner", () => {
-  it("resolves each pillar's responsible RACI owner onto its rows", () => {
-    const rows = rtAllRows();
-    const gov = rows.find((r) => r.pillarKey === "governance")!;
-    assert.deepEqual(gov.owner, { init: "SM", name: "Shane McCaw", tone: "#38bdf8" });
-    const sec = rows.find((r) => r.pillarKey === "security")!;
-    assert.deepEqual(sec.owner, { init: "RC", name: "R. Court", tone: "#f87171" });
+describe("drift", () => {
+  it("lists the two re-remediation tasks against their originals", () => {
+    const d = rtDriftItems();
+    assert.deepEqual(d.map((x) => x.id).sort(), ["dr1", "dr2"]);
+    assert.ok(d.find((x) => x.id === "dr1")!.origin.includes("Close org-wide sharing"));
   });
 });

@@ -41,6 +41,7 @@ import {
   type NavGlyph,
   type NavGroup,
   type NavItem,
+  type NavSubItem,
 } from "@/components/portal-v2/portalV2Nav";
 
 import {
@@ -417,7 +418,7 @@ function NavSubItems({
   location,
   parentHref,
 }: {
-  subs: ReadonlyArray<{ key: string; label: string; href: string }>;
+  subs: readonly NavSubItem[];
   location: string;
   parentHref: string;
 }) {
@@ -427,10 +428,15 @@ function NavSubItems({
         // The bare parent path IS the "all" sub-item, so it is active both at
         // "/…/ownership" and at "/…/ownership/all" — see isNavSubActive.
         const on = isNavSubActive(sb, parentHref, location);
+        // Round Four toggle (Remediation phases only): clicking the active phase
+        // clears the filter — the prototype does it as `sel === key ? null : key`
+        // (shell 9141); with URL-as-state that means the active row links back to
+        // the module root. Waves do not toggle, so this is a no-op for them.
+        const href = sb.rich?.toggle && on ? parentHref : sb.href;
         return (
           <Link
             key={sb.key}
-            href={sb.href}
+            href={href}
             title={sb.label}
             data-testid={`pv2-subnav-${sb.key}`}
             aria-current={on ? "page" : undefined}
@@ -451,6 +457,7 @@ function NavSubItems({
               textDecoration: "none",
             }}
           >
+            {/* Header row: ↳ + label on the left, the rich count on the right. */}
             <span
               style={{
                 display: "flex",
@@ -477,11 +484,70 @@ function NavSubItems({
                   {sb.label}
                 </span>
               </span>
+              {sb.rich && (
+                <span
+                  style={{
+                    flex: "0 0 auto",
+                    fontSize: "10px",
+                    fontWeight: 800,
+                    fontFamily: MONO,
+                    color: on ? sb.rich.countToneActive : "#475569",
+                  }}
+                >
+                  {sb.rich.count}
+                </span>
+              )}
             </span>
+
+            {/* The rich body — range, the stacked bar, the one-line note. */}
+            {sb.rich && <RichSubBody rich={sb.rich} on={on} />}
           </Link>
         );
       })}
     </div>
+  );
+}
+
+/**
+ * The Round Four rich sub-nav body — prototype shared template lines 182-190. A
+ * range line, a stacked bar (each segment `flex:<n> 0 0`, so its width is its
+ * share of the total and a zero segment collapses), and the note. Dimmed
+ * segments drop to the design's inactive opacity when the row is not selected;
+ * the note colour is fixed by content, not by active state.
+ */
+function RichSubBody({
+  rich,
+  on,
+}: {
+  rich: NonNullable<NavSubItem["rich"]>;
+  on: boolean;
+}) {
+  return (
+    <>
+      <span style={{ fontSize: "9.5px", color: on ? "#93c5fd" : "#64748b" }}>{rich.range}</span>
+      <div
+        style={{
+          display: "flex",
+          gap: 2,
+          height: 4,
+          borderRadius: 2,
+          overflow: "hidden",
+          width: "100%",
+        }}
+      >
+        {rich.bars.map((bar, i) => (
+          <span
+            key={i}
+            style={{
+              flex: `${bar.flex} 0 0`,
+              background: bar.color,
+              opacity: bar.dim ? (on ? 1 : rich.barInactiveOpacity) : 1,
+            }}
+          />
+        ))}
+      </div>
+      <span style={{ fontSize: "9.5px", fontWeight: 600, color: rich.metaTone }}>{rich.meta}</span>
+    </>
   );
 }
 

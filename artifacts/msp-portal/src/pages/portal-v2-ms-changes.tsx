@@ -49,7 +49,6 @@ import {
   MSC_SECS,
   MSC_TODAY_LABEL,
   WORKLOAD_TONE,
-  type MscSeen,
   type MsPost,
 } from "@/components/portal-v2/msChangesData";
 import { useMessageCenter } from "@/components/portal-v2/useMessageCenter";
@@ -70,9 +69,6 @@ import {
   raciRows,
   rangeOf,
   seenInWave,
-  seenMeta,
-  seenWorkload,
-  servicesLabel,
   waveBands,
   waveBreaks,
   waveCount,
@@ -96,6 +92,31 @@ const WAVE_SLUGS = ["late-august", "september", "q2", "q3", "beyond"] as const;
 const KIND_TONE = Object.fromEntries(MSC_KINDS.map((k) => [k.k, k.tone])) as Record<string, string>;
 
 const ALL_SERVICES: Services = { Exchange: true, Teams: true, SharePoint: true, Entra: true, Purview: true, Copilot: true };
+
+/** The Settings button's dynamic label — prototype `settingsLabel` (1255). */
+function settingsLabel(services: Services): string {
+  const count = Object.values(services).filter(Boolean).length;
+  return `Settings · ${count} services`;
+}
+
+/**
+ * Round Four: each wave tile drops its evidence in place. The label, note and
+ * tone per tile key — prototype `wDrill` (Microsoft Changes.dc.html 1946-1961).
+ */
+const WT_META: Readonly<Record<string, { label: string; note: string; tone: string }>> = {
+  changes: { label: "changes in this wave", note: "Every notice in scope, read against your tenant rather than against the catalogue.", tone: "#60a5fa" },
+  breaks: { label: "stop something working", note: "Each one has a named thing in your tenant and a date it stops.", tone: "#f87171" },
+  decide: { label: "need a decision", note: "Each carries a date after which the decision is made for you.", tone: "#fbbf24" },
+  seen: { label: "your people will notice", note: "No admin action needed. Somebody still has to be told.", tone: "#a78bfa" },
+};
+
+interface WaveDrillRow {
+  id: string;
+  title: string;
+  why: string;
+  meta: string;
+  metaTone: string;
+}
 
 function Kicker({ colour, children }: { colour: string; children: React.ReactNode }) {
   return (
@@ -581,19 +602,18 @@ export default function PortalV2MsChangesPage() {
    * empty state. See `useMessageCenter.ts` for what is real in it and what stays
    * fixture.
    */
-  const { dataset: ds, provenance } = useMessageCenter();
+  const { dataset: ds } = useMessageCenter();
 
   const bands = useMemo(() => waveBands(ds.buckets), [ds]);
   const slugIndex = params?.wave ? WAVE_SLUGS.indexOf(params.wave as (typeof WAVE_SLUGS)[number]) : 0;
   const wave = clampWave(slugIndex < 0 ? 0 : slugIndex, bands);
 
   const [services, setServices] = useState<Services>(ALL_SERVICES);
-  const [seenPanel, setSeenPanel] = useState(false);
+  // Round Four: which wave tile has dropped its evidence in place, or null.
+  const [waveTile, setWaveTile] = useState<string | null>(null);
   const [past, setPast] = useState<number | null>(null);
-  const [statFilter, setStatFilter] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [sec, setSec] = useState("ms");
-  const [announced, setAnnounced] = useState<Record<string, boolean>>({});
   const [decided, setDecided] = useState<Record<string, string>>({});
   const [snoozed, setSnoozed] = useState<Record<string, string>>({});
   const [threadOv, setThreadOv] = useState<Record<string, { who: string; at: string; text: string; mine?: boolean }[]>>({});
@@ -627,6 +647,21 @@ export default function PortalV2MsChangesPage() {
   const openPostObj = openId ? ds.posts.find((p) => p.id === openId) ?? null : null;
   const thread = openPostObj ? [...openPostObj.thread, ...(threadOv[openPostObj.id] ?? [])] : [];
 
+  // Round Four: the evidence a wave tile drops in place. Built from the same
+  // wave sets the sections below render, so the tile and the section never
+  // disagree. `changes` is every written-up notice; the other three are the
+  // per-kind sets. Prototype `wDrill.rows` (Microsoft Changes.dc.html 1957-1968).
+  const waveTileRows = (key: string): WaveDrillRow[] => {
+    if (key === "breaks") return wBreaks.map((b) => ({ id: b.id, title: b.what, why: b.evidence, meta: b.state, metaTone: b.hasCr ? "#34d399" : "#fbbf24" }));
+    if (key === "decide") return wQueue.map((q) => ({ id: q.item.id, title: q.item.decision, why: q.item.ifNot, meta: q.item.kind, metaTone: q.item.tone }));
+    if (key === "seen") return wSeen.map((v) => ({ id: v.id, title: v.title, why: v.sees, meta: v.app, metaTone: "#a78bfa" }));
+    return [
+      ...wBreaks.map((b) => ({ id: b.id, title: b.what, why: b.evidence, meta: "Breaking", metaTone: "#f87171" })),
+      ...wQueue.map((q) => ({ id: q.item.id, title: q.item.decision, why: q.item.ifNot, meta: "Decide", metaTone: "#fbbf24" })),
+      ...wSeen.map((v) => ({ id: v.id, title: v.title, why: v.sees, meta: "Seen", metaTone: "#a78bfa" })),
+    ];
+  };
+
   /* ── The forms ─────────────────────────────────────────────────────────── */
 
   const briefForm = () =>
@@ -645,38 +680,35 @@ export default function PortalV2MsChangesPage() {
       }),
     );
 
-  const digestForm = () =>
+  // Round Four: one Settings panel — digest cadence, services in scope and the
+  // tenant scan, all in the single form the header's Settings button opens
+  // (prototype settingsForm, Microsoft Changes.dc.html 1256-1280). It replaces
+  // the former separate Digest and Services controls.
+  const settingsForm = () =>
     openForm(
       toFormSpec({
-        kicker: "Digest",
-        title: "Change the Monday digest",
-        intro: "The digest is the only reason any of this gets read. Keep it short enough that it does.",
-        submitLabel: "Save the digest",
+        kicker: "Settings",
+        title: "Digest, services and the tenant read",
+        intro: `Read against your tenant, scanned ${ds.scanAt}. The digest decides who hears about a change; the services decide what this page counts at all. Turn a service off and its waves, counts and notices go with it.`,
+        submitLabel: "Save settings",
         fields: [
-          { k: "day", label: "When", kind: "pick", value: "Monday 07:00", options: ["Monday 07:00", "Friday 16:00", "First Monday of the month"] },
+          { k: "day", label: "Digest sent", kind: "pick", value: "Monday 07:00", options: ["Monday 07:00", "Friday 16:00", "First Monday of the month"] },
           { k: "to", label: "Recipients", kind: "text", value: "Priya Raman · IT team · Shane McCaw" },
           { k: "floor", label: "What to leave out", kind: "pick", value: "Skip no-impact unless it touches a control", options: ["Skip no-impact unless it touches a control", "Skip everything under 40", "Send everything"] },
           { k: "urgent", label: "Out of band", kind: "toggle", value: "In use", toggleLabel: "Send anything scored above 80 the day it is published" },
+          ...ds.scans.map((sc) => ({ k: sc.wl, label: sc.name, kind: "toggle" as const, value: services[sc.wl] === false ? "Off" : "In use", toggleLabel: "In use", hint: `Scan found: ${sc.found}` })),
+          { k: "rescan", label: "Tenant read", kind: "toggle" as const, value: "Off", toggleLabel: "Scan again when I save", hint: `Last read ${ds.scanAt}. A Graph read takes about four minutes.` },
         ],
-        doneNote: "Digest saved. Anything above 80 goes out the same day it is published.",
-      }),
-    );
-
-  const servicesForm = () =>
-    openForm(
-      toFormSpec({
-        kicker: "Settings · services in use",
-        title: "Which Microsoft services are you using?",
-        intro: `Turn a service off and it leaves this page — its waves, counts and notices all go with it. Each one is pre-selected from the last tenant scan, ${ds.scanAt}.`,
-        submitLabel: "Save services",
-        fields: ds.scans.map((sc) => ({ k: sc.wl, label: sc.name, kind: "toggle" as const, value: services[sc.wl] === false ? "Off" : "In use", toggleLabel: "In use", hint: `Scan found: ${sc.found}` })),
-        doneNote: "Services updated. Every count on this page now reads against them.",
+        doneNote: "Saved. The digest goes out on the schedule you set, and every count on this page now reads against the services in use.",
         onSubmit: (v) => {
           const next: Record<string, boolean> = {};
           ds.scans.forEach((sc) => {
             next[sc.wl] = v[sc.wl] === "In use";
           });
           setServices(next);
+          if (v.rescan === "In use") {
+            t("Tenant scan queued — Graph read takes about four minutes. Everything on this page will re-read against the result.");
+          }
         },
       }),
     );
@@ -778,23 +810,6 @@ export default function PortalV2MsChangesPage() {
       }),
     );
 
-  const announceForm = (v: MscSeen) =>
-    openForm(
-      toFormSpec({
-        kicker: `Tell your people · ${v.id}`,
-        title: `Announce: ${v.title}`,
-        intro: "A short notice, sent before the change lands, in the words your help desk would use. This is the cheapest ticket reduction available to you.",
-        submitLabel: "Schedule the announcement",
-        fields: [
-          { k: "when", label: "Send it", kind: "pick", value: "One week before", options: ["Now", "One week before", "The day before", "The morning it lands"] },
-          { k: "channel", label: "Channel", kind: "pick", value: "Email and Teams", options: ["Email", "Teams", "Email and Teams", "Intranet banner"] },
-          { k: "audience", label: "Audience", kind: "text", value: v.who },
-          { k: "msg", label: "The message", kind: "area", value: v.helpdesk, hint: "Pre-written in plain language. Edit it to sound like you — nobody believes an announcement that reads like a Microsoft post." },
-        ],
-        doneNote: "Announcement scheduled. Expected tickets drop to a handful.",
-        onSubmit: () => setAnnounced((cur) => ({ ...cur, [v.id]: true })),
-      }),
-    );
 
   const tellForm = (name: string, items: readonly string[]) =>
     openForm(
@@ -822,42 +837,23 @@ export default function PortalV2MsChangesPage() {
               <span style={{ fontSize: "19px", fontWeight: 800, color: "#f8fafc", letterSpacing: "-.015em" }} data-testid="pv2-page-title">Microsoft Changes</span>
               <span style={{ fontSize: "12.5px", color: "#94a3b8", lineHeight: 1.5 }}>Microsoft ships in waves. Pick a wave and this page becomes that wave.</span>
             </div>
+            {/* Round Four: two controls only — Export briefing + a single
+                Settings panel (digest cadence, services in scope, tenant scan).
+                The design merged the former Digest / Services / Scan controls
+                into one form. */}
             <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
               <button onClick={briefForm} data-testid="pv2-msc-brief" style={HEADER_BTN(true)}>Export a board briefing</button>
-              <button onClick={digestForm} data-testid="pv2-msc-digest" style={HEADER_BTN(false)}>Digest settings</button>
-              <button onClick={servicesForm} data-testid="pv2-msc-services" style={HEADER_BTN(false)}>{servicesLabel(services)}</button>
+              <button onClick={settingsForm} data-testid="pv2-msc-settings" style={HEADER_BTN(false)}>{settingsLabel(services)}</button>
             </div>
           </div>
 
-          {/* Next 12 months — the stat cards — prototype 43-56 */}
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            <span style={{ fontSize: "9px", fontWeight: 700, letterSpacing: ".12em", textTransform: "uppercase", color: "#475569", paddingRight: 2 }}>Next 12 months</span>
-            {ds.stats.map((s) => {
-              const on = statFilter === s.key;
-              return (
-                <button key={s.key} onClick={() => setStatFilter(on ? null : s.key)} data-testid={`pv2-msc-stat-${s.key}`} title={on ? "Filtering everything below · click to clear" : s.sub} style={{ display: "inline-flex", alignItems: "baseline", gap: 7, padding: "6px 11px", border: `1px solid ${on ? `${s.tone}80` : "rgba(30,41,59,.9)"}`, borderRadius: 999, background: on ? `${s.tone}14` : "#0b1524", cursor: "pointer", fontFamily: "inherit" }}>
-                  <span style={{ fontSize: "19px", fontWeight: 800, letterSpacing: "-.02em", lineHeight: 1.1, flex: "0 0 auto", color: s.tone }}>{s.value}</span>
-                  <span style={{ fontSize: "9.5px", fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase", color: "#64748b", lineHeight: 1.3, whiteSpace: "nowrap" }}>{s.label}</span>
-                </button>
-              );
-            })}
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: "auto", padding: "5px 11px 5px 9px", border: "1px solid rgba(52,211,153,.28)", borderRadius: 999, background: "rgba(52,211,153,.06)" }}>
-              <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#34d399", flex: "0 0 auto", boxShadow: "0 0 0 3px rgba(52,211,153,.18)" }} />
-              {/*
-                The design says "Read against your tenant", which on the LIVE
-                dataset would be a claim nothing has done: these posts come from
-                your Message Center, they have not been matched against your
-                configuration. The fixture keeps the design's own words; the live
-                dataset says what actually happened, and how many posts it holds.
-              */}
-              <span data-testid="pv2-msc-source" title={provenance?.impactBasis ?? undefined} style={{ fontSize: "10.5px", color: "#94a3b8", whiteSpace: "nowrap" }}>
-                {ds.live
-                  ? `Your Microsoft Message Center · ${ds.itemCount} posts · synced ${ds.scanAt}`
-                  : `Read against your tenant · scanned ${ds.scanAt}`}
-              </span>
-              <button onClick={() => t("Tenant scan queued — Graph read takes about four minutes. Everything on this page will re-read against the result.")} data-testid="pv2-msc-rescan" style={{ border: "none", background: "transparent", color: "#34d399", fontSize: "10.5px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", padding: 0, whiteSpace: "nowrap" }}>Scan again</button>
-            </div>
-          </div>
+          {/*
+            Round Four removed the six duplicate stat cards — the same counts now
+            read from the wave sub-nav in the left rail. The "Read against your
+            tenant · scanned {date}" line and the tenant re-scan both moved into
+            the single Settings panel (see settingsForm), so the page top goes
+            straight from the header to the landed-wave nav and the wave itself.
+          */}
 
           {/* Landed waves — the way into the retrospective — prototype pastNav 2087-2094 */}
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -865,7 +861,7 @@ export default function PortalV2MsChangesPage() {
             {ds.landed.map((w, i) => {
               const on = past === i;
               return (
-                <button key={w.name} onClick={() => { setPast(i); setSeenPanel(false); }} data-testid={`pv2-msc-pastnav-${i}`} style={{ display: "flex", flexDirection: "column", gap: 2, padding: "8px 12px", borderRadius: 9, cursor: "pointer", fontFamily: "inherit", textAlign: "left", border: `1px solid ${on ? "rgba(148,163,184,.4)" : "rgba(30,41,59,.9)"}`, borderLeft: `3px solid ${on ? "#94a3b8" : "rgba(148,163,184,.18)"}`, background: on ? "rgba(148,163,184,.08)" : "#0b1524" }}>
+                <button key={w.name} onClick={() => { setPast(i); setWaveTile(null); }} data-testid={`pv2-msc-pastnav-${i}`} style={{ display: "flex", flexDirection: "column", gap: 2, padding: "8px 12px", borderRadius: 9, cursor: "pointer", fontFamily: "inherit", textAlign: "left", border: `1px solid ${on ? "rgba(148,163,184,.4)" : "rgba(30,41,59,.9)"}`, borderLeft: `3px solid ${on ? "#94a3b8" : "rgba(148,163,184,.18)"}`, background: on ? "rgba(148,163,184,.08)" : "#0b1524" }}>
                   <span style={{ fontSize: "12px", fontWeight: on ? 800 : 600, color: on ? "#e2e8f0" : "#94a3b8" }}>{w.name}</span>
                   <span style={{ fontSize: "10px", fontWeight: 600, color: w.tone === "#f87171" ? "#f87171" : "#34d399" }}>{w.verdict}</span>
                 </button>
@@ -935,46 +931,57 @@ export default function PortalV2MsChangesPage() {
                   </div>
                   <span style={{ fontSize: "11px", fontWeight: 700, color: "#22d3ee", whiteSpace: "nowrap" }}>{notice.left} days left</span>
                 </div>
+                {/* Round Four: every tile is a button that drops its evidence in
+                    place below the wave card — no link-out, no separate panel. */}
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 9 }}>
                   {tiles.map((tile) => {
-                    const isSeen = tile.key === "seen";
+                    const on = waveTile === tile.key;
                     return (
-                      <button key={tile.key} onClick={isSeen ? () => setSeenPanel((v) => !v) : undefined} data-testid={`pv2-msc-tile-${tile.key}`} style={{ display: "flex", flexDirection: "column", gap: 2, padding: "11px 13px", borderRadius: 9, border: `1px solid ${tile.tone}2e`, borderLeft: `3px solid ${tile.tone}`, background: "rgba(2,6,23,.5)", fontFamily: "inherit", textAlign: "left", cursor: isSeen ? "pointer" : "default" }}>
+                      <button key={tile.key} onClick={() => setWaveTile((v) => (v === tile.key ? null : tile.key))} data-testid={`pv2-msc-tile-${tile.key}`} style={{ display: "flex", flexDirection: "column", gap: 2, padding: "11px 13px", borderRadius: 9, border: `1px solid ${tile.tone}${on ? "99" : "2e"}`, borderLeft: `3px solid ${tile.tone}`, background: on ? `${tile.tone}14` : "rgba(2,6,23,.5)", fontFamily: "inherit", textAlign: "left", cursor: "pointer" }}>
                         <span style={{ fontSize: "22px", fontWeight: 800, letterSpacing: "-.02em", lineHeight: 1.05, color: tile.tone }}>{tile.value}</span>
-                        <span style={{ fontSize: "10.5px", fontWeight: 600, color: "#94a3b8", lineHeight: 1.4 }}>{tile.label}</span>
-                        {isSeen && <span style={{ fontSize: "10px", fontWeight: 700, color: "#a78bfa", textAlign: "left" }}>{seenPanel ? "Hide what they will see" : "See what they will see"}</span>}
+                        <span style={{ fontSize: "10.5px", fontWeight: 600, color: "#94a3b8", lineHeight: 1.4, textAlign: "left" }}>{tile.label}</span>
+                        <span style={{ fontSize: "10px", fontWeight: 700, color: on ? tile.tone : "#475569", textAlign: "left" }}>{on ? "Hide the evidence" : "Show the evidence"}</span>
                       </button>
                     );
                   })}
                 </div>
               </div>
 
-              {/* What your people will see — the seen-in-the-wild list — prototype 132-150 */}
-              {seenPanel && (
-                <div data-testid="pv2-msc-seen-panel" style={SECTION_CARD("rgba(167,139,250,.3)")}>
-                  <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
-                    <Kicker colour="#a78bfa">What your people will see</Kicker>
-                    <span style={{ fontSize: "11px", color: "#64748b" }}>{seenMeta(wave, services, bands)} · nothing to configure, only somebody to tell</span>
-                  </div>
-                  {wSeen.length === 0 && <span style={{ fontSize: "12px", color: "#64748b", lineHeight: 1.5 }}>Nothing your people will notice lands in this wave.</span>}
-                  {wSeen.map((v) => (
-                    <div key={v.id} data-testid={`pv2-msc-seen-${v.id}`} style={{ display: "flex", flexDirection: "column", gap: 8, padding: "12px 14px", border: `1px solid ${v.tone}44`, borderRadius: 11, background: "rgba(2,6,23,.4)" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                        <span style={{ fontSize: "11.5px", fontWeight: 700, color: "#cbd5e1" }}>{v.when}</span>
-                        <span style={pill(v.app, WORKLOAD_TONE[seenWorkload(v.app)] ?? "#94a3b8", "rgba(148,163,184,.08)")}>{v.app}</span>
-                        <span style={{ fontSize: "12.5px", fontWeight: 700, color: "#f1f5f9", lineHeight: 1.4, minWidth: 0 }}>{v.title}</span>
-                        <span style={{ marginLeft: "auto", ...pill(announced[v.id] ? "Announced" : "Not told", announced[v.id] ? "#34d399" : "#f87171", `${announced[v.id] ? "#34d399" : "#f87171"}14`) }}>{announced[v.id] ? "Announced" : "Not told"}</span>
+              {/* The tile's evidence, dropped in place — prototype wDrill 116-136 */}
+              {waveTile &&
+                (() => {
+                  const meta = WT_META[waveTile] ?? WT_META.changes;
+                  const rows = waveTileRows(waveTile);
+                  return (
+                    <div data-testid="pv2-msc-wave-drill" style={{ display: "flex", flexDirection: "column", gap: 10, padding: "15px 17px", border: `1px solid ${meta.tone}4d`, borderRadius: 13, background: `linear-gradient(150deg,${meta.tone}0d,#0b1524 55%)` }}>
+                      <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+                        <span style={{ fontSize: "9.5px", fontWeight: 700, letterSpacing: ".14em", textTransform: "uppercase", color: meta.tone }}>{rows.length} written up · {meta.label}</span>
+                        <span style={{ flex: "1 1 160px", minWidth: 0, fontSize: "11px", color: "#64748b", lineHeight: 1.5, textWrap: "pretty" }}>{meta.note}</span>
+                        <button onClick={() => setWaveTile(null)} style={{ flex: "0 0 auto", border: "none", background: "transparent", color: "#64748b", fontSize: "14px", lineHeight: 1, cursor: "pointer", fontFamily: "inherit", padding: 0 }}>×</button>
                       </div>
-                      <span style={{ fontSize: "11.5px", color: "#94a3b8", lineHeight: 1.6, textWrap: "pretty" }}>{v.sees}</span>
-                      <span style={{ fontSize: "11px", color: v.tone, fontWeight: 600, lineHeight: 1.5 }}>{v.tickets}</span>
-                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                        <button onClick={() => announceForm(v)} data-testid={`pv2-msc-announce-${v.id}`} style={{ padding: "7px 12px", borderRadius: 6, border: "1px solid rgba(167,139,250,.45)", background: "rgba(167,139,250,.12)", color: "#a78bfa", fontSize: "11px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Announce it</button>
-                        <button onClick={() => t(`Added to the help desk crib sheet for ${v.when}. First-line staff see it when a ticket mentions ${v.app}.`)} style={{ padding: "7px 12px", borderRadius: 6, border: "1px solid rgba(148,163,184,.24)", background: "transparent", color: "#94a3b8", fontSize: "11px", fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Add to crib sheet</button>
-                      </div>
+                      {rows.length === 0 && <span style={{ fontSize: "12px", color: "#64748b", lineHeight: 1.5 }}>Nothing in this wave here.</span>}
+                      {rows.length > 0 && (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 0, border: "1px solid rgba(30,41,59,.9)", borderRadius: 10, overflow: "hidden" }}>
+                          {rows.map((r, i) => (
+                            <button
+                              key={`${r.id}-${i}`}
+                              onClick={() => (ds.posts.find((p) => p.id === r.id) ? openPost(r.id) : t("This notice is written up here — it has no separate detail page."))}
+                              data-testid={`pv2-msc-drill-${r.id}`}
+                              style={{ display: "flex", flexDirection: "column", gap: 3, padding: "11px 13px", border: "none", borderTop: i === 0 ? "none" : "1px solid rgba(30,41,59,.8)", background: "transparent", cursor: "pointer", fontFamily: "inherit", textAlign: "left", minWidth: 0 }}
+                            >
+                              <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
+                                <span style={{ fontSize: "9.5px", fontWeight: 700, color: "#475569", fontFamily: MONO }}>{r.id}</span>
+                                <span style={{ flex: "1 1 220px", minWidth: 0, fontSize: "12.5px", fontWeight: 600, color: "#e2e8f0", lineHeight: 1.4, textWrap: "pretty" }}>{r.title}</span>
+                                <span style={{ flex: "0 0 auto", padding: "2px 8px", borderRadius: 5, border: `1px solid ${r.metaTone}4d`, color: r.metaTone, fontSize: "9.5px", fontWeight: 700, whiteSpace: "nowrap", fontFamily: MONO }}>{r.meta}</span>
+                              </div>
+                              <span style={{ fontSize: "11px", color: "#64748b", lineHeight: 1.55, textWrap: "pretty" }}>{r.why}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  ))}
-                </div>
-              )}
+                  );
+                })()}
 
               {/* ── The density grid ──────────────────────────────────────────
                   The wave band keeps the prototype's scroll wrapper (165-166);
@@ -994,9 +1001,9 @@ export default function PortalV2MsChangesPage() {
                 </div>
 
                 <div style={{ overflowX: "auto", overflowY: "hidden" }} data-testid="pv2-msc-grid">
-                  <div style={{ minWidth: 820, display: "grid", gridTemplateColumns: "190px minmax(0,1fr)", gap: 0 }}>
+                  <div style={{ minWidth: 900, display: "grid", gridTemplateColumns: "136px minmax(0,1fr)", gap: 0 }}>
                     <span style={{ fontSize: "9px", fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: "#475569", alignSelf: "end", padding: "0 12px 6px 2px" }}>Wave</span>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(11,1fr)" }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(11,minmax(0,1fr))" }}>
                       {bands.map((b, wi) => {
                         const on = wi === wave;
                         const n = waveCount(wi, active);
@@ -1018,7 +1025,7 @@ export default function PortalV2MsChangesPage() {
                     </div>
 
                     <span style={{ fontSize: "9px", fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: "#475569", alignSelf: "start", padding: "6px 12px 0 2px" }}>Workload</span>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(11,1fr)" }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(11,minmax(0,1fr))" }}>
                       {ds.buckets.map((b, i) => (
                         <div key={`${b.label}-${b.sub}`} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 0, padding: "5px 2px", borderLeft: i === 0 ? "2px solid rgba(34,211,238,.75)" : `1px solid ${isFreezeBucket(i, ds) ? "rgba(248,113,113,.4)" : "rgba(30,41,59,.6)"}`, background: b.wave === selBand.wave ? "rgba(96,165,250,.05)" : "transparent" }}>
                           {i === 0 && <span style={{ display: "inline-flex", alignItems: "center", padding: "1px 6px", marginBottom: 2, borderRadius: 999, fontSize: "8px", fontWeight: 800, letterSpacing: ".06em", textTransform: "uppercase", color: "#022c33", background: "#22d3ee", whiteSpace: "nowrap" }}>{MSC_TODAY_LABEL}</span>}
@@ -1029,12 +1036,12 @@ export default function PortalV2MsChangesPage() {
                     </div>
 
                     {active.map((row) => (
-                      <div key={row.wl} data-testid={`pv2-msc-row-${row.wl}`} style={{ display: "grid", gridTemplateColumns: "190px minmax(0,1fr)", gap: 0, gridColumn: "1 / span 2", borderTop: "1px solid rgba(30,41,59,.6)" }}>
+                      <div key={row.wl} data-testid={`pv2-msc-row-${row.wl}`} style={{ display: "grid", gridTemplateColumns: "136px minmax(0,1fr)", gap: 0, gridColumn: "1 / span 2", borderTop: "1px solid rgba(30,41,59,.6)" }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "0 12px 0 2px", minWidth: 0 }}>
                           <span style={{ width: 8, height: 8, borderRadius: 2, flex: "0 0 auto", background: WORKLOAD_TONE[row.wl] }} />
                           <span style={{ flex: 1, fontSize: "11.5px", fontWeight: 600, color: "#cbd5e1", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{row.name}</span>
                         </div>
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(11,1fr)" }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(11,minmax(0,1fr))" }}>
                           {row.cells.map((c, i) => (
                             <div key={i} title={cellTitle(row.name, i, c, ds)} style={{ display: "flex", flexWrap: "wrap", alignContent: "center", justifyContent: "center", gap: 3, minHeight: 38, padding: "6px 5px", borderLeft: i === 0 ? "2px solid rgba(34,211,238,.5)" : `1px solid ${isFreezeBucket(i, ds) ? "rgba(248,113,113,.35)" : "rgba(30,41,59,.5)"}`, background: ds.buckets[i].wave === selBand.wave ? "rgba(96,165,250,.05)" : "transparent" }}>
                               {cellDots(c).map((k, di) => (

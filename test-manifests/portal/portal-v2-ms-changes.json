@@ -110,15 +110,8 @@
     { "name": "MSC1 -- the page resolved, not NotFound and not the param pillar route.", "action": "expect", "selector": "[data-testid='pv2-page-title']", "textContains": "Microsoft Changes", "critical": true },
 
     { "name": "MSC2 -- the header carries the board-briefing export.", "action": "expect", "selector": "[data-testid='pv2-msc-brief']", "textContains": "Export a board briefing" },
-    { "name": "MSC3 -- ...and the digest settings button.", "action": "expect", "selector": "[data-testid='pv2-msc-digest']", "textContains": "Digest settings" },
-    { "name": "MSC4 -- ...and the workload filter.", "action": "expect", "selector": "[data-testid='pv2-msc-services']", "textContains": "Services" },
-
-    { "name": "MSC5 -- LIVE DATA PROOF: the source line reports the tenant's REAL Message Center item count, not the fixture's tenant. The fixture path renders 'Read against your tenant' instead and would fail here.", "action": "expect", "selector": "[data-testid='pv2-msc-source']", "textContains": "{{itemCount}} posts", "critical": true },
-    { "name": "MSC6 -- ...and the REAL sync time from the daily Graph pull.", "action": "expect", "selector": "[data-testid='pv2-msc-source']", "textContains": "{{scanAt}}", "critical": true },
-    { "name": "MSC7 -- ...naming the source as the customer's own Message Center.", "action": "expect", "selector": "[data-testid='pv2-msc-source']", "textContains": "Your Microsoft Message Center" },
-
-    { "name": "MSC8 -- the first stat card renders the value the endpoint derived over the whole corpus.", "action": "expect", "selector": "[data-testid='pv2-msc-stat-decisions']", "textContains": "{{statDecisions}}", "critical": true },
-    { "name": "MSC9 -- ...under its own label.", "action": "expect", "selector": "[data-testid='pv2-msc-stat-decisions']", "textContains": "Need a decision" },
+    { "name": "MSC3 -- ROUND FOUR: the header is reduced to TWO controls -- the second is the single Settings panel (digest cadence, services in scope, tenant scan) labelled 'Settings · N services'. The former separate Digest and Services buttons are gone.", "action": "expect", "selector": "[data-testid='pv2-msc-settings']", "textContains": "Settings ·", "critical": true },
+    { "name": "MSC4 -- ROUND FOUR: the six duplicate stat cards were removed -- the counts read from the wave sub-nav now -- so no stat card renders on the page.", "action": "expect", "selector": "[data-testid='pv2-msc-stat-decisions']", "state": "absent", "critical": true },
 
     { "name": "MSC10 -- the density grid renders.", "action": "expect", "selector": "[data-testid='pv2-msc-grid']", "state": "visible", "critical": true },
     { "name": "MSC11 -- the first density row carries the REAL workload name the endpoint sent.", "action": "expect", "selector": "[data-testid='pv2-msc-row-Exchange']", "textContains": "{{firstWorkloadName}}", "critical": true },
@@ -150,8 +143,10 @@
     { "name": "MSC32 -- ...the far wave resolved rather than falling back to the first.", "action": "expect", "selector": "[data-testid='pv2-msc-wave-card']", "textContains": "Q4 and beyond", "critical": true },
 
     { "name": "MSC33 -- back to the default wave.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/ms-changes" },
-    { "name": "MSC34 -- FIXTURE SURFACE (seen-in-the-wild): open 'What your people will see' from the fourth tile.", "action": "click", "selector": "[data-testid='pv2-msc-tile-seen']" },
-    { "name": "MSC35 -- FIXTURE SURFACE: the seen-in-the-wild list opens.", "action": "expect", "selector": "[data-testid='pv2-msc-seen-panel']", "textContains": "What your people will see", "critical": true },
+    { "name": "MSC34 -- ROUND FOUR: a wave tile now DROPS ITS EVIDENCE IN PLACE rather than opening a separate panel. Click the 'breaks' tile.", "action": "click", "selector": "[data-testid='pv2-msc-tile-breaks']", "critical": true },
+    { "name": "MSC35 -- ...and its evidence drops in place, below the wave card, headed 'N written up · stop something working'.", "action": "expect", "selector": "[data-testid='pv2-msc-wave-drill']", "textContains": "stop something working", "critical": true },
+    { "name": "MSC35b -- the 'seen' tile drops its evidence too (the former separate seen panel is gone).", "action": "click", "selector": "[data-testid='pv2-msc-tile-seen']" },
+    { "name": "MSC35c -- ...now reading the seen-in-the-wild note in place.", "action": "expect", "selector": "[data-testid='pv2-msc-wave-drill']", "textContains": "your people will notice" },
 
     { "name": "MSC36 -- FIXTURE SURFACE (retrospective): select the landed August wave from the Landed strip.", "action": "click", "selector": "[data-testid='pv2-msc-pastnav-0']", "critical": true },
     { "name": "MSC37 -- FIXTURE SURFACE: the retrospective replaces the live sections.", "action": "expect", "selector": "[data-testid='pv2-msc-past']", "textContains": "Did this release?", "critical": true },

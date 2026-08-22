@@ -737,7 +737,16 @@ function SlugInnerSwitch() {
       </Route>
       {/* Operate — Remediation Tracker + Policy Decisions (Part 5). Plain,
           param-free routes declared before "/portal-v2/:pillar" so the param
-          route cannot swallow them. */}
+          route cannot swallow them.
+
+          Round Four: the tracker's seven phases live in the left nav, each a
+          real, linkable URL (`/portal-v2/remediation/<phase-slug>`) that filters
+          the list to that phase — the same pattern Microsoft Changes' waves
+          already use above. The `:phase` route is declared before the bare one
+          so the param form matches first. */}
+      <Route path="/portal-v2/remediation/:phase">
+        <ProtectedRoute component={PortalV2RemediationPage} />
+      </Route>
       <Route path="/portal-v2/remediation">
         <ProtectedRoute component={PortalV2RemediationPage} />
       </Route>
