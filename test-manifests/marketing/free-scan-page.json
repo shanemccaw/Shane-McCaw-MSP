@@ -1,7 +1,7 @@
 {
   "feature": "Marketing Free Scan page (/scan) — the consent screen renders its real hero copy and form controls, and the consent → scan transition fires with the entered domain flowing through to the live scanner header",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "PENDING",
+  "lastVerifiedAgainstCommit": "45839b5daa53223eb7d39f4406dea7e8b1809a9d",
   "notes": [
     "Marketing rebuild Part 2. Recreated from Design/design_handoff_marketing/Marketing Free Scan.dc.html",
     "into artifacts/shane-mccaw-consulting/src/marketing/pages/FreeScan.tsx (route /scan, already wired",
