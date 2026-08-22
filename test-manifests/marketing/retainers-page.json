@@ -1,14 +1,15 @@
 {
   "feature": "Marketing rebuild Part 8 -- /retainers (Design/design_handoff_marketing/Marketing Retainers.dc.html). The design mock's four illustrative tiers (Advisory/Essentials/Growth/Enterprise at $900/$1,500/$3,000/$5,500, 5/8/16/30 hrs, Essentials 'most popular') don't match the live services table exactly -- there is no 'Advisory' tier. GET /api/services?type=retainer returns 5 retainer-category rows: 3 fixed-price hour-based tiers (Architect Essentials/Growth/Enterprise Retainer, $1,500/$3,000/$5,500 at 8/16/30 hours -- Essentials really is highlighted:true, matching the mock's 'most popular' claim) plus 2 range-priced advisory retainers (vCISO/Governance, Copilot Governance -- no fixed hours, a different offering, out of scope here). The page reads these live via useServices('retainer') + resolvePublicServicePriceCents (NOT useCatalog()'s RetainerTier, which maps only the legacy price string field and silently drops every row here since they're priced via priceCents) -- no hardcoded name/price/hours/highlight in the component.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "PENDING",
+  "lastVerifiedAgainstCommit": "ee061b5b2847b1b7ea0b25bd0c25ac0e2389c28a",
   "notes": [
     "Public marketing page, no auth required.",
     "GET /api/services?type=retainer returns 5 rows ordered ASC by sortOrder (public-services.ts): [0]=Architect Essentials Retainer (highlighted, hoursPerMonth '8'), [1]=Architect Growth Retainer (hoursPerMonth '16'), [2]=Architect Enterprise Retainer (hoursPerMonth '30'), [3]=vCISO/Governance Retainer (basePrice/maxPrice set, hoursPerMonth null), [4]=Copilot Governance Retainer (same shape as [3]). The page's isFixedHourlyRetainer filter (basePrice null AND hoursPerMonth set) keeps only [0]/[1]/[2] -- this manifest extracts those three by index.",
     "API1/API2/API3 extract the real name for each of the 3 fixed-hour tiers; RP4/RP5/RP6 assert the DOM tier cards show exactly what the API returned, so a page that reverted to the design mock's hardcoded copy (or picked up a stale name/price/hours) fails here.",
     "Price comes from priceCents (150000/300000/550000), not the legacy price/basePrice decimal fields, which are null on every retainer row -- RP8 asserts the resolved dollar strings render.",
     "No literal 'Most Popular' badge text exists anywhere in the live data (badge is null on all 5 rows) -- highlighted is a boolean only. This manifest does not assert badge text; it asserts the API's own highlighted flag is true for tier[0] (Essentials), which is the real signal the page's border-highlight styling keys off.",
-    "This manifest asserts against {{DEPLOY_URL}} -- only reflects this commit once the marketing site is redeployed."
+    "This manifest asserts against {{DEPLOY_URL}} -- only reflects this commit once the marketing site is redeployed.",
+    "RAN 11/11 GREEN via shaneapp://runTest against the deployed ee061b5b2 -- confirmed the priceCents fix actually renders real tier names/prices/hours in the DOM (the pre-fix run against 841b2366b failed 5/8 on exactly these assertions, with #tiers rendering none of the real tier names because useCatalog() silently dropped every row)."
   ],
   "apiTests": [
     {
