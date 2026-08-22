@@ -1,0 +1,47 @@
+{
+  "feature": "Marketing rebuild Part 8 -- /retainers (Design/design_handoff_marketing/Marketing Retainers.dc.html). The design mock's four illustrative tiers (Advisory/Essentials/Growth/Enterprise at $900/$1,500/$3,000/$5,500, 5/8/16/30 hrs, Essentials 'most popular') do not match the real catalog. The page reads the live retainer tiers from GET /api/services?type=retainer (seeded in artifacts/api-server/src/lib/seed-portal.ts) via useCatalog() -- three tiers only (Architect Essentials $1,500/10hrs, Architect Growth $3,000/25hrs highlighted 'Most Popular', Architect Enterprise $5,500/50hrs), no hardcoded name/price/hours/badge in the component.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "PENDING",
+  "notes": [
+    "Public marketing page, no auth required.",
+    "Ordering: GET /api/services?type=retainer is server-ordered ASC by sortOrder (public-services.ts), so index [0]/[1]/[2] are stable as Essentials/Growth/Enterprise per the seed's sortOrder 0/1/2 -- safe to extract by index rather than a jsonPath filter expression.",
+    "API1/API2/API3 extract the real name+price for each tier; RP2/RP4/RP6 assert the DOM tier cards show exactly what the API returned, so a page that reverted to the design mock's hardcoded four-tier copy (or stale hours/price) fails here.",
+    "RP5 asserts the 'Most Popular' badge renders on the Growth card specifically -- this is the discrepancy the task flagged (mock highlights Essentials as most-popular; the real highlighted/badged tier is Growth), so this assertion is the regression guard against silently reverting to the mock's highlight target.",
+    "This manifest asserts against {{DEPLOY_URL}} -- only reflects this commit once the marketing site is redeployed."
+  ],
+  "apiTests": [
+    {
+      "name": "API1 -- the live retainer catalog returns real tiers; take tier[0]'s name+price (expected Architect Essentials).",
+      "method": "GET",
+      "path": "/api/services?type=retainer",
+      "expect": { "status": 200, "jsonPath": "$[0].name", "exists": true },
+      "extract": { "as": "tier0Name", "jsonPath": "$[0].name" }
+    },
+    {
+      "name": "API2 -- tier[1] (expected Architect Growth, the highlighted/'Most Popular' tier).",
+      "method": "GET",
+      "path": "/api/services?type=retainer",
+      "expect": { "status": 200, "jsonPath": "$[1].badge", "exists": true },
+      "extract": { "as": "tier1Name", "jsonPath": "$[1].name" }
+    },
+    {
+      "name": "API3 -- tier[2] (expected Architect Enterprise).",
+      "method": "GET",
+      "path": "/api/services?type=retainer",
+      "expect": { "status": 200, "jsonPath": "$[2].name", "exists": true },
+      "extract": { "as": "tier2Name", "jsonPath": "$[2].name" }
+    }
+  ],
+  "uiSteps": [
+    { "action": "goto", "target": "/retainers" },
+    { "action": "expect", "selector": "h1", "state": "visible", "textContains": "NASA" },
+    { "action": "expect", "selector": "#tiers", "state": "present" },
+
+    { "action": "expect", "selector": "#tiers", "state": "visible", "textContains": "{{tier0Name}}" },
+    { "action": "expect", "selector": "#tiers", "state": "visible", "textContains": "{{tier1Name}}" },
+    { "action": "expect", "selector": "#tiers", "state": "visible", "textContains": "{{tier2Name}}" },
+
+    { "action": "expect", "selector": "#tiers", "state": "visible", "textContains": "Most Popular" },
+    { "action": "expect", "selector": "#tiers", "state": "visible", "textContains": ["$1,500", "$3,000", "$5,500"] }
+  ]
+}
