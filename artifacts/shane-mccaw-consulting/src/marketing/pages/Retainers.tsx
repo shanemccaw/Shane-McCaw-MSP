@@ -1,22 +1,35 @@
 import React from "react";
 import { Link } from "wouter";
 import { MarketingLayout } from "../components/MarketingLayout";
-import { useCatalog, type RetainerTier } from "../../hooks/useCatalog";
+import {
+  useServices,
+  resolvePublicServicePriceCents,
+  type PublicService,
+} from "../../hooks/useServices";
 
 // Route /retainers — recreated from Design/design_handoff_marketing/Marketing Retainers.dc.html.
 //
-// PRICING CORRECTION: the design mock's four illustrative tiers (Advisory $900/5hrs,
-// Essentials $1,500/8hrs "most popular", Growth $3,000/16hrs, Enterprise $5,500/30hrs) do not
-// match the real catalog. The live services table (seeded in
-// artifacts/api-server/src/lib/seed-portal.ts, served via GET /api/services?type=retainer and
-// read here through useCatalog()) has only THREE retainer tiers — there is no "Advisory" tier —
-// and the highlighted/"Most Popular" badge is on Growth, not Essentials:
-//   Architect Essentials  $1,500/mo — 10 hours/month
-//   Architect Growth      $3,000/mo — 25 hours/month  (highlighted, badge "Most Popular")
-//   Architect Enterprise  $5,500/mo — 50 hours/month
-// Names, prices, hours, taglines, features and the highlight flag are all read from the API
-// (no-hardcoding rule) rather than transcribed from the mock, so this page always matches the
-// real catalog even if it changes later.
+// PRICING CORRECTION: the design mock's four illustrative tiers (Advisory $900/5hrs, Essentials
+// $1,500/8hrs "most popular", Growth $3,000/16hrs, Enterprise $5,500/30hrs) don't match the real
+// catalog exactly — there is no "Advisory" tier. The live services table (GET
+// /api/services?type=retainer) has THREE fixed-price, hour-based tiers plus two separate
+// range-priced advisory retainers (vCISO/Governance, Copilot Governance — no fixed hours, out of
+// scope for this page, same as the design's four-tier model):
+//   Architect Essentials Retainer   $1,500/mo — 8 hours/month  (highlighted: true)
+//   Architect Growth Retainer       $3,000/mo — 16 hours/month
+//   Architect Enterprise Retainer   $5,500/mo — 30 hours/month
+// Price and hours for these three match the design mock's Essentials/Growth/Enterprise numbers
+// exactly, and Essentials really is the highlighted tier (matching the mock's "most popular"
+// claim), though the live row carries no literal badge text to echo — highlighted is a boolean,
+// not a string. Name, price (resolved from priceCents — these rows carry a null legacy `price`
+// string, so reading that field directly silently drops every one), hours, tagline, features and
+// the highlight flag are all read from the API (no-hardcoding rule) rather than transcribed from
+// the mock, so this page always matches the real catalog even if it changes later.
+//
+// NOTE: useCatalog()'s RetainerTier/toRetainerTier maps only the legacy `price` string field, so
+// it silently drops every tier here — this page reads useServices()/PublicService directly instead
+// and resolves price via resolvePublicServicePriceCents, the one true price-resolution helper
+// useServices.ts documents for exactly this legacy-vs-priceCents split.
 
 function ic(children: React.ReactNode, size = 18, color = "currentColor") {
   return (
@@ -159,19 +172,22 @@ function askShane() {
   window.dispatchEvent(new Event("sm-ask-shane"));
 }
 
-function fmtPrice(raw: string | null): string | null {
-  if (!raw) return null;
-  const n = parseFloat(raw);
-  if (isNaN(n)) return null;
-  return "$" + n.toLocaleString("en-US", { maximumFractionDigits: 0 });
+function fmtPriceCents(cents: number | null): string | null {
+  if (cents == null) return null;
+  return "$" + (cents / 100).toLocaleString("en-US", { maximumFractionDigits: 0 });
 }
 
-function isFixedPriceRetainer(t: RetainerTier): boolean {
-  return !!t.price && !t.basePrice;
+// The three fixed monthly retainer tiers this page compares are hour-based with no fixed-fee
+// range (basePrice/maxPrice null): Architect Essentials/Growth/Enterprise Retainer. The catalog
+// also carries range-priced advisory retainers (vCISO/Governance, Copilot Governance — no
+// hoursPerMonth, priced as a scoped engagement) which are a different offering, out of scope for
+// this page just as the design mock only ever showed the four hour-based tiers.
+function isFixedHourlyRetainer(s: PublicService): boolean {
+  return !s.basePrice && !!s.hoursPerMonth;
 }
 
-function TierCard({ tier }: { tier: RetainerTier }) {
-  const price = fmtPrice(tier.price);
+function TierCard({ tier }: { tier: PublicService }) {
+  const price = fmtPriceCents(resolvePublicServicePriceCents(tier));
   const hl = tier.highlighted;
   return (
     <div
@@ -303,8 +319,8 @@ function TierCard({ tier }: { tier: RetainerTier }) {
 }
 
 export default function Retainers() {
-  const { retainerTiers, loading, error } = useCatalog();
-  const tiers = retainerTiers.filter(isFixedPriceRetainer).sort((a, b) => a.sortOrder - b.sortOrder);
+  const { services, loading, error } = useServices("retainer");
+  const tiers = services.filter(isFixedHourlyRetainer).sort((a, b) => a.sortOrder - b.sortOrder);
 
   return (
     <MarketingLayout current="retainers">
