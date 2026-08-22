@@ -22,6 +22,7 @@
     "marketing/quick-start-page.json",
     "marketing/pricing-page.json",
     "marketing/free-scan-page.json",
+    "marketing/buy-page.json",
     "copilot-readiness/assessment-monitoring-rescan.json",
     "copilot-readiness/email-auth-setup.json",
     "copilot-readiness/live-document-pdf-export.json",
