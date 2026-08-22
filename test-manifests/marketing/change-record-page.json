@@ -1,0 +1,54 @@
+{
+  "feature": "Marketing Quick-Start Change Record page (/records/:id) — the printable before → after change record: dark header band (record ID, Download PDF/CSV, Back to packs) over a paged document with a per-pack setting/before/after/result table, authorisation, verification, what-was-not-done, and an accounts-affected appendix.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "PENDING",
+  "notes": [
+    "Marketing rebuild Part 11. Recreated from Design/design_handoff_marketing/Quick-Start Change",
+    "Record.dc.html into artifacts/shane-mccaw-consulting/src/marketing/pages/ChangeRecord.tsx (route",
+    "/records/:id, already wired in App.tsx by the Part 0 scaffold). All record content (authorisation,",
+    "per-pack rows, verification, appendix accounts) lives in marketing/data/changeRecord.ts, not inline",
+    "in the .tsx — the design's own CR-QS-2026-0184 / Halden Materials example, keyed by record id",
+    "(getChangeRecord() falls back to that one designed example for any id, since there is only one",
+    "example authored today; production reads this from the real execution log per the handoff README).",
+    "",
+    "PRINT GEOMETRY: doc-page.js (the design's paged-document web component) is not ported — this",
+    "stack has no custom-element library loaded elsewhere. Rebuilt its intent instead: a real <table>",
+    "with <thead>/<tfoot> (browsers natively repeat these on every printed page, the same mechanism",
+    "doc-page.js uses internally) carries the running header/footer; @media print hides the",
+    "'.cr-site-chrome' Nav/header band so only the document prints; @page sets the 0.7in margin.",
+    "Verified locally via Playwright: under 'print' media emulation the site chrome is hidden and the",
+    "document sheet stays visible/rendered. Download PDF calls window.print() (no headless-runnable",
+    "assertion for the OS print dialog itself, documented honestly rather than faked); Download CSV",
+    "was driven end-to-end locally (real download event, filename 'CR-QS-2026-0184-change-record.csv',",
+    "15 lines = 1 header + 14 setting/before/after/result rows across the 3 packs, byte-matching the",
+    "design's own example values) — the uiSteps below assert the DOM content those two buttons key off,",
+    "which is the reliably-static, deployed-origin-testable surface.",
+    "",
+    "NO backend: this is a pure client page (fixture data, client-side CSV serialisation per the",
+    "README's 'CSV/PDF ... production should generate both server-side' out-of-scope note), so there",
+    "are no apiTests — every assertion is a uiStep against real rendered DOM text.",
+    "",
+    "DEPLOYED-ORIGIN CAVEAT (same class the sibling marketing manifests carry): this asserts against",
+    "{{DEPLOY_URL}}, which only reflects the new marketing site — and this page — once that site is",
+    "redeployed. lastVerifiedAgainstCommit is PENDING for that reason; the code itself is verified",
+    "green locally as noted above (tsc clean, vite build clean, Playwright DOM + CSV + print-media pass)."
+  ],
+  "uiSteps": [
+    { "action": "goto", "target": "/records/CR-QS-2026-0184" },
+    { "action": "expect", "selector": "[data-testid='change-record-document']", "state": "visible" },
+    { "action": "expect", "selector": "h1", "state": "visible", "textContains": "Quick-Start Pack change record" },
+
+    { "action": "expect", "selector": "[data-testid='cr-record-id']", "state": "visible", "textContains": "CR-QS-2026-0184" },
+    { "action": "expect", "selector": "[data-testid='cr-back-to-packs']", "state": "visible", "textContains": "Back to packs" },
+
+    { "action": "expect", "selector": "[data-testid='cr-download-pdf']", "state": "visible", "textContains": "Download PDF" },
+    { "action": "expect", "selector": "[data-testid='cr-download-csv']", "state": "visible", "textContains": "Download CSV" },
+
+    { "action": "expect", "selector": "[data-testid='cr-pack-heading-0']", "state": "visible", "textContains": "Entra ID Quick-Start Pack" },
+    { "action": "expect", "selector": "[data-testid='cr-pack-heading-1']", "state": "visible", "textContains": "Conditional Access Baseline Pack" },
+    { "action": "expect", "selector": "[data-testid='cr-pack-heading-2']", "state": "visible", "textContains": "Privileged Access Pack" },
+
+    { "action": "expect", "selector": "[data-testid='cr-result-declined']", "state": "visible", "textContains": "Declined by you" },
+    { "action": "expect", "selector": "[data-testid='cr-appendix-account']", "state": "visible", "textContains": "a.okafor@haldenmaterials.com" }
+  ]
+}
