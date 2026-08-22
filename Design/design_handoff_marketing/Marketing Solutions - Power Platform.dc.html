@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <title>Power Platform | Shane McCaw Consulting</title>
+  <meta name="description" content="Apps and flows built outside IT, DLP policies that don't cover them, and automations whose owner left last year. See what a first scan finds in the Power Platform estate and how it comes under governance — starting with a free read-only scan.">
+  <style>*{box-sizing:border-box}body{margin:0;background:#020617}a{color:inherit;text-decoration:none}</style>
+</helmet>
+<div style="background:#020617;color:#f8fafc;font-family:Inter,system-ui,sans-serif;min-height:100vh" data-screen-label="Deep dive — Power Platform">
+  <dc-import name="Marketing Nav" current="watch" hint-size="100%,58px"></dc-import>
+
+  <section style="padding:48px 32px 30px">
+    <div style="max-width:1120px;margin:0 auto;display:flex;gap:44px;align-items:center;flex-wrap:wrap">
+      <div style="flex:1.1 1 380px;min-width:0">
+        <span style="display:inline-flex;align-items:center;gap:7px;padding:6px 12px;border-radius:999px;background:rgba(20,184,166,.1);border:1px solid rgba(20,184,166,.28);color:#2dd4bf;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;margin-bottom:18px"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L4 14h6l-1 8 9-12h-6z"></path></svg> Deep dive &#183; Power Platform</span>
+        <h1 style="font-size:clamp(30px,3.4vw,40px);font-weight:800;letter-spacing:-.03em;line-height:1.12;color:#f8fafc;margin:0 0 16px;text-wrap:pretty">Your business runs on flows nobody in IT has ever seen.</h1>
+        <p style="font-size:15px;color:#94a3b8;line-height:1.7;margin:0 0 12px;max-width:54ch">Power Apps and Power Automate are where the business builds what IT didn&#8217;t have time for &#8212; invoice approvals, HR forms, the spreadsheet that became an app. Useful, load-bearing, and living in the default environment with whatever permissions the maker had.</p>
+        <p style="font-size:13px;color:#64748b;line-height:1.7;margin:0 0 24px;max-width:54ch">The panel alongside is what a first scan of a typical Power Platform estate returns.</p>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:22px">
+          <a href="Marketing Free Scan.dc.html" style="display:inline-flex;align-items:center;gap:7px;padding:12px 22px;border-radius:10px;font-weight:700;font-size:13.5px;color:#fff;background:linear-gradient(90deg,#3b82f6,#8b5cf6);white-space:nowrap">Scan My Tenant &#183; Free <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="12" x2="20" y2="12"></line><polyline points="14 6 20 12 14 18"></polyline></svg></a>
+          <a href="Marketing Monitoring.dc.html" style="padding:12px 22px;border-radius:10px;font-weight:600;font-size:13.5px;color:#cbd5e1;border:1px solid rgba(148,163,184,.2);white-space:nowrap">See Monitoring Pricing</a>
+        </div>
+        <div style="display:flex;gap:14px;flex-wrap:wrap">
+          <span style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:#64748b"><span style="width:5px;height:5px;border-radius:999px;background:#34d399"></span>Environments</span>
+          <span style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:#64748b"><span style="width:5px;height:5px;border-radius:999px;background:#34d399"></span>DLP policies</span>
+          <span style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:#64748b"><span style="width:5px;height:5px;border-radius:999px;background:#34d399"></span>App &amp; flow ownership</span>
+          <span style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:#64748b"><span style="width:5px;height:5px;border-radius:999px;background:#34d399"></span>Premium connectors</span>
+        </div>
+      </div>
+
+      <div style="flex:1 1 380px;max-width:500px;border:1px solid rgba(30,41,59,.95);border-radius:18px;background:#0b1524;padding:22px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+          <span style="font-size:9.5px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:#64748b">Power Platform estate &#183; first scan</span>
+          <span style="font-size:9.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#475569">Illustrative</span>
+        </div>
+        <span style="display:block;font-size:11px;font-weight:600;color:#94a3b8;margin-bottom:8px">Where 187 apps &amp; flows actually live</span>
+        <div style="display:flex;flex-direction:column;gap:7px;margin-bottom:16px">
+          <sc-for list="{{ envRows }}" as="ev" hint-placeholder-count="3">
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="width:120px;flex:none;font-size:11px;color:#cbd5e1;font-weight:600">{{ ev.name }}</span>
+              <div style="flex:1;height:14px;border-radius:999px;background:rgba(2,6,23,.6);overflow:hidden"><div style="{{ ev.barCss }}"></div></div>
+              <span style="width:60px;flex:none;text-align:right;font-size:11px;font-weight:700;color:{{ ev.fg }};font-variant-numeric:tabular-nums">{{ ev.count }}</span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid rgba(248,113,113,.28);border-radius:10px;background:rgba(248,113,113,.05)">
+            <b style="font-size:18px;font-weight:800;color:#f87171;font-variant-numeric:tabular-nums;flex:none;width:34px;text-align:right">9</b>
+            <span style="font-size:11.5px;color:#cbd5e1;line-height:1.5">DLP incidents &#8212; flows moving business data through connectors policy never covered</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid rgba(251,191,36,.25);border-radius:10px;background:rgba(251,191,36,.05)">
+            <b style="font-size:18px;font-weight:800;color:#fbbf24;font-variant-numeric:tabular-nums;flex:none;width:34px;text-align:right">4</b>
+            <span style="font-size:11.5px;color:#cbd5e1;line-height:1.5">weak DLP policies &#8212; business and non-business connectors mixed in one group</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid rgba(251,191,36,.25);border-radius:10px;background:rgba(251,191,36,.05)">
+            <b style="font-size:18px;font-weight:800;color:#fbbf24;font-variant-numeric:tabular-nums;flex:none;width:34px;text-align:right">14</b>
+            <span style="font-size:11.5px;color:#cbd5e1;line-height:1.5">flows owned by accounts that no longer exist &#8212; still running, unownable</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid rgba(30,41,59,.9);border-radius:10px;background:rgba(2,6,23,.4)">
+            <b style="font-size:18px;font-weight:800;color:#e2e8f0;font-variant-numeric:tabular-nums;flex:none;width:34px;text-align:right">6</b>
+            <span style="font-size:11.5px;color:#cbd5e1;line-height:1.5">premium licences assigned and inactive &#8212; paying for capability nobody uses</span>
+          </div>
+        </div>
+        <div style="font-size:10.5px;color:#64748b;line-height:1.6;margin-top:12px;padding-top:11px;border-top:1px solid rgba(30,41,59,.9)">Every row is a real, inspectable finding &#8212; the flow, the connector, the missing owner attached.</div>
+      </div>
+    </div>
+  </section>
+
+  <section style="padding:40px 32px 46px;background:#050d1e;border-top:1px solid rgba(255,255,255,.05);border-bottom:1px solid rgba(255,255,255,.05)">
+    <div style="max-width:1120px;margin:0 auto">
+      <div style="max-width:680px;margin-bottom:24px">
+        <span style="font-size:10px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:#2dd4bf">The failure mode</span>
+        <h2 style="font-size:24px;font-weight:800;letter-spacing:-.025em;color:#f8fafc;margin:8px 0 10px">The maker leaves. The flow keeps running. Then one day it doesn&#8217;t.</h2>
+        <p style="font-size:13.5px;color:#94a3b8;line-height:1.7;margin:0">Shadow IT doesn&#8217;t fail loudly &#8212; it fails on the day the invoice approvals silently stop. The fix isn&#8217;t banning makers. It&#8217;s environments with rules, DLP that separates business data from personal connectors, and ownership that survives offboarding.</p>
+      </div>
+      <div style="display:flex;align-items:stretch;justify-content:center;gap:10px;flex-wrap:wrap;margin-bottom:20px">
+        <sc-for list="{{ chain }}" as="ch" hint-placeholder-count="5">
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="{{ ch.css }}">
+              <span style="{{ ch.numCss }}">{{ ch.n }}</span>
+              <span style="font-size:12.5px;font-weight:700;color:#f8fafc">{{ ch.title }}</span>
+              <span style="font-size:11px;color:#94a3b8;line-height:1.5">{{ ch.body }}</span>
+            </div>
+            <sc-if value="{{ ch.arrow }}" hint-placeholder-val="{{ true }}">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#475569" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="12" x2="20" y2="12"></line><polyline points="14 6 20 12 14 18"></polyline></svg>
+            </sc-if>
+          </div>
+        </sc-for>
+      </div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap">
+        <div style="flex:1 1 320px;min-width:0;border:1px solid rgba(30,41,59,.95);border-radius:14px;background:#0b1524;padding:16px 18px">
+          <span style="font-size:10px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#94a3b8">What good looks like</span>
+          <p style="font-size:11.5px;color:#94a3b8;line-height:1.65;margin:9px 0 0">A default environment for experiments, governed environments for anything load-bearing, DLP groups that make the dangerous combinations impossible, and every production flow with a named owner and a service account &#8212; so the automation survives the person.</p>
+        </div>
+        <div style="flex:1 1 320px;min-width:0;border:1px solid rgba(20,184,166,.3);border-radius:14px;background:rgba(20,184,166,.05);padding:16px 18px">
+          <span style="font-size:10px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#2dd4bf">Watched after the fix</span>
+          <p style="font-size:11.5px;color:#94a3b8;line-height:1.65;margin:9px 0 10px">Monitoring keeps reading the estate: new flows in the default environment, DLP policy drift, owners who leave &#8212; each surfaces as a finding with a runbook, not as next year&#8217;s surprise.</p>
+          <a href="Marketing Monitoring.dc.html" style="font-size:11.5px;font-weight:700;color:#2dd4bf">See what monitoring covers &#8594;</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section style="padding:44px 32px 40px">
+    <div style="max-width:1120px;margin:0 auto">
+      <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:20px">
+        <div style="max-width:680px">
+          <span style="font-size:10px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:#60a5fa">Where the work lands</span>
+          <h2 style="font-size:24px;font-weight:800;letter-spacing:-.025em;color:#f8fafc;margin:8px 0 10px">Power Platform findings feed the same catalogue as everything else.</h2>
+          <p style="font-size:13px;color:#94a3b8;line-height:1.7;margin:0">There&#8217;s no &#8220;Power Platform tax&#8221; project &#8212; the scan&#8217;s findings route into the named projects they actually belong to.</p>
+        </div>
+        <a href="Marketing Solutions.dc.html" style="font-size:12.5px;font-weight:700;color:#60a5fa;white-space:nowrap">Browse all 33 projects &#8594;</a>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px">
+        <sc-for list="{{ projects }}" as="pj" hint-placeholder-count="3">
+          <a href="Marketing Solutions.dc.html" style="border:1px solid rgba(30,41,59,.95);border-radius:14px;background:#0b1524;padding:18px;display:flex;flex-direction:column;gap:7px" style-hover="border-color:rgba(20,184,166,.4)">
+            <span style="font-size:13.5px;font-weight:700;color:#f8fafc;line-height:1.4">{{ pj.name }}</span>
+            <span style="font-size:11.5px;color:#94a3b8;line-height:1.6;flex-grow:1">{{ pj.body }}</span>
+            <span style="font-size:11px;font-weight:700;color:#2dd4bf">{{ pj.when }}</span>
+          </a>
+        </sc-for>
+      </div>
+    </div>
+  </section>
+
+  <section style="padding:0 32px 40px">
+    <div style="max-width:1120px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;border:1px solid rgba(30,41,59,.95);border-radius:14px;background:#0b1524;padding:14px 20px">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span style="font-size:9.5px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#475569;margin-right:4px">Deep dives</span>
+        <a href="Marketing Solutions - Copilot.dc.html" style="padding:6px 11px;border-radius:999px;font-size:11.5px;font-weight:600;color:#94a3b8;border:1px solid rgba(30,41,59,.9)">Copilot &amp; AI</a>
+        <a href="Marketing Solutions - SharePoint.dc.html" style="padding:6px 11px;border-radius:999px;font-size:11.5px;font-weight:600;color:#94a3b8;border:1px solid rgba(30,41,59,.9)">SharePoint</a>
+        <a href="Marketing Solutions - Teams.dc.html" style="padding:6px 11px;border-radius:999px;font-size:11.5px;font-weight:600;color:#94a3b8;border:1px solid rgba(30,41,59,.9)">Teams</a>
+        <span style="display:flex;align-items:center;gap:6px;padding:6px 11px;border-radius:999px;font-size:11.5px;font-weight:700;color:#f8fafc;border:1px solid rgba(20,184,166,.45);background:rgba(20,184,166,.1)">Power Platform</span>
+        <a href="Marketing Solutions - Migration.dc.html" style="padding:6px 11px;border-radius:999px;font-size:11.5px;font-weight:600;color:#94a3b8;border:1px solid rgba(30,41,59,.9)">Migration</a>
+        <a href="Marketing Solutions - M365 Health.dc.html" style="padding:6px 11px;border-radius:999px;font-size:11.5px;font-weight:600;color:#94a3b8;border:1px solid rgba(30,41,59,.9)">M365 Health</a>
+        <a href="Marketing Solutions - Governance.dc.html" style="padding:6px 11px;border-radius:999px;font-size:11.5px;font-weight:600;color:#94a3b8;border:1px solid rgba(30,41,59,.9)">Governance projects</a>
+      </div>
+      <span style="font-size:11px;color:#64748b">Watched under: <a href="Marketing Pillar - Governance.dc.html" style="color:#60a5fa;font-weight:600">Governance</a> &#183; <a href="Marketing Pillar - Licensing.dc.html" style="color:#60a5fa;font-weight:600">Licensing</a></span>
+    </div>
+  </section>
+
+  <section style="padding:32px 32px 56px;border-top:1px solid rgba(255,255,255,.06)">
+    <div style="max-width:760px;margin:0 auto 26px;text-align:center">
+      <h2 style="font-size:19px;font-weight:700;color:#f8fafc;margin:0 0 10px;letter-spacing:-.02em">From Scan to Scoped Work</h2>
+      <p style="color:#94a3b8;line-height:1.7;margin:0;font-size:13px">The free scan reads your environments, DLP policies, ownership and premium connector use. Findings become a scoped, priced statement of work &#8212; and the estate panel on this page becomes yours, with real numbers in it.</p>
+    </div>
+    <div style="max-width:980px;margin:0 auto;display:flex;align-items:stretch;justify-content:center;gap:10px;flex-wrap:wrap">
+      <sc-for list="{{ steps }}" as="st" hint-placeholder-count="4">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="{{ st.css }}">
+            <span style="{{ st.numCss }}">{{ st.n }}</span>
+            <span style="font-size:12.5px;font-weight:700;color:#f8fafc">{{ st.title }}</span>
+            <span style="font-size:11px;color:#94a3b8;line-height:1.5">{{ st.body }}</span>
+          </div>
+          <sc-if value="{{ st.arrow }}" hint-placeholder-val="{{ true }}">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#475569" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="12" x2="20" y2="12"></line><polyline points="14 6 20 12 14 18"></polyline></svg>
+          </sc-if>
+        </div>
+      </sc-for>
+    </div>
+    <div style="text-align:center;margin-top:26px">
+      <a href="Marketing Free Scan.dc.html" style="display:inline-flex;align-items:center;gap:8px;padding:13px 26px;border-radius:11px;font-weight:700;font-size:14px;color:#fff;background:linear-gradient(90deg,#3b82f6,#8b5cf6);white-space:nowrap">Scan My Tenant &#183; Free <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="12" x2="20" y2="12"></line><polyline points="14 6 20 12 14 18"></polyline></svg></a>
+      <div style="font-size:11.5px;color:#64748b;margin-top:10px">Read-only. No agent, no charge, and the findings are yours either way.</div>
+    </div>
+  </section>
+
+  <dc-import name="Marketing Footer" hint-size="100%,300px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    const stepCss = (hot) => 'width:200px;display:flex;flex-direction:column;gap:6px;padding:15px;border-radius:14px;background:#0b1524;border:1px solid ' + (hot ? 'rgba(20,184,166,.45)' : 'rgba(30,41,59,.9)');
+    const numCss = (hot) => 'width:22px;height:22px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;' + (hot ? 'background:rgba(20,184,166,.12);border:1px solid rgba(20,184,166,.4);color:#2dd4bf' : 'background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);color:#94a3b8');
+    return {
+      envRows: [
+        { name: 'Default environment', count: 149, pct: 100, color: '#f87171' },
+        { name: 'Governed environments', count: 26, pct: 17, color: '#34d399' },
+        { name: 'Personal productivity', count: 12, pct: 8, color: '#64748b' },
+      ].map(e => ({
+        name: e.name, count: e.count, fg: e.color,
+        barCss: 'width:' + e.pct + '%;height:100%;border-radius:999px;background:linear-gradient(90deg,' + e.color + '33,' + e.color + ')',
+      })),
+      chain: [
+        { n: '1', title: 'A maker builds it', body: 'Invoice approvals, in the default environment, under their own account.', hot: true },
+        { n: '2', title: 'The business adopts it', body: 'It works, so Finance quietly depends on it. IT never hears.' },
+        { n: '3', title: 'The maker leaves', body: 'Offboarding disables the account. The flow&#8217;s connections start failing.' },
+        { n: '4', title: 'Month-end breaks', body: 'Nobody can edit the flow, because nobody owns it.' },
+        { n: '5', title: 'Or: none of this', body: 'Governed environments, service accounts, and a scan that finds these flows first.', arrow: false },
+      ].map((s, i) => ({ ...s, arrow: i < 4, css: stepCss(s.hot), numCss: numCss(s.hot) })),
+      projects: [
+        { name: 'Governance Remediation & Architecture Hardening', body: 'Environment strategy, DLP policy groups and ownership rules \u2014 the structural work that brings maker activity under governance without killing it.', when: 'The structural fix' },
+        { name: 'License Waste Optimization & Cost Recovery', body: 'Premium Power Platform licences reconciled against actual use \u2014 idle and duplicate capability reclaimed before renewal.', when: 'When spend leaks' },
+        { name: 'Drift Baseline & Handover', body: 'The approved configuration \u2014 environments, DLP, ownership \u2014 recorded as the baseline every future scan compares against.', when: 'When the fix must hold' },
+      ],
+      steps: [
+        { n: '1', title: 'Run the free scan', body: 'Read-only Graph scan. 158 checks, all six pillars.', hot: true },
+        { n: '2', title: 'Get a priced SOW', body: 'Findings become named phases with fixed prices.' },
+        { n: '3', title: 'Select your scopes', body: 'Keep, defer or drop each phase before signing.' },
+        { n: '4', title: 'Sign, pay, onboard', body: 'Account, portal and remediation window in one pass.', arrow: false },
+      ].map(s => ({
+        ...s,
+        arrow: s.arrow !== false,
+        css: 'width:210px;display:flex;flex-direction:column;gap:6px;padding:16px;border-radius:14px;background:#0b1524;border:1px solid ' + (s.hot ? 'rgba(59,130,246,.45)' : 'rgba(30,41,59,.9)'),
+        numCss: 'width:22px;height:22px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;' + (s.hot ? 'background:rgba(59,130,246,.15);border:1px solid rgba(59,130,246,.4);color:#60a5fa' : 'background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);color:#94a3b8'),
+      })),
+    };
+  }
+}
+</script>
+</body>
+</html>

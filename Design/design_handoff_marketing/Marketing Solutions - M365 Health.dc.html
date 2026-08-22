@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <title>M365 Health | Shane McCaw Consulting</title>
+  <meta name="description" content="One health score for the whole tenant — seven pillar scores, idle licence spend, overdue reviews and high-severity alerts in a single view the board can ask for. Starting with a free read-only scan.">
+  <style>*{box-sizing:border-box}body{margin:0;background:#020617}a{color:inherit;text-decoration:none}</style>
+</helmet>
+<div style="background:#020617;color:#f8fafc;font-family:Inter,system-ui,sans-serif;min-height:100vh" data-screen-label="Deep dive — M365 Health">
+  <dc-import name="Marketing Nav" current="watch" hint-size="100%,58px"></dc-import>
+
+  <section style="padding:48px 32px 30px">
+    <div style="max-width:1120px;margin:0 auto;display:flex;gap:44px;align-items:center;flex-wrap:wrap">
+      <div style="flex:1.1 1 380px;min-width:0">
+        <span style="display:inline-flex;align-items:center;gap:7px;padding:6px 12px;border-radius:999px;background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.28);color:#4ade80;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;margin-bottom:18px"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 12 8 12 11 19 14 5 17 12 21 12"></polyline></svg> Deep dive &#183; M365 Health</span>
+        <h1 style="font-size:clamp(30px,3.4vw,40px);font-weight:800;letter-spacing:-.03em;line-height:1.12;color:#f8fafc;margin:0 0 16px;text-wrap:pretty">When the board asks &#8220;is Microsoft 365 fine?&#8221;, this is the number.</h1>
+        <p style="font-size:15px;color:#94a3b8;line-height:1.7;margin:0 0 12px;max-width:54ch">Not a feeling, not a helpdesk anecdote &#8212; a composite health score rolled up from every pillar the platform watches, with the idle spend, the overdue reviews and the open alerts that explain it sitting one click below.</p>
+        <p style="font-size:13px;color:#64748b;line-height:1.7;margin:0 0 24px;max-width:54ch">The panel alongside is a typical tenant&#8217;s first health readout. The composite is only as good as its worst pillar &#8212; which is the point.</p>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:22px">
+          <a href="Marketing Free Scan.dc.html" style="display:inline-flex;align-items:center;gap:7px;padding:12px 22px;border-radius:10px;font-weight:700;font-size:13.5px;color:#fff;background:linear-gradient(90deg,#3b82f6,#8b5cf6);white-space:nowrap">Scan My Tenant &#183; Free <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="12" x2="20" y2="12"></line><polyline points="14 6 20 12 14 18"></polyline></svg></a>
+          <a href="Marketing Monitoring.dc.html" style="padding:12px 22px;border-radius:10px;font-weight:600;font-size:13.5px;color:#cbd5e1;border:1px solid rgba(148,163,184,.2);white-space:nowrap">See Monitoring Pricing</a>
+        </div>
+        <div style="display:flex;gap:14px;flex-wrap:wrap">
+          <span style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:#64748b"><span style="width:5px;height:5px;border-radius:999px;background:#34d399"></span>One composite score</span>
+          <span style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:#64748b"><span style="width:5px;height:5px;border-radius:999px;background:#34d399"></span>Recalculated every check cycle</span>
+          <span style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:#64748b"><span style="width:5px;height:5px;border-radius:999px;background:#34d399"></span>Evidence one click down</span>
+        </div>
+      </div>
+
+      <div style="flex:1 1 380px;max-width:500px;border:1px solid rgba(30,41,59,.95);border-radius:18px;background:#0b1524;padding:22px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+          <span style="font-size:9.5px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:#64748b">Tenant health &#183; first readout</span>
+          <span style="font-size:9.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#475569">Illustrative</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:16px;margin-bottom:16px;flex-wrap:wrap">
+          <div style="position:relative;width:92px;height:92px;flex:none">
+            <svg viewBox="0 0 100 100" style="width:100%;height:100%;transform:rotate(-90deg)">
+              <circle cx="50" cy="50" r="42" fill="none" stroke="rgba(148,163,184,.12)" stroke-width="9"></circle>
+              <circle cx="50" cy="50" r="42" fill="none" stroke="#fbbf24" stroke-width="9" stroke-linecap="round" stroke-dasharray="166.3 263.9"></circle>
+            </svg>
+            <span style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center"><b style="font-size:24px;font-weight:800;color:#fbbf24;font-variant-numeric:tabular-nums">63</b><span style="font-size:8.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#64748b">of 100</span></span>
+          </div>
+          <div style="flex:1;min-width:180px;font-size:11.5px;color:#94a3b8;line-height:1.6">Composite of seven scored dimensions. Remediating the current findings takes this tenant to <b style="color:#34d399">90</b> &#8212; and the SOW that does it is priced from the same scan.</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:7px;margin-bottom:14px">
+          <sc-for list="{{ pillarScores }}" as="ps" hint-placeholder-count="7">
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="width:118px;flex:none;font-size:11px;color:#cbd5e1;font-weight:600">{{ ps.label }}</span>
+              <div style="flex:1;height:10px;border-radius:999px;background:rgba(2,6,23,.6);overflow:hidden"><div style="{{ ps.barCss }}"></div></div>
+              <b style="width:26px;flex:none;text-align:right;font-size:11.5px;font-weight:800;color:{{ ps.fg }};font-variant-numeric:tabular-nums">{{ ps.value }}</b>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <span style="flex:1;min-width:100px;text-align:center;padding:8px 6px;border-radius:9px;border:1px solid rgba(251,191,36,.25);background:rgba(251,191,36,.05)"><b style="display:block;font-size:15px;font-weight:800;color:#fbbf24;font-variant-numeric:tabular-nums">46</b><span style="font-size:9.5px;color:#94a3b8">inactive licences</span></span>
+          <span style="flex:1;min-width:100px;text-align:center;padding:8px 6px;border-radius:9px;border:1px solid rgba(251,191,36,.25);background:rgba(251,191,36,.05)"><b style="display:block;font-size:15px;font-weight:800;color:#fbbf24;font-variant-numeric:tabular-nums">12</b><span style="font-size:9.5px;color:#94a3b8">duplicate licences</span></span>
+          <span style="flex:1;min-width:100px;text-align:center;padding:8px 6px;border-radius:9px;border:1px solid rgba(248,113,113,.3);background:rgba(248,113,113,.06)"><b style="display:block;font-size:15px;font-weight:800;color:#f87171;font-variant-numeric:tabular-nums">2</b><span style="font-size:9.5px;color:#94a3b8">high-severity alerts</span></span>
+          <span style="flex:1;min-width:100px;text-align:center;padding:8px 6px;border-radius:9px;border:1px solid rgba(248,113,113,.3);background:rgba(248,113,113,.06)"><b style="display:block;font-size:15px;font-weight:800;color:#f87171;font-variant-numeric:tabular-nums">5</b><span style="font-size:9.5px;color:#94a3b8">overdue reviews</span></span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section style="padding:40px 32px 46px;background:#050d1e;border-top:1px solid rgba(255,255,255,.05);border-bottom:1px solid rgba(255,255,255,.05)">
+    <div style="max-width:1120px;margin:0 auto">
+      <div style="max-width:680px;margin-bottom:24px">
+        <span style="font-size:10px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:#4ade80">Why one number works</span>
+        <h2 style="font-size:24px;font-weight:800;letter-spacing:-.025em;color:#f8fafc;margin:8px 0 10px">A score you can&#8217;t argue with, because the evidence is attached.</h2>
+        <p style="font-size:13.5px;color:#94a3b8;line-height:1.7;margin:0">Health scores fail when they&#8217;re vibes with a gauge. This one is arithmetic over findings &#8212; every point lost traces to specific items a click away, and every point gained names the work that earned it.</p>
+      </div>
+      <div style="display:flex;align-items:stretch;justify-content:center;gap:10px;flex-wrap:wrap;margin-bottom:20px">
+        <sc-for list="{{ loop }}" as="lp" hint-placeholder-count="4">
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="{{ lp.css }}">
+              <span style="{{ lp.numCss }}">{{ lp.n }}</span>
+              <span style="font-size:12.5px;font-weight:700;color:#f8fafc">{{ lp.title }}</span>
+              <span style="font-size:11px;color:#94a3b8;line-height:1.5">{{ lp.body }}</span>
+            </div>
+            <sc-if value="{{ lp.arrow }}" hint-placeholder-val="{{ true }}">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#475569" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="12" x2="20" y2="12"></line><polyline points="14 6 20 12 14 18"></polyline></svg>
+            </sc-if>
+          </div>
+        </sc-for>
+      </div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap">
+        <div style="flex:1 1 320px;min-width:0;border:1px solid rgba(30,41,59,.95);border-radius:14px;background:#0b1524;padding:16px 18px">
+          <span style="font-size:10px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#94a3b8">Health pays for itself in licensing</span>
+          <p style="font-size:11.5px;color:#94a3b8;line-height:1.65;margin:9px 0 0">The same readout that scores the tenant finds the idle and duplicate licences funding it. In most first scans the recoverable licence spend covers the monitoring subscription several times over &#8212; the Licensing pillar page walks through it.</p>
+        </div>
+        <div style="flex:1 1 320px;min-width:0;border:1px solid rgba(34,197,94,.3);border-radius:14px;background:rgba(34,197,94,.05);padding:16px 18px">
+          <span style="font-size:10px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#4ade80">Not the same as the Health pillar</span>
+          <p style="font-size:11.5px;color:#94a3b8;line-height:1.65;margin:9px 0 10px">This page is your tenant&#8217;s vitals. The <b style="color:#e2e8f0">Health pillar</b> watches the other side: Microsoft&#8217;s own Message Center and roadmap changes, scored against your configuration before they land.</p>
+          <a href="Marketing Pillar - Health.dc.html" style="font-size:11.5px;font-weight:700;color:#4ade80">Read the Health pillar &#8594;</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section style="padding:44px 32px 40px">
+    <div style="max-width:1120px;margin:0 auto">
+      <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:20px">
+        <div style="max-width:680px">
+          <span style="font-size:10px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:#60a5fa">The work, by name</span>
+          <h2 style="font-size:24px;font-weight:800;letter-spacing:-.025em;color:#f8fafc;margin:8px 0 10px">The projects a health readout most often triggers.</h2>
+        </div>
+        <a href="Marketing Solutions.dc.html" style="font-size:12.5px;font-weight:700;color:#60a5fa;white-space:nowrap">Browse all 33 projects &#8594;</a>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px">
+        <sc-for list="{{ projects }}" as="pj" hint-placeholder-count="3">
+          <a href="Marketing Solutions.dc.html" style="border:1px solid rgba(30,41,59,.95);border-radius:14px;background:#0b1524;padding:18px;display:flex;flex-direction:column;gap:7px" style-hover="border-color:rgba(34,197,94,.4)">
+            <span style="font-size:13.5px;font-weight:700;color:#f8fafc;line-height:1.4">{{ pj.name }}</span>
+            <span style="font-size:11.5px;color:#94a3b8;line-height:1.6;flex-grow:1">{{ pj.body }}</span>
+            <span style="font-size:11px;font-weight:700;color:#4ade80">{{ pj.when }}</span>
+          </a>
+        </sc-for>
+      </div>
+    </div>
+  </section>
+
+  <section style="padding:0 32px 40px">
+    <div style="max-width:1120px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;border:1px solid rgba(30,41,59,.95);border-radius:14px;background:#0b1524;padding:14px 20px">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span style="font-size:9.5px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#475569;margin-right:4px">Deep dives</span>
+        <a href="Marketing Solutions - Copilot.dc.html" style="padding:6px 11px;border-radius:999px;font-size:11.5px;font-weight:600;color:#94a3b8;border:1px solid rgba(30,41,59,.9)">Copilot &amp; AI</a>
+        <a href="Marketing Solutions - SharePoint.dc.html" style="padding:6px 11px;border-radius:999px;font-size:11.5px;font-weight:600;color:#94a3b8;border:1px solid rgba(30,41,59,.9)">SharePoint</a>
+        <a href="Marketing Solutions - Teams.dc.html" style="padding:6px 11px;border-radius:999px;font-size:11.5px;font-weight:600;color:#94a3b8;border:1px solid rgba(30,41,59,.9)">Teams</a>
+        <a href="Marketing Solutions - Power Platform.dc.html" style="padding:6px 11px;border-radius:999px;font-size:11.5px;font-weight:600;color:#94a3b8;border:1px solid rgba(30,41,59,.9)">Power Platform</a>
+        <a href="Marketing Solutions - Migration.dc.html" style="padding:6px 11px;border-radius:999px;font-size:11.5px;font-weight:600;color:#94a3b8;border:1px solid rgba(30,41,59,.9)">Migration</a>
+        <span style="display:flex;align-items:center;gap:6px;padding:6px 11px;border-radius:999px;font-size:11.5px;font-weight:700;color:#f8fafc;border:1px solid rgba(34,197,94,.45);background:rgba(34,197,94,.1)">M365 Health</span>
+        <a href="Marketing Solutions - Governance.dc.html" style="padding:6px 11px;border-radius:999px;font-size:11.5px;font-weight:600;color:#94a3b8;border:1px solid rgba(30,41,59,.9)">Governance projects</a>
+      </div>
+      <span style="font-size:11px;color:#64748b">Watched under: <a href="Marketing Pillar - Health.dc.html" style="color:#60a5fa;font-weight:600">Health</a> &#183; <a href="Marketing Pillar - Licensing.dc.html" style="color:#60a5fa;font-weight:600">Licensing</a></span>
+    </div>
+  </section>
+
+  <section style="padding:32px 32px 56px;border-top:1px solid rgba(255,255,255,.06)">
+    <div style="max-width:760px;margin:0 auto 26px;text-align:center">
+      <h2 style="font-size:19px;font-weight:700;color:#f8fafc;margin:0 0 10px;letter-spacing:-.02em">From Scan to Scoped Work</h2>
+      <p style="color:#94a3b8;line-height:1.7;margin:0;font-size:13px">The free scan produces this exact readout for your tenant &#8212; the composite, the seven scores, and the findings under them. What it finds becomes a scoped, priced statement of work.</p>
+    </div>
+    <div style="max-width:980px;margin:0 auto;display:flex;align-items:stretch;justify-content:center;gap:10px;flex-wrap:wrap">
+      <sc-for list="{{ steps }}" as="st" hint-placeholder-count="4">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="{{ st.css }}">
+            <span style="{{ st.numCss }}">{{ st.n }}</span>
+            <span style="font-size:12.5px;font-weight:700;color:#f8fafc">{{ st.title }}</span>
+            <span style="font-size:11px;color:#94a3b8;line-height:1.5">{{ st.body }}</span>
+          </div>
+          <sc-if value="{{ st.arrow }}" hint-placeholder-val="{{ true }}">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#475569" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="12" x2="20" y2="12"></line><polyline points="14 6 20 12 14 18"></polyline></svg>
+          </sc-if>
+        </div>
+      </sc-for>
+    </div>
+    <div style="text-align:center;margin-top:26px">
+      <a href="Marketing Free Scan.dc.html" style="display:inline-flex;align-items:center;gap:8px;padding:13px 26px;border-radius:11px;font-weight:700;font-size:14px;color:#fff;background:linear-gradient(90deg,#3b82f6,#8b5cf6);white-space:nowrap">Scan My Tenant &#183; Free <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="12" x2="20" y2="12"></line><polyline points="14 6 20 12 14 18"></polyline></svg></a>
+      <div style="font-size:11.5px;color:#64748b;margin-top:10px">Read-only. No agent, no charge, and the findings are yours either way.</div>
+    </div>
+  </section>
+
+  <dc-import name="Marketing Footer" hint-size="100%,300px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    const tone = (v) => v >= 85 ? '#34d399' : v >= 60 ? '#fbbf24' : '#f87171';
+    const stepCss = (hot) => 'width:210px;display:flex;flex-direction:column;gap:6px;padding:15px;border-radius:14px;background:#0b1524;border:1px solid ' + (hot ? 'rgba(34,197,94,.45)' : 'rgba(30,41,59,.9)');
+    const numCss = (hot) => 'width:22px;height:22px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;' + (hot ? 'background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.4);color:#4ade80' : 'background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);color:#94a3b8');
+    return {
+      pillarScores: [
+        { label: 'Licensing', value: 90 },
+        { label: 'Security', value: 74 },
+        { label: 'Compliance', value: 71 },
+        { label: 'Copilot readiness', value: 66 },
+        { label: 'Health', value: 63 },
+        { label: 'Governance', value: 58 },
+        { label: 'Adoption', value: 52 },
+      ].map(p => ({
+        ...p, fg: tone(p.value),
+        barCss: 'width:' + p.value + '%;height:100%;border-radius:999px;background:linear-gradient(90deg,' + tone(p.value) + '33,' + tone(p.value) + ')',
+      })),
+      loop: [
+        { n: '1', title: 'Checks run', body: '30\u2013133 checks per cycle, every one a pass or a finding.', hot: true },
+        { n: '2', title: 'Findings score', body: 'Each finding subtracts from its pillar, weighted by severity.' },
+        { n: '3', title: 'Pillars roll up', body: 'Seven scores compose into the one number worth reporting.' },
+        { n: '4', title: 'Work moves it', body: 'Runbooks and SOWs close findings; the score records the gain.', arrow: false },
+      ].map((s, i) => ({ ...s, arrow: i < 3, css: stepCss(s.hot), numCss: numCss(s.hot) })),
+      projects: [
+        { name: 'License Waste Optimization & Cost Recovery', body: 'The 46 inactive and 12 duplicate licences in the readout, reclaimed \u2014 usually the fastest score gain and the one that funds the rest.', when: 'Fastest payback' },
+        { name: 'Drift Baseline & Handover', body: 'The approved configuration recorded as the baseline, so next quarter\u2019s score measures drift from a known-good state instead of a guess.', when: 'Make it hold' },
+        { name: 'Governance Remediation & Architecture Hardening', body: 'The structural work behind a weak Governance score \u2014 ownership, change control and sharing policy brought back under control.', when: 'The deep fix' },
+      ],
+      steps: [
+        { n: '1', title: 'Run the free scan', body: 'Read-only Graph scan. 158 checks, all six pillars.', hot: true },
+        { n: '2', title: 'Get a priced SOW', body: 'Findings become named phases with fixed prices.' },
+        { n: '3', title: 'Select your scopes', body: 'Keep, defer or drop each phase before signing.' },
+        { n: '4', title: 'Sign, pay, onboard', body: 'Account, portal and remediation window in one pass.', arrow: false },
+      ].map(s => ({
+        ...s,
+        arrow: s.arrow !== false,
+        css: 'width:210px;display:flex;flex-direction:column;gap:6px;padding:16px;border-radius:14px;background:#0b1524;border:1px solid ' + (s.hot ? 'rgba(59,130,246,.45)' : 'rgba(30,41,59,.9)'),
+        numCss: 'width:22px;height:22px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;' + (s.hot ? 'background:rgba(59,130,246,.15);border:1px solid rgba(59,130,246,.4);color:#60a5fa' : 'background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);color:#94a3b8'),
+      })),
+    };
+  }
+}
+</script>
+</body>
+</html>
