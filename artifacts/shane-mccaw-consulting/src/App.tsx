@@ -1,61 +1,44 @@
-import React, { useEffect } from "react";
+import { useEffect } from "react";
 import { Switch, Route, useLocation } from "wouter";
-import Home from "./pages/Home";
-import CopilotAssessmentLanding from "./pages/CopilotAssessmentLanding";
-import Assessments from "./pages/Assessments";
-import AssessmentDetail from "./pages/AssessmentDetail";
-import Monitoring from "./pages/Monitoring";
-import Status from "./pages/Status";
-import Checkout from "./pages/Checkout";
-import HowItWorks from "./pages/HowItWorks";
-import TechnicalOverview from "./pages/TechnicalOverview";
-import Resources from "./pages/Resources";
-import ArticlePage from "./pages/ArticlePage";
-import OnboardingLink from "./pages/OnboardingLink";
-import Pricing from "./pages/Pricing";
-import Terms from "./pages/legal/Terms";
-import Privacy from "./pages/legal/Privacy";
-import Dpa from "./pages/legal/Dpa";
-import NotFound from "./pages/not-found";
 import { trackPageview } from "./lib/analytics";
-import { PersonalizationProvider } from "./hooks/PersonalizationProvider";
 
-import Services from "./pages/Services";
-import Microsoft365 from "./pages/services/Microsoft365";
-import M365Training from "./pages/services/M365Training";
-import SharePointService from "./pages/services/SharePoint";
-import PowerPlatformService from "./pages/services/PowerPlatform";
-import GovernanceService from "./pages/services/Governance";
-import CloudMigration from "./pages/services/CloudMigration";
-import SecurityHardening from "./pages/services/SecurityHardening";
-import CopilotAI from "./pages/services/CopilotAI";
+// New marketing site — a full replacement of the previous shane-mccaw-consulting pages, built from
+// Design/design_handoff_marketing/ (dark slate canvas, Electric Blue / Bright Teal accents, Inter).
+// Do not blend with the old look — this replaces it. Pages are built in parts per
+// Design/design_handoff_marketing/MARKETING_PARALLEL_PLAN.md; Part 0 wires every route below to a
+// real (stub) page rendered inside the shared Nav/Footer shell, so later parts can build each page
+// in parallel without colliding. The old pages/components still live under src/ but are no longer
+// routed (unbundled), pending a later cleanup pass.
+import Home from "./marketing/pages/Home";
+import FreeScan from "./marketing/pages/FreeScan";
+import SolutionsIndex from "./marketing/pages/SolutionsIndex";
+import Monitoring from "./marketing/pages/Monitoring";
+import QuickStart from "./marketing/pages/QuickStart";
+import Retainers from "./marketing/pages/Retainers";
+import Pricing from "./marketing/pages/Pricing";
+import Buy from "./marketing/pages/Buy";
+import ChangeRecord from "./marketing/pages/ChangeRecord";
 
-import Solutions from "./pages/Solutions";
-import SolutionTopicPage from "./pages/solutions/SolutionTopicPage";
-import Products from "./pages/Products";
-import TrustSecurity from "./pages/TrustSecurity";
-import QuizHub from "./pages/QuizHub";
-import RetainersOverview from "./pages/retainers/RetainersOverview";
-import ArchitectEssentials from "./pages/retainers/ArchitectEssentials";
-import ArchitectGrowth from "./pages/retainers/ArchitectGrowth";
-import ArchitectEnterprise from "./pages/retainers/ArchitectEnterprise";
+import PillarGovernance from "./marketing/pages/pillars/Governance";
+import PillarSecurity from "./marketing/pages/pillars/Security";
+import PillarCompliance from "./marketing/pages/pillars/Compliance";
+import PillarLicensing from "./marketing/pages/pillars/Licensing";
+import PillarAdoption from "./marketing/pages/pillars/Adoption";
+import PillarHealth from "./marketing/pages/pillars/Health";
 
-import QuickWinQuiz from "./pages/QuickWinQuiz";
-import QuickWinResultsPage from "./pages/QuickWinResultsPage";
-import QuizResultsPage from "./pages/QuizResultsPage";
+import SolutionCopilot from "./marketing/pages/solutions/Copilot";
+import SolutionGovernance from "./marketing/pages/solutions/Governance";
+import SolutionSharePoint from "./marketing/pages/solutions/SharePoint";
+import SolutionPowerPlatform from "./marketing/pages/solutions/PowerPlatform";
+import SolutionTeams from "./marketing/pages/solutions/Teams";
+import SolutionMigration from "./marketing/pages/solutions/Migration";
+import SolutionM365Health from "./marketing/pages/solutions/M365Health";
 
-// Helper for Legacy Route Redirects.
-function RedirectToHome() {
-  const [, setLocation] = useLocation();
-  useEffect(() => {
-    setLocation("/", { replace: true });
-  }, [setLocation]);
-  return null;
-}
+import NotFound from "./marketing/pages/NotFound";
 
-// /login used to render its own form here, but real client login lives in the genuinely
-// separate msp-portal SPA. A wouter <Redirect> can't reach it (different app, different
-// bundle) — this needs a full browser navigation.
+// Infrastructure (not marketing content): /login used to render its own form here, but real client
+// login lives in the genuinely separate msp-portal SPA. A wouter <Redirect> can't reach it
+// (different app, different bundle) — this needs a full browser navigation.
 function RedirectToPortalLogin() {
   useEffect(() => {
     window.location.replace("/portal/login");
@@ -63,10 +46,9 @@ function RedirectToPortalLogin() {
   return null;
 }
 
-// wouter's client-side navigation doesn't reset scroll position — without this, navigating
-// away from a page scrolled halfway down (e.g. an assessment CTA mid-article) lands the next
-// page at that same scroll offset instead of the top. Takes over from the browser's native
-// scroll restoration so a client-side route change and a real page reload don't fight over it.
+// wouter's client-side navigation doesn't reset scroll position — without this, a client-side route
+// change lands the next page at the previous scroll offset. Takes over the browser's native scroll
+// restoration so an SPA route change and a real reload don't fight over it.
 function ScrollRestoration() {
   const [location] = useLocation();
 
@@ -96,69 +78,66 @@ function AnalyticsBoundary() {
 
 export default function App() {
   return (
-    <PersonalizationProvider>
+    <>
       <ScrollRestoration />
       <AnalyticsBoundary />
       <Switch>
-      {/* Primary Routes */}
-      <Route path="/" component={Home} />
-      <Route path="/LP/copilot-assessment" component={CopilotAssessmentLanding} />
-      <Route path="/assessments" component={Assessments} />
-      <Route path="/assessments/all" component={Assessments} />
-      <Route path="/assessments/start" component={Assessments} />
-      <Route path="/assessments/premium" component={Assessments} />
-      <Route path="/assessments/:slug" component={AssessmentDetail} />
-      {/* Sitemap-canonical singular alias (website-rebuild-reference-v2.md §5) — same real page, no new content */}
-      <Route path="/assessment" component={Assessments} />
-      <Route path="/monitoring" component={Monitoring} />
-      <Route path="/status" component={Status} />
-      <Route path="/checkout/:slug" component={Checkout} />
-      <Route path="/how-it-works" component={HowItWorks} />
-      <Route path="/technical-overview" component={TechnicalOverview} />
-      <Route path="/resources" component={Resources} />
-      <Route path="/resources/:slug" component={ArticlePage} />
-      <Route path="/onboarding" component={OnboardingLink} />
-      <Route path="/pricing" component={Pricing} />
-      <Route path="/login" component={RedirectToPortalLogin} />
+        {/* Infrastructure redirect — marketing domain /login goes to the portal SPA */}
+        <Route path="/login" component={RedirectToPortalLogin} />
 
-      {/* Services — restored verticals + overview */}
-      <Route path="/services" component={Services} />
-      <Route path="/services/microsoft-365" component={Microsoft365} />
-      <Route path="/services/m365-training" component={M365Training} />
-      <Route path="/services/sharepoint" component={SharePointService} />
-      <Route path="/services/power-platform" component={PowerPlatformService} />
-      <Route path="/services/governance" component={GovernanceService} />
-      <Route path="/services/cloud-migration" component={CloudMigration} />
-      <Route path="/services/security-hardening" component={SecurityHardening} />
-      <Route path="/services/copilot-ai" component={CopilotAI} />
+        {/* Entry and core */}
+        <Route path="/" component={Home} />
+        <Route path="/scan" component={FreeScan} />
+        <Route path="/solutions" component={SolutionsIndex} />
 
-      {/* Sitemap pages */}
-      <Route path="/projects/:slug" component={SolutionTopicPage} />
-      <Route path="/projects" component={Solutions} />
-      <Route path="/platform/quick-start" component={Products} />
-      <Route path="/platform/retainer" component={RetainersOverview} />
-      <Route path="/retainers/architect-essentials" component={ArchitectEssentials} />
-      <Route path="/retainers/architect-growth" component={ArchitectGrowth} />
-      <Route path="/retainers/architect-enterprise" component={ArchitectEnterprise} />
-      <Route path="/trust-security" component={TrustSecurity} />
-      <Route path="/quiz" component={QuizHub} />
+        {/* The six pillars */}
+        <Route path="/pillars/governance" component={PillarGovernance} />
+        <Route path="/pillars/security" component={PillarSecurity} />
+        <Route path="/pillars/compliance" component={PillarCompliance} />
+        <Route path="/pillars/licensing" component={PillarLicensing} />
+        <Route path="/pillars/adoption" component={PillarAdoption} />
+        <Route path="/pillars/health" component={PillarHealth} />
 
-      {/* Legal Routes */}
-      <Route path="/terms" component={Terms} />
-      <Route path="/privacy" component={Privacy} />
-      <Route path="/dpa" component={Dpa} />
+        {/* The seven workload deep-dives */}
+        <Route path="/solutions/copilot" component={SolutionCopilot} />
+        <Route path="/solutions/governance" component={SolutionGovernance} />
+        <Route path="/solutions/sharepoint" component={SolutionSharePoint} />
+        <Route path="/solutions/power-platform" component={SolutionPowerPlatform} />
+        <Route path="/solutions/teams" component={SolutionTeams} />
+        <Route path="/solutions/migration" component={SolutionMigration} />
+        <Route path="/solutions/m365-health" component={SolutionM365Health} />
 
-      {/* Decommissioned Routes -> Redirects to / */}
-      <Route path="/micro-offers" component={RedirectToHome} />
+        {/* Offerings */}
+        <Route path="/monitoring" component={Monitoring} />
+        <Route path="/quick-start" component={QuickStart} />
+        <Route path="/retainers" component={Retainers} />
+        <Route path="/pricing" component={Pricing} />
 
-      {/* Quizzes & Lead Capture */}
-      <Route path="/quick-win-quiz" component={QuickWinQuiz} />
-      <Route path="/quick-win-results" component={QuickWinResultsPage} />
-      <Route path="/quiz-results" component={QuizResultsPage} />
+        {/* Checkout and post-purchase */}
+        <Route path="/buy" component={Buy} />
+        <Route path="/records/:id" component={ChangeRecord} />
 
-      {/* 404 Fallback */}
-      <Route component={NotFound} />
+        {/* ═══════════════════════════════════════════════════════════════════
+            MARKETING ROUTE INSERTION POINT — ADD NEW MARKETING ROUTES ABOVE.
+
+            Every route above already renders a real page (a Part-0 stub inside
+            the shared Nav/Footer shell until its Part fills the body in). Later
+            parts of MARKETING_PARALLEL_PLAN.md build into the page component
+            each route already points to — they do NOT touch this file except to
+            add a genuinely new route, which goes ABOVE this marker so the
+            NotFound fallback below always stays last.
+
+            Do NOT route Marketing Checkout.dc.html — it is reference-only,
+            superseded by Marketing Buy (/buy above).
+
+            This marker exists so the parts of the marketing build running as
+            concurrent agents all append at ONE known line instead of each
+            choosing its own and conflicting.
+            ═══════════════════════════════════════════════════════════════════ */}
+
+        {/* 404 fallback */}
+        <Route component={NotFound} />
       </Switch>
-    </PersonalizationProvider>
+    </>
   );
 }
