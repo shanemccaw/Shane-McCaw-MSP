@@ -231,15 +231,24 @@ namespace BuildConsole.Services
         /// Same Task.WhenAny(work, Task.Delay(timeout)) shape captureResponse (20s)/navigation (90s)/screenshot (15s)
         /// use; scaled to captureResponse's 20s since it reads that same captured response.</summary>
         private const int ResponseBodyReadTimeoutMs = 20000;
-        /// <summary>Default bounded window an `expect` step polls the DOM for its condition (state and/or #1016
-        /// textContains) before failing, when the step declares no `timeoutMs` of its own. Long enough to absorb
-        /// Replit compilation/cold-starts, slow Wi-Fi latency, and async render/hydration that follows the prior action. Overridable per
-        /// step via the manifest's uiSteps[].timeoutMs.</summary>
-        private const int ExpectPollTimeoutMs = 30000;
-        /// <summary>Interval between DOM re-checks inside the `expect` poll loop (see <see cref="ExpectPollTimeoutMs"/>).
-        /// ~250ms keeps the loop responsive — it succeeds within a poll of the condition genuinely becoming true —
-        /// without hammering ExecuteScriptAsync.</summary>
-        private const int ExpectPollIntervalMs = 250;
+        /// <summary>Built-in fallback for <see cref="ExpectPollTimeoutMs"/> when settings.json carries no
+        /// UiStepPollTimeoutMs (or a non-positive one). Long enough to absorb Replit compilation/cold-starts,
+        /// slow Wi-Fi latency, and async render/hydration that follows the prior action.</summary>
+        private const int DefaultExpectPollTimeoutMs = 30000;
+        /// <summary>Built-in fallback for <see cref="ExpectPollIntervalMs"/> when settings.json carries no
+        /// UiStepPollIntervalMs (or a non-positive one). ~250ms keeps the loop responsive without hammering
+        /// ExecuteScriptAsync.</summary>
+        private const int DefaultExpectPollIntervalMs = 250;
+        /// <summary>Default bounded window an `expect`/click/input step polls the DOM for its condition (state
+        /// and/or #1016 textContains) before failing, when the step declares no `timeoutMs` of its own. Loaded
+        /// from BuildConsoleSettings.UiStepPollTimeoutMs (falling back to <see cref="DefaultExpectPollTimeoutMs"/>
+        /// when unset/non-positive) so it's tunable from settings.json without a rebuild. Overridable per step
+        /// via the manifest's uiSteps[].timeoutMs.</summary>
+        private readonly int ExpectPollTimeoutMs;
+        /// <summary>Interval between DOM re-checks inside the `expect`/click/input poll loops. Loaded from
+        /// BuildConsoleSettings.UiStepPollIntervalMs (falling back to <see cref="DefaultExpectPollIntervalMs"/>
+        /// when unset/non-positive).</summary>
+        private readonly int ExpectPollIntervalMs;
 
         private readonly WebView2 _webView;
 
@@ -284,6 +293,11 @@ namespace BuildConsole.Services
         public UiTestExecutor(WebView2 webView)
         {
             _webView = webView;
+            // UI-step poll timing is tunable from settings.json without a rebuild; a missing or non-positive
+            // value falls back to the built-in default so the window/cadence can never degenerate to <= 0.
+            var settings = BuildConsoleSettings.Load();
+            ExpectPollTimeoutMs = settings.UiStepPollTimeoutMs > 0 ? settings.UiStepPollTimeoutMs : DefaultExpectPollTimeoutMs;
+            ExpectPollIntervalMs = settings.UiStepPollIntervalMs > 0 ? settings.UiStepPollIntervalMs : DefaultExpectPollIntervalMs;
         }
 
         /// <param name="screenshotDir">Git #966 — absolute directory to write PNG screenshots into (created lazily

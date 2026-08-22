@@ -371,6 +371,27 @@ namespace BuildConsole.Services
         /// <summary>On by default: a successfully finished queue build auto-triggers the real deploy (#911 git pull + restart), waits for #805 to confirm the new commit hash is live, then runs the regression suite and surfaces the end-to-end result. Off = manual trigger-deploy-and-wait.ps1 + manual test flow.</summary>
         public bool AutoDeployOnBuildComplete { get; set; } = true;
 
+        // ── UI-step DOM poll tuning (UiTestExecutor) ──────────────────────────────
+        // A uiStep's `expect`/click/input actions poll the live DOM every
+        // UiStepPollIntervalMs across a bounded UiStepPollTimeoutMs window (overridable
+        // per step via a manifest's uiSteps[].timeoutMs) and succeed the instant the
+        // condition is genuinely observed, instead of checking exactly once — this is
+        // what lets a step survive Replit compilation/cold-starts, slow Wi-Fi, and async
+        // render/hydration after the prior action. These were hardcoded UiTestExecutor
+        // constants; lifting them here lets Shane tune the wait/cadence without a rebuild,
+        // exactly like ReplitWatcherIntervalMinutes / InteractiveIdleFinalizeSeconds above.
+        // Same %AppData%\BuildConsole\settings.json store / field-initializer-as-default
+        // convention — a pre-existing settings.json (no "uiStepPoll*" keys) deserializes
+        // with these defaults intact, preserving the current behaviour exactly. A
+        // non-positive value read from settings.json falls back to the default in
+        // UiTestExecutor rather than degenerating into a zero/negative window.
+
+        /// <summary>Default bounded window (ms) a uiStep expect/click/input action polls the live DOM before failing, overridable per step via uiSteps[].timeoutMs. Default 30000 — long enough to absorb Replit cold-starts/rebuilds and slow-network latency. Non-positive falls back to the default in UiTestExecutor.</summary>
+        public int UiStepPollTimeoutMs { get; set; } = 30000;
+
+        /// <summary>Interval (ms) between DOM re-checks inside the uiStep poll loop. Default 250 — responsive enough to pass within a poll of the condition becoming true without hammering ExecuteScriptAsync. Non-positive falls back to the default in UiTestExecutor.</summary>
+        public int UiStepPollIntervalMs { get; set; } = 250;
+
         private static string SettingsDir =>
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "BuildConsole");
 
