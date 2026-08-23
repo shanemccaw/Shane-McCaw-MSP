@@ -584,6 +584,17 @@
                                     <ComboBoxItem Content="⚠️ Staging (Replit)" Tag="Staging"/>
                                     <ComboBoxItem Content="🚨 Production (Live)" Tag="Production"/>
                                 </ComboBox>
+
+                                <!-- Manual, Shane-only deploy of origin/main to the Staging (Replit) server:
+                                     SSH pull -> #911 migrations+restart -> #805 confirm -> toast. Deliberately
+                                     separate from the selector above and from any automatic path; Shane clicks
+                                     this himself, then switches the selector to Staging to run tests. -->
+                                <Button x:Name="BtnDeployToStaging" Content="🚀 Deploy to Staging"
+                                        Margin="0,8,0,0" Height="28" FontSize="11" FontWeight="SemiBold"
+                                        Background="{StaticResource PeachBrush}" Foreground="{StaticResource CrustBrush}"
+                                        BorderThickness="0" Cursor="Hand"
+                                        Click="BtnDeployToStaging_Click"
+                                        ToolTip="Deliberately deploy the latest origin/main to the Staging (Replit) server: SSH git pull, apply pending migration SQL, restart, and confirm — then notify. No tests run automatically."/>
                             </StackPanel>
                         </Border>
 

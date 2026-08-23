@@ -309,8 +309,13 @@ namespace BuildConsole.Services
         public bool PushOnRegressionFailure { get; set; } = true;
 
         // ── Post-Build Auto Test Verification ─────────────────────────────
-        /// <summary>When on, automatically runs the matching test manifest for a completed build's issue after deploy confirmation.</summary>
-        public bool AutoRunTestsOnBuildComplete { get; set; } = true;
+        /// <summary>When on, automatically runs the matching test manifest for a completed build's issue
+        /// after deploy confirmation. DEFAULT FLIPPED TO false (2026-08-23): the product now runs locally
+        /// (Dev) for day-to-day agent work and Staging (Replit) is a deliberate, Shane-only manual deploy
+        /// (see StagingDeployService / the "Deploy to Staging" button) — nothing should auto-trigger tests
+        /// against the remote any more. Shane runs tests himself after a manual Staging deploy. Existing
+        /// settings.json files that set this true keep their value; flip it off there to match the new scope.</summary>
+        public bool AutoRunTestsOnBuildComplete { get; set; } = false;
 
         /// <summary>Off by default: if a completed build has no specific matching issue manifest, should it fallback to running the entire full regression suite? (False = skip tests if no matching issue manifest).</summary>
         public bool AutoRunFullSuiteFallbackOnBuildComplete { get; set; } = false;
@@ -368,8 +373,15 @@ namespace BuildConsole.Services
         // as every field above — a pre-existing settings.json (no "autoDeployOnBuildComplete" key)
         // deserializes as true.
 
-        /// <summary>On by default: a successfully finished queue build auto-triggers the real deploy (#911 git pull + restart), waits for #805 to confirm the new commit hash is live, then runs the regression suite and surfaces the end-to-end result. Off = manual trigger-deploy-and-wait.ps1 + manual test flow.</summary>
-        public bool AutoDeployOnBuildComplete { get; set; } = true;
+        /// <summary>A successfully finished queue build auto-triggers the real deploy (#911 git pull + restart),
+        /// waits for #805 to confirm the new commit hash is live, then runs the regression suite. DEFAULT
+        /// FLIPPED TO false (2026-08-23): the product now runs locally (Dev) for day-to-day agent work and
+        /// Replit (Staging) is no longer something an agent/build/timer should ever wake or deploy to
+        /// automatically. Staging is now a single, deliberate, Shane-only manual action — the "Deploy to
+        /// Staging" button (StagingDeployService), which does the same SSH pull → #911 migrations+restart →
+        /// #805 confirm → toast chain on demand. Off = no automatic deploy/test on build completion. An
+        /// existing settings.json that set this true keeps its value; flip it off there to match the new scope.</summary>
+        public bool AutoDeployOnBuildComplete { get; set; } = false;
 
         // ── UI-step DOM poll tuning (UiTestExecutor) ──────────────────────────────
         // A uiStep's `expect`/click/input actions poll the live DOM every

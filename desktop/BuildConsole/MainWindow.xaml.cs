@@ -576,6 +576,7 @@ namespace BuildConsole
             // MainWindow already had correct handlers for all of them, but none were ever
             // subscribed: the Play button (and Start/Stop Recording) did nothing.
             LeftSidebar.PlayTestRequested += LeftSidebar_PlayTestRequested;
+            LeftSidebar.DeployToStagingRequested += LeftSidebar_DeployToStagingRequested;
             LeftSidebar.StartRecordingRequested += LeftSidebar_StartRecordingRequested;
             LeftSidebar.StopRecordingRequested += LeftSidebar_StopRecordingRequested;
 

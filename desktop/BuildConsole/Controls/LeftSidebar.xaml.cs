@@ -407,6 +407,11 @@ namespace BuildConsole.Controls
         /// it through the same real <c>RunManifestAsync</c> pipeline every other trigger uses. Defaults to Dev.</summary>
         public event EventHandler<(TestManifest Manifest, TargetEnvironment TargetEnv)>? PlayTestRequested;
 
+        /// <summary>Raised when Shane clicks "🚀 Deploy to Staging" — MainWindow owns the real deploy chain
+        /// (SSH pull -&gt; #911 migrations+restart -&gt; #805 confirm -&gt; toast). Deliberately a bare signal:
+        /// this is a manual, human-only action with no payload, kept separate from the environment selector.</summary>
+        public event EventHandler? DeployToStagingRequested;
+
         public TargetEnvironment GetSelectedTargetEnvironment()
         {
             if (ComboTargetEnvironment?.SelectedItem is ComboBoxItem item && item.Tag is string tag)
@@ -484,6 +489,14 @@ namespace BuildConsole.Controls
             {
                 ComboTargetEnvironment.SelectedIndex = 0;
             }
+        }
+
+        /// <summary>"🚀 Deploy to Staging" click — hands the deploy off to MainWindow (which owns the API
+        /// client + toast). Independent of the Target Environment selector: Shane switches that to Staging
+        /// himself to run tests only AFTER this deploy confirms.</summary>
+        private void BtnDeployToStaging_Click(object sender, RoutedEventArgs e)
+        {
+            DeployToStagingRequested?.Invoke(this, EventArgs.Empty);
         }
 
         // ── Git #806: manifest loader (Epic #803 Phase 2) ───────────────────
