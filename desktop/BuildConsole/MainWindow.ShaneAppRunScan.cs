@@ -168,7 +168,7 @@ namespace BuildConsole
                     return;
                 }
 
-                var cfg = BuildConsole.Services.BuildTrackerConfig.Load();
+                var cfg = BuildConsole.Services.BuildTrackerConfig.Load().ForEnvironment(BuildConsole.Services.TargetEnvironment.Dev);
                 if (string.IsNullOrWhiteSpace(cfg.ApiBaseUrl))
                 {
                     Fail("apiBaseUrl not configured (scripts/build-queue-watcher.config.json) — can't reach the api-server");

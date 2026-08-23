@@ -74,8 +74,21 @@ function resolveConfig(): EnvConfig {
     );
   }
 
-  // Prod if any domain is not a Replit dev-preview URL
-  const isProd = allDomains.some((d) => !d.endsWith(".replit.dev"));
+  function isDevDomain(d: string): boolean {
+    const domain = d.trim().toLowerCase();
+    return (
+      domain.endsWith(".replit.dev") ||
+      domain === "localhost" ||
+      domain.startsWith("localhost:") ||
+      domain === "127.0.0.1" ||
+      domain.startsWith("127.0.0.1:") ||
+      domain.endsWith(".local") ||
+      domain.endsWith(".internal")
+    );
+  }
+
+  // Prod if any domain is not a dev URL
+  const isProd = allDomains.some((d) => !isDevDomain(d));
 
   if (isProd) {
     const key = process.env.STRIPE_SECRET_KEY_PROD;
@@ -85,9 +98,9 @@ function resolveConfig(): EnvConfig {
           "This key is required to manage webhook endpoints in the live Stripe account.",
       );
     }
-    // Prod: only register non-.replit.dev domains in the live account
+    // Prod: only register non-dev domains in the live account
     const expectedUrls = allDomains
-      .filter((d) => !d.endsWith(".replit.dev"))
+      .filter((d) => !isDevDomain(d))
       .map((d) => `https://${d}${WEBHOOK_PATH}`);
     return { stripeKey: key, isProd: true, expectedUrls };
   }

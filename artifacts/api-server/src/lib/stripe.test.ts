@@ -61,6 +61,25 @@ describe("getStripeKey() — dev (test key) cases", () => {
     assert.equal(getStripeKey(), "sk_test_multi_dev");
   });
 
+  it("returns STRIPE_SECRET_KEY when running locally with localhost", () => {
+    process.env.REPLIT_DOMAINS = "localhost,localhost:5173";
+    process.env.STRIPE_SECRET_KEY = "sk_test_localhost";
+    assert.equal(getStripeKey(), "sk_test_localhost");
+  });
+
+  it("returns STRIPE_SECRET_KEY when running locally with 127.0.0.1", () => {
+    process.env.REPLIT_DOMAINS = "127.0.0.1:5000";
+    process.env.STRIPE_SECRET_KEY = "sk_test_127";
+    assert.equal(getStripeKey(), "sk_test_127");
+  });
+
+  it("returns STRIPE_SECRET_KEY when APP_ENV is dev even if other domains are present", () => {
+    process.env.APP_ENV = "dev";
+    process.env.REPLIT_DOMAINS = "shanemccaw.com";
+    process.env.STRIPE_SECRET_KEY = "sk_test_app_env";
+    assert.equal(getStripeKey(), "sk_test_app_env");
+    delete process.env.APP_ENV;
+  });
 });
 
 describe("getStripeKey() — prod (live key) cases", () => {

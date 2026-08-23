@@ -135,9 +135,9 @@ namespace BuildConsole
                             try
                             {
                                 BuildConsole.Services.ActivityLog.Log(ch,
-                                    $"runTest running manifest #{manifest.Issue} ({manifest.Feature}) from {manifestPath} (src='{src}')…");
+                                    $"[SECURITY BOUNDARY] runTest running manifest #{manifest.Issue} ({manifest.Feature}) from {manifestPath} (src='{src}') — HARD-LOCKED to TargetEnvironment.Dev ({BuildConsole.Services.BuildTrackerConfig.Load().GetBaseUrl(BuildConsole.Services.TargetEnvironment.Dev)})…");
 
-                                var result = await RunManifestAsync(manifest, isRegression: false);
+                                var result = await RunManifestAsync(manifest, isRegression: false, targetEnv: BuildConsole.Services.TargetEnvironment.Dev);
 
                                 int total = result.Steps.Count;
                                 int passed = result.Steps.Count(s => s.Passed);

@@ -79,6 +79,11 @@ namespace BuildConsole.Controls
 
         public void Initialize(BuildTrackerApiClient? api)
         {
+            var cfg = BuildTrackerConfig.Load();
+            DevBaseUrlDisplay.Text = cfg.GetBaseUrl(TargetEnvironment.Dev);
+            StagingBaseUrlDisplay.Text = cfg.GetBaseUrl(TargetEnvironment.Staging);
+            ProductionBaseUrlDisplay.Text = cfg.GetBaseUrl(TargetEnvironment.Production);
+
             if (api == null)
             {
                 ApiBaseUrlDisplay.Text = "(not connected)";

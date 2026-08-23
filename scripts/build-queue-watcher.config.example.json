@@ -1,5 +1,8 @@
 {
   "apiBaseUrl": "https://your-app-domain.example.com",
+  "devBaseUrl": "http://localhost:5000",
+  "stagingBaseUrl": "https://your-staging-domain.example.com",
+  "productionBaseUrl": "https://your-production-domain.example.com",
   "ingestToken": "BUILD_TRACKER_INGEST_TOKEN value — same one you put in the extension's Options page",
   "maxConcurrent": 8
 }

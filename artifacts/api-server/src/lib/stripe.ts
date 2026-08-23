@@ -1,8 +1,28 @@
 /**
- * True when the API server is running against a real Replit DEV origin — i.e.
- * the environment {@link getStripeKey} classifies as "dev" (a *.replit.dev
- * workspace preview, or no REPLIT_DOMAINS set at all / local dev), as opposed to
- * a real deployment (*.replit.app or a custom domain).
+ * Helper to determine if a specific domain string is a local or development domain.
+ */
+export function isDevDomain(domain: string): boolean {
+  const d = domain.trim().toLowerCase();
+  if (!d) return true;
+  return (
+    d.endsWith(".replit.dev") ||
+    d === "localhost" ||
+    d.startsWith("localhost:") ||
+    d === "127.0.0.1" ||
+    d.startsWith("127.0.0.1:") ||
+    d === "0.0.0.0" ||
+    d.startsWith("0.0.0.0:") ||
+    d === "[::1]" ||
+    d.startsWith("[::1]:") ||
+    d.endsWith(".local") ||
+    d.endsWith(".internal")
+  );
+}
+
+/**
+ * True when the API server is running in a development context — either local dev
+ * (localhost, 127.0.0.1, or APP_ENV=dev/NODE_ENV=development) or a Replit DEV origin (*.replit.dev),
+ * as opposed to a real deployment (*.replit.app or a custom domain like shanemccaw.com).
  *
  * This is the single dev/prod determination behind the platform's real
  * domain-sensitive decisions — the same REPLIT_DOMAINS inspection that selects
@@ -12,16 +32,20 @@
  * "is this real money / a real deployment" and "may I wipe testbed state" can
  * never disagree.
  *
- *   dev  ⇔  REPLIT_DOMAINS absent, OR every listed domain ends in .replit.dev
- *   prod ⇔  REPLIT_DOMAINS present AND any listed domain is NOT .replit.dev
+ *   dev  ⇔  REPLIT_DOMAINS absent/local/all .replit.dev, OR APP_ENV/NODE_ENV=development
+ *   prod ⇔  REPLIT_DOMAINS present AND any listed domain is a real non-dev deployment
  */
 export function isReplitDevEnvironment(): boolean {
+  if (process.env.APP_ENV === "dev" || process.env.APP_ENV === "development" || process.env.NODE_ENV === "development") {
+    return true;
+  }
   const domains = process.env.REPLIT_DOMAINS ?? "";
-  const isProd =
-    domains.length > 0 &&
-    domains.split(",").some((d) => !d.trim().endsWith(".replit.dev"));
+  if (!domains.trim()) return true;
+  const isProd = domains.split(",").some((d) => !isDevDomain(d));
   return !isProd;
 }
+
+export const isDevEnvironment = isReplitDevEnvironment;
 
 /**
  * Returns the Stripe secret key appropriate for the current environment.
@@ -259,7 +283,7 @@ export async function getMspDefaultPaymentMethod(
   }
 }
 
-import { simulatorStorage } from "./simulator-events";
+import { simulatorStorage } from "./simulator-storage.ts";
 
 // Global Stripe prototype interceptor for testbed runs
 import("stripe").then((m) => {

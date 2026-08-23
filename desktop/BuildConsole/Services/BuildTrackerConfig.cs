@@ -19,6 +19,41 @@ namespace BuildConsole.Services
         public string IngestToken { get; set; } = "";
         public int MaxConcurrent { get; set; } = 8;
 
+        public string DevBaseUrl { get; set; } = "http://localhost:5000";
+        public string StagingBaseUrl { get; set; } = "https://ba888680-2595-412d-84fe-4e9aefc2688b-00-22rhgh0krunr4.picard.replit.dev/";
+        public string ProductionBaseUrl { get; set; } = "https://shanemccaw.com";
+
+        /// <summary>
+        /// Returns the base URL for the given environment tier.
+        /// Dev -> devBaseUrl (default http://localhost:5000)
+        /// Staging -> stagingBaseUrl (default Replit deployment)
+        /// Production -> productionBaseUrl (default https://shanemccaw.com)
+        /// </summary>
+        public string GetBaseUrl(TargetEnvironment env) => env switch
+        {
+            TargetEnvironment.Dev => !string.IsNullOrWhiteSpace(DevBaseUrl) ? DevBaseUrl : (!string.IsNullOrWhiteSpace(ApiBaseUrl) && ApiBaseUrl.Contains("localhost") ? ApiBaseUrl : "http://localhost:5000"),
+            TargetEnvironment.Staging => !string.IsNullOrWhiteSpace(StagingBaseUrl) ? StagingBaseUrl : (!string.IsNullOrWhiteSpace(ApiBaseUrl) ? ApiBaseUrl : "https://ba888680-2595-412d-84fe-4e9aefc2688b-00-22rhgh0krunr4.picard.replit.dev/"),
+            TargetEnvironment.Production => !string.IsNullOrWhiteSpace(ProductionBaseUrl) ? ProductionBaseUrl : "https://shanemccaw.com",
+            _ => GetBaseUrl(TargetEnvironment.Dev)
+        };
+
+        /// <summary>
+        /// Creates a copy of this config with ApiBaseUrl mapped to the target environment's specific base URL.
+        /// </summary>
+        public BuildTrackerConfig ForEnvironment(TargetEnvironment env)
+        {
+            return new BuildTrackerConfig
+            {
+                ApiBaseUrl = GetBaseUrl(env),
+                IngestToken = this.IngestToken,
+                MaxConcurrent = this.MaxConcurrent,
+                DatabaseUrl = this.DatabaseUrl,
+                DevBaseUrl = this.DevBaseUrl,
+                StagingBaseUrl = this.StagingBaseUrl,
+                ProductionBaseUrl = this.ProductionBaseUrl
+            };
+        }
+
         /// <summary>
         /// DEPRECATED / no longer used. This once held a direct Postgres connection string
         /// for an earlier <c>shaneapp://executeSql</c> design that opened its own local

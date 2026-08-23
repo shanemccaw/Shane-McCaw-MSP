@@ -1,16 +1,10 @@
 import { db, mspsTable, tenantSignalHistoryTable, tenantEngineOverridesTable, monitorChecksTable, tenantsTable, projectsTable, usersTable, kanbanTasksTable } from "@workspace/db";
 import { eq, and, sql, inArray } from "drizzle-orm";
-import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import { executeMonitorCheck } from "./monitor-executor";
+import { simulatorStorage, type SimulatorContext } from "./simulator-storage.ts";
 
-export interface SimulatorContext {
-  isTestbed: boolean;
-  testbedMspId: number;
-  testbedCustomerId?: number;
-}
-
-export const simulatorStorage = new AsyncLocalStorage<SimulatorContext>();
+export { simulatorStorage, type SimulatorContext };
 
 
 export interface SimulatorEventResult {

@@ -1333,24 +1333,24 @@ namespace BuildConsole
         // regression sweep, and the #898 remote trigger — full api/graph/postGraphApi/zoho/uiSteps/
         // powerShellVerify coverage with live TestRunnerWindow telemetry (RunManifestAsync already
         // does EnsureTestRunnerWindow/Clear/SetSteps/BeginRun itself), not a recording-only playback.
-        private void LeftSidebar_PlayTestRequested(object? sender, BuildConsole.Services.TestManifest manifest)
+        private void LeftSidebar_PlayTestRequested(object? sender, (BuildConsole.Services.TestManifest Manifest, BuildConsole.Services.TargetEnvironment TargetEnv) req)
         {
             _ = BuildConsole.Services.TestQueueService.Instance.EnqueueAndRunAsync(
-                $"{manifest.Feature} (#{manifest.Issue})",
+                $"{req.Manifest.Feature} (#{req.Manifest.Issue}) [{req.TargetEnv}]",
                 "sidebar-play",
-                () => RunManifestAsync(manifest, isRegression: false)
+                () => RunManifestAsync(req.Manifest, isRegression: false, targetEnv: req.TargetEnv)
             );
         }
 
         // "🔄 Retry" in TestRunnerWindow's header — mirrors LeftSidebar_PlayTestRequested exactly, just
         // sourced from the window's own last-run manifest instead of the sidebar's loaded one, so Shane
         // can re-run a failed manifest without re-selecting it.
-        private void TestRunnerWindow_RetryRequested(object? sender, BuildConsole.Services.TestManifest manifest)
+        private void TestRunnerWindow_RetryRequested(object? sender, (BuildConsole.Services.TestManifest Manifest, BuildConsole.Services.TargetEnvironment TargetEnv) req)
         {
             _ = BuildConsole.Services.TestQueueService.Instance.EnqueueAndRunAsync(
-                $"{manifest.Feature} (#{manifest.Issue})",
+                $"{req.Manifest.Feature} (#{req.Manifest.Issue}) [{req.TargetEnv}]",
                 "test-runner-retry",
-                () => RunManifestAsync(manifest, isRegression: false)
+                () => RunManifestAsync(req.Manifest, isRegression: false, targetEnv: req.TargetEnv)
             );
         }
 
@@ -5013,14 +5013,17 @@ namespace BuildConsole
         // (Run Tests / Run Regression Suite) ignore the return value, unchanged.
         public async System.Threading.Tasks.Task<BuildConsole.Services.ManifestRunResult> RunManifestPublicAsync(BuildConsole.Services.TestManifest manifest)
         {
-            return await RunManifestAsync(manifest, isRegression: false);
+            return await RunManifestAsync(manifest, isRegression: false, targetEnv: BuildConsole.Services.TargetEnvironment.Dev);
         }
 
-        private async System.Threading.Tasks.Task<BuildConsole.Services.ManifestRunResult> RunManifestAsync(BuildConsole.Services.TestManifest manifest, bool isRegression)
+        private async System.Threading.Tasks.Task<BuildConsole.Services.ManifestRunResult> RunManifestAsync(
+            BuildConsole.Services.TestManifest manifest,
+            bool isRegression,
+            BuildConsole.Services.TargetEnvironment targetEnv = BuildConsole.Services.TargetEnvironment.Dev)
         {
             string mode = isRegression ? "regression" : "single";
 
-            if (_replitWatcher != null &&
+            if (targetEnv == BuildConsole.Services.TargetEnvironment.Staging && _replitWatcher != null &&
                 (_replitWatcher.CurrentStatus.State == BuildConsole.Services.ReplitWatcherState.GracePeriod ||
                  _replitWatcher.CurrentStatus.State == BuildConsole.Services.ReplitWatcherState.Waking ||
                  _replitWatcher.CurrentStatus.State == BuildConsole.Services.ReplitWatcherState.Error))
@@ -5055,8 +5058,10 @@ namespace BuildConsole
                 }
             }
 
+            var config = BuildConsole.Services.BuildTrackerConfig.Load().ForEnvironment(targetEnv);
+
             BuildConsole.Services.ActivityLog.Log("testing.manifest-runner",
-                $"[{mode}] Running manifest for issue #{manifest.Issue} ({manifest.Feature}) — {manifest.ApiTests.Count} apiTests, {manifest.GraphTests.Count} graphTests, {manifest.PostGraphApiTests.Count} postGraphApiTests, {manifest.ZohoTests.Count} zohoTests, {manifest.UiSteps.Count} uiSteps, {manifest.PowerShellVerify.Count} powerShellVerify.");
+                $"[{mode}] Running manifest for issue #{manifest.Issue} ({manifest.Feature}) — TargetEnv: {targetEnv} ({config.ApiBaseUrl}) — {manifest.ApiTests.Count} apiTests, {manifest.GraphTests.Count} graphTests, {manifest.PostGraphApiTests.Count} postGraphApiTests, {manifest.ZohoTests.Count} zohoTests, {manifest.UiSteps.Count} uiSteps, {manifest.PowerShellVerify.Count} powerShellVerify.");
 
             var runResult = new BuildConsole.Services.ManifestRunResult
             {
@@ -5084,7 +5089,7 @@ namespace BuildConsole
             }
             runner.Clear();
             runner.SetSteps(manifest);
-            runner.BeginRun(manifest.Issue, manifest.Feature, mode);
+            runner.BeginRun(manifest.Issue, manifest.Feature, mode, targetEnv);
 
             // Git #877 (Epic #803) — one per-run variable store, shared across all three executors
             // so a value an apiTest extracts (regex/jsonPath over its own response body) can be
@@ -5115,7 +5120,6 @@ namespace BuildConsole
                 });
             }
 
-            var config = BuildConsole.Services.BuildTrackerConfig.Load();
             string targetBaseUrl = string.IsNullOrWhiteSpace(manifest.BaseUrl) ? config.ApiBaseUrl : manifest.BaseUrl;
             targetBaseUrl = vars.Resolve(BuildConsole.Services.HttpTestExecutor.ResolvePlaceholders(targetBaseUrl, config));
             await EnsureServerReadyWithProbeAsync(targetBaseUrl, "testing.manifest-runner", maxWaitSeconds: 90);

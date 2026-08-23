@@ -108,7 +108,7 @@ namespace BuildConsole
                 int customerId = customer.Id;
                 string? matchedName = customer.Name;
 
-                var cfg = BuildConsole.Services.BuildTrackerConfig.Load();
+                var cfg = BuildConsole.Services.BuildTrackerConfig.Load().ForEnvironment(BuildConsole.Services.TargetEnvironment.Dev);
                 if (!cfg.IsConfigured)
                 {
                     const string notConfigured =

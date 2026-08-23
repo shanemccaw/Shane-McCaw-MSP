@@ -106,11 +106,12 @@ namespace BuildConsole
         // threaded through as a param since SetSteps is already the one call every manifest run makes into
         // this window before BeginRun.
         private Services.TestManifest? _lastManifest;
+        private Services.TargetEnvironment _lastRunTargetEnv = Services.TargetEnvironment.Dev;
 
         /// <summary>Fired when Shane clicks "🔄 Retry" — mirrors LeftSidebar's PlayTestRequested pattern.
         /// MainWindow subscribes in EnsureTestRunnerWindow and re-enters RunManifestAsync with the same
-        /// manifest.</summary>
-        public event EventHandler<Services.TestManifest>? RetryRequested;
+        /// manifest and target environment.</summary>
+        public event EventHandler<(Services.TestManifest Manifest, Services.TargetEnvironment TargetEnv)>? RetryRequested;
 
         public TestRunnerWindow()
         {
@@ -372,14 +373,33 @@ namespace BuildConsole
         }
 
         /// <summary>Called at the start of a manifest run (RunManifestAsync) to reset the telemetry panel and label the current run.</summary>
-        public void BeginRun(int issue, string feature, string mode)
+        public void BeginRun(int issue, string feature, string mode, Services.TargetEnvironment targetEnv = Services.TargetEnvironment.Dev)
         {
+            _lastRunTargetEnv = targetEnv;
             RunOnUi(() =>
             {
                 TxtRunLabel.Text = $"#{issue} — {feature} ({mode})";
+                if (targetEnv == Services.TargetEnvironment.Dev)
+                {
+                    TargetEnvBadge.Background = (System.Windows.Media.Brush)FindResource("GreenBrush");
+                    TxtTargetEnvBadge.Text = "DEV (LOCAL)";
+                    TxtTargetEnvBadge.Foreground = (System.Windows.Media.Brush)FindResource("CrustBrush");
+                }
+                else if (targetEnv == Services.TargetEnvironment.Staging)
+                {
+                    TargetEnvBadge.Background = (System.Windows.Media.Brush)FindResource("PeachBrush");
+                    TxtTargetEnvBadge.Text = "⚠️ STAGING";
+                    TxtTargetEnvBadge.Foreground = (System.Windows.Media.Brush)FindResource("CrustBrush");
+                }
+                else
+                {
+                    TargetEnvBadge.Background = (System.Windows.Media.Brush)FindResource("RedBrush");
+                    TxtTargetEnvBadge.Text = "🚨 PRODUCTION";
+                    TxtTargetEnvBadge.Foreground = (System.Windows.Media.Brush)FindResource("CrustBrush");
+                }
                 SetStatus("● RUNNING...", "PeachBrush");
                 BtnRetry.IsEnabled = false;
-                Services.ActivityLog.Log(Channel, $"Run started: issue #{issue} ({feature}), mode={mode}.");
+                Services.ActivityLog.Log(Channel, $"Run started: issue #{issue} ({feature}), mode={mode}, targetEnv={targetEnv}.");
             });
         }
 
@@ -650,8 +670,8 @@ namespace BuildConsole
         private void BtnRetry_Click(object sender, RoutedEventArgs e)
         {
             if (_lastManifest == null) return;
-            Services.ActivityLog.Log(Channel, $"Retry triggered for issue #{_lastManifest.Issue} ({_lastManifest.Feature}).");
-            RetryRequested?.Invoke(this, _lastManifest);
+            Services.ActivityLog.Log(Channel, $"Retry triggered for issue #{_lastManifest.Issue} ({_lastManifest.Feature}) against {_lastRunTargetEnv}.");
+            RetryRequested?.Invoke(this, (_lastManifest, _lastRunTargetEnv));
         }
 
         /// <summary>HttpTestExecutor/GraphTestExecutor's StepCompleted normally resumes on the UI thread already (the RunManifestAsync await chain is kicked off from a UI-thread event handler), but this guards the same way ActivityLog.Log does in case any caller ever awaits with a captured background context.</summary>

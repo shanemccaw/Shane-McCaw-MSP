@@ -403,12 +403,43 @@ namespace BuildConsole.Controls
         public event EventHandler<string>? StartRecordingRequested;
         public event EventHandler? StopRecordingRequested;
 
-        /// <summary>Git #963/Epic #803 — carries the currently-loaded manifest so MainWindow can run
-        /// it through the same real <c>RunManifestAsync</c> pipeline every other trigger uses. Used to
-        /// carry <c>(url, RecordedSteps)</c> for the recording-only playback path, but #963 removed the
-        /// Record button, so <c>RecordedSteps</c> is now permanently empty and that path ran zero steps —
-        /// Play now runs the whole manifest (api/graph/postGraphApi/zoho/uiSteps/powerShellVerify).</summary>
-        public event EventHandler<TestManifest>? PlayTestRequested;
+        /// <summary>Git #963/Epic #803 — carries the currently-loaded manifest and target environment so MainWindow can run
+        /// it through the same real <c>RunManifestAsync</c> pipeline every other trigger uses. Defaults to Dev.</summary>
+        public event EventHandler<(TestManifest Manifest, TargetEnvironment TargetEnv)>? PlayTestRequested;
+
+        public TargetEnvironment GetSelectedTargetEnvironment()
+        {
+            if (ComboTargetEnvironment?.SelectedItem is ComboBoxItem item && item.Tag is string tag)
+            {
+                if (tag == "Staging") return TargetEnvironment.Staging;
+                if (tag == "Production") return TargetEnvironment.Production;
+            }
+            return TargetEnvironment.Dev;
+        }
+
+        private void ComboTargetEnvironment_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (TargetEnvWarningBadge == null || TargetEnvWarningText == null) return;
+            var env = GetSelectedTargetEnvironment();
+            if (env == TargetEnvironment.Dev)
+            {
+                TargetEnvWarningBadge.Visibility = Visibility.Collapsed;
+            }
+            else if (env == TargetEnvironment.Staging)
+            {
+                TargetEnvWarningBadge.Visibility = Visibility.Visible;
+                TargetEnvWarningBadge.Background = (System.Windows.Media.Brush)FindResource("PeachBrush");
+                TargetEnvWarningText.Text = "⚠️ STAGING";
+                TargetEnvWarningText.Foreground = (System.Windows.Media.Brush)FindResource("CrustBrush");
+            }
+            else
+            {
+                TargetEnvWarningBadge.Visibility = Visibility.Visible;
+                TargetEnvWarningBadge.Background = (System.Windows.Media.Brush)FindResource("RedBrush");
+                TargetEnvWarningText.Text = "🚨 PROD";
+                TargetEnvWarningText.Foreground = (System.Windows.Media.Brush)FindResource("CrustBrush");
+            }
+        }
 
         public readonly List<AutomationAction> RecordedSteps = new();
 
@@ -445,7 +476,14 @@ namespace BuildConsole.Controls
                 return;
             }
 
-            PlayTestRequested?.Invoke(this, _lastLoadedManifest);
+            var env = GetSelectedTargetEnvironment();
+            PlayTestRequested?.Invoke(this, (_lastLoadedManifest, env));
+
+            // Auto-reset back to Dev after triggering a non-dev run to prevent accidental repeat runs
+            if (env != TargetEnvironment.Dev && ComboTargetEnvironment != null)
+            {
+                ComboTargetEnvironment.SelectedIndex = 0;
+            }
         }
 
         // ── Git #806: manifest loader (Epic #803 Phase 2) ───────────────────
@@ -957,7 +995,12 @@ namespace BuildConsole.Controls
             var manifest = LoadManifestLeaf(tvi, fileName);
             if (manifest == null) return;
 
-            PlayTestRequested?.Invoke(this, manifest);
+            var env = GetSelectedTargetEnvironment();
+            PlayTestRequested?.Invoke(this, (manifest, env));
+            if (env != TargetEnvironment.Dev && ComboTargetEnvironment != null)
+            {
+                ComboTargetEnvironment.SelectedIndex = 0;
+            }
             e.Handled = true;
         }
 
@@ -998,7 +1041,15 @@ namespace BuildConsole.Controls
             miRun.Click += (s, e) =>
             {
                 var manifest = LoadManifestLeaf(leafNode, relativePath);
-                if (manifest != null) PlayTestRequested?.Invoke(this, manifest);
+                if (manifest != null)
+                {
+                    var env = GetSelectedTargetEnvironment();
+                    PlayTestRequested?.Invoke(this, (manifest, env));
+                    if (env != TargetEnvironment.Dev && ComboTargetEnvironment != null)
+                    {
+                        ComboTargetEnvironment.SelectedIndex = 0;
+                    }
+                }
             };
             cm.Items.Add(miRun);
 

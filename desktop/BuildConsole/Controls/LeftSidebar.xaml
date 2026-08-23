@@ -570,6 +570,23 @@
                          Git #963 — Record/Clear Actions/Target URL box removed (Shane never records
                          manually; Play now resolves its target from the loaded manifest's own baseUrl). -->
                     <StackPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                        <!-- Target Environment Selection for Shane's manual runs -->
+                        <Border Background="{StaticResource Surface0Brush}" CornerRadius="6" Padding="8,6" Margin="0,0,0,8">
+                            <StackPanel>
+                                <DockPanel Margin="0,0,0,4">
+                                    <TextBlock Text="Target Environment" FontSize="10.5" FontWeight="SemiBold" Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center"/>
+                                    <Border x:Name="TargetEnvWarningBadge" Background="{StaticResource PeachBrush}" CornerRadius="3" Padding="4,1" HorizontalAlignment="Right" Visibility="Collapsed">
+                                        <TextBlock x:Name="TargetEnvWarningText" Text="⚠️ NON-DEV" FontSize="9" FontWeight="Bold" Foreground="{StaticResource CrustBrush}"/>
+                                    </Border>
+                                </DockPanel>
+                                <ComboBox x:Name="ComboTargetEnvironment" Height="26" FontSize="11" SelectionChanged="ComboTargetEnvironment_SelectionChanged">
+                                    <ComboBoxItem Content="🟢 Dev (Local)" IsSelected="True" Tag="Dev"/>
+                                    <ComboBoxItem Content="⚠️ Staging (Replit)" Tag="Staging"/>
+                                    <ComboBoxItem Content="🚨 Production (Live)" Tag="Production"/>
+                                </ComboBox>
+                            </StackPanel>
+                        </Border>
+
                         <Button x:Name="BtnPlayTest" Content="▶ Play Test" Click="BtnPlayTest_Click"/>
 
                         <!-- Git #869 (Epic #803) — in-panel list instead of an OS OpenFileDialog; enumerates test-manifests/*.json directly, populated on view-load/refresh, selecting an item opens the steps flyout -->
