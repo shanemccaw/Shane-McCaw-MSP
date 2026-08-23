@@ -9,6 +9,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
+using BuildConsole.Services;
 
 namespace BuildConsole
 {
@@ -343,9 +344,13 @@ namespace BuildConsole
 
             BuildQueuePanel.Initialize(_buildTrackerApi, _queueWatcher);
             LeftSidebar.Initialize(_buildTrackerApi);
-
             BuildLogView.Initialize(_buildTrackerApi);
             TerminalView.Initialize(_buildTrackerApi);
+            MarketingLogView.Initialize("shane-mccaw-consulting", "Marketing", 5173, "artifacts/shane-mccaw-consulting", "🌐");
+            PortalLogView.Initialize("msp-portal", "Portal", 5175, "artifacts/msp-portal", "💼");
+            AdminLogView.Initialize("admin-panel", "Admin", 5174, "artifacts/admin-panel", "⚙️");
+
+            StartTopServicesPoll();
 
             // Git #902 — Shane: "Replit shuts its dev mode down after ~10 min of
             // inactivity... Can we use WebView2 to watch the site. When it sees the
@@ -3605,6 +3610,168 @@ namespace BuildConsole
             ToastEngine.Success("Sailor Duck Mascot", "Quack! Ahoy Captain Shane! ⚓ (Ctrl+Shift+D)");
         }
 
+        #region Top Bar Quick Services Control
+
+        private DispatcherTimer? _topServicesTimer;
+
+        private void StartTopServicesPoll()
+        {
+            _topServicesTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+            _topServicesTimer.Tick += async (_, _) => await RefreshTopServicesStatusAsync();
+            _topServicesTimer.Start();
+            _ = RefreshTopServicesStatusAsync();
+        }
+
+        private async System.Threading.Tasks.Task RefreshTopServicesStatusAsync()
+        {
+            try
+            {
+                bool mkt = await DevServicesManager.IsPortOpenAsync(5173);
+                bool port = await DevServicesManager.IsPortOpenAsync(5175);
+                bool adm = await DevServicesManager.IsPortOpenAsync(5174);
+
+                int runningCount = (mkt ? 1 : 0) + (port ? 1 : 0) + (adm ? 1 : 0);
+                if (runningCount == 3)
+                {
+                    TopServicesStatusDot.Text = "🟢";
+                    TopServicesStatusDot.ToolTip = "All 3 dev services running (5173, 5174, 5175)";
+                }
+                else if (runningCount > 0)
+                {
+                    TopServicesStatusDot.Text = "🟡";
+                    TopServicesStatusDot.ToolTip = $"{runningCount}/3 dev services running";
+                }
+                else
+                {
+                    TopServicesStatusDot.Text = "⚪";
+                    TopServicesStatusDot.ToolTip = "All dev services stopped";
+                }
+
+                MenuMarketingItem.Header = $"🌐 Marketing (5173) [{(mkt ? "RUNNING" : "STOPPED")}]";
+                MenuPortalItem.Header = $"💼 Portal (5175) [{(port ? "RUNNING" : "STOPPED")}]";
+                MenuAdminItem.Header = $"⚙️ Admin (5174) [{(adm ? "RUNNING" : "STOPPED")}]";
+            }
+            catch { }
+        }
+
+        private async void MenuStartMarketing_Click(object sender, RoutedEventArgs e)
+        {
+            SetBottomPanel(true, tabIndex: 2); // Marketing tab
+            await DevServicesManager.StartServiceAsync("shane-mccaw-consulting");
+            await RefreshTopServicesStatusAsync();
+            await MarketingLogView.UpdateStatusAsync();
+        }
+
+        private async void MenuStopMarketing_Click(object sender, RoutedEventArgs e)
+        {
+            await DevServicesManager.StopServiceAsync("shane-mccaw-consulting");
+            await RefreshTopServicesStatusAsync();
+            await MarketingLogView.UpdateStatusAsync();
+        }
+
+        private void MenuOpenMarketingTab_Click(object sender, RoutedEventArgs e)
+        {
+            SetBottomPanel(true, tabIndex: 2);
+        }
+
+        private void MenuBrowseMarketing_Click(object sender, RoutedEventArgs e)
+        {
+            OpenBrowserUrl("http://localhost:5173");
+        }
+
+        private async void MenuStartPortal_Click(object sender, RoutedEventArgs e)
+        {
+            SetBottomPanel(true, tabIndex: 3); // Portal tab
+            await DevServicesManager.StartServiceAsync("msp-portal");
+            await RefreshTopServicesStatusAsync();
+            await PortalLogView.UpdateStatusAsync();
+        }
+
+        private async void MenuStopPortal_Click(object sender, RoutedEventArgs e)
+        {
+            await DevServicesManager.StopServiceAsync("msp-portal");
+            await RefreshTopServicesStatusAsync();
+            await PortalLogView.UpdateStatusAsync();
+        }
+
+        private void MenuOpenPortalTab_Click(object sender, RoutedEventArgs e)
+        {
+            SetBottomPanel(true, tabIndex: 3);
+        }
+
+        private void MenuBrowsePortal_Click(object sender, RoutedEventArgs e)
+        {
+            OpenBrowserUrl("http://localhost:5175");
+        }
+
+        private async void MenuStartAdmin_Click(object sender, RoutedEventArgs e)
+        {
+            SetBottomPanel(true, tabIndex: 4); // Admin tab
+            await DevServicesManager.StartServiceAsync("admin-panel");
+            await RefreshTopServicesStatusAsync();
+            await AdminLogView.UpdateStatusAsync();
+        }
+
+        private async void MenuStopAdmin_Click(object sender, RoutedEventArgs e)
+        {
+            await DevServicesManager.StopServiceAsync("admin-panel");
+            await RefreshTopServicesStatusAsync();
+            await AdminLogView.UpdateStatusAsync();
+        }
+
+        private void MenuOpenAdminTab_Click(object sender, RoutedEventArgs e)
+        {
+            SetBottomPanel(true, tabIndex: 4);
+        }
+
+        private void MenuBrowseAdmin_Click(object sender, RoutedEventArgs e)
+        {
+            OpenBrowserUrl("http://localhost:5174");
+        }
+
+        private async void MenuStartAllServices_Click(object sender, RoutedEventArgs e)
+        {
+            SetBottomPanel(true, tabIndex: 2);
+            await DevServicesManager.StartAllServicesAsync();
+            await System.Threading.Tasks.Task.Delay(2000);
+            await RefreshTopServicesStatusAsync();
+        }
+
+        private async void MenuStopAllServices_Click(object sender, RoutedEventArgs e)
+        {
+            await DevServicesManager.StopAllServicesAsync();
+            await RefreshTopServicesStatusAsync();
+            await MarketingLogView.UpdateStatusAsync();
+            await PortalLogView.UpdateStatusAsync();
+            await AdminLogView.UpdateStatusAsync();
+        }
+
+        private async void MenuRefreshServices_Click(object sender, RoutedEventArgs e)
+        {
+            await RefreshTopServicesStatusAsync();
+            await MarketingLogView.UpdateStatusAsync();
+            await PortalLogView.UpdateStatusAsync();
+            await AdminLogView.UpdateStatusAsync();
+        }
+
+        private static void OpenBrowserUrl(string url)
+        {
+            try
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = url,
+                    UseShellExecute = true
+                });
+            }
+            catch (Exception ex)
+            {
+                ToastEngine.Show("Browser", $"Could not open {url}: {ex.Message}", ToastKind.Warning);
+            }
+        }
+
+        #endregion
+
         /// <summary>Git #834 / #954 — File > Settings selects the sidebar's Settings
         /// category nav (via ActivityBar.SelectSettings, which also expands a
         /// collapsed sidebar) AND opens/focuses the native Settings tab directly, so
@@ -4377,10 +4544,8 @@ namespace BuildConsole
                 ? Path.Combine(repoRoot, "desktop", "BuildConsole")
                 : Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..")); // bin\Debug\net7.0-windows -> project dir
 
-            BtnBuildRelease.IsEnabled = false;
-            BtnBuildReleaseIcon.Text = "\uE72C"; // hourglass while running
             BuildConsole.Services.ActivityLog.Log("release-build", $"Starting: dotnet build --configuration Release ({projectDir})");
-            SetBottomPanel(true, tabIndex: 2); // Output tab
+            SetBottomPanel(true, tabIndex: 5); // Output tab
 
             var psi = new System.Diagnostics.ProcessStartInfo
             {
@@ -4406,9 +4571,6 @@ namespace BuildConsole
                     BuildConsole.Services.ActivityLog.Log("release-build", ok
                         ? $"Succeeded (exit 0) - bin\\Release\\net7.0-windows\\BuildConsole.exe"
                         : $"FAILED (exit {proc.ExitCode}) - see output above.");
-                    BtnBuildReleaseIcon.Text = "\uE768"; // back to play glyph
-                    BtnBuildReleaseIcon.Foreground = ok ? DotReady : DotError;
-                    BtnBuildRelease.IsEnabled = true;
                 });
             };
 
@@ -4422,8 +4584,6 @@ namespace BuildConsole
             catch (Exception ex)
             {
                 BuildConsole.Services.ActivityLog.Log("release-build", $"Couldn't start: {ex.Message}");
-                BtnBuildReleaseIcon.Text = "\uE768";
-                BtnBuildRelease.IsEnabled = true;
             }
         }
 
