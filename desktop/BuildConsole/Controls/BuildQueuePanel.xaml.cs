@@ -841,6 +841,73 @@ namespace BuildConsole.Controls
         private bool _queueIsStale;
         private DateTime? _queueCachedAtUtc;
 
+        /// <summary>
+        /// Queue critical-path visibility — computed once per <see cref="RenderQueue"/> over the
+        /// exact set being rendered: QueueItem.Id → the number of OTHER queue items that
+        /// transitively depend on it via the blocked-by graph (an item X depends on B when B is in
+        /// X.BlockedByNumbers — the very same relationship RenderQueue already nests on). With Shane
+        /// regularly stacking 10-20 queued builds in real blocked-by chains, a flat/nested list
+        /// doesn't reveal which items are actually gating the most downstream work; this drives a
+        /// "⛓ blocks N" badge per card (see <see cref="BuildQueueTreeItem"/>) so the real bottlenecks
+        /// worth prioritizing stand out at a glance. Pure display — derived entirely from blocked-by
+        /// data already tracked on each item; no new data source, no logging.
+        /// </summary>
+        private Dictionary<int, int> _downstreamBlockCounts = new();
+        /// <summary>The largest value in <see cref="_downstreamBlockCounts"/> (0 if none) — the
+        /// current worst bottleneck's downstream count, used to give the top offender a louder badge.</summary>
+        private int _maxDownstreamBlockCount;
+
+        /// <summary>
+        /// Queue critical-path visibility — for each item, counts how many OTHER items in
+        /// <paramref name="items"/> transitively depend on it through the blocked-by graph (X
+        /// depends on B when B ∈ X.BlockedByNumbers, matching exactly what RenderQueue nests on).
+        /// Transitive so a chain A→B→C credits A with 2 downstream, surfacing the real head-of-chain
+        /// bottleneck rather than only its immediate child. Keyed by QueueItem.Id (rows can share a
+        /// GithubNumber, and un-numbered rows exist and block nothing). Cycle-guarded per start via a
+        /// visited-Id set plus an expanded-number set.
+        /// </summary>
+        private static Dictionary<int, int> ComputeDownstreamBlockCounts(List<QueueItem> items)
+        {
+            // blockerNumber -> the items that directly list it as one of their blockers
+            var directDependents = new Dictionary<int, List<QueueItem>>();
+            foreach (var item in items)
+            {
+                var blockers = item.BlockedByNumbers ?? (item.BlockedByNumber.HasValue ? new List<int> { item.BlockedByNumber.Value } : new List<int>());
+                foreach (var b in blockers)
+                {
+                    if (b == 0 || b == item.GithubNumber) continue; // ignore self / unset references
+                    if (!directDependents.TryGetValue(b, out var list)) { list = new List<QueueItem>(); directDependents[b] = list; }
+                    list.Add(item);
+                }
+            }
+
+            var counts = new Dictionary<int, int>();
+            foreach (var item in items)
+            {
+                if (!item.GithubNumber.HasValue) { counts[item.Id] = 0; continue; } // nothing can reference a numberless row
+
+                var seenIds = new HashSet<int> { item.Id };      // never count self; guards cycles at item level
+                var expandedNumbers = new HashSet<int>();          // guards cycles at blocker-number level
+                var frontier = new Queue<int>();
+                frontier.Enqueue(item.GithubNumber.Value);
+                int count = 0;
+                while (frontier.Count > 0)
+                {
+                    int num = frontier.Dequeue();
+                    if (!expandedNumbers.Add(num)) continue;
+                    if (!directDependents.TryGetValue(num, out var deps)) continue;
+                    foreach (var dep in deps)
+                    {
+                        if (!seenIds.Add(dep.Id)) continue; // already counted downstream
+                        count++;
+                        if (dep.GithubNumber.HasValue) frontier.Enqueue(dep.GithubNumber.Value);
+                    }
+                }
+                counts[item.Id] = count;
+            }
+            return counts;
+        }
+
         public async System.Threading.Tasks.Task RefreshAsync()
         {
             if (_api == null || !_api.IsConfigured) return;
@@ -1149,6 +1216,14 @@ namespace BuildConsole.Controls
             // separate from the real active/pending/running rows below rather
             // than indistinguishable from them.
             RenderQueuedForRestartGroup();
+
+            // Queue critical-path visibility — compute the transitive downstream block
+            // count per item up front (over the exact set being rendered) so each card can
+            // show a "⛓ blocks N" badge, making the queue's real bottlenecks obvious at a
+            // glance. Reads the same blocked-by relationships the nesting below already uses;
+            // pure display (see ComputeDownstreamBlockCounts / BuildQueueTreeItem).
+            _downstreamBlockCounts = ComputeDownstreamBlockCounts(items);
+            _maxDownstreamBlockCount = _downstreamBlockCounts.Count > 0 ? _downstreamBlockCounts.Values.Max() : 0;
 
             // Git #799/#813 — a queued item nests under its blocker.
             // Original behavior: only nested when blocker was ALSO in the queue.
@@ -1679,6 +1754,39 @@ namespace BuildConsole.Controls
                     Foreground = (Brush)Application.Current.FindResource("PeachBrush")
                 };
                 topRow.Children.Add(numBadge);
+            }
+
+            // Queue critical-path visibility — "⛓ blocks N" badge whenever this build gates
+            // downstream work (transitive count from _downstreamBlockCounts, computed once per
+            // RenderQueue). The queue's single worst bottleneck gets a louder (filled peach/red,
+            // bold) badge so the highest-leverage item to prioritize jumps out; lesser blockers
+            // get the quiet neutral outline. Items that block nothing get no badge at all, so the
+            // badge itself is the "this is on the critical path" signal.
+            if (_downstreamBlockCounts.TryGetValue(item.Id, out var blockCount) && blockCount > 0)
+            {
+                bool isTopBottleneck = blockCount == _maxDownstreamBlockCount && _maxDownstreamBlockCount > 1;
+                var blockBadge = new Border
+                {
+                    Background = new SolidColorBrush(isTopBottleneck ? Color.FromRgb(0x45, 0x1A, 0x24) : Color.FromRgb(0x28, 0x29, 0x3D)),
+                    BorderBrush = new SolidColorBrush(isTopBottleneck ? Color.FromRgb(0xF3, 0x8B, 0xA8) : Color.FromRgb(0x6C, 0x70, 0x86)),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(4),
+                    Padding = new Thickness(5, 1.5, 5, 1.5),
+                    Margin = new Thickness(6, 0, 0, 0),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    ToolTip = isTopBottleneck
+                        ? $"Critical path — {blockCount} downstream build(s) are waiting on this, directly or via a chain. Prioritizing it unblocks the most work in the queue."
+                        : $"Blocks {blockCount} downstream build(s) in the queue, directly or via a chain."
+                };
+                blockBadge.Child = new TextBlock
+                {
+                    Text = $"⛓ blocks {blockCount}",
+                    FontSize = 9.5,
+                    FontWeight = isTopBottleneck ? FontWeights.Bold : FontWeights.SemiBold,
+                    Foreground = new SolidColorBrush(isTopBottleneck ? Color.FromRgb(0xF3, 0x8B, 0xA8) : Color.FromRgb(0xBA, 0xB4, 0xCD)),
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                topRow.Children.Add(blockBadge);
             }
 
             mainStack.Children.Add(topRow);
