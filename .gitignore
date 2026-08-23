@@ -67,3 +67,11 @@ test-results/
 # BuildConsole local activity and output logs
 .logs/
 *.log
+
+#local dev
+.env
+.env.local
+.env.*.local
+node_modules/
+dist/
+uploads/
