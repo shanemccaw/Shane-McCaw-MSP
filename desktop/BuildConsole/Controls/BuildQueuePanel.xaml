@@ -227,27 +227,25 @@
                                 </TextBlock>
                             </Grid>
 
-                            <!-- ── Queue tree (populated live from GET /extension/queue — see code-behind) ── -->
-                            <Grid>
-                                <TreeView x:Name="QueueTree" BorderThickness="0" Padding="0,4" SelectedItemChanged="QueueTree_SelectedItemChanged">
-                                    <TreeView.ItemContainerStyle>
-                                        <Style TargetType="{x:Type TreeViewItem}" BasedOn="{StaticResource {x:Type TreeViewItem}}">
-                                            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
-                                            <Setter Property="HorizontalAlignment" Value="Stretch"/>
-                                            <Setter Property="Padding" Value="0,2"/>
-                                            <Setter Property="Margin" Value="0,0,0,3"/>
-                                        </Style>
-                                    </TreeView.ItemContainerStyle>
-                                </TreeView>
-                                <TextBlock x:Name="QueueEmptyText"
-                                           Text="Not connected — see Settings"
-                                           FontSize="11"
-                                           Foreground="{StaticResource Subtext1Brush}"
-                                           Margin="12,10"
-                                           TextWrapping="Wrap"
-                                           VerticalAlignment="Top"
-                                           Visibility="Collapsed"/>
+                            <!-- ── Visual Queue DAG with Canvas-based connector lines (#860) ── -->
+                            <Grid x:Name="QueueGraphContainer" Margin="0,2,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition x:Name="GraphColumn" Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <!-- Canvas for DAG lane connectors, Bézier curves, and status node dots -->
+                                <Canvas x:Name="QueueGraphCanvas" Grid.Column="0" ClipToBounds="False" HorizontalAlignment="Left"/>
+                                <!-- Stack of build cards (one per node), aligned with GraphCanvas -->
+                                <StackPanel x:Name="QueueCardsHost" Grid.Column="1" SizeChanged="QueueCardsHost_SizeChanged"/>
                             </Grid>
+                            <TextBlock x:Name="QueueEmptyText"
+                                       Text="Not connected — see Settings"
+                                       FontSize="11"
+                                       Foreground="{StaticResource Subtext1Brush}"
+                                       Margin="12,10"
+                                       TextWrapping="Wrap"
+                                       VerticalAlignment="Top"
+                                       Visibility="Collapsed"/>
                         </StackPanel>
                     </Border>
 
@@ -287,89 +285,14 @@
                         </StackPanel>
                     </Border>
 
-                    <!-- ══ 2b. TEST WATCH — live tests running & queued tests ══ -->
-                    <StackPanel Margin="10,0,10,12">
-                        <ToggleButton x:Name="TileTestWatch" Style="{StaticResource QuietTile}" Click="TileTestWatch_Click">
-                            <DockPanel LastChildFill="True">
-                                <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center">
-                                    <TextBlock x:Name="TestWatchIcon" Text="🧪" FontSize="13" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                                    <TextBlock x:Name="TestWatchLabel" Text="Test Watch" FontSize="11" VerticalAlignment="Center"/>
-                                    <TextBlock x:Name="TestWatchCountText" Text="(0)" FontSize="11" Margin="4,0,0,0" VerticalAlignment="Center" Foreground="{StaticResource Subtext1Brush}"/>
-                                </StackPanel>
-                                <Ellipse x:Name="TestWatchPulse" Width="7" Height="7" Fill="{StaticResource BlueBrush}" HorizontalAlignment="Right" VerticalAlignment="Center" Visibility="Collapsed" Margin="0,0,2,0"/>
-                            </DockPanel>
-                        </ToggleButton>
-                        <Border x:Name="TileTestWatchContent"
-                                Visibility="Collapsed"
-                                Background="{StaticResource MantleBrush}"
-                                BorderBrush="{StaticResource Surface0Brush}"
-                                BorderThickness="1,0,1,1"
-                                Padding="8"
-                                CornerRadius="0,0,6,6">
-                            <StackPanel>
-                                <!-- Currently Running / Deploying Status Card -->
-                                <Border Background="{StaticResource BaseBrush}"
-                                        BorderBrush="{StaticResource Surface0Brush}"
-                                        BorderThickness="1"
-                                        CornerRadius="5"
-                                        Padding="8,6"
-                                        Margin="0,0,0,8">
-                                    <StackPanel>
-                                        <DockPanel Margin="0,0,0,4">
-                                            <TextBlock Text="STATUS"
-                                                       FontSize="9"
-                                                       FontWeight="Bold"
-                                                       Foreground="{StaticResource Subtext0Brush}"
-                                                       DockPanel.Dock="Left"/>
-                                            <TextBlock x:Name="TestWatchActiveBadge"
-                                                       Text="IDLE"
-                                                       FontSize="9"
-                                                       FontWeight="Bold"
-                                                       Foreground="{StaticResource Subtext0Brush}"
-                                                       HorizontalAlignment="Right"/>
-                                        </DockPanel>
-                                        <TextBlock x:Name="TestWatchActiveText"
-                                                   Text="Idle — no active tests or deploys"
-                                                   FontSize="11"
-                                                   FontWeight="SemiBold"
-                                                   Foreground="{StaticResource TextBrush}"
-                                                   TextWrapping="Wrap"/>
-                                    </StackPanel>
-                                </Border>
-
-                                <!-- Queued Tests Section -->
-                                <TextBlock Text="QUEUED TESTS"
-                                           FontSize="9"
-                                           FontWeight="Bold"
-                                           Foreground="{StaticResource Subtext0Brush}"
-                                           Margin="2,0,0,4"/>
-                                <ListBox x:Name="TestWatchQueueList"
-                                         Background="Transparent"
-                                         BorderThickness="0"
-                                         MaxHeight="220"
-                                         ScrollViewer.VerticalScrollBarVisibility="Auto"/>
-                                <TextBlock x:Name="TestWatchEmptyText"
-                                           Text="No tests waiting in queue"
-                                           FontSize="10"
-                                           Foreground="{StaticResource Subtext0Brush}"
-                                           Margin="4,2,0,4"
-                                           FontStyle="Italic"/>
-                            </StackPanel>
-                        </Border>
-                    </StackPanel>
-
                     <!-- ══ 3. IN-FLIGHT — one quiet count-badge tile, collapsed by default ══
                          Git #874 - Shane: "In-Flight I reference only." Shrunk from a full
                          equal-weight tab (#866) to a quiet tile; expands in place on click
                          to reveal its existing list, collapsed by default so it stays out
                          of the way until wanted.
                          Git #971 - Shane: "In-Flight and Sessions should not be a 2 column
-                         layout, they should work the same as Completed & To-Do." Replaces
-                         the old side-by-side 2-column Grid with the same full-width single
-                         -column StackPanel shape as #941's Completed/To-Do, same mutually
-                         -exclusive accordion between the two (see TileInFlight_Click/
-                         TileSessions_Click), same no-MaxHeight-cap + ellipsis-title
-                         treatment on the inner list. -->
+                         layout, they should work the same as Completed & To-Do." Full-width
+                         single-column tile with accordion toggle. -->
                     <StackPanel Margin="10,0,10,12">
                         <ToggleButton x:Name="TileInFlight" Style="{StaticResource QuietTile}" Click="TileInFlight_Click">
                             <StackPanel Orientation="Horizontal">
@@ -393,16 +316,12 @@
                         </Border>
                     </StackPanel>
 
-                    <!-- ══ 3b. SESSIONS — one quiet count-badge tile, collapsed by default ══
+                    <!-- ══ 4. SESSIONS — one quiet count-badge tile, collapsed by default ══
                          Git #971 - Shane: "The Build Queue needs to show even when I am
                          building using 'Send to Builder' since that opens a different
                          process... it's not part of the Queue.. but I need a way to know
-                         it's running. I think this is what Session is for?" Correct - this
-                         reads the real claude CLI agent list directly (ClaudeAgentsService),
-                         which lists every active Claude Code session on the machine
-                         (interactive AND background) regardless of whether it ever touched
-                         the queue, so a Send-to-Builder launch (a plain named claude.exe
-                         process, no queue row at all) shows up here same as anything else. -->
+                         it's running. I think this is what Session is for?" Reads the real
+                         claude CLI agent list directly (ClaudeAgentsService). -->
                     <StackPanel Margin="10,0,10,12">
                         <ToggleButton x:Name="TileSessions" Style="{StaticResource QuietTile}" Click="TileSessions_Click">
                             <StackPanel Orientation="Horizontal">
@@ -423,101 +342,6 @@
                                      BorderThickness="0"
                                      SizeChanged="ActiveSessionsList_SizeChanged"
                                      SelectionChanged="ActiveSessionsList_SelectionChanged"/>
-                        </Border>
-                    </StackPanel>
-
-                    <!-- ══ 3b. COMPLETED — done builds whose real GitHub issue is still
-                         open, one quiet count-badge tile, collapsed by default ══
-                         Git #905 - Shane: "I ran a fix on an item in the 400s, it went
-                         to done... I don't know what it was... Maybe I need like a last
-                         complete list that stays there until the actual issue is closed
-                         in Git." Unlike the Queue tab's own "Done" filter chip (which
-                         shows EVERY done row, growing forever per #865), this list only
-                         ever holds done rows whose linked GitHub issue is STILL OPEN -
-                         closing the issue on GitHub is what removes a row from here, not
-                         the passage of time or how deep it's buried in queue history.
-                         Same "announce itself" accent behavior as To-Do below, since this
-                         too is something Shane still needs to act on (review + close). -->
-                    <StackPanel Margin="10,0,10,12">
-                        <ToggleButton x:Name="TileCompleted" Style="{StaticResource QuietTile}" Click="TileCompleted_Click">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock x:Name="CompletedIcon" Text="✅" FontSize="13" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                                <TextBlock x:Name="CompletedLabel" Text="Completed" FontSize="11" VerticalAlignment="Center"/>
-                                <TextBlock x:Name="CompletedCountText" Text="(0)" FontSize="11" Margin="4,0,0,0" VerticalAlignment="Center" Foreground="{StaticResource Subtext1Brush}"/>
-                            </StackPanel>
-                        </ToggleButton>
-                        <Border x:Name="TileCompletedContent"
-                                Visibility="Collapsed"
-                                Background="{StaticResource MantleBrush}"
-                                BorderBrush="{StaticResource Surface0Brush}"
-                                BorderThickness="1,0,1,1"
-                                Padding="4"
-                                CornerRadius="0,0,6,6">
-                            <ListBox x:Name="CompletedIssuesList"
-                                     Background="Transparent"
-                                     BorderThickness="0"
-                                     SelectionChanged="CompletedIssuesList_SelectionChanged"
-                                     SizeChanged="CompletedIssuesList_SizeChanged"/>
-                        </Border>
-                    </StackPanel>
-
-                    <!-- ══ 4. TO-DO — one quiet count-badge tile, collapsed by default ══
-                         Git #874 - Shane: "To-Do I reference only after a build tells me
-                         there is something for me to do." The ONE section that should
-                         visually announce itself: neutral/quiet at 0 (identical to
-                         In-Flight/Sessions above), swaps to the app's existing warning/
-                         accent brush (PeachBrush) when count > 0 — done in code-behind
-                         since it's data-driven, not a static style trigger. -->
-                    <StackPanel Margin="10,0,10,12">
-                        <ToggleButton x:Name="TileToDo" Style="{StaticResource QuietTile}" Click="TileToDo_Click">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock x:Name="ToDoIcon" Text="🔴" FontSize="13" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                                <TextBlock x:Name="ToDoLabel" Text="To-Do" FontSize="11" VerticalAlignment="Center"/>
-                                <TextBlock x:Name="ToDoCountText" Text="(0)" FontSize="11" Margin="4,0,0,0" VerticalAlignment="Center" Foreground="{StaticResource Subtext1Brush}"/>
-                            </StackPanel>
-                        </ToggleButton>
-                        <Border x:Name="TileToDoContent"
-                                Visibility="Collapsed"
-                                Background="{StaticResource MantleBrush}"
-                                BorderBrush="{StaticResource Surface0Brush}"
-                                BorderThickness="1,0,1,1"
-                                Padding="4"
-                                CornerRadius="0,0,6,6">
-                            <ListBox x:Name="WaitingOnMeList"
-                                     Background="Transparent"
-                                     BorderThickness="0"
-                                     SizeChanged="WaitingOnMeList_SizeChanged"/>
-                        </Border>
-                    </StackPanel>
-
-                    <!-- ══ 5. NEEDS ATTENTION (test runs) — one quiet count-badge tile, collapsed by default ══
-                         A durable fallback for #54's "needs attention" test-result toast. That toast
-                         (surfaced by MainWindow.ApplyRunOutcomeToRunnerWindow when a run fails or #975's
-                         screenshot-review fires) auto-dismisses after a few seconds — Shane can miss it.
-                         Every such result is ALSO recorded here and STAYS until he actually opens/reviews
-                         it (clicking either the toast or the row here addresses + clears it). Same quiet
-                         collapsed-by-default tile + PeachBrush/red "announce itself" treatment as To-Do
-                         above; wholly in-memory / local (no GitHub, no DB), driven by the real run outcome. -->
-                    <StackPanel Margin="10,0,10,12">
-                        <ToggleButton x:Name="TileAttention" Style="{StaticResource QuietTile}" Click="TileAttention_Click">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock x:Name="AttentionIcon" Text="🧪" FontSize="13" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                                <TextBlock x:Name="AttentionLabel" Text="Needs Attention" FontSize="11" VerticalAlignment="Center"/>
-                                <TextBlock x:Name="AttentionCountText" Text="(0)" FontSize="11" Margin="4,0,0,0" VerticalAlignment="Center" Foreground="{StaticResource Subtext1Brush}"/>
-                            </StackPanel>
-                        </ToggleButton>
-                        <Border x:Name="TileAttentionContent"
-                                Visibility="Collapsed"
-                                Background="{StaticResource MantleBrush}"
-                                BorderBrush="{StaticResource Surface0Brush}"
-                                BorderThickness="1,0,1,1"
-                                Padding="4"
-                                CornerRadius="0,0,6,6">
-                            <ListBox x:Name="AttentionList"
-                                     Background="Transparent"
-                                     BorderThickness="0"
-                                     SelectionChanged="AttentionList_SelectionChanged"
-                                     SizeChanged="AttentionList_SizeChanged"/>
                         </Border>
                     </StackPanel>
 
