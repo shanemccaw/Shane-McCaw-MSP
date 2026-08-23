@@ -457,19 +457,41 @@ namespace BuildConsole.Services
         };
 
         /// <summary>
+        /// <summary>
+        /// Returns the upcoming Sunday 9:00 PM Eastern Time (America/New_York) reset moment,
+        /// expressed in the user's LOCAL timezone.
+        /// </summary>
+        internal static DateTime GetNextWeeklyResetTarget(DateTime? nowOverride = null)
+        {
+            var now = nowOverride ?? DateTime.Now;
+            var eastern = ResolveTimeZone("America/New_York");
+            var nowEt = TimeZoneInfo.ConvertTime(now, TimeZoneInfo.Local, eastern);
+
+            int daysUntilSunday = ((int)DayOfWeek.Sunday - (int)nowEt.DayOfWeek + 7) % 7;
+            if (daysUntilSunday == 0 && (nowEt.Hour > 21 || (nowEt.Hour == 21 && nowEt.Minute > 0)))
+            {
+                daysUntilSunday = 7;
+            }
+
+            var nextSundayEt = new DateTime(nowEt.Year, nowEt.Month, nowEt.Day, 21, 0, 0, DateTimeKind.Unspecified).AddDays(daysUntilSunday);
+            var nextSundayUtc = TimeZoneInfo.ConvertTimeToUtc(nextSundayEt, eastern);
+            return TimeZoneInfo.ConvertTimeFromUtc(nextSundayUtc, TimeZoneInfo.Local);
+        }
+
+        /// <summary>
         /// Parses a reset string into a LOCAL datetime.
         /// Handles:
-        /// - Date + Time + TimeZone: "Aug 23, 9pm (America/New_York)", "Aug 23, 7:50pm (America/New_York)"
-        /// - Weekday + Time: "Resets Sun 9:00 PM", "Sunday 9pm"
-        /// - Bare Time: "9:00 PM", "21:00"
+        /// - Date + Time + TimeZone: "Aug 23, 9pm (America/New_York)", "Aug 23, 7:50pm (America/New_York)", "Aug 23 21:00 (UTC)"
+        /// - Weekday + Time: "Resets Sun 9:00 PM", "Sunday 9pm ET"
+        /// - Bare Time: "9:00 PM", "21:00", "1:00 AM" (UTC reset time)
         /// </summary>
         internal static DateTime? ParseResetTarget(string? label, DateTime? nowOverride = null)
         {
-            if (string.IsNullOrWhiteSpace(label)) return null;
             var now = nowOverride ?? DateTime.Now;
+            if (string.IsNullOrWhiteSpace(label)) return GetNextWeeklyResetTarget(now);
             string lower = label.ToLowerInvariant();
 
-            // 1. Month Date + Time: "Aug 23, 9pm (America/New_York)" / "Aug 23, 7:50pm" / "August 23 21:00"
+            // 1. Month Date + Time: "Aug 23, 9pm (America/New_York)" / "Aug 23, 7:50pm" / "August 23 21:00 (UTC)"
             var fullDateMatch = Regex.Match(lower, @"([a-z]{3,9})\s+(\d{1,2}),?\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?(?:\s*\(([^)]+)\))?");
             if (fullDateMatch.Success && MonthNames.TryGetValue(fullDateMatch.Groups[1].Value, out int month))
             {
@@ -480,8 +502,27 @@ namespace BuildConsole.Services
                 if (mer == "pm" && hour < 12) hour += 12;
                 else if (mer == "am" && hour == 12) hour = 0;
 
-                string tzName = fullDateMatch.Groups[6].Value.Trim();
-                TimeZoneInfo sourceTz = ResolveTimeZone(tzName);
+                string tzName = fullDateMatch.Groups[6].Success ? fullDateMatch.Groups[6].Value.Trim() : string.Empty;
+                
+                // If tzName was not in parens, check if the string contains a trailing timezone indicator
+                if (string.IsNullOrWhiteSpace(tzName))
+                {
+                    if (lower.Contains("utc") || lower.Contains("gmt")) tzName = "utc";
+                    else if (lower.Contains("et") || lower.Contains("est") || lower.Contains("edt") || lower.Contains("eastern")) tzName = "America/New_York";
+                    else if (lower.Contains("pt") || lower.Contains("pst") || lower.Contains("pdt") || lower.Contains("pacific")) tzName = "America/Los_Angeles";
+                    else if (lower.Contains("ct") || lower.Contains("cst") || lower.Contains("cdt") || lower.Contains("central")) tzName = "America/Chicago";
+                }
+
+                // If no timezone is specified and hour is 1am / 01:00 (standard UTC reset time for 9pm ET), treat as UTC
+                TimeZoneInfo sourceTz;
+                if (string.IsNullOrWhiteSpace(tzName))
+                {
+                    sourceTz = (hour == 1 && minute == 0) ? TimeZoneInfo.Utc : ResolveTimeZone("America/New_York");
+                }
+                else
+                {
+                    sourceTz = ResolveTimeZone(tzName);
+                }
 
                 int year = now.Year;
                 try
@@ -502,61 +543,100 @@ namespace BuildConsole.Services
                 catch { }
             }
 
-            // 2. Weekday + Time: "Resets Sun 9:00 PM"
+            // 2. Weekday + Time: "Resets Sun 9:00 PM", "Sunday 9pm ET"
             var tm = Regex.Match(lower, @"(\d{1,2})(?::(\d{2}))?\s*(am|pm)?");
-            if (!tm.Success) return null;
-
-            int thour = int.Parse(tm.Groups[1].Value);
-            int tminute = tm.Groups[2].Success ? int.Parse(tm.Groups[2].Value) : 0;
-            if (tminute > 59) return null;
-            string tmer = tm.Groups[3].Value;
-            if (tmer == "pm" && thour < 12) thour += 12;
-            else if (tmer == "am" && thour == 12) thour = 0;
-            if (thour > 23) return null;
-
-            var timeOfDay = new TimeSpan(thour, tminute, 0);
-
-            DayOfWeek? targetDow = null;
-            foreach (var (abbr, dow) in Weekdays)
+            if (tm.Success)
             {
-                if (lower.Contains(abbr)) { targetDow = dow; break; }
+                int thour = int.Parse(tm.Groups[1].Value);
+                int tminute = tm.Groups[2].Success ? int.Parse(tm.Groups[2].Value) : 0;
+                string tmer = tm.Groups[3].Value;
+                if (tmer == "pm" && thour < 12) thour += 12;
+                else if (tmer == "am" && thour == 12) thour = 0;
+
+                if (thour <= 23 && tminute <= 59)
+                {
+                    // Check if it's the standard Sunday 9pm reset
+                    bool isSunday = lower.Contains("sun");
+                    bool isEastern = lower.Contains("et") || lower.Contains("eastern") || lower.Contains("new_york");
+                    if (isSunday && (thour == 21 || (thour == 9 && tmer == "pm")))
+                    {
+                        return GetNextWeeklyResetTarget(now);
+                    }
+
+                    TimeZoneInfo sourceTz = isEastern ? ResolveTimeZone("America/New_York") : (thour == 1 && tminute == 0 ? TimeZoneInfo.Utc : TimeZoneInfo.Local);
+                    var nowInSource = TimeZoneInfo.ConvertTime(now, TimeZoneInfo.Local, sourceTz);
+
+                    DayOfWeek? targetDow = null;
+                    foreach (var (abbr, dow) in Weekdays)
+                    {
+                        if (lower.Contains(abbr)) { targetDow = dow; break; }
+                    }
+
+                    DateTime candidateInSource;
+                    if (targetDow.HasValue)
+                    {
+                        int delta = (((int)targetDow.Value) - (int)nowInSource.DayOfWeek + 7) % 7;
+                        if (delta == 0 && (nowInSource.Hour > thour || (nowInSource.Hour == thour && nowInSource.Minute >= tminute)))
+                        {
+                            delta = 7;
+                        }
+                        candidateInSource = nowInSource.Date.AddDays(delta).Add(new TimeSpan(thour, tminute, 0));
+                    }
+                    else
+                    {
+                        candidateInSource = nowInSource.Date.Add(new TimeSpan(thour, tminute, 0));
+                        if (candidateInSource <= nowInSource) candidateInSource = candidateInSource.AddDays(1);
+                    }
+
+                    var candidateUtc = TimeZoneInfo.ConvertTimeToUtc(candidateInSource, sourceTz);
+                    return TimeZoneInfo.ConvertTimeFromUtc(candidateUtc, TimeZoneInfo.Local);
+                }
             }
 
-            if (targetDow.HasValue)
-            {
-                int delta = (((int)targetDow.Value) - (int)now.DayOfWeek + 7) % 7;
-                var candidate = now.Date.AddDays(delta).Add(timeOfDay);
-                if (candidate <= now) candidate = candidate.AddDays(7);
-                return candidate;
-            }
-            else
-            {
-                var candidate = now.Date.Add(timeOfDay);
-                if (candidate <= now) candidate = candidate.AddDays(1);
-                return candidate;
-            }
+            return GetNextWeeklyResetTarget(now);
         }
 
-        private static TimeZoneInfo ResolveTimeZone(string tzName)
+        internal static TimeZoneInfo ResolveTimeZone(string tzName)
         {
             if (string.IsNullOrWhiteSpace(tzName)) return TimeZoneInfo.Local;
 
+            // 1. Exact system match (Windows or IANA on .NET 6+)
             if (TimeZoneInfo.TryFindSystemTimeZoneById(tzName, out var tz)) return tz;
 
-            string lower = tzName.ToLowerInvariant();
-            if (lower.Contains("new_york") || lower.Contains("eastern") || lower == "et" || lower == "est" || lower == "edt")
+            string lower = tzName.ToLowerInvariant().Trim();
+
+            // 2. UTC / GMT
+            if (lower == "utc" || lower == "gmt" || lower == "z" || lower.Contains("universal") || lower.Contains("etc/utc") || lower.Contains("etc/gmt"))
+            {
+                return TimeZoneInfo.Utc;
+            }
+
+            // 3. Eastern (ET / EDT / EST / America/New_York / US/Eastern)
+            if (lower.Contains("new_york") || lower.Contains("eastern") || lower.Contains("detroit") || lower.Contains("toronto") || lower == "et" || lower == "est" || lower == "edt" || lower.Contains("us/eastern"))
             {
                 if (TimeZoneInfo.TryFindSystemTimeZoneById("Eastern Standard Time", out var est)) return est;
                 if (TimeZoneInfo.TryFindSystemTimeZoneById("America/New_York", out var any)) return any;
             }
-            if (lower.Contains("los_angeles") || lower.Contains("pacific") || lower == "pt" || lower == "pst" || lower == "pdt")
+
+            // 4. Central (CT / CDT / CST / America/Chicago / US/Central)
+            if (lower.Contains("chicago") || lower.Contains("central") || lower == "ct" || lower == "cst" || lower == "cdt" || lower.Contains("us/central"))
+            {
+                if (TimeZoneInfo.TryFindSystemTimeZoneById("Central Standard Time", out var cst)) return cst;
+                if (TimeZoneInfo.TryFindSystemTimeZoneById("America/Chicago", out var ach)) return ach;
+            }
+
+            // 5. Mountain (MT / MDT / MST / America/Denver / US/Mountain)
+            if (lower.Contains("denver") || lower.Contains("mountain") || lower == "mt" || lower == "mst" || lower == "mdt" || lower.Contains("us/mountain"))
+            {
+                if (TimeZoneInfo.TryFindSystemTimeZoneById("Mountain Standard Time", out var mst)) return mst;
+                if (TimeZoneInfo.TryFindSystemTimeZoneById("America/Denver", out var ade)) return ade;
+            }
+
+            // 6. Pacific (PT / PDT / PST / America/Los_Angeles / US/Pacific)
+            if (lower.Contains("los_angeles") || lower.Contains("pacific") || lower == "pt" || lower == "pst" || lower == "pdt" || lower.Contains("us/pacific"))
             {
                 if (TimeZoneInfo.TryFindSystemTimeZoneById("Pacific Standard Time", out var pst)) return pst;
                 if (TimeZoneInfo.TryFindSystemTimeZoneById("America/Los_Angeles", out var ala)) return ala;
-            }
-            if (lower.Contains("chicago") || lower.Contains("central") || lower == "ct" || lower == "cst" || lower == "cdt")
-            {
-                if (TimeZoneInfo.TryFindSystemTimeZoneById("Central Standard Time", out var cst)) return cst;
             }
 
             return TimeZoneInfo.Local;
@@ -598,9 +678,10 @@ namespace BuildConsole.Services
             if (!_percent.HasValue) return "Claude: --";
 
             string text = $"Claude: {_percent.Value}% used";
-            if (_percent.Value >= CountdownThresholdPercent && _resetTarget.HasValue)
+            if (_percent.Value >= CountdownThresholdPercent)
             {
-                var remaining = _resetTarget.Value - DateTime.Now;
+                var target = _resetTarget ?? GetNextWeeklyResetTarget();
+                var remaining = target - DateTime.Now;
                 if (remaining > TimeSpan.Zero)
                     text += $" — resets in {FormatCountdown(remaining)}";
             }
@@ -626,8 +707,8 @@ namespace BuildConsole.Services
                 ClaudeUsageMeterState.Error => $"\nError{(string.IsNullOrEmpty(reason) ? "" : $": {reason}")}",
                 _ => _percent.HasValue ? $"\n{_percent.Value}% of the All Models window used" : "",
             });
-            if (_resetTarget.HasValue)
-                tip.Append($"\nResets: {_resetTarget.Value:ddd MMM d, h:mm tt}");
+            var target = _resetTarget ?? GetNextWeeklyResetTarget();
+            tip.Append($"\nResets: {target:ddd MMM d, h:mm tt}");
             if (_projectedFullTarget.HasValue)
                 tip.Append($"\nProjected 100%: {_projectedFullTarget.Value:ddd MMM d, h:mm tt} (~{_projectedRatePerHour:0.0}%/hr at the current rate)");
             tip.Append(_lastPoll.HasValue ? $"\nLast checked: {_lastPoll:HH:mm:ss}" : "\nLast checked: —");
