@@ -83,13 +83,19 @@ export function mergeNoEdit(cwd, commit, message) {
   const args = ["merge", "--no-edit"];
   if (message) args.push("-m", message);
   args.push(commit);
-  const r = git(cwd, args);
+  let r = git(cwd, args);
+  if (r.code !== 0 && (r.stderr.includes("MERGE_HEAD") || r.stdout.includes("MERGE_HEAD"))) {
+    git(cwd, ["merge", "--abort"]);
+    git(cwd, ["reset", "--hard", "HEAD"]);
+    r = git(cwd, args);
+  }
   if (r.code === 0) {
     const after = revParse(cwd, "HEAD");
     return { ok: true, ff: after === before ? false : true, sha: after, stderr: "" };
   }
   // Leave the server checkout in a clean state -- never half-merged.
   git(cwd, ["merge", "--abort"]);
+  git(cwd, ["reset", "--hard", "HEAD"]);
   return {
     ok: false,
     sha: before,

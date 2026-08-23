@@ -196,8 +196,7 @@ namespace BuildConsole.Services
         {
             IsConfigured = config.IsConfigured;
             ConfiguredApiBaseUrl = config.ApiBaseUrl;
-            ConfigPath = BuildTrackerConfig.FindConfigPath();
-            var baseUrl = string.IsNullOrWhiteSpace(config.ApiBaseUrl) ? "http://localhost" : config.ApiBaseUrl.TrimEnd('/') + "/";
+            var baseUrl = string.IsNullOrWhiteSpace(config.ApiBaseUrl) ? "http://localhost:8080" : config.ApiBaseUrl.TrimEnd('/') + "/";
             _http = new HttpClient { BaseAddress = new Uri(baseUrl), Timeout = TimeSpan.FromSeconds(20) };
             if (!string.IsNullOrWhiteSpace(config.IngestToken))
             {
