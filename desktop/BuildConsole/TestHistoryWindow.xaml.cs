@@ -24,6 +24,10 @@ namespace BuildConsole
         private static readonly SolidColorBrush FailBrush = Frozen(0xF3, 0x8B, 0xA8);
         private static readonly SolidColorBrush PassBgBrush = Frozen(0x20, 0xA6, 0xE3, 0xA1);
         private static readonly SolidColorBrush FailBgBrush = Frozen(0x28, 0xF3, 0x8B, 0xA8);
+        private static readonly SolidColorBrush FlakyBrush = Frozen(0xFA, 0xB3, 0x87);
+        private static readonly SolidColorBrush FlakyBgBrush = Frozen(0x28, 0xFA, 0xB3, 0x87);
+        private static readonly SolidColorBrush RegressionBrush = Frozen(0xF3, 0x8B, 0xA8);
+        private static readonly SolidColorBrush RegressionBgBrush = Frozen(0x28, 0xF3, 0x8B, 0xA8);
 
         private static SolidColorBrush Frozen(byte r, byte g, byte b)
         {
@@ -40,10 +44,16 @@ namespace BuildConsole
         }
 
         public TestHistoryEntry Entry { get; }
-        public HistoryRunItem(TestHistoryEntry entry) => Entry = entry;
+        public ManifestReliability? Reliability { get; }
+
+        public HistoryRunItem(TestHistoryEntry entry, ManifestReliability? reliability = null)
+        {
+            Entry = entry;
+            Reliability = reliability;
+        }
 
         public int Issue => Entry.Issue;
-        public string IssueDisplay => $"#{Entry.Issue}";
+        public string IssueDisplay => Entry.Issue > 0 ? $"#{Entry.Issue}" : (string.IsNullOrWhiteSpace(Entry.Feature) ? "#0" : Entry.Feature);
         public string Feature => Entry.Feature;
         public string ModeLabel => Entry.Mode.ToUpperInvariant();
         public string StartedAtDisplay => Entry.StartedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss");
@@ -52,15 +62,31 @@ namespace BuildConsole
         public string StatusGlyph => Entry.AllPassed ? "✔" : "✖";
         public Brush StatusBrush => Entry.AllPassed ? PassBrush : FailBrush;
         public Brush StatusBgBrush => Entry.AllPassed ? PassBgBrush : FailBgBrush;
+
+        // Reliability / Flakiness properties
+        public bool IsFlaky => Reliability?.Category == TestReliabilityCategory.Flaky;
+        public bool IsRegression => Reliability?.Category == TestReliabilityCategory.Regression;
+        public Visibility ReliabilityBadgeVisibility => (IsFlaky || IsRegression) ? Visibility.Visible : Visibility.Collapsed;
+        public string ReliabilityBadgeLabel => IsFlaky ? "⚠️ FLAKY" : (IsRegression ? "🚨 REGRESSION" : string.Empty);
+        public Brush ReliabilityBadgeBgBrush => IsFlaky ? FlakyBgBrush : RegressionBgBrush;
+        public Brush ReliabilityBadgeFgBrush => IsFlaky ? FlakyBrush : RegressionBrush;
+        public string ReliabilityToolTip => Reliability?.DetailReason ?? string.Empty;
     }
 
     /// <summary>
-    /// Item view-model for the manifest streaks list.
+    /// Item view-model for the manifest streaks and reliability summary list.
     /// </summary>
     public class ManifestStreakItem
     {
         private static readonly SolidColorBrush PassBrush = Frozen(0xA6, 0xE3, 0xA1);
         private static readonly SolidColorBrush FailBrush = Frozen(0xF3, 0x8B, 0xA8);
+        private static readonly SolidColorBrush PassBgBrush = Frozen(0x20, 0xA6, 0xE3, 0xA1);
+        private static readonly SolidColorBrush FlakyBrush = Frozen(0xFA, 0xB3, 0x87);
+        private static readonly SolidColorBrush FlakyBgBrush = Frozen(0x28, 0xFA, 0xB3, 0x87);
+        private static readonly SolidColorBrush RegressionBrush = Frozen(0xF3, 0x8B, 0xA8);
+        private static readonly SolidColorBrush RegressionBgBrush = Frozen(0x28, 0xF3, 0x8B, 0xA8);
+        private static readonly SolidColorBrush SubtextBrush = Frozen(0xA6, 0xAD, 0xC8);
+        private static readonly SolidColorBrush Surface1Brush = Frozen(0x45, 0x47, 0x5A);
 
         private static SolidColorBrush Frozen(byte r, byte g, byte b)
         {
@@ -69,18 +95,72 @@ namespace BuildConsole
             return brush;
         }
 
+        private static SolidColorBrush Frozen(byte a, byte r, byte g, byte b)
+        {
+            var brush = new SolidColorBrush(Color.FromArgb(a, r, g, b));
+            brush.Freeze();
+            return brush;
+        }
+
         public int Issue { get; set; }
         public string Feature { get; set; } = "";
         public bool LastAllPassed { get; set; }
         public int StreakCount { get; set; }
+        public ManifestReliability? Reliability { get; set; }
 
-        public string Title => $"#{Issue} — {Feature}";
-        public string StatusGlyph => LastAllPassed ? "✔" : "✖";
-        public Brush StatusBrush => LastAllPassed ? PassBrush : FailBrush;
+        public TestReliabilityCategory Category => Reliability?.Category ?? (LastAllPassed ? TestReliabilityCategory.StablePass : TestReliabilityCategory.PersistentFail);
 
-        public string StreakLabel => StreakCount <= 1
-            ? (LastAllPassed ? "passed last run" : "failed last run")
-            : (LastAllPassed ? $"passed last {StreakCount} runs" : $"failed last {StreakCount} runs");
+        public string Title => Issue > 0 ? $"#{Issue} — {Feature}" : (string.IsNullOrWhiteSpace(Feature) ? "#0" : Feature);
+        public string StatusGlyph => Category switch
+        {
+            TestReliabilityCategory.Flaky => "⚠️",
+            TestReliabilityCategory.Regression => "🚨",
+            TestReliabilityCategory.StablePass => "✔",
+            _ => (LastAllPassed ? "✔" : "✖")
+        };
+
+        public Brush StatusBrush => Category switch
+        {
+            TestReliabilityCategory.Flaky => FlakyBrush,
+            TestReliabilityCategory.Regression => RegressionBrush,
+            TestReliabilityCategory.StablePass => PassBrush,
+            _ => (LastAllPassed ? PassBrush : FailBrush)
+        };
+
+        public string CategoryBadgeLabel => Category switch
+        {
+            TestReliabilityCategory.Flaky => "⚠️ FLAKY",
+            TestReliabilityCategory.Regression => "🚨 REGRESSION",
+            TestReliabilityCategory.StablePass => "✅ STABLE",
+            TestReliabilityCategory.PersistentFail => "✖ FAILING",
+            _ => (LastAllPassed ? "PASS" : "FAIL")
+        };
+
+        public Brush CategoryBgBrush => Category switch
+        {
+            TestReliabilityCategory.Flaky => FlakyBgBrush,
+            TestReliabilityCategory.Regression => RegressionBgBrush,
+            TestReliabilityCategory.StablePass => PassBgBrush,
+            _ => Surface1Brush
+        };
+
+        public Brush CategoryFgBrush => Category switch
+        {
+            TestReliabilityCategory.Flaky => FlakyBrush,
+            TestReliabilityCategory.Regression => RegressionBrush,
+            TestReliabilityCategory.StablePass => PassBrush,
+            _ => SubtextBrush
+        };
+
+        public string StreakLabel => Reliability != null
+            ? Reliability.DetailReason
+            : (StreakCount <= 1
+                ? (LastAllPassed ? "passed last run" : "failed last run")
+                : (LastAllPassed ? $"passed last {StreakCount} runs" : $"failed last {StreakCount} runs"));
+
+        public string PatternDisplay => Reliability != null
+            ? $"Pattern: {Reliability.PatternSummary} ({Math.Round(Reliability.PassRate * 100)}% pass · {Reliability.FlipsCount} flips)"
+            : string.Empty;
     }
 
     /// <summary>
@@ -99,6 +179,8 @@ namespace BuildConsole
     {
         private int? _issueFilter;
         private List<TestHistoryEntry> _allEntries = new();
+        private Dictionary<string, ManifestReliability> _reliabilityByManifest = new(StringComparer.OrdinalIgnoreCase);
+        private ManifestReliability? _currentReliability;
         private ManifestRunResult? _currentRunResult;
         private string? _currentResultFilePath;
         private List<HistoryScreenshotItem> _currentScreenshots = new();
@@ -120,11 +202,23 @@ namespace BuildConsole
 
             string? repoRoot = BuildTrackerConfig.FindRepoRoot();
             _allEntries = repoRoot != null ? TestHistoryStore.ReadAll(repoRoot) : new List<TestHistoryEntry>();
+            _reliabilityByManifest = TestFlakinessDetector.AnalyzeAll(_allEntries);
 
             ApplyRunFilters();
             PopulateStreaks();
 
             ActivityLog.Log("testing.history-view", $"Test History refreshed: {_allEntries.Count} run(s).");
+        }
+
+        private ManifestReliability? GetReliability(TestHistoryEntry entry)
+        {
+            if (entry.Issue > 0 && _reliabilityByManifest.TryGetValue($"issue:{entry.Issue}", out var relIssue))
+                return relIssue;
+            if (!string.IsNullOrEmpty(entry.Feature) && _reliabilityByManifest.TryGetValue($"feature:{entry.Feature}", out var relFeat))
+                return relFeat;
+            if (entry.Issue > 0 && _reliabilityByManifest.TryGetValue(entry.Issue.ToString(), out var relNum))
+                return relNum;
+            return null;
         }
 
         private void ApplyRunFilters()
@@ -135,8 +229,12 @@ namespace BuildConsole
             if (_issueFilter.HasValue)
                 filtered = filtered.Where(e => e.Issue == _issueFilter.Value);
 
-            // Pass/Fail Radio filter
-            if (RadioFilterFailed.IsChecked == true)
+            // Pass/Fail/Flaky/Regression Radio filter
+            if (RadioFilterFlaky.IsChecked == true)
+                filtered = filtered.Where(e => GetReliability(e)?.Category == TestReliabilityCategory.Flaky);
+            else if (RadioFilterRegression.IsChecked == true)
+                filtered = filtered.Where(e => GetReliability(e)?.Category == TestReliabilityCategory.Regression);
+            else if (RadioFilterFailed.IsChecked == true)
                 filtered = filtered.Where(e => !e.AllPassed);
             else if (RadioFilterPassed.IsChecked == true)
                 filtered = filtered.Where(e => e.AllPassed);
@@ -151,7 +249,7 @@ namespace BuildConsole
             }
 
             var newestFirst = filtered.OrderByDescending(e => e.StartedAt).ToList();
-            RunsList.ItemsSource = new ObservableCollection<HistoryRunItem>(newestFirst.Select(e => new HistoryRunItem(e)));
+            RunsList.ItemsSource = new ObservableCollection<HistoryRunItem>(newestFirst.Select(e => new HistoryRunItem(e, GetReliability(e))));
             TxtNoRuns.Visibility = newestFirst.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
             TxtRunCountBadge.Text = $"{newestFirst.Count} run{(newestFirst.Count == 1 ? "" : "s")}";
 
@@ -170,14 +268,21 @@ namespace BuildConsole
         {
             var streaks = _allEntries
                 .OrderByDescending(e => e.StartedAt)
-                .GroupBy(e => e.Issue)
+                .GroupBy(e => e.Issue > 0 ? $"issue:{e.Issue}" : $"feature:{e.Feature}")
                 .Select(BuildStreak)
-                .OrderByDescending(s => s.Issue)
+                .OrderBy(s => s.Category switch
+                {
+                    TestReliabilityCategory.Flaky => 0,
+                    TestReliabilityCategory.Regression => 1,
+                    TestReliabilityCategory.PersistentFail => 2,
+                    _ => 3
+                })
+                .ThenByDescending(s => s.Issue)
                 .ToList();
             StreaksList.ItemsSource = new ObservableCollection<ManifestStreakItem>(streaks);
         }
 
-        private static ManifestStreakItem BuildStreak(IGrouping<int, TestHistoryEntry> group)
+        private static ManifestStreakItem BuildStreak(IGrouping<string, TestHistoryEntry> group)
         {
             var runsNewestFirst = group.OrderByDescending(e => e.StartedAt).ToList();
             bool lastResult = runsNewestFirst[0].AllPassed;
@@ -188,12 +293,15 @@ namespace BuildConsole
                 streak++;
             }
 
+            var rel = TestFlakinessDetector.Analyze(group);
+
             return new ManifestStreakItem
             {
-                Issue = group.Key,
+                Issue = runsNewestFirst[0].Issue,
                 Feature = runsNewestFirst[0].Feature,
                 LastAllPassed = lastResult,
                 StreakCount = streak,
+                Reliability = rel,
             };
         }
 
@@ -215,10 +323,10 @@ namespace BuildConsole
         {
             if (StreaksList.SelectedItem is ManifestStreakItem streak)
             {
-                // Switch back to runs view filtered to this issue
+                // Switch back to runs view filtered to this issue or feature
                 ToggleStreaksView.IsChecked = false;
                 ToggleStreaksView_Click(this, new RoutedEventArgs());
-                TxtSearch.Text = streak.Issue.ToString();
+                TxtSearch.Text = streak.Issue > 0 ? streak.Issue.ToString() : streak.Feature;
             }
         }
 
@@ -227,7 +335,7 @@ namespace BuildConsole
             bool showStreaks = ToggleStreaksView.IsChecked == true;
             StreaksList.Visibility = showStreaks ? Visibility.Visible : Visibility.Collapsed;
             RunsList.Visibility = showStreaks ? Visibility.Collapsed : Visibility.Visible;
-            TxtListHeader.Text = showStreaks ? "Per-Manifest Streaks" : "Test Runs (newest first)";
+            TxtListHeader.Text = showStreaks ? "Per-Manifest Reliability & Streaks" : "Test Runs (newest first)";
         }
 
         private void Filter_Changed(object sender, RoutedEventArgs e)
@@ -313,6 +421,7 @@ namespace BuildConsole
                 };
             }
 
+            _currentReliability = GetReliability(entry);
             RenderRunHeader(entry, _currentRunResult);
             RenderSteps(_currentRunResult);
             DiscoverAndRenderScreenshots(repoRoot, entry, _currentRunResult);
@@ -331,7 +440,7 @@ namespace BuildConsole
             TxtRunStatusLarge.Foreground = allPassed ? GetBrush("GreenBrush") : GetBrush("RedBrush");
 
             // Title
-            TxtDetailTitle.Text = $"Issue #{entry.Issue} — {entry.Feature}";
+            TxtDetailTitle.Text = entry.Issue > 0 ? $"Issue #{entry.Issue} — {entry.Feature}" : entry.Feature;
 
             // Metadata pills
             TxtMetaStarted.Text = $"🕒 Started: {entry.StartedAt.ToLocalTime():yyyy-MM-dd HH:mm:ss}";
@@ -343,6 +452,58 @@ namespace BuildConsole
             TxtMetaStepsCount.Text = $"📊 Steps: {entry.Passed}/{entry.Total} passed";
             TxtMetaMode.Text = $"⚙️ Mode: {entry.Mode}";
             TxtMetaResultFile.Text = $"📁 {Path.GetFileName(_currentResultFilePath ?? entry.ResultFile)}";
+
+            // Reliability & Flakiness Alert Banner
+            if (_currentReliability != null)
+            {
+                if (_currentReliability.Category == TestReliabilityCategory.Flaky)
+                {
+                    BannerReliabilityAlert.Visibility = Visibility.Visible;
+                    BannerReliabilityAlert.Background = GetBrush("PeachBrush", 0x25);
+                    BannerReliabilityAlert.BorderBrush = GetBrush("PeachBrush", 0x80);
+                    BannerReliabilityAlert.BorderThickness = new Thickness(1);
+                    TxtReliabilityAlertGlyph.Text = "⚠️";
+                    TxtReliabilityAlertGlyph.Foreground = GetBrush("PeachBrush");
+                    TxtReliabilityAlertTitle.Text = "⚠️ FLAKY TEST MANIFEST DETECTED (INTERMITTENT RESULTS)";
+                    TxtReliabilityAlertTitle.Foreground = GetBrush("PeachBrush");
+                    TxtReliabilityAlertBody.Text = $"This manifest exhibits inconsistent results across recent runs ({_currentReliability.FlipsCount} flips, {_currentReliability.RecentPassCount}/{_currentReliability.RecentRunsEvaluated} passed). Recent pattern: {_currentReliability.PatternSummary}. This failure is likely test instability rather than an application break.";
+                    TxtReliabilityAlertBody.Foreground = GetBrush("TextBrush");
+                }
+                else if (_currentReliability.Category == TestReliabilityCategory.Regression)
+                {
+                    BannerReliabilityAlert.Visibility = Visibility.Visible;
+                    BannerReliabilityAlert.Background = GetBrush("RedBrush", 0x25);
+                    BannerReliabilityAlert.BorderBrush = GetBrush("RedBrush", 0x80);
+                    BannerReliabilityAlert.BorderThickness = new Thickness(1);
+                    TxtReliabilityAlertGlyph.Text = "🚨";
+                    TxtReliabilityAlertGlyph.Foreground = GetBrush("RedBrush");
+                    TxtReliabilityAlertTitle.Text = "🚨 GENUINE REGRESSION DETECTED (APPLICATION BROKEN)";
+                    TxtReliabilityAlertTitle.Foreground = GetBrush("RedBrush");
+                    TxtReliabilityAlertBody.Text = $"This manifest previously passed but has consistently failed in its last {_currentReliability.CurrentStreak} consecutive runs (recent pattern: {_currentReliability.PatternSummary}). This indicates a real regression in the application or API.";
+                    TxtReliabilityAlertBody.Foreground = GetBrush("TextBrush");
+                }
+                else if (_currentReliability.Category == TestReliabilityCategory.StablePass)
+                {
+                    BannerReliabilityAlert.Visibility = Visibility.Visible;
+                    BannerReliabilityAlert.Background = GetBrush("GreenBrush", 0x15);
+                    BannerReliabilityAlert.BorderBrush = GetBrush("GreenBrush", 0x40);
+                    BannerReliabilityAlert.BorderThickness = new Thickness(1);
+                    TxtReliabilityAlertGlyph.Text = "✅";
+                    TxtReliabilityAlertGlyph.Foreground = GetBrush("GreenBrush");
+                    TxtReliabilityAlertTitle.Text = "✅ STABLE TEST MANIFEST";
+                    TxtReliabilityAlertTitle.Foreground = GetBrush("GreenBrush");
+                    TxtReliabilityAlertBody.Text = $"Consistent pass streak: {_currentReliability.CurrentStreak} consecutive runs (pattern: {_currentReliability.PatternSummary}).";
+                    TxtReliabilityAlertBody.Foreground = GetBrush("Subtext1Brush");
+                }
+                else
+                {
+                    BannerReliabilityAlert.Visibility = Visibility.Collapsed;
+                }
+            }
+            else
+            {
+                BannerReliabilityAlert.Visibility = Visibility.Collapsed;
+            }
         }
 
         private void RenderSteps(ManifestRunResult result)

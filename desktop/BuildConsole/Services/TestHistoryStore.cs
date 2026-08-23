@@ -43,6 +43,8 @@ namespace BuildConsole.Services
     {
         public Dictionary<int, TestHistoryEntry> ByIssue { get; } = new();
         public Dictionary<string, TestHistoryEntry> ByFeature { get; } = new(StringComparer.OrdinalIgnoreCase);
+        public Dictionary<int, ManifestReliability> ReliabilityByIssue { get; } = new();
+        public Dictionary<string, ManifestReliability> ReliabilityByFeature { get; } = new(StringComparer.OrdinalIgnoreCase);
 
         public bool TryGetForManifest(int? issue, string? feature, out TestHistoryEntry? entry)
         {
@@ -58,6 +60,47 @@ namespace BuildConsole.Services
             }
             entry = null;
             return false;
+        }
+
+        public bool TryGetReliability(int? issue, string? feature, out ManifestReliability? reliability)
+        {
+            if (issue.HasValue && issue.Value > 0 && ReliabilityByIssue.TryGetValue(issue.Value, out var relByIssue))
+            {
+                reliability = relByIssue;
+                return true;
+            }
+            if (!string.IsNullOrEmpty(feature) && ReliabilityByFeature.TryGetValue(feature, out var relByFeature))
+            {
+                reliability = relByFeature;
+                return true;
+            }
+            reliability = null;
+            return false;
+        }
+
+        /// <summary>
+        /// Builds a unified TestHistoryLookup from a full run history list, populating latest entries
+        /// and computing flakiness/regression reliability metrics for every manifest.
+        /// </summary>
+        public static TestHistoryLookup BuildLookup(IEnumerable<TestHistoryEntry> history)
+        {
+            var lookup = new TestHistoryLookup();
+            var list = history.ToList();
+            if (list.Count == 0) return lookup;
+
+            // Index latest runs
+            foreach (var group in list.Where(e => e.Issue > 0).GroupBy(e => e.Issue))
+            {
+                lookup.ByIssue[group.Key] = group.OrderByDescending(e => e.StartedAt).First();
+                lookup.ReliabilityByIssue[group.Key] = TestFlakinessDetector.Analyze(group);
+            }
+            foreach (var group in list.Where(e => !string.IsNullOrEmpty(e.Feature)).GroupBy(e => e.Feature))
+            {
+                lookup.ByFeature[group.Key] = group.OrderByDescending(e => e.StartedAt).First();
+                lookup.ReliabilityByFeature[group.Key] = TestFlakinessDetector.Analyze(group);
+            }
+
+            return lookup;
         }
     }
 

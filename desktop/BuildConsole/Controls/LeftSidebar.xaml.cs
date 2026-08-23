@@ -568,20 +568,11 @@ namespace BuildConsole.Controls
             string manifestsDir = Path.Combine(RootWorkspacePath, "test-manifests");
             var entries = new List<ManifestEntry>();
 
-            Dictionary<int, TestHistoryEntry> latestByIssue = new();
-            Dictionary<string, TestHistoryEntry> latestByFeature = new(StringComparer.OrdinalIgnoreCase);
+            TestHistoryLookup lookup = new();
             try
             {
                 var history = TestHistoryStore.ReadAll(RootWorkspacePath);
-                foreach (var group in history.GroupBy(e => e.Issue))
-                {
-                    if (group.Key > 0)
-                        latestByIssue[group.Key] = group.OrderByDescending(e => e.StartedAt).First();
-                }
-                foreach (var group in history.Where(e => !string.IsNullOrEmpty(e.Feature)).GroupBy(e => e.Feature))
-                {
-                    latestByFeature[group.Key] = group.OrderByDescending(e => e.StartedAt).First();
-                }
+                lookup = TestHistoryLookup.BuildLookup(history);
             }
             catch { }
 
@@ -615,19 +606,22 @@ namespace BuildConsole.Controls
                     var status = ManifestRunStatus.NeverRun;
                     string summary = "No runs yet";
 
-                    TestHistoryEntry? latest = null;
-                    if (issueNum.HasValue && latestByIssue.TryGetValue(issueNum.Value, out var li))
-                    {
-                        latest = li;
-                    }
-                    else if (!string.IsNullOrEmpty(feat) && latestByFeature.TryGetValue(feat, out var lf))
-                    {
-                        latest = lf;
-                    }
+                    lookup.TryGetForManifest(issueNum, feat, out var latest);
+                    lookup.TryGetReliability(issueNum, feat, out var reliability);
 
                     if (latest != null)
                     {
-                        if (latest.AllPassed)
+                        if (reliability != null && reliability.IsFlaky)
+                        {
+                            status = latest.AllPassed ? ManifestRunStatus.Passed : ManifestRunStatus.Failed;
+                            summary = $"⚠️ Flaky ({reliability.FlipsCount} flips, {reliability.RecentPassCount}/{reliability.RecentRunsEvaluated} passed) — latest: {(latest.AllPassed ? "Passed" : "Failed")} ({latest.Passed}/{latest.Total})";
+                        }
+                        else if (reliability != null && reliability.IsRegression)
+                        {
+                            status = ManifestRunStatus.Failed;
+                            summary = $"🚨 Regression (failing last {reliability.CurrentStreak} runs) — {latest.StartedAt.ToLocalTime():g}";
+                        }
+                        else if (latest.AllPassed)
                         {
                             status = ManifestRunStatus.Passed;
                             summary = $"Passed ({latest.Passed}/{latest.Total}) — {latest.StartedAt.ToLocalTime():g}";

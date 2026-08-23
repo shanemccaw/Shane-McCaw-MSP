@@ -542,22 +542,7 @@ namespace BuildConsole.Controls
                 if (repoRoot != null)
                 {
                     var history = BuildConsole.Services.TestHistoryStore.ReadAll(repoRoot);
-                    // Shane: "Test Manifests is showing as never ran but I've
-                    // ran it multiple times with pass." Root cause: this only
-                    // ever indexed runs by Issue, but a feature-slug manifest
-                    // (e.g. test-manifests/copilot-readiness/*-route.json)
-                    // carries Issue=0 and is tracked by its Feature string
-                    // instead — LeftSidebar.PopulateManifestsList already
-                    // does this dual lookup correctly (latestByIssue +
-                    // latestByFeature); this card/inline-badge path never did.
-                    foreach (var group in history.Where(e => e.Issue > 0).GroupBy(e => e.Issue))
-                    {
-                        dict.ByIssue[group.Key] = group.OrderByDescending(e => e.StartedAt).First();
-                    }
-                    foreach (var group in history.Where(e => !string.IsNullOrEmpty(e.Feature)).GroupBy(e => e.Feature))
-                    {
-                        dict.ByFeature[group.Key] = group.OrderByDescending(e => e.StartedAt).First();
-                    }
+                    dict = BuildConsole.Services.TestHistoryLookup.BuildLookup(history);
                 }
             }
             catch { }
@@ -1535,7 +1520,44 @@ namespace BuildConsole.Controls
             Border badge;
             if (latestTestRuns != null && latestTestRuns.TryGetForManifest(manifestIssue, manifestFeature, out var lastRun) && lastRun != null)
             {
-                if (lastRun.AllPassed)
+                latestTestRuns.TryGetReliability(manifestIssue, manifestFeature, out var rel);
+                if (rel != null && rel.IsFlaky)
+                {
+                    badge = new Border
+                    {
+                        Background = GetBrush("PeachBrush", 0x25),
+                        CornerRadius = new CornerRadius(3),
+                        Padding = new Thickness(6, 2, 6, 2),
+                        HorizontalAlignment = HorizontalAlignment.Left,
+                        ToolTip = rel.DetailReason,
+                        Child = new TextBlock
+                        {
+                            Text = $"⚠️ FLAKY ({lastRun.Passed}/{lastRun.Total} · {rel.FlipsCount} flips)",
+                            FontSize = 10,
+                            FontWeight = FontWeights.Bold,
+                            Foreground = GetBrush("PeachBrush")
+                        }
+                    };
+                }
+                else if (rel != null && rel.IsRegression)
+                {
+                    badge = new Border
+                    {
+                        Background = GetBrush("RedBrush", 0x25),
+                        CornerRadius = new CornerRadius(3),
+                        Padding = new Thickness(6, 2, 6, 2),
+                        HorizontalAlignment = HorizontalAlignment.Left,
+                        ToolTip = rel.DetailReason,
+                        Child = new TextBlock
+                        {
+                            Text = $"🚨 REGRESSION ({lastRun.Passed}/{lastRun.Total} · failed last {rel.CurrentStreak} runs)",
+                            FontSize = 10,
+                            FontWeight = FontWeights.Bold,
+                            Foreground = GetBrush("RedBrush")
+                        }
+                    };
+                }
+                else if (lastRun.AllPassed)
                 {
                     badge = new Border
                     {
@@ -1543,6 +1565,7 @@ namespace BuildConsole.Controls
                         CornerRadius = new CornerRadius(3),
                         Padding = new Thickness(6, 2, 6, 2),
                         HorizontalAlignment = HorizontalAlignment.Left,
+                        ToolTip = rel?.DetailReason,
                         Child = new TextBlock
                         {
                             Text = $"✅ PASSED ({lastRun.Passed}/{lastRun.Total})",
@@ -1560,6 +1583,7 @@ namespace BuildConsole.Controls
                         CornerRadius = new CornerRadius(3),
                         Padding = new Thickness(6, 2, 6, 2),
                         HorizontalAlignment = HorizontalAlignment.Left,
+                        ToolTip = rel?.DetailReason,
                         Child = new TextBlock
                         {
                             Text = $"❌ FAILED ({lastRun.Passed}/{lastRun.Total})",

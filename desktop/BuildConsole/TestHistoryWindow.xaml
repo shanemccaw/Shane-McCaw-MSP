@@ -85,10 +85,16 @@
                         </Border>
                     </StackPanel>
 
-                    <!-- Filter Chips (All / Failed / Passed) -->
+                    <!-- Filter Chips (All / Flaky / Regressions / Failed / Passed) -->
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,16,0">
                         <RadioButton x:Name="RadioFilterAll" Content="All Runs" IsChecked="True"
                                      Style="{StaticResource ActivityBarButton}" Margin="0,0,4,0" Click="Filter_Changed"/>
+                        <RadioButton x:Name="RadioFilterFlaky" Content="⚠️ Flaky"
+                                     Style="{StaticResource ActivityBarButton}" Margin="0,0,4,0" Click="Filter_Changed"
+                                     ToolTip="Filter to runs from manifests exhibiting flaky / intermittent behavior"/>
+                        <RadioButton x:Name="RadioFilterRegression" Content="🚨 Regressions"
+                                     Style="{StaticResource ActivityBarButton}" Margin="0,0,4,0" Click="Filter_Changed"
+                                     ToolTip="Filter to runs from manifests with active regressions (failing after previous passes)"/>
                         <RadioButton x:Name="RadioFilterFailed" Content="❌ Failed Only"
                                      Style="{StaticResource ActivityBarButton}" Margin="0,0,4,0" Click="Filter_Changed"/>
                         <RadioButton x:Name="RadioFilterPassed" Content="✅ Passed Only"
@@ -238,7 +244,7 @@
                                         <RowDefinition Height="Auto"/>
                                     </Grid.RowDefinitions>
 
-                                    <!-- Top: Status + Issue # + Mode badge -->
+                                    <!-- Top: Status + Issue # + Reliability badge + Mode badge -->
                                     <DockPanel Grid.Row="0" Margin="0,0,0,4">
                                         <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
                                             <TextBlock Text="{Binding StatusGlyph}" FontWeight="Bold"
@@ -246,6 +252,11 @@
                                                        VerticalAlignment="Center"/>
                                             <TextBlock Text="{Binding IssueDisplay}" FontWeight="Bold" FontSize="12"
                                                        Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
+                                            <Border Background="{Binding ReliabilityBadgeBgBrush}" CornerRadius="3" Padding="4,1" Margin="6,0,0,0"
+                                                    Visibility="{Binding ReliabilityBadgeVisibility}" ToolTip="{Binding ReliabilityToolTip}">
+                                                <TextBlock Text="{Binding ReliabilityBadgeLabel}" FontSize="9" FontWeight="Bold"
+                                                           Foreground="{Binding ReliabilityBadgeFgBrush}"/>
+                                            </Border>
                                         </StackPanel>
                                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" DockPanel.Dock="Right">
                                             <Border Background="{Binding StatusBgBrush}" CornerRadius="3" Padding="6,1" Margin="0,0,4,0">
@@ -318,15 +329,27 @@
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto"/>
                                         <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
                                     </Grid.RowDefinitions>
                                     <DockPanel Grid.Row="0" Margin="0,0,0,3">
-                                        <TextBlock DockPanel.Dock="Left" Text="{Binding StatusGlyph}" FontWeight="Bold"
-                                                   Foreground="{Binding StatusBrush}" FontSize="13" Margin="0,0,6,0"/>
-                                        <TextBlock Text="{Binding Title}" FontSize="11" FontWeight="SemiBold"
-                                                   Foreground="{StaticResource TextBrush}" TextTrimming="CharacterEllipsis"/>
+                                        <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
+                                            <TextBlock Text="{Binding StatusGlyph}" FontWeight="Bold"
+                                                       Foreground="{Binding StatusBrush}" FontSize="13" Margin="0,0,6,0"
+                                                       VerticalAlignment="Center"/>
+                                            <TextBlock Text="{Binding Title}" FontSize="11" FontWeight="SemiBold"
+                                                       Foreground="{StaticResource TextBrush}" TextTrimming="CharacterEllipsis"
+                                                       VerticalAlignment="Center" MaxWidth="210"/>
+                                        </StackPanel>
+                                        <Border Background="{Binding CategoryBgBrush}" CornerRadius="3" Padding="5,1"
+                                                HorizontalAlignment="Right" DockPanel.Dock="Right" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding CategoryBadgeLabel}" FontSize="9" FontWeight="Bold"
+                                                       Foreground="{Binding CategoryFgBrush}"/>
+                                        </Border>
                                     </DockPanel>
                                     <TextBlock Grid.Row="1" Text="{Binding StreakLabel}" FontSize="10"
-                                               Foreground="{Binding StatusBrush}" FontWeight="SemiBold"/>
+                                               Foreground="{Binding StatusBrush}" FontWeight="SemiBold" Margin="0,0,0,2"/>
+                                    <TextBlock Grid.Row="2" Text="{Binding PatternDisplay}" FontSize="9"
+                                               Foreground="{StaticResource Subtext0Brush}" TextTrimming="CharacterEllipsis"/>
                                 </Grid>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
@@ -418,6 +441,18 @@
                                         <TextBlock x:Name="TxtMetaResultFile" Text="📁 636-20260816143555.json" FontSize="10" Foreground="{StaticResource OverlayBrush}"/>
                                     </Border>
                                 </WrapPanel>
+
+                                <!-- Reliability Alert Banner -->
+                                <Border x:Name="BannerReliabilityAlert" Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2"
+                                        CornerRadius="6" Padding="12,8" Margin="0,8,0,0" Visibility="Collapsed">
+                                    <DockPanel>
+                                        <TextBlock x:Name="TxtReliabilityAlertGlyph" Text="⚠️" FontSize="16" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                                        <StackPanel VerticalAlignment="Center">
+                                            <TextBlock x:Name="TxtReliabilityAlertTitle" Text="FLAKY TEST MANIFEST DETECTED" FontWeight="Bold" FontSize="12"/>
+                                            <TextBlock x:Name="TxtReliabilityAlertBody" Text="Recent pattern: ✔ ✖ ✔ ✖" FontSize="11" TextWrapping="Wrap"/>
+                                        </StackPanel>
+                                    </DockPanel>
+                                </Border>
                             </Grid>
                         </Border>
 
