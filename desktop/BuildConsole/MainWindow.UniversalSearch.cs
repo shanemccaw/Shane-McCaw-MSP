@@ -8,6 +8,7 @@ using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using BuildConsole.Controls;
 using BuildConsole.Services;
@@ -92,6 +93,10 @@ namespace BuildConsole
 
             var wv = GetActiveWebView();
             if (wv != null) wv.Visibility = Visibility.Visible;
+
+            // Slide back to compact if the search box is now empty.
+            if (string.IsNullOrEmpty(TitleSearchBox.Text))
+                CollapseSearchBar();
         }
 
         private void CommandPaletteOverlay_MouseDown(object sender, MouseButtonEventArgs e)
@@ -101,15 +106,80 @@ namespace BuildConsole
                 HideCommandPalette();
         }
 
+        // ── Compact search bar animation ──────────────────────────────────
+        private const double SearchCompactWidth = 240;
+        private const double SearchExpandedWidth = 820;
+        private bool _searchExpanded;
+
+        /// <summary>Animate the title-bar search border from compact to expanded width.</summary>
+        private void ExpandSearchBar()
+        {
+            if (_searchExpanded) return;
+            _searchExpanded = true;
+
+            var anim = new DoubleAnimation
+            {
+                To = SearchExpandedWidth,
+                Duration = TimeSpan.FromMilliseconds(200),
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            };
+            SearchBorder.BeginAnimation(FrameworkElement.WidthProperty, anim);
+
+            // Hide the Ctrl+K hint — it crowds the expanded input.
+            SearchCtrlKHint.Visibility = Visibility.Collapsed;
+            // Show full placeholder text.
+            if (SearchPlaceholder != null)
+                SearchPlaceholder.Text = "Search files, issues, chats, tests, builds\u2026";
+        }
+
+        /// <summary>Animate the title-bar search border back to compact width.</summary>
+        private void CollapseSearchBar()
+        {
+            if (!_searchExpanded) return;
+            _searchExpanded = false;
+
+            var anim = new DoubleAnimation
+            {
+                To = SearchCompactWidth,
+                Duration = TimeSpan.FromMilliseconds(200),
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            };
+            SearchBorder.BeginAnimation(FrameworkElement.WidthProperty, anim);
+
+            // Restore the Ctrl+K hint and short placeholder.
+            SearchCtrlKHint.Visibility = Visibility.Visible;
+            if (SearchPlaceholder != null)
+                SearchPlaceholder.Text = "Search files, issues, chats\u2026";
+        }
+
         // ── Title-bar search box handlers ───────────────────────────────────
+
+        /// <summary>Clicking anywhere on the border pill focuses the TextBox.</summary>
+        private void SearchBorder_MouseDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            TitleSearchBox.Focus();
+            Keyboard.Focus(TitleSearchBox);
+        }
 
         private void TitleSearchBox_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
         {
+            ExpandSearchBar();
+
             // Warm the sources the search reads (cheap disk scan for manifests +
             // fire the real Git/chat populate when empty) — no visible change here;
             // the dropdown opens on the first keystroke (or Ctrl+K).
             EnsureFileIndexAsync();
             LeftSidebar.WarmSearchSources();
+        }
+
+        private void TitleSearchBox_LostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+        {
+            // Stay expanded if the palette is still open or there is text in the box;
+            // otherwise slide back to compact.
+            bool paletteOpen = CommandPaletteOverlay?.Visibility == Visibility.Visible;
+            bool hasText = !string.IsNullOrEmpty(TitleSearchBox.Text);
+            if (!paletteOpen && !hasText)
+                CollapseSearchBar();
         }
 
         private void TitleSearchBox_TextChanged(object sender, TextChangedEventArgs e)

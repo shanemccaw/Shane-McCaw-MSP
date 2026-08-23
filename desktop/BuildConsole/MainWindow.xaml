@@ -251,14 +251,19 @@
                              opens the grouped results dropdown (CommandPaletteOverlay) below;
                              Ctrl+K focuses it. IsHitTestVisibleInChrome so clicks reach it
                              inside the WindowChrome drag bar. -->
-                        <Border Background="{StaticResource Surface0Brush}"
+                        <Border x:Name="SearchBorder"
+                                Background="{StaticResource Surface0Brush}"
                                 CornerRadius="6"
                                 BorderBrush="{StaticResource Surface1Brush}"
                                 BorderThickness="1"
                                 Padding="8,3"
+                                Width="240"
+                                MinWidth="180"
                                 MaxWidth="820"
-                                HorizontalAlignment="Stretch"
+                                HorizontalAlignment="Center"
                                 VerticalAlignment="Center"
+                                Cursor="IBeam"
+                                MouseDown="SearchBorder_MouseDown"
                                 WindowChrome.IsHitTestVisibleInChrome="True">
                             <Grid>
                                 <Grid.ColumnDefinitions>
@@ -270,7 +275,7 @@
                                            Margin="0,0,7,0" VerticalAlignment="Center"/>
                                 <Grid Grid.Column="1">
                                     <TextBlock x:Name="SearchPlaceholder"
-                                               Text="Search files, issues, chats, tests, builds…"
+                                               Text="Search files, issues, chats…"
                                                FontSize="12"
                                                Foreground="{StaticResource Subtext0Brush}"
                                                VerticalAlignment="Center"
@@ -283,10 +288,11 @@
                                              BorderThickness="0"
                                              VerticalContentAlignment="Center"
                                              GotKeyboardFocus="TitleSearchBox_GotKeyboardFocus"
+                                             LostKeyboardFocus="TitleSearchBox_LostKeyboardFocus"
                                              TextChanged="TitleSearchBox_TextChanged"
                                              PreviewKeyDown="TitleSearchBox_PreviewKeyDown"/>
                                 </Grid>
-                                <TextBlock Grid.Column="2" Text="Ctrl+K" FontSize="10"
+                                <TextBlock x:Name="SearchCtrlKHint" Grid.Column="2" Text="Ctrl+K" FontSize="10"
                                            Foreground="{StaticResource Subtext1Brush}"
                                            VerticalAlignment="Center" Margin="7,0,2,0"/>
                             </Grid>
