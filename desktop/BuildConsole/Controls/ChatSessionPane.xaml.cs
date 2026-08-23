@@ -40,106 +40,113 @@ namespace BuildConsole.Controls
             DataContext = ViewModel;
             BuildAutoCompletePopup();
 
-            // Live-refresh this build's own checklist column off the shared tracker. Subscribe on
-            // Loaded / unsubscribe on Unloaded (the exact pattern FocusModeBar uses) so a closed
-            // Build Watch window's panes don't linger attached to the app-wide singleton.
-            Loaded += (_, _) => { TaskChecklistViewModel.Shared.PropertyChanged += OnSharedChecklistChanged; RefreshChecklist(); };
-            Unloaded += (_, _) => { TaskChecklistViewModel.Shared.PropertyChanged -= OnSharedChecklistChanged; };
+            // Live-refresh this build's own progress column off BuildProgressTracker.
+            Loaded += (_, _) =>
+            {
+                BuildProgressTracker.ProgressChanged += OnProgressChanged;
+                RefreshProgress();
+            };
+            Unloaded += (_, _) =>
+            {
+                BuildProgressTracker.ProgressChanged -= OnProgressChanged;
+            };
         }
 
-        // ── This build's own Task Checklist column (Git #42/#56) ─────────────────
-        // Renders ONLY this pane's build's checklist — the same real items #56 detects
-        // (structured TaskCreate/TaskUpdate) plus #28's free-form ☐ / "- [ ]" text fallback —
-        // read straight from the shared TaskChecklistViewModel and filtered to this build's
-        // queue id. The old single global panel that merged every build's items into one flat
-        // list is gone; each build now shows only its own steps, in its own square. Focus Mode's
-        // band still reads the same shared model, unchanged.
-
-        /// <summary>The queue id whose checklist this pane shows, or 0 when unbound (column hidden). Set by BuildWatchWindow when a slot is occupied / freed.</summary>
+        // ── This build's own Explicit Progress & ETA column ─────────────────
         private int _checklistBuildId;
-        /// <summary>Cheap guard so we skip the row rebuild when nothing in THIS build's slice changed — the shared tracker fires PropertyChanged on every ingest, most of which don't touch our build.</summary>
-        private string _checklistSignature = "";
 
-        /// <summary>Points this pane's checklist column at a specific build (its queue id), or 0 to unbind and hide it. Called by BuildWatchWindow on occupy / clear.</summary>
+        /// <summary>Points this pane's progress column at a specific build (its queue id), or 0 to unbind and hide it.</summary>
         public void SetChecklistBuild(int queueItemId)
         {
             _checklistBuildId = queueItemId;
-            _checklistSignature = "";   // force a rebuild for the newly-bound build
-            RefreshChecklist();
+            RefreshProgress();
         }
 
-        private void OnSharedChecklistChanged(object? sender, PropertyChangedEventArgs e) => RefreshChecklist();
+        private void OnProgressChanged(BuildProgressReport report)
+        {
+            if (report.QueueItemId == _checklistBuildId)
+            {
+                RefreshProgress();
+            }
+        }
 
         /// <summary>
-        /// Rebuilds this build's checklist rows from the shared tracker, filtered to <see cref="_checklistBuildId"/>.
-        /// Hidden entirely when unbound or this build has reported nothing. A signature guard (state + text of this
-        /// build's items) skips the visual rebuild when this build's slice is unchanged — a Done flip changes the
-        /// signature, so it re-renders; an unrelated build's ingest does not.
+        /// Rebuilds this build's explicit progress panel from BuildProgressTracker.
         /// </summary>
-        private void RefreshChecklist()
+        private void RefreshProgress()
         {
             if (_checklistBuildId == 0)
             {
-                ChecklistPanel.Visibility = Visibility.Collapsed;
-                _checklistSignature = "";
-                ChecklistRows.Children.Clear();
+                ProgressPanel.Visibility = Visibility.Collapsed;
+                ProgressHistoryRows.Children.Clear();
                 return;
             }
 
-            var items = TaskChecklistViewModel.Shared.Items
-                .Where(it => it.QueueItemId == _checklistBuildId)
-                .ToList();
-
-            if (items.Count == 0)
+            var report = BuildProgressTracker.GetProgress(_checklistBuildId);
+            if (report == null || report.Total <= 0)
             {
-                ChecklistPanel.Visibility = Visibility.Collapsed;
-                _checklistSignature = "";
-                ChecklistRows.Children.Clear();
+                ProgressPanel.Visibility = Visibility.Collapsed;
+                ProgressHistoryRows.Children.Clear();
                 return;
             }
 
-            var sig = string.Join("|", items.Select(i => (i.Done ? "1" : "0") + i.Text));
-            if (sig == _checklistSignature) { ChecklistPanel.Visibility = Visibility.Visible; return; }
-            _checklistSignature = sig;
+            ProgressPanel.Visibility = Visibility.Visible;
+            ProgressPercentText.Text = $"{report.Step}/{report.Total} ({report.Percent:0}%)";
+            ProgressBarIndicator.Value = report.Percent;
+            CurrentStepLabelText.Text = string.IsNullOrWhiteSpace(report.CurrentLabel) ? $"Step {report.Step} of {report.Total}" : report.CurrentLabel;
+            EtaRemainingText.Text = report.EstimatedRemainingText;
 
-            int done = items.Count(i => i.Done);
-            ChecklistSummaryText.Text = $"{done}/{items.Count} done";
-
-            ChecklistRows.Children.Clear();
-            foreach (var it in items) ChecklistRows.Children.Add(BuildChecklistRow(it));
-            ChecklistPanel.Visibility = Visibility.Visible;
+            ProgressHistoryRows.Children.Clear();
+            for (int i = 0; i < report.History.Count; i++)
+            {
+                var h = report.History[i];
+                ProgressHistoryRows.Children.Add(BuildProgressStepRow(h, i == report.History.Count - 1));
+            }
         }
 
-        /// <summary>One step row: hollow-box glyph while pending, a real green ✔ + strikethrough once the agent
-        /// reports it done — the exact visual language of #28's Task Checklist panel and Focus Mode's band.</summary>
-        private UIElement BuildChecklistRow(ChecklistItemViewModel it)
+        /// <summary>One step row: ✔ for completed step, ⏳ for current active step.</summary>
+        private UIElement BuildProgressStepRow(ProgressStepEntry entry, bool isLatest)
         {
-            var grid = new Grid { Margin = new Thickness(0, 3, 0, 0) };
+            var grid = new Grid { Margin = new Thickness(0, 3, 0, 3) };
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
+            string glyphText = isLatest ? "⏳" : "✔";
             var glyph = new TextBlock
             {
-                Text = it.Glyph,
-                FontSize = 11.5,
+                Text = glyphText,
+                FontSize = 11,
                 Margin = new Thickness(0, 0, 6, 0),
                 VerticalAlignment = VerticalAlignment.Top,
-                Foreground = (Brush)FindResource(it.Done ? "GreenBrush" : "Subtext1Brush"),
+                Foreground = isLatest ? (Brush)FindResource("YellowBrush") : (Brush)FindResource("GreenBrush"),
             };
             Grid.SetColumn(glyph, 0);
             grid.Children.Add(glyph);
 
+            var sp = new StackPanel();
             var text = new TextBlock
             {
-                Text = it.Text,
-                FontSize = 11,
+                Text = entry.Label,
+                FontSize = 10.5,
                 TextWrapping = TextWrapping.Wrap,
-                Foreground = (Brush)FindResource(it.Done ? "Subtext1Brush" : "TextBrush"),
-                TextDecorations = it.Done ? TextDecorations.Strikethrough : null,
+                Foreground = isLatest ? (Brush)FindResource("TextBrush") : (Brush)FindResource("Subtext1Brush"),
+                FontWeight = isLatest ? FontWeights.SemiBold : FontWeights.Normal
             };
-            Grid.SetColumn(text, 1);
-            grid.Children.Add(text);
+            sp.Children.Add(text);
 
+            if (entry.ElapsedSinceStart.TotalSeconds > 0)
+            {
+                var timeText = new TextBlock
+                {
+                    Text = $"+{(int)entry.ElapsedSinceStart.TotalMinutes}m {entry.ElapsedSinceStart.Seconds}s",
+                    FontSize = 9.5,
+                    Foreground = (Brush)FindResource("Subtext0Brush")
+                };
+                sp.Children.Add(timeText);
+            }
+
+            Grid.SetColumn(sp, 1);
+            grid.Children.Add(sp);
             return grid;
         }
 

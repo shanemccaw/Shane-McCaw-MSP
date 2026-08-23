@@ -790,6 +790,27 @@ namespace BuildConsole.Services
             return null;
         }
 
+        /// <summary>Gets aggregate active token count and estimated cost across all running interactive builds.</summary>
+        public (long TotalTokens, double EstimatedCost, int ActiveBuildCount) GetActiveUsageSummary()
+        {
+            long totalTokens = 0;
+            int count = 0;
+            lock (_gate)
+            {
+                foreach (var kvp in _running)
+                {
+                    if (kvp.Value.Interactive && !kvp.Value.Process.HasExited)
+                    {
+                        count++;
+                        totalTokens += kvp.Value.ContextTokens ?? 0;
+                    }
+                }
+            }
+            // Estimated blended cost: ~$5.00 per 1M context tokens ($0.000005 per token)
+            double cost = (totalTokens / 1_000_000.0) * 5.0;
+            return (totalTokens, cost, count);
+        }
+
         /// <summary>Pulls every structured event appended since <paramref name="cursor"/> (an absolute event index; survives buffer trimming) and advances it. Reads a live entry or, if already reaped, its retained copy — so the final tail is never lost in the exit→remove race.</summary>
         public List<InteractiveEvent> CopyEventsSince(int id, ref int cursor)
         {

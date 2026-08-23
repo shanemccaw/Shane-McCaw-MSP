@@ -12,6 +12,7 @@ genuinely remote/CI caller uses plain HTTP.**
 | **Run a test manifest — remote/CI caller** | Git #898 HTTP (`/api/admin/deploy/test-run`) | For a caller **not** on this machine. Any HTTP‑capable agent calls it directly. Unchanged by `runTest`. |
 | **Run a tenant scan + get per‑finding results back** | `shaneapp://runScan` local protocol *(landing under local #59)* | Triggers a real diagnostics run, **settles it to completion**, and hands back the full **per‑finding** envelope — so the agent can diff each engine observation against an independent PowerShell ground‑truth read of the same tenant fact, not merely confirm "the scan ran". The whole point is the **comparison** (see **§5** below). |
 | **Run ONE individual check + get its observed values back** | `shaneapp://executeScan` local protocol *(local #60)* | Triggers exactly **one** monitor check by its real `monitor_checks` key — Simulator Studio's "M365 Endpoints" per‑check Run — against a **testbed** tenant, settles that single run, and returns the check's own **observed output** (`extractedProperties`, item/page counts, severity, raw captured items). The granular sibling of `runScan` (which runs the whole aggregate scan); same dual‑verification purpose (**§5**), pointed at one check. See **§7**. |
+| **Report explicit build progress** | `shaneapp://reportProgress` local protocol | Explicitly reports a running build's current step, total steps, and phase description (`step=N&total=M&label=...`) directly to BuildConsole's Build Watch slots and Progress Tracker. Replaces brittle free-form text inference. See **§8**. |
 
 ---
 
@@ -907,3 +908,37 @@ it couldn't run). The #965 gate additionally logs its pass/refuse on
 The **same** `shaneapp://` registration `executeSql` uses
 (`setup-shaneapp-protocol.ps1`) already covers `executeScan` — the scheme is
 registered once, all actions ride it. No extra setup.
+
+---
+
+## 8. `shaneapp://reportProgress` — explicit build progress reporting
+
+### Why explicit reporting and not output parsing
+Past iterations attempted to infer progress by regex-parsing transcript output (`- [ ]`, `[x]`, `✓`, `✅`, or Claude's Task tools). Because agent phrasing varies, inferred parsing proved brittle and frequently left UI progress bars and checklists stale. `reportProgress` gives agents a structured, explicit API to publish phase milestones directly to BuildConsole.
+
+### The invocation contract
+
+```
+shaneapp://reportProgress?buildId=<int>&step=<int>&total=<int>&label=<url-encoded string>&src=<optional tag>
+```
+
+| Query param | Required | Meaning |
+|-------------|----------|---------|
+| `buildId` (or `queueId`) | **yes** | Numeric ID of the running build / queue item. |
+| `step` | **yes** | 1-based index of the active milestone step (e.g. `1`, `2`, `3`). |
+| `total` | **yes** | Total count of planned milestones (e.g. `3` or `4`). |
+| `label` | **yes** | Human-readable phase label (e.g. "Investigation & Research"). |
+| `src` | no | Caller tag, logged in the `build.progress` channel. |
+
+### CLI helper script
+Agents can invoke the lightweight helper directly from terminal:
+
+```bash
+node scripts/report-progress.mjs <buildId> <step> <total> "<label>"
+```
+
+### Visual display & heuristics
+- **Build Watch slot panel:** Displays progress percentage (`step/total`), visual progress meter, current phase card, step timestamp history, and heuristic estimated time remaining.
+- **Queue Panel:** Displays queue-wide token & cost usage at a glance (`🪙 Xk tokens · ~$Y.YY`).
+- **Activity Log:** Structured trace on `build.progress` channel.
+

@@ -2,13 +2,29 @@
 
 Instructions for Claude Code sessions working in this repository.
 
-## Mandatory task planning
+## Mandatory task planning & explicit progress reporting
 
-Every session — including BuildConsole-launched build sessions — must create a task list breaking the planned work into concrete steps before making any code changes (before the first Read/Edit/Write/Bash aimed at the actual task). Keep it updated as steps complete. A `SessionStart` hook in `.claude/settings.json` injects a reminder of this at the start of every session; this section is the durable, always-loaded record of the same requirement.
+Every session — including BuildConsole-launched build sessions — must report concrete progress milestones as work advances.
 
-**Do not use `TodoWrite`** — it is disabled for this session and will error. There is no `TaskCreate`/`TaskUpdate`/`TaskGet`/`TaskList` tool in this environment either (confirmed via ToolSearch, not assumed from general docs — the only task-shaped tools present are `TaskOutput`/`TaskStop`, which retrieve/kill background tasks and are unrelated to planning checklists). Track the plan as plain free-form checkbox text (`- [ ] step`) in a normal message or scratch file, and update it as steps complete. This is also the mechanism BuildConsole's own checklist panel (local #28) detects — free-form checkbox text, not a structured tool call.
+### Explicit Progress Reporting (`shaneapp://reportProgress` / `report-progress.mjs`)
+Rather than relying on brittle free-form text inference, agents explicitly report structured progress at major milestones (e.g. Investigation, Implementation, Verification).
 
-**Restate the full list, don't just print it once.** BuildConsole's checklist panel (`ScanForChecklist` in `desktop/BuildConsole/BuildWatchWindow.xaml.cs`) has no memory of your plan — it only mirrors whatever `- [ ] ` / `- [x] ` marker lines actually stream past in the transcript, each time they appear. Printing the list once at the start and then never repeating it leaves every row stuck unchecked in the panel even as real work finishes, because there is nothing to re-scan. Re-print the entire checklist, with `[x]` on every item completed so far, at each meaningful milestone — after finishing a step, and again in any wrap-up/summary message — not only in the first message of the session.
+**How to call:**
+```bash
+node scripts/report-progress.mjs <buildId> <step> <total> "<phase description>"
+```
+or via the protocol:
+```
+shaneapp://reportProgress?buildId=<id>&step=<N>&total=<M>&label=<description>
+```
+
+**Standard Phase Checkpoints:**
+1. **Phase 1: Investigation & Research** — `node scripts/report-progress.mjs <id> 1 3 "Investigation & Discovery"`
+2. **Phase 2: Core Implementation** — `node scripts/report-progress.mjs <id> 2 3 "Core Implementation"`
+3. **Phase 3: Verification & Test Suite** — `node scripts/report-progress.mjs <id> 3 3 "Verification & Testing"`
+
+*Keep calls focused on major phases (a small number of meaningful calls, not noisy per-line spam).*
+BuildConsole displays this in Build Watch per-slot with visual progress bars, percentage, active phase card, and heuristic estimated time remaining.
 
 ## Customer Portal build — design source
 
@@ -158,7 +174,8 @@ production-affecting changes, anything he'd reasonably want eyes-on first)
 
 ## Database
 
-- **Default: self-verify SQL via `shaneapp://executeSql`, not "write it and stop."** This environment has no direct `DATABASE_URL` and BuildConsole-launched sessions historically deferred all live DB work to Shane's own SQL console — that rule is now obsolete. `shaneapp://executeSql` (confirmed working; see `desktop/BuildConsole/AGENT_PROTOCOLS.md` section 1) runs SQL through BuildConsole's own direct local Postgres connection with zero round-trip, closing the same loop test execution now closes via `shaneapp://runTest`. Where practical, a build session should run and verify its own SQL directly through that protocol — reads to confirm state, and writes/`ALTER`/`UPDATE`/`INSERT` that are a normal, reversible part of the task — and report the real result honestly, the same way it reports test pass/fail. Don't claim something is verified against live data unless it actually was, through the protocol.
+- **Default for local day-to-day dev/testing: connect directly to the real hosted Postgres server, not `shaneapp://executeSql`.** The `DATABASE_URL` env var in `.env.local` is a genuine, directly-reachable Neon-hosted Postgres connection string (host `ep-round-tree-aylkxv9h.c-5.us-east-2.aws.neon.tech`, db `neondb`, `sslmode=require`; full credentials are in `.env.local` itself, not repeated here) — the same database the local dev api-server itself reads/writes. While building, agents should use it directly (`psql "$DATABASE_URL"`, a one-off script, etc.) for reads to confirm state and for writes/`ALTER`/`UPDATE`/`INSERT` that are a normal, reversible part of the task — faster and with zero indirection through BuildConsole. Report the real result honestly, the same way test pass/fail is reported. Don't claim something is verified against live data unless it actually was queried.
+- **`shaneapp://executeSql` stays real and available, but is for Replit/Staging debugging, not local dev work.** It runs SQL through BuildConsole's own dev api-server over HTTP (`POST /api/simulator/sql/execute`, the same pipe as the manual SQL Runner — see `desktop/BuildConsole/Services/LocalSqlExecutor.cs`), not a direct local Postgres connection. That HTTP round-trip is exactly the right tool when direct connection isn't — e.g. investigating the Replit/Staging environment via SSH (see below) where BuildConsole's dev api-server is the reachable path. Don't remove or deprecate it; just don't default to it for local work where the direct `DATABASE_URL` connection is faster and available.
 - **Manual SQL for Shane's own SQL console stays as a real fallback, not the default** — reserved for anything genuinely too destructive or sensitive to self-execute (irreversible bulk deletes, production-affecting changes, anything Shane would reasonably want eyes-on before it runs). Judging what qualifies is Shane's call to make explicit when it matters; when in doubt on a risky write, say so and hand it to him rather than self-executing.
 - **Schema changes require manual SQL, not `drizzle-kit push`.** Do not run `drizzle-kit push` or `push --force` — interactive push surfaces large pre-existing schema drift unrelated to the change at hand. Instead: add the Drizzle TS schema definitions, then hand-write the equivalent `CREATE TABLE`/`ALTER TABLE ... ADD COLUMN IF NOT EXISTS` SQL into a new file under `lib/db/migrations/manual/`, for Shane to review and run himself.
 - No literal prices, tier names, or seat counts hardcoded in `.tsx` files outside API response handling (no-hardcoding rule) — these should flow through the Products Catalog / API responses, not be baked into UI code. Verifiable by grep.

@@ -106,11 +106,6 @@ namespace BuildConsole
             public ToolGroupTurn? CurrentToolGroup;
             /// <summary>Maps a tool_use id → its chip detail line, so a tool_result event (which arrives a beat later, on its own stream-json line) can fill in that exact call's real output. Interactive builds only; reset per occupancy, soft-capped to bound a very long build's memory.</summary>
             public readonly Dictionary<string, ToolDetailLine> ToolCallsById = new();
-            /// <summary>Maps a <c>TaskCreate</c> tool_use id → the pending checklist row it added, held only
-            /// until that call's tool_result reveals the assigned "Task #N" id and the row is bound to it
-            /// (see the structured Task-tool checklist path). Lets a later <c>TaskUpdate</c> flip exactly
-            /// that row by its real id. Reset per occupancy alongside <see cref="ToolCallsById"/>.</summary>
-            public readonly Dictionary<string, ChecklistItemViewModel> PendingTaskCreatesByUseId = new();
             /// <summary>Lines of an in-progress code diff being folded into a single DiffTurn, or null when not currently inside a diff — mirrors CurrentToolGroup's "consecutive run" bookkeeping (see HandleDiffLine).</summary>
             public List<string>? DiffLines;
             /// <summary>True while <see cref="DiffLines"/> is being filled from inside a fenced ```diff block (which closes on the ``` fence); false for a raw unified-diff run (which closes on the first non-diff line).</summary>
@@ -152,16 +147,6 @@ namespace BuildConsole
         private bool _polling;
         private List<QueueItem> _lastQueue = new();
 
-        /// <summary>Backs the live Task Checklists (Git #980 follow-on): checklist items extracted from
-        /// every slot's reported progress via <see cref="ChecklistExtractor"/> / the structured Task tools,
-        /// attributed per build; mutated only on the UI-thread poll tick. Git #42/#56 — there is no longer
-        /// one shared global panel bound to this; each build's own <see cref="Controls.ChatSessionPane"/>
-        /// renders ITS build's slice (filtered by queue id, wired in OccupySlot/ClearSlot). The app-wide
-        /// <see cref="Controls.TaskChecklistViewModel.Shared"/> singleton — Focus Mode's strip reads the very
-        /// same instance so its live checklist band reflects #28's real detection with no second parser.
-        /// Cleared when this window closes (see the Closed handler) so each Build Watch session starts
-        /// fresh, exactly as it did when this was a per-window field.</summary>
-        private readonly Controls.TaskChecklistViewModel _checklist = Controls.TaskChecklistViewModel.Shared;
 
         // Theme brushes (resolved once)
         private readonly Brush _emptyBorder;
@@ -289,9 +274,8 @@ namespace BuildConsole
             {
                 _pollTimer?.Stop();
                 _elapsedTimer?.Stop();
-                // Reset the shared checklist tracker so the next Build Watch session starts clean and
-                // Focus Mode's band doesn't linger stale rows for builds we're no longer detecting.
-                _checklist.Clear();
+                // Reset progress tracking when window closes
+                BuildProgressTracker.ClearAll();
             };
             LocationChanged += (s, e) => PersistBounds();
             SizeChanged += (s, e) => PersistBounds();
@@ -384,33 +368,6 @@ namespace BuildConsole
                 RegexOptions.IgnoreCase);
         }
 
-        // ── Task Checklist side panel extraction ────────────────────────────
-        // Non-destructively observes the same text that flows into the transcript and mirrors any
-        // genuine checklist markers into the live side panel (_checklist). This never consumes or
-        // alters a line — the transcript still renders it exactly as before.
-
-        /// <summary>
-        /// Scans a chunk of reported progress text (one log line, or a multi-line assistant block)
-        /// for checklist markers and feeds each hit into the side-panel model. Only real markers
-        /// (☐/☑/✓/✔ or "- [ ]"/"- [x]") are picked up — ordinary prose and plain bullets are ignored
-        /// (see <see cref="ChecklistExtractor"/>). Safe to call on every text event.
-        /// </summary>
-        private void ScanForChecklist(BuildWatchSlot slot, string? text)
-        {
-            if (string.IsNullOrEmpty(text)) return;
-            foreach (var raw in text.Split('\n'))
-            {
-                var line = raw.TrimEnd('\r');
-                var marker = ChecklistExtractor.TryParse(line, out var item);
-                if (marker == ChecklistExtractor.Marker.None) continue;
-                _checklist.Ingest(slot.QueueItemId, ChecklistBuildLabel(slot), slot.GithubNumber, marker, item);
-            }
-        }
-
-        /// <summary>Short per-build label shown beside each checklist row (matches the pane's own LocalLabel format).</summary>
-        private static string ChecklistBuildLabel(BuildWatchSlot slot) =>
-            slot.GithubNumber.HasValue ? $"GH #{slot.GithubNumber}" : $"queue #{slot.QueueItemId}";
-
         /// <summary>
         /// Classifies one completed log line into a transcript turn:
         ///   • "--- done … ---"  → green-tinted AssistantParagraphTurn(Kind=Done)
@@ -422,10 +379,6 @@ namespace BuildConsole
         private void AppendEventCard(BuildWatchSlot slot, string rawLine)
         {
             var line = rawLine.TrimEnd();
-
-            // Mirror any checklist marker on this line into the side panel first (observe-only —
-            // it never consumes the line, which still renders as a normal turn below).
-            ScanForChecklist(slot, line);
 
             // A run of consecutive code-diff lines (a ```diff fence, or a raw unified-diff
             // hunk) folds into ONE DiffTurn — rendered by DiffView as a real green/red
@@ -673,9 +626,6 @@ namespace BuildConsole
                     {
                         var text = (ev.Text ?? "").TrimEnd();
                         if (text.Length == 0) return;
-                        // Scan the full (possibly multi-line) block for checklist markers before it's
-                        // rendered — the structured stream delivers a whole paragraph per event.
-                        ScanForChecklist(slot, text);
                         AddParagraph(slot, text, (ev.IsError || LooksLikeError(text)) ? ParagraphKind.Error : ParagraphKind.Normal);
                         break;
                     }
@@ -684,7 +634,6 @@ namespace BuildConsole
                     break;
                 case InteractiveEventKind.ToolResult:
                     FillToolResult(slot, ev);
-                    TryResolveStructuredTaskResult(slot, ev);
                     break;
                 case InteractiveEventKind.TurnResult:
                     {
@@ -692,8 +641,6 @@ namespace BuildConsole
                         AddParagraph(slot, $"done{dur}", ParagraphKind.Done);
                         if (!string.IsNullOrWhiteSpace(ev.Text))
                         {
-                            // A wrap-up message can restate the checklist with items now ticked.
-                            ScanForChecklist(slot, ev.Text);
                             AddParagraph(slot, ev.Text!.Trim(), ParagraphKind.Normal);
                         }
                         break;
@@ -715,113 +662,9 @@ namespace BuildConsole
                 slot.ToolCallsById[ev.ToolUseId!] = detail;
             }
             AddToolCallDetail(slot, toolName, detail);
-
-            // If this is a Task-tool call, ALSO mirror its real structured data into the checklist
-            // side panel (the reliable path that supersedes #28's text matching). The chip above still
-            // renders it as ordinary agent activity — this is additive, never a substitute for the chip.
-            TryIngestStructuredTaskCall(slot, ev);
         }
 
-        // ── Structured Task-tool checklist (TaskCreate / TaskUpdate) ─────────────
-        // TodoWrite is a disabled legacy path in current Claude Code; the live mechanism is the
-        // structured Task tools, which carry real task data (a subject, an explicit id, a status)
-        // as JSON fields on their tool-call events — not text to pattern-match. We drive the Task
-        // Checklist side panel off those directly here, keeping #28's free-form checkbox-text
-        // detection (ScanForChecklist, still wired above) as the fallback for agents that print
-        // text checklists without using the Task tools, so nothing regresses.
 
-        /// <summary>Parses "Task #N" out of a TaskCreate tool_result so the pending row created on the
-        /// call can be bound to the id a later TaskUpdate references.</summary>
-        private static readonly Regex TaskCreatedIdRegex =
-            new(@"Task\s+#?(\d+)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-
-        /// <summary>If this tool call is a <c>TaskCreate</c>/<c>TaskUpdate</c>, mirror its real structured
-        /// data into the checklist panel. TaskCreate adds a pending row from the task's own subject and is
-        /// remembered by tool_use id so its result can bind the assigned "Task #N"; TaskUpdate flips (or
-        /// drops) the matching row by that real id. A no-op for every other tool.</summary>
-        private void TryIngestStructuredTaskCall(BuildWatchSlot slot, InteractiveEvent ev)
-        {
-            var name = ev.ToolName;
-            if (string.IsNullOrEmpty(name)) return;
-
-            if (name.Equals("TaskCreate", StringComparison.OrdinalIgnoreCase))
-            {
-                var text = ExtractTaskCreateText(ev.InputJson);
-                if (string.IsNullOrWhiteSpace(text)) return;
-                var row = _checklist.AddStructuredTask(slot.QueueItemId, ChecklistBuildLabel(slot), slot.GithubNumber, text!);
-                if (!string.IsNullOrEmpty(ev.ToolUseId))
-                {
-                    if (slot.PendingTaskCreatesByUseId.Count >= MaxToolCallsTracked) slot.PendingTaskCreatesByUseId.Clear();
-                    slot.PendingTaskCreatesByUseId[ev.ToolUseId!] = row;
-                }
-            }
-            else if (name.Equals("TaskUpdate", StringComparison.OrdinalIgnoreCase))
-            {
-                if (!TryParseTaskUpdate(ev.InputJson, out var taskId, out bool done, out bool deleted)) return;
-                _checklist.MarkStructuredStatus(slot.QueueItemId, taskId, done, deleted);
-            }
-        }
-
-        /// <summary>Binds a pending TaskCreate row to the real "Task #N" id parsed from that create call's
-        /// tool_result, so a subsequent TaskUpdate (which references the task by that id) flips the exact
-        /// row. A no-op when the result isn't for a tracked TaskCreate.</summary>
-        private void TryResolveStructuredTaskResult(BuildWatchSlot slot, InteractiveEvent ev)
-        {
-            if (string.IsNullOrEmpty(ev.ResultForToolUseId)) return;
-            if (!slot.PendingTaskCreatesByUseId.TryGetValue(ev.ResultForToolUseId!, out var row)) return;
-            slot.PendingTaskCreatesByUseId.Remove(ev.ResultForToolUseId!);
-            var m = TaskCreatedIdRegex.Match(ev.Text ?? "");
-            if (m.Success) row.AssignTaskId(m.Groups[1].Value);
-        }
-
-        /// <summary>Pulls the display label out of a TaskCreate call's raw <c>input</c> — the concise
-        /// <c>subject</c> (a task's brief title, the natural checklist-row label), falling back to
-        /// <c>description</c> then <c>activeForm</c>. Null when none is present.</summary>
-        private static string? ExtractTaskCreateText(string? inputJson)
-        {
-            if (string.IsNullOrWhiteSpace(inputJson)) return null;
-            try
-            {
-                using var doc = JsonDocument.Parse(inputJson);
-                var root = doc.RootElement;
-                if (root.ValueKind != JsonValueKind.Object) return null;
-                string? S(string k) => root.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
-                var text = S("subject");
-                if (string.IsNullOrWhiteSpace(text)) text = S("description");
-                if (string.IsNullOrWhiteSpace(text)) text = S("activeForm");
-                return string.IsNullOrWhiteSpace(text) ? null : text!.Trim();
-            }
-            catch { return null; }
-        }
-
-        /// <summary>Reads a TaskUpdate call's raw <c>input</c>: its <c>taskId</c> (string or number,
-        /// leading '#'/whitespace normalized off) and whether its <c>status</c> marks the task done
-        /// ("completed"/"done") or deleted. False when there's no usable taskId.</summary>
-        private static bool TryParseTaskUpdate(string? inputJson, out string taskId, out bool done, out bool deleted)
-        {
-            taskId = ""; done = false; deleted = false;
-            if (string.IsNullOrWhiteSpace(inputJson)) return false;
-            try
-            {
-                using var doc = JsonDocument.Parse(inputJson);
-                var root = doc.RootElement;
-                if (root.ValueKind != JsonValueKind.Object) return false;
-                if (!root.TryGetProperty("taskId", out var tid)) return false;
-                taskId = tid.ValueKind == JsonValueKind.String ? (tid.GetString() ?? "")
-                       : tid.ValueKind == JsonValueKind.Number ? tid.GetRawText()
-                       : "";
-                taskId = taskId.TrimStart('#').Trim();
-                if (taskId.Length == 0) return false;
-                var status = root.TryGetProperty("status", out var st) && st.ValueKind == JsonValueKind.String ? st.GetString() : null;
-                if (!string.IsNullOrEmpty(status))
-                {
-                    done = status.Equals("completed", StringComparison.OrdinalIgnoreCase) || status.Equals("done", StringComparison.OrdinalIgnoreCase);
-                    deleted = status.Equals("deleted", StringComparison.OrdinalIgnoreCase);
-                }
-                return true;
-            }
-            catch { return false; }
-        }
 
         /// <summary>Fills a prior tool call's chip with its real output when the matching tool_result event lands. Does NOT break the tool group (CurrentToolGroup stays), so consecutive calls keep folding into one chip.</summary>
         private void FillToolResult(BuildWatchSlot slot, InteractiveEvent ev)
@@ -1265,10 +1108,9 @@ namespace BuildConsole
 
         private void OccupySlot(BuildWatchSlot slot, QueueItem item)
         {
-            // If this slot was reused (evicted straight into a new build, no ClearSlot in between),
-            // drop the previous occupant's checklist rows before the new build's start streaming.
+            // If this slot was reused, drop previous occupant's progress tracker state.
             if (slot.QueueItemId != 0 && slot.QueueItemId != item.Id)
-                _checklist.RemoveForBuild(slot.QueueItemId);
+                BuildProgressTracker.ClearForBuild(slot.QueueItemId);
 
             slot.Occupied = true;
             slot.QueueItemId = item.Id;
@@ -1289,7 +1131,6 @@ namespace BuildConsole
             slot.InAssistantRun = false;
             slot.CurrentToolGroup = null;
             slot.ToolCallsById.Clear();
-            slot.PendingTaskCreatesByUseId.Clear();
             slot.DiffLines = null;
             slot.InDiffFence = false;
             slot.StatusLine = null;
@@ -1338,8 +1179,8 @@ namespace BuildConsole
             int id = slot.QueueItemId;
             ActivityLog.Log("build-watch", $"{reason}: {slot.Title} (queue #{id})");
 
-            // This build's checklist rows belong to it — drop them as the slot frees.
-            _checklist.RemoveForBuild(id);
+            // This build's progress tracking belongs to it — drop it as the slot frees.
+            BuildProgressTracker.ClearForBuild(id);
 
             // If this was an owned interactive build: gracefully finalize it if it's
             // still alive (close stdin → it exits → queue completes, never hangs),
@@ -1366,10 +1207,9 @@ namespace BuildConsole
             slot.LastInteractiveState = null;
             slot.Cwd = null;
             slot.Pane.Cwd = null;
-            slot.Pane.SetChecklistBuild(0); // unbind this pane's checklist column (RemoveForBuild above already dropped its rows)
+            slot.Pane.SetChecklistBuild(0); // unbind this pane's progress column
             slot.CurrentToolGroup = null;
             slot.ToolCallsById.Clear();
-            slot.PendingTaskCreatesByUseId.Clear();
             slot.StatusLine = null;
             slot.InAssistantRun = false;
 

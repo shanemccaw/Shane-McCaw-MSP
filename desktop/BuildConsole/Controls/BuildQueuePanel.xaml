@@ -145,7 +145,34 @@
                                        FontSize="11"
                                        FontWeight="SemiBold"
                                        Foreground="{StaticResource Subtext1Brush}"
-                                       Margin="0,0,0,8"/>
+                                       Margin="0,0,0,6"/>
+
+                            <!-- Active Usage & Cost Summary (at-a-glance across queue) -->
+                            <Border x:Name="ActiveUsageBorder"
+                                    Background="{StaticResource Surface0Brush}"
+                                    BorderBrush="{StaticResource Surface1Brush}"
+                                    BorderThickness="1"
+                                    CornerRadius="4"
+                                    Padding="8,5"
+                                    Margin="0,0,0,8"
+                                    ToolTip="Active tokens and estimated Claude API cost across running builds">
+                                <DockPanel LastChildFill="True">
+                                    <TextBlock Text="🪙" FontSize="11" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="QueueTokensText" Text="0 tokens"
+                                               FontSize="11" FontWeight="SemiBold"
+                                               Foreground="{StaticResource MauveBrush}"
+                                               VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="QueueCostText" Text=" · ~$0.00"
+                                               FontSize="10.5" FontWeight="SemiBold"
+                                               Foreground="{StaticResource GreenBrush}"
+                                               VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="QueueActiveSlotsText" Text=" (0 active)"
+                                               FontSize="10"
+                                               Foreground="{StaticResource Subtext0Brush}"
+                                               HorizontalAlignment="Right"
+                                               VerticalAlignment="Center"/>
+                                </DockPanel>
+                            </Border>
 
                             <!-- Git #933 - Shane: "Mark the filtering pills be a drop down menu
                                  because they go off streen. Make All last, and make Queued &

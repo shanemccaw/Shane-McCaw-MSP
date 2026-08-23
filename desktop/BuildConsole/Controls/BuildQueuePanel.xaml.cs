@@ -176,10 +176,12 @@ namespace BuildConsole.Controls
             _sessionsPollTimer.Tick += async (_, _) =>
             {
                 await RefreshActiveSessionsAsync();
+                UpdateUsageSummary();
                 DevServerRollbackService.CheckForRollbacks(this);
             };
             _sessionsPollTimer.Start();
             _ = RefreshActiveSessionsAsync();
+            UpdateUsageSummary();
             DevServerRollbackService.CheckForRollbacks(this);
 
             // Manual-only GitHub (Shane, 2026-08-14): these three tiles each read
@@ -972,6 +974,7 @@ namespace BuildConsole.Controls
                 // Git #905 — a freshly-done item should show up on the Completed tile
                 // promptly, not wait for that tile's own slower 60s gh CLI poll.
                 RenderCompletedFromCache();
+                UpdateUsageSummary();
                 SyncError?.Invoke(this, _queueIsStale
                     ? $"Build Queue: showing cached data from {_queueCachedAtUtc?.ToLocalTime():g} — dev server unreachable"
                     : null);
@@ -984,6 +987,20 @@ namespace BuildConsole.Controls
                 QueueEmptyText.Visibility = Visibility.Visible;
                 SyncError?.Invoke(this, $"Build Queue: {ex.Message}");
             }
+        }
+
+        /// <summary>Updates at-a-glance token and estimated cost summary across all running builds.</summary>
+        public void UpdateUsageSummary()
+        {
+            if (_watcher == null) return;
+            var (tokens, cost, active) = _watcher.GetActiveUsageSummary();
+            string tokensFormatted = tokens >= 1_000_000 ? $"{tokens / 1_000_000.0:0.1}M tokens" :
+                                    tokens >= 1_000 ? $"{tokens / 1_000.0:0}k tokens" :
+                                    $"{tokens} tokens";
+
+            QueueTokensText.Text = tokensFormatted;
+            QueueCostText.Text = $" · ~${cost:0.00}";
+            QueueActiveSlotsText.Text = $" ({active} active)";
         }
 
         /// <summary>Git #814 - Active filter shows only currently queued and running builds (done items automatically fall off). Done/Canceled/All dropdown options show historical items.</summary>

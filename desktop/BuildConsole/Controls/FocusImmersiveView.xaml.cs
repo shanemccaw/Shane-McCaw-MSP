@@ -967,18 +967,29 @@ namespace BuildConsole.Controls
             else
                 RailPaceText.Text = string.IsNullOrWhiteSpace(p.EtaReason) ? "Pace shows once a few issues close." : p.EtaReason;
 
-            // live checklist steps under the epic (reuses #46's shared tracker; no second parser)
-            var checklist = TaskChecklistViewModel.Shared.Items
-                .Where(it => svc.IsIssueInActiveMilestone(it.GithubNumber)).ToList();
-            if (checklist.Count > 0)
+            // live build progress under the epic
+            var items = _queueItemsProbe?.Invoke() ?? Array.Empty<QueueItem>();
+            int totalReportedSteps = 0;
+            int totalReportedDone = 0;
+            foreach (var qi in items)
             {
-                int done = checklist.Count(i => i.Done);
-                RailChecklistText.Text = $"☑ {done}/{checklist.Count} live build steps done";
+                if (svc.IsIssueInActiveMilestone(qi.GithubNumber))
+                {
+                    var prog = BuildProgressTracker.GetProgress(qi.Id);
+                    if (prog != null && prog.Total > 0)
+                    {
+                        totalReportedSteps += prog.Total;
+                        totalReportedDone += prog.Step;
+                    }
+                }
+            }
+            if (totalReportedSteps > 0)
+            {
+                RailChecklistText.Text = $"📊 {totalReportedDone}/{totalReportedSteps} live build steps done ({(double)totalReportedDone / totalReportedSteps * 100:0}%)";
                 RailChecklistText.Visibility = Visibility.Visible;
             }
             else RailChecklistText.Visibility = Visibility.Collapsed;
 
-            var items = _queueItemsProbe?.Invoke() ?? Array.Empty<QueueItem>();
             int queued = items.Count(i => svc.IsIssueInActiveMilestone(i.GithubNumber) && i.Status == "queued");
             if (queued > 0)
             {

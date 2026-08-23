@@ -6052,10 +6052,20 @@ namespace BuildConsole
                     return;
                 }
 
+                // reportProgress → explicit progress report from running build
+                if (string.Equals(req.Action, "reportProgress", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(req.Action, "progress", StringComparison.OrdinalIgnoreCase))
+                {
+                    BuildConsole.Services.ActivityLog.Log(ch,
+                        $"Routing action '{req.Action}' to reportProgress handler (src='{src}').");
+                    await HandleShaneAppReportProgressAsync(req, src, ch);
+                    return;
+                }
+
                 if (!string.Equals(req.Action, "executeSql", StringComparison.OrdinalIgnoreCase))
                 {
                     BuildConsole.Services.ActivityLog.Log(ch,
-                        $"Unsupported action '{req.Action}' — only executeSql / runTest / uiTest / runPowerShell / runScan / executeScan are handled. Ignoring.");
+                        $"Unsupported action '{req.Action}' — only executeSql / runTest / uiTest / runPowerShell / runScan / executeScan / reportProgress are handled. Ignoring.");
                     return;
                 }
 
