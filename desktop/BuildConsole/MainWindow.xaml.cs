@@ -312,8 +312,18 @@ namespace BuildConsole
             // (#820) have a real watcher to call into from the start.
             if (_buildTrackerApi.IsConfigured)
             {
+                // Direct Postgres connection for all queue DB operations (claim, complete,
+                // force-claim, orphan-sweep) — bypasses the API server entirely so queue
+                // state is always correct even when Replit is napping. Reads DATABASE_URL
+                // from .env.local at the repo root (already set up for local dev).
+                var repoRootForDb = BuildConsole.Services.BuildTrackerConfig.FindRepoRoot() ?? "";
+                var _queueDb = BuildConsole.Services.BuildQueuePostgresClient.TryCreate(
+                    btConfig,
+                    repoRootForDb,
+                    msg => BuildConsole.Services.ActivityLog.Log("watcher", msg));
+
                 _queueWatcher = new BuildConsole.Services.QueueWatcherService(
-                    _buildTrackerApi, btConfig.MaxConcurrent, BuildConsole.Services.BuildTrackerConfig.FindRepoRoot());
+                    _buildTrackerApi, _queueDb, btConfig.MaxConcurrent, BuildConsole.Services.BuildTrackerConfig.FindRepoRoot());
                 _queueWatcher.BuildFinished += QueueWatcher_BuildFinished;
                 _queueWatcher.Start();
 
@@ -333,6 +343,12 @@ namespace BuildConsole
                     () => _buildTrackerApi.GetDeployStatusAsync(),
                     RunScopedManifestsAsync,
                     SurfacePostBuildDeployOutcome);
+
+                BuildQueuePanel.Initialize(_buildTrackerApi, _queueWatcher, _queueDb);
+            }
+            else
+            {
+                BuildQueuePanel.Initialize(_buildTrackerApi, _queueWatcher);
             }
 
             // shaneapp://executeSql — the LOCAL protocol trigger (deliberately NOT
@@ -342,13 +358,13 @@ namespace BuildConsole
             // is always logged and gets a clear error result rather than silence.
             StartShaneAppProtocolListener();
 
-            BuildQueuePanel.Initialize(_buildTrackerApi, _queueWatcher);
             LeftSidebar.Initialize(_buildTrackerApi);
             BuildLogView.Initialize(_buildTrackerApi);
             TerminalView.Initialize(_buildTrackerApi);
             MarketingLogView.Initialize("shane-mccaw-consulting", "Marketing", 5173, "artifacts/shane-mccaw-consulting", "🌐");
             PortalLogView.Initialize("msp-portal", "Portal", 5175, "artifacts/msp-portal", "💼");
             AdminLogView.Initialize("admin-panel", "Admin", 5174, "artifacts/admin-panel", "⚙️");
+            ApiServerLogView.Initialize("api-server", "API Server", 8080, "artifacts/api-server", "🖥️");
 
             StartTopServicesPoll();
 
@@ -3626,20 +3642,21 @@ namespace BuildConsole
         {
             try
             {
-                bool mkt = await DevServicesManager.IsPortOpenAsync(5173);
+                bool mkt  = await DevServicesManager.IsPortOpenAsync(5173);
                 bool port = await DevServicesManager.IsPortOpenAsync(5175);
-                bool adm = await DevServicesManager.IsPortOpenAsync(5174);
+                bool adm  = await DevServicesManager.IsPortOpenAsync(5174);
+                bool api  = await DevServicesManager.IsPortOpenAsync(8080);
 
-                int runningCount = (mkt ? 1 : 0) + (port ? 1 : 0) + (adm ? 1 : 0);
-                if (runningCount == 3)
+                int runningCount = (mkt ? 1 : 0) + (port ? 1 : 0) + (adm ? 1 : 0) + (api ? 1 : 0);
+                if (runningCount == 4)
                 {
                     TopServicesStatusDot.Text = "🟢";
-                    TopServicesStatusDot.ToolTip = "All 3 dev services running (5173, 5174, 5175)";
+                    TopServicesStatusDot.ToolTip = "All 4 dev services running (5173, 5174, 5175, 8080)";
                 }
                 else if (runningCount > 0)
                 {
                     TopServicesStatusDot.Text = "🟡";
-                    TopServicesStatusDot.ToolTip = $"{runningCount}/3 dev services running";
+                    TopServicesStatusDot.ToolTip = $"{runningCount}/4 dev services running";
                 }
                 else
                 {
@@ -3647,9 +3664,10 @@ namespace BuildConsole
                     TopServicesStatusDot.ToolTip = "All dev services stopped";
                 }
 
-                MenuMarketingItem.Header = $"🌐 Marketing (5173) [{(mkt ? "RUNNING" : "STOPPED")}]";
-                MenuPortalItem.Header = $"💼 Portal (5175) [{(port ? "RUNNING" : "STOPPED")}]";
-                MenuAdminItem.Header = $"⚙️ Admin (5174) [{(adm ? "RUNNING" : "STOPPED")}]";
+                MenuMarketingItem.Header  = $"🌐 Marketing (5173) [{(mkt  ? "RUNNING" : "STOPPED")}]";
+                MenuPortalItem.Header     = $"💼 Portal (5175) [{(port ? "RUNNING" : "STOPPED")}]";
+                MenuAdminItem.Header      = $"⚙️ Admin (5174) [{(adm  ? "RUNNING" : "STOPPED")}]";
+                MenuApiServerItem.Header  = $"🖥️ API Server (8080) [{(api  ? "RUNNING" : "STOPPED")}]";
             }
             catch { }
         }
@@ -3676,6 +3694,11 @@ namespace BuildConsole
 
         private void MenuBrowseMarketing_Click(object sender, RoutedEventArgs e)
         {
+            OpenWebTab("http://localhost:5173", "Marketing", "🌐");
+        }
+
+        private void MenuOpenInEdgeMarketing_Click(object sender, RoutedEventArgs e)
+        {
             OpenBrowserUrl("http://localhost:5173");
         }
 
@@ -3700,6 +3723,11 @@ namespace BuildConsole
         }
 
         private void MenuBrowsePortal_Click(object sender, RoutedEventArgs e)
+        {
+            OpenWebTab("http://localhost:5175", "Portal", "💼");
+        }
+
+        private void MenuOpenInEdgePortal_Click(object sender, RoutedEventArgs e)
         {
             OpenBrowserUrl("http://localhost:5175");
         }
@@ -3726,7 +3754,42 @@ namespace BuildConsole
 
         private void MenuBrowseAdmin_Click(object sender, RoutedEventArgs e)
         {
+            OpenWebTab("http://localhost:5174", "Admin", "⚙️");
+        }
+
+        private void MenuOpenInEdgeAdmin_Click(object sender, RoutedEventArgs e)
+        {
             OpenBrowserUrl("http://localhost:5174");
+        }
+
+        private async void MenuStartApiServer_Click(object sender, RoutedEventArgs e)
+        {
+            SetBottomPanel(true, tabIndex: 5); // API Server tab
+            await DevServicesManager.StartServiceAsync("api-server");
+            await RefreshTopServicesStatusAsync();
+            await ApiServerLogView.UpdateStatusAsync();
+        }
+
+        private async void MenuStopApiServer_Click(object sender, RoutedEventArgs e)
+        {
+            await DevServicesManager.StopServiceAsync("api-server");
+            await RefreshTopServicesStatusAsync();
+            await ApiServerLogView.UpdateStatusAsync();
+        }
+
+        private void MenuOpenApiServerTab_Click(object sender, RoutedEventArgs e)
+        {
+            SetBottomPanel(true, tabIndex: 5);
+        }
+
+        private void MenuBrowseApiServer_Click(object sender, RoutedEventArgs e)
+        {
+            OpenWebTab("http://localhost:8080", "API Server", "🖥️");
+        }
+
+        private void MenuOpenInEdgeApiServer_Click(object sender, RoutedEventArgs e)
+        {
+            OpenBrowserUrl("http://localhost:8080");
         }
 
         private async void MenuStartAllServices_Click(object sender, RoutedEventArgs e)
@@ -3744,6 +3807,7 @@ namespace BuildConsole
             await MarketingLogView.UpdateStatusAsync();
             await PortalLogView.UpdateStatusAsync();
             await AdminLogView.UpdateStatusAsync();
+            await ApiServerLogView.UpdateStatusAsync();
         }
 
         private async void MenuRefreshServices_Click(object sender, RoutedEventArgs e)
@@ -3752,6 +3816,7 @@ namespace BuildConsole
             await MarketingLogView.UpdateStatusAsync();
             await PortalLogView.UpdateStatusAsync();
             await AdminLogView.UpdateStatusAsync();
+            await ApiServerLogView.UpdateStatusAsync();
         }
 
         private static void OpenBrowserUrl(string url)

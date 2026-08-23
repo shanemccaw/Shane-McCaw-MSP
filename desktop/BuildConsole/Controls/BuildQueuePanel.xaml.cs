@@ -51,6 +51,7 @@ namespace BuildConsole.Controls
         private int _refreshGeneration;
         private BuildTrackerApiClient? _api;
         private Services.QueueWatcherService? _watcher;
+        private Services.BuildQueuePostgresClient? _db;
         private DispatcherTimer? _pollTimer;
         private List<QueueItem> _lastItems = new();
         private string _filter = "Active";
@@ -126,11 +127,12 @@ namespace BuildConsole.Controls
 
         public BuildQueuePanel() => InitializeComponent();
 
-        /// <summary>Called once from MainWindow with the shared API client.</summary>
-        public void Initialize(BuildTrackerApiClient api, Services.QueueWatcherService? watcher = null)
+        /// <summary>Called once from MainWindow with the shared API client and optional direct-DB client.</summary>
+        public void Initialize(BuildTrackerApiClient api, Services.QueueWatcherService? watcher = null, Services.BuildQueuePostgresClient? db = null)
         {
             _api = api;
             _watcher = watcher;
+            _db = db;
 
             // Sessions presence polling
             _sessionsPollTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(10) };
@@ -1474,11 +1476,14 @@ namespace BuildConsole.Controls
             miMarkComplete.Click += async (_, _) =>
             {
                 _manuallyHiddenQueueIds.Add(item.Id);
-                if (_api != null)
+                try
                 {
-                    try { await _api.MarkQueueItemCompleteAsync(item.Id, 0); }
-                    catch { }
+                    if (_db != null)
+                        await _db.MarkCompleteAsync(item.Id, 0);
+                    else if (_api != null)
+                        await _api.MarkQueueItemCompleteAsync(item.Id, 0);
                 }
+                catch { }
                 if (item.Status == "running")
                 {
                     _watcher?.TryStop(item.Id);
@@ -1510,11 +1515,14 @@ namespace BuildConsole.Controls
                 {
                     bool stopped = _watcher?.TryStop(item.Id) ?? false;
                     _watcher?.ReleaseInteractive(item.Id);
-                    if (_api != null)
+                    try
                     {
-                        try { await _api.MarkQueueItemCompleteAsync(item.Id, -1); }
-                        catch (Exception ex) { ToastEngine.Error("Stop Build", $"Couldn't update database: {ex.Message}"); }
+                        if (_db != null)
+                            await _db.MarkCompleteAsync(item.Id, -1);
+                        else if (_api != null)
+                            await _api.MarkQueueItemCompleteAsync(item.Id, -1);
                     }
+                    catch (Exception ex) { ToastEngine.Error("Stop Build", $"Couldn't update database: {ex.Message}"); }
                     if (stopped)
                         ToastEngine.Success("Build Stopped", $"Stopped: {item.Title}");
                     else
@@ -1535,7 +1543,11 @@ namespace BuildConsole.Controls
                     }
                     try
                     {
-                        var claimed = await _api.ForceClaimQueueItemAsync(item.Id);
+                        QueueItem claimed;
+                        if (_db != null)
+                            claimed = await _db.ForceClaimAsync(item.Id);
+                        else
+                            claimed = await _api.ForceClaimQueueItemAsync(item.Id);
                         _watcher.ForceLaunch(claimed);
                         ToastEngine.Success("Run Now", $"Launched: {item.Title}");
                         await RefreshAsync();

@@ -30,6 +30,8 @@ namespace BuildConsole.Services
         public string? ResumeSessionId { get; set; }
         /// <summary>The full Claude chat URL that queued this build request.</summary>
         public string? ChatUrl { get; set; }
+        /// <summary>Originating Claude conversation UUID when queued from a chat tab.</summary>
+        public string? OriginatingChatId { get; set; }
         /// <summary>Git #905 — the server's own `updatedAt` was already in the response (`GET /extension/queue` spreads the whole row), just never captured client-side; used to show "done {time}" on the new Completed tile.</summary>
         public DateTimeOffset? UpdatedAt { get; set; }
     }
@@ -77,6 +79,8 @@ namespace BuildConsole.Services
         public string Title { get; set; } = "";
         public int? EpicId { get; set; }
         public int? IssueGithubNumber { get; set; }
+        /// <summary>All GitHub issue/epic/milestone numbers associated with this chat (many-to-many join table bt_chat_issues).</summary>
+        public List<int> AssociatedIssueNumbers { get; set; } = new();
         public string ClaudeUrl { get; set; } = "";
         public DateTime? UpdatedAt { get; set; }
     }
@@ -445,6 +449,37 @@ namespace BuildConsole.Services
             }));
 
         /// <summary>
+        /// Links a chat to any GitHub issue/epic/milestone number via many-to-many join table bt_chat_issues.
+        /// </summary>
+        public Task<HttpResponseMessage> LinkChatToIssueAsync(string conversationId, int issueNumber, string? title = null) =>
+            TrackAsync($"POST chats/assign-issue ({conversationId} -> #{issueNumber})", () => _http.PostAsJsonAsync("api/admin/build-tracker/chats/assign-issue", new
+            {
+                conversation_id = conversationId,
+                issue_number = issueNumber,
+                title,
+            }));
+
+        /// <summary>
+        /// Unlinks a chat from a specific GitHub issue/epic/milestone number in bt_chat_issues.
+        /// </summary>
+        public Task<HttpResponseMessage> UnlinkChatFromIssueAsync(string conversationId, int issueNumber) =>
+            TrackAsync($"POST chats/unassign-issue ({conversationId} -x #{issueNumber})", () => _http.PostAsJsonAsync("api/admin/build-tracker/chats/unassign-issue", new
+            {
+                conversation_id = conversationId,
+                issue_number = issueNumber,
+            }));
+
+        /// <summary>
+        /// Renames a chat's display title in bt_chats by its conversationId.
+        /// </summary>
+        public Task<HttpResponseMessage> RenameChatAsync(string conversationId, string newTitle) =>
+            TrackAsync($"POST chats/rename ({conversationId} -> \"{newTitle}\")", () => _http.PostAsJsonAsync("api/admin/build-tracker/chats/rename", new
+            {
+                conversation_id = conversationId,
+                title = newTitle,
+            }));
+
+        /// <summary>
         /// "Assign Chat to Epic" auto-register-on-miss: same
         /// POST /extension/sync-epic the admin panel's "Sync GitHub" button
         /// calls, scoped to one issue number. Always upserts the target
@@ -513,7 +548,7 @@ namespace BuildConsole.Services
         private class SqlExecuteResponse { public List<SqlStatementResult> Statements { get; set; } = new(); }
 
         /// <summary>Git #814 — same POST the extension's "📋 Queue" button and background.js's queueBuild() already use, now called directly from the WPF app's own injected chat buttons. Git #826 added resumeSessionId — set by a Reply action so the watcher launches with --resume instead of a fresh session.</summary>
-        public Task<HttpResponseMessage> QueueBuildAsync(string title, string prompt, string? model, string? effort, string? cwd, int? githubNumber, List<int>? blockedByNumbers, string? resumeSessionId = null, string? chatUrl = null) =>
+        public Task<HttpResponseMessage> QueueBuildAsync(string title, string prompt, string? model, string? effort, string? cwd, int? githubNumber, List<int>? blockedByNumbers, string? resumeSessionId = null, string? chatUrl = null, string? originatingChatId = null) =>
             TrackAsync($"POST queue \"{title}\"", () => _http.PostAsJsonAsync("api/admin/build-tracker/extension/queue", new
             {
                 title,
@@ -525,6 +560,7 @@ namespace BuildConsole.Services
                 blockedByNumbers,
                 resumeSessionId,
                 chatUrl,
+                originatingChatId,
             }));
 
         /// <summary>Git #826 — sessionId (captured from this run's own stream-json output) is stored so a later Reply can resume this exact conversation.</summary>

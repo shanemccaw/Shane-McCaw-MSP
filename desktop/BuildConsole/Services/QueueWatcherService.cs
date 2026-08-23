@@ -139,6 +139,8 @@ namespace BuildConsole.Services
         }
 
         private readonly BuildTrackerApiClient _api;
+        /// <summary>Direct Postgres client for all queue DB mutations (claim, complete, orphan-sweep). Non-null when DATABASE_URL was resolved at startup; falls back to _api HTTP calls when null (e.g. .env.local not found).</summary>
+        private readonly BuildQueuePostgresClient? _db;
         private readonly int _maxConcurrent;
         private readonly string _repoRoot;
         private readonly string _claudeExe;
@@ -175,9 +177,10 @@ namespace BuildConsole.Services
             Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
         };
 
-        public QueueWatcherService(BuildTrackerApiClient api, int maxConcurrent, string? repoRoot)
+        public QueueWatcherService(BuildTrackerApiClient api, BuildQueuePostgresClient? db, int maxConcurrent, string? repoRoot)
         {
             _api = api;
+            _db = db;
             _maxConcurrent = maxConcurrent;
             _repoRoot = repoRoot ?? AppDomain.CurrentDomain.BaseDirectory;
             _claudeExe = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "bin", "claude.exe");
@@ -330,7 +333,12 @@ namespace BuildConsole.Services
             }
 
             List<QueueItem> items;
-            try { items = await _api.GetQueueAsync(); }
+            try
+            {
+                items = _db != null
+                    ? await _db.GetQueueAsync()
+                    : await _api.GetQueueAsync();
+            }
             catch (Exception ex) { ActivityLog.Log("watcher", $"Couldn't check for orphaned running items: {ex.Message}"); return; }
 
             var orphaned = items.Where(i => i.Status == "running").ToList();
@@ -339,12 +347,18 @@ namespace BuildConsole.Services
             ActivityLog.Log("watcher", $"Found {orphaned.Count} queue item(s) stuck 'running' from a previous app instance (nothing was tracking them) - marking failed so they're visible, use Retry to re-queue.");
             foreach (var item in orphaned)
             {
-                try { await _api.MarkQueueItemCompleteAsync(item.Id, -2); }
+                try
+                {
+                    if (_db != null)
+                        await _db.MarkOrphanedFailedAsync(item.Id);
+                    else
+                        await _api.MarkQueueItemCompleteAsync(item.Id, -2);
+                }
                 catch (Exception ex) { ActivityLog.Log("watcher", $"Couldn't mark orphaned queue item {item.Id} failed: {ex.Message}"); }
             }
         }
 
-        /// <summary>Retries reporting completion for any build that finished while the dev server was asleep / returning 502.</summary>
+        /// <summary>Retries reporting completion for any build whose DB write failed (only relevant in HTTP-fallback mode since Postgres never sleeps). No-op when direct DB is active since MarkCompleteAsync is synchronous and reliable.</summary>
         private async Task RetryPendingCompletionsAsync()
         {
             if (_pendingCompletions.Count == 0) return;
@@ -353,13 +367,16 @@ namespace BuildConsole.Services
             {
                 try
                 {
-                    await _api.MarkQueueItemCompleteAsync(item.Id, item.ExitCode, item.SessionId);
+                    if (_db != null)
+                        await _db.MarkCompleteAsync(item.Id, item.ExitCode, item.SessionId);
+                    else
+                        await _api.MarkQueueItemCompleteAsync(item.Id, item.ExitCode, item.SessionId);
                     _pendingCompletions.Remove(item);
-                    ActivityLog.Log("watcher", $"Delivered deferred completion for queue item {item.Id} to dev server.");
+                    ActivityLog.Log("watcher", $"Delivered deferred completion for queue item {item.Id}.");
                 }
                 catch
                 {
-                    // Dev server still unreachable / napping — will retry on next tick
+                    // Still unreachable — will retry on next tick
                     break;
                 }
             }
@@ -383,25 +400,28 @@ namespace BuildConsole.Services
                     int exitCode = entry.Process.ExitCode;
                     ActivityLog.Log("watcher", $"Finished: {entry.Title} (exit {exitCode})");
 
-                    // Report completion to the dev server (best-effort). This is a REMOTE
-                    // HTTP POST to the Replit dev server, which naps after ~15 min of
-                    // inactivity — so a build finishing while the server is asleep makes
-                    // this throw. It MUST NOT gate the local BuildFinished fan-out below:
-                    // that fan-out drives PostBuildDeployPipeline, whose own build-complete
-                    // POST is exactly what wakes the server and pulls the new commit. The
-                    // original bug (Epic #803/#911) was these two lines sharing one try —
-                    // a napping-server report failure silently skipped the whole
-                    // deploy+restart chain, so the git pull never happened even though the
-                    // build's own shaneapp://runTest tests still ran (against stale code).
+                    // Report completion — direct Postgres when available (always-on Neon,
+                    // no nap/sleep issue), HTTP fallback otherwise. The fallback path is
+                    // kept for environments where DATABASE_URL isn't configured.
+                    // It MUST NOT gate the local BuildFinished fan-out below:
+                    // that fan-out drives PostBuildDeployPipeline (Epic #803/#911).
                     try
                     {
-                        await _api.MarkQueueItemCompleteAsync(id, exitCode, entry.SessionId);
-                        ActivityLog.Log("watcher", $"Reported completion of queue item {id} to the dev server.");
+                        if (_db != null)
+                        {
+                            await _db.MarkCompleteAsync(id, exitCode, entry.SessionId);
+                            ActivityLog.Log("watcher", $"Reported completion of queue item {id} to Postgres.");
+                        }
+                        else
+                        {
+                            await _api.MarkQueueItemCompleteAsync(id, exitCode, entry.SessionId);
+                            ActivityLog.Log("watcher", $"Reported completion of queue item {id} to the dev server.");
+                        }
                     }
                     catch (Exception ex)
                     {
                         _pendingCompletions.Add((id, exitCode, entry.SessionId));
-                        ActivityLog.Log("watcher", $"Couldn't report completion for queue item {id} to the dev server ({ex.Message}) — dev server likely napping; queued for retry on next tick.");
+                        ActivityLog.Log("watcher", $"Couldn't report completion for queue item {id}: {ex.Message} — queued for retry.");
                     }
 
                     // Fire the local completion listeners REGARDLESS of the remote report
@@ -441,7 +461,12 @@ namespace BuildConsole.Services
                 if (freeSlots <= 0) return;
 
                 List<QueueItem> next;
-                try { next = await _api.GetNextQueueItemsAsync(freeSlots); }
+                try
+                {
+                    next = _db != null
+                        ? await _db.GetNextAsync(freeSlots)
+                        : await _api.GetNextQueueItemsAsync(freeSlots);
+                }
                 catch (Exception ex) { ActivityLog.Log("watcher", $"Couldn't poll/claim next queue item(s): {ex.Message}"); return; }
 
                 foreach (var item in next)

@@ -16,7 +16,7 @@
  */
 
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
-import { db, btEpicsTable, btIssuesTable, btChatsTable, btBuildQueueTable } from "@workspace/db";
+import { db, btEpicsTable, btIssuesTable, btChatsTable, btChatIssuesTable, btBuildQueueTable } from "@workspace/db";
 import { eq, ne, desc, asc, isNull, sql, and, inArray } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
@@ -673,7 +673,7 @@ router.get("/admin/build-tracker/extension/board", ingestAuth, async (req: Reque
     // Unfiltered — needed both for the open-work browse list below AND to
     // compute real milestone progress, which has to count closed/done work
     // too (a milestone with everything closed should read 100%, not 0/0).
-    const [allEpics, allIssues, allChats, currentChatRows] = await Promise.all([
+    const [allEpics, allIssues, allChats, allChatIssues, currentChatRows] = await Promise.all([
       db
         .select({
           id: btEpicsTable.id,
@@ -710,6 +710,7 @@ router.get("/admin/build-tracker/extension/board", ingestAuth, async (req: Reque
       // dragging in a join against both issueId and epicId.
       db
         .select({
+          id: btChatsTable.id,
           conversationId: btChatsTable.conversationId,
           title: btChatsTable.title,
           issueId: btChatsTable.issueId,
@@ -718,6 +719,13 @@ router.get("/admin/build-tracker/extension/board", ingestAuth, async (req: Reque
         })
         .from(btChatsTable)
         .orderBy(desc(btChatsTable.updatedAt)),
+      db
+        .select({
+          chatId: btChatIssuesTable.chatId,
+          issueNumber: btChatIssuesTable.issueNumber,
+        })
+        .from(btChatIssuesTable)
+        .catch(() => []),
       conversationId
         ? db.select().from(btChatsTable).where(eq(btChatsTable.conversationId, conversationId)).limit(1)
         : Promise.resolve([]),
@@ -725,6 +733,17 @@ router.get("/admin/build-tracker/extension/board", ingestAuth, async (req: Reque
 
     const epics = allEpics.filter((e) => e.status !== "closed");
     const issues = allIssues.filter((i) => i.status !== "closed" && i.status !== "done");
+
+    // Map associated issue numbers by chat ID
+    const issuesByChatId = new Map<number, number[]>();
+    for (const ci of allChatIssues as Array<{ chatId: number; issueNumber: number }>) {
+      const list = issuesByChatId.get(ci.chatId) || [];
+      list.push(ci.issueNumber);
+      issuesByChatId.set(ci.chatId, list);
+    }
+
+    const epicByIdMap = new Map(allEpics.map((e) => [e.id, e]));
+    const issueByIdMap = new Map(allIssues.map((i) => [i.id, i]));
 
     // Milestones are GitHub-live here too, same as GET /milestones above —
     // there's no local bt_milestones table, only bt_epics.milestone_id
@@ -871,11 +890,18 @@ router.get("/admin/build-tracker/extension/board", ingestAuth, async (req: Reque
         issueGithubNumber = linkedIssue?.githubNumber ?? null;
         if (!epicId) epicId = linkedIssue?.epicId ?? null;
       }
+      const explicitIssues = issuesByChatId.get(c.id) || [];
+      const combined = new Set(explicitIssues);
+      if (issueGithubNumber) combined.add(issueGithubNumber);
+      if (epicId && epicByIdMap.get(epicId)?.githubNumber) {
+        combined.add(epicByIdMap.get(epicId)!.githubNumber!);
+      }
       return {
         conversationId: c.conversationId,
         title: c.title,
         epicId,
         issueGithubNumber,
+        associatedIssueNumbers: Array.from(combined),
         claudeUrl: claudeUrl(c.conversationId),
         updatedAt: c.updatedAt,
       };
@@ -1383,7 +1409,7 @@ router.get("/admin/build-tracker/extension/in-progress", ingestAuth, async (_req
  * Auth: admin session cookie OR Authorization: Bearer <BUILD_TRACKER_INGEST_TOKEN>
  */
 router.post("/admin/build-tracker/extension/queue", ingestAuth, async (req: Request, res: Response) => {
-  const { title, prompt, model, effort, cwd, githubNumber, blockedByNumber, blockedByNumbers, resumeSessionId } = req.body as {
+  const { title, prompt, model, effort, cwd, githubNumber, blockedByNumber, blockedByNumbers, resumeSessionId, originatingChatId, chatUrl } = req.body as {
     title?: string;
     prompt?: string;
     model?: string | null;
@@ -1394,6 +1420,10 @@ router.post("/admin/build-tracker/extension/queue", ingestAuth, async (req: Requ
     blockedByNumbers?: number[] | null;
     /** Git #826 — set by a Reply action: the watcher launches this item with --resume <this> + `prompt` as the reply text, continuing that exact conversation instead of starting a stateless new one. */
     resumeSessionId?: string | null;
+    /** Originating chat conversation UUID when queued from a chat */
+    originatingChatId?: string | null;
+    /** Full chat URL when queued from a chat */
+    chatUrl?: string | null;
   };
   if (!title?.trim() || !prompt?.trim()) {
     res.status(400).json({ error: "title and prompt are required" });
@@ -1440,6 +1470,8 @@ router.post("/admin/build-tracker/extension/queue", ingestAuth, async (req: Requ
             blockedByNumber: allBlockers[0] ?? null,
             blockedByNumbers: allBlockers.length > 0 ? allBlockers : null,
             resumeSessionId: resumeSessionId ?? null,
+            originatingChatId: originatingChatId?.trim() || null,
+            chatUrl: chatUrl?.trim() || null,
             status: "queued",
             claimedAt: null,
             completedAt: null,
@@ -1463,6 +1495,8 @@ router.post("/admin/build-tracker/extension/queue", ingestAuth, async (req: Requ
           blockedByNumber: allBlockers[0] ?? null,
           blockedByNumbers: allBlockers.length > 0 ? allBlockers : null,
           resumeSessionId: resumeSessionId ?? null,
+          originatingChatId: originatingChatId?.trim() || null,
+          chatUrl: chatUrl?.trim() || null,
         })
         .returning();
     }
@@ -2094,6 +2128,130 @@ router.post("/admin/build-tracker/chats/unassign-epic", ingestAuth, async (req: 
   } catch (err) {
     log.error({ err, conversationId: id }, "POST /chats/unassign-epic failed");
     res.status(500).json({ error: "Failed to unassign chat" });
+  }
+});
+
+/**
+ * POST /admin/build-tracker/chats/assign-issue
+ *
+ * Many-to-many link between a chat and a real GitHub issue/epic/milestone number.
+ * Inserts into bt_chat_issues (upsert / on conflict do nothing).
+ * Auth: ingestAuth
+ */
+router.post("/admin/build-tracker/chats/assign-issue", ingestAuth, async (req: Request, res: Response) => {
+  const { conversation_id, issue_number, title } = req.body as {
+    conversation_id?: string;
+    issue_number?: number;
+    title?: string;
+  };
+  if (!conversation_id?.trim() || typeof issue_number !== "number") {
+    res.status(400).json({ error: "conversation_id and numeric issue_number are required" });
+    return;
+  }
+  const convId = conversation_id.trim();
+  try {
+    const existingChats = await db
+      .select()
+      .from(btChatsTable)
+      .where(eq(btChatsTable.conversationId, convId))
+      .limit(1);
+
+    let chat = existingChats[0];
+    if (!chat) {
+      const [inserted] = await db
+        .insert(btChatsTable)
+        .values({
+          conversationId: convId,
+          title: title?.trim() || `[#${issue_number}] Chat`,
+        })
+        .returning();
+      chat = inserted;
+    }
+
+    await db
+      .insert(btChatIssuesTable)
+      .values({
+        chatId: chat.id,
+        issueNumber: issue_number,
+      })
+      .onConflictDoNothing();
+
+    log.info({ conversationId: convId, issueNumber: issue_number, chatId: chat.id }, "assigned chat to issue");
+    res.json({ ok: true, conversationId: convId, issueNumber: issue_number });
+  } catch (err) {
+    log.error({ err, conversationId: convId, issueNumber: issue_number }, "POST /chats/assign-issue failed");
+    res.status(500).json({ error: "Failed to assign chat to issue" });
+  }
+});
+
+/**
+ * POST /admin/build-tracker/chats/unassign-issue
+ *
+ * Removes a specific issue number from a chat's bt_chat_issues associations.
+ * Auth: ingestAuth
+ */
+router.post("/admin/build-tracker/chats/unassign-issue", ingestAuth, async (req: Request, res: Response) => {
+  const { conversation_id, issue_number } = req.body as { conversation_id?: string; issue_number?: number };
+  if (!conversation_id?.trim() || typeof issue_number !== "number") {
+    res.status(400).json({ error: "conversation_id and numeric issue_number are required" });
+    return;
+  }
+  const convId = conversation_id.trim();
+  try {
+    const existing = await db
+      .select({ id: btChatsTable.id })
+      .from(btChatsTable)
+      .where(eq(btChatsTable.conversationId, convId))
+      .limit(1);
+
+    if (existing.length === 0) {
+      res.status(404).json({ error: "chat not found" });
+      return;
+    }
+
+    await db
+      .delete(btChatIssuesTable)
+      .where(and(eq(btChatIssuesTable.chatId, existing[0].id), eq(btChatIssuesTable.issueNumber, issue_number)));
+
+    log.info({ conversationId: convId, issueNumber: issue_number, chatId: existing[0].id }, "unassigned chat from issue");
+    res.json({ ok: true, conversationId: convId, issueNumber: issue_number });
+  } catch (err) {
+    log.error({ err, conversationId: convId, issueNumber: issue_number }, "POST /chats/unassign-issue failed");
+    res.status(500).json({ error: "Failed to unassign chat from issue" });
+  }
+});
+
+/**
+ * POST /admin/build-tracker/chats/rename
+ *
+ * Renames a chat by its conversation_id.
+ * Auth: ingestAuth
+ */
+router.post("/admin/build-tracker/chats/rename", ingestAuth, async (req: Request, res: Response) => {
+  const { conversation_id, title } = req.body as { conversation_id?: string; title?: string };
+  if (!conversation_id?.trim() || !title?.trim()) {
+    res.status(400).json({ error: "conversation_id and title are required" });
+    return;
+  }
+  const convId = conversation_id.trim();
+  const newTitle = title.trim();
+  try {
+    const [row] = await db
+      .update(btChatsTable)
+      .set({ title: newTitle, updatedAt: new Date() })
+      .where(eq(btChatsTable.conversationId, convId))
+      .returning();
+
+    if (!row) {
+      res.status(404).json({ error: "chat not found" });
+      return;
+    }
+
+    log.info({ conversationId: convId, newTitle }, "renamed chat");
+    res.json({ ok: true, ...row, claudeUrl: claudeUrl(row.conversationId) });
+  } catch (err) {
+    log.error({ err, conversationId: convId, title: newTitle }, "POST /chats/rename failed");
+    res.status(500).json({ error: "Failed to rename chat" });
   }
 });
 

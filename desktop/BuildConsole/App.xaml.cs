@@ -103,19 +103,50 @@ namespace BuildConsole
             e.SetObserved();
             if (e.Exception != null)
             {
-                ShowExceptionDialog("Background Task Error", e.Exception);
+                // Always record to crash log for diagnostics
+                LogExceptionToDisk("Background Task Error", e.Exception);
+
+                // Transient background errors (such as socket connection refusals, network aborts, or task cancellations)
+                // should not interrupt the user with a blocking modal dialog box.
+                if (!IsBenignBackgroundException(e.Exception))
+                {
+                    ShowExceptionDialog("Background Task Error", e.Exception);
+                }
             }
         }
 
-        private void ShowExceptionDialog(string title, Exception ex)
+        private static bool IsBenignBackgroundException(Exception ex)
         {
-            // Git #935 — a TargetInvocationException (thrown whenever WPF's XAML
-            // parser or reflection invokes a constructor that itself throws, e.g.
-            // during Application.DoStartup()'s BAML load) has a useless top-level
-            // Message ("Exception has been thrown by the target of an invocation.")
-            // — the real cause is always in InnerException, which this used to
-            // never look at, so the dialog and crash log were both blind to the
-            // actual root cause of any startup crash.
+            Exception? current = ex;
+            while (current != null)
+            {
+                if (current is System.Net.Sockets.SocketException ||
+                    current is System.Net.Http.HttpRequestException ||
+                    current is System.IO.IOException ||
+                    current is OperationCanceledException ||
+                    current is TaskCanceledException ||
+                    current is ObjectDisposedException)
+                {
+                    return true;
+                }
+                current = current.InnerException;
+            }
+            return false;
+        }
+
+        private void LogExceptionToDisk(string title, Exception ex)
+        {
+            try
+            {
+                string errMessage = FormatExceptionDetails(title, ex);
+                string logFile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "buildconsole_crash.log");
+                File.AppendAllText(logFile, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {errMessage}\n\n");
+            }
+            catch { }
+        }
+
+        private static string FormatExceptionDetails(string title, Exception ex)
+        {
             var sb = new System.Text.StringBuilder();
             sb.Append($"[{title}]\n");
             Exception? current = ex;
@@ -133,15 +164,13 @@ namespace BuildConsole
                 current = current.InnerException;
                 depth++;
             }
-            string errMessage = sb.ToString();
+            return sb.ToString();
+        }
 
-            try
-            {
-                string logFile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "buildconsole_crash.log");
-                File.AppendAllText(logFile, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {errMessage}\n\n");
-            }
-            catch { }
-
+        private void ShowExceptionDialog(string title, Exception ex)
+        {
+            string errMessage = FormatExceptionDetails(title, ex);
+            LogExceptionToDisk(title, ex);
             MessageBox.Show(errMessage, $"BuildConsole Error: {title}", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }

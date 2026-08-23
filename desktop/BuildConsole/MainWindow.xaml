@@ -363,8 +363,9 @@
                                     <MenuItem Header="▶ Start Marketing" Click="MenuStartMarketing_Click"/>
                                     <MenuItem Header="⏹ Stop Marketing" Click="MenuStopMarketing_Click"/>
                                     <Separator/>
-                                    <MenuItem Header="📄 View Marketing Tab" Click="MenuOpenMarketingTab_Click"/>
-                                    <MenuItem Header="🌐 Open in Browser (localhost:5173)" Click="MenuBrowseMarketing_Click"/>
+                                    <MenuItem Header="📄 View Log Tab" Click="MenuOpenMarketingTab_Click"/>
+                                    <MenuItem Header="🪟 Open in Tab (localhost:5173)" Click="MenuBrowseMarketing_Click"/>
+                                    <MenuItem Header="🌐 Open in Edge (localhost:5173)" Click="MenuOpenInEdgeMarketing_Click"/>
                                 </MenuItem>
 
                                 <!-- Portal -->
@@ -372,8 +373,9 @@
                                     <MenuItem Header="▶ Start Portal" Click="MenuStartPortal_Click"/>
                                     <MenuItem Header="⏹ Stop Portal" Click="MenuStopPortal_Click"/>
                                     <Separator/>
-                                    <MenuItem Header="📄 View Portal Tab" Click="MenuOpenPortalTab_Click"/>
-                                    <MenuItem Header="🌐 Open in Browser (localhost:5175)" Click="MenuBrowsePortal_Click"/>
+                                    <MenuItem Header="📄 View Log Tab" Click="MenuOpenPortalTab_Click"/>
+                                    <MenuItem Header="🪟 Open in Tab (localhost:5175)" Click="MenuBrowsePortal_Click"/>
+                                    <MenuItem Header="🌐 Open in Edge (localhost:5175)" Click="MenuOpenInEdgePortal_Click"/>
                                 </MenuItem>
 
                                 <!-- Admin -->
@@ -381,8 +383,19 @@
                                     <MenuItem Header="▶ Start Admin" Click="MenuStartAdmin_Click"/>
                                     <MenuItem Header="⏹ Stop Admin" Click="MenuStopAdmin_Click"/>
                                     <Separator/>
-                                    <MenuItem Header="📄 View Admin Tab" Click="MenuOpenAdminTab_Click"/>
-                                    <MenuItem Header="🌐 Open in Browser (localhost:5174)" Click="MenuBrowseAdmin_Click"/>
+                                    <MenuItem Header="📄 View Log Tab" Click="MenuOpenAdminTab_Click"/>
+                                    <MenuItem Header="🪟 Open in Tab (localhost:5174)" Click="MenuBrowseAdmin_Click"/>
+                                    <MenuItem Header="🌐 Open in Edge (localhost:5174)" Click="MenuOpenInEdgeAdmin_Click"/>
+                                </MenuItem>
+
+                                <!-- API Server -->
+                                <MenuItem x:Name="MenuApiServerItem" Header="🖥️ API Server (8080)" StaysOpenOnClick="True">
+                                    <MenuItem Header="▶ Start API Server" Click="MenuStartApiServer_Click"/>
+                                    <MenuItem Header="⏹ Stop API Server" Click="MenuStopApiServer_Click"/>
+                                    <Separator/>
+                                    <MenuItem Header="📄 View Log Tab" Click="MenuOpenApiServerTab_Click"/>
+                                    <MenuItem Header="🪟 Open in Tab (localhost:8080)" Click="MenuBrowseApiServer_Click"/>
+                                    <MenuItem Header="🌐 Open in Edge (localhost:8080)" Click="MenuOpenInEdgeApiServer_Click"/>
                                 </MenuItem>
 
                                 <Separator/>
@@ -811,6 +824,10 @@
 
                         <TabItem Header="Admin" x:Name="TabAdmin">
                             <ctrl:ServiceLogView x:Name="AdminLogView"/>
+                        </TabItem>
+
+                        <TabItem Header="API Server" x:Name="TabApiServer">
+                            <ctrl:ServiceLogView x:Name="ApiServerLogView"/>
                         </TabItem>
 
                         <TabItem Header="Output">

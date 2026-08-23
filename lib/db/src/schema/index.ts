@@ -4316,6 +4316,25 @@ export type InsertBtChat = typeof btChatsTable.$inferInsert;
 export type BtChat       = typeof btChatsTable.$inferSelect;
 
 /**
+ * Many-to-many join table between Claude chats (bt_chats) and GitHub issues/epics/milestones.
+ * Allows a single chat to be associated with multiple issues over its lifetime.
+ */
+export const btChatIssuesTable = pgTable("bt_chat_issues", {
+  id:              serial("id").primaryKey(),
+  chatId:          integer("chat_id").references(() => btChatsTable.id, { onDelete: "cascade" }).notNull(),
+  /** GitHub issue/epic/milestone number */
+  issueNumber:     integer("issue_number").notNull(),
+  associatedAt:    timestamp("associated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  chatIssueUnique: uniqueIndex("bt_chat_issues_chat_issue_unique").on(table.chatId, table.issueNumber),
+  chatIdIdx:       index("bt_chat_issues_chat_id_idx").on(table.chatId),
+  issueNumberIdx:  index("bt_chat_issues_issue_number_idx").on(table.issueNumber),
+}));
+
+export type InsertBtChatIssue = typeof btChatIssuesTable.$inferInsert;
+export type BtChatIssue       = typeof btChatIssuesTable.$inferSelect;
+
+/**
  * Git #790 — Shane: "if we could really build me a true queued up build...
  * that would speed up my development time like mad." A build he's not
  * ready to launch yet (or is deliberately queuing behind another one) sits
@@ -4346,6 +4365,10 @@ export const btBuildQueueTable = pgTable("bt_build_queue", {
   sessionId:       text("session_id"),
   /** Git #826 — set at queue time by a Reply action: tells the watcher to launch this item with `--resume <resumeSessionId>` instead of a fresh session, with `prompt` as the reply text continuing that conversation. */
   resumeSessionId: text("resume_session_id"),
+  /** Originating Claude conversation UUID (from bt_chats.conversation_id) when queued from a chat */
+  originatingChatId: text("originating_chat_id"),
+  /** Full Claude chat URL when queued from a chat */
+  chatUrl:         text("chat_url"),
   createdAt:       timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt:       timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

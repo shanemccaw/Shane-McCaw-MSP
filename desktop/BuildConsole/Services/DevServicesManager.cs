@@ -2,8 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Net;
 using System.Net.Sockets;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace BuildConsole.Services
@@ -52,16 +54,17 @@ namespace BuildConsole.Services
 
         /// <summary>
         /// Checks if a service is currently listening on its port.
+        /// Uses Socket with CancellationTokenSource so cancellation cleanly aborts the connect
+        /// and guarantees no unobserved Task exceptions are leaked when the port is closed or timed out.
         /// </summary>
-        public static async Task<bool> IsPortOpenAsync(int port)
+        public static async Task<bool> IsPortOpenAsync(int port, int timeoutMs = 400)
         {
             try
             {
-                using var client = new TcpClient();
-                var connectTask = client.ConnectAsync("127.0.0.1", port);
-                var timeoutTask = Task.Delay(400);
-                var completed = await Task.WhenAny(connectTask, timeoutTask);
-                return completed == connectTask && client.Connected;
+                using var cts = new CancellationTokenSource(timeoutMs);
+                using var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+                await socket.ConnectAsync(IPAddress.Loopback, port, cts.Token);
+                return socket.Connected;
             }
             catch
             {
