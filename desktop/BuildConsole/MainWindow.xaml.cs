@@ -846,10 +846,10 @@ namespace BuildConsole
         {
             return url switch
             {
-                var u when u.Contains("/admin-panel/") => "\uE7EF",
-                var u when u.Contains("/portal/")      => "\uE77B",
-                var u when u.Contains("claude.ai")     => "\uE8BD",
-                _                                      => "\uE774"
+                var u when u.Contains("5174") || u.Contains("/admin-panel/") => "\uE7EF",
+                var u when u.Contains("5175") || u.Contains("/portal/")      => "\uE77B",
+                var u when u.Contains("claude.ai")                           => "\uE8BD",
+                _                                                            => "\uE774"
             };
         }
 
@@ -1113,10 +1113,10 @@ namespace BuildConsole
         {
             var (title, glyph) = url switch
             {
-                var u when u.Contains("/admin-panel/")   => ("Admin Center", "\uE7EF"),
-                var u when u.Contains("/portal/")        => ("Customer Portal", "\uE77B"),
-                var u when u.Contains("replit.com")      => ("Replit Workspace", "\uE7B8"),
-                _                                        => ("Marketing Site", "\uE774")
+                var u when u.Contains("5174") || u.Contains("/admin-panel/") => ("Admin Center", "\uE7EF"),
+                var u when u.Contains("5175") || u.Contains("/portal/")      => ("Customer Portal", "\uE77B"),
+                var u when u.Contains("replit.com")                          => ("Replit Workspace", "\uE7B8"),
+                _                                                            => ("Marketing Site", "\uE774")
             };
             // Git #821 \u2014 Shane: "I want a play/pause button and when play
             // is on... this page stays alive refreshing every 5 or 10
