@@ -77,10 +77,13 @@ namespace BuildConsole.Controls
             }
             catch { }
 
+            InitializeHealthMonitor(null);
+
             Unloaded += (_, _) =>
             {
                 try { FocusModeService.Instance.StateChanged -= UpdateFocusState; } catch { }
                 _mascotTimer?.Stop();
+                _healthTimer?.Stop();
             };
         }
 
@@ -555,5 +558,225 @@ namespace BuildConsole.Controls
             row.MouseLeftButtonUp += onClick;
             return row;
         }
+
+        #region System Health & Tier Diagnostics
+
+        private DispatcherTimer? _healthTimer;
+        private BuildTrackerApiClient? _apiClient;
+        private SystemHealthReport? _lastHealthReport;
+
+        public void InitializeHealthMonitor(BuildTrackerApiClient? api)
+        {
+            if (api != null) _apiClient = api;
+            _healthTimer?.Stop();
+            _healthTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
+            _healthTimer.Tick += async (_, _) => await RefreshHealthAsync();
+            _healthTimer.Start();
+            _ = RefreshHealthAsync();
+        }
+
+        public async System.Threading.Tasks.Task RefreshHealthAsync()
+        {
+            OverallHealthPillText.Text = "Checking…";
+            OverallHealthPillText.Foreground = (Brush)FindResource("YellowBrush");
+
+            try
+            {
+                var report = await SystemHealthService.RunFullHealthCheckAsync(_apiClient);
+                _lastHealthReport = report;
+                RenderHealthReport(report);
+            }
+            catch (Exception ex)
+            {
+                OverallHealthPillText.Text = "Check Failed";
+                OverallHealthPillText.Foreground = (Brush)FindResource("RedBrush");
+                ActivityLog.Log("system.health", $"Error during health refresh: {ex.Message}");
+            }
+        }
+
+        private void RenderHealthReport(SystemHealthReport report)
+        {
+            // Overall Status Pill
+            if (report.AllHealthy)
+            {
+                OverallHealthPill.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1E3A2F"));
+                OverallHealthPillText.Text = "🟢 ALL HEALTHY";
+                OverallHealthPillText.Foreground = (Brush)FindResource("GreenBrush");
+            }
+            else
+            {
+                OverallHealthPill.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#3E2723"));
+                OverallHealthPillText.Text = "⚠️ ATTENTION NEEDED";
+                OverallHealthPillText.Foreground = (Brush)FindResource("PeachBrush");
+            }
+
+            // 1. Dev Server
+            DevServerSummaryText.Text = report.DevServer.Summary;
+            SetStatusBadge(DevServerStatusBadge, DevServerBadgeText, report.DevServer.Status,
+                report.DevServer.Status == HealthStatus.Healthy ? $"{report.DevServer.LatencyMs}ms" : "");
+
+            // 2. Database Pipe
+            DatabaseSummaryText.Text = report.Database.Summary;
+            SetStatusBadge(DatabaseStatusBadge, DatabaseBadgeText, report.Database.Status,
+                report.Database.Status == HealthStatus.Healthy ? $"{report.Database.LatencyMs}ms" : "");
+
+            // 3. Mutex
+            MutexSummaryText.Text = report.Mutex.Summary;
+            if (!report.Mutex.IsHeld)
+            {
+                SetStatusBadge(MutexStatusBadge, MutexBadgeText, HealthStatus.Healthy, "IDLE");
+            }
+            else if (report.Mutex.IsSuspicious)
+            {
+                SetStatusBadge(MutexStatusBadge, MutexBadgeText, HealthStatus.Unhealthy, "STUCK");
+            }
+            else
+            {
+                MutexStatusBadge.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1E2A3A"));
+                MutexBadgeText.Text = "ACTIVE";
+                MutexBadgeText.Foreground = (Brush)FindResource("BlueBrush");
+            }
+
+            // 4. Worktrees
+            WorktreesSummaryText.Text = report.OrphanedWorktrees.Summary;
+            if (report.OrphanedWorktrees.OrphanedCount > 0)
+            {
+                SetStatusBadge(WorktreesStatusBadge, WorktreesBadgeText, HealthStatus.Degraded, $"{report.OrphanedWorktrees.OrphanedCount} ORPHANED");
+                BtnCleanWorktrees.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                SetStatusBadge(WorktreesStatusBadge, WorktreesBadgeText, HealthStatus.Healthy, "CLEAN");
+                BtnCleanWorktrees.Visibility = Visibility.Collapsed;
+            }
+
+            // 5. Staging SSH
+            SshSummaryText.Text = report.SshStaging.Summary;
+            SetStatusBadge(SshStatusBadge, SshBadgeText, report.SshStaging.Status,
+                report.SshStaging.Status == HealthStatus.Healthy ? $"{report.SshStaging.LatencyMs}ms" : "");
+        }
+
+        private void SetStatusBadge(Border badge, TextBlock badgeText, HealthStatus status, string customText = "")
+        {
+            switch (status)
+            {
+                case HealthStatus.Healthy:
+                    badge.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1E3A2F"));
+                    badgeText.Text = string.IsNullOrEmpty(customText) ? "OK" : customText;
+                    badgeText.Foreground = (Brush)FindResource("GreenBrush");
+                    break;
+                case HealthStatus.Degraded:
+                    badge.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#3E2E1E"));
+                    badgeText.Text = string.IsNullOrEmpty(customText) ? "WARN" : customText;
+                    badgeText.Foreground = (Brush)FindResource("YellowBrush");
+                    break;
+                case HealthStatus.Unhealthy:
+                    badge.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#3E1E1E"));
+                    badgeText.Text = string.IsNullOrEmpty(customText) ? "ERROR" : customText;
+                    badgeText.Foreground = (Brush)FindResource("RedBrush");
+                    break;
+                case HealthStatus.NotConfigured:
+                    badge.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#2A2B3D"));
+                    badgeText.Text = string.IsNullOrEmpty(customText) ? "NOT SET" : customText;
+                    badgeText.Foreground = (Brush)FindResource("Subtext0Brush");
+                    break;
+                default:
+                    badge.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#2A2B3D"));
+                    badgeText.Text = "UNKNOWN";
+                    badgeText.Foreground = (Brush)FindResource("Subtext1Brush");
+                    break;
+            }
+        }
+
+        private async void BtnRefreshHealth_Click(object sender, RoutedEventArgs e)
+        {
+            await RefreshHealthAsync();
+        }
+
+        private async void BtnCleanWorktrees_Click(object sender, RoutedEventArgs e)
+        {
+            BtnCleanWorktrees.IsEnabled = false;
+            BtnCleanWorktrees.Content = "Sweeping…";
+            try
+            {
+                var res = await WorktreeCleanupService.SweepWorktreesAsync(force: true);
+                if (res.Ok)
+                {
+                    ToastEngine.Show("Worktree Cleanup", $"Swept {res.RemovedCount} orphaned worktree(s).", ToastKind.Success);
+                }
+                else
+                {
+                    ToastEngine.Show("Worktree Cleanup Failed", res.Error ?? "Unknown error", ToastKind.Error);
+                }
+                await RefreshHealthAsync();
+            }
+            finally
+            {
+                BtnCleanWorktrees.IsEnabled = true;
+                BtnCleanWorktrees.Content = "🧹 Clean";
+            }
+        }
+
+        private void RowHealth_Click(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is not FrameworkElement fe || _lastHealthReport == null) return;
+            string tag = fe.Tag as string ?? "";
+
+            string title = "";
+            string details = "";
+
+            switch (tag)
+            {
+                case "DevServer":
+                    title = "LOCAL DEV SERVER DIAGNOSTICS";
+                    details = $"Target Status: {_lastHealthReport.DevServer.Status}\n" +
+                              $"Latency: {_lastHealthReport.DevServer.LatencyMs}ms\n" +
+                              $"{_lastHealthReport.DevServer.Details}";
+                    break;
+                case "Database":
+                    title = "DATABASE (SQL RUNNER PIPE) DIAGNOSTICS";
+                    details = $"Target Status: {_lastHealthReport.Database.Status}\n" +
+                              $"Latency: {_lastHealthReport.Database.LatencyMs}ms\n" +
+                              $"{_lastHealthReport.Database.Details}";
+                    break;
+                case "Mutex":
+                    title = "#92 COORDINATION MUTEX DIAGNOSTICS";
+                    details = $"Is Held: {_lastHealthReport.Mutex.IsHeld}\n" +
+                              $"Owner PID: {_lastHealthReport.Mutex.OwnerPid}\n" +
+                              $"Owner Alive: {_lastHealthReport.Mutex.OwnerAlive}\n" +
+                              $"Suspicious / Stuck: {_lastHealthReport.Mutex.IsSuspicious}\n" +
+                              $"Duration Held: {_lastHealthReport.Mutex.HeldDuration.TotalSeconds:F1}s\n" +
+                              $"{_lastHealthReport.Mutex.Details}";
+                    break;
+                case "Worktrees":
+                    title = "AGENT WORKTREES DIAGNOSTICS";
+                    details = $"Inspected: {_lastHealthReport.OrphanedWorktrees.InspectedCount}\n" +
+                              $"Active / Retained: {_lastHealthReport.OrphanedWorktrees.ActiveCount}\n" +
+                              $"Orphaned: {_lastHealthReport.OrphanedWorktrees.OrphanedCount}\n" +
+                              $"{_lastHealthReport.OrphanedWorktrees.Details}";
+                    break;
+                case "Ssh":
+                    title = "STAGING (REPLIT SSH) DIAGNOSTICS";
+                    details = $"Configured: {_lastHealthReport.SshStaging.IsConfigured}\n" +
+                              $"Status: {_lastHealthReport.SshStaging.Status}\n" +
+                              $"Latency: {_lastHealthReport.SshStaging.LatencyMs}ms\n" +
+                              $"{_lastHealthReport.SshStaging.Details}";
+                    break;
+            }
+
+            if (!string.IsNullOrEmpty(title))
+            {
+                DiagnosticsHeader.Text = title;
+                DiagnosticsDetailText.Text = details;
+                HealthDiagnosticsBox.Visibility = Visibility.Visible;
+            }
+        }
+
+        private void BtnCloseDiagnostics_Click(object sender, RoutedEventArgs e)
+        {
+            HealthDiagnosticsBox.Visibility = Visibility.Collapsed;
+        }
+
+        #endregion
     }
 }

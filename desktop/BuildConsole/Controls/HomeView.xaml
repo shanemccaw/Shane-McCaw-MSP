@@ -639,6 +639,133 @@
                             </StackPanel>
                         </Border>
 
+                        <!-- 🏥 System Health & Live Tiers Card -->
+                        <Border x:Name="SystemHealthCard" Style="{StaticResource HomeCard}" BorderBrush="{StaticResource Surface1Brush}">
+                            <StackPanel>
+                                <Grid Margin="0,0,0,10">
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <TextBlock Text="🏥" FontSize="13" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                        <TextBlock Text="SYSTEM HEALTH &amp; TIERS" Style="{StaticResource HomeCardHeader}"/>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                        <Border x:Name="OverallHealthPill" Background="#1E3A2F" CornerRadius="8" Padding="6,2" Margin="0,0,6,0">
+                                            <TextBlock x:Name="OverallHealthPillText" Text="Live Checking…" FontSize="10" FontWeight="Bold" Foreground="{StaticResource GreenBrush}"/>
+                                        </Border>
+                                        <Button x:Name="BtnRefreshHealth" Content="⟳" Style="{StaticResource SecondaryButton}" Width="22" Height="22" Padding="0" FontSize="12" FontWeight="Bold" Cursor="Hand" ToolTip="Re-check system health now" Click="BtnRefreshHealth_Click"/>
+                                    </StackPanel>
+                                </Grid>
+
+                                <!-- 1. Local Dev Server Row -->
+                                <Border x:Name="RowDevServer" Style="{StaticResource HomeRow}" ToolTip="Click to view diagnostic details" MouseLeftButtonUp="RowHealth_Click" Tag="DevServer">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" x:Name="DevServerIcon" Text="💻" FontSize="12" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                            <TextBlock Text="Local Dev Server" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"/>
+                                            <TextBlock x:Name="DevServerSummaryText" Text="Checking…" FontSize="10" Foreground="{StaticResource Subtext0Brush}"/>
+                                        </StackPanel>
+                                        <Border Grid.Column="2" x:Name="DevServerStatusBadge" Background="#1E3A2F" CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
+                                            <TextBlock x:Name="DevServerBadgeText" Text="--" FontSize="9.5" FontWeight="Bold" Foreground="{StaticResource GreenBrush}"/>
+                                        </Border>
+                                    </Grid>
+                                </Border>
+
+                                <!-- 2. Local Database Pipe Row -->
+                                <Border x:Name="RowDatabase" Style="{StaticResource HomeRow}" ToolTip="Click to view diagnostic details" MouseLeftButtonUp="RowHealth_Click" Tag="Database">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" x:Name="DatabaseIcon" Text="🗄️" FontSize="12" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                            <TextBlock Text="Database (API Pipe)" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"/>
+                                            <TextBlock x:Name="DatabaseSummaryText" Text="Checking…" FontSize="10" Foreground="{StaticResource Subtext0Brush}"/>
+                                        </StackPanel>
+                                        <Border Grid.Column="2" x:Name="DatabaseStatusBadge" Background="#1E3A2F" CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
+                                            <TextBlock x:Name="DatabaseBadgeText" Text="--" FontSize="9.5" FontWeight="Bold" Foreground="{StaticResource GreenBrush}"/>
+                                        </Border>
+                                    </Grid>
+                                </Border>
+
+                                <!-- 3. Coordination Mutex Row -->
+                                <Border x:Name="RowMutex" Style="{StaticResource HomeRow}" ToolTip="Click to view diagnostic details" MouseLeftButtonUp="RowHealth_Click" Tag="Mutex">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" x:Name="MutexIcon" Text="🔒" FontSize="12" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                            <TextBlock Text="#92 Coordination Mutex" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"/>
+                                            <TextBlock x:Name="MutexSummaryText" Text="Checking…" FontSize="10" Foreground="{StaticResource Subtext0Brush}"/>
+                                        </StackPanel>
+                                        <Border Grid.Column="2" x:Name="MutexStatusBadge" Background="#1E3A2F" CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
+                                            <TextBlock x:Name="MutexBadgeText" Text="--" FontSize="9.5" FontWeight="Bold" Foreground="{StaticResource GreenBrush}"/>
+                                        </Border>
+                                    </Grid>
+                                </Border>
+
+                                <!-- 4. Orphaned Worktrees Row -->
+                                <Border x:Name="RowWorktrees" Style="{StaticResource HomeRow}" ToolTip="Click to view diagnostic details" MouseLeftButtonUp="RowHealth_Click" Tag="Worktrees">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" x:Name="WorktreesIcon" Text="🌿" FontSize="12" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                            <TextBlock Text="Agent Worktrees" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"/>
+                                            <TextBlock x:Name="WorktreesSummaryText" Text="Checking…" FontSize="10" Foreground="{StaticResource Subtext0Brush}"/>
+                                        </StackPanel>
+                                        <Button Grid.Column="2" x:Name="BtnCleanWorktrees" Content="🧹 Clean" Style="{StaticResource SecondaryButton}" Height="20" Padding="6,0" FontSize="10" FontWeight="SemiBold" Cursor="Hand" Margin="0,0,6,0" Visibility="Collapsed" Click="BtnCleanWorktrees_Click" ToolTip="Sweep orphaned worktrees now"/>
+                                        <Border Grid.Column="3" x:Name="WorktreesStatusBadge" Background="#1E3A2F" CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
+                                            <TextBlock x:Name="WorktreesBadgeText" Text="--" FontSize="9.5" FontWeight="Bold" Foreground="{StaticResource GreenBrush}"/>
+                                        </Border>
+                                    </Grid>
+                                </Border>
+
+                                <!-- 5. Staging SSH Row -->
+                                <Border x:Name="RowSsh" Style="{StaticResource HomeRow}" ToolTip="Click to view diagnostic details" MouseLeftButtonUp="RowHealth_Click" Tag="Ssh">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" x:Name="SshIcon" Text="🌐" FontSize="12" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                            <TextBlock Text="Staging (Replit SSH)" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"/>
+                                            <TextBlock x:Name="SshSummaryText" Text="Checking…" FontSize="10" Foreground="{StaticResource Subtext0Brush}"/>
+                                        </StackPanel>
+                                        <Border Grid.Column="2" x:Name="SshStatusBadge" Background="#1E3A2F" CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
+                                            <TextBlock x:Name="SshBadgeText" Text="--" FontSize="9.5" FontWeight="Bold" Foreground="{StaticResource GreenBrush}"/>
+                                        </Border>
+                                    </Grid>
+                                </Border>
+
+                                <!-- Diagnostics Drawer (Collapsible) -->
+                                <Border x:Name="HealthDiagnosticsBox" Background="{StaticResource Surface0Brush}" BorderBrush="{StaticResource Surface1Brush}" BorderThickness="1" CornerRadius="8" Padding="10,8" Margin="0,4,0,0" Visibility="Collapsed">
+                                    <StackPanel>
+                                        <Grid Margin="0,0,0,6">
+                                            <TextBlock x:Name="DiagnosticsHeader" Text="DIAGNOSTIC DETAILS" FontSize="10.5" FontWeight="Bold" Foreground="{StaticResource Subtext0Brush}"/>
+                                            <Button x:Name="BtnCloseDiagnostics" Content="✕" Style="{StaticResource SecondaryButton}" Width="18" Height="18" Padding="0" FontSize="10" HorizontalAlignment="Right" Click="BtnCloseDiagnostics_Click"/>
+                                        </Grid>
+                                        <TextBox x:Name="DiagnosticsDetailText" IsReadOnly="True" TextWrapping="Wrap" Background="Transparent" Foreground="{StaticResource TextBrush}" BorderThickness="0" FontFamily="Consolas, monospace" FontSize="10.5" MaxHeight="140" VerticalScrollBarVisibility="Auto"/>
+                                    </StackPanel>
+                                </Border>
+
+                            </StackPanel>
+                        </Border>
+
                     </StackPanel>
                 </Grid>
             </StackPanel>

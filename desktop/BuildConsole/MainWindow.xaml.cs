@@ -2051,6 +2051,7 @@ namespace BuildConsole
             }
 
             var home = new BuildConsole.Controls.HomeView();
+            home.InitializeHealthMonitor(_buildTrackerApi);
             home.ResumeChatRequested += Home_ResumeChatRequested;
             home.RunningItemClicked  += (s, c) => { if (c.GithubNumber is int n) OpenChatForIssue(n); };
             home.DoneItemClicked     += (s, c) => { if (c.GithubNumber is int n) OpenChatForIssue(n); };
