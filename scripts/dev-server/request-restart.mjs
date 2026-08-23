@@ -250,6 +250,13 @@ if (isMain) {
           if (res.worktreeCleaned) {
             console.log(`[dev-server] Cleaned worktree: ${targetWorktree}`);
           }
+        } else if (res.rolledBack) {
+          console.error(
+            `[dev-server] 🔴 ROLLED BACK  commit ${c}: ${res.error}. Restored server to ${shortSha(res.restoredCommit || res.serverHeadBefore)}`
+          );
+          if (res.worktreeMarkedStale) {
+            console.log(`[dev-server] Retained worktree for debugging: ${targetWorktree} (.stale-worktree.json written)`);
+          }
         } else {
           console.error(`[dev-server] FAILED  commit ${c}: ${res.error || (res.conflict ? "merge conflict" : "not landed")}`);
           if (res.worktreeMarkedStale) {

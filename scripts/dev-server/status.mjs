@@ -88,9 +88,11 @@ export function collectStatus(cwd = process.cwd()) {
       : null,
     agentWorktrees,
     recentCleanups: lastLines(config.cleanupsLog, 5),
+    recentRollbacks: lastLines(config.rollbacksLog, 5),
     recentCycles: lastLines(config.cyclesLog, 5).map((c) => ({
       cycleId: c.cycleId,
       restarted: c.restarted,
+      rolledBack: c.rolledBack || false,
       batchSize: c.batchSize,
       mergedCount: c.mergedCount,
       conflicts: c.conflicts,
@@ -123,6 +125,13 @@ if (isMain) {
       const statusPill = w.debugReason ? `⚠️ STALE (${w.debugReason})` : `[${w.status}]`;
       console.log(`     ${w.path} -> ${statusPill} ${pidInfo}`);
     }
+    if (s.recentRollbacks?.length) {
+      console.log("  🔴 RECENT ROLLBACKS :");
+      for (const rb of s.recentRollbacks) {
+        const commits = rb.mergedRequests?.map((r) => shortSha(r.commit)).join(", ") || "?";
+        console.log(`     ${new Date(rb.at).toLocaleTimeString()} cycle ${rb.cycleId}: reverted ${commits} -> restored ${shortSha(rb.restoredHead)} (${rb.reason})`);
+      }
+    }
     if (s.recentCleanups?.length) {
       console.log("  recent cleanups  :");
       for (const cl of s.recentCleanups) {
@@ -131,8 +140,10 @@ if (isMain) {
     }
     if (s.recentCycles.length) {
       console.log("  recent cycles    :");
-      for (const c of s.recentCycles)
-        console.log(`     ${c.cycleId}  batch=${c.batchSize} merged=${c.mergedCount} conflicts=${c.conflicts} restarted=${c.restarted} -> ${c.serverHead}`);
+      for (const c of s.recentCycles) {
+        const flag = c.rolledBack ? " [🔴 ROLLED BACK]" : "";
+        console.log(`     ${c.cycleId}  batch=${c.batchSize} merged=${c.mergedCount} conflicts=${c.conflicts} restarted=${c.restarted}${flag} -> ${c.serverHead}`);
+      }
     }
   }
 }

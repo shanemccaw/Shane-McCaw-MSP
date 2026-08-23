@@ -173,9 +173,14 @@ namespace BuildConsole.Controls
             // not a bt_build_queue thing at all, so it polls regardless of
             // whether the API itself is configured/reachable.
             _sessionsPollTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(10) };
-            _sessionsPollTimer.Tick += async (_, _) => await RefreshActiveSessionsAsync();
+            _sessionsPollTimer.Tick += async (_, _) =>
+            {
+                await RefreshActiveSessionsAsync();
+                DevServerRollbackService.CheckForRollbacks(this);
+            };
             _sessionsPollTimer.Start();
             _ = RefreshActiveSessionsAsync();
+            DevServerRollbackService.CheckForRollbacks(this);
 
             // Manual-only GitHub (Shane, 2026-08-14): these three tiles each read
             // GitHub via the `gh` CLI — In-Flight (issues labelled in-flight),

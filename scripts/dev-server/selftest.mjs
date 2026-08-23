@@ -25,6 +25,7 @@ import {
   writeFileSync,
   rmSync,
   readFileSync,
+  readdirSync,
   existsSync,
 } from "node:fs";
 import os from "node:os";
@@ -428,6 +429,56 @@ async function main() {
       });
       check("main repo was protected from sweep", () => {
         assert.ok(existsSync(repo), "main repo was deleted");
+      });
+    }
+
+    // ---------------------------------------------------------------
+    // Scenario 9: Merge health check failure triggers automatic rollback.
+    // ---------------------------------------------------------------
+    console.log("Scenario 9: unhealthy merge triggers automatic rollback to known-good commit");
+    {
+      const { repo, agents, baseSha } = makeRepo(1);
+      cleanup.push(repo);
+      const stateDir = path.join(repo, "_state");
+      applyEnv(baseEnv(repo, stateDir));
+      const config = loadConfig({ cwd: repo });
+
+      const headBefore = revParse(repo, "HEAD");
+      const badReqId = enqueue(config, {
+        agentId: "broken-agent",
+        commit: agents[0].sha,
+        worktree: repo,
+      });
+
+      // Inject a failing restart simulating a crash or health failure
+      const failingRestart = async () => ({
+        ready: false,
+        error: "simulated server crash on startup (health check failed)",
+      });
+
+      const record = await runCycle(config, { restart: failingRestart });
+
+      check("cycle detected failure and marked rolledBack", () => assert.strictEqual(record.rolledBack, true));
+      check("server HEAD was restored to known-good pre-merge commit", () => {
+        const headAfter = revParse(repo, "HEAD");
+        assert.strictEqual(headAfter, headBefore);
+      });
+      check("broken request marked not landed and rolledBack", () => {
+        const outcome = record.perRequest[badReqId];
+        assert.ok(outcome, "no outcome recorded");
+        assert.strictEqual(outcome.landed, false);
+        assert.strictEqual(outcome.rolledBack, true);
+        assert.ok(outcome.error && outcome.error.includes("rolled back"));
+      });
+      check("rollback event recorded in rollbacks.log", () => {
+        assert.ok(existsSync(config.rollbacksLog), "rollbacks.log missing");
+        const logContent = readFileSync(config.rollbacksLog, "utf8");
+        assert.ok(logContent.includes("simulated server crash"));
+      });
+      check("needs-attention notification file generated", () => {
+        assert.ok(existsSync(config.needsAttentionDir), "needs-attention dir missing");
+        const files = readdirSync(config.needsAttentionDir);
+        assert.ok(files.some((f) => f.startsWith("rollback-")), "no rollback notification file");
       });
     }
 
