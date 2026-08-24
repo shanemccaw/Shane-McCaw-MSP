@@ -1653,6 +1653,11 @@ namespace BuildConsole
             {
                 bool ready = await EnsureWebViewInitializedAsync(wv);
 
+                if (ready && url.Contains("claude.ai", StringComparison.OrdinalIgnoreCase))
+                {
+                    await InjectBuilderButtonsAsync(wv);
+                }
+
                 if (ready && associateIssueNumber.HasValue && !epicAssocWired)
                 {
                     epicAssocWired = true;
