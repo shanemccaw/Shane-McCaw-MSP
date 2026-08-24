@@ -5155,7 +5155,7 @@ namespace BuildConsole
         /// Runs only the specific test manifest(s) scoped to a build's issue number (e.g. #1057).
         /// If no matching issue manifest exists, skips tests unless full-suite fallback is enabled in Settings.
         /// </summary>
-        public async System.Threading.Tasks.Task<List<BuildConsole.Services.ManifestRunResult>> RunScopedManifestsAsync(int? issueNumber)
+        public async System.Threading.Tasks.Task<List<BuildConsole.Services.ManifestRunResult>> RunScopedManifestsAsync(int? issueNumber, int? queueItemId = null)
         {
             var results = new List<BuildConsole.Services.ManifestRunResult>();
 
@@ -5201,7 +5201,7 @@ namespace BuildConsole
                     foreach (var manifest in matching)
                     {
                         BuildConsole.Services.TestQueueService.Instance.ActiveRunToken.ThrowIfCancellationRequested();
-                        results.Add(await RunManifestAsync(manifest, isRegression: true));
+                        results.Add(await RunManifestAsync(manifest, isRegression: true, queueItemId: queueItemId));
                     }
                     return results;
                 }
@@ -5243,7 +5243,8 @@ namespace BuildConsole
         private async System.Threading.Tasks.Task<BuildConsole.Services.ManifestRunResult> RunManifestAsync(
             BuildConsole.Services.TestManifest manifest,
             bool isRegression,
-            BuildConsole.Services.TargetEnvironment targetEnv = BuildConsole.Services.TargetEnvironment.Dev)
+            BuildConsole.Services.TargetEnvironment targetEnv = BuildConsole.Services.TargetEnvironment.Dev,
+            int? queueItemId = null)
         {
             string mode = isRegression ? "regression" : "single";
 
@@ -5278,7 +5279,7 @@ namespace BuildConsole
             }
             runner.Clear();
             runner.SetSteps(manifest);
-            runner.BeginRun(manifest.Issue, manifest.Feature, mode, targetEnv);
+            runner.BeginRun(manifest.Issue, manifest.Feature, mode, targetEnv, queueItemId);
 
             // Git #877 (Epic #803) — one per-run variable store, shared across all three executors
             // so a value an apiTest extracts (regex/jsonPath over its own response body) can be

@@ -99,7 +99,7 @@ namespace BuildConsole.Services
         private readonly string _repoRoot;
         private readonly Func<Task<BuildCompleteResult?>> _triggerDeployAsync;
         private readonly Func<Task<DeployStatus?>> _getDeployStatusAsync;
-        private readonly Func<int?, Task<List<ManifestRunResult>>> _runTestsAsync;
+        private readonly Func<int?, int?, Task<List<ManifestRunResult>>> _runTestsAsync;
         private readonly Action<PostBuildPipelineResult> _surfaceOutcome;
 
         private bool _busy;
@@ -110,7 +110,7 @@ namespace BuildConsole.Services
             string repoRoot,
             Func<Task<BuildCompleteResult?>> triggerDeployAsync,
             Func<Task<DeployStatus?>> getDeployStatusAsync,
-            Func<int?, Task<List<ManifestRunResult>>> runTestsAsync,
+            Func<int?, int?, Task<List<ManifestRunResult>>> runTestsAsync,
             Action<PostBuildPipelineResult> surfaceOutcome)
         {
             _repoRoot = repoRoot;
@@ -378,7 +378,7 @@ namespace BuildConsole.Services
                 runs = await TestQueueService.Instance.EnqueueAndRunAsync(
                     $"Build #{queueItemId} Scoped Tests",
                     "post-build-deploy",
-                    () => _runTestsAsync(githubNumber));
+                    () => _runTestsAsync(githubNumber, queueItemId));
             }
             catch (Exception ex)
             {

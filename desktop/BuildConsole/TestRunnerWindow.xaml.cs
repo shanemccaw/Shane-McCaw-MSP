@@ -428,11 +428,15 @@ namespace BuildConsole
         }
 
         /// <summary>Called at the start of a manifest run (RunManifestAsync) to reset the telemetry panel and label the current run.</summary>
-        public void BeginRun(int issue, string feature, string mode, Services.TargetEnvironment targetEnv = Services.TargetEnvironment.Dev)
+        public void BeginRun(int issue, string feature, string mode, Services.TargetEnvironment targetEnv = Services.TargetEnvironment.Dev, int? buildNumber = null)
         {
             _lastRunTargetEnv = targetEnv;
             RunOnUi(() =>
             {
+                var titleText = buildNumber.HasValue ? $"Test Runner — Build #{buildNumber.Value}" : "Test Runner";
+                Title = titleText;
+                if (TxtTitleBar != null) TxtTitleBar.Text = titleText;
+
                 TxtRunLabel.Text = $"#{issue} — {feature} ({mode})";
                 if (targetEnv == Services.TargetEnvironment.Dev)
                 {
