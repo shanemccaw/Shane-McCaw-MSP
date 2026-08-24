@@ -258,8 +258,16 @@ namespace BuildConsole.Controls
             var method = new HttpMethod(_selectedEndpoint.Method);
             using var req = new HttpRequestMessage(method, url);
 
-            // Add authorization header if configured in client
-            if (_api.HttpClient.DefaultRequestHeaders.Authorization != null)
+            // Auth: prefer the manually entered Bearer token; fall back to whatever the
+            // api client already has on its DefaultRequestHeaders (e.g. ingest token).
+            var manualToken = TxtBearerToken.Password.Trim();
+            if (string.IsNullOrEmpty(manualToken))
+                manualToken = TxtBearerTokenPlain.Text.Trim();
+            if (!string.IsNullOrEmpty(manualToken))
+            {
+                req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", manualToken);
+            }
+            else if (_api.HttpClient.DefaultRequestHeaders.Authorization != null)
             {
                 req.Headers.Authorization = _api.HttpClient.DefaultRequestHeaders.Authorization;
             }
@@ -341,6 +349,92 @@ namespace BuildConsole.Controls
 
             BtnExecute.IsEnabled = true;
             BtnExecute.Content = "⚡ Send Request";
+        }
+
+        // ── Bearer token show/hide ────────────────────────────────────────────
+
+        private void TxtBearerTokenPlain_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            // Keep masked PasswordBox in sync with the plain-text mirror
+            if (TxtBearerTokenPlain.Visibility == Visibility.Visible &&
+                TxtBearerToken.Password != TxtBearerTokenPlain.Text)
+                TxtBearerToken.Password = TxtBearerTokenPlain.Text;
+        }
+
+        private void BtnToggleBearerToken_Click(object sender, RoutedEventArgs e)
+        {
+            if (TxtBearerTokenPlain.Visibility == Visibility.Collapsed)
+            {
+                // Switch to plain text
+                TxtBearerTokenPlain.Text = TxtBearerToken.Password;
+                TxtBearerToken.Visibility = Visibility.Collapsed;
+                TxtBearerTokenPlain.Visibility = Visibility.Visible;
+                TxtBearerTokenPlain.Focus();
+                TxtBearerTokenPlain.SelectAll();
+                BtnToggleBearerToken.Content = "🙈";
+            }
+            else
+            {
+                // Switch back to masked
+                TxtBearerToken.Password = TxtBearerTokenPlain.Text;
+                TxtBearerTokenPlain.Visibility = Visibility.Collapsed;
+                TxtBearerToken.Visibility = Visibility.Visible;
+                BtnToggleBearerToken.Content = "👁";
+            }
+        }
+
+        private void BtnClearBearerToken_Click(object sender, RoutedEventArgs e)
+        {
+            TxtBearerToken.Password = "";
+            TxtBearerTokenPlain.Text = "";
+        }
+
+        // ── Quick Login: POST /api/auth/login → auto-fill Bearer token ────────
+
+        private async void BtnQuickLogin_Click(object sender, RoutedEventArgs e)
+        {
+            var email = TxtLoginEmail.Text.Trim();
+            var password = TxtLoginPassword.Password;
+
+            if (string.IsNullOrEmpty(email) || string.IsNullOrEmpty(password))
+            {
+                TxtLoginStatus.Foreground = FindResource("RedBrush") as Brush;
+                TxtLoginStatus.Text = "Enter email and password first.";
+                return;
+            }
+
+            BtnQuickLogin.IsEnabled = false;
+            TxtLoginStatus.Foreground = FindResource("Subtext0Brush") as Brush;
+            TxtLoginStatus.Text = "Logging in...";
+
+            var baseUrl = TxtBaseUrl.Text.Trim().TrimEnd('/');
+
+            var result = await BuildConsole.Services.ScanRunnerClient.LoginAsync(baseUrl, email, password);
+
+            if (result.Ok && !string.IsNullOrWhiteSpace(result.AccessToken))
+            {
+                // Auto-fill the Bearer token field
+                TxtBearerToken.Password = result.AccessToken;
+                if (TxtBearerTokenPlain.Visibility == Visibility.Visible)
+                    TxtBearerTokenPlain.Text = result.AccessToken;
+
+                TxtLoginStatus.Foreground = FindResource("GreenBrush") as Brush;
+                TxtLoginStatus.Text = result.CustomerId != null
+                    ? $"✓ Token filled (customer {result.CustomerId})"
+                    : "✓ Token filled successfully.";
+
+                // Collapse the expander now the token is set
+                ExpQuickLogin.IsExpanded = false;
+            }
+            else
+            {
+                TxtLoginStatus.Foreground = FindResource("RedBrush") as Brush;
+                TxtLoginStatus.Text = result.MfaRequired
+                    ? "MFA required — use a non-MFA testbed account."
+                    : $"Login failed: {result.Error}";
+            }
+
+            BtnQuickLogin.IsEnabled = true;
         }
 
         private string PrettyPrintJson(string json)
