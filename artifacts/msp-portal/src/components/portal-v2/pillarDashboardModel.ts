@@ -179,8 +179,13 @@ export function resolveHeroTile(binding: HeroTileBinding, ctx: HeroTileContext):
     case "warningCount":
       return ctx.loaded ? real(ctx.findingCounts.warning.toLocaleString()) : unmeasured("No completed scan yet");
     case "crossStat": {
-      const view = ctx.pillars.find((p) => p.key === binding.source!.pillar);
-      const stat = view?.stats.find((s) => s.id === (binding.source as { statId: string }).statId);
+      // Hoist the discriminated source into a const so its narrowing survives
+      // into the closures below — a property access (`binding.source`) is widened
+      // back to the full union inside a nested function, which is what defeated
+      // the earlier `binding.source!.pillar` / `as { statId }` workarounds.
+      const source = binding.source;
+      const view = ctx.pillars.find((p) => p.key === source.pillar);
+      const stat = view?.stats.find((s) => s.id === source.statId);
       return stat && typeof stat.value === "number"
         ? real(formatStatValue(stat))
         : unmeasured("This check is not in your scan package yet");
