@@ -81,6 +81,13 @@
                         <TextBlock x:Name="TxtStatusBadge" Text="● IDLE" FontSize="12" FontWeight="Bold" Foreground="{StaticResource Subtext0Brush}" HorizontalAlignment="Right"/>
                     </DockPanel>
                     <TextBlock x:Name="TxtRunLabel" Text="No run yet." FontSize="11" Foreground="{StaticResource Subtext0Brush}" Margin="0,4,0,0" TextTrimming="CharacterEllipsis"/>
+                    <!-- Live elapsed ticker: shown while a step is in flight, hidden otherwise -->
+                    <TextBlock x:Name="TxtCurrentStep"
+                               FontSize="10.5"
+                               Foreground="{StaticResource PeachBrush}"
+                               Margin="0,3,0,0"
+                               TextTrimming="CharacterEllipsis"
+                               Visibility="Collapsed"/>
                 </StackPanel>
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
@@ -153,7 +160,9 @@
                             <Border Background="{StaticResource Surface0Brush}" CornerRadius="4" Padding="8,5" Margin="6,2">
                                 <DockPanel>
                                     <TextBlock DockPanel.Dock="Left" Text="{Binding StatusGlyph}" FontWeight="Bold" Foreground="{Binding StatusBrush}" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                    <TextBlock Text="{Binding Label}" FontSize="11" Foreground="{StaticResource TextBrush}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                                    <TextBlock FontSize="11" Foreground="{StaticResource TextBrush}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center">
+                                        <Run Text="{Binding Label, Mode=OneWay}"/><Run Text="{Binding ElapsedText, Mode=OneWay}" Foreground="{StaticResource PeachBrush}"/>
+                                    </TextBlock>
                                 </DockPanel>
                             </Border>
                         </DataTemplate>

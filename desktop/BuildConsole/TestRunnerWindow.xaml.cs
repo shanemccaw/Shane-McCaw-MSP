@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Linq;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -12,6 +13,7 @@ using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 
 namespace BuildConsole
 {
@@ -43,11 +45,32 @@ namespace BuildConsole
             {
                 if (_status == value) return;
                 _status = value;
+                if (_status == StepStatus.Running)
+                    _sw.Restart();
+                else
+                    _sw.Stop();
                 OnPropertyChanged(nameof(Status));
                 OnPropertyChanged(nameof(StatusGlyph));
                 OnPropertyChanged(nameof(StatusBrush));
+                OnPropertyChanged(nameof(ElapsedText));
             }
         }
+
+        private readonly Stopwatch _sw = new();
+
+        /// <summary>Elapsed wall-clock seconds for the current step while Running; empty once done.</summary>
+        public string ElapsedText
+        {
+            get
+            {
+                if (Status != StepStatus.Running || !_sw.IsRunning) return string.Empty;
+                long s = _sw.ElapsedMilliseconds / 1000;
+                return s == 0 ? string.Empty : $" ({s}s)";
+            }
+        }
+
+        /// <summary>Refreshes the ElapsedText binding — called by the window's 1-second DispatcherTimer.</summary>
+        public void TickElapsed() => OnPropertyChanged(nameof(ElapsedText));
 
         public string StatusGlyph => Status switch
         {
@@ -94,6 +117,11 @@ namespace BuildConsole
         private readonly ICollectionView _stepsView;
         private int _stepCursor;
 
+        // Live elapsed-time ticker — 1s DispatcherTimer refreshes the Running step's ElapsedText
+        // and the "Waiting on..." line in the header, so Shane sees live seconds during long steps.
+        private readonly DispatcherTimer _elapsedTimer;
+        private readonly Stopwatch _stepSw = new();
+
         // Git #966 — the last run's captured screenshots, handed to the on-demand review gallery
         // (ScreenshotGalleryWindow) when Shane clicks "📷 Screenshots". Kept here only to enable/disable
         // the button and show the count; the click-through UI lives in that separate real Window now (so
@@ -123,6 +151,29 @@ namespace BuildConsole
             _stepsView.GroupDescriptions.Add(new PropertyGroupDescription(nameof(StepListItem.Kind)));
             StepsList.ItemsSource = _stepsView;
 
+            // 1-second ticker — refreshes the Running step's elapsed text and the live
+            // "Waiting on..." header line so Shane sees how long a step has been in flight.
+            _elapsedTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+            _elapsedTimer.Tick += (_, _) =>
+            {
+                foreach (var s in _steps)
+                    if (s.Status == StepStatus.Running)
+                        s.TickElapsed();
+
+                // Update the header "Waiting on..." line
+                var running = _steps.FirstOrDefault(s => s.Status == StepStatus.Running);
+                if (running != null && TxtCurrentStep != null)
+                {
+                    long secs = _stepSw.ElapsedMilliseconds / 1000;
+                    TxtCurrentStep.Text = $"⏱ {running.Label}  ({secs}s)";
+                    TxtCurrentStep.Visibility = Visibility.Visible;
+                }
+                else if (TxtCurrentStep != null)
+                {
+                    TxtCurrentStep.Visibility = Visibility.Collapsed;
+                }
+            };
+
             // Git #810's original reasoning: these executors' StepCompleted events are static
             // (module-lifetime), so a live card stream needs exactly one subscription per open
             // window instance, unsubscribed on Closed — otherwise a closed-then-reopened window
@@ -137,6 +188,7 @@ namespace BuildConsole
             Services.UiTestExecutor.StepCompleted += OnStepCompleted;
             Closed += (_, _) =>
             {
+                _elapsedTimer.Stop();
                 Services.HttpTestExecutor.StepCompleted -= OnStepCompleted;
                 Services.GraphTestExecutor.StepCompleted -= OnStepCompleted;
                 Services.ZohoTestExecutor.StepCompleted -= OnStepCompleted;
@@ -369,7 +421,10 @@ namespace BuildConsole
             _steps[_stepCursor].Status = passed ? StepStatus.Pass : StepStatus.Fail;
             _stepCursor++;
             if (_stepCursor < _steps.Count)
+            {
                 _steps[_stepCursor].Status = StepStatus.Running;
+                _stepSw.Restart(); // reset per-step clock so header shows elapsed for the new step
+            }
         }
 
         /// <summary>Called at the start of a manifest run (RunManifestAsync) to reset the telemetry panel and label the current run.</summary>
@@ -400,6 +455,8 @@ namespace BuildConsole
                 SetStatus("● RUNNING...", "PeachBrush");
                 BtnRetry.IsEnabled = false;
                 BtnCancel.Visibility = Visibility.Visible;
+                _stepSw.Restart();
+                _elapsedTimer.Start();
                 Services.ActivityLog.Log(Channel, $"Run started: issue #{issue} ({feature}), mode={mode}, targetEnv={targetEnv}.");
             });
         }
@@ -422,6 +479,9 @@ namespace BuildConsole
                 }
                 BtnRetry.IsEnabled = _lastManifest != null;
                 BtnCancel.Visibility = Visibility.Collapsed;
+                _elapsedTimer.Stop();
+                _stepSw.Stop();
+                if (TxtCurrentStep != null) TxtCurrentStep.Visibility = Visibility.Collapsed;
                 Services.ActivityLog.Log(Channel, $"Run complete for issue #{result.Issue}: {passed}/{total} steps passed.");
             });
         }
@@ -570,6 +630,9 @@ namespace BuildConsole
                 BtnScreenshots.IsEnabled = false;
                 BtnScreenshots.Content = "📷 Screenshots";
                 BtnCancel.Visibility = Visibility.Collapsed;
+                _elapsedTimer.Stop();
+                _stepSw.Stop();
+                if (TxtCurrentStep != null) TxtCurrentStep.Visibility = Visibility.Collapsed;
             });
         }
 
