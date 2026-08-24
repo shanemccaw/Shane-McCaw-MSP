@@ -26,6 +26,19 @@ if (!basePath) {
   );
 }
 
+// Local dev topology: the API server runs as its own process (scripts/dev-all.mjs
+// → api-server on :8080), separate from this front-end's Vite dev server. The SPA
+// calls the API with same-origin RELATIVE /api URLs, so the dev/preview server must
+// forward /api (REST + SSE) to the API process. Without this every /api call —
+// login included — 404s at the Vite origin. Override the target with
+// VITE_API_PROXY_TARGET if the API server runs on a non-default port.
+function apiProxy() {
+  const target = process.env.VITE_API_PROXY_TARGET ?? "http://localhost:8080";
+  return {
+    "/api": { target, changeOrigin: true },
+  };
+}
+
 export default defineConfig({
   base: basePath,
   plugins: [
@@ -63,6 +76,7 @@ export default defineConfig({
     strictPort: true,
     host: "0.0.0.0",
     allowedHosts: true,
+    proxy: apiProxy(),
     fs: {
       strict: true,
     },
@@ -71,5 +85,6 @@ export default defineConfig({
     port,
     host: "0.0.0.0",
     allowedHosts: true,
+    proxy: apiProxy(),
   },
 });
