@@ -246,11 +246,11 @@ namespace BuildConsole.Services
                 changed = true;
             }
 
-            // Prune variables that are no longer referenced by any manifest
+            // Prune variables that are no longer referenced by any manifest and were never reviewed/edited (NeedsReview is true)
             if (pruneOrphans && result.RepoRootFound && files.Length > 0)
             {
                 var orphaned = settings.TestEnvironmentVariables
-                    .Where(v => !discovered.Contains(v.Name))
+                    .Where(v => !discovered.Contains(v.Name) && v.NeedsReview)
                     .ToList();
 
                 if (orphaned.Count > 0)
