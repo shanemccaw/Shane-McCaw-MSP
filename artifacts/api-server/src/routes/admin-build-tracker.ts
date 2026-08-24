@@ -1433,14 +1433,20 @@ router.post("/admin/build-tracker/extension/queue", ingestAuth, async (req: Requ
     res.status(400).json({ error: "title and prompt are required" });
     return;
   }
-  // Git #813 — multi-blocker support. `blockedByNumbers` is the real field
-  // going forward; a lone `blockedByNumber` (old callers, or the extension's
-  // own single-value flag) is folded into it so both shapes land the same way.
-  const allBlockers = Array.from(new Set([
+  const manualBlockers = Array.from(new Set([
     ...(Array.isArray(blockedByNumbers) ? blockedByNumbers.filter((n) => typeof n === "number") : []),
     ...(typeof blockedByNumber === "number" ? [blockedByNumber] : []),
   ]));
   const resolvedGithubNumber = typeof githubNumber === "number" ? githubNumber : null;
+  let gitBlockers: number[] = [];
+  if (resolvedGithubNumber != null) {
+    try {
+      gitBlockers = await fetchRealBlockedByNumbers(resolvedGithubNumber);
+    } catch (err) {
+      log.warn({ err, resolvedGithubNumber }, "Failed to fetch real blockers at queue time");
+    }
+  }
+  const allBlockers = Array.from(new Set([...manualBlockers, ...gitBlockers]));
   try {
     // Git #823 — Shane: "We should be going based on the ID here... 805 =
     // playing 805 = done, not a new row for playing new row for done new
@@ -1761,13 +1767,23 @@ router.get("/admin/build-tracker/extension/queue/next", ingestAuth, async (req: 
     const ready: typeof queued = [];
     for (const item of queued) {
       if (ready.length >= limit) break;
-      // Git #799/#813 — checks the item's blocked-by dependencies (real
-      // GitHub deps when tied to a real issue, else the stored column(s) set
-      // from an explicit --blocked-by flag at queue time). ALL blockers must
-      // clear, not just one. `allowLiveFetch: false` — this route is the
-      // watcher's own 10s-polled claim loop (QueueWatcherService), so a live
-      // per-row GitHub call here would be automatic traffic; see
-      // effectiveBlockedByNumbers's own comment.
+      if (item.githubNumber != null && item.blockedByNumbers === null) {
+        try {
+          const gitBlockers = await fetchRealBlockedByNumbers(item.githubNumber);
+          await db
+            .update(btBuildQueueTable)
+            .set({
+              blockedByNumbers: gitBlockers,
+              blockedByNumber: gitBlockers[0] ?? null,
+              updatedAt: new Date(),
+            })
+            .where(eq(btBuildQueueTable.id, item.id));
+          item.blockedByNumbers = gitBlockers;
+          item.blockedByNumber = gitBlockers[0] ?? null;
+        } catch (fetchErr) {
+          log.error({ fetchErr, githubNumber: item.githubNumber }, "Failed to fetch and cache GitHub blockers in queue/next");
+        }
+      }
       const blockerNums = await effectiveBlockedByNumbers(item, false);
       if (blockerNums.length === 0) { ready.push(item); continue; }
       if (await areBlockersCleared(blockerNums)) ready.push(item);
@@ -2353,7 +2369,7 @@ const GITHUB_OWNER = "shanemccaw";
 const GITHUB_REPO_NAME = "Shane-McCaw-MSP";
 const GITHUB_API = "https://api.github.com";
 
-async function ghFetch(path: string, init?: RequestInit): Promise<Response> {
+async function ghFetch(path: string, init?: RequestInit): Promise<globalThis.Response> {
   const token = process.env.GITHUB_TOKEN;
   if (!token) throw new Error("GITHUB_TOKEN env var not set");
   return fetch(`${GITHUB_API}${path}`, {
