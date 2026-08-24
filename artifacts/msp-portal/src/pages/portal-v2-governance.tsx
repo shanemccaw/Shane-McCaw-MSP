@@ -35,7 +35,17 @@
 
 import { useState } from "react";
 import { Link } from "wouter";
-import { AlertTriangle, PartyPopper } from "lucide-react";
+import {
+  AlertTriangle,
+  ClipboardList,
+  GitCommitHorizontal,
+  Key,
+  Mail,
+  PartyPopper,
+  ShieldCheck,
+  Smartphone,
+  Users,
+} from "lucide-react";
 
 import { PortalV2Shell } from "@/components/portal-v2/PortalV2Shell";
 import { PillarScanBar } from "@/components/portal-v2/PillarScanBar";
@@ -45,13 +55,24 @@ import {
   GOV_AREA_LINKS,
   GOV_CLUSTERS,
   GOV_HERO,
-  GOV_STATUS_META,
+  govAreaGeometry,
   govTrendGeometry,
-  type GovAreaStatus,
+  type GovAreaLink,
 } from "@/components/portal-v2/govDashboardData";
 
 const MONO = "'SF Mono',Menlo,Consolas,monospace";
 const BLUE = "#3B82F6";
+
+/** `iconSvg` name → lucide glyph, matching the gov-oversharing sibling's map. */
+const AREA_ICON = {
+  mail: Mail,
+  users: Users,
+  "git-commit": GitCommitHorizontal,
+  "shield-check": ShieldCheck,
+  key: Key,
+  "clipboard-list": ClipboardList,
+  smartphone: Smartphone,
+} as const;
 
 /** `ar.cardCss` tier metrics — severity drives SIZE as well as colour. */
 const TIER = {
@@ -202,8 +223,11 @@ export default function PortalV2GovernancePage() {
           />
         )}
 
-        {allResolved ? (
-          /* All-resolved panel — lines 408-417. Emoji replaced per the README. */
+        {/* All-resolved panel — proto 649-658. In the current design this is an
+            ADDITIVE sibling shown above the hero when resolved, not an either/or:
+            the hero, scan strip and area grid render unconditionally below it.
+            Emoji replaced with a lucide icon per the README. */}
+        {allResolved && (
           <div
             style={{
               position: "relative",
@@ -238,9 +262,10 @@ export default function PortalV2GovernancePage() {
               stays visible and tracked, not swept away.
             </span>
           </div>
-        ) : (
-          <>
-            {/* ── Hero card — lines 419-484 ─────────────────────────── */}
+        )}
+
+        <>
+            {/* ── Hero card — proto 660-726 ─────────────────────────── */}
             <div
               style={{
                 position: "relative",
@@ -597,18 +622,27 @@ export default function PortalV2GovernancePage() {
                 </div>
               ))}
             </div>
-          </>
-        )}
+        </>
       </div>
 
     </PortalV2Shell>
   );
 }
 
-function AreaTile({ tile }: { tile: (typeof GOV_AREA_LINKS)[number] }) {
-  const meta = GOV_STATUS_META[tile.status as GovAreaStatus];
+/**
+ * One Governance area tile — proto 741-759, geometry at builder 13847-13878.
+ *
+ * The earlier revision this page was built from rendered a plain score/label
+ * card. The current design gives the tile the same anatomy as Compliance's area
+ * card: a status-coloured icon and a four-bar sparkline in the top-right, a
+ * tier-scaled delta chip that always prints (`±0` when flat), a 6px status dot,
+ * and a status label that is NOT uppercased. Severity still drives size and
+ * flex-grow through `TIER`.
+ */
+function AreaTile({ tile }: { tile: GovAreaLink }) {
+  const { meta, deltaText, deltaColor, sparkBars } = govAreaGeometry(tile);
   const t = TIER[meta.tier];
-  const delta = tile.score - tile.prevScore;
+  const Glyph = AREA_ICON[tile.icon as keyof typeof AREA_ICON];
 
   return (
     <Link
@@ -616,11 +650,12 @@ function AreaTile({ tile }: { tile: (typeof GOV_AREA_LINKS)[number] }) {
       data-testid={`pv2-gov-area-${tile.key}`}
       className="pv2-area-card"
       style={{
-        // `ar.hoverCss` (prototype 11979) — each tile hovers to its OWN status
+        // `ar.hoverCss` (builder 13871) — each tile hovers to its OWN status
         // colour at `70`, unlike Security where every card hovers to the pillar
         // violet. The rule itself lives in portal-v2.css; only the value is here.
         ["--pv2-area-hover" as string]: `${meta.c}70`,
         position: "relative",
+        overflow: "hidden",
         display: "flex",
         flexDirection: "column",
         gap: 5,
@@ -631,11 +666,12 @@ function AreaTile({ tile }: { tile: (typeof GOV_AREA_LINKS)[number] }) {
         fontFamily: "inherit",
         flex: `${t.grow} 1 0`,
         minWidth: 110,
-        overflow: "hidden",
         padding: t.padding,
         background: meta.wash,
+        textDecoration: "none",
       }}
     >
+      {/* glow — proto 742 */}
       <div
         style={{
           position: "absolute",
@@ -644,14 +680,36 @@ function AreaTile({ tile }: { tile: (typeof GOV_AREA_LINKS)[number] }) {
           pointerEvents: "none",
         }}
       />
+      {/* Sparkbars, top-right — proto 743-747 */}
       <div
         style={{
-          position: "relative",
+          position: "absolute",
+          right: 8,
+          top: 8,
           display: "flex",
-          alignItems: "center",
-          gap: 7,
+          alignItems: "flex-end",
+          gap: 2,
         }}
       >
+        {sparkBars.map((b, i) => (
+          <span
+            key={i}
+            style={{
+              flex: "0 0 5px",
+              width: 5,
+              height: b.height,
+              borderRadius: 1,
+              background: meta.c,
+              opacity: b.opacity,
+            }}
+          />
+        ))}
+      </div>
+      {/* Icon + score + delta — proto 748-752 */}
+      <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 7 }}>
+        {Glyph && (
+          <Glyph size={t.icon} color={meta.c} aria-hidden="true" style={{ display: "flex" }} />
+        )}
         <span
           style={{
             fontSize: t.score,
@@ -663,18 +721,16 @@ function AreaTile({ tile }: { tile: (typeof GOV_AREA_LINKS)[number] }) {
         >
           {tile.score}
         </span>
-        {delta !== 0 && (
-          <span
-            style={{
-              fontSize: "9.5px",
-              fontWeight: 700,
-              color: delta > 0 ? "#f87171" : "#34d399",
-              fontFamily: MONO,
-            }}
-          >
-            {delta > 0 ? `+${delta}` : delta}
-          </span>
-        )}
+        <span
+          style={{
+            fontSize: Math.max(t.label - 1, 9),
+            fontWeight: 700,
+            color: deltaColor,
+            fontFamily: MONO,
+          }}
+        >
+          {deltaText}
+        </span>
       </div>
       <span
         style={{
@@ -682,7 +738,9 @@ function AreaTile({ tile }: { tile: (typeof GOV_AREA_LINKS)[number] }) {
           fontSize: t.label,
           fontWeight: 700,
           color: "#e2e8f0",
-          lineHeight: 1.3,
+          textAlign: "left",
+          width: "100%",
+          lineHeight: 1.25,
         }}
       >
         {tile.label}
@@ -711,19 +769,18 @@ function AreaTile({ tile }: { tile: (typeof GOV_AREA_LINKS)[number] }) {
       >
         <span
           style={{
-            width: 5,
-            height: 5,
+            flex: "0 0 6px",
+            width: 6,
+            height: 6,
             borderRadius: "50%",
             background: meta.c,
-            flex: "0 0 5px",
           }}
         />
         <span
           style={{
             fontSize: "9px",
             fontWeight: 700,
-            letterSpacing: ".06em",
-            textTransform: "uppercase",
+            letterSpacing: ".04em",
             color: meta.c,
           }}
         >

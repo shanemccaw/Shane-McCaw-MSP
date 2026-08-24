@@ -147,3 +147,31 @@ export const GOV_HERO = {
 export function govTrendGeometry() {
   return trendGeometry(GOV_HERO.history);
 }
+
+/**
+ * Per-card derived values for the area tiles — the current design's card builder
+ * (`Customer Portal Shell.dc.html` 13847-13878). The earlier revision rendered a
+ * plain card; the current one carries a tier-scaled delta chip that always prints
+ * (`±0` when flat, coloured by direction unless the area is green) and a four-bar
+ * sparkline interpolated from `prevScore → score`. Structurally identical to
+ * Compliance's `cmpAreaGeometry`; kept in the Governance module so the card's
+ * numbers stay in one place per the fixture rule.
+ */
+export function govAreaGeometry(tile: GovAreaLink) {
+  const meta = GOV_STATUS_META[tile.status];
+  const delta = tile.score - tile.prevScore;
+  const deltaColor =
+    tile.status === "green" ? "#64748b" : delta > 0 ? "#f87171" : delta < 0 ? "#34d399" : "#64748b";
+  const deltaText = delta > 0 ? `+${delta}` : delta < 0 ? `${delta}` : "±0";
+  const sparkVals = Array.from(
+    { length: 4 },
+    (_, i) => tile.prevScore + (tile.score - tile.prevScore) * (i / 3),
+  );
+  const sMin = Math.min(...sparkVals);
+  const sMax = Math.max(...sparkVals, sMin + 1);
+  const sparkBars = sparkVals.map((v, i) => ({
+    height: Math.max(3, Math.round(((v - sMin) / (sMax - sMin)) * 16)),
+    opacity: i === 3 ? 1 : 0.4,
+  }));
+  return { meta, deltaText, deltaColor, sparkBars };
+}
