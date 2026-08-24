@@ -193,7 +193,18 @@ namespace BuildConsole.Services
     post("BT_LOAD_SQL", { sql: text });
   }
 
-  function buildButtonBar(kind, text, marginSide, referencedNumber, blockId) {
+  // Reads the block's CURRENT full text straight off the live DOM node.
+  // Buttons must call this at CLICK time, not capture a string when the bar
+  // is first built - Claude still streams tokens into the <pre> after the
+  // MutationObserver's debounce first settles enough to attach a bar (a
+  // quiet gap of >600ms mid-stream is enough to trigger it early), and a
+  // captured closure over that early snapshot would forever stay stuck at
+  // whatever had rendered by then - typically just the block's first line.
+  function currentBlockText(pre) {
+    return (pre.innerText || pre.textContent || "").trim();
+  }
+
+  function buildButtonBar(kind, pre, marginSide, blockId) {
     const bar = document.createElement("div");
     bar.className = "bt-button-bar bt-button-bar-" + marginSide;
     bar.dataset.btBlock = blockId;
@@ -208,7 +219,10 @@ namespace BuildConsole.Services
       "color: #d6d4d2; font-size: 11px; font-weight: 600; cursor: pointer; font-family: -apple-system, sans-serif;";
     btn.addEventListener("mouseenter", function () { if (!btn.disabled) btn.style.background = "#2e2e2e"; });
     btn.addEventListener("mouseleave", function () { if (!btn.disabled) btn.style.background = "#242424"; });
-    btn.addEventListener("click", function () { if (kind === "sql") loadIntoSqlRunner(text); else sendToBuilder(text); });
+    btn.addEventListener("click", function () {
+      const text = currentBlockText(pre);
+      if (kind === "sql") loadIntoSqlRunner(text); else sendToBuilder(text);
+    });
     bar.appendChild(btn);
 
     if (kind === "prompt") {
@@ -221,9 +235,10 @@ namespace BuildConsole.Services
       editBtn.addEventListener("mouseenter", function () { editBtn.style.background = "#2e2e2e"; });
       editBtn.addEventListener("mouseleave", function () { editBtn.style.background = "#242424"; });
       editBtn.addEventListener("click", function () {
+        const text = currentBlockText(pre);
         post("BT_EDIT_BUILD", {
           rawText: text,
-          referencedNumber: referencedNumber
+          referencedNumber: extractReferencedIssueNumber(text)
         });
       });
       bar.appendChild(editBtn);
@@ -238,7 +253,10 @@ namespace BuildConsole.Services
       queueBtn.style.cssText = btn.style.cssText;
       queueBtn.addEventListener("mouseenter", function () { queueBtn.style.background = "#2e2e2e"; });
       queueBtn.addEventListener("mouseleave", function () { queueBtn.style.background = "#242424"; });
-      queueBtn.addEventListener("click", function () { queueBuild(text, referencedNumber, queueBtn); });
+      queueBtn.addEventListener("click", function () {
+        const text = currentBlockText(pre);
+        queueBuild(text, extractReferencedIssueNumber(text), queueBtn);
+      });
       bar.appendChild(queueBtn);
     }
     return bar;
@@ -248,13 +266,13 @@ namespace BuildConsole.Services
     const blocks = root.querySelectorAll ? root.querySelectorAll("pre") : [];
     for (const pre of blocks) {
       if (!pre.parentElement) continue;
-      
+
       // If already scanned and has its attached bar, don't duplicate
       if (pre.dataset.btScanned && pre.previousElementSibling && pre.previousElementSibling.classList.contains("bt-button-bar")) {
         continue;
       }
 
-      const text = (pre.innerText || pre.textContent || "").trim();
+      const text = currentBlockText(pre);
       if (!text) continue;
 
       // Clean up any stale or duplicated adjacent button bars before inserting
@@ -267,13 +285,12 @@ namespace BuildConsole.Services
 
       pre.dataset.btScanned = "1";
       const kind = classifyCodeBlock(text);
-      const referencedNumber = kind === "prompt" ? extractReferencedIssueNumber(text) : null;
       const blockId = "btb-" + (++__btBlockSeq);
 
       // Top bar (above pre)
-      pre.parentElement.insertBefore(buildButtonBar(kind, text, "bottom", referencedNumber, blockId), pre);
+      pre.parentElement.insertBefore(buildButtonBar(kind, pre, "bottom", blockId), pre);
       // Bottom bar (below pre)
-      pre.parentElement.insertBefore(buildButtonBar(kind, text, "top", referencedNumber, blockId), pre.nextSibling);
+      pre.parentElement.insertBefore(buildButtonBar(kind, pre, "top", blockId), pre.nextSibling);
     }
   }
 
