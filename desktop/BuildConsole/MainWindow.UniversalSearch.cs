@@ -480,34 +480,7 @@ namespace BuildConsole
             _fileIndexBuilding = true;
             try
             {
-                var built = await Task.Run(() =>
-                {
-                    var acc = new List<(string, string)>();
-                    if (!Directory.Exists(RepoRoot)) return acc;
-                    var opt = new EnumerationOptions
-                    {
-                        IgnoreInaccessible = true,
-                        RecurseSubdirectories = true,
-                        MaxRecursionDepth = 12,
-                    };
-                    try
-                    {
-                        foreach (var f in Directory.EnumerateFiles(RepoRoot, "*.*", opt))
-                        {
-                            if (f.IndexOf("\\bin\\", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                f.IndexOf("\\obj\\", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                f.IndexOf("\\node_modules\\", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                f.IndexOf("\\.git\\", StringComparison.OrdinalIgnoreCase) >= 0)
-                                continue;
-                            string name = Path.GetFileName(f);
-                            if (name.StartsWith(".")) continue;
-                            acc.Add((name, f));
-                            if (acc.Count >= 25000) break;
-                        }
-                    }
-                    catch { /* best-effort; partial index is fine */ }
-                    return acc;
-                });
+                var built = await Task.Run(() => BuildFileIndex());
 
                 _fileIndex = built;
                 _fileIndexBuiltAtUtc = DateTime.UtcNow;
@@ -516,6 +489,75 @@ namespace BuildConsole
             }
             catch { /* ignore — files just won't appear this session */ }
             finally { _fileIndexBuilding = false; }
+        }
+
+        // Directory names never worth indexing (or descending into) — checked once per
+        // directory, BEFORE recursing, unlike the old post-hoc "\node_modules\" substring
+        // filter on the finished path.
+        private static readonly HashSet<string> ExcludedDirNames = new(StringComparer.OrdinalIgnoreCase)
+        { "bin", "obj", "node_modules", ".git", ".pnpm" };
+
+        /// <summary>
+        /// Real fix for "the file is on disk, I can browse it in Explorer, but search
+        /// found nothing at all" (not just one file — the whole FILES category was
+        /// empty). The old build used `Directory.EnumerateFiles(RepoRoot, "*.*", new
+        /// EnumerationOptions { RecurseSubdirectories = true })` with node_modules/bin/
+        /// obj/.git filtered out only AFTER the fact on each finished path — so the
+        /// recursion still had to descend INTO every node_modules tree (this pnpm
+        /// workspace's root node_modules/.pnpm alone has real paths past 290 characters,
+        /// well over legacy MAX_PATH) before those files could be discarded. A single
+        /// `IEnumerable<string>` under RecurseSubdirectories is ONE deferred iterator for
+        /// the entire tree — `IgnoreInaccessible` only swallows UnauthorizedAccessException/
+        /// SecurityException; any OTHER exception mid-walk (PathTooLongException,
+        /// IOException from a file a dev server had open, a broken pnpm symlink) escaped
+        /// the single outer try/catch and silently truncated the ENTIRE index at whatever
+        /// point it died — which, depending on Windows' own (unspecified, non-alphabetical)
+        /// directory enumeration order, could easily be before a later-sorted directory
+        /// like lib/ was ever reached. "Partial index is fine" was true in theory but in
+        /// practice meant "empty index" was possible with zero visible error.
+        ///
+        /// This walks directories itself with an explicit stack, so it can (a) skip
+        /// ExcludedDirNames BEFORE descending into them — never pays the cost or the risk
+        /// of walking node_modules at all — and (b) wrap each individual directory's own
+        /// GetFiles/GetDirectories call in its own try/catch, so one bad/inaccessible/
+        /// long-path directory anywhere just gets skipped, never aborting the whole scan.
+        /// </summary>
+        private static List<(string Name, string Path)> BuildFileIndex()
+        {
+            var acc = new List<(string, string)>();
+            if (!Directory.Exists(RepoRoot)) return acc;
+
+            var stack = new Stack<(string Dir, int Depth)>();
+            stack.Push((RepoRoot, 0));
+
+            while (stack.Count > 0 && acc.Count < 25000)
+            {
+                var (dir, depth) = stack.Pop();
+
+                string[] files;
+                try { files = Directory.GetFiles(dir); }
+                catch { files = Array.Empty<string>(); }
+                foreach (var f in files)
+                {
+                    string name = Path.GetFileName(f);
+                    if (name.StartsWith(".")) continue;
+                    acc.Add((name, f));
+                    if (acc.Count >= 25000) break;
+                }
+
+                if (depth >= 12) continue; // same effective cap as the old MaxRecursionDepth
+
+                string[] subdirs;
+                try { subdirs = Directory.GetDirectories(dir); }
+                catch { subdirs = Array.Empty<string>(); }
+                foreach (var d in subdirs)
+                {
+                    string dirName = Path.GetFileName(d);
+                    if (ExcludedDirNames.Contains(dirName)) continue;
+                    stack.Push((d, depth + 1));
+                }
+            }
+            return acc;
         }
 
         private static int CategoryOrder(string cat) => cat switch
