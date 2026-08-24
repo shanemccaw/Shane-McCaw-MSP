@@ -16,6 +16,7 @@ import assert from "node:assert/strict";
 
 import type { PortalV2PillarView, PortalV2Stat } from "./portalV2Model";
 import {
+  livePillarOpenCount,
   pillarSeverity,
   pillarTrendVerdict,
   resolveHeroTile,
@@ -91,6 +92,19 @@ describe("pillarTrendVerdict", () => {
   it("null below the floor (nothing real to describe)", () => {
     assert.equal(pillarTrendVerdict([56]), null);
     assert.equal(pillarTrendVerdict(null), null);
+  });
+});
+
+/* ── live open-finding count (drill-down overlay) ──────────────────────────── */
+
+describe("livePillarOpenCount", () => {
+  it("sums the real critical + warning counts when the pillar is live", () => {
+    assert.equal(livePillarOpenCount({ dataState: "live", findingCounts: { critical: 7, warning: 4 } }), 11);
+    // a real zero is a real number, not a gap
+    assert.equal(livePillarOpenCount({ dataState: "live", findingCounts: { critical: 0, warning: 0 } }), 0);
+  });
+  it("is null when not live, so the page falls back to its design fixture count", () => {
+    assert.equal(livePillarOpenCount({ dataState: "fixture", findingCounts: { critical: 9, warning: 9 } }), null);
   });
 });
 

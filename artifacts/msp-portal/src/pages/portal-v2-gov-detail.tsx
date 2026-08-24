@@ -40,6 +40,8 @@ import {
   type GovPage,
   type GovTone,
 } from "@/components/portal-v2/govPages";
+import { useLivePillarHero } from "@/components/portal-v2/useLivePillarHero";
+import { PillarLiveSource } from "@/components/portal-v2/PillarLiveSource";
 
 /* ── Expression-built styles, transcribed from the prototype's builders ───── */
 
@@ -246,6 +248,13 @@ export default function PortalV2GovDetailPage() {
     onAskShaneBot: askShaneBot,
   });
 
+  // Reads the governance pillar's live war-room-pillars payload through the shared
+  // `useLivePillarHero` seam; `pv2-gd-source` proves the page is on real data. The
+  // per-sub-area detail table / policy / provenance rows have no per-sub-area
+  // server producer (the payload scores the pillar as a whole), so those rows stay
+  // fixture — a documented backend gap, not fabricated per-area numbers.
+  const live = useLivePillarHero("governance");
+
   if (!page) return <NotFound />;
 
   const gridCss = page.table.cols.map((c) => c.w).join(" ");
@@ -288,6 +297,7 @@ export default function PortalV2GovDetailPage() {
       )}
       {acceptRiskElement}
       {formElement}
+      <PillarLiveSource testId="pv2-gd-source" live={live} />
     </PortalV2Shell>
   );
 }

@@ -40,6 +40,8 @@ import {
   type EvStatCard,
 } from "@/components/portal-v2/secEvidenceData";
 import { evSrc, evTone, evTopRisksCount, evidencePageFor } from "@/components/portal-v2/secEvidenceModel";
+import { useLivePillarHero } from "@/components/portal-v2/useLivePillarHero";
+import { PillarLiveSource } from "@/components/portal-v2/PillarLiveSource";
 
 /* ── Icons ─────────────────────────────────────────────────────────────────── */
 
@@ -113,6 +115,12 @@ export default function PortalV2SecurityEvidencePage() {
 
   const { openAcceptRisk, acceptRiskElement } = useAcceptRisk({ onConfirm: () => {}, onAskShaneBot: askShaneBot });
 
+  // Reads the security pillar's live war-room-pillars payload through the shared
+  // `useLivePillarHero` seam; `pv2-ev-source` proves the page is on real data. The
+  // per-evidence-type "top risks" list and provenance queries have no per-item
+  // server producer, so those rows stay fixture — a documented backend gap.
+  const live = useLivePillarHero("security");
+
   if (!page) return <NotFound />;
 
   return (
@@ -138,6 +146,7 @@ export default function PortalV2SecurityEvidencePage() {
       )}
       {acceptRiskElement}
       {formElement}
+      <PillarLiveSource testId="pv2-ev-source" live={live} />
     </PortalV2Shell>
   );
 }

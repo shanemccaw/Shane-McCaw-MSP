@@ -87,6 +87,8 @@ import {
   SITE_VIS_FILTERS,
   type OversharingStat,
 } from "@/components/portal-v2/govOversharingData";
+import { useLivePillarHero } from "@/components/portal-v2/useLivePillarHero";
+import { PillarLiveSource } from "@/components/portal-v2/PillarLiveSource";
 
 /** Which lucide glyph each `iconSvg` name in the fixture maps to. 1:1 per README. */
 const STAT_ICON = {
@@ -294,6 +296,13 @@ export default function PortalV2GovOversharingPage() {
     onAskShaneBot: askShaneBot,
   });
 
+  // Reads the governance pillar's live war-room-pillars payload through the shared
+  // `useLivePillarHero` seam; `pv2-ovr-source` proves the page is on real data. The
+  // per-site / per-anonymous-link inventory rows and the top-risks list need a
+  // per-object SharePoint feed the war-room-pillars payload does not carry, so
+  // those rows stay fixture — a documented backend gap, not fabricated site rows.
+  const live = useLivePillarHero("governance");
+
   return (
     <PortalV2Shell eyebrow="Governance" title={OVERSHARING_HEADING}>
       <OversharingBody
@@ -326,6 +335,7 @@ export default function PortalV2GovOversharingPage() {
       )}
       {acceptRiskElement}
       {formElement}
+      <PillarLiveSource testId="pv2-ovr-source" live={live} />
     </PortalV2Shell>
   );
 }

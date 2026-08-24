@@ -69,6 +69,28 @@ export function pillarTrendVerdict(history: readonly number[] | null | undefined
   return "Holding steady across recent scans";
 }
 
+/**
+ * The real number of OPEN findings (critical + warning) for a pillar, read off
+ * the same live payload the heroes trust — or null when the pillar is not live
+ * (unscored / before a payload arrives), so a drill-down page falls back to its
+ * design fixture count rather than printing a real-looking 0.
+ *
+ * This is the one honest, VISIBLE real number a pillar drill-down can overlay
+ * onto an existing "open gaps / open findings" count. The per-object rows those
+ * pages list (individual overshared sites, MFA-partial users, CA policy rows,
+ * obligation registers, accepted-risk cards) have no per-item server producer —
+ * the war-room payload is finding-level and aggregate — so only the aggregate
+ * count is wired here; the rows stay fixture, documented as backend gaps exactly
+ * as the parent pillar heroes kept their ledgers/heat-maps fixture.
+ */
+export function livePillarOpenCount(live: {
+  dataState: "live" | "fixture";
+  findingCounts: { readonly critical: number; readonly warning: number };
+}): number | null {
+  if (live.dataState !== "live") return null;
+  return live.findingCounts.critical + live.findingCounts.warning;
+}
+
 /* ── Hero stat tiles ─────────────────────────────────────────────────────────── */
 
 /** The resolution of one hero stat tile against the live payload. */

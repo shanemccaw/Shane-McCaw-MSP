@@ -20,6 +20,8 @@ import { useFormDrawer } from "@/components/portal-v2/FormDrawer";
 import { useAcceptRisk } from "@/components/portal-v2/AcceptRiskPanel";
 import { CA_MONO } from "@/components/portal-v2/secCaData";
 import { caBandsWithRows, caStatCards } from "@/components/portal-v2/secCaModel";
+import { useLivePillarHero } from "@/components/portal-v2/useLivePillarHero";
+import { PillarLiveSource } from "@/components/portal-v2/PillarLiveSource";
 
 function WrenchIcon({ color = "#60a5fa", size = 13 }: { color?: string; size?: number }) {
   return (
@@ -62,6 +64,13 @@ export default function PortalV2SecurityCaPage() {
 
   const bands = caBandsWithRows();
   const stats = caStatCards();
+
+  // Reads the security pillar's live war-room-pillars payload through the shared
+  // `useLivePillarHero` seam; `pv2-ca-source` proves the page is on real data. The
+  // per-policy band rows (the 22 named CA policies and their drift state) need a
+  // per-policy Graph feed the war-room-pillars payload does not carry, so those
+  // stay fixture — a documented backend gap, not fabricated policy rows.
+  const live = useLivePillarHero("security");
 
   return (
     <PortalV2Shell eyebrow="Security" title="Conditional Access Baseline">
@@ -305,6 +314,7 @@ export default function PortalV2SecurityCaPage() {
       )}
       {acceptRiskElement}
       {formElement}
+      <PillarLiveSource testId="pv2-ca-source" live={live} />
     </PortalV2Shell>
   );
 }

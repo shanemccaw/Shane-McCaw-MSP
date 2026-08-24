@@ -16,8 +16,16 @@ import { Link } from "wouter";
 import { PortalV2Shell } from "@/components/portal-v2/PortalV2Shell";
 import { CMP_MONO } from "@/components/portal-v2/cmpDrilldownData";
 import { CMP_OBLIGATIONS, cmpObligationColor, cmpObligationScopeMuted } from "@/components/portal-v2/cmpDrilldownModel";
+import { useLivePillarHero } from "@/components/portal-v2/useLivePillarHero";
+import { PillarLiveSource } from "@/components/portal-v2/PillarLiveSource";
 
 export default function PortalV2ComplianceObligationsPage() {
+  // Reads the compliance pillar's live payload through `useLivePillarHero`; the
+  // `pv2-cmpobl-source` marker proves the page is on real data. The obligation
+  // REGISTER (frameworks in scope + per-framework state) is onboarding scope
+  // config with no server producer on the war-room-pillars payload, so those rows
+  // stay fixture — a documented backend gap, not a fabricated state.
+  const live = useLivePillarHero("compliance");
   return (
     <PortalV2Shell eyebrow="Compliance" title="Obligations we check against">
       <div
@@ -130,6 +138,7 @@ export default function PortalV2ComplianceObligationsPage() {
           </div>
         </div>
       </div>
+      <PillarLiveSource testId="pv2-cmpobl-source" live={live} />
     </PortalV2Shell>
   );
 }

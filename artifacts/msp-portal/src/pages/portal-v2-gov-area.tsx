@@ -22,6 +22,8 @@ import { Link, useLocation } from "wouter";
 import NotFound from "@/pages/not-found";
 import { PortalV2Shell } from "@/components/portal-v2/PortalV2Shell";
 import { govAreaFor } from "@/components/portal-v2/govAreaModel";
+import { useLivePillarHero } from "@/components/portal-v2/useLivePillarHero";
+import { PillarLiveSource } from "@/components/portal-v2/PillarLiveSource";
 
 const MONO = "'SF Mono',Menlo,Consolas,monospace";
 
@@ -77,6 +79,13 @@ export default function PortalV2GovAreaPage() {
   const [location] = useLocation();
   const slug = location.split("/").filter(Boolean).pop();
   const area = govAreaFor(slug);
+
+  // Reads the governance pillar's live war-room-pillars payload through the shared
+  // `useLivePillarHero` seam; `pv2-govarea-source` proves the page is on real data.
+  // The per-sub-area object lists / drift events / stat rows shown here have no
+  // per-sub-area server producer (the payload scores the pillar as a whole, not
+  // each governance area), so those rows stay fixture — a documented backend gap.
+  const live = useLivePillarHero("governance");
 
   if (!area) return <NotFound />;
 
@@ -252,6 +261,7 @@ export default function PortalV2GovAreaPage() {
           </>
         )}
       </div>
+      <PillarLiveSource testId="pv2-govarea-source" live={live} />
     </PortalV2Shell>
   );
 }

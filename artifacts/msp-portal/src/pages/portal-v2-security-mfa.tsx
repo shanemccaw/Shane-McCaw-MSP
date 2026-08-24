@@ -30,6 +30,8 @@ import {
   type MfaState,
 } from "@/components/portal-v2/secMfaData";
 import { mfaControlRows, mfaPartialUserRows, mfaStatePill, mfaWizardStepFlags } from "@/components/portal-v2/secMfaModel";
+import { useLivePillarHero } from "@/components/portal-v2/useLivePillarHero";
+import { PillarLiveSource } from "@/components/portal-v2/PillarLiveSource";
 
 function WrenchIcon({ color = "#60a5fa", size = 13 }: { color?: string; size?: number }) {
   return (
@@ -113,6 +115,13 @@ export default function PortalV2SecurityMfaPage() {
   const flags = mfaWizardStepFlags(wizardStep);
   const controls = mfaControlRows();
   const partialUsers = mfaPartialUserRows();
+
+  // Reads the security pillar's live war-room-pillars payload through the shared
+  // `useLivePillarHero` seam; `pv2-mfa-source` proves the page is on real data. The
+  // per-user MFA-gap rows and the coverage % need a per-user Graph feed the
+  // war-room-pillars payload does not carry, so those stay fixture — a documented
+  // backend gap, not a fabricated coverage number.
+  const live = useLivePillarHero("security");
 
   return (
     <PortalV2Shell eyebrow="Security" title="Multi-factor authentication">
@@ -429,6 +438,7 @@ export default function PortalV2SecurityMfaPage() {
       )}
       {acceptRiskElement}
       {formElement}
+      <PillarLiveSource testId="pv2-mfa-source" live={live} />
     </PortalV2Shell>
   );
 }

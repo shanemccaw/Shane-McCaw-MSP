@@ -45,6 +45,8 @@ import {
   GOV_OVER_TOTAL,
   govOverRowsForPage,
 } from "@/components/portal-v2/govOversharingData";
+import { useLivePillarHero } from "@/components/portal-v2/useLivePillarHero";
+import { PillarLiveSource } from "@/components/portal-v2/PillarLiveSource";
 
 const TOTAL_PAGES = Math.ceil(GOV_OVER_TOTAL / GOV_OVER_PAGE_SIZE);
 const TOTAL_LABEL = GOV_OVER_TOTAL.toLocaleString("en-GB");
@@ -71,6 +73,13 @@ export default function PortalV2GovOversharingAllPage() {
   // (the real page is a server query). Filtering the synthesised page keeps the
   // control honest rather than inert — it narrows what is actually on screen.
   const visible = q ? rows.filter((r) => r.name.toLowerCase().includes(q)) : rows;
+
+  // Reads the governance pillar's live war-room-pillars payload through the shared
+  // `useLivePillarHero` seam; `pv2-ovrall-source` proves the page is on real data.
+  // The bulk overshared-site rows are a per-site inventory with no server producer
+  // on the war-room-pillars payload (the real page is a server query yet to be
+  // built), so those rows stay fixture — a documented backend gap.
+  const live = useLivePillarHero("governance");
 
   return (
     <PortalV2Shell eyebrow="Governance" title="Overshared SharePoint">
@@ -265,6 +274,7 @@ export default function PortalV2GovOversharingAllPage() {
           </div>
         </div>
       </div>
+      <PillarLiveSource testId="pv2-ovrall-source" live={live} />
     </PortalV2Shell>
   );
 }

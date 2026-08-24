@@ -25,6 +25,9 @@ import { useFormDrawer } from "@/components/portal-v2/FormDrawer";
 import { useAcceptRisk } from "@/components/portal-v2/AcceptRiskPanel";
 import { CMP_FINDINGS, CMP_MONO, type CmpFinding } from "@/components/portal-v2/cmpDrilldownData";
 import { CMP_OPEN_COUNT, cmpSevMeta } from "@/components/portal-v2/cmpDrilldownModel";
+import { useLivePillarHero } from "@/components/portal-v2/useLivePillarHero";
+import { livePillarOpenCount } from "@/components/portal-v2/pillarDashboardModel";
+import { PillarLiveSource } from "@/components/portal-v2/PillarLiveSource";
 
 function WrenchIcon({ color = "#60a5fa", size = 13 }: { color?: string; size?: number }) {
   return (
@@ -51,6 +54,15 @@ export default function PortalV2ComplianceGapsPage() {
   const { fixKey, openFixPanel, closeFixPanel } = useFixPanel();
   const { openForm, formElement } = useFormDrawer();
   const [expanded, setExpanded] = useState<number | null>(null);
+
+  // The open-gaps HEADER count is the compliance pillar's REAL open-finding total
+  // (critical + warning) off the live war-room-pillars payload, through the same
+  // `useLivePillarHero` seam the parent Compliance page uses — falling back to the
+  // design fixture count only before a payload arrives / on an unscored tenant.
+  // The gap ROWS themselves (obligation text, evidence, fix playbook) have no
+  // per-finding server producer yet and stay fixture, documented as a backend gap.
+  const live = useLivePillarHero("compliance");
+  const openCount = livePillarOpenCount(live) ?? CMP_OPEN_COUNT;
 
   const askShaneBot = (topic: string) =>
     openForm({
@@ -136,7 +148,7 @@ export default function PortalV2ComplianceGapsPage() {
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
             <span style={{ fontSize: "9.5px", fontWeight: 700, letterSpacing: ".2em", textTransform: "uppercase", color: "#64748b" }}>
-              Open Gaps · {CMP_OPEN_COUNT}
+              Open Gaps · {openCount}
             </span>
             <span style={{ fontSize: "11px", color: "#475569" }}>
               Each one cites the obligation it touches. Expand for the evidence behind it.
@@ -371,6 +383,7 @@ export default function PortalV2ComplianceGapsPage() {
       )}
       {acceptRiskElement}
       {formElement}
+      <PillarLiveSource testId="pv2-cmpgaps-source" live={live} />
     </PortalV2Shell>
   );
 }

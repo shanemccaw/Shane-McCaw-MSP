@@ -17,8 +17,17 @@ import { Link } from "wouter";
 import { PortalV2Shell } from "@/components/portal-v2/PortalV2Shell";
 import { CMP_ACCEPTED, CMP_MONO } from "@/components/portal-v2/cmpDrilldownData";
 import { CMP_ACCEPTED_COUNT, cmpAcceptedMeta } from "@/components/portal-v2/cmpDrilldownModel";
+import { useLivePillarHero } from "@/components/portal-v2/useLivePillarHero";
+import { PillarLiveSource } from "@/components/portal-v2/PillarLiveSource";
 
 export default function PortalV2ComplianceDecisionsPage() {
+  // Reads the compliance pillar's live war-room-pillars payload through the same
+  // `useLivePillarHero` seam as every other pillar view — the `pv2-cmpdec-source`
+  // marker proves the page is on real data. The accepted-risk CARDS themselves are
+  // a deliberate-decision register with no server producer today (accepting a risk
+  // is a UI-only no-op on these pages), so those cards stay fixture — a documented
+  // backend gap, not a fabricated number.
+  const live = useLivePillarHero("compliance");
   return (
     <PortalV2Shell eyebrow="Compliance" title="Documented policy decisions">
       <div
@@ -158,6 +167,7 @@ export default function PortalV2ComplianceDecisionsPage() {
           </div>
         </div>
       </div>
+      <PillarLiveSource testId="pv2-cmpdec-source" live={live} />
     </PortalV2Shell>
   );
 }
