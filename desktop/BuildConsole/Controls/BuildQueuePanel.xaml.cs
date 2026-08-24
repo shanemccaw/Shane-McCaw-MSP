@@ -872,6 +872,54 @@ namespace BuildConsole.Controls
 
         private static string FormatIssueRef(int n) => n < 0 ? $"local #{-n}" : $"#{n}";
 
+        /// <summary>
+        /// Reorders nodes (already in SortForDisplay's preferred order) so every
+        /// blocker renders BEFORE its dependents, with each node's direct dependents
+        /// placed immediately after it (a DFS, not a plain topological sort) — the
+        /// "nested under whatever blocks it" shape Shane described. A node blocked by
+        /// several present keys nests under the first one it lists; the rest still get
+        /// real connector lines drawn to them (RedrawQueueGraph iterates ALL of
+        /// BlockedBy, not just the one used for placement). Root-level items (no
+        /// blocker present in this set) keep SortForDisplay's relative order, forming
+        /// the trunk sequence. Guards against a blocking cycle (shouldn't happen, but
+        /// two items can't be relied on to never reference each other) by tracking
+        /// visited keys and appending any leftover nodes rather than recursing forever.
+        /// </summary>
+        private static List<QueueGraphNode> OrderByDependency(List<QueueGraphNode> nodesInPreferredOrder)
+        {
+            var byKey = new Dictionary<int, QueueGraphNode>();
+            foreach (var n in nodesInPreferredOrder) byKey.TryAdd(n.Key, n);
+
+            var childrenOf = new Dictionary<int, List<QueueGraphNode>>();
+            var hasParent = new HashSet<int>();
+            foreach (var n in nodesInPreferredOrder)
+            {
+                int? parentKey = null;
+                foreach (var b in n.BlockedBy) { if (byKey.ContainsKey(b)) { parentKey = b; break; } }
+                if (parentKey == null) continue;
+                hasParent.Add(n.Key);
+                if (!childrenOf.TryGetValue(parentKey.Value, out var kids)) { kids = new List<QueueGraphNode>(); childrenOf[parentKey.Value] = kids; }
+                kids.Add(n);
+            }
+
+            var visited = new HashSet<int>();
+            var ordered = new List<QueueGraphNode>();
+            void Visit(QueueGraphNode node)
+            {
+                if (!visited.Add(node.Key)) return;
+                ordered.Add(node);
+                if (childrenOf.TryGetValue(node.Key, out var kids))
+                    foreach (var kid in kids) Visit(kid);
+            }
+
+            foreach (var n in nodesInPreferredOrder)
+                if (!hasParent.Contains(n.Key)) Visit(n);
+            foreach (var n in nodesInPreferredOrder) // cycle safety net — shouldn't fire in practice
+                if (!visited.Contains(n.Key)) Visit(n);
+
+            return ordered;
+        }
+
         // ══════════════════════════════════════════════════════════════════════════
         // ── Visual Queue DAG with Canvas-Based Connectors (#860 Reference) ────────
         // ══════════════════════════════════════════════════════════════════════════
@@ -941,6 +989,7 @@ namespace BuildConsole.Controls
             _downstreamBlockCounts = ComputeDownstreamBlockCounts(items);
             _maxDownstreamBlockCount = _downstreamBlockCounts.Count > 0 ? _downstreamBlockCounts.Values.Max() : 0;
 
+            var itemNodes = new List<QueueGraphNode>();
             foreach (var item in SortForDisplay(items))
             {
                 var interactiveState = _watcher?.GetInteractiveState(item.Id);
@@ -949,7 +998,7 @@ namespace BuildConsole.Controls
                 var cleanBlockers = blockerList.Where(b => b != 0 && b != item.GithubNumber).ToList();
 
                 int key = item.GithubNumber ?? item.Id;
-                _currentGraphNodes.Add(new QueueGraphNode
+                itemNodes.Add(new QueueGraphNode
                 {
                     Key = key,
                     DisplayRef = item.GithubNumber.HasValue ? FormatIssueRef(item.GithubNumber.Value) : $"#{item.Id}",
@@ -961,6 +1010,17 @@ namespace BuildConsole.Controls
                     Item = item
                 });
             }
+            // Git-style shape fix — Shane: "Blocked ends up showing above the thing
+            // it's blocked [by]... I would think this would be nested under whatever
+            // blocks it." SortForDisplay's plain "newest number first" order had no
+            // relationship to blocking at all, so a blocked item could land anywhere
+            // relative to its blocker, including above it. OrderByDependency reorders
+            // (stably, preserving SortForDisplay as the sibling/root order) so a
+            // blocker always renders before — and its direct dependents immediately
+            // after — it, recursively; a node blocked by several others nests under
+            // whichever one it encounters first and still draws real connector lines
+            // to the rest (see the BlockedBy loop in RedrawQueueGraph, unchanged).
+            _currentGraphNodes.AddRange(OrderByDependency(itemNodes));
 
             QueueEmptyText.Visibility = _currentGraphNodes.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
             QueueEmptyText.Text = searching
@@ -980,39 +1040,48 @@ namespace BuildConsole.Controls
                 return;
             }
 
-            // ── 4. Swimlane Allocation DAG Algorithm (#860) ──
-            var lanes = new List<int?>();
+            // ── 4. Swimlane Allocation DAG Algorithm (#860, reworked) ──
+            // Nodes now arrive parent-before-child (OrderByDependency above), so by the
+            // time a node is processed its blocker's column is already known — no more
+            // "reserve this lane for a key I haven't seen yet" trick the old top-down
+            // algorithm needed. Root/unblocked items always land in lane 0 and STAY
+            // there (TrunkOwner never gets displaced), which is what makes lane 0 the
+            // continuous main trunk RedrawQueueGraph draws a solid green line through.
+            // A blocked node either continues straight down its (single, first) parent's
+            // lane — if it's the first child to claim it — or branches into a fresh lane
+            // when a sibling already has (a fork, multiple items freed by one blocker).
+            const int TrunkOwner = int.MinValue;
+            var lanes = new List<int?> { TrunkOwner };
+            var columnByKey = new Dictionary<int, int>();
             int maxLaneCount = 1;
             for (int i = 0; i < _currentGraphNodes.Count; i++)
             {
                 var node = _currentGraphNodes[i];
                 node.Row = i;
 
-                int col = lanes.FindIndex(k => k.HasValue && k.Value == node.Key);
-                if (col < 0)
+                int? parentKey = null;
+                foreach (var b in node.BlockedBy) { if (columnByKey.ContainsKey(b)) { parentKey = b; break; } }
+
+                int col;
+                if (parentKey == null)
                 {
-                    col = lanes.FindIndex(k => k == null);
+                    col = 0;
+                    lanes[0] = TrunkOwner;
+                }
+                else
+                {
+                    int parentCol = columnByKey[parentKey.Value];
+                    col = (parentCol < lanes.Count && lanes[parentCol] == parentKey.Value)
+                        ? parentCol
+                        : lanes.FindIndex(k => k == null);
                     if (col < 0) { lanes.Add(null); col = lanes.Count - 1; }
+                    lanes[col] = node.Key;
                 }
+
                 node.Column = col;
+                columnByKey[node.Key] = col;
 
-                lanes[col] = node.BlockedBy.Count > 0 ? node.BlockedBy[0] : null;
-
-                for (int j = 0; j < lanes.Count; j++)
-                {
-                    if (j != col && lanes[j].HasValue && lanes[j]!.Value == node.Key)
-                        lanes[j] = null;
-                }
-
-                for (int bi = 1; bi < node.BlockedBy.Count; bi++)
-                {
-                    int bKey = node.BlockedBy[bi];
-                    if (lanes.Any(k => k.HasValue && k.Value == bKey)) continue;
-                    int free = lanes.FindIndex(k => k == null);
-                    if (free < 0) lanes.Add(bKey); else lanes[free] = bKey;
-                }
-
-                while (lanes.Count > 0 && lanes[lanes.Count - 1] == null) lanes.RemoveAt(lanes.Count - 1);
+                while (lanes.Count > 1 && lanes[lanes.Count - 1] == null) lanes.RemoveAt(lanes.Count - 1);
                 maxLaneCount = Math.Max(maxLaneCount, Math.Max(lanes.Count, col + 1));
             }
             _currentMaxLanes = Math.Max(maxLaneCount, 1);
@@ -1086,11 +1155,22 @@ namespace BuildConsole.Controls
             QueueGraphCanvas.Height = totalHeight;
 
             // 1. Draw Connectors & Curves first
+            // Shane: "Anything without a connection just has a trailing circle at the
+            // left of it with no line to anything... I would think this would be a
+            // green connection line." Unblocked/root items had no vertical connector
+            // at all before (the BlockedBy loop below only fires when BlockedBy is
+            // non-empty) — they just floated. Every root now connects to the PREVIOUS
+            // root's dot with a solid green line, forming one continuous trunk down
+            // lane 0 (git log's main-branch line), and its horizontal branch line to
+            // the card is green too instead of the lane-cycled color.
+            var trunkGreen = (Brush)Application.Current.FindResource("GreenBrush");
+            QueueGraphNode? lastTrunkNode = null;
             foreach (var node in _currentGraphNodes)
             {
                 double cx = QueueLaneX(node.Column);
                 double cy = node.CenterY;
-                var laneBrush = QueueLaneBrush(node.Column);
+                bool isTrunk = node.BlockedBy.Count == 0;
+                var laneBrush = isTrunk ? trunkGreen : QueueLaneBrush(node.Column);
 
                 var branchLine = new System.Windows.Shapes.Line
                 {
@@ -1103,6 +1183,21 @@ namespace BuildConsole.Controls
                     StrokeDashArray = node.IsBlocked ? new DoubleCollection { 2.5, 2 } : null
                 };
                 QueueGraphCanvas.Children.Add(branchLine);
+
+                if (isTrunk)
+                {
+                    if (lastTrunkNode != null)
+                    {
+                        QueueGraphCanvas.Children.Add(new System.Windows.Shapes.Line
+                        {
+                            X1 = cx, Y1 = lastTrunkNode.CenterY,
+                            X2 = cx, Y2 = cy,
+                            Stroke = trunkGreen,
+                            StrokeThickness = 2.0
+                        });
+                    }
+                    lastTrunkNode = node;
+                }
 
                 for (int bi = 0; bi < node.BlockedBy.Count; bi++)
                 {
