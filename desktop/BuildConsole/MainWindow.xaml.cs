@@ -5245,41 +5245,6 @@ namespace BuildConsole
         {
             string mode = isRegression ? "regression" : "single";
 
-            if (targetEnv == BuildConsole.Services.TargetEnvironment.Staging && _replitWatcher != null &&
-                (_replitWatcher.CurrentStatus.State == BuildConsole.Services.ReplitWatcherState.GracePeriod ||
-                 _replitWatcher.CurrentStatus.State == BuildConsole.Services.ReplitWatcherState.Waking ||
-                 _replitWatcher.CurrentStatus.State == BuildConsole.Services.ReplitWatcherState.Error))
-            {
-                BuildConsole.Services.ActivityLog.Log("testing.manifest-runner",
-                    "Replit is currently down — attempting automatic wake before running manifest...");
-                BuildConsole.ToastEngine.Show(
-                    "Waking Replit",
-                    "Replit is down. Automatically waking your Replit dev server now...",
-                    BuildConsole.ToastKind.Info,
-                    TimeSpan.FromSeconds(5)
-                );
-
-                bool woke = await _replitWatcher.TriggerWakeAsync();
-                if (!woke)
-                {
-                    BuildConsole.ToastEngine.Show(
-                        "Replit Not Responding",
-                        "Could not wake Replit automatically. Click here to open the workspace.",
-                        BuildConsole.ToastKind.Warning,
-                        TimeSpan.FromSeconds(15),
-                        () => OpenWebTab(BuildConsole.Services.BuildConsoleSettings.Load().ReplitWorkspaceUrl, "Replit Workspace", "")
-                    );
-
-                    return new BuildConsole.Services.ManifestRunResult
-                    {
-                        Issue = manifest.Issue,
-                        Feature = manifest.Feature,
-                        Mode = mode,
-                        StartedAt = DateTime.Now,
-                    };
-                }
-            }
-
             var config = BuildConsole.Services.BuildTrackerConfig.Load().ForEnvironment(targetEnv);
 
             BuildConsole.Services.ActivityLog.Log("testing.manifest-runner",
@@ -5733,11 +5698,11 @@ namespace BuildConsole
                         BuildConsole.Services.ActivityLog.Log(channel, $"[Readiness Probe] Server ready on attempt #{attempt} (HTTP {(int)resp.StatusCode} OK): {baseUrl}");
                         return true;
                     }
-                    BuildConsole.Services.ActivityLog.Log(channel, $"[Readiness Probe] Attempt #{attempt} returned HTTP {(int)resp.StatusCode} (waiting for Replit compile / restart)…");
+                    BuildConsole.Services.ActivityLog.Log(channel, $"[Readiness Probe] Attempt #{attempt} returned HTTP {(int)resp.StatusCode} (waiting for server to fully compile / restart)…");
                 }
                 catch (Exception ex)
                 {
-                    BuildConsole.Services.ActivityLog.Log(channel, $"[Readiness Probe] Attempt #{attempt}: {ex.Message} (waiting for Replit startup / Wi-Fi connection)…");
+                    BuildConsole.Services.ActivityLog.Log(channel, $"[Readiness Probe] Attempt #{attempt}: {ex.Message} (waiting for node server startup)…");
                 }
 
                 await System.Threading.Tasks.Task.Delay(2500);
