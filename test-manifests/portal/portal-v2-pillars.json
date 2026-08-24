@@ -25,7 +25,8 @@
     "DECISION, Shane 2026-08-19: KEEP the generic portal-v2-pillar.tsx and its '/portal-v2/:pillar' route until the whole Customer Portal v2 build is finished — \"keep the generic pages until we are done\". It is now unreachable by any valid pillar (all six match a bespoke route above it) and U5a covers its only remaining behaviour, but it is NOT to be deleted as tidy-up by a later session. It is the last consumer of the per-pillar live-data path (usePortalV2Pillars + PortalV2Pieces) and the working reference for moving a pillar off its fixture onto the real payload.",
     "THE 166-VERSUS-78 TRAP ON HEALTH, worth knowing before anyone edits that page: the hero's 'Stale objects' stat binds hltObjectTotal — the sum of ALL NINE inventory classes, 166 — while debt item HLT-05 and the whole trend series quote 78, which is that same inventory minus app registrations (61), credentials (4) and disabled accounts (23). Those three have their own debt items and their own remediation, so counting them in the debt total would double-count the work. Both figures are the prototype's and both are correct for what they measure. The first transcription hardcoded 78 in the hero and the fixture's own sum assertion caught it; both values are now COMPUTED from the tables rather than typed, and manifest step H6 pins the rendered 166.",
     "OBSERVED, NOT A REGRESSION, WORTH KNOWING: CR2 shows the fix panel reading 'Apply the recommended change' — the GENERIC FALLBACK — because govPages.ts's sharing-drift policy rows carry fixKeys (gov-drift-anon-expiry, gov-drift-default-permission, gov-drift-domain-allowlist, gov-drift-alert) that exist in neither FIX_PLAYBOOKS nor the prototype's GOV_FIXES. The gate still works end to end, which is what CR1-CR7 assert, but 'wrench fixes tied to NAMED playbooks' is currently only true on the oversharing page (OV18 asserts its real title). Writing those four playbooks is real outstanding work, not a test defect.",
-    "PART 3 TOP-UP (Licensing / Adoption / Health) -- structural fidelity, not just copy. The copy-coverage floor read 83/88/90 before and 100/100/100 after, but the real work was layout the floor cannot see, so several steps here were rewritten to match: (1) HEALTH lost its prose disambiguation banner -- the current shell has no bannerTitle/HLT_BANNER_BODY, so H1/H2 no longer assert pv2-hlt-banner / pv2-hlt-banner-title (removed). (2) HEALTH's Configuration drift went from a flat table to a verdict-sorted EXPANDABLE list (pv2-hlt-drift-{i}); H11 now expands rows to reach 'Unknown — pre-baseline', 'Raise the change that should have covered it' (isAlert only), and the 'Change record · CR-0098' block. (3) HEALTH's service subtitle was corrected to 'Straight from the Message Center, filtered to services you use.' and gained the 'All 452 notices' header link (pv2-hlt-mc-all) -- H25a/H25b. (4) LICENSING consolidated the flat 7-column ledger table AND the separate recovery-items list into one card per SKU (licLedgerCards): the totals ROW (pv2-lic-ledger-total) is gone, its figures moved to the header (pv2-lic-ledger-totals, L7); the recovery list (pv2-lic-recovery / pv2-lic-item-*) is gone, its actions now live inside the expandable SKU card (L9-L11 expand pv2-lic-sku-SPE_E5 and read the counts line and the embedded action). A segmented utilisation bar and a legend (pv2-lic-ledger-legend, L7b) were added. (5) ADOPTION's play badges were corrected from the superseded 'People play'/'Policy + play' to 'We deliver it · billable'/'We configure it · included' (pinned in adpDashboardData.test.ts). The Copilot ledger action routes to lic-copilot-reassign because the prototype's own lic-copilot-idle key has no matching playbook."
+    "PART 3 TOP-UP (Licensing / Adoption / Health) -- structural fidelity, not just copy. The copy-coverage floor read 83/88/90 before and 100/100/100 after, but the real work was layout the floor cannot see, so several steps here were rewritten to match: (1) HEALTH lost its prose disambiguation banner -- the current shell has no bannerTitle/HLT_BANNER_BODY, so H1/H2 no longer assert pv2-hlt-banner / pv2-hlt-banner-title (removed). (2) HEALTH's Configuration drift went from a flat table to a verdict-sorted EXPANDABLE list (pv2-hlt-drift-{i}); H11 now expands rows to reach 'Unknown — pre-baseline', 'Raise the change that should have covered it' (isAlert only), and the 'Change record · CR-0098' block. (3) HEALTH's service subtitle was corrected to 'Straight from the Message Center, filtered to services you use.' and gained the 'All 452 notices' header link (pv2-hlt-mc-all) -- H25a/H25b. (4) LICENSING consolidated the flat 7-column ledger table AND the separate recovery-items list into one card per SKU (licLedgerCards): the totals ROW (pv2-lic-ledger-total) is gone, its figures moved to the header (pv2-lic-ledger-totals, L7); the recovery list (pv2-lic-recovery / pv2-lic-item-*) is gone, its actions now live inside the expandable SKU card (L9-L11 expand pv2-lic-sku-SPE_E5 and read the counts line and the embedded action). A segmented utilisation bar and a legend (pv2-lic-ledger-legend, L7b) were added. (5) ADOPTION's play badges were corrected from the superseded 'People play'/'Policy + play' to 'We deliver it · billable'/'We configure it · included' (pinned in adpDashboardData.test.ts). The Copilot ledger action routes to lic-copilot-reassign because the prototype's own lic-copilot-idle key has no matching playbook.",
+    "FINAL-STAGE WIRING PASS 2026-08-24 (Licensing / Adoption / Health hero score -> REAL data). These three dashboards were the last three still 100% design fixture, and this is the pass Shane's own note above (the '6 of 10' resolution) said would 'wire all this together for real'. AUDIT FINDING, per WIRING_PLAN section 2 and confirmed against api-server lib/war-room-pillar-stats.ts: the war-room-pillars payload each page already reads (via usePortalV2Pillars) supplies the REAL per-pillar display score, evaluation (scored | insufficient_data | not_evaluated), replayed score trend and finding counts through the live health engine -- so this is a UI-SEAM pass with NO backend work. WHAT IS NOW REAL: the hero SCORE ring on all three pages (new components/portal-v2/useLivePillarHero.ts overlays pillars[key].score with the fixture as the honest-null fallback), and the score DELTA chip beneath it (derived from the real score series -- deriveHeroDelta, unit-tested -- with its colour following the real movement, green up / red down, replacing the previously hardcoded colour). A6-A8 extract the three real scores and L2/A-3/H5 assert them on screen; the pv2-{lic,adp,hlt}-source clipped markers assert 'live', so a page that fell back to the fixture (71/88/66) fails. WHAT STAYS FIXTURE, deliberately kept WHOLE rather than half-filled (same discipline as the Ownership / Microsoft Changes passes): LICENSING's per-SKU money ledger, the three recovery buckets, acknowledged spend, savings ledger, 'why the waste recurs' and provenance -- war-room-pillars carries only AGGREGATE licence figures (licenseSeats: provisioned/unassigned/annualWasteDollars, plus licensing.inactiveLicenseCount), not the design's fictional per-SKU rows, and the hero has no slot matching those aggregates; ADOPTION's workload-utilisation list, department heat-map, plays and parked record; HEALTH's directory-sync table, stale-object inventory, config-drift list, debt items, accepted risk and service-health panel. Every one of those is the prototype's own Halden Materials data with no per-item server feed, so surfacing the real aggregates that DO exist needs new design slots, flagged for Shane rather than invented. NOTE the delta 'this month' label is the design's own copy kept verbatim; the real trend window may differ."
   ],
 
   "apiTests": [
@@ -84,6 +85,30 @@
         "jsonPath": "$.pillars[6].pillar",
         "value": "copilot"
       }
+    },
+    {
+      "name": "A6 -- extract the REAL Licensing score. pillars[1] is licensing in WAR_ROOM_PILLAR_KEYS order. The value is interpolated into L2's DOM assertion so a page that renders the fixture 71 instead of the live engine score fails there.",
+      "method": "GET",
+      "path": "/api/portal/assessment/war-room-pillars",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.pillars[1].pillar", "value": "licensing" },
+      "extract": { "as": "licScore", "jsonPath": "$.pillars[1].score" }
+    },
+    {
+      "name": "A7 -- extract the REAL Adoption score. pillars[2] is adoption. Interpolated into A-3.",
+      "method": "GET",
+      "path": "/api/portal/assessment/war-room-pillars",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.pillars[2].pillar", "value": "adoption" },
+      "extract": { "as": "adpScore", "jsonPath": "$.pillars[2].score" }
+    },
+    {
+      "name": "A8 -- extract the REAL Health score. pillars[4] is health (the engine's 'architecture' pillar, #1098). Interpolated into H5.",
+      "method": "GET",
+      "path": "/api/portal/assessment/war-room-pillars",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.pillars[4].pillar", "value": "health" },
+      "extract": { "as": "hltScore", "jsonPath": "$.pillars[4].score" }
     }
   ],
 
@@ -698,11 +723,18 @@
       "textContains": "Governance"
     },
     {
-      "name": "H5 -- the hero ring shows the score with a RED delta: debt is trending the wrong way.",
+      "name": "H5 -- the hero ring shows the REAL engine score, not the design fixture 66. {{hltScore}} is extracted from war-room-pillars pillars[4].score (the pillar the engine calls 'architecture' and the payload keys 'health') at run time, so a page that fell back to the fixture instead of the live score would fail this step.",
       "action": "expect",
       "selector": "[data-testid='pv2-hlt-score']",
       "state": "visible",
-      "textContains": "66"
+      "textContains": "{{hltScore}}"
+    },
+    {
+      "name": "H5-src -- the hidden source indicator reads 'live', proving a real numeric score is on screen rather than the honest-null fixture fallback. It is clipped, not display:none, so its text is readable but takes no space.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-hlt-source']",
+      "state": "present",
+      "textContains": "live"
     },
     {
       "name": "H6 -- THE TWO OBJECT COUNTS. The hero binds the FULL nine-class inventory sum (166); HLT-05 and the trend quote 78, the same inventory minus the three classes with their own debt items. The first transcription hardcoded 78 here and the unit test caught it; this pins the rendered value.",
@@ -923,11 +955,18 @@
       "textContains": "Nothing on this page is a risk and nothing here is failing."
     },
     {
-      "name": "A-3 -- the ring shows the score with a green positive delta.",
+      "name": "A-3 -- the ring shows the REAL engine score, not the design fixture 88. {{adpScore}} is extracted from war-room-pillars pillars[2].score at run time. This is the wiring Shane's own note above called for: 'will be fixed when we go through on the final stage pass and wire all this together for real'.",
       "action": "expect",
       "selector": "[data-testid='pv2-adp-score']",
       "state": "visible",
-      "textContains": "88"
+      "textContains": "{{adpScore}}"
+    },
+    {
+      "name": "A-3-src -- the hidden source indicator reads 'live', proving the real numeric score is on screen rather than the fixture fallback.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-adp-source']",
+      "state": "present",
+      "textContains": "live"
     },
     {
       "name": "A-4 -- the parked strip says plainly that nothing is at risk. That clause is the difference between this pillar and every other one.",
@@ -1116,11 +1155,18 @@
       "textContains": "$2,679"
     },
     {
-      "name": "L2 -- the ring carries a POSITIVE delta. Every other pillar's is red or muted; Licensing is the one that goes up.",
+      "name": "L2 -- the ring shows the REAL engine score, not the design fixture 71. {{licScore}} is extracted from war-room-pillars pillars[1].score at run time. The score's DELTA colour now follows the real score movement (green up, red down) rather than being hardcoded green.",
       "action": "expect",
       "selector": "[data-testid='pv2-lic-score']",
       "state": "visible",
-      "textContains": "71"
+      "textContains": "{{licScore}}"
+    },
+    {
+      "name": "L2-src -- the hidden source indicator reads 'live', proving the real numeric score is on screen rather than the fixture fallback. The money ledger, buckets, savings ledger and provenance below deliberately STAY fixture: war-room-pillars carries only the aggregate licence figures (paid seats provisioned/unassigned, annual waste $, inactive licences), not the design's per-SKU rows, so those sections have no per-item server feed to wire.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-lic-source']",
+      "state": "present",
+      "textContains": "live"
     },
     {
       "name": "L3 -- the renewal stat renders the DATE, which is the deadline the largest recovery on the page depends on.",

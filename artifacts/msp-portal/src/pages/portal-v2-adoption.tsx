@@ -44,6 +44,7 @@ import { FixPanel, useFixPanel } from "@/components/portal-v2/FixPanel";
 import { useFormDrawer } from "@/components/portal-v2/FormDrawer";
 import { useAcceptRisk } from "@/components/portal-v2/AcceptRiskPanel";
 import { GOV_SRC_META } from "@/components/portal-v2/govPages";
+import { useLivePillarHero, PV2_SOURCE_CLIP } from "@/components/portal-v2/useLivePillarHero";
 import {
   ADP_DEPT,
   ADP_ENABLERS,
@@ -98,9 +99,16 @@ const MICRO_LABEL: React.CSSProperties = {
 
 export default function PortalV2AdoptionPage() {
   const trend = adpTrendGeometry();
+  // Real pillar score/delta from the live health engine, fixture as the
+  // honest-null fallback. Only the ring is wired — the workload list, department
+  // heat-map and plays below have no per-item server feed and stay fixture.
+  const live = useLivePillarHero("adoption");
+  const score = live.score ?? ADP_HERO.score;
+  const delta = live.delta?.text ?? ADP_HERO.delta;
+  const deltaColor = live.delta?.color ?? "#34d399";
   const ringR = 46;
   const ringC = 2 * Math.PI * ringR;
-  const ringOffset = ringC - (ADP_HERO.score / 100) * ringC;
+  const ringOffset = ringC - (score / 100) * ringC;
 
   const [expanded, setExpanded] = useState<number | null>(null);
   const [openWorkload, setOpenWorkload] = useState<number | null>(null);
@@ -485,12 +493,15 @@ export default function PortalV2AdoptionPage() {
                     }}
                     data-testid="pv2-adp-score"
                   >
-                    {ADP_HERO.score}
+                    {score}
                   </span>
                   <span
-                    style={{ fontSize: "9.5px", fontWeight: 700, color: "#34d399", fontFamily: MONO }}
+                    style={{ fontSize: "9.5px", fontWeight: 700, color: deltaColor, fontFamily: MONO }}
                   >
-                    {ADP_HERO.delta}
+                    {delta}
+                  </span>
+                  <span data-testid="pv2-adp-source" style={PV2_SOURCE_CLIP}>
+                    {live.dataState}
                   </span>
                 </div>
               </div>

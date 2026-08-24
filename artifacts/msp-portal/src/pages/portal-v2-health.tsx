@@ -45,6 +45,7 @@ import { FixPanel, useFixPanel } from "@/components/portal-v2/FixPanel";
 import { useFormDrawer } from "@/components/portal-v2/FormDrawer";
 import { useAcceptRisk } from "@/components/portal-v2/AcceptRiskPanel";
 import { GOV_SRC_META } from "@/components/portal-v2/govPages";
+import { useLivePillarHero, PV2_SOURCE_CLIP } from "@/components/portal-v2/useLivePillarHero";
 import { PILLAR_ORDER } from "@/components/copilot-journey/journeyTokens";
 import {
   HLT_ACCEPTED,
@@ -181,9 +182,19 @@ function HltInfoDot({ title, summary }: { title: string; summary: string }) {
 
 export default function PortalV2HealthPage() {
   const trend = hltTrendGeometry();
+  // Real pillar score/delta from the live health engine (the engine calls this
+  // pillar "architecture"; the payload keys it "health"), fixture as the
+  // honest-null fallback. Only the ring is wired — the sync table, stale-object
+  // inventory, drift list and debt items below have no per-item server feed and
+  // stay fixture. The RING delta tracks the score (up = green), which is separate
+  // from the debt TREND chart below that is red-because-rising by design.
+  const live = useLivePillarHero("health");
+  const score = live.score ?? HLT_HERO.score;
+  const delta = live.delta?.text ?? HLT_HERO.delta;
+  const deltaColor = live.delta?.color ?? "#f87171";
   const ringR = 46;
   const ringC = 2 * Math.PI * ringR;
-  const ringOffset = ringC - (HLT_HERO.score / 100) * ringC;
+  const ringOffset = ringC - (score / 100) * ringC;
 
   const [expanded, setExpanded] = useState<number | null>(null);
   const [driftOpen, setDriftOpen] = useState<number | null>(null);
@@ -633,12 +644,15 @@ export default function PortalV2HealthPage() {
                     }}
                     data-testid="pv2-hlt-score"
                   >
-                    {HLT_HERO.score}
+                    {score}
                   </span>
                   <span
-                    style={{ fontSize: "9.5px", fontWeight: 700, color: "#f87171", fontFamily: MONO }}
+                    style={{ fontSize: "9.5px", fontWeight: 700, color: deltaColor, fontFamily: MONO }}
                   >
-                    {HLT_HERO.delta}
+                    {delta}
+                  </span>
+                  <span data-testid="pv2-hlt-source" style={PV2_SOURCE_CLIP}>
+                    {live.dataState}
                   </span>
                 </div>
               </div>

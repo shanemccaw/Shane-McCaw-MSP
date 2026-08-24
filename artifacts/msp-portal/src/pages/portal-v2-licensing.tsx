@@ -57,6 +57,7 @@ import { FixPanel, useFixPanel } from "@/components/portal-v2/FixPanel";
 import { useFormDrawer } from "@/components/portal-v2/FormDrawer";
 import { useAcceptRisk } from "@/components/portal-v2/AcceptRiskPanel";
 import { GOV_SRC_META } from "@/components/portal-v2/govPages";
+import { useLivePillarHero, PV2_SOURCE_CLIP } from "@/components/portal-v2/useLivePillarHero";
 import {
   LIC_ACK,
   LIC_ACK_COUNT,
@@ -170,9 +171,16 @@ function LicInfoDot({ title, summary }: { title: string; summary: string }) {
 
 export default function PortalV2LicensingPage() {
   const trend = licTrendGeometry();
+  // Real pillar score/delta from the live health engine, with the fixture as the
+  // honest-null fallback. Only the ring is wired — the money ledger, buckets and
+  // provenance below have no per-item server feed and stay design fixture.
+  const live = useLivePillarHero("licensing");
+  const score = live.score ?? LIC_HERO.score;
+  const delta = live.delta?.text ?? LIC_HERO.delta;
+  const deltaColor = live.delta?.color ?? "#34d399";
   const ringR = 46;
   const ringC = 2 * Math.PI * ringR;
-  const ringOffset = ringC - (LIC_HERO.score / 100) * ringC;
+  const ringOffset = ringC - (score / 100) * ringC;
 
   /** `licSku` (14071) — which ledger card is open, keyed by SKU part number. */
   const [openSku, setOpenSku] = useState<string | null>(null);
@@ -531,13 +539,17 @@ export default function PortalV2LicensingPage() {
                     }}
                     data-testid="pv2-lic-score"
                   >
-                    {LIC_HERO.score}
+                    {score}
                   </span>
-                  {/* GREEN and positive — the only pillar where it is. */}
+                  {/* Real score movement; colour follows its sign (green up, red
+                      down). Fixture is green and positive when live data is absent. */}
                   <span
-                    style={{ fontSize: "9.5px", fontWeight: 700, color: "#34d399", fontFamily: MONO }}
+                    style={{ fontSize: "9.5px", fontWeight: 700, color: deltaColor, fontFamily: MONO }}
                   >
-                    {LIC_HERO.delta}
+                    {delta}
+                  </span>
+                  <span data-testid="pv2-lic-source" style={PV2_SOURCE_CLIP}>
+                    {live.dataState}
                   </span>
                 </div>
               </div>
