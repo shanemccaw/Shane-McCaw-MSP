@@ -24,7 +24,11 @@ namespace BuildConsole.Services
 
   function extractLeadingFlags(text) {
     const newlineIdx = text.indexOf("\n");
-    const firstLine = newlineIdx === -1 ? text : text.slice(0, newlineIdx);
+    let firstLine = newlineIdx === -1 ? text : text.slice(0, newlineIdx);
+    // Allow a valueless --notGit (letter id auto-allocated): normalize a bare "--notGit"
+    // (end of line, or right before another --flag) to "--notGit local" so the flag/value
+    // regex still recognizes it. "--notGit 109" is left untouched (value ignored downstream).
+    firstLine = firstLine.replace(/--notGit(?=\s+--|\s*$)/g, "--notGit local");
     const flagRe = /--([\w-]+)\s+(\S+)/g;
     const flags = {};
     let matched;
@@ -144,30 +148,38 @@ namespace BuildConsole.Services
 
   function queueBuild(prompt, referencedNumber, btn) {
     const { flags, rest } = extractLeadingFlags(prompt);
-    let blockedByNumbers = null;
+
+    // GitHub blockers (--blocked-by): plain issue numbers.
+    let gitBlockers = [];
     if (flags["blocked-by"]) {
       const parts = flags["blocked-by"].split(",").map((s) => s.trim()).filter(Boolean);
-      const nums = parts.filter((s) => /^\d+$/.test(s)).map((s) => parseInt(s, 10));
-      if (nums.length !== parts.length) {
-        window.alert('--blocked-by "' + flags["blocked-by"] + '" has a non-numeric entry - fix it and try again (comma-separate multiple issue numbers).');
+      const bad = parts.filter((s) => !/^\d+$/.test(s));
+      if (bad.length) {
+        window.alert('--blocked-by "' + flags["blocked-by"] + '" must be GitHub issue numbers. For LOCAL blockers use --block-by with letter ids (e.g. --block-by A,AB).');
         return;
       }
-      blockedByNumbers = nums;
+      gitBlockers = parts;
     }
-    let effectiveNumber = referencedNumber;
-    if (flags.notGit && /^\d+$/.test(flags.notGit)) {
-      effectiveNumber = -parseInt(flags.notGit, 10);
-    }
+
+    // LOCAL blockers (--block-by): letter ids (A, AB…). Legacy numeric ids still tolerated.
+    let localBlockers = [];
     if (flags["block-by"]) {
       const parts = flags["block-by"].split(",").map((s) => s.trim()).filter(Boolean);
-      const nums = parts.filter((s) => /^\d+$/.test(s)).map((s) => -parseInt(s, 10));
-      if (nums.length !== parts.length) {
-        window.alert('--block-by "' + flags["block-by"] + '" has a non-numeric entry - fix it and try again (comma-separate multiple LOCAL --notGit numbers).');
+      const bad = parts.filter((s) => !/^[A-Za-z]+$/.test(s) && !/^\d+$/.test(s));
+      if (bad.length) {
+        window.alert('--block-by "' + flags["block-by"] + '" must be LOCAL letter ids (e.g. --block-by A,AB).');
         return;
       }
-      blockedByNumbers = (blockedByNumbers || []).concat(nums);
+      localBlockers = parts;
     }
-    const numberLabel = effectiveNumber != null ? (effectiveNumber < 0 ? "local #" + (-effectiveNumber) : "#" + effectiveNumber) : null;
+
+    // --notGit (any value, or none) => LOCAL build. The letter id (A, B, C…) is
+    // auto-allocated by BuildConsole when queued, so no number is computed here.
+    // Otherwise the build is tied to its referenced GitHub issue.
+    const localBuild = flags.notGit != null;
+    const effectiveNumber = localBuild ? null : referencedNumber;
+
+    const numberLabel = localBuild ? "local (new)" : (effectiveNumber != null ? "#" + effectiveNumber : null);
     const title = flags.title
       ? (numberLabel != null ? numberLabel + " — " + flags.title : flags.title)
       : (numberLabel != null ? numberLabel : rest.split("\n")[0].slice(0, 80));
@@ -183,7 +195,9 @@ namespace BuildConsole.Services
       effort: flags.effort || null,
       cwd: flags.cwd || null,
       githubNumber: effectiveNumber,
-      blockedByNumbers: blockedByNumbers,
+      localBuild: localBuild,
+      gitBlockers: gitBlockers,
+      localBlockers: localBlockers,
       correlation: correlation,
       chatUrl: window.location.href,
     });

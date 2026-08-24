@@ -870,7 +870,9 @@ namespace BuildConsole.Controls
                 .ThenByDescending(i => i.Id)
                 .ToList();
 
-        private static string FormatIssueRef(int n) => n < 0 ? $"local #{-n}" : $"#{n}";
+        // Local (--notGit) builds are stored as a negative github_number; render them by
+        // their LETTER id (local #A, local #AB) so they can never be read as a GitHub number.
+        private static string FormatIssueRef(int n) => BuildConsole.Services.LocalBuildId.FormatRef(n);
 
         /// <summary>
         /// Reorders nodes (already in SortForDisplay's preferred order) so every
@@ -1930,7 +1932,71 @@ namespace BuildConsole.Controls
                 cm.Items.Add(miRetry);
             }
 
+            // Always-available: the local (--notGit) build-id registry — every letter id
+            // ever allocated, past and present (see NotGitNumberRegistry).
+            cm.Items.Add(new Separator());
+            var miLocalIds = new MenuItem { Header = "🔤 Local Build IDs…" };
+            miLocalIds.Click += (_, _) => ShowLocalBuildIdsWindow();
+            cm.Items.Add(miLocalIds);
+
             return cm;
+        }
+
+        /// <summary>
+        /// A real, visible view of the local (--notGit) build-id registry: every letter id
+        /// ever allocated, its backing github_number (−ordinal), when it was first seen, and
+        /// its provenance. Backed by <see cref="NotGitNumberRegistry.Snapshot"/> so it is
+        /// always in sync with what allocation/resolution actually recorded.
+        /// </summary>
+        private void ShowLocalBuildIdsWindow()
+        {
+            var entries = NotGitNumberRegistry.Snapshot();
+
+            var win = new Window
+            {
+                Title = "Local Build IDs  (--notGit letter registry)",
+                Width = 560,
+                Height = 480,
+                Owner = Window.GetWindow(this),
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Background = new SolidColorBrush(Color.FromRgb(0x1E, 0x1E, 0x2E)) // Catppuccin base
+            };
+
+            var root = new DockPanel { Margin = new Thickness(14) };
+
+            var header = new TextBlock
+            {
+                Text = entries.Count == 0
+                    ? "No local (--notGit) build ids allocated yet."
+                    : $"{entries.Count} local build id(s). New --notGit builds are handed the next unused letter automatically.",
+                Foreground = new SolidColorBrush(Color.FromRgb(0xBA, 0xC2, 0xDE)),
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, 0, 10)
+            };
+            DockPanel.SetDock(header, Dock.Top);
+            root.Children.Add(header);
+
+            var list = new ListBox
+            {
+                FontFamily = new FontFamily("Consolas, Cascadia Mono, monospace"),
+                FontSize = 12.5,
+                Background = new SolidColorBrush(Color.FromRgb(0x18, 0x18, 0x25)),
+                Foreground = new SolidColorBrush(Color.FromRgb(0xCD, 0xD6, 0xF4)),
+                BorderThickness = new Thickness(0)
+            };
+            foreach (var e in entries)
+            {
+                list.Items.Add(new ListBoxItem
+                {
+                    Content = $"local #{e.Letters,-6}  github_number {(-e.Ordinal),-6}  {e.Note}"
+                            + (string.IsNullOrEmpty(e.FirstSeenUtc) ? "" : $"   (first seen {e.FirstSeenUtc})"),
+                    Foreground = new SolidColorBrush(Color.FromRgb(0xCD, 0xD6, 0xF4))
+                });
+            }
+            root.Children.Add(list);
+
+            win.Content = root;
+            win.ShowDialog();
         }
 
         private static readonly Dictionary<string, (string Icon, string Hex)> TestStatusStyle = new()

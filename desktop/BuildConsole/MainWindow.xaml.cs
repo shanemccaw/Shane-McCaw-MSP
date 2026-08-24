@@ -4248,24 +4248,14 @@ namespace BuildConsole
                                 return;
                             }
 
-                            // --notGit deduplication: allocate a unique local number so no two
-                            // queued builds share the same negative GithubNumber.
-                            var dialogGithubNum = dialog.FinalGithubNumber;
-                            var dialogBlockedByNums = dialog.FinalBlockedByNumbers;
-                            if (dialogGithubNum.HasValue && dialogGithubNum.Value < 0)
-                            {
-                                int allocated = BuildConsole.Services.NotGitNumberRegistry.Allocate(-dialogGithubNum.Value);
-                                if (allocated != -dialogGithubNum.Value)
-                                    BuildConsole.Services.ActivityLog.Log("build-queue.notgit",
-                                        $"BT_EDIT_BUILD: --notGit {-dialogGithubNum.Value} -> remapped to {allocated}");
-                                dialogGithubNum = -allocated;
-                            }
-                            if (dialogBlockedByNums != null)
-                            {
-                                dialogBlockedByNums = dialogBlockedByNums
-                                    .Select(n => n < 0 ? -BuildConsole.Services.NotGitNumberRegistry.Allocate(-n) : n)
-                                    .ToList();
-                            }
+                            // Local-id resolution: a --notGit build is handed the next unused
+                            // letter id; --block-by letters resolve through the registry; a bare
+                            // number with no --notGit is verified against real GitHub (detection).
+                            var (dialogGithubNum, dialogBlockedByNums, editStop) =
+                                await ResolveLocalBuildIdentityAsync(
+                                    dialog.FinalIsLocalBuild, dialog.FinalGithubNumber,
+                                    dialog.FinalGitBlockers, dialog.FinalLocalBlockers);
+                            if (editStop) return;
 
                             if (_updatePending)
                             {
@@ -4284,7 +4274,9 @@ namespace BuildConsole
                                 await _queueDb.QueueBuildAsync(
                                     dialog.FinalTitle ?? "Untitled", dialog.FinalPrompt, dialog.FinalModel, dialog.FinalEffort, dialog.FinalCwd,
                                     dialogGithubNum, dialogBlockedByNums, buildSet: dialog.FinalBuildSet);
-                                ToastEngine.Success("Build Queued", $"Queued '{dialog.FinalTitle ?? "Build"}' successfully.");
+                                var editIdLabel = dialogGithubNum.HasValue ? BuildConsole.Services.LocalBuildId.FormatRef(dialogGithubNum.Value) : "";
+                                ToastEngine.Success("Build Queued",
+                                    $"Queued '{dialog.FinalTitle ?? "Build"}'{(editIdLabel.Length > 0 ? $" as {editIdLabel}" : "")} successfully.");
                                 try { await BuildQueuePanel.RefreshAsync(); } catch { }
                             }
                             catch (Exception ex)
@@ -4343,33 +4335,40 @@ namespace BuildConsole
                             await RunScriptInAllChatWebViewsAsync($"window.__btQueueFailed && window.__btQueueFailed({JsLiteral(correlation)});");
                         return;
                     }
-                    List<int>? blockedByNumbers = null;
+                    // Letter-aware inputs from the injected chat button (with legacy fallbacks):
+                    //   localBuild        -> --notGit present; allocate the next letter id
+                    //   gitBlockers[]     -> --blocked-by GitHub issue numbers
+                    //   localBlockers[]   -> --block-by LOCAL letter ids (A, AB…)
+                    bool localBuild = false;
+                    if (root.TryGetProperty("localBuild", out var lbEl) &&
+                        (lbEl.ValueKind == System.Text.Json.JsonValueKind.True || lbEl.ValueKind == System.Text.Json.JsonValueKind.False))
+                        localBuild = lbEl.GetBoolean();
+
+                    var gitBlockerTokens = ReadStringArray(root, "gitBlockers");
+                    var localBlockerTokens = ReadStringArray(root, "localBlockers");
+
+                    // Backward compat: an older injected script may still send numeric
+                    // blockedByNumbers and/or a negative githubNumber. Fold those in.
                     if (root.TryGetProperty("blockedByNumbers", out var arr) && arr.ValueKind == System.Text.Json.JsonValueKind.Array)
                     {
-                        blockedByNumbers = arr.EnumerateArray().Select(x => x.GetInt32()).ToList();
+                        foreach (var x in arr.EnumerateArray())
+                        {
+                            if (x.ValueKind != System.Text.Json.JsonValueKind.Number || !x.TryGetInt32(out var n)) continue;
+                            if (n > 0) gitBlockerTokens.Add(n.ToString());
+                            else if (n < 0) localBlockerTokens.Add((-n).ToString());
+                        }
                     }
+                    if (!localBuild && githubNum is < 0) { localBuild = true; githubNum = null; }
 
-                    // --notGit deduplication: if the incoming githubNumber is negative (a --notGit
-                    // item), make sure it gets a unique slot in the local registry starting at 2000.
-                    // Duplicate --notGit numbers from parallel agent sessions all claiming the same
-                    // small number (e.g. --notGit 1) will each be remapped to distinct values so the
-                    // Build Queue can nest them correctly (keyed by GithubNumber).
-                    if (githubNum.HasValue && githubNum.Value < 0)
+                    var (resolvedGithubNum, blockedByNumbers, queueStop) =
+                        await ResolveLocalBuildIdentityAsync(localBuild, githubNum, gitBlockerTokens, localBlockerTokens);
+                    if (queueStop)
                     {
-                        int requested = -githubNum.Value;
-                        int allocated = BuildConsole.Services.NotGitNumberRegistry.Allocate(requested);
-                        if (allocated != requested)
-                            BuildConsole.Services.ActivityLog.Log("build-queue.notgit",
-                                $"BT_QUEUE_BUILD: --notGit {requested} -> remapped to {allocated}");
-                        githubNum = -allocated;
+                        if (correlation != null)
+                            await RunScriptInAllChatWebViewsAsync($"window.__btQueueFailed && window.__btQueueFailed({JsLiteral(correlation)});");
+                        return;
                     }
-                    // Also remap negative blockedByNumbers (--block-by local references).
-                    if (blockedByNumbers != null)
-                    {
-                        blockedByNumbers = blockedByNumbers
-                            .Select(n => n < 0 ? -BuildConsole.Services.NotGitNumberRegistry.Allocate(-n) : n)
-                            .ToList();
-                    }
+                    githubNum = resolvedGithubNum;
 
                     // A version Update is pending: the deploy is deferred until the
                     // Build Queue drains, then deploy-shanesbuild.cmd restarts this

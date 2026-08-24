@@ -30,8 +30,16 @@ namespace BuildConsole
         /// restart is deferred until the whole set completes (see scripts/dev-server).</summary>
         public string? FinalBuildSet { get; private set; }
         public string? FinalMode { get; private set; }
+        /// <summary>Positive GitHub issue number, or null. A LOCAL (--notGit) build carries
+        /// null here — its letter id (A, B, C…) is auto-allocated at queue time, not now.</summary>
         public int? FinalGithubNumber { get; private set; }
-        public List<int>? FinalBlockedByNumbers { get; private set; }
+        /// <summary>True when the prompt carries a --notGit flag: this is a LOCAL build and
+        /// gets the next unused letter id from the registry when queued.</summary>
+        public bool FinalIsLocalBuild { get; private set; }
+        /// <summary>Raw --blocked-by tokens (GitHub issue numbers). MainWindow resolves these.</summary>
+        public List<string> FinalGitBlockers { get; private set; } = new();
+        /// <summary>Raw --block-by tokens (LOCAL letter ids, e.g. "A","AB"; legacy numbers tolerated).</summary>
+        public List<string> FinalLocalBlockers { get; private set; } = new();
 
         private Dictionary<string, string> _parsedFlags = new(StringComparer.OrdinalIgnoreCase);
         private string _bodyText = "";
@@ -59,7 +67,14 @@ namespace BuildConsole
             _parsedFlags = flags;
             _bodyText = rest;
 
-            // Set up initial blockers text
+            // Is this a LOCAL (--notGit) build? The value after --notGit (if any) is now
+            // ignored — a fresh letter id (A, B, C…) is auto-allocated at queue time.
+            bool isLocal = _parsedFlags.ContainsKey("notGit");
+            FinalIsLocalBuild = isLocal;
+
+            // Set up initial blockers text. GitHub blockers (--blocked-by) show as numbers;
+            // LOCAL blockers (--block-by) show as their letters — a legacy numeric --block-by
+            // value is upgraded to its letter form for display.
             var blockerTokens = new List<string>();
             if (_parsedFlags.TryGetValue("blocked-by", out var bb) && !string.IsNullOrWhiteSpace(bb))
             {
@@ -67,29 +82,31 @@ namespace BuildConsole
             }
             if (_parsedFlags.TryGetValue("block-by", out var localBb) && !string.IsNullOrWhiteSpace(localBb))
             {
-                blockerTokens.AddRange(localBb.Split(',').Select(s => s.Trim().StartsWith("-") ? s.Trim() : "-" + s.Trim()).filterNonEmpty());
+                blockerTokens.AddRange(localBb.Split(',')
+                    .Select(s => s.Trim().TrimStart('-'))
+                    .filterNonEmpty()
+                    .Select(NormalizeLocalToken));
             }
-
             BlockersBox.Text = string.Join(", ", blockerTokens);
 
-            // Effective issue number
-            int? effectiveNum = referencedNumber;
-            if (_parsedFlags.TryGetValue("notGit", out var ng) && int.TryParse(ng, out var ngNum))
+            // Identity for the header. A local build's letter isn't known until it's queued,
+            // so show a "new local build" prefix; a GitHub build shows #N.
+            int? gitNum = null;
+            if (!isLocal)
             {
-                effectiveNum = -ngNum;
+                if (_parsedFlags.TryGetValue("title", out var tNum) && int.TryParse(tNum, out var tParsed))
+                    gitNum = tParsed;
+                else
+                    gitNum = referencedNumber;
             }
-            else if (_parsedFlags.TryGetValue("title", out var tNum) && int.TryParse(tNum, out var tParsed))
-            {
-                effectiveNum = tParsed;
-            }
-            FinalGithubNumber = effectiveNum;
+            FinalGithubNumber = gitNum;
 
             // Title & Badges
             string title = _parsedFlags.GetValueOrDefault("title", "");
-            string numPrefix = effectiveNum.HasValue ? (effectiveNum.Value < 0 ? $"Local #{ -effectiveNum.Value }" : $"#{effectiveNum.Value}") : "";
+            string numPrefix = isLocal ? "New local build" : (gitNum.HasValue ? $"#{gitNum.Value}" : "");
             HeaderTitleText.Text = !string.IsNullOrEmpty(title)
                 ? $"{numPrefix} {title}".Trim()
-                : (effectiveNum.HasValue ? $"Build for {numPrefix}" : "Edit Build Prompt");
+                : (!string.IsNullOrEmpty(numPrefix) ? $"Build for {numPrefix}" : "Edit Build Prompt");
 
             string model = _parsedFlags.GetValueOrDefault("model", "auto");
             ModelBadgeText.Text = $"model: {model}";
@@ -178,14 +195,17 @@ namespace BuildConsole
                 .ToList();
 
             var gitNums = new List<string>();
-            var localNums = new List<string>();
+            var localLetters = new List<string>();
 
-            foreach (var tok in tokens)
+            foreach (var raw in tokens)
             {
-                if (tok.StartsWith("-") && int.TryParse(tok.TrimStart('-'), out var _))
-                    localNums.Add(tok.TrimStart('-'));
+                var tok = raw.Trim();
+                if (tok.StartsWith("-") && int.TryParse(tok.TrimStart('-'), out var legacyNeg) && legacyNeg > 0)
+                    localLetters.Add(Services.LocalBuildId.ToLetters(legacyNeg)); // legacy -N -> letter
+                else if (Services.LocalBuildId.IsLetterToken(tok))
+                    localLetters.Add(tok.ToUpperInvariant());                     // letters -> LOCAL
                 else if (int.TryParse(tok, out var _))
-                    gitNums.Add(tok);
+                    gitNums.Add(tok);                                             // plain number -> GitHub
             }
 
             if (gitNums.Count > 0)
@@ -193,8 +213,8 @@ namespace BuildConsole
             else
                 flags.Remove("blocked-by");
 
-            if (localNums.Count > 0)
-                flags["block-by"] = string.Join(",", localNums);
+            if (localLetters.Count > 0)
+                flags["block-by"] = string.Join(",", localLetters);
             else
                 flags.Remove("block-by");
 
@@ -234,33 +254,19 @@ namespace BuildConsole
             string? rawTitle = flags.GetValueOrDefault("title");
             FinalTitle = rawTitle ?? (rest.Split('\n').FirstOrDefault()?.Trim());
 
-            // Blockers
-            var blockedList = new List<int>();
-            if (flags.TryGetValue("blocked-by", out var bb) && !string.IsNullOrWhiteSpace(bb))
-            {
-                foreach (var part in bb.Split(','))
-                {
-                    if (int.TryParse(part.Trim(), out var n)) blockedList.Add(n);
-                }
-            }
-            if (flags.TryGetValue("block-by", out var localBb) && !string.IsNullOrWhiteSpace(localBb))
-            {
-                foreach (var part in localBb.Split(','))
-                {
-                    if (int.TryParse(part.Trim(), out var n)) blockedList.Add(-Math.Abs(n));
-                }
-            }
-            FinalBlockedByNumbers = blockedList.Count > 0 ? blockedList : null;
+            // Blockers — raw tokens. MainWindow resolves --block-by letters through the
+            // local-id registry and --blocked-by numbers as GitHub issues.
+            FinalGitBlockers = SplitTokens(flags.GetValueOrDefault("blocked-by"));
+            FinalLocalBlockers = SplitTokens(flags.GetValueOrDefault("block-by"));
 
-            // GitHub Number
-            if (flags.TryGetValue("notGit", out var ng) && int.TryParse(ng, out var ngNum))
-            {
-                FinalGithubNumber = -ngNum;
-            }
+            // Identity: --notGit => LOCAL (letter assigned at queue time; no github number
+            // here). Otherwise a bare numeric title is a GitHub issue number.
+            FinalIsLocalBuild = flags.ContainsKey("notGit");
+            if (FinalIsLocalBuild)
+                FinalGithubNumber = null;
             else if (FinalTitle != null && int.TryParse(FinalTitle, out var tNum))
-            {
                 FinalGithubNumber = tNum;
-            }
+            // else: keep whatever ParseRawPrompt resolved (the referenced GitHub number).
         }
 
         private void BtnSendToBuilder_Click(object sender, RoutedEventArgs e)
@@ -286,10 +292,30 @@ namespace BuildConsole
             Close();
         }
 
+        /// <summary>Normalize a LOCAL blocker token for display: a legacy number becomes its
+        /// letter form (3 -> "C"), a letter token is upper-cased, anything else is left as-is.</summary>
+        private static string NormalizeLocalToken(string tok)
+        {
+            tok = tok.Trim();
+            if (int.TryParse(tok, out var n) && n > 0) return Services.LocalBuildId.ToLetters(n);
+            return tok.ToUpperInvariant();
+        }
+
+        private static List<string> SplitTokens(string? csv) =>
+            string.IsNullOrWhiteSpace(csv)
+                ? new List<string>()
+                : csv.Split(',').Select(s => s.Trim()).Where(s => s.Length > 0).ToList();
+
         private static (Dictionary<string, string> flags, string rest) ExtractLeadingFlags(string text)
         {
             int newlineIdx = text.IndexOf('\n');
             string firstLine = newlineIdx == -1 ? text : text.Substring(0, newlineIdx);
+
+            // Allow a valueless --notGit (the letter id is auto-allocated). Normalize a bare
+            // "--notGit" (end of line, or immediately before another --flag) to "--notGit local"
+            // so the flag/value regex below still recognizes it. "--notGit 109" is untouched
+            // (its value is simply ignored downstream).
+            firstLine = Regex.Replace(firstLine, @"--notGit(?=\s+--|\s*$)", "--notGit local");
 
             var flagRe = new Regex(@"--([\w-]+)\s+(\S+)", RegexOptions.Compiled);
             var flags = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
