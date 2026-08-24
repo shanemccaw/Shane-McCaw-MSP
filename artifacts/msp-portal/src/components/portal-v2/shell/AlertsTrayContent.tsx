@@ -6,8 +6,13 @@
  * README §"Hold windows (runbook timers)": a window is reported in three places
  * from one source, one of which is "a Hold windows section in the alerts tray
  * that lists only windows needing a decision." That section is `HOLD_ALERT_ITEMS`
- * (state ≠ running); the smart alerts below it are `ALERT_ITEMS`, ranked exactly
- * as Most Urgent. Both are the design's own fixtures.
+ * (state ≠ running) — the runbook-timer fixture, unchanged here.
+ *
+ * The "Smart alerts" section below it is REAL: `alertItems` is
+ * `urgentToAlertItems(view.urgent)` from portalV2Model.ts — the same
+ * `war-room-pillars` findings ranking the tray header already promises
+ * ("Same ranking as Most Urgent"). PortalV2Shell owns the fetch and passes
+ * the derived rows down; this component only renders them.
  *
  * The prototype's wrench opens the fix panel and the hold button releases a
  * gated step — both live on pages this part must not touch — so each row
@@ -20,8 +25,8 @@ import { Wrench } from "lucide-react";
 
 import { PILLARS } from "@/components/copilot-journey/journeyTokens";
 import type { PillarKey } from "@/components/copilot-journey/journeyTokens";
+import type { SmartAlertItem } from "@/components/portal-v2/portalV2Model";
 
-import { ALERT_ITEMS } from "./shellData";
 import { HOLD_ALERT_ITEMS } from "./holdAlerts";
 
 /** The three alert rows scale down after the first — prototype `alertScale`. */
@@ -31,7 +36,17 @@ const ALERT_SCALE = [
   { pad: "13px 16px", title: 13, why: 11.5, gap: 3 },
 ] as const;
 
-export function AlertsTrayContent({ onNavigate }: { onNavigate: (href: string) => void }) {
+export function AlertsTrayContent({
+  onNavigate,
+  alertItems,
+  alertsLoaded,
+}: {
+  onNavigate: (href: string) => void;
+  /** The real Smart alerts rows — `urgentToAlertItems(view.urgent)`. */
+  alertItems: readonly SmartAlertItem[];
+  /** True once the first real `war-room-pillars` payload has arrived. */
+  alertsLoaded: boolean;
+}) {
   return (
     <>
       {/* Hold windows section — only windows needing a decision. */}
@@ -96,7 +111,20 @@ export function AlertsTrayContent({ onNavigate }: { onNavigate: (href: string) =
       ))}
 
       {/* Smart alerts — Most Urgent ranking, pillar coded, sized by impact. */}
-      {ALERT_ITEMS.map((al, i) => {
+      {alertsLoaded && alertItems.length === 0 && (
+        <div
+          data-testid="pv2-alert-empty"
+          style={{
+            padding: "14px 16px",
+            borderTop: "1px solid rgba(30,41,59,.9)",
+            fontSize: "12px",
+            color: "#64748b",
+          }}
+        >
+          No critical or warning findings for your tenant right now.
+        </div>
+      )}
+      {alertItems.map((al, i) => {
         const c = PILLARS[al.pillarKey as PillarKey]?.accent ?? "#60a5fa";
         const s = ALERT_SCALE[Math.min(i, ALERT_SCALE.length - 1)];
         return (

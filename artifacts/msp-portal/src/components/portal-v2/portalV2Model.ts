@@ -246,6 +246,38 @@ function compareUrgent(a: PortalV2UrgentItem, b: PortalV2UrgentItem): number {
   return a.title.localeCompare(b.title);
 }
 
+/** A row in the shell's "Smart alerts" tray section — see `urgentToAlertItems`. */
+export interface SmartAlertItem {
+  readonly pillarKey: PillarKey;
+  readonly pillarLabel: string;
+  readonly title: string;
+  readonly why: string;
+  /** Deep-links to the owning pillar page — Most Urgent lives there. */
+  readonly href: string;
+  /** Larger, heavier treatment on the first (most urgent) row. */
+  readonly top: boolean;
+}
+
+/**
+ * The tray's "Smart alerts" section, read off the SAME `urgent` ranking the
+ * Overview's Most Urgent list uses — the tray's own header already promises
+ * "Same ranking as Most Urgent." There is no detection timestamp on the wire
+ * to narrate, so `why` states the real check behind the finding (`checkKey`)
+ * rather than inventing one.
+ */
+export function urgentToAlertItems(
+  urgent: readonly PortalV2UrgentItem[],
+): readonly SmartAlertItem[] {
+  return urgent.map((u, i) => ({
+    pillarKey: u.pillar,
+    pillarLabel: u.pillarLabel,
+    title: u.title,
+    why: `${u.severity === "critical" ? "Critical" : "Warning"} — ${u.checkKey}`,
+    href: `/portal-v2/${u.pillar}`,
+    top: i === 0,
+  }));
+}
+
 /** Build the view. Pure — every input comes from the wire. */
 export function buildPortalV2View(payload: PortalV2Payload | null): PortalV2View {
   if (!payload || !Array.isArray(payload.pillars)) return PORTAL_V2_VIEW_EMPTY;

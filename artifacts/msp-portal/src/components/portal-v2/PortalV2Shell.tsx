@@ -28,12 +28,14 @@
  * Governance pass turned up. The prototype's value is used.
  */
 
-import { Fragment, useCallback, useEffect, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { Plus } from "lucide-react";
 
 import { useAuth } from "@/lib/auth-context";
 import { useHoldBadge } from "@/components/portal-v2/holds/useHoldBadge";
+import { usePortalV2Pillars } from "@/components/portal-v2/usePortalV2Pillars";
+import { urgentToAlertItems } from "@/components/portal-v2/portalV2Model";
 import {
   PORTAL_V2_NAV,
   isNavItemActive,
@@ -645,6 +647,12 @@ export function PortalV2Shell({
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [kb, setKb] = useState<{ open: boolean; articleId: string | null }>({ open: false, articleId: null });
   const holdBadge = useHoldBadge();
+  // The tray's "Smart alerts" section — real findings, same `urgent` ranking
+  // the Overview's Most Urgent list uses (see portalV2Model.ts). The shell
+  // fetches its own copy so the tray is correct from whichever page it opens
+  // on, not only pages that happen to already call this hook.
+  const { view: alertsView, loaded: alertsLoaded } = usePortalV2Pillars();
+  const alertItems = useMemo(() => urgentToAlertItems(alertsView.urgent), [alertsView.urgent]);
 
   const shaneBot = useShaneBot();
   const openPalette = useCallback(() => {
@@ -1171,7 +1179,7 @@ export function PortalV2Shell({
                 </div>
                 {/* Hold windows needing a decision, then the smart alerts —
                     both from one source, ranked as Most Urgent. */}
-                <AlertsTrayContent onNavigate={go} />
+                <AlertsTrayContent onNavigate={go} alertItems={alertItems} alertsLoaded={alertsLoaded} />
               </div>
             )}
           </div>

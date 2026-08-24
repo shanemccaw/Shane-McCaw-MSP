@@ -343,6 +343,7 @@ function ReadingView({
           {actions.map((ac, i) => (
             <button
               key={i}
+              data-testid={`pv2-kb-action-${ac.act}`}
               onClick={() => {
                 onClose();
                 onNavigate(ac.href);

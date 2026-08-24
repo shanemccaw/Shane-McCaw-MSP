@@ -401,20 +401,42 @@ export function kbPageName(page: string): string | null {
 
 /**
  * Design page key → real `/portal-v2` route. ONLY the pages that already exist
- * in this build appear here; the rest are owned by later parts and resolve to
- * `null`, which suppresses their button rather than shipping a dead link.
+ * in this build appear here; the rest resolve to `null`, which suppresses
+ * their button rather than shipping a dead link.
  */
 const KB_PAGE_ROUTES: Readonly<Record<string, string>> = {
   home: "/portal-v2",
   ownership: "/portal-v2/ownership",
   settings: "/portal-v2/settings",
   compliance: "/portal-v2/compliance",
+  "compliance-open-gaps": "/portal-v2/compliance/open-gaps",
+  "compliance-obligations": "/portal-v2/compliance/obligations",
+  "policy-decisions": "/portal-v2/policy-decisions",
   "ms-changes": "/portal-v2/ms-changes",
   "operate-runbooks": "/portal-v2/runbooks",
+  "sop-hub": "/portal-v2/sops",
   licensing: "/portal-v2/licensing",
+  billing: "/portal-v2/billing",
   health: "/portal-v2/health",
-  // Not yet built (own parts): compliance-open-gaps, compliance-obligations,
-  // policy-decisions, sop-hub, billing.
+};
+
+/**
+ * Pages whose `go:<page>:<sub>` actions carry a real deep-linkable sub-view
+ * segment (App.tsx's `/portal-v2/<page>/:view` routes), rather than a sub
+ * that should be dropped. `change-control` was missing from `KB_PAGE_ROUTES`
+ * entirely, so every `go:change-control:*` action (register/catalogue/
+ * calendar) silently resolved to null even though the module has been live
+ * since Part 4.
+ */
+const KB_SUBVIEW_PAGES: Readonly<Record<string, { base: string; valid: ReadonlySet<string> }>> = {
+  "change-control": {
+    base: "/portal-v2/change-control",
+    valid: new Set(["briefing", "register", "catalogue", "calendar", "review", "settings"]),
+  },
+  settings: {
+    base: "/portal-v2/settings",
+    valid: new Set(["routing", "change", "people", "departments"]),
+  },
 };
 
 /** The route for an article's `page`, or null when that page is not built yet. */
@@ -442,14 +464,19 @@ export function kbPageKeyForRoute(location: string): string | null {
 
 /**
  * Resolve an article action's `act` to a real route, or null when its target
- * flow/page is not built yet. `go:<page>[:<sub>]` uses the page map; the sub is
- * dropped because the sub-views/sections it names are owned by later parts. The
- * change-control intents (`cr-normal` / `cr-emergency` / `freeze`) all land on
- * the Change Control module, which exists.
+ * flow/page is not built yet. `go:<page>[:<sub>]` uses `KB_SUBVIEW_PAGES` when
+ * the page has real deep-linkable sub-views, otherwise the plain page map (the
+ * sub is dropped because no route reads it). The change-control intents
+ * (`cr-normal` / `cr-emergency` / `freeze`) all land on the Change Control
+ * module, which exists.
  */
 export function kbActionHref(act: string): string | null {
   if (act.startsWith("go:")) {
-    const page = act.split(":")[1];
+    const [, page, sub] = act.split(":");
+    const subPage = KB_SUBVIEW_PAGES[page];
+    if (subPage) {
+      return sub && subPage.valid.has(sub) ? `${subPage.base}/${sub}` : subPage.base;
+    }
     return KB_PAGE_ROUTES[page] ?? null;
   }
   if (act === "cr-normal" || act === "cr-emergency" || act === "freeze") {

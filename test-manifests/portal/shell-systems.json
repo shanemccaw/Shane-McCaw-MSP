@@ -53,7 +53,7 @@
     { "name": "SH-alerts-open -- open the alerts tray.", "action": "click", "selector": "[data-testid='pv2-alerts-bell']", "critical": true },
     { "name": "SH-alerts1 -- the tray header.", "action": "expect", "selector": "[data-testid='pv2-alerts-tray']", "textContains": "Smart alerts", "critical": true },
     { "name": "SH-alerts2 -- the hold-windows section is present.", "action": "expect", "selector": "[data-testid='pv2-alerts-tray']", "textContains": "Hold windows" },
-    { "name": "SH-alerts3 -- the top smart alert renders verbatim.", "action": "expect", "selector": "[data-testid='pv2-alerts-tray']", "textContains": "A new Global Admin was added outside your approval workflow" },
+    { "name": "SH-alerts3 -- the Smart alerts section is real (#1175): a real finding row or the honest empty state, not the design's fixed 'Global Admin' fixture text -- the exact findings a real tenant has vary run to run, so a fixed string cannot be asserted here.", "action": "expect", "selector": "[data-testid='pv2-alert-row'], [data-testid='pv2-alert-empty']", "state": "visible" },
     { "name": "SH-alerts-close -- close the tray.", "action": "click", "selector": "[data-testid='pv2-alerts-bell']" },
 
     { "name": "SH-kb-open -- open the knowledge base.", "action": "click", "selector": "[data-testid='pv2-kb-button']", "critical": true },
@@ -61,6 +61,14 @@
     { "name": "SH-kb2 -- it has a search box.", "action": "expect", "selector": "[data-testid='pv2-kb-search']", "state": "visible" },
     { "name": "SH-kb3 -- and surfaces the article for the page you are on.", "action": "expect", "selector": "[data-testid='pv2-kb-overlay']", "textContains": "For the page you are on" },
     { "name": "SH-kb4 -- ...which on the Overview is 'How this portal works'.", "action": "expect", "selector": "[data-testid='pv2-kb-overlay']", "textContains": "How this portal works" },
+
+    { "name": "SH-kb-search -- search for an article whose 'Do it now' action targets Change Control's register sub-view, which kbData.ts's KB_PAGE_ROUTES was missing entirely (every go:change-control:* action silently resolved to null).", "action": "input", "selector": "[data-testid='pv2-kb-search']", "value": "raise a normal change request" },
+    { "name": "SH-kb-article -- open the matched article.", "action": "click", "selector": "[data-testid='pv2-kb-article-row']", "critical": true },
+    { "name": "SH-kb5 -- the reading view opened the right article.", "action": "expect", "selector": "[data-testid='pv2-kb-overlay']", "textContains": "Nine fields, two signatures, a window and a way back.", "critical": true },
+    { "name": "SH-kb-action -- click its 'Open the register' Do-it-now action (go:change-control:register).", "action": "click", "selector": "[data-testid='pv2-kb-action-go:change-control:register']", "critical": true },
+    { "name": "SH-kb6 -- it lands on the real Change Control register sub-view (not the module's default briefing, and not a dead/suppressed button).", "action": "expect", "selector": "[data-testid='cc-view-register']", "state": "visible", "critical": true },
+
+    { "name": "SH-kb-reopen -- reopen the knowledge base to close out the check.", "action": "click", "selector": "[data-testid='pv2-kb-button']", "critical": true },
     { "name": "SH-kb-close -- close the KB overlay.", "action": "click", "selector": "[data-testid='pv2-kb-close']", "critical": true },
 
     { "name": "SH-sb-open -- open ShaneBot from the launcher.", "action": "click", "selector": "[data-testid='pv2-shanebot-launcher']", "critical": true },

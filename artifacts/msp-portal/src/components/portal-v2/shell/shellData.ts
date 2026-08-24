@@ -106,50 +106,9 @@ export function ccBadge(policy: { on: boolean; approvals: number }): CcBadge {
 }
 
 /* ── Alerts tray — smart alerts ───────────────────────────────────────────── */
-
-export interface AlertItem {
-  readonly pillarKey: string;
-  readonly pillarLabel: string;
-  readonly title: string;
-  readonly why: string;
-  /** The design opens the fix panel; here it deep-links to the owning pillar. */
-  readonly href: string;
-  /** Larger, heavier treatment on the first (most urgent) row. */
-  readonly top: boolean;
-}
-
-/**
- * Smart alerts — shell 8732-8736. The design's wrench opens the fix panel for
- * `fixKey`; the fix panel is mounted on pillar pages this part must not touch,
- * so each alert deep-links to its pillar (Most Urgent lives there). Order and
- * copy are the prototype's, and the first row keeps its larger scale.
- */
-export const ALERT_ITEMS: readonly AlertItem[] = [
-  {
-    pillarKey: "security",
-    pillarLabel: "Security",
-    title: "A new Global Admin was added outside your approval workflow",
-    why: "Detected 3 hours ago — unapproved additions are the leading cause of account takeover.",
-    href: "/portal-v2/security",
-    top: true,
-  },
-  {
-    pillarKey: "governance",
-    pillarLabel: "Governance",
-    title: "An OAuth app was granted full mailbox access without review",
-    why: "Detected yesterday.",
-    href: "/portal-v2/governance",
-    top: false,
-  },
-  {
-    pillarKey: "security",
-    pillarLabel: "Security",
-    title: 'SharePoint external sharing is set to "Anyone with the link"',
-    why: "Detected 2 days ago.",
-    href: "/portal-v2/security",
-    top: false,
-  },
-];
+// The tray's "Smart alerts" rows are wired to the real `urgent` ranking (the
+// same one behind Most Urgent) — see `SmartAlertItem` / `urgentToAlertItems`
+// in portalV2Model.ts. No fixture lives here any more.
 
 /* ── Change requests (for the palette index) ──────────────────────────────── */
 
