@@ -32,12 +32,12 @@ namespace BuildConsole.Services
     ///
     /// ── What this does NOT replace ───────────────────────────────────────────────
     /// QueueBuildAsync (ADDING/re-queuing an item — from chat buttons, the "Retry"
-    /// menu action, a Reply continuation, or the pending-update replay) also runs
+    /// menu action, a Reply continuation, or the pending-update replay) and
+    /// CancelAsync (right-click Cancel on a still-queued item) also run
     /// direct-Postgres now, same reasoning as everything else above: BuildConsole is
     /// Shane's own app and shouldn't need a live, correctly-tokened server round-trip
-    /// just to click Queue. The API server still handles:
-    ///   • CancelQueueItemAsync / ToggleLabelAsync — mutations that don't involve the
-    ///     watcher's own poll-and-claim loop and aren't on the hot "queue a build" path.
+    /// just to click Queue or Cancel. The API server still handles:
+    ///   • ToggleLabelAsync — a GitHub label mutation, not a queue-row mutation.
     ///   • BuildQueuePanel's display (GetQueueAsync / GetQueueCachedAsync) — those
     ///     reads are still HTTP because they also join GitHub blocker state that the
     ///     server resolves; the direct Postgres reads here only support the watcher's
@@ -453,6 +453,29 @@ namespace BuildConsole.Services
             if (!await reader.ReadAsync())
                 throw new InvalidOperationException($"Queue item {id} is not in 'queued' status — cannot force-claim.");
             return MapRow(reader);
+        }
+
+        // ── CancelAsync ───────────────────────────────────────────────────────────
+        /// <summary>
+        /// Cancels a still-queued item so it never runs. Replicates
+        /// DELETE /extension/queue/:id exactly — the WHERE status='queued' guard
+        /// means a row that's already been claimed ('running') can't be canceled
+        /// out from under the watcher; that'd be a lie the UI shouldn't tell.
+        /// Returns false (no row updated) rather than throwing, so the caller can
+        /// distinguish "already started running" from a real DB failure.
+        /// </summary>
+        public async Task<bool> CancelAsync(int id)
+        {
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(@"
+                UPDATE bt_build_queue
+                   SET status     = 'canceled',
+                       updated_at = NOW()
+                 WHERE id     = @id
+                   AND status = 'queued'", conn);
+            cmd.Parameters.AddWithValue("@id", id);
+            var rowsAffected = await cmd.ExecuteNonQueryAsync();
+            return rowsAffected > 0;
         }
 
         // ── MarkOrphanedFailedAsync ───────────────────────────────────────────────

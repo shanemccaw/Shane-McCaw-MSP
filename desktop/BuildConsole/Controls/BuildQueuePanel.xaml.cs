@@ -1599,26 +1599,27 @@ namespace BuildConsole.Controls
                 var miCancel = new MenuItem { Header = "✕ Cancel" };
                 miCancel.Click += async (_, _) =>
                 {
-                    if (_api == null)
+                    if (_db == null && _api == null)
                     {
-                        ToastEngine.Warning("Cancel", "Not connected to the API — can't cancel.");
+                        ToastEngine.Warning("Cancel", "Not connected — can't cancel.");
                         return;
                     }
                     try
                     {
-                        var res = await _api.CancelQueueItemAsync(item.Id);
-                        if (res.IsSuccessStatusCode)
+                        bool canceled;
+                        if (_db != null)
+                            canceled = await _db.CancelAsync(item.Id);
+                        else
+                            canceled = (await _api!.CancelQueueItemAsync(item.Id)).IsSuccessStatusCode;
+
+                        if (canceled)
                         {
                             ToastEngine.Success("Canceled", $"Canceled: {item.Title}");
                             ActivityLog.Log("build-queue", $"Canceled queue item #{item.Id} ({item.Title}) before it ran.");
                         }
-                        else if ((int)res.StatusCode == 409)
-                        {
-                            ToastEngine.Warning("Cancel", $"Couldn't cancel — it already started running: {item.Title}");
-                        }
                         else
                         {
-                            ToastEngine.Error("Cancel Failed", $"HTTP {(int)res.StatusCode}: {item.Title}");
+                            ToastEngine.Warning("Cancel", $"Couldn't cancel — it already started running: {item.Title}");
                         }
                     }
                     catch (Exception ex)
