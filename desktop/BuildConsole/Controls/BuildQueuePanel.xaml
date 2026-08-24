@@ -147,7 +147,18 @@
                                        Foreground="{StaticResource Subtext1Brush}"
                                        Margin="0,0,0,6"/>
 
-                            <!-- Active Usage & Cost Summary (at-a-glance across queue) -->
+                            <!-- Usage & Cost Summary — Shane: "There is a new feature that shows
+                                 me the tokens and estimated cost of the session... but that
+                                 should persist. And then give me a breakdown when I click it...
+                                 tokens total, cost total, tokens this session, cost this session
+                                 for fun and tracking purposes." The big numbers are now the REAL,
+                                 durable "this session" totals from UsageTrackingService (the
+                                 CLI's own total_cost_usd per completed turn, persisted to
+                                 %AppData%\BuildConsole\usage-totals.json so all-time survives a
+                                 restart) — unlike the old $5/1M ESTIMATE across only currently-
+                                 running builds, this doesn't zero out the moment nothing's
+                                 active, which is what read as "not persisting". Clicking opens
+                                 UsageBreakdownPopup with the full Total/Session split. -->
                             <Border x:Name="ActiveUsageBorder"
                                     Background="{StaticResource Surface0Brush}"
                                     BorderBrush="{StaticResource Surface1Brush}"
@@ -155,7 +166,9 @@
                                     CornerRadius="4"
                                     Padding="8,5"
                                     Margin="0,0,0,8"
-                                    ToolTip="Active tokens and estimated Claude API cost across running builds">
+                                    Cursor="Hand"
+                                    ToolTip="Real AI usage/cost this session — click for the full total/session breakdown"
+                                    MouseLeftButtonUp="ActiveUsageBorder_Click">
                                 <DockPanel LastChildFill="True">
                                     <TextBlock Text="🪙" FontSize="11" Margin="0,0,5,0" VerticalAlignment="Center"/>
                                     <TextBlock x:Name="QueueTokensText" Text="0 tokens"
@@ -166,6 +179,14 @@
                                                FontSize="10.5" FontWeight="SemiBold"
                                                Foreground="{StaticResource GreenBrush}"
                                                VerticalAlignment="Center"/>
+                                    <TextBlock Text="&#xE70D;"
+                                               DockPanel.Dock="Right"
+                                               FontFamily="Segoe MDL2 Assets, Segoe UI Symbol"
+                                               FontSize="9"
+                                               Margin="4,0,0,0"
+                                               Foreground="{StaticResource Subtext0Brush}"
+                                               HorizontalAlignment="Right"
+                                               VerticalAlignment="Center"/>
                                     <TextBlock x:Name="QueueActiveSlotsText" Text=" (0 active)"
                                                FontSize="10"
                                                Foreground="{StaticResource Subtext0Brush}"
@@ -173,6 +194,54 @@
                                                VerticalAlignment="Center"/>
                                 </DockPanel>
                             </Border>
+
+                            <Popup x:Name="UsageBreakdownPopup"
+                                   PlacementTarget="{Binding ElementName=ActiveUsageBorder}"
+                                   Placement="Bottom"
+                                   StaysOpen="False"
+                                   AllowsTransparency="True">
+                                <Border Background="{StaticResource MantleBrush}"
+                                        BorderBrush="{StaticResource Surface1Brush}"
+                                        BorderThickness="1"
+                                        CornerRadius="6"
+                                        Padding="12,10"
+                                        MinWidth="220">
+                                    <Border.Effect>
+                                        <DropShadowEffect Color="Black" BlurRadius="16" ShadowDepth="3" Opacity="0.4"/>
+                                    </Border.Effect>
+                                    <StackPanel>
+                                        <TextBlock Text="AI USAGE &amp; COST"
+                                                   FontSize="10"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{StaticResource Subtext1Brush}"
+                                                   Margin="0,0,0,8"/>
+
+                                        <TextBlock Text="This Session" FontSize="10" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,2"/>
+                                        <Grid Margin="0,0,0,8">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock x:Name="UsageSessionTokensText" Grid.Column="0" Text="0 tokens" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource MauveBrush}"/>
+                                            <TextBlock x:Name="UsageSessionCostText" Grid.Column="1" Text="$0.00" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource GreenBrush}"/>
+                                        </Grid>
+                                        <TextBlock x:Name="UsageSessionBuildsText" Text="0 builds" FontSize="10" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,10"/>
+
+                                        <Border BorderBrush="{StaticResource Surface0Brush}" BorderThickness="0,1,0,0" Margin="0,0,0,8"/>
+
+                                        <TextBlock Text="All-Time Total" FontSize="10" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,2"/>
+                                        <Grid Margin="0,0,0,4">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock x:Name="UsageTotalTokensText" Grid.Column="0" Text="0 tokens" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource MauveBrush}"/>
+                                            <TextBlock x:Name="UsageTotalCostText" Grid.Column="1" Text="$0.00" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource GreenBrush}"/>
+                                        </Grid>
+                                        <TextBlock x:Name="UsageTotalBuildsText" Text="0 builds" FontSize="10" Foreground="{StaticResource Subtext1Brush}"/>
+                                    </StackPanel>
+                                </Border>
+                            </Popup>
 
                             <!-- Crash/orphan bulk recovery banner — Shane's video-driver hard
                                  crash left multiple builds stuck 'running' from the dead

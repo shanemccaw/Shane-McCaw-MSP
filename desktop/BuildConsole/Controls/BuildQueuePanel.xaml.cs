@@ -134,6 +134,11 @@ namespace BuildConsole.Controls
             _watcher = watcher;
             _db = db;
 
+            // Real, durable usage/cost tracking — refresh the badge the moment a build
+            // actually completes a turn, from any thread (UsageTrackingService.Changed
+            // fires off the recording thread, not the UI thread).
+            Services.UsageTrackingService.Changed += () => Dispatcher.BeginInvoke(new Action(UpdateUsageSummary));
+
             // Sessions presence polling
             _sessionsPollTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(10) };
             _sessionsPollTimer.Tick += async (_, _) =>
@@ -690,17 +695,45 @@ namespace BuildConsole.Controls
             await RefreshAsync();
         }
 
+        private static string FormatTokens(long tokens) =>
+            tokens >= 1_000_000 ? $"{tokens / 1_000_000.0:0.1}M tokens" :
+            tokens >= 1_000 ? $"{tokens / 1_000.0:0}k tokens" :
+            $"{tokens} tokens";
+
+        /// <summary>
+        /// Refreshes both the header badge (real, durable "this session" totals — see
+        /// UsageTrackingService) and, if the breakdown popup happens to be open, its
+        /// live All-Time/Session numbers too. The "(N active)" tail is still the live
+        /// in-flight count from the watcher (a separate, real-time signal, not part of
+        /// the durable totals).
+        /// </summary>
         public void UpdateUsageSummary()
         {
-            if (_watcher == null) return;
-            var (tokens, cost, active) = _watcher.GetActiveUsageSummary();
-            string tokensFormatted = tokens >= 1_000_000 ? $"{tokens / 1_000_000.0:0.1}M tokens" :
-                                    tokens >= 1_000 ? $"{tokens / 1_000.0:0}k tokens" :
-                                    $"{tokens} tokens";
+            var snap = Services.UsageTrackingService.GetSnapshot();
+            QueueTokensText.Text = FormatTokens(snap.SessionTokens);
+            QueueCostText.Text = $" · ~${snap.SessionCostUsd:0.00}";
 
-            QueueTokensText.Text = tokensFormatted;
-            QueueCostText.Text = $" · ~${cost:0.00}";
+            int active = _watcher?.GetActiveUsageSummary().ActiveBuildCount ?? 0;
             QueueActiveSlotsText.Text = $" ({active} active)";
+
+            if (UsageBreakdownPopup?.IsOpen == true) RenderUsageBreakdown(snap);
+        }
+
+        private void RenderUsageBreakdown(Services.UsageTrackingService.Snapshot snap)
+        {
+            UsageSessionTokensText.Text = FormatTokens(snap.SessionTokens);
+            UsageSessionCostText.Text = $"${snap.SessionCostUsd:0.00}";
+            UsageSessionBuildsText.Text = $"{snap.SessionBuilds} build{(snap.SessionBuilds == 1 ? "" : "s")} this session";
+
+            UsageTotalTokensText.Text = FormatTokens(snap.TotalTokens);
+            UsageTotalCostText.Text = $"${snap.TotalCostUsd:0.00}";
+            UsageTotalBuildsText.Text = $"{snap.TotalBuilds} build{(snap.TotalBuilds == 1 ? "" : "s")} all-time";
+        }
+
+        private void ActiveUsageBorder_Click(object sender, MouseButtonEventArgs e)
+        {
+            RenderUsageBreakdown(Services.UsageTrackingService.GetSnapshot());
+            UsageBreakdownPopup.IsOpen = !UsageBreakdownPopup.IsOpen;
         }
 
         private List<QueueItem> ApplyFilter(List<QueueItem> items) => _filter switch

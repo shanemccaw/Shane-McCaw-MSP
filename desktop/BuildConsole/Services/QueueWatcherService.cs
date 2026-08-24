@@ -646,6 +646,17 @@ namespace BuildConsole.Services
             var summary = SummarizeStreamJsonLine(data, out bool isResult);
             if (summary != null) AppendToLogFile(entry, summary);
 
+            // Real, durable usage/cost tracking (Shane: "I would love to track how much
+            // AI tokens total, AI cost total... for fun and tracking purposes") — the
+            // CLI's own `result` line carries its authoritative total_cost_usd + usage
+            // for that completed turn, real numbers (not the $5/1M estimate the "active"
+            // badge above uses for still-in-progress work). An interactive build sends one
+            // of these per turn, each a distinct real turn, so each gets recorded.
+            if (isResult && TryExtractResultUsageAndCost(data, out long resultTokens, out double resultCost))
+            {
+                UsageTrackingService.RecordCompletion(resultTokens, resultCost);
+            }
+
             if (!entry.Interactive) return;
 
             // (2) Structured event stream — interactive builds only. Full fidelity: the real
@@ -1223,6 +1234,39 @@ namespace BuildConsole.Services
                 return Get("input_tokens") + Get("cache_creation_input_tokens") + Get("cache_read_input_tokens");
             }
             catch { return null; }
+        }
+
+        /// <summary>
+        /// The turn-ending "result" stream-json line's REAL, authoritative usage for that
+        /// turn — `total_cost_usd` (Anthropic's own computed cost for the API calls that
+        /// turn made) and the full token breakdown (input + output + both cache fields,
+        /// unlike TryExtractContextTokens above which deliberately omits output_tokens
+        /// since it's answering a different question — "how full is the context window",
+        /// not "how much was spent"). Used for durable usage/cost tracking
+        /// (UsageTrackingService), never for the live "active" estimate.
+        /// </summary>
+        private static bool TryExtractResultUsageAndCost(string line, out long tokens, out double costUsd)
+        {
+            tokens = 0;
+            costUsd = 0;
+            try
+            {
+                using var doc = JsonDocument.Parse(line);
+                var root = doc.RootElement;
+                if ((root.TryGetProperty("type", out var t) ? t.GetString() : null) != "result") return false;
+
+                if (root.TryGetProperty("total_cost_usd", out var c1) && c1.TryGetDouble(out var cv1)) costUsd = cv1;
+                else if (root.TryGetProperty("cost_usd", out var c2) && c2.TryGetDouble(out var cv2)) costUsd = cv2;
+
+                if (root.TryGetProperty("usage", out var usage))
+                {
+                    long Get(string name) => usage.TryGetProperty(name, out var v) && v.TryGetInt64(out var n) ? n : 0;
+                    tokens = Get("input_tokens") + Get("output_tokens") + Get("cache_creation_input_tokens") + Get("cache_read_input_tokens");
+                }
+
+                return tokens > 0 || costUsd > 0;
+            }
+            catch { return false; }
         }
 
         /// <summary>
