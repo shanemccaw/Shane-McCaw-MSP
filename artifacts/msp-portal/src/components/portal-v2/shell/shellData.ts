@@ -22,12 +22,51 @@
 
 /* ── Tenant / account identity ────────────────────────────────────────────── */
 
-/** Account chip — shell 19236-19238. */
+/** Design fixture — falls back only when no real user is logged in. */
 export const ACCOUNT = {
   initials: "JD",
   name: "Jordan Diaz",
   role: "IT Administrator",
 } as const;
+
+/** `AuthUser.mspRole` → the human label the account chip shows as "role". */
+const MSP_ROLE_LABELS: Record<string, string> = {
+  PlatformAdmin: "Platform Admin",
+  MSPAdmin: "MSP Admin",
+  MSPOperator: "MSP Operator",
+  CustomerUser: "Customer User",
+  ServiceAccount: "Service Account",
+  Free: "Free",
+  Assessment: "Assessment",
+};
+
+/** Real account fields the header chip needs — a subset of `AuthUser`. */
+export interface AccountUser {
+  name?: string;
+  email: string;
+  mspRole?: string;
+}
+
+export interface AccountDisplay {
+  initials: string;
+  name: string;
+  role: string;
+}
+
+/** Derives the header account chip's display fields from the logged-in user, falling back to the design fixture when there's no session yet. */
+export function accountDisplay(user: AccountUser | null | undefined): AccountDisplay {
+  if (!user) return ACCOUNT;
+  const name = user.name?.trim() || user.email;
+  const initials =
+    name
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase())
+      .join("") || "?";
+  const role = (user.mspRole && MSP_ROLE_LABELS[user.mspRole]) || "User";
+  return { initials, name, role };
+}
 
 /** ShaneBot header sub-line — shell 6649. */
 export const SB_TENANT_META = "tenant.com · 1,240 users · scan 14 · Growth tier";

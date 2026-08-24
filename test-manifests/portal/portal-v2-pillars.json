@@ -134,11 +134,11 @@
       "textContains": "Search everything"
     },
     {
-      "name": "SHELL 3 -- the account chip renders with name and role.",
+      "name": "SHELL 3 -- the account chip renders the REAL logged-in user's name from useAuth(), not the design fixture.",
       "action": "expect",
       "selector": "[data-testid='pv2-account-chip']",
       "state": "visible",
-      "textContains": "Jordan Diaz"
+      "textContains": "Jane Jane"
     },
     {
       "name": "SHELL 4 -- the alerts tray is CLOSED until the bell is clicked.",

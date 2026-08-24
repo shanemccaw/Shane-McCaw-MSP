@@ -53,7 +53,7 @@ import {
 // Every one is UI-only against the design's own fixtures; the palette index,
 // ShaneBot replies, hold windows, alerts and knowledge base all live in
 // components/portal-v2/shell/ and are wired here.
-import { ACCOUNT } from "@/components/portal-v2/shell/shellData";
+import { accountDisplay } from "@/components/portal-v2/shell/shellData";
 import { useShaneBot } from "@/components/portal-v2/shell/useShaneBot";
 import { useSelectionAsk } from "@/components/portal-v2/shell/useSelectionAsk";
 import { PaletteOverlay } from "@/components/portal-v2/shell/PaletteOverlay";
@@ -633,7 +633,8 @@ export function PortalV2Shell({
   children: ReactNode;
 }) {
   const [location, navigate] = useLocation();
-  const { logout, fetchWithAuth } = useAuth();
+  const { user, logout, fetchWithAuth } = useAuth();
+  const account = accountDisplay(user);
   const [expanded, setExpanded] = useState(true);
   // The portal's ONE form primitive, hosted here so a New-menu "New X" opens it on
   // any portal-v2 page. Its onSubmit does the real POST — see newMenuCreate.ts.
@@ -1208,7 +1209,7 @@ export function PortalV2Shell({
                   flex: "0 0 26px",
                 }}
               >
-                {ACCOUNT.initials}
+                {account.initials}
               </div>
               <div
                 style={{
@@ -1230,7 +1231,7 @@ export function PortalV2Shell({
                     maxWidth: 110,
                   }}
                 >
-                  {ACCOUNT.name}
+                  {account.name}
                 </span>
                 <span
                   style={{
@@ -1243,7 +1244,7 @@ export function PortalV2Shell({
                     maxWidth: 110,
                   }}
                 >
-                  {ACCOUNT.role}
+                  {account.role}
                 </span>
               </div>
               <span
