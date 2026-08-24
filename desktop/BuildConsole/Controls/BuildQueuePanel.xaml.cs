@@ -1595,6 +1595,39 @@ namespace BuildConsole.Controls
                     }
                 };
                 cm.Items.Add(miRunNow);
+
+                var miCancel = new MenuItem { Header = "✕ Cancel" };
+                miCancel.Click += async (_, _) =>
+                {
+                    if (_api == null)
+                    {
+                        ToastEngine.Warning("Cancel", "Not connected to the API — can't cancel.");
+                        return;
+                    }
+                    try
+                    {
+                        var res = await _api.CancelQueueItemAsync(item.Id);
+                        if (res.IsSuccessStatusCode)
+                        {
+                            ToastEngine.Success("Canceled", $"Canceled: {item.Title}");
+                            ActivityLog.Log("build-queue", $"Canceled queue item #{item.Id} ({item.Title}) before it ran.");
+                        }
+                        else if ((int)res.StatusCode == 409)
+                        {
+                            ToastEngine.Warning("Cancel", $"Couldn't cancel — it already started running: {item.Title}");
+                        }
+                        else
+                        {
+                            ToastEngine.Error("Cancel Failed", $"HTTP {(int)res.StatusCode}: {item.Title}");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        ToastEngine.Error("Cancel Failed", $"Couldn't cancel: {ex.Message}");
+                    }
+                    await RefreshAsync();
+                };
+                cm.Items.Add(miCancel);
             }
             else
             {
