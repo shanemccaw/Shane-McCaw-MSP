@@ -8,6 +8,7 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 using BuildConsole.Services;
 
 namespace BuildConsole.Controls
@@ -45,12 +46,27 @@ namespace BuildConsole.Controls
             {
                 BuildProgressTracker.ProgressChanged += OnProgressChanged;
                 RefreshProgress();
+
+                // Git #1206 — ProgressChanged only fires when an agent actually reports. When a
+                // session goes quiet after its first checkpoint, no event ever arrives, so the panel
+                // would sit frozen with no signal. This low-frequency tick re-evaluates staleness off
+                // wall-clock time (not new reports) so a quiet build surfaces a "no update in Xm"
+                // notice on its own. It only touches the stale badge — cheap, no history rebuild.
+                if (_stalenessTimer == null)
+                {
+                    _stalenessTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(10) };
+                    _stalenessTimer.Tick += (_, _) => RefreshStaleness();
+                }
+                _stalenessTimer.Start();
             };
             Unloaded += (_, _) =>
             {
                 BuildProgressTracker.ProgressChanged -= OnProgressChanged;
+                _stalenessTimer?.Stop();
             };
         }
+
+        private DispatcherTimer? _stalenessTimer;
 
         // ── This build's own Explicit Progress & ETA column ─────────────────
         private int _checklistBuildId;
@@ -102,6 +118,36 @@ namespace BuildConsole.Controls
                 var h = report.History[i];
                 ProgressHistoryRows.Children.Add(BuildProgressStepRow(h, i == report.History.Count - 1));
             }
+
+            // A fresh report just landed — clear/refresh the stale notice immediately.
+            RefreshStaleness();
+        }
+
+        /// <summary>
+        /// Git #1206 — updates only the soft "no progress update in Xm" notice, off wall-clock time.
+        /// Driven both by a fresh report (end of <see cref="RefreshProgress"/>) and by a low-frequency
+        /// timer, so a build that stops reporting after its first checkpoint reads as honestly-stale
+        /// instead of looking frozen with no signal. Never forces the agent to report — display only.
+        /// </summary>
+        private void RefreshStaleness()
+        {
+            if (StaleNoticeText == null) return;
+
+            if (_checklistBuildId == 0)
+            {
+                StaleNoticeText.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            var report = BuildProgressTracker.GetProgress(_checklistBuildId);
+            if (report == null || report.Total <= 0 || !report.IsStale)
+            {
+                StaleNoticeText.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            StaleNoticeText.Text = "⚠ " + report.StalenessText;
+            StaleNoticeText.Visibility = Visibility.Visible;
         }
 
         /// <summary>One step row: ✔ for completed step, ⏳ for current active step.</summary>

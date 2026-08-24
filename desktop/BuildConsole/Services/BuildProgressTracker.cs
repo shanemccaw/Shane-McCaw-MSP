@@ -27,6 +27,40 @@ namespace BuildConsole.Services
 
         public double Percent => Total > 0 ? Math.Clamp((double)Step / Total * 100.0, 0, 100) : 0;
 
+        /// <summary>True once the last reported step reached the total — a finished build is never "stale".</summary>
+        public bool IsComplete => Total > 0 && Step >= Total;
+
+        /// <summary>Wall-clock time since the most recent reportProgress call for this build landed.</summary>
+        public TimeSpan TimeSinceLastReport => DateTime.UtcNow - LastReportedAtUtc;
+
+        /// <summary>
+        /// Git #1206 — how long a running (incomplete) build may go without a new reportProgress
+        /// call before Build Watch surfaces a soft "no update in Xm" notice. This does not force an
+        /// agent to report; it just makes a quiet panel read as honestly-stale instead of looking
+        /// frozen on its first phase with no signal anything is wrong.
+        /// </summary>
+        public static readonly TimeSpan StaleThreshold = TimeSpan.FromMinutes(3);
+
+        /// <summary>
+        /// True when this build is still in progress yet hasn't reported a new step in longer than
+        /// <see cref="StaleThreshold"/>. Complete builds are never stale.
+        /// </summary>
+        public bool IsStale => !IsComplete && Total > 0 && TimeSinceLastReport >= StaleThreshold;
+
+        /// <summary>Human-readable "no progress update in Xm" text for the stale notice (only meaningful when <see cref="IsStale"/>).</summary>
+        public string StalenessText
+        {
+            get
+            {
+                var ago = TimeSinceLastReport;
+                if (ago.TotalHours >= 1)
+                    return $"No progress update in {(int)ago.TotalHours}h {ago.Minutes}m";
+                if (ago.TotalMinutes >= 1)
+                    return $"No progress update in {(int)ago.TotalMinutes}m";
+                return $"No progress update in {Math.Max(1, (int)ago.TotalSeconds)}s";
+            }
+        }
+
         public TimeSpan? EstimatedRemaining
         {
             get

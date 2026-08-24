@@ -916,6 +916,17 @@ registered once, all actions ride it. No extra setup.
 ### Why explicit reporting and not output parsing
 Past iterations attempted to infer progress by regex-parsing transcript output (`- [ ]`, `[x]`, `✓`, `✅`, or Claude's Task tools). Because agent phrasing varies, inferred parsing proved brittle and frequently left UI progress bars and checklists stale. `reportProgress` gives agents a structured, explicit API to publish phase milestones directly to BuildConsole.
 
+### Call it at EVERY checkpoint — not just once (Git #1206)
+The single most common failure mode is an agent that reports **once** near the start (e.g. step 1 "Investigation") and then never calls it again as real work advances. Build Watch's per-build panel only moves when a report arrives, so that one-and-done pattern leaves it **frozen on the first phase** — showing "Investigation & Discovery" at 0% while implementation, testing, etc. are actually happening.
+
+Report **again at every meaningful phase transition**, bumping `step` and updating `label` each time — the same milestones you're already tracking in your own free-form checklist. Practically:
+
+- **First** call when you start the first phase (`step=1`).
+- **Re-report** each time you move to a new phase (Investigation → Implementation → Verification → …). One call per meaningful checkpoint — more than once, but not per-line spam.
+- **Final** call with `step == total` (e.g. `report-progress.mjs <id> <total> <total> "Done"`) so the panel lands at 100% instead of freezing mid-way.
+
+If the panel hasn't advanced in a while, BuildConsole now surfaces a soft **"⚠ No progress update in Xm"** notice on the build's phase card (see below) — a signal that this checkpoint reporting has gone quiet, not that the build is stuck.
+
 ### The invocation contract
 
 ```
@@ -939,6 +950,7 @@ node scripts/report-progress.mjs <buildId> <step> <total> "<label>"
 
 ### Visual display & heuristics
 - **Build Watch slot panel:** Displays progress percentage (`step/total`), visual progress meter, current phase card, step timestamp history, and heuristic estimated time remaining.
+- **Stale-progress notice (Git #1206):** if an in-progress build reports no new step for longer than `BuildProgressReport.StaleThreshold` (3 min), the phase card shows a soft "⚠ No progress update in Xm" line (re-evaluated off wall-clock time by a 10s timer, independent of whether a report arrives). It clears the moment a fresh report lands, and never appears on a completed build (`step == total`). This makes a quiet panel read as honestly-stale rather than looking frozen; it does not force an agent to report.
 - **Queue Panel:** Displays queue-wide token & cost usage at a glance (`🪙 Xk tokens · ~$Y.YY`).
 - **Activity Log:** Structured trace on `build.progress` channel.
 

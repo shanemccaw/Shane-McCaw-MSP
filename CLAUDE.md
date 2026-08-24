@@ -23,8 +23,8 @@ shaneapp://reportProgress?buildId=<id>&step=<N>&total=<M>&label=<description>
 2. **Phase 2: Core Implementation** — `node scripts/report-progress.mjs <id> 2 3 "Core Implementation"`
 3. **Phase 3: Verification & Test Suite** — `node scripts/report-progress.mjs <id> 3 3 "Verification & Testing"`
 
-*Keep calls focused on major phases (a small number of meaningful calls, not noisy per-line spam).*
-BuildConsole displays this in Build Watch per-slot with visual progress bars, percentage, active phase card, and heuristic estimated time remaining.
+**Call it again at EVERY phase change — not just once (Git #1206).** The panel only advances when a report arrives, so reporting a single early step and then going quiet leaves Build Watch **frozen on that first phase** while real work continues — it looks stalled even though it isn't. Re-report at each real transition (bump `step`, update `label`), matching the milestones you're already tracking in your own checklist — at minimum the three standard checkpoints above, and again whenever your checklist genuinely advances to a new phase. Keep it to major phases (not noisy per-line spam), but definitely **more than once**, and always send a **final** call with `step == total` (e.g. `... <id> 3 3 "Verification & Testing"`) so the panel reaches 100% instead of freezing mid-way.
+BuildConsole displays this in Build Watch per-slot with visual progress bars, percentage, active phase card, and heuristic estimated time remaining. If a running build reports nothing new for a few minutes, the phase card now shows a soft "⚠ No progress update in Xm" notice — a cue that this reporting has gone quiet, not that the build is stuck.
 
 ## Customer Portal build — design source
 

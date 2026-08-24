@@ -497,6 +497,12 @@
                                            FontSize="11" FontWeight="SemiBold"
                                            Foreground="{StaticResource TextBrush}"
                                            TextWrapping="Wrap"/>
+                                <!-- Git #1206: soft "no update in Xm" notice so a quiet build reads
+                                     as honestly-stale rather than looking frozen on its first phase. -->
+                                <TextBlock x:Name="StaleNoticeText" Text="" Visibility="Collapsed"
+                                           FontSize="9.5" FontWeight="SemiBold"
+                                           Foreground="{StaticResource YellowBrush}"
+                                           TextWrapping="Wrap" Margin="0,4,0,0"/>
                             </StackPanel>
                         </Border>
 
