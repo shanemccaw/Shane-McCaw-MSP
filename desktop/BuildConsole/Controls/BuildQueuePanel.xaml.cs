@@ -1785,6 +1785,62 @@ namespace BuildConsole.Controls
             cm.Items.Add(miMarkComplete);
             cm.Items.Add(new Separator());
 
+            // Reply… — send a message to THIS build and resume its exact Claude session with
+            // it (claude --resume <session-id> "<your message>"). Available for any build that
+            // has a captured session id, whatever its status (running/done/failed) — the escape
+            // hatch for when the interactive question-detection misses (e.g. an unrecognized
+            // A/B choice) and there is otherwise no way to answer. A live running build's id
+            // comes from the watcher; a finished build's from its persisted session_id.
+            string? replySessionId = !string.IsNullOrWhiteSpace(item.SessionId)
+                ? item.SessionId
+                : _watcher?.GetSessionId(item.Id);
+            if (!string.IsNullOrWhiteSpace(replySessionId))
+            {
+                var miReply = new MenuItem { Header = "💬 Reply… (resume this session with a message)" };
+                miReply.Click += async (_, _) =>
+                {
+                    if (_db == null)
+                    {
+                        ToastEngine.Warning("Reply", "Not connected (no direct DB) — can't queue a reply.");
+                        return;
+                    }
+                    // Re-resolve at click time — a still-running build may only have revealed
+                    // its session id after this menu was built.
+                    string? sid = !string.IsNullOrWhiteSpace(item.SessionId)
+                        ? item.SessionId
+                        : _watcher?.GetSessionId(item.Id);
+                    if (string.IsNullOrWhiteSpace(sid))
+                    {
+                        ToastEngine.Warning("Reply", "No session id captured for this build yet — nothing to resume.");
+                        return;
+                    }
+
+                    string? message = PromptForReplyMessage(item.Title);
+                    if (string.IsNullOrWhiteSpace(message)) return;
+
+                    try
+                    {
+                        // Fresh row (githubNumber: null) so we never dedupe onto — and re-queue
+                        // out from under — a row that may still be running. resumeSessionId makes
+                        // the watcher launch `claude --resume <sid> "<message>"`.
+                        await _db.QueueBuildAsync(
+                            $"Reply → {item.Title}", message, item.Model, item.Effort, item.Cwd,
+                            githubNumber: null, blockedByNumbers: null,
+                            resumeSessionId: sid, chatUrl: item.ChatUrl);
+                        ActivityLog.Log("interactive-build",
+                            $"Reply queued for queue #{item.Id} ({item.Title}) — resuming session {sid} with a {message.Length}-char message.");
+                        ToastEngine.Success("Reply queued", $"Resuming the session for “{item.Title}” with your message.");
+                        await RefreshAsync();
+                    }
+                    catch (Exception ex)
+                    {
+                        ToastEngine.Error("Reply Failed", $"Couldn't queue the reply: {ex.Message}");
+                    }
+                };
+                cm.Items.Add(miReply);
+                cm.Items.Add(new Separator());
+            }
+
             if (item.Status == "running")
             {
                 if (_watcher?.OwnsInteractive(item.Id) == true)
@@ -1997,6 +2053,89 @@ namespace BuildConsole.Controls
 
             win.Content = root;
             win.ShowDialog();
+        }
+
+        /// <summary>
+        /// Modal input for the Reply action: collects the message to resume a build's session
+        /// with. Returns the trimmed text, or null if cancelled/empty. Ctrl+Enter sends.
+        /// </summary>
+        private string? PromptForReplyMessage(string buildTitle)
+        {
+            var win = new Window
+            {
+                Title = "Reply — resume this build's session with a message",
+                Width = 540,
+                Height = 320,
+                Owner = Window.GetWindow(this),
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Background = new SolidColorBrush(Color.FromRgb(0x1E, 0x1E, 0x2E))
+            };
+
+            var root = new DockPanel { Margin = new Thickness(14) };
+
+            var header = new TextBlock
+            {
+                Text = $"Message for “{buildTitle}”. It resumes that exact Claude session — "
+                     + "claude --resume <session-id> \"<your message>\" — so you can answer a "
+                     + "question the build asked (e.g. an A/B choice) even if it wasn't auto-detected.",
+                Foreground = new SolidColorBrush(Color.FromRgb(0xBA, 0xC2, 0xDE)),
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, 0, 10)
+            };
+            DockPanel.SetDock(header, Dock.Top);
+            root.Children.Add(header);
+
+            var buttons = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                Margin = new Thickness(0, 10, 0, 0)
+            };
+            DockPanel.SetDock(buttons, Dock.Bottom);
+
+            string? result = null;
+
+            var box = new TextBox
+            {
+                AcceptsReturn = true,
+                TextWrapping = TextWrapping.Wrap,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                Background = new SolidColorBrush(Color.FromRgb(0x18, 0x18, 0x25)),
+                Foreground = new SolidColorBrush(Color.FromRgb(0xCD, 0xD6, 0xF4)),
+                CaretBrush = new SolidColorBrush(Color.FromRgb(0xCD, 0xD6, 0xF4)),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(0x45, 0x47, 0x5A)),
+                BorderThickness = new Thickness(1),
+                Padding = new Thickness(8),
+                FontSize = 13,
+                MinHeight = 120
+            };
+            box.KeyDown += (_, e) =>
+            {
+                if (e.Key == Key.Enter && (Keyboard.Modifiers & ModifierKeys.Control) != 0)
+                {
+                    result = box.Text?.Trim();
+                    win.DialogResult = !string.IsNullOrEmpty(result);
+                }
+            };
+
+            var cancel = new Button { Content = "Cancel", Padding = new Thickness(14, 6, 14, 6), IsCancel = true };
+            cancel.Click += (_, _) => win.DialogResult = false;
+
+            var send = new Button { Content = "Send Reply  (Ctrl+Enter)", Margin = new Thickness(8, 0, 0, 0), Padding = new Thickness(14, 6, 14, 6), IsDefault = true };
+            send.Click += (_, _) =>
+            {
+                result = box.Text?.Trim();
+                win.DialogResult = !string.IsNullOrEmpty(result);
+            };
+
+            buttons.Children.Add(cancel);
+            buttons.Children.Add(send);
+            root.Children.Add(buttons);
+            root.Children.Add(box); // last child fills the remaining space
+
+            win.Content = root;
+            win.Loaded += (_, _) => box.Focus();
+            return win.ShowDialog() == true ? result : null;
         }
 
         private static readonly Dictionary<string, (string Icon, string Hex)> TestStatusStyle = new()
