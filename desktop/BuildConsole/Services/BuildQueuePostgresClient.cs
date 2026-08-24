@@ -139,6 +139,7 @@ namespace BuildConsole.Services
                 if (!string.IsNullOrEmpty(database)) parts.Add($"Database={database}");
                 if (!string.IsNullOrEmpty(username)) parts.Add($"Username={username}");
                 if (!string.IsNullOrEmpty(password)) parts.Add($"Password={password}");
+                parts.Add("Trust Server Certificate=true");
 
                 if (!string.IsNullOrEmpty(query))
                 {
