@@ -1,8 +1,7 @@
 /**
- * HeaderMenus.tsx — the change-control badge, the account-menu body and the
- * New-menu body, drawn to the prototype markup (Customer Portal Shell.dc.html:
- * account menu 340-349, New menu 225-242) and derivations (account 19242-19255,
- * cc badge 19292-19296, New 19302-19325).
+ * HeaderMenus.tsx — the account-menu body and the New-menu body, drawn to the
+ * prototype markup (Customer Portal Shell.dc.html: account menu 340-349,
+ * New menu 225-242) and derivations (account 19242-19255, New 19302-19325).
  *
  * The menu OPEN state and the header anchors live in the shell; these render the
  * bodies. Copy and icon names are the prototype's verbatim (`shellMenus.ts`),
@@ -13,41 +12,8 @@
  * which exists. See `shellMenus.ts` for why the full set is built now.
  */
 
-import { CC_POLICY, ccBadge } from "./shellData";
 import { ACCOUNT_MENU, NEW_MENU } from "./shellMenus";
 import { newCreateKindForLabel, type NewCreateKind } from "@/components/portal-v2/newMenuCreate";
-
-/* ── Change-control header badge ─────────────────────────────────────────── */
-
-export function ChangeControlBadge({ onNavigate }: { onNavigate: (href: string) => void }) {
-  const badge = ccBadge(CC_POLICY);
-  return (
-    <button
-      onClick={() => onNavigate(badge.href)}
-      title={badge.title}
-      data-testid="pv2-cc-badge"
-      style={{
-        flex: "0 0 auto",
-        display: "flex",
-        alignItems: "center",
-        gap: 7,
-        padding: "7px 11px",
-        borderRadius: 999,
-        cursor: "pointer",
-        fontFamily: "inherit",
-        border: `1px solid ${badge.borderTone}`,
-        background: badge.fillTone,
-        color: badge.tone,
-        fontSize: "11px",
-        fontWeight: 700,
-        whiteSpace: "nowrap",
-      }}
-    >
-      <span style={{ width: 6, height: 6, borderRadius: "50%", background: badge.tone }} />
-      {badge.label}
-    </button>
-  );
-}
 
 /* ── Account menu body ───────────────────────────────────────────────────── */
 

@@ -61,7 +61,7 @@ import { useSelectionAsk } from "@/components/portal-v2/shell/useSelectionAsk";
 import { PaletteOverlay } from "@/components/portal-v2/shell/PaletteOverlay";
 import { ShaneBotPanel, ShaneBotLauncher, SelectionChip } from "@/components/portal-v2/shell/ShaneBot";
 import { AlertsTrayContent } from "@/components/portal-v2/shell/AlertsTrayContent";
-import { AccountMenuContent, NewMenuContent, ChangeControlBadge } from "@/components/portal-v2/shell/HeaderMenus";
+import { AccountMenuContent, NewMenuContent } from "@/components/portal-v2/shell/HeaderMenus";
 import { KnowledgeBaseOverlay } from "@/components/portal-v2/shell/KnowledgeBaseOverlay";
 import { useFormDrawer } from "@/components/portal-v2/FormDrawer";
 import { formSpecForNewCreate, type NewCreateKind } from "@/components/portal-v2/newMenuCreate";
@@ -1028,13 +1028,6 @@ export function PortalV2Shell({
               ⌘K
             </span>
           </div>
-
-          {/* Change-control header badge — deep-links into the Change Control
-              module's own policy view. The design defines the badge's values
-              (shell 19292-19296) but this revision leaves it out of the header
-              markup; placed here, first in the right cluster, as a tenant-wide
-              status indicator. */}
-          <ChangeControlBadge onNavigate={go} />
 
           {/* New menu — prototype 220-242. */}
           <div data-pv2-menu style={{ position: "relative", flex: "0 0 auto" }}>
