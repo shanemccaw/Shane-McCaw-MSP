@@ -2179,9 +2179,16 @@ namespace BuildConsole.Controls
         /// is reachable again.</summary>
         private void ShowChatsMessage(string message)
         {
-            _chatTitleBlocks.Clear();
-            ChatsTree.Items.Clear();
-            ChatsTree.Items.Add(new TreeViewItem { Header = message, Foreground = GetBrush("Subtext1Brush") });
+            if (ChatsHost == null) return;
+            ChatsHost.Children.Clear();
+            ChatsHost.Children.Add(new TextBlock
+            {
+                Text = message,
+                Foreground = GetBrush("Subtext1Brush"),
+                FontSize = 12,
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(6, 8, 6, 0)
+            });
             if (TxtNoChats != null) TxtNoChats.Visibility = Visibility.Collapsed;
             _lastBoardSignature = null;
         }
@@ -2198,25 +2205,30 @@ namespace BuildConsole.Controls
         /// all of its chats).</summary>
         private void RenderChatsTree()
         {
-            if (ChatsTree == null) return;
+            if (ChatsHost == null) return;
 
-            // Fully rebuilt on every render, so drop the previous build's
-            // registered title blocks before the builders below re-register
-            // the current ones (#932's MaxWidth trimming mechanism).
-            _chatTitleBlocks.Clear();
-            ChatsTree.Items.Clear();
+            // Card list is rebuilt on every render. Keep the (hidden) legacy tree empty.
+            ChatsHost.Children.Clear();
+            if (ChatsTree != null) ChatsTree.Items.Clear();
 
             string search = (ChatSearch?.Text ?? "").Trim();
             bool searching = search.Length > 0;
 
             if (_chatsIsStale)
             {
-                ChatsTree.Items.Add(new TreeViewItem
+                ChatsHost.Children.Add(new Border
                 {
-                    Header = $"⚠ Offline — showing cached chats from {_chatsCachedAtUtc?.ToLocalTime():MMM d, h:mm tt}",
-                    Foreground = GetBrush("PeachBrush"),
-                    IsHitTestVisible = false,
-                    Focusable = false,
+                    Background = new SolidColorBrush(Color.FromArgb(0x22, 0xFA, 0xB3, 0x87)),
+                    CornerRadius = new CornerRadius(6),
+                    Padding = new Thickness(8, 5, 8, 5),
+                    Margin = new Thickness(0, 0, 0, 6),
+                    Child = new TextBlock
+                    {
+                        Text = $"⚠ Offline — cached chats from {_chatsCachedAtUtc?.ToLocalTime():MMM d, h:mm tt}",
+                        Foreground = GetBrush("PeachBrush"),
+                        FontSize = 11,
+                        TextWrapping = TextWrapping.Wrap,
+                    }
                 });
             }
 
@@ -2300,7 +2312,10 @@ namespace BuildConsole.Controls
             if (unlinked.Count > 0)
                 groups.Add(("Unlinked", null, unlinked.OrderByDescending(c => c.UpdatedAt).ToList()));
 
-            int shown = 0;
+            // Apply the search filter per group, keeping only groups with visible chats,
+            // and tally the global "in progress / waiting on you" counts for the summary strip.
+            var visibleGroups = new List<(string Title, int? GithubNumber, List<BoardChat> Chats)>();
+            int shown = 0, totalInProgress = 0, totalWaiting = 0;
             foreach (var (title, githubNumber, chats) in groups)
             {
                 bool epicMatches = searching && title.Contains(search, StringComparison.OrdinalIgnoreCase);
@@ -2309,15 +2324,23 @@ namespace BuildConsole.Controls
                                 || (c.Title ?? "").Contains(search, StringComparison.OrdinalIgnoreCase))
                     .ToList();
                 if (leaves.Count == 0) continue;
-
-                // Colour by epic title (same stable-hash convention #984 uses for
-                // areas — see AreaBrushKey), so an epic keeps its colour session
-                // to session regardless of which other epics happen to be present.
-                string brushKey = AreaBrushKey(title);
-                var epicItem = BuildChatEpicHeader(title, githubNumber, leaves.Count, brushKey, searching);
-                foreach (var chat in leaves) epicItem.Items.Add(BuildChatLeaf(chat, brushKey));
-                ChatsTree.Items.Add(epicItem);
+                visibleGroups.Add((title, githubNumber, leaves));
                 shown += leaves.Count;
+                var s = GroupBuildStats(leaves);
+                totalInProgress += s.inProgress;
+                totalWaiting += s.waiting;
+            }
+
+            // Top summary strip — the at-a-glance "what am I working on" answer.
+            if (shown > 0)
+                ChatsHost.Children.Add(BuildChatsSummaryStrip(shown, visibleGroups.Count, totalInProgress, totalWaiting));
+
+            // One collapsible card section per epic group (colour-coded, same stable-hash
+            // convention #984's areas use so an epic keeps its colour session to session).
+            foreach (var (title, githubNumber, chats) in visibleGroups)
+            {
+                string brushKey = AreaBrushKey(title);
+                ChatsHost.Children.Add(BuildEpicSection(title, githubNumber, chats, brushKey, forceExpanded: searching));
             }
 
             bool empty = shown == 0;
@@ -2330,79 +2353,175 @@ namespace BuildConsole.Controls
                         ? "No archived chats."
                         : "No chats linked yet.";
             }
-
-            // #932 — now that every title block for this build is registered, apply
-            // the explicit MaxWidth constraint against the tree's current width so
-            // CharacterEllipsis trimming actually engages (long chat/epic titles
-            // still overflow this narrow tree — exactly what #885/#924/#932 fought,
-            // so the proven MaxWidth mechanism is kept under the new look).
-            ApplyChatTitleMaxWidths();
         }
 
         /// <summary>Chats redesign (mirrors #984's MakeAreaHeader) — a colour-coded
         /// epic row: an 8×8 rounded colour chip, the epic title in that epic's accent
         /// colour, and a muted chat-count badge (e.g. "War Room  (6)"). The title is
         /// registered for #932's explicit-MaxWidth trimming.</summary>
-        private TreeViewItem BuildChatEpicHeader(string title, int? githubNumber, int chatCount, string brushKey, bool searching)
+        /// <summary>Remembered expand/collapse state for epic sections in the Chats card list.</summary>
+        private readonly HashSet<string> _expandedEpicKeys = new();
+
+        /// <summary>
+        /// Chats redesign (Build-Queue-style cards) — one epic SECTION: a clickable header
+        /// card (colour chip, title, #issue, chat count, an epic progress bar over its
+        /// sub-issues, and in-progress / running / waiting counters + last-active time) with
+        /// a collapsible body of per-chat cards. Collapsed by default; a search force-expands
+        /// matching sections; expansion state is remembered in <see cref="_expandedEpicKeys"/>.
+        /// </summary>
+        private FrameworkElement BuildEpicSection(string title, int? githubNumber, List<BoardChat> chats, string brushKey, bool forceExpanded)
         {
-            var brush = GetBrush(brushKey);
-            var sp = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 4, 0, 4) };
+            var accent = GetBrush(brushKey);
+            string epicKey = "epic:" + title;
+            bool expanded = forceExpanded || _expandedEpicKeys.Contains(epicKey);
 
-            sp.Children.Add(new Border
-            {
-                Width = 9,
-                Height = 9,
-                CornerRadius = new CornerRadius(2),
-                Background = brush,
-                Margin = new Thickness(0, 0, 7, 0),
-                VerticalAlignment = VerticalAlignment.Center,
-            });
+            var section = new StackPanel { Margin = new Thickness(0, 0, 0, 6) };
 
-            var titleBlock = new TextBlock
+            var header = new Border
             {
-                Text = title,
-                FontSize = 13,
-                FontWeight = FontWeights.SemiBold,
-                Foreground = brush,
-                VerticalAlignment = VerticalAlignment.Center,
-                TextTrimming = TextTrimming.CharacterEllipsis,
+                Background = GetBrush("Surface0Brush"),
+                CornerRadius = new CornerRadius(6),
+                Padding = new Thickness(8, 6, 8, 6),
+                Cursor = System.Windows.Input.Cursors.Hand,
             };
-            sp.Children.Add(titleBlock);
-            _chatTitleBlocks.Add((titleBlock, EpicTitleWidthReserve));
+            var hStack = new StackPanel();
 
-            // Real GitHub issue number, same "#NNN" convention as the Git Board
-            // rows and Build Watch slot headers — kept in its own untrimmed
-            // TextBlock (not part of titleBlock) so it stays visible even when
-            // CharacterEllipsis trims a long title.
+            var topRow = new DockPanel();
+            var chevron = new TextBlock { Text = expanded ? "▾" : "▸", FontSize = 10, Foreground = GetBrush("Subtext0Brush"), Margin = new Thickness(0, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center };
+            DockPanel.SetDock(chevron, Dock.Left);
+            topRow.Children.Add(chevron);
+            var chip = new Border { Width = 9, Height = 9, CornerRadius = new CornerRadius(2), Background = accent, Margin = new Thickness(0, 0, 7, 0), VerticalAlignment = VerticalAlignment.Center };
+            DockPanel.SetDock(chip, Dock.Left);
+            topRow.Children.Add(chip);
+            var countBadge = new TextBlock { Text = chats.Count.ToString(), FontSize = 10.5, Foreground = GetBrush("Subtext0Brush"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0), ToolTip = $"{chats.Count} chat(s)" };
+            DockPanel.SetDock(countBadge, Dock.Right);
+            topRow.Children.Add(countBadge);
             if (githubNumber.HasValue)
             {
-                sp.Children.Add(new TextBlock
-                {
-                    Text = $" #{githubNumber.Value}",
-                    FontSize = 11,
-                    Foreground = GetBrush("Subtext0Brush"),
-                    VerticalAlignment = VerticalAlignment.Center,
-                    Margin = new Thickness(4, 0, 0, 0),
-                });
+                var numTb = new TextBlock { Text = $"#{githubNumber.Value}", FontSize = 10.5, Foreground = GetBrush("Subtext0Brush"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) };
+                DockPanel.SetDock(numTb, Dock.Right);
+                topRow.Children.Add(numTb);
+            }
+            var titleTb = new TextBlock { Text = title, FontSize = 13, FontWeight = FontWeights.SemiBold, Foreground = accent, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
+            topRow.Children.Add(titleTb); // last child fills remaining width
+            hStack.Children.Add(topRow);
+
+            // Epic progress bar over its real sub-issues.
+            var (done, total) = EpicProgress(githubNumber);
+            if (total > 0)
+            {
+                double frac = Math.Max(0.0, Math.Min(1.0, (double)done / total));
+                var fillGrid = new Grid();
+                fillGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(frac, GridUnitType.Star) });
+                fillGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1 - frac, GridUnitType.Star) });
+                var fill = new Border { CornerRadius = new CornerRadius(3), Background = accent };
+                Grid.SetColumn(fill, 0);
+                fillGrid.Children.Add(fill);
+                hStack.Children.Add(new Border { Height = 5, CornerRadius = new CornerRadius(3), Background = new SolidColorBrush(Color.FromRgb(0x45, 0x47, 0x5A)), Margin = new Thickness(0, 6, 0, 0), Child = fillGrid });
+                hStack.Children.Add(new TextBlock { Text = $"{done}/{total} issues done", FontSize = 9.5, Foreground = GetBrush("Subtext0Brush"), Margin = new Thickness(0, 2, 0, 0) });
             }
 
-            sp.Children.Add(new TextBlock
-            {
-                Text = $" ({chatCount})",
-                FontSize = 11,
-                Foreground = GetBrush("Subtext0Brush"),
-                VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(4, 0, 0, 0),
-            });
+            // Status counters + last-active.
+            var stats = GroupBuildStats(chats);
+            DateTime? lastActive = chats.Max(c => c.UpdatedAt);
+            var counters = new WrapPanel { Margin = new Thickness(0, 5, 0, 0) };
+            void AddCounter(string text, string bk, string tip) => counters.Children.Add(new TextBlock { Text = text, FontSize = 10, Foreground = GetBrush(bk), Margin = new Thickness(0, 0, 10, 0), VerticalAlignment = VerticalAlignment.Center, ToolTip = tip });
+            if (stats.inProgress > 0) AddCounter($"⚡ {stats.inProgress} in progress", "YellowBrush", $"{stats.inProgress} chat(s) marked In Progress");
+            if (stats.running > 0) AddCounter($"▶ {stats.running} running", "BlueBrush", $"{stats.running} linked build(s) running");
+            if (stats.waiting > 0) AddCounter($"⏳ {stats.waiting} waiting", "PeachBrush", $"{stats.waiting} item(s) need you (failed/blocked builds or Shane To-Do issues)");
+            if (lastActive.HasValue) AddCounter($"🕒 {RelativeTime(lastActive)}", "Subtext0Brush", (lastActive.Value.Kind == DateTimeKind.Utc ? lastActive.Value.ToLocalTime() : lastActive.Value).ToString("f"));
+            if (counters.Children.Count > 0) hStack.Children.Add(counters);
 
-            // Collapsed by default (#885); a search auto-expands matching epics (#984).
-            return new TreeViewItem
+            header.Child = hStack;
+
+            var body = new StackPanel { Margin = new Thickness(2, 5, 0, 0), Visibility = expanded ? Visibility.Visible : Visibility.Collapsed };
+            foreach (var chat in chats) body.Children.Add(BuildChatCard(chat, brushKey));
+
+            header.MouseLeftButtonUp += (s, e) =>
             {
-                Header = sp,
-                IsExpanded = searching,
-                HorizontalContentAlignment = HorizontalAlignment.Stretch,
-                Margin = new Thickness(0, 2, 0, 2),
+                bool nowExpanded = body.Visibility != Visibility.Visible;
+                body.Visibility = nowExpanded ? Visibility.Visible : Visibility.Collapsed;
+                chevron.Text = nowExpanded ? "▾" : "▸";
+                if (nowExpanded) _expandedEpicKeys.Add(epicKey); else _expandedEpicKeys.Remove(epicKey);
             };
+
+            section.Children.Add(header);
+            section.Children.Add(body);
+            return section;
+        }
+
+        /// <summary>Top-of-panel at-a-glance strip: total chats, in-progress, waiting-on-you.</summary>
+        private Border BuildChatsSummaryStrip(int chatCount, int groupCount, int inProgress, int waiting)
+        {
+            var sp = new WrapPanel { Orientation = Orientation.Horizontal };
+            void AddStat(string text, string bk, string tip) => sp.Children.Add(new TextBlock { Text = text, FontSize = 11, Foreground = GetBrush(bk), Margin = new Thickness(0, 0, 12, 0), VerticalAlignment = VerticalAlignment.Center, ToolTip = tip });
+            AddStat($"{chatCount} chats", "Subtext1Brush", $"{chatCount} chat(s) across {groupCount} group(s)");
+            if (inProgress > 0) AddStat($"⚡ {inProgress} in progress", "YellowBrush", $"{inProgress} chat(s) marked In Progress");
+            if (waiting > 0) AddStat($"⏳ {waiting} waiting on you", "PeachBrush", $"{waiting} item(s) need your attention");
+            return new Border
+            {
+                Background = GetBrush("MantleBrush"),
+                CornerRadius = new CornerRadius(6),
+                Padding = new Thickness(8, 5, 8, 5),
+                Margin = new Thickness(0, 0, 0, 6),
+                Child = sp
+            };
+        }
+
+        /// <summary>Linked-build + in-progress counts for a group of chats.</summary>
+        private (int inProgress, int running, int waiting) GroupBuildStats(List<BoardChat> chats)
+        {
+            int inProgress = chats.Count(c => BuildConsole.Services.FocusModeService.Instance.IsChatInProgress(c.ConversationId));
+            var builds = ChatLinkedBuilds(chats);
+            int running = builds.Count(b => string.Equals(b.Status, "running", StringComparison.OrdinalIgnoreCase));
+            int waiting = builds.Count(b => { var s = (b.Status ?? "").ToLowerInvariant(); return s == "failed" || s == "error" || s == "blocked"; });
+            var issueNums = new HashSet<int>(chats.SelectMany(c => c.AssociatedIssueNumbers));
+            waiting += _lastBoardIssues.Count(i => i.IsTodo && issueNums.Contains(i.Number));
+            return (inProgress, running, waiting);
+        }
+
+        /// <summary>Every queued/running/finished build linked to any of these chats (by originating chat or linked issue number).</summary>
+        private List<QueueItem> ChatLinkedBuilds(IEnumerable<BoardChat> chats)
+        {
+            var items = GetQueueItems?.Invoke() ?? Array.Empty<QueueItem>();
+            var chatIds = new HashSet<string>(chats.Select(c => c.ConversationId), StringComparer.OrdinalIgnoreCase);
+            var issueNums = new HashSet<int>(chats.SelectMany(c => c.AssociatedIssueNumbers));
+            return items.Where(it =>
+                (it.OriginatingChatId != null && chatIds.Contains(it.OriginatingChatId))
+                || (it.GithubNumber.HasValue && issueNums.Contains(it.GithubNumber.Value))).ToList();
+        }
+
+        /// <summary>Epic progress from its real sub-issues: (done, total). Total is the epic issue's
+        /// GraphQL SubIssueCount; done = total minus the sub-issues still OPEN in the board (the board
+        /// is OPEN-only). Falls back to counting cached children by ParentNumber. (0,0) hides the bar.</summary>
+        private (int done, int total) EpicProgress(int? epicGithubNumber)
+        {
+            if (!epicGithubNumber.HasValue) return (0, 0);
+            int epicNum = epicGithubNumber.Value;
+            var epicIssue = _lastBoardIssues.FirstOrDefault(i => i.Number == epicNum);
+            int total = epicIssue?.SubIssueCount ?? 0;
+            if (total > 0)
+            {
+                int openKids = _lastBoardIssues.Count(i => i.ParentNumber == epicNum && !i.IsClosed);
+                return (Math.Max(0, total - openKids), total);
+            }
+            var kids = _lastBoardIssues.Where(i => i.ParentNumber == epicNum).ToList();
+            if (kids.Count == 0) return (0, 0);
+            return (kids.Count(k => k.IsClosed), kids.Count);
+        }
+
+        /// <summary>Human "2h ago" style relative time for a chat's last-updated stamp.</summary>
+        private static string RelativeTime(DateTime? stamp)
+        {
+            if (!stamp.HasValue) return "";
+            var when = stamp.Value;
+            var now = when.Kind == DateTimeKind.Utc ? DateTime.UtcNow : DateTime.Now;
+            var span = now - when;
+            if (span.TotalSeconds < 45) return "just now";
+            if (span.TotalMinutes < 60) return $"{Math.Max(1, (int)span.TotalMinutes)}m ago";
+            if (span.TotalHours < 24) return $"{(int)span.TotalHours}h ago";
+            if (span.TotalDays < 7) return $"{(int)span.TotalDays}d ago";
+            return (when.Kind == DateTimeKind.Utc ? when.ToLocalTime() : when).ToString("MMM d");
         }
 
         /// <summary>Finds a cached BoardChat by its ConversationId (used by Focus mode in-progress switchers).</summary>
@@ -2417,75 +2536,73 @@ namespace BuildConsole.Controls
         /// registered for #932's MaxWidth trim. Retains #828's "Assign to Epic..."
         /// right-click, now sourcing its epic list from the cached <see cref="_chatEpicById"/>
         /// instead of the fetch's board.Epics (identical data, no second round-trip).</summary>
-        private TreeViewItem BuildChatLeaf(BoardChat chat, string brushKey)
+        private Border BuildChatCard(BoardChat chat, string brushKey)
         {
-            var dp = new DockPanel { Margin = new Thickness(0, 2, 0, 2) };
-
-            dp.Children.Add(new Border
-            {
-                Width = 3,
-                CornerRadius = new CornerRadius(1),
-                Background = GetBrush(brushKey),
-                Margin = new Thickness(0, 1, 7, 1),
-            }); // DockPanel.Dock defaults to Left → a full-height vertical bar
-
             bool inProgress = BuildConsole.Services.FocusModeService.Instance.IsChatInProgress(chat.ConversationId);
-            if (inProgress)
-            {
-                var bolt = new TextBlock
-                {
-                    Text = "⚡",
-                    FontSize = 11,
-                    Foreground = GetBrush("YellowBrush"),
-                    VerticalAlignment = VerticalAlignment.Center,
-                    Margin = new Thickness(0, 0, 4, 0),
-                    ToolTip = "Marked as In Progress (quickly accessible in Focus mode)"
-                };
-                dp.Children.Add(bolt);
-            }
+            var accent = GetBrush(brushKey);
 
-            if (chat.Archived)
+            // Card shell (a highlighted border when marked In Progress).
+            var card = new Border
             {
-                dp.Children.Add(new TextBlock
-                {
-                    Text = "🗄",
-                    FontSize = 11,
-                    Foreground = GetBrush("Subtext0Brush"),
-                    VerticalAlignment = VerticalAlignment.Center,
-                    Margin = new Thickness(0, 0, 4, 0),
-                    ToolTip = chat.ArchivedAt.HasValue
-                        ? $"Archived {chat.ArchivedAt.Value.ToLocalTime():MMM d, h:mm tt} — hidden from the default Chats view, right-click to Unarchive"
-                        : "Archived — hidden from the default Chats view, right-click to Unarchive"
-                });
-            }
+                Background = GetBrush("MantleBrush"),
+                BorderBrush = inProgress ? GetBrush("YellowBrush") : GetBrush("Surface0Brush"),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(5),
+                Margin = new Thickness(0, 0, 0, 4),
+                Tag = chat,
+                Cursor = System.Windows.Input.Cursors.Hand,
+            };
+
+            var outer = new DockPanel { LastChildFill = true };
+            var bar = new Border { Width = 3, Background = accent, CornerRadius = new CornerRadius(5, 0, 0, 5) };
+            DockPanel.SetDock(bar, Dock.Left);
+            outer.Children.Add(bar);
+
+            var content = new StackPanel { Margin = new Thickness(7, 5, 7, 5) };
+
+            // Row 1: [icons] [title *] [relative time] — the star column + trimming keep it
+            // inside the panel width (the old tree's overflow is gone by construction).
+            var titleRow = new Grid();
+            titleRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            titleRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            titleRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            var icons = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+            if (inProgress)
+                icons.Children.Add(new TextBlock { Text = "⚡", FontSize = 11, Foreground = GetBrush("YellowBrush"), Margin = new Thickness(0, 0, 4, 0), VerticalAlignment = VerticalAlignment.Center, ToolTip = "Marked as In Progress (quickly accessible in Focus mode)" });
+            if (chat.Archived)
+                icons.Children.Add(new TextBlock { Text = "🗄", FontSize = 11, Foreground = GetBrush("Subtext0Brush"), Margin = new Thickness(0, 0, 4, 0), VerticalAlignment = VerticalAlignment.Center, ToolTip = chat.ArchivedAt.HasValue ? $"Archived {chat.ArchivedAt.Value.ToLocalTime():MMM d, h:mm tt} — right-click to Unarchive" : "Archived — right-click to Unarchive" });
+            Grid.SetColumn(icons, 0);
+            titleRow.Children.Add(icons);
 
             var titleBlock = new TextBlock
             {
-                Text = chat.Title,
-                FontSize = 12,
+                Text = string.IsNullOrWhiteSpace(chat.Title) ? "(untitled chat)" : chat.Title,
+                FontSize = 12.5,
                 VerticalAlignment = VerticalAlignment.Center,
-                Foreground = chat.Archived ? GetBrush("Subtext0Brush") : (inProgress ? GetBrush("YellowBrush") : GetBrush("Subtext1Brush")),
+                Foreground = chat.Archived ? GetBrush("Subtext0Brush") : (inProgress ? GetBrush("YellowBrush") : GetBrush("TextBrush")),
                 FontWeight = inProgress ? FontWeights.SemiBold : FontWeights.Normal,
                 TextTrimming = TextTrimming.CharacterEllipsis,
             };
-            dp.Children.Add(titleBlock);
+            Grid.SetColumn(titleBlock, 1);
+            titleRow.Children.Add(titleBlock);
 
-            // #932 — a chat leaf sits one level deeper than an epic header, so it
-            // reserves an extra ~19px of tree indentation on top of its own expander
-            // column; register it with the larger leaf reserve.
-            _chatTitleBlocks.Add((titleBlock, LeafTitleWidthReserve));
-
-            string nodeKey = $"chat:{chat.ConversationId}";
-            var tvi = new TreeViewItem
+            var timeBlock = new TextBlock
             {
-                Header = dp,
-                Tag = chat,
-                HorizontalContentAlignment = HorizontalAlignment.Stretch,
-                Margin = new Thickness(0, 1, 0, 1),
-                IsExpanded = _expandedNodeKeys.Contains(nodeKey)
+                Text = RelativeTime(chat.UpdatedAt),
+                FontSize = 9.5,
+                Foreground = GetBrush("Subtext0Brush"),
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(6, 0, 0, 0),
+                ToolTip = chat.UpdatedAt.HasValue ? (chat.UpdatedAt.Value.Kind == DateTimeKind.Utc ? chat.UpdatedAt.Value.ToLocalTime() : chat.UpdatedAt.Value).ToString("f") : null,
             };
-            tvi.Collapsed += (s, e) => { if (ReferenceEquals(e.OriginalSource, tvi)) _expandedNodeKeys.Remove(nodeKey); };
-            tvi.Expanded += (s, e) => { if (ReferenceEquals(e.OriginalSource, tvi)) _expandedNodeKeys.Add(nodeKey); };
+            Grid.SetColumn(timeBlock, 2);
+            titleRow.Children.Add(timeBlock);
+            content.Children.Add(titleRow);
+
+            // Row 2: compact linked-issue pills + build-status badges, WRAPPING so they never
+            // push the card past the panel edge.
+            var chips = new WrapPanel { Margin = new Thickness(0, 4, 0, 0) };
 
             // Render nested issue pills under this chat
             if (chat.AssociatedIssueNumbers != null)
@@ -2549,18 +2666,11 @@ namespace BuildConsole.Controls
                         Background = GetBrush("Surface0Brush"),
                         CornerRadius = new CornerRadius(3),
                         Padding = new Thickness(5, 1, 5, 1),
-                        Margin = new Thickness(0, 1, 0, 1),
+                        Margin = new Thickness(0, 0, 4, 4),
                         ToolTip = string.IsNullOrEmpty(issueTitle) ? $"Issue #{issueNum}" : $"#{issueNum} — {issueTitle} ({(string.Equals(issueState, "closed", StringComparison.OrdinalIgnoreCase) ? "Closed" : "Open")})"
                     };
                     pillBorder.Child = spPill;
-
-                    var issueItem = new TreeViewItem
-                    {
-                        Header = pillBorder,
-                        Focusable = false,
-                        Margin = new Thickness(12, 1, 0, 1)
-                    };
-                    tvi.Items.Add(issueItem);
+                    chips.Children.Add(pillBorder);
                 }
             }
 
@@ -2640,14 +2750,25 @@ namespace BuildConsole.Controls
                 var tooltipText = $"Build #{build.Id}\nTitle: {build.Title}\nStatus: {build.Status}\nPrompt: {build.Prompt}";
                 buildSp.ToolTip = tooltipText;
 
-                var buildItem = new TreeViewItem
-                {
-                    Header = buildSp,
-                    Focusable = false,
-                    Margin = new Thickness(12, 1, 0, 1)
-                };
-                tvi.Items.Add(buildItem);
+                buildSp.Margin = new Thickness(0, 0, 6, 4);
+                chips.Children.Add(buildSp);
             }
+
+            if (chips.Children.Count > 0) content.Children.Add(chips);
+            outer.Children.Add(content);
+            card.Child = outer;
+
+            // Click the card to open its chat (same issue-number resolution the old
+            // TreeView selection used); hover highlights it.
+            card.MouseLeftButtonUp += (s, e) =>
+            {
+                if (string.IsNullOrEmpty(chat.ClaudeUrl)) return;
+                int? gh = chat.IssueGithubNumber
+                    ?? (chat.EpicId.HasValue && _chatEpicById.TryGetValue(chat.EpicId.Value, out var ep) ? ep.GithubNumber : null);
+                ChatSelected?.Invoke(this, (chat, gh));
+            };
+            card.MouseEnter += (s, e) => card.Background = GetBrush("Surface0Brush");
+            card.MouseLeave += (s, e) => card.Background = GetBrush("MantleBrush");
 
             var cm = new ContextMenu();
 
@@ -2948,9 +3069,9 @@ namespace BuildConsole.Controls
             };
             cm.Items.Add(miArchiveToggle);
 
-            tvi.ContextMenu = cm;
+            card.ContextMenu = cm;
 
-            return tvi;
+            return card;
         }
 
         private void ChatSearch_TextChanged(object sender, TextChangedEventArgs e) => RenderChatsTree();
@@ -5437,6 +5558,13 @@ namespace BuildConsole.Controls
 
         private void CollapseAll_Click(object sender, RoutedEventArgs e)
         {
+            // Chats view is a card list now — "collapse all" folds every epic section.
+            if (_currentView == "Chats")
+            {
+                _expandedEpicKeys.Clear();
+                RenderChatsTree();
+                return;
+            }
             // Collapse all top-level nodes in the active tree
             var tree = _currentView == "Explorer" ? ExplorerTree : ChatsTree;
             foreach (var item in tree.Items)

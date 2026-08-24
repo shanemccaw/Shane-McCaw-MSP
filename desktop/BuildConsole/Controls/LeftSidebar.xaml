@@ -132,7 +132,10 @@
                                   HorizontalScrollBarVisibility="Disabled"
                                   Padding="0,4">
                         <Grid>
-                            <TreeView x:Name="ChatsTree" BorderThickness="0" SelectedItemChanged="ChatsTree_SelectedItemChanged" SizeChanged="ChatsTree_SizeChanged"/>
+                            <!-- Legacy TreeView kept (hidden) so existing keyboard-nav / focus
+                                 references still resolve; the visible UI is the card host below. -->
+                            <TreeView x:Name="ChatsTree" Visibility="Collapsed" BorderThickness="0" SelectedItemChanged="ChatsTree_SelectedItemChanged" SizeChanged="ChatsTree_SizeChanged"/>
+                            <StackPanel x:Name="ChatsHost"/>
                             <TextBlock x:Name="TxtNoChats" Text="No chats linked yet." FontSize="10" Foreground="{StaticResource Subtext0Brush}" Margin="12,6,0,0" VerticalAlignment="Top" Visibility="Collapsed"/>
                         </Grid>
                     </ScrollViewer>
