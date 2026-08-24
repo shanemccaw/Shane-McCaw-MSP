@@ -4308,6 +4308,9 @@ export const btChatsTable = pgTable("bt_chats", {
   /** Free-form category for chats not tied to an epic/issue (e.g. "Marketing"). */
   category:        text("category"),
   notes:           text("notes"),
+  /** Soft-hide from the default Chats panel view — the real row + all associations (bt_chat_issues, epic/issue links) stay intact; reversible via unarchive. */
+  archived:        boolean("archived").notNull().default(false),
+  archivedAt:      timestamp("archived_at", { withTimezone: true }),
   createdAt:       timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt:       timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

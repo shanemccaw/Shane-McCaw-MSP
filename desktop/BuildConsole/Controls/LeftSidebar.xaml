@@ -88,29 +88,42 @@
                          collapsed-by-default layout. Search box uses the exact overlay-
                          placeholder trick #984's ManifestSearchBox / #950's QueueSearchBox use. -->
                     <Border DockPanel.Dock="Top" Padding="8,6">
-                        <Grid>
-                            <TextBox x:Name="ChatSearch"
-                                     Height="26" Padding="6,4" FontSize="12"
-                                     VerticalContentAlignment="Center"
-                                     Background="{StaticResource Surface0Brush}"
-                                     TextChanged="ChatSearch_TextChanged"/>
-                            <TextBlock IsHitTestVisible="False"
-                                       Text="Search chats (title or epic)"
-                                       FontSize="12" Margin="8,0,0,0"
-                                       VerticalAlignment="Center" HorizontalAlignment="Left"
-                                       Foreground="{StaticResource Subtext1Brush}">
-                                <TextBlock.Style>
-                                    <Style TargetType="TextBlock">
-                                        <Setter Property="Visibility" Value="Collapsed"/>
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding Text, ElementName=ChatSearch}" Value="">
-                                                <Setter Property="Visibility" Value="Visible"/>
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </TextBlock.Style>
-                            </TextBlock>
-                        </Grid>
+                        <StackPanel>
+                            <Grid>
+                                <TextBox x:Name="ChatSearch"
+                                         Height="26" Padding="6,4" FontSize="12"
+                                         VerticalContentAlignment="Center"
+                                         Background="{StaticResource Surface0Brush}"
+                                         TextChanged="ChatSearch_TextChanged"/>
+                                <TextBlock IsHitTestVisible="False"
+                                           Text="Search chats (title or epic)"
+                                           FontSize="12" Margin="8,0,0,0"
+                                           VerticalAlignment="Center" HorizontalAlignment="Left"
+                                           Foreground="{StaticResource Subtext1Brush}">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Text, ElementName=ChatSearch}" Value="">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </Grid>
+                            <!-- Git: Chats panel Archive — reversible soft-hide. Off by default
+                                 (archived chats stay out of the normal view); checking this shows
+                                 ONLY the archived ones, mirroring the Git Board's closed-filter toggle
+                                 shape, so Shane can find and unarchive one without losing anything. -->
+                            <CheckBox x:Name="ChatShowArchived"
+                                      Content="Show Archived"
+                                      FontSize="11"
+                                      Margin="2,6,0,0"
+                                      Foreground="{StaticResource Subtext1Brush}"
+                                      Checked="ChatShowArchived_Changed"
+                                      Unchecked="ChatShowArchived_Changed"/>
+                        </StackPanel>
                     </Border>
 
                     <!-- Chat tree (populated live from GET /extension/board — see code-behind) -->

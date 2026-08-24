@@ -2221,10 +2221,17 @@ namespace BuildConsole.Controls
             }
 
             var epicById = _chatEpicById;
+            // Git: Chats panel Archive — a soft-hidden chat (and all its real
+            // associations) stays fully intact server-side; the toggle just
+            // decides which slice of _lastBoardChats this render shows. Off
+            // (default): archived chats drop out entirely, same as today.
+            // On: ONLY archived chats show, so Shane can find and unarchive one.
+            bool showArchivedOnly = ChatShowArchived?.IsChecked == true;
             // Focus Mode — hard-hide chats that don't belong to the active milestone
             // (resolved via the chat's issue / epic issue number). Off-focus = all chats.
             var focusChats = _lastBoardChats
                 .Where(c => BuildConsole.Services.FocusModeService.Instance.IsChatInFocus(c))
+                .Where(c => showArchivedOnly ? c.Archived : !c.Archived)
                 .ToList();
             var byEpic = focusChats.Where(c => c.EpicId.HasValue).GroupBy(c => c.EpicId!.Value);
             var unlinked = focusChats.Where(c => !c.EpicId.HasValue).ToList();
@@ -2319,7 +2326,9 @@ namespace BuildConsole.Controls
                 TxtNoChats.Visibility = empty && !_chatsIsStale ? Visibility.Visible : Visibility.Collapsed;
                 TxtNoChats.Text = searching && empty
                     ? $"No chats match \"{search}\"."
-                    : "No chats linked yet.";
+                    : showArchivedOnly
+                        ? "No archived chats."
+                        : "No chats linked yet.";
             }
 
             // #932 — now that every title block for this build is registered, apply
@@ -2435,12 +2444,27 @@ namespace BuildConsole.Controls
                 dp.Children.Add(bolt);
             }
 
+            if (chat.Archived)
+            {
+                dp.Children.Add(new TextBlock
+                {
+                    Text = "🗄",
+                    FontSize = 11,
+                    Foreground = GetBrush("Subtext0Brush"),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(0, 0, 4, 0),
+                    ToolTip = chat.ArchivedAt.HasValue
+                        ? $"Archived {chat.ArchivedAt.Value.ToLocalTime():MMM d, h:mm tt} — hidden from the default Chats view, right-click to Unarchive"
+                        : "Archived — hidden from the default Chats view, right-click to Unarchive"
+                });
+            }
+
             var titleBlock = new TextBlock
             {
                 Text = chat.Title,
                 FontSize = 12,
                 VerticalAlignment = VerticalAlignment.Center,
-                Foreground = inProgress ? GetBrush("YellowBrush") : GetBrush("Subtext1Brush"),
+                Foreground = chat.Archived ? GetBrush("Subtext0Brush") : (inProgress ? GetBrush("YellowBrush") : GetBrush("Subtext1Brush")),
                 FontWeight = inProgress ? FontWeights.SemiBold : FontWeights.Normal,
                 TextTrimming = TextTrimming.CharacterEllipsis,
             };
@@ -2866,12 +2890,58 @@ namespace BuildConsole.Controls
                 cm.Items.Add(miAutoName);
             }
 
+            cm.Items.Add(new Separator());
+
+            // Archive / Unarchive — soft-hide (not delete). The real bt_chats
+            // row and every association (bt_chat_issues, epic/issue links) are
+            // left fully intact server-side; this just flags the chat out of
+            // the default active Chats panel view, reversible from here or from
+            // the "Show Archived" toggle above the tree.
+            var miArchiveToggle = new MenuItem
+            {
+                Header = chat.Archived ? "♻ Unarchive Chat" : "🗄 Archive Chat"
+            };
+            miArchiveToggle.Click += async (_, _) =>
+            {
+                if (_api == null) return;
+                bool archiving = !chat.Archived;
+                try
+                {
+                    var res = archiving
+                        ? await _api.ArchiveChatAsync(chat.ConversationId)
+                        : await _api.UnarchiveChatAsync(chat.ConversationId);
+                    if (!res.IsSuccessStatusCode)
+                    {
+                        var body = await res.Content.ReadAsStringAsync();
+                        ToastEngine.Error(archiving ? "Archive Chat" : "Unarchive Chat", $"Couldn't {(archiving ? "archive" : "unarchive")} chat: {body}");
+                        return;
+                    }
+                    var nowUtc = DateTime.UtcNow;
+                    chat.Archived = archiving;
+                    chat.ArchivedAt = archiving ? nowUtc : null;
+                    ActivityLog.Log("git-board.archive-chat",
+                        $"{(archiving ? "archived" : "unarchived")} chat \"{chat.Title}\" ({chat.ConversationId}) at {nowUtc:o}");
+                    _lastBoardSignature = null;
+                    RenderChatsTree();
+                    ToastEngine.Success(archiving ? "Archive Chat" : "Unarchive Chat",
+                        archiving ? $"\"{chat.Title}\" archived — enable \"Show Archived\" to find it again." : $"\"{chat.Title}\" restored.");
+                }
+                catch (System.Exception ex)
+                {
+                    ToastEngine.Error(archiving ? "Archive Chat" : "Unarchive Chat", $"Couldn't {(archiving ? "archive" : "unarchive")} chat: {ex.Message}");
+                }
+            };
+            cm.Items.Add(miArchiveToggle);
+
             tvi.ContextMenu = cm;
 
             return tvi;
         }
 
         private void ChatSearch_TextChanged(object sender, TextChangedEventArgs e) => RenderChatsTree();
+
+        /// <summary>Git: Chats panel Archive — "Show Archived" toggle above the tree; re-renders from the already-cached board, no re-fetch.</summary>
+        private void ChatShowArchived_Changed(object sender, RoutedEventArgs e) => RenderChatsTree();
 
         // Git #932 — the Chats tree's CharacterEllipsis trimming (from #885)
         // never engaged visually: a TreeViewItem with HorizontalContentAlignment

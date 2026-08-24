@@ -85,6 +85,9 @@ namespace BuildConsole.Services
         public List<int> AssociatedIssueNumbers { get; set; } = new();
         public string ClaudeUrl { get; set; } = "";
         public DateTime? UpdatedAt { get; set; }
+        /// <summary>Soft-hidden from the default Chats panel view — the real row + all associations stay intact. Reversible via Unarchive.</summary>
+        public bool Archived { get; set; }
+        public DateTime? ArchivedAt { get; set; }
     }
 
     public class BoardResponse
@@ -479,6 +482,24 @@ namespace BuildConsole.Services
             {
                 conversation_id = conversationId,
                 title = newTitle,
+            }));
+
+        /// <summary>
+        /// Archives a chat — soft-hides it from the default active Chats panel view.
+        /// The real bt_chats row and every association (bt_chat_issues, epic/issue
+        /// links) stay fully intact and retrievable. Reversible via UnarchiveChatAsync.
+        /// </summary>
+        public Task<HttpResponseMessage> ArchiveChatAsync(string conversationId) =>
+            TrackAsync($"POST chats/archive ({conversationId})", () => _http.PostAsJsonAsync("api/admin/build-tracker/chats/archive", new
+            {
+                conversation_id = conversationId,
+            }));
+
+        /// <summary>Reverses ArchiveChatAsync — restores a chat to the default active Chats panel view.</summary>
+        public Task<HttpResponseMessage> UnarchiveChatAsync(string conversationId) =>
+            TrackAsync($"POST chats/unarchive ({conversationId})", () => _http.PostAsJsonAsync("api/admin/build-tracker/chats/unarchive", new
+            {
+                conversation_id = conversationId,
             }));
 
         /// <summary>

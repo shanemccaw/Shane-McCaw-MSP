@@ -716,6 +716,8 @@ router.get("/admin/build-tracker/extension/board", ingestAuth, async (req: Reque
           issueId: btChatsTable.issueId,
           epicId: btChatsTable.epicId,
           updatedAt: btChatsTable.updatedAt,
+          archived: btChatsTable.archived,
+          archivedAt: btChatsTable.archivedAt,
         })
         .from(btChatsTable)
         .orderBy(desc(btChatsTable.updatedAt)),
@@ -904,6 +906,8 @@ router.get("/admin/build-tracker/extension/board", ingestAuth, async (req: Reque
         associatedIssueNumbers: Array.from(combined),
         claudeUrl: claudeUrl(c.conversationId),
         updatedAt: c.updatedAt,
+        archived: c.archived,
+        archivedAt: c.archivedAt,
       };
     });
 
@@ -2252,6 +2256,74 @@ router.post("/admin/build-tracker/chats/rename", ingestAuth, async (req: Request
   } catch (err) {
     log.error({ err, conversationId: convId, title: newTitle }, "POST /chats/rename failed");
     res.status(500).json({ error: "Failed to rename chat" });
+  }
+});
+
+/**
+ * POST /admin/build-tracker/chats/archive
+ *
+ * Soft-hides a chat from the default active Chats panel view by its
+ * conversation_id — the real bt_chats row and every association (bt_chat_issues,
+ * epic/issue links) are left fully intact. Reversible via /chats/unarchive.
+ * Auth: ingestAuth
+ */
+router.post("/admin/build-tracker/chats/archive", ingestAuth, async (req: Request, res: Response) => {
+  const { conversation_id } = req.body as { conversation_id?: string };
+  if (!conversation_id?.trim()) {
+    res.status(400).json({ error: "conversation_id is required" });
+    return;
+  }
+  const convId = conversation_id.trim();
+  try {
+    const [row] = await db
+      .update(btChatsTable)
+      .set({ archived: true, archivedAt: new Date(), updatedAt: new Date() })
+      .where(eq(btChatsTable.conversationId, convId))
+      .returning();
+
+    if (!row) {
+      res.status(404).json({ error: "chat not found" });
+      return;
+    }
+
+    log.info({ conversationId: convId }, "archived chat");
+    res.json({ ok: true, ...row, claudeUrl: claudeUrl(row.conversationId) });
+  } catch (err) {
+    log.error({ err, conversationId: convId }, "POST /chats/archive failed");
+    res.status(500).json({ error: "Failed to archive chat" });
+  }
+});
+
+/**
+ * POST /admin/build-tracker/chats/unarchive
+ *
+ * Reverses /chats/archive — restores a chat to the default active Chats panel view.
+ * Auth: ingestAuth
+ */
+router.post("/admin/build-tracker/chats/unarchive", ingestAuth, async (req: Request, res: Response) => {
+  const { conversation_id } = req.body as { conversation_id?: string };
+  if (!conversation_id?.trim()) {
+    res.status(400).json({ error: "conversation_id is required" });
+    return;
+  }
+  const convId = conversation_id.trim();
+  try {
+    const [row] = await db
+      .update(btChatsTable)
+      .set({ archived: false, archivedAt: null, updatedAt: new Date() })
+      .where(eq(btChatsTable.conversationId, convId))
+      .returning();
+
+    if (!row) {
+      res.status(404).json({ error: "chat not found" });
+      return;
+    }
+
+    log.info({ conversationId: convId }, "unarchived chat");
+    res.json({ ok: true, ...row, claudeUrl: claudeUrl(row.conversationId) });
+  } catch (err) {
+    log.error({ err, conversationId: convId }, "POST /chats/unarchive failed");
+    res.status(500).json({ error: "Failed to unarchive chat" });
   }
 });
 

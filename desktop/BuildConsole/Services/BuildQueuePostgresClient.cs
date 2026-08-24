@@ -665,7 +665,8 @@ namespace BuildConsole.Services
             const string sqlChats = @"
                 SELECT c.id, c.conversation_id, c.title, c.epic_id, c.updated_at,
                        i.github_number AS issue_github_number,
-                       e.github_number AS epic_github_number
+                       e.github_number AS epic_github_number,
+                       c.archived, c.archived_at
                 FROM bt_chats c
                 LEFT JOIN bt_issues i ON c.issue_id = i.id
                 LEFT JOIN bt_epics e ON c.epic_id = e.id
@@ -687,7 +688,9 @@ namespace BuildConsole.Services
                         Title = reader.IsDBNull(2) ? "" : reader.GetString(2),
                         EpicId = reader.IsDBNull(3) ? null : reader.GetInt32(3),
                         UpdatedAt = reader.IsDBNull(4) ? null : (DateTime?)reader.GetDateTime(4),
-                        ClaudeUrl = $"https://claude.ai/chat/{convId}"
+                        ClaudeUrl = $"https://claude.ai/chat/{convId}",
+                        Archived = !reader.IsDBNull(7) && reader.GetBoolean(7),
+                        ArchivedAt = reader.IsDBNull(8) ? null : (DateTime?)reader.GetDateTime(8),
                     };
 
                     int? issueGithubNum = reader.IsDBNull(5) ? null : reader.GetInt32(5);
