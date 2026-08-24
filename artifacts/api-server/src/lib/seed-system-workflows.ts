@@ -494,6 +494,149 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
       ],
     },
   },
+  // ── Daily Monitoring Rescan — Paid Foundation/Growth/Premier Subscribers (Git #1163, #1127-B2) ──
+  {
+    name: "__system__: Daily Monitoring Rescan — Paid Subscribers",
+    description:
+      "Daily schedule-triggered rescan for PAYING monitoring subscribers, so a purchased " +
+      "Foundation/Growth/Premier tier actually delivers the recurring cadence the marketing site " +
+      "advertises ('runs daily'; the daily end of the 'hourly-daily' band — every monitor_checks " +
+      "row is frequency='daily' bar one). This closes #1127-B2 / #1163 Item 2: before this, a paid " +
+      "monitoring tier fired only the single on-purchase run (consent.granted -> 'Run Assessment') " +
+      "and then never rescanned — the two weekly rescans below cover Free/Assessment nurture tenants " +
+      "ONLY (by mspRole), never paid subscribers. " +
+      "Per-record fan-out: the trigger's fan_out_query resolves every ACTIVE monitoring purchase " +
+      "directly from client_services -> services (service_type='monitoring_tier'), whose graph " +
+      "consent is still 'granted', and fires one run per subscription carrying clientId " +
+      "(client_services.client_user_id), tenantId (Azure AD tenant GUID), and the subscription's " +
+      "REAL purchased packageKey (type_attributes->>'packageKey' — core:foundation/core:growth/" +
+      "core:premier post-#1163; core:foundation is a safe fallback, never core:security-baseline, " +
+      "since a real monitoring_tier row always carries a packageKey). All three tiers run daily: the " +
+      "package the subscriber bought is exactly what reruns, so the nested check set (30/129/133) is " +
+      "already tier-correct without a per-tier cadence branch. " +
+      "Graph is a verbatim copy of 'Run Assessment' / the weekly rescans (find_object -> find_object " +
+      "-> monitor_get_package -> monitor_execute_package) — reuses the exact same full-scan node, no " +
+      "new scan logic, just the daily schedule + paid-subscriber filter wrapped around it. Explicitly " +
+      "does NOT touch msp_subscriptions or any billing/monitoring_tier config; this is a pure Workflow " +
+      "Engine definition. (Active paid monitoring subscribers = 0 at ship time — the #1127-B1 " +
+      "purchase-provisioning gap is a separate issue — so this is zero-impact today and correctly " +
+      "wired for when subscriptions exist.)",
+    triggerType: "schedule",
+    cron: "30 3 * * *", // Every day at 03:30 server time (after the Sun/Mon 03:00 weekly nurture rescans)
+    triggerEnabled: true,
+    fanOutMode: "per_record",
+    fanOutQuery:
+      "SELECT cs.client_user_id AS \"clientId\", t.tenant_id AS \"tenantId\", " +
+      "COALESCE(s.type_attributes->>'packageKey', 'core:foundation') AS \"packageKey\" " +
+      "FROM client_services cs " +
+      "JOIN services s ON s.id = cs.service_id AND s.service_type = 'monitoring_tier' " +
+      "JOIN users u ON u.id = cs.client_user_id " +
+      "JOIN tenants t ON t.id = u.tenant_id " +
+      "WHERE cs.status = 'active' AND u.is_active = true " +
+      "AND t.consent->'graph'->>'status' = 'granted'",
+    graph: {
+      nodes: [
+        {
+          id: "start",
+          type: "start",
+          position: { x: 300, y: 60 },
+          data: { nodeType: "start", label: "Daily Schedule (paid-subscriber fan-out)" },
+        },
+        {
+          id: "find_client",
+          type: "find_object",
+          position: { x: 300, y: 200 },
+          data: {
+            nodeType: "find_object",
+            label: "Resolve Client Record",
+            objectType: "client",
+            fieldName: "id",
+            fieldValueExpr: "{{clientId}}",
+          },
+        },
+        {
+          id: "resolve_pkg",
+          type: "find_object",
+          position: { x: 300, y: 340 },
+          data: {
+            nodeType: "find_object",
+            label: "Resolve Monitoring Package",
+            objectType: "monitoring_package",
+            fieldName: "key",
+            fieldValueExpr: "{{packageKey}}",
+          },
+        },
+        {
+          id: "get_pkg",
+          type: "monitor_get_package",
+          position: { x: 300, y: 480 },
+          data: {
+            nodeType: "monitor_get_package",
+            label: "Load Package Metadata",
+            packageKey: "{{steps.resolve_pkg.packageKey}}",
+          },
+        },
+        {
+          id: "execute_pkg",
+          type: "monitor_execute_package",
+          position: { x: 300, y: 620 },
+          data: {
+            nodeType: "monitor_execute_package",
+            label: "Execute Monitor Checks",
+            packageKey: "{{steps.get_pkg.packageKey}}",
+            tenantId: "{{tenantId}}",
+          },
+        },
+        {
+          id: "branch",
+          type: "condition",
+          position: { x: 300, y: 760 },
+          data: { nodeType: "condition", label: "Checks Passed?", expression: "runStatus == 'completed'" },
+        },
+        {
+          id: "notify_ok",
+          type: "create_notification",
+          position: { x: 150, y: 900 },
+          data: {
+            nodeType: "create_notification",
+            label: "Rescan Complete",
+            title: "Daily monitoring rescan executed successfully",
+            body: "Package {{steps.get_pkg.packageLabel}} completed with {{steps.execute_pkg.checksOk}} of {{steps.execute_pkg.checksTotal}} checks passing for {{steps.find_client.name}}.",
+            type: "general",
+          },
+        },
+        {
+          id: "notify_fail",
+          type: "create_notification",
+          position: { x: 450, y: 900 },
+          data: {
+            nodeType: "create_notification",
+            label: "Rescan Issues",
+            title: "Daily monitoring rescan completed with issues",
+            body: "Package {{steps.get_pkg.packageLabel}} for {{steps.find_client.name}} finished with status {{steps.execute_pkg.runStatus}}. {{steps.execute_pkg.checksError}} check(s) failed, {{steps.execute_pkg.consentRevoked}} consent-revoked.",
+            type: "general",
+          },
+        },
+        {
+          id: "end",
+          type: "end",
+          position: { x: 300, y: 1040 },
+          data: { nodeType: "end", label: "Done" },
+        },
+      ],
+      edges: [
+        { id: "e1", source: "start", target: "find_client" },
+        { id: "e2", source: "find_client", target: "resolve_pkg" },
+        { id: "e3", source: "resolve_pkg", target: "get_pkg" },
+        { id: "e4", source: "get_pkg", target: "execute_pkg" },
+        { id: "e5", source: "execute_pkg", target: "branch" },
+        { id: "e6", source: "branch", target: "notify_ok", sourceHandle: "true" },
+        { id: "e7", source: "branch", target: "notify_fail", sourceHandle: "false" },
+        { id: "e8", source: "notify_ok", target: "end" },
+        { id: "e9", source: "notify_fail", target: "end" },
+      ],
+    },
+  },
   // ── On Purchase — Generate Engagement Documents ────────────────────────────
   {
     name: "On Purchase — Generate Engagement Documents",
