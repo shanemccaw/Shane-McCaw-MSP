@@ -836,8 +836,17 @@ namespace BuildConsole
             _polling = true;
             try
             {
+                // Direct Postgres when configured, same reasoning as everywhere else in
+                // this app (BuildQueuePanel, RecoverOrphanedRunningItemsAsync, the
+                // startup connectivity probes): this HTTP fetch used to always go
+                // through the Replit-hosted API server regardless of _db being
+                // available, so a build genuinely running (claimed straight in
+                // Postgres) simply never showed up here if that server was slow,
+                // napping, or serving a stale/cached snapshot — Shane: "I have 4
+                // builds running currently and none of them are showing up in the
+                // Build Watch window."
                 List<QueueItem> queue;
-                try { queue = await _api.GetQueueAsync(); }
+                try { queue = _db != null ? await _db.GetQueueAsync() : await _api.GetQueueAsync(); }
                 catch { return; } // transient failure — keep the last state on screen
                 _lastQueue = queue;
 

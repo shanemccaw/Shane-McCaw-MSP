@@ -738,19 +738,34 @@ namespace BuildConsole.Controls
             $"{tokens} tokens";
 
         /// <summary>
-        /// Refreshes both the header badge (real, durable "this session" totals — see
-        /// UsageTrackingService) and, if the breakdown popup happens to be open, its
-        /// live All-Time/Session numbers too. The "(N active)" tail is still the live
-        /// in-flight count from the watcher (a separate, real-time signal, not part of
-        /// the durable totals).
+        /// Refreshes the header badge. Shane: "The Tokens and cost is also not
+        /// updating with the 4 builds running right now" — a regression from switching
+        /// the badge to ONLY the persisted "this session" totals (which only advance
+        /// when a build actually finishes a turn and reports its real
+        /// total_cost_usd/usage), so a build that's been actively streaming but hasn't
+        /// completed a turn yet looked frozen. Fixed by showing whichever is actually
+        /// live right now: while any build is running, the badge shows the real-time
+        /// in-progress estimate from GetActiveUsageSummary (updates continuously as
+        /// context grows, exactly like before); once nothing is running it falls back
+        /// to the persisted "this session" total instead of blanking to zero — the
+        /// original "should persist" ask. Either way, clicking still opens the full
+        /// This-Session/All-Time breakdown popup.
         /// </summary>
         public void UpdateUsageSummary()
         {
             var snap = Services.UsageTrackingService.GetSnapshot();
-            QueueTokensText.Text = FormatTokens(snap.SessionTokens);
-            QueueCostText.Text = $" · ~${snap.SessionCostUsd:0.00}";
+            var (activeTokens, activeCost, active) = _watcher?.GetActiveUsageSummary() ?? (0, 0, 0);
 
-            int active = _watcher?.GetActiveUsageSummary().ActiveBuildCount ?? 0;
+            if (active > 0)
+            {
+                QueueTokensText.Text = FormatTokens(activeTokens);
+                QueueCostText.Text = $" · ~${activeCost:0.00}";
+            }
+            else
+            {
+                QueueTokensText.Text = FormatTokens(snap.SessionTokens);
+                QueueCostText.Text = $" · ~${snap.SessionCostUsd:0.00}";
+            }
             QueueActiveSlotsText.Text = $" ({active} active)";
 
             if (UsageBreakdownPopup?.IsOpen == true) RenderUsageBreakdown(snap);
