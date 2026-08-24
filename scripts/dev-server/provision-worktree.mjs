@@ -15,12 +15,10 @@
 // Prints the exact request-restart command to run when the agent's build is done.
 
 import path from "node:path";
-import os from "node:os";
 import { existsSync } from "node:fs";
 import { loadConfig, isWindows } from "./config.mjs";
 import { git, resolveCommit, shortSha } from "./git.mjs";
 import { linkDeps } from "./link-deps.mjs";
-import { registerWorktree } from "./worktree-lifecycle.mjs";
 
 function parse(argv) {
   const a = { link: false, _: [] };
@@ -62,18 +60,6 @@ function main() {
     console.error(`! git worktree add failed:\n${r.stderr}`);
     process.exit(1);
   }
-
-  registerWorktree(config, {
-    name,
-    path: wtPath,
-    branch,
-    baseRef: base,
-    baseCommit,
-    creatorPid: process.pid,
-    creatorHost: os.hostname(),
-    status: "active",
-  });
-
   console.log(`Created worktree`);
   console.log(`  path   : ${wtPath}`);
   console.log(`  branch : ${branch}`);
@@ -83,13 +69,13 @@ function main() {
     console.log(`  linking dependencies (junctions)...`);
     const created = linkDeps(repo, wtPath);
     console.log(`  linked ${created.length} dependency dir(s).`);
+    console.log(`  NOTE cleanup order: rmdir the junctions BEFORE 'git worktree remove', or removal deletes THROUGH them into the real store.`);
   }
 
   console.log("");
   console.log(`Work in ${wtPath}. When your build is committed there, publish it to the dev server with:`);
   console.log(`  cd ${wtPath}`);
   console.log(`  node scripts/dev-server/request-restart.mjs --agent ${name}`);
-  console.log(`  (or pass --cleanup to remove the worktree automatically upon success)`);
 }
 
 main();

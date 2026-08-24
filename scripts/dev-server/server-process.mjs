@@ -117,28 +117,11 @@ export function startServer(config) {
   return child.pid;
 }
 
-/**
- * Perform a real health check on the dev api-server:
- *   1. Check process liveness (PID alive).
- *   2. Attempt HTTP GET /api/health or HTTP GET / with a short timeout.
- *   3. Fallback to TCP port connection check.
- */
-export async function checkServerHealth(config, pid) {
-  if (pid && !pidAlive(pid)) {
-    return { ok: false, error: `Dev server process ${pid} died / crashed on startup` };
-  }
-
-  // 1. HTTP GET check (health endpoint or root)
-  try {
-    const url = `http://127.0.0.1:${config.apiPort}/api/health`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(2500) });
-    if (res.status < 500) {
-      return { ok: true, status: res.status, url };
-    }
-    return { ok: false, error: `HTTP health check at ${url} returned status ${res.status}` };
-  } catch (httpErr) {
-    // 2. Secondary fallback: check TCP port connectivity
-    const tcpOk = await new Promise((resolve) => {
+/** Best-effort readiness: can we open a TCP connection to the api port? */
+export async function waitForReady(config) {
+  const deadline = Date.now() + config.readyTimeoutMs;
+  while (Date.now() < deadline) {
+    const ok = await new Promise((resolve) => {
       const sock = net.connect(config.apiPort, "127.0.0.1");
       const done = (v) => {
         sock.destroy();
@@ -148,51 +131,10 @@ export async function checkServerHealth(config, pid) {
       sock.once("error", () => done(false));
       sock.setTimeout(1500, () => done(false));
     });
-
-    if (tcpOk) {
-      return { ok: true, note: "TCP connect ok" };
-    }
-
-    if (pid && !pidAlive(pid)) {
-      return { ok: false, error: `Dev server process ${pid} exited during health check` };
-    }
-
-    return { ok: false, error: `Connection refused on port ${config.apiPort}: ${httpErr.message}` };
-  }
-}
-
-/**
- * Wait for dev server readiness with fast-fail detection if the spawned PID dies.
- * Returns { ready: boolean, elapsedMs: number, error?: string }
- */
-export async function waitForReady(config, pid = null) {
-  const start = Date.now();
-  const deadline = start + config.readyTimeoutMs;
-  let lastError = null;
-
-  while (Date.now() < deadline) {
-    const targetPid = pid || readServerMeta(config)?.pid;
-    if (targetPid && !pidAlive(targetPid)) {
-      return {
-        ready: false,
-        elapsedMs: Date.now() - start,
-        error: `Dev server process ${targetPid} crashed or exited during startup`,
-      };
-    }
-
-    const health = await checkServerHealth(config, targetPid);
-    if (health.ok) {
-      return { ready: true, elapsedMs: Date.now() - start };
-    }
-    lastError = health.error;
+    if (ok) return true;
     await sleep(500);
   }
-
-  return {
-    ready: false,
-    elapsedMs: Date.now() - start,
-    error: lastError || `Readiness check timed out after ${config.readyTimeoutMs}ms`,
-  };
+  return false;
 }
 
 /**
@@ -202,12 +144,6 @@ export async function waitForReady(config, pid = null) {
 export async function restartServer(config) {
   const oldPid = await stopServer(config);
   const newPid = startServer(config);
-  const readyRes = await waitForReady(config, newPid);
-  return {
-    oldPid: oldPid || null,
-    newPid,
-    ready: readyRes.ready,
-    elapsedMs: readyRes.elapsedMs,
-    error: readyRes.ready ? null : readyRes.error,
-  };
+  const ready = await waitForReady(config);
+  return { oldPid: oldPid || null, newPid, ready };
 }

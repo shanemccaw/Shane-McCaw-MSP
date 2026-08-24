@@ -12,7 +12,6 @@
 import { writeFileSync, rmSync, appendFileSync, mkdirSync, existsSync } from "node:fs";
 import path from "node:path";
 import {
-  git,
   revParse,
   isAncestor,
   mergeNoEdit,
@@ -43,45 +42,11 @@ function appendCycleRecord(config, record) {
   }
 }
 
-export function appendRollbackRecord(config, record) {
-  try {
-    mkdirSync(path.dirname(config.rollbacksLog), { recursive: true });
-    appendFileSync(config.rollbacksLog, JSON.stringify(record) + "\n");
-  } catch {
-    /* observability best-effort */
-  }
-}
-
-export function publishNeedsAttentionRollback(config, rollbackRecord) {
-  try {
-    mkdirSync(config.needsAttentionDir, { recursive: true });
-    const id = `rollback-${rollbackRecord.cycleId}`;
-    const file = path.join(config.needsAttentionDir, `${id}.json`);
-    const commitList = rollbackRecord.mergedRequests.map((r) => shortSha(r.commit)).join(", ");
-    const agentList = rollbackRecord.mergedRequests.map((r) => r.agentId || "agent").join(", ");
-    const obj = {
-      id,
-      key: id,
-      title: "🔴 Dev Server Merge Rolled Back",
-      summary: `Merge of commit(s) ${commitList} from ${agentList} broke the dev server and was rolled back to ${shortSha(rollbackRecord.serverHeadBefore)}.`,
-      details: `Cycle: ${rollbackRecord.cycleId}\nFailure Reason: ${rollbackRecord.reason}\nBroken Commit(s): ${commitList}\nRestored HEAD: ${rollbackRecord.restoredHead}\nRecovery Restart: ${rollbackRecord.recoveryRestart?.ready ? "HEALTHY" : "FAILED"}\n\nReverted Requests:\n${rollbackRecord.mergedRequests.map((r) => `  - ${r.commit} (${r.agentId || "agent"})`).join("\n")}`,
-      isFailure: true,
-      atLocal: new Date(rollbackRecord.at).toISOString(),
-      timestamp: rollbackRecord.at,
-      revertedCommits: rollbackRecord.mergedRequests.map((r) => r.commit),
-      restoredCommit: rollbackRecord.serverHeadBefore,
-    };
-    writeFileSync(file, JSON.stringify(obj, null, 2));
-  } catch {
-    /* best effort */
-  }
-}
-
 /**
  * Run one merge+restart+confirm cycle against the server worktree.
  *
  * @param config  loadConfig() result
- * @param deps    { restart } -- restart() => Promise<{oldPid,newPid,ready,error?}>.
+ * @param deps    { restart } -- restart() => Promise<{oldPid,newPid,ready}>.
  *                Injected so selftest can supply a fake restart; production
  *                wires server-process.restartServer.
  * @param opts    { lock } -- the held lock handle, so we can stamp cycleId onto
@@ -171,9 +136,6 @@ export async function runCycle(config, deps, opts = {}) {
 
   // 4) Restart the server process ONCE, only if the tree actually advanced.
   let restart = { oldPid: null, newPid: null, ready: null, skipped: true };
-  let rolledBack = false;
-  let rollbackInfo = null;
-
   if (changed) {
     writeCurrentCycle(config, {
       cycleId,
@@ -185,85 +147,19 @@ export async function runCycle(config, deps, opts = {}) {
       batch: batch.map((r) => r.id),
     });
     restart = { skipped: false, ...(await deps.restart(config)) };
-
-    // HEALTH VERIFICATION & MERGE-FAILURE ROLLBACK:
-    // If the server failed to start or failed its health check, the newly-merged
-    // code broke the server. Revert/reset immediately to the last known-good HEAD.
-    if (restart.ready === false) {
-      rolledBack = true;
-      writeCurrentCycle(config, {
-        cycleId,
-        runnerPid: process.pid,
-        startedAt,
-        phase: "rolling_back",
-        serverHeadBefore,
-        serverHeadBroken: serverHeadAfterMerge,
-        reason: restart.error || "health check failed after merge",
-        batch: batch.map((r) => r.id),
-      });
-
-      // 1. Reset server worktree back to known-good HEAD
-      git(W, ["reset", "--hard", serverHeadBefore]);
-      const restoredHead = revParse(W, "HEAD");
-
-      // 2. Restart server process on restored known-good checkout
-      let recoveryRestart = null;
-      try {
-        recoveryRestart = await deps.restart(config);
-      } catch (err) {
-        recoveryRestart = { ready: false, error: err.message };
-      }
-
-      rollbackInfo = {
-        cycleId,
-        at: Date.now(),
-        iso: new Date().toISOString(),
-        reason: restart.error || "server health check failed after restart",
-        serverHeadBefore,
-        serverHeadBroken: serverHeadAfterMerge,
-        restoredHead,
-        mergedRequests: merged.map((r) => ({
-          id: r.id,
-          agentId: r.agentId,
-          commit: r.commit,
-        })),
-        recoveryRestart,
-      };
-
-      appendRollbackRecord(config, rollbackInfo);
-      publishNeedsAttentionRollback(config, rollbackInfo);
-
-      console.error(
-        `[dev-server] 🔴 MERGE ROLLBACK in cycle ${cycleId}: ${merged.length} commit(s) broke server (${restart.error || "health check failed"}). Checkout restored to ${shortSha(serverHeadBefore)} (recovery ready: ${recoveryRestart?.ready}).`
-      );
-
-      // Mark all merged requests in this batch as rolledBack: true, landed: false
-      for (const req of merged) {
-        perRequest[req.id] = {
-          landed: false,
-          merged: true,
-          rolledBack: true,
-          error: `Server health check failed after merge; rolled back to ${shortSha(serverHeadBefore)}. Detail: ${restart.error || "unhealthy"}`,
-          commit: req.commit,
-          serverHeadBefore,
-          restoredCommit: serverHeadBefore,
-        };
-      }
-    }
   }
 
-  // 5) CONFIRM with real git: only if not rolled back!
+  // 5) CONFIRM with real git: the server checkout HEAD must now genuinely
+  //    contain each merged commit.
   const serverHeadFinal = revParse(W, "HEAD");
-  if (!rolledBack) {
-    for (const req of merged) {
-      const confirmed = isAncestor(W, req.commit, serverHeadFinal);
-      perRequest[req.id] = {
-        ...perRequest[req.id],
-        landed: confirmed,
-        confirmed,
-        serverHead: serverHeadFinal,
-      };
-    }
+  for (const req of merged) {
+    const confirmed = isAncestor(W, req.commit, serverHeadFinal);
+    perRequest[req.id] = {
+      ...perRequest[req.id],
+      landed: confirmed,
+      confirmed,
+      serverHead: serverHeadFinal,
+    };
   }
 
   // 6) Publish outcomes so waiters can join without a second restart.
@@ -285,8 +181,6 @@ export async function runCycle(config, deps, opts = {}) {
     serverHeadFinal,
     restarted: changed,
     restart,
-    rolledBack,
-    rollback: rollbackInfo,
     batchSize: batch.length,
     mergedCount: merged.length,
     conflicts: Object.values(perRequest).filter((o) => o.conflict).length,

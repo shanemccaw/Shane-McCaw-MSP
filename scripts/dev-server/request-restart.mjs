@@ -42,12 +42,10 @@ import { runCycle } from "./coordinator.mjs";
 import { restartServer } from "./server-process.mjs";
 import { existsSync } from "node:fs";
 
-import { removeWorktreeSafe, markWorktreeStale, normalizePath } from "./worktree-lifecycle.mjs";
-
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function parseArgs(argv) {
-  const a = { json: false, cleanup: false, keepForDebug: false };
+  const a = { json: false };
   for (let i = 0; i < argv.length; i++) {
     const t = argv[i];
     if (t === "--json") a.json = true;
@@ -55,9 +53,6 @@ function parseArgs(argv) {
     else if (t === "--agent") a.agent = argv[++i];
     else if (t === "--worktree") a.worktree = argv[++i];
     else if (t === "--branch") a.branch = argv[++i];
-    else if (t === "--cleanup" || t === "--cleanup-worktree") a.cleanup = true;
-    else if (t === "--keep-for-debug" || t === "--debug") a.keepForDebug = true;
-    else if (t === "--cleanup-on-failure") a.cleanupOnFailure = true;
   }
   return a;
 }
@@ -203,42 +198,8 @@ function summarizeConfig(config) {
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMain) {
   const a = parseArgs(process.argv.slice(2));
-  const targetWorktree = a.worktree || process.cwd();
-  const config = loadConfig({ cwd: targetWorktree });
-
   requestRestart(a)
     .then((res) => {
-      if (res.landed) {
-        if (a.cleanup) {
-          try {
-            const cleanRes = removeWorktreeSafe(config, targetWorktree, {
-              reason: "request-restart successful merge into dev-server",
-            });
-            res.worktreeCleaned = cleanRes;
-          } catch (e) {
-            console.warn(`[dev-server] Warning: worktree cleanup failed: ${e.message}`);
-          }
-        }
-      } else {
-        if (a.keepForDebug) {
-          try {
-            const staleRes = markWorktreeStale(config, targetWorktree, {
-              reason: res.error || "failed restart / merge conflict",
-              commit: res.commit,
-              error: res.error,
-            });
-            res.worktreeMarkedStale = staleRes;
-          } catch {}
-        } else if (a.cleanupOnFailure) {
-          try {
-            const cleanRes = removeWorktreeSafe(config, targetWorktree, {
-              reason: `request-restart failed: ${res.error || "conflict"}`,
-            });
-            res.worktreeCleaned = cleanRes;
-          } catch {}
-        }
-      }
-
       if (a.json) {
         console.log(JSON.stringify(res, null, 2));
       } else {
@@ -247,21 +208,8 @@ if (isMain) {
           console.log(
             `[dev-server] OK  commit ${c} is live${res.restarted ? " (restarted)" : res.joined ? " (joined an in-flight/complete cycle -- no extra restart)" : ""}. server HEAD ${shortSha(res.serverHead)}`
           );
-          if (res.worktreeCleaned) {
-            console.log(`[dev-server] Cleaned worktree: ${targetWorktree}`);
-          }
-        } else if (res.rolledBack) {
-          console.error(
-            `[dev-server] 🔴 ROLLED BACK  commit ${c}: ${res.error}. Restored server to ${shortSha(res.restoredCommit || res.serverHeadBefore)}`
-          );
-          if (res.worktreeMarkedStale) {
-            console.log(`[dev-server] Retained worktree for debugging: ${targetWorktree} (.stale-worktree.json written)`);
-          }
         } else {
           console.error(`[dev-server] FAILED  commit ${c}: ${res.error || (res.conflict ? "merge conflict" : "not landed")}`);
-          if (res.worktreeMarkedStale) {
-            console.log(`[dev-server] Retained worktree for debugging: ${targetWorktree} (.stale-worktree.json written)`);
-          }
         }
       }
       process.exit(res.landed ? 0 : 1);

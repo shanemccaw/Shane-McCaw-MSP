@@ -104,11 +104,7 @@ export function loadConfig({ cwd = process.cwd() } = {}) {
     lockDir: path.join(stateDir, "lock"),
     queueDir: path.join(stateDir, "queue"),
     claimedDir: path.join(stateDir, "claimed"),
-    worktreesDir: path.join(stateDir, "worktrees"),
-    needsAttentionDir: path.join(stateDir, "needs-attention"),
     cyclesLog: path.join(stateDir, "cycles.log"),
-    cleanupsLog: path.join(stateDir, "cleanups.log"),
-    rollbacksLog: path.join(stateDir, "rollbacks.log"),
     currentCycleFile: path.join(stateDir, "current-cycle.json"),
     serverMetaFile: path.join(stateDir, "server.json"),
     restartsLog: path.join(stateDir, "restarts.log"), // used by fake-restart selftest

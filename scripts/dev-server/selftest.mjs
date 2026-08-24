@@ -25,7 +25,6 @@ import {
   writeFileSync,
   rmSync,
   readFileSync,
-  readdirSync,
   existsSync,
 } from "node:fs";
 import os from "node:os";
@@ -34,21 +33,13 @@ import { fileURLToPath } from "node:url";
 import assert from "node:assert";
 
 import { loadConfig } from "./config.mjs";
-import { git, revParse, isAncestor, listWorktrees } from "./git.mjs";
+import { git, revParse, isAncestor } from "./git.mjs";
 import { enqueue, outcomeFor } from "./queue.mjs";
 import { runCycle } from "./coordinator.mjs";
 import { tryAcquire, pidAlive } from "./lock.mjs";
-import {
-  registerWorktree,
-  getWorktreeRecord,
-  removeWorktreeSafe,
-  markWorktreeStale,
-  sweepWorktrees,
-} from "./worktree-lifecycle.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REQUEST_RESTART = path.join(HERE, "request-restart.mjs");
-const CLEANUP_WORKTREE = path.join(HERE, "cleanup-worktree.mjs");
 
 let PASS = 0;
 let FAIL = 0;
@@ -295,192 +286,6 @@ async function main() {
     );
     if (lock) lock.release();
   }
-
-  // ---------------------------------------------------------------
-  // Scenario 6: Explicit worktree cleanup on success.
-  // ---------------------------------------------------------------
-    console.log("Scenario 6: explicit worktree cleanup removes worktree + branch safely");
-    {
-      const { repo } = makeRepo(1);
-      cleanup.push(repo);
-      const stateDir = path.join(repo, "_state");
-      applyEnv(baseEnv(repo, stateDir));
-      const config = loadConfig({ cwd: repo });
-
-      const wtPath = path.join(os.tmpdir(), `dsst-wt-${Date.now()}`);
-      cleanup.push(wtPath);
-      const branch = "agent/test-success-cleanup";
-      G(repo, ["worktree", "add", "-b", branch, wtPath, "HEAD"]);
-
-      registerWorktree(config, {
-        name: "test-success-cleanup",
-        path: wtPath,
-        branch,
-        creatorPid: process.pid,
-      });
-
-      check("worktree is registered and listed", () => {
-        const list = listWorktrees(repo);
-        assert.ok(list.some((w) => path.resolve(w.path) === path.resolve(wtPath)), "worktree not listed in git");
-        assert.ok(getWorktreeRecord(config, wtPath), "record not registered");
-      });
-
-      const res = removeWorktreeSafe(config, wtPath, { reason: "test build success" });
-
-      check("removeWorktreeSafe succeeds", () => assert.ok(res && res.ok));
-      check("worktree dir removed from disk", () => assert.ok(!existsSync(wtPath), "wtPath still exists"));
-      check("worktree removed from git worktree list", () => {
-        const list = listWorktrees(repo);
-        assert.ok(!list.some((w) => path.resolve(w.path) === path.resolve(wtPath)), "still listed in git worktrees");
-      });
-      check("ephemeral agent branch deleted", () => {
-        const branches = G(repo, ["branch"]).split("\n").map((b) => b.trim().replace(/^\*\s*/, ""));
-        assert.ok(!branches.includes(branch), `branch ${branch} still exists`);
-      });
-      check("tracking record cleaned up", () => assert.strictEqual(getWorktreeRecord(config, wtPath), null));
-    }
-
-    // ---------------------------------------------------------------
-    // Scenario 7: Crash/failure debug marking.
-    // ---------------------------------------------------------------
-    console.log("Scenario 7: crashed/failed worktree marked stale for debug");
-    {
-      const { repo } = makeRepo(1);
-      cleanup.push(repo);
-      const stateDir = path.join(repo, "_state");
-      applyEnv(baseEnv(repo, stateDir));
-      const config = loadConfig({ cwd: repo });
-
-      const wtPath = path.join(os.tmpdir(), `dsst-stale-${Date.now()}`);
-      cleanup.push(wtPath);
-      const branch = "agent/test-stale-debug";
-      G(repo, ["worktree", "add", "-b", branch, wtPath, "HEAD"]);
-
-      registerWorktree(config, {
-        name: "test-stale-debug",
-        path: wtPath,
-        branch,
-        creatorPid: process.pid,
-      });
-
-      markWorktreeStale(config, wtPath, { reason: "type check error in build", commit: "abc1234" });
-
-      check(".stale-worktree.json marker written into worktree", () => {
-        const markerPath = path.join(wtPath, ".stale-worktree.json");
-        assert.ok(existsSync(markerPath), ".stale-worktree.json missing");
-        const marker = JSON.parse(readFileSync(markerPath, "utf8"));
-        assert.strictEqual(marker.reason, "type check error in build");
-      });
-      check("record status updated to stale", () => {
-        const rec = getWorktreeRecord(config, wtPath);
-        assert.strictEqual(rec.status, "stale");
-        assert.strictEqual(rec.keepForDebug, true);
-      });
-    }
-
-    // ---------------------------------------------------------------
-    // Scenario 8: Periodic sweep of orphaned worktrees.
-    // ---------------------------------------------------------------
-    console.log("Scenario 8: sweep removes orphaned worktrees and retains active/debug ones");
-    {
-      const { repo } = makeRepo(1);
-      cleanup.push(repo);
-      const stateDir = path.join(repo, "_state");
-      applyEnv(baseEnv(repo, stateDir));
-      const config = loadConfig({ cwd: repo });
-
-      // Worktree 1: orphaned (dead PID, expired)
-      const wtOrphan = path.join(os.tmpdir(), `dsst-orphan-${Date.now()}`);
-      cleanup.push(wtOrphan);
-      G(repo, ["worktree", "add", "-b", "agent/orphan-dead", wtOrphan, "HEAD"]);
-
-      let deadPid = 999999;
-      while (pidAlive(deadPid)) deadPid--;
-
-      registerWorktree(config, {
-        name: "orphan-dead",
-        path: wtOrphan,
-        branch: "agent/orphan-dead",
-        creatorPid: deadPid,
-      });
-
-      // Worktree 2: active (alive creator PID)
-      const wtActive = path.join(os.tmpdir(), `dsst-active-${Date.now()}`);
-      cleanup.push(wtActive);
-      G(repo, ["worktree", "add", "-b", "agent/active-living", wtActive, "HEAD"]);
-
-      registerWorktree(config, {
-        name: "active-living",
-        path: wtActive,
-        branch: "agent/active-living",
-        creatorPid: process.pid,
-      });
-
-      const sweepRes = sweepWorktrees(config, { maxAgeMs: 0 });
-
-      check("sweep inspected all worktrees", () => assert.ok(sweepRes.inspectedCount >= 3));
-      check("sweep removed orphaned worktree", () => {
-        assert.ok(!existsSync(wtOrphan), "orphan worktree still on disk");
-        assert.ok(sweepRes.removed.some((r) => path.resolve(r.path) === path.resolve(wtOrphan)));
-      });
-      check("sweep retained active worktree with living PID", () => {
-        assert.ok(existsSync(wtActive), "active worktree was prematurely removed");
-        assert.ok(sweepRes.retained.some((r) => path.resolve(r.path) === path.resolve(wtActive)));
-      });
-      check("main repo was protected from sweep", () => {
-        assert.ok(existsSync(repo), "main repo was deleted");
-      });
-    }
-
-    // ---------------------------------------------------------------
-    // Scenario 9: Merge health check failure triggers automatic rollback.
-    // ---------------------------------------------------------------
-    console.log("Scenario 9: unhealthy merge triggers automatic rollback to known-good commit");
-    {
-      const { repo, agents, baseSha } = makeRepo(1);
-      cleanup.push(repo);
-      const stateDir = path.join(repo, "_state");
-      applyEnv(baseEnv(repo, stateDir));
-      const config = loadConfig({ cwd: repo });
-
-      const headBefore = revParse(repo, "HEAD");
-      const badReqId = enqueue(config, {
-        agentId: "broken-agent",
-        commit: agents[0].sha,
-        worktree: repo,
-      });
-
-      // Inject a failing restart simulating a crash or health failure
-      const failingRestart = async () => ({
-        ready: false,
-        error: "simulated server crash on startup (health check failed)",
-      });
-
-      const record = await runCycle(config, { restart: failingRestart });
-
-      check("cycle detected failure and marked rolledBack", () => assert.strictEqual(record.rolledBack, true));
-      check("server HEAD was restored to known-good pre-merge commit", () => {
-        const headAfter = revParse(repo, "HEAD");
-        assert.strictEqual(headAfter, headBefore);
-      });
-      check("broken request marked not landed and rolledBack", () => {
-        const outcome = record.perRequest[badReqId];
-        assert.ok(outcome, "no outcome recorded");
-        assert.strictEqual(outcome.landed, false);
-        assert.strictEqual(outcome.rolledBack, true);
-        assert.ok(outcome.error && outcome.error.includes("rolled back"));
-      });
-      check("rollback event recorded in rollbacks.log", () => {
-        assert.ok(existsSync(config.rollbacksLog), "rollbacks.log missing");
-        const logContent = readFileSync(config.rollbacksLog, "utf8");
-        assert.ok(logContent.includes("simulated server crash"));
-      });
-      check("needs-attention notification file generated", () => {
-        assert.ok(existsSync(config.needsAttentionDir), "needs-attention dir missing");
-        const files = readdirSync(config.needsAttentionDir);
-        assert.ok(files.some((f) => f.startsWith("rollback-")), "no rollback notification file");
-      });
-    }
 
   // ---------------------------------------------------------------
   console.log("");

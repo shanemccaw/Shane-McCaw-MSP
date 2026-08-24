@@ -15,9 +15,6 @@ import { readServerMeta } from "./server-process.mjs";
 import { listPending } from "./queue.mjs";
 import { revParse, shortSha } from "./git.mjs";
 
-import { listWorktrees } from "./git.mjs";
-import { listWorktreeRecords, normalizePath } from "./worktree-lifecycle.mjs";
-
 function readJson(f) {
   try {
     return JSON.parse(readFileSync(f, "utf8"));
@@ -26,9 +23,9 @@ function readJson(f) {
   }
 }
 
-function lastLines(file, n = 5) {
-  if (!existsSync(file)) return [];
-  return readFileSync(file, "utf8")
+function lastCycles(config, n = 5) {
+  if (!existsSync(config.cyclesLog)) return [];
+  return readFileSync(config.cyclesLog, "utf8")
     .split(/\r?\n/)
     .filter(Boolean)
     .slice(-n)
@@ -45,29 +42,6 @@ function lastLines(file, n = 5) {
 export function collectStatus(cwd = process.cwd()) {
   const config = loadConfig({ cwd });
   const meta = readServerMeta(config);
-  const gitWts = listWorktrees(config.mainRepoRoot);
-  const records = listWorktreeRecords(config);
-  const recMap = new Map(records.map((r) => [normalizePath(r.path), r]));
-
-  const agentWorktrees = gitWts
-    .filter(
-      (w) =>
-        normalizePath(w.path) !== normalizePath(config.mainRepoRoot) &&
-        normalizePath(w.path) !== normalizePath(config.serverWorktree)
-    )
-    .map((w) => {
-      const rec = recMap.get(normalizePath(w.path));
-      return {
-        path: w.path,
-        branch: w.branch || "(detached)",
-        head: shortSha(w.head),
-        status: rec?.status || "untracked",
-        creatorPid: rec?.creatorPid || null,
-        pidAlive: rec?.creatorPid ? pidAlive(rec.creatorPid) : null,
-        debugReason: rec?.debugReason || null,
-      };
-    });
-
   return {
     mainRepoRoot: config.mainRepoRoot,
     stateDir: config.stateDir,
@@ -86,13 +60,9 @@ export function collectStatus(cwd = process.cwd()) {
     server: meta
       ? { pid: meta.pid, alive: pidAlive(meta.pid), startedAt: meta.startedAt, apiPort: meta.apiPort }
       : null,
-    agentWorktrees,
-    recentCleanups: lastLines(config.cleanupsLog, 5),
-    recentRollbacks: lastLines(config.rollbacksLog, 5),
-    recentCycles: lastLines(config.cyclesLog, 5).map((c) => ({
+    recentCycles: lastCycles(config).map((c) => ({
       cycleId: c.cycleId,
       restarted: c.restarted,
-      rolledBack: c.rolledBack || false,
       batchSize: c.batchSize,
       mergedCount: c.mergedCount,
       conflicts: c.conflicts,
@@ -119,31 +89,10 @@ if (isMain) {
     console.log("  current cycle    :", s.currentCycle ? `${s.currentCycle.cycleId} [${s.currentCycle.phase}]` : "(idle)");
     console.log("  pending requests :", s.pending.length ? s.pending.map((p) => `${p.commit}/${p.agent}`).join(", ") : "(none)");
     console.log("  server process   :", s.server ? `pid ${s.server.pid} ${s.server.alive ? "alive" : "DEAD"} port ${s.server.apiPort}` : "(not launched via coordinator)");
-    console.log(`  agent worktrees  : ${s.agentWorktrees.length} present`);
-    for (const w of s.agentWorktrees) {
-      const pidInfo = w.creatorPid ? `pid ${w.creatorPid} (${w.pidAlive ? "alive" : "dead"})` : "";
-      const statusPill = w.debugReason ? `⚠️ STALE (${w.debugReason})` : `[${w.status}]`;
-      console.log(`     ${w.path} -> ${statusPill} ${pidInfo}`);
-    }
-    if (s.recentRollbacks?.length) {
-      console.log("  🔴 RECENT ROLLBACKS :");
-      for (const rb of s.recentRollbacks) {
-        const commits = rb.mergedRequests?.map((r) => shortSha(r.commit)).join(", ") || "?";
-        console.log(`     ${new Date(rb.at).toLocaleTimeString()} cycle ${rb.cycleId}: reverted ${commits} -> restored ${shortSha(rb.restoredHead)} (${rb.reason})`);
-      }
-    }
-    if (s.recentCleanups?.length) {
-      console.log("  recent cleanups  :");
-      for (const cl of s.recentCleanups) {
-        console.log(`     ${new Date(cl.timestamp).toLocaleTimeString()} ${cl.action.toUpperCase()} ${cl.path} (${cl.reason})`);
-      }
-    }
     if (s.recentCycles.length) {
       console.log("  recent cycles    :");
-      for (const c of s.recentCycles) {
-        const flag = c.rolledBack ? " [🔴 ROLLED BACK]" : "";
-        console.log(`     ${c.cycleId}  batch=${c.batchSize} merged=${c.mergedCount} conflicts=${c.conflicts} restarted=${c.restarted}${flag} -> ${c.serverHead}`);
-      }
+      for (const c of s.recentCycles)
+        console.log(`     ${c.cycleId}  batch=${c.batchSize} merged=${c.mergedCount} conflicts=${c.conflicts} restarted=${c.restarted} -> ${c.serverHead}`);
     }
   }
 }

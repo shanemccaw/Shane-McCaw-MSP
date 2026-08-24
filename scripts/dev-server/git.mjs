@@ -83,19 +83,13 @@ export function mergeNoEdit(cwd, commit, message) {
   const args = ["merge", "--no-edit"];
   if (message) args.push("-m", message);
   args.push(commit);
-  let r = git(cwd, args);
-  if (r.code !== 0 && (r.stderr.includes("MERGE_HEAD") || r.stdout.includes("MERGE_HEAD"))) {
-    git(cwd, ["merge", "--abort"]);
-    git(cwd, ["reset", "--hard", "HEAD"]);
-    r = git(cwd, args);
-  }
+  const r = git(cwd, args);
   if (r.code === 0) {
     const after = revParse(cwd, "HEAD");
     return { ok: true, ff: after === before ? false : true, sha: after, stderr: "" };
   }
   // Leave the server checkout in a clean state -- never half-merged.
   git(cwd, ["merge", "--abort"]);
-  git(cwd, ["reset", "--hard", "HEAD"]);
   return {
     ok: false,
     sha: before,
@@ -111,66 +105,4 @@ export function worktreePaths(cwd) {
     .split(/\r?\n/)
     .filter((l) => l.startsWith("worktree "))
     .map((l) => l.slice("worktree ".length).trim());
-}
-
-/** List existing worktrees with full porcelain details. */
-export function listWorktrees(cwd) {
-  const r = git(cwd, ["worktree", "list", "--porcelain"]);
-  if (r.code !== 0) return [];
-  const entries = [];
-  let current = null;
-  for (const line of r.stdout.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed) {
-      if (current) {
-        entries.push(current);
-        current = null;
-      }
-      continue;
-    }
-    if (trimmed.startsWith("worktree ")) {
-      if (current) entries.push(current);
-      current = {
-        path: trimmed.slice("worktree ".length).trim(),
-        head: null,
-        branch: null,
-        branchRef: null,
-        detached: false,
-        prunable: null,
-      };
-    } else if (current) {
-      if (trimmed.startsWith("HEAD ")) {
-        current.head = trimmed.slice("HEAD ".length).trim();
-      } else if (trimmed.startsWith("branch ")) {
-        const ref = trimmed.slice("branch ".length).trim();
-        current.branchRef = ref;
-        current.branch = ref.replace(/^refs\/heads\//, "");
-      } else if (trimmed === "detached") {
-        current.detached = true;
-      } else if (trimmed.startsWith("prunable ")) {
-        current.prunable = trimmed.slice("prunable ".length).trim();
-      }
-    }
-  }
-  if (current) entries.push(current);
-  return entries;
-}
-
-/** Prune stale worktree metadata. */
-export function pruneWorktrees(cwd) {
-  return git(cwd, ["worktree", "prune"]);
-}
-
-/** Remove a worktree via git worktree remove. */
-export function removeWorktree(cwd, wtPath, { force = true } = {}) {
-  const args = ["worktree", "remove"];
-  if (force) args.push("--force");
-  args.push(wtPath);
-  return git(cwd, args);
-}
-
-/** Delete a branch if it exists. */
-export function deleteBranch(cwd, branchName, { force = true } = {}) {
-  const args = ["branch", force ? "-D" : "-d", branchName];
-  return git(cwd, args);
 }
