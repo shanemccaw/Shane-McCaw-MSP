@@ -682,6 +682,14 @@ namespace BuildConsole
         {
             SailorDuckLayer?.NotifyUserActivity();
 
+            // Ctrl+N: New Chat
+            if (e.Key == Key.N && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
+            {
+                e.Handled = true;
+                MenuNewChat_Click(sender, null!);
+                return;
+            }
+
             // Ctrl+Shift+D: Summon Donald the Sailor Duck Mascot
             if (e.Key == Key.D && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control && (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift)
             {
@@ -3863,6 +3871,38 @@ namespace BuildConsole
         }
 
         #endregion
+
+        private void MenuNewChat_Click(object sender, RoutedEventArgs e)
+        {
+            var dialog = new NewChatEpicDialog { Owner = this };
+            if (dialog.ShowDialog() == true && dialog.EpicNumber.HasValue)
+            {
+                int targetIssue = dialog.EpicNumber.Value;
+                var settings = BuildConsole.Services.BuildConsoleSettings.Load();
+                if (settings == null || string.IsNullOrWhiteSpace(settings.EpicChatProjectUrl))
+                {
+                    ToastEngine.Warning("New Chat", "New Chat Project URL is not configured in Settings.");
+                    return;
+                }
+
+                var baseUrl = settings.EpicChatProjectUrl.Trim();
+                if (!System.Uri.TryCreate(baseUrl, System.UriKind.Absolute, out _))
+                {
+                    BuildConsole.Services.ActivityLog.Log("git-board.chat", $"new chat aborted — invalid New Chat Project URL '{baseUrl}'");
+                    ToastEngine.Warning("New Chat", "The configured New Chat Project URL isn't a valid URL.");
+                    return;
+                }
+
+                var pat = settings.GitHubPat?.Trim() ?? "";
+                var label = $"Epic #{targetIssue}";
+                var prefill = string.IsNullOrEmpty(pat) ? label : $"{pat}\r\n{label}";
+                var sep = baseUrl.Contains('?') ? "&" : "?";
+                var fullUrl = $"{baseUrl}{sep}bt_prefill={System.Uri.EscapeDataString(prefill)}";
+                
+                BuildConsole.Services.ActivityLog.Log("git-board.chat", $"new chat for Epic #{targetIssue} -> {baseUrl} (prefill '{label}', PAT {(string.IsNullOrEmpty(pat) ? "absent" : "present")})");
+                OpenWebTab(fullUrl, $"#{targetIssue} New Chat", "", injectPrefillPoll: true, associateIssueNumber: targetIssue, associateIssueType: "Epic", associateDefaultTitle: $"[#{targetIssue}] New Chat");
+            }
+        }
 
         /// <summary>Git #834 / #954 — File > Settings selects the sidebar's Settings
         /// category nav (via ActivityBar.SelectSettings, which also expands a

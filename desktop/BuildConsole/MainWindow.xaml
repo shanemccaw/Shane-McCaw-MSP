@@ -131,7 +131,7 @@
 
                         <Menu Background="Transparent" BorderThickness="0" VerticalAlignment="Center" WindowChrome.IsHitTestVisibleInChrome="True">
                             <MenuItem Header="_File">
-                                <MenuItem Header="New Chat"        InputGestureText="Ctrl+N"/>
+                                <MenuItem Header="New Chat"        InputGestureText="Ctrl+N" Click="MenuNewChat_Click"/>
                                 <MenuItem Header="Open Session…"/>
                                 <Separator/>
                                 <MenuItem Header="Settings"       Click="MenuSettings_Click"/>
