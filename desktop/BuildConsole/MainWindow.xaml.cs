@@ -5139,6 +5139,7 @@ namespace BuildConsole
             BuildConsole.Services.ActivityLog.Log("testing.manifest-runner", $"Run Regression Suite: {manifestFiles.Count} manifest(s) queued.");
             foreach (var relPath in manifestFiles)
             {
+                BuildConsole.Services.TestQueueService.Instance.ActiveRunToken.ThrowIfCancellationRequested();
                 var manifest = BuildConsole.Services.TestManifest.LoadFromFile(Path.Combine(repoRoot, "test-manifests", relPath));
                 if (manifest == null)
                 {
@@ -5199,6 +5200,7 @@ namespace BuildConsole
                         $"Running {matching.Count} scoped manifest(s) for issue #{targetIssue}: {string.Join(", ", matching.Select(m => m.Feature))}");
                     foreach (var manifest in matching)
                     {
+                        BuildConsole.Services.TestQueueService.Instance.ActiveRunToken.ThrowIfCancellationRequested();
                         results.Add(await RunManifestAsync(manifest, isRegression: true));
                     }
                     return results;
@@ -5307,199 +5309,161 @@ namespace BuildConsole
                 });
             }
 
-            string targetBaseUrl = string.IsNullOrWhiteSpace(manifest.BaseUrl) ? config.ApiBaseUrl : manifest.BaseUrl;
-            targetBaseUrl = vars.Resolve(BuildConsole.Services.HttpTestExecutor.ResolvePlaceholders(targetBaseUrl, config));
-            await EnsureServerReadyWithProbeAsync(targetBaseUrl, "testing.manifest-runner", maxWaitSeconds: 90);
-
-            var apiResults = await BuildConsole.Services.HttpTestExecutor.RunAsync(manifest, config, vars);
-            runResult.AddRange(apiResults);
-
-            if (apiResults.Count > 0)
-            {
-                int passed = apiResults.Count(r => r.Passed);
-                BuildConsole.Services.ActivityLog.Log("testing.api-executor",
-                    $"apiTests: {passed}/{apiResults.Count} passed for issue #{manifest.Issue}.");
-            }
-
-            var graphResults = await BuildConsole.Services.GraphTestExecutor.RunAsync(manifest, vars);
-            runResult.AddRange(graphResults);
-
-            if (graphResults.Count > 0)
-            {
-                int passed = graphResults.Count(r => r.Passed);
-                BuildConsole.Services.ActivityLog.Log("testing.graph-executor",
-                    $"graphTests: {passed}/{graphResults.Count} passed for issue #{manifest.Issue}.");
-            }
-
-            // Git #879 — postGraphApiTests: apiTest-shaped calls that must run AFTER graphTests
-            // (e.g. #437's verify-code call needing the 6-digit code #878's mail-poll `extract`
-            // only captures during the graphTests phase above). Same shared vars store, same
-            // HttpTestExecutor evaluator apiTests use.
-            var postGraphApiResults = await BuildConsole.Services.HttpTestExecutor.RunPostGraphAsync(manifest, config, vars);
-            runResult.AddRange(postGraphApiResults);
-
-            if (postGraphApiResults.Count > 0)
-            {
-                int passed = postGraphApiResults.Count(r => r.Passed);
-                BuildConsole.Services.ActivityLog.Log("testing.api-executor",
-                    $"postGraphApiTests: {passed}/{postGraphApiResults.Count} passed for issue #{manifest.Issue}.");
-            }
-
-            // Git #881 — zohoTests run after graphTests, before uiSteps, matching the step-list
-            // order TestRunnerWindow.SetSteps renders. Same shared ManifestRunResult, same live
-            // StepCompleted card stream, authenticated with the #880 Zoho API Token internally.
-            var zohoResults = await BuildConsole.Services.ZohoTestExecutor.RunAsync(manifest, config);
-            runResult.AddRange(zohoResults);
-
-            if (zohoResults.Count > 0)
-            {
-                int passed = zohoResults.Count(r => r.Passed);
-                BuildConsole.Services.ActivityLog.Log("testing.zoho",
-                    $"zohoTests: {passed}/{zohoResults.Count} passed for issue #{manifest.Issue}.");
-            }
-
-            // Git #810 — uiSteps run directly through TestRunnerWindow.RunUiTestAsync (the
-            // same UiTestExecutor #809 built), driving its own WebView2 instead of opening
-            // the standalone AutomationRunnerWindow popup — retired entirely, per #810's own
-            // instruction. Telemetry cards stream live via UiTestExecutor.Telemetry, subscribed
-            // for the duration of this call inside RunUiTestAsync itself.
-            // Epic #803 — this run's captured WebView2 screenshots (#966), surfaced to the screenshot
-            // baseline review after the whole run completes. Declared out here so it outlives the
-            // uiSteps block scope below; empty when no uiStep ran or nothing was captured.
             var capturedShots = new List<BuildConsole.Services.UiScreenshotCapture>();
-
-            if (manifest.UiSteps.Count > 0)
+            try
             {
-                var uiActions = manifest.UiSteps.Select((step, i) => new Controls.AutomationAction
+                BuildConsole.Services.TestQueueService.Instance.ActiveRunToken.ThrowIfCancellationRequested();
+
+                string targetBaseUrl = string.IsNullOrWhiteSpace(manifest.BaseUrl) ? config.ApiBaseUrl : manifest.BaseUrl;
+                targetBaseUrl = vars.Resolve(BuildConsole.Services.HttpTestExecutor.ResolvePlaceholders(targetBaseUrl, config));
+                await EnsureServerReadyWithProbeAsync(targetBaseUrl, "testing.manifest-runner", maxWaitSeconds: 90);
+
+                BuildConsole.Services.TestQueueService.Instance.ActiveRunToken.ThrowIfCancellationRequested();
+                var apiResults = await BuildConsole.Services.HttpTestExecutor.RunAsync(manifest, config, vars);
+                runResult.AddRange(apiResults);
+
+                if (apiResults.Count > 0)
                 {
-                    Index = i + 1,
-                    ActionType = step.Action,
-                    Selector = step.Selector ?? step.Target ?? string.Empty,
-                    TagName = "div",
-                    Value = step.Value ?? step.State ?? string.Empty,
-                    CaptureResponse = step.CaptureResponseJson,
-                    Extract = step.ExtractJson,
-                    // Git #1016 — carry the uiStep's textContains through so the `expect` action can assert
-                    // the element's real rendered text, not just its presence/visibility.
-                    TextContains = step.TextContainsJson,
-                    // Git #1025 — carry the uiStep's textPrefixOfAny through so the `expect` action can prefix-
-                    // match the rendered text against a whole runtime set (randomized/progressively-typed content).
-                    TextPrefixOfAny = step.TextPrefixOfAnyJson,
-                    Viewport = step.ViewportJson,
-                    MaxDurationMs = step.MaxDurationMs,
-                    // Per-step override for the `expect` DOM poll window; null falls back to ExpectPollTimeoutMs.
-                    TimeoutMs = step.TimeoutMs,
-                    // Git #966 — carry the uiStep's `"screenshot": true` opt-in so UiTestExecutor captures a
-                    // WebView2 screenshot after this step, not only on failure.
-                    Screenshot = step.Screenshot,
-                    // Carry the uiStep's `"critical": true` opt-in so UiTestExecutor halts the whole run the
-                    // moment this step fails (instead of cascading through every downstream step) — e.g. a
-                    // failed login makes all subsequent steps meaningless by definition.
-                    Critical = step.Critical,
-                }).ToList();
-
-                // Git #877 — the same per-run variable store the api/graph executors used, so a
-                // {{name}} extracted earlier resolves in a uiStep's selector/value, and a uiStep's
-                // own extract feeds any later step.
-                // Git #958 — manifest.BaseUrl (e.g. "{{DEPLOY_URL}}") must be resolved through the
-                // same config placeholder substitution HttpTestExecutor already applies to apiTests;
-                // previously this handed UiTestExecutor the raw unresolved literal, which
-                // CoreWebView2.Navigate() throws on, failing every uiSteps manifest's very first step.
-                string uiTargetUrl = BuildConsole.Services.HttpTestExecutor.ResolvePlaceholders(manifest.BaseUrl, config);
-                // Git #970 — manifest-level default viewport applied to every uiStep that doesn't
-                // declare its own override (see AutomationAction.Viewport / ViewportSpec.Parse).
-                var uiDefaultViewport = BuildConsole.Services.ViewportSpec.Parse(manifest.ViewportJson);
-
-                // Git #966 — screenshots for this run land under test-results/{issue}-{timestamp}/screenshots/,
-                // a folder named for the same run stem WriteToFile uses for the results JSON. Null repoRoot ⇒
-                // capture disabled (nowhere stable to write), same guard WriteToFile already uses.
-                string? uiRepoRoot = BuildConsole.Services.BuildTrackerConfig.FindRepoRoot();
-                string? screenshotDir = uiRepoRoot != null
-                    ? System.IO.Path.Combine(uiRepoRoot, "test-results", runResult.RunFolderName, "screenshots")
-                    : null;
-
-                var uiResult = await runner.RunUiTestAsync(uiTargetUrl, uiActions, vars, uiDefaultViewport, screenshotDir);
-                // Epic #803 — hand this run's captured screenshots (absolute paths, unchanged by the
-                // repo-relative rewrite below) to the post-run baseline review.
-                capturedShots = uiResult.Screenshots;
-                var uiStepResults = uiResult.ToTestStepResults();
-
-                // Git #966 — the executor set each step's ScreenshotPath to an absolute path; rewrite it
-                // repo-relative (forward slashes) so the committed-shape results JSON stays portable and a
-                // reader resolves it against the repo root.
-                if (uiRepoRoot != null)
-                {
-                    foreach (var s in uiStepResults)
-                    {
-                        if (!string.IsNullOrEmpty(s.ScreenshotPath))
-                            s.ScreenshotPath = System.IO.Path.GetRelativePath(uiRepoRoot, s.ScreenshotPath).Replace('\\', '/');
-                    }
+                    int passed = apiResults.Count(r => r.Passed);
+                    BuildConsole.Services.ActivityLog.Log("testing.api-executor",
+                        $"apiTests: {passed}/{apiResults.Count} passed for issue #{manifest.Issue}.");
                 }
 
-                runResult.AddRange(uiStepResults);
+                BuildConsole.Services.TestQueueService.Instance.ActiveRunToken.ThrowIfCancellationRequested();
+                var graphResults = await BuildConsole.Services.GraphTestExecutor.RunAsync(manifest, vars);
+                runResult.AddRange(graphResults);
 
-                BuildConsole.Services.ActivityLog.Log("testing.ui-executor",
-                    $"[{mode}] Issue #{manifest.Issue} uiSteps: {uiResult.PassedSteps}/{uiResult.TotalSteps} passed" +
-                    $"{(uiResult.Aborted ? $"; RUN ABORTED — {uiResult.AbortReason} (remaining steps skipped)" : "")}" +
-                    $"{(uiResult.Screenshots.Count > 0 ? $"; {uiResult.Screenshots.Count} screenshot(s) captured" : "")}.");
-            }
-
-            // Git #900 — powerShellVerify runs LAST, after every HTTP/Graph/Zoho/UI step has
-            // populated the shared #877 variable store, so any value those steps captured is
-            // available to diff against. Each step shells out to pwsh 7 signed in as Shane himself
-            // (delegated, NOT app-only), reads the Get-* ground truth, and compares it to the
-            // app-reported value. Same shared ManifestRunResult, same live StepCompleted card
-            // stream, same test-results/ file — no separate output path. Because the #898 remote
-            // trigger runs this exact RunManifestAsync, a Claude-Code-triggered run includes and
-            // reports powerShellVerify with no special casing.
-            // Interactive device-code bridge. On a Play Test / manual run (NOT the #967 scheduled sweep
-            // or the #898 headless remote trigger — same interactive test as the screenshot review below:
-            // !isRegression && !_testTriggerBusy), a Connect-MgGraph device-code prompt is surfaced in a
-            // non-blocking floaty (real code + clickable devicelogin link) and the pwsh process is given
-            // real time to complete sign-in, then continues to the verification cmdlet automatically — no
-            // manual re-run. Headless runs pass null and keep today's fast-abort behaviour unchanged.
-            BuildConsole.Services.PowerShellTestExecutor.DeviceCodeInteraction? deviceCodeUi = null;
-            if (!isRegression && !_testTriggerBusy)
-            {
-                DeviceCodeWindow? dcWin = null;
-                deviceCodeUi = new BuildConsole.Services.PowerShellTestExecutor.DeviceCodeInteraction
+                if (graphResults.Count > 0)
                 {
-                    OnPrompt = prompt => Dispatcher.Invoke(() =>
+                    int passed = graphResults.Count(r => r.Passed);
+                    BuildConsole.Services.ActivityLog.Log("testing.graph-executor",
+                        $"graphTests: {passed}/{graphResults.Count} passed for issue #{manifest.Issue}.");
+                }
+
+                BuildConsole.Services.TestQueueService.Instance.ActiveRunToken.ThrowIfCancellationRequested();
+                var postGraphApiResults = await BuildConsole.Services.HttpTestExecutor.RunPostGraphAsync(manifest, config, vars);
+                runResult.AddRange(postGraphApiResults);
+
+                if (postGraphApiResults.Count > 0)
+                {
+                    int passed = postGraphApiResults.Count(r => r.Passed);
+                    BuildConsole.Services.ActivityLog.Log("testing.api-executor",
+                        $"postGraphApiTests: {passed}/{postGraphApiResults.Count} passed for issue #{manifest.Issue}.");
+                }
+
+                BuildConsole.Services.TestQueueService.Instance.ActiveRunToken.ThrowIfCancellationRequested();
+                var zohoResults = await BuildConsole.Services.ZohoTestExecutor.RunAsync(manifest, config);
+                runResult.AddRange(zohoResults);
+
+                if (zohoResults.Count > 0)
+                {
+                    int passed = zohoResults.Count(r => r.Passed);
+                    BuildConsole.Services.ActivityLog.Log("testing.zoho",
+                        $"zohoTests: {passed}/{zohoResults.Count} passed for issue #{manifest.Issue}.");
+                }
+
+                BuildConsole.Services.TestQueueService.Instance.ActiveRunToken.ThrowIfCancellationRequested();
+                capturedShots = new List<BuildConsole.Services.UiScreenshotCapture>();
+
+                if (manifest.UiSteps.Count > 0)
+                {
+                    var uiActions = manifest.UiSteps.Select((step, i) => new Controls.AutomationAction
                     {
-                        try
-                        {
-                            dcWin?.Close();
-                            dcWin = new DeviceCodeWindow(prompt) { Owner = this };
-                            dcWin.Closed += (_, _) => dcWin = null;
-                            dcWin.Show();
-                        }
-                        catch (Exception ex)
-                        {
-                            BuildConsole.Services.ActivityLog.Log("testing.powershell-verify",
-                                $"device-code floaty failed to show: {ex.Message}");
-                        }
-                    }),
-                    OnResolved = res => Dispatcher.Invoke(() =>
+                        Index = i + 1,
+                        ActionType = step.Action,
+                        Selector = step.Selector ?? step.Target ?? string.Empty,
+                        TagName = "div",
+                        Value = step.Value ?? step.State ?? string.Empty,
+                        CaptureResponse = step.CaptureResponseJson,
+                        Extract = step.ExtractJson,
+                        TextContains = step.TextContainsJson,
+                        TextPrefixOfAny = step.TextPrefixOfAnyJson,
+                        Viewport = step.ViewportJson,
+                        MaxDurationMs = step.MaxDurationMs,
+                        TimeoutMs = step.TimeoutMs,
+                        Screenshot = step.Screenshot,
+                        Critical = step.Critical,
+                    }).ToList();
+
+                    string uiTargetUrl = BuildConsole.Services.HttpTestExecutor.ResolvePlaceholders(manifest.BaseUrl, config);
+                    var uiDefaultViewport = BuildConsole.Services.ViewportSpec.Parse(manifest.ViewportJson);
+
+                    string? uiRepoRoot = BuildConsole.Services.BuildTrackerConfig.FindRepoRoot();
+                    string? screenshotDir = uiRepoRoot != null
+                        ? System.IO.Path.Combine(uiRepoRoot, "test-results", runResult.RunFolderName, "screenshots")
+                        : null;
+
+                    var uiResult = await runner.RunUiTestAsync(uiTargetUrl, uiActions, vars, uiDefaultViewport, screenshotDir);
+                    capturedShots = uiResult.Screenshots;
+                    var uiStepResults = uiResult.ToTestStepResults();
+
+                    if (uiRepoRoot != null)
                     {
-                        try
+                        foreach (var s in uiStepResults)
                         {
-                            if (dcWin == null) return;
-                            if (res.TimedOut) dcWin.MarkTimedOut(res.Message);
-                            else dcWin.MarkSignedIn(res.Message);
+                            if (!string.IsNullOrEmpty(s.ScreenshotPath))
+                                s.ScreenshotPath = System.IO.Path.GetRelativePath(uiRepoRoot, s.ScreenshotPath).Replace('\\', '/');
                         }
-                        catch { /* best-effort UI update */ }
-                    }),
-                };
+                    }
+
+                    runResult.AddRange(uiStepResults);
+
+                    BuildConsole.Services.ActivityLog.Log("testing.ui-executor",
+                        $"[{mode}] Issue #{manifest.Issue} uiSteps: {uiResult.PassedSteps}/{uiResult.TotalSteps} passed" +
+                        $"{(uiResult.Aborted ? $"; RUN ABORTED — {uiResult.AbortReason} (remaining steps skipped)" : "")}" +
+                        $"{(uiResult.Screenshots.Count > 0 ? $"; {uiResult.Screenshots.Count} screenshot(s) captured" : "")}.");
+                }
+
+                BuildConsole.Services.TestQueueService.Instance.ActiveRunToken.ThrowIfCancellationRequested();
+                BuildConsole.Services.PowerShellTestExecutor.DeviceCodeInteraction? deviceCodeUi = null;
+                if (!isRegression && !_testTriggerBusy)
+                {
+                    DeviceCodeWindow? dcWin = null;
+                    deviceCodeUi = new BuildConsole.Services.PowerShellTestExecutor.DeviceCodeInteraction
+                    {
+                        OnPrompt = prompt => Dispatcher.Invoke(() =>
+                        {
+                            try
+                            {
+                                dcWin?.Close();
+                                dcWin = new DeviceCodeWindow(prompt) { Owner = this };
+                                dcWin.Closed += (_, _) => dcWin = null;
+                                dcWin.Show();
+                            }
+                            catch (Exception ex)
+                            {
+                                BuildConsole.Services.ActivityLog.Log("testing.powershell-verify",
+                                    $"device-code floaty failed to show: {ex.Message}");
+                            }
+                        }),
+                        OnResolved = res => Dispatcher.Invoke(() =>
+                        {
+                            try
+                            {
+                                if (dcWin == null) return;
+                                if (res.TimedOut) dcWin.MarkTimedOut(res.Message);
+                                else dcWin.MarkSignedIn(res.Message);
+                            }
+                            catch { /* best-effort UI update */ }
+                        }),
+                    };
+                }
+
+                var powerShellResults = await BuildConsole.Services.PowerShellTestExecutor.RunAsync(manifest, vars, deviceCodeUi);
+                runResult.AddRange(powerShellResults);
+
+                if (powerShellResults.Count > 0)
+                {
+                    int passed = powerShellResults.Count(r => r.Passed);
+                    BuildConsole.Services.ActivityLog.Log("testing.powershell-verify",
+                        $"powerShellVerify: {passed}/{powerShellResults.Count} passed for issue #{manifest.Issue}.");
+                }
             }
-
-            var powerShellResults = await BuildConsole.Services.PowerShellTestExecutor.RunAsync(manifest, vars, deviceCodeUi);
-            runResult.AddRange(powerShellResults);
-
-            if (powerShellResults.Count > 0)
+            catch (OperationCanceledException)
             {
-                int passed = powerShellResults.Count(r => r.Passed);
-                BuildConsole.Services.ActivityLog.Log("testing.powershell-verify",
-                    $"powerShellVerify: {passed}/{powerShellResults.Count} passed for issue #{manifest.Issue}.");
+                runResult.Cancelled = true;
+                BuildConsole.Services.ActivityLog.Log("testing.manifest-runner",
+                    $"Run cancelled for issue #{manifest.Issue} ({manifest.Feature}).");
             }
 
             runner.CompleteRun(runResult);

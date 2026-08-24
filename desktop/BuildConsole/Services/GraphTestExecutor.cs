@@ -69,6 +69,7 @@ namespace BuildConsole.Services
 
             for (int i = 0; i < manifest.GraphTests.Count; i++)
             {
+                TestQueueService.Instance.ActiveRunToken.ThrowIfCancellationRequested();
                 var result = await RunOneAsync(vars, manifest.GraphTests[i], i, manifest.GraphTests.Count);
                 results.Add(result);
                 StepCompleted?.Invoke(result);
@@ -295,7 +296,7 @@ namespace BuildConsole.Services
                             $"mailbox={mailbox}, since={since:o}");
                     }
 
-                    await Task.Delay(pollIntervalMs);
+                    await Task.Delay(pollIntervalMs, TestQueueService.Instance.ActiveRunToken);
                 }
             }
             catch (Exception ex)

@@ -48,6 +48,7 @@ namespace BuildConsole.Services
 
             for (int i = 0; i < manifest.ZohoTests.Count; i++)
             {
+                TestQueueService.Instance.ActiveRunToken.ThrowIfCancellationRequested();
                 var result = await RunOneAsync(manifest, config, settings, manifest.ZohoTests[i], i);
                 results.Add(result);
                 StepCompleted?.Invoke(result);

@@ -142,6 +142,7 @@ namespace BuildConsole.Services
 
             for (int i = 0; i < manifest.PowerShellVerify.Count; i++)
             {
+                TestQueueService.Instance.ActiveRunToken.ThrowIfCancellationRequested();
                 var result = await RunOneAsync(vars, manifest.PowerShellVerify[i], i, manifest.PowerShellVerify.Count, deviceCode);
                 results.Add(result);
                 StepCompleted?.Invoke(result);
@@ -462,7 +463,14 @@ namespace BuildConsole.Services
             proc.BeginErrorReadLine();
 
             var exitTask = proc.WaitForExitAsync();
-            var completed = await Task.WhenAny(exitTask, authNeeded.Task, deviceCodeSeen.Task, Task.Delay(timeoutMs));
+            var cancelTask = Task.Delay(Timeout.Infinite, TestQueueService.Instance.ActiveRunToken);
+            var completed = await Task.WhenAny(exitTask, authNeeded.Task, deviceCodeSeen.Task, Task.Delay(timeoutMs), cancelTask);
+
+            if (completed == cancelTask)
+            {
+                TryKill(proc);
+                TestQueueService.Instance.ActiveRunToken.ThrowIfCancellationRequested();
+            }
 
             if (completed == deviceCodeSeen.Task)
             {
@@ -473,7 +481,12 @@ namespace BuildConsole.Services
                     $"device-code sign-in prompt detected (code {(string.IsNullOrEmpty(prompt.UserCode) ? "?" : prompt.UserCode)}, url {prompt.VerificationUrl}) — surfacing to Shane and waiting up to {InteractiveDeviceCodeWaitMs}ms for interactive sign-in (not aborting).");
                 try { deviceCode!.OnPrompt?.Invoke(prompt); } catch { /* host UI is best-effort */ }
 
-                var afterPrompt = await Task.WhenAny(exitTask, Task.Delay(InteractiveDeviceCodeWaitMs));
+                var afterPrompt = await Task.WhenAny(exitTask, Task.Delay(InteractiveDeviceCodeWaitMs), cancelTask);
+                if (afterPrompt == cancelTask)
+                {
+                    TryKill(proc);
+                    TestQueueService.Instance.ActiveRunToken.ThrowIfCancellationRequested();
+                }
                 if (afterPrompt != exitTask)
                 {
                     // Shane never completed sign-in in time. Now abort (with the extended window spent).

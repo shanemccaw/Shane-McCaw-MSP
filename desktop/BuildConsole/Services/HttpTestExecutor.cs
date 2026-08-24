@@ -42,6 +42,7 @@ namespace BuildConsole.Services
             using var http = new HttpClient();
             for (int i = 0; i < tests.Count; i++)
             {
+                TestQueueService.Instance.ActiveRunToken.ThrowIfCancellationRequested();
                 var result = await RunOneAsync(http, manifest, config, vars, tests[i], i, tests.Count);
                 results.Add(result);
                 StepCompleted?.Invoke(result);

@@ -45,6 +45,7 @@ namespace BuildConsole.Services
         public string Feature { get; set; } = "";
         public string Mode { get; set; } = "single";
         public DateTime StartedAt { get; set; }
+        public bool Cancelled { get; set; }
         public List<TestStepResult> Steps { get; set; } = new();
 
         public bool AllPassed => Steps.Count > 0 && Steps.All(s => s.Passed);

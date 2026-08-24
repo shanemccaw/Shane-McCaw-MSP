@@ -43,6 +43,30 @@ namespace BuildConsole.Services
         private bool _isDeploying = false;
         private string? _currentActiveItem;
         private readonly List<TestQueueItem> _pendingItems = new();
+        private CancellationTokenSource? _activeRunCts;
+
+        public CancellationToken ActiveRunToken
+        {
+            get
+            {
+                lock (_stateLock)
+                {
+                    return _activeRunCts?.Token ?? CancellationToken.None;
+                }
+            }
+        }
+
+        public void CancelActiveRun()
+        {
+            lock (_stateLock)
+            {
+                if (_activeRunCts != null)
+                {
+                    _activeRunCts.Cancel();
+                    ActivityLog.Log(LogChannel, "Active run cancellation requested.");
+                }
+            }
+        }
 
         public event Action? QueueChanged;
 
@@ -106,6 +130,13 @@ namespace BuildConsole.Services
             await _executionGate.WaitAsync(cancellationToken);
             swWait.Stop();
 
+            CancellationTokenSource runCts;
+            lock (_stateLock)
+            {
+                runCts = new CancellationTokenSource();
+                _activeRunCts = runCts;
+            }
+
             lock (_stateLock)
             {
                 _pendingItems.Remove(item);
@@ -127,6 +158,7 @@ namespace BuildConsole.Services
                 {
                     _activeTestsCount--;
                     if (_activeTestsCount == 0) _currentActiveItem = null;
+                    if (_activeRunCts == runCts) _activeRunCts = null;
                 }
                 _executionGate.Release();
                 QueueChanged?.Invoke();

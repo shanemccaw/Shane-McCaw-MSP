@@ -350,6 +350,7 @@ namespace BuildConsole.Services
                 int passed = 0;
                 for (int i = 0; i < steps.Count; i++)
                 {
+                    TestQueueService.Instance.ActiveRunToken.ThrowIfCancellationRequested();
                     // Git #970 — resize before the step, not after: a step's viewport override falls back
                     // to the manifest-wide default, and either way the resize must land before the step's
                     // own action runs so it observes the target layout.
@@ -1110,6 +1111,7 @@ namespace BuildConsole.Services
             (bool passed, string detail) last = (false, string.Empty);
             while (true)
             {
+                TestQueueService.Instance.ActiveRunToken.ThrowIfCancellationRequested();
                 attempts++;
                 last = await ExecuteClickOrInputOnceAsync(actionType, selector, tagName, val);
                 if (last.passed)
@@ -1129,7 +1131,7 @@ namespace BuildConsole.Services
                     ActivityLog.Log(Channel, $"Step {stepNumber} {actionType} [{selector}]: EXHAUSTED {timeoutMs}ms waiting for element ({attempts} attempts) — {last.detail}");
                     return last;
                 }
-                await Task.Delay((int)Math.Min(ExpectPollIntervalMs, remaining));
+                await Task.Delay((int)Math.Min(ExpectPollIntervalMs, remaining), TestQueueService.Instance.ActiveRunToken);
             }
         }
 
@@ -1150,6 +1152,7 @@ namespace BuildConsole.Services
             (bool passed, string detail, string actual) last = (false, string.Empty, string.Empty);
             while (true)
             {
+                TestQueueService.Instance.ActiveRunToken.ThrowIfCancellationRequested();
                 attempts++;
                 last = await EvaluateExpectOnceAsync(selector, expectedState, textContains, prefixOfAny);
                 if (last.passed)
@@ -1169,7 +1172,7 @@ namespace BuildConsole.Services
                     string polledNote = $" [polled {sw.ElapsedMilliseconds}ms / {attempts} attempt{(attempts == 1 ? "" : "s")}, {timeoutMs}ms budget exhausted]";
                     return (false, last.detail + polledNote, last.actual);
                 }
-                await Task.Delay((int)Math.Min(ExpectPollIntervalMs, remaining));
+                await Task.Delay((int)Math.Min(ExpectPollIntervalMs, remaining), TestQueueService.Instance.ActiveRunToken);
             }
         }
 

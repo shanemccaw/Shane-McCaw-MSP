@@ -399,6 +399,7 @@ namespace BuildConsole
                 }
                 SetStatus("● RUNNING...", "PeachBrush");
                 BtnRetry.IsEnabled = false;
+                BtnCancel.Visibility = Visibility.Visible;
                 Services.ActivityLog.Log(Channel, $"Run started: issue #{issue} ({feature}), mode={mode}, targetEnv={targetEnv}.");
             });
         }
@@ -410,9 +411,17 @@ namespace BuildConsole
             {
                 int total = result.Steps.Count;
                 int passed = result.Steps.Count(s => s.Passed);
-                SetStatus(result.AllPassed ? $"✔ ALL PASSED ({passed}/{total})" : $"⚠ {passed}/{total} PASSED",
-                    result.AllPassed ? "GreenBrush" : "RedBrush");
+                if (result.Cancelled)
+                {
+                    SetStatus("❌ CANCELLED", "RedBrush");
+                }
+                else
+                {
+                    SetStatus(result.AllPassed ? $"✔ ALL PASSED ({passed}/{total})" : $"⚠ {passed}/{total} PASSED",
+                        result.AllPassed ? "GreenBrush" : "RedBrush");
+                }
                 BtnRetry.IsEnabled = _lastManifest != null;
+                BtnCancel.Visibility = Visibility.Collapsed;
                 Services.ActivityLog.Log(Channel, $"Run complete for issue #{result.Issue}: {passed}/{total} steps passed.");
             });
         }
@@ -560,6 +569,7 @@ namespace BuildConsole
                 _galleryShots.Clear();
                 BtnScreenshots.IsEnabled = false;
                 BtnScreenshots.Content = "📷 Screenshots";
+                BtnCancel.Visibility = Visibility.Collapsed;
             });
         }
 
@@ -672,6 +682,11 @@ namespace BuildConsole
             if (_lastManifest == null) return;
             Services.ActivityLog.Log(Channel, $"Retry triggered for issue #{_lastManifest.Issue} ({_lastManifest.Feature}) against {_lastRunTargetEnv}.");
             RetryRequested?.Invoke(this, (_lastManifest, _lastRunTargetEnv));
+        }
+
+        private void BtnCancel_Click(object sender, RoutedEventArgs e)
+        {
+            Services.TestQueueService.Instance.CancelActiveRun();
         }
 
         /// <summary>HttpTestExecutor/GraphTestExecutor's StepCompleted normally resumes on the UI thread already (the RunManifestAsync await chain is kicked off from a UI-thread event handler), but this guards the same way ActivityLog.Log does in case any caller ever awaits with a captured background context.</summary>
