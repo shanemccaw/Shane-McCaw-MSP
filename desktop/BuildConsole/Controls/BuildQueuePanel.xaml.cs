@@ -1379,6 +1379,34 @@ namespace BuildConsole.Controls
                 topRow.Children.Add(blockBadge);
             }
 
+            if (!string.IsNullOrWhiteSpace(item.OriginatingChatId) || !string.IsNullOrWhiteSpace(item.ChatUrl))
+            {
+                var chatBadge = new Border
+                {
+                    Background = new SolidColorBrush(Color.FromRgb(0x1E, 0x20, 0x30)),
+                    BorderBrush = new SolidColorBrush(Color.FromRgb(0x89, 0xB4, 0xFA)),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(4),
+                    Padding = new Thickness(5, 1.5, 5, 1.5),
+                    Margin = new Thickness(6, 0, 0, 0),
+                    Cursor = Cursors.Hand,
+                    ToolTip = "Click to open/focus linked chat tab"
+                };
+                chatBadge.Child = new TextBlock
+                {
+                    Text = "💬 Chat",
+                    FontSize = 9.5,
+                    FontWeight = FontWeights.SemiBold,
+                    Foreground = new SolidColorBrush(Color.FromRgb(0x89, 0xB4, 0xFA))
+                };
+                chatBadge.MouseLeftButtonDown += (s, e) =>
+                {
+                    e.Handled = true;
+                    QueueItemChatRequested?.Invoke(this, item);
+                };
+                topRow.Children.Add(chatBadge);
+            }
+
             mainStack.Children.Add(topRow);
 
             // ── Second Row: Title Block ──
@@ -1474,7 +1502,7 @@ namespace BuildConsole.Controls
         {
             var cm = new ContextMenu();
 
-            var miOpenChat = new MenuItem { Header = "💬 Open Chat" };
+            var miOpenChat = new MenuItem { Header = "💬 Open Originating Chat" };
             miOpenChat.Click += (_, _) =>
             {
                 QueueItemChatRequested?.Invoke(this, item);

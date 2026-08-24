@@ -178,7 +178,7 @@ namespace BuildConsole.Controls
         /// resulting BoardChat to the epic once Shane sends the message; null on the
         /// "open existing linked chat" path (that chat is already associated).</para>
         /// </summary>
-        public event EventHandler<(string Url, string Title, bool InjectPrefill, int? EpicGithubNumber)>? EpicChatRequested;
+        public event EventHandler<(string Url, string Title, bool InjectPrefill, int? IssueNumber, string IssueType, string DefaultTitle)>? EpicChatRequested;
 
         /// <summary>Git #922 — the SAME query-param name (<c>EPIC_CHAT_PREFILL_PARAM</c>) the browser extension's openNewEpicChat/tryInsertPrefillFromUrl already use, so a URL BuildConsole opens is one the extension itself would also recognize if Shane ever opens it in real Chrome.</summary>
         private const string EpicChatPrefillParam = "bt_prefill";
@@ -229,6 +229,7 @@ namespace BuildConsole.Controls
         /// Epic..."'s "Assign current chat" button so Shane doesn't have to
         /// copy/paste when the chat he wants is already open.</summary>
         public Func<string?>? GetActiveChatUrl { get; set; }
+        public Func<IReadOnlyList<QueueItem>>? GetQueueItems { get; set; }
 
         private bool _isPinned = true;
 
@@ -2450,13 +2451,179 @@ namespace BuildConsole.Controls
             // column; register it with the larger leaf reserve.
             _chatTitleBlocks.Add((titleBlock, LeafTitleWidthReserve));
 
+            string nodeKey = $"chat:{chat.ConversationId}";
             var tvi = new TreeViewItem
             {
                 Header = dp,
                 Tag = chat,
                 HorizontalContentAlignment = HorizontalAlignment.Stretch,
                 Margin = new Thickness(0, 1, 0, 1),
+                IsExpanded = _expandedNodeKeys.Contains(nodeKey)
             };
+            tvi.Collapsed += (s, e) => { if (ReferenceEquals(e.OriginalSource, tvi)) _expandedNodeKeys.Remove(nodeKey); };
+            tvi.Expanded += (s, e) => { if (ReferenceEquals(e.OriginalSource, tvi)) _expandedNodeKeys.Add(nodeKey); };
+
+            // Render nested issue pills under this chat
+            if (chat.AssociatedIssueNumbers != null)
+            {
+                foreach (var issueNum in chat.AssociatedIssueNumbers)
+                {
+                    var spPill = new StackPanel { Orientation = Orientation.Horizontal };
+                    string issueTitle = "";
+                    string issueState = "";
+                    var matchedIssue = _lastBoardIssues.FirstOrDefault(i => i.Number == issueNum);
+                    if (matchedIssue != null)
+                    {
+                        issueTitle = matchedIssue.Title;
+                        issueState = matchedIssue.State;
+                    }
+                    else
+                    {
+                        var matchedMilestone = _lastMilestoneInfos.FirstOrDefault(m => m.Number == issueNum);
+                        if (matchedMilestone != null)
+                        {
+                            issueTitle = matchedMilestone.Title;
+                            issueState = matchedMilestone.State;
+                        }
+                    }
+
+                    spPill.Children.Add(new TextBlock
+                    {
+                        Text = $"#{issueNum}",
+                        FontWeight = FontWeights.Bold,
+                        Foreground = GetBrush("BlueBrush"),
+                        Margin = new Thickness(0, 0, 6, 0),
+                        VerticalAlignment = VerticalAlignment.Center
+                    });
+
+                    if (!string.IsNullOrEmpty(issueTitle))
+                    {
+                        var tbTitle = new TextBlock
+                        {
+                            Text = issueTitle,
+                            Foreground = GetBrush("TextBrush"),
+                            TextTrimming = TextTrimming.CharacterEllipsis,
+                            MaxWidth = 140,
+                            VerticalAlignment = VerticalAlignment.Center
+                        };
+                        spPill.Children.Add(tbTitle);
+
+                        bool isClosed = string.Equals(issueState, "closed", StringComparison.OrdinalIgnoreCase);
+                        var tbStatus = new TextBlock
+                        {
+                            Text = isClosed ? " 🟢" : " 🔴",
+                            ToolTip = isClosed ? "Closed" : "Open",
+                            FontSize = 10,
+                            VerticalAlignment = VerticalAlignment.Center,
+                            Margin = new Thickness(4, 0, 0, 0)
+                        };
+                        spPill.Children.Add(tbStatus);
+                    }
+
+                    var pillBorder = new Border
+                    {
+                        Background = GetBrush("Surface0Brush"),
+                        CornerRadius = new CornerRadius(3),
+                        Padding = new Thickness(5, 1, 5, 1),
+                        Margin = new Thickness(0, 1, 0, 1),
+                        ToolTip = string.IsNullOrEmpty(issueTitle) ? $"Issue #{issueNum}" : $"#{issueNum} — {issueTitle} ({(string.Equals(issueState, "closed", StringComparison.OrdinalIgnoreCase) ? "Closed" : "Open")})"
+                    };
+                    pillBorder.Child = spPill;
+
+                    var issueItem = new TreeViewItem
+                    {
+                        Header = pillBorder,
+                        Focusable = false,
+                        Margin = new Thickness(12, 1, 0, 1)
+                    };
+                    tvi.Items.Add(issueItem);
+                }
+            }
+
+            // Render nested build reports under this chat
+            var queueItems = GetQueueItems?.Invoke() ?? Array.Empty<QueueItem>();
+            var chatBuilds = queueItems
+                .Where(item => (item.OriginatingChatId != null && string.Equals(item.OriginatingChatId, chat.ConversationId, StringComparison.OrdinalIgnoreCase))
+                            || (item.GithubNumber.HasValue && chat.AssociatedIssueNumbers.Contains(item.GithubNumber.Value)))
+                .OrderByDescending(item => item.Id)
+                .ToList();
+
+            foreach (var build in chatBuilds)
+            {
+                var buildSp = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 1, 0, 1) };
+                
+                var gitDot = new TextBlock
+                {
+                    Text = "● ",
+                    Foreground = GetBrush("Subtext1Brush"),
+                    FontWeight = FontWeights.Bold,
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                buildSp.Children.Add(gitDot);
+
+                string statusText = (build.Status ?? "queued").ToUpper();
+                Brush statusBg = GetBrush("Surface0Brush");
+                Brush statusFg = GetBrush("TextBrush");
+                switch (statusText)
+                {
+                    case "DONE":
+                        statusFg = GetBrush("GreenBrush");
+                        statusBg = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1AA6E3A1"));
+                        break;
+                    case "ERROR":
+                    case "FAILED":
+                        statusFg = GetBrush("RedBrush");
+                        statusBg = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1AF38BA8"));
+                        break;
+                    case "BLOCKED":
+                        statusFg = GetBrush("MauveBrush");
+                        statusBg = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1ACBA6F7"));
+                        break;
+                    case "RUNNING":
+                        statusFg = GetBrush("BlueBrush");
+                        statusBg = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1A89B4FA"));
+                        break;
+                    case "QUEUED":
+                        statusFg = GetBrush("PeachBrush");
+                        statusBg = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1AFAB387"));
+                        break;
+                }
+
+                var statusBorder = new Border
+                {
+                    Background = statusBg,
+                    BorderBrush = statusFg,
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(3),
+                    Padding = new Thickness(4, 0, 4, 0),
+                    Margin = new Thickness(0, 0, 6, 0),
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                statusBorder.Child = new TextBlock { Text = statusText, FontSize = 8, FontWeight = FontWeights.Bold, Foreground = statusFg };
+                buildSp.Children.Add(statusBorder);
+
+                var tbBuildTitle = new TextBlock
+                {
+                    Text = $"Build #{build.Id} — {build.Title}",
+                    Foreground = GetBrush("TextBrush"),
+                    FontSize = 11,
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                    MaxWidth = 130,
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                buildSp.Children.Add(tbBuildTitle);
+
+                var tooltipText = $"Build #{build.Id}\nTitle: {build.Title}\nStatus: {build.Status}\nPrompt: {build.Prompt}";
+                buildSp.ToolTip = tooltipText;
+
+                var buildItem = new TreeViewItem
+                {
+                    Header = buildSp,
+                    Focusable = false,
+                    Margin = new Thickness(12, 1, 0, 1)
+                };
+                tvi.Items.Add(buildItem);
+            }
 
             var cm = new ContextMenu();
 
@@ -2473,63 +2640,230 @@ namespace BuildConsole.Controls
             cm.Items.Add(miToggleProgress);
             cm.Items.Add(new Separator());
 
-            // Git #828 — Shane: "I need a way to assign a chat to an epic in the WPF
-            // app." Same POST /chats/ingest the extension's own "link this chat to
-            // that epic" click already uses (Git #781), just reached from here.
-            var miAssign = new MenuItem { Header = "Assign to Epic..." };
+            // Link / Unlink chat options (many-to-many model)
+            var miAssign = new MenuItem { Header = "🔗 Link to Issue/Milestone..." };
             miAssign.Click += async (_, _) =>
             {
                 if (_api == null) return;
-                var dialog = new AssignEpicDialog(chat.Title, _chatEpicById.Values.ToList());
+                var candidates = new List<LinkCandidate>();
+                foreach (var m in _lastMilestoneInfos)
+                {
+                    candidates.Add(new LinkCandidate { Number = m.Number, Title = m.Title });
+                }
+                foreach (var issue in _lastBoardIssues)
+                {
+                    candidates.Add(new LinkCandidate { Number = issue.Number, Title = issue.Title });
+                }
+                candidates.Sort((a, b) => b.Number.CompareTo(a.Number));
+
+                var dialog = new AssignEpicDialog(chat.Title, candidates, "issue/milestone");
                 if (dialog.ShowDialog() != true || dialog.SelectedEpicId == null) return;
+                int targetNumber = dialog.SelectedEpicId.Value;
                 try
                 {
-                    var res = await _api.LinkChatToEpicAsync(chat.ConversationId, dialog.SelectedEpicId.Value);
+                    var res = await _api.LinkChatToIssueAsync(chat.ConversationId, targetNumber);
                     if (!res.IsSuccessStatusCode)
                     {
                         var body = await res.Content.ReadAsStringAsync();
-                        ToastEngine.Error("Assign to Epic", $"Couldn't assign: {body}");
+                        ToastEngine.Error("Link Chat", $"Couldn't link chat: {body}");
                         return;
                     }
+                    if (!chat.AssociatedIssueNumbers.Contains(targetNumber))
+                        chat.AssociatedIssueNumbers.Add(targetNumber);
                     _lastBoardSignature = null;
                     PopulateChatsTree();
                 }
                 catch (System.Exception ex)
                 {
-                    ToastEngine.Error("Assign to Epic", $"Couldn't assign: {ex.Message}");
+                    ToastEngine.Error("Link Chat", $"Couldn't link chat: {ex.Message}");
                 }
             };
             cm.Items.Add(miAssign);
 
-            if (chat.EpicId.HasValue)
+            if (chat.AssociatedIssueNumbers != null && chat.AssociatedIssueNumbers.Count > 0)
             {
-                var formerEpicId = chat.EpicId.Value;
-                var formerEpicTitle = _chatEpicById.TryGetValue(formerEpicId, out var formerEpic) ? formerEpic.Title : $"Epic #{formerEpicId}";
-                var miUnassign = new MenuItem { Header = "Unassign from Epic" };
-                miUnassign.Click += async (_, _) =>
+                var miUnlinkSub = new MenuItem { Header = "💔 Unlink from Issue/Milestone..." };
+                foreach (var num in chat.AssociatedIssueNumbers)
                 {
+                    var issueNum = num;
+                    var label = $"#{issueNum}";
+                    var matchIssue = _lastBoardIssues.FirstOrDefault(i => i.Number == issueNum);
+                    if (matchIssue != null) label += $" — {matchIssue.Title}";
+                    else
+                    {
+                        var matchMilestone = _lastMilestoneInfos.FirstOrDefault(m => m.Number == issueNum);
+                        if (matchMilestone != null) label += $" — {matchMilestone.Title}";
+                    }
+                    var miItem = new MenuItem { Header = label };
+                    miItem.Click += async (_, _) =>
+                    {
+                        if (_api == null) return;
+                        try
+                        {
+                            var res = await _api.UnlinkChatFromIssueAsync(chat.ConversationId, issueNum);
+                            if (!res.IsSuccessStatusCode)
+                            {
+                                var body = await res.Content.ReadAsStringAsync();
+                                ToastEngine.Error("Unlink Chat", $"Couldn't unlink: {body}");
+                                return;
+                            }
+                            chat.AssociatedIssueNumbers.Remove(issueNum);
+                            _lastBoardSignature = null;
+                            PopulateChatsTree();
+                        }
+                        catch (System.Exception ex)
+                        {
+                            ToastEngine.Error("Unlink Chat", $"Couldn't unlink: {ex.Message}");
+                        }
+                    };
+                    miUnlinkSub.Items.Add(miItem);
+                }
+                cm.Items.Add(miUnlinkSub);
+            }
+
+            cm.Items.Add(new Separator());
+
+            // Rename option
+            var miRename = new MenuItem { Header = "✏️ Rename Chat..." };
+            miRename.Click += async (_, _) =>
+            {
+                var inputWin = new Window
+                {
+                    Title = "Rename Chat",
+                    Width = 400,
+                    Height = 150,
+                    WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                    Owner = Application.Current.MainWindow,
+                    Background = GetBrush("BaseBrush"),
+                    BorderBrush = GetBrush("Surface0Brush"),
+                    BorderThickness = new Thickness(1),
+                    ResizeMode = ResizeMode.NoResize
+                };
+                
+                var grid = new Grid { Margin = new Thickness(14) };
+                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                
+                var label = new TextBlock
+                {
+                    Text = "Enter new title for chat:",
+                    Foreground = GetBrush("TextBrush"),
+                    Margin = new Thickness(0, 0, 0, 8),
+                    FontSize = 12
+                };
+                Grid.SetRow(label, 0);
+                grid.Children.Add(label);
+                
+                var txtInput = new TextBox
+                {
+                    Text = chat.Title,
+                    Background = GetBrush("MantleBrush"),
+                    Foreground = GetBrush("TextBrush"),
+                    BorderBrush = GetBrush("Surface0Brush"),
+                    CaretBrush = GetBrush("TextBrush"),
+                    Padding = new Thickness(6, 4, 6, 4),
+                    Margin = new Thickness(0, 0, 0, 12)
+                };
+                txtInput.SelectAll();
+                Grid.SetRow(txtInput, 1);
+                grid.Children.Add(txtInput);
+                
+                var buttonPanel = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+                var btnCancel = new Button { Content = "Cancel", Padding = new Thickness(12, 4, 12, 4), Margin = new Thickness(0, 0, 8, 0) };
+                var btnSave = new Button { Content = "Save", Style = (Style)FindResource("PrimaryButton"), Padding = new Thickness(12, 4, 12, 4) };
+                
+                btnCancel.Click += (s2, e2) => inputWin.DialogResult = false;
+                btnSave.Click += (s2, e2) => inputWin.DialogResult = true;
+                
+                buttonPanel.Children.Add(btnCancel);
+                buttonPanel.Children.Add(btnSave);
+                Grid.SetRow(buttonPanel, 2);
+                grid.Children.Add(buttonPanel);
+                
+                inputWin.Content = grid;
+                txtInput.Focus();
+                
+                if (inputWin.ShowDialog() == true)
+                {
+                    var newTitle = txtInput.Text?.Trim() ?? "";
+                    if (string.IsNullOrEmpty(newTitle)) return;
                     if (_api == null) return;
                     try
                     {
-                        var res = await _api.UnlinkChatFromEpicAsync(chat.ConversationId);
+                        var res = await _api.RenameChatAsync(chat.ConversationId, newTitle);
                         if (!res.IsSuccessStatusCode)
                         {
                             var body = await res.Content.ReadAsStringAsync();
-                            ActivityLog.Log("git-board.assign-chat", $"unassign chat {chat.ConversationId} from epic \"{formerEpicTitle}\" (id {formerEpicId}) FAILED: HTTP {(int)res.StatusCode} {body}");
-                            ToastEngine.Error("Unassign from Epic", $"Couldn't unassign: {body}");
+                            ToastEngine.Error("Rename Chat", $"Failed to rename: {body}");
                             return;
                         }
-                        ActivityLog.Log("git-board.assign-chat", $"unassigned chat {chat.ConversationId} ({chat.Title}) from epic \"{formerEpicTitle}\" (id {formerEpicId})");
+                        chat.Title = newTitle;
                         _lastBoardSignature = null;
                         PopulateChatsTree();
+                        ToastEngine.Success("Rename Chat", "Chat renamed successfully.");
                     }
-                    catch (System.Exception ex)
+                    catch (Exception ex)
                     {
-                        ActivityLog.Log("git-board.assign-chat", $"unassign chat {chat.ConversationId} from epic \"{formerEpicTitle}\" (id {formerEpicId}) FAILED: {ex.Message}");
-                        ToastEngine.Error("Unassign from Epic", $"Couldn't unassign: {ex.Message}");
+                        ToastEngine.Error("Rename Chat", $"Failed to rename: {ex.Message}");
+                    }
+                }
+            };
+            cm.Items.Add(miRename);
+
+            // Auto-name option
+            if (chat.AssociatedIssueNumbers != null && chat.AssociatedIssueNumbers.Count > 0)
+            {
+                var miAutoName = new MenuItem { Header = "✨ Auto-Name from Linked Issue(s)" };
+                miAutoName.Click += async (_, _) =>
+                {
+                    if (_api == null) return;
+                    int firstNum = chat.AssociatedIssueNumbers[0];
+                    string? matchedTitle = null;
+                    string prefix = $"[#{firstNum}]";
+                    
+                    var matchIssue = _lastBoardIssues.FirstOrDefault(i => i.Number == firstNum);
+                    if (matchIssue != null)
+                    {
+                        matchedTitle = matchIssue.Title;
+                    }
+                    else
+                    {
+                        var matchMilestone = _lastMilestoneInfos.FirstOrDefault(m => m.Number == firstNum);
+                        if (matchMilestone != null)
+                        {
+                            matchedTitle = matchMilestone.Title;
+                            prefix = $"[Milestone #{firstNum}]";
+                        }
+                    }
+                    
+                    if (string.IsNullOrEmpty(matchedTitle))
+                    {
+                        ToastEngine.Warning("Auto-Name Chat", $"Could not find issue or milestone #{firstNum} in cached board data.");
+                        return;
+                    }
+                    
+                    string newTitle = $"{prefix} {matchedTitle}";
+                    try
+                    {
+                        var res = await _api.RenameChatAsync(chat.ConversationId, newTitle);
+                        if (!res.IsSuccessStatusCode)
+                        {
+                            var body = await res.Content.ReadAsStringAsync();
+                            ToastEngine.Error("Auto-Name Chat", $"Failed to rename: {body}");
+                            return;
+                        }
+                        chat.Title = newTitle;
+                        _lastBoardSignature = null;
+                        PopulateChatsTree();
+                        ToastEngine.Success("Auto-Name Chat", $"Chat renamed to: {newTitle}");
+                    }
+                    catch (Exception ex)
+                    {
+                        ToastEngine.Error("Auto-Name Chat", $"Failed to rename: {ex.Message}");
                     }
                 };
-                cm.Items.Add(miUnassign);
+                cm.Items.Add(miAutoName);
             }
 
             tvi.ContextMenu = cm;
@@ -2618,12 +2952,16 @@ namespace BuildConsole.Controls
         /// </summary>
         public BoardChat? FindChatForIssue(int githubNumber)
         {
-            var direct = _lastBoardChats.LastOrDefault(c => c.IssueGithubNumber == githubNumber);
+            var direct = _lastBoardChats.LastOrDefault(c => c.IssueGithubNumber == githubNumber || c.AssociatedIssueNumbers.Contains(githubNumber));
             if (direct != null) return direct;
 
             var epic = _chatEpicById.Values.FirstOrDefault(e => e.GithubNumber == githubNumber);
-            if (epic == null) return null;
-            return _lastBoardChats.LastOrDefault(c => c.EpicId == epic.Id);
+            if (epic == null)
+            {
+                // Fallback to searching in AssociatedIssueNumbers for all chats
+                return _lastBoardChats.LastOrDefault(c => c.AssociatedIssueNumbers.Contains(githubNumber));
+            }
+            return _lastBoardChats.LastOrDefault(c => c.EpicId == epic.Id || c.AssociatedIssueNumbers.Contains(githubNumber));
         }
 
         private void ChatsTree_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
@@ -2937,6 +3275,98 @@ namespace BuildConsole.Controls
                     cmMilestone.Items.Add(miNewEpic);
 
                     cmMilestone.Items.Add(new Separator());
+
+                    if (m.GithubNumber.HasValue)
+                    {
+                        var linkedChat = FindChatForIssue(m.GithubNumber.Value);
+                        if (linkedChat != null && !string.IsNullOrEmpty(linkedChat.ClaudeUrl))
+                        {
+                            var chatUrl = linkedChat.ClaudeUrl;
+                            var miOpenChat = new MenuItem { Header = "💬 Open Chat" };
+                            miOpenChat.Click += (s, e) =>
+                            {
+                                EpicChatRequested?.Invoke(this, (chatUrl, $"Milestone #{m.GithubNumber.Value} Chat", false, null, "Milestone", m.Title));
+                            };
+                            cmMilestone.Items.Add(miOpenChat);
+                        }
+                        else
+                        {
+                            var miNewChat = new MenuItem { Header = "➕ New Chat" };
+                            miNewChat.Click += (s, e) =>
+                            {
+                                var settings = BuildConsole.Services.BuildConsoleSettings.Load();
+                                if (!settings.HasEpicChatProjectUrl)
+                                {
+                                    ToastEngine.Warning("New Chat", "Set a \"New Chat Project URL\" in the Settings tab first.");
+                                    return;
+                                }
+                                var baseUrl = settings.EpicChatProjectUrl.Trim();
+                                var pat = settings.GitHubPat?.Trim() ?? "";
+                                var label = $"Milestone #{m.GithubNumber.Value}";
+                                var prefill = string.IsNullOrEmpty(pat) ? label : $"{pat}\r\n{label}";
+                                var sep = baseUrl.Contains('?') ? "&" : "?";
+                                var fullUrl = $"{baseUrl}{sep}{EpicChatPrefillParam}={Uri.EscapeDataString(prefill)}";
+                                EpicChatRequested?.Invoke(this, (fullUrl, $"Milestone #{m.GithubNumber.Value} New Chat", true, m.GithubNumber.Value, "Milestone", $"[Milestone #{m.GithubNumber.Value}] {m.Title}"));
+                            };
+                            cmMilestone.Items.Add(miNewChat);
+                        }
+
+                        var miAssignChat = new MenuItem { Header = "🔗 Assign Chat to Milestone..." };
+                        miAssignChat.Click += async (s, e) =>
+                        {
+                            if (_api == null || !_api.IsConfigured)
+                            {
+                                ToastEngine.Warning("Assign Chat to Milestone", "Build Tracker API isn't configured.");
+                                return;
+                            }
+                            var existingChat = FindChatForIssue(m.GithubNumber.Value);
+                            var dialog = new AssignChatToEpicDialog($"Milestone #{m.GithubNumber.Value}", existingChat?.ClaudeUrl, GetActiveChatUrl);
+                            if (dialog.ShowDialog() != true || string.IsNullOrWhiteSpace(dialog.ResultChatUrl)) return;
+                            var chatUrl = dialog.ResultChatUrl.Trim();
+                            var convMatch = System.Text.RegularExpressions.Regex.Match(chatUrl, @"/chat/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})");
+                            if (!convMatch.Success)
+                            {
+                                ToastEngine.Warning("Assign Chat to Milestone", "That doesn't look like a chat URL.");
+                                return;
+                            }
+                            var conversationId = convMatch.Groups[1].Value;
+                            try
+                            {
+                                var res = await _api.LinkChatToIssueAsync(conversationId, m.GithubNumber.Value, $"[Milestone #{m.GithubNumber.Value}] {m.Title}");
+                                if (!res.IsSuccessStatusCode)
+                                {
+                                    var body = await res.Content.ReadAsStringAsync();
+                                    ToastEngine.Error("Assign Chat to Milestone", $"Couldn't assign: {body}");
+                                    return;
+                                }
+                                // Update local state
+                                var targetChat = _lastBoardChats.FirstOrDefault(c => c.ConversationId == conversationId);
+                                if (targetChat != null)
+                                {
+                                    if (!targetChat.AssociatedIssueNumbers.Contains(m.GithubNumber.Value))
+                                        targetChat.AssociatedIssueNumbers.Add(m.GithubNumber.Value);
+                                    targetChat.ClaudeUrl = chatUrl;
+                                }
+                                else
+                                {
+                                    _lastBoardChats.Add(new BoardChat
+                                    {
+                                        ConversationId = conversationId,
+                                        Title = $"[Milestone #{m.GithubNumber.Value}] {m.Title}",
+                                        ClaudeUrl = chatUrl,
+                                        AssociatedIssueNumbers = new List<int> { m.GithubNumber.Value }
+                                    });
+                                }
+                                PopulateChatsTree();
+                            }
+                            catch (Exception ex)
+                            {
+                                ToastEngine.Error("Assign Chat to Milestone", $"Couldn't assign: {ex.Message}");
+                            }
+                        };
+                        cmMilestone.Items.Add(miAssignChat);
+                        cmMilestone.Items.Add(new Separator());
+                    }
 
                     var miNewEpicAssign = new MenuItem { Header = "New Epic & Assign Loose Issues..." };
                     miNewEpicAssign.Click += async (s, e) =>
@@ -3614,80 +4044,62 @@ namespace BuildConsole.Controls
             // WebView2 tabs — the extension isn't installed there. Only epics
             // get this menu item; a plain issue's chat is already reached by the
             // existing In-Flight-click / ChatsTree paths (FindChatForIssue).
-            if (issue.IsEpic)
+            // 2. Easy New Chat, any issue level.
             {
+                var issueType = issue.IsEpic ? "Epic" : "Issue";
                 var linkedChat = FindChatForIssue(issue.IssueNumber);
                 if (linkedChat != null && !string.IsNullOrEmpty(linkedChat.ClaudeUrl))
                 {
-                    // Task 1 — open the epic's existing linked chat via the same
-                    // OpenWebTab every other web tab already uses. No prefill.
                     var chatUrl = linkedChat.ClaudeUrl;
-                    var miOpenChat = new MenuItem { Header = "💬 Open Epic Chat" };
+                    var miOpenChat = new MenuItem { Header = "💬 Open Chat" };
                     miOpenChat.Click += (s, e) =>
                     {
-                        ActivityLog.Log("git-board.epic-chat", $"open linked chat for epic #{issue.IssueNumber} -> {chatUrl}");
-                        // Already associated (FindChatForIssue found a linked chat) — no epic number to pass.
-                        EpicChatRequested?.Invoke(this, (chatUrl, $"Epic #{issue.IssueNumber} Chat", false, null));
+                        ActivityLog.Log("git-board.chat", $"open linked chat for issue #{issue.IssueNumber} -> {chatUrl}");
+                        EpicChatRequested?.Invoke(this, (chatUrl, $"#{issue.IssueNumber} Chat", false, null, issueType, issue.RawTitle));
                     };
                     cm.Items.Add(miOpenChat);
                 }
                 else
                 {
-                    // Task 2 — no linked chat yet: open the configured
-                    // "New chat project URL" prefilled with, in Shane's explicit
-                    // order, the GitHub PAT first and THEN "Epic #N" (the reverse
-                    // of the extension's own openNewEpicChat label-then-token —
-                    // kept as Shane specified). Shane presses Enter himself; we do
-                    // NOT auto-rename or auto-associate beyond the message text.
-                    var miNewChat = new MenuItem { Header = "➕ New Epic Chat" };
+                    var miNewChat = new MenuItem { Header = "➕ New Chat" };
                     miNewChat.Click += (s, e) =>
                     {
                         var settings = BuildConsole.Services.BuildConsoleSettings.Load();
                         if (!settings.HasEpicChatProjectUrl)
                         {
-                            ActivityLog.Log("git-board.epic-chat", $"new chat for epic #{issue.IssueNumber} aborted — no New Chat Project URL configured");
-                            ToastEngine.Warning("New Epic Chat", "Set a \"New Chat Project URL\" in the Settings tab first.");
+                            ActivityLog.Log("git-board.chat", $"new chat for issue #{issue.IssueNumber} aborted — no New Chat Project URL configured");
+                            ToastEngine.Warning("New Chat", "Set a \"New Chat Project URL\" in the Settings tab first.");
                             return;
                         }
                         var baseUrl = settings.EpicChatProjectUrl.Trim();
                         if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out _))
                         {
-                            ActivityLog.Log("git-board.epic-chat", $"new chat for epic #{issue.IssueNumber} aborted — invalid New Chat Project URL '{baseUrl}'");
-                            ToastEngine.Warning("New Epic Chat", "The configured New Chat Project URL isn't a valid URL.");
+                            ActivityLog.Log("git-board.chat", $"new chat for issue #{issue.IssueNumber} aborted — invalid New Chat Project URL '{baseUrl}'");
+                            ToastEngine.Warning("New Chat", "The configured New Chat Project URL isn't a valid URL.");
                             return;
                         }
                         var pat = settings.GitHubPat?.Trim() ?? "";
-                        var label = $"Epic #{issue.IssueNumber}";
+                        var label = $"{issueType} #{issue.IssueNumber}";
                         var prefill = string.IsNullOrEmpty(pat) ? label : $"{pat}\r\n{label}";
                         var sep = baseUrl.Contains('?') ? "&" : "?";
                         var fullUrl = $"{baseUrl}{sep}{EpicChatPrefillParam}={Uri.EscapeDataString(prefill)}";
-                        ActivityLog.Log("git-board.epic-chat", $"new chat for epic #{issue.IssueNumber} -> {baseUrl} (prefill 'Epic #{issue.IssueNumber}', PAT {(string.IsNullOrEmpty(pat) ? "absent" : "present")})");
-                        // Git #922 follow-up — carry the epic's GitHub number so MainWindow links
-                        // the new chat to this epic once Shane sends the prefilled message.
-                        EpicChatRequested?.Invoke(this, (fullUrl, $"Epic #{issue.IssueNumber} New Chat", true, issue.IssueNumber));
+                        ActivityLog.Log("git-board.chat", $"new chat for issue #{issue.IssueNumber} -> {baseUrl} (prefill '{label}', PAT {(string.IsNullOrEmpty(pat) ? "absent" : "present")})");
+                        EpicChatRequested?.Invoke(this, (fullUrl, $"#{issue.IssueNumber} New Chat", true, issue.IssueNumber, issueType, $"[#{issue.IssueNumber}] {issue.RawTitle}"));
                     };
                     cm.Items.Add(miNewChat);
                 }
 
-                // Shane: real chats he can't currently associate to Epics through
-                // any manual path. Opens AssignChatToEpicDialog (paste a URL, or
-                // "Assign current chat" pulls it off whatever chat tab is
-                // actually focused via GetActiveChatUrl). Reuses the same
-                // POST /chats/ingest force:true write (LinkChatToEpicAsync) every
-                // other chat-epic assignment already goes through, so the Chats
-                // panel and every other epic-aware view pick it up immediately —
-                // no separate sync step.
-                var miAssignChat = new MenuItem { Header = "🔗 Assign Chat to Epic..." };
+                var miAssignChat = new MenuItem { Header = "🔗 Assign Chat to Issue..." };
                 miAssignChat.Click += async (s, e) =>
                 {
                     if (_api == null || !_api.IsConfigured)
                     {
-                        ToastEngine.Warning("Assign Chat to Epic", "Build Tracker API isn't configured.");
+                        ToastEngine.Warning("Assign Chat to Issue", "Build Tracker API isn't configured.");
                         return;
                     }
 
                     var existingChat = FindChatForIssue(issue.IssueNumber);
-                    var dialog = new AssignChatToEpicDialog($"Epic #{issue.IssueNumber}", existingChat?.ClaudeUrl, GetActiveChatUrl);
+                    var dialog = new AssignChatToEpicDialog($"Issue #{issue.IssueNumber}", existingChat?.ClaudeUrl, GetActiveChatUrl);
                     if (dialog.ShowDialog() != true || string.IsNullOrWhiteSpace(dialog.ResultChatUrl)) return;
                     var chatUrl = dialog.ResultChatUrl.Trim();
 
@@ -3695,75 +4107,31 @@ namespace BuildConsole.Controls
                         chatUrl, @"/chat/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})");
                     if (!convMatch.Success)
                     {
-                        ActivityLog.Log("git-board.assign-chat", $"assign chat to epic #{issue.IssueNumber} aborted — '{chatUrl}' has no recognizable /chat/<uuid> conversation id");
-                        ToastEngine.Warning("Assign Chat to Epic", "That doesn't look like a chat URL (expected .../chat/<uuid>).");
+                        ActivityLog.Log("git-board.assign-chat", $"assign chat to issue #{issue.IssueNumber} aborted — '{chatUrl}' has no recognizable /chat/<uuid> conversation id");
+                        ToastEngine.Warning("Assign Chat to Issue", "That doesn't look like a chat URL (expected .../chat/<uuid>).");
                         return;
                     }
                     var conversationId = convMatch.Groups[1].Value;
 
-                    var epic = _chatEpicById.Values.FirstOrDefault(ep => ep.GithubNumber == issue.IssueNumber);
-                    if (epic == null)
-                    {
-                        // Not registered yet — the same gap "Sync GitHub" fixes in the
-                        // admin panel. Auto-register just this one issue (POST
-                        // extension/sync-epic always upserts the target issue's own
-                        // bt_epics row, whether or not it has sub-issues) instead of
-                        // making Shane leave the WPF app to fix it.
-                        ActivityLog.Log("git-board.assign-chat", $"epic #{issue.IssueNumber} not registered — auto-syncing from GitHub before assigning chat {conversationId}");
-                        try
-                        {
-                            var syncRes = await _api.SyncEpicAsync(issue.IssueNumber, issue.RawTitle, issue.Body, issue.Status);
-                            if (!syncRes.IsSuccessStatusCode)
-                            {
-                                var syncBody = await syncRes.Content.ReadAsStringAsync();
-                                ActivityLog.Log("git-board.assign-chat", $"auto-sync epic #{issue.IssueNumber} FAILED: HTTP {(int)syncRes.StatusCode} {syncBody}");
-                                ToastEngine.Error("Assign Chat to Epic", $"Couldn't register Epic #{issue.IssueNumber}: {syncBody}");
-                                return;
-                            }
-                        }
-                        catch (Exception syncEx)
-                        {
-                            ActivityLog.Log("git-board.assign-chat", $"auto-sync epic #{issue.IssueNumber} FAILED: {syncEx.Message}");
-                            ToastEngine.Error("Assign Chat to Epic", $"Couldn't register Epic #{issue.IssueNumber}: {syncEx.Message}");
-                            return;
-                        }
-
-                        var refreshed = await _api.GetBoardAsync();
-                        _chatEpicById = refreshed.Data.Epics.ToDictionary(e => e.Id);
-                        epic = _chatEpicById.Values.FirstOrDefault(ep => ep.GithubNumber == issue.IssueNumber);
-                        if (epic == null)
-                        {
-                            ActivityLog.Log("git-board.assign-chat", $"assign chat {conversationId} to epic #{issue.IssueNumber} aborted — sync-epic succeeded but no bt_epics row has github_number {issue.IssueNumber} on re-fetch");
-                            ToastEngine.Warning("Assign Chat to Epic", $"Epic #{issue.IssueNumber} still isn't registered after syncing — check it's a real GitHub issue.");
-                            return;
-                        }
-                        ActivityLog.Log("git-board.assign-chat", $"auto-registered epic #{issue.IssueNumber} (bt_epics id {epic.Id})");
-                    }
-
                     try
                     {
-                        var res = await _api.LinkChatToEpicAsync(conversationId, epic.Id);
+                        var res = await _api.LinkChatToIssueAsync(conversationId, issue.IssueNumber, $"[#{issue.IssueNumber}] {issue.RawTitle}");
                         if (!res.IsSuccessStatusCode)
                         {
                             var body = await res.Content.ReadAsStringAsync();
-                            ActivityLog.Log("git-board.assign-chat", $"assign chat {conversationId} -> epic #{issue.IssueNumber} (bt_epics id {epic.Id}) FAILED: HTTP {(int)res.StatusCode} {body}");
-                            ToastEngine.Error("Assign Chat to Epic", $"Couldn't assign: {body}");
+                            ActivityLog.Log("git-board.assign-chat", $"assign chat {conversationId} -> issue #{issue.IssueNumber} FAILED: HTTP {(int)res.StatusCode} {body}");
+                            ToastEngine.Error("Assign Chat to Issue", $"Couldn't assign: {body}");
                             return;
                         }
-                        ActivityLog.Log("git-board.assign-chat", $"assigned chat {conversationId} ({chatUrl}) -> epic #{issue.IssueNumber} (bt_epics id {epic.Id})");
+                        ActivityLog.Log("git-board.assign-chat", $"assigned chat {conversationId} ({chatUrl}) -> issue #{issue.IssueNumber}");
 
-                        // Update in-memory _lastBoardChats immediately so FindChatForIssue, OpenChat, and Git Detail View pick it up without delay
-                        foreach (var c in _lastBoardChats)
-                        {
-                            if (c.EpicId == epic.Id && c.ConversationId != conversationId)
-                            {
-                                c.EpicId = null;
-                            }
-                        }
                         var targetChat = _lastBoardChats.FirstOrDefault(c => c.ConversationId == conversationId);
                         if (targetChat != null)
                         {
-                            targetChat.EpicId = epic.Id;
+                            if (!targetChat.AssociatedIssueNumbers.Contains(issue.IssueNumber))
+                            {
+                                targetChat.AssociatedIssueNumbers.Add(issue.IssueNumber);
+                            }
                             targetChat.ClaudeUrl = chatUrl;
                         }
                         else
@@ -3771,20 +4139,19 @@ namespace BuildConsole.Controls
                             _lastBoardChats.Add(new BoardChat
                             {
                                 ConversationId = conversationId,
-                                Title = $"Epic #{issue.IssueNumber}",
-                                EpicId = epic.Id,
+                                Title = $"[#{issue.IssueNumber}] {issue.RawTitle}",
                                 ClaudeUrl = chatUrl,
+                                AssociatedIssueNumbers = new List<int> { issue.IssueNumber }
                             });
                         }
 
                         _lastBoardSignature = null;
                         PopulateChatsTree();
-                        ChatEpicAssigned?.Invoke(this, (conversationId, epic.Id));
                     }
                     catch (Exception ex)
                     {
-                        ActivityLog.Log("git-board.assign-chat", $"assign chat {conversationId} -> epic #{issue.IssueNumber} FAILED: {ex.Message}");
-                        ToastEngine.Error("Assign Chat to Epic", $"Couldn't assign: {ex.Message}");
+                        ActivityLog.Log("git-board.assign-chat", $"assign chat {conversationId} -> issue #{issue.IssueNumber} FAILED: {ex.Message}");
+                        ToastEngine.Error("Assign Chat to Issue", $"Couldn't assign: {ex.Message}");
                     }
                 };
                 cm.Items.Add(miAssignChat);

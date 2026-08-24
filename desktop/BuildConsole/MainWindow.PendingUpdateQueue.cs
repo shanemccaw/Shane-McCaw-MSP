@@ -100,6 +100,7 @@ namespace BuildConsole
             public int? GithubNumber { get; set; }
             public List<int>? BlockedByNumbers { get; set; }
             public string? ChatUrl { get; set; }
+            public string? OriginatingChatId { get; set; }
         }
 
         /// <summary>
@@ -149,7 +150,7 @@ namespace BuildConsole
         /// </summary>
         private bool PersistQueueRequestDuringPendingUpdate(
             string title, string prompt, string? model, string? effort, string? cwd,
-            int? githubNumber, List<int>? blockedByNumbers, string? chatUrl = null)
+            int? githubNumber, List<int>? blockedByNumbers, string? chatUrl = null, string? originatingChatId = null)
         {
             var pending = LoadPersistedQueueRequests();
             pending.Add(new PersistedQueueRequest
@@ -162,6 +163,7 @@ namespace BuildConsole
                 GithubNumber = githubNumber,
                 BlockedByNumbers = blockedByNumbers,
                 ChatUrl = chatUrl,
+                OriginatingChatId = originatingChatId,
             });
 
             try
@@ -343,7 +345,7 @@ namespace BuildConsole
                 try
                 {
                     var res = await _buildTrackerApi!.QueueBuildAsync(
-                        req.Title, req.Prompt, req.Model, req.Effort, req.Cwd, req.GithubNumber, req.BlockedByNumbers, chatUrl: req.ChatUrl);
+                        req.Title, req.Prompt, req.Model, req.Effort, req.Cwd, req.GithubNumber, req.BlockedByNumbers, chatUrl: req.ChatUrl, originatingChatId: req.OriginatingChatId);
                     if (res.IsSuccessStatusCode)
                     {
                         PendingUpdateQueueDiag(

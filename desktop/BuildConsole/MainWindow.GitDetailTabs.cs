@@ -283,7 +283,7 @@ namespace BuildConsole
                 var sep = baseUrl.Contains('?') ? "&" : "?";
                 var fullUrl = $"{baseUrl}{sep}bt_prefill={Uri.EscapeDataString(prefill)}";
                 ActivityLog.Log(GitDetailChannel, $"new chat for epic #{epicNumber} -> {baseUrl} (prefill 'Epic #{epicNumber}')");
-                OpenWebTab(fullUrl, $"Epic #{epicNumber} New Chat", "", injectPrefillPoll: true, associateEpicGithubNumber: epicNumber);
+                OpenWebTab(fullUrl, $"Epic #{epicNumber} New Chat", "", injectPrefillPoll: true, associateIssueNumber: epicNumber, associateIssueType: "Epic", associateDefaultTitle: $"[#{epicNumber}] Epic Chat");
             }
         }
 
