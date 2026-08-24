@@ -428,6 +428,32 @@ namespace BuildConsole.Services
             await cmd.ExecuteNonQueryAsync();
         }
 
+        // ── UpdateSessionIdAsync ──────────────────────────────────────────────────
+        /// <summary>
+        /// Crash-recovery groundwork: persists the real Claude session id to a
+        /// still-running row the MOMENT it's known (the CLI's own stream-json reveals
+        /// it in its first line), instead of waiting for MarkCompleteAsync at the end
+        /// of the run. Without this, a build killed by an app crash/hard reboot before
+        /// it ever finished left session_id NULL forever — Retry could only restart
+        /// the original prompt from scratch, discarding everything the run had
+        /// actually done. WHERE session_id IS NULL makes this a write-once no-op once
+        /// captured (matches MarkCompleteAsync's own COALESCE semantics), so calling
+        /// it repeatedly as more stream-json lines arrive is harmless.
+        /// </summary>
+        public async Task UpdateSessionIdAsync(int id, string sessionId)
+        {
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(@"
+                UPDATE bt_build_queue
+                   SET session_id = @sessionId,
+                       updated_at = NOW()
+                 WHERE id = @id
+                   AND session_id IS NULL", conn);
+            cmd.Parameters.AddWithValue("@sessionId", sessionId);
+            cmd.Parameters.AddWithValue("@id", id);
+            await cmd.ExecuteNonQueryAsync();
+        }
+
         // ── ForceClaimAsync ───────────────────────────────────────────────────────
         /// <summary>
         /// "Run Now" — atomically claims a specific still-queued row, bypassing the

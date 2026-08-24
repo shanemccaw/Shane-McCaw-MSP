@@ -344,7 +344,7 @@ namespace BuildConsole.Services
             var orphaned = items.Where(i => i.Status == "running").ToList();
             if (orphaned.Count == 0) return;
 
-            ActivityLog.Log("watcher", $"Found {orphaned.Count} queue item(s) stuck 'running' from a previous app instance (nothing was tracking them) - marking failed so they're visible, use Retry to re-queue.");
+            ActivityLog.Log("watcher", $"Found {orphaned.Count} queue item(s) stuck 'running' from a previous app instance/crash (nothing was tracking them) - marking failed so they're visible. Resume Session (if a session id was captured) or Retry to re-queue - the Build Queue panel's 'Recover All' banner does this for every orphaned item at once.");
             foreach (var item in orphaned)
             {
                 try
@@ -615,7 +615,26 @@ namespace BuildConsole.Services
             if (entry.SessionId == null)
             {
                 var sid = TryExtractSessionId(data);
-                if (sid != null) lock (_gate) entry.SessionId ??= sid;
+                if (sid != null)
+                {
+                    bool justCaptured = false;
+                    lock (_gate)
+                    {
+                        if (entry.SessionId == null) { entry.SessionId = sid; justCaptured = true; }
+                    }
+                    // Crash-recovery groundwork (see BuildQueuePostgresClient.UpdateSessionIdAsync):
+                    // persist the session id NOW, not just at completion, so a build killed by an
+                    // app crash/hard reboot mid-run still leaves a resumable session behind instead
+                    // of forcing Retry to discard everything and restart from scratch.
+                    if (justCaptured && _db != null)
+                    {
+                        _ = Task.Run(async () =>
+                        {
+                            try { await _db.UpdateSessionIdAsync(id, sid); }
+                            catch (Exception ex) { ActivityLog.Log("watcher", $"Couldn't persist early session id for queue #{id}: {ex.Message}"); }
+                        });
+                    }
+                }
             }
 
             var ctxTokens = TryExtractContextTokens(data);

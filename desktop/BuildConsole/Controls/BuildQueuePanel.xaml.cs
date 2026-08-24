@@ -608,6 +608,7 @@ namespace BuildConsole.Controls
                 }
                 if (_filter == "Tests") RenderTestsTree();
                 UpdateUsageSummary();
+                UpdateOrphanRecoveryBanner();
                 SyncError?.Invoke(this, _queueIsStale
                     ? $"Build Queue: showing cached data from {_queueCachedAtUtc?.ToLocalTime():g} — dev server unreachable"
                     : null);
@@ -620,6 +621,73 @@ namespace BuildConsole.Controls
                 QueueEmptyText.Visibility = Visibility.Visible;
                 SyncError?.Invoke(this, $"Build Queue: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// Crash/orphan recovery — shows/hides the bulk "Recover All" banner based on
+        /// how many rows the startup sweep (RecoverOrphanedRunningItemsAsync) marked
+        /// failed with the orphan sentinel exit code -2. Called after every RefreshAsync.
+        /// </summary>
+        private void UpdateOrphanRecoveryBanner()
+        {
+            if (OrphanRecoveryBanner == null) return;
+            int count = _lastItems.Count(i => i.Status == "failed" && i.ExitCode == -2);
+            if (count == 0)
+            {
+                OrphanRecoveryBanner.Visibility = Visibility.Collapsed;
+                return;
+            }
+            int resumable = _lastItems.Count(i => i.Status == "failed" && i.ExitCode == -2 && !string.IsNullOrEmpty(i.SessionId));
+            OrphanRecoveryText.Text = $"{count} build{(count == 1 ? "" : "s")} orphaned by a crash/restart" +
+                (resumable > 0 ? $" ({resumable} resumable)" : "");
+            OrphanRecoveryBanner.Visibility = Visibility.Visible;
+        }
+
+        /// <summary>
+        /// Recovers every currently-orphaned queue item in one click: Resume Session
+        /// (--resume, picks up mid-conversation) for any with a captured session id,
+        /// plain Retry (restart the original prompt) for the rest. Mirrors exactly what
+        /// the per-item "Resume Session"/"Retry" menu actions do, just for all of them
+        /// at once — the actual ask behind this feature: Shane's video-driver hard
+        /// crash left a whole batch of builds stuck, and recovering them one right-click
+        /// at a time was its own separate mess.
+        /// </summary>
+        private async void BtnRecoverOrphans_Click(object sender, RoutedEventArgs e)
+        {
+            if (_db == null) return;
+            var orphaned = _lastItems.Where(i => i.Status == "failed" && i.ExitCode == -2).ToList();
+            if (orphaned.Count == 0) return;
+
+            BtnRecoverOrphans.IsEnabled = false;
+            int resumed = 0, retried = 0, failed = 0;
+            try
+            {
+                foreach (var item in orphaned)
+                {
+                    try
+                    {
+                        var blockers = item.BlockedByNumbers ?? (item.BlockedByNumber.HasValue ? new List<int> { item.BlockedByNumber.Value } : null);
+                        string? resumeSessionId = string.IsNullOrEmpty(item.SessionId) ? null : item.SessionId;
+                        await _db.QueueBuildAsync(item.Title, item.Prompt, item.Model, item.Effort, item.Cwd, item.GithubNumber, blockers, resumeSessionId, item.ChatUrl);
+                        if (resumeSessionId != null) resumed++; else retried++;
+                    }
+                    catch (Exception ex)
+                    {
+                        failed++;
+                        ActivityLog.Log("build-queue", $"Recover All: couldn't re-queue orphaned item #{item.Id} ({item.Title}): {ex.Message}");
+                    }
+                }
+            }
+            finally
+            {
+                BtnRecoverOrphans.IsEnabled = true;
+            }
+
+            string summary = $"{resumed} resumed, {retried} restarted" + (failed > 0 ? $", {failed} failed" : "");
+            if (failed > 0) ToastEngine.Warning("Recovered Builds", summary);
+            else ToastEngine.Success("Recovered Builds", summary);
+            ActivityLog.Log("build-queue", $"Recover All: {summary} (of {orphaned.Count} orphaned).");
+            await RefreshAsync();
         }
 
         public void UpdateUsageSummary()
@@ -1436,9 +1504,12 @@ namespace BuildConsole.Controls
             }
             if (item.Status == "failed" && item.ExitCode.HasValue)
             {
+                string orphanDetail = !string.IsNullOrEmpty(item.SessionId)
+                    ? "orphaned by app restart/crash — Resume Session picks up where it left off"
+                    : "orphaned by app restart/crash — no session captured, use Retry";
                 mainStack.Children.Add(new TextBlock
                 {
-                    Text = item.ExitCode == -2 ? "orphaned by app restart — use Retry" : $"exit code {item.ExitCode}",
+                    Text = item.ExitCode == -2 ? orphanDetail : $"exit code {item.ExitCode}",
                     FontSize = 10,
                     Foreground = (Brush)Application.Current.FindResource("Subtext1Brush"),
                     Margin = new Thickness(1, 2, 0, 0)
@@ -1632,7 +1703,35 @@ namespace BuildConsole.Controls
             }
             else
             {
-                var miRetry = new MenuItem { Header = "🔄 Retry" };
+                // Crash/orphan recovery (see BuildQueuePostgresClient.UpdateSessionIdAsync
+                // and QueueWatcherService.HandleOutput) — a build that died before it could
+                // report completion (app crash, hard reboot mid-run) may still have a real
+                // session id captured, in which case the CLI can pick the conversation back
+                // up with --resume instead of Retry's plain "start the original prompt over".
+                // Only offered when a real session id actually got captured; a build that
+                // died before its very first stream-json line has nothing to resume.
+                if (!string.IsNullOrEmpty(item.SessionId))
+                {
+                    var miResumeSession = new MenuItem { Header = "▶ Resume Session (crash recovery)" };
+                    miResumeSession.Click += async (_, _) =>
+                    {
+                        if (_db == null) return;
+                        try
+                        {
+                            var blockers = item.BlockedByNumbers ?? (item.BlockedByNumber.HasValue ? new List<int> { item.BlockedByNumber.Value } : null);
+                            await _db.QueueBuildAsync(item.Title, item.Prompt, item.Model, item.Effort, item.Cwd, item.GithubNumber, blockers, item.SessionId, item.ChatUrl);
+                            ToastEngine.Success("Resuming", $"Resuming from where it left off: {item.Title}");
+                            await RefreshAsync();
+                        }
+                        catch (Exception ex)
+                        {
+                            ToastEngine.Error("Resume Failed", $"Couldn't resume: {ex.Message}");
+                        }
+                    };
+                    cm.Items.Add(miResumeSession);
+                }
+
+                var miRetry = new MenuItem { Header = "🔄 Retry (start over)" };
                 miRetry.Click += async (_, _) =>
                 {
                     if (_db == null) return;
