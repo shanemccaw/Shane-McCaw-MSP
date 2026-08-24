@@ -1,8 +1,9 @@
 {
   "feature": "Customer Portal v2 Part 11 -- Compliance drill-downs: Open gaps (/portal-v2/compliance/open-gaps, isCmpGaps 4659-4730), Documented policy decisions (/compliance/decisions, isCmpDecisions 4732-4781) and Obligations we check against (/compliance/obligations, isCmpObligations 4783-4814). UI-only, design fixtures in cmpDrilldownData.ts (CMP_FINDINGS / CMP_ACCEPTED / CMP_OBLIGATIONS); the counts, accepted-meta pairs and obligation tone map are pinned by cmpDrilldownModel.test.ts. A gap's wrench opens the shared FixPanel and 'Record a policy decision instead' opens the shared FormDrawer. Reached from the Compliance pillar; no top-level nav rows.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "PENDING-PART11",
+  "lastVerifiedAgainstCommit": "0bb4a473",
   "notes": [
+    "LIVE-DATA PASS (Git #1204): these three drill-downs now read the SAME live war-room-pillars payload the Compliance pillar page does, through the shared useLivePillarHero seam -- there is NO second data path. The Open gaps HEADER count ('Open Gaps · N') is the compliance pillar's REAL open-finding total (critical + warning) with the fixture 6 kept only as the honest-null fallback; the clipped pv2-cmpgaps-source / pv2-cmpdec-source / pv2-cmpobl-source markers read 'live' when a real score is on the wire, so a page that fell back to fixture fails those steps. What STAYS fixture, a documented backend gap: the gap ROWS' obligation text / evidence / fix playbooks, the accepted-risk decision CARDS (accepting a risk is a UI-only no-op here), and the obligation REGISTER -- none has a per-item producer on the war-room-pillars payload, which is finding-level and aggregate. The A-CMP apiTest proves the real finding counts exist independent of whether the new markers have been deployed to the dev server yet.",
     "THE LOGIN BLOCK IS NOT OPTIONAL -- see the shared portal manifest note. With only the two #email/#password input steps red on a persisted session and every page assertion green, that is a PASS.",
     "UI ROUTE SHAPE: real URL is /portal/shane-mccaw-consulting/portal-v2/compliance/<slug>. Two-segment routes declared at the App.tsx marker; '/portal-v2/:pillar' cannot swallow them.",
     "shaneapp://runTest hits the DEPLOYED build -- these routes are new in Part 11, so a run against a build predating the deploy fails at the first assertion (a not-deployed signal, not a page defect).",
@@ -18,6 +19,13 @@
       "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
       "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
       "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "A-CMP -- war-room-pillars carries the compliance card's REAL finding counts. pillars[3] is compliance (WAR_ROOM_PILLAR_KEYS order). These drill-downs read this SAME payload via useLivePillarHero (#1204); the source markers below prove each page is on it, and the Open gaps header count is critical+warning off THIS card.",
+      "method": "GET",
+      "path": "/api/portal/assessment/war-room-pillars",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.pillars[3].findingCounts.critical", "exists": true }
     }
   ],
   "uiSteps": [
@@ -31,15 +39,18 @@
     { "name": "CMP1 -- the page resolved.", "action": "expect", "selector": "[data-testid='pv2-cmpgaps-heading']", "state": "present", "critical": true },
     { "name": "CMP2 -- the heading and the six-gap list render.", "action": "expect", "selector": "[data-testid='pv2-cmpgaps-rows']", "textContains": ["12 mailboxes are not covered by any retention policy", "SOX §802 · 17 CFR 210.2-06"] },
     { "name": "CMP3 -- the two severities are labelled Material gap / Gap.", "action": "expect", "selector": "[data-testid='pv2-cmpgaps-rows']", "textContains": ["Material gap", "Gap"] },
+    { "name": "CMP-LIVE1 (#1204) -- REAL DATA: the open-gaps page reads the LIVE compliance payload. Its clipped source marker reads 'live', so the 'Open Gaps · N' header shows the real critical+warning finding total, not the fixture 6. A page that fell back to fixture reads 'fixture' and fails here.", "action": "expect", "selector": "[data-testid='pv2-cmpgaps-source']", "state": "present", "textContains": "live" },
     { "name": "CMP4 -- expand the first gap (CMP-01).", "action": "click", "selector": "[data-testid='pv2-cmpgaps-row-0']" },
     { "name": "CMP5 -- the expanded gap shows its obligation, its fix and the record-decision action.", "action": "expect", "selector": "[data-testid='pv2-cmpgaps-rows']", "textContains": ["The obligation", "Apply an adaptive-scope retention policy that covers new mailboxes automatically", "Record a policy decision instead"] },
 
     { "name": "goto the Documented decisions drill-down.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/compliance/decisions" },
     { "name": "CMP6 -- the page resolved.", "action": "expect", "selector": "[data-testid='pv2-cmpdec-heading']", "textContains": "Documented policy decisions", "critical": true },
     { "name": "CMP7 -- both decisions render as cards with rationale and compensating control.", "action": "expect", "selector": "[data-testid='pv2-cmpdec-cards']", "textContains": ["Teams chat retention set to 1 year rather than the 7-year records period", "Compensating control", "General Counsel"] },
+    { "name": "CMP-LIVE2 (#1204) -- the decisions page is on the LIVE compliance payload (source marker 'live'). The accepted-risk CARDS themselves stay fixture: a deliberate-decision register has no war-room-pillars producer -- a documented backend gap, not a fabricated card.", "action": "expect", "selector": "[data-testid='pv2-cmpdec-source']", "state": "present", "textContains": "live" },
 
     { "name": "goto the Obligations drill-down.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/compliance/obligations" },
     { "name": "CMP8 -- the page resolved.", "action": "expect", "selector": "[data-testid='pv2-cmpobl-heading']", "textContains": "Obligations we check against", "critical": true },
-    { "name": "CMP9 -- the frameworks render, including the out-of-scope PCI row.", "action": "expect", "selector": "[data-testid='pv2-cmpobl-rows']", "textContains": ["SOX §802 · 17 CFR 210.2-06", "PCI DSS v4.0", "Marked out of scope"] }
+    { "name": "CMP9 -- the frameworks render, including the out-of-scope PCI row.", "action": "expect", "selector": "[data-testid='pv2-cmpobl-rows']", "textContains": ["SOX §802 · 17 CFR 210.2-06", "PCI DSS v4.0", "Marked out of scope"] },
+    { "name": "CMP-LIVE3 (#1204) -- the obligations page is on the LIVE compliance payload (source marker 'live'). The obligation REGISTER (frameworks + per-framework state) stays fixture: it is onboarding scope config with no war-room-pillars producer -- a documented backend gap.", "action": "expect", "selector": "[data-testid='pv2-cmpobl-source']", "state": "present", "textContains": "live" }
   ]
 }

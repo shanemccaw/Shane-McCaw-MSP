@@ -1,8 +1,9 @@
 {
   "feature": "Customer Portal v2 Part 11 -- Security drill-downs: MFA (/portal-v2/security/mfa, isMfaPage 4816-4972), Conditional Access baseline (/portal-v2/security/ca, isCaPage 4975-5039) and the three Evidence pages (isEvidencePage 5041-5202) -- OAuth Apps (/security/oauth), Legacy Authentication (/security/legacy-auth) and Email Security (/security/email). UI-only, design fixtures in secMfaData.ts / secCaData.ts / secEvidenceData.ts; the CA counts, the MFA control/partial/wizard derivations and evidence slug resolution are pinned by secCaModel.test.ts / secMfaModel.test.ts / secEvidenceModel.test.ts. The wrench opens the shared FixPanel (CR gate); the sparkle asks ShaneBot. Reached from the Security pillar area cards; no top-level nav rows.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "PENDING-PART11",
+  "lastVerifiedAgainstCommit": "0bb4a473",
   "notes": [
+    "LIVE-DATA PASS (Git #1204): the MFA, Conditional Access and Evidence drill-downs now read the SAME live war-room-pillars payload the Security pillar page does, through the shared useLivePillarHero seam -- NO second data path. The clipped pv2-mfa-source / pv2-ca-source / pv2-ev-source markers read 'live' when a real security score is on the wire. What STAYS fixture, a documented backend gap: the per-user MFA-gap rows and coverage %, the 22 named Conditional-Access policy rows and their drift state, and the per-evidence-type top-risks / provenance lists -- none has a per-object producer on the war-room-pillars payload (finding-level and aggregate only). The A-SEC apiTest proves the real finding counts exist independent of whether the new markers have been deployed to the dev server yet.",
     "THE LOGIN BLOCK IS NOT OPTIONAL. /portal-v2/* sits behind ProtectedRoute; skipping the five login steps hits the login screen and every assertion fails for an unrelated reason. On a WebView2 with a PERSISTED session the two input steps (#email/#password) can fail because the form never mounts -- with only those two red and every page assertion green, that is a PASS (portal-v2-manifest-login-block-persisted-session memory).",
     "UI ROUTE SHAPE: the outer WouterRouter base is '/portal' and SlugScope nests a second router at '/{slug}', so the real URL is /portal/shane-mccaw-consulting/portal-v2/security/<slug>. These are TWO-segment routes, declared at the App.tsx marker; '/portal-v2/:pillar' is a single-segment param route and cannot swallow them.",
     "shaneapp://runTest hits the DEPLOYED build, not the local worktree -- these routes are new in Part 11, so the dev server must carry this commit before they resolve. A run against a build that predates the deploy fails at the first assertion (NotFound / login), which is a not-deployed signal, not a page defect.",
@@ -18,6 +19,13 @@
       "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
       "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
       "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "A-SEC -- war-room-pillars carries the security card's REAL finding counts. pillars[5] is security (WAR_ROOM_PILLAR_KEYS order). These drill-downs read this SAME payload via useLivePillarHero (#1204); the source markers below prove each page is on it.",
+      "method": "GET",
+      "path": "/api/portal/assessment/war-room-pillars",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.pillars[5].findingCounts.critical", "exists": true }
     }
   ],
   "uiSteps": [
@@ -37,17 +45,20 @@
     { "name": "MFA7 -- the setup-wizard state renders (real state switch, not a static page).", "action": "expect", "selector": "[data-testid='pv2-mfa-heading']", "textContains": "MFA isn't configured for this tenant yet." },
     { "name": "MFA8 -- switch the preview to 'Healthy'.", "action": "click", "selector": "[data-testid='pv2-mfa-preview-healthy']" },
     { "name": "MFA9 -- the healthy state renders.", "action": "expect", "selector": "[data-testid='pv2-mfa-heading']", "textContains": "MFA is fully enforced across every account." },
+    { "name": "MFA-LIVE (#1204) -- REAL DATA: the MFA page reads the LIVE security payload; its source marker reads 'live'. The per-user gap rows and coverage % stay fixture (no per-user Graph feed on this payload) -- a documented backend gap.", "action": "expect", "selector": "[data-testid='pv2-mfa-source']", "state": "present", "textContains": "live" },
 
     { "name": "goto the Conditional Access drill-down.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/security/ca" },
     { "name": "CA1 -- the page resolved.", "action": "expect", "selector": "[data-testid='pv2-ca-page']", "state": "present", "critical": true },
     { "name": "CA2 -- the heading carries the '22 named' copy verbatim.", "action": "expect", "selector": "[data-testid='pv2-ca-heading']", "textContains": "22 named Conditional Access policies" },
     { "name": "CA3 -- the four stat cards carry the design's labels.", "action": "expect", "selector": "[data-testid='pv2-ca-stats']", "textContains": ["Baseline policies", "In place", "Needs attention", "Missing"] },
     { "name": "CA4 -- the foundation band and a named policy render.", "action": "expect", "selector": "[data-testid='pv2-ca-page']", "textContains": ["Foundation & Global Baselines", "CA001-AllUsers-AllApps-BlockLegacyAuth", "Resiliency & Emergency Controls"] },
+    { "name": "CA-LIVE (#1204) -- REAL DATA: the Conditional Access page reads the LIVE security payload; its source marker reads 'live'. The 22 named policy rows and their drift state stay fixture (no per-policy Graph feed on this payload) -- a documented backend gap.", "action": "expect", "selector": "[data-testid='pv2-ca-source']", "state": "present", "textContains": "live" },
 
     { "name": "goto the OAuth Apps evidence drill-down.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/security/oauth" },
     { "name": "EV1 -- the page resolved to OAuth Apps.", "action": "expect", "selector": "[data-testid='pv2-ev-page']", "state": "present", "critical": true },
     { "name": "EV2 -- the heading is OAuth Apps & Consent Grants.", "action": "expect", "selector": "[data-testid='pv2-ev-heading']", "textContains": "OAuth Apps & Consent Grants" },
     { "name": "EV3 -- the stat cards carry the design's labels.", "action": "expect", "selector": "[data-testid='pv2-ev-stats']", "textContains": ["Enterprise apps", "Tenant-wide consent", "Dormant apps"] },
+    { "name": "EV-LIVE (#1204) -- REAL DATA: the Evidence template (all three slugs share one page component) reads the LIVE security payload; its source marker reads 'live'. The per-evidence-type top-risks and provenance lists stay fixture (no per-item producer on this payload) -- a documented backend gap.", "action": "expect", "selector": "[data-testid='pv2-ev-source']", "state": "present", "textContains": "live" },
     { "name": "EV4 -- open the 'How we know this' provenance panel.", "action": "click", "selector": "[data-testid='pv2-ev-provenance-toggle']" },
     { "name": "EV5 -- the provenance panel carries the design's own line.", "action": "expect", "selector": "[data-testid='pv2-ev-provenance']", "textContains": "Every number on this page traces to one of these queries." },
     { "name": "EV6 -- expand the first flagged application.", "action": "click", "selector": "[data-testid='pv2-ev-row-0']" },

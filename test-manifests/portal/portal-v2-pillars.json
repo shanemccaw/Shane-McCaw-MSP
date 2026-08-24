@@ -1,7 +1,7 @@
 {
   "feature": "Customer Portal v2 -- isolated parallel build of the Overview (/portal-v2) and the six pillar dashboards (/portal-v2/:pillar) in the new navy/journeyTokens design language. Deliberately separate routes from the live /governance, /security-overview, /m365-health, /compliance, /adoption, /licensing pages, which this build does not touch. Data comes from GET /api/portal/assessment/war-room-pillars via components/portal-v2/usePortalV2Pillars.ts, which wraps the EXISTING components/war-room/useWarRoomPillarStats.ts hook rather than reimplementing fetching, retry/backoff or scoring. Pillar identity colours and the 82 gate constant come from components/copilot-journey/journeyTokens.ts (PILLARS, COPILOT_GATE_TARGET); components/ui/score-ring.tsx is reused verbatim, with .pv2-root redefining the --status-*/--muted tokens it reads so it resolves against the navy palette.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "1b1c0a23",
+  "lastVerifiedAgainstCommit": "0bb4a473",
 
   "notes": [
     "SCOPE: Overview + six pillar pages only. Change Control, SOPs & Runbooks, Risk Register, Microsoft Changes and Hold Windows are deliberately NOT built in this pass -- the existing implementations of the first four are MSP-operator-scoped (/api/msp/*, requireRole('MSPOperator') + resolveMspIdStrict) and reusing them from a customer page would leak cross-tenant data; they need new customer-scoped routes first.",
@@ -412,6 +412,13 @@
       "textContains": "RequireAnonymousLinksExpireInDays"
     },
     {
+      "name": "G6-LIVE (#1204) -- REAL DATA: the governance detail drill-down reads the LIVE governance payload via useLivePillarHero; its clipped source marker reads 'live'. The per-sub-area detail table / policy / provenance rows stay fixture (no per-sub-area producer on this payload) -- a documented backend gap.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-gd-source']",
+      "state": "present",
+      "textContains": "live"
+    },
+    {
       "name": "CR1 -- THE GATE, END TO END. A wrench on a policy row opens the fix panel on that fixKey.",
       "action": "click",
       "selector": "[data-testid='pv2-gd-policy-fix-gov-drift-anon-expiry']",
@@ -474,6 +481,13 @@
       "selector": "[data-testid='pv2-ovr-stats']",
       "state": "visible",
       "textContains": "ExternalUserAndGuestSharing"
+    },
+    {
+      "name": "OV2-LIVE (#1204) -- REAL DATA: the Overshared SharePoint drill-down reads the LIVE governance payload via useLivePillarHero; its clipped source marker reads 'live'. The per-site / per-anonymous-link inventory rows stay fixture (no per-object SharePoint feed on this payload) -- a documented backend gap.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-ovr-source']",
+      "state": "present",
+      "textContains": "live"
     },
     {
       "name": "OV3 -- Top Risks are COLLAPSED on arrival. This page puts them behind a rule-and-label toggle, unlike the V2 drill-down template which shows its Top risks panel open in the right column.",
@@ -640,6 +654,13 @@
       "selector": "[data-testid='pv2-ovrall-heading']",
       "state": "visible",
       "textContains": "23,412 sites are shared externally"
+    },
+    {
+      "name": "OV25-LIVE (#1204) -- REAL DATA: the enterprise bulk overshared-site list reads the LIVE governance payload via useLivePillarHero; its clipped source marker reads 'live'. The bulk site rows stay fixture (the real page is a server query yet to be built) -- a documented backend gap.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-ovrall-source']",
+      "state": "present",
+      "textContains": "live"
     },
     {
       "name": "goto the rebuilt Security pillar dashboard. Before this pass /portal-v2/security fell through to the generic API-driven portal-v2-pillar.tsx, not the design's own composition.",

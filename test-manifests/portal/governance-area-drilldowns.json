@@ -1,8 +1,9 @@
 {
   "feature": "Customer Portal v2 Part 11 -- Governance 'generic area' drill-downs: the list shape (/portal-v2/governance/orphaned-teams and /team-owners, isGovListPage 5871-5900), the inventory shape (/governance/device-inventory and /device-lifecycle, isGovInventoryPage 5927-5958) and the drift shape (/governance/sharing-drift-legacy, isGovDriftPage 5902-5925). One page component (portal-v2-gov-area.tsx) reads its slug from the location and picks the shape via govAreaFor; the slug->shape resolution and row derivations are pinned by govAreaModel.test.ts. Design fixtures in govAreaData.ts. Reached from the Governance pillar tiles; declared ABOVE '/portal-v2/governance/:area' so the GOV_PAGES param route does not swallow them. This does NOT touch govPages.ts (Part 2's).",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "PENDING-PART11",
+  "lastVerifiedAgainstCommit": "0bb4a473",
   "notes": [
+    "LIVE-DATA PASS (Git #1204): the generic governance area page now reads the SAME live war-room-pillars payload the Governance pillar page does, through the shared useLivePillarHero seam -- NO second data path. The clipped pv2-govarea-source marker reads 'live' when a real governance score is on the wire. What STAYS fixture, a documented backend gap: the per-sub-area object lists / drift events / stat tiles -- the payload scores the pillar as a whole, not each governance sub-area, so there is no per-sub-area producer. The A-GOV apiTest proves the real finding counts exist independent of whether the new marker has been deployed to the dev server yet.",
     "THE LOGIN BLOCK IS NOT OPTIONAL -- see the shared portal manifest note. With only the two #email/#password input steps red on a persisted session and every page assertion green, that is a PASS.",
     "UI ROUTE SHAPE: real URL is /portal/shane-mccaw-consulting/portal-v2/governance/<slug>. These literal routes are declared ABOVE '/portal-v2/governance/:area' in App.tsx; wouter matches in source order, so the specific slug wins over the GOV_PAGES param route (which would render NotFound for these).",
     "shaneapp://runTest hits the DEPLOYED build -- these routes are new in Part 11, so a run against a build predating the deploy fails at the first assertion (a not-deployed signal, not a page defect). Note '/governance/sharing-drift' (no -legacy) is Part 2's rich GOV_PAGES drill-down, a DIFFERENT page.",
@@ -17,6 +18,13 @@
       "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
       "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
       "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "A-GOV -- war-room-pillars carries the governance card's REAL finding counts. pillars[0] is governance (WAR_ROOM_PILLAR_KEYS order). This page reads the SAME payload via useLivePillarHero (#1204); the source marker below proves it is on it.",
+      "method": "GET",
+      "path": "/api/portal/assessment/war-room-pillars",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.pillars[0].findingCounts.critical", "exists": true }
     }
   ],
   "uiSteps": [
@@ -38,6 +46,7 @@
 
     { "name": "goto the DRIFT-shape drill-down (sharing-drift-legacy).", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/governance/sharing-drift-legacy" },
     { "name": "GOV7 -- the drift heading renders.", "action": "expect", "selector": "[data-testid='pv2-govarea-heading']", "textContains": "External Sharing Drift", "critical": true },
-    { "name": "GOV8 -- the drift timeline events render.", "action": "expect", "selector": "[data-testid='pv2-govarea-events']", "textContains": ["Client Deliverables (SharePoint)", "External link created", "detected scan 14"] }
+    { "name": "GOV8 -- the drift timeline events render.", "action": "expect", "selector": "[data-testid='pv2-govarea-events']", "textContains": ["Client Deliverables (SharePoint)", "External link created", "detected scan 14"] },
+    { "name": "GOV-LIVE (#1204) -- REAL DATA: the governance area page reads the LIVE governance payload; its source marker reads 'live'. The per-sub-area rows/events/stats stay fixture (no per-sub-area producer on this payload) -- a documented backend gap.", "action": "expect", "selector": "[data-testid='pv2-govarea-source']", "state": "present", "textContains": "live" }
   ]
 }
