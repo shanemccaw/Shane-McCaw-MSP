@@ -284,6 +284,7 @@ namespace BuildConsole.Controls
         }
 
         private BuildTrackerApiClient? _api;
+        private BuildQueuePostgresClient? _db;
         private DispatcherTimer? _pollTimer;
 
         // Manual-only GitHub (Shane, 2026-08-14): the Git Board's hands-off
@@ -303,9 +304,10 @@ namespace BuildConsole.Controls
         }
 
         /// <summary>Called once from MainWindow with the shared API client — auto-loads Git issues, Chats, and Manifests on startup so they are immediately available without requiring manual icon clicks.</summary>
-        public void Initialize(BuildTrackerApiClient api)
+        public void Initialize(BuildTrackerApiClient api, BuildQueuePostgresClient? db = null)
         {
             _api = api;
+            _db = db;
 
             // Auto-load Git Board issues & milestones on startup
             PopulateGitTrackerBoard();
@@ -2118,17 +2120,26 @@ namespace BuildConsole.Controls
             DateTime? cachedAtUtc;
             try
             {
-                // Git #931 — falls back to the local cache when the dev
-                // server's unreachable (IsStale=true) instead of throwing;
-                // this catch now only fires when there's NO cache either
-                // (e.g. the very first run before anything ever succeeded).
-                var result = await _api.GetBoardAsync();
-                board = result.Data;
-                isStale = result.IsStale;
-                cachedAtUtc = result.CachedAtUtc;
-                SyncError?.Invoke(this, isStale
-                    ? $"Chats: showing cached data from {result.CachedAtUtc?.ToLocalTime():g} — dev server unreachable"
-                    : null);
+                if (_db != null)
+                {
+                    board = await _db.GetBoardAsync();
+                    isStale = false;
+                    cachedAtUtc = null;
+                }
+                else
+                {
+                    // Git #931 — falls back to the local cache when the dev
+                    // server's unreachable (IsStale=true) instead of throwing;
+                    // this catch now only fires when there's NO cache either
+                    // (e.g. the very first run before anything ever succeeded).
+                    var result = await _api.GetBoardAsync();
+                    board = result.Data;
+                    isStale = result.IsStale;
+                    cachedAtUtc = result.CachedAtUtc;
+                    SyncError?.Invoke(this, isStale
+                        ? $"Chats: showing cached data from {result.CachedAtUtc?.ToLocalTime():g} — dev server unreachable"
+                        : null);
+                }
             }
             catch (Exception ex)
             {

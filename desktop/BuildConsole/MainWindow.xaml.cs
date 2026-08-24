@@ -359,7 +359,7 @@ namespace BuildConsole
             // is always logged and gets a clear error result rather than silence.
             StartShaneAppProtocolListener();
 
-            LeftSidebar.Initialize(_buildTrackerApi);
+            LeftSidebar.Initialize(_buildTrackerApi, _queueDb);
             BuildLogView.Initialize(_buildTrackerApi);
             TerminalView.Initialize(_buildTrackerApi);
             MarketingLogView.Initialize("shane-mccaw-consulting", "Marketing", 5173, "artifacts/shane-mccaw-consulting", "🌐");

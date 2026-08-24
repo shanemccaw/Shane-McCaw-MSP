@@ -317,6 +317,100 @@ namespace BuildConsole.Services
         }
 
         // ── Static factory ────────────────────────────────────────────────────────
+        public async Task<BoardResponse> GetBoardAsync()
+        {
+            var board = new BoardResponse();
+            await using var conn = await OpenAsync();
+
+            // 1. Fetch Epics
+            const string sqlEpics = @"
+                SELECT id, title, status, github_number
+                FROM bt_epics
+                ORDER BY title ASC";
+            await using var cmdEpics = new NpgsqlCommand(sqlEpics, conn);
+            await using (var reader = await cmdEpics.ExecuteReaderAsync())
+            {
+                while (await reader.ReadAsync())
+                {
+                    board.Epics.Add(new BoardEpic
+                    {
+                        Id = reader.GetInt32(0),
+                        Title = reader.IsDBNull(1) ? "" : reader.GetString(1),
+                        Status = reader.IsDBNull(2) ? "" : reader.GetString(2),
+                        GithubNumber = reader.IsDBNull(3) ? null : reader.GetInt32(3)
+                    });
+                }
+            }
+
+            // 2. Fetch Chats and join issue/epic github numbers
+            const string sqlChats = @"
+                SELECT c.id, c.conversation_id, c.title, c.epic_id, c.updated_at,
+                       i.github_number AS issue_github_number,
+                       e.github_number AS epic_github_number
+                FROM bt_chats c
+                LEFT JOIN bt_issues i ON c.issue_id = i.id
+                LEFT JOIN bt_epics e ON c.epic_id = e.id
+                ORDER BY c.updated_at DESC";
+            
+            var chatsTemp = new List<BoardChat>();
+            var chatIdToChat = new Dictionary<int, BoardChat>();
+
+            await using var cmdChats = new NpgsqlCommand(sqlChats, conn);
+            await using (var reader = await cmdChats.ExecuteReaderAsync())
+            {
+                while (await reader.ReadAsync())
+                {
+                    var id = reader.GetInt32(0);
+                    var convId = reader.IsDBNull(1) ? "" : reader.GetString(1);
+                    var chat = new BoardChat
+                    {
+                        ConversationId = convId,
+                        Title = reader.IsDBNull(2) ? "" : reader.GetString(2),
+                        EpicId = reader.IsDBNull(3) ? null : reader.GetInt32(3),
+                        UpdatedAt = reader.IsDBNull(4) ? null : (DateTime?)reader.GetDateTime(4),
+                        ClaudeUrl = $"https://claude.ai/chat/{convId}"
+                    };
+
+                    int? issueGithubNum = reader.IsDBNull(5) ? null : reader.GetInt32(5);
+                    int? epicGithubNum = reader.IsDBNull(6) ? null : reader.GetInt32(6);
+
+                    chat.IssueGithubNumber = issueGithubNum;
+
+                    if (issueGithubNum.HasValue)
+                        chat.AssociatedIssueNumbers.Add(issueGithubNum.Value);
+                    if (epicGithubNum.HasValue)
+                        chat.AssociatedIssueNumbers.Add(epicGithubNum.Value);
+
+                    chatsTemp.Add(chat);
+                    chatIdToChat[id] = chat;
+                }
+            }
+
+            // 3. Fetch associated issue numbers from bt_chat_issues
+            const string sqlChatIssues = @"
+                SELECT chat_id, issue_number
+                FROM bt_chat_issues";
+            await using var cmdChatIssues = new NpgsqlCommand(sqlChatIssues, conn);
+            await using (var reader = await cmdChatIssues.ExecuteReaderAsync())
+            {
+                while (await reader.ReadAsync())
+                {
+                    var chatId = reader.GetInt32(0);
+                    var issueNum = reader.GetInt32(1);
+                    if (chatIdToChat.TryGetValue(chatId, out var chat))
+                    {
+                        if (!chat.AssociatedIssueNumbers.Contains(issueNum))
+                        {
+                            chat.AssociatedIssueNumbers.Add(issueNum);
+                        }
+                    }
+                }
+            }
+
+            board.Chats = chatsTemp;
+            return board;
+        }
+
         /// <summary>
         /// Creates a client from the DATABASE_URL found in:
         ///   1. The config's own databaseUrl field (if non-empty), OR
