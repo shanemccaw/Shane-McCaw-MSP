@@ -22,6 +22,9 @@
     { "name": "goto the portal-v2 Overview -- the shell chrome renders here.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2" },
     { "name": "SH0 -- the header rendered.", "action": "expect", "selector": "[data-testid='pv2-header']", "state": "visible", "critical": true },
 
+    { "name": "SH-health1 -- the sidebar Tenant health bar's fill renders (Git #1180: was a hardcoded 62%/#f87171, now tenantHealthSummary() over the real six pillar scores).", "action": "expect", "selector": "[data-testid='pv2-tenant-health-bar-fill']", "state": "visible", "critical": true },
+    { "name": "SH-health2 -- the score text is a real computed reading, not the removed literal '62 - Needs work': one of the design's own stageMeta labels (or the honest not-yet-scored state), any-of because the real band depends on this tenant's real scan history.", "action": "expect", "selector": "[data-testid='pv2-tenant-health-score']", "textContains": ["Needs attention", "Improving", "Healthy", "Not yet scored"], "critical": true },
+
     { "name": "SH-new-open -- open the New menu.", "action": "click", "selector": "[data-testid='pv2-new-button']", "critical": true },
     { "name": "SH-new1 -- the New menu names a change request.", "action": "expect", "selector": "[data-testid='pv2-new-menu']", "textContains": "Change request", "critical": true },
     { "name": "SH-new2 -- ...and an emergency change.", "action": "expect", "selector": "[data-testid='pv2-new-menu']", "textContains": "Emergency change" },

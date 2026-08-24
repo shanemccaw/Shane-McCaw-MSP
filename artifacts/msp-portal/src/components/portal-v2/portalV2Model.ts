@@ -29,6 +29,7 @@ import {
   PILLARS,
   severityForScore,
   type PillarKey,
+  type Severity,
 } from "@/components/copilot-journey/journeyTokens";
 
 /* ── Wire types (the fields this build reads) ─────────────────────────────── */
@@ -451,4 +452,43 @@ export function isWiringFault(stat: PortalV2Stat): boolean {
     typeof stat.unavailableReason === "string" &&
     WIRING_FAULT_REASONS.includes(stat.unavailableReason)
   );
+}
+
+/**
+ * The shell's sidebar "Tenant health" bar (Customer Portal Shell.dc.html
+ * 76-86 / 8713-8730). The design's fixture computes `overallScore` as the
+ * mean of its six hardcoded pillar scores and picks a `tenantStage`
+ * (bad/decent/good) from a prop; this is the same computation against the
+ * SAME real six pillar scores this build already wires everywhere else
+ * (`usePortalV2Pillars`) — no second source, no invented copy, the stage
+ * labels are the design's own `stageMeta` strings.
+ */
+export interface TenantHealthSummary {
+  /** Rounded mean of every scored pillar. Null when nothing is scored yet. */
+  readonly score: number | null;
+  /** Null exactly when `score` is null — a pillarless average has no band. */
+  readonly severity: Severity | null;
+  /** The design's own stageMeta label for this band. */
+  readonly label: string;
+}
+
+/** Mirrors Customer Portal Shell.dc.html's `stageMeta` labels (8726-8730). */
+const TENANT_HEALTH_STAGE_LABEL: Readonly<Record<Severity, string>> = {
+  critical: "Needs attention",
+  attention: "Improving",
+  healthy: "Healthy",
+};
+
+export function tenantHealthSummary(view: PortalV2View): TenantHealthSummary {
+  const scores = view.pillars
+    .map((p) => p.score)
+    .filter((s): s is number => typeof s === "number");
+
+  if (scores.length === 0) {
+    return { score: null, severity: null, label: "Not yet scored" };
+  }
+
+  const score = Math.round(scores.reduce((sum, s) => sum + s, 0) / scores.length);
+  const severity = severityForScore(score);
+  return { score, severity, label: TENANT_HEALTH_STAGE_LABEL[severity] };
 }

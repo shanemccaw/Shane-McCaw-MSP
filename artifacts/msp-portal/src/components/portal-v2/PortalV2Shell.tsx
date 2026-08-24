@@ -35,7 +35,7 @@ import { Plus } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { useHoldBadge } from "@/components/portal-v2/holds/useHoldBadge";
 import { usePortalV2Pillars } from "@/components/portal-v2/usePortalV2Pillars";
-import { urgentToAlertItems } from "@/components/portal-v2/portalV2Model";
+import { tenantHealthSummary, urgentToAlertItems } from "@/components/portal-v2/portalV2Model";
 import {
   PORTAL_V2_NAV,
   isNavItemActive,
@@ -48,6 +48,7 @@ import {
 
 import {
   PILLAR_ICON_PATHS,
+  SEVERITY_ON_DARK,
   hexAlpha,
 } from "@/components/copilot-journey/journeyTokens";
 
@@ -653,6 +654,8 @@ export function PortalV2Shell({
   // on, not only pages that happen to already call this hook.
   const { view: alertsView, loaded: alertsLoaded } = usePortalV2Pillars();
   const alertItems = useMemo(() => urgentToAlertItems(alertsView.urgent), [alertsView.urgent]);
+  // Sidebar "Tenant health" bar — same six real pillar scores, no second fetch.
+  const tenantHealth = useMemo(() => tenantHealthSummary(alertsView), [alertsView]);
 
   const shaneBot = useShaneBot();
   const openPalette = useCallback(() => {
@@ -817,11 +820,12 @@ export function PortalV2Shell({
             }}
           >
             <div
+              data-testid="pv2-tenant-health-bar-fill"
               style={{
-                width: "62%",
+                width: `${tenantHealth.score ?? 0}%`,
                 height: "100%",
                 borderRadius: 2,
-                background: "#f87171",
+                background: tenantHealth.severity ? SEVERITY_ON_DARK[tenantHealth.severity] : "#64748b",
               }}
             />
           </div>
@@ -839,6 +843,7 @@ export function PortalV2Shell({
                 Tenant health
               </span>
               <span
+                data-testid="pv2-tenant-health-score"
                 style={{
                   fontSize: "10.5px",
                   fontWeight: 700,
@@ -846,7 +851,7 @@ export function PortalV2Shell({
                   fontFamily: MONO,
                 }}
               >
-                62 · Needs work
+                {tenantHealth.score === null ? "—" : tenantHealth.score} · {tenantHealth.label}
               </span>
             </div>
           )}
