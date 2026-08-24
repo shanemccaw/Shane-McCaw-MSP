@@ -512,7 +512,7 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
       "REAL purchased packageKey (type_attributes->>'packageKey' — core:foundation/core:growth/" +
       "core:premier post-#1163; core:foundation is a safe fallback, never core:security-baseline, " +
       "since a real monitoring_tier row always carries a packageKey). All three tiers run daily: the " +
-      "package the subscriber bought is exactly what reruns, so the nested check set (30/129/133) is " +
+      "package the subscriber bought is exactly what reruns, so the nested check set (30/133/137) is " +
       "already tier-correct without a per-tier cadence branch. " +
       "Graph is a verbatim copy of 'Run Assessment' / the weekly rescans (find_object -> find_object " +
       "-> monitor_get_package -> monitor_execute_package) — reuses the exact same full-scan node, no " +
