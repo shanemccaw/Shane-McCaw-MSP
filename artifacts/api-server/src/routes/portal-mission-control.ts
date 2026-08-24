@@ -45,6 +45,7 @@ import { eq, and, desc, inArray } from "drizzle-orm";
 import { requireRole } from "../middlewares/requireAuth";
 import { runEngineManifestForTenant } from "../lib/engine-registry";
 import { ConfigPackError, runConfigPackForCustomer } from "../lib/config-pack-orchestrator";
+import { resolvePackKeyForService } from "../lib/remediation-catalog";
 import { createAuditLog } from "../lib/audit";
 import { logger } from "../lib/logger";
 import { CUSTOMER_SAFE_ENGINES } from "../lib/customer-safe-engines";
@@ -250,14 +251,13 @@ router.get(
 
 const FINDING_SEVERITY_RANK: Record<string, number> = { critical: 0, warning: 1, info: 2 };
 
-// v1 linkage between an offer's catalog service and the config pack its
-// instant-remediation action runs. config_packs has no service FK yet, so the
-// association is the seeded convention from 0195 (service
-// 'entra-id-quickstart-v1' shipped alongside pack 'quickstart-v1'). Replace
-// with a data-driven column when packs gain a service linkage.
-const INSTANT_PACK_BY_SERVICE_SLUG: Record<string, string> = {
-  "entra-id-quickstart-v1": "quickstart-v1",
-};
+// Linkage between an offer's catalog service and the config pack its
+// instant-remediation action runs. This is now data-driven: every config_pack
+// service carries its pack key in `type_attributes.packKey` (with a static
+// fallback for the five public Quick-Start Packs), resolved through the one
+// canonical wiring in lib/remediation-catalog.ts (Git #1172). Superseded the
+// former single hard-coded {'entra-id-quickstart-v1':'quickstart-v1'} map, so
+// all five packs — not just Quick-Start — are now instant-remediable.
 
 // ── Remediable-offer lookup (shared source of truth) ─────────────────────────
 //
@@ -301,14 +301,14 @@ export async function listRemediableOffers(customerId: number): Promise<Remediab
   const serviceIds = [...new Set(offerRows.map((o) => o.serviceId).filter((id): id is number => id != null))];
   const serviceRows = serviceIds.length
     ? await db
-        .select({ id: servicesTable.id, slug: servicesTable.slug })
+        .select({ id: servicesTable.id, slug: servicesTable.slug, category: servicesTable.category, typeAttributes: servicesTable.typeAttributes })
         .from(servicesTable)
         .where(inArray(servicesTable.id, serviceIds))
     : [];
 
   const packByServiceId = new Map<number, string>();
   for (const s of serviceRows) {
-    const packKey = s.slug != null ? INSTANT_PACK_BY_SERVICE_SLUG[s.slug] : undefined;
+    const packKey = resolvePackKeyForService(s);
     if (packKey) packByServiceId.set(s.id, packKey);
   }
 
@@ -414,7 +414,7 @@ router.get(
       const serviceIds = [...new Set(offerRows.map((o) => o.serviceId).filter((id): id is number => id != null))];
       const serviceRows = serviceIds.length
         ? await db
-            .select({ id: servicesTable.id, slug: servicesTable.slug })
+            .select({ id: servicesTable.id, slug: servicesTable.slug, category: servicesTable.category, typeAttributes: servicesTable.typeAttributes })
             .from(servicesTable)
             .where(inArray(servicesTable.id, serviceIds))
         : [];
@@ -427,7 +427,7 @@ router.get(
       const isTestbed = customer?.isTestbed === true;
 
       const instantServiceIds = new Set(
-        serviceRows.filter((s) => s.slug != null && INSTANT_PACK_BY_SERVICE_SLUG[s.slug] != null).map((s) => s.id),
+        serviceRows.filter((s) => resolvePackKeyForService(s) != null).map((s) => s.id),
       );
 
       // Server-side finding→offer linking on signal keys (never exposed to the
@@ -589,12 +589,12 @@ router.post(
 
       const [service] = offer.serviceId != null
         ? await db
-            .select({ slug: servicesTable.slug })
+            .select({ slug: servicesTable.slug, category: servicesTable.category, typeAttributes: servicesTable.typeAttributes })
             .from(servicesTable)
             .where(eq(servicesTable.id, offer.serviceId))
             .limit(1)
         : [];
-      const packKey = service?.slug != null ? INSTANT_PACK_BY_SERVICE_SLUG[service.slug] : undefined;
+      const packKey = service ? resolvePackKeyForService(service) : undefined;
       if (!packKey) {
         res.status(400).json({ error: "This offer does not support instant remediation" });
         return;

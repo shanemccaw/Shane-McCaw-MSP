@@ -25,6 +25,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { useLocation, useSearch } from "wouter";
 import { PayloadField } from "@/pages/workflows/PayloadField";
 import type { AncestorGroup } from "@/pages/workflows/ancestorOutputs";
+import { CatalogTestingSection } from "@/pages/CatalogTesting";
 
 const API = "/api";
 
@@ -963,7 +964,7 @@ function AuditLogSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opts?
 
 // ── Section routing (URL-driven; chrome is provided by the global IDE shell) ──
 
-const RENDERABLE_SECTIONS = ["templates", "config-packs", "audit-log"] as const;
+const RENDERABLE_SECTIONS = ["templates", "config-packs", "packs-remediations", "audit-log"] as const;
 const VALID_TABS = new Set<string>(RENDERABLE_SECTIONS);
 const BT_PATH = "/delivery/baseline-templates";
 
@@ -1003,6 +1004,7 @@ export default function BaselineTemplatesPage() {
           <div key={sectionId} className="absolute inset-0 overflow-hidden" style={{ display: isVisible ? undefined : "none" }}>
             {sectionId === "templates" && <TemplatesSection fetchWithAuth={fetchWithAuth} />}
             {sectionId === "config-packs" && <div className="h-full overflow-y-auto"><ConfigPacksSection fetchWithAuth={fetchWithAuth} /></div>}
+            {sectionId === "packs-remediations" && <div className="h-full overflow-hidden flex flex-col"><CatalogTestingSection fetchWithAuth={fetchWithAuth} /></div>}
             {sectionId === "audit-log" && <div className="h-full overflow-y-auto"><AuditLogSection fetchWithAuth={fetchWithAuth} /></div>}
           </div>
         );

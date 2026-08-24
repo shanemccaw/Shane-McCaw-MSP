@@ -385,6 +385,7 @@ export const WORKSPACES: WorkspaceDef[] = [
         items: [
           { id: "del-bt-templates", label: "Templates", path: "/delivery/baseline-templates", icon: FileStack },
           { id: "del-bt-config-packs", label: "Config Packs", path: "/delivery/baseline-templates?tab=config-packs", icon: Boxes },
+          { id: "del-bt-packs-remediations", label: "Packs & Remediations", path: "/delivery/baseline-templates?tab=packs-remediations", icon: ShieldCheck },
           { id: "del-bt-audit", label: "Audit Log", path: "/delivery/baseline-templates?tab=audit-log", icon: History },
         ],
       },
