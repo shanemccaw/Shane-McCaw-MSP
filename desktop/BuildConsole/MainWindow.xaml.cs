@@ -1526,13 +1526,22 @@ namespace BuildConsole
         /// </summary>
         private async System.Threading.Tasks.Task AssociateChatWithIssueAsync(string conversationId, int issueNumber, string issueType, string defaultTitle)
         {
-            if (_buildTrackerApi == null || !_buildTrackerApi.IsConfigured)
-            {
-                BuildConsole.Services.ActivityLog.Log("git-board.chat", $"cannot associate chat {conversationId} to {issueType} #{issueNumber}: Build Tracker API not configured");
-                return;
-            }
             try
             {
+                if (_queueDb != null)
+                {
+                    await _queueDb.LinkChatToIssueAsync(conversationId, issueNumber, defaultTitle);
+                    BuildConsole.Services.ActivityLog.Log("git-board.chat", $"associated chat {conversationId} -> {issueType} #{issueNumber} — BoardChat upserted (direct Postgres); refreshing Chats panel");
+                    try { LeftSidebar.PopulateChatsTree(); } catch { /* refresh is best-effort */ }
+                    return;
+                }
+
+                if (_buildTrackerApi == null || !_buildTrackerApi.IsConfigured)
+                {
+                    BuildConsole.Services.ActivityLog.Log("git-board.chat", $"cannot associate chat {conversationId} to {issueType} #{issueNumber}: Build Tracker API not configured");
+                    return;
+                }
+
                 var resp = await _buildTrackerApi.LinkChatToIssueAsync(conversationId, issueNumber, defaultTitle);
                 if (resp.IsSuccessStatusCode)
                 {

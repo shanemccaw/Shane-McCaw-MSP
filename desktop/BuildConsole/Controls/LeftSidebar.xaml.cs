@@ -2806,12 +2806,20 @@ namespace BuildConsole.Controls
                 int targetNumber = dialog.SelectedEpicId.Value;
                 try
                 {
-                    var res = await _api.LinkChatToIssueAsync(chat.ConversationId, targetNumber);
-                    if (!res.IsSuccessStatusCode)
+                    if (_db != null)
                     {
-                        var body = await res.Content.ReadAsStringAsync();
-                        ToastEngine.Error("Link Chat", $"Couldn't link chat: {body}");
-                        return;
+                        await _db.LinkChatToIssueAsync(chat.ConversationId, targetNumber);
+                    }
+                    else
+                    {
+                        if (_api == null) return;
+                        var res = await _api.LinkChatToIssueAsync(chat.ConversationId, targetNumber);
+                        if (!res.IsSuccessStatusCode)
+                        {
+                            var body = await res.Content.ReadAsStringAsync();
+                            ToastEngine.Error("Link Chat", $"Couldn't link chat: {body}");
+                            return;
+                        }
                     }
                     if (!chat.AssociatedIssueNumbers.Contains(targetNumber))
                         chat.AssociatedIssueNumbers.Add(targetNumber);
@@ -2842,15 +2850,22 @@ namespace BuildConsole.Controls
                     var miItem = new MenuItem { Header = label };
                     miItem.Click += async (_, _) =>
                     {
-                        if (_api == null) return;
                         try
                         {
-                            var res = await _api.UnlinkChatFromIssueAsync(chat.ConversationId, issueNum);
-                            if (!res.IsSuccessStatusCode)
+                            if (_db != null)
                             {
-                                var body = await res.Content.ReadAsStringAsync();
-                                ToastEngine.Error("Unlink Chat", $"Couldn't unlink: {body}");
-                                return;
+                                await _db.UnlinkChatFromIssueAsync(chat.ConversationId, issueNum);
+                            }
+                            else
+                            {
+                                if (_api == null) return;
+                                var res = await _api.UnlinkChatFromIssueAsync(chat.ConversationId, issueNum);
+                                if (!res.IsSuccessStatusCode)
+                                {
+                                    var body = await res.Content.ReadAsStringAsync();
+                                    ToastEngine.Error("Unlink Chat", $"Couldn't unlink: {body}");
+                                    return;
+                                }
                             }
                             chat.AssociatedIssueNumbers.Remove(issueNum);
                             _lastBoardSignature = null;
@@ -3538,12 +3553,19 @@ namespace BuildConsole.Controls
                             var conversationId = convMatch.Groups[1].Value;
                             try
                             {
-                                var res = await _api.LinkChatToIssueAsync(conversationId, m.GithubNumber.Value, $"[Milestone #{m.GithubNumber.Value}] {m.Title}");
-                                if (!res.IsSuccessStatusCode)
+                                if (_db != null)
                                 {
-                                    var body = await res.Content.ReadAsStringAsync();
-                                    ToastEngine.Error("Assign Chat to Milestone", $"Couldn't assign: {body}");
-                                    return;
+                                    await _db.LinkChatToIssueAsync(conversationId, m.GithubNumber.Value, $"[Milestone #{m.GithubNumber.Value}] {m.Title}");
+                                }
+                                else
+                                {
+                                    var res = await _api.LinkChatToIssueAsync(conversationId, m.GithubNumber.Value, $"[Milestone #{m.GithubNumber.Value}] {m.Title}");
+                                    if (!res.IsSuccessStatusCode)
+                                    {
+                                        var body = await res.Content.ReadAsStringAsync();
+                                        ToastEngine.Error("Assign Chat to Milestone", $"Couldn't assign: {body}");
+                                        return;
+                                    }
                                 }
                                 // Update local state
                                 var targetChat = _lastBoardChats.FirstOrDefault(c => c.ConversationId == conversationId);
@@ -4321,13 +4343,20 @@ namespace BuildConsole.Controls
 
                     try
                     {
-                        var res = await _api.LinkChatToIssueAsync(conversationId, issue.IssueNumber, $"[#{issue.IssueNumber}] {issue.RawTitle}");
-                        if (!res.IsSuccessStatusCode)
+                        if (_db != null)
                         {
-                            var body = await res.Content.ReadAsStringAsync();
-                            ActivityLog.Log("git-board.assign-chat", $"assign chat {conversationId} -> issue #{issue.IssueNumber} FAILED: HTTP {(int)res.StatusCode} {body}");
-                            ToastEngine.Error("Assign Chat to Issue", $"Couldn't assign: {body}");
-                            return;
+                            await _db.LinkChatToIssueAsync(conversationId, issue.IssueNumber, $"[#{issue.IssueNumber}] {issue.RawTitle}");
+                        }
+                        else
+                        {
+                            var res = await _api.LinkChatToIssueAsync(conversationId, issue.IssueNumber, $"[#{issue.IssueNumber}] {issue.RawTitle}");
+                            if (!res.IsSuccessStatusCode)
+                            {
+                                var body = await res.Content.ReadAsStringAsync();
+                                ActivityLog.Log("git-board.assign-chat", $"assign chat {conversationId} -> issue #{issue.IssueNumber} FAILED: HTTP {(int)res.StatusCode} {body}");
+                                ToastEngine.Error("Assign Chat to Issue", $"Couldn't assign: {body}");
+                                return;
+                            }
                         }
                         ActivityLog.Log("git-board.assign-chat", $"assigned chat {conversationId} ({chatUrl}) -> issue #{issue.IssueNumber}");
 

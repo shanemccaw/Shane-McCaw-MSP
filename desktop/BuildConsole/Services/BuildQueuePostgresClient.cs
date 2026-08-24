@@ -771,6 +771,105 @@ namespace BuildConsole.Services
             return reader.IsDBNull(0) ? null : reader.GetFieldValue<DateTime>(0);
         }
 
+        // ── LinkChatToIssueAsync ──────────────────────────────────────────────────
+        /// <summary>
+        /// Links a chat to a GitHub issue directly in the Postgres database,
+        /// bypassing the API server. This matches the behavior of POST /chats/assign-issue.
+        /// </summary>
+        public async Task LinkChatToIssueAsync(string conversationId, int issueNumber, string? title = null)
+        {
+            await using var conn = await OpenAsync();
+
+            // Step 1: Check if the chat exists in bt_chats
+            const string selectSql = "SELECT id FROM bt_chats WHERE conversation_id = @convId LIMIT 1";
+            int? chatId = null;
+
+            await using (var cmd = new NpgsqlCommand(selectSql, conn))
+            {
+                cmd.Parameters.AddWithValue("@convId", conversationId);
+                var val = await cmd.ExecuteScalarAsync();
+                if (val != null && val != DBNull.Value)
+                {
+                    chatId = Convert.ToInt32(val);
+                }
+            }
+
+            // Step 2: If it doesn't exist, insert it and get the new ID
+            if (chatId == null)
+            {
+                const string insertChatSql = @"
+                    INSERT INTO bt_chats (conversation_id, title)
+                    VALUES (@convId, @title)
+                    RETURNING id";
+                
+                await using (var cmd = new NpgsqlCommand(insertChatSql, conn))
+                {
+                    cmd.Parameters.AddWithValue("@convId", conversationId);
+                    cmd.Parameters.AddWithValue("@title", title?.Trim() ?? $"[#{issueNumber}] Chat");
+                    var val = await cmd.ExecuteScalarAsync();
+                    if (val != null && val != DBNull.Value)
+                    {
+                        chatId = Convert.ToInt32(val);
+                    }
+                }
+            }
+
+            if (chatId == null)
+                throw new Exception("Failed to insert or find chat in bt_chats");
+
+            // Step 3: Insert link into bt_chat_issues with ON CONFLICT DO NOTHING
+            const string insertLinkSql = @"
+                INSERT INTO bt_chat_issues (chat_id, issue_number)
+                VALUES (@chatId, @issueNumber)
+                ON CONFLICT DO NOTHING";
+
+            await using (var cmd = new NpgsqlCommand(insertLinkSql, conn))
+            {
+                cmd.Parameters.AddWithValue("@chatId", chatId.Value);
+                cmd.Parameters.AddWithValue("@issueNumber", issueNumber);
+                await cmd.ExecuteNonQueryAsync();
+            }
+        }
+
+        // ── UnlinkChatFromIssueAsync ──────────────────────────────────────────────
+        /// <summary>
+        /// Unlinks a chat from a GitHub issue directly in the Postgres database,
+        /// bypassing the API server. This matches the behavior of POST /chats/unassign-issue.
+        /// </summary>
+        public async Task UnlinkChatFromIssueAsync(string conversationId, int issueNumber)
+        {
+            await using var conn = await OpenAsync();
+
+            // Step 1: Check if the chat exists in bt_chats
+            const string selectSql = "SELECT id FROM bt_chats WHERE conversation_id = @convId LIMIT 1";
+            int? chatId = null;
+
+            await using (var cmd = new NpgsqlCommand(selectSql, conn))
+            {
+                cmd.Parameters.AddWithValue("@convId", conversationId);
+                var val = await cmd.ExecuteScalarAsync();
+                if (val != null && val != DBNull.Value)
+                {
+                    chatId = Convert.ToInt32(val);
+                }
+            }
+
+            // Step 2: If it exists, delete the link from bt_chat_issues
+            if (chatId != null)
+            {
+                const string deleteLinkSql = @"
+                    DELETE FROM bt_chat_issues
+                    WHERE chat_id = @chatId AND issue_number = @issueNumber";
+
+                await using (var cmd = new NpgsqlCommand(deleteLinkSql, conn))
+                {
+                    cmd.Parameters.AddWithValue("@chatId", chatId.Value);
+                    cmd.Parameters.AddWithValue("@issueNumber", issueNumber);
+                    await cmd.ExecuteNonQueryAsync();
+                }
+            }
+        }
+
         /// <summary>
         /// Creates a client from the DATABASE_URL found in:
         ///   1. The config's own databaseUrl field (if non-empty), OR
