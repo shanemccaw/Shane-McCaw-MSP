@@ -573,6 +573,41 @@ namespace BuildConsole.Services
         }
 
         /// <summary>
+        /// <summary>
+        /// Git #1203 — build the prompt actually delivered to a launched session,
+        /// prepending a short, explicit progress-reporting preamble that carries the
+        /// one id the agent must use for shaneapp://reportProgress / report-progress.mjs.
+        ///
+        /// That id is the queue row id (<paramref name="item"/>.Id): Build Watch's live
+        /// per-build progress panel keys on it (BuildWatchWindow.OccupySlot →
+        /// SetChecklistBuild(item.Id)), so a report under any other value (e.g. the
+        /// GitHub number) would be tracked but never shown on this build's slot. The
+        /// stripped `--title`/GitHub number is included only as human-readable context.
+        ///
+        /// item.Prompt is not mutated — this composed string is used solely for the
+        /// launch (positional arg / first stream-json user message); the Build Watch
+        /// "Original instructions" reveal still shows the real prompt.
+        /// </summary>
+        internal static string ComposeLaunchPrompt(QueueItem item)
+        {
+            string body = item.Prompt ?? string.Empty;
+            string ghContext = item.GithubNumber.HasValue
+                ? $" (this build also tracks GitHub issue #{item.GithubNumber.Value}, but that is NOT the progress id — use {item.Id}.)"
+                : string.Empty;
+
+            string preamble =
+                "[BuildConsole — progress reporting for THIS build]\n" +
+                $"Your buildId for progress reporting is {item.Id}. Whenever you report a milestone — " +
+                $"`node scripts/report-progress.mjs {item.Id} <step> <total> \"<phase>\"` or " +
+                $"`shaneapp://reportProgress?buildId={item.Id}&step=<N>&total=<M>&label=<phase>` — " +
+                $"pass buildId={item.Id} exactly." + ghContext + " This id is ALWAYS available for a queued " +
+                "build; never skip progress reporting for lack of a GitHub issue number. BuildConsole's " +
+                "Build Watch progress panel listens on precisely this id.\n" +
+                "\n----------------------------------------------------------------------\n\n";
+
+            return preamble + body;
+        }
+
         /// Git #800 — queued builds run with --print (non-interactive, real
         /// auto-exit with a real exit code) same as the standalone watcher.
         /// Output is redirected to the SAME per-item log file convention
@@ -589,6 +624,20 @@ namespace BuildConsole.Services
         {
             var settings = BuildConsoleSettings.Load();
             bool interactive = settings.InteractiveBuilds;
+
+            // Git #1203 — the launched session must be TOLD its own buildId. The
+            // `--title N` header a build was queued with (and any GitHub number it
+            // resolved to) is parsed off and stripped before the prompt body is stored
+            // (EditBuildPromptDialog.PrepareFinalPayload → FinalPrompt = rest), so the
+            // agent's own prompt contains no id at all — it would reason "no Git #" and
+            // silently skip reportProgress entirely. Worse, Build Watch's live progress
+            // panel correlates on the queue row id (BuildWatchWindow.OccupySlot →
+            // SetChecklistBuild(item.Id)), NOT the GitHub number, so item.Id is the
+            // exact value the agent must report for progress to actually show. Prepend a
+            // short, explicit preamble carrying that id so every session always knows
+            // what to pass and never skips. (item.Prompt itself is left untouched so the
+            // "Original instructions" reveal and slot.Prompt stay clean.)
+            string launchPrompt = ComposeLaunchPrompt(item);
 
             var psi = new ProcessStartInfo
             {
@@ -671,7 +720,7 @@ namespace BuildConsole.Services
                 // at all — it goes over stdin as JSON — so this whole class of
                 // arg-mangling bug can't apply to them.)
                 psi.ArgumentList.Add("--");
-                psi.ArgumentList.Add(item.Prompt);
+                psi.ArgumentList.Add(launchPrompt);
             }
 
             var logPath = BuildLogPaths.ForQueueItem(item.Id);
@@ -706,7 +755,7 @@ namespace BuildConsole.Services
                 // Deliver the initial prompt as the first stream-json user
                 // message. If this throws (rare), the process is still up and
                 // the build will simply idle-finalize; log it either way.
-                try { WriteUserMessage(entry, item.Prompt); }
+                try { WriteUserMessage(entry, launchPrompt); }
                 catch (Exception ex) { ActivityLog.Log("interactive-build", $"couldn't write initial prompt to queue #{item.Id}: {ex.Message}"); }
             }
 
