@@ -133,6 +133,44 @@ If it's still genuinely blocked (the dependency is still open and not `complete`
 
 Shane's BuildConsole desktop app (`desktop/BuildConsole/`) reads both the label and the real dependency to show a blocked build nested under whatever it's waiting on, in a red box — and flags it a different color the moment that dependency clears, so he knows to go start it again without having to remember himself.
 
+## Build-prompt header convention (queued builds)
+
+A queued build's prompt may start with a single leading line of `--flag value`
+options that BuildConsole (`EditBuildPromptDialog` → `bt_build_queue`) parses off
+the top before the real prompt body. The whole first line must be flags only, or
+none are parsed (the line is treated as prompt text). Recognized flags:
+
+| Flag | Meaning |
+|------|---------|
+| `--title <text>` | Build/queue title (a bare number is also read as the GitHub issue number). |
+| `--model <id>` | Model override for the launched session (e.g. `claude-opus-5`). |
+| `--effort <low\|medium\|high>` | Reasoning-effort size proxy. |
+| `--cwd <path>` | Working directory the build runs in. |
+| `--blocked-by <n,n,...>` / `--block-by <n,...>` | GitHub / local blockers that must clear before this build runs. |
+| `--buildSet <name>` | **Build Set** — group this build with every other build sharing the same `<name>` so the local dev server restarts ONCE, after the whole set finishes, instead of once per build. |
+
+### `--buildSet` — when and why to use it
+
+Shane routinely stacks 10-20 related builds in the queue, properly blocked by
+their parents. Without grouping, every green build triggers a full teardown +
+rebuild of all four local dev services (Marketing, Portal, Admin Panel, API
+Server) — real memory/resource churn on his dev box. Put the **same**
+`--buildSet <name>` on the header of every build in such a stack (use a **unique
+name per wave**, e.g. `--buildSet enhanced-monitoring`) and the
+`scripts/dev-server/` coordinator will:
+
+- merge each member's committed changes into the shared dev-server checkout as it
+  finishes, but **defer the restart** — no restart fires for an individual member;
+- once **every** member of the set has completed, fire **exactly ONE**
+  restart/rebuild of all four services for the combined changes, then run the
+  relevant tests **once** for the whole set.
+
+Builds queued **without** `--buildSet` are unchanged — they keep the existing
+per-build merge+restart+coalescing behavior. Use `--buildSet` only for a genuine
+stack of related builds meant to go live together; a lone ad-hoc build doesn't
+need it. See `scripts/dev-server/README.md` (“Build Sets”) for the full mechanism,
+the failure/`close` backstop, and the `buildset.mjs status|close|drop` tools.
+
 ## Git conventions
 
 - **Commit directly to `main`. Do not create a new branch**, unless explicitly told otherwise for a specific task. Branches in this project have repeatedly ended up orphaned/unpushed/unmerged, causing real work to be lost. `main` is the default target.

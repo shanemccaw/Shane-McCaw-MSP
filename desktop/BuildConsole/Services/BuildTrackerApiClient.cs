@@ -18,6 +18,8 @@ namespace BuildConsole.Services
         public string? Model { get; set; }
         public string? Effort { get; set; }
         public string? Cwd { get; set; }
+        /// <summary>Build Sets — an optional named group (the `--buildSet &lt;name&gt;` build-prompt header flag) shared by a stack of related builds. When set, the scripts/dev-server coordinator DEFERS the dev-server restart until every member of the set has merged, then fires exactly ONE restart+rebuild of all services + one combined test pass. Passed to each launched build as the DEV_BUILD_SET env var. Null = ungrouped (existing per-build behavior).</summary>
+        public string? BuildSet { get; set; }
         public int? GithubNumber { get; set; }
         public int? BlockedByNumber { get; set; }
         /// <summary>Git #813 — the real field going forward; BlockedByNumber (singular) stays for back-compat, set to the first entry.</summary>

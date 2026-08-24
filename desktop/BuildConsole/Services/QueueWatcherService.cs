@@ -97,6 +97,10 @@ namespace BuildConsole.Services
             public string Title = "";
             /// <summary>Git #826 — filled in as soon as the run's stream-json output reveals it (usually the very first line); reported at completion so a later Reply can resume this exact conversation.</summary>
             public string? SessionId;
+            /// <summary>Build Sets — the set name this build belongs to (null = ungrouped). When set, once this build's wave has fully drained the watcher tells the dev-server coordinator to `close` the set as a backstop.</summary>
+            public string? BuildSet;
+            /// <summary>Build Sets — this build's member key within its set (github number, else queue id) so a failed member can be dropped/accounted for.</summary>
+            public string? BuildSetMember;
             /// <summary>Approximate current context-window usage — input_tokens + cache_creation_input_tokens + cache_read_input_tokens of the most recently seen "assistant"/"result" stream-json event's real `usage` object (the standard way to read "how full is the context window", since every API turn re-sends the whole conversation as input). Overwritten (not summed) on each new usage-bearing line. Null until the first such line lands.</summary>
             public long? ContextTokens;
 
@@ -382,6 +386,70 @@ namespace BuildConsole.Services
             }
         }
 
+        // ── Build Sets backstop ─────────────────────────────────────────────────
+        /// <summary>
+        /// If a just-finished build was part of a build set and no more members of that
+        /// set are still queued or running (the wave has fully drained), signal the
+        /// dev-server coordinator to <c>close</c> the set. Closing completes the set on
+        /// exactly the members that merged, so its single deferred restart fires even
+        /// when a member failed without ever calling request-restart. On the happy path
+        /// the set already auto-completed via the expected member count, so this close is
+        /// a single-shot no-op. Direct-Postgres only (the count needs the queue table).
+        /// </summary>
+        private async Task MaybeCloseDrainedBuildSetAsync(string buildSet, int justFinishedId)
+        {
+            if (_db == null) return; // HTTP-fallback mode: can't count set members
+            int remaining = await _db.CountBuildSetPendingAsync(buildSet, justFinishedId);
+            if (remaining > 0) return; // more members still queued/running — not drained yet
+            ActivityLog.Log("watcher", $"Build set '{buildSet}' fully drained — telling the dev-server coordinator to close it (fires the ONE deferred restart if it hasn't already).");
+            SpawnBuildSetClose(buildSet);
+        }
+
+        /// <summary>Fire-and-forget <c>node scripts/dev-server/buildset.mjs close &lt;name&gt;</c>
+        /// from the main repo root (same shared coordinator state every agent worktree
+        /// resolves). Best-effort: logs the outcome, never throws into the reap loop.</summary>
+        private void SpawnBuildSetClose(string buildSet)
+        {
+            try
+            {
+                string script = Path.Combine(_repoRoot, "scripts", "dev-server", "buildset.mjs");
+                if (!File.Exists(script))
+                {
+                    ActivityLog.Log("watcher", $"buildset.mjs not found at {script} — cannot close set '{buildSet}'.");
+                    return;
+                }
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "node",
+                    WorkingDirectory = _repoRoot,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                };
+                psi.ArgumentList.Add(script);
+                psi.ArgumentList.Add("close");
+                psi.ArgumentList.Add(buildSet);
+                var p = Process.Start(psi);
+                if (p == null) return;
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        string o = (await p.StandardOutput.ReadToEndAsync()).Trim();
+                        string e = (await p.StandardError.ReadToEndAsync()).Trim();
+                        p.WaitForExit(120000);
+                        ActivityLog.Log("watcher", $"buildset close '{buildSet}' -> exit {p.ExitCode}. {o} {e}".Trim());
+                    }
+                    catch (Exception ex) { ActivityLog.Log("watcher", $"buildset close '{buildSet}' output read failed: {ex.Message}"); }
+                });
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("watcher", $"Couldn't spawn buildset close for '{buildSet}': {ex.Message}");
+            }
+        }
+
         private async Task TickAsync()
         {
             // A tick can take longer than 10s (network latency, a slow
@@ -435,6 +503,19 @@ namespace BuildConsole.Services
                     {
                         ActivityLog.Log("watcher", $"A BuildFinished handler threw for queue item {id}: {ex.Message}");
                     }
+
+                    // Build Sets — backstop: once this build's wave has fully drained (no
+                    // more queued/running members), tell the dev-server coordinator to
+                    // `close` the set so it completes — and fires its ONE deferred restart —
+                    // even if a member failed without ever reporting to request-restart. On
+                    // the happy path the set already auto-completed via the expected-count,
+                    // so this close is a harmless single-shot no-op. Best-effort.
+                    if (!string.IsNullOrWhiteSpace(entry.BuildSet))
+                    {
+                        try { await MaybeCloseDrainedBuildSetAsync(entry.BuildSet!, id); }
+                        catch (Exception ex) { ActivityLog.Log("watcher", $"Build-set close backstop for '{entry.BuildSet}' failed: {ex.Message}"); }
+                    }
+
                     // Keep an interactive build's output around for the Build
                     // Watch window to finish draining and to hold its slot in
                     // interactive-render mode (never double-rendering via a
@@ -471,7 +552,17 @@ namespace BuildConsole.Services
 
                 foreach (var item in next)
                 {
-                    try { LaunchItem(item); }
+                    // Build Sets — resolve the set's expected member count (the wave size)
+                    // so the dev-server coordinator knows how many members to wait for
+                    // before firing the ONE deferred restart. Best-effort; a null just
+                    // means the set relies on the drain-close backstop instead.
+                    int? buildSetExpected = null;
+                    if (!string.IsNullOrWhiteSpace(item.BuildSet) && _db != null)
+                    {
+                        try { buildSetExpected = await _db.CountBuildSetMembersAsync(item.BuildSet); }
+                        catch (Exception ex) { ActivityLog.Log("watcher", $"Couldn't count build-set members for '{item.BuildSet}': {ex.Message}"); }
+                    }
+                    try { LaunchItem(item, buildSetExpected); }
                     catch (Exception ex) { ActivityLog.Log("watcher", $"Couldn't launch queue item {item.Id} ({item.Title}): {ex.Message}"); }
                 }
             }
@@ -494,7 +585,7 @@ namespace BuildConsole.Services
         /// stream-json, and deliver the prompt as the first stdin message
         /// instead of a positional arg — see the class doc comment.
         /// </summary>
-        private void LaunchItem(QueueItem item)
+        private void LaunchItem(QueueItem item, int? buildSetExpected = null)
         {
             var settings = BuildConsoleSettings.Load();
             bool interactive = settings.InteractiveBuilds;
@@ -534,6 +625,23 @@ namespace BuildConsole.Services
                 if (!string.IsNullOrWhiteSpace(item.Model)) { psi.ArgumentList.Add("--model"); psi.ArgumentList.Add(item.Model); }
                 if (!string.IsNullOrWhiteSpace(item.Effort)) { psi.ArgumentList.Add("--effort"); psi.ArgumentList.Add(item.Effort); }
             }
+
+            // Build Sets — hand the dev-server coordinator everything it needs (via env)
+            // to DEFER the dev-server restart until every member of this set has merged,
+            // then fire exactly ONE restart for the combined changes. The agent's
+            // `request-restart.mjs` reads these (DEV_BUILD_SET / _MEMBER / _EXPECTED) with
+            // no extra work on its part. Unset for ungrouped builds — those keep the
+            // existing per-build coalescing untouched. See scripts/dev-server/.
+            if (!string.IsNullOrWhiteSpace(item.BuildSet))
+            {
+                string memberKey = item.GithubNumber?.ToString() ?? item.Id.ToString();
+                psi.Environment["DEV_BUILD_SET"] = item.BuildSet;
+                psi.Environment["DEV_BUILD_SET_MEMBER"] = memberKey;
+                if (buildSetExpected.HasValue && buildSetExpected.Value > 0)
+                    psi.Environment["DEV_BUILD_SET_EXPECTED"] = buildSetExpected.Value.ToString();
+                ActivityLog.Log("watcher", $"Build set '{item.BuildSet}': launching member {memberKey} (expected {(buildSetExpected?.ToString() ?? "?")}) — dev-server restart deferred until the whole set completes.");
+            }
+
             psi.ArgumentList.Add("--permission-mode");
             psi.ArgumentList.Add("auto");
             psi.ArgumentList.Add("--print");
@@ -583,6 +691,8 @@ namespace BuildConsole.Services
                 LastActivityUtc = DateTime.UtcNow,
                 State = InteractiveInputState.Working,
                 IdleFinalizeMs = Math.Max(0, settings.InteractiveIdleFinalizeSeconds) * 1000,
+                BuildSet = string.IsNullOrWhiteSpace(item.BuildSet) ? null : item.BuildSet,
+                BuildSetMember = string.IsNullOrWhiteSpace(item.BuildSet) ? null : (item.GithubNumber?.ToString() ?? item.Id.ToString()),
             };
             proc.OutputDataReceived += (_, e) => HandleOutput(entry, item.Id, e.Data);
             proc.ErrorDataReceived += (_, e) => { if (e.Data != null) HandleStderr(entry, e.Data); };

@@ -185,7 +185,7 @@ namespace BuildConsole.Services
                 SELECT id, title, prompt, model, effort, cwd,
                        github_number, blocked_by_number, blocked_by_numbers,
                        status, exit_code, session_id, resume_session_id,
-                       originating_chat_id, chat_url, updated_at
+                       originating_chat_id, chat_url, updated_at, build_set
                 FROM bt_build_queue
                 ORDER BY created_at ASC";
 
@@ -220,7 +220,7 @@ namespace BuildConsole.Services
                 SELECT id, title, prompt, model, effort, cwd,
                        github_number, blocked_by_number, blocked_by_numbers,
                        status, exit_code, session_id, resume_session_id,
-                       originating_chat_id, chat_url, updated_at
+                       originating_chat_id, chat_url, updated_at, build_set
                 FROM bt_build_queue
                 WHERE status = 'queued'
                 ORDER BY created_at ASC";
@@ -265,7 +265,7 @@ namespace BuildConsole.Services
                 RETURNING id, title, prompt, model, effort, cwd,
                           github_number, blocked_by_number, blocked_by_numbers,
                           status, exit_code, session_id, resume_session_id,
-                          originating_chat_id, chat_url, updated_at";
+                          originating_chat_id, chat_url, updated_at, build_set";
 
             var claimed = new List<QueueItem>();
             await using (var reader = await claimCmd.ExecuteReaderAsync())
@@ -291,12 +291,13 @@ namespace BuildConsole.Services
         public async Task<QueueItem> QueueBuildAsync(
             string title, string prompt, string? model, string? effort, string? cwd,
             int? githubNumber, List<int>? blockedByNumbers, string? resumeSessionId = null,
-            string? chatUrl = null, string? originatingChatId = null)
+            string? chatUrl = null, string? originatingChatId = null, string? buildSet = null)
         {
             var titleTrimmed = title.Trim();
             var modelTrimmed = string.IsNullOrWhiteSpace(model) ? null : model.Trim();
             var effortTrimmed = string.IsNullOrWhiteSpace(effort) ? null : effort.Trim();
             var cwdTrimmed = string.IsNullOrWhiteSpace(cwd) ? null : cwd.Trim();
+            var buildSetTrimmed = string.IsNullOrWhiteSpace(buildSet) ? null : buildSet.Trim();
             var originatingChatIdTrimmed = string.IsNullOrWhiteSpace(originatingChatId) ? null : originatingChatId.Trim();
             var chatUrlTrimmed = string.IsNullOrWhiteSpace(chatUrl) ? null : chatUrl.Trim();
 
@@ -326,6 +327,7 @@ namespace BuildConsole.Services
                     await using var updateCmd = new NpgsqlCommand(@"
                         UPDATE bt_build_queue
                            SET title = @title, prompt = @prompt, model = @model, effort = @effort, cwd = @cwd,
+                               build_set = @buildSet,
                                blocked_by_number = @blockedByNumber, blocked_by_numbers = @blockedByNumbers,
                                resume_session_id = @resumeSessionId, originating_chat_id = @originatingChatId,
                                chat_url = @chatUrl, status = 'queued', claimed_at = NULL, completed_at = NULL,
@@ -334,12 +336,13 @@ namespace BuildConsole.Services
                         RETURNING id, title, prompt, model, effort, cwd,
                                   github_number, blocked_by_number, blocked_by_numbers,
                                   status, exit_code, session_id, resume_session_id,
-                                  originating_chat_id, chat_url, updated_at", conn);
+                                  originating_chat_id, chat_url, updated_at, build_set", conn);
                     updateCmd.Parameters.AddWithValue("@title", titleTrimmed);
                     updateCmd.Parameters.AddWithValue("@prompt", prompt);
                     updateCmd.Parameters.AddWithValue("@model", (object?)modelTrimmed ?? DBNull.Value);
                     updateCmd.Parameters.AddWithValue("@effort", (object?)effortTrimmed ?? DBNull.Value);
                     updateCmd.Parameters.AddWithValue("@cwd", (object?)cwdTrimmed ?? DBNull.Value);
+                    updateCmd.Parameters.AddWithValue("@buildSet", (object?)buildSetTrimmed ?? DBNull.Value);
                     updateCmd.Parameters.AddWithValue("@blockedByNumber", (object?)firstBlocker ?? DBNull.Value);
                     updateCmd.Parameters.Add(new NpgsqlParameter("@blockedByNumbers", NpgsqlDbType.Array | NpgsqlDbType.Integer)
                     { Value = (object?)blockerArray ?? DBNull.Value });
@@ -358,20 +361,21 @@ namespace BuildConsole.Services
                     INSERT INTO bt_build_queue
                         (title, prompt, model, effort, cwd, github_number,
                          blocked_by_number, blocked_by_numbers, resume_session_id,
-                         originating_chat_id, chat_url)
+                         originating_chat_id, chat_url, build_set)
                     VALUES
                         (@title, @prompt, @model, @effort, @cwd, @githubNumber,
                          @blockedByNumber, @blockedByNumbers, @resumeSessionId,
-                         @originatingChatId, @chatUrl)
+                         @originatingChatId, @chatUrl, @buildSet)
                     RETURNING id, title, prompt, model, effort, cwd,
                               github_number, blocked_by_number, blocked_by_numbers,
                               status, exit_code, session_id, resume_session_id,
-                              originating_chat_id, chat_url, updated_at", conn);
+                              originating_chat_id, chat_url, updated_at, build_set", conn);
                 insertCmd.Parameters.AddWithValue("@title", titleTrimmed);
                 insertCmd.Parameters.AddWithValue("@prompt", prompt);
                 insertCmd.Parameters.AddWithValue("@model", (object?)modelTrimmed ?? DBNull.Value);
                 insertCmd.Parameters.AddWithValue("@effort", (object?)effortTrimmed ?? DBNull.Value);
                 insertCmd.Parameters.AddWithValue("@cwd", (object?)cwdTrimmed ?? DBNull.Value);
+                insertCmd.Parameters.AddWithValue("@buildSet", (object?)buildSetTrimmed ?? DBNull.Value);
                 insertCmd.Parameters.AddWithValue("@githubNumber", (object?)githubNumber ?? DBNull.Value);
                 insertCmd.Parameters.AddWithValue("@blockedByNumber", (object?)firstBlocker ?? DBNull.Value);
                 insertCmd.Parameters.Add(new NpgsqlParameter("@blockedByNumbers", NpgsqlDbType.Array | NpgsqlDbType.Integer)
@@ -426,6 +430,40 @@ namespace BuildConsole.Services
                 sessionId != null ? (object)sessionId : DBNull.Value);
             cmd.Parameters.AddWithValue("@id", id);
             await cmd.ExecuteNonQueryAsync();
+        }
+
+        // ── Build Sets ────────────────────────────────────────────────────────────
+        /// <summary>Total number of queue rows in a build set (the wave size) — the
+        /// count the dev-server coordinator uses as the set's "expected" member count,
+        /// so it can defer the dev-server restart until every member has merged and
+        /// then fire exactly ONE restart. Counts every non-canceled row with this
+        /// build_set; use a UNIQUE set name per wave so a reused name never inflates
+        /// the count. Returns 0 for a null/blank set (i.e. an ungrouped build).</summary>
+        public async Task<int> CountBuildSetMembersAsync(string? buildSet)
+        {
+            if (string.IsNullOrWhiteSpace(buildSet)) return 0;
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(
+                "SELECT count(*) FROM bt_build_queue WHERE build_set = @s AND status <> 'canceled'", conn);
+            cmd.Parameters.AddWithValue("@s", buildSet.Trim());
+            var n = await cmd.ExecuteScalarAsync();
+            return n == null || n == DBNull.Value ? 0 : Convert.ToInt32(n);
+        }
+
+        /// <summary>Number of build-set members still queued or running — used to detect
+        /// when a set's wave has fully drained so the coordinator can be told to `close`
+        /// it (the backstop that completes a set even if a member failed without
+        /// reporting). Excludes the just-finished row's own id if given.</summary>
+        public async Task<int> CountBuildSetPendingAsync(string? buildSet, int? excludeId = null)
+        {
+            if (string.IsNullOrWhiteSpace(buildSet)) return 0;
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(
+                "SELECT count(*) FROM bt_build_queue WHERE build_set = @s AND status IN ('queued','running') AND (@ex IS NULL OR id <> @ex)", conn);
+            cmd.Parameters.AddWithValue("@s", buildSet.Trim());
+            cmd.Parameters.AddWithValue("@ex", (object?)excludeId ?? DBNull.Value);
+            var n = await cmd.ExecuteScalarAsync();
+            return n == null || n == DBNull.Value ? 0 : Convert.ToInt32(n);
         }
 
         // ── UpdateSessionIdAsync ──────────────────────────────────────────────────
@@ -571,7 +609,7 @@ namespace BuildConsole.Services
             // id, title, prompt, model, effort, cwd,
             // github_number, blocked_by_number, blocked_by_numbers,
             // status, exit_code, session_id, resume_session_id,
-            // originating_chat_id, chat_url, updated_at
+            // originating_chat_id, chat_url, updated_at, build_set
             var blockedByNumbersRaw = r.IsDBNull(8) ? null : r.GetValue(8) as int[];
             return new QueueItem
             {
@@ -593,6 +631,7 @@ namespace BuildConsole.Services
                 OriginatingChatId = r.IsDBNull(13) ? null : r.GetString(13),
                 ChatUrl           = r.IsDBNull(14) ? null : r.GetString(14),
                 UpdatedAt         = r.IsDBNull(15) ? null : r.GetFieldValue<DateTimeOffset>(15),
+                BuildSet          = r.IsDBNull(16) ? null : r.GetString(16),
             };
         }
 

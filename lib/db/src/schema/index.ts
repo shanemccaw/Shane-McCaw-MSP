@@ -4348,6 +4348,8 @@ export const btBuildQueueTable = pgTable("bt_build_queue", {
   prompt:          text("prompt").notNull(),
   model:           text("model"),
   effort:          text("effort"),
+  /** Build Sets — an optional named group (the `--buildSet <name>` build-prompt header flag) shared by a stack of related builds. When set, the scripts/dev-server coordinator DEFERS the dev-server restart until every member of the set has merged, then fires exactly ONE restart+rebuild of all services + one combined test pass — instead of tearing down and rebuilding all four services once per build. Ungrouped builds (null) keep the existing per-build coalescing. */
+  buildSet:        text("build_set"),
   cwd:             text("cwd"),
   /** GitHub issue number this build is itself FOR, if any — lets the panel reuse the same epic/issue linking the rest of this file already does. */
   githubNumber:    integer("github_number"),

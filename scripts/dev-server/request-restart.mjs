@@ -38,7 +38,7 @@ import {
   recoverOrphans,
   cleanup,
 } from "./queue.mjs";
-import { runCycle } from "./coordinator.mjs";
+import { runCycle, runSetMemberCycle } from "./coordinator.mjs";
 import { restartServer } from "./server-process.mjs";
 import { existsSync } from "node:fs";
 
@@ -53,6 +53,11 @@ function parseArgs(argv) {
     else if (t === "--agent") a.agent = argv[++i];
     else if (t === "--worktree") a.worktree = argv[++i];
     else if (t === "--branch") a.branch = argv[++i];
+    // Build Sets: group this build into a named set whose restart is deferred
+    // until every member has merged (see buildset.mjs / coordinator.mjs).
+    else if (t === "--buildSet" || t === "--build-set") a.buildSet = argv[++i];
+    else if (t === "--set-member") a.setMember = argv[++i];
+    else if (t === "--set-expected") a.setExpected = argv[++i];
   }
   return a;
 }
@@ -96,6 +101,58 @@ export async function requestRestart(opts = {}) {
   }
   if (!commit) {
     return { landed: false, restarted: false, error: `could not resolve commit '${rawCommit}'` };
+  }
+
+  // --- Build Set path (additive; ungrouped builds skip this entirely) ---------
+  // A build set defers the restart ENTIRELY until every member has merged, then
+  // fires exactly ONE restart. Set members do NOT use the general pending queue --
+  // each just takes the mutex, merges its own commit (no restart), records itself,
+  // and -- only if it completes the set -- triggers the single restart. The
+  // buildSet name / member key / expected size come from flags or, when launched by
+  // BuildConsole, from env (DEV_BUILD_SET / DEV_BUILD_SET_MEMBER / DEV_BUILD_SET_EXPECTED).
+  const buildSet = opts.buildSet || process.env.DEV_BUILD_SET || null;
+  if (buildSet) {
+    const memberKey =
+      opts.setMember || process.env.DEV_BUILD_SET_MEMBER || agentId;
+    const expectedRaw =
+      opts.setExpected != null ? opts.setExpected : process.env.DEV_BUILD_SET_EXPECTED;
+    const expected =
+      expectedRaw != null && `${expectedRaw}`.trim() !== "" && Number.isFinite(Number(expectedRaw))
+        ? Number(expectedRaw)
+        : null;
+
+    const deadline = Date.now() + config.maxWaitMs;
+    const restart = makeRestart(config);
+    while (Date.now() < deadline) {
+      const lock = tryAcquire(config, { onBreak: () => recoverOrphans(config) });
+      if (lock) {
+        try {
+          const rec = await runSetMemberCycle(
+            config,
+            { restart },
+            { commit, agentId, setName: buildSet, memberKey, expected }
+          );
+          return {
+            ...rec,
+            // "joined" = merged/live but no restart yet (waiting on the rest of the set)
+            joined: rec.landed && !rec.restarted,
+            commit,
+          };
+        } finally {
+          lock.release();
+        }
+      }
+      // Someone else holds the mutex (another member merging, or an ungrouped
+      // cycle restarting) -- wait and retry.
+      await sleep(config.acquireBackoffMs + Math.floor(Math.random() * 200));
+    }
+    return {
+      landed: false,
+      restarted: false,
+      buildSet,
+      commit,
+      error: `timed out after ${config.maxWaitMs}ms acquiring the mutex for build set '${buildSet}'`,
+    };
   }
 
   cleanup(config); // opportunistic housekeeping of old .done markers
@@ -204,7 +261,17 @@ if (isMain) {
         console.log(JSON.stringify(res, null, 2));
       } else {
         const c = res.commit ? shortSha(res.commit) : "?";
-        if (res.landed) {
+        if (res.buildSet) {
+          const p = res.setProgress || {};
+          const scope = `set '${res.buildSet}' [${p.terminal ?? "?"}/${p.expected ?? (p.closed ? "closed" : "open-ended")}]`;
+          if (res.landed && res.restarted) {
+            console.log(`[dev-server] OK  commit ${c} merged; ${scope} COMPLETE -> ONE restart fired for the combined changes. Run the combined test pass now. server HEAD ${shortSha(res.serverHead)}`);
+          } else if (res.landed) {
+            console.log(`[dev-server] OK  commit ${c} merged into ${scope}; restart DEFERRED until the whole set completes (no restart, no tests yet). server HEAD ${shortSha(res.serverHead)}`);
+          } else {
+            console.error(`[dev-server] FAILED  commit ${c} in ${scope}: ${res.error || (res.conflict ? "merge conflict" : "not landed")}`);
+          }
+        } else if (res.landed) {
           console.log(
             `[dev-server] OK  commit ${c} is live${res.restarted ? " (restarted)" : res.joined ? " (joined an in-flight/complete cycle -- no extra restart)" : ""}. server HEAD ${shortSha(res.serverHead)}`
           );

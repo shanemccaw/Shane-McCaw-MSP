@@ -25,6 +25,10 @@ namespace BuildConsole
         public string? FinalModel { get; private set; }
         public string? FinalEffort { get; private set; }
         public string? FinalCwd { get; private set; }
+        /// <summary>Build Sets — the optional `--buildSet &lt;name&gt;` header flag. When present,
+        /// every build queued with this same name is grouped into one set whose dev-server
+        /// restart is deferred until the whole set completes (see scripts/dev-server).</summary>
+        public string? FinalBuildSet { get; private set; }
         public string? FinalMode { get; private set; }
         public int? FinalGithubNumber { get; private set; }
         public List<int>? FinalBlockedByNumbers { get; private set; }
@@ -224,6 +228,7 @@ namespace BuildConsole
             FinalEffort = flags.GetValueOrDefault("effort");
             FinalCwd = flags.GetValueOrDefault("cwd");
             FinalMode = flags.GetValueOrDefault("mode");
+            FinalBuildSet = flags.GetValueOrDefault("buildSet");
 
             // Title
             string? rawTitle = flags.GetValueOrDefault("title");

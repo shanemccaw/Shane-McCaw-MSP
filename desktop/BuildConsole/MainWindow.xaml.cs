@@ -4236,6 +4236,7 @@ namespace BuildConsole
                             Add("effort", dialog.FinalEffort);
                             Add("cwd", dialog.FinalCwd);
                             Add("mode", dialog.FinalMode);
+                            Add("buildSet", dialog.FinalBuildSet);
                             var uri = $"mybuilder://open?{string.Join("&", q)}";
                             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(uri) { UseShellExecute = true });
                         }
@@ -4270,7 +4271,7 @@ namespace BuildConsole
                             {
                                 bool saved = PersistQueueRequestDuringPendingUpdate(
                                     dialog.FinalTitle ?? "Untitled", dialog.FinalPrompt, dialog.FinalModel, dialog.FinalEffort, dialog.FinalCwd,
-                                    dialogGithubNum, dialogBlockedByNums);
+                                    dialogGithubNum, dialogBlockedByNums, buildSet: dialog.FinalBuildSet);
                                 if (saved)
                                 {
                                     ToastEngine.Success("Queued after update", "Build request saved for after restart.");
@@ -4282,7 +4283,7 @@ namespace BuildConsole
                             {
                                 await _queueDb.QueueBuildAsync(
                                     dialog.FinalTitle ?? "Untitled", dialog.FinalPrompt, dialog.FinalModel, dialog.FinalEffort, dialog.FinalCwd,
-                                    dialogGithubNum, dialogBlockedByNums);
+                                    dialogGithubNum, dialogBlockedByNums, buildSet: dialog.FinalBuildSet);
                                 ToastEngine.Success("Build Queued", $"Queued '{dialog.FinalTitle ?? "Build"}' successfully.");
                                 try { await BuildQueuePanel.RefreshAsync(); } catch { }
                             }
@@ -4314,6 +4315,7 @@ namespace BuildConsole
                     string? correlation = Str("correlation");
                     string? chatUrl = Str("chatUrl");
                     int? githubNum = Int("githubNumber");
+                    string? buildSet = Str("buildSet");
                     string? originatingChatId = null;
                     if (EditorTabs.SelectedItem is TabItem selected)
                     {
@@ -4379,7 +4381,7 @@ namespace BuildConsole
                     {
                         bool saved = PersistQueueRequestDuringPendingUpdate(
                             Str("title") ?? "Untitled", Str("prompt") ?? "", Str("model"), Str("effort"), Str("cwd"),
-                            githubNum, blockedByNumbers, chatUrl: chatUrl, originatingChatId: originatingChatId);
+                            githubNum, blockedByNumbers, chatUrl: chatUrl, originatingChatId: originatingChatId, buildSet: buildSet);
                         // Unstick the injected button back to its clickable label (it was
                         // set to a disabled "In Progress..." on click) — nothing is in the
                         // live queue, so leaving it stuck would misrepresent reality.
@@ -4414,7 +4416,7 @@ namespace BuildConsole
                     try
                     {
                         queued = await _queueDb.QueueBuildAsync(
-                            Str("title") ?? "Untitled", Str("prompt") ?? "", Str("model"), Str("effort"), Str("cwd"), githubNum, blockedByNumbers, chatUrl: chatUrl, originatingChatId: originatingChatId);
+                            Str("title") ?? "Untitled", Str("prompt") ?? "", Str("model"), Str("effort"), Str("cwd"), githubNum, blockedByNumbers, chatUrl: chatUrl, originatingChatId: originatingChatId, buildSet: buildSet);
                     }
                     catch (Exception ex)
                     {

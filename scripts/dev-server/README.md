@@ -99,6 +99,75 @@ A crashed runner can't wedge the fleet: the mutex has a pid + heartbeat, and a
 stale lock (dead pid, or heartbeat older than `DEV_SERVER_STALE_LOCK_MS`) is
 broken and its in-flight batch re-queued.
 
+## Build Sets — deferred single restart for a stack of builds
+
+The coalescing above reacts to *timing* (an agent joins an in-flight cycle if its
+changes happen to get swept in). **Build Sets** are the explicit, proactive
+counterpart: declare a group of builds up front and defer the restart **entirely**
+until the whole group is done — then restart **once**.
+
+Shane's own words: *"The constant tear down and rebuild of ALL services —
+Marketing, Portal, Admin Panel, API Server — is causing memory resource
+management problems on my dev box… group builds into a build set, and when that
+build set is done, ALL the builds in it, then a one-time restart/compile happens
+and all build tests get run against that."* He regularly queues 10-20 related
+builds together (properly blocked by their parents); without grouping that's
+10-20 full-stack teardown/rebuild cycles.
+
+### How it works
+
+* Each build in the set carries the same set name — the `--buildSet <name>`
+  build-prompt header flag (see the root `CLAUDE.md`). BuildConsole persists it on
+  the queue row (`bt_build_queue.build_set`) and passes it to the launched build as
+  env: `DEV_BUILD_SET`, `DEV_BUILD_SET_MEMBER` (the member key — issue # or queue
+  id), and `DEV_BUILD_SET_EXPECTED` (the wave size). `request-restart.mjs` reads
+  those automatically (flags override env).
+* When a set member finishes, `request-restart.mjs` takes the mutex and **merges
+  its commit into the server checkout using the exact same merge mechanics** as an
+  ordinary cycle — but **does not restart**. It records the member in the set
+  manifest and returns (`landed: true, restarted: false` — "merged; restart
+  deferred").
+* When **every** member has reached a terminal state, the completing call fires
+  **exactly ONE** restart for the combined changes (all four services), marks the
+  set done (single-shot — a second completion can never double-restart), and
+  returns `restarted: true, runSetTests: true`. **Only that one caller runs the
+  combined test pass** — the others returned `runSetTests: false`, so tests run
+  once for the whole set, not once per build.
+* Set members **never touch the general pending queue** — the ungrouped
+  enqueue → `runCycle` → restart path (and its coalescing) is completely
+  unchanged. A build with no `--buildSet` behaves exactly as before.
+
+### When is a set "complete"?
+
+Explicit and proactive, never timing-based:
+
+* **Known expected count** (`DEV_BUILD_SET_EXPECTED`, from BuildConsole's count of
+  the wave): complete once that many members have reached a terminal state.
+* **Explicit close** (open-ended sets, or the failure backstop): `buildset.mjs
+  close <name>` completes the set on exactly the members recorded so far.
+
+A member that **fails or is dropped** still counts as terminal, so one bad build
+can't wedge the set. BuildConsole's watcher also runs a backstop: once a set's
+wave has fully drained from the queue it runs `buildset.mjs close <name>`
+automatically (a harmless single-shot no-op if the expected-count path already
+fired the restart). If a member merged nothing, completion is a no-op (there's
+nothing new to restart into).
+
+### CLI (`buildset.mjs`)
+
+```
+node scripts/dev-server/buildset.mjs status [<name>] [--json]   # inspect set(s)
+node scripts/dev-server/buildset.mjs open   <name> [--expected N]
+node scripts/dev-server/buildset.mjs close  <name>              # complete on current members
+node scripts/dev-server/buildset.mjs drop   <name> --key <k> [--reason ...]
+node scripts/dev-server/buildset.mjs sweep                      # report stale (wedged) sets
+node scripts/dev-server/buildset.mjs reset  <name>              # delete a set manifest
+```
+
+State lives under `<state-dir>/buildsets/<name>.json`, and every membership /
+completion / restart event is logged to `<state-dir>/buildsets.log` (JSONL); set
+restarts are also mirrored into `cycles.log` alongside ordinary cycles.
+
 ## Reading live server logs
 
 `dev-all.mjs` streams stdout/stderr to **rotating log files** as well as the
@@ -139,8 +208,9 @@ stale-lock recovery.
 | `lock.mjs` | Atomic mkdir mutex with pid+heartbeat liveness and stale-lock recovery. |
 | `queue.mjs` | Directory-of-files request queue (lock-free enqueue; claim/finalize/recover). |
 | `server-process.mjs` | Start/stop/**restart by pid-tree** (never by name) + readiness probe. |
-| `coordinator.mjs` | `runCycle()` — the mutex-held merge→restart→confirm batch. |
-| `request-restart.mjs` | **Agent entrypoint** — the coalescing algorithm. |
+| `coordinator.mjs` | `runCycle()` — the mutex-held merge→restart→confirm batch. Plus the Build-Set functions `runSetMemberCycle()` / `maybeFireSetRestart()` / `finishSetFromCli()` (merge-no-restart per member, then ONE restart on completion). |
+| `buildset.mjs` | **Build Sets** — per-set manifest state machine + CLI (`open`/`status`/`close`/`drop`/`sweep`/`reset`). |
+| `request-restart.mjs` | **Agent entrypoint** — the coalescing algorithm, and the `--buildSet` deferred-restart path. |
 | `status.mjs` | Diagnostic: current state + exact log paths. |
 | `provision-worktree.mjs` | Create an isolated agent worktree off origin/main. |
 | `bootstrap-server.mjs` | Create/launch the dedicated dev-server checkout. |
@@ -155,6 +225,13 @@ stale-lock recovery.
 `DEV_SERVER_MAX_WAIT_MS`, `DEV_ALL_LOG_MAX_BYTES`,
 `DEV_SERVER_FAKE_RESTART=1` (record restarts instead of touching a real process
 — used by selftest / dry runs).
+
+Build Sets: `DEV_BUILD_SET` (set name — presence switches `request-restart.mjs`
+into the deferred-restart path), `DEV_BUILD_SET_MEMBER` (this member's key),
+`DEV_BUILD_SET_EXPECTED` (wave size for auto-completion), `DEV_BUILD_SET_STALE_MS`
+(when `buildset.mjs sweep` flags a set as wedged, default 6h). BuildConsole sets
+the first three at launch; flags (`--buildSet` / `--set-member` / `--set-expected`)
+override them.
 
 ## Known follow-ups (honest limits)
 

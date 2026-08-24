@@ -109,6 +109,12 @@ export function loadConfig({ cwd = process.cwd() } = {}) {
     serverMetaFile: path.join(stateDir, "server.json"),
     restartsLog: path.join(stateDir, "restarts.log"), // used by fake-restart selftest
 
+    // Build Sets (explicit, proactive grouping of stacked builds into ONE
+    // deferred restart -- see buildset.mjs). One manifest file per set under
+    // buildSetsDir; a single JSONL event log for observability across all sets.
+    buildSetsDir: path.join(stateDir, "buildsets"),
+    buildSetsLog: path.join(stateDir, "buildsets.log"),
+
     // server checkout
     serverWorktree,
     serverBranch,
@@ -124,6 +130,13 @@ export function loadConfig({ cwd = process.cwd() } = {}) {
     maxWaitMs: Number(process.env.DEV_SERVER_MAX_WAIT_MS || 600_000),
     restartStopTimeoutMs: Number(process.env.DEV_SERVER_STOP_TIMEOUT_MS || 20_000),
     readyTimeoutMs: Number(process.env.DEV_SERVER_READY_TIMEOUT_MS || 45_000),
+
+    // A build set open longer than this with no restart yet is considered stale
+    // (a member likely crashed without reporting). `buildset.mjs sweep` reports
+    // these so a wedged set can be closed explicitly -- a last-resort safety net,
+    // NOT the primary completion mechanism (which is expected-count / explicit
+    // close). Default 6h. Set 0 to disable staleness reporting.
+    buildSetStaleMs: Number(process.env.DEV_BUILD_SET_STALE_MS || 6 * 60 * 60 * 1000),
 
     // when set, the coordinator records restarts to restartsLog instead of
     // killing/relaunching a real server process (selftest / dry safety).

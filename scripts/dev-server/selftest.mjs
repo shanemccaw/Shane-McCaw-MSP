@@ -34,9 +34,10 @@ import assert from "node:assert";
 
 import { loadConfig } from "./config.mjs";
 import { git, revParse, isAncestor } from "./git.mjs";
-import { enqueue, outcomeFor } from "./queue.mjs";
-import { runCycle } from "./coordinator.mjs";
+import { enqueue, outcomeFor, listPending } from "./queue.mjs";
+import { runCycle, runSetMemberCycle, finishSetFromCli } from "./coordinator.mjs";
 import { tryAcquire, pidAlive } from "./lock.mjs";
+import * as bs from "./buildset.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REQUEST_RESTART = path.join(HERE, "request-restart.mjs");
@@ -285,6 +286,153 @@ async function main() {
       assert.ok(lock && lock.recovered, "did not recover a dead-pid lock")
     );
     if (lock) lock.release();
+  }
+
+  // ---------------------------------------------------------------
+  // Scenario 6: BUILD SET -- members merge with NO restart until the whole set
+  // completes, then EXACTLY ONE restart fires for the combined changes.
+  // ---------------------------------------------------------------
+  console.log("Scenario 6: build set (3 members -> 0 restarts until complete, then 1)");
+  {
+    const { repo, agents } = makeRepo(3);
+    cleanup.push(repo);
+    const stateDir = path.join(repo, "_state");
+    applyEnv(baseEnv(repo, stateDir));
+    const config = loadConfig({ cwd: repo });
+
+    let restarts = 0;
+    const fakeRestart = async () => { restarts++; return { fake: true, ready: true }; };
+    const SET = "enhanced-monitoring";
+
+    const r0 = await runSetMemberCycle(config, { restart: fakeRestart }, { commit: agents[0].sha, agentId: "1125", setName: SET, memberKey: "1125", expected: 3 });
+    const r1 = await runSetMemberCycle(config, { restart: fakeRestart }, { commit: agents[1].sha, agentId: "1126", setName: SET, memberKey: "1126", expected: 3 });
+    check("first two members merge with NO restart", () =>
+      assert.strictEqual(restarts, 0, `expected 0 restarts after 2/3 members, got ${restarts}`));
+    check("member commits are merged into the checkout before the restart", () => {
+      const head = revParse(repo, "HEAD");
+      assert.ok(isAncestor(repo, agents[0].sha, head), "member 0 not merged");
+      assert.ok(isAncestor(repo, agents[1].sha, head), "member 1 not merged");
+    });
+    check("set not complete at 2/3", () => assert.ok(!r1.setComplete, "set reported complete too early"));
+
+    const r2 = await runSetMemberCycle(config, { restart: fakeRestart }, { commit: agents[2].sha, agentId: "1127", setName: SET, memberKey: "1127", expected: 3 });
+    check("final member completes the set and fires EXACTLY ONE restart", () =>
+      assert.ok(restarts === 1 && r2.setComplete && r2.restarted, `restarts=${restarts} setComplete=${r2.setComplete} restarted=${r2.restarted}`));
+    check("only the completing member is signalled to run the combined tests", () =>
+      assert.ok(!r0.runSetTests && !r1.runSetTests && r2.runSetTests, "runSetTests signal wrong"));
+    check("all 3 members live after the single restart", () => {
+      const head = revParse(repo, "HEAD");
+      for (const a of agents) assert.ok(isAncestor(repo, a.sha, head), "a member is missing from HEAD");
+    });
+  }
+
+  // ---------------------------------------------------------------
+  // Scenario 7: a failed member does not wedge the set -- an explicit drop
+  // completes it and the single restart fires for the merged subset. And a
+  // second completion attempt does NOT fire another restart (single-shot).
+  // ---------------------------------------------------------------
+  console.log("Scenario 7: build set drop completes the set (failed member doesn't wedge it)");
+  {
+    const { repo, agents } = makeRepo(2);
+    cleanup.push(repo);
+    const stateDir = path.join(repo, "_state");
+    applyEnv(baseEnv(repo, stateDir)); // FAKE_RESTART=1 -> completion restart recorded to restartsLog
+    const config = loadConfig({ cwd: repo });
+    const SET = "partial-set";
+
+    let deferredRestarts = 0;
+    await runSetMemberCycle(config, { restart: async () => { deferredRestarts++; return { fake: true }; } },
+      { commit: agents[0].sha, agentId: "a0", setName: SET, memberKey: "a0", expected: 2 });
+    check("no restart while the set is incomplete (1/2)", () => assert.strictEqual(deferredRestarts, 0, `got ${deferredRestarts}`));
+
+    const before = restartCount(config);
+    bs.dropMember(config, SET, "a1", "build failed (exit 1)");
+    const fin = await finishSetFromCli(config, SET, { byAgent: "cli-drop:a1" });
+    check("drop completes the set and fires exactly one restart", () =>
+      assert.ok(fin.complete && fin.restarted && restartCount(config) === before + 1, `fin=${JSON.stringify(fin)} restarts+${restartCount(config) - before}`));
+    check("merged member is live and the set is marked done", () => {
+      assert.ok(isAncestor(repo, agents[0].sha, revParse(repo, "HEAD")), "member 0 not live");
+      assert.ok(bs.readSet(config, SET).restart.fired, "set restart not marked fired");
+    });
+
+    const b2 = restartCount(config);
+    const again = await finishSetFromCli(config, SET, { byAgent: "again" });
+    check("re-completing is a no-op (single-shot restart)", () =>
+      assert.ok(!again.restarted && restartCount(config) === b2, `again=${JSON.stringify(again)}`));
+  }
+
+  // ---------------------------------------------------------------
+  // Scenario 8: set members NEVER touch the general (ungrouped) queue -- the
+  // existing per-build coalescing path is left completely unchanged.
+  // ---------------------------------------------------------------
+  console.log("Scenario 8: set members never consume the ungrouped queue");
+  {
+    const { repo, agents } = makeRepo(2);
+    cleanup.push(repo);
+    const stateDir = path.join(repo, "_state");
+    applyEnv(baseEnv(repo, stateDir));
+    const config = loadConfig({ cwd: repo });
+
+    const ungroupedId = enqueue(config, { agentId: "ungrouped", commit: agents[0].sha, worktree: repo });
+    let restarts = 0;
+    await runSetMemberCycle(config, { restart: async () => { restarts++; return {}; } },
+      { commit: agents[1].sha, agentId: "s0", setName: "iso", memberKey: "s0", expected: 2 });
+
+    check("set member does not restart mid-set", () => assert.strictEqual(restarts, 0));
+    check("ungrouped request is left untouched in the pending queue", () =>
+      assert.ok(listPending(config).some((r) => r.id === ungroupedId), "ungrouped request was consumed by the set path"));
+    check("ungrouped commit is NOT merged by the set path", () =>
+      assert.ok(!isAncestor(repo, agents[0].sha, revParse(repo, "HEAD")), "set path merged an ungrouped commit"));
+    check("set member commit IS merged", () =>
+      assert.ok(isAncestor(repo, agents[1].sha, revParse(repo, "HEAD")), "set member not merged"));
+  }
+
+  // ---------------------------------------------------------------
+  // Scenario 9: real cross-process build set -- N concurrent CLI members, all
+  // land, and exactly ONE restart fires for the whole set.
+  // ---------------------------------------------------------------
+  console.log("Scenario 9: cross-process build set (4 concurrent CLI members -> 1 restart)");
+  {
+    const N = 4;
+    const { repo, agents } = makeRepo(N);
+    cleanup.push(repo);
+    const stateDir = path.join(repo, "_state");
+    applyEnv(baseEnv(repo, stateDir));
+    const env = { ...process.env };
+    const config = loadConfig({ cwd: repo });
+    const SET = "xset";
+
+    const { spawn } = await import("node:child_process");
+    const procs = agents.map((a, i) =>
+      new Promise((resolve) => {
+        const c = spawn(process.execPath,
+          [REQUEST_RESTART, "--commit", a.sha, "--agent", `m${i}`, "--worktree", repo,
+           "--buildSet", SET, "--set-member", `m${i}`, "--set-expected", String(N), "--json"],
+          { env });
+        let out = "";
+        c.stdout.on("data", (d) => (out += d));
+        c.stderr.on("data", () => {});
+        c.on("close", () => { let p = null; try { p = JSON.parse(out); } catch { /* leave null */ } resolve({ agent: a, parsed: p }); });
+      })
+    );
+    const results = await Promise.all(procs);
+
+    check("every set member merged/landed", () => {
+      for (const r of results) assert.ok(r.parsed && r.parsed.landed, `${r.agent.branch} => ${JSON.stringify(r.parsed)}`);
+    });
+    check("every member commit is live (combined changes all present)", () => {
+      const head = revParse(repo, "HEAD");
+      for (const a of agents) assert.ok(isAncestor(repo, a.sha, head), `${a.branch} missing from HEAD`);
+    });
+    const restarts = restartCount(config);
+    check(`exactly ONE restart for the whole set (got ${restarts})`, () =>
+      assert.strictEqual(restarts, 1, `expected exactly 1 restart, got ${restarts}`));
+    check("exactly one member reports it fired the restart + runs the combined tests", () => {
+      const firing = results.filter((r) => r.parsed && r.parsed.restarted);
+      assert.strictEqual(firing.length, 1, `expected 1 restarted=true, got ${firing.length}`);
+      assert.ok(firing[0].parsed.runSetTests, "the completing member should be signalled to run the combined tests");
+    });
+    console.log(`        (batched ${N} concurrent set members into ${restarts} restart)`);
   }
 
   // ---------------------------------------------------------------

@@ -65,6 +65,11 @@ export function tryAcquire(config, { cycleId = null, onBreak } = {}) {
   let recovered = false;
 
   const attemptCreate = () => {
+    // Ensure the PARENT (state dir) exists, but create lockDir itself with
+    // recursive:false so the atomic "exactly one winner / EEXIST" mutex semantics
+    // are preserved. (Without this, a caller that takes the lock before anything
+    // else has created the state dir -- e.g. the build-set path -- would ENOENT.)
+    mkdirSync(path.dirname(lockDir), { recursive: true });
     mkdirSync(lockDir, { recursive: false });
   };
 
