@@ -101,6 +101,10 @@ namespace BuildConsole.Controls
             public int Row;
             public int Column;
             public double CenterY;
+            /// <summary>Git build-set nesting — the `--buildSet <name>` value this item was queued
+            /// with (QueueItem.BuildSet), or null when ungrouped. Drives header insertion in
+            /// RenderQueue and the trunk-line break / cross-set edge styling in RedrawQueueGraph.</summary>
+            public string? BuildSet;
         }
 
         private readonly List<QueueGraphNode> _currentGraphNodes = new();
@@ -1009,7 +1013,8 @@ namespace BuildConsole.Controls
                     IsBlocked = cleanBlockers.Count > 0 && item.Status == "queued",
                     IsWaitingForInput = isWaitingForInput,
                     BlockedBy = cleanBlockers,
-                    Item = item
+                    Item = item,
+                    BuildSet = string.IsNullOrWhiteSpace(item.BuildSet) ? null : item.BuildSet.Trim()
                 });
             }
             // Git-style shape fix — Shane: "Blocked ends up showing above the thing
@@ -1022,7 +1027,34 @@ namespace BuildConsole.Controls
             // after — it, recursively; a node blocked by several others nests under
             // whichever one it encounters first and still draws real connector lines
             // to the rest (see the BlockedBy loop in RedrawQueueGraph, unchanged).
-            _currentGraphNodes.AddRange(OrderByDependency(itemNodes));
+            //
+            // Build-set nesting: ungrouped items (BuildSet == null) keep exactly the
+            // behavior above — one OrderByDependency pass over the whole ungrouped set,
+            // rendered first. Items sharing a real --buildSet name are pulled out into
+            // their own contiguous block per set (first-seen order), each ordered by
+            // OrderByDependency independently so blocked-nesting still works WITHIN a
+            // set. A group header card is inserted ahead of each block below (step 5).
+            // A node blocked by something in a DIFFERENT set still draws a real
+            // connector to it (RedrawQueueGraph iterates BlockedBy globally, not
+            // per-group) — that edge is styled distinctly to flag the boundary crossing.
+            var ungroupedNodes = itemNodes.Where(n => n.BuildSet == null).ToList();
+            var buildSetOrder = new List<string>();
+            var buildSetBuckets = new Dictionary<string, List<QueueGraphNode>>();
+            foreach (var n in itemNodes)
+            {
+                if (n.BuildSet == null) continue;
+                if (!buildSetBuckets.TryGetValue(n.BuildSet, out var bucket))
+                {
+                    bucket = new List<QueueGraphNode>();
+                    buildSetBuckets[n.BuildSet] = bucket;
+                    buildSetOrder.Add(n.BuildSet);
+                }
+                bucket.Add(n);
+            }
+
+            _currentGraphNodes.AddRange(OrderByDependency(ungroupedNodes));
+            foreach (var setName in buildSetOrder)
+                _currentGraphNodes.AddRange(OrderByDependency(buildSetBuckets[setName]));
 
             QueueEmptyText.Visibility = _currentGraphNodes.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
             QueueEmptyText.Text = searching
@@ -1089,8 +1121,20 @@ namespace BuildConsole.Controls
             _currentMaxLanes = Math.Max(maxLaneCount, 1);
 
             // ── 5. Build Cards for QueueCardsHost ──
+            // Group headers: _currentGraphNodes is now [restart pseudo-nodes]
+            // [ungrouped items][buildSet A items][buildSet B items]... (see step 4
+            // above), so a header only needs to fire once per transition INTO a
+            // non-null BuildSet — restart/ungrouped nodes never re-trigger it.
+            string? lastRenderedSet = null;
             foreach (var node in _currentGraphNodes)
             {
+                if (node.BuildSet != lastRenderedSet)
+                {
+                    if (node.BuildSet != null)
+                        QueueCardsHost.Children.Add(BuildBuildSetHeader(node.BuildSet));
+                    lastRenderedSet = node.BuildSet;
+                }
+
                 if (node.Status == "restart" && node.RestartItem != null)
                 {
                     var restartCard = BuildRestartCard(node.RestartItem);
@@ -1188,7 +1232,11 @@ namespace BuildConsole.Controls
 
                 if (isTrunk)
                 {
-                    if (lastTrunkNode != null)
+                    // Build-set nesting: don't draw the trunk connector across a group
+                    // header — a header sitting between two trunk nodes means they're in
+                    // different sets (or one is grouped, one isn't), which should read as
+                    // separate sequences, not one continuous line running through the header.
+                    if (lastTrunkNode != null && lastTrunkNode.BuildSet == node.BuildSet)
                     {
                         QueueGraphCanvas.Children.Add(new System.Windows.Shapes.Line
                         {
@@ -1208,7 +1256,15 @@ namespace BuildConsole.Controls
                     {
                         double px = QueueLaneX(parentNode.Column);
                         double py = parentNode.CenterY;
-                        var edgeBrush = QueueLaneBrush(bi == 0 ? node.Column : parentNode.Column);
+                        Brush edgeBrush = QueueLaneBrush(bi == 0 ? node.Column : parentNode.Column);
+                        // A real dependency that crosses a group boundary (blocker in a
+                        // different --buildSet, or one grouped/one not) still gets a real
+                        // connector — just flagged distinctly (mauve + dashed) so it reads
+                        // as "reaches outside its own group" rather than an ordinary
+                        // same-set edge.
+                        bool crossesGroup = parentNode.BuildSet != node.BuildSet;
+                        if (crossesGroup) edgeBrush = (Brush)Application.Current.FindResource("MauveBrush");
+                        var edgeDash = crossesGroup ? new DoubleCollection { 4, 2 } : null;
 
                         if (Math.Abs(px - cx) < 0.5)
                         {
@@ -1217,7 +1273,8 @@ namespace BuildConsole.Controls
                                 X1 = cx, Y1 = cy,
                                 X2 = px, Y2 = py,
                                 Stroke = edgeBrush,
-                                StrokeThickness = 2.0
+                                StrokeThickness = 2.0,
+                                StrokeDashArray = edgeDash
                             });
                         }
                         else
@@ -1231,7 +1288,8 @@ namespace BuildConsole.Controls
                             {
                                 Data = geo,
                                 Stroke = edgeBrush,
-                                StrokeThickness = 2.0
+                                StrokeThickness = 2.0,
+                                StrokeDashArray = edgeDash
                             });
                         }
                     }
@@ -1366,6 +1424,42 @@ namespace BuildConsole.Controls
                 };
                 return dot;
             }
+        }
+
+        /// <summary>Group header card for a stack of builds sharing the same --buildSet name.
+        /// Purely visual — carries no QueueGraphNode, so it plays no part in blocked-by
+        /// connector math; RedrawQueueGraph positions connectors off the real cards only,
+        /// via TranslatePoint, which naturally accounts for the extra height this adds.</summary>
+        private Border BuildBuildSetHeader(string buildSetName)
+        {
+            var header = new Border
+            {
+                Background = new SolidColorBrush(Color.FromArgb(0x22, 0xCB, 0xA6, 0xF7)),
+                BorderBrush = (Brush)Application.Current.FindResource("MauveBrush"),
+                BorderThickness = new Thickness(1, 1, 1, 0),
+                CornerRadius = new CornerRadius(4, 4, 0, 0),
+                Padding = new Thickness(8, 4, 8, 3),
+                Margin = new Thickness(0, 8, 0, 0)
+            };
+            var row = new StackPanel { Orientation = Orientation.Horizontal };
+            row.Children.Add(new TextBlock
+            {
+                Text = "▤ ",
+                FontSize = 11,
+                Foreground = (Brush)Application.Current.FindResource("MauveBrush"),
+                VerticalAlignment = VerticalAlignment.Center
+            });
+            row.Children.Add(new TextBlock
+            {
+                Text = buildSetName,
+                FontSize = 11,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = (Brush)Application.Current.FindResource("MauveBrush"),
+                TextWrapping = TextWrapping.Wrap,
+                ToolTip = $"Build Set \"{buildSetName}\" — merges + restarts together as one wave"
+            });
+            header.Child = row;
+            return header;
         }
 
         private Border BuildRestartCard(MainWindow.PersistedQueueDisplayItem p)
