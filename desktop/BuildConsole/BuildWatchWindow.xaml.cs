@@ -858,6 +858,16 @@ namespace BuildConsole
                     bool owned = _watcher?.OwnsInteractive(slot.QueueItemId) ?? false;
                     if (owned) slot.InteractiveBound = true;
 
+                    // Sync captured session ID from local watcher in-memory state if available
+                    if (string.IsNullOrWhiteSpace(slot.SessionId) && _watcher != null)
+                    {
+                        var watcherSid = _watcher.GetSessionId(slot.QueueItemId);
+                        if (!string.IsNullOrWhiteSpace(watcherSid))
+                        {
+                            slot.SessionId = watcherSid;
+                        }
+                    }
+
                     var ist = (owned) ? _watcher!.GetInteractiveState(slot.QueueItemId) : null;
 
                     // Local process exit check: if our in-process watcher knows the process already exited,
@@ -878,6 +888,11 @@ namespace BuildConsole
                     }
                     else if (byId.TryGetValue(slot.QueueItemId, out var item))
                     {
+                        // Sync captured session ID from database snapshot if available
+                        if (string.IsNullOrWhiteSpace(slot.SessionId) && !string.IsNullOrWhiteSpace(item.SessionId))
+                        {
+                            slot.SessionId = item.SessionId;
+                        }
                         ApplyItemStatusToSlot(slot, item);
                     }
                     else

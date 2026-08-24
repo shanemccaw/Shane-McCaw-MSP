@@ -603,6 +603,16 @@ namespace BuildConsole.Services
                 $"pass buildId={item.Id} exactly." + ghContext + " This id is ALWAYS available for a queued " +
                 "build; never skip progress reporting for lack of a GitHub issue number. BuildConsole's " +
                 "Build Watch progress panel listens on precisely this id.\n" +
+                "\n" +
+                "Git #1206 — CALL IT AGAIN AT EVERY CHECKPOINT, NOT JUST ONCE. Reporting a single early " +
+                "step (e.g. step 1 \"Investigation\") and then going quiet leaves the Build Watch panel " +
+                "FROZEN on that first phase while you keep working — it looks stalled even though you " +
+                "aren't. Re-report every time you move to a new phase: bump `step` and update `label` at " +
+                "each real transition (Investigation → Implementation → Verification → …), matching the " +
+                "same milestones you're already tracking in your own checklist. A good rhythm is one call " +
+                "per meaningful checkpoint (not per-line spam, but definitely more than once). Send the " +
+                $"FINAL call with step == total (e.g. `node scripts/report-progress.mjs {item.Id} <total> <total> \"Done\"`) " +
+                "so the panel reads 100% instead of freezing mid-way.\n" +
                 "\n----------------------------------------------------------------------\n\n";
 
             return preamble + body;
@@ -1056,6 +1066,13 @@ namespace BuildConsole.Services
                 ActivityLog.Log("interactive-build", $"input ignored — process for queue #{id} already exited");
                 return;
             }
+
+            bool wasWorking = false;
+            lock (_gate)
+            {
+                wasWorking = entry.State == InteractiveInputState.Working;
+            }
+
             try { WriteUserMessage(entry, text); }
             catch (Exception ex) { ActivityLog.Log("interactive-build", $"input failed for queue #{id}: {ex.Message}"); return; }
 
@@ -1067,6 +1084,20 @@ namespace BuildConsole.Services
                 entry.LastActivityUtc = DateTime.UtcNow;
                 CancelAutoFinalize(entry);
             }
+
+            if (wasWorking)
+            {
+                try
+                {
+                    WriteInterrupt(entry);
+                    ActivityLog.Log("interactive-build", $"sent mid-task interrupt to queue #{id} to deliver guidance");
+                }
+                catch (Exception ex)
+                {
+                    ActivityLog.Log("interactive-build", $"mid-task interrupt failed for queue #{id}: {ex.Message}");
+                }
+            }
+
             var preview = text.Length > 80 ? text.Substring(0, 80) + "…" : text;
             ActivityLog.Log("interactive-build", $"input sent to {entry.Title} (queue #{id}): {preview.Replace("\r", " ").Replace("\n", " ")}");
         }
