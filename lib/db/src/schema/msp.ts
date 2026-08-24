@@ -215,6 +215,36 @@ export const insertTenantSchema = createInsertSchema(tenantsTable).omit({ id: tr
 export type Tenant = typeof tenantsTable.$inferSelect;
 export type InsertTenant = typeof tenantsTable.$inferInsert;
 
+// ── Tenant add-on entitlements (Git #1173) ─────────────────────────────────────
+// Per #1168's rule ("creation unconditional, gate visibility only"), a paid,
+// a-la-carte add-on like Change Control needs a real record of WHICH tenant has
+// actually purchased it, separate from the MSP's own platform-tier subscription
+// (mspSubscriptionsTable / msp-entitlement.ts — a different axis entirely, keyed
+// on mspId, not this tenant). Nothing in this codebase tracked that before this
+// table: `client_services` is keyed on usersTable.id (the legacy client-portal
+// axis), not tenants.id (the portal-v2 axis this table matches).
+//
+// `featureKey` is a free string rather than an FK to a single services row on
+// purpose — the same feature (e.g. "change_control") is sold as 4 differently
+// priced bracket SKUs (Micro/SMB/Mid-Market/Enterprise), and the gate only cares
+// whether the tenant holds ANY of them, not which bracket. `serviceId` records
+// which bracket they actually bought, for billing/support reference only.
+export const tenantAddOnEntitlementsTable = pgTable("tenant_add_on_entitlements", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").notNull().references(() => tenantsTable.id, { onDelete: "cascade" }),
+  featureKey: text("feature_key").notNull(),
+  serviceId: integer("service_id"),
+  status: text("status", { enum: ["active", "canceled"] }).notNull().default("active"),
+  purchasedAt: timestamp("purchased_at", { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  unique("tenant_add_on_entitlements_tenant_feature_uq").on(t.tenantId, t.featureKey),
+  index("tenant_add_on_entitlements_tenant_id_idx").on(t.tenantId),
+]);
+
+export type TenantAddOnEntitlement = typeof tenantAddOnEntitlementsTable.$inferSelect;
+export type InsertTenantAddOnEntitlement = typeof tenantAddOnEntitlementsTable.$inferInsert;
+
 // ── Copilot Assessment quiz catalog (#271, epic #183) ─────────────────────────
 // The four adaptive quiz catalogs — persona clusters, personas, use cases and
 // outcomes — moved out of msp-portal's hardcoded quizCatalog.ts and into real

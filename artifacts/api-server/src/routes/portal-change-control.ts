@@ -62,10 +62,23 @@
  * because `CustomerUser` would break anything: the configured testbed account
  * is in fact a `CustomerUser` (verified against the database, not assumed from
  * the "testbed Assessment account" phrasing in BuildConsole's own docs), so
- * either floor is reachable by the harness. FLAGGED FOR SHANE: whether a
- * free Assessment-tier account should see Change Control at all is a tier
- * question this route does not presume to answer — raising the floor to
- * `CustomerUser` is a one-word change if the answer is no.
+ * either floor is reachable by the harness.
+ *
+ * ── UPDATE (Git #1173/#1168) — the READ route now floors at `CustomerUser` ──
+ * Change Control shipped as a real, separately-priced add-on (#1173, prices
+ * locked by Shane 2026-08-21) rather than folding into a tier. Per #1168's
+ * "creation unconditional, gate visibility only" rule, the customer-facing
+ * APPROVAL EXPERIENCE — this GET, which is what the register/briefing/record
+ * views actually read — now requires both `CustomerUser` and an active
+ * `change_control` entitlement (`../lib/portal-addon-entitlements.ts`). This
+ * answers the flag above: an Assessment-tier (free) account no longer sees
+ * Change Control at all, by design.
+ *
+ * The POST below is deliberately left at `Assessment` with NO entitlement
+ * check — CR creation is the "creation unconditional" half of #1168's rule.
+ * Every real change (including ones raised automatically elsewhere in the
+ * platform) must always produce a real CR record regardless of whether this
+ * tenant bought the add-on; only visibility into the register is gated.
  *
  * ── What this route deliberately does NOT expose ────────────────────────────
  * No approve, no reject, no rollback, and no `rollbackScriptSnippet` on the
@@ -104,6 +117,7 @@ import { z } from "zod";
 
 import { requireRole } from "../middlewares/requireAuth";
 import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope";
+import { requireAddOnEntitlement } from "../lib/portal-addon-entitlements";
 import { logger } from "../lib/logger";
 import {
   CHANGE_CLASSES,
@@ -285,10 +299,14 @@ function buildStats(wire: readonly WireChangeRequest[], now: Date) {
   };
 }
 
+/** The feature key this add-on's entitlement rows and services carry. */
+export const CHANGE_CONTROL_FEATURE_KEY = "change_control";
+
 // ── Read ──────────────────────────────────────────────────────────────────────
 router.get(
   "/portal/change-control",
-  requireRole("Assessment"),
+  requireRole("CustomerUser"),
+  requireAddOnEntitlement(CHANGE_CONTROL_FEATURE_KEY),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {
