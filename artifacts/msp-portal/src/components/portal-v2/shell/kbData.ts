@@ -20,6 +20,8 @@
  * somewhere real.
  */
 
+import type { NewCreateKind } from "../newMenuCreate";
+
 export interface KbCategory {
   readonly k: string;
   readonly label: string;
@@ -466,9 +468,14 @@ export function kbPageKeyForRoute(location: string): string | null {
  * Resolve an article action's `act` to a real route, or null when its target
  * flow/page is not built yet. `go:<page>[:<sub>]` uses `KB_SUBVIEW_PAGES` when
  * the page has real deep-linkable sub-views, otherwise the plain page map (the
- * sub is dropped because no route reads it). The change-control intents
- * (`cr-normal` / `cr-emergency` / `freeze`) all land on the Change Control
- * module, which exists.
+ * sub is dropped because no route reads it). `freeze` has no create backend
+ * (see `newMenuCreate.ts`'s own header), so it falls back to landing on the
+ * Change Control module rather than opening a form that could not save.
+ *
+ * `cr-normal` / `cr-emergency` / `sop` are NOT resolved here — they open the
+ * real create form via `kbActionCreateKind` below instead of navigating, so
+ * this function intentionally returns null for them (the caller must check
+ * `kbActionCreateKind` first).
  */
 export function kbActionHref(act: string): string | null {
   if (act.startsWith("go:")) {
@@ -479,11 +486,30 @@ export function kbActionHref(act: string): string | null {
     }
     return KB_PAGE_ROUTES[page] ?? null;
   }
-  if (act === "cr-normal" || act === "cr-emergency" || act === "freeze") {
+  if (act === "freeze") {
     return "/portal-v2/change-control";
   }
-  // `evidence`, `sop`, `decision` open flows/pages that do not exist yet.
+  // `evidence`, `decision` open per-finding flows with no generic entry point.
   return null;
+}
+
+/**
+ * `cr-normal` / `cr-emergency` / `sop` open the SAME real create form the
+ * shell's New menu opens (`newMenuCreate.ts` — POST /portal/change-control or
+ * POST /portal/sops), rather than merely navigating to the module page. Before
+ * this, all three landed on a generic module page while their own copy
+ * promised "Opens the nine-field form" / "Four fields..." / "Opens the SOP
+ * draft" — a real article/action that resolved to the wrong operation, not a
+ * 404 (Git #1176).
+ */
+const KB_ACTION_CREATE_KIND: Readonly<Record<string, NewCreateKind>> = {
+  "cr-normal": "change-request",
+  "cr-emergency": "emergency-change",
+  sop: "sop",
+};
+
+export function kbActionCreateKind(act: string): NewCreateKind | null {
+  return KB_ACTION_CREATE_KIND[act] ?? null;
 }
 
 /**

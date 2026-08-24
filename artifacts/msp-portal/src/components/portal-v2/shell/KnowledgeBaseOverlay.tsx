@@ -13,9 +13,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+import type { NewCreateKind } from "../newMenuCreate";
 import {
   KB_ARTICLES,
   KB_CATS,
+  kbActionCreateKind,
   kbActionHref,
   kbCatLabel,
   kbPageHref,
@@ -31,6 +33,7 @@ export function KnowledgeBaseOverlay({
   location,
   onClose,
   onNavigate,
+  onCreate,
   onAsk,
 }: {
   open: boolean;
@@ -39,6 +42,9 @@ export function KnowledgeBaseOverlay({
   location: string;
   onClose: () => void;
   onNavigate: (href: string) => void;
+  /** Opens the real create form (the same one the shell's New menu opens) for
+   *  actions that raise/log something rather than merely navigate. */
+  onCreate: (kind: NewCreateKind) => void;
   onAsk: (query: string) => void;
 }) {
   const [articleId, setArticleId] = useState<string | null>(seedArticleId);
@@ -135,6 +141,7 @@ export function KnowledgeBaseOverlay({
             onBack={() => setArticleId(null)}
             onOpenRelated={setArticleId}
             onNavigate={onNavigate}
+            onCreate={onCreate}
             onClose={onClose}
           />
         ) : (
@@ -259,17 +266,19 @@ function ReadingView({
   onBack,
   onOpenRelated,
   onNavigate,
+  onCreate,
   onClose,
 }: {
   article: KbArticle;
   onBack: () => void;
   onOpenRelated: (id: string) => void;
   onNavigate: (href: string) => void;
+  onCreate: (kind: NewCreateKind) => void;
   onClose: () => void;
 }) {
   const actions = (article.actions ?? [])
-    .map((a) => ({ ...a, href: kbActionHref(a.act) }))
-    .filter((a): a is typeof a & { href: string } => a.href !== null);
+    .map((a) => ({ ...a, href: kbActionHref(a.act), createKind: kbActionCreateKind(a.act) }))
+    .filter((a) => a.href !== null || a.createKind !== null);
   const pageHref = kbPageHref(article.page);
   const related = (article.related ?? [])
     .map((id) => KB_ARTICLES.find((x) => x.id === id))
@@ -346,7 +355,11 @@ function ReadingView({
               data-testid={`pv2-kb-action-${ac.act}`}
               onClick={() => {
                 onClose();
-                onNavigate(ac.href);
+                if (ac.createKind) {
+                  onCreate(ac.createKind);
+                } else {
+                  onNavigate(ac.href!);
+                }
               }}
               style={{ display: "flex", alignItems: "center", gap: 11, padding: "10px 12px", borderRadius: 9, border: "1px solid rgba(0,120,212,.35)", background: "rgba(0,120,212,.1)", cursor: "pointer", fontFamily: "inherit", textAlign: "left", width: "100%" }}
             >
