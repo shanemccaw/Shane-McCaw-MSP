@@ -1,0 +1,138 @@
+{
+  "feature": "Customer Portal v2 — Governance / Security / Compliance pillar HERO wiring to real war-room-pillars data (Git #1200). A FOCUSED subset of portal-v2-pillars.json: it exercises only the three heroes this wiring pass touched (score ring, live/fixture source marker, real finding-count tiles, cross-pillar global-admins tile, and the honest 'Not measured yet' gap tiles), so it runs in ~4 page loads rather than the full 227-step suite. The full suite (portal-v2-pillars.json) remains the deployed-server regression; this one is the fast, isolated proof of #1200. NOTE: GET /api/portal/assessment/war-room-pillars is a heavy engine recompute that takes ~90s per call on a LOCAL dev server, so the UI assertions below need a runner element-wait of >=90s to see the real value replace the fixture fallback — on a deployed (fast) server they resolve immediately, exactly as the Licensing/Adoption/Health hero steps already do in the full suite.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "0f97da18",
+
+  "notes": [
+    "THE API TESTS ARE THE REAL CONTRACT. SETUP+A1-A5 exercise GET /api/portal/assessment/war-room-pillars and extract the live per-pillar scores/counts the pages render, so they verify the data layer independent of the UI. pillars[] order is WAR_ROOM_PILLAR_KEYS: governance(0), licensing(1), adoption(2), compliance(3), health(4), security(5), copilot(6).",
+    "THE HONEST-GAP ASSERTIONS (G4/S6/S7/C4) prove the STEP-1 audit result renders on the page: a design hero tile with no real producer (Overdue Access Reviews, MFA-coverage %, Secure Score, Retention Coverage) shows 'Not measured yet', never a fabricated number.",
+    "STEP 2 (risk heat-map likelihood axis) is intentionally NOT covered here: it stays fixture (no real probability estimate exists) and is flagged as backend-design work, not fabricated — same as portal-v2-pillars.json's own G2c/S11c risk-panel steps.",
+    "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL (the Portal origin, e.g. http://localhost:5175 — its /api proxies to the api-server), TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD, TEST_PORTAL_SLUG."
+  ],
+
+  "apiTests": [
+    {
+      "name": "SETUP -- log in as the TESTBED Assessment account; extract the bearer.",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "A1 -- extract the REAL Governance score (pillars[0]). The Governance hero ring renders THIS number, not the fixture 62.",
+      "method": "GET",
+      "path": "/api/portal/assessment/war-room-pillars",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.pillars[0].pillar", "value": "governance" },
+      "extract": { "as": "govScore", "jsonPath": "$.pillars[0].score" }
+    },
+    {
+      "name": "A2 -- extract the REAL Security score (pillars[5]). The Security hero ring renders THIS number, not the fixture 54.",
+      "method": "GET",
+      "path": "/api/portal/assessment/war-room-pillars",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.pillars[5].pillar", "value": "security" },
+      "extract": { "as": "secScore", "jsonPath": "$.pillars[5].score" }
+    },
+    {
+      "name": "A3 -- extract the REAL Compliance score (pillars[3]). The Compliance hero ring renders THIS number, not the fixture 78.",
+      "method": "GET",
+      "path": "/api/portal/assessment/war-room-pillars",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.pillars[3].pillar", "value": "compliance" },
+      "extract": { "as": "cmpScore", "jsonPath": "$.pillars[3].score" }
+    },
+    {
+      "name": "A4 -- extract the REAL Security critical finding count. The red critical headline AND the 'Critical Exposures' tile render THIS number, not the fixture 3.",
+      "method": "GET",
+      "path": "/api/portal/assessment/war-room-pillars",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.pillars[5].findingCounts.critical", "exists": true },
+      "extract": { "as": "secCritical", "jsonPath": "$.pillars[5].findingCounts.critical" }
+    },
+    {
+      "name": "A5 -- the REAL global-administrator count sits at security stats[1] (security.globalAdmins). The GOVERNANCE hero reads it CROSS-PILLAR for its 'Global Administrators' tile.",
+      "method": "GET",
+      "path": "/api/portal/assessment/war-room-pillars",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.pillars[5].stats[1].id", "value": "security.globalAdmins" },
+      "extract": { "as": "secGlobalAdmins", "jsonPath": "$.pillars[5].stats[1].value" }
+    }
+  ],
+
+  "uiSteps": [
+    { "name": "goto login", "action": "goto", "target": "/portal/login" },
+    { "name": "wait for login form", "action": "expect", "selector": "#email", "state": "visible" },
+    { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
+    { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
+    { "name": "login", "action": "click", "selector": "[data-testid='login-submit']", "critical": true },
+
+    { "name": "goto Governance pillar", "action": "goto", "target": "/portal/{{TEST_PORTAL_SLUG}}/portal-v2/governance" },
+    {
+      "name": "G1 -- REAL: the Governance hero ring shows the live engine score ({{govScore}}), not the fixture 62.",
+      "action": "expect", "selector": "[data-testid='pv2-gov-score']", "state": "visible", "textContains": "{{govScore}}"
+    },
+    {
+      "name": "G2 -- the live/fixture source marker reads 'live' (the real score arrived, not the fixture fallback).",
+      "action": "expect", "selector": "[data-testid='pv2-gov-source']", "state": "visible", "textContains": "live"
+    },
+    {
+      "name": "G3 -- REAL: the 'Global Administrators' tile shows the cross-pillar security.globalAdmins count ({{secGlobalAdmins}}).",
+      "action": "expect", "selector": "[data-testid='pv2-gov-stat-global-administrators']", "state": "visible", "textContains": "{{secGlobalAdmins}}"
+    },
+    {
+      "name": "G4 -- HONEST GAP: 'Overdue Access Reviews' has no real check, so it states 'Not measured yet', not the fixture 12.",
+      "action": "expect", "selector": "[data-testid='pv2-gov-stat-overdue-access-reviews']", "state": "visible", "textContains": "Not measured yet"
+    },
+
+    { "name": "goto Security pillar", "action": "goto", "target": "/portal/{{TEST_PORTAL_SLUG}}/portal-v2/security" },
+    {
+      "name": "S1 -- REAL: the Security hero ring shows the live engine score ({{secScore}}), not the fixture 54.",
+      "action": "expect", "selector": "[data-testid='pv2-sec-score']", "state": "visible", "textContains": "{{secScore}}"
+    },
+    {
+      "name": "S2 -- the source marker reads 'live'.",
+      "action": "expect", "selector": "[data-testid='pv2-sec-source']", "state": "visible", "textContains": "live"
+    },
+    {
+      "name": "S3 -- REAL: the 'Critical Exposures' tile shows the live critical finding count ({{secCritical}}), not the fixture 3.",
+      "action": "expect", "selector": "[data-testid='pv2-sec-stat-critical-exposures']", "state": "visible", "textContains": "{{secCritical}}"
+    },
+    {
+      "name": "S4 -- the red critical headline renders (real count > 0) and ends on the invariant tail.",
+      "action": "expect", "selector": "[data-testid='pv2-sec-critical-headline']", "state": "visible", "textContains": "attention right now."
+    },
+    {
+      "name": "S5 -- the status pill states the real severity band (any-of).",
+      "action": "expect", "selector": "[data-testid='pv2-sec-status-pill']", "state": "visible", "textContains": ["Critical", "Attention required", "Healthy"]
+    },
+    {
+      "name": "S6 -- HONEST GAP: 'MFA Coverage' (a % with no denominator check) states 'Not measured yet', not the fixture 94%.",
+      "action": "expect", "selector": "[data-testid='pv2-sec-stat-mfa-coverage']", "state": "visible", "textContains": "Not measured yet"
+    },
+    {
+      "name": "S7 -- HONEST GAP: 'Secure Score' (real, but on the security-posture route not this payload) states 'Not measured yet', not the fixture 68.",
+      "action": "expect", "selector": "[data-testid='pv2-sec-stat-secure-score']", "state": "visible", "textContains": "Not measured yet"
+    },
+
+    { "name": "goto Compliance pillar", "action": "goto", "target": "/portal/{{TEST_PORTAL_SLUG}}/portal-v2/compliance" },
+    {
+      "name": "C1 -- REAL: the Compliance hero ring shows the live engine score ({{cmpScore}}), not the fixture 78.",
+      "action": "expect", "selector": "[data-testid='pv2-cmp-score']", "state": "visible", "textContains": "{{cmpScore}}"
+    },
+    {
+      "name": "C2 -- the source marker reads 'live'.",
+      "action": "expect", "selector": "[data-testid='pv2-cmp-source']", "state": "visible", "textContains": "live"
+    },
+    {
+      "name": "C3 -- the status pill states the real severity band + real open-gap count (any-of covers singular/plural).",
+      "action": "expect", "selector": "[data-testid='pv2-cmp-status-pill']", "state": "visible", "textContains": ["gaps open", "gap open"]
+    },
+    {
+      "name": "C4 -- HONEST GAP: 'Retention Coverage' has no real check (retention-drift retired #1103), so it states 'Not measured yet', not the fixture 99.0%.",
+      "action": "expect", "selector": "[data-testid='pv2-cmp-stat-retention-coverage']", "state": "visible", "textContains": "Not measured yet"
+    }
+  ]
+}
