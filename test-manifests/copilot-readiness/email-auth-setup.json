@@ -2,7 +2,7 @@
   "issue": 1041,
   "feature": "Email Authentication Setup Instructions page (SPF/DKIM/DMARC) — customer self-service",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "60285775",
+  "lastVerifiedAgainstCommit": "5f45343b",
 
   "notes": [
     "GIT #1041 (sub-issue of epic #647, Remediation Tracker). New standalone customer page at /email-auth-setup (branded route /portal/:slug/email-auth-setup, same SlugInnerSwitch every other customer page — App.tsx:338+), backed by GET /api/portal/email-auth-status (portal-email-auth-status.ts), which reads the tenant's latest exchange:dkim-spf-dmarc-status monitor profile out of tenant_monitor_profiles.extractedProperties. Linked in from the live Remediation Guide document (RemediationGuideBody.tsx's hasEmailAuthGap block), not a numbered remediation step — the issue's own resolution is explicit that a standalone linked page is the intended shape.",
