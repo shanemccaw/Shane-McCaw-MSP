@@ -1,7 +1,7 @@
 {
   "feature": "Customer Portal v2 -- THE SHELL'S FIVE SYSTEMS (Part 1), recreated from 'Customer Portal Shell.dc.html'. The global chrome that renders on every /portal-v2 page: the command palette (Cmd-K), ShaneBot (selection chip + chat panel + launcher), the alerts tray with real smart alerts and a hold-windows section, the account menu, the New menu, and the knowledge-base overlay. All UI-only against the design's own fixtures in components/portal-v2/shell/; the palette ranking + 14-cap are unit-tested in shell/paletteIndex.test.ts.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "f46973fc",
+  "lastVerifiedAgainstCommit": "a07df4e9443d2358cc9e368286b3cc0fbc5466f6",
   "notes": [
     "THE LOGIN BLOCK IS NOT OPTIONAL. /portal-v2/* sits behind ProtectedRoute.",
     "UI ROUTE SHAPE: /portal/{slug}/portal-v2. The shell chrome renders on every portal-v2 page; this exercises it from the Overview.",
@@ -69,6 +69,12 @@
     { "name": "SH-kb-action -- click its 'Open the register' Do-it-now action (go:change-control:register).", "action": "click", "selector": "[data-testid='pv2-kb-action-go:change-control:register']", "critical": true },
     { "name": "SH-kb6 -- it lands on the real Change Control register sub-view (not the module's default briefing, and not a dead/suppressed button).", "action": "expect", "selector": "[data-testid='cc-view-register']", "state": "visible", "critical": true },
 
+    { "name": "SH-kb-cr-open -- reopen the KB and the same article to check its OTHER Do-it-now action (Git #1176: cr-normal/cr-emergency/sop used to just navigate to the module page even though their own copy promises the real intake form).", "action": "click", "selector": "[data-testid='pv2-kb-button']", "critical": true },
+    { "action": "input", "selector": "[data-testid='pv2-kb-search']", "value": "raise a normal change request" },
+    { "action": "click", "selector": "[data-testid='pv2-kb-article-row']", "critical": true },
+    { "name": "SH-kb-cr-action -- click 'Raise a normal change now' (act cr-normal).", "action": "click", "selector": "[data-testid='pv2-kb-action-cr-normal']", "critical": true },
+    { "name": "SH-kb-cr1 -- it opens the SAME real create form the New menu opens (newMenuCreate.ts), not just a navigation to the Change Control module.", "action": "expect", "selector": "[data-testid='pv2-form-title']", "state": "visible", "textContains": "Raise a change request", "critical": true },
+    { "name": "SH-kb-cr-close -- close the create drawer.", "action": "click", "selector": "[data-testid='pv2-form-close']" },
     { "name": "SH-kb-reopen -- reopen the knowledge base to close out the check.", "action": "click", "selector": "[data-testid='pv2-kb-button']", "critical": true },
     { "name": "SH-kb-close -- close the KB overlay.", "action": "click", "selector": "[data-testid='pv2-kb-close']", "critical": true },
 
