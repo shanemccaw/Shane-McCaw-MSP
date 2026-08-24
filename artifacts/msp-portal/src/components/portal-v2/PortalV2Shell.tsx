@@ -792,7 +792,7 @@ export function PortalV2Shell({
                   textTransform: "uppercase",
                 }}
               >
-                Tenant Monitoring
+                Consulting
               </span>
             </div>
           )}
