@@ -1,63 +1,77 @@
 /**
- * copilotData.ts — the Copilot readiness fixture.
+ * copilotData.ts — the STATIC copy for the Copilot readiness verdict page.
  *
- * Extracted verbatim from the prototype's own logic class, `Customer Portal
- * Shell.dc.html`:
- *   • CP_PILLARS      13081-13106
- *   • the gate figures + the standalone-offer copy   6093-6199
- *   • cpDeliverables  20625-20631
+ * ── What used to live here, and why it is gone (Git #1213) ─────────────────
+ * This module used to carry `CP_PILLARS` (six hardcoded before/after pillar
+ * scores), `CP_GATE` (a "41 → 68, +27 points" gate fixture) and a headline that
+ * named the prototype's fictional tenant, "Halden Materials". `portal-v2-copilot.tsx`
+ * rendered them verbatim, so every real paying customer saw another company's
+ * fabricated findings under that company's name. That was the whole of #1213.
  *
- * ── Why this page matters right now ────────────────────────────────────────
- * The Overview was rebuilt to the current design, and the current design's
- * Overview has NO Copilot gate band — so until this page existed the Copilot
- * gate had no surface anywhere in the portal. This page is where the verdict
- * ("41 of the gate, not safe to deploy") now lives.
+ * Every FIGURE and the tenant NAME now come from the live Copilot assessment
+ * engine, through `useCopilotJourney()` → `JourneyView` (the same source the four
+ * Copilot Readiness screens already render from) — pillar scores, findings, the
+ * gate score and the tenant name are all real and tenant-specific. See
+ * `portal-v2-copilot.tsx` and the derivations in `copilotModel.ts`.
  *
- * ── The gate denominator is NOT here ───────────────────────────────────────
- * The "of 82" number is the real Copilot Gate target, `COPILOT_GATE_TARGET`
- * in `components/copilot-journey/journeyTokens.ts` (mirrored server-side in
- * `copilot-gate.ts`, each side asserted by its own test). The page reads that
- * constant — this module deliberately does NOT restate 82, so the two cannot
- * drift. Everything else here (the current 41, the remediated 68, the "+27
- * points") is the design's own fixture, reproduced verbatim; note the design
- * itself calls 68 "clears the gate" while the ultimate Go target is 82 — that
- * is the prototype's copy (its DOC-01 report says "gate clears at 68" too) and
- * copy is FINAL, so it is kept as written rather than reconciled.
+ * What remains here is only what is genuinely static:
+ *   • the per-pillar ADVISORY copy — why each pillar matters for Copilot and the
+ *     shape of the remediation — which is general Microsoft-365 guidance, not a
+ *     claim about any one tenant. The two sentences that used to embed Halden's
+ *     own numbers ("Four Global Admins…", "A third of your tenant…") are
+ *     generalised so no fabricated figure survives.
+ *   • the document pack titles (`CP_DELIVERABLES`) — the real deliverable names.
+ *   • the fixed UI copy (`CP_COPY`) — eyebrows, labels, the add-on and the
+ *     book-a-call band. None of it names a tenant or quotes a number.
  *
- * UI ONLY: no data source is wired. Derivations live in `copilotModel.ts`.
+ * ── The gate denominator is still the constant, not a literal ──────────────
+ * The "of 82" denominator is `COPILOT_GATE_TARGET` from journeyTokens, read via
+ * `copilotModel`'s `gateDenominatorLabel()` — never hardcoded. See `copilotModel.ts`.
  */
 
 /** lucide-react icon keys, resolved to components on the page. */
 export type CopilotPillarIcon = "shield-check" | "lock" | "scale" | "layers" | "trending-up" | "activity";
 
-export type CopilotPillarState = "Critical" | "Attention required";
+/**
+ * A pillar's live severity band, as the row's state chip. Derived from the real
+ * score in `copilotModel.pillarState`, never authored here — the three map onto
+ * `severityForScore`'s critical / attention / healthy bands.
+ */
+export type CopilotPillarState = "Critical" | "Attention required" | "Healthy";
 
-export interface CopilotPillar {
-  /** The pillar's route key — `go` navigates to `/portal-v2/<key>`. */
+/**
+ * The STATIC advisory for one pillar — its identity (label/colour/icon) and the
+ * general guidance that never depends on a tenant's own numbers.
+ *
+ * The live score, target, state and finding are NOT here — they arrive from the
+ * engine and are merged onto this in `copilotModel.copilotPillarRow`.
+ */
+export interface CopilotPillarAdvice {
+  /** The pillar's route key — `Open <pillar>` navigates to `/portal-v2/<key>`. */
   readonly key: string;
   readonly label: string;
   /** Identity colour — the prototype's inline value (13082-13102). */
   readonly color: string;
   readonly icon: CopilotPillarIcon;
-  readonly now: number;
-  readonly target: number;
-  readonly state: CopilotPillarState;
-  readonly finding: string;
+  /** Why this pillar matters for Copilot. General guidance, tenant-agnostic. */
   readonly why: string;
+  /** The shape of the remediation. General guidance, tenant-agnostic. */
   readonly fix: string;
 }
 
-/** CP_PILLARS — what each pillar is worth once remediated. Prototype 13081-13106. */
-export const CP_PILLARS: readonly CopilotPillar[] = [
+/**
+ * CP_PILLAR_ADVICE — the six pillars' identity and advisory copy, in the
+ * design's order. Colours/labels/icons and the `fix` lines are verbatim from the
+ * prototype; the two `why` lines that embedded Halden Materials' own fabricated
+ * figures are generalised (see the header) so the guidance stays true for any
+ * tenant.
+ */
+export const CP_PILLAR_ADVICE: readonly CopilotPillarAdvice[] = [
   {
     key: "governance",
     label: "Governance",
     color: "#3B82F6",
     icon: "shield-check",
-    now: 34,
-    target: 61,
-    state: "Critical",
-    finding: "1,847 SharePoint sites. 212 of them are open to everyone in your tenant.",
     why: "Copilot inherits every permission you have ever granted. Oversharing stops being a filing problem the day it becomes an answer Copilot gives to the wrong person.",
     fix: "Revoke org-wide sharing links and put a lifecycle policy on every site.",
   },
@@ -66,11 +80,10 @@ export const CP_PILLARS: readonly CopilotPillar[] = [
     label: "Security",
     color: "#8B5CF6",
     icon: "lock",
-    now: 38,
-    target: 72,
-    state: "Critical",
-    finding: "14 accounts have no MFA. Four of them are Global Admins.",
-    why: "Every identity gap is a Copilot access gap. A compromised account no longer just reads mail — it queries the whole tenant in plain language. Four Global Admins without MFA is the one I would fix first, today, before anything else on this page.",
+    // Generalised for #1213: the prototype's version ended "Four Global Admins
+    // without MFA is the one I would fix first, today" — a Halden figure. The
+    // guidance is kept, the fabricated count removed.
+    why: "Every identity gap is a Copilot access gap. A compromised account no longer just reads mail — it queries the whole tenant in plain language. Privileged accounts without MFA are the ones to fix first, before anything else on this page.",
     fix: "Enforce Conditional Access on privileged roles and switch off legacy auth.",
   },
   {
@@ -78,10 +91,6 @@ export const CP_PILLARS: readonly CopilotPillar[] = [
     label: "Compliance",
     color: "#F3F4F6",
     icon: "scale",
-    now: 29,
-    target: 58,
-    state: "Critical",
-    finding: "No DLP policy covers Teams chat. 61% of your files carry no sensitivity label.",
     why: "Unlabelled data is data Copilot will summarise, quote and export without restriction. Labels are the only instruction it obeys.",
     fix: "Publish a baseline label set and extend DLP to Teams and OneDrive.",
   },
@@ -90,10 +99,6 @@ export const CP_PILLARS: readonly CopilotPillar[] = [
     label: "Licensing",
     color: "#14B8A6",
     icon: "layers",
-    now: 57,
-    target: 79,
-    state: "Attention required",
-    finding: "$18,400 a year sits in unassigned seats. 96 users need E5 for the controls above.",
     why: "Copilot sits on top of your base SKUs. Until those are right, the rollout stalls in procurement, not in technology.",
     fix: "Reclaim the dormant seats and fund the E5 uplift out of the waste.",
   },
@@ -102,11 +107,10 @@ export const CP_PILLARS: readonly CopilotPillar[] = [
     label: "Adoption",
     color: "#F97316",
     icon: "trending-up",
-    now: 46,
-    target: 68,
-    state: "Attention required",
-    finding: "412 of your 1,240 users have not opened Teams in 30 days.",
-    why: "Copilot returns value only where the work already happens. A third of your tenant is not there yet, and licences for them return nothing.",
+    // Generalised for #1213: the prototype's version read "A third of your tenant
+    // is not there yet" — a Halden figure. The guidance is kept, the fabricated
+    // fraction removed.
+    why: "Copilot returns value only where the work already happens. Users who are not active there yet return nothing on their licences until they are.",
     fix: "Run targeted enablement in Operations and Field Services first.",
   },
   {
@@ -114,29 +118,10 @@ export const CP_PILLARS: readonly CopilotPillar[] = [
     label: "Health",
     color: "#22C55E",
     icon: "activity",
-    now: 44,
-    target: 70,
-    state: "Attention required",
-    finding: "37 tenant configuration changes in 90 days. None recorded. None reviewed.",
     why: "Unmanaged drift undoes remediation inside two quarters. The score you earn is only ever the score you keep.",
     fix: "Put hourly drift telemetry on the tenant so nothing changes unseen.",
   },
 ];
-
-/**
- * The gate figures — the design's own fixture. The DENOMINATOR is deliberately
- * absent: it is `COPILOT_GATE_TARGET`, read from journeyTokens. Prototype
- * 6109-6126.
- */
-export const CP_GATE = {
-  now: 41,
-  remediated: 68,
-  nowVerdict: "not safe to deploy",
-  remediatedNote: "clears the gate · +27 points",
-  summary:
-    "Six findings, one number. Halden Materials is 27 points from safe to deploy, and every point is a known, fixable gap with a named owner and a price.",
-  assessed: "Assessed 3 August 2026 · 150+ signals via Microsoft Graph, read-only",
-} as const;
 
 export interface CopilotDeliverable {
   readonly num: string;
@@ -152,15 +137,18 @@ export const CP_DELIVERABLES: readonly CopilotDeliverable[] = [
   { num: "DOC-08", title: "Full Remediation Guide — Copilot Gate Clearance Plan" },
 ];
 
-/* ── Static copy — prototype 6100-6199. Verbatim, copy is FINAL. ──────────── */
+/* ── Static copy — prototype 6100-6199. Verbatim, minus the fabricated
+ *    heading/summary/assessed lines, which are now built from live data in
+ *    `copilotModel.ts`. Copy is FINAL. ─────────────────────────────────────── */
 export const CP_COPY = {
   eyebrow: "Copilot readiness · standalone offer",
-  heading: "It is not yet safe to turn Copilot on at Halden Materials",
   subhead:
     "Copilot inherits every permission, label and retention rule you already have. This page is the assessment verdict: where the tenant stands, what each pillar is worth once remediated, and what the work costs.",
   gateTodayLabel: "Copilot gate today",
   remediatedLabel: "Remediated",
   pillarsHeading: "What each pillar is worth once remediated",
+  /** Shown in the pillars eyebrow when no post-remediation projection is quoted. */
+  pillarsHeadingNoProjection: "Where each pillar stands today",
   addonEyebrow: "The add-on",
   addonTitle: "White-Glove Copilot Adoption",
   addonBody:

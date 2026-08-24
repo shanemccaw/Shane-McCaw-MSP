@@ -5,25 +5,35 @@
  * CP_PILLARS 13081-13106 and the render map 20602-20631. A NEW page: Copilot
  * carried 10% of its design copy and had no route.
  *
- * ── Why this page is the urgent one ────────────────────────────────────────
- * The Overview was rebuilt to the current design, whose Overview has no Copilot
- * gate band — so until this page shipped, the Copilot gate had NO surface
- * anywhere in the portal. The verdict ("41 of the gate, not safe to deploy")
- * lives here now.
+ * ── LIVE DATA (Git #1213) ──────────────────────────────────────────────────
+ * This page used to render `copilotData.ts`'s hardcoded fixture — six literal
+ * before/after pillar scores, a "41 → 68" gate and the prototype's fictional
+ * tenant name "Halden Materials", shown identically to every real paying
+ * customer. It is now wired to the real Copilot assessment engine, through
+ * `useCopilotJourney()` → `JourneyView` — the SAME source the four Copilot
+ * Readiness screens render from. Every figure and the tenant name are real and
+ * specific to the tenant that ran the scan:
+ *   • the tenant NAME comes from `GET /api/portal/dashboard` (`customerName`);
+ *   • the gate SCORE is the engine's Copilot pillar (`view.readinessScore`);
+ *   • each pillar's SCORE and lead FINDING are the live per-pillar payload;
+ *   • the verdict headline and summary are derived from the real score against
+ *     `COPILOT_GATE_TARGET`.
  *
  * ── The gate number is the constant, not a literal ─────────────────────────
  * The "of 82" denominator is `COPILOT_GATE_TARGET` from journeyTokens, read via
  * `copilotModel`'s `gateDenominatorLabel()` — never hardcoded. It is mirrored
- * server-side in `copilot-gate.ts`; each side is asserted by its own test, so
- * changing one means changing and re-testing both. See `copilotModel.test.ts`.
+ * server-side in `copilot-gate.ts`; each side is asserted by its own test. See
+ * `copilotModel.test.ts`.
  *
- * ── UI ONLY ────────────────────────────────────────────────────────────────
- * Every figure is the design's own fixture in `copilotData.ts`. The six "Open
- * <pillar>" buttons and the document links point at routes that genuinely
- * exist; the add-on / booking buttons open flows not built this pass and are
- * rendered as visual controls. Copy is FINAL and reproduced verbatim.
+ * ── Honest states, never a fabricated number ───────────────────────────────
+ * A pillar the scan could not evaluate shows an honest "not evaluated" line, not
+ * a red zero. The platform quotes remediation PRICES, not projected pillar scores
+ * (`journeyScopeFromSow.ts`), so a post-remediation projection is shown only when
+ * one genuinely exists — normally the row shows today's score alone rather than a
+ * fabricated target. The hidden `pv2-cp-source` marker states which it is.
  */
 
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
 import {
   Activity,
@@ -35,23 +45,34 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
+import { useAuth } from "@/lib/auth-context";
+import { reportClientEvent } from "@/lib/report-client-event";
 import { PortalV2Shell, SIDEBAR_WASH } from "@/components/portal-v2/PortalV2Shell";
 import {
   CP_COPY,
   CP_DELIVERABLES,
-  CP_GATE,
-  CP_PILLARS,
-  type CopilotPillar,
+  CP_PILLAR_ADVICE,
   type CopilotPillarIcon,
 } from "@/components/portal-v2/copilotData";
 import {
+  copilotAssessedLine,
+  copilotHeading,
+  copilotPillarRow,
   gateDenominatorLabel,
+  gateSummary,
+  gateVerdict,
   pillarDelta,
   pillarDisplayColor,
   pillarStateColors,
+  type CopilotPillarRow,
 } from "@/components/portal-v2/copilotModel";
+import { useCopilotJourney } from "@/components/copilot-journey/useCopilotJourney";
+import type { PillarKey } from "@/components/copilot-journey/journeyTokens";
 
 const MONO = "'SF Mono',Menlo,Consolas,monospace";
+const DASHBOARD_URL = "/api/portal/dashboard";
+const SOW_URL = "/api/portal/assessment/sow";
+const JOURNEY_CHANNEL = "engine.dashboard";
 
 const PILLAR_ICONS: Record<CopilotPillarIcon, LucideIcon> = {
   "shield-check": ShieldCheck,
@@ -61,6 +82,13 @@ const PILLAR_ICONS: Record<CopilotPillarIcon, LucideIcon> = {
   "trending-up": TrendingUp,
   activity: Activity,
 };
+
+/** The live SOW's phase shape, narrowed to the two fields a projection needs. */
+interface WireSowProjectionPhase {
+  readonly pillar?: string;
+  readonly scoreFrom?: number;
+  readonly scoreTo?: number;
+}
 
 function Eyebrow({ colour, children, spacing = ".18em" }: { colour: string; children: React.ReactNode; spacing?: string }) {
   return (
@@ -78,10 +106,10 @@ function Eyebrow({ colour, children, spacing = ".18em" }: { colour: string; chil
   );
 }
 
-/** One pillar row inside "What each pillar is worth once remediated". */
-function PillarRow({ pillar }: { pillar: CopilotPillar }) {
+/** One pillar row inside the pillars table. Every figure here is live. */
+function PillarRow({ pillar }: { pillar: CopilotPillarRow }) {
   const colour = pillarDisplayColor(pillar);
-  const state = pillarStateColors(pillar.state);
+  const state = pillar.state ? pillarStateColors(pillar.state) : null;
   const Icon = PILLAR_ICONS[pillar.icon];
   return (
     <div
@@ -112,28 +140,40 @@ function PillarRow({ pillar }: { pillar: CopilotPillar }) {
           <Icon size={13} color={colour} />
         </span>
         <span style={{ fontSize: "12.5px", fontWeight: 700, color: "#f1f5f9", letterSpacing: ".02em" }}>{pillar.label}</span>
-        <span
-          style={{
-            padding: "2px 8px",
-            borderRadius: 4,
-            border: `1px solid ${state.border}`,
-            background: state.background,
-            color: state.text,
-            fontSize: "9px",
-            fontWeight: 700,
-            letterSpacing: ".09em",
-            textTransform: "uppercase",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {pillar.state}
-        </span>
+        {state && (
+          <span
+            style={{
+              padding: "2px 8px",
+              borderRadius: 4,
+              border: `1px solid ${state.border}`,
+              background: state.background,
+              color: state.text,
+              fontSize: "9px",
+              fontWeight: 700,
+              letterSpacing: ".09em",
+              textTransform: "uppercase",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {pillar.state}
+          </span>
+        )}
         <span style={{ flex: "1 1 40px" }} />
         <span style={{ display: "flex", alignItems: "baseline", gap: 7, flex: "0 0 auto" }}>
-          <span style={{ fontSize: "19px", fontWeight: 800, color: "#94a3b8", fontFamily: MONO }}>{pillar.now}</span>
-          <span style={{ fontSize: "11px", color: "#475569" }}>→</span>
-          <span style={{ fontSize: "19px", fontWeight: 800, color: colour, fontFamily: MONO }}>{pillar.target}</span>
-          <span style={{ fontSize: "10.5px", fontWeight: 700, color: "#4ade80", whiteSpace: "nowrap" }}>{pillarDelta(pillar)}</span>
+          {pillar.now === null ? (
+            <span style={{ fontSize: "13px", fontWeight: 600, color: "#64748b" }}>Not scored</span>
+          ) : pillar.hasProjection && pillar.target !== null ? (
+            <>
+              <span style={{ fontSize: "19px", fontWeight: 800, color: "#94a3b8", fontFamily: MONO }}>{pillar.now}</span>
+              <span style={{ fontSize: "11px", color: "#475569" }}>→</span>
+              <span style={{ fontSize: "19px", fontWeight: 800, color: colour, fontFamily: MONO }}>{pillar.target}</span>
+              <span style={{ fontSize: "10.5px", fontWeight: 700, color: "#4ade80", whiteSpace: "nowrap" }}>
+                {pillarDelta({ now: pillar.now, target: pillar.target })}
+              </span>
+            </>
+          ) : (
+            <span style={{ fontSize: "19px", fontWeight: 800, color: colour, fontFamily: MONO }}>{pillar.now}</span>
+          )}
         </span>
       </div>
       <span style={{ fontSize: "13px", fontWeight: 600, color: "#e2e8f0", lineHeight: 1.5, textWrap: "pretty" }}>{pillar.finding}</span>
@@ -178,9 +218,104 @@ function PillarRow({ pillar }: { pillar: CopilotPillar }) {
 }
 
 export default function PortalV2CopilotPage() {
+  const { fetchWithAuth, accessToken } = useAuth();
+
+  /* ---------------------------------------------------------------- *
+   * Tenant identity — same source the Reveal uses (#327 made
+   * `customerName` reachable for the Assessment role on this route).
+   * ---------------------------------------------------------------- */
+  const [customerName, setCustomerName] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void fetchWithAuth(DASHBOARD_URL, undefined, { silent: true })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((body: { customerName?: string | null } | null) => {
+        if (!cancelled && body?.customerName) setCustomerName(body.customerName);
+      })
+      .catch(() => {
+        /* Heading degrades to "Your tenant" — useCopilotJourney reports the
+           payload failures that actually matter. */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchWithAuth]);
+
+  /* ---------------------------------------------------------------- *
+   * Post-remediation projection, from the SOW's own phase deltas when a scope
+   * document quotes them. Live scopes quote prices, not projected pillar scores
+   * (journeyScopeFromSow.ts), so this is normally empty — `remediatedScore()`
+   * then holds each pillar where it is rather than modelling an improvement
+   * nobody has quoted. Best-effort: a missing/failed SOW is not an error state
+   * for this page, it just means no projection to show.
+   * ---------------------------------------------------------------- */
+  const [projectedByPillar, setProjectedByPillar] = useState<Partial<Record<PillarKey, number>>>({});
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetchWithAuth(SOW_URL, undefined, { silent: true });
+        if (!res.ok) return;
+        const body = (await res.json()) as { allWorkstreams?: readonly WireSowProjectionPhase[] };
+        if (cancelled) return;
+        const out: Partial<Record<PillarKey, number>> = {};
+        for (const phase of body.allWorkstreams ?? []) {
+          if (
+            phase.pillar &&
+            typeof phase.scoreTo === "number" &&
+            typeof phase.scoreFrom === "number" &&
+            phase.scoreTo !== phase.scoreFrom
+          ) {
+            out[phase.pillar as PillarKey] = phase.scoreTo;
+          }
+        }
+        setProjectedByPillar(out);
+      } catch (e) {
+        reportClientEvent(
+          accessToken,
+          "CopilotVerdictScopeFetchFailed",
+          e instanceof Error ? e.message : String(e),
+          JOURNEY_CHANNEL,
+          { url: SOW_URL },
+        );
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchWithAuth, accessToken]);
+
+  const live = useCopilotJourney({ tenantName: customerName, seatCount: null, projectedByPillar });
+  const view = live.view;
+  const score = view.readinessScore;
+
+  const rows = useMemo(
+    () =>
+      CP_PILLAR_ADVICE.map((advice) =>
+        copilotPillarRow(
+          advice,
+          view.pillars.find((p) => p.key === advice.key),
+          projectedByPillar[advice.key as PillarKey],
+        ),
+      ),
+    [view.pillars, projectedByPillar],
+  );
+
+  const anyProjection = rows.some((r) => r.hasProjection);
+  const summary = gateSummary(view.tenant.name, score);
+  const dataState = score !== null ? "live" : live.pillarsLoaded ? "unscored" : "loading";
+
   return (
     <PortalV2Shell eyebrow="Copilot readiness" title="Copilot readiness">
       <div style={{ minHeight: "100%", background: SIDEBAR_WASH }}>
+        {/* Which source is on screen, so a test can prove live vs unscored/loading.
+            Visually clipped, present in the DOM. */}
+        <span
+          data-testid="pv2-cp-source"
+          style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)", whiteSpace: "nowrap" }}
+        >
+          {dataState}
+        </span>
         <div
           style={{
             position: "relative",
@@ -223,7 +358,7 @@ export default function PortalV2CopilotPage() {
               data-testid="pv2-page-title"
               style={{ margin: 0, fontSize: "27px", fontWeight: 800, letterSpacing: "-.02em", color: "#f8fafc", lineHeight: 1.24, maxWidth: "34ch", textWrap: "pretty" }}
             >
-              {CP_COPY.heading}
+              {copilotHeading(view.tenant.name, score)}
             </h1>
             <span style={{ fontSize: "13.5px", color: "#94a3b8", lineHeight: 1.6, maxWidth: "80ch", textWrap: "pretty" }}>{CP_COPY.subhead}</span>
           </div>
@@ -248,9 +383,11 @@ export default function PortalV2CopilotPage() {
                 <Eyebrow colour="#64748b" spacing=".14em">
                   {CP_COPY.gateTodayLabel}
                 </Eyebrow>
-                <span style={{ fontSize: "44px", fontWeight: 800, color: "#f87171", lineHeight: 1, fontFamily: MONO }}>{CP_GATE.now}</span>
+                <span style={{ fontSize: "44px", fontWeight: 800, color: score !== null && score >= 82 ? "#22d3ee" : "#f87171", lineHeight: 1, fontFamily: MONO }}>
+                  {score === null ? "—" : score}
+                </span>
                 <span style={{ fontSize: "10.5px", color: "#64748b" }}>
-                  {gateDenominatorLabel()} · {CP_GATE.nowVerdict}
+                  {gateDenominatorLabel()} · {score === null ? "not yet assessed" : gateVerdict(score)}
                 </span>
               </div>
               <span style={{ display: "flex", flex: "0 0 auto" }} aria-hidden="true">
@@ -262,25 +399,32 @@ export default function PortalV2CopilotPage() {
                 <Eyebrow colour="#64748b" spacing=".14em">
                   {CP_COPY.remediatedLabel}
                 </Eyebrow>
-                <span style={{ fontSize: "44px", fontWeight: 800, color: "#22d3ee", lineHeight: 1, fontFamily: MONO }}>{CP_GATE.remediated}</span>
-                <span style={{ fontSize: "10.5px", color: "#64748b" }}>{CP_GATE.remediatedNote}</span>
+                {/* The platform quotes remediation prices, not a projected gate
+                    score, so there is no honest "remediated" number to print. The
+                    slot points the customer at where the real remediation plan and
+                    its pricing live. */}
+                <span style={{ fontSize: "16px", fontWeight: 700, color: "#94a3b8", lineHeight: 1.2 }}>See the plan</span>
+                <span style={{ fontSize: "10.5px", color: "#64748b", maxWidth: "22ch" }}>
+                  Projected clearance is scoped in your remediation plan
+                </span>
               </div>
             </div>
             <div style={{ flex: "1 1 280px", minWidth: 0, display: "flex", flexDirection: "column", gap: 9, justifyContent: "center" }}>
               <div style={{ height: 8, borderRadius: 4, background: "rgba(148,163,184,.14)", overflow: "hidden", position: "relative" }}>
-                <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: "50%", background: "#f87171", opacity: 0.85 }} />
-                <div style={{ position: "absolute", left: "50%", top: 0, bottom: 0, width: "33%", background: "linear-gradient(90deg,#3B82F6,#8B5CF6,#22D3EE)", opacity: 0.8 }} />
-                <div style={{ position: "absolute", left: "83%", top: -3, bottom: -3, width: 2, background: "#f8fafc" }} />
+                <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: `${score === null ? 0 : Math.max(0, Math.min(100, (score / 82) * 100))}%`, background: score !== null && score >= 82 ? "#22d3ee" : "#f87171", opacity: 0.85 }} />
+                <div style={{ position: "absolute", left: "100%", top: -3, bottom: -3, width: 2, background: "#f8fafc" }} />
               </div>
-              <span style={{ fontSize: "11.5px", color: "#94a3b8", lineHeight: 1.6, textWrap: "pretty" }}>{CP_GATE.summary}</span>
+              {summary && (
+                <span style={{ fontSize: "11.5px", color: "#94a3b8", lineHeight: 1.6, textWrap: "pretty" }}>{summary}</span>
+              )}
             </div>
           </div>
 
-          {/* Pillars — what each is worth once remediated */}
+          {/* Pillars */}
           <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
             <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-              <Eyebrow colour="#64748b">{CP_COPY.pillarsHeading}</Eyebrow>
-              <span style={{ fontSize: "10.5px", color: "#475569" }}>{CP_GATE.assessed}</span>
+              <Eyebrow colour="#64748b">{anyProjection ? CP_COPY.pillarsHeading : CP_COPY.pillarsHeadingNoProjection}</Eyebrow>
+              <span style={{ fontSize: "10.5px", color: "#475569" }}>{copilotAssessedLine(view.tenant.scannedOn)}</span>
             </div>
             <div
               data-testid="pv2-cp-pillars"
@@ -294,7 +438,7 @@ export default function PortalV2CopilotPage() {
                 overflow: "hidden",
               }}
             >
-              {CP_PILLARS.map((p) => (
+              {rows.map((p) => (
                 <PillarRow key={p.key} pillar={p} />
               ))}
             </div>
