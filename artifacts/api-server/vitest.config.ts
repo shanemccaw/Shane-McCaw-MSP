@@ -67,6 +67,10 @@ export default defineConfig({
       "src/routes/msp-portal.test.ts",
       "src/routes/msp-onboarding.test.ts",
       "src/lib/resolve-fulfillment.test.ts",
+      // #1171 — an accepted Project Work offer creates the real project row and
+      // drives the PROVEN document-engine-sow.ts engine (title-narrowed, never a
+      // flat catalog price); non-project offers no-op.
+      "src/lib/project-sow-fulfillment.test.ts",
       "src/lib/__tests__/catalog-pricing.test.ts",
       "src/lib/__tests__/msp-subscription.test.ts",
       "src/lib/__tests__/msp-financial-aggregator.test.ts",
