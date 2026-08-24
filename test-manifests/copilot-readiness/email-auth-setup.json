@@ -39,7 +39,7 @@
   ],
 
   "uiSteps": [
-    { "action": "goto", "target": "/{{TEST_PORTAL_SLUG}}/login" },
+    { "action": "goto", "target": "/portal/{{TEST_PORTAL_SLUG}}/login" },
     {
       "name": "WAIT for the login form to hydrate before typing — same cold-start gate remediation-tracker-e2e.json's own login step documents (uiSteps here cold-start at /login, so the non-polling `input` action can fire before the SPA has rendered #email).",
       "action": "expect",
@@ -62,7 +62,7 @@
     {
       "name": "Navigate to the branded Email Authentication Setup page (/portal/:slug/email-auth-setup — SlugInnerSwitch, App.tsx, same route family as every other authenticated customer page).",
       "action": "goto",
-      "target": "/{{TEST_PORTAL_SLUG}}/email-auth-setup"
+      "target": "/portal/{{TEST_PORTAL_SLUG}}/email-auth-setup"
     },
     {
       "name": "The page's own heading renders regardless of which gated sections (SPF/DMARC/DKIM/all-configured/not-scanned) end up visible this run — a real DOM-text assertion, not a captureResponse (CLAUDE.md's textContains discipline).",
