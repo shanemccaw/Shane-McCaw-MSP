@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -46,6 +48,14 @@ namespace BuildConsole.Controls
         public event EventHandler? SettingsRequested;
         public event EventHandler<GitBoardIssue>? IssueDetailRequested;
         public event EventHandler<int>? MilestoneDetailRequested;
+
+        /// <summary>
+        /// Raised when a pending-migration row is clicked, carrying the full local
+        /// path of the <c>lib/db/migrations/manual/*.sql</c> file. MainWindow owns
+        /// the SQL Runner tab (#939 AvalonEdit <see cref="SqlDocumentView"/>), so it
+        /// opens/focuses it and loads the file's real contents for manual review.
+        /// </summary>
+        public event EventHandler<string>? OpenMigrationInSqlRunnerRequested;
 
         private const int StaleRunningMinutes = 60;
         private readonly Random _rng = new();
@@ -175,6 +185,11 @@ namespace BuildConsole.Controls
         // ── Board State & Smart ADHD Suggestions ────────────────────────────
         public void RenderDashboardState(IReadOnlyList<GitBoardIssue>? issues, IReadOnlyList<GitMilestone>? milestones)
         {
+            // Auto-refresh the pending-migrations glance alongside the board rollup, so
+            // the list re-scans on tab open and on every periodic rollup — never left
+            // stale after a migration is executed.
+            RefreshPendingMigrations();
+
             if (issues == null) return;
 
             // Update stats
@@ -558,6 +573,134 @@ namespace BuildConsole.Controls
             row.MouseLeftButtonUp += onClick;
             return row;
         }
+
+        #region Pending Migrations
+
+        // Prevents overlapping re-scans (RenderDashboardState fires on every rollup,
+        // and the manual ⟳ button can land mid-scan) — a single in-flight query at a time.
+        private bool _migrationsScanInFlight;
+
+        private void BtnRefreshMigrations_Click(object sender, RoutedEventArgs e) => RefreshPendingMigrations();
+
+        /// <summary>
+        /// Enumerates every <c>lib/db/migrations/manual/*.sql</c> file, queries the real
+        /// <c>simulator_migration_runs</c> table (through the app's own DB pipe — direct
+        /// hosted Postgres in Dev via <see cref="LocalSqlExecutor"/>), and lists any file
+        /// whose filename isn't recorded there. Best-effort and self-contained: any
+        /// failure just shows a short reason in place of the list rather than throwing.
+        /// </summary>
+        public async void RefreshPendingMigrations()
+        {
+            if (_migrationsScanInFlight) return;
+            _migrationsScanInFlight = true;
+            try
+            {
+                var repoRoot = BuildTrackerConfig.FindRepoRoot();
+                if (string.IsNullOrWhiteSpace(repoRoot))
+                {
+                    ShowMigrationsMessage("Couldn't locate the repo root to scan migrations.");
+                    return;
+                }
+
+                var dir = Path.Combine(repoRoot, "lib", "db", "migrations", "manual");
+                if (!Directory.Exists(dir))
+                {
+                    ShowMigrationsMessage("No lib/db/migrations/manual directory found.");
+                    return;
+                }
+
+                // Every real .sql file on disk (filename only — the self-marking INSERT
+                // in each migration records the bare filename, so that's the join key).
+                var files = Directory.GetFiles(dir, "*.sql")
+                    .Select(Path.GetFileName)
+                    .Where(f => !string.IsNullOrWhiteSpace(f))
+                    .Select(f => f!)
+                    .OrderBy(f => f, StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                HashSet<string> ran;
+                try
+                {
+                    var statements = await LocalSqlExecutor.ExecuteAsync(
+                        _apiClient!, "SELECT filename FROM simulator_migration_runs;");
+                    ran = ExtractRanFilenames(statements);
+                }
+                catch (Exception ex)
+                {
+                    ShowMigrationsMessage($"Couldn't read simulator_migration_runs: {ex.Message}");
+                    return;
+                }
+
+                var pending = files.Where(f => !ran.Contains(f)).ToList();
+                RenderPendingMigrations(dir, pending);
+            }
+            catch (Exception ex)
+            {
+                ShowMigrationsMessage($"Migration scan failed: {ex.Message}");
+            }
+            finally
+            {
+                _migrationsScanInFlight = false;
+            }
+        }
+
+        /// <summary>Pulls the <c>filename</c> column out of the SELECT result, case-insensitively.</summary>
+        private static HashSet<string> ExtractRanFilenames(List<SqlStatementResult> statements)
+        {
+            var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var s in statements)
+            {
+                if (!s.Success) continue;
+                foreach (var row in s.Rows)
+                {
+                    if (!row.TryGetValue("filename", out var el)) continue;
+                    var name = el.ValueKind == JsonValueKind.String ? el.GetString() : el.ToString();
+                    if (!string.IsNullOrWhiteSpace(name)) set.Add(name.Trim());
+                }
+            }
+            return set;
+        }
+
+        private void RenderPendingMigrations(string dir, List<string> pending)
+        {
+            PendingMigrationsList.Children.Clear();
+            PendingMigrationsCountText.Text = $"({pending.Count})";
+
+            if (pending.Count == 0)
+            {
+                MigrationsHintText.Visibility = Visibility.Collapsed;
+                PendingMigrationsEmpty.Text = "🎉 All manual migrations are recorded — nothing pending.";
+                PendingMigrationsEmpty.Foreground = (Brush)FindResource("Subtext1Brush");
+                PendingMigrationsEmpty.Visibility = Visibility.Visible;
+                return;
+            }
+
+            MigrationsHintText.Visibility = Visibility.Visible;
+            PendingMigrationsEmpty.Visibility = Visibility.Collapsed;
+
+            foreach (var name in pending)
+            {
+                var fullPath = Path.Combine(dir, name);
+                PendingMigrationsList.Children.Add(BuildRow(
+                    "🧩", "#F9E2AF",
+                    name,
+                    "not recorded  ·  click to load into SQL Runner",
+                    $"Load {name} into the SQL Runner for review & manual execution",
+                    (_, _) => OpenMigrationInSqlRunnerRequested?.Invoke(this, fullPath)));
+            }
+        }
+
+        private void ShowMigrationsMessage(string message)
+        {
+            PendingMigrationsList.Children.Clear();
+            PendingMigrationsCountText.Text = "(?)";
+            MigrationsHintText.Visibility = Visibility.Collapsed;
+            PendingMigrationsEmpty.Text = message;
+            PendingMigrationsEmpty.Foreground = (Brush)FindResource("PeachBrush");
+            PendingMigrationsEmpty.Visibility = Visibility.Visible;
+        }
+
+        #endregion
 
         #region System Health & Tier Diagnostics
 

@@ -766,6 +766,31 @@
                             </StackPanel>
                         </Border>
 
+                        <!-- 🗄️ Pending Migrations Card -->
+                        <Border x:Name="PendingMigrationsCard" Style="{StaticResource HomeCard}" BorderBrush="{StaticResource Surface1Brush}">
+                            <StackPanel>
+                                <Grid Margin="0,0,0,10">
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <TextBlock Text="🗄️" FontSize="13" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                        <TextBlock Text="PENDING MIGRATIONS" Style="{StaticResource HomeCardHeader}"/>
+                                        <TextBlock x:Name="PendingMigrationsCountText" Text="(–)" FontSize="11" Margin="6,0,0,0"
+                                                   VerticalAlignment="Center" Foreground="{StaticResource Subtext1Brush}"/>
+                                    </StackPanel>
+                                    <Button x:Name="BtnRefreshMigrations" Content="⟳" Style="{StaticResource SecondaryButton}"
+                                            Width="22" Height="22" Padding="0" FontSize="12" FontWeight="Bold" Cursor="Hand"
+                                            HorizontalAlignment="Right" ToolTip="Re-scan manual migrations against simulator_migration_runs"
+                                            Click="BtnRefreshMigrations_Click"/>
+                                </Grid>
+                                <TextBlock x:Name="MigrationsHintText"
+                                           Text="Manual .sql files not yet recorded in simulator_migration_runs. Click one to load it into the SQL Runner for review &amp; manual execution."
+                                           FontSize="10" Foreground="{StaticResource Subtext0Brush}" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                                <StackPanel x:Name="PendingMigrationsList"/>
+                                <TextBlock x:Name="PendingMigrationsEmpty" Text="Scanning migrations…"
+                                           FontSize="11" Foreground="{StaticResource Subtext1Brush}"
+                                           Margin="2,2,0,0"/>
+                            </StackPanel>
+                        </Border>
+
                     </StackPanel>
                 </Grid>
             </StackPanel>

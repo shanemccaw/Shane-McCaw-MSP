@@ -2077,6 +2077,14 @@ namespace BuildConsole
                 var m = LeftSidebar.CurrentMilestones.FirstOrDefault(m => m.GithubNumber == milestoneNum);
                 if (m != null) OpenMilestoneDetailTab(m);
             };
+            // Pending Migrations panel → open/focus the #939 SQL Runner and load the
+            // clicked migration file's real full contents for manual review + execution.
+            home.OpenMigrationInSqlRunnerRequested += (s, path) =>
+            {
+                var sqlDoc = OpenSqlRunnerTab();
+                try { sqlDoc.SetSqlQuery(File.ReadAllText(path)); }
+                catch (Exception ex) { sqlDoc.ShowSendStatus($"Couldn't load {Path.GetFileName(path)}: {ex.Message}"); }
+            };
 
             _homeView = home;
 
