@@ -645,13 +645,6 @@ namespace BuildConsole
 
             UpdateZoomDisplay();
 
-            // Persistent web chips (Git #972 revised) — seed the EDITOR PANES header-bar
-            // chips (LinkedIn + Replit Workspace), each a pinned WebView2 session kept
-            // genuinely alive off-screen in PinnedHostCanvas and one click away without
-            // taking a tab slot. Deferred to Loaded priority so the canvas has real
-            // layout extents (and the x:Named chip buttons exist) before content mounts.
-            Dispatcher.BeginInvoke(new Action(SeedPinnedWebChips), System.Windows.Threading.DispatcherPriority.Loaded);
-
             // Animated startup loading overlay (StartupOverlay in XAML, already painting
             // its running-character animation). Build its honest per-connection rows and
             // kick off the real probes now that _buildTrackerApi + _usageMeter exist; it
@@ -3186,11 +3179,11 @@ namespace BuildConsole
                     }
                 }
 
-                // Explicitly detach and dispose content so WPF visual tree and native HWNDs never get stuck
-                if (tabItem.Content is Microsoft.Web.WebView2.Wpf.WebView2 wv)
-                {
-                    try { wv.Dispose(); } catch { }
-                }
+                // Explicitly detach and dispose content so WPF visual tree, native HWNDs, and the
+                // CoreWebView2 process behind each control never get stuck. Content is never the
+                // WebView2 itself (web/chat/file tabs each wrap it in a container Grid), so this
+                // recurses the visual tree to find and dispose every WebView2 descendant.
+                DisposeWebView2Descendants(tabItem.Content as DependencyObject);
                 tabItem.Content = null;
                 tabItem.Header = null;
 
@@ -3201,6 +3194,26 @@ namespace BuildConsole
 
                 CollapseEmptySplitPanes();
             });
+        }
+
+        /// <summary>Recursively finds and disposes every WebView2 in <paramref name="root"/>'s visual
+        /// subtree. A tab's WebView2 is always wrapped (nav toolbar + WebView2 in a Grid for web tabs,
+        /// a split Grid with an optional inline SQL runner for chat tabs, etc.), so a single-level
+        /// `Content is WebView2` check never matches — this is what actually frees the native HWND and
+        /// CoreWebView2 process when a tab closes, instead of leaving it running unreferenced.</summary>
+        private static void DisposeWebView2Descendants(DependencyObject? root)
+        {
+            if (root == null) return;
+            if (root is Microsoft.Web.WebView2.Wpf.WebView2 wv)
+            {
+                try { wv.Dispose(); } catch { }
+                return;
+            }
+            int count = VisualTreeHelper.GetChildrenCount(root);
+            for (int i = 0; i < count; i++)
+            {
+                DisposeWebView2Descendants(VisualTreeHelper.GetChild(root, i));
+            }
         }
 
         public void CollapseEmptySplitPanes()
