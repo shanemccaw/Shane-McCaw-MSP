@@ -394,7 +394,13 @@ namespace BuildConsole.Controls
             try
             {
                 var client = new GitHubApiClient(settings.GitHubPat);
-                issues = await client.GetSubIssuesAsync(epicGithubNumber.Value);
+                // bypassCache: true — this is a user-initiated tab-switch; always fetch
+                // fresh data from GitHub. The static ETag cache (GetConditionalAsync) can
+                // hold a stale empty-list ETag from before any sub-issues were attached to
+                // this epic, causing every subsequent poll to 304 and return empty for the
+                // whole app session. Bypassing it here (same contract as GetMilestonesAsync's
+                // bypassCache) ensures the panel always reflects GitHub's actual current state.
+                issues = await client.GetSubIssuesAsync(epicGithubNumber.Value, bypassCache: true);
             }
             catch (Exception ex)
             {

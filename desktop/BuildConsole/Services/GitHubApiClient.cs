@@ -404,13 +404,18 @@ namespace BuildConsole.Services
         /// how long Shane waited. Fetches the epic's REAL sub-issues
         /// directly instead, same real-GitHub-state principle #839/#874
         /// already established elsewhere in this app.
+        /// <paramref name="bypassCache"/> — same contract as GetMilestonesAsync:
+        /// skips the static ETag cache so a tab-switch always fetches fresh
+        /// data. Without this, if GitHub previously returned an ETag for an
+        /// empty sub-issues list (e.g. before issues were added as sub-issues),
+        /// a 304 would hand back that stale empty list for the entire app session.
         /// </summary>
-        public async Task<List<GitHubSubIssue>> GetSubIssuesAsync(int parentNumber)
+        public async Task<List<GitHubSubIssue>> GetSubIssuesAsync(int parentNumber, bool bypassCache = false)
         {
             try
             {
                 var subIssues = await GetConditionalAsync<List<GitHubSubIssue>>(
-                    $"repos/{Owner}/{Repo}/issues/{parentNumber}/sub_issues");
+                    $"repos/{Owner}/{Repo}/issues/{parentNumber}/sub_issues", bypassCache);
                 return subIssues ?? new List<GitHubSubIssue>();
             }
             catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
