@@ -109,6 +109,8 @@ namespace BuildConsole
         private string _whatsNewVersion = "";
         private List<string> _whatsNewTitles = new();
         private int _whatsNewMore;
+        private int _whatsNewLastSeen = -1;
+        private int _whatsNewCurrent = -1;
         /// <summary>Open-issue-number cache for the Home "Done, waiting for you" section (a `gh` CLI read). Manual-only GitHub (Shane, 2026-08-14): refreshed ONLY on a force roll-up (Home-tab open/refresh), no longer on a ~60s background cadence — the background 10s tick keeps the local-dev-server queue live without touching GitHub.</summary>
         private HashSet<int> _homeOpenIssueNumbers = new();
         /// <summary>Content signature of the last Running/Done render — skips the re-render (and its section-render log) on a 10s tick whose data is identical, same anti-flicker pattern as BuildQueuePanel's _lastQueueSignature.</summary>
@@ -2131,7 +2133,7 @@ namespace BuildConsole
             // Re-render the "What's New" section from the launch-time cache (no-op /
             // stays collapsed until InitWhatsNewAsync has computed it, or when there's
             // nothing new). Reopening Home mid-session shows the same set.
-            if (_whatsNewReady) home.RenderWhatsNew(_whatsNewVersion, _whatsNewTitles, _whatsNewMore);
+            if (_whatsNewReady) home.RenderWhatsNew(_whatsNewVersion, _whatsNewTitles, _whatsNewMore, _whatsNewLastSeen, _whatsNewCurrent);
             _ = RefreshHomeRollupAsync(force: true);
         }
 
@@ -2154,40 +2156,45 @@ namespace BuildConsole
                 int current = BuildConsole.Services.VersionInfo.RunningBuild;
                 int lastSeen = settings.LastSeenBuild;
 
-                // First launch ever (or a pre-existing settings.json with no lastSeenBuild):
-                // seed the baseline silently — don't dump the whole history as "new".
                 if (lastSeen < 0)
                 {
+                    lastSeen = current;
                     settings.LastSeenBuild = current;
                     settings.Save();
-                    return;
                 }
 
-                if (current <= lastSeen) return; // nothing new since last launch
+                _whatsNewLastSeen = lastSeen;
+                _whatsNewCurrent = current;
 
-                const int max = 15;
-                var titles = await System.Threading.Tasks.Task.Run(
-                    () => BuildConsole.Services.VersionInfo.GetNewCommitTitles(lastSeen, max));
-
-                // "more" means genuinely-uncovered-by-the-max-cap commits, NOT bookend
-                // commits GetNewCommitTitles already filtered out of titles — those are
-                // intentionally hidden, not truncated, so they must not inflate this count.
-                int totalNew = current - lastSeen;
-                int take = Math.Min(totalNew, max);
-                int more = Math.Max(0, totalNew - take);
+                List<string> titles;
+                if (current > lastSeen)
+                {
+                    // Fetch all commits in the new range (up to 200 to avoid arbitrary 15 truncation)
+                    titles = await System.Threading.Tasks.Task.Run(
+                        () => BuildConsole.Services.VersionInfo.GetNewCommitTitles(lastSeen, 200));
+                }
+                else
+                {
+                    // No new changes, fetch Page 0 of history (latest 15 commits)
+                    titles = await System.Threading.Tasks.Task.Run(
+                        () => BuildConsole.Services.VersionInfo.GetCommitsRange(0, 15));
+                }
 
                 _whatsNewTitles = titles;
                 _whatsNewVersion = BuildConsole.Services.VersionInfo.Format(current);
-                _whatsNewMore = more;
+                _whatsNewMore = 0;
                 _whatsNewReady = true;
 
-                // Advance last-seen now (once computed) so this set won't re-show next launch.
-                settings.LastSeenBuild = current;
-                settings.Save();
+                if (current > lastSeen)
+                {
+                    // Advance last-seen now (once computed) so this set won't re-show next launch.
+                    settings.LastSeenBuild = current;
+                    settings.Save();
+                }
 
                 // Render into the Home tab if it's currently open (it is at launch).
-                if (_homeView != null && titles.Count > 0)
-                    _homeView.RenderWhatsNew(_whatsNewVersion, _whatsNewTitles, _whatsNewMore);
+                if (_homeView != null)
+                    _homeView.RenderWhatsNew(_whatsNewVersion, _whatsNewTitles, _whatsNewMore, _whatsNewLastSeen, _whatsNewCurrent);
             }
             catch { /* pure display feature — never let a git/settings hiccup disturb launch */ }
         }

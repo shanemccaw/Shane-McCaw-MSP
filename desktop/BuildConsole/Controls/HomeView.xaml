@@ -498,8 +498,22 @@
                             <Border x:Name="WhatsNewContent" Visibility="Collapsed" Background="{StaticResource Surface0Brush}"
                                     BorderBrush="{StaticResource Surface1Brush}" BorderThickness="1,0,1,1" Padding="12,10" CornerRadius="0,0,7,7">
                                 <StackPanel>
-                                    <TextBlock x:Name="WhatsNewVersionText" Text="" FontSize="10" Margin="0,0,0,6"
-                                               Foreground="{StaticResource Subtext1Brush}"/>
+                                    <Grid Margin="0,0,0,8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <TextBlock x:Name="WhatsNewVersionText" Text="" FontSize="10"
+                                                       Foreground="{StaticResource Subtext1Brush}"/>
+                                            <TextBlock x:Name="WhatsNewPageIndicatorText" Text="" FontSize="10" Margin="8,0,0,0"
+                                                       Foreground="{StaticResource Subtext0Brush}" FontStyle="Italic"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                            <Button x:Name="BtnWhatsNewPrev" Content="◀ Older" Style="{StaticResource IconButton}" FontSize="10" Margin="0,0,8,0" Padding="4,2" Click="BtnWhatsNewPrev_Click"/>
+                                            <Button x:Name="BtnWhatsNewNext" Content="Newer ▶" Style="{StaticResource IconButton}" FontSize="10" Padding="4,2" Click="BtnWhatsNewNext_Click"/>
+                                        </StackPanel>
+                                    </Grid>
                                     <StackPanel x:Name="WhatsNewList"/>
                                 </StackPanel>
                             </Border>

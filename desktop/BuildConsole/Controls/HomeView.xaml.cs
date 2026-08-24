@@ -327,33 +327,149 @@ namespace BuildConsole.Controls
         }
 
         // ── Section 0: What's New ───────────────────────────────────────────
-        public void RenderWhatsNew(string versionLabel, IReadOnlyList<string> titles, int moreCount = 0)
+        private int _lastSeenBuild = -1;
+        private int _currentBuild = -1;
+        private int _currentPage = 0;
+
+        public void RenderWhatsNew(string versionLabel, IReadOnlyList<string> titles, int moreCount, int lastSeen, int current)
         {
+            _lastSeenBuild = lastSeen;
+            _currentBuild = current;
+            _currentPage = 0;
+
             WhatsNewList.Children.Clear();
+            WhatsNewVersionText.Text = $"Build {VersionInfo.Format(_currentBuild)}";
+
+            bool hasSinceLastLook = _currentBuild > _lastSeenBuild;
+            WhatsNewPageIndicatorText.Text = hasSinceLastLook ? "Since Last Look" : "Page 1";
 
             if (titles == null || titles.Count == 0)
             {
-                WhatsNewSection.Visibility = Visibility.Collapsed;
-                return;
+                WhatsNewList.Children.Add(BuildBullet("No changes found."));
             }
-
-            WhatsNewVersionText.Text = versionLabel;
-
-            foreach (var title in titles)
-                WhatsNewList.Children.Add(BuildBullet(title));
-
-            if (moreCount > 0)
+            else
             {
-                var more = BuildBullet($"…and {moreCount} more change{(moreCount == 1 ? "" : "s")}");
-                ((TextBlock)((StackPanel)((Border)more).Child).Children[1]).FontStyle = FontStyles.Italic;
-                WhatsNewList.Children.Add(more);
+                foreach (var title in titles)
+                    WhatsNewList.Children.Add(BuildBullet(title));
             }
 
-            int total = titles.Count + moreCount;
-            WhatsNewSummaryText.Text = $"{total} change{(total == 1 ? "" : "s")} since you last looked";
+            int total = titles?.Count ?? 0;
+            if (hasSinceLastLook)
+            {
+                WhatsNewSummaryText.Text = $"{total} change{(total == 1 ? "" : "s")} since you last looked";
+            }
+            else
+            {
+                WhatsNewSummaryText.Text = "No new changes";
+            }
+
+            BtnWhatsNewNext.IsEnabled = false;
+            BtnWhatsNewPrev.IsEnabled = total > 0;
+
             WhatsNewTile.IsChecked = false;
             WhatsNewContent.Visibility = Visibility.Collapsed;
             WhatsNewSection.Visibility = Visibility.Visible;
+        }
+
+        private void BtnWhatsNewPrev_Click(object sender, RoutedEventArgs e)
+        {
+            _currentPage++;
+            _ = LoadWhatsNewPageAsync();
+        }
+
+        private void BtnWhatsNewNext_Click(object sender, RoutedEventArgs e)
+        {
+            if (_currentPage > 0)
+            {
+                _currentPage--;
+                _ = LoadWhatsNewPageAsync();
+            }
+        }
+
+        private async System.Threading.Tasks.Task LoadWhatsNewPageAsync()
+        {
+            if (_currentBuild < 0) return;
+
+            bool hasSinceLastLook = _currentBuild > _lastSeenBuild;
+
+            int skip = 0;
+            int take = 15;
+            string pageLabel = "";
+
+            int liveBuild = VersionInfo.GetCurrentBuild() ?? _currentBuild;
+            int liveOffset = Math.Max(0, liveBuild - _currentBuild);
+
+            if (_currentPage == 0)
+            {
+                if (hasSinceLastLook)
+                {
+                    skip = liveOffset;
+                    take = _currentBuild - _lastSeenBuild;
+                    pageLabel = "Since Last Look";
+                }
+                else
+                {
+                    skip = liveOffset;
+                    take = 15;
+                    pageLabel = "Page 1";
+                }
+            }
+            else
+            {
+                if (hasSinceLastLook)
+                {
+                    skip = liveOffset + (_currentBuild - _lastSeenBuild) + (_currentPage - 1) * 15;
+                    take = 15;
+                    pageLabel = $"Page {_currentPage + 1}";
+                }
+                else
+                {
+                    skip = liveOffset + _currentPage * 15;
+                    take = 15;
+                    pageLabel = $"Page {_currentPage + 1}";
+                }
+            }
+
+            Dispatcher.Invoke(() =>
+            {
+                BtnWhatsNewPrev.IsEnabled = false;
+                BtnWhatsNewNext.IsEnabled = false;
+            });
+
+            var titles = await System.Threading.Tasks.Task.Run(() => VersionInfo.GetCommitsRange(skip, take));
+
+            Dispatcher.Invoke(() =>
+            {
+                WhatsNewList.Children.Clear();
+                WhatsNewPageIndicatorText.Text = pageLabel;
+
+                if (titles.Count == 0)
+                {
+                    WhatsNewList.Children.Add(BuildBullet("No changes found in this range."));
+                }
+                else
+                {
+                    foreach (var title in titles)
+                        WhatsNewList.Children.Add(BuildBullet(title));
+                }
+
+                BtnWhatsNewNext.IsEnabled = _currentPage > 0;
+                BtnWhatsNewPrev.IsEnabled = titles.Count > 0;
+
+                if (_currentPage == 0 && hasSinceLastLook)
+                {
+                    int total = titles.Count;
+                    WhatsNewSummaryText.Text = $"{total} change{(total == 1 ? "" : "s")} since you last looked";
+                }
+                else if (_currentPage == 0 && !hasSinceLastLook)
+                {
+                    WhatsNewSummaryText.Text = "No new changes";
+                }
+                else
+                {
+                    WhatsNewSummaryText.Text = $"Browsing older changes ({pageLabel})";
+                }
+            });
         }
 
         private void WhatsNewTile_Click(object sender, RoutedEventArgs e)

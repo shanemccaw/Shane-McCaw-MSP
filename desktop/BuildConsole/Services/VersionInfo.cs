@@ -148,6 +148,44 @@ namespace BuildConsole.Services
             return result;
         }
 
+        /// <summary>
+        /// Gets a range of commit titles (subjects) starting from a specific offset (skip)
+        /// and taking a maximum count, filtering out session-bookend commits.
+        /// </summary>
+        public static List<string> GetCommitsRange(int skip, int take)
+        {
+            var result = new List<string>();
+            var repoRoot = FindRepoRoot();
+            if (repoRoot == null) return result;
+
+            try
+            {
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "git",
+                    Arguments = $"log --skip={skip} --max-count={take} --format=%s HEAD -- desktop/BuildConsole",
+                    WorkingDirectory = repoRoot,
+                    RedirectStandardOutput = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                };
+                using var proc = Process.Start(psi);
+                if (proc == null) return result;
+                string stdout = proc.StandardOutput.ReadToEnd();
+                proc.WaitForExit(5000);
+                foreach (var line in stdout.Split('\n'))
+                {
+                    var t = line.Trim();
+                    if (t.Length > 0 && !IsBookendCommitTitle(t)) result.Add(t);
+                }
+            }
+            catch
+            {
+                return new List<string>();
+            }
+            return result;
+        }
+
         // Matches the session-bookend commit conventions from CLAUDE.md's "Mandatory
         // session bookends" section (BUILD_LOG.md / PLATFORM_BUILD.md IN FLIGHT/DONE
         // rows), plus the looser "Bookend:"/bare "IN FLIGHT:" phrasings seen in real
