@@ -162,14 +162,59 @@ name per wave**, e.g. `--buildSet enhanced-monitoring`) and the
 - merge each member's committed changes into the shared dev-server checkout as it
   finishes, but **defer the restart** — no restart fires for an individual member;
 - once **every** member of the set has completed, fire **exactly ONE**
-  restart/rebuild of all four services for the combined changes, then run the
-  relevant tests **once** for the whole set.
+  restart for the combined changes — and that restart is **selective** (only the
+  services whose real code actually changed, see below) — then run the relevant
+  tests **once** for the whole set.
 
 Builds queued **without** `--buildSet` are unchanged — they keep the existing
 per-build merge+restart+coalescing behavior. Use `--buildSet` only for a genuine
 stack of related builds meant to go live together; a lone ad-hoc build doesn't
 need it. See `scripts/dev-server/README.md` (“Build Sets”) for the full mechanism,
 the failure/`close` backstop, and the `buildset.mjs status|close|drop` tools.
+
+### Selective service targeting — a completed set rebuilds only what changed
+
+The one restart a completed Build Set fires is **selective**, not a blanket
+rebuild of everything. Shane's own words: *"I don't need all sites running at the
+same time. I hardly use the Admin Center. No need for Marketing to be on when I'm
+only working the Portal… The only thing that has to be on always is the API
+server. If only the Portal code changes, why does API need a rebuild? It just
+needs to be smarter to target its actual need."*
+
+On completion the coordinator computes the set's **combined changed-file
+footprint** (the union of each merged member's own changes) and maps those real
+paths to services:
+
+| Changed path | Service |
+|--------------|---------|
+| `artifacts/api-server/` | **API Server** (the one always-on service) |
+| `artifacts/shane-mccaw-consulting/` | **Marketing** |
+| `artifacts/admin-panel/` | **Admin** |
+| `artifacts/msp-portal/` | **Portal** |
+| `artifacts/msp-website/` | **Website** |
+| `lib/`, `packages/`, root build config (`package.json`, `pnpm-*`, `tsconfig*`) | **shared → ALL services** |
+| `test-manifests/`, `docs/`, `scripts/`, other non-shipped paths | **none** (no rebuild) |
+
+Then it:
+
+- rebuilds **only** the services whose code genuinely changed;
+- keeps the **API Server always-on** — it is **never rebuilt just because a
+  front-end changed**, only when API (or shared) code actually changed; if it
+  isn't running, it is started;
+- **doesn't spin up** a front-end the set didn't touch (that's the memory win —
+  a Portal-only wave restarts only the Portal, not Marketing/Admin/Website);
+- rebuilds/restarts **nothing** for a set that merged only non-service files
+  (docs / test manifests / tooling);
+- by default **never stops** an unrelated running front-end (so it can't yank a
+  service Shane is using); opt into stopping unneeded front-ends with
+  `DEV_SET_STOP_UNNEEDED=1` (the API server is never stopped).
+
+Every decision — which services were determined to need a rebuild/start/stop, and
+exactly which changed files drove it — is logged to
+`<state-dir>/buildsets.log` (and mirrored into `cycles.log`). Ungrouped
+(non-`--buildSet`) builds are unchanged: they still do a full restart via the
+coordinator's `runCycle`. See `scripts/dev-server/README.md` (“Selective service
+targeting”) for the full mechanism.
 
 ## Git conventions
 
@@ -212,12 +257,13 @@ production-affecting changes, anything he'd reasonably want eyes-on first)
 
 ## Database
 
-- **Default for local day-to-day dev/testing: connect directly to the real hosted Postgres server, not `shaneapp://executeSql`.** The `DATABASE_URL` env var in `.env.local` is a genuine, directly-reachable Neon-hosted Postgres connection string (host `ep-round-tree-aylkxv9h.c-5.us-east-2.aws.neon.tech`, db `neondb`, `sslmode=require`; full credentials are in `.env.local` itself, not repeated here) — the same database the local dev api-server itself reads/writes. While building, agents should use it directly (`psql "$DATABASE_URL"`, a one-off script, etc.) for reads to confirm state and for writes/`ALTER`/`UPDATE`/`INSERT` that are a normal, reversible part of the task — faster and with zero indirection through BuildConsole. Report the real result honestly, the same way test pass/fail is reported. Don't claim something is verified against live data unless it actually was queried.
+- **Why this section no longer points at hosted Neon:** the hosted Neon Postgres instance previously used for local dev hit its free-plan monthly data-transfer quota and went unreachable (compute suspended, real, confirmed) — a real operational lesson about relying on a shared/limited hosted resource for high-frequency local dev traffic (Git #1209). Shane has since installed PostgreSQL 18 locally, and local dev now reads/writes that instance instead. The underlying philosophy is unchanged: agents connect directly for routine local dev/query verification rather than deferring everything to Shane — only the connection target changed.
+- **Default for local day-to-day dev/testing: connect directly to the real local PostgreSQL 18 install, not `shaneapp://executeSql`.** The `DATABASE_URL` env var in `.env.local` is a genuine, directly-reachable local Postgres connection string: `postgresql://postgres:<password>@localhost:5432/shanemccawmsp` (host `localhost`, port `5432`, db `shanemccawmsp`; the real password is in `.env.local` itself, not repeated here) — the same database the local dev api-server itself reads/writes. While building, agents should use it directly (`psql "$DATABASE_URL"`, a one-off script, etc.) for reads to confirm state and for writes/`ALTER`/`UPDATE`/`INSERT` that are a normal, reversible part of the task — faster and with zero indirection through BuildConsole. Report the real result honestly, the same way test pass/fail is reported. Don't claim something is verified against live data unless it actually was queried.
 - **`shaneapp://executeSql` stays real and available, but is for Replit/Staging debugging, not local dev work.** It runs SQL through BuildConsole's own dev api-server over HTTP (`POST /api/simulator/sql/execute`, the same pipe as the manual SQL Runner — see `desktop/BuildConsole/Services/LocalSqlExecutor.cs`), not a direct local Postgres connection. That HTTP round-trip is exactly the right tool when direct connection isn't — e.g. investigating the Replit/Staging environment via SSH (see below) where BuildConsole's dev api-server is the reachable path. Don't remove or deprecate it; just don't default to it for local work where the direct `DATABASE_URL` connection is faster and available.
 - **Manual SQL for Shane's own SQL console stays as a real fallback, not the default** — reserved for anything genuinely too destructive or sensitive to self-execute (irreversible bulk deletes, production-affecting changes, anything Shane would reasonably want eyes-on before it runs). Judging what qualifies is Shane's call to make explicit when it matters; when in doubt on a risky write, say so and hand it to him rather than self-executing.
 - **Schema changes require manual SQL, not `drizzle-kit push`.** Do not run `drizzle-kit push` or `push --force` — interactive push surfaces large pre-existing schema drift unrelated to the change at hand. Instead: add the Drizzle TS schema definitions, then hand-write the equivalent `CREATE TABLE`/`ALTER TABLE ... ADD COLUMN IF NOT EXISTS` SQL into a new file under `lib/db/migrations/manual/`, for Shane to review and run himself.
 - No literal prices, tier names, or seat counts hardcoded in `.tsx` files outside API response handling (no-hardcoding rule) — these should flow through the Products Catalog / API responses, not be baked into UI code. Verifiable by grep.
-- **Neon MCP server for schema/migration work.** The real Neon MCP server (`https://mcp.neon.tech/mcp`) is registered project-wide in `.mcp.json` (HTTP transport, project scope) so every spawned build session has it available regardless of agent. Prefer it specifically for schema/migration tooling — `complete_database_migration`, `compare_database_schema`, `create_branch` — over the direct-write approach that was getting blocked by the safety classifier. This is distinct from the hosted-Postgres-direct default above, which remains the right tool for routine query verification; reach for the Neon MCP tools specifically when doing schema/migration work. Note: Neon's MCP server requires one-time OAuth sign-in per session — a headless/`--print` session cannot complete that browser approval itself, so the first real use in such a session will show the server as pending approval rather than connected. Run an interactive `claude` session at least once to approve it if a headless build needs to use it.
+- **Neon MCP server for schema/migration work is now stale.** The Neon MCP server (`https://mcp.neon.tech/mcp`) registered in `.mcp.json` was tied to the same now-abandoned hosted Neon project — with that project's compute suspended on quota exhaustion, its schema/migration tools (`complete_database_migration`, `compare_database_schema`, `create_branch`) have nothing live to operate against. Until/unless a new Neon project is provisioned for this purpose, do schema/migration work via the manual-SQL-file workflow above against the local PostgreSQL 18 install instead.
 
 ### Manual migration files (`lib/db/migrations/manual/`)
 
