@@ -54,6 +54,7 @@ import {
 import { useMessageCenter } from "@/components/portal-v2/useMessageCenter";
 import {
   breakMeta,
+  bucketTotals,
   cellDots,
   cellTitle,
   clampWave,
@@ -632,6 +633,14 @@ export default function PortalV2MsChangesPage() {
   };
 
   const active = useMemo(() => activeDensity(services, ds), [services, ds]);
+  /**
+   * Round Four roadmap: the Volume river — each bucket's total broken into its
+   * breaks/decide/verify/informational segments, scaled to the busiest month.
+   * Pure presentation over the same active density the rows below render.
+   * Prototype `river` (Microsoft Changes.dc.html 183-193 markup, 1568-1583 derivation).
+   */
+  const river = useMemo(() => bucketTotals(active, ds), [active, ds]);
+  const riverPeak = useMemo(() => Math.max(1, ...river.map((t) => t[0] + t[1] + t[2] + t[3])), [river]);
   const selBand = bands[wave];
   const selT = useMemo(() => waveTotals(wave, services, bands, ds), [wave, services, bands, ds]);
   const tiles = useMemo(() => waveTiles(wave, services, bands, ds), [wave, services, bands, ds]);
@@ -1019,6 +1028,36 @@ export default function PortalV2MsChangesPage() {
                           >
                             <span style={{ fontSize: "9px", fontWeight: on ? 800 : 700, letterSpacing: ".03em", textTransform: "uppercase", color: on ? "#e2e8f0" : "#93c5fd", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%", lineHeight: 1.3 }}>{waveLabel(b, ds)}</span>
                             <span style={{ fontSize: "9px", fontWeight: 700, color: on ? "#93c5fd" : "#60a5fa", whiteSpace: "nowrap", lineHeight: 1.3 }}>{n}</span>
+                          </a>
+                        );
+                      })}
+                    </div>
+
+                    {/* ── The Volume river — per-bucket total as a stacked mini-bar,
+                        scaled to the busiest month. Prototype `river` (Microsoft
+                        Changes.dc.html 183-193 / 1568-1583). Round Four roadmap. */}
+                    <span style={{ fontSize: "9px", fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: "#475569", alignSelf: "end", padding: "0 12px 6px 2px" }}>Volume</span>
+                    <div data-testid="pv2-msc-volume" style={{ display: "grid", gridTemplateColumns: "repeat(11,minmax(0,1fr))", alignItems: "end", borderBottom: "1px solid rgba(30,41,59,.9)" }}>
+                      {river.map((t, i) => {
+                        const total = t[0] + t[1] + t[2] + t[3];
+                        const on = ds.buckets[i].wave === selBand.wave;
+                        const fz = isFreezeBucket(i, ds);
+                        const wi = bands.findIndex((bd) => bd.start <= i && i < bd.start + bd.span);
+                        const href = `/portal-v2/ms-changes${wi <= 0 ? "" : `/${WAVE_SLUGS[wi]}`}`;
+                        return (
+                          <a
+                            key={i}
+                            href={href}
+                            onClick={() => setPast(null)}
+                            data-testid={`pv2-msc-vol-${i}`}
+                            title={`${ds.buckets[i].label} ${ds.buckets[i].sub} · ${total} ${total === 1 ? "change" : "changes"}`}
+                            style={{ display: "flex", flexDirection: "column", justifyContent: "flex-end", alignItems: "stretch", gap: 0, height: 96, padding: "0 3px", width: "100%", textDecoration: "none", cursor: "pointer", fontFamily: "inherit", border: "none", borderLeft: i === 0 ? "2px solid rgba(34,211,238,.75)" : `1px solid ${fz ? "rgba(248,113,113,.4)" : "rgba(30,41,59,.6)"}`, background: on ? "rgba(0,120,212,.1)" : fz ? "repeating-linear-gradient(135deg,rgba(248,113,113,.13),rgba(248,113,113,.13) 5px,rgba(248,113,113,.04) 5px,rgba(248,113,113,.04) 10px)" : "transparent" }}
+                          >
+                            <span style={{ fontSize: "10.5px", fontWeight: 700, color: on ? "#93c5fd" : "#94a3b8", paddingTop: 4, textAlign: "center" }}>{total}</span>
+                            {(["s", "v", "d", "b"] as const).map((k) => {
+                              const n = k === "b" ? t[0] : k === "d" ? t[1] : k === "v" ? t[2] : t[3];
+                              return <div key={k} style={{ height: (n / riverPeak) * 86, background: KIND_TONE[k], borderRadius: k === "b" ? "3px 3px 0 0" : 0, opacity: k === "s" ? 0.85 : 1 }} />;
+                            })}
                           </a>
                         );
                       })}

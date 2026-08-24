@@ -114,6 +114,7 @@
     { "name": "MSC4 -- ROUND FOUR: the six duplicate stat cards were removed -- the counts read from the wave sub-nav now -- so no stat card renders on the page.", "action": "expect", "selector": "[data-testid='pv2-msc-stat-decisions']", "state": "absent", "critical": true },
 
     { "name": "MSC10 -- the density grid renders.", "action": "expect", "selector": "[data-testid='pv2-msc-grid']", "state": "visible", "critical": true },
+    { "name": "MSC10b -- ROUND FOUR roadmap: the Volume river row renders inside the grid (per-bucket total as a stacked mini-bar), the design element the earlier port omitted.", "action": "expect", "selector": "[data-testid='pv2-msc-volume']", "state": "visible" },
     { "name": "MSC11 -- the first density row carries the REAL workload name the endpoint sent.", "action": "expect", "selector": "[data-testid='pv2-msc-row-Exchange']", "textContains": "{{firstWorkloadName}}", "critical": true },
     { "name": "MSC12 -- the M365 residual row exists, which the six design rows could not hold: Microsoft files against nineteen distinct service names in this tenant alone, and dropping the remainder would make every total on the page quietly wrong.", "action": "expect", "selector": "[data-testid='pv2-msc-row-M365']", "state": "visible", "critical": true },
     { "name": "MSC13 -- the wave band renders its first band by name.", "action": "expect", "selector": "[data-testid='pv2-msc-wave-late-august']", "textContains": "Late Aug" },
