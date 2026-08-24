@@ -21,9 +21,10 @@
  */
 
 import { db } from "@workspace/db";
-import { fulfillmentTypesTable, fulfillmentIdempotencyTable } from "@workspace/db";
+import { fulfillmentTypesTable, fulfillmentIdempotencyTable, clientServicesTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { emitWorkflowEvent } from "./workflow-executor";
+import { resolveCustomerPortalUserId } from "./tenant-signals";
 import { logger } from "./logger";
 const log = logger.child({ channel: "billing" });
 
@@ -139,7 +140,62 @@ export async function resolveFulfillment(
     "resolve-fulfillment: emitted fulfillment event",
   );
 
+  if (fulfillmentTypeKey === "monitoring_subscription") {
+    await provisionMonitoringClientService(payload);
+  }
+
   return { status: "emitted", fulfillmentTypeKey, idempotencyKey, eventName };
+}
+
+/**
+ * monitoring_subscription is the one fulfillment type with a real downstream
+ * reader today — msp-diagnostics.ts, support-chat.ts, etc. all resolve a
+ * tenant's monitoring packageKey via `users -> client_services -> services`,
+ * filtered on `fulfillment_type_key='monitoring_subscription' AND
+ * status='active'`. No workflow definition subscribes to the
+ * `fulfillment.monitoring_subscription` event above (confirmed: zero
+ * client_services rows exist anywhere, ever), so without this write the
+ * purchase this event represents stays invisible to every one of those
+ * readers (Git #1164).
+ */
+async function provisionMonitoringClientService(payload: Record<string, unknown>): Promise<void> {
+  const customerId = typeof payload["customerId"] === "number" ? payload["customerId"] : null;
+  const serviceId = typeof payload["serviceId"] === "number" ? payload["serviceId"] : null;
+  const stripeSubscriptionId = typeof payload["subscriptionId"] === "string" ? payload["subscriptionId"] : null;
+
+  if (!customerId || !serviceId) {
+    log.warn(
+      { customerId, serviceId },
+      "resolve-fulfillment: monitoring_subscription purchase missing customerId/serviceId in payload — client_services not provisioned",
+    );
+    return;
+  }
+
+  // client_services.clientUserId is a users.id FK, not a tenants.id — resolve
+  // the tenant's canonical portal login the same way every other consumer of
+  // that column does (tenant-signals.ts's resolveCustomerPortalUserId).
+  const clientUserId = await resolveCustomerPortalUserId(customerId);
+  if (!clientUserId) {
+    log.warn(
+      { customerId, serviceId },
+      "resolve-fulfillment: no active portal user for tenant — client_services not provisioned",
+    );
+    return;
+  }
+
+  await db.insert(clientServicesTable).values({
+    clientUserId,
+    serviceId,
+    status: "active",
+    progress: 0,
+    startDate: new Date(),
+    ...(stripeSubscriptionId ? { stripeSubscriptionId } : {}),
+  });
+
+  log.info(
+    { customerId, serviceId, clientUserId },
+    "resolve-fulfillment: provisioned client_services row for monitoring purchase",
+  );
 }
 
 /**

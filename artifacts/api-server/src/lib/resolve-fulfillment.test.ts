@@ -41,8 +41,19 @@ vi.mock("@workspace/db", () => {
       fulfillmentTypeKey: "fulfillment_type_key",
       payload: "payload",
     },
+    clientServicesTable: {
+      clientUserId: "client_user_id",
+      serviceId: "service_id",
+      status: "status",
+    },
   };
 });
+
+// ── tenant-signals mock (client_services.clientUserId resolution) ─────────────
+const resolveCustomerPortalUserIdMock = vi.fn();
+vi.mock("./tenant-signals", () => ({
+  resolveCustomerPortalUserId: resolveCustomerPortalUserIdMock,
+}));
 
 vi.mock("drizzle-orm", () => ({
   eq: vi.fn((_col, _val) => ({ col: _col, val: _val })),
@@ -55,13 +66,10 @@ vi.mock("./workflow-executor", () => ({
 }));
 
 // ── Logger mock ───────────────────────────────────────────────────────────────
-vi.mock("./logger", () => ({
-  logger: {
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-  },
-}));
+vi.mock("./logger", () => {
+  const stub = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+  return { logger: { ...stub, child: vi.fn(() => stub) } };
+});
 
 // ── Helper to rebuild the fluent db chain for select ────────────────────────
 function makeSelectChain(results: unknown[]) {
@@ -218,6 +226,83 @@ describe("resolveFulfillment", () => {
 
     expect(result.status).toBe("duplicate");
     expect(emitWorkflowEventMock).not.toHaveBeenCalled();
+  });
+
+  it("7. monitoring_subscription purchase provisions an active client_services row (Git #1164)", async () => {
+    mockSelect
+      .mockReturnValueOnce(makeSelectChain([{ key: "monitoring_subscription", isActive: true, recurring: true }]))
+      .mockReturnValueOnce(makeSelectChain([])); // idempotency check clean
+    mockInsert
+      .mockReturnValueOnce(makeInsertChain([{ key: "idem-monitoring" }])) // idempotency insert
+      .mockReturnValueOnce(makeInsertChain([{ id: 501 }])); // client_services insert
+    resolveCustomerPortalUserIdMock.mockResolvedValueOnce(42);
+
+    const { resolveFulfillment } = await import("./resolve-fulfillment");
+
+    const result = await resolveFulfillment({
+      fulfillmentTypeKey: "monitoring_subscription",
+      idempotencyKey: "portal_offer_checkout:direct:99:sub_123",
+      trigger: "purchase",
+      payload: { offerId: 99, customerId: 7, serviceId: 6, subscriptionId: "sub_123" },
+    });
+
+    expect(result.status).toBe("emitted");
+    expect(resolveCustomerPortalUserIdMock).toHaveBeenCalledWith(7);
+    expect(mockInsert).toHaveBeenCalledTimes(2);
+    const clientServicesInsertCall = mockInsert.mock.calls[1];
+    expect(clientServicesInsertCall[0]).toEqual({
+      clientUserId: "client_user_id",
+      serviceId: "service_id",
+      status: "status",
+    });
+    const clientServicesValuesArg = mockInsert.mock.results[1].value.values.mock.calls[0][0];
+    expect(clientServicesValuesArg).toMatchObject({
+      clientUserId: 42,
+      serviceId: 6,
+      status: "active",
+      progress: 0,
+      stripeSubscriptionId: "sub_123",
+    });
+  });
+
+  it("7b. monitoring_subscription purchase with no resolvable portal user skips the write without throwing", async () => {
+    mockSelect
+      .mockReturnValueOnce(makeSelectChain([{ key: "monitoring_subscription", isActive: true, recurring: true }]))
+      .mockReturnValueOnce(makeSelectChain([]));
+    mockInsert.mockReturnValueOnce(makeInsertChain([{ key: "idem-monitoring-2" }]));
+    resolveCustomerPortalUserIdMock.mockResolvedValueOnce(null);
+
+    const { resolveFulfillment } = await import("./resolve-fulfillment");
+
+    const result = await resolveFulfillment({
+      fulfillmentTypeKey: "monitoring_subscription",
+      idempotencyKey: "portal_offer_checkout:direct:100:sub_456",
+      trigger: "purchase",
+      payload: { offerId: 100, customerId: 8, serviceId: 6 },
+    });
+
+    expect(result.status).toBe("emitted");
+    expect(mockInsert).toHaveBeenCalledTimes(1); // idempotency row only — no client_services insert
+  });
+
+  it("7c. monitoring_subscription purchase missing serviceId/customerId skips the write without throwing", async () => {
+    mockSelect
+      .mockReturnValueOnce(makeSelectChain([{ key: "monitoring_subscription", isActive: true, recurring: true }]))
+      .mockReturnValueOnce(makeSelectChain([]));
+    mockInsert.mockReturnValueOnce(makeInsertChain([{ key: "idem-monitoring-3" }]));
+
+    const { resolveFulfillment } = await import("./resolve-fulfillment");
+
+    const result = await resolveFulfillment({
+      fulfillmentTypeKey: "monitoring_subscription",
+      idempotencyKey: "portal_offer_checkout:direct:101:sub_789",
+      trigger: "purchase",
+      payload: { offerId: 101, customerId: 9 }, // no serviceId
+    });
+
+    expect(result.status).toBe("emitted");
+    expect(resolveCustomerPortalUserIdMock).not.toHaveBeenCalled();
+    expect(mockInsert).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -238,6 +238,7 @@ router.post(
           trigger: "purchase",
           payload: {
             offerId, customerId, mspId: targetMspId,
+            serviceId: svc.id,
             amountCents: 0, serviceName: svc.name, serviceClass,
             initiatedBy: "msp_staff", staffUserId: actorId, staffEmail: actorEmail,
           },
@@ -357,6 +358,7 @@ router.post(
           trigger: "purchase",
           payload: {
             offerId, customerId, mspId: targetMspId,
+            serviceId: svc.id,
             stripePaymentIntentId, subscriptionId,
             amountCents: retailPriceCents,
             wholesaleChargedCents: wholesaleCostCents,

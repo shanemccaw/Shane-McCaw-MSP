@@ -406,6 +406,7 @@ router.post(
             offerId,
             customerId,
             mspId,
+            serviceId: offerRow.serviceId,
             amountCents: 0,
             serviceName,
             customerEmail: actorEmail,
@@ -713,6 +714,7 @@ router.post(
             offerId,
             customerId,
             mspId: targetMspId,
+            serviceId: offerRow.serviceId,
             stripePaymentIntentId,
             subscriptionId,
             amountCents: retailPriceCents,
@@ -910,6 +912,12 @@ async function handleCheckoutCompleted(
   const legalAgreementText = customCustomerAgreement || platformAgreement?.body || "Customer agrees they will be billed directly by their Managed Service Provider (MSP) for this service.";
   const agreementVersionToPass = customCustomerAgreement ? "custom" : (platformAgreement?.version ?? "1.0");
 
+  const [offerForFulfillment] = await db
+    .select({ serviceId: salesOffersTable.serviceId })
+    .from(salesOffersTable)
+    .where(eq(salesOffersTable.id, offerId))
+    .limit(1);
+
   const result = await resolveFulfillment({
     fulfillmentTypeKey,
     idempotencyKey,
@@ -918,6 +926,7 @@ async function handleCheckoutCompleted(
       offerId,
       customerId,
       mspId,
+      serviceId: offerForFulfillment?.serviceId ?? null,
       stripeSessionId: session.id,
       amountCents: session.amount_total ?? 0,
       wholesaleChargedCents,

@@ -143,9 +143,10 @@ vi.mock("../lib/workflow-executor", () => ({
   emitWorkflowEvent: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock("../lib/logger", () => ({
-  logger: { info: vi.fn(), error: vi.fn(), debug: vi.fn(), warn: vi.fn() },
-}));
+vi.mock("../lib/logger", () => {
+  const stub = { info: vi.fn(), error: vi.fn(), debug: vi.fn(), warn: vi.fn() };
+  return { logger: { ...stub, child: vi.fn(() => stub) } };
+});
 
 vi.mock("../lib/stripe", () => ({
   getStripeKey: vi.fn().mockReturnValue("sk_test_xxx"),
