@@ -109,7 +109,7 @@ namespace BuildConsole.Controls
                 {
                     try
                     {
-                        var res = await mainWin.BuildTrackerApi.ExecuteSqlAsync("SELECT filename FROM simulator_migration_runs");
+                        var res = await LocalSqlExecutor.ExecuteAsync(mainWin.BuildTrackerApi, "SELECT filename FROM simulator_migration_runs");
                         var stmt = res.FirstOrDefault();
                         if (stmt != null && stmt.Rows != null)
                         {

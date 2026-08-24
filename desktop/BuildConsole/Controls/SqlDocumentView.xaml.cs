@@ -145,7 +145,7 @@ namespace BuildConsole.Controls
                 // Git #939 — rewrite bare INSERT/UPDATE/DELETE statements to RETURNING *
                 // so the affected rows come back as a real result set (below).
                 var toRun = AddReturningToWrites(query);
-                var statements = await _api.ExecuteSqlAsync(toRun);
+                var statements = await LocalSqlExecutor.ExecuteAsync(_api, toRun);
                 RenderResults(statements);
             }
             catch (Exception ex)

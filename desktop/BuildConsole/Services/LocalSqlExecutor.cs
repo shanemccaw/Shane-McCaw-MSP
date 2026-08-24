@@ -1,64 +1,170 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
+using Npgsql;
 
 namespace BuildConsole.Services
 {
     /// <summary>
-    /// Runs SQL for the <c>shaneapp://executeSql</c> local protocol through the EXACT
-    /// same execution path the manual SQL Runner (<see cref="Controls.SqlRunnerView"/>)
-    /// already uses: <see cref="BuildTrackerApiClient.ExecuteSqlAsync"/> →
-    /// <c>POST /api/simulator/sql/execute</c> against the configured dev api-server
-    /// (<c>apiBaseUrl</c>). There is NO direct/local Postgres connection and NO separate
-    /// connection string — the SQL rides "through the pipe like the SQL Runner," which is
-    /// Shane's stated design intent for this action.
-    ///
-    /// WHY THIS SHAPE (correcting an earlier deviation):
-    ///   A previous version of this class opened its OWN Npgsql connection and required a
-    ///   <c>databaseUrl</c> config field / <c>DATABASE_URL</c> environment variable that was
-    ///   never configured — so every <c>shaneapp://executeSql</c> call failed with
-    ///   "no local Postgres connection string configured." That was a real deviation from
-    ///   the design: the SQL Runner never held a local DB connection either; its only SQL
-    ///   path is <see cref="BuildTrackerApiClient.ExecuteSqlAsync"/> over HTTP, the same
-    ///   already-approved dev-server path the old browser-extension floaty runner used.
-    ///   This routes <c>executeSql</c> through that identical, already-working pipe, so it
-    ///   succeeds the moment the app is configured — nothing new to set up.
-    ///
-    /// SEMANTICS:
-    ///   Identical to the SQL Runner. The api-server splits the script (server-parity split)
-    ///   and returns one <see cref="SqlStatementResult"/> per statement — the exact shape the
-    ///   SQL Runner grid and the <c>shaneapp://</c> result envelope already render. A
-    ///   mid-script per-statement failure is captured in that statement's result and does not
-    ///   stop later statements, matching the SSMS-style behaviour already in place.
-    ///
-    /// SAFETY: no direct database access happens from a Claude Code session — this only runs
-    ///   at app runtime on Shane's machine, hitting the same dev api-server the SQL Runner does.
+    /// Runs SQL for the <c>shaneapp://executeSql</c> local protocol and the manual SQL Runner.
+    /// Following the target environment:
+    ///   - Dev: Executes SQL directly against the local Neon Postgres database.
+    ///   - Staging/Production: Executes SQL through the api-server HTTP pipe (api.ExecuteSqlAsync).
     /// </summary>
     public static class LocalSqlExecutor
     {
-        /// <summary>
-        /// Executes <paramref name="sql"/> by handing it to the manual SQL Runner's own
-        /// execution pipe (<paramref name="api"/>'s <see cref="BuildTrackerApiClient.ExecuteSqlAsync"/>
-        /// → <c>POST /api/simulator/sql/execute</c>), returning one
-        /// <see cref="SqlStatementResult"/> per statement exactly as the SQL Runner does.
-        /// Throws <see cref="InvalidOperationException"/> if the api-server isn't configured
-        /// (so the caller can write a clear "not configured" result envelope rather than a
-        /// silent no-op), and propagates the underlying HTTP error if the request itself fails.
-        /// </summary>
-        public static Task<List<SqlStatementResult>> ExecuteAsync(BuildTrackerApiClient api, string sql)
+        private static TargetEnvironment GetCurrentTargetEnvironment()
         {
-            if (api == null) throw new ArgumentNullException(nameof(api));
-            if (!api.IsConfigured)
+            TargetEnvironment env = TargetEnvironment.Dev;
+            if (System.Windows.Application.Current != null)
             {
-                throw new InvalidOperationException(
-                    "api-server is not configured — set apiBaseUrl + ingestToken in " +
-                    "scripts/build-queue-watcher.config.json. executeSql routes SQL through the " +
-                    "same POST /api/simulator/sql/execute path the manual SQL Runner uses; no " +
-                    "local Postgres connection is involved.");
+                try
+                {
+                    System.Windows.Application.Current.Dispatcher.Invoke(() =>
+                    {
+                        if (System.Windows.Application.Current.MainWindow is MainWindow mw && mw.LeftSidebar != null)
+                        {
+                            env = mw.LeftSidebar.GetSelectedTargetEnvironment();
+                        }
+                    });
+                }
+                catch
+                {
+                    // Fall back to Dev if UI thread dispatch fails
+                }
+            }
+            return env;
+        }
+
+        private static string? GetConnectionString()
+        {
+            var config = BuildTrackerConfig.Load();
+            if (!string.IsNullOrWhiteSpace(config.DatabaseUrl))
+                return config.DatabaseUrl;
+
+            var repoRoot = BuildTrackerConfig.FindRepoRoot() ?? "";
+            var envLocal = Path.Combine(repoRoot, ".env.local");
+            if (File.Exists(envLocal))
+            {
+                foreach (var line in File.ReadAllLines(envLocal))
+                {
+                    var trimmed = line.Trim();
+                    if (trimmed.StartsWith('#') || !trimmed.StartsWith("DATABASE_URL=", StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    var url = trimmed.Substring("DATABASE_URL=".Length).Trim().Trim('"').Trim('\'');
+                    if (!string.IsNullOrWhiteSpace(url))
+                        return url;
+                }
+            }
+            return null;
+        }
+
+        public static async Task<List<SqlStatementResult>> ExecuteAsync(BuildTrackerApiClient api, string sql)
+        {
+            var env = GetCurrentTargetEnvironment();
+            if (env == TargetEnvironment.Dev)
+            {
+                var connStr = GetConnectionString();
+                if (string.IsNullOrWhiteSpace(connStr))
+                {
+                    throw new InvalidOperationException(
+                        "No DATABASE_URL found for Dev environment — set databaseUrl in scripts/build-queue-watcher.config.json " +
+                        "or add DATABASE_URL=<connection string> to .env.local at the repo root.");
+                }
+                return await ExecuteSqlDirectlyAsync(connStr, sql);
+            }
+            else
+            {
+                if (api == null) throw new ArgumentNullException(nameof(api));
+                if (!api.IsConfigured)
+                {
+                    throw new InvalidOperationException(
+                        "api-server is not configured — set apiBaseUrl + ingestToken in " +
+                        "scripts/build-queue-watcher.config.json.");
+                }
+                return await api.ExecuteSqlAsync(sql);
+            }
+        }
+
+        private static async Task<List<SqlStatementResult>> ExecuteSqlDirectlyAsync(string connectionString, string sql)
+        {
+            var statements = SqlScriptSplitter.Split(sql);
+            var results = new List<SqlStatementResult>();
+
+            using (var conn = new NpgsqlConnection(connectionString))
+            {
+                await conn.OpenAsync();
+
+                for (int i = 0; i < statements.Count; i++)
+                {
+                    var stmtText = statements[i];
+                    var result = new SqlStatementResult
+                    {
+                        StatementIndex = i,
+                        StatementText = stmtText,
+                        Success = true
+                    };
+
+                    var sw = System.Diagnostics.Stopwatch.StartNew();
+                    try
+                    {
+                        using (var cmd = new NpgsqlCommand(stmtText, conn))
+                        {
+                            using (var reader = await cmd.ExecuteReaderAsync())
+                            {
+                                for (int col = 0; col < reader.FieldCount; col++)
+                                {
+                                    result.Fields.Add(reader.GetName(col));
+                                }
+
+                                while (await reader.ReadAsync())
+                                {
+                                    var rowDict = new Dictionary<string, JsonElement>();
+                                    for (int col = 0; col < reader.FieldCount; col++)
+                                    {
+                                        var name = reader.GetName(col);
+                                        var val = reader.GetValue(col);
+                                        JsonElement elem;
+                                        if (val == null || val == DBNull.Value)
+                                        {
+                                            elem = JsonSerializer.Deserialize<JsonElement>("null");
+                                        }
+                                        else
+                                        {
+                                            try
+                                            {
+                                                var jsonStr = JsonSerializer.Serialize(val);
+                                                elem = JsonSerializer.Deserialize<JsonElement>(jsonStr);
+                                            }
+                                            catch
+                                            {
+                                                var escaped = (val?.ToString() ?? "").Replace("\\", "\\\\").Replace("\"", "\\\"");
+                                                elem = JsonSerializer.Deserialize<JsonElement>($"\"{escaped}\"");
+                                            }
+                                        }
+                                        rowDict[name] = elem;
+                                    }
+                                    result.Rows.Add(rowDict);
+                                }
+                                result.RowCount = result.Rows.Count;
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        result.Success = false;
+                        result.Error = ex.Message;
+                    }
+                    sw.Stop();
+                    result.ExecutionMs = (int)sw.ElapsedMilliseconds;
+                    results.Add(result);
+                }
             }
 
-            // The one pipe the SQL Runner already uses, verbatim.
-            return api.ExecuteSqlAsync(sql);
+            return results;
         }
     }
 }

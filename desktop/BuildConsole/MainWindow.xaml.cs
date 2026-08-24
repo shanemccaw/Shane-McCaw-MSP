@@ -48,6 +48,7 @@ namespace BuildConsole
         private BuildConsole.Services.BuildTrackerApiClient? _buildTrackerApi;
         public BuildConsole.Services.BuildTrackerApiClient? BuildTrackerApi => _buildTrackerApi;
         private BuildConsole.Services.QueueWatcherService? _queueWatcher;
+        private BuildConsole.Services.BuildQueuePostgresClient? _queueDb;
 
         // ── Build completion sound (mute toggle: _Sound menu > Mute Completion Sound) ──
         private readonly BuildConsole.Services.BuildCompletionSoundService _buildSound = new();
@@ -317,7 +318,7 @@ namespace BuildConsole
                 // state is always correct even when Replit is napping. Reads DATABASE_URL
                 // from .env.local at the repo root (already set up for local dev).
                 var repoRootForDb = BuildConsole.Services.BuildTrackerConfig.FindRepoRoot() ?? "";
-                var _queueDb = BuildConsole.Services.BuildQueuePostgresClient.TryCreate(
+                _queueDb = BuildConsole.Services.BuildQueuePostgresClient.TryCreate(
                     btConfig,
                     repoRootForDb,
                     msg => BuildConsole.Services.ActivityLog.Log("watcher", msg));
@@ -2395,7 +2396,17 @@ namespace BuildConsole
             else
             {
                 List<BuildConsole.Services.QueueItem> queue;
-                try { queue = await _buildTrackerApi.GetQueueAsync(); }
+                try
+                {
+                    if (_queueDb != null)
+                    {
+                        queue = await _queueDb.GetQueueAsync();
+                    }
+                    else
+                    {
+                        queue = await _buildTrackerApi.GetQueueAsync();
+                    }
+                }
                 catch { return; } // best-effort — keep whatever's already rendered
 
                 // Manual-only GitHub (Shane, 2026-08-14): "Done, waiting for you"

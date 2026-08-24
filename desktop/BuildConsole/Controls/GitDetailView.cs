@@ -507,7 +507,7 @@ namespace BuildConsole.Controls
                     if (api != null)
                     {
                         using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(2));
-                        var res = await api.ExecuteSqlAsync("SELECT filename FROM simulator_migration_runs");
+                        var res = await LocalSqlExecutor.ExecuteAsync(api, "SELECT filename FROM simulator_migration_runs");
                         var stmt = res.FirstOrDefault();
                         if (stmt != null && stmt.Rows != null)
                         {

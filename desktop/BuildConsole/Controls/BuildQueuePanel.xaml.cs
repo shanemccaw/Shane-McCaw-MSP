@@ -580,11 +580,20 @@ namespace BuildConsole.Controls
             int myGeneration = ++_refreshGeneration;
             try
             {
-                var result = await _api.GetQueueCachedAsync();
+                if (_db != null)
+                {
+                    _lastItems = await _db.GetQueueAsync();
+                    _queueIsStale = false;
+                    _queueCachedAtUtc = null;
+                }
+                else
+                {
+                    var result = await _api.GetQueueCachedAsync();
+                    _lastItems = result.Data;
+                    _queueIsStale = result.IsStale;
+                    _queueCachedAtUtc = result.CachedAtUtc;
+                }
                 if (myGeneration != _refreshGeneration) return;
-                _lastItems = result.Data;
-                _queueIsStale = result.IsStale;
-                _queueCachedAtUtc = result.CachedAtUtc;
                 BuildConsole.Services.NotGitNumberRegistry.SyncFromQueue(_lastItems);
 
                 string restartSignature;
