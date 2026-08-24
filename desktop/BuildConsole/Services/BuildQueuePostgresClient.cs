@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Npgsql;
 using NpgsqlTypes;
@@ -30,14 +31,13 @@ namespace BuildConsole.Services
     ///   automatically the first time it's needed.
     ///
     /// ── What this does NOT replace ───────────────────────────────────────────────
-    /// The API server still handles:
-    ///   • POST /extension/queue — ADDING a new item to the queue (from chat buttons
-    ///     or the browser extension). That write path is owned by the extension and
-    ///     the injected chat buttons; changing it would require touching the extension
-    ///     too, and the "add item" path doesn't share the "server asleep" problem
-    ///     (Shane is awake and present when he queues something).
-    ///   • QueueBuildAsync / CancelQueueItemAsync / ToggleLabelAsync — all other
-    ///     mutations that don't involve the watcher's own poll-and-claim loop.
+    /// QueueBuildAsync (ADDING/re-queuing an item — from chat buttons, the "Retry"
+    /// menu action, a Reply continuation, or the pending-update replay) also runs
+    /// direct-Postgres now, same reasoning as everything else above: BuildConsole is
+    /// Shane's own app and shouldn't need a live, correctly-tokened server round-trip
+    /// just to click Queue. The API server still handles:
+    ///   • CancelQueueItemAsync / ToggleLabelAsync — mutations that don't involve the
+    ///     watcher's own poll-and-claim loop and aren't on the hot "queue a build" path.
     ///   • BuildQueuePanel's display (GetQueueAsync / GetQueueCachedAsync) — those
     ///     reads are still HTTP because they also join GitHub blocker state that the
     ///     server resolves; the direct Postgres reads here only support the watcher's
@@ -274,6 +274,133 @@ namespace BuildConsole.Services
                     claimed.Add(MapRow(reader));
             }
             return claimed;
+        }
+
+        // ── QueueBuildAsync ───────────────────────────────────────────────────────
+        /// <summary>
+        /// Adds (or, for an issue-linked build, re-queues) a build. Replicates
+        /// POST /admin/build-tracker/extension/queue's DB logic verbatim, including
+        /// the Git #823 dedupe-by-githubNumber behavior: an issue-linked build
+        /// (githubNumber != null) reuses its existing row instead of piling up a new
+        /// one on every Queue/Retry click; a build with no githubNumber always
+        /// inserts fresh. Also mirrors the server's fire-and-forget, non-fatal
+        /// in-flight/complete label sync — via the local `gh` CLI
+        /// (<see cref="GitHubIssuesService"/>) instead of a server-side GITHUB_TOKEN
+        /// call, since this bypasses the server entirely.
+        /// </summary>
+        public async Task<QueueItem> QueueBuildAsync(
+            string title, string prompt, string? model, string? effort, string? cwd,
+            int? githubNumber, List<int>? blockedByNumbers, string? resumeSessionId = null,
+            string? chatUrl = null, string? originatingChatId = null)
+        {
+            var titleTrimmed = title.Trim();
+            var modelTrimmed = string.IsNullOrWhiteSpace(model) ? null : model.Trim();
+            var effortTrimmed = string.IsNullOrWhiteSpace(effort) ? null : effort.Trim();
+            var cwdTrimmed = string.IsNullOrWhiteSpace(cwd) ? null : cwd.Trim();
+            var originatingChatIdTrimmed = string.IsNullOrWhiteSpace(originatingChatId) ? null : originatingChatId.Trim();
+            var chatUrlTrimmed = string.IsNullOrWhiteSpace(chatUrl) ? null : chatUrl.Trim();
+
+            var allBlockers = (blockedByNumbers ?? new List<int>()).Distinct().ToList();
+            int? firstBlocker = allBlockers.Count > 0 ? allBlockers[0] : null;
+            int[]? blockerArray = allBlockers.Count > 0 ? allBlockers.ToArray() : null;
+
+            await using var conn = await OpenAsync();
+
+            QueueItem? row = null;
+            if (githubNumber.HasValue)
+            {
+                int? existingId = null;
+                await using (var findCmd = new NpgsqlCommand(@"
+                    SELECT id FROM bt_build_queue
+                     WHERE github_number = @num
+                     ORDER BY created_at DESC
+                     LIMIT 1", conn))
+                {
+                    findCmd.Parameters.AddWithValue("@num", githubNumber.Value);
+                    var found = await findCmd.ExecuteScalarAsync();
+                    if (found != null && found != DBNull.Value) existingId = (int)found;
+                }
+
+                if (existingId.HasValue)
+                {
+                    await using var updateCmd = new NpgsqlCommand(@"
+                        UPDATE bt_build_queue
+                           SET title = @title, prompt = @prompt, model = @model, effort = @effort, cwd = @cwd,
+                               blocked_by_number = @blockedByNumber, blocked_by_numbers = @blockedByNumbers,
+                               resume_session_id = @resumeSessionId, originating_chat_id = @originatingChatId,
+                               chat_url = @chatUrl, status = 'queued', claimed_at = NULL, completed_at = NULL,
+                               exit_code = NULL, updated_at = NOW()
+                         WHERE id = @id
+                        RETURNING id, title, prompt, model, effort, cwd,
+                                  github_number, blocked_by_number, blocked_by_numbers,
+                                  status, exit_code, session_id, resume_session_id,
+                                  originating_chat_id, chat_url, updated_at", conn);
+                    updateCmd.Parameters.AddWithValue("@title", titleTrimmed);
+                    updateCmd.Parameters.AddWithValue("@prompt", prompt);
+                    updateCmd.Parameters.AddWithValue("@model", (object?)modelTrimmed ?? DBNull.Value);
+                    updateCmd.Parameters.AddWithValue("@effort", (object?)effortTrimmed ?? DBNull.Value);
+                    updateCmd.Parameters.AddWithValue("@cwd", (object?)cwdTrimmed ?? DBNull.Value);
+                    updateCmd.Parameters.AddWithValue("@blockedByNumber", (object?)firstBlocker ?? DBNull.Value);
+                    updateCmd.Parameters.Add(new NpgsqlParameter("@blockedByNumbers", NpgsqlDbType.Array | NpgsqlDbType.Integer)
+                    { Value = (object?)blockerArray ?? DBNull.Value });
+                    updateCmd.Parameters.AddWithValue("@resumeSessionId", (object?)resumeSessionId ?? DBNull.Value);
+                    updateCmd.Parameters.AddWithValue("@originatingChatId", (object?)originatingChatIdTrimmed ?? DBNull.Value);
+                    updateCmd.Parameters.AddWithValue("@chatUrl", (object?)chatUrlTrimmed ?? DBNull.Value);
+                    updateCmd.Parameters.AddWithValue("@id", existingId.Value);
+                    await using var reader = await updateCmd.ExecuteReaderAsync();
+                    if (await reader.ReadAsync()) row = MapRow(reader);
+                }
+            }
+
+            if (row == null)
+            {
+                await using var insertCmd = new NpgsqlCommand(@"
+                    INSERT INTO bt_build_queue
+                        (title, prompt, model, effort, cwd, github_number,
+                         blocked_by_number, blocked_by_numbers, resume_session_id,
+                         originating_chat_id, chat_url)
+                    VALUES
+                        (@title, @prompt, @model, @effort, @cwd, @githubNumber,
+                         @blockedByNumber, @blockedByNumbers, @resumeSessionId,
+                         @originatingChatId, @chatUrl)
+                    RETURNING id, title, prompt, model, effort, cwd,
+                              github_number, blocked_by_number, blocked_by_numbers,
+                              status, exit_code, session_id, resume_session_id,
+                              originating_chat_id, chat_url, updated_at", conn);
+                insertCmd.Parameters.AddWithValue("@title", titleTrimmed);
+                insertCmd.Parameters.AddWithValue("@prompt", prompt);
+                insertCmd.Parameters.AddWithValue("@model", (object?)modelTrimmed ?? DBNull.Value);
+                insertCmd.Parameters.AddWithValue("@effort", (object?)effortTrimmed ?? DBNull.Value);
+                insertCmd.Parameters.AddWithValue("@cwd", (object?)cwdTrimmed ?? DBNull.Value);
+                insertCmd.Parameters.AddWithValue("@githubNumber", (object?)githubNumber ?? DBNull.Value);
+                insertCmd.Parameters.AddWithValue("@blockedByNumber", (object?)firstBlocker ?? DBNull.Value);
+                insertCmd.Parameters.Add(new NpgsqlParameter("@blockedByNumbers", NpgsqlDbType.Array | NpgsqlDbType.Integer)
+                { Value = (object?)blockerArray ?? DBNull.Value });
+                insertCmd.Parameters.AddWithValue("@resumeSessionId", (object?)resumeSessionId ?? DBNull.Value);
+                insertCmd.Parameters.AddWithValue("@originatingChatId", (object?)originatingChatIdTrimmed ?? DBNull.Value);
+                insertCmd.Parameters.AddWithValue("@chatUrl", (object?)chatUrlTrimmed ?? DBNull.Value);
+                await using var reader = await insertCmd.ExecuteReaderAsync();
+                await reader.ReadAsync();
+                row = MapRow(reader);
+            }
+
+            // Fire-and-forget, non-fatal — mirrors the server's own "queue action must
+            // never be delayed or failed by a label sync" stance.
+            if (githubNumber.HasValue)
+            {
+                var num = githubNumber.Value;
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await GitHubIssuesService.AddLabelAsync(num, "in-flight");
+                        await GitHubIssuesService.RemoveLabelAsync(num, "complete");
+                    }
+                    catch { /* non-fatal, matches server behavior */ }
+                });
+            }
+
+            return row;
         }
 
         // ── MarkCompleteAsync ─────────────────────────────────────────────────────

@@ -137,6 +137,7 @@ namespace BuildConsole
         }
 
         private readonly BuildTrackerApiClient? _api;
+        private readonly Services.BuildQueuePostgresClient? _db;
         /// <summary>The in-app queue watcher (may be null when claude.exe/config isn't set). For builds this instance launched interactively it owns their real stdin — the chat Send/Stop box and live-stream render go through it. Builds it doesn't own (a foreign instance / the legacy path) fall back to read-only file-tail with no input box, an honest boundary.</summary>
         private readonly Services.QueueWatcherService? _watcher;
         private readonly List<BuildWatchSlot> _slots = new();
@@ -216,11 +217,12 @@ namespace BuildConsole
         /// <summary>Cheap per-window RNG for the easter-egg roll. (Not Math.random — this is C#; System.Random is fine.)</summary>
         private readonly Random _rng = new();
 
-        public BuildWatchWindow(BuildTrackerApiClient? api, Services.QueueWatcherService? watcher = null)
+        public BuildWatchWindow(BuildTrackerApiClient? api, Services.QueueWatcherService? watcher = null, Services.BuildQueuePostgresClient? db = null)
         {
             InitializeComponent();
             _api = api;
             _watcher = watcher;
+            _db = db;
 
             _emptyBorder = (Brush)FindResource("Surface0Brush");
             _ringSuccess = (Brush)FindResource("ChatPane.Success");
@@ -1560,11 +1562,11 @@ namespace BuildConsole
             slot.StatusLine!.ActivityText = "launching continuation…";
             slot.StatusLine!.Spinning = true;
 
-            if (_api != null)
+            if (_db != null)
             {
                 try
                 {
-                    var res = await _api.QueueBuildAsync(
+                    var queued = await _db.QueueBuildAsync(
                         $"Continue: {slot.Title}",
                         text,
                         slot.Model,
@@ -1574,38 +1576,24 @@ namespace BuildConsole
                         slot.BlockedByNumbers,
                         resumeSessionId: sessionId);
 
-                    if (res.IsSuccessStatusCode)
-                    {
-                        var body = await res.Content.ReadFromJsonAsync<JsonElement>();
-                        if (body.TryGetProperty("id", out var newIdProp) && newIdProp.TryGetInt32(out int newQueueId))
-                        {
-                            int oldId = slot.QueueItemId;
-                            slot.QueueItemId = newQueueId;
-                            slot.Pane.SetChecklistBuild(newQueueId);
-                            slot.InteractiveCursor = 0;
-                            slot.LastOutputUtc = DateTime.UtcNow;
+                    int newQueueId = queued.Id;
+                    slot.QueueItemId = newQueueId;
+                    slot.Pane.SetChecklistBuild(newQueueId);
+                    slot.InteractiveCursor = 0;
+                    slot.LastOutputUtc = DateTime.UtcNow;
 
-                            if (_watcher != null)
-                            {
-                                try
-                                {
-                                    var claimed = await _api.ForceClaimQueueItemAsync(newQueueId);
-                                    _watcher.LaunchItemExplicit(claimed);
-                                    slot.InteractiveBound = _watcher.OwnsInteractive(newQueueId);
-                                }
-                                catch (Exception ex)
-                                {
-                                    ActivityLog.Log("build-watch", $"Couldn't force-launch continuation #{newQueueId}: {ex.Message}");
-                                }
-                            }
-                        }
-                    }
-                    else
+                    if (_watcher != null)
                     {
-                        var err = await res.Content.ReadAsStringAsync();
-                        ActivityLog.Log("build-watch", $"QueueBuild continuation failed: {err}");
-                        slot.StatusLine!.ActivityText = $"continuation failed: {err}";
-                        slot.StatusLine!.Spinning = false;
+                        try
+                        {
+                            var claimed = await _db.ForceClaimAsync(newQueueId);
+                            _watcher.LaunchItemExplicit(claimed);
+                            slot.InteractiveBound = _watcher.OwnsInteractive(newQueueId);
+                        }
+                        catch (Exception ex)
+                        {
+                            ActivityLog.Log("build-watch", $"Couldn't force-launch continuation #{newQueueId}: {ex.Message}");
+                        }
                     }
                 }
                 catch (Exception ex)

@@ -1601,15 +1601,12 @@ namespace BuildConsole.Controls
                 var miRetry = new MenuItem { Header = "🔄 Retry" };
                 miRetry.Click += async (_, _) =>
                 {
-                    if (_api == null) return;
+                    if (_db == null) return;
                     try
                     {
                         var blockers = item.BlockedByNumbers ?? (item.BlockedByNumber.HasValue ? new List<int> { item.BlockedByNumber.Value } : null);
-                        var resp = await _api.QueueBuildAsync(item.Title, item.Prompt, item.Model, item.Effort, item.Cwd, item.GithubNumber, blockers, null, item.ChatUrl);
-                        if (resp.IsSuccessStatusCode)
-                            ToastEngine.Success("Re-queued", $"Re-queued: {item.Title}");
-                        else
-                            ToastEngine.Error("Retry Failed", $"Couldn't re-queue build (status {(int)resp.StatusCode})");
+                        await _db.QueueBuildAsync(item.Title, item.Prompt, item.Model, item.Effort, item.Cwd, item.GithubNumber, blockers, null, item.ChatUrl);
+                        ToastEngine.Success("Re-queued", $"Re-queued: {item.Title}");
                         await RefreshAsync();
                     }
                     catch (Exception ex)

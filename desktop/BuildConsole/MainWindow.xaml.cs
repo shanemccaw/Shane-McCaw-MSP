@@ -975,7 +975,7 @@ namespace BuildConsole
                 return;
             }
 
-            _buildWatch = new BuildWatchWindow(_buildTrackerApi, _queueWatcher) { Owner = this };
+            _buildWatch = new BuildWatchWindow(_buildTrackerApi, _queueWatcher, _queueDb) { Owner = this };
             _buildWatch.Closed += (s, e) =>
             {
                 _buildWatch = null;
@@ -4228,9 +4228,9 @@ namespace BuildConsole
                         }
                         else if (dialog.ActionChosen == EditBuildAction.QueueBuild)
                         {
-                            if (_buildTrackerApi == null || !_buildTrackerApi.IsConfigured)
+                            if (_queueDb == null)
                             {
-                                ToastEngine.Warning("Queue Build", "Not connected — see Settings.");
+                                ToastEngine.Warning("Queue Build", "Not connected — no DATABASE_URL found (see Settings).");
                                 return;
                             }
 
@@ -4265,18 +4265,17 @@ namespace BuildConsole
                                 }
                                 return;
                             }
-                            var res = await _buildTrackerApi.QueueBuildAsync(
-                                dialog.FinalTitle ?? "Untitled", dialog.FinalPrompt, dialog.FinalModel, dialog.FinalEffort, dialog.FinalCwd,
-                                dialogGithubNum, dialogBlockedByNums);
-                            if (res.IsSuccessStatusCode)
+                            try
                             {
+                                await _queueDb.QueueBuildAsync(
+                                    dialog.FinalTitle ?? "Untitled", dialog.FinalPrompt, dialog.FinalModel, dialog.FinalEffort, dialog.FinalCwd,
+                                    dialogGithubNum, dialogBlockedByNums);
                                 ToastEngine.Success("Build Queued", $"Queued '{dialog.FinalTitle ?? "Build"}' successfully.");
                                 try { await BuildQueuePanel.RefreshAsync(); } catch { }
                             }
-                            else
+                            catch (Exception ex)
                             {
-                                var body = await res.Content.ReadAsStringAsync();
-                                ToastEngine.Error("Queue Build", $"Failed to queue build: {body}");
+                                ToastEngine.Error("Queue Build", $"Failed to queue build: {ex.Message}");
                             }
                         }
                     }
@@ -4322,9 +4321,9 @@ namespace BuildConsole
                     {
                         BuildConsole.Services.ChatUrlStore.SetChatUrl(null, githubNum, chatUrl);
                     }
-                    if (_buildTrackerApi == null || !_buildTrackerApi.IsConfigured)
+                    if (_queueDb == null)
                     {
-                        ToastEngine.Warning("Queue Build", "Not connected — see Settings.");
+                        ToastEngine.Warning("Queue Build", "Not connected — no DATABASE_URL found (see Settings).");
                         if (correlation != null)
                             await RunScriptInAllChatWebViewsAsync($"window.__btQueueFailed && window.__btQueueFailed({JsLiteral(correlation)});");
                         return;
@@ -4398,83 +4397,35 @@ namespace BuildConsole
                         return;
                     }
 
-                    var res = await _buildTrackerApi.QueueBuildAsync(
-                        Str("title") ?? "Untitled", Str("prompt") ?? "", Str("model"), Str("effort"), Str("cwd"), githubNum, blockedByNumbers, chatUrl: chatUrl, originatingChatId: originatingChatId);
-
-                    // Git #931 — the dev api-server naps after ~15 min idle. Asleep, Replit's own
-                    // "wake up the app" placeholder page (HTML, not JSON) comes back on this POST
-                    // instead of a real API error, and used to get dumped verbatim into the error
-                    // toast. Detect that case (Content-Type + body sniff) before showing anything,
-                    // retry once after a brief wait — the common nap case usually resolves itself on
-                    // a second try — and only then fall back to a short human message instead of the
-                    // raw markup.
-                    if (!res.IsSuccessStatusCode)
+                    BuildConsole.Services.QueueItem queued;
+                    try
                     {
-                        var body = await res.Content.ReadAsStringAsync();
-                        if (IsLikelyDevServerNapHtml(res, body))
-                        {
-                            BuildConsole.Services.ActivityLog.Log("api",
-                                $"Queue Build: got HTML instead of JSON (status {(int)res.StatusCode}, content-type {res.Content.Headers.ContentType?.MediaType ?? "none"}) — dev server likely asleep (#931), retrying once after a brief wait");
-                            await System.Threading.Tasks.Task.Delay(TimeSpan.FromSeconds(8));
-                            res = await _buildTrackerApi.QueueBuildAsync(
-                                Str("title") ?? "Untitled", Str("prompt") ?? "", Str("model"), Str("effort"), Str("cwd"), githubNum, blockedByNumbers, chatUrl: chatUrl, originatingChatId: originatingChatId);
-
-                            if (!res.IsSuccessStatusCode)
-                            {
-                                var retryBody = await res.Content.ReadAsStringAsync();
-                                if (IsLikelyDevServerNapHtml(res, retryBody))
-                                {
-                                    BuildConsole.Services.ActivityLog.Log("api",
-                                        $"Queue Build: retry still got HTML (status {(int)res.StatusCode}, content-type {res.Content.Headers.ContentType?.MediaType ?? "none"}) — dev server still asleep, giving up");
-                                    ToastEngine.Error("Queue Build", "Server unreachable, it may be asleep — try again in a moment.");
-                                }
-                                else
-                                {
-                                    ToastEngine.Error("Queue Build", $"Couldn't queue build: {retryBody}");
-                                }
-                                if (correlation != null)
-                                    await RunScriptInAllChatWebViewsAsync($"window.__btQueueFailed && window.__btQueueFailed({JsLiteral(correlation)});");
-                                return;
-                            }
-                            // retry came back 2xx — fall through to the success handling below.
-                        }
-                        else
-                        {
-                            ToastEngine.Error("Queue Build", $"Couldn't queue build: {body}");
-                            if (correlation != null)
-                                await RunScriptInAllChatWebViewsAsync($"window.__btQueueFailed && window.__btQueueFailed({JsLiteral(correlation)});");
-                            return;
-                        }
+                        queued = await _queueDb.QueueBuildAsync(
+                            Str("title") ?? "Untitled", Str("prompt") ?? "", Str("model"), Str("effort"), Str("cwd"), githubNum, blockedByNumbers, chatUrl: chatUrl, originatingChatId: originatingChatId);
+                    }
+                    catch (Exception ex)
+                    {
+                        ToastEngine.Error("Queue Build", $"Couldn't queue build: {ex.Message}");
+                        if (correlation != null)
+                            await RunScriptInAllChatWebViewsAsync($"window.__btQueueFailed && window.__btQueueFailed({JsLiteral(correlation)});");
+                        return;
                     }
 
                     {
-                        // Git #942 — the 201 body IS the queue row; capture its
-                        // real id, tag the exact button with it, and start
-                        // tracking so the existing chat-tab queue poll
+                        // Git #942 — tag the exact button with the real queue id and
+                        // start tracking so the existing chat-tab queue poll
                         // (PollChatTabBuildStateAsync) pushes live status onto it.
-                        int? queueId = null;
-                        try
+                        int qid = queued.Id;
+                        string title = Str("title") ?? "Untitled";
+                        _chatButtonStatus[qid] = "In Progress...";
+                        BuildConsole.Services.ActivityLog.Log("chat-button.status",
+                            $"queue #{qid} ({title}): queued -> In Progress... (now tracking)");
+                        if (!string.IsNullOrWhiteSpace(chatUrl))
                         {
-                            var bodyJson = await res.Content.ReadAsStringAsync();
-                            using var rdoc = System.Text.Json.JsonDocument.Parse(bodyJson);
-                            if (rdoc.RootElement.TryGetProperty("id", out var idEl) && idEl.ValueKind == System.Text.Json.JsonValueKind.Number)
-                                queueId = idEl.GetInt32();
+                            BuildConsole.Services.ChatUrlStore.SetChatUrl(qid, githubNum, chatUrl);
                         }
-                        catch { }
-
-                        if (queueId is int qid && qid > 0)
-                        {
-                            string title = Str("title") ?? "Untitled";
-                            _chatButtonStatus[qid] = "In Progress...";
-                            BuildConsole.Services.ActivityLog.Log("chat-button.status",
-                                $"queue #{qid} ({title}): queued -> In Progress... (now tracking)");
-                            if (!string.IsNullOrWhiteSpace(chatUrl))
-                            {
-                                BuildConsole.Services.ChatUrlStore.SetChatUrl(qid, githubNum, chatUrl);
-                            }
-                            if (correlation != null)
-                                await RunScriptInAllChatWebViewsAsync($"window.__btTagQueued && window.__btTagQueued({JsLiteral(correlation)}, {qid});");
-                        }
+                        if (correlation != null)
+                            await RunScriptInAllChatWebViewsAsync($"window.__btTagQueued && window.__btTagQueued({JsLiteral(correlation)}, {qid});");
                         await BuildQueuePanel.RefreshAsync();
                     }
                 }

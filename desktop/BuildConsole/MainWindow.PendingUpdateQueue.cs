@@ -16,8 +16,8 @@ namespace BuildConsole
     /// MainWindow.VersionUpdate.cs) defers its deploy until the Build Queue drains,
     /// then shells out to deploy-shanesbuild.cmd — which stops and relaunches THIS
     /// whole process. A build request queued during that waiting window
-    /// (BT_QUEUE_BUILD → <see cref="Services.BuildTrackerApiClient.QueueBuildAsync"/>)
-    /// is, until the server round-trip returns, only ever an in-flight HTTP POST and
+    /// (BT_QUEUE_BUILD → <see cref="Services.BuildQueuePostgresClient.QueueBuildAsync"/>)
+    /// is, until the direct-Postgres write returns, only an in-flight call and
     /// an in-memory panel row — nothing durable on this machine. If the restart lands
     /// first, that request is simply lost. Shane hit exactly this: clicking Queue
     /// while an update sat waiting.
@@ -86,7 +86,7 @@ namespace BuildConsole
         private const int ReplayRetryDelayMs = 4000;
 
         /// <summary>
-        /// Mirrors <see cref="Services.BuildTrackerApiClient.QueueBuildAsync"/>'s
+        /// Mirrors <see cref="Services.BuildQueuePostgresClient.QueueBuildAsync"/>'s
         /// argument list exactly, so a request replayed on next launch is byte-for-byte
         /// the same call a live Queue click would have made.
         /// </summary>
@@ -340,27 +340,27 @@ namespace BuildConsole
         /// </summary>
         private async Task<bool> TryReplayOneAsync(PersistedQueueRequest req)
         {
+            if (_queueDb == null)
+            {
+                PendingUpdateQueueDiag(
+                    $"Couldn't re-queue \"{req.Title}\" — no direct Postgres connection (DATABASE_URL not found). Keeping it persisted for the next launch.");
+                return false;
+            }
+
             for (int attempt = 1; attempt <= ReplayMaxAttemptsPerItem; attempt++)
             {
                 try
                 {
-                    var res = await _buildTrackerApi!.QueueBuildAsync(
+                    await _queueDb.QueueBuildAsync(
                         req.Title, req.Prompt, req.Model, req.Effort, req.Cwd, req.GithubNumber, req.BlockedByNumbers, chatUrl: req.ChatUrl, originatingChatId: req.OriginatingChatId);
-                    if (res.IsSuccessStatusCode)
-                    {
-                        PendingUpdateQueueDiag(
-                            $"Re-queued persisted request \"{req.Title}\" after the update restart (attempt {attempt}/{ReplayMaxAttemptsPerItem}, HTTP {(int)res.StatusCode}).");
-                        return true;
-                    }
-
-                    var body = await res.Content.ReadAsStringAsync();
                     PendingUpdateQueueDiag(
-                        $"Re-queue of \"{req.Title}\" returned HTTP {(int)res.StatusCode} (attempt {attempt}/{ReplayMaxAttemptsPerItem}): {body}");
+                        $"Re-queued persisted request \"{req.Title}\" after the update restart (attempt {attempt}/{ReplayMaxAttemptsPerItem}, direct Postgres).");
+                    return true;
                 }
                 catch (Exception ex)
                 {
                     PendingUpdateQueueDiag(
-                        $"Re-queue of \"{req.Title}\" threw (attempt {attempt}/{ReplayMaxAttemptsPerItem}) — server likely cold/unreachable: {ex.Message}");
+                        $"Re-queue of \"{req.Title}\" threw (attempt {attempt}/{ReplayMaxAttemptsPerItem}) — DB likely unreachable: {ex.Message}");
                 }
 
                 if (attempt < ReplayMaxAttemptsPerItem)
