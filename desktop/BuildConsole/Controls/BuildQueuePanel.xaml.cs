@@ -390,26 +390,66 @@ namespace BuildConsole.Controls
 
             ChatEpicIssuesList.Items.Add(new ListBoxItem { Content = "Loading…", Foreground = (Brush)Application.Current.FindResource("Subtext1Brush") });
 
-            List<GitHubSubIssue> issues;
+            // ── Source 1: GitHub sub-issues REST API ─────────────────────────────
+            // bypassCache: true — tab-switch is user-initiated; always go fresh so a
+            // stale ETag (from when the epic had 0 sub-issues) can't return empty.
+            List<GitHubSubIssue> ghIssues = new();
             try
             {
                 var client = new GitHubApiClient(settings.GitHubPat);
-                // bypassCache: true — this is a user-initiated tab-switch; always fetch
-                // fresh data from GitHub. The static ETag cache (GetConditionalAsync) can
-                // hold a stale empty-list ETag from before any sub-issues were attached to
-                // this epic, causing every subsequent poll to 304 and return empty for the
-                // whole app session. Bypassing it here (same contract as GetMilestonesAsync's
-                // bypassCache) ensures the panel always reflects GitHub's actual current state.
-                issues = await client.GetSubIssuesAsync(epicGithubNumber.Value, bypassCache: true);
+                ghIssues = await client.GetSubIssuesAsync(epicGithubNumber.Value, bypassCache: true);
+                ActivityLog.Log("build-queue-panel.epic", $"GitHub sub-issues #{epicGithubNumber}: {ghIssues.Count} returned ({ghIssues.Count(i => !IsRealClosed(i.State))} open, {ghIssues.Count(i => IsRealClosed(i.State))} closed).");
             }
             catch (Exception ex)
             {
-                ChatEpicIssuesList.Items.Clear();
-                ChatEpicIssuesList.Items.Add(new ListBoxItem { Content = $"Couldn't load issues: {ex.Message}" });
-                return;
+                ActivityLog.Log("build-queue-panel.epic", $"GitHub sub-issues #{epicGithubNumber} FAILED: {ex.Message} — will try internal BT fallback.");
             }
 
             if (_activeChatEpicId != epicId) return;
+
+            // ── Source 2: Internal Build Tracker API (bt_issues.epic_id) ─────────
+            // Issues are linked here when assigned via the Build Tracker UI, GitHub
+            // Projects sync, or manual DB linkage — a separate system from GitHub's
+            // sub-issues graph. Also covers issues whose body mentions "Part of #N"
+            // that the Git Board renders as children via text inference but that are
+            // NOT formal GitHub sub-issues (so Source 1 returns empty for them).
+            List<IssueSummary> btIssues = new();
+            if (_api?.IsConfigured == true)
+            {
+                try
+                {
+                    btIssues = await _api.GetIssuesForEpicAsync(epicId.Value);
+                    ActivityLog.Log("build-queue-panel.epic", $"BT internal epicId={epicId}: {btIssues.Count} returned ({btIssues.Count(i => i.Status != "closed" && i.Status != "done")} open).");
+                }
+                catch (Exception ex)
+                {
+                    ActivityLog.Log("build-queue-panel.epic", $"BT internal epicId={epicId} FAILED: {ex.Message}");
+                }
+            }
+            else
+            {
+                ActivityLog.Log("build-queue-panel.epic", $"BT internal API not configured — skipping fallback for epicId={epicId}.");
+            }
+
+            if (_activeChatEpicId != epicId) return;
+
+            // ── Merge: start with GitHub list, add any BT issues not already there ─
+            var issues = new List<GitHubSubIssue>(ghIssues);
+            var seenNumbers = new HashSet<int>(ghIssues.Select(i => i.Number));
+            foreach (var bti in btIssues)
+            {
+                if (!bti.GithubNumber.HasValue) continue;             // no GitHub number → can't display
+                if (seenNumbers.Contains(bti.GithubNumber.Value)) continue; // already in GitHub list
+                seenNumbers.Add(bti.GithubNumber.Value);
+                issues.Add(new GitHubSubIssue
+                {
+                    Number  = bti.GithubNumber.Value,
+                    Title   = bti.Title,
+                    State   = (bti.Status == "done" || bti.Status == "closed") ? "closed" : "open",
+                    HtmlUrl = bti.GithubUrl ?? "",
+                });
+            }
+            ActivityLog.Log("build-queue-panel.epic", $"Merged total for epic #{epicGithubNumber} (id={epicId}): {issues.Count} issues ({issues.Count(i => !IsRealClosed(i.State))} open, {issues.Count(i => IsRealClosed(i.State))} closed). Filter={_epicFilter}.");
 
             if (_lastEpicIssues != null && _lastEpicIssues.Count > 0)
             {
