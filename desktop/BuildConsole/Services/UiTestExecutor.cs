@@ -268,6 +268,17 @@ namespace BuildConsole.Services
         /// <summary>The base target URL passed to RunAsync, used to resolve relative goto steps.</summary>
         private string _targetUrl = string.Empty;
 
+        /// <summary>Git #1210 — optional per-navigation origin resolver: given a root-anchored route path
+        /// (e.g. "/portal/x" or "/scan"), returns the front-end origin (http://localhost:{port}) that route
+        /// should load from. Supplied by RunManifestAsync ONLY in local Dev, where each front-end lives on its
+        /// own port (Marketing 5173 / Admin 5174 / Portal 5175 / Website 5176) and the API server (8080, what
+        /// {{DEPLOY_URL}} resolves to) serves no SPA. When set, <see cref="ResolveGotoTarget"/> uses it to map
+        /// each relative goto to the correct front-end port — so a single manifest can even navigate ACROSS
+        /// services (e.g. a Marketing "/LP/…" landing page then a Portal "/portal/…" page) in one run. Null for
+        /// Staging/Production (single origin serves every route) and the manual Play path, where the existing
+        /// resolve-against-the-base-URL behaviour is exactly right and unchanged.</summary>
+        private Func<string, string>? _originResolver;
+
         /// <summary>Git #966 — absolute directory this run's screenshots are written into
         /// (test-results/{issue}-{timestamp}/screenshots), or null when the caller supplied none (capture
         /// disabled). Created lazily on the first capture so a passing, non-explicit run leaves no empty folder.</summary>
@@ -304,11 +315,13 @@ namespace BuildConsole.Services
         /// on first capture). Null disables capture. Git #977 — a screenshot is now taken at EVERY step by default
         /// (always-on for UI drift detection), superseding #966's failure-only + <see cref="Controls.AutomationAction.Screenshot"/>
         /// opt-in; the flag now only affects the capture reason label.</param>
-        public async Task<UiTestRunResult> RunAsync(string targetUrl, IReadOnlyList<Controls.AutomationAction> steps, TestRunVariables? vars = null, ViewportSpec? defaultViewport = null, string? screenshotDir = null)
+        public async Task<UiTestRunResult> RunAsync(string targetUrl, IReadOnlyList<Controls.AutomationAction> steps, TestRunVariables? vars = null, ViewportSpec? defaultViewport = null, string? screenshotDir = null, Func<string, string>? originResolver = null)
         {
             _targetUrl = targetUrl;
             _vars = vars ?? new TestRunVariables();
             _screenshotDir = string.IsNullOrWhiteSpace(screenshotDir) ? null : screenshotDir;
+            // Git #1210 — per-navigation Dev front-end origin remap (null for Staging/Prod/manual, see field doc).
+            _originResolver = originResolver;
 
             // If the manifest starts with a goto step, start directly at that destination
             string initialUrl = targetUrl;
@@ -989,6 +1002,23 @@ namespace BuildConsole.Services
         private string ResolveGotoTarget(string target)
         {
             if (Uri.TryCreate(target, UriKind.Absolute, out var abs)) return abs.ToString();
+
+            // Git #1210 — in local Dev, resolve a root-anchored route ("/portal/x", "/scan", …) to the
+            // front-end origin that OWNS it (Marketing/Admin/Portal/Website port), rather than against the
+            // run's single base URL. This is what fixes uiSteps that used to navigate to the API server's
+            // port (8080, what {{DEPLOY_URL}} resolves to and the base URL therefore was) — 8080 serves no
+            // SPA. It also lets one run navigate ACROSS front-ends: each goto lands on the correct port. The
+            // resolver is only set for Dev; for Staging/Prod/manual it is null and the base-URL resolution
+            // below (single origin serving every route) is used unchanged. Only root-anchored paths are
+            // remapped — a truly-relative ("../x") or already-absolute target is handled above/below as before.
+            if (_originResolver != null && target.StartsWith("/"))
+            {
+                string origin = _originResolver(target);
+                if (!string.IsNullOrWhiteSpace(origin)
+                    && Uri.TryCreate(origin, UriKind.Absolute, out var originUri)
+                    && Uri.TryCreate(originUri, target, out var combinedFrontend))
+                    return combinedFrontend.ToString();
+            }
 
             // Try resolving against the base targetUrl first, then CoreWebView2's current location, then Source
             string? baseStr = !string.IsNullOrWhiteSpace(_targetUrl) ? _targetUrl : _webView.CoreWebView2?.Source;

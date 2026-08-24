@@ -5385,7 +5385,34 @@ namespace BuildConsole
                         Critical = step.Critical,
                     }).ToList();
 
-                    string uiTargetUrl = BuildConsole.Services.HttpTestExecutor.ResolvePlaceholders(manifest.BaseUrl, config);
+                    // Git #1210 — resolve the uiSteps base URL and per-navigation origin. In local Dev each
+                    // front-end lives on its OWN port (Marketing 5173 / Admin 5174 / Portal 5175 / Website 5176)
+                    // and the API server (8080, what {{DEPLOY_URL}} resolves to) serves NO SPA — so a uiStep that
+                    // navigated to the resolved {{DEPLOY_URL}} base (8080) hit a blank/404 page and every step
+                    // failed. Here we classify the manifest's PRIMARY front-end service from its navigation
+                    // routes, base the run at that front-end's port, and hand UiTestExecutor a resolver that
+                    // remaps EACH goto to the front-end that owns its route (so a cross-service flow — e.g. a
+                    // Marketing landing page then a Portal page — lands each goto on the right port). For
+                    // Staging/Production a single origin serves every route, so we keep the old base-URL behaviour
+                    // and pass no resolver.
+                    string uiTargetUrl;
+                    Func<string, string>? uiOriginResolver = null;
+                    if (targetEnv == BuildConsole.Services.TargetEnvironment.Dev)
+                    {
+                        var uiNavRoutes = manifest.UiSteps
+                            .Where(s => BuildConsole.Services.DevServiceRouting.IsNavAction(s.Action))
+                            .Select(s => s.Target ?? s.Selector ?? string.Empty)
+                            .ToList();
+                        string primaryServiceKey = BuildConsole.Services.DevServiceRouting.PrimaryServiceKey(uiNavRoutes);
+                        uiTargetUrl = BuildConsole.Services.DevServiceRouting.OriginForServiceKey(primaryServiceKey);
+                        uiOriginResolver = route => BuildConsole.Services.DevServiceRouting.OriginForRoute(route, primaryServiceKey);
+                        BuildConsole.Services.ActivityLog.Log("testing.ui-executor",
+                            $"[{mode}] Issue #{manifest.Issue} uiSteps Dev front-end routing: primary service {BuildConsole.Services.DevServiceRouting.DescribeServiceKey(primaryServiceKey)} (base {uiTargetUrl}); each goto remaps to its owning front-end port (API server 8080 is not a uiSteps target).");
+                    }
+                    else
+                    {
+                        uiTargetUrl = BuildConsole.Services.HttpTestExecutor.ResolvePlaceholders(manifest.BaseUrl, config);
+                    }
                     var uiDefaultViewport = BuildConsole.Services.ViewportSpec.Parse(manifest.ViewportJson);
 
                     string? uiRepoRoot = BuildConsole.Services.BuildTrackerConfig.FindRepoRoot();
@@ -5393,7 +5420,7 @@ namespace BuildConsole
                         ? System.IO.Path.Combine(uiRepoRoot, "test-results", runResult.RunFolderName, "screenshots")
                         : null;
 
-                    var uiResult = await runner.RunUiTestAsync(uiTargetUrl, uiActions, vars, uiDefaultViewport, screenshotDir);
+                    var uiResult = await runner.RunUiTestAsync(uiTargetUrl, uiActions, vars, uiDefaultViewport, screenshotDir, uiOriginResolver);
                     capturedShots = uiResult.Screenshots;
                     var uiStepResults = uiResult.ToTestStepResults();
 
