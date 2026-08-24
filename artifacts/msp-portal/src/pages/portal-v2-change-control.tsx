@@ -60,7 +60,6 @@ import {
   CC_MSC_TRAY,
   CC_MSG,
   CC_SECS,
-  CC_STAT_SETS,
   CC_TODAY,
   CC_BLACKOUT,
   CC_WIN_DAYS,
@@ -111,18 +110,68 @@ function clashOf(ctrl: CcController, code: string): boolean {
 
 function StatsBand({ ctrl }: { ctrl: CcController }) {
   const { s } = ctrl;
-  const all = CC_CRS;
+  const isLive = ctrl.dataState === "live";
+  const all = isLive ? ctrl.crs() : CC_CRS;
+  const sets = ctrl.statSets();
+  const wireStats = ctrl.wireStats();
   const waiting = all.filter((c) => /Awaiting|retro/.test(c.state)).length;
   const incomplete = all.filter((c) => (c.missing || []).length).length;
-  const freezeClash = stateInFreeze("CR-0142", s.movedOv) && !s.freezeException;
+  // The freeze calendar itself has no backing table (see useChangeControl.ts's
+  // header) so it always renders CC_FREEZE, but whether anything COLLIDES with
+  // it must come from the same live-aware set the register/briefing already
+  // use rather than a fixture code (`CR-0142`) that a live tenant will not have.
+  const freezeSet = sets.freeze || [];
+  const freezeClash = freezeSet.length > 0 && !s.freezeException;
+
+  const scheduledSet = sets.scheduled || [];
+  const closedCrs = all.filter((c) => (sets.closed || []).includes(c.code));
+  const rolledBackCount = closedCrs.filter((c) => c.state === "Rolled back").length;
+  const heldCount = closedCrs.length - rolledBackCount;
+  const decisionsCount = (sets.decisions || []).length;
 
   const statDefs = [
-    { key: "decisions", label: "Decisions due", value: String(CC_DECISIONS.length), sub: "2 expire this week whether you act or not", tone: "#f87171" },
-    { key: "waiting", label: "Waiting on your signature", value: String(waiting), sub: "CR-0151 retro approval · CR-0142 before the freeze", tone: "#fbbf24" },
+    {
+      key: "decisions",
+      label: "Decisions due",
+      value: isLive ? String(decisionsCount) : String(CC_DECISIONS.length),
+      sub: isLive
+        ? decisionsCount
+          ? decisionsCount + (decisionsCount === 1 ? " item needs" : " items need") + " a decision"
+          : "Nothing outstanding right now"
+        : "2 expire this week whether you act or not",
+      tone: "#f87171",
+    },
+    {
+      key: "waiting",
+      label: "Waiting on your signature",
+      value: String(waiting),
+      sub: isLive
+        ? sets.waiting?.length
+          ? sets.waiting.join(" · ")
+          : "Nothing waiting on your signature"
+        : "CR-0151 retro approval · CR-0142 before the freeze",
+      tone: "#fbbf24",
+    },
     { key: "incomplete", label: "Incomplete records", value: String(incomplete), sub: "Cannot be approved or scheduled", tone: "#f87171" },
-    { key: "scheduled", label: "Scheduled this week", value: "2", sub: "Thu 20 Aug · Tue 25 Aug", tone: "#60a5fa" },
-    { key: "closed", label: "Deployed · last 30 days", value: "7", sub: "6 held · 1 rolled back", tone: "#34d399" },
-    { key: "freeze", label: "Change freeze", value: "24–28 Aug", sub: CC_FREEZE.label + (freezeClash ? " · 1 change collides" : " · clear"), tone: "#f87171" },
+    {
+      key: "scheduled",
+      label: "Scheduled this week",
+      value: isLive ? String(scheduledSet.length) : "2",
+      sub: isLive
+        ? wireStats && wireStats.nextWindowCount > 0
+          ? wireStats.nextWindowCount + " in " + wireStats.nextWindowLabel
+          : "No window booked yet"
+        : "Thu 20 Aug · Tue 25 Aug",
+      tone: "#60a5fa",
+    },
+    {
+      key: "closed",
+      label: "Deployed · last 30 days",
+      value: isLive ? String(closedCrs.length) : "7",
+      sub: isLive ? heldCount + " held · " + rolledBackCount + " rolled back" : "6 held · 1 rolled back",
+      tone: "#34d399",
+    },
+    { key: "freeze", label: "Change freeze", value: "24–28 Aug", sub: CC_FREEZE.label + (freezeClash ? " · " + freezeSet.length + (freezeSet.length === 1 ? " change collides" : " changes collide") : " · clear"), tone: "#f87171" },
   ];
   const SF = s.statFilter;
 
@@ -140,7 +189,7 @@ function StatsBand({ ctrl }: { ctrl: CcController }) {
   const panelDef = SF ? statDefs.find((x) => x.key === SF) : null;
   const panelItems =
     SF && panelDef
-      ? (CC_STAT_SETS[SF] || []).map((code) => {
+      ? (sets[SF] || []).map((code) => {
           const cr = all.find((x) => x.code === code);
           const mc = CC_MSC.find((x) => x.id === code) || (CC_MSC_TRAY.id === code ? CC_MSC_TRAY : null);
           const dec = decByCode[code];

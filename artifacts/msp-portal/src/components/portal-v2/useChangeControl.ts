@@ -47,7 +47,7 @@ import { useAuth } from "@/lib/auth-context";
 
 import type { AgendaItem, ChangeRequest, FreezeRow, NotifRule } from "./ccPageData";
 import { CC_CAB, CC_CAL_EVENTS, CC_CRS, CC_FREEZE, CC_FREEZES, CC_NOTIF, CC_STAT_SETS, CC_WINDOW_DAY } from "./ccPageData";
-import type { WireChangeControlPayload, WireChangeRequest } from "./ccChangeControlWire";
+import type { WireChangeControlPayload, WireChangeControlStats, WireChangeRequest } from "./ccChangeControlWire";
 import { calEventsFor, deriveStatSets, toChangeRequests } from "./ccChangeControlWire";
 
 const CHANGE_CONTROL_URL = "/api/portal/change-control";
@@ -196,6 +196,8 @@ export interface CcController {
   readonly statSets: () => Record<string, readonly string[]>;
   /** Freeze-calendar day markers, including live change-request windows. */
   readonly calEvents: () => Record<string, ReadonlyArray<{ label: string; tone: string }>>;
+  /** The server-computed stat totals (open/awaiting/next-window/emergency/snapshots), or null on fixtures. */
+  readonly wireStats: () => WireChangeControlStats | null;
   readonly dataState: CcDataState;
 }
 
@@ -291,6 +293,8 @@ export function useChangeControl(opts: { viewParam?: string } = {}): CcControlle
     for (const [k, v] of Object.entries(live)) merged[k] = [...(merged[k] || []), ...v];
     return merged;
   }, [wire, crs]);
+
+  const wireStats = useCallback((): WireChangeControlStats | null => wire?.stats ?? null, [wire]);
 
   const t = useCallback((msg: string) => setS((prev) => ({ ...prev, toast: msg })), []);
   const clearToast = useCallback(() => setS((prev) => ({ ...prev, toast: "" })), []);
@@ -418,6 +422,7 @@ export function useChangeControl(opts: { viewParam?: string } = {}): CcControlle
     crs,
     statSets,
     calEvents,
+    wireStats,
     dataState,
   };
 }
