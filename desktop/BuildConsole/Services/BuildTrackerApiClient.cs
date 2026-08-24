@@ -197,6 +197,8 @@ namespace BuildConsole.Services
 
         private readonly HttpClient _http;
 
+        public HttpClient HttpClient => _http;
+
         public bool IsConfigured { get; }
         public string ConfiguredApiBaseUrl { get; }
         public string? ConfigPath { get; }

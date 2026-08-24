@@ -412,6 +412,15 @@
                                 <MenuItem Header="⟳ Refresh Services Status" Click="MenuRefreshServices_Click"/>
                             </MenuItem>
                         </Menu>
+                        <!-- API runner button -->
+                        <Button Style="{StaticResource IconButton}"
+                                ToolTip="API Runner"
+                                Click="OpenApiRunner_Click"
+                                Padding="6,4"
+                                Margin="4,0,0,0"
+                                WindowChrome.IsHitTestVisibleInChrome="True">
+                            <TextBlock Text="&#xEC15;" FontFamily="Segoe MDL2 Assets" FontSize="12" Foreground="{StaticResource MauveBrush}"/>
+                        </Button>
                     </StackPanel>
 
                     <!-- Git #894 - real minimize/maximize-restore/close, since WindowStyle="None"
