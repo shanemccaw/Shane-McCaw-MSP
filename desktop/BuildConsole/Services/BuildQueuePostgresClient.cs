@@ -733,6 +733,44 @@ namespace BuildConsole.Services
             return board;
         }
 
+        // ── ArchiveChatAsync / UnarchiveChatAsync ────────────────────────────────────
+        /// <summary>
+        /// Soft-hides a chat from the default active Chats panel view by its
+        /// conversation_id — the real bt_chats row and every association
+        /// (bt_chat_issues, epic/issue links) are left fully intact. Replicates
+        /// POST /admin/build-tracker/chats/archive's DB logic verbatim (direct
+        /// Postgres, no HTTP round-trip — this is BuildConsole's own local data
+        /// change, same reasoning as the rest of this file). Returns the real
+        /// archived_at timestamp written by NOW(), or null if no row matched.
+        /// </summary>
+        public Task<DateTime?> ArchiveChatAsync(string conversationId) =>
+            SetChatArchivedAsync(conversationId, archived: true);
+
+        /// <summary>Reverses ArchiveChatAsync — restores a chat to the default active Chats panel view.</summary>
+        public Task<DateTime?> UnarchiveChatAsync(string conversationId) =>
+            SetChatArchivedAsync(conversationId, archived: false);
+
+        private async Task<DateTime?> SetChatArchivedAsync(string conversationId, bool archived)
+        {
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(@"
+                UPDATE bt_chats
+                   SET archived    = @archived,
+                       archived_at = @archivedAt,
+                       updated_at  = NOW()
+                 WHERE conversation_id = @conversationId
+                RETURNING archived_at", conn);
+            cmd.Parameters.AddWithValue("@archived", archived);
+            cmd.Parameters.Add(new NpgsqlParameter("@archivedAt", NpgsqlDbType.TimestampTz)
+            { Value = archived ? (object)DateTime.UtcNow : DBNull.Value });
+            cmd.Parameters.AddWithValue("@conversationId", conversationId);
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+            if (!await reader.ReadAsync())
+                throw new InvalidOperationException($"Chat '{conversationId}' not found — cannot {(archived ? "archive" : "unarchive")}.");
+            return reader.IsDBNull(0) ? null : reader.GetFieldValue<DateTime>(0);
+        }
+
         /// <summary>
         /// Creates a client from the DATABASE_URL found in:
         ///   1. The config's own databaseUrl field (if non-empty), OR

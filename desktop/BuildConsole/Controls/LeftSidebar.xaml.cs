@@ -2903,24 +2903,39 @@ namespace BuildConsole.Controls
             };
             miArchiveToggle.Click += async (_, _) =>
             {
-                if (_api == null) return;
+                if (_db == null && _api == null) return;
                 bool archiving = !chat.Archived;
                 try
                 {
-                    var res = archiving
-                        ? await _api.ArchiveChatAsync(chat.ConversationId)
-                        : await _api.UnarchiveChatAsync(chat.ConversationId);
-                    if (!res.IsSuccessStatusCode)
+                    DateTime? archivedAtUtc;
+                    if (_db != null)
                     {
-                        var body = await res.Content.ReadAsStringAsync();
-                        ToastEngine.Error(archiving ? "Archive Chat" : "Unarchive Chat", $"Couldn't {(archiving ? "archive" : "unarchive")} chat: {body}");
-                        return;
+                        // Direct Postgres — this is BuildConsole's own local data
+                        // change, not a customer-facing round-trip, so it writes
+                        // straight to the real hosted DB same as every other
+                        // BuildQueuePostgresClient mutation (no api-server hop).
+                        archivedAtUtc = archiving
+                            ? await _db.ArchiveChatAsync(chat.ConversationId)
+                            : await _db.UnarchiveChatAsync(chat.ConversationId);
                     }
-                    var nowUtc = DateTime.UtcNow;
+                    else
+                    {
+                        var res = archiving
+                            ? await _api!.ArchiveChatAsync(chat.ConversationId)
+                            : await _api!.UnarchiveChatAsync(chat.ConversationId);
+                        if (!res.IsSuccessStatusCode)
+                        {
+                            var body = await res.Content.ReadAsStringAsync();
+                            ToastEngine.Error(archiving ? "Archive Chat" : "Unarchive Chat", $"Couldn't {(archiving ? "archive" : "unarchive")} chat: {body}");
+                            return;
+                        }
+                        archivedAtUtc = archiving ? DateTime.UtcNow : null;
+                    }
+
                     chat.Archived = archiving;
-                    chat.ArchivedAt = archiving ? nowUtc : null;
+                    chat.ArchivedAt = archivedAtUtc;
                     ActivityLog.Log("git-board.archive-chat",
-                        $"{(archiving ? "archived" : "unarchived")} chat \"{chat.Title}\" ({chat.ConversationId}) at {nowUtc:o}");
+                        $"{(archiving ? "archived" : "unarchived")} chat \"{chat.Title}\" ({chat.ConversationId}) at {DateTime.UtcNow:o}");
                     _lastBoardSignature = null;
                     RenderChatsTree();
                     ToastEngine.Success(archiving ? "Archive Chat" : "Unarchive Chat",
