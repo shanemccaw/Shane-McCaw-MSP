@@ -695,6 +695,43 @@ namespace BuildConsole.Controls
             await RefreshAsync();
         }
 
+        /// <summary>
+        /// Right-click "Mark All Recovered (Dismiss)" — for when Shane doesn't want to
+        /// re-queue anything for a given orphaned batch, just wants the warning gone.
+        /// Marks each one done (exit 0) via the same MarkCompleteAsync the per-item
+        /// "Mark Complete (Hide)" action uses, which is what actually clears the banner
+        /// (UpdateOrphanRecoveryBanner counts by ExitCode == -2, not by the hidden-id
+        /// set) — a genuine "yes, I've handled this" rather than only hiding it.
+        /// </summary>
+        private async void DismissAllOrphans_Click(object sender, RoutedEventArgs e)
+        {
+            if (_db == null) return;
+            var orphaned = _lastItems.Where(i => i.Status == "failed" && i.ExitCode == -2).ToList();
+            if (orphaned.Count == 0) return;
+
+            int dismissed = 0, failed = 0;
+            foreach (var item in orphaned)
+            {
+                try
+                {
+                    await _db.MarkCompleteAsync(item.Id, 0);
+                    _manuallyHiddenQueueIds.Add(item.Id);
+                    dismissed++;
+                }
+                catch (Exception ex)
+                {
+                    failed++;
+                    ActivityLog.Log("build-queue", $"Dismiss All Orphans: couldn't mark #{item.Id} ({item.Title}) recovered: {ex.Message}");
+                }
+            }
+
+            string summary = $"{dismissed} marked recovered" + (failed > 0 ? $", {failed} failed" : "");
+            if (failed > 0) ToastEngine.Warning("Marked Recovered", summary);
+            else ToastEngine.Success("Marked Recovered", summary);
+            ActivityLog.Log("build-queue", $"Dismiss All Orphans: {summary} (of {orphaned.Count}).");
+            await RefreshAsync();
+        }
+
         private static string FormatTokens(long tokens) =>
             tokens >= 1_000_000 ? $"{tokens / 1_000_000.0:0.1}M tokens" :
             tokens >= 1_000 ? $"{tokens / 1_000.0:0}k tokens" :

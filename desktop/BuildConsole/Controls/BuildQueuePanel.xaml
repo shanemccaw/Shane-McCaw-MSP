@@ -251,7 +251,10 @@
                                  own mess. This banner surfaces the count and recovers all of them
                                  in one click — Resume Session where a real session id got
                                  captured, plain Retry otherwise. Hidden (Collapsed) whenever there
-                                 are none. -->
+                                 are none. Two rows (text, then a full-width button below) — a
+                                 single DockPanel row ran the button off the panel's narrow width;
+                                 right-click for "Mark All Recovered (Dismiss)" when Shane just
+                                 wants the warning gone without re-queuing anything. -->
                             <Border x:Name="OrphanRecoveryBanner"
                                     Background="#3A1E26"
                                     BorderBrush="{StaticResource RedBrush}"
@@ -259,8 +262,14 @@
                                     CornerRadius="4"
                                     Padding="8,6"
                                     Margin="0,0,0,8"
-                                    Visibility="Collapsed">
-                                <DockPanel LastChildFill="True">
+                                    Visibility="Collapsed"
+                                    ToolTip="Right-click to mark all recovered (dismiss) without re-queuing">
+                                <Border.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem x:Name="MiDismissOrphans" Header="✓ Mark All Recovered (Dismiss)" Click="DismissAllOrphans_Click"/>
+                                    </ContextMenu>
+                                </Border.ContextMenu>
+                                <StackPanel>
                                     <TextBlock x:Name="OrphanRecoveryText"
                                                Text="0 builds orphaned by a crash/restart"
                                                FontSize="11"
@@ -268,14 +277,14 @@
                                                VerticalAlignment="Center"
                                                TextWrapping="Wrap"/>
                                     <Button x:Name="BtnRecoverOrphans"
-                                            DockPanel.Dock="Right"
                                             Content="♻ Recover All"
                                             Padding="8,3"
-                                            Margin="8,0,0,0"
+                                            Margin="0,6,0,0"
+                                            HorizontalAlignment="Stretch"
                                             FontSize="11"
                                             FontWeight="SemiBold"
                                             Click="BtnRecoverOrphans_Click"/>
-                                </DockPanel>
+                                </StackPanel>
                             </Border>
 
                             <!-- Git #933 - Shane: "Mark the filtering pills be a drop down menu
