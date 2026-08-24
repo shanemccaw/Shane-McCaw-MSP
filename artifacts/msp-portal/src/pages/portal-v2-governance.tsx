@@ -49,19 +49,57 @@ import {
 
 import { PortalV2Shell } from "@/components/portal-v2/PortalV2Shell";
 import { PillarScanBar } from "@/components/portal-v2/PillarScanBar";
-import { DriftTrend } from "@/components/portal-v2/DriftTrend";
+import { DriftTrend, trendGeometry } from "@/components/portal-v2/DriftTrend";
 import { RiskAcceptedPanel } from "@/components/portal-v2/RiskAcceptedPanel";
+import { useLivePillarHero, PV2_SOURCE_CLIP } from "@/components/portal-v2/useLivePillarHero";
+import { pillarSeverity, resolveHeroTile, type HeroTileBinding } from "@/components/portal-v2/pillarDashboardModel";
 import {
   GOV_AREA_LINKS,
   GOV_CLUSTERS,
   GOV_HERO,
   govAreaGeometry,
-  govTrendGeometry,
   type GovAreaLink,
 } from "@/components/portal-v2/govDashboardData";
 
 const MONO = "'SF Mono',Menlo,Consolas,monospace";
 const BLUE = "#3B82F6";
+
+/** slugify a tile label for its data-testid. */
+const slug = (s: string) => s.toLowerCase().replace(/\s+/g, "-");
+
+/**
+ * The hero stat tiles, bound to REAL data (STEP 3). "Global Administrators" is
+ * the real `security.globalAdmins` count, read cross-pillar off the same
+ * war-room-pillars payload; "Governance Findings" is the real finding total.
+ * "Overdue Access Reviews" has no real producer anywhere — it resolves an honest
+ * "not measured" state rather than the fixture's invented 12.
+ */
+const GOV_TILE_BINDINGS: readonly HeroTileBinding[] = [
+  {
+    label: "Overdue Access Reviews",
+    accent: "#14B8A6",
+    orbAlpha: "2e",
+    realSub: "From your latest scan",
+    source: {
+      kind: "unmeasured",
+      note: "No scan check counts overdue access reviews yet — a genuine gap, not a tenant with none.",
+    },
+  },
+  {
+    label: "Global Administrators",
+    accent: "#3B82F6",
+    orbAlpha: "33",
+    realSub: "From your latest scan",
+    source: { kind: "crossStat", pillar: "security", statId: "security.globalAdmins" },
+  },
+  {
+    label: "Governance Findings",
+    accent: "#8B5CF6",
+    orbAlpha: "33",
+    realSub: "From your latest scan",
+    source: { kind: "findingsTotal" },
+  },
+];
 
 /** `iconSvg` name → lucide glyph, matching the gov-oversharing sibling's map. */
 const AREA_ICON = {
@@ -82,10 +120,22 @@ const TIER = {
 } as const;
 
 export default function PortalV2GovernancePage() {
-  const trend = govTrendGeometry();
+  // STEP 3: the hero's score, delta, 30-day trend, severity and finding counts
+  // are the real war-room-pillars values now, not fixture. Same `useLivePillarHero`
+  // seam Licensing/Adoption/Health use; the extra derivations are pure and tested.
+  const live = useLivePillarHero("governance");
+  const heroTiles = GOV_TILE_BINDINGS.map((b) => resolveHeroTile(b, live));
+  const sev = pillarSeverity(live.score);
+
+  // Honest-null contract (same as the Overview and the other pillar heroes):
+  // overlay the REAL engine score when the tenant is scored, fall back to the
+  // design fixture otherwise so the ring never shows a red zero. `pv2-gov-source`
+  // states which is on screen. The sparkline draws the REAL replayed series.
+  const score = live.score ?? GOV_HERO.score;
+  const trend = trendGeometry(live.history ?? GOV_HERO.history);
   const ringR = 46;
   const ringC = 2 * Math.PI * ringR;
-  const ringOffset = ringC - (GOV_HERO.score / 100) * ringC;
+  const ringOffset = ringC - (score / 100) * ringC;
 
   // The risk drop panel (proto `govRisk`, 8188): the banner button toggles it
   // open, a row toggles its own detail. Both live here rather than in the panel
@@ -367,7 +417,9 @@ export default function PortalV2GovernancePage() {
                         whiteSpace: "nowrap",
                       }}
                     >
-                      {GOV_HERO.statusLabel}
+                      {/* Real severity band for the live score (journeyTokens'
+                          severityForScore), not the fixture "Needs attention". */}
+                      {sev?.label ?? GOV_HERO.statusLabel}
                     </span>
                   </span>
                 </div>
@@ -468,25 +520,33 @@ export default function PortalV2GovernancePage() {
                         }}
                         data-testid="pv2-gov-score"
                       >
-                        {GOV_HERO.score}
+                        {score}
                       </span>
                       <span
                         style={{
                           fontSize: "9.5px",
                           fontWeight: 700,
-                          color: "#f87171",
+                          color: live.delta?.color ?? "#f87171",
                           fontFamily: MONO,
                         }}
+                        data-testid="pv2-gov-delta"
                       >
-                        {GOV_HERO.delta}
+                        {live.delta?.text ?? GOV_HERO.delta}
+                      </span>
+                      {/* Hidden live/fixture marker (clipped, not display:none) so a
+                          test can prove the ring shows the real engine score. */}
+                      <span data-testid="pv2-gov-source" style={PV2_SOURCE_CLIP}>
+                        {live.dataState}
                       </span>
                     </div>
                   </div>
                 </div>
 
-                {GOV_HERO.stats.map((s) => (
+                {heroTiles.map((t) => (
                   <div
-                    key={s.label}
+                    key={t.label}
+                    title={t.note ?? undefined}
+                    data-testid={`pv2-gov-stat-${slug(t.label)}`}
                     style={{
                       position: "relative",
                       overflow: "hidden",
@@ -495,7 +555,7 @@ export default function PortalV2GovernancePage() {
                       gap: 6,
                       padding: "2px 16px",
                       justifyContent: "center",
-                      borderLeft: `2px solid ${s.accent}`,
+                      borderLeft: `2px solid ${t.accent}`,
                     }}
                   >
                     <div
@@ -506,7 +566,7 @@ export default function PortalV2GovernancePage() {
                         width: 110,
                         height: 110,
                         borderRadius: "50%",
-                        background: `radial-gradient(circle, ${s.accent}${s.orbAlpha}, rgba(2,6,23,0) 70%)`,
+                        background: `radial-gradient(circle, ${t.accent}${t.orbAlpha}, rgba(2,6,23,0) 70%)`,
                         pointerEvents: "none",
                       }}
                     />
@@ -521,24 +581,24 @@ export default function PortalV2GovernancePage() {
                         lineHeight: 1.25,
                       }}
                     >
-                      {s.label}
+                      {t.label}
                     </span>
                     <span
                       style={{
                         position: "relative",
                         fontSize: "22px",
                         fontWeight: 800,
-                        color: "#f8fafc",
+                        color: t.unmeasured ? "#475569" : "#f8fafc",
                         letterSpacing: "-.02em",
                         fontFamily: MONO,
                       }}
                     >
-                      {s.value}
+                      {t.value ?? "—"}
                     </span>
                     <span
                       style={{ position: "relative", fontSize: "10.5px", color: "#64748b" }}
                     >
-                      {s.sub}
+                      {t.sub}
                     </span>
                   </div>
                 ))}

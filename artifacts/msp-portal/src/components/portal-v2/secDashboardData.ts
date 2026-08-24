@@ -14,11 +14,20 @@
  * const declaration would have shipped the wrong number on the hero — which is
  * exactly the class of error this fixture exists to make reviewable.
  *
- * ── Design content, not tenant data ─────────────────────────────────────────
- * These are the prototype's fictional Halden Materials figures. The pillar's
- * REAL score already flows through `usePortalV2Pillars`; swapping these for live
- * values is Phase 3, and keeping them in one module is what makes that a
- * single-file change.
+ * ── What is WIRED to real data now, and what is still fixture ────────────────
+ * The Security page's HERO is wired to the live war-room-pillars payload
+ * (`useLivePillarHero` + pillarDashboardModel): the score ring, the delta, the
+ * 30-day trend sparkline, the severity/status pill, the honest trend verdict, the
+ * red critical headline (real critical finding count), and the hero tiles
+ * ("Critical Exposures" = real critical count; "Security Findings" = real finding
+ * total; "MFA Coverage" and "Secure Score" are stated gaps — a % with no
+ * denominator check, and a real metric that lives on the security-posture route,
+ * not this payload). The `SEC_HERO.*` / `SEC_HERO_STATS` scalars below are now
+ * only FALLBACKS used before the payload loads / on an unscored tenant.
+ *
+ * Still fixture, and a GENUINE GAP: the `SEC_AREA_LINKS` category scores (MFA
+ * gaps / OAuth / Conditional Access / legacy auth / email) — no per-category
+ * score feed exists server-side. Real backend design work, not a fixture swap.
  */
 
 export interface SecAreaLink {

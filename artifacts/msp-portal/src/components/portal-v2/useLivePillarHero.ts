@@ -32,6 +32,7 @@ import { useMemo, type CSSProperties } from "react";
 
 import { type PillarKey } from "@/components/copilot-journey/journeyTokens";
 import { usePortalV2Pillars } from "./usePortalV2Pillars";
+import { type PortalV2PillarView } from "./portalV2Model";
 
 /** Positive score movement is healthy on every pillar's ring; negative is not. */
 export const HERO_DELTA_UP = "#34d399";
@@ -91,6 +92,20 @@ export interface LivePillarHero {
   readonly scanning: boolean;
   /** The tenant's real finding counts for this pillar. */
   readonly findingCounts: { readonly critical: number; readonly warning: number };
+  /**
+   * The real replayed score series (≥5 real checkpoints) or null — feeds the
+   * bespoke Governance/Security/Compliance hero sparklines. Same series
+   * `deriveHeroDelta` reads; exposed so a page can draw the whole line, not just
+   * the last movement. Added for the Gov/Sec/Cmp wiring (their heroes draw a real
+   * trend); the Licensing/Adoption/Health heroes never read it.
+   */
+  readonly history: readonly number[] | null;
+  /**
+   * Every pillar's card view from the SAME payload, so a hero can read another
+   * pillar's real stat without a second fetch — the Governance hero's "Global
+   * Administrators" tile IS the Security card's `security.globalAdmins` count.
+   */
+  readonly pillars: readonly PortalV2PillarView[];
   /** "live" once a real numeric score is on screen; "fixture" otherwise. */
   readonly dataState: "live" | "fixture";
 }
@@ -113,6 +128,8 @@ export function useLivePillarHero(key: PillarKey): LivePillarHero {
       loaded,
       scanning,
       findingCounts: pillar?.findingCounts ?? { critical: 0, warning: 0 },
+      history: pillar?.trend?.series ?? null,
+      pillars: view.pillars,
       dataState: score !== null ? "live" : "fixture",
     };
   }, [view, key, loaded, scanning]);

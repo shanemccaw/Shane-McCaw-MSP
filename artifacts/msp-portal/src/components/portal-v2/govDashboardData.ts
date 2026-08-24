@@ -4,12 +4,19 @@
  * Transcribed verbatim from the prototype: `govAreaLinksRaw` (line 11079), the
  * hero scalars (lines 7269-7287) and the status/tier builder (11946-11988).
  *
- * ── Design content, not tenant data ─────────────────────────────────────────
- * These are the prototype's fictional figures. The pillar's REAL score already
- * flows through `usePortalV2Pillars` on the overview and the generic pillar
- * page; this dashboard is the design's own composition, and swapping these for
- * live values is Phase 3 work. Keeping them in one module is what makes that a
- * single-file change — the same rule the build plan states for every fixture.
+ * ── What is WIRED to real data now, and what is still fixture ────────────────
+ * The Governance page's HERO is wired to the live war-room-pillars payload
+ * (`useLivePillarHero` + pillarDashboardModel): the score ring, the score delta,
+ * the 30-day trend sparkline, the severity/status pill, and the hero stat tiles
+ * ("Global Administrators" is the real cross-pillar security.globalAdmins count;
+ * "Governance Findings" is the real finding total; "Overdue Access Reviews" is a
+ * stated gap). `GOV_HERO.score/delta/history/statusLabel/stats` below are now only
+ * FALLBACKS used before the payload loads / on an unscored tenant.
+ *
+ * Still fixture, and a GENUINE GAP (no real backing): the 14 `GOV_AREA_LINKS`
+ * granular per-sub-area scores/prevScores/status — there is no per-sub-area score
+ * model server-side, so the cluster grid stays the design's composition. Wiring
+ * it is real backend design work, not a fixture swap (see WIRING_PLAN.md §2).
  */
 
 import { trendGeometry } from "./DriftTrend";

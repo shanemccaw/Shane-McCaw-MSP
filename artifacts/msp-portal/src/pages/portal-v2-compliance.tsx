@@ -49,12 +49,13 @@ import {
 
 import { PortalV2Shell } from "@/components/portal-v2/PortalV2Shell";
 import { trendGeometry } from "@/components/portal-v2/DriftTrend";
+import { useLivePillarHero, PV2_SOURCE_CLIP } from "@/components/portal-v2/useLivePillarHero";
+import { pillarSeverity, resolveHeroTile, type HeroTileBinding } from "@/components/portal-v2/pillarDashboardModel";
 import {
   CMP_ACCEPTED_COUNT,
   CMP_AREA_LINKS,
   CMP_CLUSTERS,
   CMP_HERO,
-  CMP_HERO_STATS,
   CMP_HISTORY,
   CMP_INSET,
   CMP_SCRUTINY,
@@ -66,6 +67,43 @@ import {
 const MONO = "'SF Mono',Menlo,Consolas,monospace";
 /** The trend + ring stroke. Compliance's near-white identity. */
 const PAPER = "#E2E8F0";
+
+/** slugify a tile label for its data-testid (matches the prior inline expression). */
+const slug = (s: string) => s.toLowerCase().replace(/\s+/g, "-");
+
+/**
+ * The three hero tiles, bound to REAL data (STEP 3). "Open Gaps" is the real
+ * finding total. "Retention Coverage" (%) and "Audit Retention" (days) have no
+ * real producer — the retention-drift check was retired to a not_collected
+ * sentinel and nothing counts audit-retention days — so they resolve an honest
+ * "not measured" state rather than the fixture 99.0% / 180 days.
+ */
+const CMP_TILE_BINDINGS: readonly HeroTileBinding[] = [
+  {
+    label: "Retention Coverage",
+    accent: PAPER,
+    orbAlpha: "",
+    realSub: "From your latest scan",
+    source: {
+      kind: "unmeasured",
+      note: "No retention-coverage check exists yet — compliance:retention-drift was retired to a not_collected sentinel (#1103).",
+    },
+  },
+  {
+    label: "Audit Retention",
+    accent: PAPER,
+    orbAlpha: "",
+    realSub: "From your latest scan",
+    source: { kind: "unmeasured", note: "No audit-retention-days check exists yet." },
+  },
+  {
+    label: "Open Gaps",
+    accent: PAPER,
+    orbAlpha: "",
+    realSub: "From your latest scan",
+    source: { kind: "findingsTotal" },
+  },
+];
 
 const AREA_ICON = {
   "clipboard-list": ClipboardList,
@@ -81,10 +119,21 @@ const AREA_ICON = {
 } as const;
 
 export default function PortalV2CompliancePage() {
-  const trend = trendGeometry(CMP_HISTORY);
+  // STEP 3: score, delta, 30-day trend, severity and the finding-derived gap
+  // count are the real war-room-pillars values now. Same `useLivePillarHero` seam
+  // the other pillar heroes use; the extra derivations are pure and tested.
+  const live = useLivePillarHero("compliance");
+  const heroTiles = CMP_TILE_BINDINGS.map((b) => resolveHeroTile(b, live));
+  const sev = pillarSeverity(live.score);
+  const openGaps = live.findingCounts.critical + live.findingCounts.warning;
+
+  // Honest-null contract: real engine score when scored, design fixture otherwise;
+  // `pv2-cmp-source` states which is on screen.
+  const score = live.score ?? CMP_HERO.score;
+  const trend = trendGeometry(live.history ?? CMP_HISTORY);
   const ringR = 46;
   const ringC = 2 * Math.PI * ringR;
-  const ringOffset = ringC - (CMP_HERO.score / 100) * ringC;
+  const ringOffset = ringC - (score / 100) * ringC;
 
   // `cmpScrutiny` selection (proto 13659) — a pill toggles the detail below it
   // open, clicking the same pill closes it.
@@ -296,7 +345,11 @@ export default function PortalV2CompliancePage() {
                     whiteSpace: "nowrap",
                   }}
                 >
-                  {CMP_HERO.statusLabel}
+                  {/* Real severity band + real open-finding count, not the
+                      fixture "Stable · 6 gaps open". */}
+                  {sev
+                    ? `${sev.label} · ${openGaps} ${openGaps === 1 ? "gap" : "gaps"} open`
+                    : CMP_HERO.statusLabel}
                 </span>
               </span>
             </div>
@@ -460,20 +513,26 @@ export default function PortalV2CompliancePage() {
                     }}
                     data-testid="pv2-cmp-score"
                   >
-                    {CMP_HERO.score}
+                    {score}
                   </span>
                   <span
-                    style={{ fontSize: "9.5px", fontWeight: 700, color: "#94a3b8", fontFamily: MONO }}
+                    style={{ fontSize: "9.5px", fontWeight: 700, color: live.delta?.color ?? "#94a3b8", fontFamily: MONO }}
+                    data-testid="pv2-cmp-delta"
                   >
-                    {CMP_HERO.delta}
+                    {live.delta?.text ?? CMP_HERO.delta}
+                  </span>
+                  {/* Hidden live/fixture marker so a test can prove the real score. */}
+                  <span data-testid="pv2-cmp-source" style={PV2_SOURCE_CLIP}>
+                    {live.dataState}
                   </span>
                 </div>
               </div>
             </div>
 
-            {CMP_HERO_STATS.map((s) => (
+            {heroTiles.map((t) => (
               <div
-                key={s.label}
+                key={t.label}
+                title={t.note ?? undefined}
                 style={{
                   position: "relative",
                   overflow: "hidden",
@@ -484,7 +543,7 @@ export default function PortalV2CompliancePage() {
                   borderLeft: `2px solid ${PAPER}`,
                   justifyContent: "center",
                 }}
-                data-testid={`pv2-cmp-stat-${s.label.toLowerCase().replace(/\s+/g, "-")}`}
+                data-testid={`pv2-cmp-stat-${slug(t.label)}`}
               >
                 <div
                   style={{
@@ -509,22 +568,22 @@ export default function PortalV2CompliancePage() {
                     lineHeight: 1.25,
                   }}
                 >
-                  {s.label}
+                  {t.label}
                 </span>
                 <span
                   style={{
                     position: "relative",
                     fontSize: "22px",
                     fontWeight: 800,
-                    color: "#f8fafc",
+                    color: t.unmeasured ? "#475569" : "#f8fafc",
                     letterSpacing: "-.02em",
                     fontFamily: MONO,
                   }}
                 >
-                  {s.value}
+                  {t.value ?? "—"}
                 </span>
                 <span style={{ position: "relative", fontSize: "10.5px", color: "#64748b" }}>
-                  {s.sub}
+                  {t.sub}
                 </span>
               </div>
             ))}

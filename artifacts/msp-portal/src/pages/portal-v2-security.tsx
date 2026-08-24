@@ -55,12 +55,17 @@ import { PortalV2Shell } from "@/components/portal-v2/PortalV2Shell";
 import { PillarScanBar } from "@/components/portal-v2/PillarScanBar";
 import { DriftTrend, trendGeometry } from "@/components/portal-v2/DriftTrend";
 import { RiskAcceptedPanel } from "@/components/portal-v2/RiskAcceptedPanel";
+import { useLivePillarHero, PV2_SOURCE_CLIP } from "@/components/portal-v2/useLivePillarHero";
+import {
+  pillarSeverity,
+  pillarTrendVerdict,
+  resolveHeroTile,
+  type HeroTileBinding,
+} from "@/components/portal-v2/pillarDashboardModel";
 import {
   SEC_AREA_ROW_1,
   SEC_AREA_ROW_2,
-  SEC_CRITICAL_COUNT,
   SEC_HERO,
-  SEC_HERO_STATS,
   SEC_HISTORY,
   SEC_STATUS,
   secAreaGeometry,
@@ -69,6 +74,54 @@ import {
 
 const MONO = "'SF Mono',Menlo,Consolas,monospace";
 const RED = "#f87171";
+
+/** slugify a tile label for its data-testid (matches the prior inline expression). */
+const slug = (s: string) => s.toLowerCase().replace(/\s+/g, "-");
+
+/**
+ * The four hero tiles, bound to REAL data (STEP 3). "Critical Exposures" is the
+ * real critical finding count; "Security Findings" the real total. "MFA Coverage"
+ * (a %, with no denominator check) and "Secure Score" (real, but served by the
+ * separate security-posture route, not this payload) have no real backing here —
+ * they resolve an honest "not measured" state rather than the fixture 94% / 68.
+ */
+const SEC_TILE_BINDINGS: readonly HeroTileBinding[] = [
+  {
+    label: "Critical Exposures",
+    accent: "#f87171",
+    orbAlpha: "33",
+    realSub: "Need action now",
+    valueInAccent: true,
+    source: { kind: "criticalCount" },
+  },
+  {
+    label: "MFA Coverage",
+    accent: "#8B5CF6",
+    orbAlpha: "33",
+    realSub: "From your latest scan",
+    source: {
+      kind: "unmeasured",
+      note: "MFA coverage % has no denominator check — only a registered-user count exists, and it is licence-gapped on this tenant.",
+    },
+  },
+  {
+    label: "Security Findings",
+    accent: "#8B5CF6",
+    orbAlpha: "33",
+    realSub: "From your latest scan",
+    source: { kind: "findingsTotal" },
+  },
+  {
+    label: "Secure Score",
+    accent: "#8B5CF6",
+    orbAlpha: "33",
+    realSub: "From your latest scan",
+    source: {
+      kind: "unmeasured",
+      note: "Microsoft Secure Score is real but served by the security-posture route, not the war-room-pillars payload these pages read.",
+    },
+  },
+];
 
 /** `iconSvg` name → lucide glyph. Names map 1:1 per the handoff's asset note. */
 const AREA_ICON = {
@@ -80,10 +133,21 @@ const AREA_ICON = {
 } as const;
 
 export default function PortalV2SecurityPage() {
-  const trend = trendGeometry(SEC_HISTORY);
+  // STEP 3: score, delta, 30-day trend, severity, critical/finding counts and the
+  // hero tiles are the real war-room-pillars values now. Same `useLivePillarHero`
+  // seam Licensing/Adoption/Health use; the extra derivations are pure and tested.
+  const live = useLivePillarHero("security");
+  const heroTiles = SEC_TILE_BINDINGS.map((b) => resolveHeroTile(b, live));
+  const sev = pillarSeverity(live.score);
+  const criticalCount = live.findingCounts.critical;
+
+  // Honest-null contract: real engine score when scored, design fixture otherwise
+  // (the ring never shows a red zero); `pv2-sec-source` states which is on screen.
+  const score = live.score ?? SEC_HERO.score;
+  const trend = trendGeometry(live.history ?? SEC_HISTORY);
   const ringR = 46;
   const ringC = 2 * Math.PI * ringR;
-  const ringOffset = ringC - (SEC_HERO.score / 100) * ringC;
+  const ringOffset = ringC - (score / 100) * ringC;
 
   // The risk drop panel (proto `secRisk`, 8188) — identical to Governance's, so
   // the same component. The banner button toggles it; a row toggles its detail.
@@ -204,29 +268,35 @@ export default function PortalV2SecurityPage() {
           />
         )}
 
-        {/* ── The critical headline — proto 544-546. Governance has no such row. */}
-        <div
-          style={{
-            position: "relative",
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            flexWrap: "wrap",
-          }}
-        >
-          <span
+        {/* ── The critical headline — proto 544-546. Governance has no such row.
+            The count is the REAL critical finding count now, and the whole row is
+            hidden when there are genuinely no criticals rather than printing
+            "0 critical exposures need attention right now." */}
+        {criticalCount > 0 && (
+          <div
             style={{
-              fontSize: "20px",
-              fontWeight: 800,
-              letterSpacing: "-.01em",
-              color: RED,
-              lineHeight: 1.3,
+              position: "relative",
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              flexWrap: "wrap",
             }}
-            data-testid="pv2-sec-critical-headline"
           >
-            {SEC_CRITICAL_COUNT} critical exposures need attention right now.
-          </span>
-        </div>
+            <span
+              style={{
+                fontSize: "20px",
+                fontWeight: 800,
+                letterSpacing: "-.01em",
+                color: RED,
+                lineHeight: 1.3,
+              }}
+              data-testid="pv2-sec-critical-headline"
+            >
+              {criticalCount} critical{" "}
+              {criticalCount === 1 ? "exposure needs" : "exposures need"} attention right now.
+            </span>
+          </div>
+        )}
 
         {/* ── Hero card — proto 548-622 ──────────────────────────────────── */}
         <div
@@ -320,7 +390,8 @@ export default function PortalV2SecurityPage() {
                     whiteSpace: "nowrap",
                   }}
                 >
-                  {SEC_HERO.statusLabel}
+                  {/* Real severity band for the live score, not the fixture "Critical". */}
+                  {sev?.label ?? SEC_HERO.statusLabel}
                 </span>
               </span>
             </div>
@@ -331,7 +402,9 @@ export default function PortalV2SecurityPage() {
               lineColor={RED}
               dotColor={RED}
               fillOpacity={0.3}
-              verdict={SEC_HERO.trendVerdict}
+              // An honest verdict derived from the REAL trend direction, not the
+              // fixture's fabricated "2 new exposures since scan 12".
+              verdict={pillarTrendVerdict(live.history) ?? SEC_HERO.trendVerdict}
               verdictColor={RED}
               data-testid="pv2-sec-trend"
             />
@@ -407,25 +480,31 @@ export default function PortalV2SecurityPage() {
                     }}
                     data-testid="pv2-sec-score"
                   >
-                    {SEC_HERO.score}
+                    {score}
                   </span>
                   <span
                     style={{
                       fontSize: "9.5px",
                       fontWeight: 700,
-                      color: RED,
+                      color: live.delta?.color ?? RED,
                       fontFamily: MONO,
                     }}
+                    data-testid="pv2-sec-delta"
                   >
-                    {SEC_HERO.delta}
+                    {live.delta?.text ?? SEC_HERO.delta}
+                  </span>
+                  {/* Hidden live/fixture marker so a test can prove the real score. */}
+                  <span data-testid="pv2-sec-source" style={PV2_SOURCE_CLIP}>
+                    {live.dataState}
                   </span>
                 </div>
               </div>
             </div>
 
-            {SEC_HERO_STATS.map((s) => (
+            {heroTiles.map((t) => (
               <div
-                key={s.label}
+                key={t.label}
+                title={t.note ?? undefined}
                 style={{
                   position: "relative",
                   overflow: "hidden",
@@ -433,10 +512,10 @@ export default function PortalV2SecurityPage() {
                   flexDirection: "column",
                   gap: 6,
                   padding: "2px 16px",
-                  borderLeft: `2px solid ${s.accent}`,
+                  borderLeft: `2px solid ${t.accent}`,
                   justifyContent: "center",
                 }}
-                data-testid={`pv2-sec-stat-${s.label.toLowerCase().replace(/\s+/g, "-")}`}
+                data-testid={`pv2-sec-stat-${slug(t.label)}`}
               >
                 <div
                   style={{
@@ -446,7 +525,7 @@ export default function PortalV2SecurityPage() {
                     width: 110,
                     height: 110,
                     borderRadius: "50%",
-                    background: `radial-gradient(circle, ${s.accent}${s.orbAlpha}, rgba(2,6,23,0) 70%)`,
+                    background: `radial-gradient(circle, ${t.accent}${t.orbAlpha}, rgba(2,6,23,0) 70%)`,
                     pointerEvents: "none",
                   }}
                 />
@@ -461,22 +540,22 @@ export default function PortalV2SecurityPage() {
                     lineHeight: 1.25,
                   }}
                 >
-                  {s.label}
+                  {t.label}
                 </span>
                 <span
                   style={{
                     position: "relative",
                     fontSize: "22px",
                     fontWeight: 800,
-                    color: s.valueInAccent ? s.accent : "#f8fafc",
+                    color: t.unmeasured ? "#475569" : t.valueInAccent ? t.accent : "#f8fafc",
                     letterSpacing: "-.02em",
                     fontFamily: MONO,
                   }}
                 >
-                  {s.value}
+                  {t.value ?? "—"}
                 </span>
                 <span style={{ position: "relative", fontSize: "10.5px", color: "#64748b" }}>
-                  {s.sub}
+                  {t.sub}
                 </span>
               </div>
             ))}

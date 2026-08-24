@@ -24,9 +24,21 @@
  * paperwork rather than alarm, which is its own copy's point: "Nothing on this
  * page is being exploited today."
  *
- * ── Design content, not tenant data ─────────────────────────────────────────
- * The prototype's fictional Halden Materials figures, in one module so the swap
- * to live values stays a single-file change.
+ * ── What is WIRED to real data now, and what is still fixture ────────────────
+ * The Compliance page's HERO is wired to the live war-room-pillars payload
+ * (`useLivePillarHero` + pillarDashboardModel): the score ring, the delta, the
+ * 30-day trend sparkline, the severity/status pill ("{severity} · N gaps open"
+ * from the real finding count), and the "Open Gaps" hero tile (real finding
+ * total). "Retention Coverage" and "Audit Retention (days)" are stated gaps — no
+ * retention-coverage check exists (compliance:retention-drift was retired, #1103)
+ * and nothing counts audit-retention days. `CMP_HERO.score/delta/statusLabel` and
+ * `CMP_HERO_STATS` are now only FALLBACKS before the payload loads.
+ *
+ * Still fixture, and GENUINE GAPS: the 13 `CMP_AREA_LINKS` per-area scores, and
+ * the rich `CMP_FINDINGS` / `CMP_ACCEPTED` / `CMP_OBLIGATIONS` (obligation text,
+ * evidence grids, framework mappings) the drill-downs read — the real findings
+ * carry title/severity/checkKey only, not obligation/evidence detail. Real
+ * backend design work, not a fixture swap (see WIRING_PLAN.md §2).
  */
 
 export type CmpAreaStatus = "red" | "yellow" | "green";

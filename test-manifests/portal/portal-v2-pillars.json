@@ -109,6 +109,46 @@
       "headers": { "Authorization": "Bearer {{authToken}}" },
       "expect": { "status": 200, "jsonPath": "$.pillars[4].pillar", "value": "health" },
       "extract": { "as": "hltScore", "jsonPath": "$.pillars[4].score" }
+    },
+    {
+      "name": "A9 -- extract the REAL Governance score. pillars[0] is governance (A3). Interpolated into G1: the rebuilt Governance hero ring now renders THIS number, not the fixture 62.",
+      "method": "GET",
+      "path": "/api/portal/assessment/war-room-pillars",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.pillars[0].score", "exists": true },
+      "extract": { "as": "govScore", "jsonPath": "$.pillars[0].score" }
+    },
+    {
+      "name": "A10 -- extract the REAL Security score. pillars[5] is security. Interpolated into S2: the Security hero ring now renders THIS number, not the fixture 54.",
+      "method": "GET",
+      "path": "/api/portal/assessment/war-room-pillars",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.pillars[5].pillar", "value": "security" },
+      "extract": { "as": "secScore", "jsonPath": "$.pillars[5].score" }
+    },
+    {
+      "name": "A11 -- extract the REAL Compliance score. pillars[3] is compliance. Interpolated into C1: the Compliance hero ring now renders THIS number, not the fixture 78.",
+      "method": "GET",
+      "path": "/api/portal/assessment/war-room-pillars",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.pillars[3].pillar", "value": "compliance" },
+      "extract": { "as": "cmpScore", "jsonPath": "$.pillars[3].score" }
+    },
+    {
+      "name": "A12 -- the security card's REAL critical finding count. The Security page's red critical headline AND its 'Critical Exposures' hero tile render THIS number now, not the fixture 3.",
+      "method": "GET",
+      "path": "/api/portal/assessment/war-room-pillars",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.pillars[5].findingCounts.critical", "exists": true },
+      "extract": { "as": "secCritical", "jsonPath": "$.pillars[5].findingCounts.critical" }
+    },
+    {
+      "name": "A13 -- the security card's REAL global-administrator count sits at stats[1] (security.globalAdmins, pinned here). The GOVERNANCE hero reads it CROSS-PILLAR for its 'Global Administrators' tile off the same payload, so this value is interpolated into that Governance tile assertion.",
+      "method": "GET",
+      "path": "/api/portal/assessment/war-room-pillars",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.pillars[5].stats[1].id", "value": "security.globalAdmins" },
+      "extract": { "as": "secGlobalAdmins", "jsonPath": "$.pillars[5].stats[1].value" }
     }
   ],
 
@@ -236,11 +276,32 @@
       "target": "/portal/shane-mccaw-consulting/portal-v2/governance"
     },
     {
-      "name": "G1 -- the Governance hero renders with the design's own score ring (a bare numeral in mono, not the shared ScoreRing's percentage).",
+      "name": "G1 -- REAL DATA: the Governance hero ring renders the LIVE engine score ({{govScore}}, extracted from pillars[0].score), not the design fixture 62. This is the whole point of the wiring pass.",
       "action": "expect",
       "selector": "[data-testid='pv2-gov-score']",
       "state": "visible",
-      "textContains": "62"
+      "textContains": "{{govScore}}"
+    },
+    {
+      "name": "G1a -- the hidden live/fixture source marker reads 'live', proving the ring shows the real engine score and did not fall back to its design fixture (same clipped-marker pattern Licensing/Adoption/Health use).",
+      "action": "expect",
+      "selector": "[data-testid='pv2-gov-source']",
+      "state": "visible",
+      "textContains": "live"
+    },
+    {
+      "name": "G1b -- the 'Global Administrators' hero tile shows the REAL count ({{secGlobalAdmins}}), read CROSS-PILLAR off the Security card's security.globalAdmins stat in the same payload. A fixture page showed a hardcoded 6.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-gov-stat-global-administrators']",
+      "state": "visible",
+      "textContains": "{{secGlobalAdmins}}"
+    },
+    {
+      "name": "G1c -- the 'Overdue Access Reviews' tile is an HONEST GAP: no scan check counts overdue access reviews, so it states 'Not measured yet' rather than the fixture 12. This is the STEP-1 audit result rendered on the page.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-gov-stat-overdue-access-reviews']",
+      "state": "visible",
+      "textContains": "Not measured yet"
     },
     {
       "name": "G2 -- the cluster area-card grid renders. Governance deliberately has NO finding rows -- the prototype builds governanceRows but never renders them -- so the area grid IS the pillar's content.",
@@ -586,53 +647,60 @@
       "target": "/portal/shane-mccaw-consulting/portal-v2/security"
     },
     {
-      "name": "S1 -- the CRITICAL HEADLINE renders above the hero. Governance has nothing in this slot, so its presence is what proves the Security section was built from Security's own markup rather than copied from Governance's.",
+      "name": "S1 -- the CRITICAL HEADLINE renders above the hero, and its count is REAL now: it reads '{{secCritical}} critical exposures need attention right now.' from the live finding count, not the fixture 3. Asserted on the invariant tail so it is robust whether the real count is 1 (singular) or many, and the row hides entirely when there are genuinely zero criticals.",
       "action": "expect",
       "selector": "[data-testid='pv2-sec-critical-headline']",
       "state": "visible",
-      "textContains": "3 critical exposures need attention right now."
+      "textContains": "attention right now."
     },
     {
-      "name": "S2 -- the hero ring shows the design's own score, in the design's own bare-numeral mono rather than ScoreRing's percentage.",
+      "name": "S2 -- REAL DATA: the Security hero ring shows the LIVE engine score ({{secScore}}, extracted from pillars[5].score), not the design fixture 54.",
       "action": "expect",
       "selector": "[data-testid='pv2-sec-score']",
       "state": "visible",
-      "textContains": "54"
+      "textContains": "{{secScore}}"
     },
     {
-      "name": "S3 -- the status pill reads Critical, not Governance's amber 'Needs attention'.",
+      "name": "S2a -- the live/fixture source marker reads 'live', proving the ring shows the real engine score.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-sec-source']",
+      "state": "visible",
+      "textContains": "live"
+    },
+    {
+      "name": "S3 -- the status pill now states the REAL severity band for the live score (journeyTokens' severityForScore), not the fixture 'Critical'. Asserted as an any-of over the three real bands so it stays green as the tenant's score moves between bands.",
       "action": "expect",
       "selector": "[data-testid='pv2-sec-status-pill']",
       "state": "visible",
-      "textContains": "Critical"
+      "textContains": ["Critical", "Attention required", "Healthy"]
     },
     {
-      "name": "S4 -- THE FINDING-COUNT TRAP, asserted on the card itself. The prototype's `const secFindingCount = 5` (15652) is OVERRIDDEN to 7 in renderVals (18028), and renderVals is the bag the template reads. The card must say 7; a build that transcribed the const would say 5, look entirely reasonable, and be wrong.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-sec-stat-security-findings']",
-      "state": "visible",
-      "textContains": "7"
-    },
-    {
-      "name": "S4b -- and Critical Exposures shows the count derived from the finding definitions' severities, not a hardcoded number.",
+      "name": "S4 -- REAL DATA: the 'Critical Exposures' hero tile shows the LIVE critical finding count ({{secCritical}}), the same number the red headline uses, not the fixture 3. The old fixture-count trap this step guarded (const 5 vs renderVals 7) is retired now that the value comes off the wire.",
       "action": "expect",
       "selector": "[data-testid='pv2-sec-stat-critical-exposures']",
       "state": "visible",
-      "textContains": "Need action now"
+      "textContains": "{{secCritical}}"
     },
     {
-      "name": "S5 -- and the Secure Score card carries its real industry comparison, which Governance has no equivalent of.",
+      "name": "S4b -- HONEST GAP: 'MFA Coverage' is a percentage with no denominator check (the registered-user count exists but is licence-gapped on this tenant), so the tile states 'Not measured yet' rather than the fixture 94%.",
       "action": "expect",
-      "selector": "[data-testid='pv2-sec-hero']",
+      "selector": "[data-testid='pv2-sec-stat-mfa-coverage']",
       "state": "visible",
-      "textContains": "Industry avg 61"
+      "textContains": "Not measured yet"
     },
     {
-      "name": "S6 -- the drift trend carries Security's VERDICT SENTENCE. Governance's trend has no such line, which is why DriftTrend takes it as an optional prop rather than always rendering the row.",
+      "name": "S5 -- HONEST GAP: Microsoft Secure Score is real but served by the separate security-posture route, not the war-room-pillars payload these pages read, so the 'Secure Score' tile states 'Not measured yet' rather than the fixture 68 / 'Industry avg 61'. Exposing it here is a bounded backend addition, flagged in the report.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-sec-stat-secure-score']",
+      "state": "visible",
+      "textContains": "Not measured yet"
+    },
+    {
+      "name": "S6 -- the drift trend still carries Security's VERDICT SENTENCE, but it is HONEST now: derived from the real replayed series direction ('Getting worse — down N across recent scans' / 'Improving' / 'Holding steady'), not the fabricated fixture 'Getting worse — 2 new exposures since scan 12'. Any-of over the three real directions.",
       "action": "expect",
       "selector": "[data-testid='pv2-sec-trend']",
       "state": "visible",
-      "textContains": "Getting worse — 2 new exposures since scan 12"
+      "textContains": ["Getting worse", "Improving", "Holding steady"]
     },
     {
       "name": "S7 -- the shared scan strip renders with Security's own values and pillar name.",
@@ -1365,18 +1433,32 @@
       "target": "/portal/shane-mccaw-consulting/portal-v2/compliance"
     },
     {
-      "name": "C1 -- the hero renders its own score. Compliance is the only pillar whose delta is a hardcoded literal rather than derived, because its last two scans are both 78.",
+      "name": "C1 -- REAL DATA: the Compliance hero ring shows the LIVE engine score ({{cmpScore}}, extracted from pillars[3].score), not the design fixture 78. The delta is derived from the real replayed series now, not the hardcoded '±0 this month'.",
       "action": "expect",
       "selector": "[data-testid='pv2-cmp-score']",
       "state": "visible",
-      "textContains": "78"
+      "textContains": "{{cmpScore}}"
     },
     {
-      "name": "C2 -- the status pill is a DOT plus a sentence fragment, not a warning glyph plus one word. No emoji substitution arises on this pillar at all.",
+      "name": "C1a -- the live/fixture source marker reads 'live', proving the ring shows the real engine score.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-cmp-source']",
+      "state": "visible",
+      "textContains": "live"
+    },
+    {
+      "name": "C1b -- HONEST GAP: 'Retention Coverage' has no real check (compliance:retention-drift was retired to a not_collected sentinel, #1103), so the tile states 'Not measured yet' rather than the fixture 99.0%.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-cmp-stat-retention-coverage']",
+      "state": "visible",
+      "textContains": "Not measured yet"
+    },
+    {
+      "name": "C2 -- the status pill is still a DOT plus a sentence fragment (no emoji), but it states the REAL severity band plus the REAL open-finding count now ('{severity} · N gaps open'), not the fixture 'Stable · 6 gaps open'. Any-of covers the singular/plural.",
       "action": "expect",
       "selector": "[data-testid='pv2-cmp-status-pill']",
       "state": "visible",
-      "textContains": "Stable · 6 gaps open"
+      "textContains": ["gaps open", "gap open"]
     },
     {
       "name": "C3 -- the trend is labelled 'Gaps closed', NOT 'Drift trend', and its caption sits below the baseline rule where Security's verdict sits above the chart. Getting this wrong would put the right chart under the wrong claim.",
