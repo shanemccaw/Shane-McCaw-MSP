@@ -61,9 +61,112 @@ namespace BuildConsole.Services
             if (string.IsNullOrWhiteSpace(connectionString))
                 throw new ArgumentException("connectionString must not be empty", nameof(connectionString));
 
-            // Npgsql accepts the standard postgresql:// URL format directly,
-            // but the Connection String Keywords format is also fine. Either works.
-            _connectionString = connectionString;
+            _connectionString = ParseConnectionString(connectionString);
+        }
+
+        public static string ParseConnectionString(string input)
+        {
+            if (string.IsNullOrWhiteSpace(input)) return input;
+
+            var trimmed = input.Trim();
+            if (!trimmed.StartsWith("postgresql://", StringComparison.OrdinalIgnoreCase) &&
+                !trimmed.StartsWith("postgres://", StringComparison.OrdinalIgnoreCase))
+            {
+                return input; // Not a URI, return as-is
+            }
+
+            try
+            {
+                string rawUri = trimmed;
+                int prefixLen = rawUri.StartsWith("postgresql://", StringComparison.OrdinalIgnoreCase) ? 13 : 11;
+                string remaining = rawUri.Substring(prefixLen);
+
+                string userPass = "";
+                string hostPortDbQuery = remaining;
+                int atIndex = remaining.IndexOf('@');
+                if (atIndex >= 0)
+                {
+                    userPass = remaining.Substring(0, atIndex);
+                    hostPortDbQuery = remaining.Substring(atIndex + 1);
+                }
+
+                string username = "";
+                string password = "";
+                if (!string.IsNullOrEmpty(userPass))
+                {
+                    int colonIndex = userPass.IndexOf(':');
+                    if (colonIndex >= 0)
+                    {
+                        username = Uri.UnescapeDataString(userPass.Substring(0, colonIndex));
+                        password = Uri.UnescapeDataString(userPass.Substring(colonIndex + 1));
+                    }
+                    else
+                    {
+                        username = Uri.UnescapeDataString(userPass);
+                    }
+                }
+
+                string hostPortDb = hostPortDbQuery;
+                string query = "";
+                int qIndex = hostPortDbQuery.IndexOf('?');
+                if (qIndex >= 0)
+                {
+                    hostPortDb = hostPortDbQuery.Substring(0, qIndex);
+                    query = hostPortDbQuery.Substring(qIndex + 1);
+                }
+
+                string hostPort = hostPortDb;
+                string database = "";
+                int slashIndex = hostPortDb.IndexOf('/');
+                if (slashIndex >= 0)
+                {
+                    hostPort = hostPortDb.Substring(0, slashIndex);
+                    database = Uri.UnescapeDataString(hostPortDb.Substring(slashIndex + 1));
+                }
+
+                string host = hostPort;
+                string port = "";
+                int colonHostIndex = hostPort.IndexOf(':');
+                if (colonHostIndex >= 0)
+                {
+                    host = hostPort.Substring(0, colonHostIndex);
+                    port = hostPort.Substring(colonHostIndex + 1);
+                }
+
+                var parts = new List<string>();
+                if (!string.IsNullOrEmpty(host)) parts.Add($"Host={host}");
+                if (!string.IsNullOrEmpty(port)) parts.Add($"Port={port}");
+                if (!string.IsNullOrEmpty(database)) parts.Add($"Database={database}");
+                if (!string.IsNullOrEmpty(username)) parts.Add($"Username={username}");
+                if (!string.IsNullOrEmpty(password)) parts.Add($"Password={password}");
+
+                if (!string.IsNullOrEmpty(query))
+                {
+                    foreach (var pair in query.Split('&'))
+                    {
+                        var kv = pair.Split('=');
+                        if (kv.Length == 2)
+                        {
+                            var key = kv[0].Trim();
+                            var val = Uri.UnescapeDataString(kv[1].Trim());
+                            if (key.Equals("sslmode", StringComparison.OrdinalIgnoreCase))
+                            {
+                                parts.Add($"SSL Mode={val}");
+                            }
+                            else
+                            {
+                                parts.Add($"{key}={val}");
+                            }
+                        }
+                    }
+                }
+
+                return string.Join(";", parts) + ";";
+            }
+            catch
+            {
+                return input; // Fallback to raw if parsing fails
+            }
         }
 
         // ── GetQueueAsync ─────────────────────────────────────────────────────────

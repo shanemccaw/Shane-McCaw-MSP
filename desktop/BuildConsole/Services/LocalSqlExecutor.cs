@@ -42,22 +42,33 @@ namespace BuildConsole.Services
         private static string? GetConnectionString()
         {
             var config = BuildTrackerConfig.Load();
+            string? raw = null;
             if (!string.IsNullOrWhiteSpace(config.DatabaseUrl))
-                return config.DatabaseUrl;
-
-            var repoRoot = BuildTrackerConfig.FindRepoRoot() ?? "";
-            var envLocal = Path.Combine(repoRoot, ".env.local");
-            if (File.Exists(envLocal))
+                raw = config.DatabaseUrl;
+            else
             {
-                foreach (var line in File.ReadAllLines(envLocal))
+                var repoRoot = BuildTrackerConfig.FindRepoRoot() ?? "";
+                var envLocal = Path.Combine(repoRoot, ".env.local");
+                if (File.Exists(envLocal))
                 {
-                    var trimmed = line.Trim();
-                    if (trimmed.StartsWith('#') || !trimmed.StartsWith("DATABASE_URL=", StringComparison.OrdinalIgnoreCase))
-                        continue;
-                    var url = trimmed.Substring("DATABASE_URL=".Length).Trim().Trim('"').Trim('\'');
-                    if (!string.IsNullOrWhiteSpace(url))
-                        return url;
+                    foreach (var line in File.ReadAllLines(envLocal))
+                    {
+                        var trimmed = line.Trim();
+                        if (trimmed.StartsWith('#') || !trimmed.StartsWith("DATABASE_URL=", StringComparison.OrdinalIgnoreCase))
+                            continue;
+                        var url = trimmed.Substring("DATABASE_URL=".Length).Trim().Trim('"').Trim('\'');
+                        if (!string.IsNullOrWhiteSpace(url))
+                        {
+                            raw = url;
+                            break;
+                        }
+                    }
                 }
+            }
+
+            if (raw != null)
+            {
+                return BuildQueuePostgresClient.ParseConnectionString(raw);
             }
             return null;
         }
