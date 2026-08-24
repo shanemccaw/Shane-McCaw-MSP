@@ -341,16 +341,22 @@
                             </Grid>
 
                             <!-- ── Visual Queue DAG with Canvas-based connector lines (#860) ── -->
-                            <Grid x:Name="QueueGraphContainer" Margin="0,2,0,0">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition x:Name="GraphColumn" Width="Auto"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-                                <!-- Canvas for DAG lane connectors, Bézier curves, and status node dots -->
-                                <Canvas x:Name="QueueGraphCanvas" Grid.Column="0" ClipToBounds="False" HorizontalAlignment="Left"/>
-                                <!-- Stack of build cards (one per node), aligned with GraphCanvas -->
-                                <StackPanel x:Name="QueueCardsHost" Grid.Column="1" SizeChanged="QueueCardsHost_SizeChanged"/>
-                            </Grid>
+                            <ScrollViewer x:Name="QueueGraphScrollViewer"
+                                          MaxHeight="400"
+                                          VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollBarVisibility="Disabled"
+                                          PreviewMouseWheel="QueueGraphScrollViewer_PreviewMouseWheel">
+                                <Grid x:Name="QueueGraphContainer" Margin="0,2,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition x:Name="GraphColumn" Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <!-- Canvas for DAG lane connectors, Bézier curves, and status node dots -->
+                                    <Canvas x:Name="QueueGraphCanvas" Grid.Column="0" ClipToBounds="False" HorizontalAlignment="Left"/>
+                                    <!-- Stack of build cards (one per node), aligned with GraphCanvas -->
+                                    <StackPanel x:Name="QueueCardsHost" Grid.Column="1" SizeChanged="QueueCardsHost_SizeChanged"/>
+                                </Grid>
+                            </ScrollViewer>
                             <TextBlock x:Name="QueueEmptyText"
                                        Text="Not connected — see Settings"
                                        FontSize="11"
