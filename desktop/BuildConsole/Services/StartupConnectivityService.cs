@@ -88,6 +88,7 @@ namespace BuildConsole.Services
 
         private readonly BuildTrackerApiClient? _api;
         private readonly ReplitWatcherService? _replitWatcher;
+        private readonly BuildQueuePostgresClient? _queueDb;
         private readonly List<StartupConnectionStatus> _ordered;
         private readonly Dictionary<string, StartupConnectionStatus> _byKey;
         private readonly object _gate = new();
@@ -102,10 +103,11 @@ namespace BuildConsole.Services
         /// <summary>Raised exactly once, when every connection has reached a terminal state (or the global cap fired). May fire on a background thread.</summary>
         public event Action? AllSettled;
 
-        public StartupConnectivityService(BuildTrackerApiClient? api, ReplitWatcherService? replitWatcher = null)
+        public StartupConnectivityService(BuildTrackerApiClient? api, ReplitWatcherService? replitWatcher = null, BuildQueuePostgresClient? queueDb = null)
         {
             _api = api;
             _replitWatcher = replitWatcher;
+            _queueDb = queueDb;
             _ordered = new List<StartupConnectionStatus>
             {
                 new StartupConnectionStatus(KeySettings,   "Settings & credentials"),
@@ -274,13 +276,31 @@ namespace BuildConsole.Services
             });
 
             // 5. Replit dev server & services check / auto-start
+            //
+            // Git 2026-08-23 local-first move — Shane: "we can pause ALL the replit
+            // stuff. I don't need it waking up anymore... When I'm ready to go to
+            // Replit I press a deploy button." (see [[local-first-scope-replit-is-
+            // manual-staging]] / StagingDeployService). Replit is the manually-deployed
+            // Staging tier now, not something a local launch should reach out to or
+            // wake on its own — ReplitWatcherEnabled defaults to false for exactly
+            // this reason. This probe used to ignore that setting and unconditionally
+            // check-and-wake Replit on every single app start, which is the "checking
+            // connections to Replit" behind an otherwise local-only launch. Skipped
+            // outright while the watcher is disabled; only probes/wakes when Shane has
+            // explicitly turned it back on.
             _ = Task.Run(async () =>
             {
+                var s = BuildConsoleSettings.Load();
+                if (!s.ReplitWatcherEnabled)
+                {
+                    Transition(KeyReplit, StartupConnectionState.Skipped, "watcher off — local-first (Deploy to Staging when ready)");
+                    return;
+                }
+
                 Transition(KeyReplit, StartupConnectionState.Connecting, "checking services…");
                 var sw = Stopwatch.StartNew();
                 try
                 {
-                    var s = BuildConsoleSettings.Load();
                     string appUrl = s.ReplitAppUrl;
                     if (string.IsNullOrWhiteSpace(appUrl))
                     {
@@ -352,8 +372,19 @@ namespace BuildConsole.Services
                     r => r.IsStale);
                 _ = ProbeAsync(KeyInProgress, () => _api.GetInProgressAsync(),
                     r => Count(r.Count, "issue") + " in flight");
-                _ = ProbeAsync(KeyQueue, () => _api.GetQueueAsync(),
-                    r => Count(r.Count, "item") + " queued");
+
+                // Build queue reads go direct to Neon Postgres when a DATABASE_URL
+                // connection is available (same reasoning as every other queue
+                // operation — see BuildQueuePostgresClient's class doc comment): no
+                // reason for a launch probe to depend on the Replit-hosted API server
+                // napping/waking just to report how many items are queued.
+                if (_queueDb != null)
+                    _ = ProbeAsync(KeyQueue, () => _queueDb.GetQueueAsync(),
+                        r => Count(r.Count, "item") + " queued");
+                else
+                    _ = ProbeAsync(KeyQueue, () => _api.GetQueueAsync(),
+                        r => Count(r.Count, "item") + " queued");
+
                 _ = ProbeAsync(KeyDeploy, () => _api.GetDeployStatusAsync(),
                     r => r == null || string.IsNullOrEmpty(r.CommitHash) ? "no deploy info" : $"@ {ShortHash(r.CommitHash)}",
                     r => r == null || string.IsNullOrEmpty(r.CommitHash));

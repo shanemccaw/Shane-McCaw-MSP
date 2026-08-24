@@ -2816,7 +2816,7 @@ namespace BuildConsole
         {
             if (StartupOverlay == null) return;
 
-            _startupConnectivity = new BuildConsole.Services.StartupConnectivityService(_buildTrackerApi, _replitWatcher);
+            _startupConnectivity = new BuildConsole.Services.StartupConnectivityService(_buildTrackerApi, _replitWatcher, _queueDb);
 
             // Build one row per real connection, in order, before any probe reports in.
             StartupOverlay.Initialize(_startupConnectivity.Connections);
