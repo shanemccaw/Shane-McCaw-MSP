@@ -92,6 +92,10 @@ mock.module("@workspace/db", {
     mspSubscriptionsTable: {},
     usersTable: {},
     mspsTable: {},
+    contractsTable: {},
+    fulfillmentTypesTable: {},
+    fulfillmentIdempotencyTable: {},
+    clientServicesTable: {},
   },
 });
 
@@ -120,6 +124,11 @@ mock.module("../lib/resolve-fulfillment.ts", {
 mock.module("../lib/catalog-pricing.ts", {
   namedExports: {
     resolveCatalogPricing: (opts: { priceCents: number }) => ({ wholesaleCostCents: Math.round(opts.priceCents * 0.6) }),
+    // portal-checkout-direct.ts statically imports these; the webhook path never
+    // calls them (that's create-session's job) but the ESM binding must exist.
+    isServiceFree: () => false,
+    resolveEffectiveChargeCents: () => 0,
+    seatBandViolationMessage: () => null,
   },
 });
 
@@ -144,6 +153,32 @@ mock.module("../lib/workflow-executor.ts", {
 
 mock.module("../lib/captcha.ts", {
   namedExports: { verifyCaptchaToken: async () => true },
+});
+
+// portal-checkout.ts now transitively imports portal-checkout-direct.ts (Git
+// #1165), whose module graph pulls in these side-effecting libs. Stub them so
+// the router imports cleanly and the direct-marketing handler's provisioning
+// tail can be asserted without real DB/Graph/CRM calls.
+mock.module("../lib/tenant-signals.ts", {
+  namedExports: {
+    resolveCustomerIdForPortalUser: async () => 42,
+    resolveCustomerPortalUserId: async () => 5,
+  },
+});
+
+mock.module("../lib/audit.ts", {
+  namedExports: { createAuditLog: async () => {} },
+});
+
+mock.module("../lib/mailer.ts", {
+  namedExports: {
+    sendEmail: async () => {},
+    purchaseConfirmationEmail: () => "<p>ok</p>",
+  },
+});
+
+mock.module("../lib/crm-pipeline.ts", {
+  namedExports: { markAssessmentLeadPurchased: async () => {} },
 });
 
 const { default: portalCheckoutRouter } = await import("./portal-checkout.ts");
@@ -276,6 +311,94 @@ describe("webhook: non-portal_offer checkout.session.completed is ignored", () =
   });
 
   it("does not call resolveFulfillment for a non-portal_offer session", () => {
+    assert.equal(resolveFulfillmentCalls.length, 0);
+  });
+});
+
+// ── Direct-customer marketing paid checkout (Git #1165) ───────────────────────
+
+function makeDirectMarketingEvent(): Record<string, unknown> {
+  return {
+    id: "evt_test_direct_marketing_completed",
+    type: "checkout.session.completed",
+    data: {
+      object: {
+        id: "cs_test_direct_marketing_xyz789",
+        object: "checkout.session",
+        payment_status: "paid",
+        amount_total: 12000,
+        subscription: "sub_test_123",
+        customer_email: "buyer@example.com",
+        customer_details: { name: "Buyer Co", email: "buyer@example.com" },
+        metadata: {
+          checkout_kind: "direct_marketing",
+          serviceIds: "1",
+          contractIds: "",
+          guestEmail: "buyer@example.com",
+          buyerUserId: "5",
+          seats: "10",
+          amountCents: "12000",
+        },
+      },
+    },
+  };
+}
+
+describe("webhook: direct_marketing checkout.session.completed provisions via resolveFulfillment (Git #1165)", () => {
+  let status: number;
+  let body: Record<string, unknown>;
+
+  before(async () => {
+    resolveFulfillmentCalls = [];
+    // 1) buyer lookup by guestEmail, 2) service row lookup in the provisioning loop
+    dbQueue = [
+      [{ id: 5, name: "Buyer Co", email: "buyer@example.com", passwordHash: null }],
+      [{ id: 1, name: "Foundation Monitoring — Micro", serviceClass: "subscription", fulfillmentTypeKey: "monitoring_subscription" }],
+    ];
+    ({ status, body } = await postWebhook(makeDirectMarketingEvent()));
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  });
+
+  it("acknowledges the webhook with HTTP 200", () => {
+    assert.equal(status, 200);
+  });
+
+  it("responds with { received: true }", () => {
+    assert.deepEqual(body, { received: true });
+  });
+
+  it("calls resolveFulfillment exactly once", () => {
+    assert.equal(resolveFulfillmentCalls.length, 1);
+  });
+
+  it("drives monitoring provisioning (B1) with the buyer's user id, tenant, service and subscription", () => {
+    const call = resolveFulfillmentCalls[0];
+    assert.equal(call.fulfillmentTypeKey, "monitoring_subscription");
+    assert.equal(call.idempotencyKey, "direct_checkout:session:cs_test_direct_marketing_xyz789:svc:1");
+    assert.equal(call.trigger, "purchase");
+    const payload = call.payload as Record<string, unknown>;
+    assert.equal(payload.clientUserId, 5);
+    assert.equal(payload.customerId, 42);
+    assert.equal(payload.serviceId, 1);
+    assert.equal(payload.subscriptionId, "sub_test_123");
+    assert.equal(payload.amountCents, 12000);
+  });
+});
+
+describe("webhook: unpaid direct_marketing session does not provision", () => {
+  let status: number;
+
+  before(async () => {
+    resolveFulfillmentCalls = [];
+    dbQueue = [];
+    const event = makeDirectMarketingEvent();
+    (event.data as { object: { payment_status: string } }).object.payment_status = "unpaid";
+    ({ status } = await postWebhook(event));
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  });
+
+  it("acknowledges with HTTP 200 but calls resolveFulfillment zero times", () => {
+    assert.equal(status, 200);
     assert.equal(resolveFulfillmentCalls.length, 0);
   });
 });

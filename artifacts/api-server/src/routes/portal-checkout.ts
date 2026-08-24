@@ -52,6 +52,7 @@ import { transitionOfferState } from "../lib/sales-offer-engine.ts";
 import { broadcastCustomerOfferChange, broadcastMspOfferChange } from "../lib/sse-channels.ts";
 import { emitWorkflowEvent } from "../lib/workflow-executor.ts";
 import { verifyCaptchaToken } from "../lib/captcha.ts";
+import { provisionDirectMarketingPurchase, DIRECT_MARKETING_CHECKOUT_KIND } from "./portal-checkout-direct.ts";
 
 const router: IRouter = Router();
 
@@ -824,6 +825,14 @@ async function handleCheckoutCompleted(
   session: import("stripe").Stripe.Checkout.Session,
 ): Promise<void> {
   const meta = session.metadata ?? {};
+
+  // Direct-customer marketing checkout (Git #1165) — the paid marketing-site
+  // flow rides this same signed webhook endpoint (one Stripe endpoint, one
+  // signing secret, one raw-body mount) but provisions through its own handler.
+  if (meta["checkout_kind"] === DIRECT_MARKETING_CHECKOUT_KIND) {
+    await provisionDirectMarketingPurchase(session);
+    return;
+  }
 
   // Only handle portal offer sessions
   if (meta["fulfillment_type"] !== "portal_offer") return;

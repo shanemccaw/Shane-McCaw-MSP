@@ -162,19 +162,25 @@ async function provisionMonitoringClientService(payload: Record<string, unknown>
   const customerId = typeof payload["customerId"] === "number" ? payload["customerId"] : null;
   const serviceId = typeof payload["serviceId"] === "number" ? payload["serviceId"] : null;
   const stripeSubscriptionId = typeof payload["subscriptionId"] === "string" ? payload["subscriptionId"] : null;
+  // The direct-customer marketing checkout (Git #1165) resolves the buyer's own
+  // users row from their guest email BEFORE calling here, so it passes the
+  // users.id straight through. The MSP-marketplace path only knows the engine
+  // customerId (tenants.id) and relies on the resolver below. Either is enough.
+  const explicitClientUserId = typeof payload["clientUserId"] === "number" ? payload["clientUserId"] : null;
 
-  if (!customerId || !serviceId) {
+  if (!serviceId || (!customerId && !explicitClientUserId)) {
     log.warn(
-      { customerId, serviceId },
-      "resolve-fulfillment: monitoring_subscription purchase missing customerId/serviceId in payload — client_services not provisioned",
+      { customerId, serviceId, explicitClientUserId },
+      "resolve-fulfillment: monitoring_subscription purchase missing serviceId or any customer identity in payload — client_services not provisioned",
     );
     return;
   }
 
-  // client_services.clientUserId is a users.id FK, not a tenants.id — resolve
-  // the tenant's canonical portal login the same way every other consumer of
-  // that column does (tenant-signals.ts's resolveCustomerPortalUserId).
-  const clientUserId = await resolveCustomerPortalUserId(customerId);
+  // client_services.clientUserId is a users.id FK, not a tenants.id. Prefer an
+  // explicitly-supplied users.id (direct checkout); otherwise resolve the
+  // tenant's canonical portal login the same way every other consumer of that
+  // column does (tenant-signals.ts's resolveCustomerPortalUserId).
+  const clientUserId = explicitClientUserId ?? (customerId ? await resolveCustomerPortalUserId(customerId) : null);
   if (!clientUserId) {
     log.warn(
       { customerId, serviceId },

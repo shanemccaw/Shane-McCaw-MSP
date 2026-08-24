@@ -304,6 +304,38 @@ describe("resolveFulfillment", () => {
     expect(resolveCustomerPortalUserIdMock).not.toHaveBeenCalled();
     expect(mockInsert).toHaveBeenCalledTimes(1);
   });
+
+  it("7d. direct-checkout passes clientUserId directly — provisions without a tenant→user lookup (Git #1165)", async () => {
+    mockSelect
+      .mockReturnValueOnce(makeSelectChain([{ key: "monitoring_subscription", isActive: true, recurring: true }]))
+      .mockReturnValueOnce(makeSelectChain([])); // idempotency clean
+    mockInsert
+      .mockReturnValueOnce(makeInsertChain([{ key: "idem-monitoring-4" }])) // idempotency row
+      .mockReturnValueOnce(makeInsertChain([{ id: 777 }])); // client_services row
+
+    const { resolveFulfillment } = await import("./resolve-fulfillment");
+
+    const result = await resolveFulfillment({
+      fulfillmentTypeKey: "monitoring_subscription",
+      idempotencyKey: "direct_checkout:session:cs_abc:svc:6",
+      trigger: "purchase",
+      // The direct marketing checkout already resolved the buyer's users.id and
+      // passes it straight through; customerId (tenant) is null here.
+      payload: { clientUserId: 5, customerId: null, serviceId: 6, subscriptionId: "sub_direct" },
+    });
+
+    expect(result.status).toBe("emitted");
+    // The explicit users.id short-circuits the tenant→user resolver entirely.
+    expect(resolveCustomerPortalUserIdMock).not.toHaveBeenCalled();
+    expect(mockInsert).toHaveBeenCalledTimes(2);
+    const clientServicesValuesArg = mockInsert.mock.results[1].value.values.mock.calls[0][0];
+    expect(clientServicesValuesArg).toMatchObject({
+      clientUserId: 5,
+      serviceId: 6,
+      status: "active",
+      stripeSubscriptionId: "sub_direct",
+    });
+  });
 });
 
 describe("resolveFulfillmentForSignal", () => {
