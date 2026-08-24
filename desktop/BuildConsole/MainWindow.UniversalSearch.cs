@@ -40,10 +40,14 @@ namespace BuildConsole
         private const string CatChats = "Chats";
 
         // A transient snapshot of the repo's file paths — the same filesystem the
-        // Explorer tree lazily renders, read once per app session on a background
-        // thread (there's no complete in-memory file list to read; the tree is lazy).
+        // Explorer tree lazily renders. Rebuilt in the background whenever the
+        // dropdown opens and the last build is stale (see RefreshFileIndexIfStaleAsync)
+        // so a file created/landed by another concurrent session (a build, a git pull)
+        // after this app launched still turns up without a full app restart.
         private List<(string Name, string Path)>? _fileIndex;
         private bool _fileIndexBuilding;
+        private DateTime _fileIndexBuiltAtUtc = DateTime.MinValue;
+        private static readonly TimeSpan FileIndexMaxAge = TimeSpan.FromSeconds(60);
 
         // Re-runs the query a few times after the dropdown opens so async Git-board /
         // chat loads warmed on open stream into the results without a keystroke.
@@ -62,7 +66,7 @@ namespace BuildConsole
                 return;
             }
 
-            EnsureFileIndexAsync();
+            RefreshFileIndexIfStaleAsync();
             LeftSidebar.WarmSearchSources();
             TitleSearchBox.Focus();
             Keyboard.Focus(TitleSearchBox);
@@ -168,7 +172,7 @@ namespace BuildConsole
             // Warm the sources the search reads (cheap disk scan for manifests +
             // fire the real Git/chat populate when empty) — no visible change here;
             // the dropdown opens on the first keystroke (or Ctrl+K).
-            EnsureFileIndexAsync();
+            RefreshFileIndexIfStaleAsync();
             LeftSidebar.WarmSearchSources();
         }
 
@@ -283,6 +287,13 @@ namespace BuildConsole
                 return;
             }
 
+            // A pasted repo-relative path ("lib/db/migrations/manual/foo.sql") uses
+            // forward slashes; the indexed file paths on disk are Windows-native
+            // backslash paths, so a plain substring search silently never matched one
+            // against the other. Used only for the FILE/MANIFEST path checks below —
+            // title/issue-number matches elsewhere are unaffected.
+            string qPath = q.Replace('/', '\\');
+
             var items = new List<PaletteItem>();
             var counts = new Dictionary<string, int>();
             var caps = new Dictionary<string, int>
@@ -318,7 +329,7 @@ namespace BuildConsole
                 foreach (var (name, path) in fileIndex)
                 {
                     if (!CanAdd(CatFiles)) break;
-                    if (Has(name, q) || Has(path, q))
+                    if (Has(name, q) || Has(path, qPath))
                     {
                         string local = path;
                         Add(CatFiles, FileIcon(name), name, RepoRelative(path), name,
@@ -378,7 +389,7 @@ namespace BuildConsole
             foreach (var mf in LeftSidebar.CurrentManifests)
             {
                 if (!CanAdd(CatManifests)) break;
-                if (Has(mf.FileName, q) || Has(mf.Area, q))
+                if (Has(mf.FileName, q) || Has(mf.Area, q) || Has(mf.FullPath, qPath))
                 {
                     string full = mf.FullPath;
                     Add(CatManifests, "🧪", mf.FileName, $"{mf.Area} · test manifest", mf.FileName,
@@ -451,9 +462,21 @@ namespace BuildConsole
             _searchRefreshTimer.Start();
         }
 
-        private async void EnsureFileIndexAsync()
+        /// <summary>
+        /// Rebuilds the file index if it's never been built, or if the last build is
+        /// older than <see cref="FileIndexMaxAge"/> — the fix for "I pasted a path to a
+        /// file another session had just landed and search couldn't find it": the index
+        /// used to be built exactly once per app launch and never touched again, so a
+        /// file created after BuildConsole started (a concurrent session's build, a git
+        /// pull) stayed invisible to search until a full app restart. Cheap no-op when
+        /// still fresh; the existing (possibly stale) index keeps serving results while
+        /// a fresh one builds in the background, so this never blocks or blanks the
+        /// dropdown — it only swaps in once ready.
+        /// </summary>
+        private async void RefreshFileIndexIfStaleAsync()
         {
-            if (_fileIndex != null || _fileIndexBuilding) return;
+            if (_fileIndexBuilding) return;
+            if (_fileIndex != null && DateTime.UtcNow - _fileIndexBuiltAtUtc < FileIndexMaxAge) return;
             _fileIndexBuilding = true;
             try
             {
@@ -487,6 +510,7 @@ namespace BuildConsole
                 });
 
                 _fileIndex = built;
+                _fileIndexBuiltAtUtc = DateTime.UtcNow;
                 if (CommandPaletteOverlay.Visibility == Visibility.Visible)
                     RunUniversalSearch(TitleSearchBox.Text ?? string.Empty);
             }
