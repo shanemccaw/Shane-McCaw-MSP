@@ -12,17 +12,26 @@
  * prototype falls back to when none is set. The back link goes to Billing, as
  * the design's `rcBackGo` does.
  *
+ * ── Live off Stripe when the id matches (Git #1242) ─────────────────────────
+ * `useReceiptLive` reads `GET /api/portal/billing/stripe-receipts`. When the
+ * route id matches a real Stripe invoice, the card renders that invoice's real
+ * status/amount/date and "Download PDF receipt" links straight to Stripe's own
+ * hosted PDF. Otherwise it falls back to the design fixture exactly as before
+ * — the same receiptId-from-route-with-fallback pattern, just with a live path
+ * ahead of it. `pv2-receipt-source` proves which one rendered.
+ *
  * ── UI-only ─────────────────────────────────────────────────────────────────
- * The fixture is design content. The action buttons (PDF / email / query / ask
- * ShaneBot) render verbatim but are inert — each opens shell machinery a page
- * must not touch, and wiring Stripe is a later pass.
+ * The fixture is design content. The email/query/ShaneBot action buttons
+ * render verbatim but stay inert — each opens shell machinery a page must not
+ * touch.
  */
 
 import { Link, useRoute } from "wouter";
 
 import { PortalV2Shell, SIDEBAR_WASH } from "@/components/portal-v2/PortalV2Shell";
 import { RECEIPT_INTRO, RECEIPT_ISSUER, RECEIPT_ISSUER_INITIALS } from "@/components/portal-v2/receiptData";
-import { receiptView } from "@/components/portal-v2/receiptModel";
+import { useReceiptLive } from "@/components/portal-v2/receiptLive";
+import { PV2_SOURCE_CLIP } from "@/components/portal-v2/useLivePillarHero";
 
 const MONO = "'SF Mono',Menlo,Consolas,monospace";
 
@@ -35,8 +44,10 @@ function BackArrow() {
   );
 }
 
+const DOWNLOAD_LABEL = "Download PDF receipt";
+
 const ACTIONS: readonly { label: string; border: string; bg: string; color: string }[] = [
-  { label: "Download PDF receipt", border: "rgba(96,165,250,.4)", bg: "rgba(96,165,250,.1)", color: "#bfdbfe" },
+  { label: DOWNLOAD_LABEL, border: "rgba(96,165,250,.4)", bg: "rgba(96,165,250,.1)", color: "#bfdbfe" },
   { label: "Email this receipt", border: "rgba(148,163,184,.22)", bg: "transparent", color: "#94a3b8" },
   { label: "Query this charge", border: "rgba(148,163,184,.22)", bg: "transparent", color: "#94a3b8" },
   { label: "Ask ShaneBot about this charge", border: "rgba(0,180,216,.4)", bg: "rgba(0,180,216,.08)", color: "#22d3ee" },
@@ -44,7 +55,7 @@ const ACTIONS: readonly { label: string; border: string; bg: string; color: stri
 
 export default function PortalV2ReceiptPage() {
   const [, params] = useRoute("/portal-v2/receipt/:id");
-  const v = receiptView(params?.id);
+  const { view: v, dataState, livePdfUrl } = useReceiptLive(params?.id);
 
   return (
     <PortalV2Shell eyebrow="Billing" title="Receipt">
@@ -151,6 +162,9 @@ export default function PortalV2ReceiptPage() {
                 </span>
                 <span data-testid="pv2-receipt-number" style={{ fontSize: "10.5px", color: "#64748b", fontFamily: MONO }}>
                   {v.id}
+                </span>
+                <span data-testid="pv2-receipt-source" style={PV2_SOURCE_CLIP}>
+                  {dataState}
                 </span>
               </div>
             </div>
@@ -276,25 +290,40 @@ export default function PortalV2ReceiptPage() {
 
           {/* Actions — proto 6084-6089 */}
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            {ACTIONS.map((a) => (
-              <button
-                key={a.label}
-                type="button"
-                style={{
-                  padding: "9px 14px",
-                  borderRadius: 8,
-                  border: `1px solid ${a.border}`,
-                  background: a.bg,
-                  color: a.color,
-                  fontSize: "11.5px",
-                  fontWeight: 700,
-                  cursor: "pointer",
-                  fontFamily: "inherit",
-                }}
-              >
-                {a.label}
-              </button>
-            ))}
+            {ACTIONS.map((a) => {
+              const style = {
+                padding: "9px 14px",
+                borderRadius: 8,
+                border: `1px solid ${a.border}`,
+                background: a.bg,
+                color: a.color,
+                fontSize: "11.5px",
+                fontWeight: 700,
+                cursor: "pointer",
+                fontFamily: "inherit",
+              } as const;
+
+              if (a.label === DOWNLOAD_LABEL && livePdfUrl) {
+                return (
+                  <a
+                    key={a.label}
+                    href={livePdfUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    data-testid="pv2-receipt-download"
+                    style={{ ...style, textDecoration: "none", display: "inline-flex" }}
+                  >
+                    {a.label}
+                  </a>
+                );
+              }
+
+              return (
+                <button key={a.label} type="button" style={style}>
+                  {a.label}
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>
