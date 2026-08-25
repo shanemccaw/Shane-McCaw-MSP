@@ -139,10 +139,17 @@ namespace BuildConsole.Services
                 StartedAtUtc = DateTime.UtcNow
             });
 
-            // Git #1251 / #1252 — Allow checklist-bridge and explicit reportProgress updates to coexist.
-            // Rather than locking out the bridge once an explicit report lands, we process both so the
-            // sidebar stays live and fluid using the agent's screen-printed checklists during long gaps.
-            if (isExplicit) report.HasExplicitReport = true;
+            // Git #1251 / #1252 — Allow checklist-bridge and explicit reportProgress updates to coexist,
+            // but once a build has reported for itself explicitly, the checklist-derived progress
+            // stands down so they don't fight and cause values/totals to jump back and forth.
+            if (isExplicit)
+            {
+                report.HasExplicitReport = true;
+            }
+            else if (report.HasExplicitReport)
+            {
+                return report;
+            }
 
             report.Step = step;
             report.Total = Math.Max(total, step);

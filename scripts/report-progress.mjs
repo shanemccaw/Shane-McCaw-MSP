@@ -15,6 +15,7 @@ import { exec } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import os from "node:os";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..");
@@ -48,7 +49,10 @@ try {
 } catch {}
 
 // Attempt direct Windows Named Pipe delivery (fastest & non-blocking)
-const PIPE_NAME = "\\\\.\\pipe\\shaneapp-protocol";
+const username = os.userInfo().username || process.env.USERNAME || process.env.USER || "default";
+const PIPE_NAME = process.platform === "win32"
+  ? `\\\\.\\pipe\\BuildConsole.ShaneApp.${username}`
+  : "\\\\.\\pipe\\shaneapp-protocol";
 
 function tryNamedPipe() {
   return new Promise((resolve) => {
