@@ -243,6 +243,23 @@ namespace BuildConsole.Services
         }
 
         /// <summary>
+        /// Runs scripts/src/manual-migration-status.ts on the remote Replit workspace, against
+        /// whatever DATABASE_URL that process's own environment (Staging's Replit Secret) points
+        /// at. Returns the raw JSON stdout — see manual-migration-status.ts for the shape
+        /// ({ ok, totalFiles, appliedCount, pendingCount, pending: string[] }). Used by
+        /// StagingDeployDialog (Git #1199) so Shane sees the real, current set of manual
+        /// migration files that have landed on Dev but not yet run on Staging, instead of relying
+        /// on memory or a hand-maintained list that goes stale.
+        /// </summary>
+        public async Task<SshCommandResult> GetPendingManualMigrationsAsync()
+        {
+            var s = BuildConsoleSettings.Load();
+            var dir = string.IsNullOrWhiteSpace(s.SshRemoteDir) ? "/home/runner/workspace" : s.SshRemoteDir;
+            var cmd = $"cd {dir} && (node scripts/dist/manual-migration-status.js 2>/dev/null || npx --yes tsx scripts/src/manual-migration-status.ts)";
+            return await ExecuteCommandAsync(cmd, timeoutSeconds: 30);
+        }
+
+        /// <summary>
         /// Tests the SSH connection and measures latency.
         /// </summary>
         public async Task<(bool Success, string Message, long LatencyMs)> TestConnectionAsync()
