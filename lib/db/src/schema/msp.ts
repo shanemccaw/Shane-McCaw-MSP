@@ -3590,6 +3590,16 @@ export const mspRiskDecisionsTable = pgTable("msp_risk_decisions", {
   title: text("title").notNull(),
   controlViolated: text("control_violated").notNull(),
   framework: text("framework").notNull(),
+  /**
+   * The specific `monitor_checks.key` this decision covers, when it was raised
+   * against one automated check rather than authored as a free-standing
+   * liability record. NULL is the common case (nothing sets this yet outside
+   * a direct API call) — the customer-tenant alert engine (#1279) only
+   * suppresses re-firing for a finding when this is populated and the
+   * decision is `status = 'active'`; it never guesses a match from the
+   * free-text `controlViolated`/`framework`/`title` fields above.
+   */
+  checkKey: text("check_key"),
   rawRiskLevel: text("raw_risk_level").notNull(),
   residualRiskLevel: text("residual_risk_level").notNull(),
   rawRiskScore: integer("raw_risk_score").notNull(),
@@ -3681,6 +3691,7 @@ export const mspRiskDecisionsTable = pgTable("msp_risk_decisions", {
   index("msp_risk_decisions_msp_id_idx").on(t.mspId),
   index("msp_risk_decisions_tenant_id_idx").on(t.tenantId),
   unique("msp_risk_decisions_msp_id_rbd_id_uidx").on(t.mspId, t.rbdId),
+  index("msp_risk_decisions_tenant_check_status_idx").on(t.tenantId, t.checkKey, t.status),
 ]);
 
 export const insertMspRiskDecisionSchema = createInsertSchema(mspRiskDecisionsTable).omit({ id: true, createdAt: true, updatedAt: true });

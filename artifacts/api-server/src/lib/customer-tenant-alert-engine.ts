@@ -23,6 +23,14 @@
  * knob the evaluator bakes into its own query (a delta magnitude for
  * pillar_score_move, a forward lead-time is `window_minutes` for renewal/review),
  * not a generic count floor. De-dup is per (rule × tenant) via `cooldown_minutes`.
+ *
+ * Accepted-risk suppression (#1279): every `finding.*` evaluator excludes
+ * items whose `check_key` has a `status='active'` `msp_risk_decisions` row for
+ * that tenant with a matching `check_key` (see NOT_ACCEPTED_AS_RISK below).
+ * `check_key` on msp_risk_decisions is optional and NULL by default — a
+ * decision with no linked check never suppresses anything, so this never
+ * guesses. Runs every eval cycle, so it covers both the first firing and any
+ * re-firing after cooldown elapses.
  */
 
 import { pool } from "@workspace/db";
@@ -157,8 +165,25 @@ async function count(sqlText: string, params: unknown[]): Promise<number> {
   return parseInt(res.rows[0]?.n ?? "0", 10);
 }
 
+// ── Accepted-risk suppression (#1279) ──────────────────────────────────────
+//
+// msp_risk_decisions has no structured link to any automated check by
+// default (controlViolated/framework/obligation are all free text — see the
+// table's own schema comment) — check_key is the one optional, EXACT link
+// (#1279's own migration). A NULL check_key never matches anything here, so
+// a free-text liability record with no linked check never suppresses a
+// finding by accident. `$N` below is `tenantId ?? '__no_tenant__'`, a value
+// that can never equal a real tenant_id, so the subquery is a safe no-op
+// when the alert condition has no resolvable tenant.
+const NOT_ACCEPTED_AS_RISK = (checkKeyExpr: string, tenantParam: string) => `
+  NOT EXISTS (
+    SELECT 1 FROM msp_risk_decisions rd
+    WHERE rd.tenant_id = ${tenantParam} AND rd.status = 'active'
+      AND rd.check_key = ${checkKeyExpr}
+  )`;
+
 /** New findings at a severity on the latest completed run vs the prior one. */
-async function evalNewFindings(customerId: number, severity: string, windowMinutes: number): Promise<number> {
+async function evalNewFindings(customerId: number, tenantId: string | null, severity: string, windowMinutes: number): Promise<number> {
   return count(
     `
     WITH runs AS (
@@ -178,13 +203,14 @@ async function evalNewFindings(customerId: number, severity: string, windowMinut
         SELECT check_key FROM msp_diagnostic_findings
         WHERE run_id = (SELECT run_id FROM prior) AND severity = $2
       )
+      AND ${NOT_ACCEPTED_AS_RISK("f.check_key", "$4")}
     `,
-    [customerId, severity, windowMinutes],
+    [customerId, severity, windowMinutes, tenantId ?? "__no_tenant__"],
   );
 }
 
 /** Newly-overshared items (critical/high) on the latest run vs prior. */
-async function evalOversharing(customerId: number, windowMinutes: number): Promise<number> {
+async function evalOversharing(customerId: number, tenantId: string | null, windowMinutes: number): Promise<number> {
   return count(
     `
     WITH runs AS (
@@ -202,13 +228,14 @@ async function evalOversharing(customerId: number, windowMinutes: number): Promi
       AND o.natural_key NOT IN (
         SELECT natural_key FROM overshared_items WHERE run_id = (SELECT run_id FROM prior)
       )
+      AND ${NOT_ACCEPTED_AS_RISK("o.check_key", "$3")}
     `,
-    [customerId, windowMinutes],
+    [customerId, windowMinutes, tenantId ?? "__no_tenant__"],
   );
 }
 
 /** Latest-run finding at/above warning for a specific governance check key. */
-async function evalLatestFindingByKey(customerId: number, checkKey: string): Promise<number> {
+async function evalLatestFindingByKey(customerId: number, tenantId: string | null, checkKey: string): Promise<number> {
   return count(
     `
     WITH latest AS (
@@ -221,8 +248,9 @@ async function evalLatestFindingByKey(customerId: number, checkKey: string): Pro
     WHERE f.run_id = (SELECT run_id FROM latest)
       AND f.check_key = $2
       AND f.severity IN ('warning','critical')
+      AND ${NOT_ACCEPTED_AS_RISK("f.check_key", "$3")}
     `,
-    [customerId, checkKey],
+    [customerId, checkKey, tenantId ?? "__no_tenant__"],
   );
 }
 
@@ -237,12 +265,12 @@ async function getConditionValue(
   const mid = ctx.mspId;
   try {
     switch (rule.condition_type) {
-      // ── findings ──────────────────────────────────────────────────────────
-      case "finding.new_critical": return await evalNewFindings(cid, "critical", w);
-      case "finding.new_high":     return await evalNewFindings(cid, "warning", w);
-      case "finding.oversharing":  return await evalOversharing(cid, w);
-      case "finding.ownerless_group":   return await evalLatestFindingByKey(cid, "governance:ownerless-groups");
-      case "finding.standing_priv_role": return await evalLatestFindingByKey(cid, "identity:pim-permanent-roles");
+      // ── findings (each excludes check_keys already accepted as risk, #1279) ─
+      case "finding.new_critical": return await evalNewFindings(cid, tid, "critical", w);
+      case "finding.new_high":     return await evalNewFindings(cid, tid, "warning", w);
+      case "finding.oversharing":  return await evalOversharing(cid, tid, w);
+      case "finding.ownerless_group":   return await evalLatestFindingByKey(cid, tid, "governance:ownerless-groups");
+      case "finding.standing_priv_role": return await evalLatestFindingByKey(cid, tid, "identity:pim-permanent-roles");
 
       // ── drift (scoped by tenant_id text) ───────────────────────────────────
       case "drift.unapproved":

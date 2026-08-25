@@ -51,6 +51,9 @@ const createRbdSchema = z.object({
   clientApprover: clientApproverSchema,
   expirationDate: z.string(),
   status: z.enum(["active", "pending_signature", "expired", "revoked"]),
+  /** Optional: the monitor_checks.key this decision covers, for #1279 alert
+   * suppression. Omitted/null when this is a free-standing liability record. */
+  checkKey: z.string().nullable().optional(),
 });
 
 const signRbdSchema = z.object({
@@ -141,6 +144,7 @@ router.post(
           clientApprover: parsedBody.data.clientApprover,
           expirationDate: parsedBody.data.expirationDate,
           status: parsedBody.data.status,
+          checkKey: parsedBody.data.checkKey ?? null,
         })
         .returning({ id: mspRiskDecisionsTable.id });
 
