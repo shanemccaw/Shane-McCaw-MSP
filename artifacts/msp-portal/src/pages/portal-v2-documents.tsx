@@ -40,12 +40,17 @@
  * different answers, both taken from the markup rather than from the prose.
  */
 
-import { useState } from "react";
-import { Link } from "wouter";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useLocation } from "wouter";
 
+import { useAuth } from "@/lib/auth-context";
 import { PortalV2Shell } from "@/components/portal-v2/PortalV2Shell";
 import { useFormDrawer } from "@/components/portal-v2/FormDrawer";
 import { DOC_LIB_TOTAL, DOC_PILLAR_COLOUR } from "@/components/portal-v2/docLibraryData";
+import { DocumentBody } from "@/components/copilot-journey/DocumentBody";
+import { useCopilotJourney } from "@/components/copilot-journey/useCopilotJourney.ts";
+import { withLiveDocuments, type JourneyDocumentView, type JourneyView } from "@/components/copilot-journey/journeyModel.ts";
+import "@/components/copilot-journey/copilot-journey.css";
 import {
   ALL_DOCS,
   DOC_FACET_DEFS,
@@ -86,6 +91,8 @@ const SECTION_EYEBROW: React.CSSProperties = {
 
 export default function PortalV2DocumentsPage() {
   const { openForm, formElement } = useFormDrawer();
+  const { fetchWithAuth } = useAuth();
+  const [, navigate] = useLocation();
 
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<DocSortKey>("num");
@@ -95,6 +102,45 @@ export default function PortalV2DocumentsPage() {
   // `docOpenKey` defaults to 'own-0' (11783): the library opens with the
   // Copilot readiness report already expanded, rather than a wall of rows.
   const [openKey, setOpenKey] = useState<string | null>("own-0");
+
+  /* ---------------------------------------------------------------- *
+   * DOC-01..09 body content — ported from `DocumentBody.tsx`'s LIVE_BODY
+   * registry (Git #1238). The tenant name comes from the same
+   * `GET /api/portal/dashboard` field every other portal-v2 page reads.
+   * ---------------------------------------------------------------- */
+  const [customerName, setCustomerName] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void fetchWithAuth("/api/portal/dashboard", undefined, { silent: true })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((body: { customerName?: string | null } | null) => {
+        if (!cancelled && body?.customerName) setCustomerName(body.customerName);
+      })
+      .catch(() => {
+        /* Heading degrades to "Your tenant" — useCopilotJourney reports the
+           payload failures that actually matter. */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchWithAuth]);
+
+  const [reduceMotion] = useState(
+    () =>
+      typeof window === "undefined" ||
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+  );
+
+  const live = useCopilotJourney({ tenantName: customerName });
+  const generation = useMemo(() => withLiveDocuments(live.view.generation), [live.view.generation]);
+
+  /** Opens (or re-opens) the Statement of Work row — the same handoff
+   *  `RemediationGuideBody`'s "Ready to fix this?" makes on the old page. */
+  const openSow = () => setOpenKey("own-8");
+
+  /** Signing hands the agreed scope to the real checkout screen — there is no
+   *  Document Library equivalent, so this reuses the journey's own route. */
+  const onSowSigned = (queryString: string) => navigate(`/copilot-readiness/checkout?${queryString}`);
 
   const shown = docShown(query, facets, sort);
   const active = docFacetActive(query, facets);
@@ -472,6 +518,14 @@ export default function PortalV2DocumentsPage() {
                 onRegenerate={() => regenerate(d)}
                 onShare={() => shareExport(d)}
                 onAsk={askShaneBot}
+                view={live.view}
+                generation={generation}
+                loaded={live.statusLoaded}
+                error={live.error}
+                reduceMotion={reduceMotion}
+                onRetry={live.refresh}
+                onOpenSow={openSow}
+                onSowSigned={onSowSigned}
               />
             ))}
 
@@ -809,6 +863,14 @@ function DocumentRow({
   onRegenerate,
   onShare,
   onAsk,
+  view,
+  generation,
+  loaded,
+  error,
+  reduceMotion,
+  onRetry,
+  onOpenSow,
+  onSowSigned,
 }: {
   d: DocRow;
   open: boolean;
@@ -818,10 +880,24 @@ function DocumentRow({
   onRegenerate: () => void;
   onShare: () => void;
   onAsk: (topic: string) => void;
+  view: JourneyView;
+  generation: ReturnType<typeof withLiveDocuments>;
+  loaded: boolean;
+  error: string | null;
+  reduceMotion: boolean;
+  onRetry: () => void;
+  onOpenSow: () => void;
+  onSowSigned: (queryString: string) => void;
 }) {
   const c = coverColour(d);
   const state = docStateFor(d);
   const stale = d.fresh === "stale";
+  // DOC-01..09 only — the nine real deliverables this library owns (Git #1238).
+  // Matched by title against the same document set the Copilot Readiness
+  // journey resolves, since `docLibraryData.ts`'s DOC-01..09 titles are
+  // transcribed verbatim from the journey's own document spine.
+  const liveDoc: JourneyDocumentView | null =
+    (d.owned && generation.documents.find((doc) => doc.title === d.title)) || null;
 
   return (
     <div
@@ -981,139 +1057,27 @@ function DocumentRow({
               maxWidth: 800,
             }}
           >
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <h2
-                style={{
-                  margin: 0,
-                  fontSize: "21px",
-                  fontWeight: 800,
-                  letterSpacing: "-.02em",
-                  color: "#f8fafc",
-                  lineHeight: 1.3,
-                  textWrap: "pretty",
-                }}
-              >
-                {d.headline}
-              </h2>
-              <span
-                style={{
-                  fontSize: "13.5px",
-                  color: "#cbd5e1",
-                  lineHeight: 1.65,
-                  maxWidth: "74ch",
-                  textWrap: "pretty",
-                }}
-              >
-                {d.standfirst}
-              </span>
+            {/* The report body itself — DOC-01..09's real content, ported
+                from `DocumentBody.tsx`'s LIVE_BODY registry (Git #1238)
+                rather than the fixture's headline/standfirst/facts/sections
+                above. `liveDoc` is always resolved for an owned row: every
+                DOC_LIB title matches one of `JOURNEY_LIVE_DOCUMENTS`, the
+                Remediation Guide or the SOW. */}
+            <div className="cj-dark" data-testid={`pv2-doc-body-${d.num}`}>
+              <DocumentBody
+                doc={liveDoc}
+                generation={generation}
+                tenant={view.tenant}
+                view={view}
+                loaded={loaded}
+                isPreview={false}
+                reduceMotion={reduceMotion}
+                error={error}
+                onRetry={onRetry}
+                onOpenSow={onOpenSow}
+                onSigned={onSowSigned}
+              />
             </div>
-
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit,minmax(148px,1fr))",
-                gap: 10,
-              }}
-            >
-              {(d.facts ?? []).map((k) => (
-                <div
-                  key={k.label}
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 3,
-                    padding: "11px 13px",
-                    border: "1px solid rgba(30,41,59,.9)",
-                    borderRadius: 10,
-                    background: "rgba(15,23,42,.45)",
-                    minWidth: 0,
-                  }}
-                >
-                  <span
-                    style={{
-                      fontSize: "9px",
-                      fontWeight: 700,
-                      letterSpacing: ".11em",
-                      textTransform: "uppercase",
-                      color: "#64748b",
-                      lineHeight: 1.3,
-                    }}
-                  >
-                    {k.label}
-                  </span>
-                  <span
-                    style={{
-                      fontSize: "17px",
-                      fontWeight: 800,
-                      color: k.tone ?? "#f1f5f9",
-                      fontFamily: MONO,
-                      lineHeight: 1.15,
-                    }}
-                  >
-                    {k.value}
-                  </span>
-                  <span style={{ fontSize: "10.5px", color: "#64748b", lineHeight: 1.4 }}>
-                    {k.sub}
-                  </span>
-                </div>
-              ))}
-            </div>
-
-            {(d.sections ?? []).map((s) => (
-              <div
-                key={s.h}
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 7,
-                  paddingTop: 15,
-                  borderTop: "1px solid rgba(30,41,59,.85)",
-                }}
-              >
-                <span style={SECTION_EYEBROW}>{s.h}</span>
-                <span
-                  style={{
-                    fontSize: "13px",
-                    color: "#cbd5e1",
-                    lineHeight: 1.7,
-                    maxWidth: "76ch",
-                    textWrap: "pretty",
-                  }}
-                >
-                  {s.p}
-                </span>
-                {(s.points ?? []).length > 0 && (
-                  <div
-                    style={{ display: "flex", flexDirection: "column", gap: 6, paddingTop: 3 }}
-                  >
-                    {(s.points ?? []).map((pt) => (
-                      <div key={pt} style={{ display: "flex", alignItems: "flex-start", gap: 9 }}>
-                        <span
-                          style={{
-                            flex: "0 0 5px",
-                            width: 5,
-                            height: 5,
-                            borderRadius: "50%",
-                            background: "#475569",
-                            marginTop: 7,
-                          }}
-                        />
-                        <span
-                          style={{
-                            fontSize: "12.5px",
-                            color: "#94a3b8",
-                            lineHeight: 1.6,
-                            textWrap: "pretty",
-                          }}
-                        >
-                          {pt}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
 
             <div
               style={{

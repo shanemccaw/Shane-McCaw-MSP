@@ -4,6 +4,7 @@
   "lastVerifiedAgainstCommit": "1d5c7fcc",
 
   "notes": [
+    "Git #1238: DOC-01..09's expanded body content (headline/facts/sections in the old fixture) is now the REAL live report body, ported from `DocumentBody.tsx`'s LIVE_BODY registry -- the same components `/copilot-readiness/documents` mounts, reused directly (not copy-pasted) via `useCopilotJourney()` + `withLiveDocuments()` + `<DocumentBody>`, matched to each owned row by title. Only the report BODY was ported, not that page's chrome (sidebar, pager, export menu) -- the Document Library keeps its own shell exactly as before. This manifest's DL7/DL8 were updated accordingly: they no longer assert the old fixture's literal headline/fact-card copy for DOC-01, since that content is real and tenant-scan-dependent now, not a static string. DOC-10..33 (the catalogue) are UNCHANGED -- still fixture, per the note below.",
     "WHAT IS REAL TODAY (Shane, 2026-08-19, correcting the scope after this page was built): 'for documents it's only the 9 in Copilot Readiness right now. The others were for future design.' The NINE owned documents (DOC-01..09) are real deliverables -- the Copilot Readiness Assessment's output plus the Gate Clearance plan and its SOW. The TWENTY-FOUR catalogue entries (DOC-10..33) are DESIGN-FORWARD: documents the platform intends to sell, not offerings that can be bought and generated today. The page is deliberately NOT changed on the back of that -- it is a faithful recreation of a design that shows 33, and the catalogue copy is what makes it read as a library. What this note exists to stop is the wiring pass treating DOC_CATALOG as 24 purchasable SKUs. The cart, the 'Add to your library' form and the $ totals asserted in DL18-DL20 are DESIGN BEHAVIOUR against a fixture, not a live commerce path, and must not be connected to checkout or entitlement until the products behind them exist.",
     "SCOPE: the Document Library page only. It is a FIXTURE page -- there is no /api/portal/documents endpoint yet, so there is deliberately no API assertion here beyond the login that every /portal-v2/* probe needs. That is an honest statement of coverage, not an omission: the numbers on screen come from docLibraryData.ts, and the wiring pass that replaces it with real tenant data is where an endpoint assertion becomes possible.",
     "THE LOGIN BLOCK IS NOT OPTIONAL. /portal-v2/* sits behind ProtectedRoute. A probe that goes straight to the page without the five login steps below hits the login screen and every assertion fails for a reason that has nothing to do with the page -- that exact mistake was made and corrected during this build. If these steps go red, check the login landed before reading anything else into it.",
@@ -91,16 +92,17 @@
       "state": "visible"
     },
     {
-      "name": "DL7 -- the expanded body is the real document, not a summary: its headline is the prototype's verbatim copy.",
+      "name": "DL7 -- Git #1238: DOC-01's expanded body is now the REAL live Copilot Readiness report body, ported from DocumentBody.tsx's LIVE_BODY registry (same component the /copilot-readiness/documents reader mounts) -- not the docLibraryData.ts fixture's headline/facts/sections. Content varies per tenant scan (and the roll-up report's narrative is a real, metered server-side AI call), so only presence of the ported body's wrapper is asserted here -- not literal copy, which the old fixture-based DL7/DL8 asserted and which is exactly what this build replaced.",
       "action": "expect",
-      "selector": "[data-testid='pv2-doc-open-DOC-01']",
-      "textContains": "It is not yet safe to turn Copilot on at Halden Materials"
+      "selector": "[data-testid='pv2-doc-body-DOC-01']",
+      "state": "present",
+      "critical": true
     },
     {
-      "name": "DL8 -- the fact cards render their real values (DOC-01's Copilot gate reads 41 / 82 against a gate that clears at 68).",
+      "name": "DL8 -- the row's own Cover (unaffected by this build -- still docLibraryData.ts metadata, not report body content) states the same real title DOC-01's live body is matched against by title in journeyTokens.ts's JOURNEY_LIVE_DOCUMENTS, so the two stay in sync.",
       "action": "expect",
       "selector": "[data-testid='pv2-doc-open-DOC-01']",
-      "textContains": "41 / 82"
+      "textContains": "Copilot Readiness, Safety & Enablement Report"
     },
     {
       "name": "DL9 -- the amber out-of-date band appears on DOC-01 and carries the composed staleNote (proto 11872: freshNote + ' — this issue no longer matches what the tenant looks like now.').",
