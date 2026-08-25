@@ -26,7 +26,8 @@ import { useCallback, useMemo, useState, type ReactNode } from "react";
 export interface AcceptRiskSpec {
   /** 'site' | 'link' in the prototype — the caller decides what the id means. */
   kind?: string;
-  id?: number;
+  /** A number for the fixture rows; a real site's id is a Graph GUID string. */
+  id?: number | string;
   /**
    * The register id of the risk being accepted (e.g. "RBD-2026-575"), when the
    * acceptance has a real one to write against. Added for the Risk Register's

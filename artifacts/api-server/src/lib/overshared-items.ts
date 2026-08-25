@@ -3,9 +3,15 @@
  * `sharepoint-sharing.ts`) into `overshared_items` rows (#1275).
  *
  * One row per (site x grant) — the signed-off granularity. A site with no
- * broad grants contributes no row, matching the table's purpose: a register
- * of overshared items, not a full site inventory (the item-count denominator
- * for "N of M sites clean" still lives on `tenant_check_item_details`).
+ * broad grants and no named grants contributes no row, matching the table's
+ * purpose: a register of overshared items, not a full site inventory (the
+ * item-count denominator for "N of M sites clean" still lives on
+ * `tenant_check_item_details`).
+ *
+ * Emits rows for BOTH `SiteSharingSummary.grants` (the four broad tenant-wide
+ * kinds) and `.namedGrants` (`user`/`guest` individuals resolved off the same
+ * payload, #1286 / #1262 follow-up #3) — the latter is what finally populates
+ * `principal_upn`, previously always null.
  *
  * `naturalKey` is independent of `runId` — it is the identity a rescan uses
  * to carry `remediationState` forward and a future trend query diffs two
@@ -26,6 +32,12 @@ const SEVERITY_BY_GRANT_KIND: Record<string, OversharedItemSeverity> = {
   everyone: "high",
   eeeu: "high",
   organization_link: "medium",
+  // A directly-named external guest is exactly the exposure this register
+  // exists to flag. A directly-named internal user is informational on its
+  // own — it only becomes actionable in aggregate ("too many admins"), which
+  // the drill-down page computes by counting these rows per site, not here.
+  guest: "medium",
+  user: "low",
 };
 
 function isSiteSharingSummary(v: unknown): v is SiteSharingSummary {
@@ -68,7 +80,11 @@ export function buildOversharedItemRows(params: BuildOversharedItemRowsParams): 
     if (!isSiteSharingSummary(raw)) continue;
     if (!raw.siteId) continue;
 
-    for (const grant of raw.grants) {
+    // `namedGrants` is optional on older stored payloads (pre-#1286) — `?? []`
+    // means re-reading historical `tenant_check_item_details` rows never throws.
+    const allGrants = [...raw.grants, ...(raw.namedGrants ?? [])];
+
+    for (const grant of allGrants) {
       rows.push({
         tenantId: params.tenantId,
         customerId: params.customerId,
@@ -81,6 +97,7 @@ export function buildOversharedItemRows(params: BuildOversharedItemRowsParams): 
         isPersonalSite: raw.isPersonalSite,
         grantKind: grant.kind as OversharedItemGrantKind,
         principalLabel: grant.principal,
+        principalUpn: grant.principalUpn ?? null,
         loginName: grant.loginName,
         roles: grant.roles,
         inherited: grant.inherited,

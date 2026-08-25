@@ -60,6 +60,37 @@
  * equality: the claim resolves to "all members of the tenant that owns the
  * site" regardless of which tenant GUID is stamped on it (older tenants carry a
  * different one), so pinning the GUID would silently miss real EEEU grants.
+ *
+ * ── Named-identity resolution (#1286, #1262 follow-up #3) ───────────────────
+ * The SAME permission list already fetched above also carries named,
+ * non-broad grants — a specific person's `siteUser` identity rather than the
+ * EEEU/Everyone claim or a link. Those were previously discarded entirely by
+ * `classifySharingPermission` (it returns null for anything that isn't broad).
+ * `classifyNamedSharingGrant` below classifies that SAME payload a second way,
+ * with no extra Graph call, into `SiteSharingSummary.namedGrants`.
+ *
+ * Two things this can genuinely resolve, and one it cannot:
+ *   - A GUEST granted access directly (the design's "Manage guest access"
+ *     scenario) almost always shows up as a named `siteUser` grant, because
+ *     ad-hoc external sharing grants the individual, not a group. Their real
+ *     UPN is recoverable from the claim (see `extractUpnFromLoginName`).
+ *   - An internal user granted access directly (uncommon, but real) resolves
+ *     the same way.
+ *   - What this CANNOT resolve: a site's actual "Site Owners"/"Members" —
+ *     SharePoint grants those to a GROUP (`siteGroup`), not to named
+ *     individuals, and resolving a group's membership is a further Graph call
+ *     per group that #1262 scoped as separate, larger collection work. A
+ *     `siteGroup`/`sharePointGroup`/`group` grant is classified as
+ *     `kind: "group"` — a real principal, but not a person to name — never
+ *     guessed at as an admin.
+ *
+ * A named grant's `loginName` uses the same claims-based membership-provider
+ * shape SharePoint has used for years: `i:0#.f|membership|user@domain.com` for
+ * an internal member, and `i:0#.f|membership|user_partnerdomain.com#ext#@tenant
+ * .onmicrosoft.com` for a B2B guest (the guest's own home email, `@` swapped
+ * for `_`, ahead of the `#ext#` marker). `extractUpnFromLoginName` only ever
+ * returns a value it can derive with confidence from that exact shape — an
+ * unrecognised shape returns null rather than a guessed string.
  */
 
 import { logger } from "./logger";
@@ -103,15 +134,22 @@ export const BROAD_SHARING_KINDS = [
 
 export type BroadSharingKind = typeof BROAD_SHARING_KINDS[number];
 
-/** One broad grant found on a site, kept whole so a report can cite it. */
+/** A named-individual grant, beyond the four tenant-wide broad kinds. See the header. */
+export type NamedSharingKind = "user" | "guest";
+
+export type SiteSharingGrantKind = BroadSharingKind | NamedSharingKind;
+
+/** One grant found on a site, kept whole so a report can cite it. */
 export interface SiteSharingGrant {
   /** Graph's permission id, as returned. Null when the payload omitted it. */
   permissionId: string | null;
-  kind: BroadSharingKind;
+  kind: SiteSharingGrantKind;
   /** Human-readable principal or link description, for a report line. */
   principal: string;
   /** The raw SharePoint claim, when the grant is a principal rather than a link. */
   loginName: string | null;
+  /** Real UPN, resolved only for a named `user`/`guest` grant. Null otherwise. */
+  principalUpn: string | null;
   /** permission.roles verbatim — "read" | "write" | "owner" | ... */
   roles: string[];
   /** True when Graph reported the grant as inherited from an ancestor item. */
@@ -142,6 +180,14 @@ export interface SiteSharingSummary {
   sharingLevels: BroadSharingKind[];
   /** Every broad grant, whole — what lets a document name the principal. */
   grants: SiteSharingGrant[];
+  /**
+   * Named individuals (`kind: "user"` / `"guest"`) resolved off the same
+   * permission list, with a real UPN where the claim shape allows one. See
+   * the header for what this can and cannot resolve. Does NOT include group
+   * grants (`siteGroup`/`sharePointGroup`/`group` principals) — those name a
+   * SharePoint or Entra group, not a person.
+   */
+  namedGrants: SiteSharingGrant[];
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -229,6 +275,7 @@ export function classifySharingPermission(permission: unknown): SiteSharingGrant
         kind: "anonymous_link",
         principal: `Anyone with the link (${linkType})`,
         loginName: null,
+        principalUpn: null,
         roles,
         inherited,
       };
@@ -239,6 +286,7 @@ export function classifySharingPermission(permission: unknown): SiteSharingGrant
         kind: "organization_link",
         principal: `Anyone in the organization with the link (${linkType})`,
         loginName: null,
+        principalUpn: null,
         roles,
         inherited,
       };
@@ -259,7 +307,124 @@ export function classifySharingPermission(permission: unknown): SiteSharingGrant
   for (const candidate of candidates) {
     const hit = classifyIdentity(candidate);
     if (hit) {
-      return { permissionId, kind: hit.kind, principal: hit.principal, loginName: hit.loginName, roles, inherited };
+      return {
+        permissionId,
+        kind: hit.kind,
+        principal: hit.principal,
+        loginName: hit.loginName,
+        principalUpn: null,
+        roles,
+        inherited,
+      };
+    }
+  }
+
+  return null;
+}
+
+/** SharePoint's claims-based membership-provider prefix for a real Entra identity. */
+const MEMBERSHIP_LOGIN_PREFIX = "i:0#.f|membership|";
+
+/** The marker SharePoint appends to a B2B guest's login name before its home tenant suffix. */
+const GUEST_LOGIN_MARKER = "#ext#";
+
+/**
+ * Recovers a real UPN from a SharePoint claims-based membership login name.
+ * Internal member: `i:0#.f|membership|user@domain.com` → `user@domain.com`.
+ * B2B guest: `i:0#.f|membership|user_partnerdomain.com#ext#@tenant.onmicrosoft.com`
+ * → `user@partnerdomain.com` (the guest's own home email, `@` escaped to `_`
+ * ahead of the `#ext#` marker — SharePoint's documented guest login shape).
+ * Returns null for anything that does not match this exact shape — a group
+ * claim, an app claim, or a guest claim whose escaping doesn't decode cleanly
+ * — rather than emitting a guessed string.
+ */
+export function extractUpnFromLoginName(loginName: string | null): string | null {
+  if (!loginName || !loginName.startsWith(MEMBERSHIP_LOGIN_PREFIX)) return null;
+  const claim = loginName.slice(MEMBERSHIP_LOGIN_PREFIX.length);
+
+  const extIndex = claim.indexOf(GUEST_LOGIN_MARKER);
+  if (extIndex === -1) {
+    // Internal member — the claim IS the UPN already.
+    return claim.includes("@") ? claim : null;
+  }
+
+  const guestPart = claim.slice(0, extIndex);
+  if (guestPart.includes("@")) return guestPart;
+  const lastUnderscore = guestPart.lastIndexOf("_");
+  if (lastUnderscore === -1) return null;
+  return `${guestPart.slice(0, lastUnderscore)}@${guestPart.slice(lastUnderscore + 1)}`;
+}
+
+/** True when the claim carries SharePoint's `#ext#` B2B-guest marker. */
+export function isGuestLoginName(loginName: string | null): boolean {
+  return !!loginName && loginName.startsWith(MEMBERSHIP_LOGIN_PREFIX) && loginName.includes(GUEST_LOGIN_MARKER);
+}
+
+/**
+ * Classifies ONE identity as a named individual. Only the `siteUser` slot ever
+ * carries a single person's own claim — `siteGroup`/`sharePointGroup`/`group`
+ * are real principals but name a GROUP, not a person, and are deliberately not
+ * consulted here (see the file header on what this cannot resolve).
+ */
+function classifyNamedUser(
+  identity: unknown,
+): { principal: string; loginName: string | null; upn: string | null; isGuest: boolean } | null {
+  if (!isRecord(identity)) return null;
+  const node = identity.siteUser;
+  if (!isRecord(node)) return null;
+
+  const loginName = stringOrNull(node.loginName);
+  const displayName = stringOrNull(node.displayName);
+  const email = stringOrNull(node.email);
+
+  if (loginName) {
+    // The two tenant-wide broad principals are not a named person.
+    if (loginName.startsWith(EEEU_LOGIN_NAME_PREFIX) || loginName.startsWith(EVERYONE_LOGIN_NAME_PREFIX)) {
+      return null;
+    }
+    const upn = email ?? extractUpnFromLoginName(loginName);
+    return { principal: displayName ?? upn ?? "Unnamed user", loginName, upn, isGuest: isGuestLoginName(loginName) };
+  }
+
+  // Graph sometimes omits loginName; a broad claim always carries one, so a
+  // displayName-only siteUser here is still a named person, just with no
+  // resolvable UPN.
+  if (displayName) {
+    return { principal: displayName, loginName: null, upn: email, isGuest: false };
+  }
+  return null;
+}
+
+/**
+ * Classifies one Graph `permission` object into a named (`user`/`guest`)
+ * grant, or null when it is a link, a group grant, an app grant, or one of the
+ * two broad tenant-wide principals. Reads the SAME payload
+ * `classifySharingPermission` reads — no extra Graph call.
+ */
+export function classifyNamedSharingGrant(permission: unknown): SiteSharingGrant | null {
+  if (!isRecord(permission)) return null;
+  if (isRecord(permission.link)) return null; // a link never carries a named individual
+
+  const permissionId = stringOrNull(permission.id);
+  const roles = rolesOf(permission);
+  const inherited = isRecord(permission.inheritedFrom);
+
+  const candidates: unknown[] = [permission.grantedToV2];
+  const many = permission.grantedToIdentitiesV2;
+  if (Array.isArray(many)) candidates.push(...many);
+
+  for (const candidate of candidates) {
+    const hit = classifyNamedUser(candidate);
+    if (hit) {
+      return {
+        permissionId,
+        kind: hit.isGuest ? "guest" : "user",
+        principal: hit.principal,
+        loginName: hit.loginName,
+        principalUpn: hit.upn,
+        roles,
+        inherited,
+      };
     }
   }
 
@@ -277,9 +442,13 @@ export function summarizeSiteSharing(site: unknown, permissions: unknown[]): Sit
   const s = isRecord(site) ? site : {};
 
   const grants: SiteSharingGrant[] = [];
+  const namedGrants: SiteSharingGrant[] = [];
   for (const permission of permissions) {
     const grant = classifySharingPermission(permission);
     if (grant) grants.push(grant);
+
+    const named = classifyNamedSharingGrant(permission);
+    if (named) namedGrants.push(named);
   }
 
   const countOf = (kind: BroadSharingKind) => grants.filter((g) => g.kind === kind).length;
@@ -312,6 +481,7 @@ export function summarizeSiteSharing(site: unknown, permissions: unknown[]): Sit
     highestSharingLevel: sharingLevels[0] ?? null,
     sharingLevels: [...sharingLevels],
     grants,
+    namedGrants,
   };
 }
 

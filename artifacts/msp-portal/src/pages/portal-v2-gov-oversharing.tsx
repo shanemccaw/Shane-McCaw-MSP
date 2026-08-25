@@ -86,9 +86,12 @@ import {
   SITES_PAGE_SIZE,
   SITE_VIS_FILTERS,
   type OversharingStat,
+  type SitePrincipal,
 } from "@/components/portal-v2/govOversharingData";
 import { useLivePillarHero } from "@/components/portal-v2/useLivePillarHero";
 import { PillarLiveSource } from "@/components/portal-v2/PillarLiveSource";
+import { useOversharingSitesLive, type OversharingSiteWire } from "@/components/portal-v2/govOversharingSitesLive";
+import { useOversharingRunbooksLive } from "@/components/portal-v2/govOversharingRunbooksLive";
 
 /** Which lucide glyph each `iconSvg` name in the fixture maps to. 1:1 per README. */
 const STAT_ICON = {
@@ -260,8 +263,10 @@ export default function PortalV2GovOversharingPage() {
   const { fixKey, openFixPanel, closeFixPanel } = useFixPanel();
   const { openForm, formElement } = useFormDrawer();
 
-  // `manuallyAcceptedSiteIds` / `manuallyAcceptedLinkIds` (6415-6416).
-  const [acceptedSiteIds, setAcceptedSiteIds] = useState<number[]>([]);
+  // `manuallyAcceptedSiteIds` / `manuallyAcceptedLinkIds` (6415-6416). A
+  // fixture site's id is numeric; a real site's is a Graph GUID string —
+  // `string[]` covers both via `String(id)`.
+  const [acceptedSiteIds, setAcceptedSiteIds] = useState<string[]>([]);
   const [acceptedLinkIds, setAcceptedLinkIds] = useState<number[]>([]);
 
   const askShaneBot = (topic: string) =>
@@ -287,10 +292,10 @@ export default function PortalV2GovOversharingPage() {
   const { openAcceptRisk, acceptRiskElement } = useAcceptRisk({
     onConfirm: (spec: AcceptRiskSpec) => {
       if (spec.kind === "site" && spec.id != null) {
-        setAcceptedSiteIds((ids) => [...ids, spec.id!]);
+        setAcceptedSiteIds((ids) => [...ids, String(spec.id)]);
       }
       if (spec.kind === "link" && spec.id != null) {
-        setAcceptedLinkIds((ids) => [...ids, spec.id!]);
+        setAcceptedLinkIds((ids) => [...ids, Number(spec.id)]);
       }
     },
     onAskShaneBot: askShaneBot,
@@ -298,14 +303,18 @@ export default function PortalV2GovOversharingPage() {
 
   // Reads the governance pillar's live war-room-pillars payload through the shared
   // `useLivePillarHero` seam; `pv2-ovr-source` proves the page is on real data. The
-  // per-site / per-anonymous-link inventory rows and the top-risks list need a
-  // per-object SharePoint feed the war-room-pillars payload does not carry, so
-  // those rows stay fixture — a documented backend gap, not fabricated site rows.
+  // per-anonymous-link inventory and the top-risks list still need a per-object
+  // feed the war-room-pillars payload does not carry, so those rows stay
+  // fixture — a documented backend gap, not fabricated data. The per-site
+  // admins/guests list below has its OWN real feed (#1286) — see `sitesLive`.
   const live = useLivePillarHero("governance");
+  const sitesLive = useOversharingSitesLive();
 
   return (
     <PortalV2Shell eyebrow="Governance" title={OVERSHARING_HEADING}>
       <OversharingBody
+        sites={sitesLive.sites}
+        sitesDataState={sitesLive.dataState}
         acceptedSiteIds={acceptedSiteIds}
         acceptedLinkIds={acceptedLinkIds}
         onFix={openFixPanel}
@@ -336,17 +345,35 @@ export default function PortalV2GovOversharingPage() {
       {acceptRiskElement}
       {formElement}
       <PillarLiveSource testId="pv2-ovr-source" live={live} />
+      <PillarLiveSource testId="pv2-ovr-sites-source" live={sitesLive} />
     </PortalV2Shell>
   );
 }
 
+/** The page's own display shape — real (`OversharingSiteWire`) and fixture (`OversharingSite`) rows normalize into this. */
+interface DisplaySite {
+  id: string;
+  name: string;
+  context: string;
+  visibility: string | null;
+  admins: SitePrincipal[];
+  guests: SitePrincipal[];
+  status: "open" | "accepted";
+  acceptedOn?: string;
+  acceptedTerm?: string;
+}
+
 function OversharingBody({
+  sites,
+  sitesDataState,
   acceptedSiteIds,
   acceptedLinkIds,
   onFix,
   onAcceptRisk,
 }: {
-  acceptedSiteIds: number[];
+  sites: readonly OversharingSiteWire[];
+  sitesDataState: "live" | "fixture";
+  acceptedSiteIds: string[];
   acceptedLinkIds: number[];
   onFix: (key: string) => void;
   onAcceptRisk: (spec: AcceptRiskSpec) => void;
@@ -356,45 +383,54 @@ function OversharingBody({
   const [linkStatusFilter, setLinkStatusFilter] = useState("all");
   const [sitesPage, setSitesPage] = useState(1);
   const [linksPage, setLinksPage] = useState(1);
-  const [siteExpanded, setSiteExpanded] = useState<number | null>(null);
+  const [siteExpanded, setSiteExpanded] = useState<string | null>(null);
   const [linkMenuOpen, setLinkMenuOpen] = useState<number | null>(null);
 
   // The runbook open/checked state is per-KIND and global in the prototype
-  // (6402-6409), not per-site. Only one site can be expanded at a time, so in
-  // practice it reads as per-site — but opening "Convert to Private", collapsing
-  // the site and expanding another leaves it open, which is the design's own
-  // behaviour and is preserved rather than "fixed".
-  const [runbookOpen, setRunbookOpen] = useState<Record<SopKind, boolean>>({
-    convert: false,
-    reduceAdmins: false,
-    manageGuests: false,
-  });
-  const [runbookChecked, setRunbookChecked] = useState<Record<SopKind, number[]>>({
-    convert: [],
-    reduceAdmins: [],
-    manageGuests: [],
-  });
+  // (6402-6409), not per-site — the same design this hook's own header
+  // documents. Real state via #1286's `useOversharingRunbooksLive`, riding the
+  // existing `portal_runbooks` / `portal_runbook_steps` tables rather than a
+  // new one.
+  const { open: runbookOpen, checkedByKind: runbookChecked, toggleOpen: toggleRunbook, toggleStep: toggleRunbookStep } =
+    useOversharingRunbooksLive();
 
-  const toggleRunbook = (kind: SopKind) =>
-    setRunbookOpen((r) => ({ ...r, [kind]: !r[kind] }));
-  const toggleRunbookStep = (kind: SopKind, i: number) =>
-    setRunbookChecked((r) => ({
-      ...r,
-      [kind]: r[kind].includes(i) ? r[kind].filter((x) => x !== i) : [...r[kind], i],
+  /* ── Sites: real feed, fallback to fixture (11319-11337 for the shape) ──── */
+
+  const siteRowsAll: readonly DisplaySite[] = useMemo(() => {
+    if (sitesDataState === "live") {
+      return sites.map((s) => ({
+        id: s.id,
+        name: s.name ?? "Unnamed site",
+        context: s.context,
+        visibility: s.visibility,
+        admins: s.admins as SitePrincipal[],
+        guests: s.guests as SitePrincipal[],
+        status: s.status,
+      }));
+    }
+    return OVERSHARING_SITES.map((s) => ({
+      id: String(s.id),
+      name: s.name,
+      context: s.context,
+      visibility: s.visibility,
+      admins: s.admins,
+      guests: s.guests,
+      status: s.status,
+      acceptedOn: s.acceptedOn,
+      acceptedTerm: s.acceptedTerm,
     }));
-
-  /* ── Sites: filter → page → slice (11319-11337) ─────────────────────────── */
+  }, [sites, sitesDataState]);
 
   const sitesFiltered = useMemo(
     () =>
-      OVERSHARING_SITES.filter((s) => {
+      siteRowsAll.filter((s) => {
         const isAccepted = s.status === "accepted" || acceptedSiteIds.includes(s.id);
         if (siteVisFilter === "all") return true;
         if (siteVisFilter === "accepted") return isAccepted;
         if (siteVisFilter === "orphaned") return s.admins.length === 0;
-        return s.visibility.toLowerCase() === siteVisFilter;
+        return (s.visibility ?? "").toLowerCase() === siteVisFilter;
       }),
-    [siteVisFilter, acceptedSiteIds],
+    [siteRowsAll, siteVisFilter, acceptedSiteIds],
   );
   const sitesTotalPages = Math.max(1, Math.ceil(sitesFiltered.length / SITES_PAGE_SIZE));
   const sitesPageClamped = Math.min(sitesPage, sitesTotalPages);
@@ -650,7 +686,9 @@ function OversharingBody({
               const isExpanded = siteExpanded === s.id;
               const acceptedMeta = manuallyAccepted
                 ? "Accepted just now"
-                : `${s.acceptedTerm} · ${s.acceptedOn}`;
+                : s.acceptedTerm && s.acceptedOn
+                  ? `${s.acceptedTerm} · ${s.acceptedOn}`
+                  : "Accepted";
 
               // `siteActions` (11341-11346) — order is fixed by the prototype.
               const siteActions: { label: string; sopKind: SopKind }[] = [];
@@ -672,7 +710,7 @@ function OversharingBody({
                   kind: "site",
                   id: s.id,
                   title: `Accept risk — ${s.name}`,
-                  description: `${s.name} is ${s.visibility.toLowerCase()} and exposes ${s.guests.length} ${GUEST_WORD} and ${s.admins.length} ${ADMIN_WORD}. Accepting this risk records that your organization has reviewed this exposure and chosen not to remediate it right now.`,
+                  description: `${s.name}${s.visibility ? ` is ${s.visibility.toLowerCase()} and` : ""} exposes ${s.guests.length} ${GUEST_WORD} and ${s.admins.length} ${ADMIN_WORD}. Accepting this risk records that your organization has reviewed this exposure and chosen not to remediate it right now.`,
                   details: s.context,
                 });
 
@@ -722,17 +760,19 @@ function OversharingBody({
                       <span style={{ fontSize: "11px", color: "#64748b" }}>{s.context}</span>
                     </div>
                     {accepted && <span style={ACCEPTED_PILL}>Risk accepted</span>}
-                    <span
-                      style={{
-                        fontSize: "10px",
-                        fontWeight: 700,
-                        letterSpacing: ".05em",
-                        textTransform: "uppercase",
-                        color: s.visibility === "Public" ? "#f87171" : "#34d399",
-                      }}
-                    >
-                      {s.visibility}
-                    </span>
+                    {s.visibility && (
+                      <span
+                        style={{
+                          fontSize: "10px",
+                          fontWeight: 700,
+                          letterSpacing: ".05em",
+                          textTransform: "uppercase",
+                          color: s.visibility === "Public" ? "#f87171" : "#34d399",
+                        }}
+                      >
+                        {s.visibility}
+                      </span>
+                    )}
                     <span style={{ fontSize: "11px", color: "#94a3b8", whiteSpace: "nowrap" }}>
                       {s.admins.length} {ADMIN_WORD}
                     </span>

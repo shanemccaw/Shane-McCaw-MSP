@@ -237,6 +237,8 @@ export default defineConfig({
       "src/lib/registry-source-key-contract.test.ts",
       "src/lib/pillar-trend.test.ts",
       "src/lib/__tests__/sharepoint-sharing.test.ts",
+      "src/lib/__tests__/overshared-items.test.ts",
+      "src/lib/__tests__/portal-oversharing-sites.test.ts",
       "src/lib/chat-content-blocks.test.ts",
       "src/lib/shanebot-persona.test.ts",
       "src/lib/shanebot-engine.test.ts",
@@ -318,6 +320,10 @@ export default defineConfig({
       // duplicate device records, unassigned Intune profiles, empty security
       // groups, and dormant (no-app-role-assignment) service principals.
       "src/lib/health-object-inventory-checks-1260.test.ts",
+      // #1301 — compliance:zero-dlp-policies raw-count -> eq-0 -> critical
+      // (mirrors identity:ca-policy-count), read out of the shipped migration
+      // and driven through the real applyMapping/classifySeverity/buildFindingTitle.
+      "src/lib/__tests__/zero-dlp-policies-check-1301.test.ts",
     ],
     coverage: {
       provider: "v8",

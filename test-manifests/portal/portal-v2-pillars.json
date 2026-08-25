@@ -516,9 +516,17 @@
       "textContains": "ExternalUserAndGuestSharing"
     },
     {
-      "name": "OV2-LIVE (#1204) -- REAL DATA: the Overshared SharePoint drill-down reads the LIVE governance payload via useLivePillarHero; its clipped source marker reads 'live'. The per-site / per-anonymous-link inventory rows stay fixture (no per-object SharePoint feed on this payload) -- a documented backend gap.",
+      "name": "OV2-LIVE (#1204) -- REAL DATA: the Overshared SharePoint drill-down reads the LIVE governance payload via useLivePillarHero; its clipped source marker reads 'live'. The per-anonymous-link inventory and top-risks list stay fixture (no per-object feed on this payload) -- a documented backend gap. The Affected Sites list itself has its OWN real feed now -- see OV2-SITES-LIVE.",
       "action": "expect",
       "selector": "[data-testid='pv2-ovr-source']",
+      "state": "present",
+      "textContains": "live"
+    },
+    {
+      "name": "OV2-SITES-LIVE (#1286) -- REAL DATA: the Affected Sites list reads GET /api/portal/oversharing/items grouped per site (named-identity resolution), not the fixture 124-site list, once overshared_items has rows for this tenant.",
+      "sessionTag": "oversharing-1286",
+      "action": "expect",
+      "selector": "[data-testid='pv2-ovr-sites-source']",
       "state": "present",
       "textContains": "live"
     },
@@ -542,69 +550,71 @@
       "textContains": "Anonymous links found with edit access, not just view"
     },
     {
-      "name": "OV6 -- the Affected Sites evidence list renders the written-out sites.",
+      "name": "OV6 (updated #1286) -- the Affected Sites evidence list renders rows. No longer asserted against a specific fixture site name -- the panel is now real per-site data (OV2-SITES-LIVE) whenever this tenant has overshared_items rows, so the exact site names are real tenant data, not a fixed fixture string.",
+      "sessionTag": "oversharing-1286",
       "action": "expect",
       "selector": "[data-testid='pv2-ovr-sites']",
-      "state": "visible",
-      "textContains": "Client Deliverables (SharePoint)"
+      "state": "visible"
     },
     {
-      "name": "OV7 -- the visibility filter really filters, it does not just restyle. Under 'Public' the 124-site set drops to 43, which pulls sites off later pages onto page 1.",
+      "name": "OV7 (updated #1286) -- the visibility filter buttons remain clickable and the panel stays present. Filtering BY the exact count is no longer asserted here: site_visibility is a real column that stays NULL until a separate, not-yet-built follow-up captures it (#1262 follow-up #2, out of #1286's scope), so on real data every row's visibility reads null today -- a documented gap, not a regression.",
+      "sessionTag": "oversharing-1286",
       "action": "click",
       "selector": "[data-testid='pv2-ovr-site-filter-public']",
       "critical": true
     },
     {
-      "name": "OV8 -- proof the window moved: 'HR Onboarding #9' is site id 8, which is on page 2 under 'All' and can only appear on page 1 once the three Private sites ahead of it are filtered out. Asserted positively rather than as an absence, because uiStep `expect` supports textContains / textPrefixOfAny only -- a 'contains none' field would be silently ignored and the step would pass on element presence alone.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-ovr-sites']",
-      "state": "visible",
-      "textContains": "HR Onboarding #9"
-    },
-    {
-      "name": "OV9 -- back to All.",
+      "name": "OV8 (updated #1286) -- back to All so the previous filter doesn't hide every row for the next steps.",
+      "sessionTag": "oversharing-1286",
       "action": "click",
       "selector": "[data-testid='pv2-ovr-site-filter-all']",
       "critical": true
     },
     {
-      "name": "OV10 -- expand a site row.",
+      "name": "OV9 -- back to All (kept for numbering continuity with older recordings).",
       "action": "click",
-      "selector": "[data-testid='pv2-ovr-site-0']",
+      "selector": "[data-testid='pv2-ovr-site-filter-all']",
       "critical": true
     },
     {
-      "name": "OV11 -- the expanded row shows the real principal counts, not a placeholder. 4 named admins + 48 generated staff = 52.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-ovr-site-0-admins']",
-      "state": "visible",
-      "textContains": "alex.rivera@tenant.com"
-    },
-    {
-      "name": "OV12 -- open the per-site runbook. The site is Public, so the Convert-to-Private playbook is the one offered.",
+      "name": "OV10 (updated #1286) -- expand the FIRST rendered site row. A prefix selector, not a specific id: real site ids are Graph GUIDs, not the fixture's small integers.",
+      "sessionTag": "oversharing-1286",
       "action": "click",
-      "selector": "[data-testid='pv2-ovr-runbook-convert']",
+      "selector": "[data-testid^='pv2-ovr-site-']",
       "critical": true
     },
     {
-      "name": "OV13 -- the runbook is the prototype's, verbatim, including the RCD step.",
+      "name": "OV11 (updated #1286) -- the expanded row's Site Admins / Guest Members columns render (named-identity resolution, #1286) -- structure only, not a specific fixture name, since a real site's real admins/guests are real tenant data this manifest cannot pin.",
+      "sessionTag": "oversharing-1286",
       "action": "expect",
-      "selector": "[data-testid='pv2-ovr-convert-runbook']",
-      "state": "visible",
-      "textContains": "Restricted Content Discoverability"
+      "selector": "[data-testid$='-guests']",
+      "state": "visible"
+    },
+    {
+      "name": "OV12 (updated #1286) -- open whichever per-site runbook action the first real site actually offers (Convert to Private / Reduce Admins / Manage Guests) -- which one depends on that site's real broad-access shape, not a fixture guarantee of 'Public'.",
+      "sessionTag": "oversharing-1286",
+      "action": "click",
+      "selector": "[data-testid^='pv2-ovr-runbook-']"
+    },
+    {
+      "name": "OV13 (updated #1286) -- the opened runbook renders real, PERSISTED step state via the existing SOP/Runbook subsystem (portal_runbooks / portal_runbook_steps, #1286) -- not local-only React state anymore.",
+      "sessionTag": "oversharing-1286",
+      "action": "expect",
+      "selector": "[data-testid$='-runbook']",
+      "state": "visible"
     },
     {
       "name": "OV14 -- and it carries the SYNTHESISED verification step buildStepRows appends to every runbook: a runbook is not complete when the work is done, only when the scan says it took.",
       "action": "expect",
-      "selector": "[data-testid='pv2-ovr-convert-runbook']",
+      "selector": "[data-testid$='-runbook']",
       "state": "visible",
       "textContains": "Run verification scan"
     },
     {
-      "name": "OV15 -- Accept risk opens the accept-risk drawer, which is the ONE action in the portal that raises no change request because nothing changes in the tenant.",
+      "name": "OV15 (updated #1286) -- Accept risk opens the accept-risk drawer, which is the ONE action in the portal that raises no change request because nothing changes in the tenant. Prefix selector: the expanded site's real id, not the fixture's '0'.",
+      "sessionTag": "oversharing-1286",
       "action": "click",
-      "selector": "[data-testid='pv2-ovr-site-accept-0']",
-      "critical": true
+      "selector": "[data-testid^='pv2-ovr-site-accept-']"
     },
     {
       "name": "OV16 -- the drawer names the specific site and states what is being signed.",
@@ -657,24 +667,12 @@
       "textContains": "Q3_Contract_Draft.docx"
     },
     {
-      "name": "OV22 -- the sites list is paginated at 8 a page over 124 sites, so the pager renders rather than the page dumping every row.",
+      "name": "OV22 (updated #1286) -- the sites pager renders. No longer pinned to the fixture's 'Page 1 of 16': the real per-site row count (grouped by site from overshared_items) depends on this tenant's real broad-grant data, not a fixed 124-site fixture.",
+      "sessionTag": "oversharing-1286",
       "action": "expect",
       "selector": "[data-testid='pv2-ovr-sites-pager']",
       "state": "visible",
-      "textContains": "Page 1 of 16"
-    },
-    {
-      "name": "OV23 -- paging actually moves the window.",
-      "action": "click",
-      "selector": "[data-testid='pv2-ovr-sites-next']",
-      "critical": true
-    },
-    {
-      "name": "OV24 -- page 2 holds different rows.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-ovr-sites-pager']",
-      "state": "visible",
-      "textContains": "Page 2 of 16"
+      "textContains": "Page 1 of"
     },
     {
       "name": "goto the enterprise-scale bulk list, governance-oversharing-full -- a THIRD template, not the drill-down and not the V2 page.",

@@ -94,6 +94,9 @@ vi.mock("../logger", () => {
 
 import {
   classifySharingPermission,
+  classifyNamedSharingGrant,
+  extractUpnFromLoginName,
+  isGuestLoginName,
   summarizeSiteSharing,
   normalizeSiteSharing,
   EEEU_LOGIN_NAME_PREFIX,
@@ -191,6 +194,28 @@ const applicationPermission = {
   ],
 };
 
+/** A named INTERNAL user, with a real claims-based membership login name. */
+const namedInternalUserPermission = {
+  id: "int-1",
+  roles: ["write"],
+  grantedToV2: {
+    siteUser: { id: "10", displayName: "Pat Internal", loginName: "i:0#.f|membership|pat@contoso.com" },
+  },
+};
+
+/** A named B2B GUEST, with the documented `#ext#` claim shape. */
+const namedGuestPermission = {
+  id: "guest-1",
+  roles: ["read"],
+  grantedToV2: {
+    siteUser: {
+      id: "11",
+      displayName: "Jamie Guest",
+      loginName: "i:0#.f|membership|jamie_partnerco.com#ext#@contoso.onmicrosoft.com",
+    },
+  },
+};
+
 // ── The classifier ────────────────────────────────────────────────────────────
 
 describe("classifySharingPermission", () => {
@@ -282,6 +307,84 @@ describe("classifySharingPermission", () => {
   });
 });
 
+// ── Named-identity resolution (#1286) ─────────────────────────────────────────
+
+describe("extractUpnFromLoginName", () => {
+  it("returns an internal member's claim as-is", () => {
+    expect(extractUpnFromLoginName("i:0#.f|membership|pat@contoso.com")).toBe("pat@contoso.com");
+  });
+
+  it("decodes a B2B guest's escaped home email ahead of #ext#", () => {
+    expect(
+      extractUpnFromLoginName("i:0#.f|membership|jamie_partnerco.com#ext#@contoso.onmicrosoft.com"),
+    ).toBe("jamie@partnerco.com");
+  });
+
+  it("returns the guest segment as-is when it is already a plain email", () => {
+    expect(
+      extractUpnFromLoginName("i:0#.f|membership|jamie@partnerco.com#ext#@contoso.onmicrosoft.com"),
+    ).toBe("jamie@partnerco.com");
+  });
+
+  it("returns null rather than guessing when the shape doesn't decode", () => {
+    expect(extractUpnFromLoginName("i:0#.f|membership|nounderscoreoremail#ext#@contoso.onmicrosoft.com")).toBeNull();
+    expect(extractUpnFromLoginName("i:0#.f|membership|not-an-email")).toBeNull();
+  });
+
+  it("returns null for a non-membership claim (a group, an app, or a display name)", () => {
+    expect(extractUpnFromLoginName("Robin Danielsen")).toBeNull();
+    expect(extractUpnFromLoginName(EEEU_LOGIN_NAME_PREFIX + "/tenant-guid")).toBeNull();
+    expect(extractUpnFromLoginName(null)).toBeNull();
+  });
+});
+
+describe("isGuestLoginName", () => {
+  it("is true only for the #ext# marker on a membership claim", () => {
+    expect(isGuestLoginName("i:0#.f|membership|jamie_partnerco.com#ext#@contoso.onmicrosoft.com")).toBe(true);
+    expect(isGuestLoginName("i:0#.f|membership|pat@contoso.com")).toBe(false);
+    expect(isGuestLoginName(null)).toBe(false);
+  });
+});
+
+describe("classifyNamedSharingGrant", () => {
+  it("classifies an internal named user, with a real resolved UPN", () => {
+    const grant = classifyNamedSharingGrant(namedInternalUserPermission);
+    expect(grant).not.toBeNull();
+    expect(grant!.kind).toBe("user");
+    expect(grant!.principal).toBe("Pat Internal");
+    expect(grant!.principalUpn).toBe("pat@contoso.com");
+    expect(grant!.roles).toEqual(["write"]);
+  });
+
+  it("classifies a B2B guest, with the decoded home UPN", () => {
+    const grant = classifyNamedSharingGrant(namedGuestPermission);
+    expect(grant).not.toBeNull();
+    expect(grant!.kind).toBe("guest");
+    expect(grant!.principal).toBe("Jamie Guest");
+    expect(grant!.principalUpn).toBe("jamie@partnerco.com");
+  });
+
+  it("falls back to displayName with a null UPN when the reference shape has no real claim", () => {
+    // namedUserPermission's own loginName is literally the display name, not a
+    // claim — the real v1.0 reference example's own (unrealistic) shape.
+    const grant = classifyNamedSharingGrant(namedUserPermission);
+    expect(grant).not.toBeNull();
+    expect(grant!.kind).toBe("user");
+    expect(grant!.principal).toBe("Robin Danielsen");
+    expect(grant!.principalUpn).toBeNull();
+  });
+
+  it("does not classify a group as a named person", () => {
+    expect(classifyNamedSharingGrant(siteGroupPermission)).toBeNull();
+  });
+
+  it("does not classify a link, an app grant, or the two broad principals", () => {
+    expect(classifyNamedSharingGrant(namedPeopleLinkPermission)).toBeNull();
+    expect(classifyNamedSharingGrant(applicationPermission)).toBeNull();
+    expect(classifyNamedSharingGrant(eeeuPermission)).toBeNull();
+  });
+});
+
 // ── The per-site summary ──────────────────────────────────────────────────────
 
 const financeSite = {
@@ -342,6 +445,32 @@ describe("summarizeSiteSharing", () => {
     expect(summary.highestSharingLevel).toBeNull();
     expect(summary.sharingLevels).toEqual([]);
     expect(summary.grants).toEqual([]);
+  });
+
+  it("resolves named grants alongside broad ones, off the same permission list (#1286)", () => {
+    const summary = summarizeSiteSharing(financeSite, [
+      eeeuPermission,
+      namedInternalUserPermission,
+      namedGuestPermission,
+      siteGroupPermission,
+    ]);
+
+    // Broad-access flags are unaffected by the named grants mixed in.
+    expect(summary.broadAccess).toBe(true);
+    expect(summary.grants).toHaveLength(1);
+
+    expect(summary.namedGrants).toHaveLength(2);
+    const guest = summary.namedGrants.find((g) => g.kind === "guest");
+    const user = summary.namedGrants.find((g) => g.kind === "user");
+    expect(guest?.principalUpn).toBe("jamie@partnerco.com");
+    expect(user?.principalUpn).toBe("pat@contoso.com");
+    // The SharePoint group grant names a group, not a person — excluded.
+    expect(summary.namedGrants.some((g) => g.principal === "Finance Members")).toBe(false);
+  });
+
+  it("emits no named grants for a site with only broad/group sharing", () => {
+    const summary = summarizeSiteSharing(financeSite, [eeeuPermission, siteGroupPermission]);
+    expect(summary.namedGrants).toEqual([]);
   });
 
   it("emits a clean row when a site returns no permissions at all", () => {
