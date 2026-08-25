@@ -7,6 +7,7 @@ import { SlugProvider, getStoredSlug, storeSlug } from "@/lib/slug-context";
 import { SessionExpiryModal } from "@/components/session-expiry-modal";
 import { useGetPortalTenant } from "@workspace/api-client-react";
 import LoginPage from "@/pages/login";
+import PortalIdentityInterstitialPage from "@/pages/portal-identity-interstitial";
 import DashboardPage from "@/pages/dashboard";
 import CustomersPage from "@/pages/customers";
 import CustomerDetailPage from "@/pages/customer-detail";
@@ -411,6 +412,14 @@ function SlugInnerSwitch() {
       {/* MFA gate page (Git #439) — auth-required but not gated itself */}
       <Route path="/setup-mfa">
         <SetupMfaPage />
+      </Route>
+
+      {/* Identity interstitial (Git #1296) — where login.tsx sends every
+          non-CustomerUser role instead of straight to /dashboard, since
+          /portal/ is customer-only. Auth-required but not itself gated,
+          same as /setup-mfa above. */}
+      <Route path="/identity">
+        <PortalIdentityInterstitialPage />
       </Route>
 
       {/* MSP-facing pages */}

@@ -415,15 +415,20 @@ export default function LoginPage() {
   } = useForm<LoginForm>({ resolver: zodResolver(loginSchema) });
 
   // If already authenticated, redirect to landing page.
-  // In slug-scoped context navigate("/dashboard") auto-resolves to /portal/{slug}/dashboard.
-  // In flat context it resolves to /portal/dashboard — acceptable fallback.
+  // In slug-scoped context navigate("/identity") auto-resolves to
+  // /portal/{slug}/identity. In flat context it resolves to /portal/identity
+  // — acceptable fallback.
+  // /portal/ is customer-only (Git #1296): every non-CustomerUser role lands
+  // on the identity interstitial instead of /dashboard, so a staff account
+  // that ends up here gets a real choice rather than silently landing on a
+  // customer-facing page. CustomerUser is unaffected — still /portal-v2.
   const defaultLanding = isLoading
     ? "/dashboard"
     : user?.mspRole === "Assessment"
       ? "/copilot-readiness"
       : user?.mspRole === "CustomerUser"
         ? "/portal-v2"
-        : "/dashboard";
+        : "/identity";
 
   useEffect(() => {
     if (!isLoading && user) {
@@ -454,7 +459,7 @@ export default function LoginPage() {
           ? "/copilot-readiness"
           : result.user?.mspRole === "CustomerUser"
             ? "/portal-v2"
-            : "/dashboard";
+            : "/identity";
 
       if (ctxSlug) {
         // Inside slug-scoped router — navigate() auto-prefixes the slug.

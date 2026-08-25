@@ -33,6 +33,8 @@ import { Link, useLocation } from "wouter";
 import { Plus } from "lucide-react";
 
 import { useAuth } from "@/lib/auth-context";
+import { ImpersonationBanner } from "@/components/ImpersonationBanner";
+import { TenantSwitcherFloaty } from "@/components/TenantSwitcherFloaty";
 import { useHoldBadge } from "@/components/portal-v2/holds/useHoldBadge";
 import { usePortalV2Pillars } from "@/components/portal-v2/usePortalV2Pillars";
 import { tenantHealthSummary, urgentToAlertItems } from "@/components/portal-v2/portalV2Model";
@@ -636,7 +638,7 @@ export function PortalV2Shell({
   children: ReactNode;
 }) {
   const [location, navigate] = useLocation();
-  const { user, logout, fetchWithAuth } = useAuth();
+  const { user, logout, fetchWithAuth, isImpersonating } = useAuth();
   const account = accountDisplay(user);
   const [expanded, setExpanded] = useState(true);
   // The portal's ONE form primitive, hosted here so a New-menu "New X" opens it on
@@ -715,7 +717,18 @@ export function PortalV2Shell({
   const isOverview = location === "/portal-v2" || location === "/portal-v2/";
 
   return (
-    <div className="pv2-root" style={{ minHeight: "100vh", display: "flex", background: "#020617" }}>
+    <>
+      {isImpersonating && user && <ImpersonationBanner email={user.email} />}
+      <TenantSwitcherFloaty />
+      <div
+        className="pv2-root"
+        style={{
+          minHeight: "100vh",
+          display: "flex",
+          background: "#020617",
+          paddingTop: isImpersonating ? 42 : 0,
+        }}
+      >
       {/* ── Sidebar — prototype 39-156 ──────────────────────────────────── */}
       <aside
         style={{
@@ -1348,6 +1361,7 @@ export function PortalV2Shell({
       )}
       {shaneBot.open && <ShaneBotPanel api={shaneBot} />}
       <ShaneBotLauncher onClick={shaneBot.toggle} />
-    </div>
+      </div>
+    </>
   );
 }
