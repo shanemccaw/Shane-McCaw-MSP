@@ -752,6 +752,23 @@ async function resolveMonitorAggregation(def: MetricDef, tenantId: string): Prom
     case "security.riskDetectionCount":
       return aggregateGroupBy(def, props, "riskEventType", "detectionType", "riskType");
 
+    // Email authentication findings: count of SPF/DMARC/DKIM-at-default-
+    // selectors that are configured `false` on the tenant's latest DNS check
+    // (Git #1258). No pre-computed count field exists on this check's
+    // mapping (see metrics.ts's comment on this key) -- the three booleans
+    // are read directly and tallied, mirroring the check's own
+    // severity_rules (spfConfigured/dmarcConfigured/
+    // dkimConfiguredAtDefaultSelectors each `== false`).
+    case "security.emailAuthFindingCount": {
+      const fields = ["spfConfigured", "dmarcConfigured", "dkimConfiguredAtDefaultSelectors"] as const;
+      const checked = fields.filter((f) => typeof props[f] === "boolean");
+      if (checked.length === 0) {
+        return notAvailable(def, "unshaped", "none of spfConfigured/dmarcConfigured/dkimConfiguredAtDefaultSelectors present");
+      }
+      const openFindings = checked.filter((f) => props[f] === false).length;
+      return scalar(def, openFindings, { checkedFields: checked });
+    }
+
     // Secure score scalar: percentage of currentScore / maxScore.
     case "security.secureScore": {
       const current = firstNumber(props, ["currentScore", "secureScore", "current", "secureScoreCurrent"]);

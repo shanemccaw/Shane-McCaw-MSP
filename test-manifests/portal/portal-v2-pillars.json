@@ -35,6 +35,7 @@
   "apiTests": [
     {
       "name": "SETUP -- log in as the designated TESTBED Assessment account; extract the bearer.",
+      "sessionTag": "setup",
       "method": "POST",
       "path": "/api/auth/login",
       "headers": { "Content-Type": "application/json" },
@@ -159,25 +160,37 @@
       "headers": { "Authorization": "Bearer {{authToken}}" },
       "expect": { "status": 200, "jsonPath": "$.pillars[5].stats[1].id", "value": "security.globalAdmins" },
       "extract": { "as": "secGlobalAdmins", "jsonPath": "$.pillars[5].stats[1].value" }
+    },
+    {
+      "name": "SEC-AREA1 -- Git #1258: POST /api/dashboard/resolve accepts security.emailAuthFindingCount (net-new registry entry off exchange:dkim-spf-dmarc-status) with no unknown-metric error, and echoes a result keyed by it. Same jsonPath-can't-address-a-literal-dot-key limitation as #1117's group-sprawl.json D1/D2 -- asserted via containsAny/containsNone against the raw body. Does not assert a specific value: an honestly-uncollected testbed resolves it to not_available, which is correct product behaviour, not a failure.",
+      "sessionTag": "sec-1258",
+      "method": "POST",
+      "path": "/api/dashboard/resolve",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "metrics": ["governance.riskyPermissionGrantCount", "security.emailAuthFindingCount"] },
+      "expect": { "status": 200, "containsNone": ["unknown metric"], "containsAny": ["security.emailAuthFindingCount"] }
     }
   ],
 
   "uiSteps": [
     {
       "name": "goto the real login URL (outer WouterRouter base = '/portal').",
+      "sessionTag": "setup",
       "action": "goto",
       "target": "/portal/login"
     },
     {
       "name": "WAIT for the login form to hydrate before typing.",
+      "sessionTag": "setup",
       "action": "expect",
       "selector": "#email",
       "state": "visible"
     },
-    { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
-    { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
+    { "sessionTag": "setup", "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
+    { "sessionTag": "setup", "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
     {
       "name": "Primary login -- every downstream assertion needs a real authenticated session.",
+      "sessionTag": "setup",
       "action": "click",
       "selector": "[data-testid='login-submit']",
       "critical": true
@@ -674,6 +687,7 @@
     },
     {
       "name": "goto the rebuilt Security pillar dashboard. Before this pass /portal-v2/security fell through to the generic API-driven portal-v2-pillar.tsx, not the design's own composition.",
+      "sessionTag": "sec-1258",
       "action": "goto",
       "target": "/portal/shane-mccaw-consulting/portal-v2/security"
     },
@@ -760,6 +774,14 @@
       "selector": "[data-testid='pv2-sec-area-security-email']",
       "state": "visible",
       "textContains": "Email Security"
+    },
+    {
+      "name": "S10a -- Git #1258: the OAuth Apps card still renders after the live-overlay wiring (useSecAreaLinksLive). Not a value assertion -- the score is either the real appgov:risky-permission-grants count or the honest fixture fallback, both of which render the same label.",
+      "sessionTag": "sec-1258",
+      "action": "expect",
+      "selector": "[data-testid='pv2-sec-area-security-oauth']",
+      "state": "visible",
+      "textContains": "OAuth Apps"
     },
     {
       "name": "S11 -- the risk-accepted strip's button. In the CURRENT design (proto 781) this is a TOGGLE (secRisk.go), not a link: its closed-state label is 'View full risk register' and clicking it opens the drop panel below rather than navigating. The register link now lives INSIDE the panel.",

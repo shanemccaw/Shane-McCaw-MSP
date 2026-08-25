@@ -660,6 +660,28 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     status: "not_collected",
     smartEligible: false,
   },
+  {
+    // Git #1258 -- exchange:dkim-spf-dmarc-status is a real, live DNS check
+    // (`runDnsCheck`, 2026-08-06-dns-executor-dkim-spf-dmarc-496.sql) but its
+    // mapping carries three booleans (spfConfigured/dmarcConfigured/
+    // dkimConfiguredAtDefaultSelectors) plus record strings -- no numeric
+    // targetField for pickMappedValueField to pick, so this can't resolve as a
+    // plain scalar the way #1117's governance checks do. `needs_aggregation`
+    // + a resolveMonitorAggregation case (dashboard-resolvers.ts) counts how
+    // many of the three protocols are NOT configured -- exactly the "N open
+    // findings" claim the Security page's Email Security card already makes.
+    key: "security.emailAuthFindingCount",
+    label: "Email Authentication Findings",
+    valueType: "count",
+    shape: "scalar",
+    sourceType: "monitor_profile",
+    sourceKey: "exchange:dkim-spf-dmarc-status",
+    scope: "customer",
+    status: "needs_aggregation",
+    smartEligible: true,
+    smartDefaultTarget: 0,
+    smartBands: RISK_COUNT_BANDS,
+  },
 
   // ---- Compliance & Governance ------------------------------------------
   {

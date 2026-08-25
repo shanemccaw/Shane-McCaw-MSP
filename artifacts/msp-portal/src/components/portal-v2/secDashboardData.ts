@@ -230,8 +230,8 @@ export const SEC_AREA_LINKS: readonly SecAreaLink[] = [
  * `grow` is the flex-grow, so severity drives width as well: the worst card is
  * physically the widest.
  */
-export function secAreaGeometry(link: SecAreaLink) {
-  const maxScore = Math.max(...SEC_AREA_LINKS.map((x) => x.score));
+export function secAreaGeometry(link: SecAreaLink, links: readonly SecAreaLink[] = SEC_AREA_LINKS) {
+  const maxScore = Math.max(...links.map((x) => x.score));
   const severityFrac = maxScore ? link.score / maxScore : 0;
   return {
     progressPct: Math.round((1 - severityFrac) * 100),

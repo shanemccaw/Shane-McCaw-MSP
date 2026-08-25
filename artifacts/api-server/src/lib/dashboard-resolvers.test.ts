@@ -393,3 +393,60 @@ describe("monitor_profile scalar field selection (risk heatmap correctness)", ()
     expect(res.detail).toContain("a required Microsoft 365 add-on");
   });
 });
+
+describe("security.emailAuthFindingCount resolver (Git #1258)", () => {
+  const def = getMetric("security.emailAuthFindingCount")!;
+
+  beforeEach(() => {
+    mockResultQueue = [];
+  });
+
+  it("tallies the protocols configured false on the latest exchange:dkim-spf-dmarc-status row", async () => {
+    mockResultQueue.push([{ tenantId: "tenant-guid-1" }]); // resolveTenantId
+    mockResultQueue.push([
+      {
+        extractedProperties: {
+          domain: "contoso.com",
+          spfConfigured: false,
+          dmarcConfigured: false,
+          dkimConfiguredAtDefaultSelectors: true,
+        },
+        rawResponse: null,
+        collectedAt: new Date(),
+        status: "ok",
+      },
+    ]); // latestCheckProps
+
+    const res = await resolveMetric(def, { customerId: 10, mspId: 1 });
+    expect(res.status).toBe("ok");
+    if (res.status !== "ok") return;
+    expect(res.data.value).toBe(2);
+  });
+
+  it("resolves 0 (a real zero, not not_available) when every protocol is configured", async () => {
+    mockResultQueue.push([{ tenantId: "tenant-guid-1" }]);
+    mockResultQueue.push([
+      {
+        extractedProperties: { spfConfigured: true, dmarcConfigured: true, dkimConfiguredAtDefaultSelectors: true },
+        rawResponse: null,
+        collectedAt: new Date(),
+        status: "ok",
+      },
+    ]);
+
+    const res = await resolveMetric(def, { customerId: 10, mspId: 1 });
+    expect(res.status).toBe("ok");
+    if (res.status !== "ok") return;
+    expect(res.data.value).toBe(0);
+  });
+
+  it("reports no_data when the tenant has no collected row", async () => {
+    mockResultQueue.push([{ tenantId: "tenant-guid-1" }]);
+    mockResultQueue.push([]); // no profile row
+
+    const res = await resolveMetric(def, { customerId: 10, mspId: 1 });
+    expect(res.status).toBe("not_available");
+    if (res.status !== "not_available") return;
+    expect(res.reason).toBe("no_data");
+  });
+});

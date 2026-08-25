@@ -56,6 +56,7 @@ import { PillarScanBar } from "@/components/portal-v2/PillarScanBar";
 import { DriftTrend, trendGeometry } from "@/components/portal-v2/DriftTrend";
 import { RiskAcceptedPanel } from "@/components/portal-v2/RiskAcceptedPanel";
 import { useLivePillarHero, PV2_SOURCE_CLIP } from "@/components/portal-v2/useLivePillarHero";
+import { useSecAreaLinksLive } from "@/components/portal-v2/useSecAreaLinksLive";
 import {
   pillarSeverity,
   pillarTrendVerdict,
@@ -63,8 +64,7 @@ import {
   type HeroTileBinding,
 } from "@/components/portal-v2/pillarDashboardModel";
 import {
-  SEC_AREA_ROW_1,
-  SEC_AREA_ROW_2,
+  SEC_AREA_LINKS,
   SEC_HERO,
   SEC_HISTORY,
   SEC_STATUS,
@@ -140,6 +140,24 @@ export default function PortalV2SecurityPage() {
   const heroTiles = SEC_TILE_BINDINGS.map((b) => resolveHeroTile(b, live));
   const sev = pillarSeverity(live.score);
   const criticalCount = live.findingCounts.critical;
+
+  // Git #1258: OAuth Apps + Email Security category scores overlaid onto the
+  // fixture when real — MFA Gaps/Conditional Access/Legacy Auth stay fixture
+  // (see useSecAreaLinksLive.ts for which checks were confirmed to match).
+  const areaLinksLive = useSecAreaLinksLive();
+  const secAreaLinks: readonly SecAreaLink[] = SEC_AREA_LINKS.map((a) => {
+    if (a.key === "security-oauth" && areaLinksLive.live.oauthFlaggedGrantCount != null) {
+      return { ...a, score: areaLinksLive.live.oauthFlaggedGrantCount };
+    }
+    if (a.key === "security-email" && areaLinksLive.live.emailAuthFindingCount != null) {
+      return { ...a, score: areaLinksLive.live.emailAuthFindingCount };
+    }
+    return a;
+  });
+  const secAreaRow1 = secAreaLinks
+    .filter((a) => a.key === "security-mfa" || a.key === "security-ca")
+    .sort((a) => (a.key === "security-mfa" ? -1 : 1));
+  const secAreaRow2 = secAreaLinks.filter((a) => a.key !== "security-mfa" && a.key !== "security-ca");
 
   // Honest-null contract: real engine score when scored, design fixture otherwise
   // (the ring never shows a red zero); `pv2-sec-source` states which is on screen.
@@ -611,13 +629,13 @@ export default function PortalV2SecurityPage() {
           </div>
           <div style={{ position: "relative", display: "flex", flexDirection: "column", gap: 10 }}>
             <div style={{ display: "flex", flexWrap: "wrap", alignItems: "stretch", gap: 10 }}>
-              {SEC_AREA_ROW_1.map((a) => (
-                <AreaCard key={a.key} link={a} />
+              {secAreaRow1.map((a) => (
+                <AreaCard key={a.key} link={a} allLinks={secAreaLinks} />
               ))}
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", alignItems: "stretch", gap: 10 }}>
-              {SEC_AREA_ROW_2.map((a) => (
-                <AreaCard key={a.key} link={a} />
+              {secAreaRow2.map((a) => (
+                <AreaCard key={a.key} link={a} allLinks={secAreaLinks} />
               ))}
             </div>
           </div>
@@ -663,8 +681,8 @@ export default function PortalV2SecurityPage() {
  * much of this area is already fine". `flex-grow` is severity-driven too, so the
  * worst area is also the widest card.
  */
-function AreaCard({ link }: { link: SecAreaLink }) {
-  const { progressPct, grow } = secAreaGeometry(link);
+function AreaCard({ link, allLinks }: { link: SecAreaLink; allLinks: readonly SecAreaLink[] }) {
+  const { progressPct, grow } = secAreaGeometry(link, allLinks);
   const Glyph = AREA_ICON[link.icon];
 
   return (
