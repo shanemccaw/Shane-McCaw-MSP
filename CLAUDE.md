@@ -68,6 +68,18 @@ and fill in the real commit hash of the work itself. Commit that update — eith
 
 If the work is abandoned, fails, or the session ends before this step, the row is left as `⏳ IN FLIGHT`. Do not go back and clean up or delete stale IN FLIGHT rows from other sessions — they are the record.
 
+## Mandatory: comment on the GitHub issue before finishing
+
+Every session that works a real Git issue MUST post a comment on that issue before ending, no matter the outcome. This is not optional and is separate from the PLATFORM_BUILD.md bookend (which tracks build history) — the issue comment is what the next session or Shane will actually read.
+
+Cover, honestly:
+- What was actually done (real commits/hashes, or "no code changed")
+- What was found, if this was investigation-only
+- What's still blocking it, if it's not resolved — name the specific blocker (missing env var, needs Shane's decision, needs a migration run, etc.), not a vague "more work needed"
+- What Shane needs to do, if anything, framed as a concrete next action
+
+A session that lands nothing and says nothing on the issue leaves it indistinguishable from an issue nobody has looked at. A session that investigates, hits a real blocker, and stops without commenting wastes the next session's time re-discovering the same blocker. Post the comment even if the answer is just "investigated, found X, this needs your decision before I can proceed."
+
 ### GitHub issue label sync (same two moments as the bookend, when a Git issue is involved)
 
 When the work is tied to a specific GitHub issue (referenced by number — e.g. `Git #684` — in the row you're about to append), keep that issue's labels in sync with the same two bookend moments. This is what drives the live status dot/overlay in Shane's BuildConsole desktop app (`desktop/BuildConsole/`, which replaced the old browser extension) — it reads these labels off the issue so he can tell at a glance whether something is actively being worked on or already confirmed done in code, without checking PLATFORM_BUILD.md or the git log himself.
