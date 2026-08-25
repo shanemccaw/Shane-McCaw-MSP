@@ -90,6 +90,7 @@ import { logger } from "./logger";
 const log = logger.child({ channel: "workflow.run" });
 import { runWithRequestContext } from "./request-context.ts";
 import { evaluateRules as runAlertRuleEvaluation } from "./alert-engine";
+import { evaluateCustomerTenantRules } from "./customer-tenant-alert-engine";
 import { STATIC_NODE_SAMPLES } from "./workflow-node-default-samples";
 import { handleMspDunningAdvance, handleMspOverageMeter } from "./msp-billing-nodes";
 import { handleMspScoreSnapshot } from "./msp-engine.js";
@@ -6524,6 +6525,13 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
 
       case "alert_evaluate_rules": {
         await runAlertRuleEvaluation();
+        // Customer-tenant alert catalog (Git #1278) rides the same 5-min pass.
+        // Isolated so a failure here can never abort the platform-ops evaluation.
+        try {
+          await evaluateCustomerTenantRules();
+        } catch (ctaErr) {
+          log.error({ err: ctaErr }, "wf-executor: customer-tenant alert evaluation failed (non-fatal)");
+        }
         log.info("wf-executor: alert_evaluate_rules completed");
         output = { evaluated: true };
         break;

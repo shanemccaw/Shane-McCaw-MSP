@@ -187,6 +187,7 @@ export const WORKSPACES: WorkspaceDef[] = [
         items: [
           { id: "sys-observability", label: "Observability", path: "/system/observability", icon: MonitorDot },
           { id: "sys-alert-rules", label: "Alert Rules", path: "/system/alert-rules", icon: AlertTriangle },
+          { id: "sys-customer-alert-rules", label: "Customer Alert Rules", path: "/system/customer-alert-rules", icon: Megaphone },
           { id: "sys-exceptions", label: "Exceptions", path: "/system/exceptions", icon: Bug },
           { id: "sys-incidents", label: "Incidents", path: "/system/incidents", icon: AlertOctagon },
           { id: "sys-pcc", label: "Command Center (PCC)", path: "/system/pcc", icon: Server },

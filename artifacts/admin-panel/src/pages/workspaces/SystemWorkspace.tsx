@@ -9,6 +9,7 @@ import PlatformAgreementsPage from "@/pages/PlatformAgreements";
 import ObservabilityDashboard from "@/pages/ObservabilityDashboard";
 import PlatformRevenueDashboard from "@/pages/PlatformRevenueDashboard";
 import AlertRulesPage from "@/pages/AlertRulesPage";
+import CustomerAlertRulesPage from "@/pages/CustomerAlertRulesPage";
 import ExceptionTracking from "@/pages/ExceptionTracking";
 import IncidentsAdminPage from "@/pages/IncidentsAdminPage";
 import { ActiveDirectoryPage } from "@/pages/ActiveDirectoryPage";
@@ -19,6 +20,7 @@ function getContent(section: string): ReactNode {
   switch (section) {
     case "observability":         return <ObservabilityDashboard />;
     case "alert-rules":           return <AlertRulesPage />;
+    case "customer-alert-rules":  return <CustomerAlertRulesPage />;
     case "exceptions":            return <ExceptionTracking />;
     case "incidents":             return <IncidentsAdminPage />;
     case "platform-revenue":      return <PlatformRevenueDashboard />;

@@ -4538,3 +4538,174 @@ export const driftEventsTable = pgTable("drift_events", {
 export type DriftEvent = typeof driftEventsTable.$inferSelect;
 export type InsertDriftEvent = typeof driftEventsTable.$inferInsert;
 export type InsertPortalOwnershipRow = typeof portalOwnershipRowsTable.$inferInsert;
+
+// ============================================================================
+// Customer-Tenant Alert Rules (Git #1278)
+// ============================================================================
+// The MSP-internal platform-ops alert engine (`msp_alert_rules` /
+// `msp_alert_events`, evaluated by alert-engine.ts) fires on platform
+// conditions — DLQ backlog, billing failure, SLA breach. It has never had any
+// concept of "a condition on a CUSTOMER's monitored M365 tenant that should
+// raise a customer-facing alert". This is that catalog.
+//
+// `customer_tenant_alert_rules` is a GLOBAL catalog — one row per alertable
+// tenant condition (sign-off decision #1: one standard rule catalog, each
+// customer customises their own delivery preferences on top via #1276). It is
+// evaluated PER monitored tenant by customer-tenant-alert-engine.ts, which
+// writes one `customer_tenant_alert_events` row per (rule × tenant) firing.
+//
+// Dual delivery (sign-off decision #2): a firing goes to admin (Exchange Online
+// email + admin web-push, reusing the platform engine's senders) AND — once
+// #1276 lands the customer Alert Preferences persistence — to the customer's own
+// recipients through their chosen thresholds/digest/quiet-hours. Until #1276
+// exists, each event is recorded with `customer_delivery_status = 'pending_prefs'`;
+// customer-alert-delivery.ts holds the explicit seam #1276 plugs into (NOT a
+// bare TODO — a real function with a fixed contract).
+//
+// `alert_category` is the bridge to the customer-facing 7-category taxonomy
+// (alertPrefsData.ts ALERT_CATS: findings/drift/progress/reviews/remediation/
+// billing/support). The customer's per-category preference (#1276) filters
+// delivery; this catalog is what those categories fire FROM.
+//
+// `detector_status` is an honesty flag: 'live' rules read a real source today;
+// 'pending_detector' rules are seeded (so the catalog ships complete, not
+// partial — sign-off decision #4) but their upstream source subsystem does not
+// exist yet and is tracked by its own sub-issue under #1278. The engine has a
+// wired evaluator hook for every rule; a 'pending_detector' one returns 0 until
+// its sub-issue lands, at which point it lights up with no engine change.
+
+export const CUSTOMER_ALERT_SEVERITIES = ["info", "warning", "critical"] as const;
+export type CustomerAlertSeverity = typeof CUSTOMER_ALERT_SEVERITIES[number];
+
+// The 7 customer-facing categories from alertPrefsData.ts (ALERT_CATS).
+export const CUSTOMER_ALERT_CATEGORIES = [
+  "findings",
+  "drift",
+  "progress",
+  "reviews",
+  "remediation",
+  "billing",
+  "support",
+] as const;
+export type CustomerAlertCategory = typeof CUSTOMER_ALERT_CATEGORIES[number];
+
+// Every alertable customer-tenant condition. Plain-TEXT column with the Drizzle
+// enum as TS-level narrowing only (same convention as msp_alert_rules.condition_type
+// — no PG enum / CHECK, so adding a member needs no migration DDL, only a seed row).
+export const CUSTOMER_ALERT_CONDITION_TYPES = [
+  // findings
+  "finding.new_critical",
+  "finding.new_high",
+  "finding.oversharing",
+  "finding.mfa_gap",           // pending_detector — needs an MFA monitor check key
+  "finding.global_admin_added", // pending_detector — needs a GA add-event / run-delta source
+  "finding.ownerless_group",
+  "finding.standing_priv_role",
+  // drift
+  "drift.unapproved",
+  "drift.ca_policy_change",
+  "drift.regression",          // pending_detector — drift_events has no resolved→reopened lifecycle (#1270 follow-up)
+  // progress
+  "progress.fix_verified",
+  "progress.pillar_score_move",
+  // reviews
+  "review.risk_acceptance_due",
+  "review.policy_review_due",
+  // remediation
+  "remediation.scan_complete",
+  "remediation.phase_gate_verified",
+  "remediation.task_awaiting_customer",
+  // billing
+  "billing.sow_signed",
+  "billing.invoice_issued",
+  "billing.license_change",    // pending_detector — no licence-assignment table/event exists yet
+  "billing.renewal_approaching",
+  "billing.payment_failed",
+  // support
+  "support.ticket_updated",
+] as const;
+export type CustomerAlertConditionType = typeof CUSTOMER_ALERT_CONDITION_TYPES[number];
+
+export const CUSTOMER_ALERT_DETECTOR_STATUS = ["live", "pending_detector"] as const;
+export type CustomerAlertDetectorStatus = typeof CUSTOMER_ALERT_DETECTOR_STATUS[number];
+
+export const customerTenantAlertRulesTable = pgTable("customer_tenant_alert_rules", {
+  id: serial("id").primaryKey(),
+  // Stable unique key; equals the condition type for the seeded catalog rows.
+  ruleKey: text("rule_key").notNull().unique(),
+  label: text("label").notNull(),
+  description: text("description"),
+  conditionType: text("condition_type", { enum: CUSTOMER_ALERT_CONDITION_TYPES }).notNull(),
+  // Bridge to the customer-facing 7-category taxonomy (#1276).
+  alertCategory: text("alert_category", { enum: CUSTOMER_ALERT_CATEGORIES }).notNull(),
+  // Count-based fire test: fire when the evaluated value >= threshold.
+  threshold: integer("threshold").notNull().default(1),
+  // Poll lookback window in minutes for "recent" detection.
+  windowMinutes: integer("window_minutes").notNull().default(1440),
+  severity: text("severity", { enum: CUSTOMER_ALERT_SEVERITIES }).notNull().default("warning"),
+  enabled: boolean("enabled").notNull().default(true),
+  // Admin (dual-delivery) channels — reuse the platform engine's senders.
+  deliveryAdminEmail: boolean("delivery_admin_email").notNull().default(true),
+  deliveryAdminPush: boolean("delivery_admin_push").notNull().default(true),
+  // Whether a firing should ALSO be delivered to the customer via #1276's
+  // preference layer (the seam). Almost always true; false for admin-only ops.
+  notifyCustomer: boolean("notify_customer").notNull().default(true),
+  // Per (rule × tenant) minimum gap between re-alerts (dedup window).
+  cooldownMinutes: integer("cooldown_minutes").notNull().default(1440),
+  // Customer portal deep-link (e.g. /portal/<slug>/health). Interpolated per tenant.
+  deepLinkPath: text("deep_link_path"),
+  // Admin Panel deep-link for the admin copy of the alert.
+  adminDeepLinkPath: text("admin_deep_link_path"),
+  // 'live' = reads a real source today; 'pending_detector' = catalog row present
+  // but its source subsystem is tracked by a sub-issue and not wired yet.
+  detectorStatus: text("detector_status", { enum: CUSTOMER_ALERT_DETECTOR_STATUS }).notNull().default("live"),
+  // Free-text provenance note (which table/metric supplies this condition).
+  source: text("source"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("customer_tenant_alert_rules_condition_type_idx").on(t.conditionType),
+  index("customer_tenant_alert_rules_category_idx").on(t.alertCategory),
+  index("customer_tenant_alert_rules_enabled_idx").on(t.enabled),
+]);
+
+export type CustomerTenantAlertRule = typeof customerTenantAlertRulesTable.$inferSelect;
+export type InsertCustomerTenantAlertRule = typeof customerTenantAlertRulesTable.$inferInsert;
+
+export const customerTenantAlertEventsTable = pgTable("customer_tenant_alert_events", {
+  id: serial("id").primaryKey(),
+  alertEventId: uuid("alert_event_id").notNull().unique().defaultRandom(),
+  ruleId: integer("rule_id").notNull().references(() => customerTenantAlertRulesTable.id, { onDelete: "cascade" }),
+  ruleKey: text("rule_key").notNull(),
+  alertCategory: text("alert_category", { enum: CUSTOMER_ALERT_CATEGORIES }).notNull(),
+  severity: text("severity", { enum: CUSTOMER_ALERT_SEVERITIES }).notNull(),
+  // Tenant scoping — a firing is always about ONE monitored tenant.
+  customerId: integer("customer_id").notNull(), // tenants.id (JWT customerId)
+  mspId: integer("msp_id"),
+  tenantId: text("tenant_id"),                  // M365 tenant GUID
+  conditionValue: integer("condition_value").notNull(),
+  summary: text("summary").notNull(),
+  deepLinkPath: text("deep_link_path"),
+  adminDeepLinkPath: text("admin_deep_link_path"),
+  // Admin dual-delivery tracking.
+  deliveredAdminEmail: boolean("delivered_admin_email").notNull().default(false),
+  deliveredAdminPush: boolean("delivered_admin_push").notNull().default(false),
+  // Customer-delivery seam (#1276). 'pending_prefs' until the customer Alert
+  // Preferences persistence exists to route/filter it; 'delivered' / 'suppressed'
+  // (by the customer's own threshold/quiet-hours) / 'skipped' (notifyCustomer=false)
+  // once #1276's delivery worker consumes it.
+  customerDeliveryStatus: text("customer_delivery_status").notNull().default("pending_prefs"),
+  customerDeliveredAt: timestamp("customer_delivered_at", { withTimezone: true }),
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  resolvedBy: integer("resolved_by"),
+  firedAt: timestamp("fired_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("customer_tenant_alert_events_rule_id_idx").on(t.ruleId),
+  index("customer_tenant_alert_events_customer_fired_idx").on(t.customerId, t.firedAt),
+  index("customer_tenant_alert_events_tenant_idx").on(t.tenantId),
+  index("customer_tenant_alert_events_fired_at_idx").on(t.firedAt),
+  index("customer_tenant_alert_events_delivery_idx").on(t.customerDeliveryStatus),
+]);
+
+export type CustomerTenantAlertEvent = typeof customerTenantAlertEventsTable.$inferSelect;
+export type InsertCustomerTenantAlertEvent = typeof customerTenantAlertEventsTable.$inferInsert;
