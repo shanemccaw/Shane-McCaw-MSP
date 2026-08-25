@@ -86,6 +86,8 @@ import {
   mspJobQueueTable,
   industryBenchmarkReferenceTable,
   tenantEngineSnapshotsTable,
+  driftEventsTable,
+  driftBaselineSnapshotsTable,
 } from "@workspace/db";
 import { and, eq, desc, gte, inArray, sql, count } from "drizzle-orm";
 import type { MetricDef, MetricShape, MetricScope, MetricValueType } from "@workspace/dashboard-registry";
@@ -604,6 +606,14 @@ async function resolveMonitorProfile(def: MetricDef, ctx: ResolveContext): Promi
     return notAvailable(def, "no_tenant_id", "customer has no M365 tenant_id — monitor data cannot be keyed");
   }
 
+  // Configuration Drift (#1270): drift:* sourceKeys are backed by the itemized
+  // drift_events store (a real per-setting change history), NOT a monitor_checks
+  // scalar — serve the timeline events. This is what turns these registry-declared
+  // timeline metrics from perpetual `unknown_check_key` into real data.
+  if (def.sourceKey.startsWith("drift:")) {
+    return resolveDriftEvents(def, tenantId, ctx);
+  }
+
   // needs_aggregation metrics get their own transform.
   if (def.status === "needs_aggregation") {
     return resolveMonitorAggregation(def, tenantId);
@@ -645,6 +655,69 @@ async function resolveMonitorProfile(def: MetricDef, ctx: ResolveContext): Promi
   }
 
   return scalar(def, value, { valueSource: resolved.valueSource });
+}
+
+/**
+ * Configuration Drift (#1270) — serve the itemized `drift_events` history for a
+ * timeline-shaped `drift:*` metric as `{ events }`, keyed by the bare domain slug
+ * (sourceKey "drift:ca-policy" → domain "ca-policy"). Produced by
+ * drift-collector.ts.
+ *
+ * Honest three-way outcome, matching this file's zero-vs-no-data principle:
+ *   - no baseline captured for the domain → not_available("no_data"): the tenant
+ *     has never been scanned for this domain's drift (distinct from a real zero).
+ *   - baseline exists, no events in window → ok with `events: []` + zeroRows:
+ *     genuinely clean (no deviation from the approved baseline).
+ *   - baseline exists, events found        → ok with the real event list.
+ */
+async function resolveDriftEvents(def: MetricDef, tenantId: string, ctx: ResolveContext): Promise<MetricResult> {
+  const domainKey = def.sourceKey.slice("drift:".length);
+
+  const [baseline] = await db
+    .select({ id: driftBaselineSnapshotsTable.id })
+    .from(driftBaselineSnapshotsTable)
+    .where(and(eq(driftBaselineSnapshotsTable.tenantId, tenantId), eq(driftBaselineSnapshotsTable.domainKey, domainKey)))
+    .limit(1);
+  if (!baseline) {
+    return notAvailable(
+      def,
+      "no_data",
+      `no drift baseline captured yet for "${def.sourceKey}" — this domain has not been scanned for configuration drift`,
+    );
+  }
+
+  const windowDays = ctx.windowDays ?? DEFAULT_WINDOW_DAYS;
+  const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
+  const rows = await db
+    .select()
+    .from(driftEventsTable)
+    .where(
+      and(
+        eq(driftEventsTable.tenantId, tenantId),
+        eq(driftEventsTable.domainKey, domainKey),
+        gte(driftEventsTable.detectedAt, since),
+      ),
+    )
+    .orderBy(desc(driftEventsTable.detectedAt));
+
+  const events = rows.map((r) => {
+    const verb = r.op === "add" ? "added" : r.op === "remove" ? "removed" : "changed";
+    return {
+      // timeline entries key off `t` (ISO timestamp) + `label`; the rest is
+      // passthrough metadata the table/timeline renderers surface.
+      t: r.detectedAt?.toISOString() ?? "",
+      label: `${r.setting} ${verb}`,
+      setting: r.setting,
+      op: r.op,
+      oldValue: r.oldValue ?? null,
+      newValue: r.newValue ?? null,
+      changedBy: r.changedBy ?? null,
+      verdict: r.verdict,
+      crRef: r.crRef ?? null,
+    };
+  });
+
+  return ok(def, { events }, { count: events.length, windowDays, hasBaseline: true, zeroRows: events.length === 0 });
 }
 
 /**

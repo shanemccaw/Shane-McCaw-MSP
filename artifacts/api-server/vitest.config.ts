@@ -3,6 +3,7 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     include: [
+      "src/lib/drift-collector.test.ts",
       "src/lib/remediation-catalog.test.ts",
       "src/lib/portal-message-center.test.ts",
       "src/lib/portal-pii-governance.test.ts",

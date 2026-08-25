@@ -4348,4 +4348,102 @@ export const portalOwnershipRowsTable = pgTable("portal_ownership_rows", {
 ]);
 
 export type PortalOwnershipRow = typeof portalOwnershipRowsTable.$inferSelect;
+
+// ── Configuration Drift engine (#1270) ─────────────────────────────────────────
+//
+// The itemized backing store for the platform's `drift.*` dashboard metrics
+// (declared `shape: "timeline"` in @workspace/dashboard-registry) and the
+// Health page's per-setting config-drift table. Prior to this, those surfaces
+// were declared/built expecting a real per-event drift history that had never
+// existed anywhere in the backend — the `drift:*` metric sourceKeys pointed at
+// no `monitor_checks` row and resolved to `unknown_check_key`, and the Health
+// table was a hardcoded 12-row fixture (#1261, #1265, AssessmentGeneratingScreen).
+//
+// Two tables, one collector (artifacts/api-server/src/lib/drift-collector.ts):
+//   * drift_baseline_snapshots — the last-known / signed configuration snapshot
+//     per (tenant, domain). Drift is a diff of a fresh scan against the CURRENT
+//     (supersededAt IS NULL) baseline. A baseline stays the reference until it
+//     is explicitly re-captured (re-signed), so the drift table shows deviation
+//     from an approved state rather than from the previous scan.
+//   * drift_events — one row per per-setting change the collector detected
+//     (what changed, old→new value, who, when, verdict, linked CR). This is the
+//     itemized "what changed" history the timeline/table UIs consume.
+//
+// domainKey is the bare slug of a `drift:*` metric sourceKey (e.g. the metric
+// drift.caPolicyDriftCount / sourceKey "drift:ca-policy" has domainKey
+// "ca-policy"). Conditional Access ("ca-policy") is the first collected domain.
+
+/**
+ * Verdict for a single detected drift event, driven by attribution:
+ *   - approved              — a linked change request (crRef) covers the change
+ *   - attributed_unapproved — an actor is known (changedBy) but no CR covers it
+ *   - unattributed          — neither actor nor CR is known (the riskiest state)
+ *   - informational         — a non-security-relevant/benign change
+ */
+export const DRIFT_EVENT_VERDICTS = [
+  "approved",
+  "attributed_unapproved",
+  "unattributed",
+  "informational",
+] as const;
+export type DriftEventVerdict = (typeof DRIFT_EVENT_VERDICTS)[number];
+
+export const driftBaselineSnapshotsTable = pgTable("drift_baseline_snapshots", {
+  id: serial("id").primaryKey(),
+  snapshotId: uuid("snapshot_id").notNull().unique().defaultRandom(),
+  /** TEXT M365 tenant id (same keying as tenant_monitor_profiles). */
+  tenantId: text("tenant_id").notNull(),
+  /** Bare drift domain slug, e.g. "ca-policy" (metric sourceKey minus "drift:"). */
+  domainKey: text("domain_key").notNull(),
+  /** The captured configuration snapshot the collector diffs a fresh scan against. */
+  config: jsonb("config").$type<unknown>().notNull(),
+  /** True once this baseline has been explicitly approved/signed as the reference. */
+  signed: boolean("signed").notNull().default(false),
+  /** Who/what captured this baseline ("system" for an automated scan, or a user id). */
+  capturedBy: text("captured_by"),
+  capturedAt: timestamp("captured_at", { withTimezone: true }).notNull().defaultNow(),
+  /** When a newer baseline replaced this one. NULL = the current reference baseline. */
+  supersededAt: timestamp("superseded_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("drift_baseline_snapshots_tenant_domain_idx").on(t.tenantId, t.domainKey),
+  index("drift_baseline_snapshots_superseded_idx").on(t.supersededAt),
+]);
+
+export type DriftBaselineSnapshot = typeof driftBaselineSnapshotsTable.$inferSelect;
+export type InsertDriftBaselineSnapshot = typeof driftBaselineSnapshotsTable.$inferInsert;
+
+export const driftEventsTable = pgTable("drift_events", {
+  id: serial("id").primaryKey(),
+  eventId: uuid("event_id").notNull().unique().defaultRandom(),
+  tenantId: text("tenant_id").notNull(),
+  domainKey: text("domain_key").notNull(),
+  /**
+   * Deterministic per-(baseline comparison, setting) key, so re-running the same
+   * scan against the same baseline never double-inserts the same change. Format:
+   * `${tenantId}|${domainKey}|${baselineSnapshotId}|${op}|${setting}`.
+   */
+  idempotencyKey: text("idempotency_key").notNull().unique(),
+  /** The setting/path that changed, e.g. "/policies/0/state". */
+  setting: text("setting").notNull(),
+  /** JSON-patch style op: 'add' | 'remove' | 'replace'. */
+  op: text("op").notNull(),
+  oldValue: jsonb("old_value").$type<unknown>(),
+  newValue: jsonb("new_value").$type<unknown>(),
+  /** Attribution actor (from the tenant audit log), when known. NULL = unattributed. */
+  changedBy: text("changed_by"),
+  verdict: text("verdict", { enum: DRIFT_EVENT_VERDICTS }).notNull().default("unattributed"),
+  /** Linked change-request reference covering this change, when one exists. */
+  crRef: text("cr_ref"),
+  /** The baseline snapshot this change was diffed against. */
+  baselineSnapshotId: integer("baseline_snapshot_id"),
+  detectedAt: timestamp("detected_at", { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("drift_events_tenant_domain_idx").on(t.tenantId, t.domainKey),
+  index("drift_events_tenant_detected_idx").on(t.tenantId, t.detectedAt),
+]);
+
+export type DriftEvent = typeof driftEventsTable.$inferSelect;
+export type InsertDriftEvent = typeof driftEventsTable.$inferInsert;
 export type InsertPortalOwnershipRow = typeof portalOwnershipRowsTable.$inferInsert;
