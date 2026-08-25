@@ -14,6 +14,16 @@
  * The heading's inline knowledge-base "i" chip (proto 4667) is deliberately not
  * reproduced: it reads from the shell's KB article store (Part 1's), and this
  * drill-down should not couple to it. The heading copy itself is verbatim.
+ *
+ * ── Rows are now real (Git #1255 / #1222) ────────────────────────────────────
+ * #1255 widened the shared `war-room-pillars` finding shape with
+ * `description`/`recommendation`/`evidence`/`obligation`/`whyItMatters`, so the
+ * rows below now read the SAME live payload the header count already used
+ * (`useLivePillarHero`), mapped through `cmpFindingRowsFromLive`. `CMP_FINDINGS`
+ * stays as the loading-state placeholder only — once the payload has loaded for
+ * this pillar, the real findings render, including an honest empty state when
+ * the tenant genuinely has none. No fixture Halden Materials copy is shown
+ * once real data is available, matching the "no fabricated numbers" rule.
  */
 
 import { useState } from "react";
@@ -24,9 +34,8 @@ import { FixPanel, useFixPanel } from "@/components/portal-v2/FixPanel";
 import { useFormDrawer } from "@/components/portal-v2/FormDrawer";
 import { useAcceptRisk } from "@/components/portal-v2/AcceptRiskPanel";
 import { CMP_FINDINGS, CMP_MONO, type CmpFinding } from "@/components/portal-v2/cmpDrilldownData";
-import { CMP_OPEN_COUNT, cmpSevMeta } from "@/components/portal-v2/cmpDrilldownModel";
+import { cmpFindingRowsFromLive, cmpSevMeta } from "@/components/portal-v2/cmpDrilldownModel";
 import { useLivePillarHero } from "@/components/portal-v2/useLivePillarHero";
-import { livePillarOpenCount } from "@/components/portal-v2/pillarDashboardModel";
 import { PillarLiveSource } from "@/components/portal-v2/PillarLiveSource";
 
 function WrenchIcon({ color = "#60a5fa", size = 13 }: { color?: string; size?: number }) {
@@ -55,14 +64,18 @@ export default function PortalV2ComplianceGapsPage() {
   const { openForm, formElement } = useFormDrawer();
   const [expanded, setExpanded] = useState<number | null>(null);
 
-  // The open-gaps HEADER count is the compliance pillar's REAL open-finding total
-  // (critical + warning) off the live war-room-pillars payload, through the same
-  // `useLivePillarHero` seam the parent Compliance page uses — falling back to the
-  // design fixture count only before a payload arrives / on an unscored tenant.
-  // The gap ROWS themselves (obligation text, evidence, fix playbook) have no
-  // per-finding server producer yet and stay fixture, documented as a backend gap.
+  // Both the header count and the rows themselves now read the SAME real
+  // per-finding data (#1255 widened the shared finding shape; see the header
+  // comment). `present` is false only before this pillar's first real payload
+  // has arrived — the fixture is shown then, and only then. Once loaded, the
+  // rows are the tenant's real findings, including a real empty list.
   const live = useLivePillarHero("compliance");
-  const openCount = livePillarOpenCount(live) ?? CMP_OPEN_COUNT;
+  const compliancePillar = live.pillars.find((p) => p.key === "compliance");
+  const liveRows = compliancePillar?.present
+    ? cmpFindingRowsFromLive(compliancePillar.findings)
+    : null;
+  const rows = liveRows ?? CMP_FINDINGS;
+  const openCount = liveRows ? liveRows.length : CMP_FINDINGS.length;
 
   const askShaneBot = (topic: string) =>
     openForm({
@@ -147,13 +160,33 @@ export default function PortalV2ComplianceGapsPage() {
 
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-            <span style={{ fontSize: "9.5px", fontWeight: 700, letterSpacing: ".2em", textTransform: "uppercase", color: "#64748b" }}>
+            <span
+              data-testid="pv2-cmpgaps-count"
+              style={{ fontSize: "9.5px", fontWeight: 700, letterSpacing: ".2em", textTransform: "uppercase", color: "#64748b" }}
+            >
               Open Gaps · {openCount}
             </span>
             <span style={{ fontSize: "11px", color: "#475569" }}>
               Each one cites the obligation it touches. Expand for the evidence behind it.
             </span>
           </div>
+
+          {liveRows && liveRows.length === 0 && (
+            <div
+              data-testid="pv2-cmpgaps-empty"
+              style={{
+                padding: "14px 16px",
+                borderRadius: 10,
+                fontSize: "12px",
+                lineHeight: 1.6,
+                border: "1px solid rgba(148,163,184,.18)",
+                background: "rgba(148,163,184,.05)",
+                color: "#94a3b8",
+              }}
+            >
+              No open compliance gaps from your last scan.
+            </div>
+          )}
 
           <div
             style={{
@@ -168,7 +201,7 @@ export default function PortalV2ComplianceGapsPage() {
             }}
             data-testid="pv2-cmpgaps-rows"
           >
-            {CMP_FINDINGS.map((f, i) => {
+            {rows.map((f, i) => {
               const sev = cmpSevMeta(f.sev);
               const isExpanded = expanded === i;
               return (

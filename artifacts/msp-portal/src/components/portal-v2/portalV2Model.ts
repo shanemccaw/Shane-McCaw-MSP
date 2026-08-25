@@ -81,12 +81,34 @@ export interface PortalV2Stat {
   source?: string;
 }
 
+/** Mirrors api-server's `MspDiagnosticFindingRecommendation` (#1255). */
+export interface PortalV2FindingRecommendation {
+  signalKey?: string;
+  action?: string;
+  estimatedEffort?: string;
+  priority?: number;
+  category?: string;
+}
+
 export interface PortalV2Finding {
   severity: "critical" | "warning";
   checkKey: string;
   title: string;
   /** The engine's own rank weight for this finding's pillar. 0 = unranked. */
   rankWeight?: number;
+  /**
+   * Additive, optional fields the server started sending in #1255 — sourced
+   * from `msp_diagnostic_findings` columns already selected server-side
+   * (`description`, `recommendation`, a curated `extractedProperties` name-list
+   * subset) plus a static per-`checkKey` obligation/why-it-matters copy
+   * catalogue. Undefined on an older payload or for a checkKey with no
+   * catalogued copy — never fabricated when absent.
+   */
+  description?: string | null;
+  recommendation?: PortalV2FindingRecommendation | null;
+  evidence?: Record<string, unknown> | null;
+  obligation?: string | null;
+  whyItMatters?: string | null;
 }
 
 export interface PortalV2UpgradeLink {
