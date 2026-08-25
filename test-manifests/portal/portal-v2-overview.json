@@ -1,7 +1,7 @@
 {
   "feature": "Customer Portal v2 -- OVERVIEW (/portal-v2/overview). The tenant-health landing page. Git #1216 wired the headline stat, the scan band's real last-scan time, the drift chips' real accepted-as-risk count, and three of the six 'Everything in motion' lanes (change requests, hold windows, accepted risks) to real per-tenant data -- see overviewModel.ts's *FromLive functions. The pillar strip was already live (#1200/#1201). Evidence pack, Microsoft changes and the project schedule stay fixture -- no live producer exists for them and none was claimed. 'Fixed this week' / 'new this week' drift chips render the honest em-dash: no run-to-run finding diff exists anywhere in this platform yet.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "PENDING",
+  "lastVerifiedAgainstCommit": "526258cc",
   "notes": [
     "THE LOGIN BLOCK IS NOT OPTIONAL. /portal-v2/* sits behind ProtectedRoute.",
     "UI ROUTE SHAPE: /portal/{slug}/portal-v2 (the BARE /portal-v2 route, declared before /portal-v2/:pillar in App.tsx so the index isn't swallowed by the param match -- there is no separate /portal-v2/overview path).",
