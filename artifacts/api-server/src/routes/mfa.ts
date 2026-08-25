@@ -74,7 +74,10 @@ function buildUserPayload(user: typeof usersTable.$inferSelect) {
   };
 }
 
-function getRpId(): string {
+// Exported for the generalized purchase-flow MFA enrollment endpoints (Git
+// #1310, public-purchase-account.ts) — same relying party, same key handling,
+// per this file's own "extend, do not fork" rule.
+export function getRpId(): string {
   const domains = process.env.REPLIT_DOMAINS;
   if (domains) {
     const firstDomain = domains.split(",")[0].trim();
@@ -85,7 +88,7 @@ function getRpId(): string {
   return "localhost";
 }
 
-function getRpOrigin(): string {
+export function getRpOrigin(): string {
   const domains = process.env.REPLIT_DOMAINS;
   if (domains) {
     const firstDomain = domains.split(",")[0].trim();
@@ -106,7 +109,7 @@ function getTotpEncryptionKey(): Buffer {
   return createHash("sha256").update(getJwtSecret()).digest();
 }
 
-function encryptTotp(plaintext: string): string {
+export function encryptTotp(plaintext: string): string {
   const key = getTotpEncryptionKey();
   const iv = randomBytes(12);
   const cipher = createCipheriv("aes-256-gcm", key, iv);
