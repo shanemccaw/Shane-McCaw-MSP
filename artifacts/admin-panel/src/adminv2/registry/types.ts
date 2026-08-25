@@ -407,6 +407,11 @@ export const PEEK_KINDS = [
   "epic",
   "post",
   "milestone",
+  // A single line in the retainer hours ledger (Git #1293). No existing kind
+  // fitted: it is neither a "customer" (that is the account) nor a "document" —
+  // it is one logged unit of consulting work against a retainer, with its own
+  // hours / pillar / finding / outcome / state.
+  "retainer",
 ] as const;
 export type PeekKind = (typeof PEEK_KINDS)[number];
 

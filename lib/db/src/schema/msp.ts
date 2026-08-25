@@ -4876,3 +4876,108 @@ export const customerAlertDigestQueueTable = pgTable("customer_alert_digest_queu
 
 export type CustomerAlertDigestQueueRow = typeof customerAlertDigestQueueTable.$inferSelect;
 export type InsertCustomerAlertDigestQueueRow = typeof customerAlertDigestQueueTable.$inferInsert;
+
+// ── Retainer Hours (AdminV2 "My Architect" ledger) ────────────────────────────
+//
+// The real source for the customer-facing Retainer page (Git #1285). The
+// customer page (msp-portal `retainerData.ts`) shipped as a FIXTURE only —
+// no retainer-hours ledger existed anywhere in the repo. These two tables are
+// that greenfield ledger, keyed the same way every other customer-scoped table
+// here is: `customer_id` is a `tenants.id` (the JWT `customerId` claim),
+// carried WITHOUT a foreign key to match `remediation_tracker_steps` /
+// `msp_diagnostic_runs`. `msp_id` is carried alongside so an MSP-console read
+// can scope by MSP without a second lookup, and mirrors the `mspChangeRequests`
+// scoping pair.
+//
+// WHY HOURS ARE STORED AS INTEGER MINUTES: retainer time is logged per work
+// item as a running total in half-hour-ish granularity ("running total rather
+// than per-minute tracking" — RET_TERMS), never as a currency-precision
+// decimal. Integer minutes (0.5h = 30) keeps the arithmetic exact and sidesteps
+// the drizzle `numeric` → JS-string read-back gotcha every `numeric` consumer in
+// this repo has to coerce around. The API layer divides by 60 for display.
+
+// One row per customer — the retainer's monthly hour allotment + rate. Retained
+// hours default to 8.0 (480 min) at $300/hr, matching the design's own headline
+// terms, but are per-customer so a different band can be sold without code.
+export const retainerSettingsTable = pgTable("retainer_settings", {
+  id: serial("id").primaryKey(),
+  customerId: integer("customer_id").notNull(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  /** The retainer's monthly allotment, in minutes. 480 = 8.0 hours. */
+  retainedMinutesPerMonth: integer("retained_minutes_per_month").notNull().default(480),
+  /** Equivalent hourly rate, in cents. 30000 = $300/hr. */
+  hourlyRateCents: integer("hourly_rate_cents").notNull().default(30000),
+  /** Named architect on the retainer, e.g. "Priya Raman · M365 Architect". */
+  architectName: text("architect_name"),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("retainer_settings_customer_uidx").on(t.customerId),
+  index("retainer_settings_msp_id_idx").on(t.mspId),
+]);
+
+export type RetainerSettingsRow = typeof retainerSettingsTable.$inferSelect;
+export type InsertRetainerSettingsRow = typeof retainerSettingsTable.$inferInsert;
+
+// The work-log ledger — RET_WORK. Every hour Shane logs against a customer's
+// retainer, from either entry path:
+//   • source = 'change_control' | 'remediation_tracker' — logged automatically
+//     as a BYPRODUCT when Shane closes/resolves a tracked item. `sourceRefId`
+//     is that item's id (a msp_change_requests.id, or a
+//     remediation_tracker_steps.id). The (source, sourceRefId) unique index
+//     makes the byproduct write idempotent: closing the same CR twice never
+//     double-logs.
+//   • source = 'unscoped' — the lightweight "log ad-hoc hours" path for work
+//     NOT tied to a tracked item (building a workflow, misc assistance).
+//     `sourceRefId` is NULL, and Postgres treats NULLs as distinct in a unique
+//     index, so any number of unscoped rows coexist.
+export const RETAINER_WORK_SOURCES = ["change_control", "remediation_tracker", "unscoped"] as const;
+export type RetainerWorkSource = typeof RETAINER_WORK_SOURCES[number];
+
+// Stored lowercase; the customer page's display vocabulary is
+// "In progress" | "Closed" | "In review" | "Scheduled" (RetWorkState). Plain
+// text with no CHECK, the same convention every other enum-ish column here
+// follows, so the vocabulary can widen in code without a migration.
+export const RETAINER_WORK_STATES = ["in_progress", "closed", "in_review", "scheduled"] as const;
+export type RetainerWorkState = typeof RETAINER_WORK_STATES[number];
+
+export const retainerWorkLogTable = pgTable("retainer_work_log", {
+  id: serial("id").primaryKey(),
+  customerId: integer("customer_id").notNull(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  /** The month bucket this entry counts against, "YYYY-MM" (e.g. "2026-08"). */
+  periodMonth: text("period_month").notNull(),
+  /** ISO week label, "W34". Defaults from `occurredAt` but is editable. */
+  weekLabel: text("week_label"),
+  /** What was done — the work-item description. */
+  item: text("item").notNull(),
+  /** Time spent, in minutes. 30 = 0.5h. */
+  minutes: integer("minutes").notNull().default(0),
+  /** Health / Compliance / Governance / Security / Adoption — free text. */
+  pillar: text("pillar"),
+  /** The finding this closed, e.g. "HLT-02". NULL for work not tied to one. */
+  finding: text("finding"),
+  /** The outcome / result text shown on the customer's weekly report. */
+  outcome: text("outcome"),
+  state: text("state", { enum: RETAINER_WORK_STATES }).notNull().default("in_progress"),
+  source: text("source", { enum: RETAINER_WORK_SOURCES }).notNull(),
+  /** msp_change_requests.id or remediation_tracker_steps.id; NULL when unscoped. */
+  sourceRefId: integer("source_ref_id"),
+  /** users.id of whoever logged it. NULL for rows written by automation. */
+  loggedByUserId: integer("logged_by_user_id"),
+  /** When the work actually happened (drives period/week defaults). */
+  occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("retainer_work_log_customer_period_idx").on(t.customerId, t.periodMonth),
+  index("retainer_work_log_msp_id_idx").on(t.mspId),
+  // Idempotency for the byproduct hooks. NULL sourceRefId (unscoped) rows are
+  // distinct under a Postgres unique index, so this constrains only the two
+  // tracker-derived sources to one row per closed item.
+  uniqueIndex("retainer_work_log_source_ref_uidx").on(t.source, t.sourceRefId),
+]);
+
+export type RetainerWorkLogRow = typeof retainerWorkLogTable.$inferSelect;
+export type InsertRetainerWorkLogRow = typeof retainerWorkLogTable.$inferInsert;

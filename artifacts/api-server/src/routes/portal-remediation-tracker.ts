@@ -63,6 +63,16 @@ import { z } from "zod";
 import { requireRole } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { computeRemediationTrackerPricing } from "../lib/remediation-tracker-pricing";
+import { logRetainerWorkFromTracker } from "../lib/retainer-work-logger";
+
+/**
+ * Roles that represent SHANE / the MSP acting, as opposed to the customer
+ * self-servicing their own tracker. The retainer byproduct hook below fires
+ * ONLY for these — a customer ticking their own remediation step is not Shane
+ * logging retainer hours, and attributing his time to their action would be
+ * wrong. `admin` is the platform-admin session the AdminV2 console carries.
+ */
+const RETAINER_MSP_ACTOR_ROLES = new Set(["admin", "PlatformAdmin", "MSPOperator", "MSPAdmin"]);
 
 const log = logger.child({ channel: "engine.remediation-tracker" });
 
@@ -245,6 +255,7 @@ router.put(
       // this is the one response the client writes into its own state.
       const [row] = await db
         .select({
+          id: remediationTrackerStepsTable.id,
           stepId: remediationTrackerStepsTable.stepId,
           status: remediationTrackerStepsTable.status,
           completedAt: remediationTrackerStepsTable.completedAt,
@@ -262,6 +273,29 @@ router.put(
         .limit(1);
 
       log.info({ customerId, stepId, status, userId }, "remediation tracker step updated");
+
+      // ── Retainer byproduct seam (Git #1293) ──────────────────────────────
+      // The remediation tracker is the customer's own self-service checklist, so
+      // this hook fires ONLY when an MSP/admin actor (Shane) completes a step —
+      // never on a customer's own tick (see RETAINER_MSP_ACTOR_ROLES). Idempotent
+      // on (source, sourceRefId) so it is a no-op if the step is re-completed.
+      // The step title/pillar catalogue lives in msp-portal, not reachable here,
+      // so the entry lands with a modest label + the stepId as its finding for
+      // Shane to flesh out in AdminV2.
+      const actorRole = typeof req.user?.role === "string" ? req.user.role : "";
+      const actorMspId = typeof req.user?.mspId === "number" ? req.user.mspId : null;
+      if (status === "completed" && row && RETAINER_MSP_ACTOR_ROLES.has(actorRole) && actorMspId !== null) {
+        await logRetainerWorkFromTracker({
+          customerId,
+          mspId: actorMspId,
+          source: "remediation_tracker",
+          sourceRefId: row.id,
+          item: `Remediation step ${stepId} completed`,
+          finding: stepId,
+          loggedByUserId: userId,
+          occurredAt: completedAt ?? now,
+        });
+      }
 
       res.json({
         step: row

@@ -1,11 +1,12 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, mspChangeRequestsTable } from "@workspace/db";
+import { db, mspChangeRequestsTable, tenantsTable } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
 import { z } from "zod";
 import { requireAuth, requireRole } from "../middlewares/requireAuth.ts";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
 import { logger } from "../lib/logger.ts";
+import { logRetainerWorkFromTracker, pillarHintForCategory } from "../lib/retainer-work-logger.ts";
 
 const log = logger.child({ channel: "tenant.portal" });
 
@@ -197,6 +198,41 @@ router.patch(
         .update(mspChangeRequestsTable)
         .set(updateData)
         .where(eq(mspChangeRequestsTable.id, dbId));
+
+      // ── Retainer byproduct hook (Git #1293) ──────────────────────────────
+      // Closing a change request is the real "hours-logging moment": when Shane
+      // resolves a tracked item, a retainer_work_log entry is created for that
+      // customer automatically, hours defaulted to 0 for him to set in AdminV2.
+      // Only fire on the transition INTO `completed` (not on a re-save of an
+      // already-completed CR), and resolve the CR's tenant to its customerId
+      // (a tenants.id) — the CR table keys on the free-text tenantId, not on it.
+      if (parsedBody.data.status === "completed" && existing.status !== "completed") {
+        try {
+          const [tenantRow] = await db
+            .select({ id: tenantsTable.id })
+            .from(tenantsTable)
+            .where(and(eq(tenantsTable.mspId, mspId), eq(tenantsTable.tenantId, existing.tenantId)))
+            .limit(1);
+          if (tenantRow) {
+            await logRetainerWorkFromTracker({
+              customerId: tenantRow.id,
+              mspId,
+              source: "change_control",
+              sourceRefId: dbId,
+              item: existing.title,
+              pillar: pillarHintForCategory(existing.category),
+              finding: existing.linkedFinding,
+              outcome: existing.description,
+              loggedByUserId: req.user?.id ?? null,
+            });
+          } else {
+            log.warn({ mspId, tenantId: existing.tenantId, crId: dbId }, "CR completed but no tenant row matched — retainer entry skipped");
+          }
+        } catch (hookErr) {
+          // Never let retainer logging break the CR update itself.
+          log.warn({ err: hookErr, crId: dbId }, "retainer byproduct hook failed on CR completion");
+        }
+      }
 
       res.json({
         id: crIdStr,

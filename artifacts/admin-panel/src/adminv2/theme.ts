@@ -199,6 +199,10 @@ export const KIND_BADGE: Record<string, readonly [string, string]> = {
   // compose or check, not itself a verdict; whether it needs attention is
   // what the Watch tab's own "Failed posts" contribution is for.
   post: ["#7fb4d8", "PST"],
+  // Retainer hours (Git #1293). Green like `service`/`customer` — a logged
+  // retainer entry is billable consulting work delivered, i.e. money-in, not
+  // a fault. Whether a customer is running low on hours is the Watch tab's job.
+  retainer: ["#92d8ae", "HRS"],
 };
 
 export const KIND_BADGE_FALLBACK: readonly [string, string] = ["#8f8c88", "·"];
