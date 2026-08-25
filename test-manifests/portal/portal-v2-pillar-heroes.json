@@ -1,7 +1,7 @@
 {
   "feature": "Customer Portal v2 — Governance / Security / Compliance pillar HERO wiring to real war-room-pillars data (Git #1200). A FOCUSED subset of portal-v2-pillars.json: it exercises only the three heroes this wiring pass touched (score ring, live/fixture source marker, real finding-count tiles, cross-pillar global-admins tile, and the honest 'Not measured yet' gap tiles), so it runs in ~4 page loads rather than the full 227-step suite. The full suite (portal-v2-pillars.json) remains the deployed-server regression; this one is the fast, isolated proof of #1200. NOTE: GET /api/portal/assessment/war-room-pillars is a heavy engine recompute that takes ~90s per call on a LOCAL dev server, so the UI assertions below need a runner element-wait of >=90s to see the real value replace the fixture fallback — on a deployed (fast) server they resolve immediately, exactly as the Licensing/Adoption/Health hero steps already do in the full suite.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "0f97da18",
+  "lastVerifiedAgainstCommit": "8319f03f",
 
   "notes": [
     "THE API TESTS ARE THE REAL CONTRACT. SETUP+A1-A5 exercise GET /api/portal/assessment/war-room-pillars and extract the live per-pillar scores/counts the pages render, so they verify the data layer independent of the UI. pillars[] order is WAR_ROOM_PILLAR_KEYS: governance(0), licensing(1), adoption(2), compliance(3), health(4), security(5), copilot(6).",
@@ -133,6 +133,10 @@
     {
       "name": "C4 -- HONEST GAP: 'Retention Coverage' has no real check (retention-drift retired #1103), so it states 'Not measured yet', not the fixture 99.0%.",
       "action": "expect", "selector": "[data-testid='pv2-cmp-stat-retention-coverage']", "state": "visible", "textContains": "Not measured yet"
+    },
+    {
+      "name": "C5 -- REAL (Git #1220): the 'documented policy decisions on record' count reads the real pillar-filtered register (GET /api/portal/policy-decisions), not the fixture 2 -- the hidden source marker reads 'live'.",
+      "action": "expect", "selector": "[data-testid='pv2-cmp-decisions-source']", "state": "visible", "textContains": "live"
     }
   ]
 }

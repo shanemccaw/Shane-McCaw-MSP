@@ -50,6 +50,7 @@ import {
 import { PortalV2Shell } from "@/components/portal-v2/PortalV2Shell";
 import { trendGeometry } from "@/components/portal-v2/DriftTrend";
 import { useLivePillarHero, PV2_SOURCE_CLIP } from "@/components/portal-v2/useLivePillarHero";
+import { usePolicyDecisions } from "@/components/portal-v2/riskRegisterLive";
 import { pillarSeverity, resolveHeroTile, type HeroTileBinding } from "@/components/portal-v2/pillarDashboardModel";
 import {
   CMP_ACCEPTED_COUNT,
@@ -126,6 +127,19 @@ export default function PortalV2CompliancePage() {
   const heroTiles = CMP_TILE_BINDINGS.map((b) => resolveHeroTile(b, live));
   const sev = pillarSeverity(live.score);
   const openGaps = live.findingCounts.critical + live.findingCounts.warning;
+
+  // The "documented policy decisions on record" strip (Git #1220). Reads the
+  // same real register the decisions drill-down (#1221) reads via
+  // `usePolicyDecisions()` — `GET /api/portal/policy-decisions`, backed by
+  // `msp_risk_decisions` — narrowed to this pillar client-side, exactly like
+  // that page. `null` while loading/erroring rather than the stale fixture
+  // count, so this strip never asserts a number nobody confirmed.
+  const { decisions: policyDecisions, loading: decisionsLoading, error: decisionsError } =
+    usePolicyDecisions();
+  const cmpDecisionsCount =
+    decisionsLoading || decisionsError
+      ? null
+      : policyDecisions.filter((d) => d.pillar.trim().toLowerCase() === "compliance").length;
 
   // Honest-null contract: real engine score when scored, design fixture otherwise;
   // `pv2-cmp-source` states which is on screen.
@@ -214,11 +228,15 @@ export default function PortalV2CompliancePage() {
             }}
           >
             <span style={{ fontSize: "15px", fontWeight: 800, color: "#e2e8f0", fontFamily: MONO }}>
-              {CMP_ACCEPTED_COUNT}
+              {cmpDecisionsCount ?? CMP_ACCEPTED_COUNT}
             </span>
             {/* Not "finding risk-accepted in X" — this pillar counts DECISIONS. */}
             <span style={{ fontSize: "11.5px", color: "#94a3b8", whiteSpace: "nowrap" }}>
               documented policy decisions on record
+            </span>
+            {/* Hidden live/fixture marker, same convention as `pv2-cmp-source`. */}
+            <span data-testid="pv2-cmp-decisions-source" style={PV2_SOURCE_CLIP}>
+              {cmpDecisionsCount === null ? "fixture" : "live"}
             </span>
             {/* `goRiskCmp` (proto 3876) — a plain link to the register pre-filtered
                 to Compliance. Unlike Governance/Security this button does not
