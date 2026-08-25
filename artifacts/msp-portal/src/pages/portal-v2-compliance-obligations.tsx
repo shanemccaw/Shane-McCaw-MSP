@@ -9,33 +9,23 @@
  * the muted styling.
  *
  * Every inline style value is the prototype's. Copy is verbatim.
- *
- * ── The register itself is now live (Git #1223, off #1256's catalog) ───────
- * `useComplianceObligationsLive` reads `GET /api/portal/compliance-obligations`,
- * which joins the tenant's real `tenant_compliance_scope` decision to its open
- * `msp_risk_decisions` findings and derives `state`/`tone` at read time (sign-off
- * A on #1256 — no stored snapshot). `pv2-cmpobl-rows-source` proves that
- * distinct from the hero's own `pv2-cmpobl-source` marker, since the two now
- * read different endpoints.
  */
 
 import { Link } from "wouter";
 
 import { PortalV2Shell } from "@/components/portal-v2/PortalV2Shell";
 import { CMP_MONO } from "@/components/portal-v2/cmpDrilldownData";
-import { cmpObligationColor, cmpObligationScopeMuted } from "@/components/portal-v2/cmpDrilldownModel";
+import { CMP_OBLIGATIONS, cmpObligationColor, cmpObligationScopeMuted } from "@/components/portal-v2/cmpDrilldownModel";
 import { useLivePillarHero } from "@/components/portal-v2/useLivePillarHero";
-import { useComplianceObligationsLive } from "@/components/portal-v2/complianceObligationsLive";
 import { PillarLiveSource } from "@/components/portal-v2/PillarLiveSource";
-import { PV2_SOURCE_CLIP } from "@/components/portal-v2/useLivePillarHero";
 
 export default function PortalV2ComplianceObligationsPage() {
   // Reads the compliance pillar's live payload through `useLivePillarHero`; the
-  // `pv2-cmpobl-source` marker proves the page is on real data.
+  // `pv2-cmpobl-source` marker proves the page is on real data. The obligation
+  // REGISTER (frameworks in scope + per-framework state) is onboarding scope
+  // config with no server producer on the war-room-pillars payload, so those rows
+  // stay fixture — a documented backend gap, not a fabricated state.
   const live = useLivePillarHero("compliance");
-  // The obligation REGISTER (frameworks in scope + per-framework derived state)
-  // is its own live fetch — see the header above.
-  const { obligations: CMP_OBLIGATIONS, dataState: rowsDataState } = useComplianceObligationsLive();
   return (
     <PortalV2Shell eyebrow="Compliance" title="Obligations we check against">
       <div
@@ -88,9 +78,6 @@ export default function PortalV2ComplianceObligationsPage() {
               Obligations We Check Against
             </span>
             <span style={{ fontSize: "11px", color: "#475569" }}>Scope set by you at onboarding. Change it and every check re-evaluates.</span>
-            <span data-testid="pv2-cmpobl-rows-source" style={PV2_SOURCE_CLIP}>
-              {rowsDataState}
-            </span>
           </div>
 
           <div

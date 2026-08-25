@@ -9,8 +9,7 @@
     "UI ROUTE SHAPE: real URL is /portal/shane-mccaw-consulting/portal-v2/compliance/<slug>. Two-segment routes declared at the App.tsx marker; '/portal-v2/:pillar' cannot swallow them.",
     "shaneapp://runTest hits the DEPLOYED build -- these routes are new in Part 11, so a run against a build predating the deploy fails at the first assertion (a not-deployed signal, not a page defect).",
     "REAL INTERACTION DRIVEN: expand a gap (CMP4-CMP5) reveals the obligation, evidence and both actions; the wrench and 'Record a policy decision instead' open the shared FixPanel / FormDrawer, asserted as RENDERING.",
-    "ENV VARS required: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD.",
-    "OBLIGATION REGISTER NOW LIVE (Git #1223, off #1256's compliance_frameworks/compliance_obligations/tenant_compliance_scope catalog): the Obligations page's ROWS (previously the last fixture-only part of these three drill-downs) now read GET /api/portal/compliance-obligations, joining the tenant's tenant_compliance_scope decision (or the framework's default_in_scope, since the testbed tenant has made no onboarding decision yet -- 0 rows) to its open msp_risk_decisions findings by matching each row's free-text `obligation` column against the catalog's `citation`. state/tone are derived at read time, never stored (sign-off A). The testbed tenant's one seeded msp_risk_decisions row has obligation=null, so today every in-scope obligation renders 'No open findings against this obligation.' (green) and PCI DSS v4.0 (default_in_scope=false) renders the out-of-scope slate row -- an honest reflection of current data, not a bug. CMP-LIVE4's rows-source marker is a SEPARATE marker from CMP-LIVE3's hero marker: the two now read different endpoints."
+    "ENV VARS required: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD."
   ],
   "apiTests": [
     {
@@ -35,14 +34,6 @@
       "path": "/api/portal/policy-decisions",
       "headers": { "Authorization": "Bearer {{authToken}}" },
       "expect": { "status": 200, "jsonPath": "$.decisions", "exists": true }
-    },
-    {
-      "name": "C-CMP-OBL (Git #1223, off #1256's catalog) -- the real Obligations register endpoint (useComplianceObligationsLive -> GET /api/portal/compliance-obligations), joining the compliance_frameworks/compliance_obligations catalog + tenant_compliance_scope to the tenant's open msp_risk_decisions findings. Proves the endpoint returns the full seeded catalog (7 rows as of #1256's seed) rather than erroring or serving a partial list.",
-      "sessionTag": "cmp-obligations-1223",
-      "method": "GET",
-      "path": "/api/portal/compliance-obligations",
-      "headers": { "Authorization": "Bearer {{authToken}}" },
-      "expect": { "status": 200, "jsonPath": "$.obligations", "exists": true }
     }
   ],
   "uiSteps": [
@@ -67,8 +58,7 @@
 
     { "name": "goto the Obligations drill-down.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/compliance/obligations" },
     { "name": "CMP8 -- the page resolved.", "action": "expect", "selector": "[data-testid='pv2-cmpobl-heading']", "textContains": "Obligations we check against", "critical": true },
-    { "name": "CMP9 -- the catalog frameworks render, including the (real, seeded) out-of-scope PCI DSS row.", "action": "expect", "selector": "[data-testid='pv2-cmpobl-rows']", "textContains": ["SOX", "17 CFR 210.2-06", "PCI DSS v4.0", "Marked out of scope"] },
-    { "name": "CMP-LIVE3 (#1204) -- the obligations page's HERO is on the LIVE compliance payload (source marker 'live').", "action": "expect", "selector": "[data-testid='pv2-cmpobl-source']", "state": "present", "textContains": "live" },
-    { "name": "CMP-LIVE4 (Git #1223, off #1256's catalog) -- the REGISTER ROWS themselves are now ALSO live: GET /api/portal/compliance-obligations joins tenant_compliance_scope + the compliance_frameworks/compliance_obligations catalog to the tenant's open msp_risk_decisions findings, deriving state/tone at read time (no stored snapshot, per #1256 sign-off). Distinct marker from CMP-LIVE3's hero marker -- reads off a different endpoint.", "sessionTag": "cmp-obligations-1223", "action": "expect", "selector": "[data-testid='pv2-cmpobl-rows-source']", "state": "present", "textContains": "live" }
+    { "name": "CMP9 -- the frameworks render, including the out-of-scope PCI row.", "action": "expect", "selector": "[data-testid='pv2-cmpobl-rows']", "textContains": ["SOX §802 · 17 CFR 210.2-06", "PCI DSS v4.0", "Marked out of scope"] },
+    { "name": "CMP-LIVE3 (#1204) -- the obligations page is on the LIVE compliance payload (source marker 'live'). The obligation REGISTER (frameworks + per-framework state) stays fixture: it is onboarding scope config with no war-room-pillars producer -- a documented backend gap.", "action": "expect", "selector": "[data-testid='pv2-cmpobl-source']", "state": "present", "textContains": "live" }
   ]
 }
