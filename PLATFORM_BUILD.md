@@ -401,3 +401,4 @@ History before 2026-08-12 lives in [PLATFORM_BUILD_ARCHIVE_2026-08-12.md](PLATFO
 | 2026-08-25 | ⏳ IN FLIGHT | Generalized account creation: 6-digit code + password + MFA for any Buy.tsx purchase session, extracted from Copilot Assessment flow (Git #1310) | |
 | 2026-08-25 | ⏳ IN FLIGHT | Quick-Start Pack availability gating: not-yet-available state on /quick-start + /buy (Git #1304) | |
 | 2026-08-25 | ⏳ IN FLIGHT | Generalized write consent for Pack purchases: extract/generalize admin write-consent routes with explicit Packs-only product-type gate (Git #1312) | |
+| 2026-08-25 | ⏳ IN FLIGHT | Generalized read-consent grant flow for Buy.tsx purchase sessions: required for Monitoring + real backend skip branch for Retainer (Git #1311) | |
