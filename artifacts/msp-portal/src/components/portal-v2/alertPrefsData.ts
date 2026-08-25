@@ -240,6 +240,13 @@ export interface AlertRecipient {
   role: string;
   scope: string;
   primary: boolean;
+  /**
+   * The real category scoping behind `scope`'s display text (Git #1276) — null
+   * means "all categories". Round-trips through save so a category-scoped
+   * recipient (e.g. "Billing and renewals only") isn't silently widened to
+   * "all" the next time preferences are saved.
+   */
+  scopeCategories?: AlertCatKey[] | null;
 }
 export const ALERT_RECIPIENTS_SEED: readonly AlertRecipient[] = [
   { email: "jordan.diaz@tenant.com", role: "IT Administrator · you", scope: "All categories", primary: true },

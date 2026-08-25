@@ -92,6 +92,7 @@ import adminPsScriptsRouter from "./admin-ps-scripts";
 import adminAiPromptsRouter from "./admin-ai-prompts";
 import notificationsRouter from "./notifications";
 import notificationPreferencesRouter from "./notification-preferences";
+import portalAlertPreferencesRouter from "./portal-alert-preferences";
 import pushRouter from "./push";
 import adminCallbackTokensRouter from "./admin-callback-tokens";
 import adminInsightsRouter from "./admin-insights";
@@ -344,6 +345,7 @@ router.use(adminPsScriptsRouter);
 router.use(adminAiPromptsRouter);
 router.use(notificationsRouter);
 router.use(notificationPreferencesRouter);
+router.use(portalAlertPreferencesRouter);
 router.use(pushRouter);
 router.use(adminCallbackTokensRouter);
 // ⚠️ admin-insights.ts carries a "DEAD — do not use" banner, but it is STILL

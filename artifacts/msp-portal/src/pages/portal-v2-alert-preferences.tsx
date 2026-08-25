@@ -9,18 +9,18 @@
  * These categories are the same set the Webhooks page keys its events off. Here
  * the two decisions are: whether you want a category, and where it goes.
  *
- * ── UI-only, but genuinely interactive ──────────────────────────────────────
+ * ── Real persistence (Git #1276) ─────────────────────────────────────────────
  * Presets, per-category on/off + dest/mode/threshold, quiet hours and recipient
- * removal are the design's own local state and are wired. Editing any row flips
- * the preset to Custom; Save clears the dirty flag; Reset returns to Balanced —
- * all the prototype's behaviour. "Add recipient" opens a form drawer in the
- * design (shell machinery a page must not touch) and is inert here. Persisting
- * to a notification profile is a later pass.
+ * removal are the design's own local state, wired to real GET/PUT
+ * (alertPrefsLive.ts → routes/portal-alert-preferences.ts) instead of resetting
+ * on refresh. "Add recipient" still opens a form drawer in the design (shell
+ * machinery a page must not touch) and is inert here — only removal round-trips.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "wouter";
 
+import { useAuth } from "@/lib/auth-context";
 import { PortalV2Shell, SIDEBAR_WASH } from "@/components/portal-v2/PortalV2Shell";
 import {
   ALERT_ALWAYS_EMAIL_NOTE,
@@ -45,7 +45,6 @@ import {
   ALERT_RECIPIENTS_SEED,
   ALERT_RESET,
   ALERT_SAVE,
-  ALERT_SAVED_AT_JUST_NOW,
   ALERT_SAVED_AT_SEED,
   ALERT_SUBTITLE,
   ALERT_TITLE,
@@ -66,6 +65,7 @@ import {
   presetLabel,
   type AlertSelectValue,
 } from "@/components/portal-v2/alertPrefsModel";
+import { fetchAlertPreferences, saveAlertPreferences } from "@/components/portal-v2/alertPrefsLive";
 
 const MONO = "'SF Mono',Menlo,Consolas,monospace";
 
@@ -138,12 +138,39 @@ function FieldLabel({ children }: { children: React.ReactNode }) {
 }
 
 export default function PortalV2AlertPreferencesPage() {
+  const { user, fetchWithAuth } = useAuth();
   const [prefs, setPrefs] = useState<AlertPrefs>(ALERT_PREFS_SEED);
   const [preset, setPreset] = useState<AlertSelectValue>("balanced");
   const [quiet, setQuiet] = useState<AlertQuiet>(ALERT_QUIET_SEED);
   const [recipients, setRecipients] = useState<readonly AlertRecipient[]>(ALERT_RECIPIENTS_SEED);
   const [dirty, setDirty] = useState(false);
   const [savedAt, setSavedAt] = useState(ALERT_SAVED_AT_SEED);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchAlertPreferences(fetchWithAuth)
+      .then((loaded) => {
+        if (cancelled) return;
+        setPrefs(loaded.prefs);
+        setPreset(loaded.preset);
+        setQuiet(loaded.quiet);
+        setRecipients(loaded.recipients);
+        setSavedAt(loaded.savedAtLabel);
+        setLoading(false);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        console.error("pv2-alert-preferences: load failed", err);
+        setError("Unable to load your alert preferences right now.");
+        setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchWithAuth]);
 
   const editPref = (key: (typeof ALERT_CATS)[number]["key"], patch: Partial<AlertPrefs[typeof key]>) => {
     setPrefs((p) => patchPref(p, key, patch));
@@ -164,8 +191,18 @@ export default function PortalV2AlertPreferencesPage() {
   };
 
   const save = () => {
-    setDirty(false);
-    setSavedAt(ALERT_SAVED_AT_JUST_NOW);
+    setSaving(true);
+    setError(null);
+    saveAlertPreferences(fetchWithAuth, { prefs, preset, quiet, recipients: [...recipients] })
+      .then(() => {
+        setDirty(false);
+        setSavedAt(user?.name ? `Saved just now by ${user.name}` : "Saved just now");
+      })
+      .catch((err) => {
+        console.error("pv2-alert-preferences: save failed", err);
+        setError("Unable to save your alert preferences right now. Please try again.");
+      })
+      .finally(() => setSaving(false));
   };
   const reset = () => {
     setPreset("balanced");
@@ -190,6 +227,10 @@ export default function PortalV2AlertPreferencesPage() {
             boxSizing: "border-box",
           }}
         >
+          <span data-testid="pv2-alert-source" style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)" }}>
+            {loading ? "loading" : error ? "fixture" : "live"}
+          </span>
+
           <Link
             href="/portal-v2"
             data-testid="pv2-alert-back"
@@ -379,34 +420,39 @@ export default function PortalV2AlertPreferencesPage() {
               <button
                 type="button"
                 onClick={save}
+                disabled={!dirty || saving || loading}
                 data-testid="pv2-alert-save"
                 style={{
                   padding: "9px 18px",
                   borderRadius: 7,
                   fontSize: "12.5px",
                   fontWeight: 700,
-                  cursor: dirty ? "pointer" : "default",
+                  cursor: dirty && !saving ? "pointer" : "default",
                   fontFamily: "inherit",
                   border: `1px solid ${dirty ? "#0078D4" : "rgba(30,41,59,.9)"}`,
                   background: dirty ? "#0078D4" : "transparent",
                   color: dirty ? "#fff" : "#475569",
+                  opacity: saving ? 0.7 : 1,
                 }}
               >
-                {ALERT_SAVE}
+                {saving ? "Saving…" : ALERT_SAVE}
               </button>
               <button
                 type="button"
                 onClick={reset}
+                disabled={loading}
                 data-testid="pv2-alert-reset"
                 style={{ padding: "9px 16px", borderRadius: 7, fontSize: "12.5px", fontWeight: 600, border: "1px solid rgba(30,41,59,.9)", background: "transparent", color: "#94a3b8", cursor: "pointer", fontFamily: "inherit" }}
               >
                 {ALERT_RESET}
               </button>
             </div>
-            {dirty ? (
+            {error ? (
+              <span data-testid="pv2-alert-error" style={{ fontSize: "11.5px", color: "#f87171", fontWeight: 600 }}>{error}</span>
+            ) : dirty ? (
               <span data-testid="pv2-alert-dirty" style={{ fontSize: "11.5px", color: "#c2a63d", fontWeight: 600 }}>{ALERT_UNSAVED}</span>
             ) : (
-              <span style={{ fontSize: "11.5px", color: "#64748b" }}>{savedAt}</span>
+              <span data-testid="pv2-alert-saved-at" style={{ fontSize: "11.5px", color: "#64748b" }}>{savedAt}</span>
             )}
           </div>
         </div>

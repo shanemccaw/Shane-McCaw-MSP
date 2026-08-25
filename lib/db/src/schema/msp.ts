@@ -4720,3 +4720,114 @@ export const customerTenantAlertEventsTable = pgTable("customer_tenant_alert_eve
 
 export type CustomerTenantAlertEvent = typeof customerTenantAlertEventsTable.$inferSelect;
 export type InsertCustomerTenantAlertEvent = typeof customerTenantAlertEventsTable.$inferInsert;
+
+// ============================================================================
+// Customer Portal Alert Preferences (Git #1276)
+// ============================================================================
+// Real storage for the customer portal's Alert Preferences page
+// (portal-v2-alert-preferences.tsx / alertPrefsData.ts). Confirmed decision (a)
+// from the original #1236 finding: a NEW taxonomy, not folded into the existing
+// 15-technical-category `customer_notification_preferences` (that table stays
+// exactly as-is for the Notification Center bell — genuinely non-overlapping).
+//
+// Scoped by `customerId` (tenants.id, the JWT customerId) — not by individual
+// portal user — because alerts are about ONE monitored tenant and any portal
+// user for that tenant edits the same shared profile, matching
+// CustomerAlertPreferenceProfile in customer-alert-delivery.ts (the #1278 seam
+// this schema now backs). The primary recipient ("you") is never a stored row —
+// it is always the requesting user's own account; `customer_alert_recipients`
+// holds only the additional ones the design's "Add recipient" adds.
+//
+// `threshold` is a category-specific sensitivity key (e.g. "critical" for
+// findings, "worse" for drift, "mine" for support) — plain TEXT, not a shared
+// enum, because the valid set differs per category (see alertPrefsData.ts
+// ALERT_CATS[].thresholds). Validated app-side, same convention as
+// customer_tenant_alert_rules.condition_type (no CHECK — widening needs no DDL).
+
+export const CUSTOMER_ALERT_DIGEST_MODES = ["immediate", "daily", "weekly"] as const;
+export type CustomerAlertDigestMode = typeof CUSTOMER_ALERT_DIGEST_MODES[number];
+
+export const CUSTOMER_ALERT_PRESETS = ["close", "balanced", "quiet", "custom"] as const;
+export type CustomerAlertPreset = typeof CUSTOMER_ALERT_PRESETS[number];
+
+// One row per (customer, category) — mirrors the page's per-category AlertPref
+// (on/email/mode/threshold). Absence of a row for a category means the page's
+// own Balanced-preset default, same "unset = default" convention as
+// customer_notification_preferences.
+export const customerAlertPreferencesTable = pgTable("customer_alert_preferences", {
+  id: serial("id").primaryKey(),
+  customerId: integer("customer_id").notNull().references(() => tenantsTable.id, { onDelete: "cascade" }),
+  category: text("category", { enum: CUSTOMER_ALERT_CATEGORIES }).notNull(),
+  enabled: boolean("enabled").notNull().default(true),
+  emailEnabled: boolean("email_enabled").notNull().default(true),
+  mode: text("mode", { enum: CUSTOMER_ALERT_DIGEST_MODES }).notNull().default("immediate"),
+  threshold: text("threshold").notNull().default("any"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("customer_alert_prefs_customer_category_uidx").on(t.customerId, t.category),
+]);
+
+export type CustomerAlertPreference = typeof customerAlertPreferencesTable.$inferSelect;
+export type InsertCustomerAlertPreference = typeof customerAlertPreferencesTable.$inferInsert;
+
+// One row per customer — page-level quiet hours + which posture preset is active.
+export const customerAlertSettingsTable = pgTable("customer_alert_settings", {
+  id: serial("id").primaryKey(),
+  customerId: integer("customer_id").notNull().unique().references(() => tenantsTable.id, { onDelete: "cascade" }),
+  activePreset: text("active_preset", { enum: CUSTOMER_ALERT_PRESETS }).notNull().default("balanced"),
+  quietHoursEnabled: boolean("quiet_hours_enabled").notNull().default(true),
+  quietHoursFrom: text("quiet_hours_from").notNull().default("19:00"),
+  quietHoursTo: text("quiet_hours_to").notNull().default("07:30"),
+  quietBreakForCritical: boolean("quiet_break_for_critical").notNull().default(true),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedByUserId: integer("updated_by_user_id").references(() => usersTable.id),
+});
+
+export type CustomerAlertSettings = typeof customerAlertSettingsTable.$inferSelect;
+export type InsertCustomerAlertSettings = typeof customerAlertSettingsTable.$inferInsert;
+
+// Additional recipients beyond the logged-in user (design's "Who else gets
+// these" list). `scopeCategories = NULL` means "all categories" — the design's
+// primary recipient row; a non-primary recipient can be scoped to a subset.
+export const customerAlertRecipientsTable = pgTable("customer_alert_recipients", {
+  id: serial("id").primaryKey(),
+  customerId: integer("customer_id").notNull().references(() => tenantsTable.id, { onDelete: "cascade" }),
+  email: text("email").notNull(),
+  role: text("role"),
+  scopeCategories: text("scope_categories").array(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("customer_alert_recipients_customer_email_uidx").on(t.customerId, t.email),
+]);
+
+export type CustomerAlertRecipientRow = typeof customerAlertRecipientsTable.$inferSelect;
+export type InsertCustomerAlertRecipientRow = typeof customerAlertRecipientsTable.$inferInsert;
+
+// Digest batching (mode = daily/weekly) AND the quiet-hours hold ("Anything
+// raised during quiet hours is sent in one email when the window closes") share
+// this one queue, discriminated by `holdReason`. Drained by
+// customer-alert-digest.ts on the same 5-minute pass evaluateCustomerTenantRules
+// rides (Git #1278's alert_evaluate_rules workflow node).
+export const CUSTOMER_ALERT_HOLD_REASONS = ["daily", "weekly", "quiet_hours"] as const;
+export type CustomerAlertHoldReason = typeof CUSTOMER_ALERT_HOLD_REASONS[number];
+
+export const customerAlertDigestQueueTable = pgTable("customer_alert_digest_queue", {
+  id: serial("id").primaryKey(),
+  customerId: integer("customer_id").notNull().references(() => tenantsTable.id, { onDelete: "cascade" }),
+  eventId: integer("event_id").notNull().references(() => customerTenantAlertEventsTable.id, { onDelete: "cascade" }),
+  alertCategory: text("alert_category", { enum: CUSTOMER_ALERT_CATEGORIES }).notNull(),
+  severity: text("severity", { enum: CUSTOMER_ALERT_SEVERITIES }).notNull(),
+  summary: text("summary").notNull(),
+  deepLinkPath: text("deep_link_path"),
+  holdReason: text("hold_reason", { enum: CUSTOMER_ALERT_HOLD_REASONS }).notNull(),
+  dueAt: timestamp("due_at", { withTimezone: true }).notNull(),
+  queuedAt: timestamp("queued_at", { withTimezone: true }).notNull().defaultNow(),
+  sentAt: timestamp("sent_at", { withTimezone: true }),
+  digestBatchId: uuid("digest_batch_id"),
+}, (t) => [
+  index("customer_alert_digest_queue_due_idx").on(t.dueAt),
+  index("customer_alert_digest_queue_customer_pending_idx").on(t.customerId, t.sentAt),
+]);
+
+export type CustomerAlertDigestQueueRow = typeof customerAlertDigestQueueTable.$inferSelect;
+export type InsertCustomerAlertDigestQueueRow = typeof customerAlertDigestQueueTable.$inferInsert;

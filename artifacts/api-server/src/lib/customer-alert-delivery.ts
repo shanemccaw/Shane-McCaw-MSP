@@ -8,34 +8,37 @@
  * quiet hours and recipient list the customer configures on the portal Alert
  * Preferences page.
  *
- * That customer-side preference persistence is #1276 and does NOT exist yet:
- * `artifacts/msp-portal/src/components/portal-v2/alertPrefsData.ts` (ALERT_CATS,
- * ALERT_MODES, ALERT_RECIPIENTS_SEED, quiet hours, presets) is a pure front-end
- * fixture with no table or route behind it (confirmed — Git #1236 investigation).
+ * #1276 landed the real persistence this module reads
+ * (`customer_alert_preferences` / `customer_alert_settings` /
+ * `customer_alert_recipients`, see lib/db/src/schema/msp.ts and
+ * routes/portal-alert-preferences.ts). This module remains the one seam the
+ * engine calls (`deliverCustomerTenantAlertToCustomer`) — the engine itself
+ * never changed.
  *
- * This module is the EXPLICIT SEAM #1276 plugs into — a real function with a
- * fixed contract, deliberately NOT a bare `// TODO` scattered in the engine.
- * The engine calls `deliverCustomerTenantAlertToCustomer()` on every firing it
- * marks `notify_customer`. Today that call:
- *   1. feature-detects the #1276 preference layer via
- *      `resolveCustomerAlertPreferences()`, and
- *   2. finding none, returns `{ status: "pending_prefs" }` — the engine records
- *      that verdict on the event row (`customer_delivery_status`), so no alert
- *      is lost: the events accumulate, queryable, ready for #1276's delivery
- *      worker to drain (or for this function to deliver inline the moment the
- *      preference layer starts returning a real profile).
- *
- * When #1276 lands it implements exactly ONE thing here —
- * `resolveCustomerAlertPreferences(customerId)` returning a real
- * `CustomerAlertPreferenceProfile` — and fills in `sendToCustomerRecipients()`.
- * The rest of the contract (category→pref lookup, severity-floor / digest /
- * quiet-hours filtering, the `CustomerDeliveryOutcome` shape the engine records)
- * is already defined below, so the engine never changes again.
+ * Timing (#1276's own scope, per #1278's sign-off comment #4: "digest batching
+ * ... lives in #1276"): a category's `mode` (immediate/daily/weekly) and the
+ * page-level quiet hours decide whether an alert sends right now or gets
+ * queued into `customer_alert_digest_queue` for customer-alert-digest.ts to
+ * drain later. Critical severity breaks quiet hours when the customer has
+ * opted into that (quiet.breakForCritical) — it never breaks daily/weekly
+ * digest mode, which is the customer's own explicit choice.
  */
 
+import { pool } from "@workspace/db";
 import { logger } from "./logger";
+import { sendMailViaGraph, graphCredentialsPresent } from "./graph";
+import { enqueueCustomerAlertDigest } from "./customer-alert-digest";
 
 const log = logger.child({ channel: "notification" });
+
+function getPortalBaseUrl(): string {
+  const domains = process.env.REPLIT_DOMAINS;
+  if (domains) {
+    const first = domains.split(",")[0]?.trim();
+    return `https://${first}/portal`;
+  }
+  return "http://localhost:80/portal";
+}
 
 /** A single fired customer-tenant alert, as handed to the customer-delivery seam. */
 export interface CustomerTenantAlertForDelivery {
@@ -54,10 +57,11 @@ export interface CustomerTenantAlertForDelivery {
 }
 
 export type CustomerDeliveryStatus =
-  | "pending_prefs" // #1276 preference layer not present yet — recorded, not lost
-  | "delivered"     // sent to at least one customer recipient
-  | "suppressed"    // the customer's own threshold / quiet-hours filtered it out
-  | "skipped";      // rule.notify_customer = false (never reaches this module)
+  | "pending_prefs"  // no customer account resolvable for this tenant, or a send error — recorded, not lost
+  | "delivered"      // sent immediately to at least one customer recipient
+  | "queued_digest"  // held for a daily/weekly digest or the quiet-hours window (customer_alert_digest_queue)
+  | "suppressed"     // the customer's own threshold filtered it out, or no recipient is scoped to it
+  | "skipped";       // rule.notify_customer = false (never reaches this module)
 
 export interface CustomerDeliveryOutcome {
   status: CustomerDeliveryStatus;
@@ -68,10 +72,9 @@ export interface CustomerDeliveryOutcome {
 }
 
 /**
- * The per-customer, per-category preference profile #1276 will persist and
- * resolve. Shape mirrors alertPrefsData.ts so #1276's implementation is a
- * direct read of its own table, not a re-modelling. Kept here (not imported
- * from the portal fixture) because api-server must not depend on msp-portal.
+ * The per-customer, per-category preference profile persisted by #1276
+ * (routes/portal-alert-preferences.ts). Kept here (not imported from the
+ * portal fixture) because api-server must not depend on msp-portal.
  */
 export interface CustomerAlertCategoryPref {
   on: boolean;
@@ -97,42 +100,146 @@ export interface CustomerAlertPreferenceProfile {
   quiet: CustomerAlertQuietHours;
 }
 
+// The page's own "Balanced" preset (alertPrefsData.ts ALERT_PRESETS) — the
+// default for any category a customer has never explicitly saved. Category
+// identifiers/thresholds are stable data keys, not user-facing copy, so this
+// is intentionally duplicated (not imported) from routes/portal-alert-preferences.ts,
+// which re-exports this same object for its own GET defaults.
+export const CUSTOMER_ALERT_BALANCED_DEFAULTS: Record<string, CustomerAlertCategoryPref> = {
+  findings:    { on: true, email: true,  mode: "immediate", threshold: "high" },
+  drift:       { on: true, email: true,  mode: "immediate", threshold: "worse" },
+  progress:    { on: true, email: true,  mode: "daily",     threshold: "five" },
+  reviews:     { on: true, email: true,  mode: "daily",     threshold: "fourteen" },
+  remediation: { on: true, email: false, mode: "daily",     threshold: "waiting" },
+  billing:     { on: true, email: true,  mode: "immediate", threshold: "all" },
+  support:     { on: true, email: true,  mode: "immediate", threshold: "mine" },
+};
+
+const DEFAULT_QUIET: CustomerAlertQuietHours = { on: true, from: "19:00", to: "07:30", breakForCritical: true };
+
 /**
- * #1276 EXTENSION POINT. Returns the customer's persisted Alert Preferences
- * profile, or null if no preference persistence exists yet. Until #1276 builds
- * its table + read path, this returns null and the whole delivery degrades
- * cleanly to "pending_prefs".
- *
- * Intentionally the ONLY thing #1276 must implement to switch customer delivery
- * on: replace the body with a read of its new customer-alert-preferences table.
+ * Reads the real #1276 persistence: `customer_alert_preferences` /
+ * `customer_alert_settings` / `customer_alert_recipients`. Returns null only
+ * when no customer account is resolvable for this tenant (nothing to deliver
+ * to) — every other gap (no saved rows) degrades to the Balanced defaults, the
+ * same "unset = default" convention the page itself uses.
  */
 export async function resolveCustomerAlertPreferences(
-  _customerId: number,
+  customerId: number,
 ): Promise<CustomerAlertPreferenceProfile | null> {
-  // #1276 not landed — no persistence to read. See module header.
-  return null;
+  const primaryRes = await pool.query<{ email: string }>(
+    `SELECT email FROM users WHERE tenant_id = $1 ORDER BY id ASC LIMIT 1`,
+    [customerId],
+  );
+  const primaryEmail = primaryRes.rows[0]?.email;
+  if (!primaryEmail) {
+    log.info({ customerId }, "customer-alert: no customer account resolvable for tenant; delivery pending");
+    return null;
+  }
+
+  const [prefRes, settingsRes, recipientRes] = await Promise.all([
+    pool.query<{ category: string; enabled: boolean; email_enabled: boolean; mode: string; threshold: string }>(
+      `SELECT category, enabled, email_enabled, mode, threshold FROM customer_alert_preferences WHERE customer_id = $1`,
+      [customerId],
+    ),
+    pool.query<{ quiet_hours_enabled: boolean; quiet_hours_from: string; quiet_hours_to: string; quiet_break_for_critical: boolean }>(
+      `SELECT quiet_hours_enabled, quiet_hours_from, quiet_hours_to, quiet_break_for_critical FROM customer_alert_settings WHERE customer_id = $1`,
+      [customerId],
+    ),
+    pool.query<{ email: string; scope_categories: string[] | null }>(
+      `SELECT email, scope_categories FROM customer_alert_recipients WHERE customer_id = $1`,
+      [customerId],
+    ),
+  ]);
+
+  const categories: Record<string, CustomerAlertCategoryPref> = {};
+  const byCategory = new Map(prefRes.rows.map((r) => [r.category, r]));
+  for (const [cat, fallback] of Object.entries(CUSTOMER_ALERT_BALANCED_DEFAULTS)) {
+    const row = byCategory.get(cat);
+    categories[cat] = row
+      ? { on: row.enabled, email: row.email_enabled, mode: row.mode as CustomerAlertCategoryPref["mode"], threshold: row.threshold }
+      : fallback;
+  }
+
+  const s = settingsRes.rows[0];
+  const quiet: CustomerAlertQuietHours = s
+    ? { on: s.quiet_hours_enabled, from: s.quiet_hours_from, to: s.quiet_hours_to, breakForCritical: s.quiet_break_for_critical }
+    : DEFAULT_QUIET;
+
+  const recipients: CustomerAlertRecipient[] = [
+    { email: primaryEmail, scopeCategories: "all" },
+    ...recipientRes.rows.map((r) => ({
+      email: r.email,
+      scopeCategories: (r.scope_categories && r.scope_categories.length > 0 ? r.scope_categories : "all") as string[] | "all",
+    })),
+  ];
+
+  return { customerId, categories, recipients, quiet };
+}
+
+function buildCustomerEmailHtml(opts: { summary: string; severity: string; deepLinkPath: string | null; portalBaseUrl: string }): string {
+  const color = opts.severity === "critical" ? "#DC2626" : opts.severity === "warning" ? "#D97706" : "#0284C7";
+  const link = opts.deepLinkPath
+    ? `<p style="margin-top:16px"><a href="${opts.portalBaseUrl}${opts.deepLinkPath}" style="background:#0078D4;color:#fff;padding:8px 16px;border-radius:4px;text-decoration:none;font-size:14px">View in your portal &rarr;</a></p>`
+    : "";
+  return `<!DOCTYPE html><html><body style="font-family:Inter,sans-serif;background:#f7f9fc;margin:0;padding:24px">
+  <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:8px;border:1px solid #e2e8f0;padding:24px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px">
+      <span style="background:${color};color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:9999px;letter-spacing:.05em">${opts.severity.toUpperCase()}</span>
+    </div>
+    <p style="color:#4a5568;font-size:14px;line-height:1.6;margin:0 0 12px">${opts.summary}</p>
+    ${link}
+    <hr style="margin:20px 0;border:none;border-top:1px solid #e2e8f0" />
+    <p style="color:#a0aec0;font-size:12px;margin:0">Shane McCaw Consulting &mdash; alert preferences are yours to change any time in the portal.</p>
+  </div></body></html>`;
 }
 
 /**
- * #1276 EXTENSION POINT. Sends one alert to the given customer recipients via
- * Exchange Online (Microsoft Graph — NEVER Resend, per CLAUDE.md), deep-linking
- * into the customer portal. Unreachable until resolveCustomerAlertPreferences()
- * returns a real profile.
+ * Sends one alert to the given customer recipients via Exchange Online
+ * (Microsoft Graph — NEVER Resend, per CLAUDE.md), deep-linking into the
+ * customer portal. Throws (caught by the caller) if Graph credentials are
+ * absent or every send fails, so the event stays `pending_prefs` for retry.
  */
 async function sendToCustomerRecipients(
-  _alert: CustomerTenantAlertForDelivery,
-  _recipients: string[],
+  alert: CustomerTenantAlertForDelivery,
+  recipients: string[],
 ): Promise<void> {
-  // #1276 implements the Graph sendMail to customer recipients here.
-  throw new Error(
-    "sendToCustomerRecipients is a #1276 extension point and is not implemented until the customer Alert Preferences layer exists",
-  );
+  if (!graphCredentialsPresent()) {
+    throw new Error("Graph credentials not configured; cannot send customer alert email");
+  }
+  const mailUserId = process.env.GRAPH_MAIL_USER_ID;
+  if (!mailUserId) {
+    throw new Error("GRAPH_MAIL_USER_ID not configured; cannot send customer alert email");
+  }
+
+  const html = buildCustomerEmailHtml({
+    summary: alert.summary,
+    severity: alert.severity,
+    deepLinkPath: alert.deepLinkPath,
+    portalBaseUrl: getPortalBaseUrl(),
+  });
+
+  let sentAny = false;
+  for (const to of recipients) {
+    try {
+      await sendMailViaGraph({
+        fromUserId: mailUserId,
+        subject: `[${alert.severity.toUpperCase()}] ${alert.summary}`,
+        to,
+        htmlBody: html,
+      });
+      sentAny = true;
+    } catch (err) {
+      log.warn({ err, to, eventId: alert.eventId }, "customer-alert: customer email send failed for one recipient");
+    }
+  }
+  if (!sentAny) throw new Error("customer alert email failed for every recipient");
 }
 
 /**
- * Apply the customer's own preference for this alert's category: is the category
- * on, does the alert clear the category's severity floor, and are we inside
- * quiet hours (with the critical-break honoured)? Pure, so #1276 can unit-test it.
+ * Apply the customer's own preference for this alert's category: is the
+ * category on, and does the alert clear the category's severity floor? Pure,
+ * so it can be unit-tested independently of the DB/Graph.
  */
 export function passesCustomerPreference(
   alert: CustomerTenantAlertForDelivery,
@@ -152,9 +259,73 @@ export function passesCustomerPreference(
   if (floor === "high" && sevRank[alert.severity] < sevRank.warning) {
     return { deliver: false, reason: "below high floor" };
   }
-  // Quiet hours are a digest concern (#1276's batcher) — represented here so the
-  // contract is complete; the critical break always wins.
   return { deliver: true, reason: "ok" };
+}
+
+/** Minutes since local midnight for an "HH:MM" string. */
+function minutesOfDay(hhmm: string): number {
+  const [h, m] = hhmm.split(":").map((n) => parseInt(n, 10));
+  return (h || 0) * 60 + (m || 0);
+}
+
+/** Is `now` inside the [from, to) window, honouring an overnight wrap (e.g. 19:00→07:30)? */
+export function isWithinQuietWindow(quiet: CustomerAlertQuietHours, now: Date): boolean {
+  if (!quiet.on) return false;
+  const from = minutesOfDay(quiet.from);
+  const to = minutesOfDay(quiet.to);
+  const cur = now.getUTCHours() * 60 + now.getUTCMinutes();
+  if (from === to) return false;
+  if (from < to) return cur >= from && cur < to; // same-day window
+  return cur >= from || cur < to; // overnight wrap
+}
+
+export type CustomerAlertTiming =
+  | { mode: "immediate" }
+  | { mode: "daily" | "weekly" | "quiet_hours"; dueAt: Date };
+
+/**
+ * When should this alert actually go out: right now, or held for a digest /
+ * the quiet-hours window? Daily/weekly is the customer's own explicit choice
+ * and is never broken by severity. Quiet hours only applies to "immediate"
+ * mode categories, and is broken by critical severity when the customer has
+ * opted into that (breakForCritical).
+ */
+export function computeDeliveryTiming(
+  alert: CustomerTenantAlertForDelivery,
+  pref: CustomerAlertCategoryPref,
+  quiet: CustomerAlertQuietHours,
+  now: Date,
+): CustomerAlertTiming {
+  if (pref.mode === "daily") return { mode: "daily", dueAt: nextDailyBoundary(now) };
+  if (pref.mode === "weekly") return { mode: "weekly", dueAt: nextWeeklyBoundary(now) };
+
+  if (quiet.on && isWithinQuietWindow(quiet, now) && !(alert.severity === "critical" && quiet.breakForCritical)) {
+    return { mode: "quiet_hours", dueAt: nextQuietWindowClose(quiet, now) };
+  }
+  return { mode: "immediate" };
+}
+
+/** Next 08:00 UTC at least 1 minute in the future. */
+function nextDailyBoundary(now: Date): Date {
+  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 8, 0, 0));
+  if (d.getTime() <= now.getTime()) d.setUTCDate(d.getUTCDate() + 1);
+  return d;
+}
+
+/** Next Monday 08:00 UTC at least 1 minute in the future. */
+function nextWeeklyBoundary(now: Date): Date {
+  const d = nextDailyBoundary(now);
+  const daysToMonday = (8 - d.getUTCDay()) % 7; // getUTCDay(): Mon=1
+  d.setUTCDate(d.getUTCDate() + daysToMonday);
+  return d;
+}
+
+/** The next occurrence of quiet.to (HH:MM) after `now`. */
+function nextQuietWindowClose(quiet: CustomerAlertQuietHours, now: Date): Date {
+  const [h, m] = quiet.to.split(":").map((n) => parseInt(n, 10));
+  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), h || 0, m || 0, 0));
+  if (d.getTime() <= now.getTime()) d.setUTCDate(d.getUTCDate() + 1);
+  return d;
 }
 
 /**
@@ -168,13 +339,9 @@ export async function deliverCustomerTenantAlertToCustomer(
   try {
     const profile = await resolveCustomerAlertPreferences(alert.customerId);
     if (!profile) {
-      log.info(
-        { eventId: alert.eventId, ruleKey: alert.ruleKey, customerId: alert.customerId },
-        "customer-alert: customer delivery pending #1276 preference layer",
-      );
       return {
         status: "pending_prefs",
-        detail: "customer Alert Preferences persistence (#1276) not present; event recorded for later delivery",
+        detail: "no customer account resolvable for this tenant yet; event recorded for later delivery",
       };
     }
 
@@ -188,6 +355,23 @@ export async function deliverCustomerTenantAlertToCustomer(
       .map((r) => r.email);
     if (recipients.length === 0) {
       return { status: "suppressed", detail: "no recipient scoped to this category" };
+    }
+
+    const pref = profile.categories[alert.alertCategory];
+    const timing = computeDeliveryTiming(alert, pref, profile.quiet, new Date());
+
+    if (timing.mode !== "immediate") {
+      await enqueueCustomerAlertDigest({
+        customerId: alert.customerId,
+        eventId: alert.eventId,
+        alertCategory: alert.alertCategory,
+        severity: alert.severity,
+        summary: alert.summary,
+        deepLinkPath: alert.deepLinkPath,
+        holdReason: timing.mode,
+        dueAt: timing.dueAt,
+      });
+      return { status: "queued_digest", detail: `held for ${timing.mode} delivery, due ${timing.dueAt.toISOString()}` };
     }
 
     await sendToCustomerRecipients(alert, recipients);
