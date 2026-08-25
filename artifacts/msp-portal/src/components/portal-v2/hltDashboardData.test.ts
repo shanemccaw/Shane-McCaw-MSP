@@ -44,6 +44,7 @@ import {
   HLT_SYNC,
   HLT_VERDICT,
   hltAcceptedMeta,
+  hltAcceptedStripSuffix,
   hltDriftOwner,
   hltDriftRows,
   hltTrendGeometry,
@@ -53,6 +54,23 @@ describe("Health hero", () => {
   it("scores 66 with a RED delta — debt is trending the wrong way", () => {
     assert.equal(HLT_HERO.score, 66);
     assert.equal(HLT_HERO.delta, "-2 this month");
+  });
+
+  // #1273: the strip must never state the fixture's specific "AD FS retained"
+  // claim once real findings exist, and must never fabricate a generic filler
+  // in their place either — it is the worst real finding's own title, or the
+  // fixture sentence only when there is genuinely no live finding to report.
+  it("accepted strip states the worst REAL finding, never the AD FS text, once one exists", () => {
+    assert.equal(
+      hltAcceptedStripSuffix("Legacy authentication remains enabled tenant-wide"),
+      "accepted risk on record · Legacy authentication remains enabled tenant-wide",
+    );
+  });
+
+  it("accepted strip falls back to the fixture sentence with no live finding", () => {
+    assert.equal(hltAcceptedStripSuffix(null), HLT_HERO.acceptedStripSuffix);
+    assert.equal(hltAcceptedStripSuffix(undefined), HLT_HERO.acceptedStripSuffix);
+    assert.equal(HLT_HERO.acceptedStripSuffix, "accepted risk on record · AD FS retained");
   });
 
   it("names the OTHER thing called health in its back link — the only pillar that does", () => {

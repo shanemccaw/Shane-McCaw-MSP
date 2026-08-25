@@ -71,6 +71,7 @@ import {
   HLT_TONE,
   HLT_VERDICT,
   hltAcceptedMeta,
+  hltAcceptedStripSuffix,
   hltDriftOwner,
   hltDriftRows,
   hltTrendGeometry,
@@ -194,6 +195,14 @@ export default function PortalV2HealthPage() {
   const score = live.score ?? HLT_HERO.score;
   const delta = live.delta?.text ?? HLT_HERO.delta;
   const deltaColor = live.delta?.color ?? "#f87171";
+
+  // The accepted-risk strip's sentence (#1273): the worst real finding on this
+  // tenant's own Health payload, off the SAME `pillars` array `live` already
+  // carries from usePortalV2Pillars — no second fetch. `findings[0]` is the
+  // server's own worst-first order (severity, then real signal weight); see
+  // `hltAcceptedStripSuffix`'s header for why that stands in for "most recent".
+  const healthPillarFindings = live.pillars.find((p) => p.key === "health")?.findings ?? [];
+  const acceptedStripSuffix = hltAcceptedStripSuffix(healthPillarFindings[0]?.title);
 
   // The "Service health & incoming changes" panel has a real per-item feed —
   // this tenant's own synced Message Center posts (portal-message-center.ts,
@@ -352,23 +361,20 @@ export default function PortalV2HealthPage() {
             <span style={{ fontSize: "15px", fontWeight: 800, color: "#cbd5e1", fontFamily: MONO }}>
               {HLT_ACCEPTED.length}
             </span>
-            <span style={{ fontSize: "11.5px", color: "#94a3b8", whiteSpace: "nowrap" }}>
-              {HLT_HERO.acceptedStripSuffix}
+            <span
+              data-testid="pv2-hlt-accepted-strip-suffix"
+              style={{ fontSize: "11.5px", color: "#94a3b8", whiteSpace: "nowrap" }}
+            >
+              {acceptedStripSuffix}
             </span>
-            {/* Prototype 2921. NOTE THE PILLAR: this button calls `goRiskSec`,
-                not a Health equivalent — there is no `goRiskHealth` anywhere in
-                the prototype — so it opens the register filtered to SECURITY.
-                The visible consequence is that RSK-006, 'AD FS retained
-                alongside cloud authentication', which is a Health risk and is
-                what the copy beside this button is about, is filtered OUT by
-                the link meant to show it.
-
-                Reproduced as written, because the prototype is the
-                specification and a fourth handler would be an invention. It is
-                a one-word change to `pillar=Health` if Shane wants it, and it
-                is flagged in the build log rather than silently corrected. */}
+            {/* Prototype 2921 called this `goRiskSec`, filtering the register to
+                SECURITY rather than Health — the same investigation that decided
+                the sentence above (#1273) also settled this: it is the one-word
+                fix to `pillar=Health` rather than a reproduction of the
+                prototype's mismatch, since the register this strip should open
+                to is this pillar's own. */}
             <Link
-              href="/portal-v2/risk-register?pillar=Security"
+              href="/portal-v2/risk-register?pillar=Health"
               data-testid="pv2-hlt-risk-register-link"
               style={{
                 padding: 0,

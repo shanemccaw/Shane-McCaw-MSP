@@ -840,6 +840,34 @@
       "textContains": "M365 Health overview"
     },
     {
+      "sessionTag": "hlt-1273",
+      "name": "H1a (#1273) -- the accepted-risk strip's sentence always states 'accepted risk on record', live finding or fixture fallback alike -- the prefix that never changes regardless of which branch rendered it.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-hlt-accepted-strip-suffix']",
+      "state": "visible",
+      "textContains": "accepted risk on record"
+    },
+    {
+      "sessionTag": "hlt-1273",
+      "name": "H1b (#1273) -- the strip's register link still navigates correctly after its query param was corrected from the reproduced prototype defect (?pillar=Security, which filtered OUT the Health risk the strip is about) to ?pillar=Health. This harness has no href/URL assertion, so the query-param correctness itself is not independently re-proven here -- it is covered by portal-v2-risk-register.json's own UI22-UI29 deep-link filter tests, which already prove ?pillar=<X> filters correctly for a real pillar name.",
+      "action": "click",
+      "selector": "[data-testid='pv2-hlt-risk-register-link']"
+    },
+    {
+      "sessionTag": "hlt-1273",
+      "name": "H1c (#1273) -- landed on the real Risk Register, not a broken route.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-rr-heading']",
+      "state": "visible",
+      "textContains": "Risk Register"
+    },
+    {
+      "sessionTag": "hlt-1273",
+      "name": "reset (#1273) -- back to Health for the remaining steps.",
+      "action": "goto",
+      "target": "/portal/shane-mccaw-consulting/portal-v2/health"
+    },
+    {
       "name": "H2 -- the configuration-drift section is now verdict-sorted, leading with the changes that carry no request behind them. 'Changed without approval' is a group-0 verdict label that only exists once the flat table became this expandable list.",
       "action": "expect",
       "selector": "[data-testid='pv2-hlt-drift']",

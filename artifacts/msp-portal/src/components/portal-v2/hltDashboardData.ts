@@ -54,6 +54,7 @@ export const HLT_HERO = {
   delta: "-2 this month",
   /** The back link reads differently here than on any other pillar. */
   backLabel: "M365 Health overview",
+  /** The fixture/unscored fallback only — see `hltAcceptedStripSuffix` for the live sentence. */
   acceptedStripSuffix: "accepted risk on record · AD FS retained",
   eyebrow: "Where the debt is",
   headline: "You cleared 57 objects across scans 1 to 8. The last two scans added 7 back.",
@@ -487,6 +488,30 @@ export const HLT_ACCEPTED: readonly {
     note: "Reviewed against the vendor roadmap rather than a calendar date, so the review moves if their release slips.",
   },
 ];
+
+/**
+ * The accepted-risk strip's suffix sentence (proto 2913-2923), decided on #1273:
+ * the worst (highest-severity, most-recent-if-tied) REAL finding on this
+ * tenant's own health payload, never the hardcoded "AD FS retained" text and
+ * never a generic placeholder.
+ *
+ * "Most-recent-if-tied" is the decision's own tiebreak, but `msp_diagnostic_findings`
+ * carries no per-finding timestamp on this wire — every finding for a tenant is
+ * written in ONE batch when its scan run completes (see war-room-pillar-stats.ts's
+ * own header), so a created-at column would not actually distinguish findings
+ * from the same run. `worstFindingTitle` is the pillar's own `findings[0]` —
+ * already ordered severity-first, then by the platform's real signal-weight
+ * ranking (`compareRankedFindings`, the same ranking every other headline/
+ * satellite/chip in the app reads as "worst first") — which is the honest
+ * tiebreak this data actually supports.
+ *
+ * Falls back to the design fixture's own sentence, exactly as `useLivePillarHero`'s
+ * score/delta fall back to `HLT_HERO`, when the tenant has no live finding to
+ * report (unscored, or a clean scan with nothing critical/warning open).
+ */
+export function hltAcceptedStripSuffix(worstFindingTitle: string | null | undefined): string {
+  return worstFindingTitle ? `accepted risk on record · ${worstFindingTitle}` : HLT_HERO.acceptedStripSuffix;
+}
 
 /** The accepted card's meta grid (13159-13164). Note "Accepted", not "Approved". */
 export function hltAcceptedMeta(a: (typeof HLT_ACCEPTED)[number]) {
