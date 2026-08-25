@@ -139,10 +139,9 @@ namespace BuildConsole.Services
                 StartedAtUtc = DateTime.UtcNow
             });
 
-            // Git #1251 — explicit reports win. A bridged (checklist-derived) update is dropped the
-            // moment a build has reported its own progress, so the panel never flickers between the
-            // agent's real checkpoints and the synthesized checklist count.
-            if (!isExplicit && report.HasExplicitReport) return report;
+            // Git #1251 / #1252 — Allow checklist-bridge and explicit reportProgress updates to coexist.
+            // Rather than locking out the bridge once an explicit report lands, we process both so the
+            // sidebar stays live and fluid using the agent's screen-printed checklists during long gaps.
             if (isExplicit) report.HasExplicitReport = true;
 
             report.Step = step;
@@ -207,8 +206,6 @@ namespace BuildConsole.Services
         public static BuildProgressReport? BridgeFromChecklist(int queueItemId, int doneCount, int totalCount, string label)
         {
             if (totalCount <= 0) return null;
-            var existing = GetProgress(queueItemId);
-            if (existing != null && existing.HasExplicitReport) return null;
             return Report(queueItemId, Math.Clamp(doneCount, 0, totalCount), totalCount, label, isExplicit: false);
         }
 
