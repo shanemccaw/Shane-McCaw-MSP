@@ -114,6 +114,7 @@ export function loadConfig({ cwd = process.cwd() } = {}) {
     // buildSetsDir; a single JSONL event log for observability across all sets.
     buildSetsDir: path.join(stateDir, "buildsets"),
     buildSetsLog: path.join(stateDir, "buildsets.log"),
+    worktreesDir: path.join(stateDir, "worktrees"),
 
     // server checkout
     serverWorktree,

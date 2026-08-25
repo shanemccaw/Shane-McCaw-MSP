@@ -124,3 +124,51 @@ export function worktreePaths(cwd) {
     .filter((l) => l.startsWith("worktree "))
     .map((l) => l.slice("worktree ".length).trim());
 }
+
+/** List existing worktrees for this repo with full parsed metadata. */
+export function listWorktrees(cwd) {
+  const r = git(cwd, ["worktree", "list", "--porcelain"]);
+  if (r.code !== 0) return [];
+  const lines = r.stdout.split(/\r?\n/);
+  const worktrees = [];
+  let current = null;
+  for (const line of lines) {
+    if (line.startsWith("worktree ")) {
+      if (current) worktrees.push(current);
+      current = {
+        path: line.slice("worktree ".length).trim(),
+        branch: null,
+        detached: false,
+        head: null,
+      };
+    } else if (line.startsWith("branch ") && current) {
+      const ref = line.slice("branch ".length).trim();
+      current.branch = ref.startsWith("refs/heads/") ? ref.slice("refs/heads/".length) : ref;
+    } else if (line.startsWith("detached") && current) {
+      current.detached = true;
+    } else if (line.startsWith("HEAD ") && current) {
+      current.head = line.slice("HEAD ".length).trim();
+    }
+  }
+  if (current) worktrees.push(current);
+  return worktrees;
+}
+
+/** Remove a git worktree. */
+export function removeWorktree(cwd, path, { force = false } = {}) {
+  const args = ["worktree", "remove"];
+  if (force) args.push("--force");
+  args.push(path);
+  return git(cwd, args);
+}
+
+/** Prune stale git worktree administrative files. */
+export function pruneWorktrees(cwd) {
+  return git(cwd, ["worktree", "prune"]);
+}
+
+/** Delete a git branch. */
+export function deleteBranch(cwd, branchName, { force = false } = {}) {
+  const args = ["branch", force ? "-D" : "-d", branchName];
+  return git(cwd, args);
+}

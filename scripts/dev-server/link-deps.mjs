@@ -98,3 +98,48 @@ export function unlinkDeps(links) {
     }
   }
 }
+
+/** Finds and unlinks all node_modules and dist junctions inside a worktree path. */
+export function findAndUnlinkWorktreeJunctions(worktreePath) {
+  if (!isWindows()) return [];
+  const hosts = [""]; // worktree root itself
+  for (const group of ["artifacts", "lib", "lib/integrations", "scripts"]) {
+    const dir = path.join(worktreePath, group);
+    if (!existsSync(dir)) continue;
+    if (group === "scripts") {
+      hosts.push("scripts");
+      continue;
+    }
+    try {
+      for (const name of readdirSync(dir)) {
+        hosts.push(path.posix.join(group, name));
+      }
+    } catch {}
+  }
+
+  const rels = [];
+  for (const h of hosts) {
+    rels.push(path.posix.join(h, "node_modules"));
+  }
+  for (const group of ["lib", "lib/integrations"]) {
+    const dir = path.join(worktreePath, group);
+    if (!existsSync(dir)) continue;
+    try {
+      for (const name of readdirSync(dir)) {
+        rels.push(path.posix.join(group, name, "dist"));
+      }
+    } catch {}
+  }
+
+  const unlinked = [];
+  for (const rel of rels) {
+    const link = path.join(worktreePath, rel);
+    try {
+      if (existsSync(link) && statSync(link).isDirectory()) {
+        execFileSync("cmd", ["/c", "rmdir", link], { stdio: "ignore" });
+        unlinked.push(link);
+      }
+    } catch {}
+  }
+  return unlinked;
+}
