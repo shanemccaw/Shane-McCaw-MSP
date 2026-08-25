@@ -268,6 +268,8 @@ namespace BuildConsole.Services
         /// <summary>The base target URL passed to RunAsync, used to resolve relative goto steps.</summary>
         private string _targetUrl = string.Empty;
 
+        private readonly List<string> _registeredScriptIds = new();
+
         /// <summary>Git #1210 — optional per-navigation origin resolver: given a root-anchored route path
         /// (e.g. "/portal/x" or "/scan"), returns the front-end origin (http://localhost:{port}) that route
         /// should load from. Supplied by RunManifestAsync ONLY in local Dev, where each front-end lives on its
@@ -428,6 +430,20 @@ namespace BuildConsole.Services
             }
             finally
             {
+                // Clean up any registered document creation scripts
+                if (_webView.CoreWebView2 != null)
+                {
+                    foreach (var scriptId in _registeredScriptIds)
+                    {
+                        try
+                        {
+                            _webView.CoreWebView2.RemoveScriptToExecuteOnDocumentCreated(scriptId);
+                        }
+                        catch { }
+                    }
+                }
+                _registeredScriptIds.Clear();
+
                 // Git #970 — leave the control back at its default desktop size no matter how the run
                 // ended (pass, incomplete, nav failure, or crash), so a later run or the manual "Play"
                 // path sharing this same WebView2 never inherits a stale resize.
@@ -1064,7 +1080,27 @@ namespace BuildConsole.Services
                     }
                     catch { }
 
-                    ActivityLog.Log(Channel, $"EnsureLoggedOut: cleared {appCookies.Count} cookie(s) and storage for '{originUrl}'.");
+                    // Register a script to execute on document created for clean baseline session state
+                    try
+                    {
+                        string cleanScript = @$"
+(function() {{
+    try {{
+        if (window.location.origin === '{originUrl}') {{
+            var p = window.location.pathname.toLowerCase();
+            if (p.indexOf('/login') >= 0 || p.indexOf('/signin') >= 0 || p.indexOf('/sign-in') >= 0 || p.indexOf('/auth') >= 0 || p === '/' || p === '/portal' || p === '/portal/') {{
+                localStorage.clear();
+                sessionStorage.clear();
+            }}
+        }}
+    }} catch (_) {{}}
+}})();";
+                        string scriptId = await _webView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(cleanScript);
+                        _registeredScriptIds.Add(scriptId);
+                    }
+                    catch { }
+
+                    ActivityLog.Log(Channel, $"EnsureLoggedOut: cleared cookies/storage and registered clean baseline session script for '{originUrl}'.");
                 }
             }
             catch (Exception ex)
