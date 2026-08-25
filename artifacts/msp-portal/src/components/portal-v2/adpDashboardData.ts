@@ -104,6 +104,10 @@ export interface AdpWorkload {
   of: string;
   src: string;
   reading: string;
+  /** The collection window the "Active" fact reports against. Defaults to the
+   * fixture's "30 days"; a live-overlaid row states its own check's real
+   * window (#1252 — these checks run at D7, not D30). */
+  window?: string;
 }
 
 export const ADP_WORKLOADS: readonly AdpWorkload[] = [
@@ -130,11 +134,105 @@ export function adpWorkloadDetail(w: AdpWorkload) {
     facts: [
       { k: "Active", v: `${w.active}%` },
       { k: "Counted", v: w.of.split(" ").slice(0, 3).join(" ") },
-      { k: "Window", v: "30 days" },
+      { k: "Window", v: w.window ?? "30 days" },
     ],
     reading: `${w.of}. ${w.reading}`,
     src: w.src,
   };
+}
+
+/**
+ * #1252 — the 4 workload rows the platform already collects real data for:
+ * Exchange/Outlook, Teams chat & meetings, SharePoint and OneDrive. Every
+ * field here traces to a real `monitor_checks` row already running on the
+ * normal cadence (see lib/dashboard-registry/src/metrics.ts's
+ * usage.exchangeActiveCount / usage.teamsActiveCount /
+ * usage.sharePointActiveCount / usage.oneDriveActiveCount and their new
+ * denominator/sync-error siblings). The remaining six rows (Teams channels,
+ * Copilot, Power BI, Teams Phone, Planner, Viva Engage) have no per-item
+ * server feed and stay fixture — same honest-gap contract useLivePillarHero
+ * documents for the rest of this page.
+ */
+export interface AdpWorkloadLiveCounts {
+  exchangeActive: number | null;
+  exchangeLicensed: number | null;
+  teamsActive: number | null;
+  teamsLicensed: number | null;
+  sharePointActive: number | null;
+  sharePointScanned: number | null;
+  oneDriveActive: number | null;
+  oneDriveScanned: number | null;
+  oneDriveStaleSync: number | null;
+}
+
+export const ADP_WORKLOAD_LIVE_EMPTY: AdpWorkloadLiveCounts = {
+  exchangeActive: null,
+  exchangeLicensed: null,
+  teamsActive: null,
+  teamsLicensed: null,
+  sharePointActive: null,
+  sharePointScanned: null,
+  oneDriveActive: null,
+  oneDriveScanned: null,
+  oneDriveStaleSync: null,
+};
+
+function adpWorkloadTone(pct: number): AdpTone {
+  return pct >= 70 ? "green" : pct >= 45 ? "amber" : "red";
+}
+
+const fmtCount = (n: number) => n.toLocaleString();
+
+/**
+ * Overlay real counts onto the first 4 fixture rows. Each row is overlaid
+ * independently — a partial payload (some checks scanned, others not yet)
+ * overlays only the rows that genuinely resolved, leaving the rest on their
+ * design fixture rather than guessing.
+ */
+export function adpWorkloadsWithLive(live: AdpWorkloadLiveCounts): readonly AdpWorkload[] {
+  const rows = ADP_WORKLOADS.map((w) => ({ ...w }));
+
+  const overlayRatio = (index: number, active: number | null, total: number | null, ofSuffix: string, src: string) => {
+    if (active == null || total == null || total <= 0) return;
+    const pct = Math.round((active / total) * 100);
+    rows[index] = {
+      ...rows[index],
+      active: pct,
+      tone: adpWorkloadTone(pct),
+      of: `${fmtCount(active)} of ${fmtCount(total)} ${ofSuffix}`,
+      src,
+      window: "7 days",
+    };
+  };
+
+  overlayRatio(0, live.exchangeActive, live.exchangeLicensed, "sent or read mail in the last 7 days", "getEmailActivityUserDetail(period=D7)");
+  overlayRatio(1, live.teamsActive, live.teamsLicensed, "posted or joined a meeting in the last 7 days", "getTeamsUserActivityUserDetail(period=D7)");
+  // Honest per-SITE proxy, not per-user (getSharePointSiteUsageDetail has
+  // never queried a per-user file open — see metrics.ts's own caveat).
+  overlayRatio(2, live.sharePointActive, live.sharePointScanned, "sites had a recently active owner", "getSharePointSiteUsageDetail(period=D7) — per site, not per user");
+
+  if (live.oneDriveActive != null && live.oneDriveScanned != null && live.oneDriveScanned > 0) {
+    const pct = Math.round((live.oneDriveActive / live.oneDriveScanned) * 100);
+    const stale = live.oneDriveStaleSync;
+    rows[3] = {
+      ...rows[3],
+      active: pct,
+      tone: adpWorkloadTone(pct),
+      of: `${fmtCount(live.oneDriveActive)} of ${fmtCount(live.oneDriveScanned)} accounts active in the last 7 days`,
+      note:
+        stale != null && stale > 0
+          ? `${fmtCount(stale)} account(s) show no OneDrive sync activity in 30+ days.`
+          : "No accounts show stale OneDrive sync activity in the last 30 days.",
+      reading:
+        stale != null && stale > 0
+          ? `${fmtCount(stale)} account(s) have not synced in 30+ days and are not marked deleted — a client-side sync-health proxy, not a literal error read.`
+          : rows[3].reading,
+      src: "getOneDriveUsageAccountDetail(period=D7, D30)",
+      window: "7 days",
+    };
+  }
+
+  return rows;
 }
 
 /** `adpDeptCoverage` / `adpDeptNote` (19827-19830) — the department-mapping caveat. */

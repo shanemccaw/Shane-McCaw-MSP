@@ -1535,6 +1535,73 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     status: "available",
     smartEligible: false,
   },
+  {
+    // #1252: the denominator siblings alongside the 4 active-count metrics
+    // above — same checks, same `pickMappedValueField` token-overlap
+    // disambiguation (each metric key's own tokens steer it to its matching
+    // targetField on a shared check). Lets the Adoption pillar page render a
+    // real "N of M" population line instead of a fixture percentage.
+    key: "usage.teamsLicensedUserCount",
+    label: "Teams Licensed Users Scanned",
+    valueType: "count",
+    shape: "scalar",
+    sourceType: "monitor_profile",
+    sourceKey: "adoption:teams-activity-trend",
+    scope: "customer",
+    status: "available",
+    smartEligible: false,
+  },
+  {
+    key: "usage.exchangeLicensedUserCount",
+    label: "Exchange Licensed Users Scanned",
+    valueType: "count",
+    shape: "scalar",
+    sourceType: "monitor_profile",
+    sourceKey: "adoption:email-activity-trend",
+    scope: "customer",
+    status: "available",
+    smartEligible: false,
+  },
+  {
+    // Per-SITE, not per-user — same honest caveat as usage.sharePointActiveCount
+    // above; this is "sites scanned", not a licensed-user count.
+    key: "usage.sharePointSitesScannedCount",
+    label: "SharePoint Sites Scanned",
+    valueType: "count",
+    shape: "scalar",
+    sourceType: "monitor_profile",
+    sourceKey: "adoption:sharepoint-onedrive-trend",
+    scope: "customer",
+    status: "available",
+    smartEligible: false,
+  },
+  {
+    key: "usage.oneDriveAccountsScannedCount",
+    label: "OneDrive Accounts Scanned",
+    valueType: "count",
+    shape: "scalar",
+    sourceType: "monitor_profile",
+    sourceKey: "onedrive:active-users",
+    scope: "customer",
+    status: "available",
+    smartEligible: false,
+  },
+  {
+    // #753/#1114: the stale-sync proxy check — see that migration's own header
+    // for why this counts accounts with a blank-or-30+-day-stale "Last Activity
+    // Date" as a client-side sync-health PROXY, not a literal sync-error read.
+    // Registered here for the first time (#1252) — #753 deliberately left the
+    // metric-registry entry as a follow-up, done now.
+    key: "usage.oneDriveSyncErrorCount",
+    label: "OneDrive Stale Sync Accounts",
+    valueType: "count",
+    shape: "scalar",
+    sourceType: "monitor_profile",
+    sourceKey: "onedrive:sync-errors",
+    scope: "customer",
+    status: "available",
+    smartEligible: false,
+  },
 
   // ---- Platform/Custom (platform's own health, ops-facing) --------------
   {

@@ -45,6 +45,7 @@ import { useFormDrawer } from "@/components/portal-v2/FormDrawer";
 import { useAcceptRisk } from "@/components/portal-v2/AcceptRiskPanel";
 import { GOV_SRC_META } from "@/components/portal-v2/govPages";
 import { useLivePillarHero, PV2_SOURCE_CLIP } from "@/components/portal-v2/useLivePillarHero";
+import { useAdpWorkloadsLive } from "@/components/portal-v2/useAdpWorkloadsLive";
 import {
   ADP_DEPT,
   ADP_ENABLERS,
@@ -64,13 +65,13 @@ import {
   ADP_PROV,
   ADP_TONE,
   ADP_WINS,
-  ADP_WORKLOADS,
   adpMatrixCell,
   adpParkedMeta,
   adpPlayFixKey,
   adpTrendGeometry,
   adpWinTier,
   adpWorkloadDetail,
+  adpWorkloadsWithLive,
   type AdpPlay,
 } from "@/components/portal-v2/adpDashboardData";
 
@@ -106,6 +107,12 @@ export default function PortalV2AdoptionPage() {
   const score = live.score ?? ADP_HERO.score;
   const delta = live.delta?.text ?? ADP_HERO.delta;
   const deltaColor = live.delta?.color ?? "#34d399";
+
+  // #1252: the 4 workload rows with a real per-check server feed (Exchange,
+  // Teams chat & meetings, SharePoint, OneDrive) overlaid onto the fixture —
+  // see adpWorkloadsWithLive's own header for which rows and why.
+  const { live: workloadLive } = useAdpWorkloadsLive();
+  const workloads = adpWorkloadsWithLive(workloadLive);
   const ringR = 46;
   const ringC = 2 * Math.PI * ringR;
   const ringOffset = ringC - (score / 100) * ringC;
@@ -590,7 +597,7 @@ export default function PortalV2AdoptionPage() {
               }}
               data-testid="pv2-adp-workloads"
             >
-              {ADP_WORKLOADS.map((w, wi) => {
+              {workloads.map((w, wi) => {
                 const c = ADP_TONE[w.tone];
                 const isOpen = openWorkload === wi;
                 const detail = adpWorkloadDetail(w);

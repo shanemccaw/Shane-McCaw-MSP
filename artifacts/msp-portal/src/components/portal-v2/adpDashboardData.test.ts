@@ -36,12 +36,14 @@ import {
   ADP_PROV,
   ADP_WINS,
   ADP_WORKLOADS,
+  ADP_WORKLOAD_LIVE_EMPTY,
   adpMatrixCell,
   adpParkedMeta,
   adpPlayFixKey,
   adpTrendGeometry,
   adpWinTier,
   adpWorkloadDetail,
+  adpWorkloadsWithLive,
 } from "./adpDashboardData";
 
 describe("Adoption play badges — who does the work", () => {
@@ -266,6 +268,84 @@ describe("Workload expansion — derived, not typed", () => {
       assert.ok(d.src.length > 0, `${w.name} has no source`);
       assert.ok(d.reading.startsWith(w.of), `${w.name} reading dropped its population line`);
     });
+  });
+});
+
+describe("#1252 — live workload overlay", () => {
+  it("leaves every row on fixture when nothing has resolved", () => {
+    const rows = adpWorkloadsWithLive(ADP_WORKLOAD_LIVE_EMPTY);
+    assert.deepEqual(rows, ADP_WORKLOADS);
+  });
+
+  it("overlays Exchange, Teams, SharePoint and OneDrive independently", () => {
+    const rows = adpWorkloadsWithLive({
+      ...ADP_WORKLOAD_LIVE_EMPTY,
+      exchangeActive: 900,
+      exchangeLicensed: 1000,
+      // Teams left null on purpose — proves a partial payload overlays only
+      // the rows that genuinely resolved rather than guessing the rest.
+    });
+    assert.equal(rows[0].active, 90);
+    assert.equal(rows[0].tone, "green");
+    assert.equal(rows[0].of, "900 of 1,000 sent or read mail in the last 7 days");
+    assert.equal(rows[0].src, "getEmailActivityUserDetail(period=D7)");
+    assert.equal(rows[0].window, "7 days");
+    // Untouched rows stay byte-identical to the fixture.
+    assert.deepEqual(rows[1], ADP_WORKLOADS[1]);
+    assert.deepEqual(rows[2], ADP_WORKLOADS[2]);
+    assert.deepEqual(rows[3], ADP_WORKLOADS[3]);
+  });
+
+  it("states SharePoint honestly as per-site, never per-user", () => {
+    const rows = adpWorkloadsWithLive({
+      ...ADP_WORKLOAD_LIVE_EMPTY,
+      sharePointActive: 40,
+      sharePointScanned: 50,
+    });
+    assert.equal(rows[2].active, 80);
+    assert.match(rows[2].of, /sites had a recently active owner/);
+    assert.match(rows[2].src, /per site, not per user/);
+  });
+
+  it("folds the sync-errors proxy into the OneDrive row's note and reading", () => {
+    const withStale = adpWorkloadsWithLive({
+      ...ADP_WORKLOAD_LIVE_EMPTY,
+      oneDriveActive: 150,
+      oneDriveScanned: 200,
+      oneDriveStaleSync: 12,
+    });
+    assert.equal(withStale[3].active, 75);
+    assert.equal(withStale[3].tone, "green");
+    assert.equal(withStale[3].of, "150 of 200 accounts active in the last 7 days");
+    assert.match(withStale[3].note, /^12 account\(s\) show no OneDrive sync activity/);
+    assert.match(withStale[3].reading, /client-side sync-health proxy, not a literal error read/);
+
+    const zeroStale = adpWorkloadsWithLive({
+      ...ADP_WORKLOAD_LIVE_EMPTY,
+      oneDriveActive: 150,
+      oneDriveScanned: 200,
+      oneDriveStaleSync: 0,
+    });
+    assert.equal(zeroStale[3].note, "No accounts show stale OneDrive sync activity in the last 30 days.");
+  });
+
+  it("bands live tone the same way the department heatmap does (70 / 45)", () => {
+    const rows = adpWorkloadsWithLive({
+      ...ADP_WORKLOAD_LIVE_EMPTY,
+      teamsActive: 44,
+      teamsLicensed: 100,
+    });
+    assert.equal(rows[1].active, 44);
+    assert.equal(rows[1].tone, "red");
+  });
+
+  it("never divides by a zero or missing denominator", () => {
+    const rows = adpWorkloadsWithLive({
+      ...ADP_WORKLOAD_LIVE_EMPTY,
+      exchangeActive: 5,
+      exchangeLicensed: 0,
+    });
+    assert.deepEqual(rows[0], ADP_WORKLOADS[0]);
   });
 });
 
