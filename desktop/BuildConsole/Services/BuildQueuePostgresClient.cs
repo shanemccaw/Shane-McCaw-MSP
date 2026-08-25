@@ -829,6 +829,67 @@ namespace BuildConsole.Services
                 cmd.Parameters.AddWithValue("@issueNumber", issueNumber);
                 await cmd.ExecuteNonQueryAsync();
             }
+
+            // Step 4: Look up if this issueNumber is an Epic or an Issue, and update bt_chats
+            const string findEpicSql = "SELECT id FROM bt_epics WHERE github_number = @issueNumber LIMIT 1";
+            int? epicId = null;
+            await using (var cmd = new NpgsqlCommand(findEpicSql, conn))
+            {
+                cmd.Parameters.AddWithValue("@issueNumber", issueNumber);
+                var val = await cmd.ExecuteScalarAsync();
+                if (val != null && val != DBNull.Value)
+                {
+                    epicId = Convert.ToInt32(val);
+                }
+            }
+
+            if (epicId.HasValue)
+            {
+                const string updateChatEpicSql = @"
+                    UPDATE bt_chats
+                    SET epic_id = @epicId, issue_id = NULL, updated_at = NOW()
+                    WHERE id = @chatId";
+                await using (var cmd = new NpgsqlCommand(updateChatEpicSql, conn))
+                {
+                    cmd.Parameters.AddWithValue("@epicId", epicId.Value);
+                    cmd.Parameters.AddWithValue("@chatId", chatId.Value);
+                    await cmd.ExecuteNonQueryAsync();
+                }
+            }
+            else
+            {
+                const string findIssueSql = "SELECT id, epic_id FROM bt_issues WHERE github_number = @issueNumber LIMIT 1";
+                int? issueId = null;
+                int? issueEpicId = null;
+                await using (var cmd = new NpgsqlCommand(findIssueSql, conn))
+                {
+                    cmd.Parameters.AddWithValue("@issueNumber", issueNumber);
+                    await using (var reader = await cmd.ExecuteReaderAsync())
+                    {
+                        if (await reader.ReadAsync())
+                        {
+                            issueId = reader.GetInt32(0);
+                            issueEpicId = reader.IsDBNull(1) ? null : (int?)reader.GetInt32(1);
+                        }
+                    }
+                }
+
+                if (issueId.HasValue)
+                {
+                    const string updateChatIssueSql = @"
+                        UPDATE bt_chats
+                        SET issue_id = @issueId, epic_id = @epicId, updated_at = NOW()
+                        WHERE id = @chatId";
+                    await using (var cmd = new NpgsqlCommand(updateChatIssueSql, conn))
+                    {
+                        cmd.Parameters.AddWithValue("@issueId", issueId.Value);
+                        cmd.Parameters.Add(new NpgsqlParameter("@epicId", NpgsqlTypes.NpgsqlDbType.Integer)
+                        { Value = issueEpicId.HasValue ? (object)issueEpicId.Value : DBNull.Value });
+                        cmd.Parameters.AddWithValue("@chatId", chatId.Value);
+                        await cmd.ExecuteNonQueryAsync();
+                    }
+                }
+            }
         }
 
         // ── UnlinkChatFromIssueAsync ──────────────────────────────────────────────
@@ -854,7 +915,7 @@ namespace BuildConsole.Services
                 }
             }
 
-            // Step 2: If it exists, delete the link from bt_chat_issues
+            // Step 2: If it exists, delete the link from bt_chat_issues and clean up bt_chats
             if (chatId != null)
             {
                 const string deleteLinkSql = @"
@@ -866,6 +927,92 @@ namespace BuildConsole.Services
                     cmd.Parameters.AddWithValue("@chatId", chatId.Value);
                     cmd.Parameters.AddWithValue("@issueNumber", issueNumber);
                     await cmd.ExecuteNonQueryAsync();
+                }
+
+                // Recalculate remaining links
+                const string selectRemainingSql = "SELECT issue_number FROM bt_chat_issues WHERE chat_id = @chatId LIMIT 1";
+                int? remainingIssueNumber = null;
+                await using (var cmd = new NpgsqlCommand(selectRemainingSql, conn))
+                {
+                    cmd.Parameters.AddWithValue("@chatId", chatId.Value);
+                    var val = await cmd.ExecuteScalarAsync();
+                    if (val != null && val != DBNull.Value)
+                    {
+                        remainingIssueNumber = Convert.ToInt32(val);
+                    }
+                }
+
+                if (remainingIssueNumber == null)
+                {
+                    const string nullChatSql = "UPDATE bt_chats SET epic_id = NULL, issue_id = NULL, updated_at = NOW() WHERE id = @chatId";
+                    await using (var cmd = new NpgsqlCommand(nullChatSql, conn))
+                    {
+                        cmd.Parameters.AddWithValue("@chatId", chatId.Value);
+                        await cmd.ExecuteNonQueryAsync();
+                    }
+                }
+                else
+                {
+                    int nextIssueNum = remainingIssueNumber.Value;
+                    const string findEpicSql = "SELECT id FROM bt_epics WHERE github_number = @issueNumber LIMIT 1";
+                    int? epicId = null;
+                    await using (var cmd = new NpgsqlCommand(findEpicSql, conn))
+                    {
+                        cmd.Parameters.AddWithValue("@issueNumber", nextIssueNum);
+                        var val = await cmd.ExecuteScalarAsync();
+                        if (val != null && val != DBNull.Value)
+                        {
+                            epicId = Convert.ToInt32(val);
+                        }
+                    }
+
+                    if (epicId.HasValue)
+                    {
+                        const string updateChatEpicSql = @"
+                            UPDATE bt_chats
+                            SET epic_id = @epicId, issue_id = NULL, updated_at = NOW()
+                            WHERE id = @chatId";
+                        await using (var cmd = new NpgsqlCommand(updateChatEpicSql, conn))
+                        {
+                            cmd.Parameters.AddWithValue("@epicId", epicId.Value);
+                            cmd.Parameters.AddWithValue("@chatId", chatId.Value);
+                            await cmd.ExecuteNonQueryAsync();
+                        }
+                    }
+                    else
+                    {
+                        const string findIssueSql = "SELECT id, epic_id FROM bt_issues WHERE github_number = @issueNumber LIMIT 1";
+                        int? issueId = null;
+                        int? issueEpicId = null;
+                        await using (var cmd = new NpgsqlCommand(findIssueSql, conn))
+                        {
+                            cmd.Parameters.AddWithValue("@issueNumber", nextIssueNum);
+                            await using (var reader = await cmd.ExecuteReaderAsync())
+                            {
+                                if (await reader.ReadAsync())
+                                {
+                                    issueId = reader.GetInt32(0);
+                                    issueEpicId = reader.IsDBNull(1) ? null : (int?)reader.GetInt32(1);
+                                }
+                            }
+                        }
+
+                        if (issueId.HasValue)
+                        {
+                            const string updateChatIssueSql = @"
+                                UPDATE bt_chats
+                                SET issue_id = @issueId, epic_id = @epicId, updated_at = NOW()
+                                WHERE id = @chatId";
+                            await using (var cmd = new NpgsqlCommand(updateChatIssueSql, conn))
+                            {
+                                cmd.Parameters.AddWithValue("@issueId", issueId.Value);
+                                cmd.Parameters.Add(new NpgsqlParameter("@epicId", NpgsqlTypes.NpgsqlDbType.Integer)
+                                { Value = issueEpicId.HasValue ? (object)issueEpicId.Value : DBNull.Value });
+                                cmd.Parameters.AddWithValue("@chatId", chatId.Value);
+                                await cmd.ExecuteNonQueryAsync();
+                            }
+                        }
+                    }
                 }
             }
         }

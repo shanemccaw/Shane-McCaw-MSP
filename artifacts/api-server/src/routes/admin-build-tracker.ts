@@ -2196,6 +2196,31 @@ router.post("/admin/build-tracker/chats/assign-issue", ingestAuth, async (req: R
       })
       .onConflictDoNothing();
 
+    const [epic] = await db
+      .select({ id: btEpicsTable.id })
+      .from(btEpicsTable)
+      .where(eq(btEpicsTable.githubNumber, issue_number))
+      .limit(1);
+
+    if (epic) {
+      await db
+        .update(btChatsTable)
+        .set({ epicId: epic.id, issueId: null, updatedAt: new Date() })
+        .where(eq(btChatsTable.id, chat.id));
+    } else {
+      const [issue] = await db
+        .select({ id: btIssuesTable.id, epicId: btIssuesTable.epicId })
+        .from(btIssuesTable)
+        .where(eq(btIssuesTable.githubNumber, issue_number))
+        .limit(1);
+      if (issue) {
+        await db
+          .update(btChatsTable)
+          .set({ issueId: issue.id, epicId: issue.epicId, updatedAt: new Date() })
+          .where(eq(btChatsTable.id, chat.id));
+      }
+    }
+
     log.info({ conversationId: convId, issueNumber: issue_number, chatId: chat.id }, "assigned chat to issue");
     res.json({ ok: true, conversationId: convId, issueNumber: issue_number });
   } catch (err) {
@@ -2232,6 +2257,45 @@ router.post("/admin/build-tracker/chats/unassign-issue", ingestAuth, async (req:
     await db
       .delete(btChatIssuesTable)
       .where(and(eq(btChatIssuesTable.chatId, existing[0].id), eq(btChatIssuesTable.issueNumber, issue_number)));
+
+    const remaining = await db
+      .select({ issueNumber: btChatIssuesTable.issueNumber })
+      .from(btChatIssuesTable)
+      .where(eq(btChatIssuesTable.chatId, existing[0].id))
+      .limit(1);
+
+    if (remaining.length === 0) {
+      await db
+        .update(btChatsTable)
+        .set({ epicId: null, issueId: null, updatedAt: new Date() })
+        .where(eq(btChatsTable.id, existing[0].id));
+    } else {
+      const nextIssueNum = remaining[0].issueNumber;
+      const [epic] = await db
+        .select({ id: btEpicsTable.id })
+        .from(btEpicsTable)
+        .where(eq(btEpicsTable.githubNumber, nextIssueNum))
+        .limit(1);
+
+      if (epic) {
+        await db
+          .update(btChatsTable)
+          .set({ epicId: epic.id, issueId: null, updatedAt: new Date() })
+          .where(eq(btChatsTable.id, existing[0].id));
+      } else {
+        const [issue] = await db
+          .select({ id: btIssuesTable.id, epicId: btIssuesTable.epicId })
+          .from(btIssuesTable)
+          .where(eq(btIssuesTable.githubNumber, nextIssueNum))
+          .limit(1);
+        if (issue) {
+          await db
+            .update(btChatsTable)
+            .set({ issueId: issue.id, epicId: issue.epicId, updatedAt: new Date() })
+            .where(eq(btChatsTable.id, existing[0].id));
+        }
+      }
+    }
 
     log.info({ conversationId: convId, issueNumber: issue_number, chatId: existing[0].id }, "unassigned chat from issue");
     res.json({ ok: true, conversationId: convId, issueNumber: issue_number });
