@@ -19,9 +19,11 @@ import { FixPanel, useFixPanel } from "@/components/portal-v2/FixPanel";
 import { useFormDrawer } from "@/components/portal-v2/FormDrawer";
 import { useAcceptRisk } from "@/components/portal-v2/AcceptRiskPanel";
 import { CA_MONO } from "@/components/portal-v2/secCaData";
-import { caBandsWithRows, caStatCards } from "@/components/portal-v2/secCaModel";
+import { caBandsWithRows, caBandsWithRowsLive, caStatCards, caStatCardsLive } from "@/components/portal-v2/secCaModel";
 import { useLivePillarHero } from "@/components/portal-v2/useLivePillarHero";
+import { useCaBaselineLive } from "@/components/portal-v2/useCaBaselineLive";
 import { PillarLiveSource } from "@/components/portal-v2/PillarLiveSource";
+import { PV2_SOURCE_CLIP } from "@/components/portal-v2/useLivePillarHero";
 
 function WrenchIcon({ color = "#60a5fa", size = 13 }: { color?: string; size?: number }) {
   return (
@@ -62,15 +64,18 @@ export default function PortalV2SecurityCaPage() {
 
   const { openAcceptRisk, acceptRiskElement } = useAcceptRisk({ onConfirm: () => {}, onAskShaneBot: askShaneBot });
 
-  const bands = caBandsWithRows();
-  const stats = caStatCards();
-
   // Reads the security pillar's live war-room-pillars payload through the shared
-  // `useLivePillarHero` seam; `pv2-ca-source` proves the page is on real data. The
-  // per-policy band rows (the 22 named CA policies and their drift state) need a
-  // per-policy Graph feed the war-room-pillars payload does not carry, so those
-  // stay fixture — a documented backend gap, not fabricated policy rows.
+  // `useLivePillarHero` seam; `pv2-ca-source` proves the hero score is on real data.
   const live = useLivePillarHero("security");
+
+  // The per-policy band rows: real per-policy Conditional Access status, read
+  // via `useCaBaselineLive` (identity:ca-policy-count / license:sku-utilization
+  // item-detail rows, #1232). Falls back to the design fixture only until the
+  // first response lands or when the tenant genuinely has no collected rows.
+  const caLive = useCaBaselineLive();
+  const rowsAreLive = caLive.loaded && caLive.policies !== null;
+  const bands = rowsAreLive ? caBandsWithRowsLive(caLive.policies!, caLive.hasEntraP2) : caBandsWithRows();
+  const stats = rowsAreLive ? caStatCardsLive(bands) : caStatCards();
 
   return (
     <PortalV2Shell eyebrow="Security" title="Conditional Access Baseline">
@@ -315,6 +320,9 @@ export default function PortalV2SecurityCaPage() {
       {acceptRiskElement}
       {formElement}
       <PillarLiveSource testId="pv2-ca-source" live={live} />
+      <span data-testid="pv2-ca-rows-source" style={PV2_SOURCE_CLIP}>
+        {rowsAreLive ? "live" : "fixture"}
+      </span>
     </PortalV2Shell>
   );
 }
