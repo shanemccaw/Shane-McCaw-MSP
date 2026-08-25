@@ -1,7 +1,7 @@
 {
   "feature": "Customer Portal v2 Part 12 -- Account settings: the five account-MENU pages, none of which existed. Account security (/portal-v2/account-security), Billing (/portal-v2/billing), Webhooks (/portal-v2/webhooks), Alert preferences (/portal-v2/alert-preferences) and Receipt (/portal-v2/receipt), recreated from the prototype's isAccountSecurity/isBilling/isWebhooks/isAlertPrefs/isReceipt blocks ('Customer Portal Shell.dc.html' 2199-2371 / 2371-2520 / 2520-2722 / 2722-2875 / 6013-6093) and their logic-class fixtures. UI-only: fixtures in <page>Data.ts, derivations in <page>Model.ts pinned by <page>Model.test.ts. Reached from the account menu (HeaderMenus.tsx), not the left nav. Third billing tier is Premier per #1128, never Command.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "613d3ed6b",
+  "lastVerifiedAgainstCommit": "72946fea0",
   "notes": [
     "THE LOGIN BLOCK IS NOT OPTIONAL. /portal-v2/* sits behind ProtectedRoute; a probe that skips the five login steps hits the login screen and every assertion fails for a reason unrelated to the pages. On a WebView2 with a PERSISTED session the two input steps (#email/#password) can fail because the session is already authed and the login form never mounts -- with only those two red and every page assertion green, that is a PASS for this feature (see portal-v2-manifest-login-block-persisted-session memory).",
     "UI ROUTE SHAPE: msp-portal's outer WouterRouter has base '/portal' and SlugScope nests a second router at '/{slug}', so the real URL is /portal/{slug}/portal-v2/<page>. App.tsx declares each of these plain routes BEFORE '/portal-v2/:pillar' so the param route cannot swallow them. These pages are reached from the ACCOUNT MENU, not the left nav.",
