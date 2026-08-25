@@ -2158,6 +2158,14 @@ namespace BuildConsole.Controls
                     _buildInAssistantRun = false;
                     _buildToolCallsById.Clear();
                 }
+
+                bool discardFirstLine = false;
+                if (_buildPaneTailedLength == 0 && fs.Length > 80000)
+                {
+                    _buildPaneTailedLength = fs.Length - 80000;
+                    discardFirstLine = true;
+                }
+
                 if (fs.Length <= _buildPaneTailedLength) return;
                 fs.Seek(_buildPaneTailedLength, SeekOrigin.Begin);
                 using var reader = new StreamReader(fs);
@@ -2166,6 +2174,14 @@ namespace BuildConsole.Controls
 
                 _buildPaneLineBuffer += newText;
                 int nl;
+                if (discardFirstLine)
+                {
+                    nl = _buildPaneLineBuffer.IndexOf('\n');
+                    if (nl >= 0)
+                    {
+                        _buildPaneLineBuffer = _buildPaneLineBuffer.Substring(nl + 1);
+                    }
+                }
                 while ((nl = _buildPaneLineBuffer.IndexOf('\n')) >= 0)
                 {
                     var line = _buildPaneLineBuffer.Substring(0, nl);
