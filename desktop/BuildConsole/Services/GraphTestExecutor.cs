@@ -128,6 +128,7 @@ namespace BuildConsole.Services
 
                 var expect = test.TryGetProperty("expect", out var e) ? e : default;
                 var (passed, detail, expected, actual) = HttpTestExecutor.EvaluateExpectation(expect, (int)res.StatusCode, responseBody);
+                bool passedSoFar = passed;
 
                 // #877 — extract a value out of this step's own response body for later steps to use.
                 if (test.TryGetProperty("extract", out var extractEl) && extractEl.ValueKind == JsonValueKind.Object)
@@ -135,8 +136,9 @@ namespace BuildConsole.Services
                     string? extractError = vars.Extract(extractEl, responseBody);
                     if (extractError != null)
                     {
+                        detail = passedSoFar ? extractError : $"{detail}; {extractError}";
                         passed = false;
-                        detail = string.IsNullOrEmpty(detail) || detail == "ok" ? extractError : $"{detail}; {extractError}";
+                        passedSoFar = false;
                     }
                 }
 
@@ -146,8 +148,9 @@ namespace BuildConsole.Services
                 string? durationError = HttpTestExecutor.CheckMaxDuration(test, sw.ElapsedMilliseconds);
                 if (durationError != null)
                 {
+                    detail = passedSoFar ? durationError : $"{detail}; {durationError}";
                     passed = false;
-                    detail = string.IsNullOrEmpty(detail) || detail == "ok" ? durationError : $"{detail}; {durationError}";
+                    passedSoFar = false;
                 }
 
                 return Finish(Channel, "graph", label, sw, passed, detail, expected, actual, context, logLabel: $"{method} {resolvedPath}");

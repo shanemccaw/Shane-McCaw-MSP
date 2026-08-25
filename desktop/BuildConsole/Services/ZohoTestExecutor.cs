@@ -141,8 +141,8 @@ namespace BuildConsole.Services
                 string? durationError = HttpTestExecutor.CheckMaxDuration(test, sw.ElapsedMilliseconds);
                 if (durationError != null)
                 {
+                    detail = passed ? durationError : $"{detail}; {durationError}";
                     passed = false;
-                    detail = string.IsNullOrEmpty(detail) || detail == "ok" ? durationError : $"{detail}; {durationError}";
                 }
 
                 ActivityLog.Log(Channel, (passed ? "PASS " : "FAIL ") + $"{method} {url} ({sw.ElapsedMilliseconds}ms, {attempt} attempt(s)) — {detail}");

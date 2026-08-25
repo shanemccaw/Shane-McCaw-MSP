@@ -316,7 +316,11 @@ namespace BuildConsole.Services
 
             string expected = string.Join("; ", expectedParts);
             string actual = string.Join("; ", actualParts);
-            return (problems.Count == 0, problems.Count == 0 ? "ok" : string.Join("; ", problems), expected, actual);
+            // Git #1027 — a passing assertion used to collapse to the bare string "ok", discarding the real
+            // response body. Show a truncated preview of the actual body instead so a passing test still
+            // reveals what the endpoint genuinely returned.
+            string passDetail = string.IsNullOrWhiteSpace(responseBody) ? "ok" : $"ok — {Truncate(CollapseWhitespace(responseBody), 300)}";
+            return (problems.Count == 0, problems.Count == 0 ? passDetail : string.Join("; ", problems), expected, actual);
         }
 
         /// <summary>
