@@ -31,12 +31,13 @@
  * a known consequence rather than a silent loss.
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
 import { ChevronDown, Loader2 } from "lucide-react";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { PortalV2Shell } from "@/components/portal-v2/PortalV2Shell";
+import { PortalV2ScanLanding } from "@/components/portal-v2/PortalV2ScanLanding";
 import { usePortalV2Pillars } from "@/components/portal-v2/usePortalV2Pillars";
 import { useScanStatus } from "@/lib/scan-status-context";
 import { useRiskRegister } from "@/components/portal-v2/riskRegisterLive";
@@ -481,12 +482,28 @@ function ProjectSchedule() {
 }
 
 export default function PortalV2OverviewPage() {
-  const { view, loaded, scanning } = usePortalV2Pillars();
+  const { view, loaded, scanning, everScanned } = usePortalV2Pillars();
   const scanStatus = useScanStatus();
   const riskRegister = useRiskRegister();
   const runbooks = useRunbooks();
   const changeControl = useChangeControl();
   const [evidenceOpen, setEvidenceOpen] = useState(false);
+
+  // Zero-data landing (Git #1298). A CustomerUser lands straight here with no
+  // scan on record — port Scene 0 (RevealScanOverlay) as their entry point and
+  // hand off to this Overview once the scan lands. `landingArmed` latches the
+  // moment scan-status confirms a genuinely zero-data tenant and STAYS armed
+  // through the scan completing (when everScanned flips true), so the landing's
+  // own completion dissolve can't be yanked out mid-fade; it unmounts only when
+  // the landing itself signals done (onComplete). An established tenant
+  // (everScanned already true on first poll) never arms it, so the landing —
+  // and its extra journey fetches — never mount for the common case.
+  const [landingArmed, setLandingArmed] = useState(false);
+  const [landingComplete, setLandingComplete] = useState(false);
+  useEffect(() => {
+    if (scanStatus.loaded && !everScanned) setLandingArmed(true);
+  }, [scanStatus.loaded, everScanned]);
+  const showLanding = landingArmed && !landingComplete;
 
   // The real clock, per the README's "use the real clock in production" note on
   // hold windows. Held in state so one render cannot see two different `now`s;
@@ -518,6 +535,13 @@ export default function PortalV2OverviewPage() {
 
   return (
     <PortalV2Shell eyebrow="Overview" title="Tenant health">
+      {/* Scene 0, ported (Git #1298). A full-bleed fixed overlay while a
+          zero-data customer's scan runs; dissolves into this Overview on
+          completion. Renders nothing once handed off, or for a tenant that
+          already has scan data. */}
+      {showLanding ? (
+        <PortalV2ScanLanding onComplete={() => setLandingComplete(true)} />
+      ) : null}
       <div
         style={{
           position: "relative",
