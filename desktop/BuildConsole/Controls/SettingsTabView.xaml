@@ -245,6 +245,19 @@
                                 </DockPanel>
                             </Button>
                         </Border>
+
+                        <!-- User Accounts (Gated Features & Testing Profiles) -->
+                        <Border x:Name="NavWrapUserAccounts" CornerRadius="6" Margin="0,0,0,4">
+                            <Button x:Name="NavBtnUserAccounts" Style="{StaticResource IconButton}"
+                                    HorizontalContentAlignment="Stretch" Padding="10,9"
+                                    Tag="UserAccounts" Click="NavButton_Click">
+                                <DockPanel LastChildFill="True">
+                                    <TextBlock Text="👥" FontSize="13" Width="24" TextAlignment="Left" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="NavTextUserAccounts" Text="User Accounts &amp; Tiers" FontSize="12" FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
+                                </DockPanel>
+                            </Button>
+                        </Border>
                     </StackPanel>
                 </ScrollViewer>
             </Border>
@@ -760,6 +773,78 @@
                                 <Button x:Name="BtnSaveLinkedIn" Content="Save LinkedIn Config" Style="{StaticResource PrimaryButton}"
                                         HorizontalAlignment="Left" Padding="16,5" Click="BtnSaveLinkedIn_Click"/>
                                 <TextBlock x:Name="LinkedInSavedText" Text="" FontSize="11" Foreground="{StaticResource GreenBrush}" Margin="0,6,0,0"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+
+                    <!-- ════════════════ 11. PAGE: USER ACCOUNTS ════════════════ -->
+                    <StackPanel x:Name="PageUserAccounts" Visibility="Collapsed">
+                        <Border Background="{StaticResource MantleBrush}" BorderBrush="{StaticResource Surface0Brush}"
+                                BorderThickness="1" CornerRadius="10" Padding="20">
+                            <StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                    <TextBlock Text="👥" FontSize="16" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                    <TextBlock Text="User Accounts &amp; Gating Tiers" FontSize="15" FontWeight="Bold"
+                                               Foreground="{StaticResource BlueBrush}" VerticalAlignment="Center"/>
+                                </StackPanel>
+                                <TextBlock Text="Configure and manage testing account profiles with different tiers (Standard, Premium, Enterprise, Admin). Select the active profile to automate credentials in test runners and pre-fill screens."
+                                           FontSize="11" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,14" TextWrapping="Wrap"/>
+
+                                <TextBlock Text="Active Testing Profiles" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" Margin="0,0,0,8"/>
+                                
+                                <!-- Dynamically populated Accounts list container -->
+                                <StackPanel x:Name="UserAccountsSettingsList" Margin="0,0,0,16"/>
+
+                                <!-- Add / Edit Account Card -->
+                                <Border Background="{StaticResource Surface0Brush}" CornerRadius="8" Padding="14" Margin="0,0,0,12">
+                                    <StackPanel>
+                                        <TextBlock x:Name="UserAccountFormTitle" Text="Create Gated Test Profile" FontSize="12" FontWeight="SemiBold"
+                                                   Foreground="{StaticResource TextBrush}" Margin="0,0,0,10"/>
+                                        
+                                        <Grid Margin="0,0,0,8">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="150"/>
+                                            </Grid.ColumnDefinitions>
+                                            
+                                            <!-- Username -->
+                                            <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                                                <TextBlock Text="Username / Email" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
+                                                <TextBox x:Name="UserAccountUsernameBox" Height="28" FontSize="12"/>
+                                            </StackPanel>
+
+                                            <!-- Password -->
+                                            <StackPanel Grid.Column="1" Margin="0,0,8,0">
+                                                <TextBlock Text="Password" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
+                                                <TextBox x:Name="UserAccountPasswordBox" Height="28" FontSize="12"/>
+                                            </StackPanel>
+
+                                            <!-- Gating Tier -->
+                                            <StackPanel Grid.Column="2">
+                                                <TextBlock Text="Gating Tier" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
+                                                <ComboBox x:Name="UserAccountTierBox" Height="28" SelectedIndex="0" FontSize="11">
+                                                    <ComboBoxItem Content="Standard"/>
+                                                    <ComboBoxItem Content="Premium"/>
+                                                    <ComboBoxItem Content="Enterprise"/>
+                                                    <ComboBoxItem Content="Admin"/>
+                                                </ComboBox>
+                                            </StackPanel>
+                                        </Grid>
+
+                                        <!-- Notes -->
+                                        <TextBlock Text="Notes / Description" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,4,0,4"/>
+                                        <TextBox x:Name="UserAccountNotesBox" Height="28" FontSize="12" Margin="0,0,0,12"/>
+
+                                        <StackPanel Orientation="Horizontal">
+                                            <Button x:Name="BtnSaveUserAccount" Content="Add Gated Profile" Style="{StaticResource PrimaryButton}"
+                                                    Padding="16,5" Click="BtnSaveUserAccount_Click"/>
+                                            <Button x:Name="BtnCancelUserAccountEdit" Content="Cancel Edit" Style="{StaticResource IconButton}"
+                                                    Padding="12,5" Margin="8,0,0,0" Visibility="Collapsed" Click="BtnCancelUserAccountEdit_Click"/>
+                                        </StackPanel>
+                                        <TextBlock x:Name="UserAccountSavedText" Text="" FontSize="11" Foreground="{StaticResource GreenBrush}" Margin="0,6,0,0"/>
+                                    </StackPanel>
+                                </Border>
                             </StackPanel>
                         </Border>
                     </StackPanel>

@@ -62,6 +62,7 @@ namespace BuildConsole.Controls
             UseSshForSqlCheck.IsChecked = savedSettings.UseSshForSql;
 
             RenderWebToolsSettingsList();
+            RenderUserAccountsSettingsList();
 
             // Run manifest variable scan & render environment
             RunManifestVariableScan(showStatus: false);
@@ -117,6 +118,7 @@ namespace BuildConsole.Controls
             PageChatIntegration.Visibility = category == "ChatIntegration" ? Visibility.Visible : Visibility.Collapsed;
             PageBuildSound.Visibility = category == "BuildSound" ? Visibility.Visible : Visibility.Collapsed;
             PageLinkedIn.Visibility = category == "LinkedIn" ? Visibility.Visible : Visibility.Collapsed;
+            PageUserAccounts.Visibility = category == "UserAccounts" ? Visibility.Visible : Visibility.Collapsed;
 
             // Update Left Navigation selection highlight
             UpdateNavSelection(category);
@@ -142,6 +144,7 @@ namespace BuildConsole.Controls
                 (NavWrapChatIntegration, NavTextChatIntegration, "ChatIntegration"),
                 (NavWrapBuildSound, NavTextBuildSound, "BuildSound"),
                 (NavWrapLinkedIn, NavTextLinkedIn, "LinkedIn"),
+                (NavWrapUserAccounts, NavTextUserAccounts, "UserAccounts"),
             };
 
             foreach (var (wrap, text, key) in navItems)
@@ -1238,6 +1241,314 @@ namespace BuildConsole.Controls
             {
                 BuildSoundSavedText.Text = $"Couldn't play sound: {ex.Message}";
             }
+        }
+
+        // ══════════════════════════════════════════════════════════════════════
+        // USER ACCOUNTS MANAGEMENT (Gated profiles & Test credentials)
+        // ══════════════════════════════════════════════════════════════════════
+        private string _editingUserAccountId = "";
+
+        private void RenderUserAccountsSettingsList()
+        {
+            var settings = BuildConsoleSettings.Load();
+            UserAccountsSettingsList.Children.Clear();
+
+            if (settings.UserAccounts == null) return;
+
+            foreach (var acc in settings.UserAccounts)
+            {
+                var isCurrentlyActive = string.Equals(acc.Id, settings.ActiveUserAccountId, StringComparison.OrdinalIgnoreCase);
+
+                var border = new Border
+                {
+                    Background = (Brush)FindResource("Surface0Brush"),
+                    BorderBrush = (Brush)FindResource("Surface1Brush"),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(6),
+                    Padding = new Thickness(12),
+                    Margin = new Thickness(0, 0, 0, 8),
+                    Width = 600,
+                    HorizontalAlignment = HorizontalAlignment.Left
+                };
+
+                var grid = new Grid();
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // Radio / Active icon
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); // Info
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // Tier Badge
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // Actions
+
+                // 1. Radio / Active icon button
+                var radioBtn = new Button
+                {
+                    Content = new TextBlock
+                    {
+                        Text = isCurrentlyActive ? "🟢" : "⚪",
+                        FontSize = 14,
+                        VerticalAlignment = VerticalAlignment.Center
+                    },
+                    Style = (Style)FindResource("IconButton"),
+                    Margin = new Thickness(0, 0, 12, 0),
+                    ToolTip = isCurrentlyActive ? "Active Test Profile (Selected)" : "Click to set as Active Profile",
+                    Tag = acc.Id
+                };
+                radioBtn.Click += BtnSelectActiveUserAccount_Click;
+                Grid.SetColumn(radioBtn, 0);
+                grid.Children.Add(radioBtn);
+
+                // 2. Account info stack
+                var infoStack = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+                
+                var userRow = new StackPanel { Orientation = Orientation.Horizontal };
+                userRow.Children.Add(new TextBlock { Text = "User: ", FontSize = 11, Foreground = (Brush)FindResource("Subtext1Brush") });
+                userRow.Children.Add(new TextBlock { Text = acc.Username, FontSize = 12, FontWeight = FontWeights.Bold, Foreground = (Brush)FindResource("TextBrush") });
+                infoStack.Children.Add(userRow);
+
+                var passRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 2) };
+                passRow.Children.Add(new TextBlock { Text = "Pass: ", FontSize = 11, Foreground = (Brush)FindResource("Subtext1Brush") });
+                passRow.Children.Add(new TextBlock { Text = acc.Password, FontSize = 11, Foreground = (Brush)FindResource("Subtext0Brush") });
+                infoStack.Children.Add(passRow);
+
+                if (!string.IsNullOrWhiteSpace(acc.Notes))
+                {
+                    infoStack.Children.Add(new TextBlock
+                    {
+                        Text = acc.Notes,
+                        FontSize = 10,
+                        Foreground = (Brush)FindResource("Subtext1Brush"),
+                        FontStyle = FontStyles.Italic,
+                        TextWrapping = TextWrapping.Wrap,
+                        Margin = new Thickness(0, 2, 0, 0)
+                    });
+                }
+                Grid.SetColumn(infoStack, 1);
+                grid.Children.Add(infoStack);
+
+                // 3. Tier badge color coding (Green for Standard, Blue for Premium, Purple for Enterprise, Red for Admin)
+                Brush badgeBg;
+                Brush badgeFg;
+                switch ((acc.AccountTier ?? "").ToUpperInvariant())
+                {
+                    case "ADMIN":
+                        badgeBg = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#33F38BA8")); // Soft red
+                        badgeFg = (Brush)FindResource("RedBrush");
+                        break;
+                    case "ENTERPRISE":
+                        badgeBg = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#33CBA6F7")); // Soft purple
+                        badgeFg = (Brush)FindResource("MauveBrush");
+                        break;
+                    case "PREMIUM":
+                        badgeBg = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#3389B4FA")); // Soft blue
+                        badgeFg = (Brush)FindResource("BlueBrush");
+                        break;
+                    default:
+                        badgeBg = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#33A6E3A1")); // Soft green
+                        badgeFg = (Brush)FindResource("GreenBrush");
+                        break;
+                }
+
+                var badgeBorder = new Border
+                {
+                    Background = badgeBg,
+                    BorderBrush = badgeFg,
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(4),
+                    Padding = new Thickness(6, 2, 6, 2),
+                    Margin = new Thickness(12, 0, 12, 0),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Child = new TextBlock
+                    {
+                        Text = acc.AccountTier,
+                        FontSize = 9.5,
+                        FontWeight = FontWeights.Bold,
+                        Foreground = badgeFg
+                    }
+                };
+                Grid.SetColumn(badgeBorder, 2);
+                grid.Children.Add(badgeBorder);
+
+                // 4. Actions stack (edit / delete)
+                var actionsStack = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+                
+                var editBtn = new Button
+                {
+                    Content = "✏",
+                    FontSize = 10,
+                    Style = (Style)FindResource("IconButton"),
+                    Padding = new Thickness(6, 2, 6, 2),
+                    Margin = new Thickness(4, 0, 0, 0),
+                    ToolTip = "Edit Profile",
+                    Tag = acc.Id
+                };
+                editBtn.Click += BtnEditUserAccount_Click;
+                actionsStack.Children.Add(editBtn);
+
+                var deleteBtn = new Button
+                {
+                    Content = "🗑",
+                    FontSize = 10,
+                    Style = (Style)FindResource("IconButton"),
+                    Padding = new Thickness(6, 2, 6, 2),
+                    Margin = new Thickness(4, 0, 0, 0),
+                    Foreground = (Brush)FindResource("RedBrush"),
+                    ToolTip = "Delete Profile",
+                    Tag = acc.Id
+                };
+                deleteBtn.Click += BtnRemoveUserAccount_Click;
+                actionsStack.Children.Add(deleteBtn);
+
+                Grid.SetColumn(actionsStack, 3);
+                grid.Children.Add(actionsStack);
+
+                border.Child = grid;
+                UserAccountsSettingsList.Children.Add(border);
+            }
+        }
+
+        private void BtnSelectActiveUserAccount_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not Button btn || btn.Tag is not string accountId) return;
+            var settings = BuildConsoleSettings.Load();
+            settings.ActiveUserAccountId = accountId;
+            settings.Save();
+            RenderUserAccountsSettingsList();
+            UserAccountSavedText.Text = "Active test profile updated successfully!";
+            
+            var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+            timer.Tick += (s2, e2) => { UserAccountSavedText.Text = ""; timer.Stop(); };
+            timer.Start();
+        }
+
+        private void BtnEditUserAccount_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not Button btn || btn.Tag is not string accountId) return;
+            var settings = BuildConsoleSettings.Load();
+            var acc = settings.UserAccounts?.FirstOrDefault(a => a.Id == accountId);
+            if (acc == null) return;
+
+            UserAccountUsernameBox.Text = acc.Username;
+            UserAccountPasswordBox.Text = acc.Password;
+            UserAccountNotesBox.Text = acc.Notes;
+
+            int selIdx = 0;
+            switch ((acc.AccountTier ?? "").ToUpperInvariant())
+            {
+                case "STANDARD": selIdx = 0; break;
+                case "PREMIUM": selIdx = 1; break;
+                case "ENTERPRISE": selIdx = 2; break;
+                case "ADMIN": selIdx = 3; break;
+            }
+            UserAccountTierBox.SelectedIndex = selIdx;
+
+            _editingUserAccountId = accountId;
+            UserAccountFormTitle.Text = "Edit Account Profile Settings";
+            BtnSaveUserAccount.Content = "Save Changes";
+            BtnCancelUserAccountEdit.Visibility = Visibility.Visible;
+        }
+
+        private void BtnRemoveUserAccount_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not Button btn || btn.Tag is not string accountId) return;
+            var settings = BuildConsoleSettings.Load();
+            var acc = settings.UserAccounts?.FirstOrDefault(a => a.Id == accountId);
+            if (acc == null) return;
+
+            if (MessageBox.Show($"Are you sure you want to delete profile '{acc.Username}' ({acc.AccountTier})?", "Delete Profile", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+                return;
+
+            if (settings.UserAccounts == null) return;
+            settings.UserAccounts.Remove(acc);
+
+            if (string.Equals(settings.ActiveUserAccountId, accountId, StringComparison.OrdinalIgnoreCase))
+            {
+                settings.ActiveUserAccountId = settings.UserAccounts.Count > 0 ? settings.UserAccounts[0].Id : "";
+            }
+
+            settings.Save();
+            RenderUserAccountsSettingsList();
+            UserAccountSavedText.Text = "Account profile deleted.";
+            
+            var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+            timer.Tick += (s2, e2) => { UserAccountSavedText.Text = ""; timer.Stop(); };
+            timer.Start();
+        }
+
+        private void BtnSaveUserAccount_Click(object sender, RoutedEventArgs e)
+        {
+            string username = UserAccountUsernameBox.Text.Trim();
+            string password = UserAccountPasswordBox.Text.Trim();
+            string notes = UserAccountNotesBox.Text.Trim();
+            string tier = (UserAccountTierBox.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "Standard";
+
+            if (string.IsNullOrEmpty(username))
+            {
+                MessageBox.Show("Please enter a username or email.", "Validation Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            var settings = BuildConsoleSettings.Load();
+            if (settings.UserAccounts == null) settings.UserAccounts = new List<UserAccountEntry>();
+
+            if (string.IsNullOrEmpty(_editingUserAccountId))
+            {
+                var newAcc = new UserAccountEntry
+                {
+                    Username = username,
+                    Password = password,
+                    Notes = notes,
+                    AccountTier = tier
+                };
+                settings.UserAccounts.Add(newAcc);
+                
+                if (settings.UserAccounts.Count == 1 || string.IsNullOrEmpty(settings.ActiveUserAccountId))
+                {
+                    settings.ActiveUserAccountId = newAcc.Id;
+                }
+
+                UserAccountSavedText.Text = "Gated test profile added successfully!";
+            }
+            else
+            {
+                var existing = settings.UserAccounts.FirstOrDefault(a => a.Id == _editingUserAccountId);
+                if (existing != null)
+                {
+                    existing.Username = username;
+                    existing.Password = password;
+                    existing.Notes = notes;
+                    existing.AccountTier = tier;
+                }
+                
+                _editingUserAccountId = "";
+                UserAccountFormTitle.Text = "Create Gated Test Profile";
+                BtnSaveUserAccount.Content = "Add Gated Profile";
+                BtnCancelUserAccountEdit.Visibility = Visibility.Collapsed;
+
+                UserAccountSavedText.Text = "Profile settings saved successfully!";
+            }
+
+            settings.Save();
+            RenderUserAccountsSettingsList();
+
+            UserAccountUsernameBox.Text = "";
+            UserAccountPasswordBox.Text = "";
+            UserAccountNotesBox.Text = "";
+            UserAccountTierBox.SelectedIndex = 0;
+
+            var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+            timer.Tick += (s2, e2) => { UserAccountSavedText.Text = ""; timer.Stop(); };
+            timer.Start();
+        }
+
+        private void BtnCancelUserAccountEdit_Click(object sender, RoutedEventArgs e)
+        {
+            _editingUserAccountId = "";
+            UserAccountFormTitle.Text = "Create Gated Test Profile";
+            BtnSaveUserAccount.Content = "Add Gated Profile";
+            BtnCancelUserAccountEdit.Visibility = Visibility.Collapsed;
+
+            UserAccountUsernameBox.Text = "";
+            UserAccountPasswordBox.Text = "";
+            UserAccountNotesBox.Text = "";
+            UserAccountTierBox.SelectedIndex = 0;
         }
     }
 }

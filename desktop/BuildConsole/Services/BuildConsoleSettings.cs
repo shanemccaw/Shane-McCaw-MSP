@@ -14,6 +14,16 @@ namespace BuildConsole.Services
         public string Icon { get; set; } = "";
     }
 
+    /// <summary>Represents a user account/credential profile for local instance gating/auth tests.</summary>
+    public class UserAccountEntry
+    {
+        public string Id { get; set; } = Guid.NewGuid().ToString();
+        public string Username { get; set; } = "";
+        public string Password { get; set; } = "";
+        public string AccountTier { get; set; } = "Standard"; // Standard, Premium, Enterprise, Admin
+        public string Notes { get; set; } = "";
+    }
+
     /// <summary>
     /// Git #953 (Epic #803) — one NAME=value pair in the Settings "Test Environment
     /// Variables" store. Shane sets TEST_PORTAL_PASSWORD and every other
@@ -84,6 +94,10 @@ namespace BuildConsole.Services
         // state. Empty-list field initializer so a pre-#874 settings.json
         // (no "openChatTabs" key) still deserializes cleanly.
         public List<PersistedChatTab> OpenChatTabs { get; set; } = new();
+
+        // ── Gated User Accounts for testing and automation ──
+        public List<UserAccountEntry> UserAccounts { get; set; } = new();
+        public string ActiveUserAccountId { get; set; } = "";
 
         // ── "What's New" Home patch-notes (reuses the #992/version build number) ──
         // The Home screen shows a short, video-game-patch-notes-style bullet list of
@@ -435,6 +449,18 @@ namespace BuildConsole.Services
                         Url = "https://github.com/shanemccaw/Shane-McCaw-MSP",
                         Icon = ""
                     });
+                    settings.Save();
+                }
+
+                // Seed user accounts if missing
+                if (settings.UserAccounts == null || settings.UserAccounts.Count == 0)
+                {
+                    settings.UserAccounts = new List<UserAccountEntry>
+                    {
+                        new UserAccountEntry { Username = "standard_test_user", Password = "StandardPassword123!", AccountTier = "Standard", Notes = "Standard tier gating test account" },
+                        new UserAccountEntry { Username = "enterprise_test_user", Password = "EnterprisePassword123!", AccountTier = "Enterprise", Notes = "Enterprise tier gating test account" }
+                    };
+                    settings.ActiveUserAccountId = settings.UserAccounts[0].Id;
                     settings.Save();
                 }
 

@@ -1836,6 +1836,260 @@ namespace BuildConsole
                 urlBox.Text = wv.Source?.ToString() ?? string.Empty;
             };
 
+            var autofillOverlay = new Border
+            {
+                Background = (Brush)FindResource("Surface0Brush"),
+                BorderBrush = (Brush)FindResource("Surface1Brush"),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(8),
+                Width = 280,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Top,
+                Margin = new Thickness(16),
+                Padding = new Thickness(12),
+                Visibility = Visibility.Collapsed
+            };
+
+            var overlayStack = new StackPanel();
+            
+            var headerGrid = new Grid { Margin = new Thickness(0, 0, 0, 8) };
+            headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            
+            var headerText = new TextBlock
+            {
+                Text = "🔑 Autofill Gated Profile",
+                FontWeight = FontWeights.Bold,
+                FontSize = 12,
+                Foreground = (Brush)FindResource("TextBrush"),
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            Grid.SetColumn(headerText, 0);
+            headerGrid.Children.Add(headerText);
+            
+            var closeOverlayBtn = new Button
+            {
+                Content = "✕",
+                Style = (Style)FindResource("IconButton"),
+                FontSize = 10,
+                Padding = new Thickness(4, 1, 4, 1),
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            closeOverlayBtn.Click += (s, e) => { autofillOverlay.Visibility = Visibility.Collapsed; };
+            Grid.SetColumn(closeOverlayBtn, 1);
+            headerGrid.Children.Add(closeOverlayBtn);
+            
+            overlayStack.Children.Add(headerGrid);
+
+            var listContainer = new StackPanel();
+            overlayStack.Children.Add(listContainer);
+            
+            autofillOverlay.Child = overlayStack;
+
+            string escapeJs(string s) => s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r", "\\r").Replace("\n", "\\n");
+
+            Action populateAutofillOverlay = () =>
+            {
+                listContainer.Children.Clear();
+                var settings = BuildConsoleSettings.Load();
+                if (settings.UserAccounts == null || settings.UserAccounts.Count == 0)
+                {
+                    listContainer.Children.Add(new TextBlock
+                    {
+                        Text = "No user profiles configured in Settings.",
+                        FontSize = 10,
+                        Foreground = (Brush)FindResource("Subtext1Brush"),
+                        TextWrapping = TextWrapping.Wrap,
+                        Margin = new Thickness(0, 4, 0, 4)
+                    });
+                    return;
+                }
+
+                foreach (var acc in settings.UserAccounts)
+                {
+                    var isCurrentlyActive = string.Equals(acc.Id, settings.ActiveUserAccountId, StringComparison.OrdinalIgnoreCase);
+
+                    var btn = new Button
+                    {
+                        Style = (Style)FindResource("IconButton"),
+                        HorizontalContentAlignment = HorizontalAlignment.Stretch,
+                        Padding = new Thickness(8, 6, 8, 6),
+                        Margin = new Thickness(0, 0, 0, 4)
+                    };
+
+                    var btnGrid = new Grid();
+                    btnGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                    btnGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+                    var accountText = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+                    accountText.Children.Add(new TextBlock
+                    {
+                        Text = acc.Username,
+                        FontSize = 11.5,
+                        FontWeight = FontWeights.Bold,
+                        Foreground = (Brush)FindResource("TextBrush")
+                    });
+                    
+                    var subText = isCurrentlyActive ? "Active Test Profile" : "";
+                    if (!string.IsNullOrWhiteSpace(acc.Notes))
+                    {
+                        subText += (string.IsNullOrEmpty(subText) ? "" : " — ") + acc.Notes;
+                    }
+                    if (!string.IsNullOrEmpty(subText))
+                    {
+                        accountText.Children.Add(new TextBlock
+                        {
+                            Text = subText,
+                            FontSize = 9,
+                            Foreground = (Brush)FindResource("Subtext1Brush"),
+                            TextTrimming = TextTrimming.CharacterEllipsis
+                        });
+                    }
+                    Grid.SetColumn(accountText, 0);
+                    btnGrid.Children.Add(accountText);
+
+                    Brush badgeBg;
+                    Brush badgeFg;
+                    switch ((acc.AccountTier ?? "").ToUpperInvariant())
+                    {
+                        case "ADMIN":
+                            badgeBg = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#33F38BA8"));
+                            badgeFg = (Brush)FindResource("RedBrush");
+                            break;
+                        case "ENTERPRISE":
+                            badgeBg = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#33CBA6F7"));
+                            badgeFg = (Brush)FindResource("MauveBrush");
+                            break;
+                        case "PREMIUM":
+                            badgeBg = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#3389B4FA"));
+                            badgeFg = (Brush)FindResource("BlueBrush");
+                            break;
+                        default:
+                            badgeBg = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#33A6E3A1"));
+                            badgeFg = (Brush)FindResource("GreenBrush");
+                            break;
+                    }
+
+                    var badge = new Border
+                    {
+                        Background = badgeBg,
+                        BorderBrush = badgeFg,
+                        BorderThickness = new Thickness(1),
+                        CornerRadius = new CornerRadius(3),
+                        Padding = new Thickness(4, 1, 4, 1),
+                        VerticalAlignment = VerticalAlignment.Center,
+                        Child = new TextBlock
+                        {
+                            Text = acc.AccountTier,
+                            FontSize = 8.5,
+                            FontWeight = FontWeights.Bold,
+                            Foreground = badgeFg
+                        }
+                    };
+                    Grid.SetColumn(badge, 1);
+                    btnGrid.Children.Add(badge);
+
+                    btn.Content = btnGrid;
+
+                    btn.Click += async (s2, e2) =>
+                    {
+                        autofillOverlay.Visibility = Visibility.Collapsed;
+                        var encUser = "\"" + escapeJs(acc.Username) + "\"";
+                        var encPass = "\"" + escapeJs(acc.Password) + "\"";
+
+                        string fillScript = @"
+(function(u, p) {
+    try {
+        let passEl = document.querySelector('input[type=""password""]');
+        if (!passEl) return false;
+        
+        let userEl = null;
+        let inputs = Array.from(document.querySelectorAll('input'));
+        let passIdx = inputs.indexOf(passEl);
+        if (passIdx > 0) {
+            for (let i = passIdx - 1; i >= 0; i--) {
+                let type = inputs[i].getAttribute('type') || 'text';
+                if (type === 'text' || type === 'email' || type === 'username') {
+                    userEl = inputs[i];
+                    break;
+                }
+            }
+        }
+        
+        if (!userEl) {
+            userEl = document.querySelector('input[type=""email""], input[type=""text""], input[name*=""user""], input[name*=""login""]');
+        }
+        
+        if (userEl) {
+            let proto = window.HTMLInputElement.prototype;
+            let nativeSetter = Object.getOwnPropertyDescriptor(proto, 'value').set;
+            nativeSetter.call(userEl, u);
+            userEl.dispatchEvent(new Event('input', { bubbles: true }));
+            userEl.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        
+        let proto = window.HTMLInputElement.prototype;
+        let nativeSetter = Object.getOwnPropertyDescriptor(proto, 'value').set;
+        nativeSetter.call(passEl, p);
+        passEl.dispatchEvent(new Event('input', { bubbles: true }));
+        passEl.dispatchEvent(new Event('change', { bubbles: true }));
+        
+        return true;
+    } catch(ex) {
+        return false;
+    }
+})(" + encUser + ", " + encPass + ");";
+
+                        try
+                        {
+                            await wv.ExecuteScriptAsync(fillScript);
+                        }
+                        catch { }
+                    };
+
+                    listContainer.Children.Add(btn);
+                }
+            };
+
+            wv.NavigationCompleted += async (s, e) =>
+            {
+                if (!e.IsSuccess || wv.Source == null) return;
+                
+                try
+                {
+                    var host = wv.Source.Host;
+                    bool isLocal = host.Equals("localhost", StringComparison.OrdinalIgnoreCase) ||
+                                   host.Equals("127.0.0.1") ||
+                                   host.Equals("[::1]");
+                                   
+                    if (isLocal)
+                    {
+                        string checkScript = @"
+(function() {
+    return document.querySelector('input[type=""password""]') !== null;
+})();";
+                        string result = await wv.ExecuteScriptAsync(checkScript);
+                        if (string.Equals(result, "true", StringComparison.OrdinalIgnoreCase))
+                        {
+                            populateAutofillOverlay();
+                            autofillOverlay.Visibility = Visibility.Visible;
+                        }
+                        else
+                        {
+                            autofillOverlay.Visibility = Visibility.Collapsed;
+                        }
+                    }
+                    else
+                    {
+                        autofillOverlay.Visibility = Visibility.Collapsed;
+                    }
+                }
+                catch
+                {
+                    // Fail-safe
+                }
+            };
+
             var webContainer = new Grid
             {
                 Background = (Brush)FindResource("BaseBrush")
@@ -1845,9 +2099,11 @@ namespace BuildConsole
 
             Grid.SetRow(navBar, 0);
             Grid.SetRow(wv, 1);
+            Grid.SetRow(autofillOverlay, 1);
 
             webContainer.Children.Add(navBar);
             webContainer.Children.Add(wv);
+            webContainer.Children.Add(autofillOverlay);
 
             var newTab = new TabItem
             {

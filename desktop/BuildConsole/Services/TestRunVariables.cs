@@ -98,6 +98,28 @@ namespace BuildConsole.Services
         {
             _configVars.Clear();
             _needsRealValue.Clear();
+
+            // Seed active user account credentials so they are usable by the Test Runner
+            var settings = BuildConsoleSettings.Load();
+            UserAccountEntry? activeAccount = null;
+            if (settings.UserAccounts != null)
+            {
+                foreach (var acc in settings.UserAccounts)
+                {
+                    if (acc.Id == settings.ActiveUserAccountId)
+                    {
+                        activeAccount = acc;
+                        break;
+                    }
+                }
+            }
+            if (activeAccount != null)
+            {
+                _configVars["ACTIVE_TEST_USERNAME"] = activeAccount.Username;
+                _configVars["ACTIVE_TEST_PASSWORD"] = activeAccount.Password;
+                _configVars["ACTIVE_TEST_TIER"] = activeAccount.AccountTier;
+            }
+
             if (configVars == null) return;
             int count = 0;
             int needReview = 0;
