@@ -18,6 +18,7 @@ namespace BuildConsole.Controls
     {
         public int? GithubNumber { get; init; }
         public string Title { get; init; } = "";
+        public int QueueItemId { get; init; }
     }
 
     public class HomeStuckItemClear : EventArgs
@@ -538,10 +539,10 @@ namespace BuildConsole.Controls
                 bool stale = IsRunningStale(item.UpdatedAt);
                 if (stale) staleCount++;
 
-                string numPrefix = item.GithubNumber.HasValue ? $"#{item.GithubNumber}  ·  " : "";
-                string sub = stale
-                    ? numPrefix + "⚠ " + StuckPhrase(item.UpdatedAt) + " — likely stuck"
-                    : numPrefix + "running" + (item.UpdatedAt.HasValue ? $"  ·  {item.UpdatedAt.Value.ToLocalTime():MMM d, h:mm tt}" : "");
+                string refStr = item.GithubNumber.HasValue ? BuildConsole.Services.LocalBuildId.FormatRef(item.GithubNumber.Value) : "";
+                string numPrefix = item.GithubNumber.HasValue ? $"{refStr}  ·  " : "";
+                string ageStr = StuckPhrase(item.UpdatedAt);
+                string sub = numPrefix + (stale ? $"stuck ({ageStr})  ·  click to clear" : $"running ({ageStr})  ·  click to watch");
 
                 Action? onClear = stale ? () => ClearStuckItemRequested?.Invoke(this, new HomeStuckItemClear
                 {
@@ -555,8 +556,8 @@ namespace BuildConsole.Controls
                     stale ? "#EE99A0" : "#F2CA63",
                     string.IsNullOrWhiteSpace(item.Title) ? "(untitled build)" : item.Title,
                     sub,
-                    item.GithubNumber.HasValue ? $"Open chat for #{item.GithubNumber}" : null,
-                    (_, _) => RunningItemClicked?.Invoke(this, new HomeQueueClick { GithubNumber = captured.GithubNumber, Title = captured.Title }),
+                    item.GithubNumber.HasValue ? $"Open chat for {refStr}" : null,
+                    (_, _) => RunningItemClicked?.Invoke(this, new HomeQueueClick { GithubNumber = captured.GithubNumber, Title = captured.Title, QueueItemId = captured.Id }),
                     onClear: onClear,
                     stale: stale));
             }
@@ -591,14 +592,15 @@ namespace BuildConsole.Controls
             {
                 var captured = item;
                 string when = item.UpdatedAt.HasValue ? item.UpdatedAt.Value.ToLocalTime().ToString("MMM d, h:mm tt") : "recently";
-                string sub = (item.GithubNumber.HasValue ? $"#{item.GithubNumber}  ·  " : "") + $"done {when}  ·  click to review";
+                string refStr = item.GithubNumber.HasValue ? BuildConsole.Services.LocalBuildId.FormatRef(item.GithubNumber.Value) : "";
+                string sub = (item.GithubNumber.HasValue ? $"{refStr}  ·  " : "") + $"done {when}  ·  click to review";
 
                 DoneList.Children.Add(BuildRow(
                     "✅", "#7FAE91",
                     string.IsNullOrWhiteSpace(item.Title) ? "(untitled build)" : item.Title,
                     sub,
-                    item.GithubNumber.HasValue ? $"Open chat for #{item.GithubNumber}" : null,
-                    (_, _) => DoneItemClicked?.Invoke(this, new HomeQueueClick { GithubNumber = captured.GithubNumber, Title = captured.Title })));
+                    item.GithubNumber.HasValue ? $"Open chat for {refStr}" : null,
+                    (_, _) => DoneItemClicked?.Invoke(this, new HomeQueueClick { GithubNumber = captured.GithubNumber, Title = captured.Title, QueueItemId = captured.Id })));
             }
         }
 

@@ -1,11 +1,14 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Documents;
+using System.Windows.Threading;
 using System.Threading.Tasks;
 using BuildConsole.Services;
 
@@ -36,6 +39,44 @@ namespace BuildConsole.Controls
         private readonly StackPanel _mainColumn;
         private readonly StackPanel _sideColumn;
 
+        private readonly Grid _outerGrid;
+        private readonly GridSplitter _buildSplitter;
+        private readonly Grid _buildContainer;
+
+        // ChatSessionPane and tail timer for live build watch
+        private ChatSessionPane? _buildPane;
+        private DispatcherTimer? _buildLogTimer;
+        private int _buildPaneItemId;
+        private long _buildPaneTailedLength;
+        private string _buildPaneLineBuffer = "";
+        private string? _buildPaneSessionId;
+        private QueueItem? _associatedBuild;
+        private ToolGroupTurn? _buildCurrentToolGroup;
+        private List<string>? _buildDiffLines;
+        private bool _buildInDiffFence;
+        private StatusLineTurn? _buildStatusLine;
+        private bool _buildInAssistantRun;
+        private readonly Dictionary<string, ToolDetailLine> _buildToolCallsById = new();
+        private int _buildPaneInteractiveCursor;
+
+        private static readonly System.Text.RegularExpressions.Regex ToolTokenRegex = new(@"\[tool:\s*([^\]]+)\]", System.Text.RegularExpressions.RegexOptions.Compiled);
+        private static readonly System.Text.RegularExpressions.Regex DiffFenceOpenRegex = new(@"^\s*`{3,}\s*(diff|patch|udiff)\s*$", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
+        private static readonly System.Text.RegularExpressions.Regex CodeFenceCloseRegex = new(@"^\s*`{3,}\s*$", System.Text.RegularExpressions.RegexOptions.Compiled);
+        private static readonly System.Text.RegularExpressions.Regex DiffHunkHeaderRegex = new(@"^@@ -\d+(,\d+)? \+\d+(,\d+)? @@", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+        private static readonly string[] EasterEggPhrases = new[]
+        {
+            "petting the clarity crab…",
+            "aligning the stars…",
+            "consulting antigravity…",
+            "polishing comments…",
+            "optimizing line lengths…",
+            "refactoring the universe…",
+            "sipping ADHD coffee…"
+        };
+        private static readonly Random _rng = new();
+        private DateTime _easterEggUntilUtc = DateTime.MinValue;
+
         // Stored context so the Refresh button can re-run LoadIssue.
         private GitIssue? _loadedIssue;
         private int? _loadedLinkedEpicNumber;
@@ -57,6 +98,11 @@ namespace BuildConsole.Controls
 
         public GitDetailView()
         {
+            _outerGrid = new Grid();
+            _outerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); // Document column
+            _outerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(0) }); // Splitter
+            _outerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(0) }); // Build column
+
             _root = new Grid { Margin = new Thickness(18, 16, 18, 24) };
             _root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             _root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(0) });
@@ -69,13 +115,35 @@ namespace BuildConsole.Controls
 
             _root.Children.Add(_mainColumn);
             _root.Children.Add(_sideColumn);
-            Content = new ScrollViewer
+
+            var docScrollViewer = new ScrollViewer
             {
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
                 HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
                 Background = GetBrush("BaseBrush"),
                 Content = _root,
             };
+            Grid.SetColumn(docScrollViewer, 0);
+            _outerGrid.Children.Add(docScrollViewer);
+
+            _buildSplitter = new GridSplitter
+            {
+                Width = 4,
+                HorizontalAlignment = HorizontalAlignment.Left,
+                VerticalAlignment = VerticalAlignment.Stretch,
+                Background = GetBrush("BorderBrush"),
+                Visibility = Visibility.Collapsed
+            };
+            Grid.SetColumn(_buildSplitter, 1);
+            _outerGrid.Children.Add(_buildSplitter);
+
+            _buildContainer = new Grid { Visibility = Visibility.Collapsed };
+            Grid.SetColumn(_buildContainer, 2);
+            _outerGrid.Children.Add(_buildContainer);
+
+            Content = _outerGrid;
+
+            Unloaded += (s, e) => StopBuildTailing();
         }
 
         private void SetSideColumnVisibility(bool visible, double sideWidth = 280)
@@ -360,6 +428,8 @@ namespace BuildConsole.Controls
             _loadedLinkedEpicNumber = linkedEpicNumber;
             _loadedLinkedEpicTitle = linkedEpicTitle;
 
+            StopBuildTailing();
+
             _mainColumn.Children.Clear();
             _sideColumn.Children.Clear();
             _sideColumn.Visibility = Visibility.Collapsed;
@@ -414,6 +484,38 @@ namespace BuildConsole.Controls
                 var executedMigrations = await GetOrFetchMigrationsAsync();
                 var latestTestRuns = await GetOrFetchTestHistoryAsync();
 
+                BuildQueuePostgresClient? queueDb = null;
+                BuildTrackerApiClient? api = null;
+                if (Application.Current?.Dispatcher != null)
+                {
+                    Application.Current.Dispatcher.Invoke(() =>
+                    {
+                        if (Application.Current.MainWindow is MainWindow mw)
+                        {
+                            queueDb = mw.QueueDb;
+                            api = mw.BuildTrackerApi;
+                        }
+                    });
+                }
+
+                QueueItem? associatedBuild = null;
+                try
+                {
+                    List<QueueItem> queue;
+                    if (queueDb != null)
+                        queue = await queueDb.GetQueueAsync();
+                    else if (api != null)
+                        queue = await api.GetQueueAsync();
+                    else
+                        queue = new();
+
+                    associatedBuild = queue
+                        .Where(i => i.GithubNumber == issue.IssueNumber)
+                        .OrderByDescending(i => i.UpdatedAt ?? DateTime.MinValue)
+                        .FirstOrDefault();
+                }
+                catch { }
+
                 var settings = BuildConsoleSettings.Load();
                 List<GitHubIssueComment> comments = new();
                 GitHubIssueResult? blocker = null;
@@ -443,6 +545,21 @@ namespace BuildConsole.Controls
                 Dispatcher.Invoke(() =>
                 {
                     if (_loadedIssue?.IssueNumber != issue.IssueNumber) return;
+
+                    _associatedBuild = associatedBuild;
+                    if (associatedBuild != null)
+                    {
+                        string? sid = associatedBuild.SessionId;
+                        if (Application.Current.MainWindow is MainWindow mw && mw.QueueWatcher is QueueWatcherService w)
+                        {
+                            sid = sid ?? w.GetSessionId(associatedBuild.Id);
+                        }
+                        StartBuildTailing(associatedBuild.Id, sid);
+                    }
+                    else
+                    {
+                        StopBuildTailing();
+                    }
 
                     // If blocker discovered on live fetch
                     if (blocker != null)
@@ -1845,6 +1962,636 @@ namespace BuildConsole.Controls
             }
             catch { }
             return Brushes.Gray;
+        }
+
+        private void StartBuildTailing(int queueItemId, string? sessionId)
+        {
+            StopBuildTailing();
+
+            _buildPaneItemId = queueItemId;
+            _buildPaneSessionId = sessionId;
+            _buildPaneTailedLength = 0;
+            _buildPaneLineBuffer = "";
+            _buildCurrentToolGroup = null;
+            _buildDiffLines = null;
+            _buildInDiffFence = false;
+            _buildStatusLine = null;
+            _buildInAssistantRun = false;
+            _buildToolCallsById.Clear();
+            _buildPaneInteractiveCursor = 0;
+
+            _buildPane = new ChatSessionPane();
+            _buildPane.Cwd = BuildTrackerConfig.FindRepoRoot();
+            _buildPane.SetChecklistBuild(queueItemId);
+
+            _buildPane.ViewModel.Mode = ComposerMode.Interactive;
+            _buildPane.ViewModel.CanStop = true;
+            _buildPane.ViewModel.PlaceholderText = "Reply here to steer or resume the build...";
+
+            _buildPane.SendRequested += HandleBuildSend;
+            _buildPane.StopRequested += HandleBuildStop;
+
+            _buildContainer.Children.Clear();
+            _buildContainer.Children.Add(_buildPane);
+
+            _outerGrid.ColumnDefinitions[1].Width = new GridLength(4);
+            _outerGrid.ColumnDefinitions[2].Width = new GridLength(450);
+            _buildSplitter.Visibility = Visibility.Visible;
+            _buildContainer.Visibility = Visibility.Visible;
+
+            _buildLogTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
+            _buildLogTimer.Tick += (s, e) => TailBuildLog();
+            _buildLogTimer.Start();
+            TailBuildLog();
+        }
+
+        private void StopBuildTailing()
+        {
+            _buildLogTimer?.Stop();
+            _buildLogTimer = null;
+            _buildPaneItemId = 0;
+            _buildPane = null;
+
+            if (_buildContainer != null)
+            {
+                _buildContainer.Children.Clear();
+                _buildContainer.Visibility = Visibility.Collapsed;
+            }
+            if (_buildSplitter != null)
+                _buildSplitter.Visibility = Visibility.Collapsed;
+
+            if (_outerGrid != null)
+            {
+                _outerGrid.ColumnDefinitions[1].Width = new GridLength(0);
+                _outerGrid.ColumnDefinitions[2].Width = new GridLength(0);
+            }
+        }
+
+        private async void HandleBuildSend(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text) || _buildPaneItemId == 0) return;
+
+            QueueWatcherService? watcher = null;
+            BuildQueuePostgresClient? db = null;
+            BuildTrackerApiClient? api = null;
+            if (Application.Current.MainWindow is MainWindow mw)
+            {
+                watcher = mw.QueueWatcher;
+                db = mw.QueueDb;
+                api = mw.BuildTrackerApi;
+            }
+
+            if (watcher == null) return;
+
+            bool isLive = watcher.OwnsInteractive(_buildPaneItemId) && !watcher.HasExited(_buildPaneItemId, out _);
+            if (isLive)
+            {
+                watcher.SendInput(_buildPaneItemId, text);
+                _buildPane?.ViewModel.Turns.Add(new UserMessageTurn(text));
+                return;
+            }
+
+            string? sessionId = _buildPaneSessionId ?? watcher.GetSessionId(_buildPaneItemId);
+            ActivityLog.Log(Channel, $"Resuming build #{_buildPaneItemId} (session: {sessionId ?? "fresh"}): {text}");
+
+            if (_buildPane != null)
+            {
+                _buildPane.ViewModel.Mode = ComposerMode.Interactive;
+                _buildPane.ViewModel.CanStop = true;
+                _buildPane.ViewModel.PlaceholderText = "Continuation launching...";
+                _buildPane.ViewModel.Turns.Add(new UserMessageTurn($"[Resuming with guidance]: {text}"));
+            }
+
+            try
+            {
+                string model = _associatedBuild?.Model ?? "claude-3-5-sonnet";
+                string effort = _associatedBuild?.Effort ?? "normal";
+                string cwd = _associatedBuild?.Cwd ?? BuildTrackerConfig.FindRepoRoot() ?? "";
+                List<int>? blockedBy = _associatedBuild?.BlockedByNumbers;
+
+                int newQueueId = 0;
+                if (db != null)
+                {
+                    var queued = await db.QueueBuildAsync(
+                        $"Continue: {_associatedBuild?.Title ?? "Build"}",
+                        text,
+                        model,
+                        effort,
+                        cwd,
+                        _loadedIssue?.IssueNumber,
+                        blockedBy,
+                        resumeSessionId: sessionId);
+                    newQueueId = queued.Id;
+
+                    try
+                    {
+                        var claimed = await db.ForceClaimAsync(newQueueId);
+                        watcher.LaunchItemExplicit(claimed);
+                    }
+                    catch (Exception ex)
+                    {
+                        ActivityLog.Log(Channel, $"Force claim/launch failed: {ex.Message}");
+                    }
+                }
+                else if (api != null)
+                {
+                    var res = await api.QueueBuildAsync(
+                        $"Continue: {_associatedBuild?.Title ?? "Build"}",
+                        text,
+                        model,
+                        effort,
+                        cwd,
+                        _loadedIssue?.IssueNumber,
+                        blockedBy,
+                        resumeSessionId: sessionId);
+                }
+
+                if (newQueueId > 0)
+                {
+                    StartBuildTailing(newQueueId, sessionId);
+                }
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log(Channel, $"Continuation failed: {ex.Message}");
+            }
+        }
+
+        private void HandleBuildStop()
+        {
+            if (_buildPaneItemId == 0) return;
+            if (Application.Current.MainWindow is MainWindow mw && mw.QueueWatcher is QueueWatcherService w)
+            {
+                w.RequestStopAsync(_buildPaneItemId);
+            }
+        }
+
+        private void TailBuildLog()
+        {
+            if (_buildPaneItemId == 0 || _buildPane == null) return;
+
+            ReconcileStatusPill();
+
+            if (Application.Current.MainWindow is MainWindow mw && mw.QueueWatcher is QueueWatcherService w)
+            {
+                if (w.OwnsInteractive(_buildPaneItemId))
+                {
+                    DrainInteractiveBuild(w);
+                    return;
+                }
+            }
+
+            var path = BuildLogPaths.ForQueueItem(_buildPaneItemId);
+            try
+            {
+                if (!File.Exists(path)) return;
+                using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                if (fs.Length < _buildPaneTailedLength)
+                {
+                    _buildPaneTailedLength = 0;
+                    _buildPaneLineBuffer = "";
+                    _buildPane.ViewModel.Turns.Clear();
+                    _buildCurrentToolGroup = null;
+                    _buildDiffLines = null;
+                    _buildInDiffFence = false;
+                    _buildStatusLine = null;
+                    _buildInAssistantRun = false;
+                    _buildToolCallsById.Clear();
+                }
+                if (fs.Length <= _buildPaneTailedLength) return;
+                fs.Seek(_buildPaneTailedLength, SeekOrigin.Begin);
+                using var reader = new StreamReader(fs);
+                string newText = reader.ReadToEnd();
+                _buildPaneTailedLength = fs.Length;
+
+                _buildPaneLineBuffer += newText;
+                int nl;
+                while ((nl = _buildPaneLineBuffer.IndexOf('\n')) >= 0)
+                {
+                    var line = _buildPaneLineBuffer.Substring(0, nl);
+                    _buildPaneLineBuffer = _buildPaneLineBuffer.Substring(nl + 1);
+                    AppendBuildEventCard(line);
+                }
+            }
+            catch { }
+        }
+
+        private void ReconcileStatusPill()
+        {
+            if (_buildPane == null) return;
+            var vm = _buildPane.ViewModel;
+
+            QueueWatcherService? w = null;
+            if (Application.Current.MainWindow is MainWindow mw)
+                w = mw.QueueWatcher;
+
+            if (w == null) return;
+
+            bool isLive = w.OwnsInteractive(_buildPaneItemId) && !w.HasExited(_buildPaneItemId, out _);
+            if (isLive)
+            {
+                var state = w.GetInteractiveState(_buildPaneItemId) ?? InteractiveInputState.Working;
+                vm.Mode = ComposerMode.Interactive;
+                vm.CanStop = state == InteractiveInputState.Working;
+
+                if (state == InteractiveInputState.Working)
+                {
+                    vm.PlaceholderText = "Working — type below to steer it mid-task; Shift+Enter for new line";
+                    ApplyPillTone("Running", "RUNNING", "Working — type below to steer it mid-task; text goes straight to its stdin.", pulsing: false);
+                    EnsureStatusLine();
+                    _buildStatusLine!.ActivityText = "working…";
+                    _buildStatusLine!.Spinning = true;
+                }
+                else if (state == InteractiveInputState.WaitingForInput)
+                {
+                    vm.PlaceholderText = "Claude is asking a question — reply here…";
+                    ApplyPillTone("Warning", "NEEDS INPUT", "Claude is asking a question and waiting for your response.", pulsing: true);
+                    EnsureStatusLine();
+                    _buildStatusLine!.ActivityText = "waiting for input…";
+                    _buildStatusLine!.Spinning = false;
+                }
+                else
+                {
+                    vm.PlaceholderText = "Stopped — send guidance or corrective instructions to resume…";
+                    ApplyPillTone("Warning", "PAUSED", "Stopped — send guidance or corrective instructions to resume…", pulsing: false);
+                    EnsureStatusLine();
+                    _buildStatusLine!.ActivityText = "paused…";
+                    _buildStatusLine!.Spinning = false;
+                }
+            }
+            else
+            {
+                RemoveStatusLine();
+                vm.Mode = ComposerMode.Interactive;
+                vm.CanStop = false;
+                vm.PlaceholderText = "Stopped — send guidance or corrective instructions to resume…";
+
+                bool success = true;
+                if (w.HasExited(_buildPaneItemId, out int ec))
+                {
+                    success = ec == 0;
+                }
+                else if (_associatedBuild != null)
+                {
+                    success = _associatedBuild.Status == "done" || _associatedBuild.Status == "success";
+                }
+
+                if (success)
+                    ApplyPillTone("Success", "FINISHED", "Build completed successfully.", pulsing: false);
+                else
+                    ApplyPillTone("Error", "FAILED", "Build failed or exited with error.", pulsing: false);
+            }
+        }
+
+        private void ApplyPillTone(string tone, string label, string? tooltip, bool pulsing)
+        {
+            if (_buildPane == null) return;
+            var vm = _buildPane.ViewModel;
+            vm.PillFill = (Brush)FindResource($"ChatPane.Pill.{tone}Fill");
+            vm.PillBorder = (Brush)FindResource($"ChatPane.Pill.{tone}Border");
+            vm.PillDot = (Brush)FindResource($"ChatPane.Pill.{tone}Dot") ?? (Brush)FindResource("TextBrush");
+            vm.PillText = (Brush)FindResource($"ChatPane.Pill.{tone}Text") ?? (Brush)FindResource("TextBrush");
+            vm.PillLabel = label;
+            vm.PillTooltip = tooltip;
+            vm.PillPulsing = pulsing;
+        }
+
+        private void DrainInteractiveBuild(QueueWatcherService w)
+        {
+            int cursor = _buildPaneInteractiveCursor;
+            List<InteractiveEvent> events;
+            try { events = w.CopyEventsSince(_buildPaneItemId, ref cursor); }
+            catch { return; }
+            _buildPaneInteractiveCursor = cursor;
+
+            if (events.Count > 0)
+            {
+                foreach (var ev in events) ApplyInteractiveEvent(ev);
+            }
+        }
+
+        private void ApplyInteractiveEvent(InteractiveEvent ev)
+        {
+            switch (ev.Kind)
+            {
+                case InteractiveEventKind.AssistantText:
+                    {
+                        var text = (ev.Text ?? "").TrimEnd();
+                        if (text.Length == 0) return;
+                        AddParagraph(text, (ev.IsError || LooksLikeError(text)) ? ParagraphKind.Error : ParagraphKind.Normal);
+                        break;
+                    }
+                case InteractiveEventKind.ToolCall:
+                    AddInteractiveToolCall(ev);
+                    break;
+                case InteractiveEventKind.ToolResult:
+                    FillToolResult(ev);
+                    break;
+                case InteractiveEventKind.TurnResult:
+                    {
+                        var dur = ev.DurationMs.HasValue ? $" ({ev.DurationMs}ms)" : "";
+                        AddParagraph($"done{dur}", ParagraphKind.Done);
+                        if (!string.IsNullOrWhiteSpace(ev.Text))
+                        {
+                            AddParagraph(ev.Text!.Trim(), ParagraphKind.Normal);
+                        }
+                        break;
+                    }
+            }
+        }
+
+        private void AddInteractiveToolCall(InteractiveEvent ev)
+        {
+            var toolName = string.IsNullOrWhiteSpace(ev.ToolName) ? "tool" : ev.ToolName!;
+            var detail = new ToolDetailLine(toolName, ev.ToolUseId, ev.CommandPreview)
+            {
+                Diff = BuildDiffForToolCall(toolName, ev.InputJson),
+            };
+            if (!string.IsNullOrEmpty(ev.ToolUseId))
+            {
+                if (_buildToolCallsById.Count >= 2000) _buildToolCallsById.Clear();
+                _buildToolCallsById[ev.ToolUseId!] = detail;
+            }
+            AddToolCallDetail(toolName, detail);
+        }
+
+        private void FillToolResult(InteractiveEvent ev)
+        {
+            if (string.IsNullOrEmpty(ev.ResultForToolUseId)) return;
+            if (!_buildToolCallsById.TryGetValue(ev.ResultForToolUseId!, out var detail)) return;
+
+            var outText = ev.Text ?? "";
+            const int cap = 4000;
+            if (outText.Length > cap) outText = outText.Substring(0, cap) + $"\n… (+{outText.Length - cap} more chars)";
+            detail.Output = outText;
+            detail.IsError = ev.IsError;
+        }
+
+        private void AppendBuildEventCard(string rawLine)
+        {
+            var line = rawLine.TrimEnd();
+            if (HandleDiffLine(line)) return;
+            if (line.Length == 0) return;
+
+            if (line.StartsWith("--- done", StringComparison.Ordinal))
+            {
+                var label = line.Trim('-', ' ');
+                AddParagraph(string.IsNullOrWhiteSpace(label) ? "done" : label, ParagraphKind.Done);
+                return;
+            }
+
+            if (LooksLikeError(line))
+            {
+                AddParagraph(line, ParagraphKind.Error);
+                return;
+            }
+
+            var matches = ToolTokenRegex.Matches(line);
+            if (matches.Count == 0)
+            {
+                AddParagraph(line, ParagraphKind.Normal);
+                return;
+            }
+
+            int lastIdx = 0;
+            foreach (System.Text.RegularExpressions.Match m in matches)
+            {
+                int start = m.Index;
+                if (start > lastIdx)
+                {
+                    string before = line.Substring(lastIdx, start - lastIdx).TrimEnd();
+                    if (before.Length > 0) AddParagraph(before, ParagraphKind.Normal);
+                }
+                string toolName = m.Groups[1].Value.Trim();
+                AddToolCallDetail(toolName, new ToolDetailLine(toolName));
+                lastIdx = m.Index + m.Length;
+            }
+            if (lastIdx < line.Length)
+            {
+                string after = line.Substring(lastIdx).TrimStart();
+                if (after.Length > 0) AddParagraph(after, ParagraphKind.Normal);
+            }
+        }
+
+        private bool HandleDiffLine(string line)
+        {
+            if (_buildInDiffFence)
+            {
+                if (CodeFenceCloseRegex.IsMatch(line)) { FinishDiff(); return true; }
+                _buildDiffLines!.Add(line);
+                return true;
+            }
+
+            if (_buildDiffLines != null)
+            {
+                if (IsRawDiffBodyLine(line)) { _buildDiffLines.Add(line); return true; }
+                FinishDiff();
+            }
+
+            if (DiffFenceOpenRegex.IsMatch(line)) { StartDiff(fenced: true); return true; }
+            if (DiffHunkHeaderRegex.IsMatch(line) || line.StartsWith("diff --git ", StringComparison.Ordinal))
+            {
+                StartDiff(fenced: false);
+                _buildDiffLines!.Add(line);
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool IsRawDiffBodyLine(string line)
+        {
+            if (line.Length == 0) return false;
+            if (line.StartsWith("--- done", StringComparison.Ordinal)) return false;
+            if (line.StartsWith("- [ ]", StringComparison.Ordinal) || line.StartsWith("- [x]", StringComparison.Ordinal) || line.StartsWith("- [X]", StringComparison.Ordinal)) return false;
+            if (line.StartsWith("**", StringComparison.Ordinal) || line.StartsWith("##", StringComparison.Ordinal)) return false;
+            char c = line[0];
+            return c == '+' || c == '-' || c == ' ' || c == '@' || c == '\\'
+                   || line.StartsWith("index ", StringComparison.Ordinal)
+                   || line.StartsWith("diff --git ", StringComparison.Ordinal);
+        }
+
+        private void StartDiff(bool fenced)
+        {
+            _buildCurrentToolGroup = null;
+            _buildDiffLines = new List<string>();
+            _buildInDiffFence = fenced;
+        }
+
+        private void FinishDiff()
+        {
+            var lines = _buildDiffLines;
+            _buildDiffLines = null;
+            _buildInDiffFence = false;
+            if (lines == null) return;
+
+            while (lines.Count > 0 && lines[^1].Length == 0) lines.RemoveAt(lines.Count - 1);
+            if (lines.Count == 0) return;
+
+            bool hasChange = lines.Any(l =>
+                (l.StartsWith("+", StringComparison.Ordinal) && !l.StartsWith("+++", StringComparison.Ordinal)) ||
+                (l.StartsWith("-", StringComparison.Ordinal) && !l.StartsWith("---", StringComparison.Ordinal)));
+
+            if (!hasChange)
+            {
+                foreach (var l in lines)
+                    if (l.Length > 0) AddParagraph(l, ParagraphKind.Normal);
+                return;
+            }
+
+            EnsureAssistantRun();
+            AddTurn(new DiffTurn(string.Join("\n", lines)));
+        }
+
+        private void AddParagraph(string text, ParagraphKind kind)
+        {
+            EnsureAssistantRun();
+            AddTurn(new AssistantParagraphTurn { Text = text, Kind = kind });
+            _buildCurrentToolGroup = null;
+        }
+
+        private void EnsureAssistantRun()
+        {
+            if (_buildInAssistantRun) return;
+            _buildInAssistantRun = true;
+            AddTurn(new AssistantTurnStartTurn());
+        }
+
+        private void AddTurn(TurnItem item)
+        {
+            if (_buildPane == null) return;
+            var turns = _buildPane.ViewModel.Turns;
+            bool hadStatus = _buildStatusLine != null && turns.Count > 0 && ReferenceEquals(turns[^1], _buildStatusLine);
+            if (hadStatus) turns.RemoveAt(turns.Count - 1);
+            turns.Add(item);
+            if (hadStatus) turns.Add(_buildStatusLine!);
+            while (turns.Count > 100) turns.RemoveAt(0);
+        }
+
+        private void EnsureStatusLine()
+        {
+            if (_buildStatusLine != null || _buildPane == null) return;
+            _buildStatusLine = new StatusLineTurn();
+            _buildPane.ViewModel.Turns.Add(_buildStatusLine);
+        }
+
+        private void RemoveStatusLine()
+        {
+            if (_buildStatusLine == null || _buildPane == null) return;
+            _buildPane.ViewModel.Turns.Remove(_buildStatusLine);
+            _buildStatusLine = null;
+        }
+
+        private void AddToolCallDetail(string toolName, ToolDetailLine detail)
+        {
+            var group = _buildCurrentToolGroup;
+            if (group == null)
+            {
+                EnsureAssistantRun();
+                group = new ToolGroupTurn();
+                _buildCurrentToolGroup = group;
+                AddTurn(group);
+            }
+            group.Details.Add(detail);
+            UpdateToolGroupSummary(group);
+        }
+
+        private static void UpdateToolGroupSummary(ToolGroupTurn group)
+        {
+            var names = group.Details.Select(d => d.ToolName).ToList();
+            group.Title = names.Count == 1 ? $"Ran {names[0]}" : $"Ran {names.Count} tools";
+            group.Summary = string.Join(" · ", names.Distinct());
+            group.GlyphKey = names.Count == 1 && names[0].Equals("Read", StringComparison.OrdinalIgnoreCase) ? "file-text" : "wrench";
+        }
+
+        private static ObservableCollection<DiffLine>? BuildDiffForToolCall(string toolName, string? inputJson)
+        {
+            if (string.IsNullOrWhiteSpace(inputJson)) return null;
+            System.Text.Json.JsonDocument doc;
+            try { doc = System.Text.Json.JsonDocument.Parse(inputJson); }
+            catch { return null; }
+
+            using (doc)
+            {
+                var input = doc.RootElement;
+                if (input.ValueKind != System.Text.Json.JsonValueKind.Object) return null;
+                string? S(string k) => input.TryGetProperty(k, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.String ? v.GetString() : null;
+
+                var lines = new ObservableCollection<DiffLine>();
+                switch (toolName)
+                {
+                    case "Write":
+                        {
+                            var content = S("content");
+                            if (content == null) return null;
+                            lines.Add(new DiffLine($"＋ new file · {S("file_path")}", DiffLineKind.Meta));
+                            AppendReplaceBlock(lines, "", content);
+                            break;
+                        }
+                    case "Edit":
+                        {
+                            var oldS = S("old_string"); var newS = S("new_string");
+                            if (oldS == null || newS == null) return null;
+                            lines.Add(new DiffLine($"✎ {S("file_path")}", DiffLineKind.Meta));
+                            AppendReplaceBlock(lines, oldS, newS);
+                            break;
+                        }
+                    case "MultiEdit":
+                        {
+                            if (!input.TryGetProperty("edits", out var edits) || edits.ValueKind != System.Text.Json.JsonValueKind.Array) return null;
+                            lines.Add(new DiffLine($"✎ {S("file_path")} · {edits.GetArrayLength()} edits", DiffLineKind.Meta));
+                            int i = 0;
+                            foreach (var e in edits.EnumerateArray())
+                            {
+                                if (e.ValueKind != System.Text.Json.JsonValueKind.Object) continue;
+                                if (i++ > 0) AddDiff(lines, "┈┈┈┈┈", DiffLineKind.Context);
+                                var oldS = e.TryGetProperty("old_string", out var o) && o.ValueKind == System.Text.Json.JsonValueKind.String ? o.GetString() : null;
+                                var newS = e.TryGetProperty("new_string", out var n) && n.ValueKind == System.Text.Json.JsonValueKind.String ? n.GetString() : null;
+                                AppendReplaceBlock(lines, oldS ?? "", newS ?? "");
+                            }
+                            break;
+                        }
+                    default:
+                        return null;
+                }
+                return lines.Count > 0 ? lines : null;
+            }
+        }
+
+        private static void AppendReplaceBlock(ObservableCollection<DiffLine> lines, string oldText, string newText)
+        {
+            var oldLines = oldText.Length == 0 ? Array.Empty<string>() : oldText.Replace("\r\n", "\n").Split('\n');
+            var newLines = newText.Length == 0 ? Array.Empty<string>() : newText.Replace("\r\n", "\n").Split('\n');
+
+            int p = 0;
+            while (p < oldLines.Length && p < newLines.Length && oldLines[p] == newLines[p]) p++;
+            int s = 0;
+            while (s < oldLines.Length - p && s < newLines.Length - p &&
+                   oldLines[oldLines.Length - 1 - s] == newLines[newLines.Length - 1 - s]) s++;
+
+            int ctxBefore = Math.Min(2, p);
+            for (int i = p - ctxBefore; i < p; i++) AddDiff(lines, "  " + oldLines[i], DiffLineKind.Context);
+            for (int i = p; i < oldLines.Length - s; i++) AddDiff(lines, "- " + oldLines[i], DiffLineKind.Removed);
+            for (int i = p; i < newLines.Length - s; i++) AddDiff(lines, "+ " + newLines[i], DiffLineKind.Added);
+            int ctxAfter = Math.Min(2, s);
+            for (int i = oldLines.Length - s; i < oldLines.Length - s + ctxAfter; i++) AddDiff(lines, "  " + oldLines[i], DiffLineKind.Context);
+        }
+
+        private static void AddDiff(ObservableCollection<DiffLine> lines, string text, DiffLineKind kind)
+        {
+            if (lines.Count >= 60)
+            {
+                if (lines.Count == 60) lines.Add(new DiffLine("… (diff truncated)", DiffLineKind.Context));
+                return;
+            }
+            lines.Add(new DiffLine(text, kind));
+        }
+
+        private static bool LooksLikeError(string line)
+        {
+            return System.Text.RegularExpressions.Regex.IsMatch(line,
+                @"^\s*(error\b|error:|exception\b|fatal:|panic:|traceback|npm ERR!|unhandled|\bat\s+\S+\(|\w+Error:|\w+Exception:)",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
         }
     }
 }

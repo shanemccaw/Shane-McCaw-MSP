@@ -48,7 +48,9 @@ namespace BuildConsole
         private BuildConsole.Services.BuildTrackerApiClient? _buildTrackerApi;
         public BuildConsole.Services.BuildTrackerApiClient? BuildTrackerApi => _buildTrackerApi;
         private BuildConsole.Services.QueueWatcherService? _queueWatcher;
+        public BuildConsole.Services.QueueWatcherService? QueueWatcher => _queueWatcher;
         private BuildConsole.Services.BuildQueuePostgresClient? _queueDb;
+        public BuildConsole.Services.BuildQueuePostgresClient? QueueDb => _queueDb;
 
         // ── Build completion sound (mute toggle: _Sound menu > Mute Completion Sound) ──
         private readonly BuildConsole.Services.BuildCompletionSoundService _buildSound = new();
@@ -2060,7 +2062,25 @@ namespace BuildConsole
             home.InitializeHealthMonitor(_buildTrackerApi);
             home.ResumeChatRequested += Home_ResumeChatRequested;
             home.RunningItemClicked  += (s, c) => { if (c.GithubNumber is int n) OpenChatForIssue(n); };
-            home.DoneItemClicked     += (s, c) => { if (c.GithubNumber is int n) OpenChatForIssue(n); };
+            home.DoneItemClicked     += (s, c) =>
+            {
+                if (c.GithubNumber.HasValue && c.GithubNumber.Value < 0)
+                {
+                    var logPath = BuildConsole.Services.BuildLogPaths.ForQueueItem(c.QueueItemId);
+                    if (System.IO.File.Exists(logPath))
+                    {
+                        OpenFileTab(logPath);
+                    }
+                    else
+                    {
+                        ToastEngine.Warning("Open Log", $"Build log file not found.");
+                    }
+                }
+                else if (c.GithubNumber.HasValue)
+                {
+                    _ = OpenGitDetailByNumberAsync(c.GithubNumber.Value);
+                }
+            };
             // Clear a stale/orphaned "Running now" row — cancel the queue item (same
             // DELETE queue/{id} the Build Queue panel's right-click Cancel uses), then refresh.
             home.ClearStuckItemRequested += async (s, c) =>
