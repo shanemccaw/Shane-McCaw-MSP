@@ -3,11 +3,21 @@
  * drill-down.
  *
  * A direct port of the prototype's `isCmpDecisions` section
- * (`Customer Portal Shell.dc.html` 4732-4781), driven by `CMP_ACCEPTED` and the
- * `cmpAcceptedRows` mapper (13852-13861). These are deliberate positions with an
- * owner and a review date, shown in full so an auditor sees the reasoning — not
+ * (`Customer Portal Shell.dc.html` 4732-4781), originally driven by the
+ * `CMP_ACCEPTED` fixture and the `cmpAcceptedRows` mapper (13852-13861). Not
  * the Operate "Policy Decisions" tracker (that is `/portal-v2/policy-decisions`,
- * Part 5's, a different page and a different fixture).
+ * Part 5's) — this page shows the same underlying register, filtered to the
+ * Compliance pillar and rendered in full (rationale + compensating control
+ * always open) rather than as a filterable queue.
+ *
+ * Wired (Git #1221): `CMP_ACCEPTED`'s two rows (CMP-A1/CMP-A2) turned out to be
+ * a verbatim duplicate of `POLICY_DECISIONS`' first two rows in
+ * `policyDecisionsData.ts` — same ids, same copy, same real backing table
+ * (`msp_risk_decisions`, served by `GET /api/portal/policy-decisions` via
+ * `usePolicyDecisions()`). That endpoint already filters to rows that ARE a
+ * documented decision (`decision_state` non-null); this page narrows further to
+ * `pillar === "Compliance"`. A tenant with no compliance decisions recorded now
+ * shows an honest empty state instead of the two fixture rows.
  *
  * Every inline style value is the prototype's. Copy is verbatim.
  */
@@ -15,19 +25,30 @@
 import { Link } from "wouter";
 
 import { PortalV2Shell } from "@/components/portal-v2/PortalV2Shell";
-import { CMP_ACCEPTED, CMP_MONO } from "@/components/portal-v2/cmpDrilldownData";
-import { CMP_ACCEPTED_COUNT, cmpAcceptedMeta } from "@/components/portal-v2/cmpDrilldownModel";
+import { CMP_MONO } from "@/components/portal-v2/cmpDrilldownData";
+import { usePolicyDecisions } from "@/components/portal-v2/riskRegisterLive";
+import type { PolicyDecision } from "@/components/portal-v2/policyDecisionsData";
 import { useLivePillarHero } from "@/components/portal-v2/useLivePillarHero";
 import { PillarLiveSource } from "@/components/portal-v2/PillarLiveSource";
+
+function cmpDecisionMeta(d: PolicyDecision): { k: string; v: string }[] {
+  return [
+    { k: "Approved by", v: d.owner },
+    { k: "Approved", v: d.approved },
+    { k: "Next review", v: d.review },
+    { k: "Risk register", v: d.register },
+  ];
+}
 
 export default function PortalV2ComplianceDecisionsPage() {
   // Reads the compliance pillar's live war-room-pillars payload through the same
   // `useLivePillarHero` seam as every other pillar view — the `pv2-cmpdec-source`
-  // marker proves the page is on real data. The accepted-risk CARDS themselves are
-  // a deliberate-decision register with no server producer today (accepting a risk
-  // is a UI-only no-op on these pages), so those cards stay fixture — a documented
-  // backend gap, not a fabricated number.
+  // marker proves the page is on real data.
   const live = useLivePillarHero("compliance");
+  // The real documented-decision register (`msp_risk_decisions`), narrowed to
+  // this pillar. See the header comment for why this replaced `CMP_ACCEPTED`.
+  const { decisions, loading, error } = usePolicyDecisions();
+  const cmpDecisions = decisions.filter((d) => d.pillar.trim().toLowerCase() === "compliance");
   return (
     <PortalV2Shell eyebrow="Compliance" title="Documented policy decisions">
       <div
@@ -78,18 +99,53 @@ export default function PortalV2ComplianceDecisionsPage() {
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
             <span style={{ fontSize: "9.5px", fontWeight: 700, letterSpacing: ".2em", textTransform: "uppercase", color: "#64748b" }}>
-              Documented Policy Decisions · {CMP_ACCEPTED_COUNT}
+              Documented Policy Decisions · {cmpDecisions.length}
             </span>
             <span style={{ fontSize: "11px", color: "#475569" }}>
               Deliberate positions, not gaps. Shown in full so an auditor sees the reasoning, not just the outcome.
             </span>
           </div>
 
+          {(loading || error) && (
+            <div
+              data-testid="pv2-cmpdec-status"
+              style={{
+                padding: "9px 12px",
+                borderRadius: 8,
+                fontSize: "12px",
+                border: `1px solid ${error ? "rgba(248,113,113,.4)" : "rgba(148,163,184,.25)"}`,
+                background: error ? "rgba(248,113,113,.08)" : "transparent",
+                color: error ? "#f87171" : "#94a3b8",
+              }}
+            >
+              {error
+                ? "Your documented policy decisions could not be loaded, so this page is not showing your current positions."
+                : "Loading your documented policy decisions…"}
+            </div>
+          )}
+
+          {!loading && !error && cmpDecisions.length === 0 && (
+            <div
+              data-testid="pv2-cmpdec-empty"
+              style={{
+                padding: "14px 16px",
+                borderRadius: 10,
+                fontSize: "12px",
+                lineHeight: 1.6,
+                border: "1px solid rgba(148,163,184,.18)",
+                background: "rgba(148,163,184,.05)",
+                color: "#94a3b8",
+              }}
+            >
+              No documented policy decisions are recorded against Compliance yet.
+            </div>
+          )}
+
           <div
             style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))", gap: 10 }}
             data-testid="pv2-cmpdec-cards"
           >
-            {CMP_ACCEPTED.map((a) => (
+            {cmpDecisions.map((a) => (
               <div
                 key={a.id}
                 data-testid={`pv2-cmpdec-card-${a.id}`}
@@ -122,7 +178,7 @@ export default function PortalV2ComplianceDecisionsPage() {
                       whiteSpace: "nowrap",
                     }}
                   >
-                    {a.decision}
+                    Documented policy decision
                   </span>
                 </div>
                 <span style={{ fontSize: "13px", fontWeight: 700, color: "#f1f5f9", lineHeight: 1.45, textWrap: "pretty" }}>
@@ -152,7 +208,7 @@ export default function PortalV2ComplianceDecisionsPage() {
                     borderTop: "1px solid rgba(226,232,240,.12)",
                   }}
                 >
-                  {cmpAcceptedMeta(a).map((m) => (
+                  {cmpDecisionMeta(a).map((m) => (
                     <div key={m.k} style={{ display: "flex", flexDirection: "column", gap: 1 }}>
                       <span style={{ fontSize: "9.5px", fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase", color: "#64748b" }}>
                         {m.k}
@@ -161,7 +217,7 @@ export default function PortalV2ComplianceDecisionsPage() {
                     </div>
                   ))}
                 </div>
-                <span style={{ fontSize: "11px", color: "#64748b", lineHeight: 1.55, textWrap: "pretty" }}>{a.note}</span>
+                <span style={{ fontSize: "11px", color: "#64748b", lineHeight: 1.55, textWrap: "pretty" }}>{a.check}</span>
               </div>
             ))}
           </div>

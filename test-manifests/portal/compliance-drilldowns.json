@@ -1,9 +1,10 @@
 {
   "feature": "Customer Portal v2 Part 11 -- Compliance drill-downs: Open gaps (/portal-v2/compliance/open-gaps, isCmpGaps 4659-4730), Documented policy decisions (/compliance/decisions, isCmpDecisions 4732-4781) and Obligations we check against (/compliance/obligations, isCmpObligations 4783-4814). UI-only, design fixtures in cmpDrilldownData.ts (CMP_FINDINGS / CMP_ACCEPTED / CMP_OBLIGATIONS); the counts, accepted-meta pairs and obligation tone map are pinned by cmpDrilldownModel.test.ts. A gap's wrench opens the shared FixPanel and 'Record a policy decision instead' opens the shared FormDrawer. Reached from the Compliance pillar; no top-level nav rows.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "0bb4a473",
+  "lastVerifiedAgainstCommit": "PENDING_1221_WIRING_COMMIT",
   "notes": [
-    "LIVE-DATA PASS (Git #1204): these three drill-downs now read the SAME live war-room-pillars payload the Compliance pillar page does, through the shared useLivePillarHero seam -- there is NO second data path. The Open gaps HEADER count ('Open Gaps · N') is the compliance pillar's REAL open-finding total (critical + warning) with the fixture 6 kept only as the honest-null fallback; the clipped pv2-cmpgaps-source / pv2-cmpdec-source / pv2-cmpobl-source markers read 'live' when a real score is on the wire, so a page that fell back to fixture fails those steps. What STAYS fixture, a documented backend gap: the gap ROWS' obligation text / evidence / fix playbooks, the accepted-risk decision CARDS (accepting a risk is a UI-only no-op here), and the obligation REGISTER -- none has a per-item producer on the war-room-pillars payload, which is finding-level and aggregate. The A-CMP apiTest proves the real finding counts exist independent of whether the new markers have been deployed to the dev server yet.",
+    "LIVE-DATA PASS (Git #1204): these three drill-downs now read the SAME live war-room-pillars payload the Compliance pillar page does, through the shared useLivePillarHero seam -- there is NO second data path. The Open gaps HEADER count ('Open Gaps · N') is the compliance pillar's REAL open-finding total (critical + warning) with the fixture 6 kept only as the honest-null fallback; the clipped pv2-cmpgaps-source / pv2-cmpdec-source / pv2-cmpobl-source markers read 'live' when a real score is on the wire, so a page that fell back to fixture fails those steps. What STAYS fixture, a documented backend gap: the gap ROWS' obligation text / evidence / fix playbooks, and the obligation REGISTER -- neither has a per-item producer on the war-room-pillars payload, which is finding-level and aggregate.",
+    "DECISION CARDS NOW LIVE (Git #1221): the 'Documented decisions' page's cards no longer come from the CMP_ACCEPTED fixture. They read the SAME real register the Operate -> Policy Decisions page reads (GET /api/portal/policy-decisions, msp_risk_decisions table via usePolicyDecisions()), filtered to pillar === 'Compliance'. The testbed account's tenant currently has ZERO msp_risk_decisions rows with a non-null decision_state and pillar='Compliance' (the one seeded row is tenant_id='contoso-01', which does not match the testbed tenant, and carries pillar=null/decision_state=null regardless) -- so CMP7 below now asserts the honest EMPTY state (pv2-cmpdec-empty), not the old fixture card copy. If a future session seeds a real Compliance policy decision for the testbed tenant, CMP7 should be updated back to assert real card content.",
     "THE LOGIN BLOCK IS NOT OPTIONAL -- see the shared portal manifest note. With only the two #email/#password input steps red on a persisted session and every page assertion green, that is a PASS.",
     "UI ROUTE SHAPE: real URL is /portal/shane-mccaw-consulting/portal-v2/compliance/<slug>. Two-segment routes declared at the App.tsx marker; '/portal-v2/:pillar' cannot swallow them.",
     "shaneapp://runTest hits the DEPLOYED build -- these routes are new in Part 11, so a run against a build predating the deploy fails at the first assertion (a not-deployed signal, not a page defect).",
@@ -26,6 +27,13 @@
       "path": "/api/portal/assessment/war-room-pillars",
       "headers": { "Authorization": "Bearer {{authToken}}" },
       "expect": { "status": 200, "jsonPath": "$.pillars[3].findingCounts.critical", "exists": true }
+    },
+    {
+      "name": "B-CMP-PD (Git #1221) -- the real policy-decisions register endpoint the Documented decisions page's cards now read (usePolicyDecisions -> GET /api/portal/policy-decisions), scoped to the testbed tenant. Proves the endpoint itself is reachable and returns the shape the page expects, independent of whether the testbed tenant currently has any Compliance-pillar rows (see CMP7).",
+      "method": "GET",
+      "path": "/api/portal/policy-decisions",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.decisions", "exists": true }
     }
   ],
   "uiSteps": [
@@ -45,8 +53,8 @@
 
     { "name": "goto the Documented decisions drill-down.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/compliance/decisions" },
     { "name": "CMP6 -- the page resolved.", "action": "expect", "selector": "[data-testid='pv2-cmpdec-heading']", "textContains": "Documented policy decisions", "critical": true },
-    { "name": "CMP7 -- both decisions render as cards with rationale and compensating control.", "action": "expect", "selector": "[data-testid='pv2-cmpdec-cards']", "textContains": ["Teams chat retention set to 1 year rather than the 7-year records period", "Compensating control", "General Counsel"] },
-    { "name": "CMP-LIVE2 (#1204) -- the decisions page is on the LIVE compliance payload (source marker 'live'). The accepted-risk CARDS themselves stay fixture: a deliberate-decision register has no war-room-pillars producer -- a documented backend gap, not a fabricated card.", "action": "expect", "selector": "[data-testid='pv2-cmpdec-source']", "state": "present", "textContains": "live" },
+    { "name": "CMP7 (Git #1221) -- the testbed tenant has no real msp_risk_decisions row with pillar='Compliance' and a non-null decision_state, so the page shows the honest empty state rather than fixture cards.", "action": "expect", "selector": "[data-testid='pv2-cmpdec-empty']", "textContains": "No documented policy decisions are recorded against Compliance yet." },
+    { "name": "CMP-LIVE2 (#1204/#1221) -- the decisions page is on the LIVE compliance payload (hero source marker 'live'). The decision CARDS themselves are now ALSO live, via GET /api/portal/policy-decisions (msp_risk_decisions), filtered to pillar='Compliance' -- see CMP7.", "action": "expect", "selector": "[data-testid='pv2-cmpdec-source']", "state": "present", "textContains": "live" },
 
     { "name": "goto the Obligations drill-down.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/compliance/obligations" },
     { "name": "CMP8 -- the page resolved.", "action": "expect", "selector": "[data-testid='pv2-cmpobl-heading']", "textContains": "Obligations we check against", "critical": true },
