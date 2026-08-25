@@ -1,10 +1,8 @@
 /**
  * Theme preference — account-level (not browser-local), persisted via
- * GET/PUT /api/portal/theme-preference. Not wired into the live app yet
- * (main.tsx still hardcodes the "dark" class); this provider is currently
- * only consumed by the /dev/style-guide preview page for visual QA of the
- * Portal Foundation Redesign token/component system. Wiring this into the
- * real profile menu is a separate follow-up task.
+ * GET/PUT /api/portal/theme-preference. Wired into the live app via
+ * <ThemeProvider> in App.tsx (inside AuthProvider), with a Dark Mode
+ * toggle in the profile menu (app-shell.tsx, assessment-shell.tsx).
  */
 import {
   createContext,
