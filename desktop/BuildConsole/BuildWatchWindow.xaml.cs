@@ -395,7 +395,7 @@ namespace BuildConsole
             {
                 var label = line.Trim('-', ' ');
                 AddParagraph(slot, string.IsNullOrWhiteSpace(label) ? "done" : label, ParagraphKind.Done);
-                SetSlotState(slot, SlotState.Done, 0);
+                // Git #1004 — DO NOT mark the slot Done here! "--- done" is printed at the end of every individual assistant TURN (stream-json "result"), not when the entire build process completes. The slot state is correctly managed on process exit and queue status polling.
                 return;
             }
 
