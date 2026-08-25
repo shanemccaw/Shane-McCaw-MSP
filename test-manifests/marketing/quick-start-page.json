@@ -7,6 +7,7 @@
     "QS1-QS3 select two packs (Entra ID Quick-Start $799 + New Employee Onboarding $149) and assert the sticky selection bar's running total reads $948 -- proves the multi-select sum is real arithmetic over the fixture, not static copy.",
     "QS4 asserts the overlap warning: selecting Entra ID Quick-Start (which already covers Conditional Access Baseline) alongside Conditional Access Baseline surfaces the 'Overlap in your selection' banner -- the design's COVERS reasoning, not just a flat list.",
     "QS5 asserts Clear empties the selection and the sticky bar disappears.",
+    "QS6 (Git #1304) asserts the not-yet-available gating: useQuickStartPackAvailability() cross-references PACKS against the real live `services` table by name, so the MFA Enforcement Pack (no real services row today, per a direct query against local Postgres run for #1304) renders a 'Coming soon' badge and clicking it does not select it (sticky bar stays absent). This assertion is only as stable as the live catalogue's current state -- if MFA Enforcement is later onboarded as a real services row, this step should be repointed at whichever pack is genuinely not-yet-real at that time.",
     "This manifest asserts against {{DEPLOY_URL}} -- only reflects this commit once the marketing site is redeployed."
   ],
   "uiSteps": [
@@ -22,6 +23,10 @@
     { "name": "QS4b -- the overlap warning surfaces.", "action": "expect", "selector": "[data-testid='quick-start-overlap']", "state": "visible", "textContains": "Overlap in your selection" },
 
     { "name": "QS5a -- Clear empties the selection.", "action": "click", "selector": "[data-testid='quick-start-clear']" },
-    { "name": "QS5b -- the sticky selection bar is gone.", "action": "expect", "selector": "[data-testid='quick-start-sticky-bar']", "state": "absent" }
+    { "name": "QS5b -- the sticky selection bar is gone.", "action": "expect", "selector": "[data-testid='quick-start-sticky-bar']", "state": "absent" },
+
+    { "name": "QS6a -- the MFA Enforcement Pack has no real services row and renders a Coming soon badge.", "action": "expect", "selector": "[data-testid='quick-start-pack-coming-soon-mfa']", "state": "visible" },
+    { "name": "QS6b -- clicking a not-yet-available pack is a no-op.", "action": "click", "selector": "[data-testid='quick-start-pack-mfa']" },
+    { "name": "QS6c -- nothing was selected, so the sticky bar stays absent.", "action": "expect", "selector": "[data-testid='quick-start-sticky-bar']", "state": "absent" }
   ]
 }

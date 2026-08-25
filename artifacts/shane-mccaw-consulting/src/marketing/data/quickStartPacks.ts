@@ -4,6 +4,11 @@
 // Five of the fifteen packs already exist as live catalog rows — entra/onboard/offboard/
 // incident/recovery — and matched these figures exactly. The other ten are not yet live catalog
 // rows, so there is nothing to check them against; these are the figures as given.
+//
+// Which of these are actually purchasable is NOT tracked here as a static list (Git #1304: a
+// prior static count of "3 not-yet-real" had already drifted from what a live query found). Both
+// /quick-start and /buy instead call useQuickStartPackAvailability() at render time, which matches
+// each pack's `name` against the real `services` table and gates the UI accordingly.
 export type PackIcon =
   | "shieldCheck"
   | "key"

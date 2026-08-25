@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { Link } from "wouter";
 import { MarketingLayout } from "../components/MarketingLayout";
 import { COVERS, PACKS_BY_KEY, PACK_GROUPS, type PackIcon } from "../data/quickStartPacks";
+import { useQuickStartPackAvailability } from "../../hooks/useQuickStartPackAvailability";
 
 // Route /quick-start — recreated from Marketing Quick-Start Packs.dc.html.
 // Part 7: real content replaces the Part 0 PageStub. Pricing verified live against the
@@ -263,8 +264,10 @@ const sectionH2: React.CSSProperties = {
 
 export default function QuickStart() {
   const [sel, setSel] = useState<Record<string, boolean>>({});
+  const { availableKeys, loading: catalogLoading } = useQuickStartPackAvailability();
 
   const toggle = (key: string) => {
+    if (!catalogLoading && !availableKeys.has(key)) return;
     setSel((s) => {
       const next = { ...s };
       if (next[key]) delete next[key];
@@ -605,13 +608,15 @@ export default function QuickStart() {
                   {g.keys.map((k) => {
                     const p = PACKS_BY_KEY[k];
                     const on = !!sel[k];
+                    const unavailable = !catalogLoading && !availableKeys.has(k);
                     return (
                       <div
                         key={k}
                         onClick={() => toggle(k)}
                         data-testid={`quick-start-pack-${k}`}
+                        data-available={!unavailable}
                         style={{
-                          cursor: "pointer",
+                          cursor: unavailable ? "not-allowed" : "pointer",
                           display: "grid",
                           gridTemplateColumns: "22px 34px minmax(0,1.1fr) minmax(0,1.3fr) 78px",
                           alignItems: "center",
@@ -619,6 +624,7 @@ export default function QuickStart() {
                           padding: "13px 16px",
                           borderRadius: "12px",
                           transition: "border-color 180ms, background 180ms",
+                          opacity: unavailable ? 0.55 : 1,
                           border: on ? "1px solid rgba(59,130,246,.5)" : "1px solid rgba(30,41,59,.9)",
                           background: on ? "rgba(59,130,246,.09)" : "rgba(11,21,36,.5)",
                         }}
@@ -658,8 +664,27 @@ export default function QuickStart() {
                           <Glyph name={p.icon} />
                         </span>
                         <span style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: "3px" }}>
-                          <span style={{ fontSize: "14px", fontWeight: 700, color: "#f8fafc", lineHeight: 1.3, letterSpacing: "-.01em" }}>
+                          <span style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "14px", fontWeight: 700, color: "#f8fafc", lineHeight: 1.3, letterSpacing: "-.01em" }}>
                             {p.name}
+                            {unavailable && (
+                              <span
+                                data-testid={`quick-start-pack-coming-soon-${k}`}
+                                style={{
+                                  flex: "none",
+                                  fontSize: "9.5px",
+                                  fontWeight: 700,
+                                  letterSpacing: ".08em",
+                                  textTransform: "uppercase",
+                                  color: "#fbbf24",
+                                  background: "rgba(251,191,36,.12)",
+                                  border: "1px solid rgba(251,191,36,.35)",
+                                  borderRadius: "999px",
+                                  padding: "2px 8px",
+                                }}
+                              >
+                                Coming soon
+                              </span>
+                            )}
                           </span>
                           {p.note && <span style={{ fontSize: "11px", color: "#60a5fa", lineHeight: 1.4 }}>{p.note}</span>}
                         </span>

@@ -23,6 +23,16 @@
     "    terms gate ('Pay $1,500 and start').",
     "  PACK (multi-select, summed): /buy?product=pack&packs=entra,ca sums to $998 (no /mo), reads '2",
     "    packs, one dry run', shows the payment fields, and gates on terms ('Pay $998 and continue').",
+    "  PACK (not-yet-available gating, Git #1304): /buy?product=pack&packs=entra,mfa -- useQuickStartPackAvailability()",
+    "    cross-references PACKS against the real live `services` table by name (no real row for MFA",
+    "    Enforcement today, per a direct query against local Postgres run for #1304); its option row",
+    "    renders a 'Coming soon' badge and is dropped from the URL-preselected packSel once the live",
+    "    read resolves, leaving only Entra ID Quick-Start selected ($799, not $1,098). This is the same",
+    "    gate /quick-start's own catalogue uses, so a pack can never be paid for silently just because",
+    "    it lacks real backend fulfillment. Only as stable as the live catalogue's current state -- if",
+    "    MFA Enforcement is later onboarded as a real services row, repoint at whatever is genuinely",
+    "    not-yet-real then. This is also the first live network call this otherwise-fixture-driven page",
+    "    makes; the 'NO backend' note below now applies to every OTHER assertion in this manifest.",
     "",
     "DELIBERATELY NOT ASSERTED HERE, documented rather than faked: the post-payment flow (Stripe pay,",
     "email-code + password + MFA account creation, write-consent, the targeted pre-scan, the dry run,",
@@ -35,8 +45,9 @@
     "record, with no uncaught page errors. The reliably-static surface — the three product rules above —",
     "is what this manifest re-checks on every regression run.",
     "",
-    "NO backend: /buy is a pure client page (query-param driven, Stripe/Graph simulated), so there are",
-    "no apiTests to assert — every assertion is a uiStep against real rendered DOM text/state.",
+    "NO backend for the checkout flow itself: query-param driven, Stripe/Graph simulated, so there are",
+    "no apiTests to assert — every assertion is a uiStep against real rendered DOM text/state. The one",
+    "exception (Git #1304): pack availability now reads the real GET /api/services catalogue client-side.",
     "",
     "DEPLOYED-ORIGIN CAVEAT (same class the sibling marketing manifests carry): this asserts against",
     "{{DEPLOY_URL}}, which only reflects the new marketing site — and this page — once that site is",
@@ -75,6 +86,11 @@
     { "action": "expect", "selector": "[data-testid='buy-summary-total']", "state": "visible", "textContains": "$998" },
     { "action": "expect", "selector": "[data-testid='buy-payment-fields']", "state": "visible" },
     { "action": "click", "selector": "[data-testid='buy-terms']" },
-    { "action": "expect", "selector": "[data-testid='buy-pay']", "state": "visible", "textContains": "Pay $998 and continue" }
+    { "action": "expect", "selector": "[data-testid='buy-pay']", "state": "visible", "textContains": "Pay $998 and continue" },
+
+    { "name": "PACK6a (Git #1304) -- MFA Enforcement has no real services row and shows a Coming soon badge.", "action": "goto", "target": "/buy?product=pack&packs=entra,mfa" },
+    { "name": "PACK6b -- the option row renders the badge.", "action": "expect", "selector": "[data-testid='buy-option-coming-soon-mfa']", "state": "visible" },
+    { "name": "PACK6c -- the not-yet-available pack is dropped from the URL-preselected basket once the live catalogue read resolves, leaving only Entra ID Quick-Start.", "action": "expect", "selector": "[data-testid='buy-summary-sub']", "state": "visible", "textContains": "Entra ID Quick-Start Pack" },
+    { "name": "PACK6d -- the total reflects only the real pack ($799), not the sum with the unavailable one.", "action": "expect", "selector": "[data-testid='buy-summary-total']", "state": "visible", "textContains": "$799" }
   ]
 }

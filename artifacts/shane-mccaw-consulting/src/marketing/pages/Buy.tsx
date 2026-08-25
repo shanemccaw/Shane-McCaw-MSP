@@ -15,6 +15,7 @@ import {
   type DryAction,
   type Impact,
 } from "../data/buyCheckout";
+import { useQuickStartPackAvailability } from "../../hooks/useQuickStartPackAvailability";
 
 // Route /buy — recreated from Design/design_handoff_marketing/Marketing Buy.dc.html.
 //
@@ -221,6 +222,7 @@ type LiveAction = DryAction & { pack: string; packName: string; satisfied: boole
 
 export default function Buy() {
   const [st, setSt] = useState<State>(initialState);
+  const { availableKeys: availablePackKeys, loading: catalogLoading } = useQuickStartPackAvailability();
   const timers = useRef<number[]>([]);
   const push = (id: number) => {
     timers.current.push(id);
@@ -242,6 +244,22 @@ export default function Buy() {
   const isMon = st.product === "monitoring";
   const isRet = st.product === "retainer";
   const isPack = st.product === "pack";
+
+  // A pack pre-selected via the URL (?tier=/?packs=) may not have a real services-table
+  // backing yet (Git #1304) -- drop it from the selection once the live catalogue read
+  // resolves, same gate the option rows below enforce on click.
+  useEffect(() => {
+    if (!isPack || catalogLoading) return;
+    set((s) => {
+      const filtered = Object.fromEntries(
+        Object.entries(s.packSel).filter(([k]) => availablePackKeys.has(k)),
+      );
+      return Object.keys(filtered).length === Object.keys(s.packSel).length
+        ? {}
+        : { packSel: filtered };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPack, catalogLoading]);
 
   // ── Derived model (ported from the design's helpers) ──────────────────────────
   const monSel = MON_TIERS.find((t) => t.key === st.choice) || MON_TIERS[1];
@@ -276,7 +294,9 @@ export default function Buy() {
   const selName = isMon ? monSel.name : isRet ? retSel.name : "";
 
   const connectBlocked = connectRequired && !st.connected;
-  const blocked = connectBlocked || !st.agreed;
+  const hasUnavailablePack =
+    isPack && !catalogLoading && packKeys.some((k) => !availablePackKeys.has(k));
+  const blocked = connectBlocked || !st.agreed || hasUnavailablePack;
 
   const pwOk =
     st.pw1.length >= 12 &&
@@ -338,6 +358,7 @@ export default function Buy() {
   const submit = () => {
     if (connectRequired && !st.connected) return;
     if (!st.agreed) return;
+    if (hasUnavailablePack) return;
     set({ stage: "paying" });
     push(window.setTimeout(() => set({ stage: "code" }), 1600));
   };
@@ -544,6 +565,7 @@ export default function Buy() {
         priceLabel: money(monthly(o, seats)),
         unit: "/mo",
         on: o.key === monSel.key,
+        available: true,
       }))
     : isRet
       ? RET_TIERS.map((o) => ({
@@ -553,6 +575,7 @@ export default function Buy() {
           priceLabel: money(o.price),
           unit: "/mo",
           on: o.key === retSel.key,
+          available: true,
         }))
       : PACKS.map((o) => ({
           key: o.key,
@@ -561,6 +584,7 @@ export default function Buy() {
           priceLabel: money(o.price),
           unit: "one-time",
           on: !!st.packSel[o.key],
+          available: catalogLoading || availablePackKeys.has(o.key),
         }));
 
   const cameFromScan = st.scannedParam && !st.scanSkipped;
@@ -681,14 +705,18 @@ export default function Buy() {
             ]),
     cta: connectBlocked
       ? "Connect your tenant to continue"
-      : !st.agreed
-        ? "Accept the terms to continue"
-        : "Pay " + money(price) + (isPack ? " and continue" : " and start"),
+      : hasUnavailablePack
+        ? "This pack isn't available yet"
+        : !st.agreed
+          ? "Accept the terms to continue"
+          : "Pay " + money(price) + (isPack ? " and continue" : " and start"),
     foot: connectBlocked
       ? "Monitoring cannot be priced before the tenant reports its seat count."
-      : isPack
-        ? "Nothing changes in your tenant until you approve the preview."
-        : "Cancel any month.",
+      : hasUnavailablePack
+        ? "Choose a pack marked available to continue."
+        : isPack
+          ? "Nothing changes in your tenant until you approve the preview."
+          : "Cancel any month.",
   };
 
   const nextUp = isMon
@@ -1100,14 +1128,16 @@ export default function Buy() {
                 <div
                   key={o.key}
                   data-testid={`buy-option-${o.key}`}
-                  onClick={() => pick(o.key)}
+                  data-available={o.available}
+                  onClick={() => o.available && pick(o.key)}
                   style={{
                     display: "flex",
                     alignItems: "flex-start",
                     gap: "12px",
                     padding: "15px 16px",
                     borderRadius: "13px",
-                    cursor: "pointer",
+                    cursor: o.available ? "pointer" : "not-allowed",
+                    opacity: o.available ? 1 : 0.55,
                     transition: "border-color 200ms,background 200ms",
                     border: o.on
                       ? "1px solid rgba(59,130,246,.5)"
@@ -1149,13 +1179,34 @@ export default function Buy() {
                   <span style={{ flex: 1, minWidth: 0 }}>
                     <span
                       style={{
-                        display: "block",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
                         fontSize: "14px",
                         fontWeight: 700,
                         color: "#f8fafc",
                       }}
                     >
                       {o.name}
+                      {!o.available && (
+                        <span
+                          data-testid={`buy-option-coming-soon-${o.key}`}
+                          style={{
+                            flex: "none",
+                            fontSize: "9.5px",
+                            fontWeight: 700,
+                            letterSpacing: ".08em",
+                            textTransform: "uppercase",
+                            color: "#fbbf24",
+                            background: "rgba(251,191,36,.12)",
+                            border: "1px solid rgba(251,191,36,.35)",
+                            borderRadius: "999px",
+                            padding: "2px 8px",
+                          }}
+                        >
+                          Coming soon
+                        </span>
+                      )}
                     </span>
                     <span
                       style={{
