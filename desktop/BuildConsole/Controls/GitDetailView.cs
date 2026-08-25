@@ -2247,10 +2247,20 @@ namespace BuildConsole.Controls
         {
             if (_buildPane == null) return;
             var vm = _buildPane.ViewModel;
-            vm.PillFill = (Brush)FindResource($"ChatPane.Pill.{tone}Fill");
-            vm.PillBorder = (Brush)FindResource($"ChatPane.Pill.{tone}Border");
-            vm.PillDot = (Brush)FindResource($"ChatPane.Pill.{tone}Dot") ?? (Brush)FindResource("TextBrush");
-            vm.PillText = (Brush)FindResource($"ChatPane.Pill.{tone}Text") ?? (Brush)FindResource("TextBrush");
+            vm.PillFill = (TryFindResource($"ChatPane.Pill.{tone}Fill") ?? TryFindResource("ChatPane.Pill.IdleFill")) as Brush;
+            vm.PillBorder = (TryFindResource($"ChatPane.Pill.{tone}Border") ?? TryFindResource("ChatPane.Pill.IdleBorder")) as Brush;
+
+            string dotKey = tone switch
+            {
+                "Running" => "ChatPane.AccentText1",
+                "Success" => "ChatPane.SuccessText",
+                "Error" => "ChatPane.ErrorText",
+                "Warning" => "ChatPane.WarningText",
+                _ => "ChatPane.Text0",
+            };
+
+            vm.PillDot = (TryFindResource(dotKey) ?? TryFindResource("TextBrush")) as Brush;
+            vm.PillText = (TryFindResource(dotKey) ?? TryFindResource("TextBrush")) as Brush;
             vm.PillLabel = label;
             vm.PillTooltip = tooltip;
             vm.PillPulsing = pulsing;
