@@ -22,13 +22,19 @@
  * file is design content with no endpoint behind it, kept in ONE module so it
  * can be swapped, per the project's standing fixture rule.
  *
- * Three of the six "Everything in motion" lanes COULD be sourced live today —
- * accepted risks from riskRegisterData, hold windows from the runbooks API, and
- * change requests from /api/portal/change-control. They are deliberately not
- * wired here: each has a different shape, and reconciling three of them into one
- * lane model is its own piece of work rather than a detail of this page. Doing
- * it half-way would put half-real numbers beside fixture ones with nothing on
- * screen saying which is which.
+ * Part 2 of Git #1216 wired accepted risks (live risk register), hold windows
+ * (the runbooks API) and change requests (/api/portal/change-control) into
+ * `overviewModel.ts`'s `*FromLive` functions. Same for the headline stat, the
+ * scan band's "last scan" and the drift chips — see `pillarsOpenFindingsTotal`,
+ * `lastScanLabel` and `driftChips` there. `OV_HEADLINE_MAIN`, `OV_LAST_SCAN`,
+ * `OV_NEXT_SCAN` and `OV_DRIFT_CHIPS` are gone from here for it: the fixture
+ * numbers they held ("14 things", "3 are easy fixes", "next in 22h") have no
+ * real counterpart in this platform at all — no finding carries an effort
+ * classification, and no scan has a scheduled next run — so rather than port a
+ * fixture beside real numbers with nothing saying which is which, those two
+ * are left out entirely (never fabricated) and the rest is computed from the
+ * customer's own real data. The Evidence pack below stays fixture: it was not
+ * part of that pass's scope and has no live producer yet.
  *
  * ── Design content, not tenant data ────────────────────────────────────────
  * The prototype's fictional Halden Materials tenant.
@@ -36,38 +42,8 @@
 
 /* ── Headline — prototype 20826-20828 ───────────────────────────────────── */
 
-export const OV_HEADLINE_MAIN = "14 things are putting your tenant at risk. 3 are easy fixes.";
-
 export const OV_HEADLINE_SUB =
   "Pulled from your last scan across all six pillars — ranked by real impact, not alphabetically.";
-
-export const OV_LAST_SCAN = "2 hours ago";
-
-/** The scan button's own suffix — prototype 396. */
-export const OV_NEXT_SCAN = "next in 22h";
-
-/* ── The scan band ──────────────────────────────────────────────────────── */
-
-export interface OvDriftChip {
-  num: string;
-  label: string;
-  tone: string;
-  border: string;
-  background: string;
-}
-
-/**
- * prototype 20829-20833.
- *
- * These answer "what MOVED", which is a different question from the pillar
- * scores below: a tenant can hold a flat score across a week in which three
- * things were fixed and one appeared.
- */
-export const OV_DRIFT_CHIPS: readonly OvDriftChip[] = [
-  { num: "3", label: "fixed this week", tone: "#34d399", border: "rgba(52,211,153,.28)", background: "rgba(52,211,153,.06)" },
-  { num: "1", label: "new this week", tone: "#f87171", border: "rgba(248,113,113,.28)", background: "rgba(248,113,113,.06)" },
-  { num: "5", label: "accepted as risk", tone: "#c2a63d", border: "rgba(194,166,61,.3)", background: "rgba(194,166,61,.07)" },
-];
 
 export interface OvEvidenceRow {
   title: string;

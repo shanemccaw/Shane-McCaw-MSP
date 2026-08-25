@@ -1,0 +1,46 @@
+{
+  "feature": "Customer Portal v2 -- OVERVIEW (/portal-v2/overview). The tenant-health landing page. Git #1216 wired the headline stat, the scan band's real last-scan time, the drift chips' real accepted-as-risk count, and three of the six 'Everything in motion' lanes (change requests, hold windows, accepted risks) to real per-tenant data -- see overviewModel.ts's *FromLive functions. The pillar strip was already live (#1200/#1201). Evidence pack, Microsoft changes and the project schedule stay fixture -- no live producer exists for them and none was claimed. 'Fixed this week' / 'new this week' drift chips render the honest em-dash: no run-to-run finding diff exists anywhere in this platform yet.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "PENDING",
+  "notes": [
+    "THE LOGIN BLOCK IS NOT OPTIONAL. /portal-v2/* sits behind ProtectedRoute.",
+    "UI ROUTE SHAPE: /portal/{slug}/portal-v2 (the BARE /portal-v2 route, declared before /portal-v2/:pillar in App.tsx so the index isn't swallowed by the param match -- there is no separate /portal-v2/overview path).",
+    "shaneapp://runTest hits the DEPLOYED build, not the local worktree -- this manifest's live-data assertions only go green once this session's commit is deployed.",
+    "LIVE, TENANT-SPECIFIC NUMBERS ARE NOT ASSERTED BY VALUE, same rule as portal-v2-copilot.json: the headline total, the accepted-as-risk count and every lane depend on the tenant's own real data, so the harness asserts an any-of STRUCTURE (which of the two honest headline sentences is on screen) and static label copy, never a specific number.",
+    "THE 'FIXED THIS WEEK' / 'NEW THIS WEEK' CHIPS ARE INTENTIONALLY UNASSERTED BY VALUE -- they render an em-dash because no backing computation exists yet (documented in overviewData.ts / overviewModel.ts's driftChips). Only their static labels are asserted.",
+    "THE THREE 'IN MOTION' LANES (cc/rb/rr) FALL BACK TO FIXTURE ON A NON-LIVE READ (fixture read failure, unscoped tenant, or -- for hold windows -- no runbooks yet), so at least one lane row is ALWAYS present in each of the three sections regardless of live vs fixture; a prefixed data-testid selector proves a row rendered without asserting whether it was live or fixture.",
+    "NO `select` STEPS. UiTestExecutor.cs cannot drive a native <select>; this page has none.",
+    "ENV VARS required: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD."
+  ],
+  "uiSteps": [
+    { "name": "goto the real login URL.", "action": "goto", "target": "/portal/login" },
+    { "name": "WAIT for the login form to hydrate.", "action": "expect", "selector": "#email", "state": "visible" },
+    { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
+    { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
+    { "name": "Primary login.", "action": "click", "selector": "[data-testid='login-submit']", "critical": true },
+
+    { "name": "goto Overview.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2", "critical": true },
+
+    { "name": "OV1 -- the page resolved.", "action": "expect", "selector": "[data-testid='pv2-page-title']", "state": "visible", "critical": true },
+    { "name": "OV2 -- the headline is one of the two honest real-total sentences, never the old fixture '14 things ... 3 are easy fixes'.", "action": "expect", "selector": "[data-testid='pv2-page-title']", "textContains": ["putting your tenant at risk", "Nothing is putting your tenant at risk"], "critical": true },
+
+    { "name": "OV3 -- the scan band renders.", "action": "expect", "selector": "[data-testid='pv2-ov-scan-band']", "state": "visible", "critical": true },
+    { "name": "OV4 -- ...with the real last-scan line (static prefix; the value itself is the tenant's own real scan-status timestamp).", "action": "expect", "selector": "[data-testid='pv2-ov-scan-band']", "textContains": "Since your last scan" },
+
+    { "name": "OV5 -- the drift row renders.", "action": "expect", "selector": "[data-testid='pv2-ov-drift']", "state": "visible", "critical": true },
+    { "name": "OV6 -- ...naming all three chips by their static labels (numbers are tenant-specific and not asserted by value).", "action": "expect", "selector": "[data-testid='pv2-ov-drift']", "textContains": "fixed this week" },
+    { "name": "OV7 -- ...", "action": "expect", "selector": "[data-testid='pv2-ov-drift']", "textContains": "new this week" },
+    { "name": "OV8 -- ...the one real chip, backed by the live accepted risk register.", "action": "expect", "selector": "[data-testid='pv2-ov-drift']", "textContains": "accepted as risk" },
+
+    { "name": "OV9 -- the pillar strip (already live since #1200) renders.", "action": "expect", "selector": "[data-testid='pv2-ov-pillar-strip']", "state": "visible", "critical": true },
+
+    { "name": "OV10 -- open the Change control pipeline lane.", "action": "click", "selector": "[data-testid='pv2-ov-toggle-cc']", "critical": true },
+    { "name": "OV11 -- at least one change-request row renders -- live if the tenant is scoped, the design's own fixture rows otherwise.", "action": "expect", "selector": "[data-testid^='pv2-ov-lane-']", "state": "visible", "critical": true },
+
+    { "name": "OV12 -- open the Accepted risks lane.", "action": "click", "selector": "[data-testid='pv2-ov-toggle-rr']", "critical": true },
+    { "name": "OV13 -- ...its link to the real Risk Register is present.", "action": "expect", "selector": "[data-testid='pv2-ov-link-rr']", "textContains": "Open the risk register" },
+
+    { "name": "OV14 -- open the Runbooks waiting on a clock lane.", "action": "click", "selector": "[data-testid='pv2-ov-toggle-rb']", "critical": true },
+    { "name": "OV15 -- ...its link to the real Active Runbooks page is present.", "action": "expect", "selector": "[data-testid='pv2-ov-link-rb']", "textContains": "Open Active Runbooks" }
+  ]
+}

@@ -12,20 +12,28 @@ import assert from "node:assert/strict";
 
 import { OV_CR_PIPELINE, OV_POLICY_DECISIONS, PJ_WIN } from "./overviewData";
 import { RR_RISKS } from "./riskRegisterData";
+import { toChangeRequest, type WireChangeRequest } from "./ccChangeControlWire";
+import type { HoldWindow } from "./holds/useRunbooks";
 import {
   CR_WINDOW,
   MC_WINDOW,
   acceptedRiskLanes,
   crLanes,
+  crLanesFromLive,
+  driftChips,
   flaggedPolicyCount,
+  headlineMain,
   holdDecisionCount,
   holdLanes,
+  holdLanesFromLive,
+  lastScanLabel,
   mcLanes,
   ovBar,
   pdLanes,
   pillarDelta,
   pillarDeltaLabel,
   pillarDeltaTone,
+  pillarsOpenFindingsTotal,
   pillarStripSub,
   pjPct,
   pjRows,
@@ -314,5 +322,185 @@ describe("the pillar strip is derived from LIVE data", () => {
 
   it("says 'On track' when a pillar is clean, matching the design's own word", () => {
     assert.equal(pillarStripSub({ critical: 0, warning: 0 }), "On track");
+  });
+});
+
+function wireCr(overrides: Partial<WireChangeRequest> = {}): WireChangeRequest {
+  return {
+    code: "CR-1000",
+    title: "Test change",
+    changeClass: "Standard",
+    status: "Pending approval",
+    workload: "Identity",
+    target: "Tenant-wide",
+    ticket: "",
+    requester: "someone@example.com",
+    window: "Thu 27 Aug · 07:00–09:00",
+    risk: "Medium",
+    impactedUsersCount: 10,
+    rationale: "Because.",
+    pre: "",
+    post: "",
+    approvals: [],
+    canApprove: false,
+    canRollback: false,
+    executedAt: null,
+    backupVerified: false,
+    linkedFinding: null,
+    createdAt: "2026-08-01T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+describe("live change-request lanes", () => {
+  it("gives every real change request a lane", () => {
+    const crs = [wireCr({ code: "CR-1000" }), wireCr({ code: "CR-1001" })].map(toChangeRequest);
+    assert.equal(crLanesFromLive(crs).length, 2);
+  });
+
+  it("marks a real CR with no window booked as unscheduled, same as the fixture path", () => {
+    const cr = toChangeRequest(wireCr({ window: "Awaiting approval — no window booked" }));
+    const lane = crLanesFromLive([cr])[0];
+    assert.equal(lane.bar.unscheduled, true);
+    assert.equal(lane.dateLabel, "");
+  });
+
+  it("keeps a real window's date text once one is actually booked", () => {
+    const cr = toChangeRequest(wireCr({ window: "Thu 27 Aug · 07:00–09:00" }));
+    const lane = crLanesFromLive([cr])[0];
+    assert.equal(lane.bar.unscheduled, false);
+    assert.equal(lane.dateLabel, "Thu 27 Aug · 07:00–09:00");
+  });
+
+  it("colours a lane the same tone the Change Control record itself uses for that state", () => {
+    const awaiting = toChangeRequest(wireCr({ status: "Pending approval" }));
+    const lane = crLanesFromLive([awaiting])[0];
+    assert.equal(lane.tone, "#fbbf24");
+  });
+});
+
+function liveHold(overrides: Partial<HoldWindow> = {}): HoldWindow {
+  return {
+    id: 1,
+    holdKey: "hold-test",
+    title: "Test hold",
+    gates: "Gates step 4",
+    gatesStepPosition: 4,
+    pillar: "security",
+    why: "",
+    state: "running",
+    tone: "#60a5fa",
+    badge: "",
+    tMinus: "T-3d",
+    daysLeft: 3,
+    daysSaved: 0,
+    hoursLeft: 72,
+    totalDays: 7,
+    waitDays: 7,
+    extendedDays: 0,
+    startedAt: "2026-08-13T00:00:00.000Z",
+    closesAt: "2026-08-20T00:00:00.000Z",
+    closedAt: null,
+    ticks: [],
+    scanVerdict: "clear",
+    scanLabel: "",
+    scanTone: "#34d399",
+    scanLine: "",
+    scanProvenance: "",
+    primaryAction: { kind: "wait", label: "" },
+    notificationsDue: [],
+    ...overrides,
+  };
+}
+
+describe("live hold-window lanes", () => {
+  it("gives every real hold window a lane", () => {
+    assert.equal(holdLanesFromLive([liveHold(), liveHold({ holdKey: "hold-2" })]).length, 2);
+  });
+
+  it("takes state, tone and tMinus straight off the server rather than re-deriving them", () => {
+    const lane = holdLanesFromLive([liveHold({ state: "due", tone: "#f87171", tMinus: "Closed 2h ago" })])[0];
+    assert.equal(lane.state, "due");
+    assert.equal(lane.tone, "#f87171");
+    assert.equal(lane.tMinus, "Closed 2h ago");
+  });
+
+  it("computes donePct from totalDays/hoursLeft, honouring a real extension", () => {
+    // 7-day window extended to 10, with 24h left: 9/10 days done = 90%.
+    const lane = holdLanesFromLive([liveHold({ totalDays: 10, hoursLeft: 24 })])[0];
+    assert.equal(lane.donePct, 90);
+  });
+
+  it("floors donePct at 0 and caps it at 100", () => {
+    const over = holdLanesFromLive([liveHold({ totalDays: 7, hoursLeft: 999 })])[0];
+    assert.equal(over.donePct, 0);
+    const under = holdLanesFromLive([liveHold({ totalDays: 7, hoursLeft: -999 })])[0];
+    assert.equal(under.donePct, 100);
+  });
+});
+
+describe("the headline's real total", () => {
+  it("sums critical and warning findings across every pillar", () => {
+    const pillars = [
+      { findingCounts: { critical: 2, warning: 1 } },
+      { findingCounts: { critical: 0, warning: 3 } },
+    ];
+    assert.equal(pillarsOpenFindingsTotal(pillars), 6);
+  });
+
+  it("sums to zero for a clean tenant", () => {
+    assert.equal(pillarsOpenFindingsTotal([{ findingCounts: { critical: 0, warning: 0 } }]), 0);
+  });
+});
+
+describe("headline copy", () => {
+  it("shows a loading sentence while the total is not yet known", () => {
+    assert.match(headlineMain(null), /^Reading/);
+  });
+
+  it("says nothing is at risk for a genuinely clean tenant", () => {
+    assert.equal(headlineMain(0), "Nothing is putting your tenant at risk right now.");
+  });
+
+  it("pluralises correctly", () => {
+    assert.equal(headlineMain(1), "1 thing is putting your tenant at risk.");
+    assert.equal(headlineMain(14), "14 things are putting your tenant at risk.");
+  });
+});
+
+describe("last-scan label", () => {
+  it("shows an em-dash before the first response has landed", () => {
+    assert.equal(lastScanLabel(null, false), "—");
+    assert.equal(lastScanLabel("2026-08-24T00:00:00.000Z", false), "—");
+  });
+
+  it("says never once loaded with no scan on record", () => {
+    assert.equal(lastScanLabel(null, true), "never");
+  });
+
+  it("renders a relative time once loaded with a real timestamp", () => {
+    const recent = new Date(Date.now() - 5000).toISOString();
+    assert.equal(lastScanLabel(recent, true), "just now");
+  });
+});
+
+describe("drift chips", () => {
+  it("shows the honest em-dash for fixed/new this week — no real producer exists yet", () => {
+    const chips = driftChips({ fixedThisWeek: null, newThisWeek: null, acceptedAsRisk: 5 });
+    assert.equal(chips[0].num, "—");
+    assert.equal(chips[0].label, "fixed this week");
+    assert.equal(chips[1].num, "—");
+    assert.equal(chips[1].label, "new this week");
+  });
+
+  it("shows the real accepted-as-risk count when the register has loaded", () => {
+    const chips = driftChips({ fixedThisWeek: null, newThisWeek: null, acceptedAsRisk: 5 });
+    assert.equal(chips[2].num, "5");
+    assert.equal(chips[2].label, "accepted as risk");
+  });
+
+  it("shows an em-dash for accepted-as-risk too while the register hasn't loaded", () => {
+    const chips = driftChips({ fixedThisWeek: null, newThisWeek: null, acceptedAsRisk: null });
+    assert.equal(chips[2].num, "—");
   });
 });

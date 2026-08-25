@@ -31,23 +31,22 @@
  * a known consequence rather than a silent loss.
  */
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "wouter";
 import { ChevronDown, Loader2 } from "lucide-react";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { PortalV2Shell } from "@/components/portal-v2/PortalV2Shell";
 import { usePortalV2Pillars } from "@/components/portal-v2/usePortalV2Pillars";
+import { useScanStatus } from "@/lib/scan-status-context";
+import { useRiskRegister } from "@/components/portal-v2/riskRegisterLive";
+import { useRunbooks } from "@/components/portal-v2/holds/useRunbooks";
+import { useChangeControl } from "@/components/portal-v2/useChangeControl";
 import { hexAlpha } from "@/components/copilot-journey/journeyTokens";
 import {
-  OV_CR_PIPELINE,
-  OV_DRIFT_CHIPS,
   OV_EVIDENCE_ROWS,
-  OV_HEADLINE_MAIN,
   OV_HEADLINE_SUB,
-  OV_LAST_SCAN,
   OV_MC_INCOMING,
-  OV_NEXT_SCAN,
   OV_POLICY_DECISIONS,
   PJ_CONTRACT_END,
   PJ_CURRENT_WEEKS,
@@ -57,14 +56,20 @@ import {
 import {
   acceptedRiskLanes,
   crLanes,
+  crLanesFromLive,
+  driftChips,
   flaggedPolicyCount,
+  headlineMain,
   holdLanes,
+  holdLanesFromLive,
   laneTrackBackground,
+  lastScanLabel,
   mcLanes,
   pdLanes,
   pillarDelta,
   pillarDeltaLabel,
   pillarDeltaTone,
+  pillarsOpenFindingsTotal,
   pillarStripSub,
   pjPct,
   pjRows,
@@ -477,15 +482,39 @@ function ProjectSchedule() {
 
 export default function PortalV2OverviewPage() {
   const { view, loaded, scanning } = usePortalV2Pillars();
+  const scanStatus = useScanStatus();
+  const riskRegister = useRiskRegister();
+  const runbooks = useRunbooks();
+  const changeControl = useChangeControl();
   const [evidenceOpen, setEvidenceOpen] = useState(false);
 
   // The real clock, per the README's "use the real clock in production" note on
   // hold windows. Held in state so one render cannot see two different `now`s;
   // the interval re-derive that makes T-24 fire without a reload belongs with
-  // the Active Runbooks page, which owns the hold system.
+  // the Active Runbooks page, which owns the hold system. Only the FIXTURE path
+  // needs it — the live path's clock is already resolved server-side by
+  // useRunbooks, same as Active Runbooks itself.
   const [now] = useState(() => new Date());
-  const holds = holdLanes(now);
-  const accepted = acceptedRiskLanes();
+  const holds =
+    runbooks.loaded && !runbooks.error && runbooks.payload
+      ? holdLanesFromLive(runbooks.payload.holds)
+      : holdLanes(now);
+  const riskRegisterLive = !riskRegister.loading && !riskRegister.error;
+  const accepted = riskRegisterLive ? acceptedRiskLanes(riskRegister.risks) : acceptedRiskLanes();
+  const crMotionLanes =
+    changeControl.dataState === "live" ? crLanesFromLive(changeControl.crs()) : crLanes();
+
+  const totalFindings = loaded ? pillarsOpenFindingsTotal(view.pillars) : null;
+  const chips = useMemo(
+    () =>
+      driftChips({
+        fixedThisWeek: null,
+        newThisWeek: null,
+        acceptedAsRisk: riskRegisterLive ? accepted.length : null,
+      }),
+    [riskRegisterLive, accepted.length],
+  );
+  const lastScan = lastScanLabel(scanStatus.data?.lastScanAt ?? null, scanStatus.loaded);
 
   return (
     <PortalV2Shell eyebrow="Overview" title="Tenant health">
@@ -533,7 +562,7 @@ export default function PortalV2OverviewPage() {
             }}
             data-testid="pv2-page-title"
           >
-            {OV_HEADLINE_MAIN}
+            {headlineMain(totalFindings)}
           </h1>
           <div style={{ fontSize: "13px", color: "#94a3b8", lineHeight: 1.5, maxWidth: "74ch" }}>
             {OV_HEADLINE_SUB}
@@ -563,7 +592,7 @@ export default function PortalV2OverviewPage() {
               flexWrap: "wrap",
             }}
           >
-            <Kicker colour="#64748b">Since your last scan · {OV_LAST_SCAN}</Kicker>
+            <Kicker colour="#64748b">Since your last scan · {lastScan}</Kicker>
             <button
               data-testid="pv2-ov-scan"
               style={{
@@ -583,7 +612,7 @@ export default function PortalV2OverviewPage() {
               }}
             >
               {scanning && <Loader2 className="size-3 animate-spin" />}
-              {scanning ? "Scanning…" : "Scan now"} · {OV_NEXT_SCAN}
+              {scanning ? "Scanning…" : "Scan now"}
             </button>
           </div>
 
@@ -595,7 +624,7 @@ export default function PortalV2OverviewPage() {
             }}
             data-testid="pv2-ov-drift"
           >
-            {OV_DRIFT_CHIPS.map((c) => (
+            {chips.map((c) => (
               <div
                 key={c.label}
                 style={{
@@ -800,7 +829,7 @@ export default function PortalV2OverviewPage() {
           >
             <Kicker colour="#64748b">Tenant health by pillar</Kicker>
             <span style={{ fontSize: "11.5px", color: "#475569" }}>
-              We only grade you on what we actually assessed · scored {OV_LAST_SCAN}
+              We only grade you on what we actually assessed · scored {lastScan}
             </span>
           </div>
 
@@ -933,11 +962,11 @@ export default function PortalV2OverviewPage() {
             <MotionSection
               id="cc"
               label="Change control pipeline"
-              countLabel={sectionCount(OV_CR_PIPELINE.length, "CRs")}
+              countLabel={sectionCount(crMotionLanes.length, "CRs")}
               linkLabel="Open the register →"
               href="/portal-v2/change-control"
             >
-              {crLanes().map((l) => (
+              {crMotionLanes.map((l) => (
                 <LaneRow key={l.key} lane={l} href="/portal-v2/change-control" />
               ))}
             </MotionSection>

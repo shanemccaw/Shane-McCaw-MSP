@@ -30,6 +30,8 @@ import {
 } from "./projectsData";
 import { deriveHoldClock, type HoldState } from "./holds/holdState";
 import { RR_RISKS, type RiskEntry } from "./riskRegisterData";
+import { stateTone, type ChangeRequest } from "./ccPageData";
+import type { HoldWindow } from "./holds/useRunbooks";
 
 /* ────────────────────────────────────────────────────────────────────────────
    The mini bar — prototype `ovBar`, 8106-8119
@@ -119,6 +121,38 @@ export function crLanes(): readonly Lane[] {
     tone: c.tone,
     bar: ovBar(c.start, c.end, CR_WINDOW.start, CR_WINDOW.len),
   }));
+}
+
+/**
+ * The live twin of `crLanes()` — the tenant's real change requests from
+ * `useChangeControl().crs()`, once `dataState === "live"`.
+ *
+ * A real row's `window` is free text (`portal-change-control.ts`'s
+ * `scheduled_for` column, per `ccChangeControlWire.ts`'s own header) and often
+ * names no date at all ("Awaiting approval — no window booked") — there is no
+ * numeric day offset to place a to-scale bar with. So this reuses the same
+ * FIXED-geometry approach `pdLanes`/`acceptedRiskLanes` already use for
+ * multi-month spans: the bar communicates state, not a calendar position.
+ * `stateTone` is the same colour map the Change Control record itself renders
+ * a state in, so a lane here can never disagree with that page's own colour
+ * for the same change.
+ */
+export function crLanesFromLive(crs: readonly ChangeRequest[]): readonly Lane[] {
+  return crs.map((c) => {
+    const tone = stateTone(c.state);
+    const unscheduled = /no window booked/i.test(c.window);
+    return {
+      key: c.code,
+      title: c.title,
+      note: c.state,
+      dateLabel: unscheduled ? "" : c.window,
+      tone,
+      bar: unscheduled
+        ? { unscheduled: true, left: 0, width: 0, todayLeft: 0, weekStepPct: 0 }
+        : { ...ovBar(-20, 220, -20, 240), left: 6, width: 80 },
+      fill: `linear-gradient(90deg,${tone},${tone}30)`,
+    };
+  });
 }
 
 /** Microsoft changes run on a 0 → 45 day window — prototype 17410. */
@@ -217,6 +251,34 @@ export function holdLanes(
 /** Hold windows that need a decision now — the ones the design leads with. */
 export function holdDecisionCount(lanes: readonly HoldLane[]): number {
   return lanes.filter((l) => l.state === "due" || l.state === "early").length;
+}
+
+/**
+ * The live twin of `holdLanes()` — the tenant's real hold windows from
+ * `useRunbooks().payload.holds`.
+ *
+ * Unlike the fixture path, the server (`portal-runbooks.ts` /
+ * `portal-hold-windows.ts`) has already run `deriveHoldClock` itself and sent
+ * the result — `tMinus`, `tone` and `state` on the wire — so this does not
+ * re-derive the clock a second time from a `closesAt` timestamp. It only
+ * computes `donePct`, which the wire shape does not carry directly: `totalDays`
+ * already reflects any real extension the tenant was granted, so the fraction
+ * elapsed can't disagree with the T-minus readout sitting next to it.
+ */
+export function holdLanesFromLive(holds: readonly HoldWindow[]): readonly HoldLane[] {
+  return holds.map((h) => {
+    const totalHours = h.totalDays * 24;
+    const doneHours = Math.max(0, Math.min(totalHours, totalHours - h.hoursLeft));
+    return {
+      key: h.holdKey,
+      title: h.title,
+      note: h.gates,
+      tMinus: h.tMinus,
+      tone: h.tone,
+      state: h.state,
+      donePct: totalHours ? Math.round((doneHours / totalHours) * 100) : 0,
+    };
+  });
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -374,4 +436,98 @@ export function pillarStripSub(counts: { critical: number; warning: number }): s
   const open = counts.critical + counts.warning;
   if (open === 0) return "On track";
   return `${open} open finding${open === 1 ? "" : "s"}`;
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   The headline stat, the scan band's timing, and the drift chips — real data,
+   real absence
+   ──────────────────────────────────────────────────────────────────────── */
+
+/**
+ * The headline's real total — every open (critical + warning) finding across
+ * all six pillars, from the same `findingCounts` the strip below already
+ * renders. No second count of "how many things are wrong" is invented.
+ *
+ * The prototype's second sentence, "3 are easy fixes", has no real counterpart
+ * anywhere in this platform — no finding carries an effort/quick-fix
+ * classification a client can read — so it is not reproduced. Per the
+ * project's own rule, a number with no backing source is left out entirely,
+ * never guessed.
+ */
+export function pillarsOpenFindingsTotal(
+  pillars: readonly { findingCounts: { critical: number; warning: number } }[],
+): number {
+  return pillars.reduce((sum, p) => sum + p.findingCounts.critical + p.findingCounts.warning, 0);
+}
+
+/** The headline sentence, built from the real total above. */
+export function headlineMain(totalFindings: number | null): string {
+  if (totalFindings === null) return "Reading your tenant's risk picture…";
+  if (totalFindings === 0) return "Nothing is putting your tenant at risk right now.";
+  return `${totalFindings} thing${totalFindings === 1 ? " is" : "s are"} putting your tenant at risk.`;
+}
+
+/** Same relative-time rendering `scan-status-indicator.tsx` uses for its own "Last scan: …" line. */
+export function timeAgo(isoString: string): string {
+  const diff = Date.now() - new Date(isoString).getTime();
+  const s = Math.floor(diff / 1000);
+  if (s < 60) return "just now";
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  return `${d}d ago`;
+}
+
+/**
+ * The scan band's "Since your last scan · …" value, from the real
+ * `scan-status-context` payload. `loaded` is the shared context's own "first
+ * response has landed" flag (success or failure) — distinct from `lastScanAt`
+ * being null, which means a real answer of "this tenant has never scanned".
+ */
+export function lastScanLabel(lastScanAt: string | null, loaded: boolean): string {
+  if (!loaded) return "—";
+  if (!lastScanAt) return "never";
+  return timeAgo(lastScanAt);
+}
+
+export interface DriftChip {
+  num: string;
+  label: string;
+  tone: string;
+  border: string;
+  background: string;
+}
+
+const DRIFT_CHIP_STYLE = {
+  fixed: { tone: "#34d399", border: "rgba(52,211,153,.28)", background: "rgba(52,211,153,.06)" },
+  new: { tone: "#f87171", border: "rgba(248,113,113,.28)", background: "rgba(248,113,113,.06)" },
+  accepted: { tone: "#c2a63d", border: "rgba(194,166,61,.3)", background: "rgba(194,166,61,.07)" },
+} as const;
+
+/**
+ * The scan band's three drift chips.
+ *
+ * Only `acceptedAsRisk` has a real producer today — the tenant's own accepted
+ * risk register, the same live rows `acceptedRiskLanes` renders below.
+ * "Fixed this week" / "new this week" would need a real run-to-run finding
+ * diff (comparing this tenant's latest completed scan against the one from
+ * roughly seven days earlier) — a genuine feature this platform does not
+ * compute anywhere yet, not a detail of this page. Per the project's rule on
+ * items with no backing source, those two render the honest em-dash rather
+ * than an invented count, exactly like `MetricGrid`'s not_available tiles do
+ * elsewhere in this build.
+ */
+export function driftChips(input: {
+  fixedThisWeek: number | null;
+  newThisWeek: number | null;
+  acceptedAsRisk: number | null;
+}): readonly DriftChip[] {
+  const numOf = (n: number | null) => (n === null ? "—" : String(n));
+  return [
+    { num: numOf(input.fixedThisWeek), label: "fixed this week", ...DRIFT_CHIP_STYLE.fixed },
+    { num: numOf(input.newThisWeek), label: "new this week", ...DRIFT_CHIP_STYLE.new },
+    { num: numOf(input.acceptedAsRisk), label: "accepted as risk", ...DRIFT_CHIP_STYLE.accepted },
+  ];
 }
