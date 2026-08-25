@@ -234,6 +234,39 @@ async function evalOversharing(customerId: number, tenantId: string | null, wind
   );
 }
 
+/**
+ * Newly-added Global Administrator (#1289): the latest `tenant_monitor_profiles`
+ * collection of `identity:global-admin-count` vs the run before it, per tenant.
+ * That table is the production monitoring record (populated on every regular
+ * scoring scan, not the optional detail-collection package), so it already
+ * historises the count per run without any new schema/migration — see the
+ * issue's own option (a). A tenant with no prior collection never fires: its
+ * existing admin baseline is not "prior" to compare against, so it can't be
+ * mistaken for a newly-added admin on the very first scan.
+ */
+async function evalGlobalAdminAdded(tenantId: string | null, windowMinutes: number): Promise<number> {
+  if (!tenantId) return 0;
+  return count(
+    `
+    WITH runs AS (
+      SELECT collected_at, (extracted_properties->>'globalAdminCount')::int AS ga_count,
+             row_number() OVER (ORDER BY collected_at DESC) AS rn
+      FROM tenant_monitor_profiles
+      WHERE tenant_id = $1 AND check_key = 'identity:global-admin-count'
+        AND extracted_properties ? 'globalAdminCount'
+    ),
+    latest AS (SELECT collected_at, ga_count FROM runs WHERE rn = 1),
+    prior  AS (SELECT ga_count FROM runs WHERE rn = 2)
+    SELECT GREATEST(latest.ga_count - COALESCE(prior.ga_count, latest.ga_count), 0)::text AS n
+    FROM latest
+    LEFT JOIN prior ON true
+    WHERE latest.collected_at > NOW() - ($2 * INTERVAL '1 minute')
+      AND ${NOT_ACCEPTED_AS_RISK("'identity:global-admin-count'", "$1")}
+    `,
+    [tenantId, windowMinutes],
+  );
+}
+
 /** Latest-run finding at/above warning for a specific governance check key. */
 async function evalLatestFindingByKey(customerId: number, tenantId: string | null, checkKey: string): Promise<number> {
   return count(
@@ -271,7 +304,7 @@ async function getConditionValue(
       case "finding.oversharing":  return await evalOversharing(cid, tid, w);
       case "finding.ownerless_group":   return await evalLatestFindingByKey(cid, tid, "governance:ownerless-groups");
       case "finding.standing_priv_role": return await evalLatestFindingByKey(cid, tid, "identity:pim-permanent-roles");
-      case "finding.mfa_gap":          return await evalLatestFindingByKey(cid, tid, "identity:privileged-mfa-gap");
+      case "finding.global_admin_added": return await evalGlobalAdminAdded(tid, w);
 
       // ── drift (scoped by tenant_id text) ───────────────────────────────────
       case "drift.unapproved":
@@ -395,7 +428,7 @@ async function getConditionValue(
         );
 
       // ── pending_detector conditions — hook wired, source not built yet ──────
-      case "finding.global_admin_added": // sub-issue: GA add-event / run-delta
+      case "finding.mfa_gap":            // sub-issue: MFA monitor check key
       case "drift.regression":           // sub-issue: drift resolution/reopen lifecycle
       case "billing.license_change":     // sub-issue: licence-assignment snapshot+diff
       default:
@@ -418,8 +451,8 @@ function buildSummary(conditionType: string, value: number, ctx: TenantContext):
     case "finding.new_high":     return `${who}${n} new high finding${s} on the latest scan.`;
     case "finding.oversharing":  return `${who}${n} newly overshared item${s} beyond baseline.`;
     case "finding.ownerless_group":   return `${who}a group or team is left without an owner.`;
-    case "finding.mfa_gap":      return `${who}a privileged or user account does not have MFA enforced.`;
     case "finding.standing_priv_role": return `${who}a privileged role is held standing (not JIT/PIM).`;
+    case "finding.global_admin_added": return `${who}${n} new Global Administrator${s} detected — verify immediately.`;
     case "drift.unapproved":     return `${who}${n} unapproved configuration change${s} detected.`;
     case "drift.ca_policy_change": return `${who}${n} Conditional Access policy change${s} detected.`;
     case "progress.fix_verified": return `${who}${n} remediation fix${n === 1 ? "" : "es"} verified by re-scan.`;
