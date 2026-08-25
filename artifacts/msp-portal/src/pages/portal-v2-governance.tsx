@@ -52,6 +52,8 @@ import { PillarScanBar } from "@/components/portal-v2/PillarScanBar";
 import { DriftTrend, trendGeometry } from "@/components/portal-v2/DriftTrend";
 import { RiskAcceptedPanel } from "@/components/portal-v2/RiskAcceptedPanel";
 import { useLivePillarHero, PV2_SOURCE_CLIP } from "@/components/portal-v2/useLivePillarHero";
+import { useScanStatus } from "@/lib/scan-status-context";
+import { lastScanLabel } from "@/components/portal-v2/overviewModel";
 import { pillarSeverity, resolveHeroTile, type HeroTileBinding } from "@/components/portal-v2/pillarDashboardModel";
 import {
   GOV_AREA_LINKS,
@@ -126,6 +128,11 @@ export default function PortalV2GovernancePage() {
   const live = useLivePillarHero("governance");
   const heroTiles = GOV_TILE_BINDINGS.map((b) => resolveHeroTile(b, live));
   const sev = pillarSeverity(live.score);
+
+  // Real "last scan" value, same seam Overview uses (#1257) — the only one of
+  // the scan strip's four values with a real, wired source.
+  const scanStatus = useScanStatus();
+  const lastScan = lastScanLabel(scanStatus.data?.lastScanAt ?? null, scanStatus.loaded);
 
   // Honest-null contract (same as the Overview and the other pillar heroes):
   // overlay the REAL engine score when the tenant is scored, fall back to the
@@ -613,7 +620,7 @@ export default function PortalV2GovernancePage() {
               pillarLabel="Governance"
               scanNumber={GOV_HERO.scanNumber}
               fixedSinceScan1={GOV_HERO.fixedSinceScan1}
-              lastScan={GOV_HERO.lastScan}
+              lastScan={lastScan}
               nextScan={GOV_HERO.nextScan}
             />
 

@@ -57,6 +57,8 @@ import { DriftTrend, trendGeometry } from "@/components/portal-v2/DriftTrend";
 import { RiskAcceptedPanel } from "@/components/portal-v2/RiskAcceptedPanel";
 import { useLivePillarHero, PV2_SOURCE_CLIP } from "@/components/portal-v2/useLivePillarHero";
 import { useSecAreaLinksLive } from "@/components/portal-v2/useSecAreaLinksLive";
+import { useScanStatus } from "@/lib/scan-status-context";
+import { lastScanLabel } from "@/components/portal-v2/overviewModel";
 import {
   pillarSeverity,
   pillarTrendVerdict,
@@ -139,6 +141,11 @@ export default function PortalV2SecurityPage() {
   const live = useLivePillarHero("security");
   const heroTiles = SEC_TILE_BINDINGS.map((b) => resolveHeroTile(b, live));
   const sev = pillarSeverity(live.score);
+
+  // Real "last scan" value, same seam Overview uses (#1257) — the only one of
+  // the scan strip's four values with a real, wired source.
+  const scanStatus = useScanStatus();
+  const lastScan = lastScanLabel(scanStatus.data?.lastScanAt ?? null, scanStatus.loaded);
   const criticalCount = live.findingCounts.critical;
 
   // Git #1258: OAuth Apps + Email Security category scores overlaid onto the
@@ -586,7 +593,7 @@ export default function PortalV2SecurityPage() {
           pillarLabel="Security"
           scanNumber={SEC_HERO.scanNumber}
           fixedSinceScan1={SEC_HERO.fixedSinceScan1}
-          lastScan={SEC_HERO.lastScan}
+          lastScan={lastScan}
           nextScan={SEC_HERO.nextScan}
         />
 

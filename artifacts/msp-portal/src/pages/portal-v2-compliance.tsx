@@ -50,6 +50,8 @@ import {
 import { PortalV2Shell } from "@/components/portal-v2/PortalV2Shell";
 import { trendGeometry } from "@/components/portal-v2/DriftTrend";
 import { useLivePillarHero, PV2_SOURCE_CLIP } from "@/components/portal-v2/useLivePillarHero";
+import { useScanStatus } from "@/lib/scan-status-context";
+import { lastScanLabel } from "@/components/portal-v2/overviewModel";
 import { usePolicyDecisions } from "@/components/portal-v2/riskRegisterLive";
 import { pillarSeverity, resolveHeroTile, type HeroTileBinding } from "@/components/portal-v2/pillarDashboardModel";
 import {
@@ -125,6 +127,11 @@ export default function PortalV2CompliancePage() {
   // the other pillar heroes use; the extra derivations are pure and tested.
   const live = useLivePillarHero("compliance");
   const heroTiles = CMP_TILE_BINDINGS.map((b) => resolveHeroTile(b, live));
+
+  // Real "last scan" value, same seam Overview uses (#1257) — the only one of
+  // the scan strip's four values with a real, wired source.
+  const scanStatus = useScanStatus();
+  const lastScan = lastScanLabel(scanStatus.data?.lastScanAt ?? null, scanStatus.loaded);
   const sev = pillarSeverity(live.score);
   const openGaps = live.findingCounts.critical + live.findingCounts.warning;
 
@@ -737,7 +744,7 @@ export default function PortalV2CompliancePage() {
             gaps closed in Compliance since scan 1, none reopened
           </span>
           <span style={{ marginLeft: "auto", fontSize: "11.5px", color: "#475569" }}>
-            Last scan {CMP_HERO.lastScan} · next scan in {CMP_HERO.nextScan}
+            Last scan {lastScan} · next scan in {CMP_HERO.nextScan}
           </span>
         </div>
 

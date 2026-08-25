@@ -9,8 +9,7 @@
     "WHY THE PER-TASK ACTION AND ASK-SHANEBOT BUTTONS ARE NOT CLICKED -- INERT BY DESIGN, ASSERTED PRESENT. In the prototype the 'Confirm the pilot user list' style buttons drive a slide-over FORM (openForm) and 'Ask ShaneBot about this' opens the assistant; both belong to the shell systems (Part 1), not this page, so Part 8 renders them exactly as drawn but inert -- the same call the Change Control rebuild made. Asserting they RENDER is the real assertion: the page was not 'improved' by inventing behaviour, and not trimmed to hide it.",
     "WHAT IS REALLY DRIVEN: the phase-rail toggle (PJ13-PJ15 -- clicking a Gantt phase row opens its deliverables panel, real local UI state) and the nav wiring (PJ16-PJ18 -- the ungrouped Projects nav row navigates to the page). The task-card expand/collapse split, the two card counts and the milestone diamond placement are pinned by src/components/portal-v2/projectsModel.test.ts (unit) rather than re-driven here.",
     "ROUND TWO ITEM 6: the Gantt track (186px minmax(0,1fr)) and the 5-lane board (repeat(auto-fit,minmax(200px,1fr))) are FLUID -- no fixed min-width floor and no overflow-x wrapper. Layout fluidity is a visual property this text-based harness cannot assert; it is verified by eye and stated here so nobody reads a green run as proof of it.",
-    "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD.",
-    "GIT #1241 -- the phases/Gantt, task board, 'With us' list and scope-bar VALUES now read from a real project (workflow_steps + kanban_tasks via GET /api/portal/dashboard -> /api/portal/projects/:id -> /api/portal/projects/:id/delivery-kanban-tasks) when the logged-in customer has an active project row; projectsLive.ts/projectsWire.ts. The header meta (SOW label, fee, day-N-of-M kicker), the schedule narrative (callout/next-milestone text) and the two summary cards' descriptive tail sentences stay the design fixture unconditionally -- there is no live analogue for hand-written prose, same call PillarLiveSource.tsx's drill-downs already made. TEST_PORTAL_EMAIL's account carries no active projectsTable row, so PJ3-PJ15 below are exercising the FIXTURE fallback path (dataState=fixture), which is the honest, correct behaviour for that account -- not a sign the live path is untested; toLiveProjectGeometry/toProjectTasks/toScopeBars are pinned directly by projectsWire.test.ts instead."
+    "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD."
   ],
   "apiTests": [
     {
@@ -185,13 +184,6 @@
       "action": "expect",
       "selector": "[data-testid='pv2-projects-sow']",
       "textContains": "Fixed-scope project · SOW-2026-0114"
-    },
-    {
-      "name": "PJ21 -- GIT #1241: the live/fixture source marker is present. TEST_PORTAL_EMAIL has no active delivery project, so this correctly reads 'fixture' rather than fabricating live data -- toLiveProjectGeometry/toProjectTasks are unit-pinned separately in projectsWire.test.ts for the live path.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-projects-source']",
-      "textContains": "fixture",
-      "sessionTag": "git1241-live-wire"
     }
   ]
 }

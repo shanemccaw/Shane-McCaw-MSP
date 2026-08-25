@@ -1,7 +1,7 @@
 {
   "feature": "Customer Portal v2 -- isolated parallel build of the Overview (/portal-v2) and the six pillar dashboards (/portal-v2/:pillar) in the new navy/journeyTokens design language. Deliberately separate routes from the live /governance, /security-overview, /m365-health, /compliance, /adoption, /licensing pages, which this build does not touch. Data comes from GET /api/portal/assessment/war-room-pillars via components/portal-v2/usePortalV2Pillars.ts, which wraps the EXISTING components/war-room/useWarRoomPillarStats.ts hook rather than reimplementing fetching, retry/backoff or scoring. Pillar identity colours and the 82 gate constant come from components/copilot-journey/journeyTokens.ts (PILLARS, COPILOT_GATE_TARGET); components/ui/score-ring.tsx is reused verbatim, with .pv2-root redefining the --status-*/--muted tokens it reads so it resolves against the navy palette.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "4e6657be",
+  "lastVerifiedAgainstCommit": "PENDING-1257",
 
   "notes": [
     "SCOPE: Overview + six pillar pages only. Change Control, SOPs & Runbooks, Risk Register, Microsoft Changes and Hold Windows are deliberately NOT built in this pass -- the existing implementations of the first four are MSP-operator-scoped (/api/msp/*, requireRole('MSPOperator') + resolveMspIdStrict) and reusing them from a customer page would leak cross-tenant data; they need new customer-scoped routes first.",
@@ -295,6 +295,7 @@
     },
     {
       "name": "goto the rebuilt Governance pillar dashboard.",
+      "sessionTag": "lastscan-1257",
       "action": "goto",
       "target": "/portal/shane-mccaw-consulting/portal-v2/governance"
     },
@@ -325,6 +326,14 @@
       "selector": "[data-testid='pv2-gov-stat-overdue-access-reviews']",
       "state": "visible",
       "textContains": "Not measured yet"
+    },
+    {
+      "name": "G1d (#1257) -- the scan strip's 'Last scan' value is now the REAL scan-status timestamp (scan-status-context's lastScanAt via lastScanLabel), not the GOV_HERO fixture string. Static prefix; the value itself is the tenant's own real last-scan reading.",
+      "sessionTag": "lastscan-1257",
+      "action": "expect",
+      "selector": "[data-testid='pv2-pillar-scan-bar']",
+      "state": "visible",
+      "textContains": "Last scan"
     },
     {
       "name": "G2 -- the cluster area-card grid renders. Governance deliberately has NO finding rows -- the prototype builds governanceRows but never renders them -- so the area grid IS the pillar's content.",
@@ -753,6 +762,14 @@
       "selector": "[data-testid='pv2-pillar-scan-bar']",
       "state": "visible",
       "textContains": "fixed in Security since scan 1"
+    },
+    {
+      "name": "S7a (#1257) -- the scan strip's 'Last scan' value is now the REAL scan-status timestamp (scan-status-context's lastScanAt via lastScanLabel), not the SEC_HERO fixture string. Static prefix; the value itself is the tenant's own real last-scan reading -- same pattern as OV4 in portal-v2-overview.json.",
+      "sessionTag": "sec-1258",
+      "action": "expect",
+      "selector": "[data-testid='pv2-pillar-scan-bar']",
+      "state": "visible",
+      "textContains": "Last scan"
     },
     {
       "name": "S8 -- the Security Categories panel renders, with its own title. Governance uses four NAMED clusters instead; this is one unnamed panel of two rows.",
@@ -1509,6 +1526,7 @@
     },
     {
       "name": "goto the rebuilt Compliance pillar dashboard.",
+      "sessionTag": "lastscan-1257",
       "action": "goto",
       "target": "/portal/shane-mccaw-consulting/portal-v2/compliance"
     },
@@ -1573,6 +1591,14 @@
       "selector": "[data-testid='pv2-cmp-scrutiny-detail']",
       "state": "visible",
       "textContains": "the trail expires before most intrusions are even discovered"
+    },
+    {
+      "name": "C7a (#1257) -- the scan strip's 'Last scan' value is now the REAL scan-status timestamp (scan-status-context's lastScanAt via lastScanLabel), not the CMP_HERO fixture string. Static prefix; the value itself is the tenant's own real last-scan reading.",
+      "sessionTag": "lastscan-1257",
+      "action": "expect",
+      "selector": "[data-testid='pv2-cmp-scan-bar']",
+      "state": "visible",
+      "textContains": "Last scan"
     },
     {
       "name": "C7 -- the scan strip is NOT the shared PillarScanBar: its dot does not pulse and its sentence ends 'none reopened'.",
