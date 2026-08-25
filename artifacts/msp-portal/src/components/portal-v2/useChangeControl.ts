@@ -46,7 +46,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 
 import type { AgendaItem, ChangeRequest, FreezeRow, NotifRule } from "./ccPageData";
-import { CC_CAB, CC_CAL_EVENTS, CC_CRS, CC_FREEZE, CC_FREEZES, CC_NOTIF, CC_STAT_SETS, CC_WINDOW_DAY } from "./ccPageData";
+import { CC_CAB, CC_CAL_EVENTS, CC_CRS, CC_FIXTURE_CUSTOMER_ORG, CC_FREEZE, CC_FREEZES, CC_NOTIF, CC_STAT_SETS, CC_WINDOW_DAY } from "./ccPageData";
 import type { WireChangeControlPayload, WireChangeControlStats, WireChangeRequest } from "./ccChangeControlWire";
 import { calEventsFor, deriveStatSets, toChangeRequests } from "./ccChangeControlWire";
 
@@ -183,6 +183,14 @@ export interface CcController {
   readonly signForm: (code: string, window: string) => void;
   readonly exceptionForm: (code: string) => void;
   readonly moveForm: (code: string) => void;
+  /**
+   * Separation of duties: is the current logged-in account the one that RAISED
+   * this change? Resolved against real identity (the JWT's email/name), never a
+   * tenant-name string match — the account that submits a change can never be
+   * the account that signs it off. See the implementation for the live vs.
+   * fixture-fallback split.
+   */
+  readonly isSubmitter: (cr: ChangeRequest) => boolean;
   readonly freezes: () => FreezeRow[];
   readonly agenda: () => AgendaItem[];
   readonly notif: () => NotifRule[];
@@ -227,9 +235,17 @@ export function useChangeControl(opts: { viewParam?: string } = {}): CcControlle
   // a ref rather than a dependency array — the same rule every polling hook in
   // this codebase follows (BUILD_PLAN §5.4). This read is one-shot rather than
   // polled: a change request moves when a human moves it, not on a clock.
-  const { fetchWithAuth } = useAuth();
+  const { fetchWithAuth, user } = useAuth();
   const fetchRef = useRef(fetchWithAuth);
   fetchRef.current = fetchWithAuth;
+
+  // The real, logged-in identity — the two claims a submitter can be recorded
+  // under. `portal-change-control.ts` writes `requestedBy = req.user.email` on
+  // every CR raised from the portal, so email is the primary key for "did I
+  // raise this?"; name is a secondary match for older/MSP-raised rows that
+  // stored a display name instead of an address.
+  const viewerEmail = (user?.email ?? "").trim().toLowerCase();
+  const viewerName = (user?.name ?? "").trim().toLowerCase();
 
   const [wire, setWire] = useState<WireChangeControlPayload | null>(null);
   const [dataState, setDataState] = useState<CcDataState>("loading");
@@ -402,6 +418,12 @@ export function useChangeControl(opts: { viewParam?: string } = {}): CcControlle
   const agenda = useCallback(() => s.agendaOv || (CC_CAB.agenda as AgendaItem[]), [s.agendaOv]);
   const notif = useCallback(() => s.notifOv || (CC_NOTIF as NotifRule[]), [s.notifOv]);
 
+  const isSubmitter = useCallback(
+    (cr: ChangeRequest): boolean =>
+      viewerIsSubmitter(cr, { dataState, viewerEmail, viewerName }),
+    [dataState, viewerEmail, viewerName],
+  );
+
   return {
     s,
     role: "approver",
@@ -416,6 +438,7 @@ export function useChangeControl(opts: { viewParam?: string } = {}): CcControlle
     signForm,
     exceptionForm,
     moveForm,
+    isSubmitter,
     freezes,
     agenda,
     notif,
@@ -425,6 +448,40 @@ export function useChangeControl(opts: { viewParam?: string } = {}): CcControlle
     wireStats,
     dataState,
   };
+}
+
+/**
+ * Separation of duties, as a pure predicate so it can be unit-tested away from
+ * the hook and React. Answers "did the current viewer raise this change?" —
+ * the account that submits a change can never be the account that approves it.
+ *
+ * LIVE data resolves this from real identity. `portal-change-control.ts` writes
+ * `requestedBy = req.user.email` on every CR raised from the portal, and
+ * `ccChangeControlWire` maps that straight onto `submitter.name`, so a live
+ * change is the viewer's own exactly when its recorded submitter matches the
+ * viewer's email (primary) or name (secondary, for older/MSP-raised rows that
+ * stored a display name). An unattributable submitter yields `false` — the
+ * safe default, and the page exposes no real approve mutation regardless.
+ *
+ * FIXTURE fallback reproduces the design worked-example's demo: the prototype
+ * casts the viewer as the customer's IT Director and blocks approval on the one
+ * change the customer's own side raised. That turns on the example's own
+ * customer org (`CC_FIXTURE_CUSTOMER_ORG`), read from the fixtures — never a
+ * tenant-name literal in live logic.
+ */
+export function viewerIsSubmitter(
+  cr: { approvals: { submitter: { name: string; org: string } } },
+  ctx: { dataState: CcDataState; viewerEmail: string; viewerName: string },
+): boolean {
+  if (ctx.dataState === "live") {
+    const submitter = (cr.approvals.submitter.name ?? "").trim().toLowerCase();
+    if (!submitter) return false;
+    return (
+      (ctx.viewerEmail !== "" && submitter === ctx.viewerEmail) ||
+      (ctx.viewerName !== "" && submitter === ctx.viewerName)
+    );
+  }
+  return cr.approvals.submitter.org.indexOf(CC_FIXTURE_CUSTOMER_ORG) >= 0;
 }
 
 /** proto inFreeze against live state (freeze always active in this UI-only build). */

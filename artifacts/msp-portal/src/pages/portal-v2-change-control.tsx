@@ -674,7 +674,7 @@ function BriefingView({ ctrl }: { ctrl: CcController }) {
     rbPillCss: pill(m.optOut ? "Opt-out until 21 Aug" : "No opt-out", m.optOut ? "#fbbf24" : "#f87171", (m.optOut ? "#fbbf24" : "#f87171") + "14"),
     how: m.how.map((h) => ({ call: h.call, result: h.result })),
     acts: [
-      { label: m.linkedCr, tone: "#fff", border: "#0078D4", bg: "#0078D4", go: () => ctrl.patch({ intakeOpen: true, draft: { ...s.draft, title: m.title, desc: m.how[0].call, just: "Getting ahead of " + m.id + " before Microsoft applies it for us.", scope: "Halden Materials tenant", deps: m.id, risk: "Medium" } }) },
+      { label: m.linkedCr, tone: "#fff", border: "#0078D4", bg: "#0078D4", go: () => ctrl.patch({ intakeOpen: true, draft: { ...s.draft, title: m.title, desc: m.how[0].call, just: "Getting ahead of " + m.id + " before Microsoft applies it for us.", scope: "This Microsoft 365 tenant", deps: m.id, risk: "Medium" } }) },
       {
         label: "Acknowledge · no action",
         tone: "#94a3b8",
@@ -1727,10 +1727,11 @@ function RecordSection({ cr, secKey, ctrl }: { cr: ChangeRequest; secKey: string
 
   if (secKey === "approvals") {
     const a = cr.approvals;
-    const sod =
-      a.submitter.org.indexOf("Halden") >= 0
-        ? "This request came from your side, so the signature has to come from someone else — the record refuses an approval from the submitting account and logs the attempt."
-        : "The approver must be a different person from the submitter. Shane McCaw submitted this change, so he cannot sign it off; the record enforces that, not the policy document.";
+    const sod = ctrl.isSubmitter(cr)
+      ? "This request came from your side, so the signature has to come from someone else — the record refuses an approval from the submitting account and logs the attempt."
+      : "The approver must be a different person from the submitter. " +
+        a.submitter.name +
+        " submitted this change, so they cannot sign it off; the record enforces that, not the policy document.";
     const people = [
       { role: "Submitter", p: a.submitter },
       { role: "Peer reviewer", p: a.peer },
@@ -2094,7 +2095,7 @@ function RecordView({ ctrl }: { ctrl: CcController }) {
   const comp = compOf(cur);
   const secDef = CC_SECS.find((x) => x.key === s.sec) || CC_SECS[0];
   const canEdit = editableBy(secDef.key);
-  const isSubmitter = role === "approver" && cur.approvals.submitter.org.indexOf("Halden") >= 0;
+  const isSubmitter = role === "approver" && ctrl.isSubmitter(cur);
   const curClash = clashOf(ctrl, cur.code);
   const canApprove = role === "approver" && !isSubmitter && cur.state === "Awaiting approval" && comp.done === comp.total && !curClash;
   const actions = buildRecordActions(ctrl, cur, comp, canApprove, isSubmitter, curClash, canEdit);

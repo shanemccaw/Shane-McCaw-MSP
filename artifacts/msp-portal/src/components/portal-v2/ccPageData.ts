@@ -339,6 +339,18 @@ export interface SecDef {
 
 /* ── Fixtures — transcribed verbatim from the design's logic class ──────────── */
 
+/**
+ * The design worked-example's customer tenant. The prototype casts the page's
+ * viewer as this tenant's IT Director (Priya Raman · Halden Materials) and its
+ * separation-of-duties demo turns on whether a change was raised by this same
+ * customer side. It lives here, alongside the rest of the design's verbatim
+ * fixtures, ONLY so the fixture fallback path can reproduce that demo — a live
+ * tenant resolves the real logged-in identity instead (see
+ * `useChangeControl.isSubmitter`), never this literal. Nothing in the page's
+ * own logic references a tenant name directly anymore.
+ */
+export const CC_FIXTURE_CUSTOMER_ORG = "Halden Materials";
+
 /** proto crs() — the five change requests, each with its full 11-section record. */
 export const CC_CRS: readonly ChangeRequest[] = [
   {
