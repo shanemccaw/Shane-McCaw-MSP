@@ -478,6 +478,43 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     smartDefaultTarget: 0,
     smartBands: RISK_COUNT_BANDS,
   },
+  {
+    // #1260 -- governance:empty-security-groups' emptySecurityGroupCount
+    // targetField. countEmptyArray on GET /groups?$expand=members(...),
+    // filtered to securityEnabled/not-mailEnabled so this counts pure
+    // security groups only.
+    key: "governance.emptySecurityGroupCount",
+    label: "Empty Security Groups",
+    valueType: "count",
+    shape: "scalar",
+    sourceType: "monitor_profile",
+    sourceKey: "governance:empty-security-groups",
+    scope: "customer",
+    status: "available",
+    smartEligible: true,
+    smartDefaultTarget: 0,
+    smartBands: RISK_COUNT_BANDS,
+  },
+  {
+    // #1260 -- appgov:dormant-service-principals' dormantServicePrincipalCount
+    // targetField. NOT a sign-in-activity signal -- servicePrincipal has none
+    // in v1.0 (no signInActivity, no createdDateTime either). countEmptyArray
+    // on $expand=appRoleAssignedTo: a service principal nothing is provisioned
+    // to use. See the migration file's own HONESTY NOTE
+    // (2026-08-24-health-object-inventory-4-missing-checks-1260.sql) before
+    // wiring this to any "no sign-in" UI copy.
+    key: "governance.dormantServicePrincipalCount",
+    label: "Service Principals With No Assigned Access",
+    valueType: "count",
+    shape: "scalar",
+    sourceType: "monitor_profile",
+    sourceKey: "appgov:dormant-service-principals",
+    scope: "customer",
+    status: "available",
+    smartEligible: true,
+    smartDefaultTarget: 0,
+    smartBands: RISK_COUNT_BANDS,
+  },
   // ---- Security & Defender ----------------------------------------------
   {
     key: "security.activeAlertCount",
@@ -1159,6 +1196,53 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     shape: "scalar",
     sourceType: "monitor_profile",
     sourceKey: "intune:outdated-devices",
+    scope: "customer",
+    status: "available",
+    smartEligible: true,
+    smartDefaultTarget: 0,
+    smartBands: RISK_COUNT_BANDS,
+  },
+  {
+    // #1260 -- devices:stale-duplicate-records' staleDeviceRecordCount
+    // targetField. GET /devices' own approximateLastSignInDateTime (a real
+    // v1.0 property, unlike application) null-or-90-days-old.
+    key: "intune.staleDeviceRecordCount",
+    label: "Stale Device Records",
+    valueType: "count",
+    shape: "scalar",
+    sourceType: "monitor_profile",
+    sourceKey: "devices:stale-duplicate-records",
+    scope: "customer",
+    status: "available",
+    smartEligible: true,
+    smartDefaultTarget: 0,
+    smartBands: RISK_COUNT_BANDS,
+  },
+  {
+    // #1260 -- same check as intune.staleDeviceRecordCount above, the
+    // duplicate-hardware-ID half (countDuplicates on deviceId).
+    key: "intune.duplicateDeviceRecordCount",
+    label: "Duplicate Device Records",
+    valueType: "count",
+    shape: "scalar",
+    sourceType: "monitor_profile",
+    sourceKey: "devices:stale-duplicate-records",
+    scope: "customer",
+    status: "available",
+    smartEligible: true,
+    smartDefaultTarget: 0,
+    smartBands: RISK_COUNT_BANDS,
+  },
+  {
+    // #1260 -- devices:unassigned-intune-profiles' unassignedIntuneProfileCount
+    // targetField. countEmptyArray on $expand=assignments -- a profile that
+    // targets no device or group.
+    key: "intune.unassignedProfileCount",
+    label: "Unassigned Intune Profiles",
+    valueType: "count",
+    shape: "scalar",
+    sourceType: "monitor_profile",
+    sourceKey: "devices:unassigned-intune-profiles",
     scope: "customer",
     status: "available",
     smartEligible: true,

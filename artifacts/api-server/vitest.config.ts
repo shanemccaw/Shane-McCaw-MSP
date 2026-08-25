@@ -311,6 +311,10 @@ export default defineConfig({
       // (the most recent) row per key.
       "src/routes/portal-tenant-check-items.test.ts",
       "src/lib/__tests__/onedrive-sharing.test.ts",
+      // #1260 — the 4 missing Health stale-object-inventory checks: stale/
+      // duplicate device records, unassigned Intune profiles, empty security
+      // groups, and dormant (no-app-role-assignment) service principals.
+      "src/lib/health-object-inventory-checks-1260.test.ts",
     ],
     coverage: {
       provider: "v8",
