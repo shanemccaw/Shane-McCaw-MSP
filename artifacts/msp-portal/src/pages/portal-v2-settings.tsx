@@ -43,7 +43,11 @@ import { Link, useRoute } from "wouter";
 
 import { PortalV2Shell, SIDEBAR_WASH } from "@/components/portal-v2/PortalV2Shell";
 import { useFormDrawer } from "@/components/portal-v2/FormDrawer";
-import { usePortalV2EscDays, usePortalV2People } from "@/components/portal-v2/portalV2People";
+import {
+  usePortalV2EscDays,
+  usePortalV2OwnershipObjects,
+  usePortalV2People,
+} from "@/components/portal-v2/portalV2People";
 import {
   CC_APPROVAL_OPTS,
   CC_APPROVER_BANDS,
@@ -76,6 +80,7 @@ import {
   newOwnPerson,
   ownPeopleFoot,
   routingRuleOn,
+  settingsRoutingRuleLive,
   toggleApprover,
   toggleAway,
 } from "@/components/portal-v2/settingsModel";
@@ -240,6 +245,8 @@ function RoutingSection({
   escDays: number;
   onEscDays: (v: number) => void;
 }) {
+  const { objects, overlay } = usePortalV2OwnershipObjects();
+  const { people } = usePortalV2People();
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <SectionHead
@@ -248,6 +255,7 @@ function RoutingSection({
       />
       {SET_ROUTING_RULES.map((r) => {
         const on = routingRuleOn(rules, r.k);
+        const live = settingsRoutingRuleLive(r, objects, people, overlay.overrides, escDays);
         return (
           <button
             key={r.k}
@@ -289,8 +297,11 @@ function RoutingSection({
               <span style={{ fontSize: "12.5px", fontWeight: 700, color: "#e2e8f0", lineHeight: 1.4 }}>
                 {r.label}
               </span>
-              <span style={{ fontSize: "11px", color: "#94a3b8", lineHeight: 1.55, textWrap: "pretty" }}>
-                {r.live}
+              <span
+                style={{ fontSize: "11px", color: "#94a3b8", lineHeight: 1.55, textWrap: "pretty" }}
+                data-testid={`pv2-set-routing-${r.k}-live`}
+              >
+                {live}
               </span>
             </div>
             <span

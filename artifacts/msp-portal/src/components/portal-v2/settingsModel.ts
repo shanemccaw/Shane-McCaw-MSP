@@ -9,6 +9,8 @@
  * Prototype references are to 'Customer Portal Shell.dc.html'.
  */
 
+import type { OwnObject } from "./ownershipData";
+import { escalationLate, ownerOf, type OwnerOverrides } from "./ownershipModel";
 import {
   OWN_AVAILABLE_LABEL,
   OWN_AWAY_DEFAULT,
@@ -18,6 +20,7 @@ import {
   type OwnKind,
   type OwnPerson,
   type OwnSide,
+  type RoutingRuleDef,
 } from "./settingsData";
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -148,6 +151,69 @@ export function newOwnPerson(id: string): OwnPerson {
  */
 export function routingRuleOn(rules: Readonly<Record<string, boolean>>, k: string): boolean {
   return rules[k] !== false;
+}
+
+/**
+ * The live status line under a Settings routing rule.
+ *
+ * The design's copy above these six rows says "every rule reads the ownership
+ * matrix live" — so, now that the matrix has a real source (`ownershipWire.ts`),
+ * this reads the SAME `objects` / `people` / `overlay` the Ownership page itself
+ * renders from, rather than the fixture's fixed sentences. `objects` is whichever
+ * source `usePortalV2OwnershipObjects` is currently showing — the design fixture
+ * while loading or unscoped, the tenant's own rows once live — so this line
+ * matches the matrix on screen exactly, the same "one source, not a copy of it"
+ * rule `usePortalV2People` already applies to People & roles.
+ *
+ * `escalate` is the one rule that stays partly fixture even against live
+ * objects: there is no idle-days tracking in the schema (`ESCALATION_DAYS` is a
+ * fixture keyed to the design's own object ids), so a real tenant's rows simply
+ * never match it and this honestly reads "Nothing past it today" rather than
+ * inventing a clock the platform does not keep — see `escalationLate`.
+ */
+export function settingsRoutingRuleLive(
+  rule: RoutingRuleDef,
+  objects: readonly OwnObject[],
+  people: readonly OwnPerson[],
+  ov: OwnerOverrides,
+  escDays: number,
+): string {
+  if (!objects.length) return rule.live;
+  switch (rule.k) {
+    case "notify": {
+      const missing = objects.filter((o) => !ownerOf(o, "i", ov)).length;
+      return `${objects.length - missing} of ${objects.length} objects have an Informed name set; ${missing} do not and get no notice.`;
+    }
+    case "approve": {
+      const crs = objects.filter((o) => o.type === "cr");
+      if (!crs.length) return rule.live;
+      const missing = crs.filter((o) => !ownerOf(o, "a", ov)).length;
+      return `${crs.length} change requests; ${missing} cannot be approved — no Accountable name set.`;
+    }
+    case "consult": {
+      const missing = objects.filter((o) => !ownerOf(o, "c", ov)).length;
+      return `${objects.length - missing} of ${objects.length} objects have a Consulted name; ${missing} do not.`;
+    }
+    case "escalate": {
+      const late = escalationLate(objects, ov, escDays);
+      const tail = late.length
+        ? `${late.length} past it now: ${late.map((e) => `${e.name} (${e.days}d)`).join(", ")}`
+        : "Nothing past it today.";
+      return `Nothing moves for ${escDays} days and it goes to the accountable name. ${tail}`;
+    }
+    case "gap": {
+      const missing = objects.filter((o) => !ownerOf(o, "r", ov)).length;
+      return `${missing} of ${objects.length} objects have no Responsible name and cannot have work routed to them.`;
+    }
+    case "cover": {
+      const away = people.filter((p) => p.away);
+      if (!away.length) return "Nobody is currently away.";
+      const covered = away.filter((p) => p.deputy).length;
+      return `${away.length} people currently away; ${covered} have a deputy covering, ${away.length - covered} do not.`;
+    }
+    default:
+      return rule.live;
+  }
 }
 
 /* ────────────────────────────────────────────────────────────────────────────

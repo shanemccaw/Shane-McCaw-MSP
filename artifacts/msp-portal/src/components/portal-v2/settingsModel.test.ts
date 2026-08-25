@@ -11,9 +11,11 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
+import { OWN_OBJECTS } from "./ownershipData";
 import {
   CC_POLICY_SEED,
   OWN_PEOPLE_SEED,
+  SET_ROUTING_RULES,
   type OwnPerson,
 } from "./settingsData";
 import {
@@ -29,9 +31,16 @@ import {
   newOwnPerson,
   ownPeopleFoot,
   routingRuleOn,
+  settingsRoutingRuleLive,
   toggleApprover,
   toggleAway,
 } from "./settingsModel";
+
+const ruleByKey = (k: string) => {
+  const r = SET_ROUTING_RULES.find((x) => x.k === k);
+  if (!r) throw new Error(`no routing rule ${k}`);
+  return r;
+};
 
 const byId = (id: string): OwnPerson => {
   const p = OWN_PEOPLE_SEED.find((x) => x.id === id);
@@ -169,6 +178,67 @@ describe("routingRuleOn", () => {
   it("only an explicit false turns a rule off", () => {
     assert.equal(routingRuleOn({ notify: false }, "notify"), false);
     assert.equal(routingRuleOn({ notify: true }, "notify"), true);
+  });
+});
+
+describe("settingsRoutingRuleLive", () => {
+  it("falls back to the rule's own static copy when there are no objects yet", () => {
+    assert.equal(settingsRoutingRuleLive(ruleByKey("notify"), [], OWN_PEOPLE_SEED, {}, 5), ruleByKey("notify").live);
+  });
+
+  it("counts the gap rule off the objects' real Responsible cells", () => {
+    // svc-copilot, RSK-004 and ANN-copilot are the three seeded rows with r: "".
+    assert.equal(
+      settingsRoutingRuleLive(ruleByKey("gap"), OWN_OBJECTS, OWN_PEOPLE_SEED, {}, 5),
+      "3 of 24 objects have no Responsible name and cannot have work routed to them.",
+    );
+  });
+
+  it("counts the notify rule off the objects' real Informed cells", () => {
+    // ANN-teams-recap is the one seeded row with i: "".
+    assert.equal(
+      settingsRoutingRuleLive(ruleByKey("notify"), OWN_OBJECTS, OWN_PEOPLE_SEED, {}, 5),
+      "23 of 24 objects have an Informed name set; 1 do not and get no notice.",
+    );
+  });
+
+  it("scopes the approve rule to change requests only, and falls back when there are none", () => {
+    // CR-0142 and CR-0136 carry an Accountable name; CR-0149 does not.
+    assert.equal(
+      settingsRoutingRuleLive(ruleByKey("approve"), OWN_OBJECTS, OWN_PEOPLE_SEED, {}, 5),
+      "3 change requests; 1 cannot be approved — no Accountable name set.",
+    );
+    const noCrs = OWN_OBJECTS.filter((o) => o.type !== "cr");
+    assert.equal(settingsRoutingRuleLive(ruleByKey("approve"), noCrs, OWN_PEOPLE_SEED, {}, 5), ruleByKey("approve").live);
+  });
+
+  it("an override closing a gap moves the gap count live", () => {
+    assert.equal(
+      settingsRoutingRuleLive(ruleByKey("gap"), OWN_OBJECTS, OWN_PEOPLE_SEED, { "svc-copilot:r": "priya" }, 5),
+      "2 of 24 objects have no Responsible name and cannot have work routed to them.",
+    );
+  });
+
+  it("counts who is currently away and covered, off the real people list", () => {
+    // Marcus Lee is the one seeded person with away set, deputised to Priya.
+    assert.equal(
+      settingsRoutingRuleLive(ruleByKey("cover"), OWN_OBJECTS, OWN_PEOPLE_SEED, {}, 5),
+      "1 people currently away; 1 have a deputy covering, 0 do not.",
+    );
+    const nobodyAway = OWN_PEOPLE_SEED.map((p) => ({ ...p, away: "" }));
+    assert.equal(settingsRoutingRuleLive(ruleByKey("cover"), OWN_OBJECTS, nobodyAway, {}, 5), "Nobody is currently away.");
+  });
+
+  it("the escalate rule reads the same fixture clock the Ownership page does", () => {
+    // ESCALATION_DAYS: CR-0142:a=7 and ANN-teams-recap:r=6 exceed a 5-day threshold.
+    assert.equal(
+      settingsRoutingRuleLive(ruleByKey("escalate"), OWN_OBJECTS, OWN_PEOPLE_SEED, {}, 5),
+      "Nothing moves for 5 days and it goes to the accountable name. 2 past it now: Disable legacy auth ahead of Microsoft (7d), Teams toolbar and recap tab (6d)",
+    );
+    assert.equal(
+      settingsRoutingRuleLive(ruleByKey("escalate"), OWN_OBJECTS, OWN_PEOPLE_SEED, {}, 30),
+      "Nothing moves for 30 days and it goes to the accountable name. Nothing past it today.",
+    );
   });
 });
 
