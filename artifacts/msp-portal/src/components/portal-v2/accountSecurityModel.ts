@@ -7,7 +7,8 @@
  * type-to-confirm gate can't silently invert.
  */
 
-import { SEC_DELETE_PHRASE, type SecMfaTone, type SecTone } from "./accountSecurityData";
+import { SEC_DELETE_PHRASE, type SecMfaMethod, type SecMfaTone, type SecTone } from "./accountSecurityData";
+import type { LiveMfaEnrollments } from "./useAccountSecurityLive";
 
 /** Posture dot colour — prototype 15787. */
 export function secDotColor(tone: SecTone): string {
@@ -45,4 +46,48 @@ export function sessionCompliantColor(compliant: string): string {
  */
 export function secDeleteReady(text: string): boolean {
   return text.trim().toUpperCase() === SEC_DELETE_PHRASE;
+}
+
+/**
+ * Overlays real `GET /api/auth/mfa/enrollments` state onto the fixture's
+ * how/why/tradeoff copy for one method (Git #1235) — the design copy stays
+ * design copy, only "is it actually enrolled" changes.
+ */
+export function mfaMethodWithLive(m: SecMfaMethod, live: LiveMfaEnrollments | null): SecMfaMethod {
+  if (!live) return m;
+  if (m.key === "passkey") {
+    return live.passkey
+      ? { ...m, state: `Active · ${live.passkeyCount} registered` }
+      : { ...m, state: "Not set up" };
+  }
+  if (m.key === "app") {
+    return live.totp ? { ...m, state: "Active · authenticator app" } : { ...m, state: "Not set up" };
+  }
+  if (m.key === "sms") {
+    return live.sms
+      ? { ...m, state: `Active${live.smsPhone ? ` · ${live.smsPhone}` : ""}` }
+      : { ...m, state: "Not set up" };
+  }
+  return m;
+}
+
+/** The posture card's "Multifactor" row summary, from real enrollment state. */
+export function mfaPostureSummary(live: LiveMfaEnrollments): string {
+  const active: string[] = [];
+  if (live.passkey) active.push("passkey");
+  if (live.totp) active.push("authenticator app");
+  if (live.sms) active.push("SMS");
+  if (active.length === 0) return "No method registered";
+  return `Registered · ${active.join(", ")}`;
+}
+
+/** The posture card's "Multifactor" row tone — green once any method is active. */
+export function mfaPostureTone(live: LiveMfaEnrollments): SecTone {
+  return live.passkey || live.totp || live.sms ? "green" : "red";
+}
+
+/** The posture card's "Sessions" row summary, from the real active-session list. */
+export function sessionsPostureSummary(count: number): string {
+  if (count === 0) return "No active sessions";
+  return `${count} active`;
 }

@@ -10,11 +10,22 @@
  * 365 tenant. Tenant findings live under the six pillars." The page is measured
  * with the pillar pages' evidence language on purpose.
  *
+ * ── Live data (Git #1235) ─────────────────────────────────────────────────
+ * Identity, MFA method state, and the active-sessions list (with working
+ * "Sign out everywhere else" / per-row "Revoke") are wired to the portal's own
+ * real auth endpoints via `useAccountSecurityLive` — see that hook's own doc
+ * comment for exactly which endpoints, and for the honest list of what still
+ * has no live source (password age has no `passwordChangedAt` column yet;
+ * "Failed attempts" is a real DB column not yet exposed by any endpoint;
+ * device compliance is Entra/Intune data out of this page's own scope).
+ *
  * ── UI-only ─────────────────────────────────────────────────────────────────
- * The fixture is design content. The delete-account section IS interactive —
- * expand/collapse and the type-to-confirm gate are the design's own state — but
- * the action buttons (change password, set up passkey, revoke, submit deletion)
- * are inert; wiring them is a later pass.
+ * The delete-account section IS interactive — expand/collapse and the
+ * type-to-confirm gate are the design's own state — but change password, set
+ * up passkey, and submit deletion remain inert design copy/CTAs; wiring those
+ * to `POST /api/auth/change-password`, MFA enrollment, and
+ * `POST /api/portal/deletion-request` (all of which already exist) is a later
+ * pass, same as the "Your data" export/delete cards.
  */
 
 import { useState } from "react";
@@ -57,12 +68,18 @@ import {
 import {
   mfaAccent,
   mfaIsActive,
+  mfaMethodWithLive,
+  mfaPostureSummary,
+  mfaPostureTone,
   secDeleteReady,
   secDotColor,
   sessionCompliantColor,
   sessionDotColor,
   sessionIsUnmanaged,
+  sessionsPostureSummary,
 } from "@/components/portal-v2/accountSecurityModel";
+import { useAccountSecurityLive } from "@/components/portal-v2/useAccountSecurityLive";
+import { timeAgo } from "@/components/portal-v2/overviewModel";
 
 const MONO = "'SF Mono',Menlo,Consolas,monospace";
 
@@ -181,11 +198,40 @@ export default function PortalV2AccountSecurityPage() {
   const [deleteText, setDeleteText] = useState("");
   const ready = secDeleteReady(deleteText);
 
+  const live = useAccountSecurityLive();
+
+  const identityEmail = live.identityEmail ?? SEC_IDENTITY_EMAIL;
+  const identityRole = live.identityRole ?? SEC_IDENTITY_ROLE;
+
+  const posture = SEC_POSTURE.map((row) => {
+    if (row.k === "Multifactor" && live.mfa) {
+      return { ...row, v: mfaPostureSummary(live.mfa), tone: mfaPostureTone(live.mfa) };
+    }
+    if (row.k === "Passkey" && live.mfa) {
+      return live.mfa.passkey
+        ? { ...row, v: `Registered · ${live.mfa.passkeyCount} passkey${live.mfa.passkeyCount === 1 ? "" : "s"}`, tone: "green" as const }
+        : row;
+    }
+    if (row.k === "Sessions" && live.sessions) {
+      return { ...row, v: sessionsPostureSummary(live.sessions.length), tone: "green" as const };
+    }
+    if (row.k === "Last sign-in" && live.lastSignInAt) {
+      return { ...row, v: `${timeAgo(live.lastSignInAt)} · from your most recent login row`, tone: "green" as const };
+    }
+    return row;
+  });
+
+  const mfaCards = SEC_MFA.map((m) => mfaMethodWithLive(m, live.mfa));
+  // Fixture rows get a negative synthetic id (never a real session row) so the
+  // list always has a stable id to key/act on without a type-narrowing union.
+  const sessionRows = live.sessions ?? SEC_SESSIONS.map((s, i) => ({ ...s, id: -(i + 1) }));
+
   return (
     <PortalV2Shell eyebrow="Account" title={SEC_TITLE}>
       <div style={{ minHeight: "100%", background: SIDEBAR_WASH }}>
         <div
           data-testid="pv2-account-security"
+          data-account-security-source={live.dataState}
           style={{
             position: "relative",
             maxWidth: 1120,
@@ -197,6 +243,10 @@ export default function PortalV2AccountSecurityPage() {
             boxSizing: "border-box",
           }}
         >
+          <span data-testid="pv2-sec-data-source" style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)" }}>
+            {live.dataState}
+          </span>
+
           <BackToOverview />
 
           {/* Header — proto 2206-2215 */}
@@ -218,8 +268,8 @@ export default function PortalV2AccountSecurityPage() {
               <span style={{ fontSize: "12.5px", color: "#94a3b8", lineHeight: 1.55, maxWidth: "82ch" }}>{SEC_SUBTITLE}</span>
             </div>
             <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2, flex: "0 0 auto" }}>
-              <span style={{ fontSize: "10.5px", color: "#64748b" }}>{SEC_IDENTITY_EMAIL}</span>
-              <span style={{ fontSize: "10.5px", color: "#475569" }}>{SEC_IDENTITY_ROLE}</span>
+              <span style={{ fontSize: "10.5px", color: "#64748b" }}>{identityEmail}</span>
+              <span style={{ fontSize: "10.5px", color: "#475569" }}>{identityRole}</span>
             </div>
           </div>
 
@@ -259,7 +309,7 @@ export default function PortalV2AccountSecurityPage() {
                 gap: "10px 20px",
               }}
             >
-              {SEC_POSTURE.map((p) => (
+              {posture.map((p) => (
                 <div key={p.k} style={{ display: "flex", alignItems: "flex-start", gap: 9, minWidth: 0 }}>
                   <span style={{ flex: "0 0 6px", width: 6, height: 6, borderRadius: "50%", background: secDotColor(p.tone), marginTop: 6 }} />
                   <div style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0 }}>
@@ -281,7 +331,7 @@ export default function PortalV2AccountSecurityPage() {
               <span style={{ fontSize: "10.5px", color: "#475569" }}>{SEC_MFA_SUB}</span>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(290px,1fr))", gap: 10 }}>
-              {SEC_MFA.map((m) => (
+              {mfaCards.map((m) => (
                 <MfaCard key={m.key} m={m} />
               ))}
             </div>
@@ -304,13 +354,14 @@ export default function PortalV2AccountSecurityPage() {
                 <Kicker>{SEC_SESSIONS_KICKER}</Kicker>
                 <button
                   type="button"
+                  onClick={live.sessions ? () => void live.signOutOthers() : undefined}
                   style={{ padding: "4px 10px", borderRadius: 5, border: "1px solid rgba(148,163,184,.22)", background: "transparent", fontSize: "10.5px", fontWeight: 600, color: "#94a3b8", cursor: "pointer", fontFamily: "inherit" }}
                 >
                   {SEC_SESSIONS_SIGNOUT}
                 </button>
               </div>
-              {SEC_SESSIONS.map((s) => (
-                <div key={s.device} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "11px 16px", borderBottom: "1px solid rgba(30,41,59,.8)" }}>
+              {sessionRows.map((s) => (
+                <div key={s.id} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "11px 16px", borderBottom: "1px solid rgba(30,41,59,.8)" }}>
                   <span style={{ flex: "0 0 6px", width: 6, height: 6, borderRadius: "50%", background: sessionDotColor(s.current), marginTop: 6 }} />
                   <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -325,12 +376,13 @@ export default function PortalV2AccountSecurityPage() {
                       {s.where} · {s.when}
                     </span>
                     <span style={{ fontSize: "10.5px", color: sessionCompliantColor(s.compliant) }}>
-                      {s.since} · {s.compliant}
+                      {s.compliant ? `${s.since} · ${s.compliant}` : s.since}
                     </span>
                   </div>
                   {!s.current && (
                     <button
                       type="button"
+                      onClick={live.sessions ? () => void live.revokeSession(s.id) : undefined}
                       style={{ flex: "0 0 auto", padding: "4px 10px", borderRadius: 5, border: "1px solid rgba(148,163,184,.22)", background: "transparent", fontSize: "10.5px", fontWeight: 600, color: "#94a3b8", cursor: "pointer", fontFamily: "inherit" }}
                     >
                       Revoke

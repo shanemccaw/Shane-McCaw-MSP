@@ -44,6 +44,7 @@
     { "name": "SEC3 -- the header carries the design's login-vs-tenant line verbatim.", "action": "expect", "selector": "[data-testid='pv2-account-security']", "textContains": "Your login to this portal — not your Microsoft 365 tenant. Tenant findings live under the six pillars." },
     { "name": "SEC4 -- open the delete-your-account disclosure.", "action": "click", "selector": "[data-testid='pv2-sec-delete-toggle']" },
     { "name": "SEC5 -- the disclosure reveals the retained-records fact (real expand state).", "action": "expect", "selector": "[data-testid='pv2-account-security']", "textContains": ["What is retained, and why", "DELETE MY ACCOUNT"] },
+    { "name": "SEC6 (Git #1235) -- the account-security page loaded real MFA/session data, not just the design fixture (useAccountSecurityLive).", "sessionTag": "acct-sec-1235", "action": "expect", "selector": "[data-testid='pv2-sec-data-source']", "textContains": "live" },
 
     { "name": "WH1 -- goto Webhooks.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/webhooks" },
     { "name": "WH2 -- the page resolved to Webhooks.", "action": "expect", "selector": "[data-testid='pv2-webhooks']", "state": "present", "critical": true },
