@@ -304,6 +304,7 @@ async function getConditionValue(
       case "finding.oversharing":  return await evalOversharing(cid, tid, w);
       case "finding.ownerless_group":   return await evalLatestFindingByKey(cid, tid, "governance:ownerless-groups");
       case "finding.standing_priv_role": return await evalLatestFindingByKey(cid, tid, "identity:pim-permanent-roles");
+      case "finding.mfa_gap":          return await evalLatestFindingByKey(cid, tid, "identity:privileged-mfa-gap");
       case "finding.global_admin_added": return await evalGlobalAdminAdded(tid, w);
 
       // ── drift (scoped by tenant_id text) ───────────────────────────────────
@@ -428,7 +429,6 @@ async function getConditionValue(
         );
 
       // ── pending_detector conditions — hook wired, source not built yet ──────
-      case "finding.mfa_gap":            // sub-issue: MFA monitor check key
       case "drift.regression":           // sub-issue: drift resolution/reopen lifecycle
       case "billing.license_change":     // sub-issue: licence-assignment snapshot+diff
       default:
@@ -451,6 +451,7 @@ function buildSummary(conditionType: string, value: number, ctx: TenantContext):
     case "finding.new_high":     return `${who}${n} new high finding${s} on the latest scan.`;
     case "finding.oversharing":  return `${who}${n} newly overshared item${s} beyond baseline.`;
     case "finding.ownerless_group":   return `${who}a group or team is left without an owner.`;
+    case "finding.mfa_gap":      return `${who}a privileged or user account does not have MFA enforced.`;
     case "finding.standing_priv_role": return `${who}a privileged role is held standing (not JIT/PIM).`;
     case "finding.global_admin_added": return `${who}${n} new Global Administrator${s} detected — verify immediately.`;
     case "drift.unapproved":     return `${who}${n} unapproved configuration change${s} detected.`;
