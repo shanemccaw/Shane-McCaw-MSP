@@ -112,6 +112,32 @@ export interface PortalV2PillarCard {
   licenseGapUpgrades?: PortalV2UpgradeLink[];
 }
 
+/**
+ * A real per-SKU ledger row (Git #1230), mirroring api-server's
+ * `LicenseSkuLedgerRow` — see `license-waste-source.ts` for what real data this
+ * is (and is not) sourced from.
+ */
+export interface PortalV2LicenseSkuLedgerRow {
+  skuPartNumber: string;
+  displayName: string;
+  purchased: number;
+  assigned: number;
+  unassigned: number;
+  unitMonthlyPriceCents: number;
+  monthlyWasteCents: number;
+  annualWasteCents: number;
+}
+
+export interface PortalV2LicenseSkuLedger {
+  rows: PortalV2LicenseSkuLedgerRow[];
+  totalPurchased: number;
+  totalAssigned: number;
+  totalUnassigned: number;
+  totalMonthlyWasteCents: number;
+  totalAnnualWasteCents: number;
+  checkKey: string;
+}
+
 export interface PortalV2Payload {
   pillars: PortalV2PillarCard[];
   findingsRunId: string | null;
@@ -121,6 +147,8 @@ export interface PortalV2Payload {
   scannedPackageKeys?: string[];
   scannedCheckCount?: number;
   generatedAt: string;
+  /** Real per-SKU licensing ledger (Git #1230). Undefined on an older payload; null when unsourceable. */
+  licenseSkuLedger?: PortalV2LicenseSkuLedger | null;
 }
 
 /* ── View model ───────────────────────────────────────────────────────────── */
@@ -193,6 +221,8 @@ export interface PortalV2View {
   readonly generatedAt: string | null;
   /** True when a real payload has arrived at all. */
   readonly loaded: boolean;
+  /** Real per-SKU licensing ledger (Git #1230). Null until loaded or unsourceable. */
+  readonly licenseSkuLedger: PortalV2LicenseSkuLedger | null;
 }
 
 const EMPTY_PILLAR = (key: PillarKey): PortalV2PillarView => ({
@@ -226,6 +256,7 @@ export const PORTAL_V2_VIEW_EMPTY: PortalV2View = {
   scannedCheckCount: null,
   generatedAt: null,
   loaded: false,
+  licenseSkuLedger: null,
 };
 
 /**
@@ -362,6 +393,10 @@ export function buildPortalV2View(payload: PortalV2Payload | null): PortalV2View
       typeof payload.scannedCheckCount === "number" ? payload.scannedCheckCount : null,
     generatedAt: payload.generatedAt ?? null,
     loaded: true,
+    licenseSkuLedger:
+      payload.licenseSkuLedger && Array.isArray(payload.licenseSkuLedger.rows)
+        ? payload.licenseSkuLedger
+        : null,
   };
 }
 

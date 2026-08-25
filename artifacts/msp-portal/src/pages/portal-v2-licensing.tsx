@@ -58,6 +58,7 @@ import { useFormDrawer } from "@/components/portal-v2/FormDrawer";
 import { useAcceptRisk } from "@/components/portal-v2/AcceptRiskPanel";
 import { GOV_SRC_META } from "@/components/portal-v2/govPages";
 import { useLivePillarHero, PV2_SOURCE_CLIP } from "@/components/portal-v2/useLivePillarHero";
+import { useLicenseSkuLedgerLive } from "@/components/portal-v2/usePortalV2Pillars";
 import {
   LIC_ACK,
   LIC_ACK_COUNT,
@@ -76,6 +77,7 @@ import {
   licBucketPanel,
   licFmt,
   licLedgerCards,
+  licLedgerCardsFromLive,
   licTrendGeometry,
 } from "@/components/portal-v2/licDashboardData";
 
@@ -172,12 +174,38 @@ function LicInfoDot({ title, summary }: { title: string; summary: string }) {
 export default function PortalV2LicensingPage() {
   const trend = licTrendGeometry();
   // Real pillar score/delta from the live health engine, with the fixture as the
-  // honest-null fallback. Only the ring is wired — the money ledger, buckets and
-  // provenance below have no per-item server feed and stay design fixture.
+  // honest-null fallback. The ring is wired here; the per-SKU ledger below is
+  // wired separately via useLicenseSkuLedgerLive (Git #1230). The 3 recovery
+  // buckets and the provenance block stay design fixture — no billing-term or
+  // usage-activity data exists to source them (see the ledger note below).
   const live = useLivePillarHero("licensing");
   const score = live.score ?? LIC_HERO.score;
   const delta = live.delta?.text ?? LIC_HERO.delta;
   const deltaColor = live.delta?.color ?? "#34d399";
+
+  // The per-SKU ledger (Git #1230): real purchased/assigned/unassigned + dollar
+  // rows from the tenant's own /subscribedSkus + sku_price_reference data, when
+  // sourceable. Falls back to the design fixture otherwise — never a half-real
+  // table. The 3 recovery buckets below stay fixture regardless: no billing-term
+  // (monthly vs. annual commitment) or usage-activity data exists anywhere in
+  // this platform's schema to classify a seat as today/renewal/reassign — see
+  // licDashboardData.ts's header on `licLedgerCardsFromLive`.
+  // Only overlays once the live estate has something genuinely recoverable to
+  // report — a thin tenant whose one priced SKU is fully assigned has nothing a
+  // money page can tell them yet, and switching to an all-Right-sized live
+  // ledger would be a worse, less complete answer than the illustrative
+  // fixture for a tenant this early in its estate.
+  const { ledger: liveLedger } = useLicenseSkuLedgerLive();
+  const ledgerIsLive = Boolean(liveLedger && liveLedger.totalUnassigned > 0);
+  const ledgerCards = ledgerIsLive ? licLedgerCardsFromLive(liveLedger!.rows) : licLedgerCards();
+  const ledgerTotals = ledgerIsLive
+    ? {
+        purchased: String(liveLedger!.totalPurchased),
+        active: String(liveLedger!.totalAssigned),
+        waste: `${licFmt(Math.round(liveLedger!.totalMonthlyWasteCents / 100))}/mo`,
+      }
+    : LIC_SKU_TOTALS;
+
   const ringR = 46;
   const ringC = 2 * Math.PI * ringR;
   const ringOffset = ringC - (score / 100) * ringC;
@@ -891,8 +919,11 @@ export default function PortalV2LicensingPage() {
               <LicInfoDot title={LIC_LEDGER_KBI.title} summary={LIC_LEDGER_KBI.summary} />
             </span>
             <span style={SECTION_NOTE} data-testid="pv2-lic-ledger-totals">
-              {LIC_SKU_TOTALS.purchased} seats bought · {LIC_SKU_TOTALS.active} in use ·{" "}
-              {LIC_SKU_TOTALS.waste} wasted
+              {ledgerTotals.purchased} seats bought · {ledgerTotals.active}{" "}
+              {ledgerIsLive ? "assigned" : "in use"} · {ledgerTotals.waste} wasted
+            </span>
+            <span data-testid="pv2-lic-ledger-source" style={PV2_SOURCE_CLIP}>
+              {ledgerIsLive ? "live" : "fixture"}
             </span>
           </div>
           {/* The utilisation-bar legend — proto 3690-3697. */}
@@ -918,7 +949,7 @@ export default function PortalV2LicensingPage() {
             ))}
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 9 }} data-testid="pv2-lic-ledger">
-            {licLedgerCards().map((k) => {
+            {ledgerCards.map((k) => {
               const c = LIC_TONE[k.tone];
               const isOpen = openSku === k.part;
               return (

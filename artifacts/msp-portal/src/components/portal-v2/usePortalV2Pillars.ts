@@ -61,3 +61,14 @@ export function usePortalV2Pillars(): PortalV2PillarsState {
     everScanned: scanStatus.data?.everScanned === true,
   };
 }
+
+/**
+ * The Licensing pillar's real per-SKU ledger (Git #1230), read off the SAME
+ * `usePortalV2Pillars` payload every other pillar page trusts — no second
+ * fetch, no second data path. Null while loading and whenever the tenant has no
+ * sourceable /subscribedSkus check yet, so a page overlays it only when real.
+ */
+export function useLicenseSkuLedgerLive() {
+  const { view, loaded } = usePortalV2Pillars();
+  return { ledger: view.licenseSkuLedger, loaded };
+}

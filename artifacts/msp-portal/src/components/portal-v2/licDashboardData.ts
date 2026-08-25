@@ -697,3 +697,84 @@ export const LIC_PROV: readonly {
 /** `licFindingCount` / `licAckCount` (17511-17512) — lengths, not literals. */
 export const LIC_FINDING_COUNT = LIC_FINDINGS.length;
 export const LIC_ACK_COUNT = LIC_ACK.length;
+
+/* ── Real per-SKU ledger overlay (Git #1230) ──────────────────────────────────
+ *
+ * `resolveLicenseSkuLedger` (api-server license-waste-source.ts) gives a real
+ * per-tenant, per-SKU purchased/assigned/unassigned + dollar breakdown, sourced
+ * from the tenant's stored `/subscribedSkus` page and `sku_price_reference`.
+ * `licLedgerCardsFromLive` renders that as the SAME `LicLedgerCard` shape
+ * `licLedgerCards()` produces, so the page's markup needs no branch — only the
+ * data source changes.
+ *
+ * Two things the fixture's cards show that the real data genuinely cannot,
+ * because no check or table backs them today (see license-waste-source.ts's
+ * own header for why):
+ *   • an "idle" segment (assigned-but-unused) distinct from "assigned to
+ *     nobody" — that needs a usage report (Copilot/app activity) joined
+ *     per-user, which nothing stores; the live bar is two segments
+ *     (assigned / unassigned), not three.
+ *   • the per-SKU recovery actions (`LIC_SKU_ACTIONS`) — "lodge the renewal
+ *     reduction", "reassign the idle seats" — because those actions are
+ *     written against a billing-term / hiring-plan / disabled-account context
+ *     this resolver has no source for. Live cards render `hasActions: false`
+ *     rather than a fabricated action.
+ */
+
+export interface LiveLicenseSkuLedgerRow {
+  skuPartNumber: string;
+  displayName: string;
+  purchased: number;
+  assigned: number;
+  unassigned: number;
+  unitMonthlyPriceCents: number;
+  monthlyWasteCents: number;
+  annualWasteCents: number;
+}
+
+/** Real-data equivalent of `licSkuGeometry` — no "active" figure to report. */
+function liveLicSkuTone(row: LiveLicenseSkuLedgerRow): LicTone {
+  if (row.unassigned === 0) return "green";
+  return row.unassigned / Math.max(row.purchased, 1) >= 0.25 ? "red" : "amber";
+}
+
+/**
+ * Real ledger cards, ordered by monthly waste — the honest-data twin of
+ * `licLedgerCards()`. A right-sized SKU (`unassigned === 0`) renders "Right-
+ * sized" with no waste dollar figure, same as the fixture's convention.
+ */
+export function licLedgerCardsFromLive(rows: readonly LiveLicenseSkuLedgerRow[]): readonly LicLedgerCard[] {
+  return rows
+    .slice()
+    .sort((a, b) => b.monthlyWasteCents - a.monthlyWasteCents)
+    .map((r): LicLedgerCard => {
+      const tone = liveLicSkuTone(r);
+      const pct = (n: number) => (n / Math.max(r.purchased, 1)) * 100;
+      return {
+        sku: r.displayName,
+        part: r.skuPartNumber,
+        note: "Live data — no usage report is collected for this SKU yet, so purchased vs. assigned is shown without an idle/active split.",
+        tone,
+        clean: r.unassigned === 0,
+        unit: `${licFmt(Math.round(r.unitMonthlyPriceCents / 100))} / seat`,
+        counts: `${r.purchased} bought · ${r.assigned} assigned`,
+        waste: r.unassigned > 0 ? `${licFmt(Math.round(r.monthlyWasteCents / 100))}/mo` : "Right-sized",
+        annual:
+          r.unassigned > 0 ? `${licFmt(Math.round(r.annualWasteCents / 100))} a year` : "nothing to recover",
+        seg: {
+          // "active" is unknowable live, so the assigned share fills the same
+          // teal segment the fixture uses for active — it is at least assigned,
+          // never a fabricated usage figure.
+          active: { pct: pct(r.assigned), label: r.assigned > r.purchased * 0.12 ? String(r.assigned) : "", show: true },
+          idle: { pct: 0, label: "", show: false },
+          free: {
+            pct: pct(r.unassigned),
+            label: r.unassigned > r.purchased * 0.12 ? String(r.unassigned) : "",
+            show: r.unassigned > 0,
+          },
+        },
+        hasActions: false,
+        actions: [],
+      };
+    });
+}

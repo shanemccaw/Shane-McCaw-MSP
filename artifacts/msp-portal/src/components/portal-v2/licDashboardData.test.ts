@@ -48,6 +48,7 @@ import {
   licBucketPanel,
   licFmt,
   licLedgerCards,
+  licLedgerCardsFromLive,
   licSkuGeometry,
   licTrendGeometry,
 } from "./licDashboardData";
@@ -386,5 +387,63 @@ describe("Licensing provenance — the only one on a pillar hero", () => {
     const derived = LIC_PROV.filter((q) => q.src === "derived");
     assert.equal(derived.length, 1);
     assert.match(derived[0].note, /Billing term is what makes the three different\./);
+  });
+});
+
+describe("licLedgerCardsFromLive — Git #1230 real per-SKU ledger overlay", () => {
+  it("renders real rows sorted by monthly waste, with no fabricated action or idle claim", () => {
+    const cards = licLedgerCardsFromLive([
+      {
+        skuPartNumber: "SPB",
+        displayName: "Microsoft 365 Business Premium",
+        purchased: 25,
+        assigned: 18,
+        unassigned: 7,
+        unitMonthlyPriceCents: 2200,
+        monthlyWasteCents: 15400,
+        annualWasteCents: 184800,
+      },
+      {
+        skuPartNumber: "SPE_E5",
+        displayName: "Microsoft 365 E5",
+        purchased: 240,
+        assigned: 202,
+        unassigned: 38,
+        unitMonthlyPriceCents: 5700,
+        monthlyWasteCents: 216600,
+        annualWasteCents: 2599200,
+      },
+    ]);
+
+    assert.equal(cards.length, 2);
+    // Highest waste first.
+    assert.equal(cards[0].part, "SPE_E5");
+    assert.equal(cards[0].waste, "$2,166/mo");
+    assert.equal(cards[0].counts, "240 bought · 202 assigned");
+    // No idle segment — no usage data exists to split assigned from active.
+    assert.equal(cards[0].seg.idle.show, false);
+    assert.equal(cards[0].seg.free.show, true);
+    // No fabricated recovery action.
+    assert.equal(cards[0].hasActions, false);
+    assert.deepEqual(cards[0].actions, []);
+  });
+
+  it("a fully-assigned SKU renders Right-sized with no waste dollar figure", () => {
+    const [card] = licLedgerCardsFromLive([
+      {
+        skuPartNumber: "AAD_PREMIUM",
+        displayName: "Entra ID P1",
+        purchased: 41,
+        assigned: 41,
+        unassigned: 0,
+        unitMonthlyPriceCents: 600,
+        monthlyWasteCents: 0,
+        annualWasteCents: 0,
+      },
+    ]);
+    assert.equal(card.waste, "Right-sized");
+    assert.equal(card.annual, "nothing to recover");
+    assert.equal(card.clean, true);
+    assert.equal(card.seg.free.show, false);
   });
 });

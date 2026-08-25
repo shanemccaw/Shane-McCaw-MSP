@@ -183,7 +183,7 @@ import { fetchSignalRulesAndGroups } from "./priority-engine.ts";
 import { buildPillarViews } from "./telemetry-comparison.ts";
 import { MIN_EVALUABLE_SIGNALS_PER_PILLAR, type PillarEvaluation } from "./health-display.ts";
 import { resolveMetric, type MetricResult } from "./dashboard-resolvers.ts";
-import { resolvePaidSeatFigures } from "./license-waste-source.ts";
+import { resolvePaidSeatFigures, resolveLicenseSkuLedger, type LicenseSkuLedger } from "./license-waste-source.ts";
 import { computeSkuCostBreakdown, centsToDollars } from "./cost-engine.ts";
 import { getPillarScoreTrends, PILLAR_TREND_WINDOW_DAYS } from "./pillar-trend.ts";
 import {
@@ -1039,6 +1039,14 @@ export interface WarRoomPillarCard {
 export interface WarRoomPillarStatsPayload {
   pillars: WarRoomPillarCard[];
   /**
+   * Real per-SKU ledger for the Licensing pillar's money page (Git #1230):
+   * purchased/assigned/unassigned counts and dollar figures, one row per priced
+   * SKU. Null when this tenant has no /subscribedSkus check with a complete
+   * stored page at all — never a guessed row. Top-level (not per-pillar stats)
+   * because it is row data, not a scalar the WarRoomStat shape can carry.
+   */
+  licenseSkuLedger: LicenseSkuLedger | null;
+  /**
    * The tenant-wide licence-gap purchase recommendation (#489): which of the
    * three categories are gapped, and the 1/2/3-tiered call to action that
    * follows. Null when this tenant has no licence gap at all — there is then
@@ -1226,6 +1234,16 @@ export async function buildWarRoomPillarStats(customerId: number): Promise<WarRo
   // Seat figures are needed by three licensing stats — fetched once, and only
   // when the customer actually has a tenant to key monitor rows by.
   const seats = tenantRow?.tenantId ? await resolveSeatFigures(tenantRow.tenantId) : null;
+  // The Licensing pillar's per-SKU ledger (Git #1230) — a separate resolver
+  // from `seats` above because it returns row data, not the three scalars the
+  // stats grid reads, but sourced from the exact same real /subscribedSkus +
+  // sku_price_reference data so the two can never disagree about the estate.
+  const licenseSkuLedger = tenantRow?.tenantId
+    ? await resolveLicenseSkuLedger(tenantRow.tenantId).catch((err) => {
+        log.warn({ err, customerId }, "war-room-pillar-stats: license SKU ledger computation failed");
+        return null;
+      })
+    : null;
 
   const ctx = { customerId, mspId: tenantRow?.mspId ?? 0 };
 
@@ -1445,6 +1463,7 @@ export async function buildWarRoomPillarStats(customerId: number): Promise<WarRo
 
   return {
     pillars,
+    licenseSkuLedger,
     licenseGapPurchase,
     findingsRunId,
     findingsRunStatus,

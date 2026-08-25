@@ -397,3 +397,138 @@ export async function resolvePaidSeatFigures(
 
   return { ...figures, checkKey: waste.checkKey, collectedAt: waste.collectedAt };
 }
+
+// ── Per-SKU ledger (Git #1230) ─────────────────────────────────────────────────
+//
+// The Licensing pillar dashboard's per-SKU table needs real purchased / assigned
+// / unassigned counts and real dollar figures, one row per SKU — not the
+// aggregate `PaidSeatFigures` totals above. This is the same PAID estate those
+// totals already restrict to (a free/unpriced SKU is excluded here too, for the
+// same #333 reason: an unpriced SKU's "unassigned" count is not a dollar the
+// tenant is failing to recover), just kept at row granularity instead of summed.
+//
+// What this deliberately does NOT attempt: which of a SKU's unassigned/idle
+// seats are recoverable TODAY versus only AT RENEWAL. That split needs the
+// SKU's billing commitment term (monthly vs. annual), which is not a field
+// Microsoft returns on `/subscribedSkus` and is not stored anywhere in this
+// platform's schema today. It also does not attempt an "active" (in-use) count
+// distinct from "assigned" — that needs a usage-report check
+// (getOffice365ActiveUserDetail / getMicrosoft365CopilotUsageUserDetail /
+// getM365AppUserDetail), and no such check's output is stored per-user in a
+// place this resolver can join against. Both gaps are real product work, not
+// this function's job to paper over with a guess.
+
+export interface LicenseSkuLedgerRow {
+  skuPartNumber: string;
+  displayName: string;
+  /** `prepaidUnits.enabled` — seats bought. */
+  purchased: number;
+  /** `consumedUnits` — seats assigned to someone. */
+  assigned: number;
+  /** purchased − assigned, floored at zero — assigned to nobody. */
+  unassigned: number;
+  unitMonthlyPriceCents: number;
+  /** unassigned * unitMonthlyPriceCents. Zero when every seat is assigned. */
+  monthlyWasteCents: number;
+  annualWasteCents: number;
+}
+
+export interface LicenseSkuLedger {
+  rows: LicenseSkuLedgerRow[];
+  totalPurchased: number;
+  totalAssigned: number;
+  totalUnassigned: number;
+  totalMonthlyWasteCents: number;
+  totalAnnualWasteCents: number;
+  /** SKUs left out because no price is on file, or the row prices at $0. */
+  excluded: { skuPartNumber: string; purchased: number; reason: UnpaidSkuReason }[];
+  checkKey: string;
+  collectedAt: Date | null;
+}
+
+/**
+ * Pure: build ledger rows from real per-SKU lines and a price map, mirroring
+ * `paidSeatFiguresFromLines`'s exclusion rule exactly so the two never disagree
+ * about which SKUs count as "paid". Exported separately so the row-building
+ * arithmetic is unit-tested without a database.
+ */
+export function licenseSkuLedgerRowsFromLines(
+  lines: readonly LicenseWasteCounts["lines"][number][],
+  monthlyPriceCentsBySku: ReadonlyMap<string, number | null>,
+  displayNameBySku: ReadonlyMap<string, string>,
+): { rows: LicenseSkuLedgerRow[]; excluded: LicenseSkuLedger["excluded"] } {
+  const rows: LicenseSkuLedgerRow[] = [];
+  const excluded: LicenseSkuLedger["excluded"] = [];
+
+  for (const line of lines) {
+    const price = monthlyPriceCentsBySku.get(line.skuPartNumber) ?? null;
+    if (price == null || price <= 0) {
+      excluded.push({
+        skuPartNumber: line.skuPartNumber,
+        purchased: line.enabled,
+        reason: price == null ? "no_price_on_file" : "zero_price",
+      });
+      continue;
+    }
+    rows.push({
+      skuPartNumber: line.skuPartNumber,
+      displayName: displayNameBySku.get(line.skuPartNumber) ?? line.skuPartNumber,
+      purchased: line.enabled,
+      assigned: line.consumed,
+      unassigned: line.unused,
+      unitMonthlyPriceCents: price,
+      monthlyWasteCents: line.unused * price,
+      annualWasteCents: line.unused * price * 12,
+    });
+  }
+
+  // Money at the top, same ordering rule `computeSkuCostBreakdown`'s callers
+  // already apply — the highest-waste SKU is the one worth reading first.
+  rows.sort((a, b) => b.monthlyWasteCents - a.monthlyWasteCents);
+  return { rows, excluded };
+}
+
+/**
+ * The tenant's real per-SKU ledger, restricted to the priced estate, or null
+ * when no /subscribedSkus check has a complete stored response for this tenant
+ * at all (the same "nothing to source from" case `resolveLicenseWasteCounts`
+ * itself returns null for). Unlike `resolvePaidSeatFigures`, an ALL-unpriced
+ * result still returns an empty-rows ledger rather than null — an empty table
+ * with its `excluded` list populated is a more honest UI than hiding the whole
+ * section, since the caller can say exactly which SKUs it could not price.
+ */
+export async function resolveLicenseSkuLedger(tenantId: string): Promise<LicenseSkuLedger | null> {
+  const waste = await resolveLicenseWasteCounts(tenantId);
+  if (!waste) return null;
+
+  const priceBySku = new Map<string, number | null>();
+  const nameBySku = new Map<string, string>();
+  for (const line of waste.lines) {
+    if (priceBySku.has(line.skuPartNumber)) continue;
+    const { priceCents, displayName } = await lookupSkuMonthlyPriceCents({
+      skuPartNumber: line.skuPartNumber,
+    });
+    priceBySku.set(line.skuPartNumber, priceCents);
+    nameBySku.set(line.skuPartNumber, displayName);
+  }
+
+  const { rows, excluded } = licenseSkuLedgerRowsFromLines(waste.lines, priceBySku, nameBySku);
+  if (excluded.length > 0) {
+    log.info(
+      { tenantId, checkKey: waste.checkKey, excluded },
+      "license-waste-source: unpriced/free SKUs excluded from the per-SKU ledger",
+    );
+  }
+
+  return {
+    rows,
+    totalPurchased: rows.reduce((s, r) => s + r.purchased, 0),
+    totalAssigned: rows.reduce((s, r) => s + r.assigned, 0),
+    totalUnassigned: rows.reduce((s, r) => s + r.unassigned, 0),
+    totalMonthlyWasteCents: rows.reduce((s, r) => s + r.monthlyWasteCents, 0),
+    totalAnnualWasteCents: rows.reduce((s, r) => s + r.annualWasteCents, 0),
+    excluded,
+    checkKey: waste.checkKey,
+    collectedAt: waste.collectedAt,
+  };
+}

@@ -57,6 +57,13 @@
       "expect": { "status": 200, "jsonPath": "$.generatedAt", "exists": true }
     },
     {
+      "name": "A2b -- the payload now carries a top-level licenseSkuLedger (Git #1230): real per-SKU purchased/assigned/unassigned + dollar rows for the Licensing pillar's ledger, sourced from the tenant's own /subscribedSkus + sku_price_reference data. Row data, not a per-pillar scalar stat, which is why it sits beside `pillars` rather than inside the licensing card's `stats`.",
+      "method": "GET",
+      "path": "/api/portal/assessment/war-room-pillars",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.licenseSkuLedger.checkKey", "value": "license:sku-utilization" }
+    },
+    {
       "name": "A3 -- pillars[0] is governance. The array is emitted in WAR_ROOM_PILLAR_KEYS order (governance, licensing, adoption, compliance, health, security, copilot), and journeyTokens' PILLAR_KEYS indexes straight into these cards by name, which is why the v2 pages reuse the pillar identity map unchanged.",
       "method": "GET",
       "path": "/api/portal/assessment/war-room-pillars",
@@ -1274,7 +1281,7 @@
       "textContains": "{{licScore}}"
     },
     {
-      "name": "L2-src -- the hidden source indicator reads 'live', proving the real numeric score is on screen rather than the fixture fallback. The money ledger, buckets, savings ledger and provenance below deliberately STAY fixture: war-room-pillars carries only the aggregate licence figures (paid seats provisioned/unassigned, annual waste $, inactive licences), not the design's per-SKU rows, so those sections have no per-item server feed to wire.",
+      "name": "L2-src -- the hidden source indicator reads 'live', proving the real numeric score is on screen rather than the fixture fallback. The 3 recovery buckets, savings ledger and provenance below stay fixture -- no billing-term or usage-activity data exists to classify a seat as today/renewal/reassign (Git #1230). The per-SKU LEDGER is now wired to real data too (see L6b below) but only overlays once the tenant's real estate has genuine recoverable waste; this testbed tenant's one priced SKU is fully assigned, so the ledger below still renders the illustrative fixture -- an honest, documented threshold, not a gap.",
       "action": "expect",
       "selector": "[data-testid='pv2-lic-source']",
       "state": "present",
@@ -1307,6 +1314,13 @@
       "selector": "[data-testid='pv2-lic-buckets']",
       "state": "visible",
       "textContains": "$1,470-worth of monthly capability"
+    },
+    {
+      "name": "L6b -- the ledger's own hidden source marker reads 'fixture' for this tenant (Git #1230) -- the real per-SKU resolver ran (proven by the API test below) but this testbed tenant's one priced SKU (ENTERPRISEPACK) is fully assigned with nothing recoverable, so the page correctly kept the illustrative fixture rather than replacing it with a single Right-sized row.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-lic-ledger-source']",
+      "state": "present",
+      "textContains": "fixture"
     },
     {
       "name": "L6 -- the licence ledger renders with its real SKU part numbers.",

@@ -15,9 +15,17 @@
  * So this hook wires the ONE value that is genuinely real, present on every
  * hero and authoritative from the engine: the pillar SCORE (and the score
  * delta, derived from the same real score history the engine replays). The
- * ledger / heat-map / drift / inventory / plays stay on their fixture and are
+ * heat-map / drift / inventory / plays stay on their fixture and are
  * documented as gaps, exactly as the Ownership and Microsoft Changes wiring
  * passes kept unbacked sections whole rather than half-filling them.
+ *
+ * UPDATE (Git #1230): Licensing's per-SKU ledger IS now real — wired
+ * separately through `useLicenseSkuLedgerLive` (usePortalV2Pillars.ts), not
+ * through this hook, since it's row data rather than a hero scalar. Its 3
+ * recovery buckets (today/renewal/reassign) remain fixture: no billing-term or
+ * usage-activity data exists anywhere in this platform to classify a seat by
+ * timing. See licDashboardData.ts's `licLedgerCardsFromLive` for the exact
+ * boundary of what is and is not real on that page.
  *
  * ── Honest-null contract ────────────────────────────────────────────────────
  * `score` is null when the tenant is genuinely unscored for this pillar
