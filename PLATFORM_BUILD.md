@@ -388,3 +388,4 @@ History before 2026-08-12 lives in [PLATFORM_BUILD_ARCHIVE_2026-08-12.md](PLATFO
 | 2026-08-25 | ⏳ IN FLIGHT | Portal-v2 zero-data landing: port Scene 0 (RevealScanOverlay) as the entry point for a customer with no scan data (Git #1298) | |
 | 2026-08-25 | ⏳ IN FLIGHT | AdminV2 Retainer Hours module: RET_WORK ledger + monthly bucket rollover + tracker-byproduct & ad-hoc unscoped logging (Git #1293) | |
 | 2026-08-25 | ⏳ IN FLIGHT | Governance Oversharing drill-down: named-identity/UPN resolution + per-site runbook state via existing SOP/Runbook subsystem (Git #1286) | |
+| 2026-08-25 | ⏳ IN FLIGHT | AdminV2: linked-check picker for risk decisions (Git #1294) | |
