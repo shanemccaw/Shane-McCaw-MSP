@@ -20,11 +20,13 @@ import {
   monitoringPackageChecksTable,
   tenantMonitorProfilesTable,
   tenantsTable,
+  mspChangeRequestsTable,
   type MonitorCheck,
   type MonitoringPackage,
 } from "@workspace/db";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, inArray, desc, gte } from "drizzle-orm";
 import { graphFetchForTenant, ConsentRevokedError, LicenseGapError, markTenantConsentRevoked, getInitialDomainForTenant } from "./graph";
+import { collectDrift, type DriftAttribution } from "./drift-collector.ts";
 import { callPsExecution, PsExecutionError } from "./ps-execution-client";
 import {
   getTenantSharingCapability,
@@ -70,6 +72,67 @@ const FAN_OUT_RETRY_BASE_DELAY_MS = 1000;
 
 /** Max distinct per-item failure messages retained on the result for diagnosis. */
 const FAN_OUT_SAMPLE_ERROR_LIMIT = 5;
+
+// ── Configuration Drift attribution (#1270/#1283) ──────────────────────────────
+
+/**
+ * How far back a completed Conditional Access change request stays eligible to
+ * attribute freshly-detected drift. Without a bound, a single ancient completed
+ * CR would perpetually mark EVERY future CA drift `approved` (crRef set →
+ * `deriveVerdict` returns `approved`), silently whitewashing genuinely
+ * unapproved drift out of the `drift.unapproved` alert path
+ * (customer-tenant-alert-engine counts only `attributed_unapproved`/
+ * `unattributed`). Drift is deviation from an approved baseline, and a CR only
+ * plausibly explains a change that landed near it in time, so only recent
+ * completed CRs attribute — older drift falls through to `unattributed`, the
+ * honest, floated-up state.
+ */
+const CA_CR_ATTRIBUTION_WINDOW_DAYS = 30;
+
+/**
+ * Best-effort drift attribution for Conditional Access changes: the most
+ * recent completed change request against this tenant's ConditionalAccess
+ * category within the last {@link CA_CR_ATTRIBUTION_WINDOW_DAYS} days, if one
+ * exists. `msp_change_requests` is the platform's real "tenant audit log" for
+ * MSP-initiated changes — unlike `audit_logs` (keyed to a platform user id),
+ * it's keyed directly to the M365 tenant GUID and already carries a
+ * ConditionalAccess category, a requester, and an approver.
+ *
+ * A CR describes an intended change, not a JSON path, so this cannot attribute
+ * per-setting the way `planDriftEvents`'s `attributionFor` is shaped for —
+ * when a qualifying CR exists, every drifted setting in this scan is
+ * attributed to it the same way.
+ */
+async function buildCaChangeRequestAttribution(
+  tenantId: string,
+): Promise<((setting: string) => DriftAttribution | undefined) | undefined> {
+  const cutoff = new Date(Date.now() - CA_CR_ATTRIBUTION_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+  const [cr] = await db
+    .select({
+      id: mspChangeRequestsTable.id,
+      requestedBy: mspChangeRequestsTable.requestedBy,
+      approvedBy: mspChangeRequestsTable.approvedBy,
+    })
+    .from(mspChangeRequestsTable)
+    .where(
+      and(
+        eq(mspChangeRequestsTable.tenantId, tenantId),
+        eq(mspChangeRequestsTable.category, "ConditionalAccess"),
+        eq(mspChangeRequestsTable.status, "completed"),
+        gte(mspChangeRequestsTable.updatedAt, cutoff),
+      ),
+    )
+    .orderBy(desc(mspChangeRequestsTable.updatedAt))
+    .limit(1);
+
+  if (!cr) return undefined;
+
+  const attribution: DriftAttribution = {
+    changedBy: cr.approvedBy ?? cr.requestedBy,
+    crRef: `CR-${cr.id}`,
+  };
+  return () => attribution;
+}
 
 /**
  * Reshapes ONE enumerated source item's per-item results before they join the
@@ -2541,6 +2604,21 @@ export async function executeMonitorCheck(opts: {
       check.method ?? "GET",
       check.requestBody as unknown,
     );
+
+    // 1b. Configuration Drift (#1270/#1283) — CA-domain checks only, additive
+    // and non-fatal. Hooked BEFORE applyMapping and diffed against the raw
+    // `items`, not `extracted`: `extracted` is narrowed to whatever this
+    // check's mapping/properties pull out for severity classification, which
+    // is a lossy view of the tenant's actual policy configuration. Drift
+    // needs the real config, so it diffs the raw Graph response.
+    if (check.key === "identity:ca-policy-count") {
+      try {
+        const attributionFor = await buildCaChangeRequestAttribution(tenantId);
+        await collectDrift(tenantId, "ca-policy", { policies: items }, { attributionFor });
+      } catch (err) {
+        log.warn({ err, tenantId, checkKey: check.key }, "monitor-executor: drift collection failed (non-fatal)");
+      }
+    }
 
     // 2. Property extraction + mapping
     const mapping = (check.mapping ?? []) as MappingRule[];
