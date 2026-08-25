@@ -21,10 +21,20 @@ FROM mcr.microsoft.com/powershell:7.4-ubuntu-22.04
 # cost once, at intentional image-build time, never per deploy or request.
 # v3.0.0+ is required for certificate-based app-only Connect-IPPSSession
 # auth (see #180 architecture comment).
+#
+# #1253: MicrosoftTeams baked in the same way, for the new "teams"
+# ps-execution session type (Get-CsOnlineUser / Get-CsTeamsMeetingPolicy).
+# v5.0.0+ is required for certificate-based app-only Connect-MicrosoftTeams
+# auth (-Certificate accepting an X509Certificate2 object directly, the same
+# shape ExchangeOnlineManagement's Connect-ExchangeOnline already uses above)
+# — not independently verified against a live install from this environment,
+# same class of gap #180's own architecture comment already documents for
+# this file; flagged for Shane to confirm once this image actually builds.
 RUN pwsh -NoLogo -NonInteractive -Command " \
     Set-PSRepository -Name PSGallery -InstallationPolicy Trusted; \
     Install-Module -Name ExchangeOnlineManagement -MinimumVersion 3.0.0 -Scope AllUsers -Force -AllowClobber -AcceptLicense; \
-    Get-Module -ListAvailable -Name ExchangeOnlineManagement"
+    Install-Module -Name MicrosoftTeams -MinimumVersion 5.0.0 -Scope AllUsers -Force -AllowClobber -AcceptLicense; \
+    Get-Module -ListAvailable -Name ExchangeOnlineManagement, MicrosoftTeams"
 
 # Phase 2 (#198) request-handling entrypoint. See entrypoint.ps1 for the
 # Managed Identity -> Key Vault -> secrets round-trip and the bearer-token

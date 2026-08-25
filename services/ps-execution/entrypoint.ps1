@@ -228,6 +228,19 @@ catch {
     exit 1
 }
 
+# #1253: MicrosoftTeams module, for the new "teams" session type
+# (Get-CsOnlineUser / Get-CsTeamsMeetingPolicy) — baked into the image at
+# build time (see Dockerfile), same "never a live PSGallery install" posture
+# as ExchangeOnlineManagement above.
+try {
+    Import-Module MicrosoftTeams -MinimumVersion 5.0.0 -ErrorAction Stop
+    Write-Log -Level "info" -Message "startup: MicrosoftTeams module imported"
+}
+catch {
+    Write-Log -Level "error" -Message "startup: failed to import MicrosoftTeams" -Extra @{ error = $_.Exception.Message }
+    exit 1
+}
+
 # $certPem is the PEM-encoded certificate+key bundle from Key Vault (see
 # azure-keyvault.ts's getCertificatePem doc comment on the api-server side —
 # same "cert/key bundle" shape, different (Managed Identity) retrieval
@@ -682,6 +695,41 @@ $script:CmdletCatalog = @{
         Cmdlet        = "Get-UnifiedAuditLogRetentionPolicy"
         AllowedParams = @()
     }
+
+    # #1253: adoption:teams-phone-provisioning. Get-CsOnlineUser is a
+    # MicrosoftTeams module cmdlet, NOT reachable over either the
+    # Connect-IPPSSession (default, "compliance") or Connect-ExchangeOnline
+    # ("exchange") sessions above — a THIRD `Session = "teams"` value is added
+    # below (Connect-MicrosoftTeams) specifically for this and the entry after
+    # it. PostFilter narrows to users actually provisioned for Teams Phone —
+    # EnterpriseVoiceEnabled -eq $true AND a non-empty LineURI — the literal
+    # "is this user provisioned" signal the monitor_checks row's own mapping
+    # reads (see the #1253 migration), matching the litigation-hold/archive
+    # gap-proxy precedent above (filter in the container, not via a DB-side
+    # countWhere, since the raw per-user Get-CsOnlineUser output has no
+    # `{value: [...]}` envelope for the condition grammar to walk the way a
+    # Graph or CSV-report response does).
+    "get-cs-online-user" = @{
+        Cmdlet        = "Get-CsOnlineUser"
+        AllowedParams = @()
+        PostFilter    = { $_.EnterpriseVoiceEnabled -eq $true -and $_.LineURI }
+        Session       = "teams"
+    }
+
+    # #1253: added to the allowlist per the issue's exact endpoint list
+    # (Get-CsTeamsMeetingPolicy), so it is available for the next monitor_check
+    # that needs it. NOT wired to a monitor_checks row by this issue — a
+    # Teams meeting policy's fields (recording, lobby bypass, presenter
+    # rights, ...) don't cleanly answer "phone provisioning" without a
+    # specific product decision on which field is the real signal; flagged
+    # for Shane to pick one, same posture as this file's other "flagged"
+    # catalog entries. No parameters are required to list every custom
+    # meeting policy in the org.
+    "get-cs-teams-meeting-policy" = @{
+        Cmdlet        = "Get-CsTeamsMeetingPolicy"
+        AllowedParams = @()
+        Session       = "teams"
+    }
 }
 
 # --- Bearer-token check -------------------------------------------------------
@@ -853,11 +901,30 @@ try {
         # every entry present before #491) unless they declare
         # `Session = "exchange"` (Connect-ExchangeOnline) — see the #491
         # catalog block's own comment for why Get-Mailbox/Get-TransportRule/
-        # etc. need the latter and cannot run over an IPPSSession.
+        # etc. need the latter and cannot run over an IPPSSession. #1253 adds
+        # a third value, `Session = "teams"` (Connect-MicrosoftTeams), for the
+        # get-cs-online-user / get-cs-teams-meeting-policy catalog entries —
+        # neither is reachable over either of the other two session types.
         $sessionType = if ($catalogEntry.Session) { $catalogEntry.Session } else { "compliance" }
         try {
             if ($sessionType -eq "exchange") {
                 Connect-ExchangeOnline -Organization $organization -AppId $mtAppClientId -Certificate $script:appOnlyCertificate -ShowBanner:$false -ErrorAction Stop | Out-Null
+            }
+            elseif ($sessionType -eq "teams") {
+                # Connect-MicrosoftTeams' certificate-based app-only auth
+                # (-Certificate accepting an X509Certificate2 object directly,
+                # same shape Connect-ExchangeOnline already uses above) is
+                # this session's best-effort read of the MicrosoftTeams module
+                # docs — NOT independently verified against a live Teams
+                # session from this environment (no live Graph/Teams
+                # reachability here, same class of gap #198's own comment
+                # already documents for this file). If the installed module
+                # version only accepts -CertificateThumbprint (a cert-store
+                # lookup, not an in-memory X509Certificate2), this call fails
+                # closed with "auth_failed" below — an honest, already-handled
+                # failure, not silently wrong data — flagged for Shane to
+                # confirm/adjust once this runs against a real container.
+                Connect-MicrosoftTeams -TenantId $organization -ApplicationId $mtAppClientId -Certificate $script:appOnlyCertificate -ErrorAction Stop | Out-Null
             }
             else {
                 Connect-IPPSSession -Organization $organization -AppId $mtAppClientId -Certificate $script:appOnlyCertificate -ErrorAction Stop | Out-Null
@@ -865,7 +932,7 @@ try {
         }
         catch {
             Write-Log -Level "error" -Message "Connect-$sessionType session failed" -Extra @{ cmdletKey = $cmdletKey; organization = $organization; error = $_.Exception.Message }
-            $sessionLabel = if ($sessionType -eq "exchange") { "an Exchange Online" } else { "a Security & Compliance" }
+            $sessionLabel = if ($sessionType -eq "exchange") { "an Exchange Online" } elseif ($sessionType -eq "teams") { "a Microsoft Teams" } else { "a Security & Compliance" }
             Send-ErrorResponse -Response $response -StatusCode 502 -Kind "auth_failed" -Message "Could not establish $sessionLabel session for the target tenant."
             continue
         }
@@ -969,8 +1036,8 @@ try {
                     ($_.Exception.Message -match "(?i)is not recognized as (a|the) name of a cmdlet, function, script file, or executable program")
 
                 if ($isCmdletNotFound) {
-                    $sessionLabel = if ($sessionType -eq "exchange") { "Exchange Online" } else { "Security & Compliance" }
-                    $roleHint = if ($sessionType -eq "exchange") { "missing Exchange Online license/add-on, or the connecting app isn't yet granted Exchange.ManageAsApp and assigned the required Exchange RBAC role" } else { "missing Purview license/add-on, or the connecting app isn't yet assigned the required Purview role" }
+                    $sessionLabel = if ($sessionType -eq "exchange") { "Exchange Online" } elseif ($sessionType -eq "teams") { "Microsoft Teams" } else { "Security & Compliance" }
+                    $roleHint = if ($sessionType -eq "exchange") { "missing Exchange Online license/add-on, or the connecting app isn't yet granted Exchange.ManageAsApp and assigned the required Exchange RBAC role" } elseif ($sessionType -eq "teams") { "missing Teams Phone/calling plan licensing, or the connecting app isn't yet assigned a Teams administrative role" } else { "missing Purview license/add-on, or the connecting app isn't yet assigned the required Purview role" }
                     Write-Log -Level "warn" -Message "cmdlet not available in this tenant's session (license or role-group provisioning gap)" -Extra @{ cmdletKey = $cmdletKey; cmdlet = $invocation.Cmdlet; session = $sessionType; error = $_.Exception.Message }
                     Send-ErrorResponse -Response $response -StatusCode 500 -Kind "cmdlet_unavailable" -Message "The '$($invocation.Cmdlet)' cmdlet is not available in this tenant's $sessionLabel session ($roleHint)."
                     continue
@@ -985,7 +1052,18 @@ try {
             }
         }
         finally {
-            Disconnect-ExchangeOnline -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
+            # Disconnect-ExchangeOnline tears down BOTH a Connect-ExchangeOnline
+            # and a Connect-IPPSSession session (same underlying module session
+            # stack) — it does not touch a Connect-MicrosoftTeams session
+            # (#1253, separate module), so that one needs its own explicit
+            # disconnect or it leaks across requests in this long-running
+            # container.
+            if ($sessionType -eq "teams") {
+                Disconnect-MicrosoftTeams -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
+            }
+            else {
+                Disconnect-ExchangeOnline -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
+            }
         }
 
         if ($catalogEntry.IsWrite -and $writeOutcome) {
