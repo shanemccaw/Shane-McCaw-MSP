@@ -75,3 +75,15 @@ test-results/
 node_modules/
 dist/
 uploads/
+
+# Session scratch / throwaway work (per-issue investigation scripts, draft
+# issue comments + commit messages, isolated-build diffs, git-plumbing temp
+# files). These pile up as untracked debris from many concurrent Claude Code
+# sessions and never belong in git.
+.scratch/
+scripts/_tmp/
+scripts/_tmp_*
+/tmp_*
+*.stackdump
+# Captured shaneapp:// tool-result envelope dumps (ephemeral, per-invocation).
+desktop/BuildConsole/shaneapp-*.result.json
