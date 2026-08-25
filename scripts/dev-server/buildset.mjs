@@ -110,6 +110,11 @@ function blankSet(name, openedBy) {
     // Expected member COUNT. null => open-ended: the set can only complete via an
     // explicit `close` (never by guessing, never by timing).
     expected: null,
+    // Server checkout HEAD at the moment the set was first opened -- the base the
+    // set's combined changed-file footprint is measured against for selective
+    // service targeting (see service-targeting.collectSetChangedFiles). Stamped
+    // once, on creation, so it isn't corrupted by members that merge afterwards.
+    baseHead: null,
     closed: false,
     members: {}, // key -> { key, commit, agentId, status, error, at }
     restart: {
@@ -130,7 +135,7 @@ function blankSet(name, openedBy) {
  * its expected count (monotonic MAX so late-queued members can only raise it, never
  * silently shrink a set that already has more members recorded).
  */
-export function openSet(config, name, { expected = null, openedBy = "cli" } = {}) {
+export function openSet(config, name, { expected = null, openedBy = "cli", baseHead = null } = {}) {
   ensureDir(config);
   let set = readSet(config, name);
   let created = false;
@@ -142,12 +147,16 @@ export function openSet(config, name, { expected = null, openedBy = "cli" } = {}
     const exp = Math.max(0, Math.floor(Number(expected)));
     set.expected = set.expected == null ? exp : Math.max(set.expected, exp);
   }
+  // Stamp the base ONLY when it isn't already recorded, so it captures the server
+  // HEAD before ANY member merged and is never overwritten by a later member.
+  if (baseHead && !set.baseHead) set.baseHead = baseHead;
   writeSet(config, name, set);
   if (created) {
     logSetEvent(config, {
       kind: "open",
       setName: set.name,
       expected: set.expected,
+      baseHead: set.baseHead,
       openedBy,
     });
   }

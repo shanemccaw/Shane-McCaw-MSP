@@ -138,6 +138,13 @@ export function loadConfig({ cwd = process.cwd() } = {}) {
     // close). Default 6h. Set 0 to disable staleness reporting.
     buildSetStaleMs: Number(process.env.DEV_BUILD_SET_STALE_MS || 6 * 60 * 60 * 1000),
 
+    // Selective service targeting (see service-targeting.mjs): when a completed
+    // build set's single restart fires, by default it NEVER stops a running-but-
+    // unrelated FRONT-END (so it can't yank a service Shane is actively using).
+    // Opt into stopping unneeded front-ends with DEV_SET_STOP_UNNEEDED=1. The API
+    // server is always-on and never stopped regardless.
+    setStopUnneeded: process.env.DEV_SET_STOP_UNNEEDED === "1",
+
     // when set, the coordinator records restarts to restartsLog instead of
     // killing/relaunching a real server process (selftest / dry safety).
     fakeRestart: process.env.DEV_SERVER_FAKE_RESTART === "1",

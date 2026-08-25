@@ -66,15 +66,15 @@ function parseArgs(argv) {
 function makeRestart(config) {
   if (config.fakeRestart) {
     // Selftest / dry safety: record the restart instead of touching a process.
-    return async () => {
+    return async (_cfg, opts = {}) => {
       const { appendFileSync, mkdirSync } = await import("node:fs");
       const path = await import("node:path");
       mkdirSync(path.dirname(config.restartsLog), { recursive: true });
       appendFileSync(
         config.restartsLog,
-        JSON.stringify({ at: Date.now(), pid: process.pid, head: revParse(config.serverWorktree, "HEAD") }) + "\n"
+        JSON.stringify({ at: Date.now(), pid: process.pid, head: revParse(config.serverWorktree, "HEAD"), only: opts.only || null }) + "\n"
       );
-      return { oldPid: null, newPid: -1, ready: true, fake: true };
+      return { oldPid: null, newPid: -1, ready: true, fake: true, only: opts.only || null };
     };
   }
   return restartServer;

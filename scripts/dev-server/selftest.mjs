@@ -436,6 +436,75 @@ async function main() {
   }
 
   // ---------------------------------------------------------------
+  // Scenario 10: SELECTIVE SERVICE TARGETING -- the pure planner maps a set's
+  // combined changed-file footprint to exactly the services that must (re)start.
+  // ---------------------------------------------------------------
+  console.log("Scenario 10: selective service targeting (pure planner)");
+  {
+    const st = await import("./service-targeting.mjs");
+    const planFor = (files, running = []) => {
+      const cls = st.classifyChangedFiles(files);
+      return {
+        cls,
+        plan: st.planServiceTargeting({
+          changedServices: cls.changedServices,
+          shared: cls.shared,
+          running: new Set(running),
+          byService: cls.byService,
+          sharedFiles: cls.sharedFiles,
+        }),
+      };
+    };
+
+    // Portal-only change, nothing running yet: rebuild Portal, START the always-on
+    // API, do NOT spin up untouched idle front-ends.
+    {
+      const { plan } = planFor(["artifacts/msp-portal/src/App.tsx"]);
+      check("portal-only: rebuild == [msp-portal]", () =>
+        assert.deepStrictEqual(plan.toRebuild, ["msp-portal"]));
+      check("portal-only: always-on API is started (not rebuilt)", () =>
+        assert.ok(plan.toStart.includes("api-server") && !plan.toRebuild.includes("api-server")));
+      check("portal-only: untouched idle front-ends are NOT started", () =>
+        assert.ok(
+          !plan.neededRunning.includes("shane-mccaw-consulting") &&
+            !plan.neededRunning.includes("admin-panel") &&
+            !plan.neededRunning.includes("msp-website")
+        ));
+    }
+
+    // Portal change while API is already up: API is KEPT (never rebuilt for a
+    // front-end-only change), Portal rebuilt.
+    {
+      const { plan } = planFor(["artifacts/msp-portal/src/x.ts"], ["api-server"]);
+      const api = plan.actions.find((a) => a.service === "api-server");
+      check("running API is kept, never rebuilt for a front-end-only change", () =>
+        assert.ok(api.action === "keep" && plan.neededRunning.includes("api-server")));
+    }
+
+    // Running-but-unrelated front-end is left alone by default (never yanked).
+    {
+      const { plan } = planFor(["artifacts/msp-portal/src/x.ts"], ["api-server", "shane-mccaw-consulting"]);
+      const mkt = plan.actions.find((a) => a.service === "shane-mccaw-consulting");
+      check("unrelated running front-end kept by default (not stopped)", () =>
+        assert.ok(mkt.action === "keep" && !plan.toStop.includes("shane-mccaw-consulting")));
+    }
+
+    // Shared lib change: every service rebuilds.
+    {
+      const { plan } = planFor(["lib/db/schema.ts"]);
+      check("shared lib change rebuilds ALL services", () =>
+        assert.strictEqual(plan.toRebuild.length, st.ALL_SERVICE_NAMES.length));
+    }
+
+    // Docs / tests / tooling only: no front-end rebuild/start; footprint is ignored.
+    {
+      const { plan, cls } = planFor(["docs/x.md", "test-manifests/y.json", "scripts/dev-server/z.mjs"]);
+      check("docs/tests/tooling-only footprint rebuilds no front-end", () =>
+        assert.ok(plan.toRebuild.length === 0 && cls.ignoredFiles.length === 3));
+    }
+  }
+
+  // ---------------------------------------------------------------
   console.log("");
   console.log(`RESULT: ${PASS} passed, ${FAIL} failed`);
   for (const dir of cleanup) {

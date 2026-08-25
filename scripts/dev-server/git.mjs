@@ -97,6 +97,24 @@ export function mergeNoEdit(cwd, commit, message) {
   };
 }
 
+/**
+ * List the files that differ between two commits, one repo-relative path per
+ * entry. `threeDot` uses `base...head` (head's changes since it forked from base)
+ * -- the precise footprint of a member commit even if the base ref advanced for
+ * unrelated reasons in between. Two-dot (`base..head`) is the plain range diff.
+ * Never throws; returns [] on any git error or unresolvable ref.
+ */
+export function diffNameOnly(cwd, base, head, { threeDot = false } = {}) {
+  if (!base || !head) return [];
+  const range = `${base}${threeDot ? "..." : ".."}${head}`;
+  const r = git(cwd, ["diff", "--name-only", range]);
+  if (r.code !== 0) return [];
+  return r.stdout
+    .split(/\r?\n/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 /** List existing worktree paths for this repo. */
 export function worktreePaths(cwd) {
   const r = git(cwd, ["worktree", "list", "--porcelain"]);

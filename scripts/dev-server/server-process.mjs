@@ -23,6 +23,40 @@ export function readServerMeta(config) {
   }
 }
 
+// The service names dev-all.mjs launches, mirrored from service-targeting.SERVICES.
+// Kept as a local constant so this module has no dependency on the pure planner.
+const SERVICE_NAMES = [
+  "api-server",
+  "shane-mccaw-consulting",
+  "admin-panel",
+  "msp-portal",
+  "msp-website",
+];
+
+/**
+ * Which services are currently up, read from the per-service meta files dev-all.mjs
+ * writes (`<devAllLogDir>/<name>.meta.json`). A service counts as running only if
+ * its meta says "running" AND its recorded pid is actually alive -- so a stale
+ * "running" left behind by a crash doesn't masquerade as up. Returns a Set of
+ * service names. Best-effort: any unreadable meta is simply treated as not-running.
+ */
+export function readRunningServices(config) {
+  const running = new Set();
+  for (const name of SERVICE_NAMES) {
+    try {
+      const metaPath = path.join(config.devAllLogDir, `${name}.meta.json`);
+      if (!existsSync(metaPath)) continue;
+      const meta = JSON.parse(readFileSync(metaPath, "utf8"));
+      if (meta?.status === "running" && meta.pid && pidAlive(meta.pid)) {
+        running.add(name);
+      }
+    } catch {
+      /* treat as not-running */
+    }
+  }
+  return running;
+}
+
 function writeServerMeta(config, meta) {
   mkdirSync(path.dirname(config.serverMetaFile), { recursive: true });
   writeFileSync(config.serverMetaFile, JSON.stringify(meta, null, 2));
@@ -87,20 +121,27 @@ export function ensureLauncher(config) {
  * point DEV_ALL_LOG_DIR at the stable machine-wide location). Records pid +
  * log paths in server.json. Returns the new pid.
  */
-export function startServer(config) {
+export function startServer(config, { only } = {}) {
   ensureLauncher(config);
   mkdirSync(config.devAllLogDir, { recursive: true });
+  // Selective service targeting: when `only` is a non-empty list, launch just
+  // those services via DEV_ALL_ONLY (dev-all.mjs honors it). Omitted/empty =>
+  // start ALL services, exactly as before (unchanged default for ungrouped
+  // builds and any set whose footprint couldn't be resolved).
+  const onlyList = Array.isArray(only) ? only.filter(Boolean) : [];
+  const env = {
+    ...process.env,
+    DEV_ALL_LOG_DIR: config.devAllLogDir,
+    // Dev tier only -- make the tier explicit to anything that reads it.
+    APP_ENV: "dev",
+    NODE_ENV: "development",
+  };
+  if (onlyList.length) env.DEV_ALL_ONLY = onlyList.join(",");
   const child = spawn(process.execPath, [config.devAllPath], {
     cwd: config.serverWorktree,
     detached: true,
     stdio: "ignore",
-    env: {
-      ...process.env,
-      DEV_ALL_LOG_DIR: config.devAllLogDir,
-      // Dev tier only -- make the tier explicit to anything that reads it.
-      APP_ENV: "dev",
-      NODE_ENV: "development",
-    },
+    env,
   });
   child.unref();
   const meta = {
@@ -112,6 +153,7 @@ export function startServer(config) {
     logDir: config.devAllLogDir,
     logFile: path.join(config.devAllLogDir, "dev-all.log"),
     apiPort: config.apiPort,
+    only: onlyList.length ? onlyList : null,
   };
   writeServerMeta(config, meta);
   return child.pid;
@@ -141,9 +183,9 @@ export async function waitForReady(config) {
  * The real restart action injected into the coordinator: stop the tracked
  * process, start a fresh one, wait for readiness. Returns a summary.
  */
-export async function restartServer(config) {
+export async function restartServer(config, { only } = {}) {
   const oldPid = await stopServer(config);
-  const newPid = startServer(config);
+  const newPid = startServer(config, { only });
   const ready = await waitForReady(config);
-  return { oldPid: oldPid || null, newPid, ready };
+  return { oldPid: oldPid || null, newPid, ready, only: Array.isArray(only) && only.length ? only : null };
 }

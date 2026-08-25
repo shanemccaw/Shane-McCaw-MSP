@@ -21,6 +21,7 @@ import {
 import { claimAllPending, finalize } from "./queue.mjs";
 import { tryAcquire } from "./lock.mjs";
 import * as bs from "./buildset.mjs";
+import * as st from "./service-targeting.mjs";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -213,7 +214,7 @@ export async function runCycle(config, deps, opts = {}) {
  * a restart without importing the agent entrypoint). */
 function makeRestartAction(config) {
   if (config.fakeRestart) {
-    return async () => {
+    return async (_cfg, opts = {}) => {
       mkdirSync(path.dirname(config.restartsLog), { recursive: true });
       appendFileSync(
         config.restartsLog,
@@ -222,15 +223,16 @@ function makeRestartAction(config) {
           pid: process.pid,
           head: revParse(config.serverWorktree, "HEAD"),
           set: true,
+          only: opts.only || null,
         }) + "\n"
       );
-      return { oldPid: null, newPid: -1, ready: true, fake: true };
+      return { oldPid: null, newPid: -1, ready: true, fake: true, only: opts.only || null };
     };
   }
   // Lazy import so paths that never restart don't load the process manager.
-  return async (cfg) => {
+  return async (cfg, opts = {}) => {
     const { restartServer } = await import("./server-process.mjs");
-    return restartServer(cfg);
+    return restartServer(cfg, opts);
   };
 }
 
@@ -253,13 +255,60 @@ export async function maybeFireSetRestart(config, deps, name, { byAgent } = {}) 
   const serverHeadBefore = revParse(W, "HEAD");
   const cycleId = `set-${Date.now()}-${process.pid}`;
 
+  // --- Selective service targeting ------------------------------------------
+  // Compute the set's COMBINED changed-file footprint (the union of each merged
+  // member's changes since the set's recorded base), classify it into services,
+  // and plan which services this ONE restart should rebuild / start / stop / keep.
+  // The API server stays always-on (never rebuilt just because a front-end
+  // changed); a front-end that the set didn't touch and isn't already running is
+  // not spun up. If the footprint can't be resolved (e.g. a set opened before
+  // baseHead was recorded), fall back to a FULL restart -- never silently
+  // under-restart.
+  let plan = null;
+  let footprint = null;
+  let targeting = "full";
+  if (advanced) {
+    footprint = st.collectSetChangedFiles(W, set, { baseRef: set.baseHead || null });
+    if (footprint.resolvedFrom !== "none" && footprint.files.length > 0) {
+      const cls = st.classifyChangedFiles(footprint.files);
+      // Running services: real meta in production; empty under fakeRestart
+      // (selftest) so the pure decision path never loads the process manager.
+      let running = new Set();
+      if (!config.fakeRestart) {
+        try {
+          const sp = await import("./server-process.mjs");
+          running = sp.readRunningServices(config);
+        } catch {
+          /* treat as none running */
+        }
+      }
+      plan = st.planServiceTargeting({
+        changedServices: cls.changedServices,
+        shared: cls.shared,
+        running,
+        stopUnneeded: config.setStopUnneeded,
+        byService: cls.byService,
+        sharedFiles: cls.sharedFiles,
+      });
+      targeting = "selective";
+    }
+  }
+
   let restart = { skipped: true, oldPid: null, newPid: null, ready: null };
   let reason;
-  if (advanced) {
-    reason = "build set complete -- ONE restart of all services for the combined changes";
-    restart = { skipped: false, ...(await deps.restart(config)) };
-  } else {
+  if (!advanced) {
     reason = "build set complete -- no member merged; restart skipped (nothing new to reload)";
+  } else if (plan) {
+    reason = `build set complete -- ONE selective restart: ${st.describePlan(plan, set.name)}`;
+    restart = {
+      skipped: false,
+      targeting,
+      ...(await deps.restart(config, { only: plan.neededRunning, plan })),
+    };
+  } else {
+    reason =
+      "build set complete -- ONE restart of all services (combined footprint unresolved -> full restart)";
+    restart = { skipped: false, targeting, ...(await deps.restart(config)) };
   }
 
   const serverHeadFinal = revParse(W, "HEAD");
@@ -283,6 +332,28 @@ export async function maybeFireSetRestart(config, deps, name, { byAgent } = {}) 
     expected: set.expected,
     members: Object.keys(set.members),
     byAgent,
+    // Selective service targeting: exactly what was decided and which changed
+    // files drove each decision (Shane's requirement -- a durable record of why
+    // each service was rebuilt / started / stopped / kept).
+    targeting,
+    base: footprint?.base || null,
+    changedFiles: footprint?.files || [],
+    plan: plan
+      ? {
+          summary: st.describePlan(plan, set.name),
+          rebuild: plan.toRebuild,
+          start: plan.toStart,
+          stop: plan.toStop,
+          neededRunning: plan.neededRunning,
+          shared: plan.shared,
+          actions: plan.actions.map((a) => ({
+            service: a.service,
+            action: a.action,
+            triggers: a.triggers,
+            reason: a.reason,
+          })),
+        }
+      : null,
   });
   // Mirror into the shared cycles.log so status.mjs / observability see set restarts
   // alongside ordinary cycles.
@@ -301,8 +372,20 @@ export async function maybeFireSetRestart(config, deps, name, { byAgent } = {}) 
     restart,
     mergedCount: bs.mergedCount(set),
     members: Object.keys(set.members),
+    targeting,
+    targetedServices: plan ? plan.neededRunning : null,
   });
-  return { complete: true, restarted: advanced, cycleId, serverHeadFinal, reason };
+  return {
+    complete: true,
+    restarted: advanced,
+    cycleId,
+    serverHeadFinal,
+    reason,
+    targeting,
+    plan: plan
+      ? { rebuild: plan.toRebuild, start: plan.toStart, stop: plan.toStop, neededRunning: plan.neededRunning }
+      : null,
+  };
 }
 
 /**
@@ -314,7 +397,14 @@ export async function maybeFireSetRestart(config, deps, name, { byAgent } = {}) 
  */
 export async function runSetMemberCycle(config, deps, { commit, agentId, setName, memberKey, expected }) {
   const W = config.serverWorktree;
-  bs.openSet(config, setName, { expected, openedBy: agentId ? "agent" : "cli" });
+  // Stamp the set's base = the server HEAD BEFORE any member merged (openSet only
+  // records it on first creation), so the combined footprint for selective
+  // targeting is measured against the true pre-set state.
+  bs.openSet(config, setName, {
+    expected,
+    openedBy: agentId ? "agent" : "cli",
+    baseHead: revParse(W, "HEAD"),
+  });
 
   const serverHeadBefore = revParse(W, "HEAD");
   const resolved = resolveCommit(W, commit) || commit;

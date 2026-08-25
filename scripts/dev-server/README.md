@@ -168,6 +168,61 @@ State lives under `<state-dir>/buildsets/<name>.json`, and every membership /
 completion / restart event is logged to `<state-dir>/buildsets.log` (JSONL); set
 restarts are also mirrored into `cycles.log` alongside ordinary cycles.
 
+### Selective service targeting
+
+The one restart a completed Build Set fires is **selective**, not a blanket
+rebuild of everything. Shane doesn't run all sites at once — the only always-on
+service is the **API server** — so a Portal-only wave has no reason to tear down
+and rebuild Marketing / Admin / Website.
+
+On completion the coordinator computes the set's **combined changed-file
+footprint** — the union of each merged member's own changes since the set's
+recorded base (`baseHead`, the server HEAD stamped when the set first opened),
+via a per-member three-dot diff so it stays precise even if unrelated cycles
+advanced HEAD in between. `service-targeting.mjs` (a pure module, git-only)
+classifies those paths into services:
+
+| Changed path | Service |
+|--------------|---------|
+| `artifacts/api-server/` | **API Server** (always-on) |
+| `artifacts/shane-mccaw-consulting/` | **Marketing** |
+| `artifacts/admin-panel/` | **Admin** |
+| `artifacts/msp-portal/` | **Portal** |
+| `artifacts/msp-website/` | **Website** |
+| `lib/`, `packages/`, root build config (`package.json`, `pnpm-*`, `tsconfig*`) | **shared → ALL services** |
+| `test-manifests/`, `docs/`, `scripts/`, `.github/`, … | **none** (no rebuild) |
+
+then plans, per service, one of `rebuild` / `start` / `stop` / `keep`:
+
+- the **API server is always-on** — kept running, and **never rebuilt just
+  because a front-end changed** (only when API or shared code changed); started
+  if it somehow isn't up;
+- a **front-end (re)starts only** when its own code — or shared code it compiles
+  against — changed; a front-end the set didn't touch **and** isn't already
+  running is **not spun up** (the memory win);
+- a running-but-unrelated front-end is **left alone by default** (never yanked);
+  opt into stopping unneeded front-ends with `DEV_SET_STOP_UNNEEDED=1` (the API
+  server is never stopped).
+
+The plan is enforced by launching `dev-all.mjs` with `DEV_ALL_ONLY=<csv>` (the
+set of services that must be running = changed ∪ still-needed-running ∪ the
+always-on API); an unset `DEV_ALL_ONLY` starts everything, exactly as before.
+Every decision — which services were determined to need rebuild/start/stop/keep,
+and **exactly which changed files drove each** — is logged to
+`<state-dir>/buildsets.log` and mirrored into `cycles.log`.
+
+**Safe fallback:** if the combined footprint can't be resolved (e.g. a set
+opened before `baseHead` was recorded, or an empty diff), the completion does a
+**full** restart of all services rather than risk under-restarting. Ungrouped
+(non-`--buildSet`) builds are unchanged — they always do a full `runCycle`
+restart.
+
+> Note: the actual per-service enforcement runs through `DEV_ALL_ONLY`, which the
+> local (git-excluded) `dev-all.mjs` honors. Because it's one launcher process,
+> a completed set that keeps a running front-end still bounces it (kill + relaunch
+> the subset), rather than doing zero-downtime per-service supervision — the
+> targeting decides *which* services run, not independent per-service uptime.
+
 ## Reading live server logs
 
 `dev-all.mjs` streams stdout/stderr to **rotating log files** as well as the
@@ -209,7 +264,8 @@ stale-lock recovery.
 | `queue.mjs` | Directory-of-files request queue (lock-free enqueue; claim/finalize/recover). |
 | `server-process.mjs` | Start/stop/**restart by pid-tree** (never by name) + readiness probe. |
 | `coordinator.mjs` | `runCycle()` — the mutex-held merge→restart→confirm batch. Plus the Build-Set functions `runSetMemberCycle()` / `maybeFireSetRestart()` / `finishSetFromCli()` (merge-no-restart per member, then ONE restart on completion). |
-| `buildset.mjs` | **Build Sets** — per-set manifest state machine + CLI (`open`/`status`/`close`/`drop`/`sweep`/`reset`). |
+| `buildset.mjs` | **Build Sets** — per-set manifest state machine (now incl. `baseHead`) + CLI (`open`/`status`/`close`/`drop`/`sweep`/`reset`). |
+| `service-targeting.mjs` | **Selective service targeting** — pure (git-only) planner: classify a set's combined changed-file footprint into services and decide rebuild/start/stop/keep per service. |
 | `request-restart.mjs` | **Agent entrypoint** — the coalescing algorithm, and the `--buildSet` deferred-restart path. |
 | `status.mjs` | Diagnostic: current state + exact log paths. |
 | `provision-worktree.mjs` | Create an isolated agent worktree off origin/main. |
@@ -232,6 +288,12 @@ into the deferred-restart path), `DEV_BUILD_SET_MEMBER` (this member's key),
 (when `buildset.mjs sweep` flags a set as wedged, default 6h). BuildConsole sets
 the first three at launch; flags (`--buildSet` / `--set-member` / `--set-expected`)
 override them.
+
+Selective service targeting: `DEV_SET_STOP_UNNEEDED=1` (let a completed set stop
+running-but-unrelated front-ends; off by default so a set never yanks a service
+in use — the API server is never stopped regardless). `DEV_ALL_ONLY` (csv of
+services `dev-all.mjs` should start; set automatically by the coordinator from
+the computed plan — unset starts all).
 
 ## Known follow-ups (honest limits)
 
