@@ -2070,6 +2070,7 @@ namespace BuildConsole
                 catch { /* best-effort — a failed cancel just leaves the row, never crashes the glance screen */ }
                 await RefreshHomeRollupAsync(force: true);
             };
+            home.DoneRefreshRequested += async (s, e) => await RefreshHomeRollupAsync(force: true);
 
             // Fast actions & dashboard navigation
             home.NewIssueRequested += (s, e) => _ = LeftSidebar.CreateNewIssueAsync();

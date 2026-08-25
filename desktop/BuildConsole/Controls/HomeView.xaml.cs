@@ -48,6 +48,7 @@ namespace BuildConsole.Controls
         public event EventHandler? SettingsRequested;
         public event EventHandler<GitBoardIssue>? IssueDetailRequested;
         public event EventHandler<int>? MilestoneDetailRequested;
+        public event EventHandler? DoneRefreshRequested;
 
         /// <summary>
         /// Raised when a pending-migration row is clicked, carrying the full local
@@ -950,6 +951,11 @@ namespace BuildConsole.Controls
         private async void BtnRefreshHealth_Click(object sender, RoutedEventArgs e)
         {
             await RefreshHealthAsync();
+        }
+
+        private void BtnRefreshDone_Click(object sender, RoutedEventArgs e)
+        {
+            DoneRefreshRequested?.Invoke(this, EventArgs.Empty);
         }
 
         private async void BtnCleanWorktrees_Click(object sender, RoutedEventArgs e)

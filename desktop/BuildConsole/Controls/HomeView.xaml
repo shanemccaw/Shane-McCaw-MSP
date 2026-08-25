@@ -320,6 +320,7 @@
                                         <TextBlock x:Name="DoneHeaderText" Text="DONE, WAITING FOR REVIEW" Style="{StaticResource HomeCardHeader}"/>
                                         <TextBlock x:Name="DoneCountText" Text="(0)" FontSize="11" Margin="6,0,0,0"
                                                    VerticalAlignment="Center" Foreground="{StaticResource Subtext1Brush}"/>
+                                        <Button x:Name="BtnRefreshDone" Content="⟳" Style="{StaticResource SecondaryButton}" Width="22" Height="22" Margin="8,0,0,0" Padding="0" FontSize="12" FontWeight="Bold" Cursor="Hand" ToolTip="Re-check completed GitHub issues now" Click="BtnRefreshDone_Click"/>
                                     </StackPanel>
                                 </Grid>
                                 <StackPanel x:Name="DoneList"/>
