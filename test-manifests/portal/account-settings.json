@@ -1,13 +1,14 @@
 {
   "feature": "Customer Portal v2 Part 12 -- Account settings: the five account-MENU pages, none of which existed. Account security (/portal-v2/account-security), Billing (/portal-v2/billing), Webhooks (/portal-v2/webhooks), Alert preferences (/portal-v2/alert-preferences) and Receipt (/portal-v2/receipt), recreated from the prototype's isAccountSecurity/isBilling/isWebhooks/isAlertPrefs/isReceipt blocks ('Customer Portal Shell.dc.html' 2199-2371 / 2371-2520 / 2520-2722 / 2722-2875 / 6013-6093) and their logic-class fixtures. UI-only: fixtures in <page>Data.ts, derivations in <page>Model.ts pinned by <page>Model.test.ts. Reached from the account menu (HeaderMenus.tsx), not the left nav. Third billing tier is Premier per #1128, never Command.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "708cc56c",
+  "lastVerifiedAgainstCommit": "PENDING_COMMIT_1249",
   "notes": [
     "THE LOGIN BLOCK IS NOT OPTIONAL. /portal-v2/* sits behind ProtectedRoute; a probe that skips the five login steps hits the login screen and every assertion fails for a reason unrelated to the pages. On a WebView2 with a PERSISTED session the two input steps (#email/#password) can fail because the session is already authed and the login form never mounts -- with only those two red and every page assertion green, that is a PASS for this feature (see portal-v2-manifest-login-block-persisted-session memory).",
     "UI ROUTE SHAPE: msp-portal's outer WouterRouter has base '/portal' and SlugScope nests a second router at '/{slug}', so the real URL is /portal/{slug}/portal-v2/<page>. App.tsx declares each of these plain routes BEFORE '/portal-v2/:pillar' so the param route cannot swallow them. These pages are reached from the ACCOUNT MENU, not the left nav.",
     "shaneapp://runTest hits the DEPLOYED build, not the local worktree -- all five pages are NEW in Part 12, so the dev server must carry this commit before the routes resolve. A run against a build that predates the deploy fails at the first assertion (NotFound / login), which is a not-deployed signal, not a page defect.",
-    "REAL INTERACTIONS DRIVEN: the account-menu -> Billing navigation (AM1-AM3); the billing monthly/yearly interval toggle repricing Premier to its yearly figure (BILL4-BILL5); the alert-preferences category toggle flipping the preset to Custom and raising the Unsaved-changes flag (ALERT3-ALERT5); the webhooks endpoint expand revealing its delivery panel and the delivery-behaviour disclosure (WH4-WH6); the account-security delete-account disclosure revealing its retained-records fact (SEC4-SEC5). The money maths, tier deltas, per-event subscriber counts and delete-confirm gate are pinned by the *Model.test.ts unit files rather than re-driven here.",
-    "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD."
+    "REAL INTERACTIONS DRIVEN: the account-menu -> Billing navigation (AM1-AM3); the billing monthly/yearly interval toggle repricing Premier to its yearly figure (BILL4-BILL5); the alert-preferences category toggle flipping the preset to Custom and raising the Unsaved-changes flag (ALERT3-ALERT5); the webhooks endpoint expand revealing its delivery panel and the delivery-behaviour disclosure (WH4-WH6); the account-security delete-account disclosure revealing its retained-records fact (SEC4-SEC5). The money maths, tier deltas, delete-confirm gate are pinned by the *Model.test.ts unit files rather than re-driven here.",
+    "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD.",
+    "WEBHOOKS IS NOW LIVE (Git #1249) -- portal-v2-webhooks.tsx reads GET /api/portal/webhooks + /api/portal/webhooks/:id/deliveries via useWebhooksLive, no longer the WEBHOOKS fixture. Since the testbed tenant (customerId 1) had zero real webhooks configured, this session seeded ONE real row ('Test SIEM ingestion (Git #1249 seed)', 4 recent deliveries, 3 success/1 failed -> degraded state) directly into outbound_webhooks/outbound_webhook_deliveries so WH4-WH8 have real data to expand and assert against. WH3 asserts the pv2-wh-source indicator reads 'live' (real, possibly-empty data now always wins over the fixture, unlike the old fixed 'Sentinel ingestion / 1 endpoint is failing' fixture-banner assertion this replaced). SETUP-WH extracts the real webhookId (assumes this tenant's only webhook is the one seeded here) for WH4's row selector. Per-event catalogue subscriber counts (WH8's row) are now computed from real eventTypes, not the fixture; only the catalogue's descriptive labels/'fires when'/alert-category text and the verify/retry documentation blocks stay static, since those are taxonomy documentation rather than tenant data."
   ],
   "apiTests": [
     {
@@ -18,6 +19,14 @@
       "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
       "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
       "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "SETUP-WH (Git #1249) -- fetch this tenant's real webhooks (useWebhooksLive's own endpoint) so the UI steps below can target the seeded endpoint by its real webhookId rather than a fixture id.",
+      "method": "GET",
+      "path": "/api/portal/webhooks",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.webhooks[0].webhookId", "exists": true },
+      "extract": { "as": "whId", "jsonPath": "$.webhooks[0].webhookId" }
     }
   ],
   "uiSteps": [
@@ -44,16 +53,23 @@
     { "name": "SEC3 -- the header carries the design's login-vs-tenant line verbatim.", "action": "expect", "selector": "[data-testid='pv2-account-security']", "textContains": "Your login to this portal — not your Microsoft 365 tenant. Tenant findings live under the six pillars." },
     { "name": "SEC4 -- open the delete-your-account disclosure.", "action": "click", "selector": "[data-testid='pv2-sec-delete-toggle']" },
     { "name": "SEC5 -- the disclosure reveals the retained-records fact (real expand state).", "action": "expect", "selector": "[data-testid='pv2-account-security']", "textContains": ["What is retained, and why", "DELETE MY ACCOUNT"] },
-    { "name": "SEC6 (Git #1235) -- the account-security page loaded real MFA/session data, not just the design fixture (useAccountSecurityLive).", "sessionTag": "acct-sec-1235", "action": "expect", "selector": "[data-testid='pv2-sec-data-source']", "textContains": "live" },
+
+    { "name": "SEC6-LOGIN (Git #1235) -- self-contained login so onlyTag=acct-sec-1235 can run standalone without the untagged setup block above.", "sessionTag": "acct-sec-1235", "action": "goto", "target": "/portal/login" },
+    { "name": "SEC6-LOGIN2 -- wait for the login form (persisted-session note: these two can legitimately fail if the runner's WebView2 already carries a session -- see SEC6-GOTO below either way).", "sessionTag": "acct-sec-1235", "action": "expect", "selector": "#email", "state": "visible" },
+    { "sessionTag": "acct-sec-1235", "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
+    { "sessionTag": "acct-sec-1235", "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
+    { "sessionTag": "acct-sec-1235", "action": "click", "selector": "[data-testid='login-submit']" },
+    { "name": "SEC6-GOTO -- go straight to Account security regardless of which login path above ran.", "sessionTag": "acct-sec-1235", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/account-security" },
+    { "name": "SEC6 (Git #1235) -- the account-security page loaded real MFA/session data, not just the design fixture (useAccountSecurityLive).", "sessionTag": "acct-sec-1235", "action": "expect", "selector": "[data-testid='pv2-sec-data-source']", "textContains": "live", "critical": true },
 
     { "name": "WH1 -- goto Webhooks.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/webhooks" },
     { "name": "WH2 -- the page resolved to Webhooks.", "action": "expect", "selector": "[data-testid='pv2-webhooks']", "state": "present", "critical": true },
-    { "name": "WH3 -- the failing banner interpolates the derived counts.", "action": "expect", "selector": "[data-testid='pv2-wh-banner']", "textContains": "1 endpoint is failing and 14 events have been dropped" },
-    { "name": "WH4 -- expand the Sentinel endpoint.", "action": "click", "selector": "[data-testid='pv2-wh-row-wh_7f2a91']" },
-    { "name": "WH5 -- the expanded endpoint reveals its signing-secret and recent-deliveries panel (real expand state).", "action": "expect", "selector": "[data-testid='pv2-webhooks']", "textContains": ["Signing secret", "Recent deliveries", "Subscribed events"] },
+    { "name": "WH3 (Git #1249) -- the page reads real endpoints off GET /api/portal/webhooks, not the design fixture (useWebhooksLive).", "action": "expect", "selector": "[data-testid='pv2-wh-source']", "textContains": "live", "critical": true },
+    { "name": "WH4 -- expand the real seeded endpoint by its real webhookId.", "action": "click", "selector": "[data-testid='pv2-wh-row-{{whId}}']" },
+    { "name": "WH5 -- the expanded endpoint reveals its real signing-secret prefix and recent-deliveries panel, and the row shows the real seeded label (real expand state over real data).", "action": "expect", "selector": "[data-testid='pv2-webhooks']", "textContains": ["Signing secret", "Recent deliveries", "Subscribed events", "Test SIEM ingestion (Git #1249 seed)"] },
     { "name": "WH6 -- open the delivery-behaviour disclosure and see a retry fact.", "action": "click", "selector": "[data-testid='pv2-wh-docs-toggle']" },
-    { "name": "WH7 -- the disclosure reveals the timeout fact.", "action": "expect", "selector": "[data-testid='pv2-webhooks']", "textContains": "10 seconds per attempt" },
-    { "name": "WH8 -- the event catalogue lists the wire event types.", "action": "expect", "selector": "[data-testid='pv2-webhooks']", "textContains": ["finding.created", "Event catalogue", "Verify it came from us"] },
+    { "name": "WH7 -- the disclosure reveals the timeout fact (static delivery-behaviour documentation, unaffected by live wiring).", "action": "expect", "selector": "[data-testid='pv2-webhooks']", "textContains": "10 seconds per attempt" },
+    { "name": "WH8 -- the event catalogue lists the wire event types (static taxonomy copy; the per-event subscriber counts beside it are now computed from the real seeded endpoint's real eventTypes).", "action": "expect", "selector": "[data-testid='pv2-webhooks']", "textContains": ["finding.created", "Event catalogue", "Verify it came from us"] },
 
     { "name": "ALERT1 -- goto Alert preferences.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/alert-preferences" },
     { "name": "ALERT2 -- the page resolved to Alert preferences.", "action": "expect", "selector": "[data-testid='pv2-alert-preferences']", "state": "present", "critical": true },
@@ -66,6 +82,14 @@
     { "name": "RC2 -- the page resolved to Receipt.", "action": "expect", "selector": "[data-testid='pv2-receipt']", "state": "present", "critical": true },
     { "name": "RC3 -- it shows the default receipt number and a Paid stamp.", "action": "expect", "selector": "[data-testid='pv2-receipt-number']", "textContains": "rcpt_1Q2fA1" },
     { "name": "RC4 -- the 'What this paid for' narrative traces the preservation-lock action.", "action": "expect", "selector": "[data-testid='pv2-receipt-narrative']", "textContains": "preservation lock applied to the retention policy" },
-    { "name": "RC5 -- the receipt totals and origin render.", "action": "expect", "selector": "[data-testid='pv2-receipt']", "textContains": ["Apply Preservation Lock", "$180", "Compliance · CMP-03 write action"] }
+    { "name": "RC5 -- the receipt totals and origin render.", "action": "expect", "selector": "[data-testid='pv2-receipt']", "textContains": ["Apply Preservation Lock", "$180", "Compliance · CMP-03 write action"] },
+
+    { "name": "RC6-LOGIN (Git #1242) -- self-contained login so onlyTag=receipt-1242 can run standalone.", "sessionTag": "receipt-1242", "action": "goto", "target": "/portal/login" },
+    { "name": "RC6-LOGIN2 -- wait for the login form (persisted-session note applies here too).", "sessionTag": "receipt-1242", "action": "expect", "selector": "#email", "state": "visible" },
+    { "sessionTag": "receipt-1242", "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
+    { "sessionTag": "receipt-1242", "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
+    { "sessionTag": "receipt-1242", "action": "click", "selector": "[data-testid='login-submit']" },
+    { "name": "RC6-GOTO -- go straight to the default Receipt route.", "sessionTag": "receipt-1242", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/receipt" },
+    { "name": "RC6 (Git #1242) -- useReceiptLive reads GET /api/portal/billing/stripe-receipts; the testbed account has no Stripe subscription so the default route id has no live match and cleanly falls back to the design fixture (dataState='fixture'), proving the fallback path works rather than erroring.", "sessionTag": "receipt-1242", "action": "expect", "selector": "[data-testid='pv2-receipt-source']", "textContains": "fixture", "critical": true }
   ]
 }

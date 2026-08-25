@@ -21,7 +21,6 @@ import { Link } from "wouter";
 
 import { PortalV2Shell, SIDEBAR_WASH } from "@/components/portal-v2/PortalV2Shell";
 import {
-  WEBHOOKS,
   WH_CATALOGUE_HEADERS,
   WH_CATALOGUE_KICKER,
   WH_DELETE,
@@ -55,18 +54,24 @@ import {
   type Webhook,
 } from "@/components/portal-v2/webhooksData";
 import {
-  WH_ENDPOINT_COUNT,
   whBannerBody,
   whBannerTitle,
   whDeliveryColor,
   whEventCatalogue,
-  whEventChips,
-  whEventCount,
   whHasFailing,
   whPauseLabel,
   whReplayLabel,
   whStateMeta,
 } from "@/components/portal-v2/webhooksModel";
+import { PV2_SOURCE_CLIP } from "@/components/portal-v2/useLivePillarHero";
+import { useWebhooksLive } from "@/components/portal-v2/webhooksLive";
+import {
+  liveBannerBody,
+  liveBannerTitle,
+  liveEventCatalogue,
+  liveHasFailing,
+  liveReplayLabel,
+} from "@/components/portal-v2/webhooksWire";
 
 const MONO = "'SF Mono',Menlo,Consolas,monospace";
 
@@ -106,6 +111,8 @@ function InlineBtn({ children, tone = "muted" }: { children: React.ReactNode; to
 
 function EndpointRow({
   w,
+  chips,
+  eventCountLabel,
   index,
   expanded,
   onToggle,
@@ -113,6 +120,8 @@ function EndpointRow({
   onTest,
 }: {
   w: Webhook;
+  chips: readonly string[];
+  eventCountLabel: string;
   index: number;
   expanded: boolean;
   onToggle: () => void;
@@ -156,7 +165,7 @@ function EndpointRow({
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
             <span style={{ fontSize: "10.5px", color: "#64748b" }}>{w.lastDelivery}</span>
             <span style={{ fontSize: "10.5px", color: "#475569" }}>·</span>
-            <span style={{ fontSize: "10.5px", color: "#64748b" }}>{whEventCount(w.events)}</span>
+            <span style={{ fontSize: "10.5px", color: "#64748b" }}>{eventCountLabel}</span>
           </div>
         </div>
         <div style={{ flex: "0 0 auto", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 1 }}>
@@ -192,7 +201,7 @@ function EndpointRow({
             <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 0 }}>
               <span style={{ fontSize: "9.5px", fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", color: "#64748b" }}>{WH_SUBSCRIBED_EVENTS}</span>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-                {whEventChips(w.events).map((c) => (
+                {chips.map((c) => (
                   <span key={c} style={{ flex: "0 0 auto", padding: "2px 7px", borderRadius: 4, border: "1px solid rgba(96,165,250,.3)", background: "rgba(96,165,250,.08)", fontSize: "10px", fontWeight: 600, color: "#93c5fd", whiteSpace: "nowrap", fontFamily: MONO }}>{c}</span>
                 ))}
               </div>
@@ -272,7 +281,14 @@ export default function PortalV2WebhooksPage() {
   const [expanded, setExpanded] = useState<number | null>(null);
   const [testFor, setTestFor] = useState<string | null>(null);
   const [docsOpen, setDocsOpen] = useState(false);
-  const catalogue = whEventCatalogue();
+  const { endpoints, dataState } = useWebhooksLive();
+  const isLive = dataState === "live";
+
+  const catalogue = isLive ? liveEventCatalogue(endpoints) : whEventCatalogue();
+  const hasFailing = isLive ? liveHasFailing(endpoints) : whHasFailing();
+  const bannerTitle = isLive ? liveBannerTitle(endpoints) : whBannerTitle();
+  const bannerBody = isLive ? liveBannerBody(endpoints) : whBannerBody();
+  const replayLabel = isLive ? liveReplayLabel(endpoints) : whReplayLabel();
 
   return (
     <PortalV2Shell eyebrow="Account" title={WH_TITLE}>
@@ -309,20 +325,21 @@ export default function PortalV2WebhooksPage() {
               <span style={{ fontSize: "12.5px", color: "#94a3b8", lineHeight: 1.55, maxWidth: "80ch" }}>{WH_SUBTITLE}</span>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, flex: "0 0 auto" }}>
-              <span style={{ fontSize: "10.5px", color: "#475569" }}>{WH_ENDPOINT_COUNT} endpoints</span>
+              <span style={{ fontSize: "10.5px", color: "#475569" }}>{endpoints.length} endpoints</span>
+              <span data-testid="pv2-wh-source" style={PV2_SOURCE_CLIP}>{dataState}</span>
             </div>
           </div>
 
           {/* Failing banner — proto 2537-2548 */}
-          {whHasFailing() && (
+          {hasFailing && (
             <div style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "14px 16px", border: "1px solid rgba(248,113,113,.45)", borderLeft: "3px solid #f87171", borderRadius: 11, background: "rgba(248,113,113,.08)" }}>
               <span className="pv2-slow-pulse" style={{ flex: "0 0 7px", width: 7, height: 7, borderRadius: "50%", background: "#f87171", marginTop: 5 }} />
               <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 4 }}>
-                <span data-testid="pv2-wh-banner" style={{ fontSize: "12.5px", fontWeight: 700, color: "#fca5a5" }}>{whBannerTitle()}</span>
-                <span style={{ fontSize: "11.5px", color: "#e2e8f0", lineHeight: 1.55, textWrap: "pretty" }}>{whBannerBody()}</span>
+                <span data-testid="pv2-wh-banner" style={{ fontSize: "12.5px", fontWeight: 700, color: "#fca5a5" }}>{bannerTitle}</span>
+                <span style={{ fontSize: "11.5px", color: "#e2e8f0", lineHeight: 1.55, textWrap: "pretty" }}>{bannerBody}</span>
               </div>
               <div style={{ flex: "0 0 auto", display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <button type="button" style={{ padding: "6px 12px", borderRadius: 6, fontSize: "11px", fontWeight: 700, border: "1px solid rgba(248,113,113,.5)", background: "rgba(248,113,113,.14)", color: "#fca5a5", cursor: "pointer", fontFamily: "inherit" }}>{whReplayLabel()}</button>
+                <button type="button" style={{ padding: "6px 12px", borderRadius: 6, fontSize: "11px", fontWeight: 700, border: "1px solid rgba(248,113,113,.5)", background: "rgba(248,113,113,.14)", color: "#fca5a5", cursor: "pointer", fontFamily: "inherit" }}>{replayLabel}</button>
               </div>
             </div>
           )}
@@ -332,10 +349,12 @@ export default function PortalV2WebhooksPage() {
             <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
               <Kicker>{WH_ENDPOINTS_KICKER}</Kicker>
               <div style={{ display: "flex", flexDirection: "column", gap: 0, border: "1px solid rgba(30,41,59,.9)", borderRadius: 12, background: "rgba(15,23,42,.35)", overflow: "hidden" }}>
-                {WEBHOOKS.map((w, i) => (
+                {endpoints.map(({ webhook: w, chips, eventCountLabel }, i) => (
                   <EndpointRow
                     key={w.id}
                     w={w}
+                    chips={chips}
+                    eventCountLabel={eventCountLabel}
                     index={i}
                     expanded={expanded === i}
                     onToggle={() => setExpanded((e) => (e === i ? null : i))}
