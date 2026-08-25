@@ -25,6 +25,16 @@ namespace BuildConsole.Services
         public DateTime LastReportedAtUtc { get; set; } = DateTime.UtcNow;
         public List<ProgressStepEntry> History { get; } = new();
 
+        /// <summary>
+        /// Git #1251 — true once this build has reported its OWN progress via
+        /// shaneapp://reportProgress / report-progress.mjs (an explicit agent call). The checklist
+        /// auto-bridge (<see cref="BuildProgressTracker.BridgeFromChecklist"/>) defers to it: once a
+        /// build reports for itself, the synthesized checklist-derived progress stands down so the
+        /// two never fight over this panel. A build that never reports keeps this false and is driven
+        /// entirely by the bridge.
+        /// </summary>
+        public bool HasExplicitReport { get; set; }
+
         public double Percent => Total > 0 ? Math.Clamp((double)Step / Total * 100.0, 0, 100) : 0;
 
         /// <summary>True once the last reported step reached the total — a finished build is never "stale".</summary>
@@ -110,13 +120,30 @@ namespace BuildConsole.Services
             return report;
         }
 
-        public static BuildProgressReport Report(int queueItemId, int step, int total, string label)
+        /// <summary>Cap on retained step history — bounds the progress panel's rows. The checklist
+        /// bridge (Git #1251) can emit many small updates as a plan fills in and ticks over, so keep
+        /// only the most recent entries; explicit reporting rarely exceeds a handful anyway.</summary>
+        private const int MaxHistory = 15;
+
+        /// <param name="isExplicit">
+        /// True for a real agent-originated report (shaneapp://reportProgress / report-progress.mjs)
+        /// — the default, so every existing caller marks the build as self-reporting. False only for
+        /// the Git #1251 checklist auto-bridge (<see cref="BridgeFromChecklist"/>), which is ignored
+        /// once a build has ever reported for itself — explicit always wins.
+        /// </param>
+        public static BuildProgressReport Report(int queueItemId, int step, int total, string label, bool isExplicit = true)
         {
             var report = _reports.GetOrAdd(queueItemId, id => new BuildProgressReport
             {
                 QueueItemId = id,
                 StartedAtUtc = DateTime.UtcNow
             });
+
+            // Git #1251 — explicit reports win. A bridged (checklist-derived) update is dropped the
+            // moment a build has reported its own progress, so the panel never flickers between the
+            // agent's real checkpoints and the synthesized checklist count.
+            if (!isExplicit && report.HasExplicitReport) return report;
+            if (isExplicit) report.HasExplicitReport = true;
 
             report.Step = step;
             report.Total = Math.Max(total, step);
@@ -144,9 +171,14 @@ namespace BuildConsole.Services
                 report.History[^1].IsCurrent = true;
             }
 
+            // Bound the retained history (Git #1251 — the bridge can emit many small updates).
+            if (report.History.Count > MaxHistory)
+                report.History.RemoveRange(0, report.History.Count - MaxHistory);
+
             string est = report.EstimatedRemainingText;
+            string src = isExplicit ? "reportProgress" : "checklist-bridge";
             ActivityLog.Log(LogChannel,
-                $"[reportProgress] build #{queueItemId}: step {step}/{report.Total} ({report.Percent:0}%) — '{report.CurrentLabel}' [{est}]");
+                $"[{src}] build #{queueItemId}: step {step}/{report.Total} ({report.Percent:0}%) — '{report.CurrentLabel}' [{est}]");
 
             // Dispatch event onto UI thread
             if (Application.Current?.Dispatcher != null)
@@ -159,6 +191,25 @@ namespace BuildConsole.Services
             }
 
             return report;
+        }
+
+        /// <summary>
+        /// Git #1251 — synthesize a progress report from an agent's OWN free-form checklist (the
+        /// ☐ / - [ ] / - [x] / ✅ markers Build Watch already sees streaming past), for the very
+        /// common case where a session keeps a checklist in chat but never calls reportProgress.
+        /// #1206 strengthened the instruction to "report at every checkpoint" and it still didn't
+        /// stick, so this stops relying on the agent's compliance: <paramref name="doneCount"/> of
+        /// <paramref name="totalCount"/> detected items becomes step/total, advancing the same panel
+        /// #1206 built. An explicit reportProgress call always takes precedence — if this build has
+        /// ever reported for itself, this is a no-op (see <see cref="Report"/>'s isExplicit guard).
+        /// Returns the updated report, or null when there's nothing to report or explicit has won.
+        /// </summary>
+        public static BuildProgressReport? BridgeFromChecklist(int queueItemId, int doneCount, int totalCount, string label)
+        {
+            if (totalCount <= 0) return null;
+            var existing = GetProgress(queueItemId);
+            if (existing != null && existing.HasExplicitReport) return null;
+            return Report(queueItemId, Math.Clamp(doneCount, 0, totalCount), totalCount, label, isExplicit: false);
         }
 
         public static void ClearForBuild(int queueItemId)

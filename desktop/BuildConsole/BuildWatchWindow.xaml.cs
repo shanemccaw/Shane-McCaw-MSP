@@ -529,6 +529,15 @@ namespace BuildConsole
             AddTurn(slot, new AssistantParagraphTurn { Text = text, Kind = kind });
             slot.CurrentToolGroup = null;
             slot.LastOutputUtc = DateTime.UtcNow;
+
+            // Git #1251 — bridge the agent's own free-form checklist to the progress panel. Agents
+            // reliably keep a checklist in chat but often never call reportProgress (#1206 strengthened
+            // the instruction and it still didn't stick), so every ☐ / - [ ] / - [x] / ✅ marker that
+            // streams past here is fed to ChecklistProgressBridge, which derives done/total for this
+            // build and advances the panel automatically. Only ordinary prose carries checklists; an
+            // explicit reportProgress call still overrides all of this (see BridgeFromChecklist).
+            if (kind == ParagraphKind.Normal && slot.Occupied)
+                ChecklistProgressBridge.Observe(slot.QueueItemId, text);
         }
 
         /// <summary>The spec's DOM groups a whole run of paragraphs/tool-groups under ONE "CLAUDE" role header — inserts that marker turn the first time assistant content appears after a user message (or at the very start).</summary>
@@ -1207,6 +1216,9 @@ namespace BuildConsole
 
             // This build's progress tracking belongs to it — drop it as the slot frees.
             BuildProgressTracker.ClearForBuild(id);
+            // Git #1251 — and its accumulated checklist-bridge state, so a finished build's items
+            // never bleed into the next occupant of this slot.
+            ChecklistProgressBridge.ClearForBuild(id);
 
             // If this was an owned interactive build: gracefully finalize it if it's
             // still alive (close stdin → it exits → queue completes, never hangs),
