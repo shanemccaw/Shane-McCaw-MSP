@@ -10,7 +10,8 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import { MFA_CONTROLS } from "./secMfaData";
-import { mfaControlRows, mfaPartialUserRows, mfaStatePill, mfaWizardStepFlags } from "./secMfaModel";
+import { mfaControlRows, mfaGapUserRowsLive, mfaPartialUserRows, mfaPartialUserRowsLive, mfaStatePill, mfaWizardStepFlags } from "./secMfaModel";
+import type { LiveMfaUser } from "./useMfaRegistrationLive";
 
 describe("mfaControlRows", () => {
   it("carries one row per control with an mfa- fix key", () => {
@@ -30,6 +31,31 @@ describe("mfaPartialUserRows", () => {
     const mercer = rows.find((r) => r.name === "L. Mercer");
     assert.equal(mercer?.badgeLabel, "Registered");
     assert.equal(mercer?.badgeColor, "#34d399");
+  });
+});
+
+describe("mfaGapUserRowsLive", () => {
+  it("lists only unregistered users, annotating admins", () => {
+    const users: LiveMfaUser[] = [
+      { name: "Shane McCaw", isAdmin: true, isMfaRegistered: true },
+      { name: "R. Delgado", isAdmin: false, isMfaRegistered: false },
+      { name: "D. Cho", isAdmin: true, isMfaRegistered: false },
+    ];
+    assert.deepEqual(mfaGapUserRowsLive(users), ["R. Delgado", "D. Cho (admin)"]);
+  });
+});
+
+describe("mfaPartialUserRowsLive", () => {
+  it("badges every user by their real isMfaRegistered flag", () => {
+    const users: LiveMfaUser[] = [
+      { name: "L. Mercer", isAdmin: false, isMfaRegistered: true },
+      { name: "B. Ferris", isAdmin: false, isMfaRegistered: false },
+    ];
+    const rows = mfaPartialUserRowsLive(users);
+    assert.deepEqual(rows, [
+      { name: "L. Mercer", registered: true, badgeLabel: "Registered", badgeColor: "#34d399" },
+      { name: "B. Ferris", registered: false, badgeLabel: "Not registered", badgeColor: "#f87171" },
+    ]);
   });
 });
 

@@ -29,9 +29,11 @@ import {
   MFA_WIZARD_STEPS,
   type MfaState,
 } from "@/components/portal-v2/secMfaData";
-import { mfaControlRows, mfaPartialUserRows, mfaStatePill, mfaWizardStepFlags } from "@/components/portal-v2/secMfaModel";
+import { mfaControlRows, mfaGapUserRowsLive, mfaPartialUserRows, mfaPartialUserRowsLive, mfaStatePill, mfaWizardStepFlags } from "@/components/portal-v2/secMfaModel";
 import { useLivePillarHero } from "@/components/portal-v2/useLivePillarHero";
+import { useMfaRegistrationLive } from "@/components/portal-v2/useMfaRegistrationLive";
 import { PillarLiveSource } from "@/components/portal-v2/PillarLiveSource";
+import { PV2_SOURCE_CLIP } from "@/components/portal-v2/useLivePillarHero";
 
 function WrenchIcon({ color = "#60a5fa", size = 13 }: { color?: string; size?: number }) {
   return (
@@ -114,14 +116,23 @@ export default function PortalV2SecurityMfaPage() {
   const wizardNext = () => setWizardStep((s) => Math.min(MFA_WIZARD_STEPS.length - 1, s + 1));
   const flags = mfaWizardStepFlags(wizardStep);
   const controls = mfaControlRows();
-  const partialUsers = mfaPartialUserRows();
 
   // Reads the security pillar's live war-room-pillars payload through the shared
-  // `useLivePillarHero` seam; `pv2-mfa-source` proves the page is on real data. The
-  // per-user MFA-gap rows and the coverage % need a per-user Graph feed the
-  // war-room-pillars payload does not carry, so those stay fixture — a documented
-  // backend gap, not a fabricated coverage number.
+  // `useLivePillarHero` seam; `pv2-mfa-source` proves the page is on real data.
   const live = useLivePillarHero("security");
+
+  // The "gaps"/"partial" state's per-user rows: real `identity:mfa-registration`
+  // item rows, read via `useMfaRegistrationLive` (#1234) — the same
+  // tenant-check-items seam `useCaBaselineLive` (#1232) reads for the CA page.
+  // Falls back to the design fixture only until the first response lands or
+  // when the tenant genuinely has no collected rows. The "MFA controls we
+  // check" panel below stays fixture: those are authentication-methods-policy,
+  // registration-campaign and break-glass facts no current check collects at
+  // item level — a documented backend gap, not a fabricated status.
+  const mfaLive = useMfaRegistrationLive();
+  const rowsAreLive = mfaLive.loaded && mfaLive.users !== null;
+  const gapUsers = rowsAreLive ? mfaGapUserRowsLive(mfaLive.users!) : MFA_GAP_USERS;
+  const partialUsers = rowsAreLive ? mfaPartialUserRowsLive(mfaLive.users!) : mfaPartialUserRows();
 
   return (
     <PortalV2Shell eyebrow="Security" title="Multi-factor authentication">
@@ -347,7 +358,7 @@ export default function PortalV2SecurityMfaPage() {
                 <span style={SECTION_HEADER_LABEL}>8 accounts without MFA</span>
                 <button style={{ ...PRIMARY_BLUE, padding: "6px 12px", borderRadius: 6, fontSize: "11px", fontWeight: 700 }}>Enable MFA for all 8</button>
               </div>
-              {MFA_GAP_USERS.map((u) => (
+              {gapUsers.map((u) => (
                 <div key={u} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 20px", borderTop: "1px solid rgba(30,41,59,.8)" }}>
                   <span style={{ flex: 1, fontSize: "13px", fontWeight: 600, color: "#e2e8f0" }}>{u}</span>
                   <button style={{ padding: "5px 11px", borderRadius: 5, fontSize: "11px", fontWeight: 600, border: "1px solid rgba(30,41,59,.9)", background: "transparent", color: "#60a5fa", cursor: "pointer", fontFamily: "inherit" }}>
@@ -439,6 +450,9 @@ export default function PortalV2SecurityMfaPage() {
       {acceptRiskElement}
       {formElement}
       <PillarLiveSource testId="pv2-mfa-source" live={live} />
+      <span data-testid="pv2-mfa-rows-source" style={PV2_SOURCE_CLIP}>
+        {rowsAreLive ? "live" : "fixture"}
+      </span>
     </PortalV2Shell>
   );
 }

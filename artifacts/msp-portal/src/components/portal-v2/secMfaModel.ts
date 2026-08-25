@@ -14,6 +14,7 @@ import {
   MFA_STATUS_META,
   type MfaState,
 } from "./secMfaData";
+import type { LiveMfaUser } from "./useMfaRegistrationLive";
 
 export interface MfaControlRow {
   label: string;
@@ -51,6 +52,29 @@ export function mfaPartialUserRows(): MfaPartialUserRow[] {
     registered: u.registered,
     badgeLabel: u.registered ? "Registered" : "Not registered",
     badgeColor: u.registered ? "#34d399" : "#f87171",
+  }));
+}
+
+/**
+ * The "gaps" state's accounts-without-MFA list, from real `identity:mfa-
+ * registration` item rows (`useMfaRegistrationLive`, Git #1234) rather than
+ * `MFA_GAP_USERS`. Admins are annotated the same way the fixture does
+ * ("(admin)"), off the check's real `isAdmin` field.
+ */
+export function mfaGapUserRowsLive(users: readonly LiveMfaUser[]): string[] {
+  return users.filter((u) => !u.isMfaRegistered).map((u) => (u.isAdmin ? `${u.name} (admin)` : u.name));
+}
+
+/**
+ * The "partial" state's enrollment roster, from the same real item rows —
+ * `isMfaRegistered` stands in for the fixture's `registered` flag.
+ */
+export function mfaPartialUserRowsLive(users: readonly LiveMfaUser[]): MfaPartialUserRow[] {
+  return users.map((u) => ({
+    name: u.name,
+    registered: u.isMfaRegistered,
+    badgeLabel: u.isMfaRegistered ? "Registered" : "Not registered",
+    badgeColor: u.isMfaRegistered ? "#34d399" : "#f87171",
   }));
 }
 
