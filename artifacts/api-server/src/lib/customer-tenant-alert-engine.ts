@@ -287,6 +287,46 @@ async function evalLatestFindingByKey(customerId: number, tenantId: string | nul
   );
 }
 
+/**
+ * Licence assignments added or removed since the prior snapshot (#1291),
+ * mirroring evalOversharing's run-to-run diff shape over
+ * license_assignment_snapshots (one row per user x SKU, natural_key =
+ * tenant+user+sku independent of run_id — see item-detail-collector.ts /
+ * license-assignment-snapshots.ts). Counts BOTH directions (newly assigned
+ * and newly removed), unlike evalOversharing which only counts new
+ * appearances — a licence removal is as real a billing-relevant change as an
+ * addition. No accepted-risk suppression (#1279) here: that mechanism is
+ * scoped to `finding.*` conditions, not billing ones.
+ */
+async function evalLicenseChange(customerId: number, windowMinutes: number): Promise<number> {
+  return count(
+    `
+    WITH runs AS (
+      SELECT run_id, MAX(collected_at) AS at
+      FROM license_assignment_snapshots WHERE customer_id = $1 GROUP BY run_id
+    ),
+    ordered AS (SELECT run_id, at, row_number() OVER (ORDER BY at DESC) AS rn FROM runs),
+    latest AS (SELECT run_id, at FROM ordered WHERE rn = 1),
+    prior  AS (SELECT run_id FROM ordered WHERE rn = 2),
+    latest_keys AS (SELECT natural_key FROM license_assignment_snapshots WHERE run_id = (SELECT run_id FROM latest)),
+    prior_keys  AS (SELECT natural_key FROM license_assignment_snapshots WHERE run_id = (SELECT run_id FROM prior)),
+    changed AS (
+      -- Parens are load-bearing: EXCEPT/UNION ALL share precedence and are
+      -- left-associative, so without them this silently collapses to
+      -- ((latest EXCEPT prior) UNION ALL prior) EXCEPT latest — dropping the
+      -- "added" half of the diff.
+      (SELECT natural_key FROM latest_keys EXCEPT SELECT natural_key FROM prior_keys)
+      UNION ALL
+      (SELECT natural_key FROM prior_keys EXCEPT SELECT natural_key FROM latest_keys)
+    )
+    SELECT COUNT(*)::text AS n
+    FROM changed
+    WHERE (SELECT at FROM latest) > NOW() - ($2 * INTERVAL '1 minute')
+    `,
+    [customerId, windowMinutes],
+  );
+}
+
 async function getConditionValue(
   rule: { condition_type: string; window_minutes: number; threshold: number },
   ctx: TenantContext,
@@ -428,9 +468,11 @@ async function getConditionValue(
           [cid, w],
         );
 
+      // ── billing (continued) ────────────────────────────────────────────────
+      case "billing.license_change": return await evalLicenseChange(cid, w);
+
       // ── pending_detector conditions — hook wired, source not built yet ──────
       case "drift.regression":           // sub-issue: drift resolution/reopen lifecycle
-      case "billing.license_change":     // sub-issue: licence-assignment snapshot+diff
       default:
         return 0;
     }
@@ -467,6 +509,7 @@ function buildSummary(conditionType: string, value: number, ctx: TenantContext):
     case "billing.invoice_issued": return `${who}${n} invoice${s} issued.`;
     case "billing.renewal_approaching": return `${who}${n} subscription renewal${s} approaching.`;
     case "billing.payment_failed": return `${who}a subscription payment has failed.`;
+    case "billing.license_change": return `${who}${n} licence assignment change${s} detected.`;
     case "support.ticket_updated": return `${who}${n} support reply${s} from Shane McCaw Consulting.`;
     default: return `${who}alert condition "${conditionType}" triggered (value ${n}).`;
   }

@@ -53,9 +53,10 @@
  */
 
 import { randomUUID } from "crypto";
-import { db, tenantCheckItemDetailsTable, oversharedItemsTable } from "@workspace/db";
+import { db, tenantCheckItemDetailsTable, oversharedItemsTable, licenseAssignmentSnapshotsTable } from "@workspace/db";
 import { executeMonitorCheck, loadOrderedPackageChecks, type CheckResult } from "./monitor-executor";
 import { OVERSHARED_ITEM_CHECK_KEYS, buildOversharedItemRows } from "./overshared-items";
+import { LICENSE_ASSIGNMENT_CHECK_KEY, buildLicenseAssignmentSnapshotRows } from "./license-assignment-snapshots";
 import { logger } from "./logger";
 
 const log = logger.child({ channel: "engine.monitor" });
@@ -337,6 +338,29 @@ export async function runItemDetailCollection(opts: {
         }
       } catch (err) {
         log.error({ err, runId, tenantId, checkKey: result.checkKey }, "item-detail-collector: failed to persist overshared_items rows");
+      }
+    }
+
+    // #1291 — normalize this same collection into license_assignment_snapshots
+    // (one row per user x SKU) so the billing.license_change detector has a
+    // real run-to-run diff to evaluate. Best effort: a failure here costs the
+    // licence-change register a fresh snapshot, never the tenant_check_item_details
+    // row already committed above.
+    if (persistedItems && result.checkKey === LICENSE_ASSIGNMENT_CHECK_KEY) {
+      try {
+        const licenseRows = buildLicenseAssignmentSnapshotRows({
+          runId,
+          tenantId,
+          customerId: customerId ?? null,
+          checkKey: result.checkKey,
+          collectedAt: new Date(),
+          items: persistedItems,
+        });
+        if (licenseRows.length > 0) {
+          await db.insert(licenseAssignmentSnapshotsTable).values(licenseRows).onConflictDoNothing();
+        }
+      } catch (err) {
+        log.error({ err, runId, tenantId, checkKey: result.checkKey }, "item-detail-collector: failed to persist license_assignment_snapshots rows");
       }
     }
 

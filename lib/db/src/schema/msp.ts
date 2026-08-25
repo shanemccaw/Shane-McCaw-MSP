@@ -2140,6 +2140,51 @@ export const oversharedItemsTable = pgTable("overshared_items", {
 export type OversharedItem = typeof oversharedItemsTable.$inferSelect;
 export type InsertOversharedItem = typeof oversharedItemsTable.$inferInsert;
 
+// ── license_assignment_snapshots (#1291, licence-change detector for #1278) ───
+//
+// One row per (user x SKU) — mirrors overshared_items's "one row per item x
+// grant" granularity, here "one row per user x assigned SKU". Sourced from
+// `license:unused-assigned`'s full item list (already linked to
+// `detail:full-item-collection`, includeItems:true — see
+// item-detail-collector.ts), one real Graph `/users` page per row:
+// `{ id, accountEnabled, assignedLicenses: [{ skuId, disabledPlans }], ... }`.
+//
+// `run_id` is a partition key, not a foreign key — snapshots are retained
+// across scans (same retention decision #1275 made for overshared_items), so
+// a run-to-run diff (customer-tenant-alert-engine.ts's evalLicenseChange) can
+// answer "what assignment changed since the last scan". A stable
+// `natural_key` (tenant+user+sku, independent of run_id) is the diff's join
+// key — a user keeping the same SKU across two scans is the same row
+// identity, not a remove+add.
+//
+// A user with no assigned licence contributes no row, matching the table's
+// purpose: a register of licence ASSIGNMENTS, not a full user inventory.
+export const licenseAssignmentSnapshotsTable = pgTable("license_assignment_snapshots", {
+  id: serial("id").primaryKey(),
+  snapshotId: uuid("snapshot_id").notNull().unique().defaultRandom(),
+  tenantId: text("tenant_id").notNull(),
+  customerId: integer("customer_id"),
+  runId: uuid("run_id").notNull(),
+  checkKey: text("check_key").notNull(),
+  /** Graph user object id (`/users` `id`). No UPN is selected by this check. */
+  userId: text("user_id").notNull(),
+  accountEnabled: boolean("account_enabled"),
+  /** Graph `assignedLicenses[].skuId` — a SKU GUID, not a skuPartNumber. */
+  skuId: text("sku_id").notNull(),
+  /** tenant+user+sku, independent of run_id — the rescan diff identity. */
+  naturalKey: text("natural_key").notNull(),
+  collectedAt: timestamp("collected_at", { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  unique("license_assignment_snapshots_run_natural_key_uidx").on(t.runId, t.naturalKey),
+  index("license_assignment_snapshots_tenant_collected_idx").on(t.tenantId, t.collectedAt),
+  index("license_assignment_snapshots_customer_run_idx").on(t.customerId, t.runId),
+  index("license_assignment_snapshots_natural_key_idx").on(t.naturalKey),
+]);
+
+export type LicenseAssignmentSnapshot = typeof licenseAssignmentSnapshotsTable.$inferSelect;
+export type InsertLicenseAssignmentSnapshot = typeof licenseAssignmentSnapshotsTable.$inferInsert;
+
 export const monitorCheckAuditLogTable = pgTable("monitor_check_audit_log", {
   id: serial("id").primaryKey(),
   action: text("action").notNull(),
