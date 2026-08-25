@@ -680,6 +680,105 @@ export interface WarRoomPillarFinding {
    * the finding does not matter.
    */
   rankWeight: number;
+  /**
+   * (#1255) Additive, all optional — every existing consumer keeps working
+   * untouched. Sourced from columns `fetchPillarFindings` already reads off
+   * `msp_diagnostic_findings` (or, for `obligation`/`whyItMatters`, from the
+   * static `CHECK_OBLIGATION_COPY` catalogue below) rather than a schema
+   * change — see the approved proposal on #1255 for why a Compliance-specific
+   * endpoint was rejected in favor of widening this shared shape.
+   */
+  /** The finding's customer-safe narrative (`msp_diagnostic_findings.description`). */
+  description?: string | null;
+  /** The Sales Offer Engine's own recommendation JSON — previously fetched then discarded. */
+  recommendation?: MspDiagnosticFindingRecommendation | null;
+  /** Curated name-list subset of `extractedProperties` — never the raw blob (#1147). */
+  evidence?: Record<string, unknown> | null;
+  /** Authored, tenant-independent "what this check is checking for" copy. */
+  obligation?: string | null;
+  /** Authored, tenant-independent "why this matters" copy. */
+  whyItMatters?: string | null;
+}
+
+/** Mirrors `mspDiagnosticFindingsTable.recommendation`'s `$type` in lib/db/src/schema/msp.ts. */
+export type MspDiagnosticFindingRecommendation = {
+  signalKey?: string;
+  action?: string;
+  estimatedEffort?: string;
+  priority?: number;
+  category?: string;
+};
+
+/**
+ * Authored, per-`checkKey` "what this check is checking for" / "why it
+ * matters" copy (#1255). Deliberately a static code catalogue, not a DB
+ * column: this text is tenant-independent and reviewed as code, not scan
+ * output — the same reasoning `CHECK_DESCRIPTION_TEMPLATES` in
+ * diagnostics-runner.ts already applies to per-check description prose.
+ *
+ * Starts with the four `compliance:*` checks #1222 (Compliance Gaps) needs;
+ * extend with more checkKeys as other pillars' drill-downs need this same
+ * copy — the lookup degrades to `null` for any key not yet catalogued, so an
+ * uncovered check never blocks rendering, it just omits the narrative.
+ */
+const CHECK_OBLIGATION_COPY: Record<string, { obligation: string; whyItMatters: string }> = {
+  "compliance:missing-labels": {
+    obligation:
+      "Sensitivity labels should be published and enabled so documents and emails can be classified and protected automatically.",
+    whyItMatters:
+      "A disabled label can't classify or protect anything — content that should be marked confidential or protected goes out unmarked, which undermines both data-loss prevention and any compliance posture that assumes labels are actually applying.",
+  },
+  "compliance:label-errors": {
+    obligation:
+      "Sensitivity label policies should distribute successfully to every user and group they target.",
+    whyItMatters:
+      "A policy that fails to distribute means the users covered by it never receive the labels it publishes — they keep working without the classification and protection the policy was meant to apply, silently.",
+  },
+  "compliance:weak-dlp-policies": {
+    obligation:
+      "Data Loss Prevention policies should run in an enforcing mode, not audit-only, once an organization is ready to rely on them.",
+    whyItMatters:
+      "A DLP policy in audit or test mode observes matches but blocks nothing — sensitive data (financial, personal, health) can still leave the organization through email, chat, or file sharing exactly as if no policy existed.",
+  },
+  "compliance:dlp-incidents": {
+    obligation:
+      "DLP-related activity should be reviewed regularly so real policy triggers are investigated rather than accumulating unseen.",
+    whyItMatters:
+      "Unreviewed DLP incidents are a blind spot: each one is a real attempt (accidental or deliberate) to move sensitive data in a way a policy flagged, and going unreviewed means a genuine leak could sit unnoticed alongside routine false positives.",
+  },
+};
+
+function obligationCopyForCheckKey(
+  checkKey: string,
+): { obligation: string; whyItMatters: string } | null {
+  return CHECK_OBLIGATION_COPY[checkKey] ?? null;
+}
+
+/**
+ * Curated name-list subset of a finding's `extractedProperties` (#1255) — the
+ * SAME `namesField` convention `portal-pii-governance.ts`'s `PII_GOVERNANCE_CHECKS`
+ * already uses for these four checks, kept as its own small map here rather
+ * than importing that module's fixture-oriented types for one field name.
+ * Never the raw `extractedProperties` blob — that was the #1147 defect this
+ * mirrors the fix for.
+ */
+const CHECK_EVIDENCE_NAME_FIELDS: Record<string, string> = {
+  "compliance:missing-labels": "disabledLabelNames",
+  "compliance:label-errors": "labelErrorPolicyNames",
+  "compliance:weak-dlp-policies": "weakPolicyNames",
+  "compliance:dlp-incidents": "dlpIncidentPolicyNames",
+};
+
+function buildFindingEvidence(
+  checkKey: string,
+  extractedProperties: Record<string, unknown> | null,
+): Record<string, unknown> | null {
+  if (!extractedProperties) return null;
+  const namesField = CHECK_EVIDENCE_NAME_FIELDS[checkKey];
+  if (!namesField) return null;
+  const names = extractedProperties[namesField];
+  if (!Array.isArray(names) || names.length === 0) return null;
+  return { [namesField]: names };
 }
 
 /** The impact columns a signal's weight can live in. Mirrors health-display.ts. */
@@ -1416,7 +1515,9 @@ async function fetchPillarFindings(
       checkKey: mspDiagnosticFindingsTable.checkKey,
       severity: mspDiagnosticFindingsTable.severity,
       title: mspDiagnosticFindingsTable.title,
+      description: mspDiagnosticFindingsTable.description,
       recommendation: mspDiagnosticFindingsTable.recommendation,
+      extractedProperties: mspDiagnosticFindingsTable.extractedProperties,
     })
     .from(mspDiagnosticFindingsTable)
     .where(
@@ -1430,11 +1531,17 @@ async function fetchPillarFindings(
     const pillar = warRoomPillarForCheckKey(row.checkKey, checkKeyPillars);
     if (!pillar) continue;
     const list = findingsByPillar.get(pillar) ?? [];
+    const obligationCopy = obligationCopyForCheckKey(row.checkKey);
     list.push({
       severity: row.severity as WarRoomFindingSeverity,
       checkKey: row.checkKey,
       title: row.title,
       rankWeight: rankWeights.get(row.checkKey)?.[WAR_ROOM_ENGINE_PILLAR[pillar]] ?? 0,
+      description: row.description,
+      recommendation: row.recommendation as MspDiagnosticFindingRecommendation | null,
+      evidence: buildFindingEvidence(row.checkKey, row.extractedProperties),
+      obligation: obligationCopy?.obligation ?? null,
+      whyItMatters: obligationCopy?.whyItMatters ?? null,
     });
     findingsByPillar.set(pillar, list);
   }
