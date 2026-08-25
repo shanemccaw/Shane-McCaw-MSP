@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, mspRiskDecisionsTable } from "@workspace/db";
-import { eq, and, desc } from "drizzle-orm";
+import { db, mspRiskDecisionsTable, monitorChecksTable } from "@workspace/db";
+import { eq, and, desc, asc } from "drizzle-orm";
 import { z } from "zod";
 import { requireAuth, requireRole } from "../middlewares/requireAuth.ts";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
@@ -63,6 +63,36 @@ const signRbdSchema = z.object({
   ipAddress: z.string(),
   signatureHash: z.string(),
 });
+
+// GET /api/msp/rbd/available-checks
+// Read-only monitor_checks catalog (key/label/description only — no rule
+// internals) for the RiskBasedDecisionConsole's linked-check picker (Git
+// #1294). MSPOperator-readable: the catalog itself isn't sensitive (MSP
+// staff already see check labels on every diagnostics finding), only
+// authoring it is platform-only (see admin-monitor-checks.ts).
+router.get(
+  "/msp/rbd/available-checks",
+  requireAuth,
+  requireRole("MSPOperator"),
+  async (_req: Request, res: Response) => {
+    try {
+      const checks = await db
+        .select({
+          key: monitorChecksTable.key,
+          label: monitorChecksTable.label,
+          description: monitorChecksTable.description,
+        })
+        .from(monitorChecksTable)
+        .orderBy(asc(monitorChecksTable.label));
+
+      res.json(checks);
+    } catch (err: unknown) {
+      log.error({ err }, "GET /api/msp/rbd/available-checks failed");
+      const msg = err instanceof Error ? err.message : String(err);
+      apiError(res, 500, ApiErrorCode.INTERNAL, msg);
+    }
+  }
+);
 
 // GET /api/msp/rbd
 // List all risk based decisions for the active MSP

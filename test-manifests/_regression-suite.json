@@ -38,6 +38,7 @@
     "admin/tenant-switcher-floaty.json",
     "admin/baseline-actions-powershell-verify.json",
     "admin/testbed-gate-negative.json",
+    "admin/risk-decision-linked-check-1294.json",
     "mailer/email-template-branding-audit.json",
     "observability/dlq-schema-error-scan.json",
     "observability/schema-drift-guard.json",

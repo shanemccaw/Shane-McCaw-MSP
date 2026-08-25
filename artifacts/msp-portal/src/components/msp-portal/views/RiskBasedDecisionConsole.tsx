@@ -421,6 +421,23 @@ export const RiskBasedDecisionConsole: React.FC<RiskBasedDecisionConsoleProps> =
     loadRbdData();
   }, [loadRbdData]);
 
+  // Linked-check picker data (Git #1294) — fetched once; the catalog changes
+  // rarely and this is read-only reference data, not per-tenant state.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetchWithAuth('/api/msp/rbd/available-checks');
+        if (res.ok && !cancelled) {
+          setAvailableChecks(await res.json());
+        }
+      } catch {
+        // Non-fatal: the picker just shows "None" if the catalog can't be loaded.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [fetchWithAuth]);
+
   // Sync default selection
   useEffect(() => {
     if (rbdList.length > 0 && !selectedRbdId) {
@@ -448,6 +465,11 @@ export const RiskBasedDecisionConsole: React.FC<RiskBasedDecisionConsoleProps> =
   const [newRbdLiability, setNewRbdLiability] = useState<number>(35000);
   const [newRbdRawRisk, setNewRbdRawRisk] = useState<'critical' | 'high' | 'medium'>('high');
   const [newRbdResidualRisk, setNewRbdResidualRisk] = useState<'high' | 'medium' | 'low'>('medium');
+  // Linked automated check (Git #1294) — optional monitor_checks.key this
+  // decision covers, so #1279's accepted-risk alert suppression can activate
+  // without an MSP tech having to hand-craft a raw API call.
+  const [newRbdCheckKey, setNewRbdCheckKey] = useState<string>('');
+  const [availableChecks, setAvailableChecks] = useState<{ key: string; label: string; description: string | null }[]>([]);
 
   // Controls list for creation wizard
   const [wizardControls, setWizardControls] = useState<CompensatingControl[]>([
@@ -571,6 +593,7 @@ export const RiskBasedDecisionConsole: React.FC<RiskBasedDecisionConsoleProps> =
       },
       expirationDate: new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString().substring(0, 10),
       status: 'pending_signature',
+      checkKey: newRbdCheckKey || null,
     };
 
     try {
@@ -588,6 +611,7 @@ export const RiskBasedDecisionConsole: React.FC<RiskBasedDecisionConsoleProps> =
         );
         setIsWizardOpen(false);
         setWizardStep(1);
+        setNewRbdCheckKey('');
         loadRbdData();
         setSelectedRbdId(newId);
       } else {
@@ -1677,6 +1701,28 @@ export const RiskBasedDecisionConsole: React.FC<RiskBasedDecisionConsoleProps> =
                       onChange={(e) => setNewRbdHazard(e.target.value)}
                       className="w-full bg-[#101419] border border-[#404752] text-[#e0e2ea] rounded p-2 text-xs outline-none focus:border-[#0078d4]"
                     />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold text-[#e0e2ea] block mb-1">
+                      Linked Automated Check (optional):
+                    </label>
+                    <select
+                      data-testid="rbd-linked-check-picker"
+                      value={newRbdCheckKey}
+                      onChange={(e) => setNewRbdCheckKey(e.target.value)}
+                      className="w-full bg-[#101419] border border-[#404752] text-[#e0e2ea] rounded p-2 text-xs outline-none focus:border-[#0078d4]"
+                    >
+                      <option value="">None — free-standing liability record</option>
+                      {availableChecks.map((c) => (
+                        <option key={c.key} value={c.key}>{c.label}</option>
+                      ))}
+                    </select>
+                    <div className="text-[10px] text-[#8a919e] mt-1">
+                      Link this decision to the automated check it covers so accepted-risk
+                      alert suppression activates for it — the alert will not keep re-firing
+                      while this decision stays active.
+                    </div>
                   </div>
                 </div>
               )}
