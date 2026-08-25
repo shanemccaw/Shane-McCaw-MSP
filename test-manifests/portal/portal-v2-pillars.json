@@ -1,7 +1,7 @@
 {
   "feature": "Customer Portal v2 -- isolated parallel build of the Overview (/portal-v2) and the six pillar dashboards (/portal-v2/:pillar) in the new navy/journeyTokens design language. Deliberately separate routes from the live /governance, /security-overview, /m365-health, /compliance, /adoption, /licensing pages, which this build does not touch. Data comes from GET /api/portal/assessment/war-room-pillars via components/portal-v2/usePortalV2Pillars.ts, which wraps the EXISTING components/war-room/useWarRoomPillarStats.ts hook rather than reimplementing fetching, retry/backoff or scoring. Pillar identity colours and the 82 gate constant come from components/copilot-journey/journeyTokens.ts (PILLARS, COPILOT_GATE_TARGET); components/ui/score-ring.tsx is reused verbatim, with .pv2-root redefining the --status-*/--muted tokens it reads so it resolves against the navy palette.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "PENDING-1275",
+  "lastVerifiedAgainstCommit": "789351804",
 
   "notes": [
     "SCOPE: Overview + six pillar pages only. Change Control, SOPs & Runbooks, Risk Register, Microsoft Changes and Hold Windows are deliberately NOT built in this pass -- the existing implementations of the first four are MSP-operator-scoped (/api/msp/*, requireRole('MSPOperator') + resolveMspIdStrict) and reusing them from a customer page would leak cross-tenant data; they need new customer-scoped routes first.",
