@@ -4608,7 +4608,7 @@ export const CUSTOMER_ALERT_CONDITION_TYPES = [
   "finding.new_critical",
   "finding.new_high",
   "finding.oversharing",
-  "finding.mfa_gap",           // pending_detector — needs an MFA monitor check key
+  "finding.mfa_gap",           // live — identity:privileged-mfa-gap monitor check (#1288)
   "finding.global_admin_added", // pending_detector — needs a GA add-event / run-delta source
   "finding.ownerless_group",
   "finding.standing_priv_role",
