@@ -4682,6 +4682,15 @@ namespace BuildConsole
                 {
                     // Tooltip hide is handled entirely in JS; nothing to do on the C# side.
                 }
+                else if (type == "BT_OPEN_SQL_FILE")
+                {
+                    string? fileParam = Str("file");
+                    if (!string.IsNullOrEmpty(fileParam))
+                    {
+                        ActivityLog.Log("chat.sql-mention", $"BT_OPEN_SQL_FILE: {fileParam}");
+                        await OpenSqlFileInInlineRunnerAsync(sender, fileParam);
+                    }
+                }
             }
             catch { }
         }
@@ -4697,6 +4706,136 @@ namespace BuildConsole
             var trimmed = body.TrimStart();
             return trimmed.StartsWith("<!DOCTYPE", StringComparison.OrdinalIgnoreCase)
                 || trimmed.StartsWith("<html", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private async System.Threading.Tasks.Task OpenSqlFileInInlineRunnerAsync(object? sender, string fileParam)
+        {
+            string? repoRoot = BuildConsole.Services.BuildTrackerConfig.FindRepoRoot();
+            if (string.IsNullOrEmpty(repoRoot)) return;
+
+            string fileName = Path.GetFileName(fileParam);
+            string? targetPath = null;
+
+            // Search for the file recursively starting from repoRoot
+            try
+            {
+                // First check if it's a direct path relative to repoRoot
+                string directPath = Path.Combine(repoRoot, fileParam.Replace('/', '\\'));
+                if (File.Exists(directPath))
+                {
+                    targetPath = directPath;
+                }
+                else
+                {
+                    // Scan recursively
+                    var files = Directory.GetFiles(repoRoot, fileName, SearchOption.AllDirectories);
+                    if (files.Length > 0)
+                    {
+                        targetPath = files[0];
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("chat.sql-mention", $"Error finding SQL file {fileParam}: {ex.Message}");
+            }
+
+            if (targetPath == null)
+            {
+                ToastEngine.Warning("SQL File Not Found", $"Could not find SQL file '{fileParam}' in the repository.");
+                return;
+            }
+
+            // Read the SQL content
+            string sqlContent;
+            try
+            {
+                sqlContent = await File.ReadAllTextAsync(targetPath);
+            }
+            catch (Exception ex)
+            {
+                ToastEngine.Error("SQL Read Error", $"Could not read SQL file: {ex.Message}");
+                return;
+            }
+
+            // Open in SQL inline runner of the active chat tab
+            // Find the chat tab that received this message
+            ChatTabState? chatState = null;
+            foreach (var kvp in _chatTabs)
+            {
+                if (kvp.Value.WebView?.CoreWebView2 == sender || ReferenceEquals(kvp.Value.WebView, sender))
+                {
+                    chatState = kvp.Value;
+                    break;
+                }
+            }
+
+            if (chatState == null)
+            {
+                // Fallback: check selected tab
+                foreach (var pane in new[] { EditorTabs, EditorTabs2, EditorTabs3, EditorTabs4 })
+                {
+                    if (pane.SelectedItem is TabItem sel && _chatTabs.TryGetValue(sel, out var state))
+                    {
+                        chatState = state;
+                        break;
+                    }
+                }
+            }
+
+            if (chatState != null)
+            {
+                if (chatState.InlineSqlRunner != null)
+                {
+                    chatState.InlineSqlRunner.SetSqlQuery(sqlContent);
+                    if (chatState.SqlColumn != null)
+                        chatState.SqlColumn.Width = new GridLength(1, GridUnitType.Star);
+                }
+                else
+                {
+                    var inlineSql = new Controls.SqlDocumentView();
+                    inlineSql.Initialize(_buildTrackerApi);
+                    inlineSql.IsInline = true;
+                    inlineSql.SetSqlQuery(sqlContent);
+                    WireSqlRunnerSendToChat(inlineSql);
+
+                    var sqlCol = new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) };
+                    chatState.SplitGrid.ColumnDefinitions.Add(sqlCol);
+                    int colIndex = chatState.SplitGrid.ColumnDefinitions.Count - 1;
+
+                    var sqlSplitter = new GridSplitter
+                    {
+                        Width = 4,
+                        HorizontalAlignment = HorizontalAlignment.Left,
+                        VerticalAlignment = VerticalAlignment.Stretch,
+                        ResizeBehavior = GridResizeBehavior.PreviousAndNext
+                    };
+
+                    Grid.SetColumn(sqlSplitter, colIndex);
+                    Grid.SetColumn(inlineSql, colIndex);
+                    chatState.SplitGrid.Children.Add(sqlSplitter);
+                    chatState.SplitGrid.Children.Add(inlineSql);
+
+                    chatState.InlineSqlRunner = inlineSql;
+                    chatState.SqlSplitter = sqlSplitter;
+                    chatState.SqlColumn = sqlCol;
+
+                    inlineSql.CloseRequested += (s, ev) =>
+                    {
+                        chatState.SplitGrid.Children.Remove(sqlSplitter);
+                        chatState.SplitGrid.Children.Remove(inlineSql);
+                        chatState.SplitGrid.ColumnDefinitions.Remove(sqlCol);
+                        chatState.InlineSqlRunner = null;
+                        chatState.SqlSplitter = null;
+                        chatState.SqlColumn = null;
+                    };
+                }
+            }
+            else
+            {
+                // Fallback if not inside a chat tab
+                OpenSqlRunnerTab().SetSqlQuery(sqlContent);
+            }
         }
 
         // ── Menu: Help ────────────────────────────────────────────────────────

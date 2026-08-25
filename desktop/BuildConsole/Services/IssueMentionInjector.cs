@@ -100,11 +100,12 @@ namespace BuildConsole.Services
     requestAnimationFrame(function () { tip.style.opacity = '1'; });
   };
 
-  /* ── Issue-mention decoration ─────────────────────────────────── */
+  /* ── Issue & SQL mention decoration ───────────────────────────── */
   var ISSUE_RE = /#(\d{1,5})\b/g;
+  var SQL_RE = /\b([\w\-\./\\]+\.sql)\b/gi;
   var SKIP_TAGS = { CODE:1, PRE:1, SCRIPT:1, STYLE:1, TEXTAREA:1, INPUT:1 };
 
-  function makeSpan(num, rawText) {
+  function makeIssueSpan(num, rawText) {
     var span = document.createElement('span');
     span.className = 'bc-issue-mention';
     span.setAttribute('data-bc-num', String(num));
@@ -143,29 +144,97 @@ namespace BuildConsole.Services
     return span;
   }
 
+  function makeSqlSpan(file, rawText) {
+    var span = document.createElement('span');
+    span.className = 'bc-sql-mention';
+    span.setAttribute('data-bc-file', file);
+    span.textContent = rawText;
+    span.style.cssText = 'border-bottom:1.5px dashed #A6E3A1;cursor:pointer;'
+      + 'border-radius:2px;padding-bottom:1px;'
+      + 'transition:background .12s,border-color .12s';
+
+    span.addEventListener('mouseenter', function () {
+      span.style.background  = 'rgba(166,227,161,.13)';
+      span.style.borderColor = '#A6E3A1';
+      appendTip();
+      tipBody.innerHTML = '📄 <strong style="color:#A6E3A1">' + escHtml(rawText) + '</strong>'
+        + '<br><span style="color:#BAC2DE;font-size:11px">Click to open in SQL viewer</span>';
+      showTip(span);
+    });
+
+    span.addEventListener('mouseleave', function () {
+      span.style.background  = '';
+      span.style.borderColor = '#A6E3A1';
+      tip.style.opacity = '0';
+      _tipVisible = false;
+    });
+
+    span.addEventListener('click', function (ev) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      tip.style.opacity = '0';
+      _tipVisible = false;
+      try { window.chrome.webview.postMessage(JSON.stringify({ type: 'BT_OPEN_SQL_FILE', file: file })); } catch(e) {}
+    });
+
+    return span;
+  }
+
   function decorateTextNode(tn) {
     if (!tn.isConnected) return;
     var parent = tn.parentElement;
     if (!parent) return;
-    if (parent.classList && parent.classList.contains('bc-issue-mention')) return;
+    if (parent.classList && (parent.classList.contains('bc-issue-mention') || parent.classList.contains('bc-sql-mention'))) return;
     var el = parent;
     while (el) {
       if (SKIP_TAGS[el.nodeName]) return;
       el = el.parentElement;
     }
     var text = tn.nodeValue || '';
-    ISSUE_RE.lastIndex = 0;
-    if (!ISSUE_RE.test(text)) return;
+
+    var matches = [];
+    var m;
 
     ISSUE_RE.lastIndex = 0;
-    var frag = document.createDocumentFragment();
-    var last = 0, m;
     while ((m = ISSUE_RE.exec(text)) !== null) {
       var num = parseInt(m[1], 10);
-      if (num >= 100000) continue;
-      if (m.index > last) frag.appendChild(document.createTextNode(text.slice(last, m.index)));
-      frag.appendChild(makeSpan(num, m[0]));
-      last = m.index + m[0].length;
+      if (num < 100000) {
+        matches.push({ index: m.index, length: m[0].length, type: 'issue', value: num, text: m[0] });
+      }
+    }
+
+    SQL_RE.lastIndex = 0;
+    while ((m = SQL_RE.exec(text)) !== null) {
+      matches.push({ index: m.index, length: m[0].length, type: 'sql', value: m[1], text: m[0] });
+    }
+
+    if (matches.length === 0) return;
+
+    matches.sort(function (a, b) { return a.index - b.index; });
+
+    var cleanMatches = [];
+    var lastEnd = 0;
+    for (var i = 0; i < matches.length; i++) {
+      var match = matches[i];
+      if (match.index >= lastEnd) {
+        cleanMatches.push(match);
+        lastEnd = match.index + match.length;
+      }
+    }
+
+    if (cleanMatches.length === 0) return;
+
+    var frag = document.createDocumentFragment();
+    var last = 0;
+    for (var i = 0; i < cleanMatches.length; i++) {
+      var match = cleanMatches[i];
+      if (match.index > last) frag.appendChild(document.createTextNode(text.slice(last, match.index)));
+      if (match.type === 'issue') {
+        frag.appendChild(makeIssueSpan(match.value, match.text));
+      } else if (match.type === 'sql') {
+        frag.appendChild(makeSqlSpan(match.value, match.text));
+      }
+      last = match.index + match.length;
     }
     if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
 
@@ -187,7 +256,8 @@ namespace BuildConsole.Services
     while ((node = walker.nextNode()) !== null) {
       var txt = node.nodeValue || '';
       ISSUE_RE.lastIndex = 0;
-      if (ISSUE_RE.test(txt)) batch.push(node);
+      SQL_RE.lastIndex = 0;
+      if (ISSUE_RE.test(txt) || SQL_RE.test(txt)) batch.push(node);
     }
     batch.forEach(decorateTextNode);
   }
@@ -204,7 +274,7 @@ namespace BuildConsole.Services
       var mut = mutations[i];
       for (var j = 0; j < mut.addedNodes.length && skip; j++) {
         var n = mut.addedNodes[j];
-        if (n.nodeType === 1 && n.classList && n.classList.contains('bc-issue-mention')) continue;
+        if (n.nodeType === 1 && n.classList && (n.classList.contains('bc-issue-mention') || n.classList.contains('bc-sql-mention'))) continue;
         skip = false;
       }
       if (mut.type === 'characterData') skip = false;
