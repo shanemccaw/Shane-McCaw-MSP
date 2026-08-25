@@ -373,3 +373,5 @@ History before 2026-08-12 lives in [PLATFORM_BUILD_ARCHIVE_2026-08-12.md](PLATFO
 
 
 | 2026-08-25 | ✅ DONE | CLAUDE.md: mandatory issue-comment rule | `ea9ae3662` |
+| 2026-08-25 | ⏳ IN FLIGHT | Home Done review click redirect + Git Document reply-to-build integration | |
+

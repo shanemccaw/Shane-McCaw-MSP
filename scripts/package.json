@@ -18,7 +18,6 @@
     "assign-task-types": "tsx ./src/assign-task-types.ts",
     "seed-icon-names": "tsx ./src/seed-icon-names.ts",
     "migration-status": "tsx ./src/migration-status.ts",
-    "manual-migration-status": "tsx ./src/manual-migration-status.ts",
     "migrate-runbook-ids": "tsx ./src/migrate-runbook-ids.ts",
     "patch-consolidated-sow-prompt": "tsx ./src/patch-consolidated-sow-prompt.ts",
     "patch-sow-adjustment-rules": "tsx ./src/patch-sow-adjustment-rules.ts",

@@ -10,7 +10,6 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
@@ -51,27 +50,8 @@
             </StackPanel>
         </Border>
 
-        <!-- ── PENDING MANUAL MIGRATIONS (Git #1199) ─────────────────── -->
-        <Border Grid.Row="2" Background="{StaticResource MantleBrush}"
-                BorderBrush="{StaticResource Surface0Brush}" BorderThickness="1"
-                CornerRadius="8" Padding="12" Margin="0,0,0,12">
-            <DockPanel>
-                <Button x:Name="BtnLoadPending" Content="Load into SQL box ↓" DockPanel.Dock="Right"
-                        Style="{StaticResource IconButton}" Padding="10,4" FontSize="10.5"
-                        Margin="10,0,0,0" VerticalAlignment="Center"
-                        IsEnabled="False" Click="LoadPending_Click"/>
-                <StackPanel>
-                    <TextBlock Text="PENDING MANUAL MIGRATIONS (Dev vs Staging, live)" FontSize="11" FontWeight="Bold"
-                               Foreground="{StaticResource Subtext1Brush}"/>
-                    <TextBlock x:Name="PendingMigrationsText" TextWrapping="Wrap" FontSize="10.5"
-                               Foreground="{StaticResource Subtext0Brush}" Margin="0,2,0,0"
-                               Text="Checking Staging's simulator_migration_runs over SSH…"/>
-                </StackPanel>
-            </DockPanel>
-        </Border>
-
         <!-- ── OPTIONAL MIGRATION SQL ─────────────────────────────── -->
-        <Border Grid.Row="3" Background="{StaticResource MantleBrush}"
+        <Border Grid.Row="2" Background="{StaticResource MantleBrush}"
                 BorderBrush="{StaticResource Surface0Brush}" BorderThickness="1"
                 CornerRadius="8" Padding="12" Margin="0,0,0,12">
             <Grid>
@@ -100,7 +80,7 @@
         </Border>
 
         <!-- ── FOOTER ─────────────────────────────────────────────── -->
-        <DockPanel Grid.Row="4">
+        <DockPanel Grid.Row="3">
             <Button Content="✕ Cancel" Style="{StaticResource IconButton}"
                     Padding="14,6" FontSize="12" Click="Cancel_Click" DockPanel.Dock="Left"/>
 
