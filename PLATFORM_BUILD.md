@@ -372,4 +372,4 @@ History before 2026-08-12 lives in [PLATFORM_BUILD_ARCHIVE_2026-08-12.md](PLATFO
 | 2026-08-25 | ✅ DONE | Chat: highlight .sql files and open in inline SQL viewer | Added .sql file mention decoration support to the Claude chat WebView. SQL files are highlighted with a dashed green underline and show a custom tooltip on hover. Clicking them triggers a `BT_OPEN_SQL_FILE` message that opens the file in the inline SQL viewer split tab (using repository file contents directly). Built clean and verified. | `7fd620806` |
 
 
-| 2026-08-25 | ⏳ IN FLIGHT | CLAUDE.md: mandatory issue-comment rule |  |
+| 2026-08-25 | ✅ DONE | CLAUDE.md: mandatory issue-comment rule | `ea9ae3662` |
