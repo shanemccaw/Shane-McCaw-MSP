@@ -320,6 +320,25 @@ $script:CmdletCatalog = @{
         PostFilter     = { $_.Mode -ne "Enable" -or $_.Enabled -eq $false }
     }
 
+    # #1301: ALL DLP policies (raw tenant-wide count, NO PostFilter).
+    # Same cmdlet as get-dlp-policies above, but deliberately UNFILTERED so
+    # _itemCount is the TOTAL number of DLP policies in the tenant, not the
+    # weak/non-enforcing subset. This is the one thing compliance:weak-dlp-
+    # policies structurally cannot report: when a tenant has ZERO DLP policies
+    # at all, the weak-subset PostFilter has nothing to count and produces
+    # _itemCount == 0 — indistinguishable from a healthy tenant whose policies
+    # are all actively enforcing. Backs compliance:zero-dlp-policies, whose
+    # `dlpPoliciesCount == 0` critical rule mirrors identity:ca-policy-count's
+    # existing `caPolicyCount == 0` rule exactly (raw count -> eq-0 -> critical).
+    # No PostFilter follows the same convention as get-antispam-policies /
+    # get-shared-mailboxes above (a "count" check wants the full set). An
+    # errored/unavailable cmdlet still surfaces as status="error" (no
+    # extracted_properties, no severity match) — never a false "0 policies".
+    "get-all-dlp-policies" = @{
+        Cmdlet         = "Get-DlpCompliancePolicy"
+        AllowedParams  = @()
+    }
+
     # #212: DLP incidents.
     # Get-DlpIncidentDetailReport ("will be retired") and Get-DlpDetailReport
     # ("This cmdlet is retired") are both explicitly superseded on Microsoft
