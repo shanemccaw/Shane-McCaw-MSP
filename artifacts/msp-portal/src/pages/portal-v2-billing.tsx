@@ -14,12 +14,27 @@
  * ── UI-only, but the plan/add-on/interval state is real ─────────────────────
  * The interval toggle, tier switch and add-on toggles are the design's own local
  * state and are wired — flipping them reprices the streams, tiers and receipts
- * exactly as the prototype does. Stripe wiring is a later pass; the payment
- * buttons are inert.
+ * exactly as the prototype does. Monitoring-plan pricing itself stays fixture
+ * (see billingLive.ts — blocked on the #1128 Premier discrepancy and the real
+ * catalog's seat-metered, flat-price-less tiers); the payment buttons there
+ * are still inert.
+ *
+ * ── Receipts + "Manage payment in Stripe" are real (#1237) ──────────────────
+ * `useBillingLive` reads the tenant's real invoice history off
+ * GET /api/portal/invoices and, once at least one row comes back, the Receipts
+ * section renders those instead of BILL_RECEIPTS — each row's "Receipt" button
+ * links to the real PDF (GET /api/portal/invoices/:id/download) when one was
+ * generated. "Manage payment in Stripe" opens the tenant's real Stripe billing
+ * portal session (POST /api/portal/billing/customer-portal). A customer with no
+ * invoices yet, or a failed read, keeps the design fixture — `pv2-bill-receipts-
+ * source` states which is on screen.
  */
 
 import { useState } from "react";
 import { Link } from "wouter";
+
+import { useBillingLive } from "@/components/portal-v2/billingLive";
+import { PV2_SOURCE_CLIP } from "@/components/portal-v2/useLivePillarHero";
 
 import { PortalV2Shell, SIDEBAR_WASH } from "@/components/portal-v2/PortalV2Shell";
 import {
@@ -84,7 +99,29 @@ export default function PortalV2BillingPage() {
   const streams = billStreams(state);
   const tiers = billTierCards(state);
   const addons = billAddonCards(state);
-  const receipts = billReceipts(monthly);
+
+  const live = useBillingLive();
+  const [portalError, setPortalError] = useState<string | null>(null);
+  const [downloadingRef, setDownloadingRef] = useState<string | null>(null);
+
+  const receipts =
+    live.dataState === "live"
+      ? live.receipts.map((r) => ({ date: r.date, what: r.what, ref: r.ref, amount: r.amount, invoiceId: r.id as number | null }))
+      : billReceipts(monthly).map((r) => ({ ...r, invoiceId: null as number | null }));
+
+  const handleManageStripe = () => {
+    setPortalError(null);
+    void live.openStripePortal().then((message) => setPortalError(message));
+  };
+
+  const handleDownloadReceipt = (r: (typeof receipts)[number]) => {
+    if (r.invoiceId === null) return;
+    setDownloadingRef(r.ref);
+    void live.downloadReceipt(r.invoiceId).then((message) => {
+      setPortalError(message);
+      setDownloadingRef(null);
+    });
+  };
 
   const toggleInterval = () => setState((s) => ({ ...s, yearly: !s.yearly }));
   const toggleAddon = (key: BillAddonKey) =>
@@ -306,6 +343,11 @@ export default function PortalV2BillingPage() {
           {/* Receipts — proto 2494-2510 */}
           <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
             <SectionHead kicker={BILL_RECEIPTS_KICKER} note={BILL_RECEIPTS_NOTE} />
+            {/* Hidden live/fixture marker, same convention as `pv2-cmp-source` — proves
+                whether the rows below are the tenant's real invoices or the design fixture. */}
+            <span data-testid="pv2-bill-receipts-source" style={PV2_SOURCE_CLIP}>
+              {live.dataState}
+            </span>
             <div style={{ display: "flex", flexDirection: "column", gap: 0, border: "1px solid rgba(30,41,59,.9)", borderRadius: 12, background: "rgba(15,23,42,.4)", overflow: "hidden" }}>
               {receipts.map((r) => (
                 <div key={r.ref} style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 15px", borderBottom: "1px solid rgba(30,41,59,.8)", flexWrap: "wrap" }}>
@@ -313,17 +355,52 @@ export default function PortalV2BillingPage() {
                   <span style={{ flex: 1, minWidth: 150, fontSize: "12px", color: "#e2e8f0", lineHeight: 1.4 }}>{r.what}</span>
                   <span style={{ flex: "0 0 auto", fontSize: "10px", color: "#475569", fontFamily: MONO }}>{r.ref}</span>
                   <span style={{ flex: "0 0 78px", textAlign: "right", fontSize: "12px", fontWeight: 700, color: "#e2e8f0", fontFamily: MONO }}>{r.amount}</span>
-                  <button type="button" style={{ flex: "0 0 auto", padding: "5px 10px", borderRadius: 6, border: "1px solid rgba(148,163,184,.22)", background: "transparent", color: "#94a3b8", fontSize: "10.5px", fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>{BILL_RECEIPT_BTN}</button>
+                  <button
+                    type="button"
+                    data-testid={`pv2-bill-receipt-${r.ref}`}
+                    disabled={r.invoiceId === null || downloadingRef === r.ref}
+                    onClick={() => handleDownloadReceipt(r)}
+                    style={{
+                      flex: "0 0 auto",
+                      padding: "5px 10px",
+                      borderRadius: 6,
+                      border: "1px solid rgba(148,163,184,.22)",
+                      background: "transparent",
+                      color: "#94a3b8",
+                      fontSize: "10.5px",
+                      fontWeight: 600,
+                      cursor: r.invoiceId === null ? "default" : "pointer",
+                      opacity: r.invoiceId === null ? 0.5 : 1,
+                      fontFamily: "inherit",
+                    }}
+                  >
+                    {downloadingRef === r.ref ? "Downloading…" : BILL_RECEIPT_BTN}
+                  </button>
                 </div>
               ))}
             </div>
           </div>
 
           {/* Footer — proto 2512-2516 */}
-          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", paddingTop: 4 }}>
-            <button type="button" style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid rgba(148,163,184,.24)", background: "transparent", color: "#cbd5e1", fontSize: "11.5px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>{BILL_MANAGE_STRIPE}</button>
-            <button type="button" style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid rgba(148,163,184,.2)", background: "transparent", color: "#94a3b8", fontSize: "11.5px", fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>{BILL_PAUSE}</button>
-            <span style={{ fontSize: "10.5px", color: "#475569" }}>{BILL_CARD_LINE}</span>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, paddingTop: 4 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                onClick={handleManageStripe}
+                disabled={live.openingPortal}
+                data-testid="pv2-bill-manage-stripe"
+                style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid rgba(148,163,184,.24)", background: "transparent", color: "#cbd5e1", fontSize: "11.5px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}
+              >
+                {live.openingPortal ? "Opening…" : BILL_MANAGE_STRIPE}
+              </button>
+              <button type="button" style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid rgba(148,163,184,.2)", background: "transparent", color: "#94a3b8", fontSize: "11.5px", fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>{BILL_PAUSE}</button>
+              <span style={{ fontSize: "10.5px", color: "#475569" }}>{BILL_CARD_LINE}</span>
+            </div>
+            {portalError && (
+              <span data-testid="pv2-bill-portal-error" style={{ fontSize: "11px", color: "#f87171" }}>
+                {portalError}
+              </span>
+            )}
           </div>
         </div>
       </div>
