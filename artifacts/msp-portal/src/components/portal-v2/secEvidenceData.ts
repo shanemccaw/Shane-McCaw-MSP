@@ -101,6 +101,33 @@ export const EV_TONE_C: Readonly<Record<EvTone, string>> = {
 
 export const EV_MONO = "'SF Mono',Menlo,Consolas,monospace";
 
+/**
+ * Overlay real counts onto the OAuth evidence page's "Enterprise apps" and
+ * "Tenant-wide consent" stat cards (Git #1233 — see
+ * `useSecEvidenceOauthLive.ts` for which two of the five cards have a real,
+ * semantically-matching check backing them, and why the other three don't).
+ * A null/unresolved field leaves that card on its fixture value — same
+ * partial-overlay contract `adpWorkloadsWithLive` uses.
+ */
+export function securityOauthPageWithLive(
+  page: EvidencePage,
+  live: { enterpriseAppCount: number | null; riskyPermissionGrantCount: number | null },
+): EvidencePage {
+  if (live.enterpriseAppCount == null && live.riskyPermissionGrantCount == null) return page;
+  return {
+    ...page,
+    statCards: page.statCards.map((s) => {
+      if (s.label === "Enterprise apps" && live.enterpriseAppCount != null) {
+        return { ...s, value: live.enterpriseAppCount.toLocaleString() };
+      }
+      if (s.label === "Tenant-wide consent" && live.riskyPermissionGrantCount != null) {
+        return { ...s, value: live.riskyPermissionGrantCount.toLocaleString() };
+      }
+      return s;
+    }),
+  };
+}
+
 export const EVIDENCE_PAGES: Readonly<Record<string, EvidencePage>> = {
   "security-oauth": {
     heading: "OAuth Apps & Consent Grants",

@@ -442,6 +442,42 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     smartDefaultTarget: 0,
     smartBands: RISK_COUNT_BANDS,
   },
+  {
+    // Git #1233 -- portal-v2 Security's "OAuth Apps & Consent Grants" evidence
+    // drill-down (`secEvidenceData.ts`) hardcoded its "Enterprise apps" stat
+    // card at 148. appgov:enterprise-app-count is a real, live check --
+    // confirmed against monitor_checks (endpoint /servicePrincipals, mapping
+    // `count` on `id` -> enterpriseAppCount) -- and had no dashboard-registry
+    // metric either, same gap class as #1122's three appgov checks above.
+    key: "governance.enterpriseAppCount",
+    label: "Enterprise Apps",
+    valueType: "count",
+    shape: "scalar",
+    sourceType: "monitor_profile",
+    sourceKey: "appgov:enterprise-app-count",
+    scope: "customer",
+    status: "available",
+    smartEligible: false,
+  },
+  {
+    // Git #1233 -- same drill-down's "Tenant-wide consent" stat card
+    // (hardcoded 9). appgov:risky-permission-grants' riskyPermissionGrantCount
+    // targetField is a real, confirmed-correct split on oauth2PermissionGrants'
+    // consentType == 'AllPrincipals' (see #551 Phase 3 migration,
+    // 2026-08-08-unreviewed-consents-risky-grants-consenttype-551.sql) -- not
+    // the same bare item-count bug #551 fixed on this check.
+    key: "governance.riskyPermissionGrantCount",
+    label: "Tenant-Wide OAuth Consent Grants",
+    valueType: "count",
+    shape: "scalar",
+    sourceType: "monitor_profile",
+    sourceKey: "appgov:risky-permission-grants",
+    scope: "customer",
+    status: "available",
+    smartEligible: true,
+    smartDefaultTarget: 0,
+    smartBands: RISK_COUNT_BANDS,
+  },
   // ---- Security & Defender ----------------------------------------------
   {
     key: "security.activeAlertCount",

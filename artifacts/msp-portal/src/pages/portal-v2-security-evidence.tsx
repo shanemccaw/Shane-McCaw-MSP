@@ -35,6 +35,7 @@ import { useFormDrawer } from "@/components/portal-v2/FormDrawer";
 import { useAcceptRisk } from "@/components/portal-v2/AcceptRiskPanel";
 import {
   EV_MONO,
+  securityOauthPageWithLive,
   type EvidencePage,
   type EvRow,
   type EvStatCard,
@@ -42,6 +43,7 @@ import {
 import { evSrc, evTone, evTopRisksCount, evidencePageFor } from "@/components/portal-v2/secEvidenceModel";
 import { useLivePillarHero } from "@/components/portal-v2/useLivePillarHero";
 import { PillarLiveSource } from "@/components/portal-v2/PillarLiveSource";
+import { useSecEvidenceOauthLive } from "@/components/portal-v2/useSecEvidenceOauthLive";
 
 /* ── Icons ─────────────────────────────────────────────────────────────────── */
 
@@ -97,7 +99,10 @@ const SECTION_LABEL: React.CSSProperties = {
 export default function PortalV2SecurityEvidencePage() {
   const [location] = useLocation();
   const slug = location.split("/").filter(Boolean).pop();
-  const page = evidencePageFor(slug);
+  const fixturePage = evidencePageFor(slug);
+  const isOauthPage = slug === "oauth";
+  const { live: oauthLive } = useSecEvidenceOauthLive(isOauthPage);
+  const page = fixturePage && isOauthPage ? securityOauthPageWithLive(fixturePage, oauthLive) : fixturePage;
 
   const { fixKey, openFixPanel, closeFixPanel } = useFixPanel();
   const { openForm, formElement } = useFormDrawer();
@@ -147,6 +152,12 @@ export default function PortalV2SecurityEvidencePage() {
       {acceptRiskElement}
       {formElement}
       <PillarLiveSource testId="pv2-ev-source" live={live} />
+      {isOauthPage && (
+        <PillarLiveSource
+          testId="pv2-ev-oauth-stats-source"
+          live={{ dataState: oauthLive.enterpriseAppCount != null || oauthLive.riskyPermissionGrantCount != null ? "live" : "fixture" }}
+        />
+      )}
     </PortalV2Shell>
   );
 }
