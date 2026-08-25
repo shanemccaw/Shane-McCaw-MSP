@@ -1,6 +1,13 @@
 import React from "react";
 import { Link } from "wouter";
 import { MarketingLayout } from "../components/MarketingLayout";
+import { useCatalog, type MonitoringTier } from "../../hooks/useCatalog";
+import {
+  useServices,
+  resolvePublicServicePriceCents,
+  type PublicService,
+} from "../../hooks/useServices";
+import { PACKS } from "../data/quickStartPacks";
 
 // Route / — recreated from Design/design_handoff_marketing/Marketing Home.dc.html.
 // Colours, spacing and copy are the design's own, verbatim (copy is final — README:
@@ -176,12 +183,52 @@ function pillarTile(name: string, color: string, sz: number, r: number, iconSize
   );
 }
 
+// Live-sourced pricing, byte-identical to Pricing.tsx's own formulas — see that file's
+// "PRICING CONSISTENCY" header for why these are read from the same catalog/fixture rather than
+// retyped as literals here.
+const QUICK_START_MIN = Math.min(...PACKS.map((p) => p.price));
+const QUICK_START_MAX = Math.max(...PACKS.map((p) => p.price));
+
+interface MonitoringTypeAttributes {
+  seatCountFloor?: number;
+  pricePerUserMonth?: string;
+  flatMonthlySurcharge?: string | null;
+}
+function mTa(row: MonitoringTier): MonitoringTypeAttributes {
+  return (row.typeAttributes ?? {}) as MonitoringTypeAttributes;
+}
+function ppuOf(row: MonitoringTier): number {
+  const n = parseFloat(mTa(row).pricePerUserMonth ?? "");
+  return isNaN(n) ? 0 : n;
+}
+function floorOf(row: MonitoringTier): number {
+  const n = Number(mTa(row).seatCountFloor ?? row.seatMin ?? 1);
+  return isNaN(n) || n < 1 ? 1 : Math.trunc(n);
+}
+function surchargeOf(row: MonitoringTier): number {
+  const n = parseFloat(mTa(row).flatMonthlySurcharge ?? "");
+  return isNaN(n) ? 0 : n;
+}
+function money(n: number): string {
+  return "$" + n.toLocaleString(undefined, { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 });
+}
+
+// Same filter Retainers.tsx/Pricing.tsx apply to exclude the range-priced advisory retainers —
+// only the three fixed-price, hour-based tiers count toward the door's "from" figure.
+function isFixedHourlyRetainer(s: PublicService): boolean {
+  return !s.basePrice && !!s.hoursPerMonth;
+}
+function fmtPriceCents(cents: number | null): string | null {
+  if (cents == null) return null;
+  return "$" + (cents / 100).toLocaleString("en-US", { maximumFractionDigits: 0 });
+}
+
 const STATS: { v: string; l: string }[] = [
   { v: "NASA", l: "current Lead M365 Architect" },
   { v: "30 yrs", l: "in the Microsoft ecosystem" },
   { v: "158", l: "checks across six pillars" },
   { v: "33", l: "fixed-price remediation projects" },
-  { v: "15", l: "Quick-Start Packs from $149" },
+  { v: "15", l: `Quick-Start Packs from $${QUICK_START_MIN}` },
 ];
 
 const DIVES: { label: string; href: string }[] = [
@@ -213,7 +260,7 @@ const WEEK_ROWS: { mod: string; fg: string; what: string; meta: string }[] = [
 
 // The four entry doors. The scan door is the highlighted "most people start here" one.
 type DoorKey = "scan" | "monitor" | "retainer" | "pack";
-const DOORS: {
+function buildDoors(monitoringFromLabel: string, retainerFromLabel: string): {
   key: DoorKey;
   name: string;
   price: string;
@@ -221,46 +268,48 @@ const DOORS: {
   href: string;
   body: string;
   next: string;
-}[] = [
-  {
-    key: "scan",
-    name: "Free tenant scan",
-    price: "Free",
-    tag: "Most people start here",
-    href: "/scan",
-    body:
-      "A read-only Graph scan returns every real finding, then prices the work to close them as one SOW.",
-    next: "Findings → priced SOW → you choose",
-  },
-  {
-    key: "monitor",
-    name: "Monitoring",
-    price: "From $180/mo",
-    tag: "Buy direct",
-    href: "/monitoring",
-    body: "Six signal engines against your tenant continuously, with remediation built in at your tier.",
-    next: "Watched → remediated → SOW if it needs one",
-  },
-  {
-    key: "retainer",
-    name: "Architect retainer",
-    price: "From $900/mo",
-    tag: "Buy direct",
-    href: "/retainers",
-    body: "A named architect on retainer — 5, 8, 16 or 30 hours a month. No seat gating on any tier.",
-    next: "Advice first, monitoring and SOWs alongside",
-  },
-  {
-    key: "pack",
-    name: "Quick-Start Pack",
-    price: "$149–$799",
-    tag: "One-off",
-    href: "/quick-start",
-    body:
-      "One pre-built set of configuration changes, applied through Graph write-back after a dry run you approve.",
-    next: "Done in days, no proposal cycle",
-  },
-];
+}[] {
+  return [
+    {
+      key: "scan",
+      name: "Free tenant scan",
+      price: "Free",
+      tag: "Most people start here",
+      href: "/scan",
+      body:
+        "A read-only Graph scan returns every real finding, then prices the work to close them as one SOW.",
+      next: "Findings → priced SOW → you choose",
+    },
+    {
+      key: "monitor",
+      name: "Monitoring",
+      price: monitoringFromLabel,
+      tag: "Buy direct",
+      href: "/monitoring",
+      body: "Six signal engines against your tenant continuously, with remediation built in at your tier.",
+      next: "Watched → remediated → SOW if it needs one",
+    },
+    {
+      key: "retainer",
+      name: "Architect retainer",
+      price: retainerFromLabel,
+      tag: "Buy direct",
+      href: "/retainers",
+      body: "A named architect on retainer — 5, 8, 16 or 30 hours a month. No seat gating on any tier.",
+      next: "Advice first, monitoring and SOWs alongside",
+    },
+    {
+      key: "pack",
+      name: "Quick-Start Pack",
+      price: `$${QUICK_START_MIN}–$${QUICK_START_MAX}`,
+      tag: "One-off",
+      href: "/quick-start",
+      body:
+        "One pre-built set of configuration changes, applied through Graph write-back after a dry run you approve.",
+      next: "Done in days, no proposal cycle",
+    },
+  ];
+}
 
 function doorIcon(key: DoorKey) {
   const common = {
@@ -334,6 +383,32 @@ function arrowIcon(size = 15) {
 const GRADIENT_CTA = "linear-gradient(90deg,#3b82f6,#8b5cf6)";
 
 export default function Home() {
+  const { monitoringTiers, loading: monLoading } = useCatalog();
+  const { services: retainerServices, loading: retLoading } = useServices("retainer");
+
+  const cheapestMonitoringPrice = (() => {
+    let min: number | null = null;
+    monitoringTiers.forEach((row) => {
+      const p = ppuOf(row) * floorOf(row) + surchargeOf(row);
+      if (min === null || p < min) min = p;
+    });
+    return min;
+  })();
+  const monitoringFromLabel = monLoading
+    ? "…"
+    : cheapestMonitoringPrice != null
+      ? `From ${money(cheapestMonitoringPrice)}/mo`
+      : "…";
+
+  const retainerPrices = retainerServices
+    .filter(isFixedHourlyRetainer)
+    .map((t) => resolvePublicServicePriceCents(t))
+    .filter((c): c is number => c != null);
+  const retainerMinLabel = retainerPrices.length ? fmtPriceCents(Math.min(...retainerPrices)) : null;
+  const retainerFromLabel = retLoading ? "…" : retainerMinLabel ? `From ${retainerMinLabel}/mo` : "…";
+
+  const DOORS = buildDoors(monitoringFromLabel, retainerFromLabel);
+
   return (
     <MarketingLayout current="home">
       {/* Scoped hover rules — the design used `style-hover`, which isn't a real DOM attribute;

@@ -1,6 +1,7 @@
 import { Link } from "wouter";
 import { MarketingLayout } from "../../components/MarketingLayout";
 import { ArrowRight, PillarPeerStrip, ScanToScopedWork } from "../../components/pillar/PillarShared";
+import { useCatalog, type MonitoringTier } from "../../../hooks/useCatalog";
 
 // Route /pillars/licensing — recreated from Design/design_handoff_marketing/
 // Marketing Pillar - Licensing.dc.html. Colour #14b8a6, watermark circled dollar. Copy verbatim;
@@ -59,7 +60,45 @@ function tierChipStyle(tier: string): React.CSSProperties {
   };
 }
 
+// Byte-identical to Monitoring.tsx/Pricing.tsx's own ppuOf/floorOf/surchargeOf — the cheapest
+// real monthly floor price across every live monitoring tier, so this pillar's "$X/mo" can never
+// drift from what /monitoring actually charges.
+interface MonitoringTypeAttributes {
+  seatCountFloor?: number;
+  pricePerUserMonth?: string;
+  flatMonthlySurcharge?: string | null;
+}
+function mTa(row: MonitoringTier): MonitoringTypeAttributes {
+  return (row.typeAttributes ?? {}) as MonitoringTypeAttributes;
+}
+function ppuOf(row: MonitoringTier): number {
+  const n = parseFloat(mTa(row).pricePerUserMonth ?? "");
+  return isNaN(n) ? 0 : n;
+}
+function floorOf(row: MonitoringTier): number {
+  const n = Number(mTa(row).seatCountFloor ?? row.seatMin ?? 1);
+  return isNaN(n) || n < 1 ? 1 : Math.trunc(n);
+}
+function surchargeOf(row: MonitoringTier): number {
+  const n = parseFloat(mTa(row).flatMonthlySurcharge ?? "");
+  return isNaN(n) ? 0 : n;
+}
+function money(n: number): string {
+  return "$" + n.toLocaleString(undefined, { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 });
+}
+
 export default function PillarLicensing() {
+  const { monitoringTiers, loading: monLoading } = useCatalog();
+  const cheapestMonitoringPrice = (() => {
+    let min: number | null = null;
+    monitoringTiers.forEach((row) => {
+      const p = ppuOf(row) * floorOf(row) + surchargeOf(row);
+      if (min === null || p < min) min = p;
+    });
+    return min;
+  })();
+  const monitoringPriceLabel = monLoading || cheapestMonitoringPrice == null ? "…" : money(cheapestMonitoringPrice);
+
   return (
     <MarketingLayout current="watch">
       {/* Hero */}
@@ -291,13 +330,13 @@ export default function PillarLicensing() {
             <span style={{ fontSize: "10px", fontWeight: 700, letterSpacing: ".2em", textTransform: "uppercase", color: "#2dd4bf" }}>The quiet business case</span>
             <h2 style={{ fontSize: "22px", fontWeight: 800, letterSpacing: "-.025em", color: "#f8fafc", margin: "8px 0 10px" }}>This is the pillar that pays for the other five.</h2>
             <p style={{ fontSize: "13px", color: "#94a3b8", lineHeight: 1.7, margin: 0 }}>
-              Monitoring starts at <b style={{ color: "#e2e8f0" }}>$180/mo</b>. One reclaimed E5 covers most of it; the illustrative tenant above is idling twenty times that. A retainer architect runs the licensing review quarterly and walks the reclaim list through change control.
+              Monitoring starts at <b style={{ color: "#e2e8f0" }}>{monitoringPriceLabel}/mo</b>. One reclaimed E5 covers most of it; the illustrative tenant above is idling twenty times that. A retainer architect runs the licensing review quarterly and walks the reclaim list through change control.
             </p>
           </div>
           <div style={{ flex: "1 1 300px", display: "flex", flexDirection: "column", gap: "8px" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", padding: "11px 14px", border: "1px solid rgba(30,41,59,.9)", borderRadius: "10px", background: "rgba(2,6,23,.4)" }}>
               <span style={{ fontSize: "12.5px", fontWeight: 700, color: "#f8fafc" }}>Monitoring</span>
-              <span style={{ fontSize: "11.5px", color: "#94a3b8" }}>from <b style={{ color: "#e2e8f0" }}>$180</b>/mo · priced per seat</span>
+              <span style={{ fontSize: "11.5px", color: "#94a3b8" }}>from <b style={{ color: "#e2e8f0" }}>{monitoringPriceLabel}</b>/mo · priced per seat</span>
             </div>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", padding: "11px 14px", border: "1px solid rgba(20,184,166,.4)", borderRadius: "10px", background: "rgba(20,184,166,.07)" }}>
               <span style={{ fontSize: "12.5px", fontWeight: 700, color: "#f8fafc" }}>Architect retainer</span>

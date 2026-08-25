@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { Link } from "wouter";
 import { MarketingLayout } from "../components/MarketingLayout";
-import { COVERS, PACKS_BY_KEY, PACK_GROUPS, type PackIcon } from "../data/quickStartPacks";
+import { COVERS, PACKS, PACKS_BY_KEY, PACK_GROUPS, type PackIcon } from "../data/quickStartPacks";
 import { useQuickStartPackAvailability } from "../../hooks/useQuickStartPackAvailability";
 
 // Route /quick-start — recreated from Marketing Quick-Start Packs.dc.html.
@@ -11,6 +11,11 @@ import { useQuickStartPackAvailability } from "../../hooks/useQuickStartPackAvai
 function fmtPrice(n: number): string {
   return "$" + n.toLocaleString("en-US");
 }
+
+// Byte-identical to Pricing.tsx's own QUICK_START_MIN/MAX — same fixture, so this page can never
+// drift from /pricing's Quick-Start range even if a pack price changes.
+const QUICK_START_MIN = Math.min(...PACKS.map((p) => p.price));
+const QUICK_START_MAX = Math.max(...PACKS.map((p) => p.price));
 
 // Icon glyphs ported from the design's own ICONS map (Marketing Quick-Start Packs.dc.html) —
 // same 24x24 stroke paths, translated from React.createElement to JSX. Page-scoped, same
@@ -429,7 +434,7 @@ export default function QuickStart() {
               </Link>
             </div>
             <div style={{ display: "flex", gap: "14px", flexWrap: "wrap" }}>
-              {["Priced $149–$799, published", "Dry run before anything applies", "Write consent only after purchase"].map(
+              {[`Priced $${QUICK_START_MIN}–$${QUICK_START_MAX}, published`, "Dry run before anything applies", "Write consent only after purchase"].map(
                 (t) => (
                   <span key={t} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "11.5px", color: "#64748b" }}>
                     <span style={{ width: "5px", height: "5px", borderRadius: "999px", background: "#34d399" }} />

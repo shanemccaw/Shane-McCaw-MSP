@@ -13,11 +13,11 @@
 //     /retainers pages show). Per the README "Out of scope": production reads the tenant's licensed
 //     seat count and the live catalog, so these are the swappable fixture, not the source of truth.
 //   • RETAINER NOTE (same correction Retainers.tsx documents): the design mock's four tiers include
-//     an "Advisory" $900/5hrs tier that has no live `services` row — the live catalog has only the
-//     three fixed hour-based tiers (Essentials/Growth/Enterprise at $1,500/$3,000/$5,500). The four
-//     are reproduced here because the Buy design is a self-contained checkout; incoming ?tier= from
-//     /retainers is one of essentials/growth/enterprise (which match), and Advisory is reachable
-//     only by direct link or as the default fallback.
+//     an "Advisory" $900/5hrs tier — `architect-advisory-retainer` has had a live `services` row
+//     since 2026-08-25's recovery, alongside the three fixed hour-based tiers (Essentials/Growth/
+//     Enterprise at $1,500/$3,000/$5,500). The four are reproduced here because the Buy design is a
+//     self-contained checkout; incoming ?tier= from /retainers is one of essentials/growth/enterprise
+//     (which match), and Advisory is reachable only by direct link or as the default fallback.
 
 import { PACKS as QS_PACKS } from "./quickStartPacks";
 

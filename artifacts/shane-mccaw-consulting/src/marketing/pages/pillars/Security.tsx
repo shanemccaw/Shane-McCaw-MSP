@@ -1,6 +1,7 @@
 import { Link } from "wouter";
 import { MarketingLayout } from "../../components/MarketingLayout";
 import { ArrowRight, PillarPeerStrip, ScanToScopedWork } from "../../components/pillar/PillarShared";
+import { useCatalog, type MonitoringTier } from "../../../hooks/useCatalog";
 
 // Route /pillars/security — recreated from Design/design_handoff_marketing/
 // Marketing Pillar - Security.dc.html. Colour #8b5cf6, watermark padlock. Copy verbatim; the
@@ -75,7 +76,49 @@ function tierChipStyle(tier: string): React.CSSProperties {
 
 const HEAT_FAMILIES = ["Access", "Privilege", "Exposure", "Baseline", "Telemetry"];
 
+// Byte-identical to Monitoring.tsx/Pricing.tsx's own ppuOf/floorOf/surchargeOf — the cheapest
+// real monthly floor price across every live monitoring tier, so this pillar's "from $X/mo" can
+// never drift from what /monitoring actually charges.
+interface MonitoringTypeAttributes {
+  seatCountFloor?: number;
+  pricePerUserMonth?: string;
+  flatMonthlySurcharge?: string | null;
+}
+function mTa(row: MonitoringTier): MonitoringTypeAttributes {
+  return (row.typeAttributes ?? {}) as MonitoringTypeAttributes;
+}
+function ppuOf(row: MonitoringTier): number {
+  const n = parseFloat(mTa(row).pricePerUserMonth ?? "");
+  return isNaN(n) ? 0 : n;
+}
+function floorOf(row: MonitoringTier): number {
+  const n = Number(mTa(row).seatCountFloor ?? row.seatMin ?? 1);
+  return isNaN(n) || n < 1 ? 1 : Math.trunc(n);
+}
+function surchargeOf(row: MonitoringTier): number {
+  const n = parseFloat(mTa(row).flatMonthlySurcharge ?? "");
+  return isNaN(n) ? 0 : n;
+}
+function money(n: number): string {
+  return "$" + n.toLocaleString(undefined, { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 });
+}
+
 export default function PillarSecurity() {
+  const { monitoringTiers, loading: monLoading } = useCatalog();
+  const cheapestMonitoringPrice = (() => {
+    let min: number | null = null;
+    monitoringTiers.forEach((row) => {
+      const p = ppuOf(row) * floorOf(row) + surchargeOf(row);
+      if (min === null || p < min) min = p;
+    });
+    return min;
+  })();
+  const monitoringFromLabel = monLoading
+    ? "…"
+    : cheapestMonitoringPrice != null
+      ? `From ${money(cheapestMonitoringPrice)}/mo`
+      : "…";
+
   return (
     <MarketingLayout current="watch">
       <style>{`@keyframes secPulse{0%,100%{opacity:1}50%{opacity:.4}}`}</style>
@@ -412,7 +455,7 @@ export default function PillarSecurity() {
               <span style={{ fontSize: "12.5px", color: "#cbd5e1" }}><b style={{ color: "#f8fafc" }}>Foundation</b> · 30 checks &amp; risk register</span>
               <span style={{ fontSize: "12.5px", color: "#cbd5e1" }}><b style={{ color: "#f8fafc" }}>Growth</b> · 129 checks, runbooks, SOP library</span>
               <span style={{ fontSize: "12.5px", color: "#cbd5e1" }}><b style={{ color: "#f8fafc" }}>Premier</b> · everything, plus change control &amp; security plan</span>
-              <span style={{ fontSize: "11.5px", color: "#64748b" }}>From $180/mo, priced per seat</span>
+              <span style={{ fontSize: "11.5px", color: "#64748b" }}>{monitoringFromLabel}, priced per seat</span>
             </div>
             <Link href="/monitoring" style={{ display: "inline-flex", alignItems: "center", gap: "7px", padding: "10px 18px", borderRadius: "10px", fontSize: "12.5px", fontWeight: 700, color: "#fff", background: "linear-gradient(90deg,#3b82f6,#8b5cf6)" }}>
               See Monitoring Pricing <ArrowRight size={14} />
