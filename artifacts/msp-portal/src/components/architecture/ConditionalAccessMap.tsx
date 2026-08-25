@@ -3,7 +3,6 @@ import { Lock } from 'lucide-react';
 import {
   ResolvedMetric,
   resolvedValue,
-  resolvedEvents,
   resolvedEventCount,
   riskCountBand,
   BAND_TEXT_CLASS,
@@ -14,8 +13,27 @@ import {
  * replacing the mock per-policy map (a per-policy CA inventory isn't served by
  * any endpoint — that drill-down needs a new Graph check; reported as a gap,
  * not simulated). Real data: CA failure count (security:conditional-access-
- * failures), the CA-policy drift watcher's real change events, and the
- * security-defaults drift watcher.
+ * failures), and the CA-policy / security-defaults drift watchers' real change
+ * COUNTS.
+ *
+ * #1265: this panel previously also tried to render a per-change *event
+ * timeline* via a bespoke `resolvedEvents(metrics['drift.caPolicyDriftCount'])`
+ * merge. That local path was dead: the `drift.*` metrics are
+ * `sourceType: "monitor_profile"`, which /api/dashboard/resolve always reduces
+ * to a canonical `{ value }` — it never emits `{ events }` for a
+ * non-`needs_aggregation` metric (see useTopicHealthLive's `resolvedEventCount`
+ * note). There is also no producer of itemized drift-change events anywhere (no
+ * `drift:*` checks exist in the monitor_checks catalog today), so
+ * `resolvedEvents()` resolved to `[]` for every tenant. The bespoke event UI was
+ * removed; only the real aggregate change counts (which the watchers genuinely
+ * report) are rendered.
+ *
+ * The registry's `shape: "timeline"` / `valueType: "event-list"` declarations
+ * are intentionally left as-is: they are load-bearing for the renderer registry
+ * (`getValidRenderersForMetric` → Timeline, asserted in registry.test.ts) and
+ * for the shared `EventTimelinePanel`, which is the correct forward-looking home
+ * for a real per-event feed once a `drift:*` producer exists and already
+ * degrades to the same honest count/awaiting states in the meantime.
  */
 
 interface ConditionalAccessMapProps {
@@ -25,22 +43,12 @@ interface ConditionalAccessMapProps {
 export const ConditionalAccessMap: React.FC<ConditionalAccessMapProps> = ({ metrics }) => {
   const failures = resolvedValue(metrics['identity.caFailureCount']);
   const failureBand = failures != null ? riskCountBand(failures) : null;
-  const caDriftEvents = resolvedEvents(metrics['drift.caPolicyDriftCount']);
-  const defaultsDriftEvents = resolvedEvents(metrics['drift.securityDefaultsDriftCount']);
-  const merged = [
-    ...caDriftEvents.map((e) => ({ ...e, __tag: 'CA POLICY' })),
-    ...defaultsDriftEvents.map((e) => ({ ...e, __tag: 'SEC DEFAULTS' })),
-  ]
-    .filter((e) => e.t)
-    .sort((a, b) => (a.t < b.t ? 1 : -1))
-    .slice(0, 8);
   const watching =
     metrics['drift.caPolicyDriftCount']?.status === 'ok' ||
     metrics['drift.securityDefaultsDriftCount']?.status === 'ok';
-  // The drift watchers are timeline-shaped in the registry but the resolve
-  // endpoint serves them as plain counts (see EventTimelinePanel's header note),
-  // so an empty event list does NOT mean nothing changed. Only a measured zero
-  // may be described as stable.
+  // The drift watchers resolve as plain counts (monitor_profile metrics never
+  // emit a per-event array — #1265), so an absent count does NOT mean nothing
+  // changed. Only a measured zero may be described as stable.
   const caDriftCount = resolvedEventCount(metrics['drift.caPolicyDriftCount']);
   const defaultsDriftCount = resolvedEventCount(metrics['drift.securityDefaultsDriftCount']);
   const driftTotal = (caDriftCount ?? 0) + (defaultsDriftCount ?? 0);
@@ -79,25 +87,7 @@ export const ConditionalAccessMap: React.FC<ConditionalAccessMapProps> = ({ metr
       <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider mb-1.5">
         Policy change events
       </p>
-      {merged.length > 0 ? (
-        <ul className="divide-y divide-border flex-grow">
-          {merged.map((e, i) => (
-            <li key={`${e.t}-${i}`} className="py-2 flex items-start justify-between gap-3">
-              <div className="min-w-0 flex items-start gap-2">
-                <span className="text-[9px] font-mono font-semibold px-1.5 py-0.5 rounded border flex-shrink-0 mt-0.5 bg-status-blue/15 text-status-blue border-status-blue/30">
-                  {e.__tag}
-                </span>
-                <span className="text-xs text-secondary-foreground/90 leading-relaxed break-words">
-                  {e.label}
-                </span>
-              </div>
-              <span className="text-[10px] font-mono text-muted-foreground flex-shrink-0">
-                {new Date(e.t).toLocaleDateString()}
-              </span>
-            </li>
-          ))}
-        </ul>
-      ) : anyDriftCount && driftTotal > 0 ? (
+      {anyDriftCount && driftTotal > 0 ? (
         <ul className="divide-y divide-border flex-grow">
           {[
             { tag: 'CA POLICY', count: caDriftCount },
@@ -136,7 +126,7 @@ export const ConditionalAccessMap: React.FC<ConditionalAccessMapProps> = ({ metr
 
       <div className="mt-3 pt-2 border-t border-border text-[10px] font-mono text-muted-foreground leading-relaxed">
         A per-policy CA inventory isn&apos;t collected yet (needs a new Graph
-        check) — these are your real failure counts and change events.
+        check) — these are your real failure counts and change counts.
       </div>
     </div>
   );
