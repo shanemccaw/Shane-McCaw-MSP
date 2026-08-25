@@ -1,7 +1,7 @@
 {
   "feature": "Customer Portal v2 -- isolated parallel build of the Overview (/portal-v2) and the six pillar dashboards (/portal-v2/:pillar) in the new navy/journeyTokens design language. Deliberately separate routes from the live /governance, /security-overview, /m365-health, /compliance, /adoption, /licensing pages, which this build does not touch. Data comes from GET /api/portal/assessment/war-room-pillars via components/portal-v2/usePortalV2Pillars.ts, which wraps the EXISTING components/war-room/useWarRoomPillarStats.ts hook rather than reimplementing fetching, retry/backoff or scoring. Pillar identity colours and the 82 gate constant come from components/copilot-journey/journeyTokens.ts (PILLARS, COPILOT_GATE_TARGET); components/ui/score-ring.tsx is reused verbatim, with .pv2-root redefining the --status-*/--muted tokens it reads so it resolves against the navy palette.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "PENDING-1257",
+  "lastVerifiedAgainstCommit": "PENDING-1275",
 
   "notes": [
     "SCOPE: Overview + six pillar pages only. Change Control, SOPs & Runbooks, Risk Register, Microsoft Changes and Hold Windows are deliberately NOT built in this pass -- the existing implementations of the first four are MSP-operator-scoped (/api/msp/*, requireRole('MSPOperator') + resolveMspIdStrict) and reusing them from a customer page would leak cross-tenant data; they need new customer-scoped routes first.",
@@ -677,22 +677,39 @@
     },
     {
       "name": "goto the enterprise-scale bulk list, governance-oversharing-full -- a THIRD template, not the drill-down and not the V2 page.",
+      "sessionTag": "oversharing-1275",
       "action": "goto",
       "target": "/portal/shane-mccaw-consulting/portal-v2/governance/oversharing/all"
     },
     {
-      "name": "OV25 -- it renders the enterprise heading with the grouped total, and offers search/bulk-fix/export instead of an expandable list.",
+      "name": "OV25 (#1275) -- REAL DATA: the enterprise heading's total now comes from GET /api/portal/oversharing/items (overshared_items table), not the fixed 23,412 fixture. Asserted on the invariant tail so it's robust to the real count, which is a real ~93-row testbed tenant filtered to the anonymous_link/organization_link grant kinds -- nowhere near 23,412. It still offers search/bulk-fix/export instead of an expandable list.",
+      "sessionTag": "oversharing-1275",
       "action": "expect",
       "selector": "[data-testid='pv2-ovrall-heading']",
       "state": "visible",
-      "textContains": "23,412 sites are shared externally"
+      "textContains": "sites are shared externally with an active \"Anyone with the link\""
     },
     {
-      "name": "OV25-LIVE (#1204) -- REAL DATA: the enterprise bulk overshared-site list reads the LIVE governance payload via useLivePillarHero; its clipped source marker reads 'live'. The bulk site rows stay fixture (the real page is a server query yet to be built) -- a documented backend gap.",
+      "name": "OV25-LIVE (#1204, updated #1275) -- the enterprise bulk overshared-site list's PILLAR HERO still reads the LIVE governance war-room payload via useLivePillarHero; its clipped source marker reads 'live'. The bulk ROWS themselves are now ALSO real (#1275 closed that gap): each Prev/Next is a real fetch against overshared_items via useOversharingItemsLive, not a client-side slice of a synthesized array. This assertion is unaffected either way since it targets the pillar-hero marker, not the row source.",
+      "sessionTag": "oversharing-1275",
       "action": "expect",
       "selector": "[data-testid='pv2-ovrall-source']",
       "state": "present",
       "textContains": "live"
+    },
+    {
+      "name": "OV26 (#1275) -- the search box is wired to a real server-side query (q= param on GET /api/portal/oversharing/items), not a client-side filter of a synthesized page. Typing a query that matches nothing real leaves the rows panel present but empty rather than throwing.",
+      "sessionTag": "oversharing-1275",
+      "action": "input",
+      "selector": "[data-testid='pv2-ovrall-search']",
+      "value": "zzz-no-such-site-zzz"
+    },
+    {
+      "name": "OV27 (#1275) -- the rows panel is still present (not removed) when a real search matches zero rows.",
+      "sessionTag": "oversharing-1275",
+      "action": "expect",
+      "selector": "[data-testid='pv2-ovrall-rows']",
+      "state": "present"
     },
     {
       "name": "goto the rebuilt Security pillar dashboard. Before this pass /portal-v2/security fell through to the generic API-driven portal-v2-pillar.tsx, not the design's own composition.",

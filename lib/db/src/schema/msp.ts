@@ -2049,6 +2049,97 @@ export const tenantCheckItemDetailsTable = pgTable("tenant_check_item_details", 
 export type TenantCheckItemDetail = typeof tenantCheckItemDetailsTable.$inferSelect;
 export type InsertTenantCheckItemDetail = typeof tenantCheckItemDetailsTable.$inferInsert;
 
+// ── overshared_items (#1275, decisions from #1262) ────────────────────────────
+//
+// One row per (item x grant) — decided granularity — so a search/filter by
+// principal or grant kind is a real indexed predicate, never a jsonb scan.
+// Sourced today from `tenant_check_item_details.items` for
+// `compliance:eeeu-site-sharing` / `onedrive:overshared-files`
+// (SiteSharingSummary[] — see sharepoint-sharing.ts), scope='site' only: no
+// per-file/per-link descent, site-visibility capture, or named-identity
+// resolution yet (#1262's three deferred collection-side follow-ups). Those
+// land as new non-null values in `scope`/`item_path`/`principal_upn` without a
+// schema change.
+//
+// `run_id` is a partition key, not a foreign key with an ON DELETE rule —
+// snapshots are retained (decision: keep history for trend / "newly
+// overshared since last scan"), never pruned by this table itself. A stable
+// `natural_key` (tenant+check+site+grant, independent of run_id) is what lets
+// `remediation_state` survive a rescan and is the join key a future trend
+// query diffs two runs against.
+export const OVERSHARED_ITEM_SCOPES = ["site", "library", "folder", "file"] as const;
+export type OversharedItemScope = typeof OVERSHARED_ITEM_SCOPES[number];
+
+export const OVERSHARED_ITEM_GRANT_KINDS = [
+  "anonymous_link",
+  "everyone",
+  "eeeu",
+  "organization_link",
+  "guest",
+  "user",
+  "group",
+  "app",
+] as const;
+export type OversharedItemGrantKind = typeof OVERSHARED_ITEM_GRANT_KINDS[number];
+
+export const OVERSHARED_ITEM_SEVERITIES = ["critical", "high", "medium", "low", "info"] as const;
+export type OversharedItemSeverity = typeof OVERSHARED_ITEM_SEVERITIES[number];
+
+export const OVERSHARED_ITEM_REMEDIATION_STATES = ["open", "risk_accepted", "remediating", "remediated"] as const;
+export type OversharedItemRemediationState = typeof OVERSHARED_ITEM_REMEDIATION_STATES[number];
+
+export const oversharedItemsTable = pgTable("overshared_items", {
+  id: serial("id").primaryKey(),
+  itemId: uuid("item_id").notNull().unique().defaultRandom(),
+  tenantId: text("tenant_id").notNull(),
+  customerId: integer("customer_id"),
+  runId: uuid("run_id").notNull(),
+  checkKey: text("check_key").notNull(),
+  scope: text("scope", { enum: OVERSHARED_ITEM_SCOPES }).notNull().default("site"),
+  // location
+  siteId: text("site_id").notNull(),
+  siteName: text("site_name"),
+  siteUrl: text("site_url"),
+  /** Public/Private — NOT yet captured (#1262 follow-up #2); null until then. */
+  siteVisibility: text("site_visibility"),
+  isPersonalSite: boolean("is_personal_site").notNull().default(false),
+  driveId: text("drive_id"),
+  /** Server-relative path of the file/folder; null for a scope='site' row. */
+  itemPath: text("item_path"),
+  itemWebUrl: text("item_web_url"),
+  itemName: text("item_name"),
+  // the grant
+  grantKind: text("grant_kind", { enum: OVERSHARED_ITEM_GRANT_KINDS }).notNull(),
+  principalLabel: text("principal_label"),
+  /** Named identity UPN — NOT yet resolved (#1262 follow-up #3); null until then. */
+  principalUpn: text("principal_upn"),
+  principalId: text("principal_id"),
+  loginName: text("login_name"),
+  roles: jsonb("roles").$type<string[]>().notNull().default([]),
+  linkScope: text("link_scope"),
+  inherited: boolean("inherited").notNull().default(false),
+  permissionId: text("permission_id"),
+  // severity / display
+  sharingLevel: text("sharing_level"),
+  severity: text("severity", { enum: OVERSHARED_ITEM_SEVERITIES }),
+  // remediation state — durable, carried forward across rescans by naturalKey
+  remediationState: text("remediation_state", { enum: OVERSHARED_ITEM_REMEDIATION_STATES }).notNull().default("open"),
+  /** tenant+check+site+grant, independent of run_id — the rescan continuity key. */
+  naturalKey: text("natural_key").notNull(),
+  collectedAt: timestamp("collected_at", { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  unique("overshared_items_run_natural_key_uidx").on(t.runId, t.naturalKey),
+  index("overshared_items_tenant_check_collected_idx").on(t.tenantId, t.checkKey, t.collectedAt),
+  index("overshared_items_tenant_state_idx").on(t.tenantId, t.remediationState),
+  index("overshared_items_tenant_grant_kind_idx").on(t.tenantId, t.grantKind),
+  index("overshared_items_tenant_run_idx").on(t.tenantId, t.runId),
+  index("overshared_items_natural_key_idx").on(t.naturalKey),
+]);
+
+export type OversharedItem = typeof oversharedItemsTable.$inferSelect;
+export type InsertOversharedItem = typeof oversharedItemsTable.$inferInsert;
+
 export const monitorCheckAuditLogTable = pgTable("monitor_check_audit_log", {
   id: serial("id").primaryKey(),
   action: text("action").notNull(),

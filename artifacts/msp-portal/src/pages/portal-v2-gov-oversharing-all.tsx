@@ -20,36 +20,36 @@
  * in `isGovDetailV2` (built as `portal-v2-gov-detail.tsx`); the Overshared
  * SharePoint drill-down proper is `portal-v2-gov-oversharing.tsx`.
  *
- * ── Rows are synthesised per page, deliberately ────────────────────────────
- * `govOverRows` builds twelve rows from a `seed` derived from the current page
- * number rather than slicing a 23,412-item array. That is the prototype stating
- * that this page is a server-side query — the row set for page N comes from the
- * page number, not from anything held in the client.
+ * ── Rows are a real server-side query (#1275) ──────────────────────────────
+ * The prototype's `govOverRows` synthesised twelve rows from a `seed` derived
+ * from the current page number rather than slicing a held array — its own
+ * statement that this page is a server-side query. That seam is now real:
+ * `useOversharingItemsLive` (`oversharingItemsLive.ts`) fetches
+ * `GET /api/portal/oversharing/items`, keyset-paginated against the real
+ * `overshared_items` table (#1275, decisions signed off on #1262), filtered
+ * to the "Anyone with the link" grant kinds this page's own heading names
+ * (`anonymous_link` / `organization_link`). Each Prev/Next is a real fetch,
+ * not a client-side slice.
  *
  * ── One formatting decision ────────────────────────────────────────────────
- * `govOverTotal` is the number `23412`, and the template interpolates it raw, so
- * the prototype renders "23412 sites are shared externally…". The same figure is
- * written "23,412" in the prototype's own finding-row copy for this page (11380)
- * and in its button label, so the separator is the intent and the raw render is
- * a missing `toLocaleString`. The grouped form is used here.
+ * The prototype's fixture wrote its total as `23412` but rendered it grouped
+ * ("23,412") everywhere else in its own copy for this page (finding-row label,
+ * button label) — the ungrouped render there was a missing `toLocaleString`,
+ * not the intent. The real, live total is grouped here the same way.
  */
 
-import { useState } from "react";
 import { Link } from "wouter";
 
 import { Search } from "lucide-react";
 
 import { PortalV2Shell } from "@/components/portal-v2/PortalV2Shell";
-import {
-  GOV_OVER_PAGE_SIZE,
-  GOV_OVER_TOTAL,
-  govOverRowsForPage,
-} from "@/components/portal-v2/govOversharingData";
+import { useOversharingItemsLive } from "@/components/portal-v2/oversharingItemsLive";
 import { useLivePillarHero } from "@/components/portal-v2/useLivePillarHero";
 import { PillarLiveSource } from "@/components/portal-v2/PillarLiveSource";
 
-const TOTAL_PAGES = Math.ceil(GOV_OVER_TOTAL / GOV_OVER_PAGE_SIZE);
-const TOTAL_LABEL = GOV_OVER_TOTAL.toLocaleString("en-GB");
+/** The grant kinds this page's own heading names: "Anyone with the link". */
+const LINK_GRANT_KINDS = ["anonymous_link", "organization_link"] as const;
+const PAGE_SIZE = 12;
 
 const PAGE_NAV_BTN: React.CSSProperties = {
   padding: "6px 12px",
@@ -64,21 +64,23 @@ const PAGE_NAV_BTN: React.CSSProperties = {
 };
 
 export default function PortalV2GovOversharingAllPage() {
-  const [search, setSearch] = useState("");
-  const [page, setPage] = useState(1);
+  const {
+    rows,
+    total,
+    page,
+    totalPages,
+    search,
+    setSearch,
+    goNext,
+    goPrev,
+    hasNext,
+    hasPrev,
+  } = useOversharingItemsLive({ grantKinds: LINK_GRANT_KINDS, pageSize: PAGE_SIZE });
 
-  const rows = govOverRowsForPage(page);
-  const q = search.trim().toLowerCase();
-  // The prototype's search input is bound but not yet applied to the row set
-  // (the real page is a server query). Filtering the synthesised page keeps the
-  // control honest rather than inert — it narrows what is actually on screen.
-  const visible = q ? rows.filter((r) => r.name.toLowerCase().includes(q)) : rows;
+  const totalLabel = total.toLocaleString("en-GB");
 
   // Reads the governance pillar's live war-room-pillars payload through the shared
   // `useLivePillarHero` seam; `pv2-ovrall-source` proves the page is on real data.
-  // The bulk overshared-site rows are a per-site inventory with no server producer
-  // on the war-room-pillars payload (the real page is a server query yet to be
-  // built), so those rows stay fixture — a documented backend gap.
   const live = useLivePillarHero("governance");
 
   return (
@@ -121,7 +123,7 @@ export default function PortalV2GovOversharingAllPage() {
             style={{ fontSize: "20px", fontWeight: 800, color: "#f8fafc", lineHeight: 1.3 }}
             data-testid="pv2-ovrall-heading"
           >
-            {TOTAL_LABEL} sites are shared externally with an active "Anyone with the link"
+            {totalLabel} sites are shared externally with an active "Anyone with the link"
           </span>
           <span style={{ fontSize: "13px", color: "#94a3b8", lineHeight: 1.5 }}>
             At this scale, this needs search, filtering, and bulk remediation — not a list you
@@ -208,9 +210,14 @@ export default function PortalV2GovOversharingAllPage() {
           }}
           data-testid="pv2-ovrall-rows"
         >
-          {visible.map((row) => (
+          {rows.map((row) => {
+            const name = row.site.name ?? row.site.id;
+            const context = [row.grant.principal, row.grant.roles.length > 0 ? row.grant.roles.join(", ") : null]
+              .filter(Boolean)
+              .join(" · ");
+            return (
             <div
-              key={row.id}
+              key={row.itemId}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -219,12 +226,12 @@ export default function PortalV2GovOversharingAllPage() {
                 borderTop: "1px solid rgba(30,41,59,.7)",
               }}
             >
-              <input type="checkbox" aria-label={`Select ${row.name}`} style={{ flex: "0 0 auto" }} />
+              <input type="checkbox" aria-label={`Select ${name}`} style={{ flex: "0 0 auto" }} />
               <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
                 <span style={{ fontSize: "13px", fontWeight: 600, color: "#e2e8f0" }}>
-                  {row.name}
+                  {name}
                 </span>
-                <span style={{ fontSize: "11px", color: "#64748b" }}>{row.context}</span>
+                <span style={{ fontSize: "11px", color: "#64748b" }}>{context}</span>
               </div>
               <button
                 style={{
@@ -242,7 +249,8 @@ export default function PortalV2GovOversharingAllPage() {
                 Fix
               </button>
             </div>
-          ))}
+            );
+          })}
         </div>
 
         <div
@@ -254,19 +262,21 @@ export default function PortalV2GovOversharingAllPage() {
           }}
         >
           <span style={{ fontSize: "11.5px", color: "#64748b" }}>
-            Page {page} of {TOTAL_PAGES.toLocaleString("en-GB")} · {TOTAL_LABEL} total
+            Page {page} of {totalPages.toLocaleString("en-GB")} · {totalLabel} total
           </span>
           <div style={{ display: "flex", gap: 6 }}>
             <button
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              style={PAGE_NAV_BTN}
+              onClick={goPrev}
+              disabled={!hasPrev}
+              style={{ ...PAGE_NAV_BTN, opacity: hasPrev ? 1 : 0.5, cursor: hasPrev ? "pointer" : "default" }}
               data-testid="pv2-ovrall-prev"
             >
               ← Prev
             </button>
             <button
-              onClick={() => setPage((p) => Math.min(TOTAL_PAGES, p + 1))}
-              style={PAGE_NAV_BTN}
+              onClick={goNext}
+              disabled={!hasNext}
+              style={{ ...PAGE_NAV_BTN, opacity: hasNext ? 1 : 0.5, cursor: hasNext ? "pointer" : "default" }}
               data-testid="pv2-ovrall-next"
             >
               Next →

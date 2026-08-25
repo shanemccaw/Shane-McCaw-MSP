@@ -53,8 +53,9 @@
  */
 
 import { randomUUID } from "crypto";
-import { db, tenantCheckItemDetailsTable } from "@workspace/db";
+import { db, tenantCheckItemDetailsTable, oversharedItemsTable } from "@workspace/db";
 import { executeMonitorCheck, loadOrderedPackageChecks, type CheckResult } from "./monitor-executor";
+import { OVERSHARED_ITEM_CHECK_KEYS, buildOversharedItemRows } from "./overshared-items";
 import { logger } from "./logger";
 
 const log = logger.child({ channel: "engine.monitor" });
@@ -314,6 +315,29 @@ export async function runItemDetailCollection(opts: {
       checksWithoutItems++;
       if (consentRevoked) break;
       continue;
+    }
+
+    // #1275 — normalize this same collection into overshared_items (one row
+    // per site x grant) so the Overshared SharePoint pages read a real,
+    // paginated/searchable per-row table instead of this jsonb blob. Best
+    // effort: a failure here costs the oversharing register a fresh snapshot,
+    // never the tenant_check_item_details row already committed above.
+    if (persistedItems && (OVERSHARED_ITEM_CHECK_KEYS as readonly string[]).includes(result.checkKey)) {
+      try {
+        const oversharedRows = buildOversharedItemRows({
+          runId,
+          tenantId,
+          customerId: customerId ?? null,
+          checkKey: result.checkKey,
+          collectedAt: new Date(),
+          items: persistedItems,
+        });
+        if (oversharedRows.length > 0) {
+          await db.insert(oversharedItemsTable).values(oversharedRows).onConflictDoNothing();
+        }
+      } catch (err) {
+        log.error({ err, runId, tenantId, checkKey: result.checkKey }, "item-detail-collector: failed to persist overshared_items rows");
+      }
     }
 
     if (itemsOmitted) {
