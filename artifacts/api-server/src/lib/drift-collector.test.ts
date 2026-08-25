@@ -3,10 +3,12 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import {
   deriveVerdict,
   planDriftEvents,
+  planDriftLifecycle,
   buildDriftIdempotencyKey,
   driftDomainKeyFromSourceKey,
   collectDrift,
   getCurrentBaseline,
+  type PlannedDriftEvent,
 } from "./drift-collector.ts";
 import { detectDrift } from "./pcc/drift-detector.ts";
 import { db } from "@workspace/db";
@@ -123,6 +125,87 @@ describe("drift-collector — planDriftEvents over real detectDrift output", () 
   });
 });
 
+describe("drift-collector — planDriftLifecycle (resolve/reopen, #1290)", () => {
+  const mkEvent = (setting: string, op: PlannedDriftEvent["op"] = "replace"): PlannedDriftEvent => ({
+    setting,
+    op,
+    oldValue: "enabled",
+    newValue: "disabled",
+    changedBy: null,
+    verdict: "unattributed",
+    crRef: null,
+  });
+  const keyFor = (p: PlannedDriftEvent) => `${p.op}|${p.setting}`;
+
+  it("a setting drifting for the first time is an insert (no existing row)", () => {
+    const plan = planDriftLifecycle([mkEvent("/a")], keyFor, []);
+    expect(plan.toInsert.map((p) => p.setting)).toEqual(["/a"]);
+    expect(plan.toReopen).toHaveLength(0);
+    expect(plan.unchanged).toHaveLength(0);
+    expect(plan.toResolveKeys).toHaveLength(0);
+  });
+
+  it("a still-drifting setting whose event is already open is unchanged (idempotent)", () => {
+    const plan = planDriftLifecycle(
+      [mkEvent("/a")],
+      keyFor,
+      [{ idempotencyKey: "replace|/a", status: "open" }],
+    );
+    expect(plan.toInsert).toHaveLength(0);
+    expect(plan.unchanged.map((p) => p.setting)).toEqual(["/a"]);
+    expect(plan.toReopen).toHaveLength(0);
+    expect(plan.toResolveKeys).toHaveLength(0);
+  });
+
+  it("an open event whose setting is no longer drifting is resolved", () => {
+    // Nothing currently drifting, but an open event exists → it returned to baseline.
+    const plan = planDriftLifecycle([], keyFor, [{ idempotencyKey: "replace|/a", status: "open" }]);
+    expect(plan.toResolveKeys).toEqual(["replace|/a"]);
+    expect(plan.toInsert).toHaveLength(0);
+    expect(plan.toReopen).toHaveLength(0);
+  });
+
+  it("a previously-resolved setting that drifts again is reopened, not re-inserted", () => {
+    const plan = planDriftLifecycle(
+      [mkEvent("/a")],
+      keyFor,
+      [{ idempotencyKey: "replace|/a", status: "resolved" }],
+    );
+    expect(plan.toReopen.map((p) => p.setting)).toEqual(["/a"]);
+    expect(plan.toInsert).toHaveLength(0);
+    expect(plan.unchanged).toHaveLength(0);
+    expect(plan.toResolveKeys).toHaveLength(0);
+  });
+
+  it("a reopened event no longer drifting resolves again", () => {
+    const plan = planDriftLifecycle([], keyFor, [{ idempotencyKey: "replace|/a", status: "reopened" }]);
+    expect(plan.toResolveKeys).toEqual(["replace|/a"]);
+  });
+
+  it("a resolved event that stays at baseline is left alone (not resolved twice, not reopened)", () => {
+    const plan = planDriftLifecycle([], keyFor, [{ idempotencyKey: "replace|/a", status: "resolved" }]);
+    expect(plan.toResolveKeys).toHaveLength(0);
+    expect(plan.toReopen).toHaveLength(0);
+    expect(plan.toInsert).toHaveLength(0);
+  });
+
+  it("mixed set: insert + reopen + unchanged + resolve in one pass", () => {
+    const plan = planDriftLifecycle(
+      [mkEvent("/new"), mkEvent("/reappeared"), mkEvent("/stillOpen")],
+      keyFor,
+      [
+        { idempotencyKey: "replace|/reappeared", status: "resolved" },
+        { idempotencyKey: "replace|/stillOpen", status: "open" },
+        { idempotencyKey: "replace|/reverted", status: "open" }, // no longer drifting
+      ],
+    );
+    expect(plan.toInsert.map((p) => p.setting)).toEqual(["/new"]);
+    expect(plan.toReopen.map((p) => p.setting)).toEqual(["/reappeared"]);
+    expect(plan.unchanged.map((p) => p.setting)).toEqual(["/stillOpen"]);
+    expect(plan.toResolveKeys).toEqual(["replace|/reverted"]);
+  });
+});
+
 // ── DB integration (#1270) — store + collector end-to-end against real Postgres.
 // Skips cleanly when no DATABASE_URL (the module already requires @workspace/db,
 // so this whole file only imports under a DB-provisioned run). Uses a synthetic
@@ -138,6 +221,16 @@ describe.skipIf(!process.env.DATABASE_URL)("drift-collector — store + collecto
       "utf8",
     );
     await db.execute(sql.raw(ddl));
+    // #1290 lifecycle columns (applied inline, not via the whole migration file,
+    // to avoid its customer_tenant_alert_rules catalog UPDATE dependency here).
+    await db.execute(
+      sql.raw(`
+        ALTER TABLE drift_events ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'open';
+        ALTER TABLE drift_events ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMPTZ;
+        ALTER TABLE drift_events ADD COLUMN IF NOT EXISTS reopened_at TIMESTAMPTZ;
+        ALTER TABLE drift_events ADD COLUMN IF NOT EXISTS reopen_count INTEGER NOT NULL DEFAULT 0;
+      `),
+    );
   });
 
   afterAll(async () => {
@@ -205,5 +298,96 @@ describe.skipIf(!process.env.DATABASE_URL)("drift-collector — store + collecto
     expect(rows).toHaveLength(1);
     expect(rows[0].setting).toBe("/policies/0/state");
     expect(rows[0].verdict).toBe("attributed_unapproved");
+  });
+});
+
+// ── DB integration (#1290) — full resolve→reopen lifecycle against real Postgres.
+const LC_TENANT = `vitest-1290-${Math.floor(Math.random() * 1e9)}`;
+
+describe.skipIf(!process.env.DATABASE_URL)("drift-collector — resolve→reopen lifecycle (live Postgres)", () => {
+  beforeAll(async () => {
+    const ddl = readFileSync(
+      new URL("../../../../lib/db/migrations/manual/2026-08-25-configuration-drift-engine-1270.sql", import.meta.url),
+      "utf8",
+    );
+    await db.execute(sql.raw(ddl));
+    await db.execute(
+      sql.raw(`
+        ALTER TABLE drift_events ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'open';
+        ALTER TABLE drift_events ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMPTZ;
+        ALTER TABLE drift_events ADD COLUMN IF NOT EXISTS reopened_at TIMESTAMPTZ;
+        ALTER TABLE drift_events ADD COLUMN IF NOT EXISTS reopen_count INTEGER NOT NULL DEFAULT 0;
+      `),
+    );
+  });
+
+  afterAll(async () => {
+    await db.delete(driftEventsTable).where(eq(driftEventsTable.tenantId, LC_TENANT));
+    await db.delete(driftBaselineSnapshotsTable).where(eq(driftBaselineSnapshotsTable.tenantId, LC_TENANT));
+  });
+
+  const baselineConfig = {
+    policies: [{ id: "p1", displayName: "Require MFA", state: "enabled", grantControls: ["mfa"] }],
+  };
+  const driftedConfig = {
+    policies: [{ id: "p1", displayName: "Require MFA", state: "disabled", grantControls: ["mfa"] }],
+  };
+
+  const oneEvent = async () => {
+    const [row] = await db
+      .select()
+      .from(driftEventsTable)
+      .where(and(eq(driftEventsTable.tenantId, LC_TENANT), eq(driftEventsTable.domainKey, DOMAIN)));
+    return row;
+  };
+
+  it("baseline → drift → revert → re-drift walks open → resolved → reopened", async () => {
+    // 1. First scan captures baseline, no events.
+    const first = await collectDrift(LC_TENANT, DOMAIN, baselineConfig, { capturedBy: "vitest" });
+    expect(first.firstRun).toBe(true);
+
+    // 2. Drift: the CA policy is disabled → one open event.
+    const drift = await collectDrift(LC_TENANT, DOMAIN, driftedConfig, { capturedBy: "vitest" });
+    expect(drift.inserted).toHaveLength(1);
+    expect(drift.reopened).toHaveLength(0);
+    expect(drift.resolved).toBe(0);
+    let row = await oneEvent();
+    expect(row.status).toBe("open");
+    expect(row.resolvedAt).toBeNull();
+    expect(row.reopenCount).toBe(0);
+
+    // 3. Revert: config returns to baseline → the event resolves (no new row).
+    const revert = await collectDrift(LC_TENANT, DOMAIN, baselineConfig, { capturedBy: "vitest" });
+    expect(revert.inserted).toHaveLength(0);
+    expect(revert.resolved).toBe(1);
+    row = await oneEvent();
+    expect(row.status).toBe("resolved");
+    expect(row.resolvedAt).not.toBeNull();
+
+    // 4. Re-drift the SAME setting against the SAME baseline → REOPEN, not insert.
+    const redrift = await collectDrift(LC_TENANT, DOMAIN, driftedConfig, { capturedBy: "vitest" });
+    expect(redrift.inserted).toHaveLength(0);
+    expect(redrift.reopened).toHaveLength(1);
+    expect(redrift.resolved).toBe(0);
+    row = await oneEvent();
+    expect(row.status).toBe("reopened");
+    expect(row.reopenedAt).not.toBeNull();
+    expect(row.resolvedAt).toBeNull();
+    expect(row.reopenCount).toBe(1);
+
+    // Still exactly ONE row for this setting — the reopen reused it, no duplicate.
+    const all = await db
+      .select()
+      .from(driftEventsTable)
+      .where(and(eq(driftEventsTable.tenantId, LC_TENANT), eq(driftEventsTable.domainKey, DOMAIN)));
+    expect(all).toHaveLength(1);
+
+    // 5. Revert then re-drift once more → reopen_count increments to 2.
+    await collectDrift(LC_TENANT, DOMAIN, baselineConfig, { capturedBy: "vitest" });
+    const redrift2 = await collectDrift(LC_TENANT, DOMAIN, driftedConfig, { capturedBy: "vitest" });
+    expect(redrift2.reopened).toHaveLength(1);
+    row = await oneEvent();
+    expect(row.status).toBe("reopened");
+    expect(row.reopenCount).toBe(2);
   });
 });

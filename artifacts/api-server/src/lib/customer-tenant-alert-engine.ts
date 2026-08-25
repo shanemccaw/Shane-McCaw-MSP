@@ -182,7 +182,24 @@ const NOT_ACCEPTED_AS_RISK = (checkKeyExpr: string, tenantParam: string) => `
       AND rd.check_key = ${checkKeyExpr}
   )`;
 
-/** New findings at a severity on the latest completed run vs the prior one. */
+// ── Which run statuses carry real findings (#1301) ─────────────────────────
+//
+// A msp_diagnostic_run is only 'completed' when EVERY check in the package
+// ran clean; the moment even one check returns "error"/"partial" the whole
+// run is persisted as 'partial' (monitor-executor's runStatus:
+// hasErrors -> "partial_failure" -> diagnostics-runner "partial"). On any real
+// tenant at least one PS-backed check (DLP, Exchange RBAC, ...) routinely
+// errors, so real scans land 'partial' essentially always — diagnostics-runner
+// itself calls this a "permanently-'partial' tenant". The findings on a partial
+// run are just as real as on a completed one: the deliberately-broken tenant's
+// genuine critical CA finding (identity:ca-policy-count, caPolicyCount == 0)
+// lives on a 'partial' run today. Gating the finding.* evaluators on
+// status = 'completed' therefore silently excluded EVERY real finding, so
+// finding.new_critical / finding.new_high / finding.* never fired for a
+// realistic tenant — traced end-to-end for #1301. Both real statuses count.
+const REAL_RUN_STATUSES = `status IN ('completed', 'partial')`;
+
+/** New findings at a severity on the latest real (completed or partial) run vs the prior one. */
 async function evalNewFindings(customerId: number, tenantId: string | null, severity: string, windowMinutes: number): Promise<number> {
   return count(
     `
@@ -190,7 +207,7 @@ async function evalNewFindings(customerId: number, tenantId: string | null, seve
       SELECT run_id, COALESCE(completed_at, created_at) AS at,
              row_number() OVER (ORDER BY COALESCE(completed_at, created_at) DESC) AS rn
       FROM msp_diagnostic_runs
-      WHERE customer_id = $1 AND status = 'completed'
+      WHERE customer_id = $1 AND ${REAL_RUN_STATUSES}
     ),
     latest AS (SELECT run_id, at FROM runs WHERE rn = 1),
     prior  AS (SELECT run_id FROM runs WHERE rn = 2)
@@ -273,7 +290,7 @@ async function evalLatestFindingByKey(customerId: number, tenantId: string | nul
     `
     WITH latest AS (
       SELECT run_id FROM msp_diagnostic_runs
-      WHERE customer_id = $1 AND status = 'completed'
+      WHERE customer_id = $1 AND ${REAL_RUN_STATUSES}
       ORDER BY COALESCE(completed_at, created_at) DESC LIMIT 1
     )
     SELECT COUNT(*)::text AS n
@@ -471,8 +488,20 @@ async function getConditionValue(
       // ── billing (continued) ────────────────────────────────────────────────
       case "billing.license_change": return await evalLicenseChange(cid, w);
 
+      // ── drift regression (#1290): a previously-resolved finding reappeared ──
+      // A drift_events row flips to status='reopened' (reopened_at set) when a
+      // setting that had returned to baseline drifts from it again. Count those
+      // within the window, scoped by tenant.
+      case "drift.regression":
+        if (!tid) return 0;
+        return await count(
+          `SELECT COUNT(*)::text AS n FROM drift_events
+           WHERE tenant_id = $1 AND status = 'reopened'
+             AND reopened_at > NOW() - ($2 * INTERVAL '1 minute')`,
+          [tid, w],
+        );
+
       // ── pending_detector conditions — hook wired, source not built yet ──────
-      case "drift.regression":           // sub-issue: drift resolution/reopen lifecycle
       default:
         return 0;
     }
@@ -498,6 +527,7 @@ function buildSummary(conditionType: string, value: number, ctx: TenantContext):
     case "finding.global_admin_added": return `${who}${n} new Global Administrator${s} detected — verify immediately.`;
     case "drift.unapproved":     return `${who}${n} unapproved configuration change${s} detected.`;
     case "drift.ca_policy_change": return `${who}${n} Conditional Access policy change${s} detected.`;
+    case "drift.regression":       return `${who}${n} previously-resolved configuration finding${s} reappeared.`;
     case "progress.fix_verified": return `${who}${n} remediation fix${n === 1 ? "" : "es"} verified by re-scan.`;
     case "progress.pillar_score_move": return `${who}a health pillar score moved beyond the threshold.`;
     case "review.risk_acceptance_due": return `${who}${n} accepted risk${s} due for review.`;

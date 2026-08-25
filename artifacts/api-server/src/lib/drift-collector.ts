@@ -30,8 +30,8 @@
 
 import { db } from "@workspace/db";
 import { driftBaselineSnapshotsTable, driftEventsTable } from "@workspace/db";
-import type { DriftEventVerdict, InsertDriftEvent } from "@workspace/db";
-import { and, eq, isNull, desc } from "drizzle-orm";
+import type { DriftEventStatus, DriftEventVerdict, InsertDriftEvent } from "@workspace/db";
+import { and, eq, isNull, desc, inArray, sql } from "drizzle-orm";
 import { detectDrift, type PccDiff } from "./pcc/drift-detector.ts";
 import { logger } from "./logger.ts";
 
@@ -119,6 +119,66 @@ export function planDriftEvents(
   });
 }
 
+// ── Resolution / reopen lifecycle (#1290) ─────────────────────────────────────
+//
+// The baseline is the reference, so a drift event's WHOLE life plays out against
+// one baseline snapshot. Given the current drift set (planned) for that baseline
+// and the events already stored against it, three transitions are possible:
+//   * a setting that drifted before and no longer appears in the diff has
+//     returned to baseline           → RESOLVE it (status='resolved').
+//   * a setting whose event was previously resolved appears in the diff again
+//     → REOPEN it (status='reopened'). This is the regression the idempotency
+//       key (tenant|domain|baseline|op|setting) otherwise makes impossible to
+//       record as a second event.
+//   * a setting still drifting whose event is already open/reopened → unchanged.
+// A setting drifting for the first time is a plain insert.
+
+/** The stored lifecycle state of an existing drift event, for the planner below. */
+export interface ExistingDriftEventState {
+  idempotencyKey: string;
+  status: DriftEventStatus;
+}
+
+export interface DriftLifecyclePlan {
+  /** Brand-new events — no existing row for the key. Inserted as status='open'. */
+  toInsert: PlannedDriftEvent[];
+  /** Events whose key matched a RESOLVED row — the finding reappeared. Reopened. */
+  toReopen: PlannedDriftEvent[];
+  /** Events whose key matched an already open/reopened row — no state change. */
+  unchanged: PlannedDriftEvent[];
+  /** Keys of existing open/reopened rows no longer drifting — returned to baseline. */
+  toResolveKeys: string[];
+}
+
+/**
+ * Pure: given the current drift set and the events already stored against the
+ * SAME baseline, decide inserts / reopens / resolutions. Unit-tested without a DB.
+ */
+export function planDriftLifecycle(
+  planned: PlannedDriftEvent[],
+  keyFor: (p: PlannedDriftEvent) => string,
+  existing: ExistingDriftEventState[],
+): DriftLifecyclePlan {
+  const statusByKey = new Map(existing.map((e) => [e.idempotencyKey, e.status]));
+  const currentKeys = new Set(planned.map(keyFor));
+
+  const toInsert: PlannedDriftEvent[] = [];
+  const toReopen: PlannedDriftEvent[] = [];
+  const unchanged: PlannedDriftEvent[] = [];
+  for (const p of planned) {
+    const status = statusByKey.get(keyFor(p));
+    if (status === undefined) toInsert.push(p);
+    else if (status === "resolved") toReopen.push(p);
+    else unchanged.push(p);
+  }
+
+  const toResolveKeys = existing
+    .filter((e) => (e.status === "open" || e.status === "reopened") && !currentKeys.has(e.idempotencyKey))
+    .map((e) => e.idempotencyKey);
+
+  return { toInsert, toReopen, unchanged, toResolveKeys };
+}
+
 /** The current (superseded_at IS NULL) baseline snapshot for a (tenant, domain), if any. */
 export async function getCurrentBaseline(tenantId: string, domainKey: string) {
   const [row] = await db
@@ -188,6 +248,10 @@ export interface CollectDriftResult {
   baselineSnapshotId: number;
   /** Drift events newly persisted this run (excludes ones already present by idempotency key). */
   inserted: PlannedDriftEvent[];
+  /** Previously-resolved events that drifted again this run and were reopened (#1290). */
+  reopened: PlannedDriftEvent[];
+  /** How many open/reopened events returned to baseline this run and were resolved (#1290). */
+  resolved: number;
 }
 
 /**
@@ -205,18 +269,45 @@ export async function collectDrift(
   if (!baseline) {
     const id = await captureBaseline(tenantId, domainKey, currentConfig, { capturedBy: opts.capturedBy });
     log.info({ tenantId, domainKey, baselineSnapshotId: id }, "drift: captured first baseline (no prior reference)");
-    return { firstRun: true, baselineSnapshotId: id, inserted: [] };
+    return { firstRun: true, baselineSnapshotId: id, inserted: [], reopened: [], resolved: 0 };
   }
 
   const diffs = detectDrift(baseline.config, currentConfig);
   const planned = planDriftEvents(diffs, opts.attributionFor);
+  const keyFor = (p: PlannedDriftEvent) =>
+    buildDriftIdempotencyKey(tenantId, domainKey, baseline.id, p.op, p.setting);
 
+  // Existing events for THIS baseline, so we can resolve settings that reverted
+  // and reopen settings that drifted again after being resolved (#1290).
+  const existing = await db
+    .select({ idempotencyKey: driftEventsTable.idempotencyKey, status: driftEventsTable.status })
+    .from(driftEventsTable)
+    .where(
+      and(
+        eq(driftEventsTable.tenantId, tenantId),
+        eq(driftEventsTable.domainKey, domainKey),
+        eq(driftEventsTable.baselineSnapshotId, baseline.id),
+      ),
+    );
+
+  const plan = planDriftLifecycle(planned, keyFor, existing);
+  const now = new Date();
+
+  // 1. Resolve open/reopened events whose setting returned to baseline.
+  if (plan.toResolveKeys.length > 0) {
+    await db
+      .update(driftEventsTable)
+      .set({ status: "resolved", resolvedAt: now })
+      .where(inArray(driftEventsTable.idempotencyKey, plan.toResolveKeys));
+  }
+
+  // 2. Insert brand-new drift events (status defaults to 'open').
   let inserted: PlannedDriftEvent[] = [];
-  if (planned.length > 0) {
-    const rows: InsertDriftEvent[] = planned.map((p) => ({
+  if (plan.toInsert.length > 0) {
+    const rows: InsertDriftEvent[] = plan.toInsert.map((p) => ({
       tenantId,
       domainKey,
-      idempotencyKey: buildDriftIdempotencyKey(tenantId, domainKey, baseline.id, p.op, p.setting),
+      idempotencyKey: keyFor(p),
       setting: p.setting,
       op: p.op,
       oldValue: p.oldValue,
@@ -226,24 +317,61 @@ export async function collectDrift(
       crRef: p.crRef,
       baselineSnapshotId: baseline.id,
     }));
+    // ON CONFLICT DO NOTHING guards a concurrent inserter racing the same key.
     const returned = await db
       .insert(driftEventsTable)
       .values(rows)
       .onConflictDoNothing({ target: driftEventsTable.idempotencyKey })
       .returning({ idempotencyKey: driftEventsTable.idempotencyKey });
     const insertedKeys = new Set(returned.map((r) => r.idempotencyKey));
-    inserted = planned.filter((p) =>
-      insertedKeys.has(buildDriftIdempotencyKey(tenantId, domainKey, baseline.id, p.op, p.setting)),
-    );
+    inserted = plan.toInsert.filter((p) => insertedKeys.has(keyFor(p)));
+  }
+
+  // 3. Reopen previously-resolved events whose setting drifted from baseline again.
+  const reopened: PlannedDriftEvent[] = [];
+  for (const p of plan.toReopen) {
+    const returned = await db
+      .update(driftEventsTable)
+      .set({
+        status: "reopened",
+        reopenedAt: now,
+        resolvedAt: null,
+        reopenCount: sql`${driftEventsTable.reopenCount} + 1`,
+        detectedAt: now,
+        // Refresh the change detail/attribution to the current drift.
+        oldValue: p.oldValue,
+        newValue: p.newValue,
+        changedBy: p.changedBy,
+        verdict: p.verdict,
+        crRef: p.crRef,
+      })
+      .where(
+        and(
+          eq(driftEventsTable.idempotencyKey, keyFor(p)),
+          eq(driftEventsTable.status, "resolved"),
+        ),
+      )
+      .returning({ idempotencyKey: driftEventsTable.idempotencyKey });
+    if (returned.length > 0) reopened.push(p);
+  }
+
+  if (inserted.length > 0 || reopened.length > 0 || plan.toResolveKeys.length > 0) {
     log.info(
-      { tenantId, domainKey, detected: planned.length, inserted: inserted.length },
-      "drift: persisted config-drift events",
+      {
+        tenantId,
+        domainKey,
+        detected: planned.length,
+        inserted: inserted.length,
+        reopened: reopened.length,
+        resolved: plan.toResolveKeys.length,
+      },
+      "drift: persisted config-drift lifecycle changes",
     );
   }
 
   if (opts.rebaselineAfter) {
     const id = await captureBaseline(tenantId, domainKey, currentConfig, { capturedBy: opts.capturedBy });
-    return { firstRun: false, baselineSnapshotId: id, inserted };
+    return { firstRun: false, baselineSnapshotId: id, inserted, reopened, resolved: plan.toResolveKeys.length };
   }
-  return { firstRun: false, baselineSnapshotId: baseline.id, inserted };
+  return { firstRun: false, baselineSnapshotId: baseline.id, inserted, reopened, resolved: plan.toResolveKeys.length };
 }

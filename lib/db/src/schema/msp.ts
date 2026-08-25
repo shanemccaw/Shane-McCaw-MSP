@@ -4535,6 +4535,20 @@ export const DRIFT_EVENT_VERDICTS = [
 ] as const;
 export type DriftEventVerdict = (typeof DRIFT_EVENT_VERDICTS)[number];
 
+/**
+ * Lifecycle status of a drift event, driven by whether the setting currently
+ * deviates from its baseline (#1290, the `drift.regression` detector):
+ *   - open      — the setting is currently drifted from baseline (initial state).
+ *   - resolved  — a later scan found the setting back at its baseline value; the
+ *                 collector closed it (resolvedAt set).
+ *   - reopened  — a previously-resolved setting drifted from baseline AGAIN. This
+ *                 is the "a previously-resolved finding reappeared" regression the
+ *                 idempotency key (tenant|domain|baseline|op|setting) otherwise
+ *                 makes unrepresentable. reopenedAt is set, reopenCount bumped.
+ */
+export const DRIFT_EVENT_STATUSES = ["open", "resolved", "reopened"] as const;
+export type DriftEventStatus = (typeof DRIFT_EVENT_STATUSES)[number];
+
 export const driftBaselineSnapshotsTable = pgTable("drift_baseline_snapshots", {
   id: serial("id").primaryKey(),
   snapshotId: uuid("snapshot_id").notNull().unique().defaultRandom(),
@@ -4584,11 +4598,25 @@ export const driftEventsTable = pgTable("drift_events", {
   crRef: text("cr_ref"),
   /** The baseline snapshot this change was diffed against. */
   baselineSnapshotId: integer("baseline_snapshot_id"),
+  /**
+   * Lifecycle status (#1290). 'open' the moment drift is first detected; the
+   * collector flips it to 'resolved' when a later scan finds the setting back at
+   * baseline, and to 'reopened' if it then drifts from baseline yet again — the
+   * regression the `drift.regression` detector fires on.
+   */
+  status: text("status", { enum: DRIFT_EVENT_STATUSES }).notNull().default("open"),
+  /** When the collector last observed this setting back at its baseline value. NULL while open/reopened. */
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  /** When a previously-resolved setting drifted from baseline again (last reopen). NULL if never reopened. */
+  reopenedAt: timestamp("reopened_at", { withTimezone: true }),
+  /** How many times this event has been reopened after resolution. */
+  reopenCount: integer("reopen_count").notNull().default(0),
   detectedAt: timestamp("detected_at", { withTimezone: true }).notNull().defaultNow(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index("drift_events_tenant_domain_idx").on(t.tenantId, t.domainKey),
   index("drift_events_tenant_detected_idx").on(t.tenantId, t.detectedAt),
+  index("drift_events_tenant_status_reopened_idx").on(t.tenantId, t.status, t.reopenedAt),
 ]);
 
 export type DriftEvent = typeof driftEventsTable.$inferSelect;
