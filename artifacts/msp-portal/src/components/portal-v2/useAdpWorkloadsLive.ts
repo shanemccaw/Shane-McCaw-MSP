@@ -18,6 +18,12 @@
  * alongside this hook. An unresolved key (tenant hasn't scanned yet) comes
  * back `not_available` and `resolvedValue` turns that into `null` — the
  * caller overlays only the rows that genuinely resolved.
+ *
+ * #1284 added usage.copilotActiveCount/copilotLicenseCount (Copilot row) and
+ * the genuinely-new per-user usage.sharePointUserActiveCount/UsersScannedCount
+ * and usage.vivaEngageActiveCount/UsersScannedCount (distinct from the
+ * per-SITE SharePoint pair above and the community-count Viva Engage check —
+ * see metrics.ts's own comments on each).
  */
 import { useEffect, useState } from "react";
 
@@ -30,11 +36,15 @@ const METRIC_KEYS = [
   "usage.exchangeLicensedUserCount",
   "usage.teamsActiveCount",
   "usage.teamsLicensedUserCount",
-  "usage.sharePointActiveCount",
-  "usage.sharePointSitesScannedCount",
   "usage.oneDriveActiveCount",
   "usage.oneDriveAccountsScannedCount",
   "usage.oneDriveSyncErrorCount",
+  "usage.copilotActiveCount",
+  "usage.copilotLicenseCount",
+  "usage.sharePointUserActiveCount",
+  "usage.sharePointUsersScannedCount",
+  "usage.vivaEngageActiveCount",
+  "usage.vivaEngageUsersScannedCount",
 ] as const;
 
 export interface AdpWorkloadsLiveState {
@@ -83,11 +93,15 @@ export function useAdpWorkloadsLive(): AdpWorkloadsLiveState {
     exchangeLicensed: resolvedValue(metrics["usage.exchangeLicensedUserCount"]),
     teamsActive: resolvedValue(metrics["usage.teamsActiveCount"]),
     teamsLicensed: resolvedValue(metrics["usage.teamsLicensedUserCount"]),
-    sharePointActive: resolvedValue(metrics["usage.sharePointActiveCount"]),
-    sharePointScanned: resolvedValue(metrics["usage.sharePointSitesScannedCount"]),
     oneDriveActive: resolvedValue(metrics["usage.oneDriveActiveCount"]),
     oneDriveScanned: resolvedValue(metrics["usage.oneDriveAccountsScannedCount"]),
     oneDriveStaleSync: resolvedValue(metrics["usage.oneDriveSyncErrorCount"]),
+    copilotActive: resolvedValue(metrics["usage.copilotActiveCount"]),
+    copilotLicensed: resolvedValue(metrics["usage.copilotLicenseCount"]),
+    sharePointUserActive: resolvedValue(metrics["usage.sharePointUserActiveCount"]),
+    sharePointUsersScanned: resolvedValue(metrics["usage.sharePointUsersScannedCount"]),
+    vivaEngageActive: resolvedValue(metrics["usage.vivaEngageActiveCount"]),
+    vivaEngageUsersScanned: resolvedValue(metrics["usage.vivaEngageUsersScannedCount"]),
   };
 
   return { live, loaded };

@@ -148,21 +148,41 @@ export function adpWorkloadDetail(w: AdpWorkload) {
  * normal cadence (see lib/dashboard-registry/src/metrics.ts's
  * usage.exchangeActiveCount / usage.teamsActiveCount /
  * usage.sharePointActiveCount / usage.oneDriveActiveCount and their new
- * denominator/sync-error siblings). The remaining six rows (Teams channels,
- * Copilot, Power BI, Teams Phone, Planner, Viva Engage) have no per-item
- * server feed and stay fixture — same honest-gap contract useLivePillarHero
- * documents for the rest of this page.
+ * denominator/sync-error siblings).
+ *
+ * #1284 adds three more: Copilot (already-collected `copilot:active-usage-rate`
+ * + `copilot:license-vs-total-users`, just newly wired here), and the
+ * genuinely-new per-user SharePoint and Viva Engage collectors
+ * (`adoption:sharepoint-user-activity` / `adoption:viva-engage-user-activity`,
+ * added in 2026-08-25-adoption-collectors-sharepoint-viva-per-user-1284.sql).
+ * The SharePoint row below is switched from the per-SITE proxy to this real
+ * per-user data, so this page no longer fetches `usage.sharePointActiveCount`
+ * / `usage.sharePointSitesScannedCount` at all — that metric and its
+ * underlying check stay registered and untouched for the other pages/cost
+ * tracking that still read it.
+ *
+ * Still fixture, still honest gaps: Teams channels, Power BI, Teams Phone
+ * (no per-item server feed), and Planner/Tasks — `adoption:planner-usage`
+ * exists but counts PLANS across the tenant, not per-user task assignments;
+ * getting the real "N of 1,240 have an assigned task" figure needs a second
+ * fan-out level (plans → tasks) the executor doesn't support today (flagged
+ * in the #1284 migration's own header). Same honest-gap contract
+ * useLivePillarHero documents for the rest of this page.
  */
 export interface AdpWorkloadLiveCounts {
   exchangeActive: number | null;
   exchangeLicensed: number | null;
   teamsActive: number | null;
   teamsLicensed: number | null;
-  sharePointActive: number | null;
-  sharePointScanned: number | null;
   oneDriveActive: number | null;
   oneDriveScanned: number | null;
   oneDriveStaleSync: number | null;
+  copilotActive: number | null;
+  copilotLicensed: number | null;
+  sharePointUserActive: number | null;
+  sharePointUsersScanned: number | null;
+  vivaEngageActive: number | null;
+  vivaEngageUsersScanned: number | null;
 }
 
 export const ADP_WORKLOAD_LIVE_EMPTY: AdpWorkloadLiveCounts = {
@@ -170,11 +190,15 @@ export const ADP_WORKLOAD_LIVE_EMPTY: AdpWorkloadLiveCounts = {
   exchangeLicensed: null,
   teamsActive: null,
   teamsLicensed: null,
-  sharePointActive: null,
-  sharePointScanned: null,
   oneDriveActive: null,
   oneDriveScanned: null,
   oneDriveStaleSync: null,
+  copilotActive: null,
+  copilotLicensed: null,
+  sharePointUserActive: null,
+  sharePointUsersScanned: null,
+  vivaEngageActive: null,
+  vivaEngageUsersScanned: null,
 };
 
 function adpWorkloadTone(pct: number): AdpTone {
@@ -184,10 +208,11 @@ function adpWorkloadTone(pct: number): AdpTone {
 const fmtCount = (n: number) => n.toLocaleString();
 
 /**
- * Overlay real counts onto the first 4 fixture rows. Each row is overlaid
- * independently — a partial payload (some checks scanned, others not yet)
- * overlays only the rows that genuinely resolved, leaving the rest on their
- * design fixture rather than guessing.
+ * Overlay real counts onto the rows the platform actually collects data for
+ * (Exchange, Teams, SharePoint, OneDrive, Copilot, Viva Engage). Each row is
+ * overlaid independently — a partial payload (some checks scanned, others
+ * not yet) overlays only the rows that genuinely resolved, leaving the rest
+ * on their design fixture rather than guessing.
  */
 export function adpWorkloadsWithLive(live: AdpWorkloadLiveCounts): readonly AdpWorkload[] {
   const rows = ADP_WORKLOADS.map((w) => ({ ...w }));
@@ -207,9 +232,10 @@ export function adpWorkloadsWithLive(live: AdpWorkloadLiveCounts): readonly AdpW
 
   overlayRatio(0, live.exchangeActive, live.exchangeLicensed, "sent or read mail in the last 7 days", "getEmailActivityUserDetail(period=D7)");
   overlayRatio(1, live.teamsActive, live.teamsLicensed, "posted or joined a meeting in the last 7 days", "getTeamsUserActivityUserDetail(period=D7)");
-  // Honest per-SITE proxy, not per-user (getSharePointSiteUsageDetail has
-  // never queried a per-user file open — see metrics.ts's own caveat).
-  overlayRatio(2, live.sharePointActive, live.sharePointScanned, "sites had a recently active owner", "getSharePointSiteUsageDetail(period=D7) — per site, not per user");
+  // #1284: real per-USER SharePoint activity, replacing the per-SITE proxy
+  // this row used to overlay with (usage.sharePointActiveCount/its check
+  // stay untouched — still read by cost tracking elsewhere).
+  overlayRatio(2, live.sharePointUserActive, live.sharePointUsersScanned, "viewed or edited a file in the last 7 days", "getSharePointActivityUserDetail(period=D7)");
 
   if (live.oneDriveActive != null && live.oneDriveScanned != null && live.oneDriveScanned > 0) {
     const pct = Math.round((live.oneDriveActive / live.oneDriveScanned) * 100);
@@ -231,6 +257,13 @@ export function adpWorkloadsWithLive(live: AdpWorkloadLiveCounts): readonly AdpW
       window: "7 days",
     };
   }
+
+  // #1284: Copilot weekly-active — already-collected checks, newly wired here.
+  overlayRatio(5, live.copilotActive, live.copilotLicensed, "assigned seats used it in the last 7 days", "getMicrosoft365CopilotUsageUserDetail(period=D7)");
+
+  // #1284: real per-USER Viva Engage activity, distinct from the community-
+  // count check adoption:viva-engage-health already runs for a different row.
+  overlayRatio(9, live.vivaEngageActive, live.vivaEngageUsersScanned, "posted or read on Viva Engage in the last 7 days", "getYammerActivityUserDetail(period=D7)");
 
   return rows;
 }

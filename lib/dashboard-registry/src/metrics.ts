@@ -1744,6 +1744,92 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     status: "available",
     smartEligible: false,
   },
+  {
+    // #1284: `copilot:active-usage-rate` was already collecting live for
+    // every tenant (built well before this issue, #1284's own "no hits"
+    // premise was stale) — this just registers the metric-registry entry so
+    // the Adoption pillar page can resolve it, the same follow-up class as
+    // #1252 did for usage.oneDriveSyncErrorCount above.
+    key: "usage.copilotActiveCount",
+    label: "Copilot Active Users",
+    valueType: "count",
+    shape: "trend",
+    sourceType: "monitor_profile",
+    sourceKey: "copilot:active-usage-rate",
+    scope: "customer",
+    status: "available",
+    smartEligible: false,
+  },
+  {
+    // #1284: the licensed-seat denominator for usage.copilotActiveCount,
+    // read from `copilot:license-vs-total-users` (GET /subscribedSkus,
+    // consumedUnits) — an existing check, no new collector.
+    key: "usage.copilotLicenseCount",
+    label: "Copilot Licensed Seats",
+    valueType: "count",
+    shape: "scalar",
+    sourceType: "monitor_profile",
+    sourceKey: "copilot:license-vs-total-users",
+    scope: "customer",
+    status: "available",
+    smartEligible: false,
+  },
+  {
+    // #1284: the genuinely-missing per-USER SharePoint activity collector
+    // (`adoption:sharepoint-user-activity`, new in
+    // 2026-08-25-adoption-collectors-sharepoint-viva-per-user-1284.sql).
+    // Deliberately a NEW metric key, not a repoint of usage.sharePointActiveCount
+    // above — that key's underlying check is per-SITE and its columns are
+    // also consumed by cost tracking elsewhere (see that metric's own
+    // comment), so it was left alone.
+    key: "usage.sharePointUserActiveCount",
+    label: "SharePoint Per-User Active Count",
+    valueType: "count",
+    shape: "trend",
+    sourceType: "monitor_profile",
+    sourceKey: "adoption:sharepoint-user-activity",
+    scope: "customer",
+    status: "available",
+    smartEligible: false,
+  },
+  {
+    key: "usage.sharePointUsersScannedCount",
+    label: "SharePoint Users Scanned",
+    valueType: "count",
+    shape: "scalar",
+    sourceType: "monitor_profile",
+    sourceKey: "adoption:sharepoint-user-activity",
+    scope: "customer",
+    status: "available",
+    smartEligible: false,
+  },
+  {
+    // #1284: the genuinely-missing per-USER Viva Engage/Yammer activity
+    // collector (`adoption:viva-engage-user-activity`, new in the same
+    // migration). Distinct from `adoption:viva-engage-health`, which counts
+    // COMMUNITIES via /employeeExperience/communities, not per-user
+    // activity — a different question, kept as its own separate check.
+    key: "usage.vivaEngageActiveCount",
+    label: "Viva Engage Active Users",
+    valueType: "count",
+    shape: "trend",
+    sourceType: "monitor_profile",
+    sourceKey: "adoption:viva-engage-user-activity",
+    scope: "customer",
+    status: "available",
+    smartEligible: false,
+  },
+  {
+    key: "usage.vivaEngageUsersScannedCount",
+    label: "Viva Engage Users Scanned",
+    valueType: "count",
+    shape: "scalar",
+    sourceType: "monitor_profile",
+    sourceKey: "adoption:viva-engage-user-activity",
+    scope: "customer",
+    status: "available",
+    smartEligible: false,
+  },
 
   // ---- Platform/Custom (platform's own health, ops-facing) --------------
   {

@@ -296,15 +296,37 @@ describe("#1252 — live workload overlay", () => {
     assert.deepEqual(rows[3], ADP_WORKLOADS[3]);
   });
 
-  it("states SharePoint honestly as per-site, never per-user", () => {
+  it("#1284 — overlays SharePoint with real per-user activity, not the site-level proxy", () => {
     const rows = adpWorkloadsWithLive({
       ...ADP_WORKLOAD_LIVE_EMPTY,
-      sharePointActive: 40,
-      sharePointScanned: 50,
+      sharePointUserActive: 40,
+      sharePointUsersScanned: 50,
     });
     assert.equal(rows[2].active, 80);
-    assert.match(rows[2].of, /sites had a recently active owner/);
-    assert.match(rows[2].src, /per site, not per user/);
+    assert.match(rows[2].of, /viewed or edited a file in the last 7 days/);
+    assert.match(rows[2].src, /getSharePointActivityUserDetail/);
+  });
+
+  it("#1284 — overlays Copilot from the already-collected usage-rate + license-seat checks", () => {
+    const rows = adpWorkloadsWithLive({
+      ...ADP_WORKLOAD_LIVE_EMPTY,
+      copilotActive: 41,
+      copilotLicensed: 68,
+    });
+    assert.equal(rows[5].active, 60);
+    assert.equal(rows[5].of, "41 of 68 assigned seats used it in the last 7 days");
+    assert.match(rows[5].src, /getMicrosoft365CopilotUsageUserDetail/);
+  });
+
+  it("#1284 — overlays Viva Engage with real per-user activity, distinct from the community-count check", () => {
+    const rows = adpWorkloadsWithLive({
+      ...ADP_WORKLOAD_LIVE_EMPTY,
+      vivaEngageActive: 50,
+      vivaEngageUsersScanned: 1240,
+    });
+    assert.equal(rows[9].active, 4);
+    assert.match(rows[9].of, /posted or read on Viva Engage in the last 7 days/);
+    assert.match(rows[9].src, /getYammerActivityUserDetail/);
   });
 
   it("folds the sync-errors proxy into the OneDrive row's note and reading", () => {
