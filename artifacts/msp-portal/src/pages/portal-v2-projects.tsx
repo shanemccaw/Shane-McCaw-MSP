@@ -41,36 +41,33 @@ import {
   PHASE_META,
   PJ_BOARD,
   PJ_CARD_LABELS,
-  PJ_CONTRACT_END,
   PJ_CURRENT_WEEKS,
   PJ_FOOTER,
   PJ_GANTT_LEGEND,
   PJ_LANES,
-  PJ_MINE,
   PJ_MINE_CARD,
   PJ_SCHEDULE,
-  PJ_SCOPE_BARS,
   PJ_SCOPE_KICKER,
   PJ_SCOPE_NOTE,
-  PJ_TODAY,
   PJ_WAITING_CARD,
   PJ_WEEKS,
   PRIO_META,
   PROJECT_META,
-  PROJECT_PHASES,
+  type ProjectMineItem,
+  type ProjectPhase,
   type ProjectTask,
+  type ScopeBar,
 } from "@/components/portal-v2/projectsData";
 import {
-  pjMilestones,
-  pjMineCount,
   pjOwnerShort,
-  pjPct,
-  pjRows,
   pjTasksInLane,
   pjWaitingCount,
   pjWaitingTasks,
+  type PjMilestone,
   type PjRow,
 } from "@/components/portal-v2/projectsModel";
+import { useProjectsLive } from "@/components/portal-v2/projectsLive";
+import { PV2_SOURCE_CLIP } from "@/components/portal-v2/useLivePillarHero";
 
 const MONO = "'SF Mono',Menlo,Consolas,monospace";
 
@@ -92,8 +89,8 @@ function CardKicker({ colour, children }: { colour: string; children: React.Reac
 }
 
 /* ── The "Waiting on you" card — prototype 1252-1275 ─────────────────────── */
-function WaitingCard() {
-  const waiting = pjWaitingTasks();
+function WaitingCard({ tasks }: { tasks: readonly ProjectTask[] }) {
+  const waiting = pjWaitingTasks(tasks);
   return (
     <div
       data-testid="pv2-projects-waiting"
@@ -115,7 +112,7 @@ function WaitingCard() {
       </div>
       <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
         <span style={{ fontSize: "30px", fontWeight: 800, color: "#f8fafc", letterSpacing: "-.03em", lineHeight: 1, fontFamily: MONO }}>
-          {pjWaitingCount()}
+          {pjWaitingCount(tasks)}
         </span>
         <span style={{ fontSize: "12.5px", fontWeight: 700, color: "#fde68a", lineHeight: 1.4, textWrap: "pretty" }}>
           {PJ_WAITING_CARD.tail}
@@ -170,7 +167,7 @@ function WaitingCard() {
 }
 
 /* ── The "With us" card — prototype 1277-1294 ────────────────────────────── */
-function WithUsCard() {
+function WithUsCard({ mineItems }: { mineItems: readonly ProjectMineItem[] }) {
   return (
     <div
       data-testid="pv2-projects-mine"
@@ -191,12 +188,12 @@ function WithUsCard() {
       </div>
       <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
         <span style={{ fontSize: "30px", fontWeight: 800, color: "#f8fafc", letterSpacing: "-.03em", lineHeight: 1, fontFamily: MONO }}>
-          {pjMineCount()}
+          {mineItems.length}
         </span>
         <span style={{ fontSize: "12.5px", fontWeight: 700, color: "#bfdbfe", lineHeight: 1.4, textWrap: "pretty" }}>{PJ_MINE_CARD.tail}</span>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 0, paddingTop: 2, borderTop: "1px solid rgba(30,41,59,.8)" }}>
-        {PJ_MINE.map((m) => (
+        {mineItems.map((m) => (
           <div
             key={m.title}
             style={{
@@ -218,7 +215,7 @@ function WithUsCard() {
 }
 
 /* ── The "Scope delivered" card — prototype 1296-1326 ────────────────────── */
-function ScopeCard() {
+function ScopeCard({ bars }: { bars: readonly ScopeBar[] }) {
   return (
     <div
       data-testid="pv2-projects-scope"
@@ -234,7 +231,7 @@ function ScopeCard() {
       }}
     >
       <CardKicker colour="#64748b">{PJ_SCOPE_KICKER}</CardKicker>
-      {PJ_SCOPE_BARS.map((bar) => (
+      {bars.map((bar) => (
         <div key={bar.label} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
           <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
             <span style={{ fontSize: "10.5px", fontWeight: 700, color: "#94a3b8" }}>{bar.label}</span>
@@ -251,7 +248,19 @@ function ScopeCard() {
 }
 
 /* ── One gantt phase row — reuses pjRows geometry, PHASE_META colour ──────── */
-function GanttRow({ row, selected, onToggle }: { row: PjRow; selected: boolean; onToggle: () => void }) {
+function GanttRow({
+  row,
+  selected,
+  onToggle,
+  todayPct,
+  contractEndPct,
+}: {
+  row: PjRow;
+  selected: boolean;
+  onToggle: () => void;
+  todayPct: number;
+  contractEndPct: number;
+}) {
   const meta = PHASE_META[row.status];
   const color = meta.color;
   const pending = row.status === "pending";
@@ -289,8 +298,8 @@ function GanttRow({ row, selected, onToggle }: { row: PjRow; selected: boolean; 
           background: "repeating-linear-gradient(90deg, rgba(148,163,184,.07) 0 1px, transparent 1px 11.1111%)",
         }}
       >
-        <div style={{ position: "absolute", left: `${pjPct(PJ_TODAY)}%`, top: -2, bottom: -2, width: 1, background: "rgba(34,211,238,.55)" }} />
-        <div style={{ position: "absolute", left: `${pjPct(PJ_CONTRACT_END)}%`, top: -2, bottom: -2, width: 1, background: "rgba(226,232,240,.22)" }} />
+        <div style={{ position: "absolute", left: `${todayPct}%`, top: -2, bottom: -2, width: 1, background: "rgba(34,211,238,.55)" }} />
+        <div style={{ position: "absolute", left: `${contractEndPct}%`, top: -2, bottom: -2, width: 1, background: "rgba(226,232,240,.22)" }} />
         {row.slip && (
           <div
             style={{
@@ -331,8 +340,8 @@ function GanttRow({ row, selected, onToggle }: { row: PjRow; selected: boolean; 
 }
 
 /* ── The open phase's rail panel — prototype 1412-1429 ───────────────────── */
-function PhasePanel({ n }: { n: number }) {
-  const phase = PROJECT_PHASES.find((p) => p.n === n);
+function PhasePanel({ n, phases }: { n: number; phases: readonly ProjectPhase[] }) {
+  const phase = phases.find((p) => p.n === n);
   if (!phase) return null;
   const meta = PHASE_META[phase.status];
   return (
@@ -397,9 +406,23 @@ function PhasePanel({ n }: { n: number }) {
 }
 
 /* ── The schedule + gantt section — prototype 1329-1430 ──────────────────── */
-function ScheduleSection({ open, onToggle }: { open: number | null; onToggle: (n: number) => void }) {
-  const rows = pjRows();
-  const milestones = pjMilestones();
+function ScheduleSection({
+  open,
+  onToggle,
+  phases,
+  rows,
+  milestones,
+  todayPct,
+  contractEndPct,
+}: {
+  open: number | null;
+  onToggle: (n: number) => void;
+  phases: readonly ProjectPhase[];
+  rows: readonly PjRow[];
+  milestones: readonly PjMilestone[];
+  todayPct: number;
+  contractEndPct: number;
+}) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
@@ -453,14 +476,21 @@ function ScheduleSection({ open, onToggle }: { open: number | null; onToggle: (n
           </div>
 
           {rows.map((row) => (
-            <GanttRow key={row.n} row={row} selected={open === row.n} onToggle={() => onToggle(row.n)} />
+            <GanttRow
+              key={row.n}
+              row={row}
+              selected={open === row.n}
+              onToggle={() => onToggle(row.n)}
+              todayPct={todayPct}
+              contractEndPct={contractEndPct}
+            />
           ))}
 
           {/* Milestones row */}
           <div style={{ display: "grid", gridTemplateColumns: "186px minmax(0,1fr)", gap: 12, alignItems: "center", paddingTop: 3 }}>
             <span style={{ fontSize: "9px", fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: "#475569" }}>{PJ_SCHEDULE.milestonesHeading}</span>
             <div style={{ position: "relative", height: 22 }}>
-              <div style={{ position: "absolute", left: `${pjPct(PJ_TODAY)}%`, top: -7, height: 12, width: 1, background: "rgba(34,211,238,.55)" }} />
+              <div style={{ position: "absolute", left: `${todayPct}%`, top: -7, height: 12, width: 1, background: "rgba(34,211,238,.55)" }} />
               {milestones.map((m) => {
                 const c = MILESTONE_TONE[m.tone];
                 return (
@@ -513,7 +543,7 @@ function ScheduleSection({ open, onToggle }: { open: number | null; onToggle: (n
         </div>
       </div>
 
-      {open !== null && <PhasePanel n={open} />}
+      {open !== null && <PhasePanel n={open} phases={phases} />}
     </div>
   );
 }
@@ -637,7 +667,15 @@ function TaskCard({ task, open, onToggle }: { task: ProjectTask; open: boolean; 
 }
 
 /* ── The task board — prototype 1432-1484 ────────────────────────────────── */
-function TaskBoard({ openTask, onToggle }: { openTask: string | null; onToggle: (id: string) => void }) {
+function TaskBoard({
+  openTask,
+  onToggle,
+  tasks,
+}: {
+  openTask: string | null;
+  onToggle: (id: string) => void;
+  tasks: readonly ProjectTask[];
+}) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
@@ -650,7 +688,7 @@ function TaskBoard({ openTask, onToggle }: { openTask: string | null; onToggle: 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 10, alignItems: "start" }}>
         {PJ_LANES.map((lane) => {
           const isWaiting = lane.key === "waiting";
-          const cards = pjTasksInLane(lane.key);
+          const cards = pjTasksInLane(lane.key, tasks);
           return (
             <div
               key={lane.key}
@@ -721,6 +759,7 @@ function FooterActions() {
 export default function PortalV2ProjectsPage() {
   const [openPhase, setOpenPhase] = useState<number | null>(null);
   const [openTask, setOpenTask] = useState<string | null>(null);
+  const live = useProjectsLive();
 
   return (
     <PortalV2Shell eyebrow="Projects" title={PROJECT_META.title}>
@@ -759,6 +798,10 @@ export default function PortalV2ProjectsPage() {
           Overview
         </Link>
 
+        <span data-testid="pv2-projects-source" style={PV2_SOURCE_CLIP}>
+          {live.dataState}
+        </span>
+
         {/* Header */}
         <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 16, flexWrap: "wrap", paddingBottom: 14, borderBottom: "1px solid rgba(30,41,59,.9)" }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 5, minWidth: 0 }}>
@@ -775,14 +818,22 @@ export default function PortalV2ProjectsPage() {
 
         {/* The three summary cards */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(310px,1fr))", gap: 12, alignItems: "stretch" }}>
-          <WaitingCard />
-          <WithUsCard />
-          <ScopeCard />
+          <WaitingCard tasks={live.tasks} />
+          <WithUsCard mineItems={live.mineItems} />
+          <ScopeCard bars={live.scopeBars} />
         </div>
 
-        <ScheduleSection open={openPhase} onToggle={(n) => setOpenPhase((cur) => (cur === n ? null : n))} />
+        <ScheduleSection
+          open={openPhase}
+          onToggle={(n) => setOpenPhase((cur) => (cur === n ? null : n))}
+          phases={live.phases}
+          rows={live.rows}
+          milestones={live.milestones}
+          todayPct={live.todayPct}
+          contractEndPct={live.contractEndPct}
+        />
 
-        <TaskBoard openTask={openTask} onToggle={(id) => setOpenTask((cur) => (cur === id ? null : id))} />
+        <TaskBoard openTask={openTask} onToggle={(id) => setOpenTask((cur) => (cur === id ? null : id))} tasks={live.tasks} />
 
         <FooterActions />
       </div>
