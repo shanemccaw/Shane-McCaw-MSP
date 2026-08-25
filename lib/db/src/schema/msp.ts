@@ -245,6 +245,85 @@ export const tenantAddOnEntitlementsTable = pgTable("tenant_add_on_entitlements"
 export type TenantAddOnEntitlement = typeof tenantAddOnEntitlementsTable.$inferSelect;
 export type InsertTenantAddOnEntitlement = typeof tenantAddOnEntitlementsTable.$inferInsert;
 
+// ── Compliance framework / obligation catalog + per-tenant scope (#1256) ──────
+// No table anywhere modelled "which frameworks are in scope for this tenant and
+// what state each is in" — msp_risk_decisions.framework/.obligation are free-text
+// per-risk citations, not a catalog, and portal-v2-compliance-obligations.tsx
+// rendered the register 100% from the CMP_OBLIGATIONS fixture. This is the
+// durable catalog + scope model that unblocks #1223's "Obligations We Check
+// Against" wiring.
+//
+// Two-level catalog: a framework (GDPR, SOX, HIPAA, PCI DSS v4.0…) owns one or
+// more specific obligations (article/clause citations carrying the requirement
+// text). The fixture's GDPR appearing as three rows (Art. 5(1)(e)·32, Art. 15,
+// Art. 30) is exactly this framework→obligation shape.
+//
+// State/tone the drill-down shows are computed LIVE at read time by joining an
+// in-scope obligation to the tenant's open findings (sign-off A) — deliberately
+// NOT stored here. These tables carry only the durable scope decision + audit.
+// DDL lands via lib/db/migrations/manual/2026-08-24-compliance-framework-obligation-catalog-1256.sql.
+
+// Global regime catalog — reference data seeded once, shared across all tenants.
+export const complianceFrameworksTable = pgTable("compliance_frameworks", {
+  id: serial("id").primaryKey(),
+  key: text("key").notNull().unique(),          // stable slug, e.g. 'gdpr', 'sox', 'pci-dss-v4'
+  name: text("name").notNull(),                 // display, e.g. 'GDPR', 'PCI DSS v4.0'
+  authority: text("authority"),                 // 'EU', 'SEC', 'HHS', 'PCI SSC'
+  category: text("category"),                   // 'privacy' | 'financial' | 'healthcare' | 'payments'
+  description: text("description"),
+  defaultInScope: boolean("default_in_scope").notNull().default(false), // onboarding applicability hint
+  active: boolean("active").notNull().default(true),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const insertComplianceFrameworkSchema = createInsertSchema(complianceFrameworksTable).omit({ id: true, createdAt: true, updatedAt: true });
+export type ComplianceFramework = typeof complianceFrameworksTable.$inferSelect;
+export type InsertComplianceFramework = typeof complianceFrameworksTable.$inferInsert;
+
+// A specific obligation/clause within a framework — the "Obligations We Check
+// Against" master list. Global catalog, FK → framework.
+export const complianceObligationsTable = pgTable("compliance_obligations", {
+  id: serial("id").primaryKey(),
+  frameworkId: integer("framework_id").notNull().references(() => complianceFrameworksTable.id, { onDelete: "cascade" }),
+  key: text("key").notNull().unique(),          // 'gdpr-art-5-1-e', 'sox-802'
+  citation: text("citation").notNull(),         // 'GDPR Art. 5(1)(e) · Art. 32'
+  requires: text("requires").notNull(),         // the requirement text
+  active: boolean("active").notNull().default(true),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("compliance_obligations_framework_id_idx").on(t.frameworkId),
+]);
+
+export const insertComplianceObligationSchema = createInsertSchema(complianceObligationsTable).omit({ id: true, createdAt: true, updatedAt: true });
+export type ComplianceObligation = typeof complianceObligationsTable.$inferSelect;
+export type InsertComplianceObligation = typeof complianceObligationsTable.$inferInsert;
+
+// Per-tenant scope decision (which frameworks apply + audit). One row per
+// (tenant, framework). Scope is framework-level for v1; obligations inherit.
+export const tenantComplianceScopeTable = pgTable("tenant_compliance_scope", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").notNull().references(() => tenantsTable.id, { onDelete: "cascade" }),
+  frameworkId: integer("framework_id").notNull().references(() => complianceFrameworksTable.id, { onDelete: "cascade" }),
+  inScope: boolean("in_scope").notNull(),
+  scopeReason: text("scope_reason"),            // 'Marked out of scope in onboarding — no cardholder data'
+  source: text("source", { enum: ["onboarding", "manual", "advisor"] }).notNull().default("onboarding"),
+  decidedBy: text("decided_by"),                // who set it
+  decidedAt: timestamp("decided_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  unique("tenant_compliance_scope_tenant_framework_uq").on(t.tenantId, t.frameworkId),
+  index("tenant_compliance_scope_tenant_id_idx").on(t.tenantId),
+]);
+
+export const insertTenantComplianceScopeSchema = createInsertSchema(tenantComplianceScopeTable).omit({ id: true, createdAt: true, updatedAt: true });
+export type TenantComplianceScope = typeof tenantComplianceScopeTable.$inferSelect;
+export type InsertTenantComplianceScope = typeof tenantComplianceScopeTable.$inferInsert;
+
 // ── Copilot Assessment quiz catalog (#271, epic #183) ─────────────────────────
 // The four adaptive quiz catalogs — persona clusters, personas, use cases and
 // outcomes — moved out of msp-portal's hardcoded quizCatalog.ts and into real
