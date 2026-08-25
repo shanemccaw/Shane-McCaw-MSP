@@ -46,6 +46,7 @@ import { useFormDrawer } from "@/components/portal-v2/FormDrawer";
 import { useAcceptRisk } from "@/components/portal-v2/AcceptRiskPanel";
 import { GOV_SRC_META } from "@/components/portal-v2/govPages";
 import { useLivePillarHero, PV2_SOURCE_CLIP } from "@/components/portal-v2/useLivePillarHero";
+import { useMessageCenter } from "@/components/portal-v2/useMessageCenter";
 import { PILLAR_ORDER } from "@/components/copilot-journey/journeyTokens";
 import {
   HLT_ACCEPTED,
@@ -74,6 +75,7 @@ import {
   hltDriftRows,
   hltTrendGeometry,
   type HltFinding,
+  type HltServiceTone,
 } from "@/components/portal-v2/hltDashboardData";
 
 const MONO = "'SF Mono',Menlo,Consolas,monospace";
@@ -192,6 +194,34 @@ export default function PortalV2HealthPage() {
   const score = live.score ?? HLT_HERO.score;
   const delta = live.delta?.text ?? HLT_HERO.delta;
   const deltaColor = live.delta?.color ?? "#f87171";
+
+  // The "Service health & incoming changes" panel has a real per-item feed —
+  // this tenant's own synced Message Center posts (portal-message-center.ts,
+  // the same route the Microsoft Changes page reads). It replaces the design's
+  // fictional incident/advisory rows with the tenant's own highest-scoring
+  // real posts. There is no live equivalent for the incident/advisory ROWS
+  // themselves (Message Center carries posts only, not incident status), so
+  // the fixture stays whole when there is no real, scoped data to show instead.
+  const messageCenter = useMessageCenter();
+  const liveServiceRows = messageCenter.dataset.live
+    ? messageCenter.dataset.posts
+        .slice()
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 5)
+        .map((p) => ({
+          title: p.title,
+          kind: `Message Center · ${p.id}`,
+          when: p.when,
+          impact: p.impact,
+          tone: (p.hard ? "amber" : "blue") as HltServiceTone,
+        }))
+    : null;
+  const serviceRows = liveServiceRows && liveServiceRows.length > 0 ? liveServiceRows : HLT_SERVICE;
+  const mcAllCount =
+    messageCenter.dataset.live && messageCenter.dataset.itemCount > 0
+      ? String(messageCenter.dataset.itemCount)
+      : HLT_MC_COUNT;
+
   const ringR = 46;
   const ringC = 2 * Math.PI * ringR;
   const ringOffset = ringC - (score / 100) * ringC;
@@ -1700,6 +1730,9 @@ export default function PortalV2HealthPage() {
                   <span style={{ fontSize: "11px", color: "#94a3b8", lineHeight: 1.45 }}>
                     Straight from the Message Center, filtered to services you use.
                   </span>
+                  <span data-testid="pv2-hlt-service-source" style={PV2_SOURCE_CLIP}>
+                    {liveServiceRows && liveServiceRows.length > 0 ? "live" : "fixture"}
+                  </span>
                 </div>
                 {/* Design `hltMcGo` (3185) opens the Message Center drill-down,
                     a Health sub-page not built yet — inert for now. */}
@@ -1720,10 +1753,10 @@ export default function PortalV2HealthPage() {
                     whiteSpace: "nowrap",
                   }}
                 >
-                  All {HLT_MC_COUNT} notices →
+                  All {mcAllCount} notices →
                 </button>
               </div>
-              {HLT_SERVICE.map((s) => {
+              {serviceRows.map((s) => {
                 const c = HLT_SERVICE_TONE[s.tone];
                 return (
                   <div
