@@ -113,6 +113,7 @@ namespace BuildConsole.Services
                         // ManifestUiStep.Critical). Same optional-field shape-guard as `screenshot`; any non-`true`
                         // JSON kind (absent/false/string/number) leaves it false = today's WARN-and-continue.
                         Critical = step.TryGetProperty("critical", out var crit) && crit.ValueKind == JsonValueKind.True,
+                        SessionTag = step.TryGetProperty("sessionTag", out var stag) && stag.ValueKind == JsonValueKind.String ? stag.GetString() : null,
                     }).ToList();
                 }
 
@@ -122,6 +123,47 @@ namespace BuildConsole.Services
             {
                 return null;
             }
+        }
+
+        /// <summary>
+        /// Filters all step lists in the manifest to retain only steps that match the specified
+        /// sessionTag (case-insensitive) or carry a special "always"/"setup"/"cleanup" tag.
+        /// If tag is null or empty, no filtering is performed.
+        /// </summary>
+        public void FilterByTag(string tag)
+        {
+            if (string.IsNullOrWhiteSpace(tag)) return;
+
+            ApiTests = ApiTests.Where(e => HasMatchingTag(e, tag) || HasAlwaysTag(e)).ToList();
+            GraphTests = GraphTests.Where(e => HasMatchingTag(e, tag) || HasAlwaysTag(e)).ToList();
+            PostGraphApiTests = PostGraphApiTests.Where(e => HasMatchingTag(e, tag) || HasAlwaysTag(e)).ToList();
+            ZohoTests = ZohoTests.Where(e => HasMatchingTag(e, tag) || HasAlwaysTag(e)).ToList();
+            PowerShellVerify = PowerShellVerify.Where(e => HasMatchingTag(e, tag) || HasAlwaysTag(e)).ToList();
+            UiSteps = UiSteps.Where(s => string.Equals(s.SessionTag, tag, System.StringComparison.OrdinalIgnoreCase) || IsAlwaysTag(s.SessionTag)).ToList();
+        }
+
+        private static bool IsAlwaysTag(string? tag)
+        {
+            if (string.IsNullOrWhiteSpace(tag)) return false;
+            return string.Equals(tag, "always", System.StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(tag, "setup", System.StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(tag, "cleanup", System.StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool HasAlwaysTag(JsonElement element)
+        {
+            if (element.ValueKind != JsonValueKind.Object) return false;
+            return element.TryGetProperty("sessionTag", out var prop) &&
+                   prop.ValueKind == JsonValueKind.String &&
+                   IsAlwaysTag(prop.GetString());
+        }
+
+        private static bool HasMatchingTag(JsonElement element, string tag)
+        {
+            if (element.ValueKind != JsonValueKind.Object) return false;
+            return element.TryGetProperty("sessionTag", out var prop) &&
+                   prop.ValueKind == JsonValueKind.String &&
+                   string.Equals(prop.GetString(), tag, System.StringComparison.OrdinalIgnoreCase);
         }
     }
 
@@ -168,5 +210,7 @@ namespace BuildConsole.Services
         /// maxDurationMs/extract/textContains); default false keeps today's log-the-WARN-and-continue behaviour,
         /// since seeing multiple independent failures in one pass is sometimes genuinely useful.</summary>
         public bool Critical { get; set; }
+        /// <summary>Optional `"sessionTag": "tag"` — used to scope runs triggered via shaneapp://runTest?onlyTag=&lt;tag&gt;.</summary>
+        public string? SessionTag { get; set; }
     }
 }

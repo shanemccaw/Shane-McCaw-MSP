@@ -398,7 +398,11 @@ phase - not only when explicitly asked.
   run it before the session ends via `shaneapp://runTest` (see
   `desktop/BuildConsole/AGENT_PROTOCOLS.md` section 2 for the invocation
   contract and result envelope) and report the real pass/fail result honestly
-  in the build's own summary/commit - don't write a test and leave it
+  in the build's own summary/commit. When extending an existing shared manifest,
+  do not run the entire file; instead, write a unique `"sessionTag": "<tag>"`
+  on the steps you added and use `shaneapp://runTest?file=<manifest>&onlyTag=<tag>`
+  to run only those new steps by default, reserving full-file runs for explicit
+  regression-sweep requests. Don't write a test and leave it
   unexecuted for someone else to discover was red. If the manifest genuinely
   fails, say so plainly rather than reporting the build as successful while a
   real test fails. Before calling it done, confirm the manifest actually lands

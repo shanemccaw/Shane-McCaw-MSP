@@ -112,6 +112,21 @@ namespace BuildConsole
                 BuildConsole.Services.ActivityLog.Log(ch,
                     $"runTest: manifest resolved -> {manifestPath} (#{manifest.Issue} {manifest.Feature}).");
 
+                string? onlyTag = GetShaneAppQueryParam(req.Raw, "onlyTag");
+                if (!string.IsNullOrWhiteSpace(onlyTag))
+                {
+                    BuildConsole.Services.ActivityLog.Log(ch, $"runTest: applying step filter onlyTag='{onlyTag}'.");
+                    manifest.FilterByTag(onlyTag);
+
+                    int filteredCount = manifest.ApiTests.Count + manifest.GraphTests.Count + manifest.PostGraphApiTests.Count + manifest.ZohoTests.Count + manifest.UiSteps.Count + manifest.PowerShellVerify.Count;
+                    if (filteredCount == 0)
+                    {
+                        BuildConsole.Services.ActivityLog.Log(ch, $"runTest: filter onlyTag='{onlyTag}' resulted in 0 matching steps.");
+                        WriteShaneAppRunTestResult(req, fileArg, ok: false, error: $"no steps matched session tag '{onlyTag}'", manifestPath: manifestPath, result: null);
+                        return;
+                    }
+                }
+
                 // See the file header: hold the same latch #898's remote poll uses — both for
                 // mutual exclusion on the single shared runner AND to make RunManifestAsync run
                 // headless (no blocking device-code / screenshot-review modals). This flag is
@@ -234,6 +249,8 @@ namespace BuildConsole
                 int total = result?.Steps.Count ?? 0;
                 int passed = result?.Steps.Count(s => s.Passed) ?? 0;
 
+                string? onlyTag = GetShaneAppQueryParam(req.Raw, "onlyTag");
+
                 var envelope = new
                 {
                     ok,
@@ -243,6 +260,7 @@ namespace BuildConsole
                     ranAtUtc = DateTime.UtcNow.ToString("o"),
                     manifestFile = fileArg,
                     manifestPath = manifestRel,
+                    onlyTag = string.IsNullOrWhiteSpace(onlyTag) ? null : onlyTag,
                     issue = result?.Issue,
                     feature = result?.Feature,
                     stepCount = total,

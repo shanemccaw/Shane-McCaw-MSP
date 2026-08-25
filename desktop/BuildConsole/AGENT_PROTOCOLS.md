@@ -171,12 +171,13 @@ as‑is for the genuinely remote case.
 ### The invocation contract
 
 ```
-shaneapp://runTest?file=<manifest filename>&resultRef=<optional out path>&src=<optional caller tag>
+shaneapp://runTest?file=<manifest filename>&onlyTag=<optional filter tag>&resultRef=<optional out path>&src=<optional caller tag>
 ```
 
 | Query param | Required | Meaning |
 |-------------|----------|---------|
 | `file` | **yes** | Manifest to run. A bare `{feature}.json` filename resolved by searching `test-manifests/` recursively (the same resolution #898/#964 use since #960 moved manifests into `{area}/` subdirs); an absolute or repo‑relative existing path is honored directly too. (`ref=` is accepted as a fallback alias for this.) |
+| `onlyTag` | no | Scopes execution to only run manifest steps carrying this sessionTag value (case-insensitive). If missing, runs the entire file. |
 | `resultRef` | no | Path to write the JSON result envelope to. Defaults to `%TEMP%\shaneapp-runTest-<file>.result.json` (predictable, so a caller can read it without passing `resultRef`). |
 | `src` | no | Free‑text caller tag, logged verbatim as the source (`unknown` when absent). |
 
@@ -212,6 +213,7 @@ shape `test-results/*.json` and #898's HTTP delivery use):
   "ranAtUtc": "2026-08-13T...Z",
   "manifestFile": "hello-world-ui.json",
   "manifestPath": "test-manifests/smoke/hello-world-ui.json",  // repo-relative, resolved
+  "onlyTag": "issue-1263",    // whatever ?onlyTag= was (null if absent)
   "issue": 1011,
   "feature": "...",
   "stepCount": 6,
