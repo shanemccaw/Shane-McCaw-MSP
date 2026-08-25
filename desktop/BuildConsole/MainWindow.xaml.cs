@@ -4250,6 +4250,9 @@ namespace BuildConsole
                 // got removed - see the wv2:WebView2 declaration) - a script
                 // added after navigation starts only applies to the NEXT one.
                 await wv.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(BuildConsole.Services.ChatButtonInjector.Script);
+                // Git #1253 — also inject the issue-mention highlighter that underlines
+                // #NNN tokens in Claude's responses and lets Shane hover/click them.
+                await wv.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(BuildConsole.Services.IssueMentionInjector.Script);
                 wv.WebMessageReceived -= ChatWv_WebMessageReceived;
                 wv.WebMessageReceived += ChatWv_WebMessageReceived;
                 return true;
@@ -4596,6 +4599,87 @@ namespace BuildConsole
                         // Fallback if triggered from a non-chat tab
                         OpenSqlRunnerTab().SetSqlQuery(sqlText);
                     }
+                }
+                // ── Git #1253: issue-mention hover / click handlers ───────────────────
+                else if (type == "BT_OPEN_ISSUE")
+                {
+                    int? issueNum = Int("number");
+                    if (issueNum.HasValue && issueNum.Value > 0)
+                    {
+                        ActivityLog.Log("chat.issue-mention", $"BT_OPEN_ISSUE #{issueNum}");
+                        await OpenGitDetailByNumberAsync(issueNum.Value);
+                    }
+                }
+                else if (type == "BT_HOVER_ISSUE")
+                {
+                    int? issueNum = Int("number");
+                    if (!issueNum.HasValue || issueNum.Value <= 0) return;
+                    int n = issueNum.Value;
+
+                    // Find the sender WebView so we push the tooltip back into the right tab
+                    Microsoft.Web.WebView2.Wpf.WebView2? senderWv = null;
+                    foreach (var kvp in _chatTabs)
+                    {
+                        if (ReferenceEquals(kvp.Value.WebView, sender) ||
+                            kvp.Value.WebView?.CoreWebView2 == sender)
+                        {
+                            senderWv = kvp.Value.WebView;
+                            break;
+                        }
+                    }
+                    if (senderWv == null && ClaudeWebView.CoreWebView2 == sender)
+                        senderWv = ClaudeWebView;
+
+                    if (senderWv == null) return;
+
+                    // Resolve from cache first, live-fetch as fallback
+                    string tipTitle  = "Unknown";
+                    string tipStatus = "OPEN";
+                    bool   tipEpic   = false;
+
+                    var cached = LeftSidebar.BuildDetailIssue(n);
+                    if (cached != null)
+                    {
+                        tipTitle  = cached.RawTitle;
+                        tipStatus = cached.Status;
+                        tipEpic   = cached.IsEpic;
+                    }
+                    else
+                    {
+                        var settings = BuildConsole.Services.BuildConsoleSettings.Load();
+                        if (settings.HasGitHubPat)
+                        {
+                            try
+                            {
+                                var ghClient = new BuildConsole.Services.GitHubApiClient(settings.GitHubPat);
+                                var detail   = await ghClient.GetIssueAsync(n);
+                                if (detail != null)
+                                {
+                                    tipTitle  = detail.Title;
+                                    tipStatus = string.Equals(detail.State, "closed",
+                                        StringComparison.OrdinalIgnoreCase) ? "CLOSED" : "OPEN";
+                                }
+                            }
+                            catch { /* best-effort; keep defaults */ }
+                        }
+                    }
+
+                    // Push back to the WebView — JS will update the already-visible "Loading…" tip
+                    try
+                    {
+                        string js = $"window.__btShowIssueTip && window.__btShowIssueTip(" +
+                                    $"{n}," +
+                                    $"{JsLiteral(tipTitle)}," +
+                                    $"{JsLiteral(tipStatus)}," +
+                                    $"{(tipEpic ? "true" : "false")});";
+                        await senderWv.ExecuteScriptAsync(js);
+                        ActivityLog.Log("chat.issue-mention", $"BT_HOVER_ISSUE #{n}: '{tipTitle}' ({tipStatus}{(tipEpic ? ", epic" : "")})");
+                    }
+                    catch { }
+                }
+                else if (type == "BT_UNHOVER_ISSUE")
+                {
+                    // Tooltip hide is handled entirely in JS; nothing to do on the C# side.
                 }
             }
             catch { }
