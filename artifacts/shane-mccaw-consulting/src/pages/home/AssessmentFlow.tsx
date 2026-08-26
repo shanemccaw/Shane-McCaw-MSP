@@ -11,6 +11,29 @@ import {
   getGa4ClientId,
   getAnalyticsSessionId,
 } from "@/lib/analytics";
+// #1306 — the inline Stripe Payment Element (stripe.js boot, iframe theming,
+// mount/confirm lifecycle) was extracted from this file into the reusable
+// component, along with the field-styling constants both sides share (#482's
+// single-source rule: our own fields and the iframe's must read from the same
+// numbers, so they now live with the component and are imported back here).
+import {
+  StripePaymentElement,
+  PAY_PANEL,
+  PAY_PANEL_ACCENT,
+  PAY_PANEL_HEAD,
+  PAY_PANEL_FOOT,
+  SECURE_BADGE,
+  LockIcon,
+  PaymentSkeleton,
+  FIELD_BG,
+  FIELD_BORDER,
+  FIELD_RADIUS,
+  FIELD_PADDING,
+  FIELD_FONT_SIZE,
+  TEXT_STRONG,
+  TEXT_MUTED,
+  DANGER,
+} from "@/components/StripePaymentElement";
 
 /**
  * The real Copilot Readiness Assessment purchase flow, embedded on the Home
@@ -327,81 +350,9 @@ function openConsentPopup(url: string): Window | null {
   return window.open(url, "smc-consent", "width=640,height=780,menubar=no,toolbar=no");
 }
 
-// ── stripe.js (#435) ──────────────────────────────────────────────────────────
-// Loaded from Stripe's own domain rather than bundled — required by Stripe and
-// the reason no @stripe/* npm package is needed for the Payment Element.
-
-interface StripeElement {
-  mount: (target: HTMLElement) => void;
-  destroy: () => void;
-}
-interface StripeElements {
-  create: (type: "payment", options?: Record<string, unknown>) => StripeElement;
-}
-interface StripeInstance {
-  elements: (options: Record<string, unknown>) => StripeElements;
-  confirmPayment: (options: {
-    elements: StripeElements;
-    redirect: "if_required";
-    confirmParams?: Record<string, unknown>;
-  }) => Promise<{
-    error?: { message?: string };
-    paymentIntent?: { id: string; status: string };
-  }>;
-}
-declare global {
-  interface Window {
-    Stripe?: (publishableKey: string) => StripeInstance;
-  }
-}
-
-const STRIPE_JS_SRC = "https://js.stripe.com/v3/";
-
-function loadStripeJs(): Promise<void> {
-  if (window.Stripe) return Promise.resolve();
-  return new Promise((resolve, reject) => {
-    const existing = document.querySelector<HTMLScriptElement>(`script[src="${STRIPE_JS_SRC}"]`);
-    if (existing) {
-      existing.addEventListener("load", () => resolve());
-      existing.addEventListener("error", () => reject(new Error("stripe.js failed to load")));
-      return;
-    }
-    const script = document.createElement("script");
-    script.src = STRIPE_JS_SRC;
-    script.async = true;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error("stripe.js failed to load"));
-    document.head.appendChild(script);
-  });
-}
-
 // ── Styling helpers (unchanged from the original design) ──────────────────────
-
-// #482: the Payment Element is a cross-origin iframe — no stylesheet on this
-// page can reach inside it, so the only way it can match our own fields is to
-// be handed the same numbers through Stripe's appearance API. These constants
-// are the single source for both sides, so the two cannot drift apart.
-const FIELD_BG = "rgba(2,6,23,.6)";
-const FIELD_BG_FOCUS = "rgba(2,6,23,.85)";
-const FIELD_BORDER = "rgba(51,65,85,.9)";
-const FIELD_BORDER_HOVER = "rgba(71,85,105,.95)";
-const FIELD_RADIUS = 10;
-const FIELD_PADDING = "13px 15px";
-const FIELD_FONT_SIZE = 15;
-const HAIRLINE = "rgba(30,41,59,.9)";
-const ACCENT = "#3B82F6";
-const ACCENT_SOFT = "rgba(37,99,235,.14)";
-const ACCENT_EDGE = "rgba(37,99,235,.32)";
-const ACCENT_BLUE_SOFT = "#5B8DEF";
-const ACCENT_VIOLET = "#9B7CFF";
-// The site's primary accent sweep (Home.tsx's hero gradient), reused as the
-// panel's top edge so the payment step reads as part of the same page.
-const ACCENT_GRADIENT = `linear-gradient(96deg,${ACCENT_BLUE_SOFT} 0%,${ACCENT_VIOLET} 100%)`;
-const TEXT_STRONG = "#f1f5f9";
-const TEXT_BODY = "#cbd5e1";
-const TEXT_MUTED = "#64748b";
-const TEXT_FAINT = "#475569";
-const DANGER = "#fca5a5";
+// The field/accent/text constants themselves moved to StripePaymentElement.tsx
+// with the Payment Element theming (#1306) and are imported above.
 
 function fieldStyle(): React.CSSProperties {
   return {
@@ -470,261 +421,6 @@ const TWO_COL: React.CSSProperties = {
   gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,270px),1fr))",
   gap: "clamp(26px,4vw,44px)",
   alignItems: "start",
-};
-
-// ── Stripe Payment Element theming (#482) ─────────────────────────────────────
-// Every selector and every property below is drawn from Stripe's documented
-// appearance allowlist — an unsupported one is not ignored, it throws at mount
-// and takes the whole payment form down with it, so nothing here is guessed.
-// Deliberately absent: gradients (`backgroundImage` is not on the allowlist at
-// any selector), which is why the blue→violet accent lives on the panel we own
-// around the iframe rather than inside it.
-
-const FOCUS_RING = "0 0 0 3px rgba(59,130,246,.22)";
-const TAB_TRANSITION = "background-color .18s ease,border-color .18s ease,box-shadow .18s ease,color .18s ease";
-
-// The Element renders in a cross-origin iframe, so `fontFamily: "inherit"` —
-// what this config used to pass — has nothing to inherit from and resolves to
-// the iframe document's default serif. That is why the payment step rendered in
-// Times while the rest of the site is Inter. The family has to be named
-// outright, and the webfont has to be loaded *into* the iframe by Stripe, which
-// is what the `fonts` option below does (same Google Fonts stylesheet index.html
-// already loads for the page itself, so it is served from cache).
-const STRIPE_FONT_STACK = "'Inter',system-ui,-apple-system,'Segoe UI',sans-serif";
-const STRIPE_FONTS = [
-  { cssSrc: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" },
-] as const;
-
-const STRIPE_APPEARANCE = {
-  theme: "night",
-  labels: "above",
-  variables: {
-    fontFamily: STRIPE_FONT_STACK,
-    fontSizeBase: `${FIELD_FONT_SIZE}px`,
-    fontSizeSm: "13px",
-    fontSizeXs: "12px",
-    fontSize2Xs: "11px",
-    fontLineHeight: "1.5",
-    fontWeightNormal: "500",
-    fontWeightMedium: "600",
-    fontWeightBold: "700",
-    fontSmooth: "always",
-    spacingUnit: "4px",
-    borderRadius: `${FIELD_RADIUS}px`,
-    gridRowSpacing: "18px",
-    gridColumnSpacing: "14px",
-    tabSpacing: "10px",
-    labelSpacing: "7px",
-    colorPrimary: ACCENT,
-    colorBackground: FIELD_BG,
-    colorText: TEXT_STRONG,
-    colorTextSecondary: TEXT_MUTED,
-    // Deliberately the muted tone rather than the fainter footnote one — this is
-    // a form the buyer has to read while typing a card number into it.
-    colorTextPlaceholder: TEXT_MUTED,
-    colorDanger: DANGER,
-    colorSuccess: "#34d399",
-    colorWarning: "#fbbf24",
-    accessibleColorOnColorPrimary: "#ffffff",
-    labelColorText: TEXT_MUTED,
-    labelFontSize: "11px",
-    labelFontWeight: "600",
-    inputColorBorder: FIELD_BORDER,
-    inputFocusColorBorder: ACCENT,
-    inputBoxShadow: "none",
-    inputFocusBoxShadow: FOCUS_RING,
-    focusBoxShadow: FOCUS_RING,
-    focusOutline: "none",
-    iconColor: TEXT_MUTED,
-    iconHoverColor: TEXT_BODY,
-    iconChevronDownColor: TEXT_MUTED,
-    iconChevronDownHoverColor: TEXT_BODY,
-    iconCheckmarkColor: "#ffffff",
-    tabIconColor: TEXT_MUTED,
-    tabIconHoverColor: TEXT_BODY,
-    tabIconSelectedColor: "#93c5fd",
-    tabIconMoreColor: TEXT_MUTED,
-    tabIconMoreHoverColor: TEXT_BODY,
-  },
-  rules: {
-    // Payment-method tabs, in the step rail's own chip language (lines ~746):
-    // translucent slate at rest, blue ring over a blue wash when selected.
-    ".Tab": {
-      backgroundColor: FIELD_BG,
-      border: `1px solid ${FIELD_BORDER}`,
-      borderRadius: "12px",
-      boxShadow: "none",
-      color: TEXT_MUTED,
-      padding: "12px 14px",
-      transition: TAB_TRANSITION,
-    },
-    ".Tab:hover": {
-      backgroundColor: "rgba(15,23,42,.75)",
-      borderColor: FIELD_BORDER_HOVER,
-      boxShadow: "none",
-      color: TEXT_BODY,
-    },
-    ".Tab:focus": {
-      borderColor: ACCENT,
-      boxShadow: FOCUS_RING,
-      outline: "none",
-    },
-    ".Tab--selected": {
-      backgroundColor: ACCENT_SOFT,
-      borderColor: ACCENT,
-      boxShadow: `0 0 0 1px ${ACCENT_EDGE},0 8px 20px -12px rgba(59,130,246,.85)`,
-      color: "#e2e8f0",
-    },
-    ".TabIcon": { transition: "fill .18s ease,color .18s ease" },
-    ".TabLabel": { fontSize: "13px", fontWeight: "600", letterSpacing: ".01em" },
-
-    // Field labels — the same uppercase micro-label every other field in this
-    // flow uses (labelStyle above), which is most of what stops the iframe
-    // reading as a bolted-on third-party widget.
-    ".Label": {
-      color: TEXT_MUTED,
-      fontSize: "11px",
-      fontWeight: "600",
-      letterSpacing: ".12em",
-      textTransform: "uppercase",
-    },
-    ".Label--invalid": { color: DANGER },
-
-    // Inputs — numerically identical to fieldStyle(), plus the focus ring our
-    // own fields never had.
-    ".Input": {
-      backgroundColor: FIELD_BG,
-      border: `1px solid ${FIELD_BORDER}`,
-      borderRadius: `${FIELD_RADIUS}px`,
-      boxShadow: "none",
-      color: TEXT_STRONG,
-      fontSize: `${FIELD_FONT_SIZE}px`,
-      padding: FIELD_PADDING,
-      transition: "background-color .16s ease,border-color .16s ease,box-shadow .16s ease",
-    },
-    ".Input:hover": { borderColor: FIELD_BORDER_HOVER },
-    ".Input:focus": {
-      backgroundColor: FIELD_BG_FOCUS,
-      borderColor: ACCENT,
-      boxShadow: FOCUS_RING,
-      outline: "none",
-    },
-    ".Input--invalid": {
-      borderColor: DANGER,
-      boxShadow: "0 0 0 3px rgba(248,113,113,.16)",
-      color: "#fecaca",
-    },
-    ".Input::placeholder": { color: TEXT_MUTED },
-    ".Error": { color: DANGER, fontSize: "12.5px", marginTop: "7px" },
-
-    // Surfaces the Element only renders for some payment methods — themed up
-    // front so an unfamiliar method never falls back to stock Stripe chrome.
-    ".Block": {
-      backgroundColor: "rgba(2,6,23,.5)",
-      border: `1px solid ${HAIRLINE}`,
-      borderRadius: "14px",
-      boxShadow: "none",
-    },
-    ".BlockDivider": { backgroundColor: HAIRLINE },
-    ".AccordionItem": {
-      backgroundColor: FIELD_BG,
-      border: `1px solid ${FIELD_BORDER}`,
-      borderRadius: "12px",
-      boxShadow: "none",
-      color: TEXT_BODY,
-      padding: "14px 16px",
-    },
-    ".AccordionItem--selected": {
-      backgroundColor: ACCENT_SOFT,
-      borderColor: ACCENT,
-      color: TEXT_STRONG,
-    },
-    ".PickerItem": {
-      backgroundColor: FIELD_BG,
-      border: `1px solid ${FIELD_BORDER}`,
-      borderRadius: `${FIELD_RADIUS}px`,
-      boxShadow: "none",
-      color: TEXT_BODY,
-    },
-    ".PickerItem--selected": {
-      backgroundColor: ACCENT_SOFT,
-      borderColor: ACCENT,
-      color: TEXT_STRONG,
-    },
-    ".CheckboxInput": {
-      backgroundColor: FIELD_BG,
-      border: `1px solid ${FIELD_BORDER}`,
-      borderRadius: "5px",
-      boxShadow: "none",
-      transition: "background-color .16s ease,border-color .16s ease",
-    },
-    ".CheckboxInput--checked": { backgroundColor: ACCENT, borderColor: ACCENT },
-    ".CheckboxLabel": { color: "#94a3b8", fontSize: "13px", lineHeight: "1.5" },
-    ".RadioIconOuter": { stroke: FIELD_BORDER, transition: "stroke .16s ease" },
-    ".RadioIconOuter--checked": { stroke: ACCENT },
-    ".RadioIconInner": { fill: ACCENT },
-    ".Menu": { padding: "6px" },
-    ".MenuAction": {
-      backgroundColor: "transparent",
-      borderRadius: "8px",
-      color: TEXT_BODY,
-      fontSize: "13.5px",
-      padding: "9px 11px",
-      transition: "background-color .14s ease,color .14s ease",
-    },
-    ".MenuAction:hover": { backgroundColor: ACCENT_SOFT, color: TEXT_STRONG },
-    ".Dropdown": {
-      border: `1px solid ${HAIRLINE}`,
-      borderRadius: "12px",
-      boxShadow: "0 18px 40px -20px rgba(2,6,23,.95)",
-    },
-    ".DropdownItem": {
-      backgroundColor: "transparent",
-      borderRadius: "8px",
-      color: TEXT_BODY,
-      fontSize: "14px",
-      padding: "9px 11px",
-    },
-    ".DropdownItem--highlight": { backgroundColor: ACCENT_SOFT, color: TEXT_STRONG },
-  },
-} as const;
-
-// Tabs, stated rather than inherited: the layout Stripe defaults to today is
-// the one this theming was designed against, and a dashboard-side default
-// change should not silently restyle the step.
-const STRIPE_PAYMENT_ELEMENT_OPTIONS = { layout: { type: "tabs" } } as const;
-
-const PAY_PANEL: React.CSSProperties = {
-  border: `1px solid ${HAIRLINE}`,
-  borderRadius: 16,
-  background: "rgba(2,6,23,.5)",
-  maxWidth: 480,
-  overflow: "hidden",
-};
-const PAY_PANEL_ACCENT: React.CSSProperties = {
-  height: 2,
-  backgroundImage: ACCENT_GRADIENT,
-};
-const PAY_PANEL_HEAD: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: 12,
-  padding: "16px 20px 14px",
-  borderBottom: `1px solid ${HAIRLINE}`,
-};
-const PAY_PANEL_FOOT: React.CSSProperties = {
-  padding: "16px 20px 18px",
-  borderTop: `1px solid ${HAIRLINE}`,
-};
-const SECURE_BADGE: React.CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  gap: 6,
-  fontSize: 11.5,
-  fontWeight: 600,
-  letterSpacing: ".04em",
-  color: TEXT_MUTED,
 };
 
 interface FlowForm {
@@ -1806,15 +1502,13 @@ function PaymentStep({
   compliancePath: CompliancePath | null;
   onPaid: (warning?: string | null) => void;
 }) {
-  const mountRef = useRef<HTMLDivElement>(null);
-  const stripeRef = useRef<StripeInstance | null>(null);
-  const elementsRef = useRef<StripeElements | null>(null);
-
-  const [ready, setReady] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
-  const [payError, setPayError] = useState<string | null>(null);
-  const [paying, setPaying] = useState(false);
-  const [intentId, setIntentId] = useState<string | null>(null);
+  /**
+   * What the extracted StripePaymentElement (#1306) needs to boot: minted by
+   * POST /payment-intent below, null until that lands. The Element itself —
+   * stripe.js, theming, mount/confirm — lives in the component now.
+   */
+  const [intent, setIntent] = useState<{ clientSecret: string; publishableKey: string } | null>(null);
   /**
    * #490 — the order's real amounts, as the SERVER resolved them. `fee` above
    * is the catalog display string this component has always shown; these are
@@ -1861,10 +1555,11 @@ function PaymentStep({
     [sessionId, onPaid],
   );
 
-  // Create the intent, boot stripe.js, mount the Payment Element.
+  // Create the intent. Booting stripe.js and mounting the Payment Element is
+  // the extracted component's job (#1306) — it starts the moment `intent` is
+  // handed to it below.
   useEffect(() => {
     let cancelled = false;
-    let element: StripeElement | null = null;
 
     (async () => {
       try {
@@ -1894,7 +1589,6 @@ function PaymentStep({
           rescanAddOn?: { priceCents: number; interval: string } | null;
         };
         if (cancelled) return;
-        setIntentId(data.paymentIntentId);
         if (typeof data.amountCents === "number") setBaseCents(data.amountCents);
         setRescan(data.rescanAddOn ?? null);
 
@@ -1906,20 +1600,7 @@ function PaymentStep({
           return;
         }
 
-        await loadStripeJs();
-        if (cancelled || !window.Stripe || !mountRef.current) return;
-
-        const stripe = window.Stripe(data.publishableKey);
-        stripeRef.current = stripe;
-        const elements = stripe.elements({
-          clientSecret: data.clientSecret,
-          appearance: STRIPE_APPEARANCE,
-          fonts: STRIPE_FONTS,
-        });
-        elementsRef.current = elements;
-        element = elements.create("payment", STRIPE_PAYMENT_ELEMENT_OPTIONS);
-        element.mount(mountRef.current);
-        setReady(true);
+        setIntent({ clientSecret: data.clientSecret, publishableKey: data.publishableKey });
       } catch (err) {
         if (!cancelled) setInitError(err instanceof Error ? err.message : "Could not load the payment form.");
       }
@@ -1927,40 +1608,8 @@ function PaymentStep({
 
     return () => {
       cancelled = true;
-      try {
-        element?.destroy();
-      } catch {
-        /* already torn down */
-      }
     };
   }, [sessionId, confirmOnServer]);
-
-  async function pay() {
-    const stripe = stripeRef.current;
-    const elements = elementsRef.current;
-    if (!stripe || !elements) return;
-    setPaying(true);
-    setPayError(null);
-    try {
-      // redirect: "if_required" keeps the buyer on this page for every payment
-      // method that does not genuinely need a bank redirect.
-      const result = await stripe.confirmPayment({ elements, redirect: "if_required" });
-      if (result.error) {
-        setPayError(result.error.message ?? "Your payment could not be completed.");
-        return;
-      }
-      const id = result.paymentIntent?.id ?? intentId;
-      if (!id || result.paymentIntent?.status !== "succeeded") {
-        setPayError("Your payment is still processing. We'll email you as soon as it clears.");
-        return;
-      }
-      await confirmOnServer(id);
-    } catch (err) {
-      setPayError(err instanceof Error ? err.message : "Something went wrong taking the payment.");
-    } finally {
-      setPaying(false);
-    }
-  }
 
   return (
     <div style={TWO_COL}>
@@ -2040,42 +1689,44 @@ function PaymentStep({
 
         {initError ? (
           <div style={{ fontSize: 13.5, lineHeight: 1.55, color: DANGER, maxWidth: 480 }}>{initError}</div>
+        ) : intent ? (
+          /* #482/#1306: the panel, theming and confirm lifecycle live in the
+             extracted component; `confirmOnServer` rides its onSuccess so a
+             recording failure surfaces in the panel's own error slot, exactly
+             as before the extraction. */
+          <StripePaymentElement
+            clientSecret={intent.clientSecret}
+            publishableKey={intent.publishableKey}
+            onSuccess={confirmOnServer}
+          />
         ) : (
-          <>
-            {/* #482: the Element is given a panel of its own rather than being
-                dropped bare onto the page — same card language as the order
-                summary above it, so the two read as one payment surface. */}
-            <div style={PAY_PANEL}>
-              <div style={PAY_PANEL_ACCENT} />
-              <div style={PAY_PANEL_HEAD}>
-                <span style={{ ...labelStyle(), marginBottom: 0 }}>Pay with</span>
-                <span style={SECURE_BADGE}>
-                  <LockIcon />
-                  Secured by Stripe
-                </span>
-              </div>
+          /* The intent is still being minted (or an alreadyPaid recovery is
+             finishing) — the same panel shape the component is about to render,
+             skeleton held and button disabled, so the payment surface does not
+             pop in a beat after the order card. */
+          <div style={PAY_PANEL}>
+            <div style={PAY_PANEL_ACCENT} />
+            <div style={PAY_PANEL_HEAD}>
+              <span style={{ ...labelStyle(), marginBottom: 0 }}>Pay with</span>
+              <span style={SECURE_BADGE}>
+                <LockIcon />
+                Secured by Stripe
+              </span>
+            </div>
 
-              <div style={{ padding: "18px 20px 4px" }}>
-                {/* The mount point is never unmounted or moved by `ready` — the
-                    skeleton overlays it instead, so Stripe's iframe is not torn
-                    down underneath itself. */}
-                <div style={{ position: "relative", minHeight: 232 }}>
-                  <div ref={mountRef} />
-                  {!ready && <PaymentSkeleton />}
-                </div>
-              </div>
-
-              <div style={PAY_PANEL_FOOT}>
-                {payError && (
-                  <p style={{ fontSize: 13.5, lineHeight: 1.5, color: DANGER, margin: "0 0 12px" }}>{payError}</p>
-                )}
-                {/* No price on the button — #430: it is shown once, above. */}
-                <Button size="lg" onClick={pay} disabled={!ready || paying} style={{ width: "100%" }}>
-                  {paying ? "Processing…" : "Pay securely"}
-                </Button>
+            <div style={{ padding: "18px 20px 4px" }}>
+              <div style={{ position: "relative", minHeight: 232 }}>
+                <PaymentSkeleton />
               </div>
             </div>
-          </>
+
+            <div style={PAY_PANEL_FOOT}>
+              {/* No price on the button — #430: it is shown once, above. */}
+              <Button size="lg" disabled style={{ width: "100%" }}>
+                Pay securely
+              </Button>
+            </div>
+          </div>
         )}
 
         <p style={FOOTNOTE}>
@@ -2863,66 +2514,6 @@ function CheckIcon({ color }: { color: string }) {
     >
       <polyline points="20 6 9 17 4 12" />
     </svg>
-  );
-}
-
-function LockIcon() {
-  return (
-    <svg
-      width="12"
-      height="12"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke={TEXT_MUTED}
-      strokeWidth="2.2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      style={{ flexShrink: 0 }}
-      aria-hidden="true"
-    >
-      <rect x="4" y="10.5" width="16" height="11" rx="2.5" />
-      <path d="M8 10.5V7a4 4 0 0 1 8 0v3.5" />
-    </svg>
-  );
-}
-
-/**
- * Holds the panel's shape while Stripe's iframe boots (#482).
- *
- * It stands in for the tab row and the field rows the Element is about to
- * render, so the card does not resize under the buyer the moment it mounts.
- * It is decoration only — the real loading state is announced in text beneath
- * it, because a shape that resembles a card form is not a claim that one has
- * loaded.
- */
-function PaymentSkeleton() {
-  const bar = (height: number, radius: number, width: string): React.CSSProperties => ({
-    height,
-    width,
-    borderRadius: radius,
-    background: "rgba(15,23,42,.75)",
-    border: `1px solid ${HAIRLINE}`,
-    boxSizing: "border-box",
-  });
-  const field = (
-    <div>
-      <div style={{ ...bar(8, 4, "78px"), border: "none", background: HAIRLINE, marginBottom: 11 }} />
-      <div style={bar(46, FIELD_RADIUS, "100%")} />
-    </div>
-  );
-  return (
-    <div style={{ position: "absolute", inset: 0 }}>
-      <div aria-hidden="true" style={{ display: "flex", gap: 10, marginBottom: 18 }}>
-        <div style={bar(46, 12, "100%")} />
-        <div style={bar(46, 12, "100%")} />
-        <div style={bar(46, 12, "100%")} />
-      </div>
-      <div aria-hidden="true" style={{ display: "grid", gap: 18 }}>
-        {field}
-        {field}
-      </div>
-      <p style={{ fontSize: 12.5, color: TEXT_FAINT, margin: "16px 0 0" }}>Loading secure card fields…</p>
-    </div>
   );
 }
 
