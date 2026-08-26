@@ -442,3 +442,5 @@ History before 2026-08-12 lives in [PLATFORM_BUILD_ARCHIVE_2026-08-12.md](PLATFO
 | 2026-08-26 | ⏳ IN FLIGHT | Service Status page (/status): new marketing frontend over real /api/status data + real M365 90d uptime; honest per-component daily-bar gap (Git #1350) | Investigation done. Building. |
 
 | 2026-08-26 | ⏳ IN FLIGHT | Free Scan (/scan): real consent gate — insert consent → granting between start and scanning; real lead capture (ensureLeadForEmail, source=free_scan) + real Microsoft read-consent via #1311 popup/poll; consent scopes card generated from REQUIRED_MT_SCOPES (Git #1361) | Investigation done. Building. |
+
+| 2026-08-26 | ⏳ IN FLIGHT | Extract Scene 0 (RevealScanOverlay, RevealNoScanGate, decideAutoScan, shouldBlockNeverScanned) into shared lib/ package + refactor consumers (Git #1357) | Investigation done. Building shared package. |
