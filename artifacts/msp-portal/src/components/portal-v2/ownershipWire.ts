@@ -6,10 +6,15 @@
  * purpose. What it exists for is the three decisions that should not live in a
  * component or in a fetch hook:
  *
- *   1. WHICH SOURCE IS ON SCREEN. The design's fixture stays as the fallback —
- *      a failed or unscoped read renders the prototype's own estate rather than
- *      an empty matrix — and `dataState` says which of the two a reader is
- *      looking at, so nothing has to infer it from a row count.
+ *   1. WHICH SOURCE IS ON SCREEN. `dataState` reports `live` for a real read and
+ *      `fixture` for a failed/unscoped/empty one, so nothing has to infer it from
+ *      a row count. NOTE (Git #1342): the wired page (`portal-v2-ownership.tsx`)
+ *      no longer RENDERS the fixture on the `fixture` branch — that fallback was
+ *      the prototype's fictional Halden estate AND its invented staff roster, and
+ *      showing it to a real customer leaked fictional people as fact. The page now
+ *      shows an honest no-data state on `fixture`. `OWNERSHIP_FIXTURE` below is
+ *      kept only as the module's STANDALONE default (mounting `OwnershipMatrix`
+ *      with no props) and as model-test data — never on a real customer's screen.
  *   2. WHAT COUNTS AS A USABLE PAYLOAD. A live read that resolves to zero
  *      objects is NOT treated as live: an empty matrix and a broken matrix look
  *      identical on screen, and the fixture is the more useful of the two
