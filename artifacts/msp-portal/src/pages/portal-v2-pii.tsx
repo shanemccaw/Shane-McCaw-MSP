@@ -182,7 +182,15 @@ export default function PortalV2PiiPage() {
               flex: "0 0 auto",
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {/* Owner chip. There is no ownership/RACI table in the schema, so this
+                page has no real owner to resolve — it renders an honest Unassigned
+                state (muted, no fictional identity) rather than the prototype's
+                fictional Halden employee (Git #1342). */}
+            <div
+              data-testid="pv2-pii-owner"
+              data-state="empty"
+              style={{ display: "flex", alignItems: "center", gap: 8 }}
+            >
               <span
                 title={PII_OWNER.name}
                 style={{
@@ -193,21 +201,21 @@ export default function PortalV2PiiPage() {
                   width: 26,
                   height: 26,
                   borderRadius: "50%",
-                  fontSize: "9.5px",
+                  fontSize: "11px",
                   fontWeight: 800,
                   letterSpacing: ".02em",
-                  color: "#0b1524",
-                  background: PII_OWNER.tone,
-                  border: "1px solid transparent",
+                  color: NO_DATA_INK,
+                  background: "transparent",
+                  border: `1px dashed ${NO_DATA_INK}`,
                 }}
               >
                 {PII_OWNER.initials}
               </span>
               <div style={{ display: "flex", flexDirection: "column", gap: 0, textAlign: "right" }}>
-                <span style={{ fontSize: "10.5px", fontWeight: 700, color: "#cbd5e1" }}>
+                <span style={{ fontSize: "10.5px", fontWeight: 700, color: "#94a3b8" }}>
                   {PII_OWNER.name}
                 </span>
-                <span style={{ fontSize: "9.5px", color: "#64748b" }}>Answers for personal data</span>
+                <span style={{ fontSize: "9.5px", color: "#64748b" }}>No owner recorded</span>
               </div>
             </div>
             <span style={{ fontSize: "10px", color: "#475569", fontFamily: MONO }}>

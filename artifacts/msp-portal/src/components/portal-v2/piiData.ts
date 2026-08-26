@@ -292,15 +292,26 @@ export const PII_GOVERNANCE: PiiGovernance = {
 };
 
 /**
- * The owner chip — the prototype resolves it with `raciChip('compliance', 26)`
- * (shell 20103), which reads the Compliance pillar's Responsible person from
- * `RACI_OWN.compliance.r` ('ab' → Aisha Bello, tone #34d399). Materialised here
- * rather than reaching into a RACI store this page does not otherwise use.
+ * The owner chip.
+ *
+ * ── Why this is NOT a person any more (Git #1342) ───────────────────────────
+ * The prototype resolved this with `raciChip('compliance', 26)` (shell 20103),
+ * reading the Compliance pillar's Responsible person from `RACI_OWN.compliance.r`
+ * ('ab' → Aisha Bello) — a fictional Halden Materials employee. This page is
+ * WIRED to the calling customer's real PII data (`usePiiGovernance`), so that
+ * name rendered a fictional person on a real customer's screen — the exact leak
+ * class as #1213-1216.
+ *
+ * There is no ownership/RACI table anywhere in the schema (see
+ * `ownershipWire.ts`'s header, and `portal-pii-governance.ts` returns no owner
+ * field), so there is genuinely no real owner to resolve to. Per the platform's
+ * standing honest-empty rule (#1339), the chip is an UNASSIGNED state rather than
+ * an invented name: no fictional identity, muted styling, and it says so.
  */
 export const PII_OWNER = {
-  name: "Aisha Bello",
-  initials: "AB",
-  tone: "#34d399",
+  name: "Unassigned",
+  initials: "—",
+  assigned: false,
 } as const;
 
 /**
