@@ -414,3 +414,4 @@ History before 2026-08-12 lives in [PLATFORM_BUILD_ARCHIVE_2026-08-12.md](PLATFO
 | 2026-08-25 | ⏳ IN FLIGHT | MCP query tools (Epic #1319 Phase 3): 9 read tools (customers, findings, SOPs, change controls, alerts, audit logs, invoices, risk register, drift) + new drift_events read endpoint (Git #1322) | |
 | 2026-08-25 | ⏳ IN FLIGHT | MCP mandatory audit logging on every write-tool call into msp_audit_logs (Git #1325) | |
 | 2026-08-25 | ⏳ IN FLIGHT | MCP server: create_account tool wrapping #1310's purchase-account-flow (Git #1321) | |
+| 2026-08-25 | ⏳ IN FLIGHT | Phase 3 of #1302: wire real payment component into Buy.tsx paying stage (Git #1308) | |
