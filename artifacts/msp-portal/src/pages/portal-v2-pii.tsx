@@ -36,6 +36,7 @@ import { ChevronDown } from "lucide-react";
 
 import { PortalV2Shell } from "@/components/portal-v2/PortalV2Shell";
 import { PII_LINKS, PII_OWNER } from "@/components/portal-v2/piiData";
+import { NO_DATA_INK } from "@/components/portal-v2/NoScanDataState";
 import { usePiiGovernance } from "@/components/portal-v2/piiGovernanceLive";
 import {
   PII_COVERAGE_META,
