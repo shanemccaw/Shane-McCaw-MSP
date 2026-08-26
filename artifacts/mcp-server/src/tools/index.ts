@@ -11,6 +11,8 @@ import { getAuditLogsTool } from "./get-audit-logs.ts";
 import { getInvoicesTool } from "./get-invoices.ts";
 import { getRiskRegisterTool } from "./get-risk-register.ts";
 import { getMicrosoftDriftTool } from "./get-microsoft-drift.ts";
+// Phase 4 (#1323): single micro-remediation execution (write tool, #1325 audited).
+import { executeActionTool } from "./execute-action.ts";
 // Phase 5 (#1324): full config-pack execution (write tool, #1325 audited).
 import { executeWritePackTool } from "./execute-write-pack.ts";
 
@@ -28,5 +30,6 @@ export const ALL_TOOLS: ToolDef[] = [
   getInvoicesTool,
   getRiskRegisterTool,
   getMicrosoftDriftTool,
+  executeActionTool,
   executeWritePackTool,
 ];
