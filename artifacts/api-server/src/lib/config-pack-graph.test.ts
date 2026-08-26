@@ -3,7 +3,9 @@ import {
   AUTO_DERIVED_VARIABLES,
   buildConfigPackGraph,
   ConfigPackError,
+  MID_RUN_PROVIDED_VARIABLES,
   operatorRequiredVariables,
+  packProvidedVariables,
   templateNodeId,
   topologicalOrder,
   type PackTemplateResolved,
@@ -219,5 +221,73 @@ describe("operatorRequiredVariables", () => {
       t("b", 2, { requiredVariables: ["siteName", "ownerUpn"] }),
     ]);
     expect(operatorRequiredVariables(ordered)).toEqual(["tenantPrefix", "siteName", "ownerUpn"]);
+  });
+});
+
+// ── Git #1316: dotted ids, template-output mappings, breakGlassUserId ─────────
+
+describe("Git #1316 graph-builder additions", () => {
+  it("sanitizes dotted template ids out of every node id and mapping reference (interp splits on dots)", () => {
+    const { graph } = buildConfigPackGraph([
+      t("quickstart-v1.create-break-glass-account", 1, {
+        requiresVerificationGate: true,
+        requiredVariables: ["generatedPassword"],
+      }),
+      t("quickstart-v1.assign-global-admin-role", 2, {
+        effectiveDependsOn: ["quickstart-v1.create-break-glass-account"],
+      }),
+    ]);
+    for (const n of graph.nodes) expect(n.id).not.toContain(".");
+    const map = graph.nodes.find((n) => n.data.label === "Map Break-Glass Step Outputs")!;
+    expect(map.data.params).toEqual([
+      "{{steps.tpl-quickstart-v1-create-break-glass-account.data.id}}",
+    ]);
+  });
+
+  it("gate map also emits the capital-G breakGlassUserId the seeded templates reference", () => {
+    const { graph } = buildConfigPackGraph(quickstart());
+    const map = graph.nodes.find((n) => n.id === "map-breakglass-user-create-outputs")!;
+    expect(map.data.query).toContain('AS "breakGlassUserId"');
+    expect(MID_RUN_PROVIDED_VARIABLES).toContain("breakGlassUserId");
+  });
+
+  it("materializes a template-output mapping node AFTER a checkKey-less template step", () => {
+    const { graph } = buildConfigPackGraph([
+      t("group-create", 1, {
+        parameterMapping: { breakGlassGroupId: "id", staticThing: "static:fixed" },
+      }),
+      t("group-use", 2, {
+        effectiveDependsOn: ["group-create"],
+        requiredVariables: ["breakGlassGroupId"],
+      }),
+    ]);
+    expect(graph.nodes.map((n) => n.id)).toEqual([
+      "start",
+      "tpl-group-create",
+      "map-group-create-tpl-outputs",
+      "tpl-group-use",
+      "end",
+    ]);
+    const map = graph.nodes.find((n) => n.id === "map-group-create-tpl-outputs")!;
+    expect(map.data.actionType).toBe("sql_query");
+    expect(map.data.params).toEqual(["{{steps.tpl-group-create.data.id}}", "fixed"]);
+    expect(map.data.query).toContain('AS "breakGlassGroupId"');
+    // The edge INTO the mapping node leaves a template node, so it must carry
+    // the success handle (switchChosenHandle routing).
+    const edge = graph.edges.find((e) => e.target === "map-group-create-tpl-outputs")!;
+    expect(edge.source).toBe("tpl-group-create");
+    expect(edge.sourceHandle).toBe("success");
+  });
+
+  it("treats parameterMapping keys as mid-run provided in operatorRequiredVariables", () => {
+    const templates = [
+      t("group-create", 1, { parameterMapping: { breakGlassGroupId: "id" } }),
+      t("group-use", 2, {
+        effectiveDependsOn: ["group-create"],
+        requiredVariables: ["breakGlassGroupId", "tenantPrefix"],
+      }),
+    ];
+    expect([...packProvidedVariables(templates)]).toEqual(["breakGlassGroupId"]);
+    expect(operatorRequiredVariables(topologicalOrder(templates))).toEqual(["tenantPrefix"]);
   });
 });

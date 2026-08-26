@@ -170,6 +170,10 @@ export default defineConfig({
       "src/routes/pcc.test.ts",
       "src/lib/config-pack-graph.test.ts",
       "src/lib/config-pack-orchestrator.test.ts",
+      // #1316 — the real dry-run + purchase-authorized execution behind /buy's
+      // pack approve/execute stages (real local pack rows, Graph mocked).
+      "src/lib/config-pack-dry-run.test.ts",
+      "src/routes/public-purchase-packs.test.ts",
       "src/lib/msp-plan-pricing.test.ts",
       "src/routes/msp-plan-self-service.test.ts",
       "src/routes/msp-billing-webhook.test.ts",

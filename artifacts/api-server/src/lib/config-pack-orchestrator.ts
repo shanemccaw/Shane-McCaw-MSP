@@ -21,6 +21,7 @@ import {
   wfDefinitionsTable,
   wfVersionsTable,
   type ConfigPack,
+  type TenantConsentMap,
   type WfGraph,
 } from "@workspace/db";
 import { and, desc, eq } from "drizzle-orm";
@@ -37,6 +38,7 @@ import {
   GLOBAL_ADMIN_ROLE_DEFINITION_ID,
   MID_RUN_PROVIDED_VARIABLES,
   getStepId,
+  packProvidedVariables,
   type PackTemplateResolved,
 } from "./config-pack-graph";
 
@@ -215,21 +217,50 @@ export interface RunConfigPackResult {
   templateOrder: string[];
 }
 
-export async function runConfigPackForCustomer(opts: {
+/** Everything a pack run (or a real dry-run preview of one) derives before
+ *  anything fires: the loaded pack, materialized graph, the customer row, and
+ *  the exact initial payload runConfigPackForCustomer would launch with. */
+export interface ConfigPackRunContext {
+  pack: ConfigPack;
+  templates: PackTemplateResolved[];
+  ordered: PackTemplateResolved[];
+  graph: WfGraph;
+  gatedTemplateId: string | null;
+  customer: {
+    id: number;
+    name: string;
+    tenantId: string;
+    domain: string | null;
+    isTestbed: boolean;
+    consent: TenantConsentMap;
+  };
+  payload: Record<string, unknown>;
+  /** Keys provided mid-run (gate outputs + the pack's own parameterMapping
+   *  nodes) — legitimately absent from the initial payload. */
+  midRunProvided: Set<string>;
+  /** Required variables with NO source at all — the run endpoint refuses on
+   *  these, and the dry-run reports them as not-self-executable. */
+  missingVariables: string[];
+}
+
+/**
+ * Load + validate + derive everything a run of `packKey` for `customerId`
+ * needs, WITHOUT firing anything and WITHOUT the testbed/authorization guard —
+ * the single payload-derivation implementation shared by
+ * runConfigPackForCustomer and the real dry-run (config-pack-dry-run.ts), so a
+ * previewed payload can never drift from the executed one (Git #1316).
+ */
+export async function prepareConfigPackRun(opts: {
   packKey: string;
   customerId: number;
-  /** Caller-supplied variable values (e.g. tenantPrefix — it has NO derivable
-   *  source, so it must be passed explicitly). Cannot override customerId or
-   *  the generated break-glass password. */
   variables?: Record<string, string>;
-  triggeredBy?: string;
-}): Promise<RunConfigPackResult> {
+}): Promise<ConfigPackRunContext> {
   const { packKey, customerId } = opts;
 
   const { pack, templates } = await loadConfigPack(packKey);
 
-  // Explicit column list rather than the previous bare .select() — tenants
-  // carries the consent jsonb, and nothing here needs it.
+  // Explicit column list — consent is read only for the purchase-authorization
+  // guard below (write-back consent), nothing else from the jsonb is needed.
   const [customer] = await db
     .select({
       id: tenantsTable.id,
@@ -237,6 +268,7 @@ export async function runConfigPackForCustomer(opts: {
       tenantId: tenantsTable.tenantId,
       domain: tenantsTable.domain,
       isTestbed: tenantsTable.isTestbed,
+      consent: tenantsTable.consent,
     })
     .from(tenantsTable)
     .where(eq(tenantsTable.id, customerId))
@@ -247,21 +279,6 @@ export async function runConfigPackForCustomer(opts: {
     throw new ConfigPackError(
       "customer_not_connected",
       `Customer ${customerId} has no connected tenant (tenant_id is empty)`,
-    );
-  }
-  // v1 guard, mirroring POST /admin/baseline-templates/:templateId/test: pack
-  // runs perform REAL Graph writes, so until purchase/consent-triggered
-  // automation ships, only testbed customers are runnable.
-  //
-  // Reads tenants.is_testbed (NOT NULL DEFAULT false, restored by Phase 2a and
-  // deliberately independent of msps.is_testbed — an MSP-level testbed flag
-  // must never authorize a write against a production tenant). Because the
-  // column is NOT NULL with a false default, a tenant created by any path that
-  // doesn't set it explicitly fails CLOSED here.
-  if (!customer.isTestbed) {
-    throw new ConfigPackError(
-      "customer_not_testbed",
-      `Customer ${customerId} is not a testbed customer — config pack runs write to the live tenant and are limited to testbed customers for now`,
     );
   }
 
@@ -279,10 +296,15 @@ export async function runConfigPackForCustomer(opts: {
   //   default domain of the connected tenant.
   // organizationId: the Graph organization object id IS the tenant GUID, so no
   //   lookup is needed — customer.tenant_id is supplied directly.
+  // domain / tenantId: aliases of the two above under the names the SEEDED
+  //   baseline templates actually reference ({{domain}}, {{tenantId}}) — the
+  //   orchestrator was authored against tenantDomain/organizationId while the
+  //   seed rows were authored against domain/tenantId, so without the aliases
+  //   every seeded pack failed the missing-variables guard (Git #1316).
   const requiredVars = new Set(ordered.flatMap((t) => t.requiredVariables));
 
   let tenantDomain: string | null = customer.domain;
-  if (!tenantDomain && requiredVars.has("tenantDomain")) {
+  if (!tenantDomain && (requiredVars.has("tenantDomain") || requiredVars.has("domain"))) {
     tenantDomain = await resolveDefaultDomainViaGraph(customer.tenantId);
     if (!tenantDomain) {
       throw new ConfigPackError(
@@ -297,9 +319,10 @@ export async function runConfigPackForCustomer(opts: {
     packId: pack.id,
     tenantName: customer.name,
     organizationId: customer.tenantId,
+    tenantId: customer.tenantId,
     currentDateTime: new Date().toISOString(),
     roleDefinitionId: GLOBAL_ADMIN_ROLE_DEFINITION_ID,
-    ...(tenantDomain ? { tenantDomain } : {}),
+    ...(tenantDomain ? { tenantDomain, domain: tenantDomain } : {}),
     ...(opts.variables ?? {}),
     customerId,
   };
@@ -310,18 +333,87 @@ export async function runConfigPackForCustomer(opts: {
     payload[GATE_SECRET_FIELD] = generateStrongPassword();
   }
 
-  // ── Fail fast on unresolvable variables (e.g. tenantPrefix) ──
-  const midRunProvided = new Set<string>(gatedTemplateId !== null ? MID_RUN_PROVIDED_VARIABLES : []);
-  const missing = [...requiredVars].filter(
+  // Keys legitimately absent upfront: the gate's own mapped outputs (only when
+  // the pack is gated) plus every key the pack's parameterMapping nodes
+  // produce mid-run.
+  const midRunProvided = new Set<string>([
+    ...(gatedTemplateId !== null ? MID_RUN_PROVIDED_VARIABLES : []),
+    ...packProvidedVariables(templates),
+  ]);
+  const missingVariables = [...requiredVars].filter(
     (v) => !midRunProvided.has(v) && (payload[v] === undefined || payload[v] === ""),
   );
-  if (missing.length > 0) {
+
+  return {
+    pack,
+    templates,
+    ordered,
+    graph,
+    gatedTemplateId,
+    customer,
+    payload,
+    midRunProvided,
+    missingVariables,
+  };
+}
+
+export async function runConfigPackForCustomer(opts: {
+  packKey: string;
+  customerId: number;
+  /** Caller-supplied variable values (e.g. tenantPrefix — it has NO derivable
+   *  source, so it must be passed explicitly). Cannot override customerId or
+   *  the generated break-glass password. */
+  variables?: Record<string, string>;
+  triggeredBy?: string;
+  /** Present ONLY when a paid, write-consented checkout session authorizes
+   *  this run (routes/public-purchase-packs.ts, Git #1316). This is what lets
+   *  a run target a real (non-testbed) customer tenant: the route has already
+   *  verified paid + read consent + write consent + the self-executable
+   *  allowlist, and the write-back consent is re-verified here fail-closed. */
+  purchaseAuthorization?: { checkoutSessionId: string };
+}): Promise<RunConfigPackResult> {
+  const { packKey, customerId } = opts;
+
+  const ctx = await prepareConfigPackRun({ packKey, customerId, variables: opts.variables });
+  const { pack, graph, ordered, gatedTemplateId, customer } = ctx;
+
+  // Guard, mirroring POST /admin/baseline-templates/:templateId/test: pack
+  // runs perform REAL Graph writes. Two lawful paths only:
+  //   1. testbed customers (manual admin validation, the original v1 surface);
+  //   2. a purchase-authorized run for a customer whose tenant has GRANTED
+  //      write-back consent (Git #1316's purchase/consent-triggered
+  //      automation) — re-checked here even though the route already gates it,
+  //      so no future caller can reach a real tenant without both.
+  //
+  // Reads tenants.is_testbed (NOT NULL DEFAULT false, restored by Phase 2a and
+  // deliberately independent of msps.is_testbed — an MSP-level testbed flag
+  // must never authorize a write against a production tenant). Because the
+  // column is NOT NULL with a false default, a tenant created by any path that
+  // doesn't set it explicitly fails CLOSED into the stricter branch here.
+  if (!customer.isTestbed) {
+    if (!opts.purchaseAuthorization) {
+      throw new ConfigPackError(
+        "customer_not_testbed",
+        `Customer ${customerId} is not a testbed customer — config pack runs write to the live tenant and require either a testbed customer or an authorizing purchase session`,
+      );
+    }
+    if (customer.consent?.writeBack?.status !== "granted") {
+      throw new ConfigPackError(
+        "customer_write_consent_missing",
+        `Customer ${customerId} has not granted write-back consent — a purchase-authorized pack run requires a granted write consent`,
+      );
+    }
+  }
+
+  if (ctx.missingVariables.length > 0) {
     throw new ConfigPackError(
       "missing_variables",
-      `Missing required variables for pack '${packKey}': ${missing.join(", ")}. Pass them in the request body under "variables".`,
-      { missingVariables: missing },
+      `Missing required variables for pack '${packKey}': ${ctx.missingVariables.join(", ")}. Pass them in the request body under "variables".`,
+      { missingVariables: ctx.missingVariables },
     );
   }
+
+  const payload = ctx.payload;
 
   const { definitionId, versionId, reusedVersion } = await persistConfigPackWorkflow(packKey, pack.label, graph);
 

@@ -2,7 +2,47 @@
   "feature": "Marketing Buy / Checkout page (/buy) — the one checkout for all three products. Asserts the product-specific rules that make or break the flow: monitoring gates pricing+payment behind a tenant connection, retainer offers a skippable scan and is never gated, packs are multi-select with a summed one-time total, and the terms checkbox gates the pay button without ever hiding the payment fields.",
   "baseUrl": "{{DEPLOY_URL}}",
   "lastVerifiedAgainstCommit": "PENDING",
+  "apiTests": [
+    {
+      "sessionTag": "1316-pack-flow",
+      "name": "Git #1316 GUARD — pack-dry-run with a non-UUID sessionId: 400 session_invalid before any DB read",
+      "method": "GET",
+      "path": "/api/public/purchase/pack-dry-run?sessionId=not-a-uuid",
+      "expect": { "status": 400, "jsonPath": "$.error", "value": "session_invalid" }
+    },
+    {
+      "sessionTag": "1316-pack-flow",
+      "name": "Git #1316 GUARD — pack-dry-run with an unknown (valid-shape) session: 404 session_expired",
+      "method": "GET",
+      "path": "/api/public/purchase/pack-dry-run?sessionId=00000000-0000-4000-8000-000000001316",
+      "expect": { "status": 404, "jsonPath": "$.error", "value": "session_expired" }
+    },
+    {
+      "sessionTag": "1316-pack-flow",
+      "name": "Git #1316 GUARD — pack-execute with no sessionId: 400 session_invalid, nothing fired",
+      "method": "POST",
+      "path": "/api/public/purchase/pack-execute",
+      "headers": { "Content-Type": "application/json" },
+      "body": {},
+      "expect": { "status": 400, "jsonPath": "$.error", "value": "session_invalid" }
+    },
+    {
+      "sessionTag": "1316-pack-flow",
+      "name": "Git #1316 GUARD — pack-run-status with a non-UUID sessionId: 400 session_invalid",
+      "method": "GET",
+      "path": "/api/public/purchase/pack-run-status?sessionId=nope",
+      "expect": { "status": 400, "jsonPath": "$.error", "value": "session_invalid" }
+    }
+  ],
   "notes": [
+    "Git #1316 (sessionTag 1316-pack-flow): apiTests cover the fail-closed guards of the REAL pack",
+    "dry-run/execute/run-status endpoints (public-purchase-packs.ts). The paid-session happy path",
+    "needs a real paid+consented checkout session and REAL Graph reads/writes, so it is exercised by",
+    "the vitest suites (config-pack-dry-run.test.ts, public-purchase-packs.test.ts) and the #1316",
+    "session's live E2E, not by fixture-free manifest steps. Buy.tsx now renders a hidden",
+    "data-testid=buy-dry-source marker (data-state live|fixture) on the dry-run screen so a future",
+    "session-bearing UI step can assert the real data path.",
+    "",
     "Marketing rebuild Part 10. Recreated from Design/design_handoff_marketing/Marketing Buy.dc.html",
     "into artifacts/shane-mccaw-consulting/src/marketing/pages/Buy.tsx (route /buy, already wired in",
     "App.tsx by the Part 0 scaffold). All prices/tiers/pack data live in marketing/data/buyCheckout.ts,",

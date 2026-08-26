@@ -51,6 +51,7 @@ const ERROR_STATUS: Record<ConfigPackError["code"], number> = {
   dependency_cycle: 422,
   customer_not_connected: 422,
   customer_not_testbed: 422,
+  customer_write_consent_missing: 422,
   tenant_domain_unresolved: 422,
 };
 

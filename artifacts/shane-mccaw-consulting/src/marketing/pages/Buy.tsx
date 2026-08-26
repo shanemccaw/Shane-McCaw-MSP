@@ -19,6 +19,7 @@ import {
 } from "../data/buyCheckout";
 import { useQuickStartPackAvailability } from "../../hooks/useQuickStartPackAvailability";
 import { useServices, type PublicService } from "../../hooks/useServices";
+import { useBuyPackLive, liveStepOutcome } from "../../hooks/useBuyPackLive";
 import { StripePaymentElement } from "../../components/StripePaymentElement";
 import { logger } from "../../lib/logger";
 
@@ -302,6 +303,30 @@ export default function Buy() {
   const isRet = st.product === "retainer";
   const isPack = st.product === "pack";
 
+  // Git #1316: a REAL checkout session id (the stage machine's own st.sessionId
+  // minted by #1308's real payment wiring, else ?session= or the flow's storage
+  // slot) switches the pack dry-run/execute stages from the authored demo
+  // fixture to live tenant data + real engine execution. Without one the page
+  // keeps its simulated demo behavior unchanged.
+  const live = useBuyPackLive(isPack, st.sessionId);
+  const liveMode = isPack && !!live.sessionId;
+
+  // The real run drives the executing → executed transition; an execution that
+  // refused to start falls back to the dry-run screen with its error shown.
+  useEffect(() => {
+    if (!liveMode || st.stage !== "executing") return;
+    if (
+      live.run.phase === "completed" ||
+      live.run.phase === "awaiting_verification" ||
+      live.run.phase === "failed"
+    ) {
+      set({ stage: "executed", execStep: live.run.completed });
+    } else if (live.run.phase === "error") {
+      set({ stage: "dryrun" });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveMode, st.stage, live.run.phase, live.run.completed]);
+
   // A pack pre-selected via the URL (?tier=/?packs=) may not have a real services-table
   // backing yet (Git #1304) -- drop it from the selection once the live catalogue read
   // resolves, same gate the option rows below enforce on click.
@@ -370,6 +395,7 @@ export default function Buy() {
       : st.phone.replace(/\s/g, "").length >= 6;
 
   const liveActions = (): LiveAction[] => {
+    if (liveMode) return live.actions;
     const scanned = st.dryScan === "done";
     return packKeys.reduce<LiveAction[]>(
       (acc, k) =>
@@ -585,6 +611,33 @@ export default function Buy() {
   };
   const declineWrite = () => set({ writeDeclined: true, stage: "done" });
   const runPreScan = () => {
+    if (liveMode) {
+      // Real mode: the pre-scan IS the live dry-run read. The step captions
+      // animate while the actual tenant read runs; landing on the dry-run
+      // screen with dryScan "idle" (plus the error banner there) is the
+      // fail-closed outcome — zero actions, execute disabled.
+      set({ preScanStep: 0, dryScan: "scanning" });
+      let m = 0;
+      const advance = () => {
+        push(
+          window.setTimeout(() => {
+            m = Math.min(m + 1, PRE_SCAN.length - 1);
+            set({ preScanStep: m });
+            if (m < PRE_SCAN.length - 1) advance();
+          }, 480),
+        );
+      };
+      advance();
+      void live.fetchDryRun().then((ok) => {
+        set({
+          stage: "dryrun",
+          dryScan: ok ? "done" : "idle",
+          dryScanAt: "just now",
+          preScanStep: PRE_SCAN.length,
+        });
+      });
+      return;
+    }
     set({ preScanStep: 0 });
     let n = 0;
     const step = () => {
@@ -621,14 +674,25 @@ export default function Buy() {
     );
     if (st.product === "pack") push(window.setTimeout(runPreScan, 1500));
   };
-  const toggleAction = (id: string) =>
+  const toggleAction = (id: string) => {
+    // A REAL pack executes as one dependency-ordered unit — per-action opt-out
+    // only exists in the demo fixture (Git #1316).
+    if (liveMode) return;
     set((s) => {
       const off = { ...s.dryOff };
       if (off[id]) delete off[id];
       else off[id] = true;
       return { dryOff: off };
     });
+  };
   const rescan = () => {
+    if (liveMode) {
+      set({ dryScan: "scanning" });
+      void live
+        .fetchDryRun()
+        .then((ok) => set({ dryScan: ok ? "done" : "idle", dryScanAt: "just now" }));
+      return;
+    }
     set({ dryScan: "scanning" });
     push(
       window.setTimeout(
@@ -639,6 +703,14 @@ export default function Buy() {
   };
   const setWindow = (w: DryWindow) => set({ dryWindow: w });
   const execute = () => {
+    if (liveMode) {
+      // REAL execution: fires the purchased packs through the actual workflow
+      // engine; the run-status poll (useBuyPackLive) drives progress and the
+      // executed transition (see the stage effect above).
+      set({ stage: "executing", execStep: 0 });
+      void live.startExecution();
+      return;
+    }
     const chosenNow = liveActions().filter(
       (a) => !st.dryOff[a.id] && !a.satisfied,
     ).length;
@@ -1052,20 +1124,33 @@ export default function Buy() {
 
   // ── pack dry-run / execution / record model ───────────────────────────────────
   const all = isPack ? liveActions() : [];
-  const chosen = all.filter((a) => !st.dryOff[a.id] && !a.satisfied);
+  // Live mode ignores dryOff — a real pack executes as one unit (#1316).
+  const chosen = all.filter((a) => !a.satisfied && (liveMode || !st.dryOff[a.id]));
   const disruptiveChosen = chosen.filter((a) => a.impact === "disruptive");
   const satisfiedCount = all.filter((a) => a.satisfied).length;
-  const dryGroups = packKeys.map((k) => {
-    const items = all.filter((a) => a.pack === k);
-    const on = items.filter((a) => !st.dryOff[a.id] && !a.satisfied).length;
-    return {
-      key: k,
-      name: PACKS_BY_KEY[k]?.name ?? "",
-      count: on + " of " + items.length + " changes approved",
-      price: money(PACKS_BY_KEY[k]?.price ?? 0),
-      items,
-    };
-  });
+  const dryGroups = liveMode
+    ? live.packs.map((p) => {
+        const items = all.filter((a) => a.pack === p.serviceSlug);
+        const on = items.filter((a) => !a.satisfied).length;
+        return {
+          key: p.serviceSlug,
+          name: p.serviceName,
+          count: on + " of " + items.length + " changes approved",
+          price: money((p.priceCents ?? 0) / 100),
+          items,
+        };
+      })
+    : packKeys.map((k) => {
+        const items = all.filter((a) => a.pack === k);
+        const on = items.filter((a) => !st.dryOff[a.id] && !a.satisfied).length;
+        return {
+          key: k,
+          name: PACKS_BY_KEY[k]?.name ?? "",
+          count: on + " of " + items.length + " changes approved",
+          price: money(PACKS_BY_KEY[k]?.price ?? 0),
+          items,
+        };
+      });
   const windows: { k: DryWindow; label: string; sub: string }[] = [
     { k: "now", label: "Run now", sub: "Starts the moment you approve" },
     { k: "tonight", label: "Tonight, 22:00", sub: "Outside working hours" },
@@ -1082,36 +1167,76 @@ export default function Buy() {
           ? " change was already true and has been dropped"
           : " changes were already true and have been dropped")
       : "Configuration read " + st.dryScanAt + ". Re-read it if anything changed since.";
-  const execDone = Math.min(st.execStep, chosen.length);
-  const execPct = chosen.length
-    ? Math.round((execDone / chosen.length) * 100)
-    : 0;
-  const execNow =
-    chosen[Math.min(st.execStep, chosen.length - 1)]?.title ?? "Finishing up";
-  const recordGroups = packKeys.map((k) => ({
-    key: k,
-    name: PACKS_BY_KEY[k]?.name ?? "",
-    price: money(PACKS_BY_KEY[k]?.price ?? 0),
-    rows: all
-      .filter((a) => a.pack === k)
-      .map((a) => {
-        const skipped = a.satisfied;
-        const dropped = !!st.dryOff[a.id];
-        return {
-          setting: a.title,
-          before: a.from,
-          after: dropped || skipped ? a.from : a.to,
-          result: skipped
-            ? "Already correct"
-            : dropped
-              ? "Declined by you"
-              : "Applied",
-          resultFg: skipped ? "#64748b" : dropped ? "#fbbf24" : "#34d399",
-          afterFg: skipped || dropped ? "#64748b" : "#7dd3fc",
-        };
-      }),
-  }));
-  const declinedCount = all.filter((a) => st.dryOff[a.id] && !a.satisfied).length;
+  const execTotal = liveMode ? live.run.total : chosen.length;
+  const execDone = liveMode
+    ? Math.min(live.run.completed, execTotal)
+    : Math.min(st.execStep, chosen.length);
+  const execPct = execTotal ? Math.round((execDone / execTotal) * 100) : 0;
+  const execNow = liveMode
+    ? (live.run.currentLabel ?? "Finishing up")
+    : (chosen[Math.min(st.execStep, chosen.length - 1)]?.title ?? "Finishing up");
+  const recordGroups = liveMode
+    ? live.packs.map((p) => ({
+        key: p.serviceSlug,
+        name: p.serviceName,
+        price: money((p.priceCents ?? 0) / 100),
+        rows: all
+          .filter((a) => a.pack === p.serviceSlug)
+          .map((a) => {
+            // Real per-step outcome from the run's own node results (#1316).
+            const outcome = liveStepOutcome(a, live.run);
+            return {
+              setting: a.title,
+              before: a.from,
+              after: outcome === "applied" ? a.to : a.from,
+              result:
+                outcome === "satisfied"
+                  ? "Already correct"
+                  : outcome === "applied"
+                    ? "Applied"
+                    : outcome === "failed"
+                      ? "Failed"
+                      : live.run.phase === "failed"
+                        ? "Not run"
+                        : "Awaiting verification",
+              resultFg:
+                outcome === "satisfied"
+                  ? "#64748b"
+                  : outcome === "applied"
+                    ? "#34d399"
+                    : outcome === "failed"
+                      ? "#f87171"
+                      : "#fbbf24",
+              afterFg: outcome === "applied" ? "#7dd3fc" : "#64748b",
+            };
+          }),
+      }))
+    : packKeys.map((k) => ({
+        key: k,
+        name: PACKS_BY_KEY[k]?.name ?? "",
+        price: money(PACKS_BY_KEY[k]?.price ?? 0),
+        rows: all
+          .filter((a) => a.pack === k)
+          .map((a) => {
+            const skipped = a.satisfied;
+            const dropped = !!st.dryOff[a.id];
+            return {
+              setting: a.title,
+              before: a.from,
+              after: dropped || skipped ? a.from : a.to,
+              result: skipped
+                ? "Already correct"
+                : dropped
+                  ? "Declined by you"
+                  : "Applied",
+              resultFg: skipped ? "#64748b" : dropped ? "#fbbf24" : "#34d399",
+              afterFg: skipped || dropped ? "#64748b" : "#7dd3fc",
+            };
+          }),
+      }));
+  const declinedCount = liveMode
+    ? 0
+    : all.filter((a) => st.dryOff[a.id] && !a.satisfied).length;
   const preScanPct = Math.round((st.preScanStep / PRE_SCAN.length) * 100);
 
   // ── shared style bits ──────────────────────────────────────────────────────────
@@ -2582,6 +2707,34 @@ export default function Buy() {
             animation: "buyRise 460ms ease both",
           }}
         >
+          <span
+            data-testid="buy-dry-source"
+            data-state={liveMode ? "live" : "fixture"}
+            style={{ display: "none" }}
+          />
+          {liveMode && (live.dryStatus === "error" || live.run.phase === "error") && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "12px",
+                flexWrap: "wrap",
+                padding: "13px 16px",
+                borderRadius: "13px",
+                border: "1px solid rgba(248,113,113,.32)",
+                background: "rgba(248,113,113,.06)",
+              }}
+            >
+              <span
+                data-testid="buy-dry-live-error"
+                style={{ flex: "1 1 300px", minWidth: 0, fontSize: "12px", color: "#e2e8f0", lineHeight: 1.6 }}
+              >
+                {live.dryStatus === "error"
+                  ? `The live read of your tenant failed (${live.dryError ?? "unknown"}). Nothing has been changed — re-read the tenant to try again.`
+                  : `The run could not start (${live.run.error ?? "unknown"}). Nothing has been changed.`}
+              </span>
+            </div>
+          )}
           <div style={{ display: "flex", flexDirection: "column", gap: "9px" }}>
             <span style={{ ...eyebrow, color: "#fbbf24" }}>
               Dry run · nothing has changed yet
@@ -2751,7 +2904,7 @@ export default function Buy() {
                           fontSize: "11px",
                           fontWeight: 800,
                           color: "#fff",
-                          cursor: skipped ? "default" : "pointer",
+                          cursor: skipped || liveMode ? "default" : "pointer",
                           border: live ? "1px solid #3b82f6" : "1px solid rgba(100,116,139,.6)",
                           background: live ? "#3b82f6" : "transparent",
                         }}
@@ -2838,14 +2991,21 @@ export default function Buy() {
             <div style={{ display: "flex", gap: "9px", flexWrap: "wrap" }}>
               {windows.map((w) => {
                 const on = st.dryWindow === w.k;
+                // Live mode runs at approval — scheduling is not wired to the
+                // real engine yet, so the other windows are not selectable
+                // rather than silently ignored (#1316).
+                const unavailable = liveMode && w.k !== "now";
                 return (
                   <button
                     key={w.k}
-                    onClick={() => setWindow(w.k)}
+                    onClick={() => {
+                      if (!unavailable) setWindow(w.k);
+                    }}
                     style={{
                       flex: "1 1 170px",
                       textAlign: "left",
-                      cursor: "pointer",
+                      cursor: unavailable ? "not-allowed" : "pointer",
+                      opacity: unavailable ? 0.45 : 1,
                       fontFamily: "inherit",
                       display: "flex",
                       flexDirection: "column",
@@ -2966,7 +3126,7 @@ export default function Buy() {
               fontVariantNumeric: "tabular-nums",
             }}
           >
-            {execDone} / {chosen.length}
+            {execDone} / {execTotal}
           </span>
           <span
             style={{
@@ -3012,7 +3172,12 @@ export default function Buy() {
           }}
         >
           <div style={{ display: "flex", flexDirection: "column", gap: "9px" }}>
-            <span style={{ ...eyebrow, color: "#34d399" }}>Change record · {CR_ID}</span>
+            <span style={{ ...eyebrow, color: "#34d399" }}>
+              Change record ·{" "}
+              {liveMode && live.run.runIds.length
+                ? live.run.runIds.map((id) => `Run #${id}`).join(" · ")
+                : CR_ID}
+            </span>
             <h1
               style={{
                 margin: 0,
@@ -3023,8 +3188,26 @@ export default function Buy() {
                 color: "#f8fafc",
               }}
             >
-              {chosen.length} changes applied. Here is every before and after.
+              {liveMode ? live.run.completed : chosen.length} changes applied. Here is every before
+              and after.
             </h1>
+            {liveMode && live.run.phase === "awaiting_verification" && (
+              <p
+                data-testid="buy-executed-gate-note"
+                style={{ margin: 0, fontSize: "13px", lineHeight: 1.6, color: "#fbbf24" }}
+              >
+                This run is paused at the tenant-admin verification gate — the remaining changes
+                apply after verification.
+              </p>
+            )}
+            {liveMode && live.run.phase === "failed" && (
+              <p
+                data-testid="buy-executed-failed-note"
+                style={{ margin: 0, fontSize: "13px", lineHeight: 1.6, color: "#f87171" }}
+              >
+                The run stopped at a failed step. Everything applied before it is left in place.
+              </p>
+            )}
             <p style={{ margin: 0, fontSize: "14px", lineHeight: 1.68, color: "#94a3b8" }}>
               This is your record. Every change below carries the value your tenant held before and
               the value it holds now, alongside the ones you declined, which were never sent.
@@ -3041,7 +3224,11 @@ export default function Buy() {
             }}
           >
             {[
-              { label: "Applied", value: String(chosen.length), fg: "#34d399" },
+              {
+                label: "Applied",
+                value: String(liveMode ? live.run.completed : chosen.length),
+                fg: "#34d399",
+              },
               { label: "Declined by you", value: String(declinedCount), fg: "#fbbf24" },
               { label: "Already correct", value: String(satisfiedCount), fg: "#94a3b8" },
             ].map((tile) => (

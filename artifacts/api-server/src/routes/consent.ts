@@ -1955,7 +1955,7 @@ router.get("/admin/customers/:customerId/sharepoint-consent", requireAdmin, asyn
 //   - No PII is returned by any of them.
 
 /** The checkout session a public flow route is acting for, once validated. */
-type FlowSession = {
+export type FlowSession = {
   id: string;
   status: string;
   tenantId: string | null;
@@ -1967,7 +1967,7 @@ type FlowSession = {
  * Resolve `?sessionId=` (or a body sessionId) to a live checkout session.
  * Responds and returns null on every failure so callers can `if (!s) return;`.
  */
-async function resolveFlowSession(
+export async function resolveFlowSession(
   rawSessionId: unknown,
   res: Response,
 ): Promise<FlowSession | null> {
@@ -2005,7 +2005,7 @@ async function resolveFlowSession(
  * session's own admin already granted READ consent for. Fails closed — a
  * session that has not completed read consent has no tenant to aim anything at.
  */
-async function resolveConsentedTenant(
+export async function resolveConsentedTenant(
   session: FlowSession,
   res: Response,
 ): Promise<{ id: number; tenantId: string } | null> {

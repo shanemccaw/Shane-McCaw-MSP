@@ -46,9 +46,13 @@ export const GATE_ACCOUNT_ID_FIELD = "breakGlassAccountId";
 
 /** Flat payload keys produced MID-RUN by the post-create mapping node — never
  *  required from the caller and excluded from upfront validation (only when
- *  the pack actually contains a gated create step). */
+ *  the pack actually contains a gated create step). Both casings of the
+ *  break-glass user id are emitted because the seeded templates reference
+ *  {{breakGlassUserId}} (capital G) while the original gate map emitted only
+ *  the lowercase variant (Git #1316). */
 export const MID_RUN_PROVIDED_VARIABLES = [
   "breakglassUserId",
+  "breakGlassUserId",
   "principalId",
   GATE_ACCOUNT_ID_FIELD,
 ] as const;
@@ -76,6 +80,7 @@ export class ConfigPackError extends Error {
       | "customer_not_found"
       | "customer_not_connected"
       | "customer_not_testbed"
+      | "customer_write_consent_missing"
       | "tenant_domain_unresolved"
       | "missing_variables"
       | "concurrency_limit",
@@ -89,7 +94,15 @@ export class ConfigPackError extends Error {
 
 export const configPackDefinitionName = (packKey: string): string => `Config Pack: ${packKey}`;
 
-export const templateNodeId = (templateId: string): string => `tpl-${templateId}`;
+/**
+ * Node ids must contain NO dots: interp()'s {{steps.<nodeId>.data.id}} path
+ * resolution splits on ".", so a node id derived from a dotted template id
+ * (the seeded packs use ids like "quickstart-v1.create-ca-exclusion-group")
+ * could never be referenced by a mapping node (Git #1316).
+ */
+export const nodeIdSafe = (raw: string): string => raw.replace(/\./g, "-");
+
+export const templateNodeId = (templateId: string): string => `tpl-${nodeIdSafe(templateId)}`;
 
 /**
  * Payload keys the orchestrator derives ITSELF for every pack run — from the
@@ -124,15 +137,31 @@ export const AUTO_DERIVED_VARIABLES: readonly string[] = [
  */
 export function operatorRequiredVariables(ordered: PackTemplateResolved[]): string[] {
   const derived = new Set(AUTO_DERIVED_VARIABLES);
+  const packProvided = packProvidedVariables(ordered);
   const seen = new Set<string>();
   const out: string[] = [];
   for (const t of ordered) {
     for (const v of t.requiredVariables) {
-      if (!derived.has(v) && !seen.has(v)) {
+      if (!derived.has(v) && !packProvided.has(v) && !seen.has(v)) {
         seen.add(v);
         out.push(v);
       }
     }
+  }
+  return out;
+}
+
+/**
+ * Payload keys the pack's OWN parameterMapping rows produce mid-run: each
+ * mapped key becomes a sql_query mapping node in the materialized graph (fed
+ * from the source step's output), so it is provided during the run and must
+ * be excluded from upfront missing-variable validation — same reasoning as
+ * MID_RUN_PROVIDED_VARIABLES, but data-driven per pack (Git #1316).
+ */
+export function packProvidedVariables(templates: PackTemplateResolved[]): Set<string> {
+  const out = new Set<string>();
+  for (const t of templates) {
+    for (const k of Object.keys(t.parameterMapping ?? {})) out.add(k);
   }
   return out;
 }
@@ -252,15 +281,19 @@ export function buildConfigPackGraph(templates: PackTemplateResolved[]): {
       lastMonitorNodeId = nodeId;
     }
 
-    // 2. Add Parameter Mapping node if mapping exists (applies to both monitor and template steps)
-    if (t.parameterMapping && Object.keys(t.parameterMapping).length > 0) {
-      const mapNodeId = `map-${stepUniqueId}-outputs`;
+    // 2. Add Parameter Mapping node for a MONITOR-CHECK step: the mapping reads
+    // the check's extractedProperties, so it runs after the check and before
+    // the template. A checkKey-less template step's mapping is handled below,
+    // AFTER its template node — its source (the template's own Graph response)
+    // does not exist until the template has run (Git #1316).
+    if (t.checkKey && t.parameterMapping && Object.keys(t.parameterMapping).length > 0) {
+      const mapNodeId = `map-${nodeIdSafe(stepUniqueId)}-outputs`;
       const mapKeys = Object.keys(t.parameterMapping);
-      // E.g. SELECT $1::text AS "mappedKey" 
+      // E.g. SELECT $1::text AS "mappedKey"
       // using the first item's property from extractedProperties
       const queryParts = mapKeys.map((k, idx) => `$${idx + 1}::text AS "${k}"`);
       const query = `SELECT ${queryParts.join(", ")}`;
-      
+
       const sourceNodeId = lastMonitorNodeId || nodeId;
       // The values come from the monitor check's extracted properties or static values
       // For simplicity in the wizard, parameterMapping maps "payloadVariable" -> "extractedPropertyPath"
@@ -290,7 +323,7 @@ export function buildConfigPackGraph(templates: PackTemplateResolved[]): {
 
     if (t.templateId) {
       const tplId = t.templateId;
-      const tplNodeId = t.checkKey ? `tpl-${tplId}` : nodeId;
+      const tplNodeId = templateNodeId(tplId);
       nodes.push({
         id: tplNodeId,
         type: "execute_baseline_template",
@@ -307,10 +340,40 @@ export function buildConfigPackGraph(templates: PackTemplateResolved[]): {
       // the happy-path edge MUST carry sourceHandle "success" or it is skipped.
       prev = { id: tplNodeId, sourceHandle: "success" };
 
+      // Template-output parameter mapping (checkKey-less step): feed the
+      // template's own Graph response fields into flat payload keys for later
+      // steps — e.g. quickstart-v1's exclusion-group create maps its new group
+      // id to {{breakGlassGroupId}} (Git #1316). "static:" values pass through.
+      if (!t.checkKey && t.parameterMapping && Object.keys(t.parameterMapping).length > 0) {
+        const mapNodeId = `map-${nodeIdSafe(tplId)}-tpl-outputs`;
+        const mapKeys = Object.keys(t.parameterMapping);
+        const query = `SELECT ${mapKeys.map((k, idx) => `$${idx + 1}::text AS "${k}"`).join(", ")}`;
+        const params = mapKeys.map((k) => {
+          const val = t.parameterMapping![k];
+          return val.startsWith("static:")
+            ? val.slice(7)
+            : `{{steps.${tplNodeId}.data.${val}}}`;
+        });
+        nodes.push({
+          id: mapNodeId,
+          type: "action",
+          position: nextPos(),
+          data: {
+            nodeType: "action",
+            actionType: "sql_query",
+            label: "Map Pipeline Step Outputs",
+            query,
+            params: params as unknown as WfNodeData["params"],
+          },
+        });
+        link(mapNodeId);
+        prev = { id: mapNodeId };
+      }
+
       if (t.requiresVerificationGate && gatedTemplateId === null) {
         gatedTemplateId = tplId;
 
-        const mapNodeId = `map-${tplId}-outputs`;
+        const mapNodeId = `map-${nodeIdSafe(tplId)}-outputs`;
         nodes.push({
           id: mapNodeId,
           type: "action",
@@ -320,14 +383,14 @@ export function buildConfigPackGraph(templates: PackTemplateResolved[]): {
             actionType: "sql_query",
             label: "Map Break-Glass Step Outputs",
             query:
-              'SELECT $1::text AS "breakglassUserId", $1::text AS "principalId", $1::text AS "breakGlassAccountId"',
+              'SELECT $1::text AS "breakglassUserId", $1::text AS "breakGlassUserId", $1::text AS "principalId", $1::text AS "breakGlassAccountId"',
             params: [`{{steps.${tplNodeId}.data.id}}`] as unknown as WfNodeData["params"],
           },
         });
         link(mapNodeId);
         prev = { id: mapNodeId };
 
-      const gateNodeId = `gate-${tplId}`;
+      const gateNodeId = `gate-${nodeIdSafe(tplId)}`;
       nodes.push({
         id: gateNodeId,
         type: "break_glass_verification_gate",
