@@ -2948,15 +2948,22 @@ namespace BuildConsole.Controls
                 {
                     var newTitle = txtInput.Text?.Trim() ?? "";
                     if (string.IsNullOrEmpty(newTitle)) return;
-                    if (_api == null) return;
+                    if (_db == null && _api == null) return;
                     try
                     {
-                        var res = await _api.RenameChatAsync(chat.ConversationId, newTitle);
-                        if (!res.IsSuccessStatusCode)
+                        if (_db != null)
                         {
-                            var body = await res.Content.ReadAsStringAsync();
-                            ToastEngine.Error("Rename Chat", $"Failed to rename: {body}");
-                            return;
+                            await _db.RenameChatAsync(chat.ConversationId, newTitle);
+                        }
+                        else
+                        {
+                            var res = await _api!.RenameChatAsync(chat.ConversationId, newTitle);
+                            if (!res.IsSuccessStatusCode)
+                            {
+                                var body = await res.Content.ReadAsStringAsync();
+                                ToastEngine.Error("Rename Chat", $"Failed to rename: {body}");
+                                return;
+                            }
                         }
                         chat.Title = newTitle;
                         _lastBoardSignature = null;
@@ -2977,7 +2984,7 @@ namespace BuildConsole.Controls
                 var miAutoName = new MenuItem { Header = "✨ Auto-Name from Linked Issue(s)" };
                 miAutoName.Click += async (_, _) =>
                 {
-                    if (_api == null) return;
+                    if (_db == null && _api == null) return;
                     int firstNum = chat.AssociatedIssueNumbers[0];
                     string? matchedTitle = null;
                     string prefix = $"[#{firstNum}]";
@@ -3006,12 +3013,19 @@ namespace BuildConsole.Controls
                     string newTitle = $"{prefix} {matchedTitle}";
                     try
                     {
-                        var res = await _api.RenameChatAsync(chat.ConversationId, newTitle);
-                        if (!res.IsSuccessStatusCode)
+                        if (_db != null)
                         {
-                            var body = await res.Content.ReadAsStringAsync();
-                            ToastEngine.Error("Auto-Name Chat", $"Failed to rename: {body}");
-                            return;
+                            await _db.RenameChatAsync(chat.ConversationId, newTitle);
+                        }
+                        else
+                        {
+                            var res = await _api!.RenameChatAsync(chat.ConversationId, newTitle);
+                            if (!res.IsSuccessStatusCode)
+                            {
+                                var body = await res.Content.ReadAsStringAsync();
+                                ToastEngine.Error("Auto-Name Chat", $"Failed to rename: {body}");
+                                return;
+                            }
                         }
                         chat.Title = newTitle;
                         _lastBoardSignature = null;

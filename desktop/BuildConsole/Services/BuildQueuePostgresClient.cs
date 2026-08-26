@@ -755,6 +755,22 @@ namespace BuildConsole.Services
         public Task<DateTime?> UnarchiveChatAsync(string conversationId) =>
             SetChatArchivedAsync(conversationId, archived: false);
 
+        /// <summary>Renames a chat's display title in bt_chats by its conversationId.</summary>
+        public async Task RenameChatAsync(string conversationId, string newTitle)
+        {
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(@"
+                UPDATE bt_chats
+                   SET title = @newTitle,
+                       updated_at = NOW()
+                 WHERE conversation_id = @conversationId", conn);
+            cmd.Parameters.AddWithValue("@newTitle", newTitle);
+            cmd.Parameters.AddWithValue("@conversationId", conversationId);
+            int rows = await cmd.ExecuteNonQueryAsync();
+            if (rows == 0)
+                throw new InvalidOperationException($"Chat '{conversationId}' not found — cannot rename.");
+        }
+
         private async Task<DateTime?> SetChatArchivedAsync(string conversationId, bool archived)
         {
             await using var conn = await OpenAsync();
