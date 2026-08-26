@@ -34,11 +34,26 @@
  * and nothing counts audit-retention days. `CMP_HERO.score/delta/statusLabel` and
  * `CMP_HERO_STATS` are now only FALLBACKS before the payload loads.
  *
- * Still fixture, and GENUINE GAPS: the 13 `CMP_AREA_LINKS` per-area scores, and
- * the rich `CMP_FINDINGS` / `CMP_ACCEPTED` / `CMP_OBLIGATIONS` (obligation text,
- * evidence grids, framework mappings) the drill-downs read — the real findings
- * carry title/severity/checkKey only, not obligation/evidence detail. Real
- * backend design work, not a fixture swap (see WIRING_PLAN.md §2).
+ * The `CMP_AREA_LINKS` per-area STATUS is now wired to real checks (#1338):
+ * `cmpAreaWiring.ts` maps each card to its real, active `monitor_checks.key`(s)
+ * (all `core:premier` members — `compliance:audit-log-retention` was assigned to
+ * Premier in the same change) and drives the card's real Gap-open / Partially-
+ * covered / Documented-and-covered status from the tenant's open findings. Six
+ * cards have NO producing check anywhere (Disposition Review, Preservation Lock,
+ * Records Declaration, Subject Requests, Audit Coverage, and — verified, not
+ * assumed — Stale Legal Holds, which `exchange:litigation-hold-coverage` does
+ * NOT back because that check reads only mailbox LitigationHoldEnabled, with no
+ * matter-status awareness); those render an honest "—". The numeric MAGNITUDE on
+ * each card stays design fixture: no per-sub-area count producer exists
+ * server-side (the war-room payload is finding-level, exactly as the Governance
+ * and Security cluster grids document). So this corrects the earlier "13 GENUINE
+ * GAPS" note — most cards ARE backed; only the magnitudes remain fixture.
+ *
+ * Still fixture, and GENUINE GAPS: the rich `CMP_FINDINGS` / `CMP_ACCEPTED` /
+ * `CMP_OBLIGATIONS` (obligation text, evidence grids, framework mappings) the
+ * drill-downs read — the real findings carry title/severity/checkKey only, not
+ * obligation/evidence detail. Real backend design work, not a fixture swap (see
+ * WIRING_PLAN.md §2).
  */
 
 export type CmpAreaStatus = "red" | "yellow" | "green";

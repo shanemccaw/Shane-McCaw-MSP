@@ -66,10 +66,18 @@ import {
   cmpAreaGeometry,
   type CmpAreaLink,
 } from "@/components/portal-v2/cmpDashboardData";
+import {
+  buildCmpFindingSeverityMap,
+  resolveCmpArea,
+  type CmpAreaResolution,
+} from "@/components/portal-v2/cmpAreaWiring";
 
 const MONO = "'SF Mono',Menlo,Consolas,monospace";
 /** The trend + ring stroke. Compliance's near-white identity. */
 const PAPER = "#E2E8F0";
+/** The muted slate an honest no-data area card (#1338) paints itself in — no
+ *  status colour, because there is no measurement to have a status about. */
+const NODATA_COLOR = "#64748b";
 
 /** slugify a tile label for its data-testid (matches the prior inline expression). */
 const slug = (s: string) => s.toLowerCase().replace(/\s+/g, "-");
@@ -127,6 +135,14 @@ export default function PortalV2CompliancePage() {
   // the other pillar heroes use; the extra derivations are pure and tested.
   const live = useLivePillarHero("compliance");
   const heroTiles = CMP_TILE_BINDINGS.map((b) => resolveHeroTile(b, live));
+
+  // Real backing for the cluster area cards (#1338). The war-room payload is
+  // finding-level: for each card's backing `monitor_checks.key` it tells us the
+  // worst OPEN finding severity right now (across every pillar, since a card's
+  // check can belong to another pillar), which drives the card's real status.
+  // No per-sub-area numeric producer exists, so the magnitude stays design
+  // fixture and the six genuinely-unbacked cards resolve to an honest "—".
+  const cmpFindingSeverity = buildCmpFindingSeverityMap(live.pillars);
 
   // Real "last scan" value, same seam Overview uses (#1257) — the only one of
   // the scan strip's four values with a real, wired source.
@@ -799,7 +815,11 @@ export default function PortalV2CompliancePage() {
                   style={{ display: "flex", flexWrap: "wrap", alignItems: "stretch", gap: 10 }}
                 >
                   {items.map((a) => (
-                    <AreaCard key={a.key} link={a} />
+                    <AreaCard
+                      key={a.key}
+                      link={a}
+                      resolution={resolveCmpArea(a.key, cmpFindingSeverity, live.loaded)}
+                    />
                   ))}
                 </div>
               </div>
@@ -821,18 +841,29 @@ export default function PortalV2CompliancePage() {
  * for their tiles. Those drill-down routes are Layer 3 (Part 11) and 404 until
  * built, exactly as the other two pillars' tiles already do.
  */
-function AreaCard({ link }: { link: CmpAreaLink }) {
-  const { meta, deltaText, deltaColor, sparkBars } = cmpAreaGeometry(link);
+function AreaCard({ link, resolution }: { link: CmpAreaLink; resolution: CmpAreaResolution }) {
+  const nodata = resolution.dataState === "nodata";
+  // A live card paints its REAL finding-derived status; a fixture card (pre-scan)
+  // or a no-data card keeps the design status for tier/grow layout stability.
+  const displayStatus =
+    resolution.dataState === "live" && resolution.liveStatus ? resolution.liveStatus : link.status;
+  const { meta, deltaText, deltaColor, sparkBars } = cmpAreaGeometry({ ...link, status: displayStatus });
   const t = CMP_TIER[meta.tier];
   const Glyph = AREA_ICON[link.icon as keyof typeof AREA_ICON];
+
+  // The colour and status label actually painted: muted slate + "Not measured"
+  // for an honest no-data card, the real severity colour/label otherwise.
+  const c = nodata ? NODATA_COLOR : meta.c;
+  const statusLabel = nodata ? "Not measured" : meta.label;
 
   return (
     <Link
       href={`/portal-v2/compliance/${link.key.replace(/^compliance-/, "")}`}
       data-testid={`pv2-cmp-area-${link.key}`}
       className="pv2-area-card"
+      title={nodata ? resolution.reason ?? undefined : undefined}
       style={{
-        ["--pv2-area-hover" as string]: `${meta.c}66`,
+        ["--pv2-area-hover" as string]: `${c}66`,
         position: "relative",
         overflow: "hidden",
         display: "flex",
@@ -840,7 +871,7 @@ function AreaCard({ link }: { link: CmpAreaLink }) {
         gap: 5,
         textAlign: "left",
         background: "linear-gradient(160deg, rgba(226,232,240,.05), rgba(15,23,42,.55))",
-        border: `1px solid ${meta.c}30`,
+        border: `1px solid ${c}30`,
         borderTop: "1px solid rgba(226,232,240,.14)",
         borderRadius: 8,
         padding: t.pad,
@@ -850,66 +881,78 @@ function AreaCard({ link }: { link: CmpAreaLink }) {
         minWidth: 112,
         boxShadow: CMP_INSET,
         textDecoration: "none",
+        opacity: nodata ? 0.72 : 1,
       }}
     >
+      {/* Hidden per-card data-source marker — a test reads el.innerText to prove
+          "live" vs "fixture" vs "nodata", same clip technique as pv2-cmp-source. */}
+      <span data-testid={`pv2-cmp-area-source-${link.key}`} style={PV2_SOURCE_CLIP}>
+        {resolution.dataState}
+      </span>
       <div
         style={{
           position: "absolute",
           inset: 0,
-          background: `radial-gradient(ellipse 130% 90% at 0% 0%, ${meta.c}16, transparent 58%)`,
+          background: `radial-gradient(ellipse 130% 90% at 0% 0%, ${c}16, transparent 58%)`,
           pointerEvents: "none",
         }}
       />
-      {/* Sparkbars, top-right — proto 3980-3984. */}
-      <div
-        style={{
-          position: "absolute",
-          right: 8,
-          top: 8,
-          display: "flex",
-          alignItems: "flex-end",
-          gap: 2,
-        }}
-      >
-        {sparkBars.map((b, i) => (
-          <span
-            key={i}
-            style={{
-              flex: "0 0 5px",
-              width: 5,
-              height: b.height,
-              borderRadius: 1,
-              background: meta.c,
-              opacity: b.opacity,
-            }}
-          />
-        ))}
-      </div>
+      {/* Sparkbars, top-right — proto 3980-3984. A no-data card has no trend to
+          draw, so it shows none rather than a fabricated one. */}
+      {!nodata && (
+        <div
+          style={{
+            position: "absolute",
+            right: 8,
+            top: 8,
+            display: "flex",
+            alignItems: "flex-end",
+            gap: 2,
+          }}
+        >
+          {sparkBars.map((b, i) => (
+            <span
+              key={i}
+              style={{
+                flex: "0 0 5px",
+                width: 5,
+                height: b.height,
+                borderRadius: 1,
+                background: c,
+                opacity: b.opacity,
+              }}
+            />
+          ))}
+        </div>
+      )}
       <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 7 }}>
-        {Glyph && <Glyph size={t.icon} color={meta.c} aria-hidden="true" />}
+        {Glyph && <Glyph size={t.icon} color={c} aria-hidden="true" />}
         <span
           style={{
             position: "relative",
             fontSize: t.score,
             fontWeight: 800,
-            color: "#f8fafc",
+            color: nodata ? NODATA_COLOR : "#f8fafc",
             letterSpacing: "-.02em",
             fontFamily: MONO,
           }}
         >
-          {link.score}
+          {/* No producing check exists → honest em dash, never a fabricated number. */}
+          {resolution.showValue ? link.score : "—"}
         </span>
-        <span
-          style={{
-            position: "relative",
-            fontSize: Math.max(t.label - 1, 9),
-            fontWeight: 700,
-            color: deltaColor,
-            fontFamily: MONO,
-          }}
-        >
-          {deltaText}
-        </span>
+        {!nodata && (
+          <span
+            style={{
+              position: "relative",
+              fontSize: Math.max(t.label - 1, 9),
+              fontWeight: 700,
+              color: deltaColor,
+              fontFamily: MONO,
+            }}
+          >
+            {deltaText}
+          </span>
+        )}
       </div>
       <div
         style={{
@@ -952,7 +995,7 @@ function AreaCard({ link }: { link: CmpAreaLink }) {
             width: 6,
             height: 6,
             borderRadius: "50%",
-            background: meta.c,
+            background: c,
           }}
         />
         <span
@@ -960,10 +1003,10 @@ function AreaCard({ link }: { link: CmpAreaLink }) {
             fontSize: "9px",
             fontWeight: 700,
             letterSpacing: ".04em",
-            color: meta.c,
+            color: c,
           }}
         >
-          {meta.label}
+          {statusLabel}
         </span>
       </div>
     </Link>

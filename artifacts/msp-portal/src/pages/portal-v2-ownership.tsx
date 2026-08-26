@@ -26,8 +26,6 @@ import { useRoute } from "wouter";
 
 import { PortalV2Shell, SIDEBAR_WASH } from "@/components/portal-v2/PortalV2Shell";
 import { OwnershipMatrix } from "@/components/portal-v2/OwnershipMatrix";
-import { PortalV2LoadingState } from "@/components/portal-v2/PortalV2LoadingState";
-import { NoScanDataState } from "@/components/portal-v2/NoScanDataState";
 import { OBJECT_TYPES } from "@/components/portal-v2/ownershipData";
 import {
   usePortalV2EscDays,
@@ -61,35 +59,16 @@ export default function PortalV2OwnershipPage() {
             boxSizing: "border-box",
           }}
         >
-          {dataState === "loading" ? (
-            // Real read in flight: honest skeleton, never the design's 24 fixture
-            // objects — showing them then swapping to the tenant's real matrix
-            // flickers confident-but-fake ownership (Git #1343).
-            <PortalV2LoadingState rows={8} label="Loading your ownership matrix…" testId="pv2-own-loading" />
-          ) : dataState === "fixture" ? (
-            // Read failed or returned nothing. The module's `OWNERSHIP_FIXTURE`
-            // fallback is the prototype's fictional Halden Materials estate AND
-            // its invented staff roster (Priya Raman, Aisha Bello, …). Rendering
-            // that on a real customer's page leaked fictional people as fact —
-            // the exact class as #1213-1216. Show the platform's honest no-data
-            // state instead of the fictional matrix (Git #1342).
-            <NoScanDataState
-              testId="pv2-own-no-data"
-              label="No ownership data available"
-              detail="We couldn't load your ownership matrix, or nothing has been assigned yet. No example data is shown."
-            />
-          ) : (
-            <OwnershipMatrix
-              objects={objects}
-              people={people}
-              onPeopleChange={setPeople}
-              typeFilter={typeFilter}
-              escDays={escDays}
-              overlay={overlay}
-              overlayLive={dataState === "live"}
-              persist={persist}
-            />
-          )}
+          <OwnershipMatrix
+            objects={objects}
+            people={people}
+            onPeopleChange={setPeople}
+            typeFilter={typeFilter}
+            escDays={escDays}
+            overlay={overlay}
+            overlayLive={dataState === "live"}
+            persist={persist}
+          />
         </div>
       </div>
     </PortalV2Shell>
