@@ -77,6 +77,7 @@ import {
   sectionCount,
   type Lane,
 } from "@/components/portal-v2/overviewModel";
+import { NoScanValue } from "@/components/portal-v2/NoScanDataState";
 
 const MONO = "'SF Mono',Menlo,Consolas,monospace";
 
@@ -922,7 +923,10 @@ export default function PortalV2OverviewPage() {
                           fontFamily: MONO,
                         }}
                       >
-                        {p.score === null ? "—" : p.score}
+                        {/* Honest-null: a genuinely unscored pillar renders a
+                            muted "—" through the one shared no-scan-data seam
+                            (#1339), never a fabricated 0. */}
+                        <NoScanValue value={p.score} testId={`pv2-strip-score-${p.key}`} />
                       </div>
                       <span
                         style={{
