@@ -577,7 +577,7 @@ namespace BuildConsole.Services
         private class SqlExecuteResponse { public List<SqlStatementResult> Statements { get; set; } = new(); }
 
         /// <summary>Git #814 — same POST the extension's "📋 Queue" button and background.js's queueBuild() already use, now called directly from the WPF app's own injected chat buttons. Git #826 added resumeSessionId — set by a Reply action so the watcher launches with --resume instead of a fresh session.</summary>
-        public Task<HttpResponseMessage> QueueBuildAsync(string title, string prompt, string? model, string? effort, string? cwd, int? githubNumber, List<int>? blockedByNumbers, string? resumeSessionId = null, string? chatUrl = null, string? originatingChatId = null) =>
+        public Task<HttpResponseMessage> QueueBuildAsync(string title, string prompt, string? model, string? effort, string? cwd, int? githubNumber, List<int>? blockedByNumbers, string? resumeSessionId = null, string? chatUrl = null, string? originatingChatId = null, string? buildSet = null) =>
             TrackAsync($"POST queue \"{title}\"", () => _http.PostAsJsonAsync("api/admin/build-tracker/extension/queue", new
             {
                 title,
@@ -590,6 +590,7 @@ namespace BuildConsole.Services
                 resumeSessionId,
                 chatUrl,
                 originatingChatId,
+                buildSet,
             }));
 
         /// <summary>Git #826 — sessionId (captured from this run's own stream-json output) is stored so a later Reply can resume this exact conversation.</summary>

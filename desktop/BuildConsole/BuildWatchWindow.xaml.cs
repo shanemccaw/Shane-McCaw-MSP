@@ -898,7 +898,35 @@ namespace BuildConsole
                     }
                     else if (byId.TryGetValue(slot.QueueItemId, out var item))
                     {
-                        // Sync captured session ID from database snapshot if available
+                        // Sync captured properties from database snapshot if available
+                        if (slot.BuildSet != item.BuildSet)
+                        {
+                            slot.BuildSet = item.BuildSet;
+                            var vm = slot.Pane.ViewModel;
+                            if (!string.IsNullOrEmpty(slot.BuildSet))
+                            {
+                                var accentBrush = Controls.BuildQueuePanel.GetBuildSetBrush(slot.BuildSet);
+                                if (accentBrush is SolidColorBrush scb)
+                                {
+                                    Color accent = scb.Color;
+                                    Color baseCanvas = Color.FromRgb(0x02, 0x06, 0x17);
+                                    byte r = (byte)(0.07 * accent.R + 0.93 * baseCanvas.R);
+                                    byte g = (byte)(0.07 * accent.G + 0.93 * baseCanvas.G);
+                                    byte b = (byte)(0.07 * accent.B + 0.93 * baseCanvas.B);
+                                    vm.ChatBackground = new SolidColorBrush(Color.FromRgb(r, g, b));
+                                    vm.ChatBorder = new SolidColorBrush(Color.FromArgb(0x59, accent.R, accent.G, accent.B));
+                                }
+                            }
+                            else
+                            {
+                                vm.ChatBackground = null;
+                                vm.ChatBorder = null;
+                            }
+                        }
+                        if (slot.GithubNumber != item.GithubNumber) slot.GithubNumber = item.GithubNumber;
+                        if (slot.Title != SafeTitle(item)) slot.Title = SafeTitle(item);
+                        if (slot.Model != item.Model) slot.Model = item.Model;
+                        if (slot.Effort != item.Effort) slot.Effort = item.Effort;
                         if (string.IsNullOrWhiteSpace(slot.SessionId) && !string.IsNullOrWhiteSpace(item.SessionId))
                         {
                             slot.SessionId = item.SessionId;
@@ -1642,7 +1670,8 @@ namespace BuildConsole
                         slot.Cwd,
                         slot.GithubNumber,
                         slot.BlockedByNumbers,
-                        resumeSessionId: sessionId);
+                        resumeSessionId: sessionId,
+                        buildSet: slot.BuildSet);
 
                     int newQueueId = queued.Id;
                     slot.QueueItemId = newQueueId;
