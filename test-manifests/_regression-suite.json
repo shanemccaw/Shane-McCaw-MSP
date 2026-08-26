@@ -76,6 +76,7 @@
     "portal/portal-v2-security-plan.json",
     "portal/portal-v2-pii.json",
     "portal/account-settings.json",
+    "portal/sign-in-help.json",
     "portal/portal-v2-sops.json",
     "portal/security-drilldowns.json",
     "portal/compliance-drilldowns.json",

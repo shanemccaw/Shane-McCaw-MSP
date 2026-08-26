@@ -1,0 +1,80 @@
+{
+  "feature": "Customer Portal Sign-in Help (/login/help) -- Git #1349. A public, mostly client-side page for a locked-out/unauthenticated user: a service-status strip (reuses the existing GET /api/status check), a 5-item FAQ accordion (first item open by default, static copy), two static cards, and ShaneBot. ShaneBot raises a REAL Zoho Desk ticket via POST /api/portal/sign-in-help/ticket -> lib/zoho-desk.ts raiseSignInHelpTicket() (synchronous exception to the queue-only write rule so a real reference can be returned on the spot), attaching the account's REAL recent successful sign-ins + current lockout state (there is no per-attempt/failed-login log on this platform -- only user_sessions successful logins + the failed_login_attempts counter/locked_until on the user row; documented honestly rather than fabricated).",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "PENDING",
+  "notes": "shaneapp://runTest hits the DEPLOYED build, not the local worktree -- these assertions only go green once this session's commit is deployed by the dev-server rebuild.,THE FULL TICKET-CREATION HAPPY PATH (real SM-4xxxx reference) IS NOT ASSERTED HERE: raiseSignInHelpTicket requires live Zoho Desk credentials + ZOHO_DESK_DEFAULT_DEPARTMENT_ID, which the local/test harness does not carry, so the endpoint returns 502 there. What IS asserted is the route's real input VALIDATION (400s), which needs no Zoho, plus the page + accordion + ShaneBot flow up to the email step.,SIGN-IN 'ATTEMPTS' ATTACHMENT IS SUCCESSFUL-LOGIN HISTORY, NOT FAILED-ATTEMPT ROWS: this platform logs successful sign-ins (user_sessions) + a failed-attempt counter/lockout state on the user row, but NOT individual failed attempts. The ticket attaches the real former; the design's 'last ten sign-in attempts' bot copy is kept verbatim.,THE PAGE IS PUBLIC (no login block) -- the user is locked out by definition, so /login/help and its POST must not require auth. UI route shape: /portal/{slug}/login/help (slug-scoped, declared in SlugInnerSwitch).,NO 'signed in but portal is empty' FAQ ITEM -- deliberately excluded by design (a scan gate holds the portal closed until first scan, so that state does not exist).,ENV VARS required: DEPLOY_URL.",
+  "apiTests": [
+    {
+      "method": "POST",
+      "path": "/api/portal/sign-in-help/ticket",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "not-an-email", "issueKey": "locked" },
+      "expect": { "status": 400, "jsonPath": "$.error", "exists": true }
+    },
+    {
+      "method": "POST",
+      "path": "/api/portal/sign-in-help/ticket",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "someone@example.com", "issueKey": "not-a-real-issue" },
+      "expect": { "status": 400, "jsonPath": "$.error", "exists": true }
+    }
+  ],
+  "uiSteps": [
+    {
+      "name": "SIH1 -- the public sign-in help page resolves (no login required).",
+      "action": "goto",
+      "target": "/portal/shane-mccaw-consulting/login/help",
+      "critical": true
+    },
+    {
+      "name": "SIH2 -- the first FAQ row renders.",
+      "action": "expect",
+      "selector": "[data-testid='faq-toggle-password']",
+      "state": "visible",
+      "critical": true
+    },
+    {
+      "name": "SIH3 -- the first FAQ item is open by default, showing its real body copy.",
+      "action": "expect",
+      "selector": "[data-testid='faq-toggle-password']",
+      "textContains": "My password is not being accepted"
+    },
+    {
+      "name": "SIH4 -- open ShaneBot.",
+      "action": "click",
+      "selector": "[data-testid='open-shanebot']",
+      "critical": true
+    },
+    {
+      "name": "SIH5 -- the ShaneBot scroll region (max-height 52vh, pinned to bottom) mounts.",
+      "action": "expect",
+      "selector": "[data-testid='shanebot-scroll']",
+      "state": "visible",
+      "critical": true
+    },
+    {
+      "name": "SIH6 -- ...with the verbatim greeting.",
+      "action": "expect",
+      "selector": "[data-testid='shanebot-scroll']",
+      "textContains": "I raise sign-in tickets so you do not have to write one"
+    },
+    {
+      "name": "SIH7 -- pick the 'locked out' issue.",
+      "action": "click",
+      "selector": "[data-testid='shanebot-issue-locked']",
+      "critical": true
+    },
+    {
+      "name": "SIH8 -- ShaneBot now asks for the account email (with the verbatim last-ten-attempts promise).",
+      "action": "expect",
+      "selector": "[data-testid='shanebot-scroll']",
+      "textContains": "attach your last ten sign-in attempts"
+    },
+    {
+      "name": "SIH9 -- ...and the email input is presented.",
+      "action": "expect",
+      "selector": "[data-testid='shanebot-email']",
+      "state": "visible"
+    }
+  ]
+}

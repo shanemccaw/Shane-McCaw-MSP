@@ -219,6 +219,101 @@ async function createDeskTicket(
   };
 }
 
+// ── Sign-in Help ticket (Git #1349) ───────────────────────────────────────────
+// ShaneBot on the public /login/help page raises a real Zoho Desk ticket for a
+// customer who is locked out. Unlike every other write in this file (which is
+// queued and applied by the 5-minute drain — see enqueueZohoDeskWrite's docblock
+// calling that "the ONLY way a Zoho Desk write happens"), this one is
+// DELIBERATELY synchronous: ShaneBot must hand the user a real ticket reference
+// on the spot, and a job that lands minutes later can't do that. It reuses the
+// same upsertDeskContact + createDeskTicket primitives every other path uses —
+// it is not a parallel Zoho client, just the one synchronous exception, so the
+// reference the user sees is a real Zoho ticket number, never fabricated.
+
+export interface SignInHelpTicketInput {
+  /** The email the customer typed — the account they're locked out of. */
+  email: string;
+  /** The picked issue's exact human label (from the fixed 4-issue catalog). */
+  issueLabel: string;
+  /** Priority tag for the picked issue, e.g. "P2". */
+  priority: string;
+  /** Routing/SLA note for the picked issue. */
+  routingNote: string;
+  /**
+   * Pre-composed, real sign-in context to attach to the ticket body — the
+   * caller (portal-sign-in-help.ts) builds this from the account's genuine
+   * recent successful sign-ins and current lockout state, or an honest note
+   * that no matching account/history exists. Never fabricated here.
+   */
+  signInContext: string;
+}
+
+export interface SignInHelpTicketResult {
+  /** The real Zoho Desk ticket number (e.g. "SM-41234"), or the zoho id if Zoho returned no number. */
+  reference: string;
+  zohoId: string;
+  priority: string;
+  routingNote: string;
+  email: string;
+  webUrl: string | null;
+}
+
+export async function raiseSignInHelpTicket(
+  input: SignInHelpTicketInput,
+  mspId?: number,
+): Promise<SignInHelpTicketResult> {
+  const departmentId = process.env.ZOHO_DESK_DEFAULT_DEPARTMENT_ID;
+  if (!departmentId) {
+    throw new Error(
+      "Sign-in help ticket requires ZOHO_DESK_DEFAULT_DEPARTMENT_ID to be configured — confirm Shane has a Department set up in Zoho Desk",
+    );
+  }
+
+  const email = input.email.trim().toLowerCase();
+  if (!/.+@.+\..+/.test(email)) {
+    throw new Error("Sign-in help ticket requires a valid account email");
+  }
+
+  // Upsert the Desk contact for this email so the ticket threads under the real
+  // person, same as the queued escalation path (handleCreateTicketJob) does.
+  const contact = await upsertDeskContact(email, undefined, undefined, mspId);
+
+  const description = [
+    "A customer raised a sign-in help request through ShaneBot on the /login/help page.",
+    "",
+    `Issue: ${input.issueLabel}`,
+    `Priority: ${input.priority}`,
+    `Routing note: ${input.routingNote}`,
+    `Account email: ${email}`,
+    "",
+    input.signInContext,
+  ].join("\n");
+
+  const ticket = await createDeskTicket(
+    {
+      subject: `Sign-in help: ${input.issueLabel}`,
+      description,
+      departmentId,
+      contactId: contact.zohoId,
+    },
+    mspId,
+  );
+
+  log.info(
+    { zohoId: ticket.zohoId, ticketNumber: ticket.ticketNumber, priority: input.priority },
+    "zoho-desk: sign-in help ticket raised synchronously (Git #1349)",
+  );
+
+  return {
+    reference: ticket.ticketNumber ?? ticket.zohoId,
+    zohoId: ticket.zohoId,
+    priority: input.priority,
+    routingNote: input.routingNote,
+    email,
+    webUrl: ticket.webUrl,
+  };
+}
+
 async function getDeskTicket(ticketId: string, mspId?: number): Promise<Record<string, unknown> | null> {
   const headers = await orgHeader(mspId);
   try {
