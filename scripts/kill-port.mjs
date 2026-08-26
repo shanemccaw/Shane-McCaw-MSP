@@ -8,9 +8,41 @@
  * Safe to run even if PORT is unset or /proc is unavailable — exits 0 always.
  */
 import fs from "fs";
+import { execSync } from "child_process";
 
-const port = parseInt(process.env.PORT ?? "", 10);
+const portStr = process.argv[2] || process.env.PORT;
+const port = parseInt(portStr ?? "", 10);
 if (!port || isNaN(port)) process.exit(0);
+
+if (process.platform === "win32") {
+  try {
+    const output = execSync(`netstat -ano`).toString();
+    const lines = output.split("\n");
+    const pids = new Set();
+    for (const line of lines) {
+      const parts = line.trim().split(/\s+/);
+      if (parts.length >= 5) {
+        const localAddress = parts[1];
+        const state = parts[3];
+        const pidStr = parts[4];
+        if (state === "LISTENING" && (localAddress.endsWith(`:${port}`) || localAddress.endsWith(`[::]:${port}`))) {
+          const pid = parseInt(pidStr, 10);
+          if (pid && !isNaN(pid)) {
+            pids.add(pid);
+          }
+        }
+      }
+    }
+    for (const pid of pids) {
+      try {
+        console.log(`[kill-port] Killing Windows process ${pid} listening on port ${port}...`);
+        execSync(`taskkill /F /PID ${pid}`);
+      } catch {}
+    }
+  } catch {}
+  await new Promise((r) => setTimeout(r, 300));
+  process.exit(0);
+}
 
 // /proc/net/tcp stores local addresses in little-endian hex: "0100007F:1F90"
 // We need to match the port part (last 4 hex chars of the address field).
