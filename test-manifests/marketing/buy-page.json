@@ -1,7 +1,7 @@
 {
   "feature": "Marketing Buy / Checkout page (/buy) — the one checkout for all three products. Asserts the product-specific rules that make or break the flow: monitoring gates pricing+payment behind a tenant connection, retainer offers a skippable scan and is never gated, packs are multi-select with a summed one-time total, and the terms checkbox gates the pay button without ever hiding the payment fields.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "1dc915765",
+  "lastVerifiedAgainstCommit": "9909cefba",
   "apiTests": [
     {
       "sessionTag": "1316-pack-flow",
