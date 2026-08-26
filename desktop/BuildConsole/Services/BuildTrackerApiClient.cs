@@ -300,10 +300,14 @@ namespace BuildConsole.Services
             return res?.Items ?? new List<QueueItem>();
         }));
 
-        /// <summary>Git #817 — the same endpoint scripts/build-queue-watcher.ps1 polls (atomically claims up to `limit` ready rows, marks them running). Used by QueueWatcherService so the app can do this itself instead of requiring that separate script.</summary>
-        public Task<List<QueueItem>> GetNextQueueItemsAsync(int limit) => TrackAsync($"GET queue/next?limit={limit}", async () =>
+        public Task<List<QueueItem>> GetNextQueueItemsAsync(int limit, List<int> excludeIds) => TrackAsync($"GET queue/next?limit={limit}", async () =>
         {
-            var res = await _http.GetFromJsonAsync<QueueResponse>($"api/admin/build-tracker/extension/queue/next?limit={limit}", JsonOpts);
+            string url = $"api/admin/build-tracker/extension/queue/next?limit={limit}";
+            if (excludeIds != null && excludeIds.Count > 0)
+            {
+                url += $"&exclude={string.Join(",", excludeIds)}";
+            }
+            var res = await _http.GetFromJsonAsync<QueueResponse>(url, JsonOpts);
             return res?.Items ?? new List<QueueItem>();
         });
 

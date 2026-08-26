@@ -1757,6 +1757,10 @@ router.get("/admin/build-tracker/extension/queue", ingestAuth, async (req: Reque
 router.get("/admin/build-tracker/extension/queue/next", ingestAuth, async (req: Request, res: Response) => {
   const limit = Math.max(0, Math.min(20, parseInt(String(req.query.limit ?? "1"), 10) || 0));
   if (limit === 0) { res.json({ items: [] }); return; }
+  const excludeIds = String(req.query.exclude ?? "")
+    .split(",")
+    .map(id => parseInt(id, 10))
+    .filter(id => !isNaN(id));
   try {
     const queued = await db
       .select()
@@ -1767,6 +1771,7 @@ router.get("/admin/build-tracker/extension/queue/next", ingestAuth, async (req: 
     const ready: typeof queued = [];
     for (const item of queued) {
       if (ready.length >= limit) break;
+      if (excludeIds.includes(item.id)) continue;
       if (item.githubNumber != null && item.blockedByNumbers === null) {
         try {
           const gitBlockers = await fetchRealBlockedByNumbers(item.githubNumber);

@@ -49,6 +49,7 @@ import "./screens/build-tracker";
 import "./screens/project-management";
 import "./screens/content-studio";
 import "./screens/retainer";
+import "./screens/risk-decisions";
 // The Git screen's floating console is meant to hover over whatever you are
 // doing, not just show while `/git` itself is the active screen — so it is
 // mounted here, unconditionally, rather than inside `GitConsoleBody`'s own
@@ -109,6 +110,10 @@ import { ContentStudioFetchBridge } from "./screens/content-studio/ContentStudio
 // Warm-loads the retainer customer list so the Money-tab ribbon gallery + the
 // palette answers have live buckets before /retainer is opened. See #1293.
 import { RetainerFetchBridge } from "./screens/retainer/RetainerFetchBridge";
+// Same reasoning again, for the Risk-Based Decisions screen's Watch-tab primary
+// group, its palette answers and its linked-check catalog — see
+// RiskDecisionsFetchBridge.tsx's doc comment (Git #1294).
+import { RiskDecisionsFetchBridge } from "./screens/risk-decisions/RiskDecisionsFetchBridge";
 // Same reasoning again, for the Home tab's "Open a prompt"/"Drafts pending"
 // galleries and the synchronous `prompt` peek resolver — see
 // AiPromptsFetchBridge.tsx's doc comment.
@@ -215,6 +220,7 @@ function AdminShell() {
       <MarketingFetchBridge />
       <ContentStudioFetchBridge />
       <RetainerFetchBridge />
+      <RiskDecisionsFetchBridge />
       <AiPromptsFetchBridge />
       <SharedLinksFetchBridge />
       <DocumentsFetchBridge />

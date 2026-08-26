@@ -188,6 +188,7 @@ namespace BuildConsole.Services
             _maxConcurrent = maxConcurrent;
             _repoRoot = repoRoot ?? AppDomain.CurrentDomain.BaseDirectory;
             _claudeExe = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "bin", "claude.exe");
+            _paused = BuildConsoleSettings.Load().QueuePaused;
         }
 
         public int RunningCount => _running.Count;
@@ -219,6 +220,16 @@ namespace BuildConsole.Services
         {
             if (_paused == paused) return;
             _paused = paused;
+            try
+            {
+                var settings = BuildConsoleSettings.Load();
+                settings.QueuePaused = paused;
+                settings.Save();
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("watcher", $"Failed to save queue pause state to settings: {ex.Message}");
+            }
             ActivityLog.Log("watcher", paused
                 ? "Queue PAUSED — already-running builds continue; no new queued items will be claimed/started until resumed."
                 : "Queue RESUMED — the pickup loop will claim and start queued items again on the next tick.");
@@ -546,7 +557,7 @@ namespace BuildConsole.Services
                 {
                     next = _db != null
                         ? await _db.GetNextAsync(freeSlots)
-                        : await _api.GetNextQueueItemsAsync(freeSlots);
+                        : await _api.GetNextQueueItemsAsync(freeSlots, BuildConsoleSettings.Load().PausedBuildIds);
                 }
                 catch (Exception ex) { ActivityLog.Log("watcher", $"Couldn't poll/claim next queue item(s): {ex.Message}"); return; }
 

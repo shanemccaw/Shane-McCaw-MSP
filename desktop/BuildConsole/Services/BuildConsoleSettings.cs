@@ -365,6 +365,12 @@ namespace BuildConsole.Services
         /// <summary>On by default: queue builds launch with BuildConsole-owned redirected stdin/stdout so Build Watch can chat into them. Off = legacy --print positional-prompt path (no stdin, no interactivity).</summary>
         public bool InteractiveBuilds { get; set; } = true;
 
+        /// <summary>Global queue paused state, remembered across app restarts.</summary>
+        public bool QueuePaused { get; set; } = false;
+
+        /// <summary>IDs of build queue items that have been paused by the user.</summary>
+        public List<int> PausedBuildIds { get; set; } = new List<int>();
+
         /// <summary>
         /// Git #800 must still hold: an interactive queue build must still auto-complete so the queue/concurrency
         /// slot frees and completion (sound, DB row) fires. After a turn finishes (a stream-json "result") the build
@@ -432,6 +438,7 @@ namespace BuildConsole.Services
                 var settings = JsonSerializer.Deserialize<BuildConsoleSettings>(
                     json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
                 settings ??= new BuildConsoleSettings();
+                settings.PausedBuildIds ??= new List<int>();
 
                 // Web Tools popout: add Git repo as a default entry — the WebTools field
                 // initializer above only seeds the Git entry for a settings.json with no

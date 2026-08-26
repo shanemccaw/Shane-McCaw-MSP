@@ -225,13 +225,18 @@ namespace BuildConsole.Services
                 WHERE status = 'queued'
                 ORDER BY created_at ASC";
 
+            var pausedIds = BuildConsoleSettings.Load().PausedBuildIds;
             var candidates = new List<QueueItem>();
             await using var conn = await OpenAsync();
             await using var fetchCmd = new NpgsqlCommand(fetchSql, conn);
             await using (var reader = await fetchCmd.ExecuteReaderAsync())
             {
                 while (await reader.ReadAsync())
-                    candidates.Add(MapRow(reader));
+                {
+                    var item = MapRow(reader);
+                    if (!pausedIds.Contains(item.Id))
+                        candidates.Add(item);
+                }
             }
 
             // Step 2 — filter to items whose blockers are all cleared.

@@ -138,6 +138,12 @@ namespace BuildConsole.Controls
             _watcher = watcher;
             _db = db;
 
+            if (_watcher != null)
+            {
+                SyncPauseToggleVisual(_watcher.IsPaused);
+                _watcher.PausedStateChanged += (paused) => Dispatcher.BeginInvoke(new Action(() => SyncPauseToggleVisual(paused)));
+            }
+
             // Real, durable usage/cost tracking — refresh the badge the moment a build
             // actually completes a turn, from any thread (UsageTrackingService.Changed
             // fires off the recording thread, not the UI thread).
@@ -1605,21 +1611,24 @@ namespace BuildConsole.Controls
             bool isWaitingForInput = node.IsWaitingForInput;
             bool isBlocked = node.IsBlocked;
             bool isSelected = _selectedQueueItemId == item.Id;
+            bool isPaused = BuildConsoleSettings.Load().PausedBuildIds.Contains(item.Id);
 
             Color cardBorderColor = isSelected ? Color.FromRgb(0x89, 0xB4, 0xFA) :
                 (isWaitingForInput ? Color.FromRgb(0xF9, 0xE2, 0xAF) :
                 (item.Status == "running" ? Color.FromRgb(0x45, 0x5A, 0x82) :
+                (isPaused ? Color.FromRgb(0xFA, 0xB3, 0x87) :
                 (isBlocked ? Color.FromRgb(0x5A, 0x2A, 0x34) :
                 (item.Status == "done" ? Color.FromRgb(0x2E, 0x52, 0x3E) :
                 (item.Status == "failed" ? Color.FromRgb(0x5A, 0x2A, 0x34) :
-                Color.FromRgb(0x31, 0x32, 0x44))))));
+                Color.FromRgb(0x31, 0x32, 0x44)))))));
 
             Color cardBgColor = isSelected ? Color.FromRgb(0x1B, 0x22, 0x34) :
                 (isWaitingForInput ? Color.FromRgb(0x23, 0x1E, 0x18) :
                 (item.Status == "running" ? Color.FromRgb(0x15, 0x19, 0x26) :
+                (isPaused ? Color.FromRgb(0x2A, 0x20, 0x1A) :
                 (isBlocked ? Color.FromRgb(0x1E, 0x18, 0x22) :
                 (item.Status == "done" ? Color.FromRgb(0x14, 0x20, 0x1A) :
-                Color.FromRgb(0x18, 0x18, 0x25)))));
+                Color.FromRgb(0x18, 0x18, 0x25))))));
 
             var card = new Border
             {
@@ -1661,6 +1670,25 @@ namespace BuildConsole.Controls
                     FontSize = 9.5,
                     FontWeight = FontWeights.Bold,
                     Foreground = new SolidColorBrush(Color.FromRgb(0xF9, 0xE2, 0xAF)),
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+            }
+            else if (isPaused)
+            {
+                statusPill = new Border
+                {
+                    Background = new SolidColorBrush(Color.FromRgb(0x3E, 0x2C, 0x1A)),
+                    BorderBrush = new SolidColorBrush(Color.FromRgb(0xFA, 0xB3, 0x87)),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(4),
+                    Padding = new Thickness(6, 1.5, 6, 1.5)
+                };
+                statusPill.Child = new TextBlock
+                {
+                    Text = "⏸ PAUSED",
+                    FontSize = 9.5,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = new SolidColorBrush(Color.FromRgb(0xFA, 0xB3, 0x87)),
                     VerticalAlignment = VerticalAlignment.Center
                 };
             }
@@ -2040,6 +2068,26 @@ namespace BuildConsole.Controls
             }
             else if (item.Status == "queued")
             {
+                bool isItemPaused = BuildConsoleSettings.Load().PausedBuildIds.Contains(item.Id);
+                var miPauseBuild = new MenuItem { Header = isItemPaused ? "▶ Unpause Build" : "⏸ Pause Build" };
+                miPauseBuild.Click += async (_, _) =>
+                {
+                    var settings = BuildConsoleSettings.Load();
+                    if (settings.PausedBuildIds.Contains(item.Id))
+                    {
+                        settings.PausedBuildIds.Remove(item.Id);
+                        ActivityLog.Log("build-queue", $"Unpaused build queue item #{item.Id} ({item.Title})");
+                    }
+                    else
+                    {
+                        settings.PausedBuildIds.Add(item.Id);
+                        ActivityLog.Log("build-queue", $"Paused build queue item #{item.Id} ({item.Title})");
+                    }
+                    settings.Save();
+                    await RefreshAsync();
+                };
+                cm.Items.Add(miPauseBuild);
+
                 var miRunNow = new MenuItem { Header = "🚀 Run Now" };
                 miRunNow.Click += async (_, _) =>
                 {
@@ -2050,6 +2098,13 @@ namespace BuildConsole.Controls
                     }
                     try
                     {
+                        var settings = BuildConsoleSettings.Load();
+                        if (settings.PausedBuildIds.Contains(item.Id))
+                        {
+                            settings.PausedBuildIds.Remove(item.Id);
+                            settings.Save();
+                        }
+
                         QueueItem claimed;
                         if (_db != null)
                             claimed = await _db.ForceClaimAsync(item.Id);

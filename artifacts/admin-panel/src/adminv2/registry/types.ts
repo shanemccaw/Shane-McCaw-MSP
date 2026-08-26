@@ -412,6 +412,11 @@ export const PEEK_KINDS = [
   // it is one logged unit of consulting work against a retainer, with its own
   // hours / pillar / finding / outcome / state.
   "retainer",
+  // One Risk-Based Decision (Git #1294). Not an "alert" (that is the finding it
+  // may suppress) nor a "customer" (that is the account it sits under) — it is a
+  // documented acceptance of a specific risk, with its own liability figure,
+  // linked automated check, expiry and lifecycle status.
+  "riskDecision",
 ] as const;
 export type PeekKind = (typeof PEEK_KINDS)[number];
 

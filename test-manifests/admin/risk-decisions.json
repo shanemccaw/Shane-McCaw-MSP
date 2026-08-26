@@ -1,0 +1,60 @@
+{
+  "feature": "AdminV2 Risk-Based Decisions module + linked-check picker (accepted-risk alert suppression, Git #1294)",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "TBD-1294",
+
+  "notes": [
+    "SCOPE (decision REVERSED from the earlier #1294 attempt): #1279 added msp_risk_decisions.check_key",
+    "(nullable, suppresses accepted-risk alert re-firing) but left it settable only via a raw POST body field.",
+    "The first #1294 attempt put the picker in the msp-portal RiskBasedDecisionConsole; Shane reopened and",
+    "decided (issue comment 2026-08-26): there is NO MSP-operator audience this version, so RBD management moves",
+    "to a NEW PlatformAdmin-only AdminV2 module, and the msp-portal console leaves the live app with #1297. This",
+    "manifest was retargeted from that removed console to the new AdminV2 surface accordingly.",
+    "",
+    "WHAT WAS BUILT: new admin-scoped API routes/admin-rbd.ts (requireAdmin / PlatformAdmin): GET",
+    "/api/admin/rbd/customers, GET /api/admin/rbd/:customerId, POST /api/admin/rbd/:customerId, PATCH",
+    "/api/admin/rbd/entry/:id -- scoped by resolveTenantScope(customerId) exactly like admin-retainer.ts. The",
+    "linked-check <select> reuses the existing GET /api/msp/rbd/available-checks (unchanged). New AdminV2 screen",
+    "artifacts/admin-panel/src/adminv2/screens/risk-decisions (data-testid=rbd-linked-check-picker on the create",
+    "form's picker; rbd-relink-picker on the peek's re-link panel).",
+    "",
+    "AUTH / RUNNABILITY: the headless harness cannot mint a PlatformAdmin session cookie, so the apiTests below",
+    "prove the auth walls are intact rather than exercising a real create (same honesty convention as",
+    "test-manifests/admin/testbed-gate-negative.json). The available-checks 401 assertion is the same one the",
+    "prior #1294 session already ran green. The AdminV2 UI (a real PlatformAdmin browser session driving the",
+    "picker end-to-end) is a SHANE TO-DO: it needs a platform-admin login the harness has no way to synthesise."
+  ],
+
+  "apiTests": [
+    {
+      "name": "auth wall intact -- available-checks catalog route rejects a non-MSP credential (requireRole MSPOperator)",
+      "method": "GET",
+      "path": "/api/msp/rbd/available-checks",
+      "headers": { "Authorization": "Bearer {{SECRET_KEY}}" },
+      "expect": { "status": 401, "jsonPath": "$.error", "exists": true }
+    },
+    {
+      "name": "admin wall intact -- GET /api/admin/rbd/customers rejects an unauthenticated request (requireAdmin -> requireAuth 401)",
+      "method": "GET",
+      "path": "/api/admin/rbd/customers",
+      "expect": { "status": 401, "jsonPath": "$.error", "exists": true }
+    },
+    {
+      "name": "admin wall intact -- GET /api/admin/rbd/1 rejects an unauthenticated request",
+      "method": "GET",
+      "path": "/api/admin/rbd/1",
+      "expect": { "status": 401, "jsonPath": "$.error", "exists": true }
+    }
+  ],
+
+  "uiSteps": [
+    { "action": "navigate", "path": "/adminv2/risk-decisions", "sessionTag": "rbd-adminv2-1294" },
+    {
+      "action": "expect",
+      "selector": "[data-testid=rbd-new-toggle], [data-testid=rbd-customer-1]",
+      "state": "present",
+      "sessionTag": "rbd-adminv2-1294",
+      "notes": "SHANE TO-DO: requires a real PlatformAdmin session -- AdminV2 redirects any non-admin session to /login, and the harness cannot mint an admin cookie. When run under a genuine admin session, the customer picker (rbd-customer-*) or, after picking a customer, the New-decision toggle and rbd-linked-check-picker prove the module renders and the picker is reachable."
+    }
+  ]
+}
