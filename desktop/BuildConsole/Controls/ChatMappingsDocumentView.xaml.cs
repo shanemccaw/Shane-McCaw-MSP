@@ -58,7 +58,7 @@ namespace BuildConsole.Controls
             try
             {
                 // 1. Fetch epics
-                var epicsRes = await _api.ExecuteSqlAsync("SELECT id, github_number, title FROM bt_epics ORDER BY title;");
+                var epicsRes = await LocalSqlExecutor.ExecuteAsync(_api, "SELECT id, github_number, title FROM bt_epics ORDER BY title;");
                 var epics = new List<EpicComboItem> { new EpicComboItem { Id = null, DisplayName = "(Unlinked / None)" } };
                 if (epicsRes != null && epicsRes.Count > 0 && epicsRes[0].Rows != null)
                 {
@@ -76,7 +76,7 @@ namespace BuildConsole.Controls
                 foreach (var ep in epics) _epicsList.Add(ep);
 
                 // 2. Fetch chats
-                var chatsRes = await _api.ExecuteSqlAsync(@"
+                var chatsRes = await LocalSqlExecutor.ExecuteAsync(_api, @"
                     SELECT c.id, c.conversation_id, c.title, c.epic_id, c.category,
                            (SELECT string_agg(cast(issue_number as text), ', ') FROM bt_chat_issues ci WHERE ci.chat_id = c.id) as associated_issues
                     FROM bt_chats c
@@ -190,7 +190,7 @@ namespace BuildConsole.Controls
                 try
                 {
                     string sqlVal = newEpicId.HasValue ? newEpicId.Value.ToString() : "NULL";
-                    await _api.ExecuteSqlAsync($"UPDATE bt_chats SET epic_id = {sqlVal}, updated_at = now() WHERE id = {item.Id}");
+                    await LocalSqlExecutor.ExecuteAsync(_api, $"UPDATE bt_chats SET epic_id = {sqlVal}, updated_at = now() WHERE id = {item.Id}");
                     TxtStatus.Text = "Epic saved.";
                     if (Application.Current.MainWindow is MainWindow mw)
                     {
@@ -230,7 +230,7 @@ namespace BuildConsole.Controls
                         }
                     }
 
-                    await _api.ExecuteSqlAsync(sqlBatch.ToString());
+                    await LocalSqlExecutor.ExecuteAsync(_api, sqlBatch.ToString());
                     TxtStatus.Text = "Issues saved.";
                     if (Application.Current.MainWindow is MainWindow mw)
                     {
@@ -260,7 +260,7 @@ namespace BuildConsole.Controls
                 try
                 {
                     string sqlVal = text == null ? "NULL" : $"'{text.Replace("'", "''")}'";
-                    await _api.ExecuteSqlAsync($"UPDATE bt_chats SET category = {sqlVal}, updated_at = now() WHERE id = {item.Id}");
+                    await LocalSqlExecutor.ExecuteAsync(_api, $"UPDATE bt_chats SET category = {sqlVal}, updated_at = now() WHERE id = {item.Id}");
                     TxtStatus.Text = "Category saved.";
                     if (Application.Current.MainWindow is MainWindow mw)
                     {
@@ -291,7 +291,7 @@ namespace BuildConsole.Controls
 
                 try
                 {
-                    await _api.ExecuteSqlAsync($"DELETE FROM bt_chat_issues WHERE chat_id = {item.Id}; DELETE FROM bt_chats WHERE id = {item.Id};");
+                    await LocalSqlExecutor.ExecuteAsync(_api, $"DELETE FROM bt_chat_issues WHERE chat_id = {item.Id}; DELETE FROM bt_chats WHERE id = {item.Id};");
                     _allChats.Remove(item);
                     ApplyFilter();
                     TxtStatus.Text = "Chat mapping deleted successfully.";
