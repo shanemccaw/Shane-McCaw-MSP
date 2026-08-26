@@ -1651,48 +1651,6 @@ namespace BuildConsole
             bool navigated = false;
             bool epicAssocWired = false;
             bool epicAssociated = false;
-            wv.Loaded += async (s, e) =>
-            {
-                bool ready = await EnsureWebViewInitializedAsync(wv);
-
-                if (ready && url.Contains("claude.ai", StringComparison.OrdinalIgnoreCase))
-                {
-                    await InjectBuilderButtonsAsync(wv);
-                }
-
-                if (ready && associateIssueNumber.HasValue && !epicAssocWired)
-                {
-                    epicAssocWired = true;
-                    int issueNumber = associateIssueNumber.Value;
-                    string issueType = associateIssueType ?? "Issue";
-                    string defaultTitle = associateDefaultTitle ?? $"[#{issueNumber}] Chat";
-                    wv.CoreWebView2.WebMessageReceived += async (ws, we) =>
-                    {
-                        if (epicAssociated) return;
-                        string raw;
-                        try { raw = we.TryGetWebMessageAsString(); }
-                        catch { return; }
-                        if (string.IsNullOrEmpty(raw) ||
-                            raw.IndexOf("BT_EPIC_CHAT_CONVERSATION", StringComparison.Ordinal) < 0) return;
-                        var m = System.Text.RegularExpressions.Regex.Match(
-                            raw, @"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}");
-                        if (!m.Success) return;
-                        var conversationId = m.Value;
-                        if (!string.IsNullOrEmpty(initialConversationId) &&
-                            string.Equals(conversationId, initialConversationId, StringComparison.OrdinalIgnoreCase)) return;
-                        epicAssociated = true;
-                        await AssociateChatWithIssueAsync(conversationId, issueNumber, issueType, defaultTitle);
-                    };
-                    try { await wv.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(EpicChatAssociationWatcherScript); }
-                    catch { }
-                }
-
-                if (ready && !navigated)
-                {
-                    navigated = true;
-                    wv.CoreWebView2.Navigate(url);
-                }
-            };
 
             // Browser navigation toolbar bar
             var navBar = new Grid
@@ -2087,6 +2045,100 @@ namespace BuildConsole
                 catch
                 {
                     // Fail-safe
+                }
+            };
+
+            wv.Loaded += async (s, e) =>
+            {
+                bool ready = await EnsureWebViewInitializedAsync(wv);
+
+                if (ready && url.Contains("claude.ai", StringComparison.OrdinalIgnoreCase))
+                {
+                    await InjectBuilderButtonsAsync(wv);
+                }
+
+                if (ready && associateIssueNumber.HasValue && !epicAssocWired)
+                {
+                    epicAssocWired = true;
+                    int issueNumber = associateIssueNumber.Value;
+                    string issueType = associateIssueType ?? "Issue";
+                    string defaultTitle = associateDefaultTitle ?? $"[#{issueNumber}] Chat";
+                    wv.CoreWebView2.WebMessageReceived += async (ws, we) =>
+                    {
+                        if (epicAssociated) return;
+                        string raw;
+                        try { raw = we.TryGetWebMessageAsString(); }
+                        catch { return; }
+                        if (string.IsNullOrEmpty(raw) ||
+                            raw.IndexOf("BT_EPIC_CHAT_CONVERSATION", StringComparison.Ordinal) < 0) return;
+                        var m = System.Text.RegularExpressions.Regex.Match(
+                            raw, @"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}");
+                        if (!m.Success) return;
+                        var conversationId = m.Value;
+                        if (!string.IsNullOrEmpty(initialConversationId) &&
+                            string.Equals(conversationId, initialConversationId, StringComparison.OrdinalIgnoreCase)) return;
+                        epicAssociated = true;
+                        await AssociateChatWithIssueAsync(conversationId, issueNumber, issueType, defaultTitle);
+                    };
+                    try { await wv.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(EpicChatAssociationWatcherScript); }
+                    catch { }
+                }
+
+                if (ready)
+                {
+                    wv.CoreWebView2.WebMessageReceived += (ws, we) =>
+                    {
+                        string msg;
+                        try { msg = we.TryGetWebMessageAsString(); }
+                        catch { return; }
+
+                        if (msg == "AUTOFILL_PASSWORD_DETECTED")
+                        {
+                            try
+                            {
+                                var host = wv.Source.Host;
+                                bool isLocal = host.Equals("localhost", StringComparison.OrdinalIgnoreCase) ||
+                                               host.Equals("127.0.0.1") ||
+                                               host.Equals("[::1]");
+                                if (isLocal)
+                                {
+                                    populateAutofillOverlay();
+                                    autofillOverlay.Visibility = Visibility.Visible;
+                                }
+                            }
+                            catch { }
+                        }
+                    };
+
+                    string observeScript = @"
+(function() {
+    function check() {
+        if (document.querySelector('input[type=""password""]')) {
+            window.chrome.webview.postMessage('AUTOFILL_PASSWORD_DETECTED');
+            return true;
+        }
+        return false;
+    }
+    if (!check()) {
+        const observer = new MutationObserver((mutations, obs) => {
+            if (check()) {
+                obs.disconnect();
+            }
+        });
+        observer.observe(document.documentElement, {
+            childList: true,
+            subtree: true
+        });
+    }
+})();";
+                    try { _ = wv.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(observeScript); }
+                    catch { }
+                }
+
+                if (ready && !navigated)
+                {
+                    navigated = true;
+                    wv.CoreWebView2.Navigate(url);
                 }
             };
 
