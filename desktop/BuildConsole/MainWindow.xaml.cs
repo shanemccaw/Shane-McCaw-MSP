@@ -1838,11 +1838,7 @@ namespace BuildConsole
                 BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(8),
                 Width = 280,
-                HorizontalAlignment = HorizontalAlignment.Right,
-                VerticalAlignment = VerticalAlignment.Top,
-                Margin = new Thickness(16),
-                Padding = new Thickness(12),
-                Visibility = Visibility.Collapsed
+                Padding = new Thickness(12)
             };
 
             var overlayStack = new StackPanel();
@@ -1862,6 +1858,20 @@ namespace BuildConsole
             Grid.SetColumn(headerText, 0);
             headerGrid.Children.Add(headerText);
             
+            // Declare popup to overlay on top of WebView2 airspace and anchor under btnFillLogin
+            var popup = new System.Windows.Controls.Primitives.Popup
+            {
+                Child = autofillOverlay,
+                Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom,
+                PlacementTarget = btnFillLogin,
+                HorizontalOffset = -252, // Align right edge of 280px popup with right edge of 28px button
+                VerticalOffset = 4,
+                StaysOpen = false,
+                IsOpen = false,
+                AllowsTransparency = true,
+                PopupAnimation = System.Windows.Controls.Primitives.PopupAnimation.Fade
+            };
+
             var closeOverlayBtn = new Button
             {
                 Content = "✕",
@@ -1870,7 +1880,7 @@ namespace BuildConsole
                 Padding = new Thickness(4, 1, 4, 1),
                 VerticalAlignment = VerticalAlignment.Center
             };
-            closeOverlayBtn.Click += (s, e) => { autofillOverlay.Visibility = Visibility.Collapsed; };
+            closeOverlayBtn.Click += (s, e) => { popup.IsOpen = false; };
             Grid.SetColumn(closeOverlayBtn, 1);
             headerGrid.Children.Add(closeOverlayBtn);
             
@@ -1884,13 +1894,11 @@ namespace BuildConsole
             string escapeJs(string s) => s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r", "\\r").Replace("\n", "\\n");
 
             Action populateAutofillOverlay = () => { listContainer.Children.Clear(); };
-            // Wire up Fill Login button click now that overlay and populateAutofillOverlay are in scope
+            // Wire up Fill Login button click now that popup and populateAutofillOverlay are in scope
             btnFillLogin.Click += (s, e) =>
             {
                 populateAutofillOverlay();
-                autofillOverlay.Visibility = autofillOverlay.Visibility == Visibility.Visible
-                    ? Visibility.Collapsed
-                    : Visibility.Visible;
+                popup.IsOpen = !popup.IsOpen;
             };
             populateAutofillOverlay = () =>
             {
@@ -1997,7 +2005,7 @@ namespace BuildConsole
 
                     btn.Click += async (s2, e2) =>
                     {
-                        autofillOverlay.Visibility = Visibility.Collapsed;
+                        popup.IsOpen = false;
                         var encUser = "\"" + escapeJs(acc.Username) + "\"";
                         var encPass = "\"" + escapeJs(acc.Password) + "\"";
 
@@ -2069,11 +2077,11 @@ namespace BuildConsole
                     if (string.Equals(result, "true", StringComparison.OrdinalIgnoreCase))
                     {
                         populateAutofillOverlay();
-                        autofillOverlay.Visibility = Visibility.Visible;
+                        popup.IsOpen = true;
                     }
                     else
                     {
-                        autofillOverlay.Visibility = Visibility.Collapsed;
+                        popup.IsOpen = false;
                     }
                 }
                 catch
@@ -2131,7 +2139,7 @@ namespace BuildConsole
                             try
                             {
                                 populateAutofillOverlay();
-                                autofillOverlay.Visibility = Visibility.Visible;
+                                popup.IsOpen = true;
                             }
                             catch { }
                         }
@@ -2178,11 +2186,10 @@ namespace BuildConsole
 
             Grid.SetRow(navBar, 0);
             Grid.SetRow(wv, 1);
-            Grid.SetRow(autofillOverlay, 1);
 
             webContainer.Children.Add(navBar);
             webContainer.Children.Add(wv);
-            webContainer.Children.Add(autofillOverlay);
+            webContainer.Children.Add(popup);
 
             var newTab = new TabItem
             {
