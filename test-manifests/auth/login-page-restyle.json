@@ -2,7 +2,7 @@
   "issue": 1348,
   "feature": "Login page restyled to the new violet split-layout design (form left, generic pre-auth 'Behind this login' rail right) -- pure visual restyle, same real auth calls as before.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "PENDING",
+  "lastVerifiedAgainstCommit": "ea2d915bc",
 
   "notes": [
     "This manifest only asserts the new visual surface renders and that the real form fields/ids the auth flow depends on (#email, #password, [data-testid='login-submit']) are unchanged -- see auth/password-reset-guard.json for the forgot-password API coverage and copilot-readiness/money-path-login-direct.json for the full real-credential login+MFA path, both of which this restyle must not regress.",
