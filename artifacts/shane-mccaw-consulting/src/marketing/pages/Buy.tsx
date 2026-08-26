@@ -12,10 +12,54 @@ import {
   WRITE_SCOPES,
   SOP_WRITE_SCOPES,
   monthly,
+  bracketFor,
+  type BracketKey,
   type DryAction,
   type Impact,
 } from "../data/buyCheckout";
 import { useQuickStartPackAvailability } from "../../hooks/useQuickStartPackAvailability";
+import { useServices, type PublicService } from "../../hooks/useServices";
+import { StripePaymentElement } from "../../components/StripePaymentElement";
+import { logger } from "../../lib/logger";
+
+const log = logger.child({ channel: "billing" });
+
+// ── Real-catalog slug resolution (Git #1308) ────────────────────────────────
+// Buy.tsx prices from its own local fixture (buyCheckout.ts), keyed by short
+// `key`s (e.g. "growth", "advisory", "entra") that mirror but do not equal the
+// real `services.slug` the payment endpoints (#1307) require. These resolve a
+// selection to its real catalog row via the same live `services` read
+// useQuickStartPackAvailability already trusts for pack availability.
+const BRACKET_TENANT_TIER_LABEL: Record<BracketKey, string> = {
+  micro: "Micro",
+  smb: "SMB",
+  mid: "Mid-Market",
+  ent: "Enterprise",
+};
+
+function resolveMonitoringSlug(
+  services: PublicService[],
+  tierKey: string,
+  seatCount: number,
+): string | null {
+  const tenantTierLabel = BRACKET_TENANT_TIER_LABEL[bracketFor(seatCount).key];
+  const packageKey = `core:${tierKey}`;
+  const match = services.find((s) => {
+    const ta = s.typeAttributes as { packageKey?: string; tenantTierLabel?: string } | null;
+    return s.serviceType === "monitoring_tier" && ta?.packageKey === packageKey && ta?.tenantTierLabel === tenantTierLabel;
+  });
+  return match?.slug ?? null;
+}
+
+function resolveRetainerSlug(services: PublicService[], tierName: string): string | null {
+  const match = services.find((s) => s.category === "retainer" && s.name === `Architect ${tierName} Retainer`);
+  return match?.slug ?? null;
+}
+
+function resolvePackSlug(services: PublicService[], packName: string): string | null {
+  const match = services.find((s) => s.name === packName);
+  return match?.slug ?? null;
+}
 
 // Route /buy — recreated from Design/design_handoff_marketing/Marketing Buy.dc.html.
 //
@@ -71,6 +115,12 @@ interface State {
   seatEdited: boolean;
   stage: Stage;
   email: string;
+  fullName: string;
+  company: string;
+  sessionId: string | null;
+  intent: { clientSecret: string; publishableKey: string } | null;
+  creatingIntent: boolean;
+  payingError: string | null;
   codeInput: string;
   pw1: string;
   pw2: string;
@@ -125,6 +175,12 @@ function initialState(): State {
     seatEdited: false,
     stage: "buy",
     email: "",
+    fullName: "",
+    company: "",
+    sessionId: null,
+    intent: null,
+    creatingIntent: false,
+    payingError: null,
     codeInput: "",
     pw1: "",
     pw2: "",
@@ -223,6 +279,7 @@ type LiveAction = DryAction & { pack: string; packName: string; satisfied: boole
 export default function Buy() {
   const [st, setSt] = useState<State>(initialState);
   const { availableKeys: availablePackKeys, loading: catalogLoading } = useQuickStartPackAvailability();
+  const { services: catalogServices } = useServices();
   const timers = useRef<number[]>([]);
   const push = (id: number) => {
     timers.current.push(id);
@@ -296,7 +353,11 @@ export default function Buy() {
   const connectBlocked = connectRequired && !st.connected;
   const hasUnavailablePack =
     isPack && !catalogLoading && packKeys.some((k) => !availablePackKeys.has(k));
-  const blocked = connectBlocked || !st.agreed || hasUnavailablePack;
+  // catalogLoading is included here (not just hasUnavailablePack's pack-only
+  // check) because submit() resolves a real services-table slug for ALL three
+  // product types (#1308) -- clicking Pay before that live catalog read lands
+  // would otherwise resolve no slug and surface a confusing error.
+  const blocked = connectBlocked || !st.agreed || hasUnavailablePack || catalogLoading;
 
   const pwOk =
     st.pw1.length >= 12 &&
@@ -355,15 +416,148 @@ export default function Buy() {
   };
   const skipConnect = () => set({ scanSkipped: true });
   const reconnect = () => set({ connected: false, scanSkipped: false });
-  const submit = () => {
+
+  // Real Stripe confirm callback (#1307's payment-confirmed), shared by the
+  // StripePaymentElement's onSuccess and the alreadyPaid recovery path below.
+  // Throws on failure -- the element's own contract shows a thrown message in
+  // its panel error slot exactly like AssessmentFlow's PaymentStep does.
+  const confirmPayment = async (paymentIntentId: string, sessionIdOverride?: string) => {
+    const sessionId = sessionIdOverride ?? st.sessionId;
+    if (!sessionId) throw new Error("Missing checkout session. Please start again.");
+    const res = await fetch("/api/public/purchase/payment-confirmed", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId, paymentIntentId }),
+    });
+    if (!res.ok) {
+      const err = (await res.json().catch(() => ({}))) as { error?: string };
+      log.error({ err, sessionId, paymentIntentId }, "purchase payment-confirmed failed");
+      throw new Error(
+        err.error === "payment_not_succeeded"
+          ? "Your bank has not confirmed the payment yet. Please wait a moment and try again."
+          : "We took the payment but could not record it. Please contact us before paying again.",
+      );
+    }
+    log.info({ sessionId, paymentIntentId }, "purchase payment confirmed");
+    set({ stage: "code" });
+  };
+
+  // Real checkout: mint a server-side session (#1307's payment-intent needs
+  // one to exist), then a real Stripe PaymentIntent priced from it. Buy.tsx's
+  // own selection state (product/tier/seats/packKeys) resolves to the real
+  // catalog slug the session is created against -- see resolve*Slug above.
+  const submit = async () => {
+    if (st.stage !== "buy") return;
     if (connectRequired && !st.connected) return;
     if (!st.agreed) return;
     if (hasUnavailablePack) return;
-    set({ stage: "paying" });
-    push(window.setTimeout(() => set({ stage: "code" }), 1600));
+    if (catalogLoading) return;
+
+    const productSlug = isMon
+      ? resolveMonitoringSlug(catalogServices, monSel.key, seats)
+      : isRet
+        ? resolveRetainerSlug(catalogServices, retSel.name)
+        : resolvePackSlug(catalogServices, PACKS_BY_KEY[packKeys[0]]?.name ?? "");
+
+    if (!productSlug) {
+      set({ payingError: "This option isn't available to purchase right now. Please choose another." });
+      return;
+    }
+
+    set({ stage: "paying", creatingIntent: true, payingError: null, intent: null });
+
+    try {
+      const sessionRes = await fetch("/api/public/checkout-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          productSlug,
+          fullName: st.fullName.trim(),
+          email: st.email.trim(),
+          company: st.company.trim(),
+          industry: "Not specified",
+          seats,
+        }),
+      });
+      const sessionData = (await sessionRes.json().catch(() => ({}))) as {
+        sessionId?: string;
+        error?: string;
+        portalUrl?: string;
+      };
+      if (!sessionRes.ok || !sessionData.sessionId) {
+        log.warn({ status: sessionRes.status, error: sessionData.error }, "purchase checkout session creation failed");
+        throw new Error(
+          sessionData.error === "already_has_account"
+            ? "An account already exists for this email. Sign in to the Portal to buy from there."
+            : "Could not start checkout. Please check your details and try again.",
+        );
+      }
+      const sessionId = sessionData.sessionId;
+
+      // Retainer read consent is the one product this flow may lawfully skip
+      // without a tenant connection (#1311). Monitoring and Packs require it,
+      // and the connect step above stays exactly as simulated as it is today
+      // (out of scope here per #1308), so those two are refused server-side
+      // (consent_required) below until a later phase wires that step for real.
+      if (isRet) {
+        await fetch("/api/public/flow/read-consent-skip", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId }),
+        }).catch((err) => log.warn({ err, sessionId }, "read-consent-skip call failed"));
+      }
+
+      const packSlugs = isPack
+        ? packKeys
+            .slice(1)
+            .map((k) => resolvePackSlug(catalogServices, PACKS_BY_KEY[k]?.name ?? ""))
+            .filter((s): s is string => !!s)
+        : undefined;
+
+      const intentRes = await fetch("/api/public/purchase/payment-intent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, ...(packSlugs?.length ? { packSlugs } : {}) }),
+      });
+      const intentData = (await intentRes.json().catch(() => ({}))) as {
+        clientSecret?: string;
+        publishableKey?: string;
+        paymentIntentId?: string;
+        alreadyPaid?: boolean;
+        error?: string;
+        message?: string;
+      };
+      if (!intentRes.ok || !intentData.clientSecret || !intentData.publishableKey) {
+        log.warn({ status: intentRes.status, error: intentData.error, sessionId }, "purchase payment-intent failed");
+        throw new Error(
+          intentData.error === "consent_required"
+            ? "This purchase needs your tenant connected first. Grant read-only access above, then try again."
+            : intentData.error === "seat_band_mismatch"
+              ? intentData.message || "Your seat count doesn't match this tier."
+              : "Could not start payment. Please try again.",
+        );
+      }
+
+      set({ sessionId, creatingIntent: false, intent: { clientSecret: intentData.clientSecret, publishableKey: intentData.publishableKey } });
+
+      // A recovered, already-succeeded intent (rare here -- a fresh session
+      // every submit -- but the same idempotent-recovery contract #1307 gives
+      // every caller) finishes the flow rather than showing a second card form.
+      if (intentData.alreadyPaid && intentData.paymentIntentId) {
+        await confirmPayment(intentData.paymentIntentId, sessionId);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Something went wrong starting payment.";
+      log.error({ err: message }, "purchase paying stage failed");
+      set({ stage: "buy", creatingIntent: false, intent: null, payingError: message });
+    }
   };
   const onEmail = (e: React.ChangeEvent<HTMLInputElement>) =>
     set({ email: e.target.value });
+  const onFullName = (e: React.ChangeEvent<HTMLInputElement>) =>
+    set({ fullName: e.target.value });
+  const onCompany = (e: React.ChangeEvent<HTMLInputElement>) =>
+    set({ company: e.target.value });
   const onCode = (e: React.ChangeEvent<HTMLInputElement>) =>
     set({ codeInput: e.target.value.replace(/\D/g, "").slice(0, 6) });
   const resend = () => set({ codeInput: "" });
@@ -510,9 +704,12 @@ export default function Buy() {
     account: accountStages.includes(st.stage),
     writeConsent: st.stage === "write" || st.stage === "granting",
     done: st.stage === "done",
-    processing: (
-      ["connecting", "paying", "granting", "verifying", "logging"] as Stage[]
-    ).includes(st.stage),
+    // "paying" is deliberately excluded: the buyer interacts with the real
+    // Stripe Payment Element during that stage (#1308), so it must never be
+    // covered by this full-screen overlay the way the other async waits are.
+    processing: (["connecting", "granting", "verifying", "logging"] as Stage[]).includes(
+      st.stage,
+    ),
     connect: (connectRequired && !st.connected) || connectOffered,
     connected: st.connected,
     preScan: st.stage === "prescan",
@@ -1594,119 +1791,176 @@ export default function Buy() {
                       <IconLock /> Processed by Stripe
                     </span>
                   </div>
-                  <div
-                    style={{
-                      border: "1px solid rgba(30,41,59,.95)",
-                      borderRadius: "14px",
-                      background: "#0b1524",
-                      padding: "18px",
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: "11px",
-                    }}
-                  >
-                    <FocusInput
-                      data-testid="buy-email"
-                      type="text"
-                      value={st.email}
-                      onChange={onEmail}
-                      placeholder="billing@yourcompany.com"
-                      style={inputStyle}
-                    />
-                    <FocusInput type="text" placeholder="Card number" style={inputStyle} />
-                    <span
+                  {st.stage === "paying" ? (
+                    st.intent ? (
+                      <StripePaymentElement
+                        clientSecret={st.intent.clientSecret}
+                        publishableKey={st.intent.publishableKey}
+                        onSuccess={(paymentIntentId) => confirmPayment(paymentIntentId)}
+                      />
+                    ) : (
+                      <div
+                        style={{
+                          border: "1px solid rgba(30,41,59,.95)",
+                          borderRadius: "14px",
+                          background: "#0b1524",
+                          padding: "22px 18px",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: "10px",
+                          minHeight: "120px",
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: "18px",
+                            height: "18px",
+                            borderRadius: "50%",
+                            border: "2px solid rgba(51,65,85,.9)",
+                            borderTopColor: "#3b82f6",
+                            animation: spinAnim,
+                            flex: "none",
+                          }}
+                        />
+                        <span style={{ fontSize: "12.5px", color: "#94a3b8" }}>
+                          Preparing secure payment…
+                        </span>
+                      </div>
+                    )
+                  ) : (
+                    <div
                       style={{
-                        display: "grid",
-                        gridTemplateColumns: "1fr 1fr",
-                        gap: "10px",
+                        border: "1px solid rgba(30,41,59,.95)",
+                        borderRadius: "14px",
+                        background: "#0b1524",
+                        padding: "18px",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "11px",
                       }}
                     >
-                      <FocusInput type="text" placeholder="MM / YY" style={inputStyle} />
-                      <FocusInput type="text" placeholder="CVC" style={inputStyle} />
-                    </span>
-                    <FocusInput type="text" placeholder="Name on card" style={inputStyle} />
-                  </div>
+                      <FocusInput
+                        data-testid="buy-email"
+                        type="text"
+                        value={st.email}
+                        onChange={onEmail}
+                        placeholder="billing@yourcompany.com"
+                        style={inputStyle}
+                      />
+                      <FocusInput
+                        data-testid="buy-fullname"
+                        type="text"
+                        value={st.fullName}
+                        onChange={onFullName}
+                        placeholder="Full name"
+                        style={inputStyle}
+                      />
+                      <FocusInput
+                        data-testid="buy-company"
+                        type="text"
+                        value={st.company}
+                        onChange={onCompany}
+                        placeholder="Company"
+                        style={inputStyle}
+                      />
+                    </div>
+                  )}
+                  {st.payingError && (
+                    <p
+                      data-testid="buy-pay-error"
+                      style={{ fontSize: "12.5px", color: "#f87171", lineHeight: 1.5, margin: 0 }}
+                    >
+                      {st.payingError}
+                    </p>
+                  )}
                 </div>
               )}
 
-              {/* Terms — gates the pay button, but must never hide the payment fields */}
-              <div
-                data-testid="buy-terms"
-                onClick={toggleAgree}
-                style={{
-                  display: "flex",
-                  alignItems: "flex-start",
-                  gap: "9px",
-                  cursor: "pointer",
-                  paddingTop: "12px",
-                  borderTop: "1px solid rgba(30,41,59,.9)",
-                }}
-              >
-                <span
-                  style={{
-                    flex: "none",
-                    marginTop: "1px",
-                    width: "17px",
-                    height: "17px",
-                    borderRadius: "5px",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: "11px",
-                    fontWeight: 800,
-                    color: "#fff",
-                    cursor: "pointer",
-                    border: st.agreed ? "1px solid #3b82f6" : "1px solid rgba(100,116,139,.75)",
-                    background: st.agreed ? "#3b82f6" : "transparent",
-                  }}
-                >
-                  {st.agreed ? "✓" : ""}
-                </span>
-                <span style={{ fontSize: "11.5px", color: "#94a3b8", lineHeight: 1.55 }}>
-                  I agree to the{" "}
-                  <span style={{ color: "#60a5fa", fontWeight: 600 }}>Terms of Service</span> and
-                  the <span style={{ color: "#60a5fa", fontWeight: 600 }}>Privacy Policy</span>.
-                </span>
-              </div>
+              {/* Terms + Pay — hidden once "paying" starts: the real Stripe
+                  Payment Element (rendered above) owns the actual charge from
+                  there, and showing both would read as two pay buttons. */}
+              {st.stage === "buy" && (
+                <>
+                  <div
+                    data-testid="buy-terms"
+                    onClick={toggleAgree}
+                    style={{
+                      display: "flex",
+                      alignItems: "flex-start",
+                      gap: "9px",
+                      cursor: "pointer",
+                      paddingTop: "12px",
+                      borderTop: "1px solid rgba(30,41,59,.9)",
+                    }}
+                  >
+                    <span
+                      style={{
+                        flex: "none",
+                        marginTop: "1px",
+                        width: "17px",
+                        height: "17px",
+                        borderRadius: "5px",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: "11px",
+                        fontWeight: 800,
+                        color: "#fff",
+                        cursor: "pointer",
+                        border: st.agreed ? "1px solid #3b82f6" : "1px solid rgba(100,116,139,.75)",
+                        background: st.agreed ? "#3b82f6" : "transparent",
+                      }}
+                    >
+                      {st.agreed ? "✓" : ""}
+                    </span>
+                    <span style={{ fontSize: "11.5px", color: "#94a3b8", lineHeight: 1.55 }}>
+                      I agree to the{" "}
+                      <span style={{ color: "#60a5fa", fontWeight: 600 }}>Terms of Service</span> and
+                      the <span style={{ color: "#60a5fa", fontWeight: 600 }}>Privacy Policy</span>.
+                    </span>
+                  </div>
 
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "9px",
-                  paddingTop: "14px",
-                  borderTop: "1px solid rgba(30,41,59,.9)",
-                }}
-              >
-                <button
-                  data-testid="buy-pay"
-                  onClick={submit}
-                  style={{
-                    width: "100%",
-                    padding: "12px",
-                    border: 0,
-                    borderRadius: "11px",
-                    fontFamily: "inherit",
-                    fontSize: "13.5px",
-                    fontWeight: 700,
-                    color: "#fff",
-                    cursor: blocked ? "not-allowed" : "pointer",
-                    background: blocked ? "rgba(71,85,105,.4)" : gradientBtn,
-                  }}
-                >
-                  {summary.cta}
-                </button>
-                <span
-                  style={{
-                    fontSize: "11px",
-                    lineHeight: 1.5,
-                    color: "#64748b",
-                    textAlign: "center",
-                  }}
-                >
-                  {summary.foot}
-                </span>
-              </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "9px",
+                      paddingTop: "14px",
+                      borderTop: "1px solid rgba(30,41,59,.9)",
+                    }}
+                  >
+                    <button
+                      data-testid="buy-pay"
+                      onClick={submit}
+                      style={{
+                        width: "100%",
+                        padding: "12px",
+                        border: 0,
+                        borderRadius: "11px",
+                        fontFamily: "inherit",
+                        fontSize: "13.5px",
+                        fontWeight: 700,
+                        color: "#fff",
+                        cursor: blocked ? "not-allowed" : "pointer",
+                        background: blocked ? "rgba(71,85,105,.4)" : gradientBtn,
+                      }}
+                    >
+                      {summary.cta}
+                    </button>
+                    <span
+                      style={{
+                        fontSize: "11px",
+                        lineHeight: 1.5,
+                        color: "#64748b",
+                        textAlign: "center",
+                      }}
+                    >
+                      {summary.foot}
+                    </span>
+                  </div>
+                </>
+              )}
             </div>
 
             {/* What happens next */}
