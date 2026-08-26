@@ -62,6 +62,15 @@ export interface ToolAuditSpec {
   entityType?: string;
   /** Tool arg holding the acted-on entity's id → msp_audit_logs.entity_id. */
   entityIdArg?: string;
+  /**
+   * Tool args named here are masked to "[redacted]" in the audit row's
+   * metadata.params — and only there; the handler still receives the real
+   * value. For secrets the platform's own routes refuse to persist anywhere
+   * (a buyer's password, a verification code — Git #1310's doctrine, applied
+   * to create_account in Git #1321). The call itself stays fully audited;
+   * only the secret's value is withheld from the durable trail.
+   */
+  redactParams?: string[];
 }
 
 export interface ApiCallNote {
@@ -221,7 +230,7 @@ export async function auditedToolCall<T>(
     transport: "stdio",
     tool: tool.name,
     access: spec.access,
-    params: args,
+    params: redactedParams(args, spec.redactParams),
   };
 
   if (spec.access === "write") {
@@ -330,6 +339,20 @@ export function noteApiCall(method: string, path: string): ApiCallNote | undefin
   const note: ApiCallNote = { method, path };
   ctx.apiCalls.push(note);
   return note;
+}
+
+/** Full params are stored verbatim except args the spec names in redactParams
+ *  — those are masked so a secret never persists in the trail. */
+function redactedParams(
+  args: Record<string, unknown>,
+  redact: string[] | undefined,
+): Record<string, unknown> {
+  if (!redact?.length) return args;
+  const masked: Record<string, unknown> = { ...args };
+  for (const key of redact) {
+    if (masked[key] !== undefined) masked[key] = "[redacted]";
+  }
+  return masked;
 }
 
 function tenantIdOf(args: Record<string, unknown>, spec: ToolAuditSpec): number | null {

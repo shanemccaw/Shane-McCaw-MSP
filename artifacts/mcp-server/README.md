@@ -95,6 +95,11 @@ under the platform taxonomy's own `audit` channel (src/logger.ts).
   `access: "write"` and its attempt row is persisted (src/audit.ts
   `guardApiMutation`). A Phase 4/5 tool that forgets the declaration is
   blocked at runtime, not silently under-audited.
+- **Secrets never persist in the trail**: a ToolDef's audit spec may name
+  args in `redactParams` (e.g. `redactParams: ["code", "password"]` on
+  `create_account`) — those values are masked to `[redacted]` in the row's
+  `metadata.params` while the handler still receives them and the call stays
+  fully audited. Same doctrine as the routes' own "the code is never logged".
 - Phase 4/5 tools can also call `recordAuditEvent()` /
   `finalizeAuditEvent()` (src/audit.ts) directly for extra per-entity rows
   inside one call — they inherit the call's correlation id automatically, so
@@ -195,6 +200,31 @@ verbatim; when purchase-triggered automation (#1316) lifts that guard the
 tool inherits it automatically. Manual verification harness:
 `node scripts/execute-write-pack-check.mjs --pack <key> --customer <id>`
 (plan preview; add `--fire` to REALLY execute — real Graph writes).
+
+## create_account (Phase 2 — Git #1321)
+
+The buyer's portal account for a PAID purchase session, created through
+#1310's real generalized inline account-creation flow (api-server
+routes/public-purchase-account.ts → lib/purchase-account-flow.ts — the exact
+code Buy.tsx runs; nothing re-implemented). One tool drives the inherently
+multi-step flow via `action`: `status` (start here — a resumed session may
+already be past a step) → `send_verification_code` (a REAL six-digit code is
+emailed to the buyer's own mailbox via Exchange Online/Graph) →
+`verify_code` (5 attempts per issued code) → `set_password` (bcrypt(12)
+attach; provisions the users row via the same `provisionProspectAccount` the
+consent flow uses when no earlier step created one). Every server-side gate
+applies verbatim — paid+unexpired session only, verified-address-must-still-
+match, and a repeat buyer's existing password is never overwritten
+(`already_set`). Declared `audit: { access: "write" }` with
+`redactParams: ["code", "password"]`; set_password's returned `portalUrl`
+has the single-use no-MFA auto-login `signupToken` stripped
+(`signupTokenWithheld: true`) so it never transits the model or the audit
+trail — the buyer signs in with the credentials just set. MFA enrollment is
+deliberately not wrapped (passkeys are origin-bound; the portal owns it
+after first sign-in). Manual verification harness:
+`node scripts/e2e-create-account.mjs` (seeds a paid session + known code
+against the local Postgres, runs the full flow over real MCP stdio, cleans
+up after itself).
 
 ## Running / registering
 

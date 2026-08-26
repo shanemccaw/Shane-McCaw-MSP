@@ -15,6 +15,9 @@ import { getMicrosoftDriftTool } from "./get-microsoft-drift.ts";
 import { executeActionTool } from "./execute-action.ts";
 // Phase 5 (#1324): full config-pack execution (write tool, #1325 audited).
 import { executeWritePackTool } from "./execute-write-pack.ts";
+// Phase 2 (#1321): buyer account creation over #1310's real purchase flow
+// (write tool, #1325 audited with code/password redacted from the trail).
+import { createAccountTool } from "./create-account.ts";
 
 // Phase 2-5 (#1319): add your tool file next to these and append it here —
 // that is the entire registration surface. See ../../README.md "Adding a tool".
@@ -32,4 +35,5 @@ export const ALL_TOOLS: ToolDef[] = [
   getMicrosoftDriftTool,
   executeActionTool,
   executeWritePackTool,
+  createAccountTool,
 ];
