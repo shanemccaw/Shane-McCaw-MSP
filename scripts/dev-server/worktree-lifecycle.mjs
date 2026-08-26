@@ -349,7 +349,18 @@ export function sweepWorktrees(config, opts = {}) {
 
     const rec = recordByPath.get(norm);
     const isExplicitAgentBranch = wt.branch && wt.branch.startsWith("agent/");
-    const isStandardWtPath = isWindows() && (norm.startsWith("c:\\wt\\") || norm.includes("\\wt-"));
+
+    // Ownership gate (Git #1371): only worktrees THIS coordinator owns are ever
+    // eligible for removal — one we tracked (has a record), or one on an `agent/*`
+    // branch (created by provision-worktree.mjs). Anything else — a detached
+    // harness worktree, a hand-made `git worktree add`, another tool's worktree — is
+    // left strictly alone. Without this gate an untracked worktree fell straight
+    // through to the removal-candidate list and could be deleted out from under a
+    // live session that this sweep has no knowledge of.
+    if (!rec && !isExplicitAgentBranch) {
+      retained.push({ path: wt.path, reason: "not owned by dev-server (no tracking record, not an agent/* branch) — left alone" });
+      continue;
+    }
 
     // Check 1: Is creator PID alive?
     if (rec && rec.creatorPid && pidAlive(rec.creatorPid)) {

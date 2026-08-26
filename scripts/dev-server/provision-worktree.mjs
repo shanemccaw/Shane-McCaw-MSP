@@ -5,77 +5,216 @@
 // edits the shared checkout the dev server runs from. Short path by convention
 // (deep Design/_ds/... tree + long root overruns Windows MAX_PATH).
 //
-//   node scripts/dev-server/provision-worktree.mjs <name> [--path <dir>] [--base <ref>] [--link]
+//   node scripts/dev-server/provision-worktree.mjs <name> [--path <dir>] [--base <ref>] [--link] [--owner-pid <n>] [--json]
 //
-//   <name>    branch/worktree label (e.g. "1210-checkout-fix")
-//   --path    worktree dir (default: C:\wt\<name> on Windows)
-//   --base    base ref (default: config.baseRef, i.e. origin/main)
-//   --link    junction node_modules + lib/*/dist so you can build immediately
+//   <name>        branch/worktree label (e.g. "1210-checkout-fix")
+//   --path        worktree dir (default: C:\wt\<name> on Windows)
+//   --base        base ref (default: config.baseRef, i.e. origin/main)
+//   --link        junction node_modules + lib/*/dist so you can build immediately
+//                 (shared, NOT re-installed — one copy, zero re-download; Git #1372)
+//   --owner-pid   pid of the long-lived process that owns this build (BuildConsole
+//                 or the shell). The cleanup sweep retains the worktree while this
+//                 pid is alive, so a live mid-build worktree is never swept out from
+//                 under a running session. Defaults to this process's PARENT pid
+//                 (process.ppid) — i.e. whoever launched the provisioner — never the
+//                 provisioner's own short-lived pid.
+//   --json        emit a single machine-readable JSON result object and nothing else
+//                 (for BuildConsole to parse).
 //
-// Prints the exact request-restart command to run when the agent's build is done.
+// Registers the worktree in the lifecycle tracker (Git #1371 — previously the
+// provisioner never called registerWorktree, so a live worktree had no record and
+// the sweep could delete it mid-build). Idempotent: re-provisioning an already-live
+// worktree of the same path reuses it instead of failing.
 
 import path from "node:path";
 import { existsSync } from "node:fs";
+import { pathToFileURL } from "node:url";
 import { loadConfig, isWindows } from "./config.mjs";
-import { git, resolveCommit, shortSha } from "./git.mjs";
+import { git, resolveCommit, shortSha, listWorktrees } from "./git.mjs";
 import { linkDeps } from "./link-deps.mjs";
+import {
+  registerWorktree,
+  getWorktreeRecord,
+  updateWorktreeRecord,
+  normalizePath,
+} from "./worktree-lifecycle.mjs";
 
 function parse(argv) {
-  const a = { link: false, _: [] };
+  const a = { link: false, json: false, _: [] };
   for (let i = 0; i < argv.length; i++) {
     const t = argv[i];
     if (t === "--link") a.link = true;
+    else if (t === "--json") a.json = true;
     else if (t === "--path") a.path = argv[++i];
     else if (t === "--base") a.base = argv[++i];
+    else if (t === "--owner-pid") a.ownerPid = Number(argv[++i]);
     else a._.push(t);
   }
   return a;
+}
+
+/**
+ * Provision (or reuse) an isolated worktree. Pure-ish: returns a result object,
+ * never calls process.exit — the caller decides how to render/exit. Safe to import.
+ *
+ * @returns {{ ok, name, path, branch, base, baseCommit, linked, reused, recordId, error? }}
+ */
+export function provisionWorktree({ name, path: wantPath, base: wantBase, link = false, ownerPid } = {}) {
+  if (!name) return { ok: false, error: "name is required" };
+
+  const config = loadConfig();
+  const repo = config.mainRepoRoot;
+  const base = wantBase || config.baseRef;
+  const branch = `agent/${name}`;
+  const wtPath =
+    wantPath ||
+    (isWindows() ? path.join("C:\\wt", name) : path.join(path.dirname(repo), `wt-${name}`));
+  // The owner is the long-lived launcher, NOT the provisioner (which exits at once).
+  const creatorPid = Number.isFinite(ownerPid) && ownerPid > 0 ? ownerPid : process.ppid;
+
+  const baseCommit = resolveCommit(repo, base);
+  if (!baseCommit) {
+    return { ok: false, error: `base ref '${base}' does not resolve. Try: git fetch origin main` };
+  }
+
+  // --- Idempotency: if the path already exists, reuse it if it is a real worktree. ---
+  if (existsSync(wtPath)) {
+    const norm = normalizePath(wtPath);
+    const existing = listWorktrees(repo).find((w) => normalizePath(w.path) === norm);
+    if (existing) {
+      // Already a live worktree — ensure it is tracked (re-stamp the owner pid so the
+      // sweep keeps retaining it for the new owner), and return without re-creating.
+      const rec =
+        getWorktreeRecord(config, wtPath) ||
+        registerWorktree(config, {
+          name,
+          path: wtPath,
+          branch: existing.branch || branch,
+          baseRef: base,
+          baseCommit,
+          creatorPid,
+        });
+      updateWorktreeRecord(config, wtPath, { creatorPid, status: "active" });
+      return {
+        ok: true,
+        name,
+        path: wtPath,
+        branch: existing.branch || branch,
+        base,
+        baseCommit,
+        linked: false,
+        reused: true,
+        recordId: rec?.id || null,
+      };
+    }
+    return {
+      ok: false,
+      error: `${wtPath} exists but is not a registered git worktree. Remove it or pass a different --path.`,
+    };
+  }
+
+  // --- Create the worktree. ---
+  let r = git(repo, ["worktree", "add", "-b", branch, wtPath, baseCommit]);
+  if (r.code !== 0) {
+    // Common case: the ephemeral branch already exists (a prior worktree of this name
+    // was removed but its branch lingered). Attach the existing branch instead of
+    // resetting it (no data loss), rather than hard-failing.
+    if (/already exists|already used/i.test(r.stderr || "")) {
+      r = git(repo, ["worktree", "add", wtPath, branch]);
+    }
+    if (r.code !== 0) {
+      return { ok: false, error: `git worktree add failed:\n${r.stderr}` };
+    }
+  }
+
+  // --- Link deps (junctions) so the worktree can build immediately with a SHARED
+  //     node_modules — no per-worktree install, no re-download (Git #1372). ---
+  let linked = false;
+  if (link) {
+    try {
+      const created = linkDeps(repo, wtPath);
+      linked = created.length;
+    } catch (e) {
+      // Linking is best-effort; the worktree itself is valid without it.
+      linked = { error: e.message };
+    }
+  }
+
+  // --- Register in the lifecycle tracker (the fix for the swept-live-worktree bug). ---
+  const rec = registerWorktree(config, {
+    name,
+    path: wtPath,
+    branch,
+    baseRef: base,
+    baseCommit,
+    creatorPid,
+  });
+
+  return {
+    ok: true,
+    name,
+    path: wtPath,
+    branch,
+    base,
+    baseCommit,
+    linked,
+    reused: false,
+    recordId: rec?.id || null,
+  };
 }
 
 function main() {
   const a = parse(process.argv.slice(2));
   const name = a._[0];
   if (!name) {
-    console.error("usage: node scripts/dev-server/provision-worktree.mjs <name> [--path <dir>] [--base <ref>] [--link]");
-    process.exit(1);
-  }
-  const config = loadConfig();
-  const repo = config.mainRepoRoot;
-  const base = a.base || config.baseRef;
-  const branch = `agent/${name}`;
-  const wtPath = a.path || (isWindows() ? path.join("C:\\wt", name) : path.join(path.dirname(repo), `wt-${name}`));
-
-  const baseCommit = resolveCommit(repo, base);
-  if (!baseCommit) {
-    console.error(`! base ref '${base}' does not resolve. Try: git fetch origin main`);
-    process.exit(1);
-  }
-  if (existsSync(wtPath)) {
-    console.error(`! ${wtPath} already exists. Choose another --path or remove it.`);
+    const msg = "usage: node scripts/dev-server/provision-worktree.mjs <name> [--path <dir>] [--base <ref>] [--link] [--owner-pid <n>] [--json]";
+    if (a.json) console.log(JSON.stringify({ ok: false, error: msg }));
+    else console.error(msg);
     process.exit(1);
   }
 
-  const r = git(repo, ["worktree", "add", "-b", branch, wtPath, baseCommit]);
-  if (r.code !== 0) {
-    console.error(`! git worktree add failed:\n${r.stderr}`);
+  const res = provisionWorktree({
+    name,
+    path: a.path,
+    base: a.base,
+    link: a.link,
+    ownerPid: a.ownerPid,
+  });
+
+  if (a.json) {
+    console.log(JSON.stringify(res));
+    process.exit(res.ok ? 0 : 1);
+  }
+
+  if (!res.ok) {
+    console.error(`! ${res.error}`);
     process.exit(1);
   }
-  console.log(`Created worktree`);
-  console.log(`  path   : ${wtPath}`);
-  console.log(`  branch : ${branch}`);
-  console.log(`  base   : ${base} @ ${shortSha(baseCommit)}`);
 
+  console.log(res.reused ? `Reused existing worktree` : `Created worktree`);
+  console.log(`  path   : ${res.path}`);
+  console.log(`  branch : ${res.branch}`);
+  console.log(`  base   : ${res.base} @ ${shortSha(res.baseCommit)}`);
+  console.log(`  owner  : pid ${Number.isFinite(a.ownerPid) && a.ownerPid > 0 ? a.ownerPid : process.ppid}`);
   if (a.link) {
-    console.log(`  linking dependencies (junctions)...`);
-    const created = linkDeps(repo, wtPath);
-    console.log(`  linked ${created.length} dependency dir(s).`);
-    console.log(`  NOTE cleanup order: rmdir the junctions BEFORE 'git worktree remove', or removal deletes THROUGH them into the real store.`);
+    if (typeof res.linked === "number") {
+      console.log(`  linked ${res.linked} dependency dir(s) (junctions — shared, no re-download).`);
+      console.log(`  NOTE cleanup order: rmdir the junctions BEFORE 'git worktree remove', or removal deletes THROUGH them into the real store.`);
+    } else if (res.reused) {
+      console.log(`  (reused worktree — dependency junctions left as-is)`);
+    } else if (res.linked && res.linked.error) {
+      console.log(`  ! dependency linking failed: ${res.linked.error}`);
+    }
   }
-
   console.log("");
-  console.log(`Work in ${wtPath}. When your build is committed there, publish it to the dev server with:`);
-  console.log(`  cd ${wtPath}`);
+  console.log(`Work in ${res.path}. When your build is committed there, publish it to the dev server with:`);
+  console.log(`  cd ${res.path}`);
   console.log(`  node scripts/dev-server/request-restart.mjs --agent ${name}`);
+  console.log(`And clean up when done:`);
+  console.log(`  node scripts/dev-server/cleanup-worktree.mjs ${name}`);
 }
 
-main();
+// Only run when invoked directly (safe to import provisionWorktree from a launcher).
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main();
+}

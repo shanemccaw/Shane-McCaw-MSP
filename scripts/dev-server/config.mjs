@@ -105,6 +105,10 @@ export function loadConfig({ cwd = process.cwd() } = {}) {
     queueDir: path.join(stateDir, "queue"),
     claimedDir: path.join(stateDir, "claimed"),
     cyclesLog: path.join(stateDir, "cycles.log"),
+    // Durable log of worktree lifecycle actions (register / mark-stale / remove /
+    // sweep). worktree-lifecycle.mjs reads config.cleanupsLog; without this key it
+    // was undefined and every appendCleanupLog() silently no-op'd (Git #1371).
+    cleanupsLog: path.join(stateDir, "cleanups.log"),
     currentCycleFile: path.join(stateDir, "current-cycle.json"),
     serverMetaFile: path.join(stateDir, "server.json"),
     restartsLog: path.join(stateDir, "restarts.log"), // used by fake-restart selftest
